@@ -1,0 +1,32 @@
+{
+  "name": "web-odf-editor",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@tsconfig/svelte": "^5.0.8",
+    "svelte": "^5.55.9",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14"
+  },
+  "dependencies": {
+    "@tiptap/core": "^3.23.6",
+    "@tiptap/extension-bold": "^3.23.6",
+    "@tiptap/extension-document": "^3.23.6",
+    "@tiptap/extension-heading": "^3.23.6",
+    "@tiptap/extension-history": "^3.23.6",
+    "@tiptap/extension-italic": "^3.23.6",
+    "@tiptap/extension-paragraph": "^3.23.6",
+    "@tiptap/extension-placeholder": "^3.23.6",
+    "@tiptap/extension-text": "^3.23.6",
+    "@tiptap/extension-underline": "^3.23.6",
+    "@tiptap/pm": "^3.23.6",
+    "odf-kit": "^0.13.4"
+  }
+}
