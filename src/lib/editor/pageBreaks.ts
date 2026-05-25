@@ -141,6 +141,9 @@ export const PageBreaks = Extension.create({
             const targetHeight = numPages * CYCLE - PAGE_GAP; // = N*PAGE_HEIGHT + (N-1)*PAGE_GAP
           dom.style.minHeight = `${targetHeight}px`;
 
+          // Notify the Svelte layer of the current page count
+          dom.dispatchEvent(new CustomEvent('pm-pagecount', { bubbles: true, detail: { numPages } }));
+
           isUpdating = false;
         }
 

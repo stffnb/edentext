@@ -29,6 +29,7 @@
   - Shadow edges at page boundaries for depth effect
   - Dynamic page snapping (editor always shows full pages)
   - Print-ready @media print styles with @page A4 sizing
+- add bottom toolbar to show page number
 
 ### Not yet implemented
 - ODT import / open existing file

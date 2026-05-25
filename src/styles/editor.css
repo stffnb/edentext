@@ -2,7 +2,7 @@
   flex: 1;
   display: flex;
   justify-content: center;
-  padding: 2rem 1rem;
+  padding: 2rem 1rem 3rem; /* extra bottom padding clears the fixed status bar */
   overflow-y: auto;
 }
 

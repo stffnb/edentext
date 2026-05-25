@@ -8,6 +8,8 @@
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
+  let currentPage: number = $state(1);
+  let numPages: number = $state(1);
 
   let themeMode: ThemeMode = $state(loadTheme());
   let themeOpen = $state(false);
@@ -111,7 +113,10 @@
   {#if toolbarExpanded}
     <ToolbarExpanded {editor} {tick} />
   {/if}
-  <EditorComponent bind:editor bind:tick />
+  <EditorComponent bind:editor bind:tick bind:currentPage bind:numPages />
+  <footer class="statusbar">
+    <span>Page {currentPage} of {numPages}</span>
+  </footer>
 </main>
 
 <style>
@@ -241,5 +246,23 @@
   .export-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .statusbar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    background: var(--color-toolbar-bg);
+    border-top: 1px solid var(--color-border);
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    user-select: none;
+    z-index: 50;
   }
 </style>
