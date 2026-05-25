@@ -165,7 +165,7 @@
   }
 
   button:hover:not(:disabled) {
-    background: #cbd5e1;
+    background: var(--color-btn-hover);
   }
 
   button.active {

@@ -22,9 +22,9 @@
   - Filename derived from first H1/H2/H3 heading, fallback `document.odt`
 - Favicon (hand-coded SVG, no external assets)
 - Lists (ordered / unordered)
+- Light / Dark / Auto appearance mode (settings menu in toolbar)
 
 ### Not yet implemented
-- light/dark and auto appearance mode in a settings menu
 - ODT import / open existing file
 - font size
 - Images, tables
