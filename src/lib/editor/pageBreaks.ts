@@ -129,11 +129,16 @@ export const PageBreaks = Extension.create({
           const tr = editorView.state.tr.setMeta('addToHistory', false).setMeta(pageBreakKey, true);
           editorView.dispatch(tr);
 
-          // Update min-height for full pages
-          void dom.offsetHeight;
-          const totalHeight = dom.scrollHeight;
-          const numPages = Math.max(1, Math.ceil((totalHeight + PAGE_GAP) / CYCLE));
-          const targetHeight = numPages * PAGE_HEIGHT + (numPages - 1) * PAGE_GAP;
+            // Set min-height based on the last content block's effective position.
+            // Using scrollHeight would be circular (scrollHeight is clamped by min-height
+            // itself, so it never shrinks when content is deleted).
+            let numPages = 1;
+            if (blocks.length > 0) {
+                const lastBlock = blocks[blocks.length - 1];
+                const effectiveBottom = lastBlock.top + cumulativeShift + lastBlock.height;
+                numPages = Math.max(1, getPageForY(effectiveBottom));
+            }
+            const targetHeight = numPages * CYCLE - PAGE_GAP; // = N*PAGE_HEIGHT + (N-1)*PAGE_GAP
           dom.style.minHeight = `${targetHeight}px`;
 
           isUpdating = false;
