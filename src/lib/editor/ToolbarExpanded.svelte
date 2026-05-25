@@ -77,12 +77,21 @@
 
   let fontOpen = $state(false);
   let sizeOpen = $state(false);
+  let sizeInputFocused = $state(false);
+  let sizeInputValue = $state('');
   let savedFrom: number | null = null;
   let savedTo: number | null = null;
+
+  $effect(() => {
+    if (!sizeInputFocused) {
+      sizeInputValue = currentFontSize ? currentFontSize.replace('pt', '') : '';
+    }
+  });
 
   function openFontPicker() {
     if (!editor) return;
     sizeOpen = false;
+    sizeInputFocused = false;
     // Save selection before the picker button steals focus.
     savedFrom = editor.state.selection.from;
     savedTo = editor.state.selection.to;
@@ -107,17 +116,8 @@
     return { destroy() { window.removeEventListener('mousedown', handler); } };
   }
 
-  function openSizePicker() {
+  function applyFontSize(size: number) {
     if (!editor) return;
-    fontOpen = false;
-    savedFrom = editor.state.selection.from;
-    savedTo = editor.state.selection.to;
-    sizeOpen = !sizeOpen;
-  }
-
-  function pickSize(size: number) {
-    if (!editor) return;
-    sizeOpen = false;
     const from = savedFrom ?? editor.state.selection.from;
     const to   = savedTo   ?? editor.state.selection.to;
     savedFrom = null;
@@ -125,9 +125,54 @@
     editor.chain().focus().setTextSelection({ from, to }).setFontSize(`${size}pt`).run();
   }
 
+  function onSizeInputFocus(e: FocusEvent) {
+    if (!editor) return;
+    sizeInputFocused = true;
+    fontOpen = false;
+    savedFrom = editor.state.selection.from;
+    savedTo = editor.state.selection.to;
+    (e.target as HTMLInputElement).select();
+  }
+
+  function onSizeInputKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const num = parseInt(sizeInputValue, 10);
+      if (!isNaN(num) && num >= 1 && num <= 400) applyFontSize(num);
+      sizeInputFocused = false;
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      sizeInputFocused = false;
+      (e.target as HTMLInputElement).blur();
+    }
+  }
+
+  function onSizeInputBlur() {
+    sizeInputFocused = false;
+  }
+
+  function openSizePicker() {
+    if (!editor) return;
+    fontOpen = false;
+    if (!sizeInputFocused) {
+      savedFrom = editor.state.selection.from;
+      savedTo = editor.state.selection.to;
+    }
+    sizeOpen = !sizeOpen;
+  }
+
+  function pickSize(size: number) {
+    if (!editor) return;
+    sizeOpen = false;
+    sizeInputFocused = false;
+    applyFontSize(size);
+  }
+
   function sizePickerClickOutside(node: HTMLElement) {
     function handler(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) sizeOpen = false;
+      if (!node.contains(e.target as Node)) {
+        sizeOpen = false;
+      }
     }
     window.addEventListener('mousedown', handler);
     return { destroy() { window.removeEventListener('mousedown', handler); } };
@@ -160,12 +205,23 @@
     <div class="toolbar-separator"></div>
 
     <div class="size-picker" use:sizePickerClickOutside>
-      <button class="size-trigger" onclick={openSizePicker} title="Font size">
-        <span class="size-trigger-label">{currentFontSize ? currentFontSize.replace('pt', '') : ''}</span>
-        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
-          <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
+      <div class="size-trigger-wrap">
+        <input
+          type="text"
+          class="size-input"
+          bind:value={sizeInputValue}
+          onfocus={onSizeInputFocus}
+          onkeydown={onSizeInputKeydown}
+          onblur={onSizeInputBlur}
+          inputmode="numeric"
+          title="Font size"
+        />
+        <button class="size-chevron" onclick={openSizePicker} tabindex="-1" title="Font size list">
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+            <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
       {#if sizeOpen}
         <div class="size-dropdown">
           {#each FONT_SIZES as size}
@@ -404,30 +460,54 @@
     position: relative;
   }
 
-  .size-trigger {
+  .size-trigger-wrap {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
     height: 2rem;
-    padding: 0 0.4rem 0 0.6rem;
+    width: 62px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     background: var(--color-surface);
-    color: var(--color-text);
-    font-size: 0.8rem;
-    font-family: var(--font-sans);
-    cursor: pointer;
-    width: 62px;
     transition: border-color 0.15s;
+    overflow: hidden;
   }
 
-  .size-trigger:hover {
+  .size-trigger-wrap:hover,
+  .size-trigger-wrap:focus-within {
     border-color: var(--color-primary);
   }
 
-  .size-trigger-label {
+  .size-input {
     flex: 1;
-    text-align: left;
+    min-width: 0;
+    height: 100%;
+    padding: 0 0 0 0.5rem;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.8rem;
+    font-family: var(--font-sans);
+    outline: none;
+  }
+
+  .size-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    min-width: unset;
+    height: 100%;
+    padding: 0;
+    border: none;
+    border-left: 1px solid var(--color-border);
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+  }
+
+  .size-chevron:hover {
+    background: var(--color-btn-hover);
   }
 
   .size-dropdown {
