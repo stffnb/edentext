@@ -8,6 +8,9 @@
   let isAlignRight   = $derived(tick >= 0 && !!editor?.isActive({ textAlign: 'right' }));
   let isAlignJustify = $derived(tick >= 0 && !!editor?.isActive({ textAlign: 'justify' }));
 
+  // Must match the first font in --font-serif in editor.css
+  const DEFAULT_EDITOR_FONT = 'Georgia';
+
   const FONTS = [
     { value: 'Arial',            label: 'Arial'            },
     { value: 'Verdana',          label: 'Verdana'          },
@@ -18,22 +21,23 @@
   ] as const;
 
   // Returns the uniform font of the selection, or '' when fonts are mixed.
+  // Plain Text without an explicit mark falls back to DEFAULT_EDITOR_FONT.
   let currentFont = $derived.by(() => {
     if (tick < 0 || !editor) return '';
     const { from, to, empty } = editor.state.selection;
     if (empty) {
       const marks = editor.state.storedMarks ?? editor.state.selection.$head.marks();
-      return marks.find(m => m.type.name === 'textStyle')?.attrs.fontFamily ?? '';
+      return marks.find(m => m.type.name === 'textStyle')?.attrs.fontFamily ?? DEFAULT_EDITOR_FONT;
     }
     let font: string | undefined;
     let mixed = false;
     editor.state.doc.nodesBetween(from, to, (node) => {
       if (mixed || !node.isText) return;
-      const f: string = node.marks.find(m => m.type.name === 'textStyle')?.attrs.fontFamily ?? '';
+      const f: string = node.marks.find(m => m.type.name === 'textStyle')?.attrs.fontFamily ?? DEFAULT_EDITOR_FONT;
       if (font === undefined) font = f;
       else if (font !== f) mixed = true;
     });
-    return mixed ? '' : (font ?? '');
+    return mixed ? '' : (font ?? DEFAULT_EDITOR_FONT);
   });
 
   let fontOpen = $state(false);
