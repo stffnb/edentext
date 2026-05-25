@@ -40,12 +40,49 @@
     return mixed ? '' : (font ?? DEFAULT_EDITOR_FONT);
   });
 
+  // Must match the common document default and editor.css heading sizes (in pt)
+  const DEFAULT_FONT_SIZE = '12pt';
+  const HEADING_SIZES: Record<number, string> = { 1: '20pt', 2: '16pt', 3: '14pt' };
+  const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72];
+
+  function effectiveSize(node: { isText: boolean; marks: readonly { type: { name: string }; attrs: Record<string, string> }[] }, parent: { type: { name: string }; attrs: Record<string, number> } | null): string {
+    const explicit = node.marks.find(m => m.type.name === 'textStyle')?.attrs.fontSize;
+    if (explicit) return explicit;
+    if (parent?.type.name === 'heading') return HEADING_SIZES[parent.attrs.level] ?? DEFAULT_FONT_SIZE;
+    return DEFAULT_FONT_SIZE;
+  }
+
+  let currentFontSize = $derived.by(() => {
+    if (tick < 0 || !editor) return '';
+    const { from, to, empty } = editor.state.selection;
+    if (empty) {
+      const head = editor.state.selection.$head;
+      const marks = editor.state.storedMarks ?? head.marks();
+      const explicit = marks.find(m => m.type.name === 'textStyle')?.attrs.fontSize;
+      if (explicit) return explicit;
+      const parent = head.parent;
+      if (parent.type.name === 'heading') return HEADING_SIZES[parent.attrs.level] ?? DEFAULT_FONT_SIZE;
+      return DEFAULT_FONT_SIZE;
+    }
+    let size: string | undefined;
+    let mixed = false;
+    editor.state.doc.nodesBetween(from, to, (node, _pos, parent) => {
+      if (mixed || !node.isText) return;
+      const s = effectiveSize(node as Parameters<typeof effectiveSize>[0], parent as Parameters<typeof effectiveSize>[1]);
+      if (size === undefined) size = s;
+      else if (size !== s) mixed = true;
+    });
+    return mixed ? '' : (size ?? DEFAULT_FONT_SIZE);
+  });
+
   let fontOpen = $state(false);
+  let sizeOpen = $state(false);
   let savedFrom: number | null = null;
   let savedTo: number | null = null;
 
   function openFontPicker() {
     if (!editor) return;
+    sizeOpen = false;
     // Save selection before the picker button steals focus.
     savedFrom = editor.state.selection.from;
     savedTo = editor.state.selection.to;
@@ -65,6 +102,32 @@
   function fontPickerClickOutside(node: HTMLElement) {
     function handler(e: MouseEvent) {
       if (!node.contains(e.target as Node)) fontOpen = false;
+    }
+    window.addEventListener('mousedown', handler);
+    return { destroy() { window.removeEventListener('mousedown', handler); } };
+  }
+
+  function openSizePicker() {
+    if (!editor) return;
+    fontOpen = false;
+    savedFrom = editor.state.selection.from;
+    savedTo = editor.state.selection.to;
+    sizeOpen = !sizeOpen;
+  }
+
+  function pickSize(size: number) {
+    if (!editor) return;
+    sizeOpen = false;
+    const from = savedFrom ?? editor.state.selection.from;
+    const to   = savedTo   ?? editor.state.selection.to;
+    savedFrom = null;
+    savedTo   = null;
+    editor.chain().focus().setTextSelection({ from, to }).setFontSize(`${size}pt`).run();
+  }
+
+  function sizePickerClickOutside(node: HTMLElement) {
+    function handler(e: MouseEvent) {
+      if (!node.contains(e.target as Node)) sizeOpen = false;
     }
     window.addEventListener('mousedown', handler);
     return { destroy() { window.removeEventListener('mousedown', handler); } };
@@ -96,14 +159,24 @@
 
     <div class="toolbar-separator"></div>
 
-    <div class="toolbar-group">
-      <select
-        class="font-size-select"
-        disabled
-        title="Font size (coming soon)"
-      >
-        <option>16</option>
-      </select>
+    <div class="size-picker" use:sizePickerClickOutside>
+      <button class="size-trigger" onclick={openSizePicker} title="Font size">
+        <span class="size-trigger-label">{currentFontSize ? currentFontSize.replace('pt', '') : ''}</span>
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+          <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      {#if sizeOpen}
+        <div class="size-dropdown">
+          {#each FONT_SIZES as size}
+            <button
+              class="size-option"
+              class:active={currentFontSize === `${size}pt`}
+              onclick={() => pickSize(size)}
+            >{size}</button>
+          {/each}
+        </div>
+      {/if}
     </div>
 
     <div class="toolbar-separator"></div>
@@ -327,16 +400,78 @@
     color: white;
   }
 
-  .font-size-select {
+  .size-picker {
+    position: relative;
+  }
+
+  .size-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     height: 2rem;
-    padding: 0 0.5rem;
+    padding: 0 0.4rem 0 0.6rem;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     background: var(--color-surface);
     color: var(--color-text);
     font-size: 0.8rem;
     font-family: var(--font-sans);
-    cursor: not-allowed;
-    opacity: 0.35;
+    cursor: pointer;
+    width: 62px;
+    transition: border-color 0.15s;
+  }
+
+  .size-trigger:hover {
+    border-color: var(--color-primary);
+  }
+
+  .size-trigger-label {
+    flex: 1;
+    text-align: left;
+  }
+
+  .size-dropdown {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 0;
+    min-width: 100%;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    z-index: 200;
+    padding: 2px;
+    display: flex;
+    flex-direction: column;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .size-option {
+    display: block;
+    width: 100%;
+    padding: 0.3rem 0.6rem;
+    border: none;
+    border-radius: calc(var(--radius) - 2px);
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.85rem;
+    font-family: var(--font-sans);
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s;
+    min-width: unset;
+    height: auto;
+    justify-content: flex-start;
+  }
+
+  .size-option:hover {
+    background: var(--color-btn-hover);
+  }
+
+  .size-option.active {
+    background: var(--color-primary);
+    color: white;
   }
 </style>
