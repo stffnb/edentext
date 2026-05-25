@@ -53,6 +53,16 @@
   font-size: 1.15rem;
 }
 
+.paper .tiptap ul,
+.paper .tiptap ol {
+  padding-left: 1.5rem;
+  margin-bottom: 0.75em;
+}
+
+.paper .tiptap li {
+  margin-bottom: 0.25em;
+}
+
 .paper .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;

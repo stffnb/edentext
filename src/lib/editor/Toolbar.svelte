@@ -10,6 +10,8 @@
   let isH1         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 1 }));
   let isH2         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 2 }));
   let isH3         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 3 }));
+  let isBulletList = $derived(tick >= 0 && !!editor?.isActive('bulletList'));
+  let isOrderedList= $derived(tick >= 0 && !!editor?.isActive('orderedList'));
   let canUndo      = $derived(tick >= 0 && !!editor?.can().undo());
   let canRedo      = $derived(tick >= 0 && !!editor?.can().redo());
 </script>
@@ -63,6 +65,25 @@
         title="Heading 3"
       >
         H3
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <button
+        class:active={isBulletList}
+        onclick={() => editor?.chain().focus().toggleBulletList().run()}
+        title="Bullet list"
+      >
+        UL
+      </button>
+      <button
+        class:active={isOrderedList}
+        onclick={() => editor?.chain().focus().toggleOrderedList().run()}
+        title="Ordered list"
+      >
+        OL
       </button>
     </div>
 

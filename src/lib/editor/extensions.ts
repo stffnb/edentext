@@ -5,6 +5,9 @@ import Bold from '@tiptap/extension-bold';
 import Italic from '@tiptap/extension-italic';
 import Underline from '@tiptap/extension-underline';
 import Heading from '@tiptap/extension-heading';
+import BulletList from '@tiptap/extension-bullet-list';
+import OrderedList from '@tiptap/extension-ordered-list';
+import ListItem from '@tiptap/extension-list-item';
 import History from '@tiptap/extension-history';
 import Placeholder from '@tiptap/extension-placeholder';
 
@@ -16,6 +19,9 @@ export const extensions = [
   Italic,
   Underline,
   Heading.configure({ levels: [1, 2, 3] }),
+  BulletList,
+  OrderedList,
+  ListItem,
   History,
   Placeholder.configure({ placeholder: 'Start typing…' }),
 ];

@@ -21,9 +21,9 @@
 - ODT export via `tiptapToOdt()` from odf-kit
   - Filename derived from first H1/H2/H3 heading, fallback `document.odt`
 - Favicon (hand-coded SVG, no external assets)
+- Lists (ordered / unordered)
 
 ### Not yet implemented
-- Lists (ordered / unordered)
 - light/dark and auto appearance mode in a settings menu
 - ODT import / open existing file
 - font size
