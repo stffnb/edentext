@@ -30,12 +30,13 @@
   - Dynamic page snapping (editor always shows full pages)
   - Print-ready @media print styles with @page A4 sizing
 - add bottom toolbar to show page number
+- Zoom feature
+- font size
 
 ### Not yet implemented
 - ODT import / open existing file
-- font size
+- undo history
 - Images, tables
-- Zoom feature
 - Custom right-click context menu (formatting, cut/copy)
 - Multi-document management
 - PWA / offline support

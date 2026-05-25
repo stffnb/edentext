@@ -7,18 +7,87 @@
   let isAlignCenter  = $derived(tick >= 0 && !!editor?.isActive({ textAlign: 'center' }));
   let isAlignRight   = $derived(tick >= 0 && !!editor?.isActive({ textAlign: 'right' }));
   let isAlignJustify = $derived(tick >= 0 && !!editor?.isActive({ textAlign: 'justify' }));
+
+  const FONTS = [
+    { value: 'Arial',            label: 'Arial'            },
+    { value: 'Verdana',          label: 'Verdana'          },
+    { value: 'Trebuchet MS',     label: 'Trebuchet MS'     },
+    { value: 'Georgia',          label: 'Georgia'          },
+    { value: 'Times New Roman',  label: 'Times New Roman'  },
+    { value: 'Courier New',      label: 'Courier New'      },
+  ] as const;
+
+  // Returns the uniform font of the selection, or '' when fonts are mixed.
+  let currentFont = $derived.by(() => {
+    if (tick < 0 || !editor) return '';
+    const { from, to, empty } = editor.state.selection;
+    if (empty) {
+      const marks = editor.state.storedMarks ?? editor.state.selection.$head.marks();
+      return marks.find(m => m.type.name === 'textStyle')?.attrs.fontFamily ?? '';
+    }
+    let font: string | undefined;
+    let mixed = false;
+    editor.state.doc.nodesBetween(from, to, (node) => {
+      if (mixed || !node.isText) return;
+      const f: string = node.marks.find(m => m.type.name === 'textStyle')?.attrs.fontFamily ?? '';
+      if (font === undefined) font = f;
+      else if (font !== f) mixed = true;
+    });
+    return mixed ? '' : (font ?? '');
+  });
+
+  let fontOpen = $state(false);
+  let savedFrom: number | null = null;
+  let savedTo: number | null = null;
+
+  function openFontPicker() {
+    if (!editor) return;
+    // Save selection before the picker button steals focus.
+    savedFrom = editor.state.selection.from;
+    savedTo = editor.state.selection.to;
+    fontOpen = !fontOpen;
+  }
+
+  function pickFont(value: string) {
+    if (!editor) return;
+    fontOpen = false;
+    const from = savedFrom ?? editor.state.selection.from;
+    const to   = savedTo   ?? editor.state.selection.to;
+    savedFrom = null;
+    savedTo   = null;
+    editor.chain().focus().setTextSelection({ from, to }).setFontFamily(value).run();
+  }
+
+  function fontPickerClickOutside(node: HTMLElement) {
+    function handler(e: MouseEvent) {
+      if (!node.contains(e.target as Node)) fontOpen = false;
+    }
+    window.addEventListener('mousedown', handler);
+    return { destroy() { window.removeEventListener('mousedown', handler); } };
+  }
 </script>
 
 <div class="toolbar-expanded">
   {#if editor}
-    <div class="toolbar-group">
-      <select
-        class="font-select"
-        disabled
-        title="Font family (coming soon)"
-      >
-        <option>Sans-serif</option>
-      </select>
+    <div class="font-picker" use:fontPickerClickOutside>
+      <button class="font-trigger" onclick={openFontPicker} title="Font Name">
+        <span class="font-trigger-label" style={currentFont ? `font-family: ${currentFont}` : ''}>{currentFont}</span>
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+          <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      {#if fontOpen}
+        <div class="font-dropdown">
+          {#each FONTS as font}
+            <button
+              class="font-option"
+              class:active={currentFont === font.value}
+              style="font-family: {font.value}"
+              onclick={() => pickFont(font.value)}
+            >{font.label}</button>
+          {/each}
+        </div>
+      {/if}
     </div>
 
     <div class="toolbar-separator"></div>
@@ -178,18 +247,80 @@
     cursor: not-allowed;
   }
 
-  .font-select {
+  .font-picker {
+    position: relative;
+  }
+
+  .font-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     height: 2rem;
-    padding: 0 0.5rem;
+    padding: 0 0.4rem 0 0.6rem;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     background: var(--color-surface);
     color: var(--color-text);
     font-size: 0.8rem;
     font-family: var(--font-sans);
-    cursor: not-allowed;
-    opacity: 0.35;
-    max-width: 110px;
+    cursor: pointer;
+    width: 145px;
+    transition: border-color 0.15s;
+  }
+
+  .font-trigger:hover {
+    border-color: var(--color-primary);
+  }
+
+  .font-trigger-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    font-size: 0.8rem;
+  }
+
+  .font-dropdown {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 0;
+    min-width: 100%;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    z-index: 200;
+    padding: 2px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .font-option {
+    display: block;
+    width: 100%;
+    padding: 0.35rem 0.6rem;
+    border: none;
+    border-radius: calc(var(--radius) - 2px);
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s;
+    min-width: unset;
+    height: auto;
+    justify-content: flex-start;
+  }
+
+  .font-option:hover {
+    background: var(--color-btn-hover);
+  }
+
+  .font-option.active {
+    background: var(--color-primary);
+    color: white;
   }
 
   .font-size-select {
