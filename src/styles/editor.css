@@ -1,16 +1,13 @@
 .editor {
   flex: 1;
-  display: flex;
-  justify-content: center;
   padding: 2rem 1rem 3rem; /* extra bottom padding clears the fixed status bar */
-  overflow-y: auto;
+  overflow: auto;
 }
 
 /* Fixed A4 paper container (794px = 210mm at 96dpi) */
 .paper {
   width: 794px;
-  max-width: calc(100vw - 2rem);
-  flex-shrink: 0;
+  margin: 0 auto;
 }
 
 .paper .tiptap {
