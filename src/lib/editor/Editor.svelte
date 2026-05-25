@@ -32,5 +32,5 @@
 </script>
 
 <div class="editor">
-  <div bind:this={element}></div>
+  <div bind:this={element} class="paper"></div>
 </div>
