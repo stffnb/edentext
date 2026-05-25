@@ -2,20 +2,27 @@
   import type { Editor } from '@tiptap/core';
   import EditorComponent from './lib/editor/Editor.svelte';
   import Toolbar from './lib/editor/Toolbar.svelte';
+  import ToolbarExpanded from './lib/editor/ToolbarExpanded.svelte';
   import { exportToOdt } from './lib/export/odt';
-  import { loadTheme, saveTheme, applyTheme, type ThemeMode } from './lib/storage/theme';
+  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, type ThemeMode } from './lib/storage/theme';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
 
   let themeMode: ThemeMode = $state(loadTheme());
   let themeOpen = $state(false);
+  let toolbarExpanded = $state(loadToolbarExpanded());
 
   function selectTheme(m: ThemeMode) {
     themeMode = m;
     saveTheme(m);
     applyTheme(m);
     themeOpen = false;
+  }
+
+  function toggleToolbar() {
+    toolbarExpanded = !toolbarExpanded;
+    saveToolbarExpanded(toolbarExpanded);
   }
 
   function clickOutside(node: HTMLElement) {
@@ -35,6 +42,22 @@
   <header>
     <Toolbar {editor} {tick} />
     <div class="header-actions">
+      <button
+        class="toolbar-toggle-btn"
+        class:active={toolbarExpanded}
+        onclick={toggleToolbar}
+        title={toolbarExpanded ? 'Hide extended toolbar' : 'Show extended toolbar'}
+      >
+        <!-- Sliders/settings icon -->
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="5" cy="4" r="1.5" fill="var(--color-toolbar-bg)" stroke="currentColor" stroke-width="1.2"/>
+          <circle cx="10" cy="8" r="1.5" fill="var(--color-toolbar-bg)" stroke="currentColor" stroke-width="1.2"/>
+          <circle cx="7" cy="12" r="1.5" fill="var(--color-toolbar-bg)" stroke="currentColor" stroke-width="1.2"/>
+        </svg>
+      </button>
       <div class="theme-wrap" use:clickOutside>
         <button
           class="theme-btn"
@@ -85,6 +108,9 @@
       </button>
     </div>
   </header>
+  {#if toolbarExpanded}
+    <ToolbarExpanded {editor} {tick} />
+  {/if}
   <EditorComponent bind:editor bind:tick />
 </main>
 
@@ -109,6 +135,29 @@
     gap: 0.5rem;
     margin-left: auto;
     margin-right: 1rem;
+  }
+
+  .toolbar-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .toolbar-toggle-btn:hover {
+    background: var(--color-btn-hover);
+  }
+
+  .toolbar-toggle-btn.active {
+    background: var(--color-primary);
+    color: white;
   }
 
   .theme-wrap {
