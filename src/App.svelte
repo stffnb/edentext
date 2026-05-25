@@ -14,6 +14,12 @@
   let themeMode: ThemeMode = $state(loadTheme());
   let themeOpen = $state(false);
   let toolbarExpanded = $state(loadToolbarExpanded());
+  let zoom = $state(Math.max(50, Math.min(200, parseInt(localStorage.getItem('odf-editor-zoom') ?? '100', 10))));
+
+  function setZoom(value: number) {
+    zoom = Math.max(50, Math.min(200, value));
+    localStorage.setItem('odf-editor-zoom', String(zoom));
+  }
 
   function selectTheme(m: ThemeMode) {
     themeMode = m;
@@ -113,9 +119,24 @@
   {#if toolbarExpanded}
     <ToolbarExpanded {editor} {tick} />
   {/if}
-  <EditorComponent bind:editor bind:tick bind:currentPage bind:numPages />
+  <EditorComponent bind:editor bind:tick bind:currentPage bind:numPages {zoom} />
   <footer class="statusbar">
     <span>Page {currentPage} of {numPages}</span>
+    <div class="zoom-controls">
+      <button class="zoom-btn" onclick={() => setZoom(zoom - 10)} disabled={zoom <= 50} title="Zoom out">−</button>
+      <input
+        type="range"
+        class="zoom-slider"
+        min="50"
+        max="200"
+        step="1"
+        value={zoom}
+        oninput={(e) => setZoom(parseInt((e.target as HTMLInputElement).value, 10))}
+        title="Zoom"
+      />
+      <button class="zoom-btn" onclick={() => setZoom(zoom + 10)} disabled={zoom >= 200} title="Zoom in">+</button>
+      <button class="zoom-pct" onclick={() => setZoom(100)} title="Reset to 100%">{zoom}%</button>
+    </div>
   </footer>
 </main>
 
@@ -264,5 +285,100 @@
     color: var(--color-text-muted);
     user-select: none;
     z-index: 50;
+  }
+
+  .zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+  }
+
+  .zoom-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: color 0.1s, background 0.1s;
+  }
+
+  .zoom-btn:hover:not(:disabled) {
+    color: var(--color-text);
+    background: var(--color-btn-hover);
+  }
+
+  .zoom-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .zoom-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 80px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--color-border);
+    outline: none;
+    cursor: pointer;
+  }
+
+  .zoom-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-text-muted);
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .zoom-slider:hover::-webkit-slider-thumb,
+  .zoom-slider:focus::-webkit-slider-thumb {
+    background: var(--color-primary);
+  }
+
+  .zoom-slider::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border: none;
+    border-radius: 50%;
+    background: var(--color-text-muted);
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .zoom-slider:hover::-moz-range-thumb,
+  .zoom-slider:focus::-moz-range-thumb {
+    background: var(--color-primary);
+  }
+
+  .zoom-pct {
+    min-width: 36px;
+    padding: 0 3px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    text-align: right;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: color 0.1s, background 0.1s;
+  }
+
+  .zoom-pct:hover {
+    color: var(--color-text);
+    background: var(--color-btn-hover);
   }
 </style>

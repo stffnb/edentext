@@ -5,8 +5,8 @@
   import { saveDocument, loadDocument } from '../storage/autosave';
   import '../../styles/editor.css';
 
-  let { editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1) }: {
-    editor: Editor | null; tick: number; currentPage: number; numPages: number;
+  let { editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1), zoom = 100 }: {
+    editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
   } = $props();
 
   let element: HTMLDivElement;
@@ -20,15 +20,17 @@
 
     const editorRect = editorContainer.getBoundingClientRect();
     const tiptapRect = tiptap.getBoundingClientRect();
+    // getBoundingClientRect and coordsAtPos return zoomed viewport pixels;
+    // divide by zoom factor to convert to document coordinates before comparing with CYCLE.
+    const zoomFactor = zoom / 100;
 
-    // If the cursor is visible in the editor viewport, show its page
     if (editor) {
       try {
         const coords = editor.view.coordsAtPos(editor.state.selection.head);
         const cursorMidY = (coords.top + coords.bottom) / 2;
         if (cursorMidY >= editorRect.top && cursorMidY <= editorRect.bottom) {
-          const cursorInTiptap = cursorMidY - tiptapRect.top;
-          currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInTiptap) / CYCLE) + 1));
+          const cursorInDoc = (cursorMidY - tiptapRect.top) / zoomFactor;
+          currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / CYCLE) + 1));
           return;
         }
       } catch {
@@ -36,9 +38,8 @@
       }
     }
 
-    // Cursor not visible — use the top of the visible scroll area
-    const visibleTopInTiptap = editorRect.top - tiptapRect.top;
-    currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, visibleTopInTiptap) / CYCLE) + 1));
+    const visibleTopInDoc = (editorRect.top - tiptapRect.top) / zoomFactor;
+    currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, visibleTopInDoc) / CYCLE) + 1));
   }
 
   function onPageCount(e: Event) {
@@ -64,8 +65,8 @@
         if (!tiptap) return;
         try {
           const coords = e.view.coordsAtPos(e.state.selection.head);
-          const cursorInTiptap = ((coords.top + coords.bottom) / 2) - tiptap.getBoundingClientRect().top;
-          currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInTiptap) / CYCLE) + 1));
+          const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (zoom / 100);
+          currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / CYCLE) + 1));
         } catch { /* ignore */ }
       },
       onUpdate: ({ editor: e }) => {
@@ -85,5 +86,5 @@
 </script>
 
 <div class="editor" bind:this={editorContainer}>
-  <div bind:this={element} class="paper"></div>
+  <div bind:this={element} class="paper" style="zoom: {zoom / 100}"></div>
 </div>
