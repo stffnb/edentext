@@ -1,28 +1,38 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
 
-  let { editor }: { editor: Editor | null } = $props();
+  let { editor, tick }: { editor: Editor | null; tick: number } = $props();
+
+  // $derived re-evaluates whenever `tick` changes (i.e. on every TipTap transaction)
+  let isBold       = $derived(tick >= 0 && !!editor?.isActive('bold'));
+  let isItalic     = $derived(tick >= 0 && !!editor?.isActive('italic'));
+  let isUnderline  = $derived(tick >= 0 && !!editor?.isActive('underline'));
+  let isH1         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 1 }));
+  let isH2         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 2 }));
+  let isH3         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 3 }));
+  let canUndo      = $derived(tick >= 0 && !!editor?.can().undo());
+  let canRedo      = $derived(tick >= 0 && !!editor?.can().redo());
 </script>
 
 <div class="toolbar">
   {#if editor}
     <div class="toolbar-group">
       <button
-        class:active={editor.isActive('bold')}
+        class:active={isBold}
         onclick={() => editor?.chain().focus().toggleBold().run()}
         title="Bold (Ctrl+B)"
       >
         <strong>B</strong>
       </button>
       <button
-        class:active={editor.isActive('italic')}
+        class:active={isItalic}
         onclick={() => editor?.chain().focus().toggleItalic().run()}
         title="Italic (Ctrl+I)"
       >
         <em>I</em>
       </button>
       <button
-        class:active={editor.isActive('underline')}
+        class:active={isUnderline}
         onclick={() => editor?.chain().focus().toggleUnderline().run()}
         title="Underline (Ctrl+U)"
       >
@@ -34,21 +44,21 @@
 
     <div class="toolbar-group">
       <button
-        class:active={editor.isActive('heading', { level: 1 })}
+        class:active={isH1}
         onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
         title="Heading 1"
       >
         H1
       </button>
       <button
-        class:active={editor.isActive('heading', { level: 2 })}
+        class:active={isH2}
         onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
         title="Heading 2"
       >
         H2
       </button>
       <button
-        class:active={editor.isActive('heading', { level: 3 })}
+        class:active={isH3}
         onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
         title="Heading 3"
       >
@@ -61,14 +71,14 @@
     <div class="toolbar-group">
       <button
         onclick={() => editor?.chain().focus().undo().run()}
-        disabled={!editor.can().undo()}
+        disabled={!canUndo}
         title="Undo (Ctrl+Z)"
       >
         ↩
       </button>
       <button
         onclick={() => editor?.chain().focus().redo().run()}
-        disabled={!editor.can().redo()}
+        disabled={!canRedo}
         title="Redo (Ctrl+Shift+Z)"
       >
         ↪

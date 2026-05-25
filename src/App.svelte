@@ -5,6 +5,7 @@
   import { exportToOdt } from './lib/export/odt';
 
   let editor: Editor | null = $state(null);
+  let tick: number = $state(0);
 
   async function handleExport() {
     if (editor) await exportToOdt(editor);
@@ -13,12 +14,12 @@
 
 <main>
   <header>
-    <Toolbar {editor} />
+    <Toolbar {editor} {tick} />
     <button class="export-btn" onclick={handleExport} disabled={!editor}>
       Download .odt
     </button>
   </header>
-  <EditorComponent bind:editor />
+  <EditorComponent bind:editor bind:tick />
 </main>
 
 <style>

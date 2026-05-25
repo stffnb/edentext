@@ -5,7 +5,7 @@
   import { saveDocument, loadDocument } from '../storage/autosave';
   import '../../styles/editor.css';
 
-  let { editor = $bindable() }: { editor: Editor | null } = $props();
+  let { editor = $bindable(), tick = $bindable(0) }: { editor: Editor | null; tick: number } = $props();
 
   let element: HTMLDivElement;
 
@@ -17,8 +17,9 @@
       extensions,
       content: saved || undefined,
       onTransaction: () => {
-        // Force Svelte reactivity update
-        editor = editor;
+        // Increment tick to signal Svelte that editor state changed.
+        // (editor = editor is a no-op in Svelte 5 for same references)
+        tick++;
       },
       onUpdate: ({ editor: e }) => {
         saveDocument(e.getJSON());
