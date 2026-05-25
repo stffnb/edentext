@@ -76,14 +76,28 @@
         onclick={() => editor?.chain().focus().toggleBulletList().run()}
         title="Bullet list"
       >
-        UL
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <circle cx="2" cy="4" r="1.5" fill="currentColor"/>
+          <circle cx="2" cy="8" r="1.5" fill="currentColor"/>
+          <circle cx="2" cy="12" r="1.5" fill="currentColor"/>
+          <line x1="5.5" y1="4" x2="15" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="5.5" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="5.5" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
       </button>
       <button
         class:active={isOrderedList}
         onclick={() => editor?.chain().focus().toggleOrderedList().run()}
         title="Ordered list"
       >
-        OL
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <text x="0" y="5.5" font-size="5" font-family="sans-serif" fill="currentColor">1.</text>
+          <text x="0" y="9.5" font-size="5" font-family="sans-serif" fill="currentColor">2.</text>
+          <text x="0" y="13.5" font-size="5" font-family="sans-serif" fill="currentColor">3.</text>
+          <line x1="5.5" y1="4" x2="15" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="5.5" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="5.5" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
       </button>
     </div>
 
