@@ -17,8 +17,6 @@
       extensions,
       content: saved || undefined,
       onTransaction: () => {
-        // Increment tick to signal Svelte that editor state changed.
-        // (editor = editor is a no-op in Svelte 5 for same references)
         tick++;
       },
       onUpdate: ({ editor: e }) => {

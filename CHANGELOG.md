@@ -23,12 +23,19 @@
 - Favicon (hand-coded SVG, no external assets)
 - Lists (ordered / unordered)
 - Light / Dark / Auto appearance mode (settings menu in toolbar)
+- expandable extended toolbar
+- DIN A4 print layout with visual page breaks
+  - Repeating multi-page background (page surface + gap between pages)
+  - Shadow edges at page boundaries for depth effect
+  - Dynamic page snapping (editor always shows full pages)
+  - Print-ready @media print styles with @page A4 sizing
 
 ### Not yet implemented
 - ODT import / open existing file
 - font size
 - Images, tables
-- DIN A4 print layout / page breaks
+- Zoom feature
+- Custom right-click context menu (formatting, cut/copy)
 - Multi-document management
 - PWA / offline support
 - i18n

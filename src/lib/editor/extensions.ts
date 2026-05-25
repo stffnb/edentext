@@ -10,6 +10,7 @@ import OrderedList from '@tiptap/extension-ordered-list';
 import ListItem from '@tiptap/extension-list-item';
 import History from '@tiptap/extension-history';
 import Placeholder from '@tiptap/extension-placeholder';
+import { PageBreaks } from './pageBreaks';
 
 export const extensions = [
   Document,
@@ -24,4 +25,5 @@ export const extensions = [
   ListItem,
   History,
   Placeholder.configure({ placeholder: 'Start typing…' }),
+  PageBreaks,
 ];

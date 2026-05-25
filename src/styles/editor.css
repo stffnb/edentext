@@ -14,17 +14,86 @@
 }
 
 .paper .tiptap {
+  --page-height: 1123px;
+  --page-gap: 20px;
+  --page-margin-top: 96px;
+  --page-margin-bottom: 96px;
+  --page-cycle: calc(var(--page-height) + var(--page-gap));
+
+  position: relative;
   width: 100%;
-  min-height: 1123px; /* 297mm at 96dpi */
-  padding: 2.5rem 3rem;
-  background: var(--color-surface);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  border: 1px solid var(--color-border);
+  min-height: var(--page-height);
+  padding: var(--page-margin-top) 80px var(--page-margin-bottom);
   outline: none;
   font-family: var(--font-serif);
   font-size: 1.05rem;
-  line-height: 1.0;
+  line-height: 1.6;
   color: var(--color-text);
+
+  /* Multi-page background: page surfaces separated by editor background */
+  background:
+    /* Left border per page */
+    repeating-linear-gradient(
+      to bottom,
+      var(--color-border) 0px,
+      var(--color-border) var(--page-height),
+      transparent var(--page-height),
+      transparent var(--page-cycle)
+    ),
+    /* Right border per page */
+    repeating-linear-gradient(
+      to bottom,
+      var(--color-border) 0px,
+      var(--color-border) var(--page-height),
+      transparent var(--page-height),
+      transparent var(--page-cycle)
+    ),
+    /* Top/bottom border lines of each page */
+    repeating-linear-gradient(
+      to bottom,
+      var(--color-border) 0px,
+      var(--color-border) 1px,
+      transparent 1px,
+      transparent calc(var(--page-height) - 1px),
+      var(--color-border) calc(var(--page-height) - 1px),
+      var(--color-border) var(--page-height),
+      transparent var(--page-height),
+      transparent var(--page-cycle)
+    ),
+    /* Page surface (white) alternating with gap (transparent = editor bg shows) */
+    repeating-linear-gradient(
+      to bottom,
+      var(--color-surface) 0px,
+      var(--color-surface) var(--page-height),
+      transparent var(--page-height),
+      transparent var(--page-cycle)
+    );
+  background-size:
+    1px var(--page-cycle),
+    1px var(--page-cycle),
+    100% var(--page-cycle),
+    100% var(--page-cycle);
+  background-position:
+    left top,
+    right top,
+    left top,
+    left top;
+  background-repeat: repeat-y;
+
+  border: none;
+
+  /* Subtle overall shadow for depth */
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Page break spacer widgets (inserted by ProseMirror decorations) */
+.paper .tiptap [data-page-break-spacer] {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
 }
 
 .paper .tiptap p {
@@ -69,4 +138,35 @@
   color: var(--color-text-muted);
   pointer-events: none;
   height: 0;
+}
+
+/* Print styles: proper A4 pagination */
+@media print {
+  .editor {
+    padding: 0;
+    overflow: visible;
+  }
+
+  .paper {
+    width: 100%;
+    max-width: none;
+  }
+
+  .paper .tiptap {
+    background: white !important;
+    box-shadow: none;
+    border: none;
+    padding: 0;
+    min-height: auto;
+  }
+
+  .paper .tiptap > *[data-page-break] {
+    margin-top: 0 !important;
+    page-break-before: always;
+  }
+
+  @page {
+    size: A4;
+    margin: 25.4mm;
+  }
 }
