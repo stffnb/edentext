@@ -100,7 +100,6 @@
 .paper .tiptap h1,
 .paper .tiptap h2,
 .paper .tiptap h3 {
-  font-family: var(--font-sans);
   font-weight: 700;
   line-height: 1.3;
   margin-top: 1.5em;

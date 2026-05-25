@@ -47,21 +47,21 @@
     <div class="toolbar-group">
       <button
         class:active={isH1}
-        onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
+        onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).unsetFontSize().removeEmptyTextStyle().run()}
         title="Heading 1"
       >
         H1
       </button>
       <button
         class:active={isH2}
-        onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
+        onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).unsetFontSize().removeEmptyTextStyle().run()}
         title="Heading 2"
       >
         H2
       </button>
       <button
         class:active={isH3}
-        onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
+        onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).unsetFontSize().removeEmptyTextStyle().run()}
         title="Heading 3"
       >
         H3
