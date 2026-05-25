@@ -130,7 +130,7 @@
   }
 
   button:hover:not(:disabled) {
-    background: var(--color-bg);
+    background: #cbd5e1;
   }
 
   button.active {
