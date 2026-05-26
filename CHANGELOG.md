@@ -33,6 +33,7 @@
 - Zoom feature
 - font selection
 - font size selection
+- line spacing button
 
 ### Not yet implemented
 - ODT import / open existing file

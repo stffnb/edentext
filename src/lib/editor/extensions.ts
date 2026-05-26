@@ -12,6 +12,7 @@ import ListItem from '@tiptap/extension-list-item';
 import History from '@tiptap/extension-history';
 import Placeholder from '@tiptap/extension-placeholder';
 import { PageBreaks } from './pageBreaks';
+import { LineHeight } from './lineHeight';
 
 export const extensions = [
   Document,
@@ -23,6 +24,7 @@ export const extensions = [
   TextStyle,
   FontFamily,
   FontSize,
+  LineHeight,
   Heading.configure({ levels: [1, 2, 3] }),
   BulletList,
   OrderedList,

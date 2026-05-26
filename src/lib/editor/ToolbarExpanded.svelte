@@ -75,8 +75,35 @@
     return mixed ? '' : (size ?? DEFAULT_FONT_SIZE);
   });
 
+  // Must match line-height in editor.css (.paper .tiptap)
+  const DEFAULT_LINE_HEIGHT = '1.5';
+  const LINE_HEIGHTS = [
+    { value: '1',    label: 'Single'      },
+    { value: '1.15', label: '1.15'        },
+    { value: '1.5',  label: '1.5'         },
+    { value: '2',    label: 'Double'      },
+  ] as const;
+
+  let currentLineHeight = $derived.by(() => {
+    if (tick < 0 || !editor) return DEFAULT_LINE_HEIGHT;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) {
+      return editor.state.selection.$head.parent.attrs.lineHeight ?? DEFAULT_LINE_HEIGHT;
+    }
+    let lh: string | undefined;
+    let mixed = false;
+    editor.state.doc.nodesBetween(from, to, (node) => {
+      if (mixed || !('lineHeight' in node.attrs)) return;
+      const h: string = node.attrs.lineHeight ?? DEFAULT_LINE_HEIGHT;
+      if (lh === undefined) lh = h;
+      else if (lh !== h) mixed = true;
+    });
+    return mixed ? '' : (lh ?? DEFAULT_LINE_HEIGHT);
+  });
+
   let fontOpen = $state(false);
   let sizeOpen = $state(false);
+  let lineHeightOpen = $state(false);
   let sizeInputFocused = $state(false);
   let sizeInputValue = $state('');
   let savedFrom: number | null = null;
@@ -92,6 +119,7 @@
     if (!editor) return;
     sizeOpen = false;
     sizeInputFocused = false;
+    lineHeightOpen = false;
     // Save selection before the picker button steals focus.
     savedFrom = editor.state.selection.from;
     savedTo = editor.state.selection.to;
@@ -129,6 +157,7 @@
     if (!editor) return;
     sizeInputFocused = true;
     fontOpen = false;
+    lineHeightOpen = false;
     savedFrom = editor.state.selection.from;
     savedTo = editor.state.selection.to;
     (e.target as HTMLInputElement).select();
@@ -154,6 +183,7 @@
   function openSizePicker() {
     if (!editor) return;
     fontOpen = false;
+    lineHeightOpen = false;
     if (!sizeInputFocused) {
       savedFrom = editor.state.selection.from;
       savedTo = editor.state.selection.to;
@@ -173,6 +203,28 @@
       if (!node.contains(e.target as Node)) {
         sizeOpen = false;
       }
+    }
+    window.addEventListener('mousedown', handler);
+    return { destroy() { window.removeEventListener('mousedown', handler); } };
+  }
+
+  function openLineHeightPicker() {
+    if (!editor) return;
+    fontOpen = false;
+    sizeOpen = false;
+    sizeInputFocused = false;
+    lineHeightOpen = !lineHeightOpen;
+  }
+
+  function pickLineHeight(value: string) {
+    if (!editor) return;
+    lineHeightOpen = false;
+    editor.chain().focus().setLineHeight(value).run();
+  }
+
+  function lineHeightPickerClickOutside(node: HTMLElement) {
+    function handler(e: MouseEvent) {
+      if (!node.contains(e.target as Node)) lineHeightOpen = false;
     }
     window.addEventListener('mousedown', handler);
     return { destroy() { window.removeEventListener('mousedown', handler); } };
@@ -250,6 +302,34 @@
           <rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" opacity="0.3"/>
         </svg>
       </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="lh-picker" use:lineHeightPickerClickOutside>
+      <button class="lh-trigger" onclick={openLineHeightPicker} title="Line spacing">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <line x1="5" y1="3"  x2="14" y2="3"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="5" y1="8"  x2="14" y2="8"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="5" y1="13" x2="14" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M2 5.5V1.5M2 1.5L1 2.8M2 1.5L3 2.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M2 10.5V14.5M2 14.5L1 13.2M2 14.5L3 13.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+          <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      {#if lineHeightOpen}
+        <div class="lh-dropdown">
+          {#each LINE_HEIGHTS as lh}
+            <button
+              class="lh-option"
+              class:active={currentLineHeight === lh.value}
+              onclick={() => pickLineHeight(lh.value)}
+            >{lh.label}</button>
+          {/each}
+        </div>
+      {/if}
     </div>
 
     <div class="toolbar-separator"></div>
@@ -551,6 +631,72 @@
   }
 
   .size-option.active {
+    background: var(--color-primary);
+    color: white;
+  }
+
+  .lh-picker {
+    position: relative;
+  }
+
+  .lh-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 2rem;
+    padding: 0 0.4rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+    cursor: pointer;
+    min-width: unset;
+    transition: border-color 0.15s;
+  }
+
+  .lh-trigger:hover {
+    border-color: var(--color-primary);
+  }
+
+  .lh-dropdown {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 0;
+    min-width: 110px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    z-index: 200;
+    padding: 2px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .lh-option {
+    display: block;
+    width: 100%;
+    padding: 0.35rem 0.6rem;
+    border: none;
+    border-radius: calc(var(--radius) - 2px);
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.85rem;
+    font-family: var(--font-sans);
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s;
+    min-width: unset;
+    height: auto;
+    justify-content: flex-start;
+  }
+
+  .lh-option:hover {
+    background: var(--color-btn-hover);
+  }
+
+  .lh-option.active {
     background: var(--color-primary);
     color: white;
   }
