@@ -8,13 +8,19 @@ import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, ty
 const LH_P = '__lh_p__';
 const LH_H = '__lh_h__';
 
-function injectLineHeightTypes(node: TiptapNode): TiptapNode {
-  if (node.attrs?.lineHeight) {
+function injectLineHeightTypes(node: TiptapNode, inList = false): TiptapNode {
+  // Don't rename paragraphs inside list items — tiptapToOdt walks them by
+  // type === "paragraph" to build list content; renaming breaks that.
+  if (!inList && node.attrs?.lineHeight) {
     if (node.type === 'paragraph') return { ...node, type: LH_P };
     if (node.type === 'heading')   return { ...node, type: LH_H };
   }
   if (node.content?.length) {
-    return { ...node, content: node.content.map(injectLineHeightTypes) };
+    const childInList = inList
+      || node.type === 'bulletList'
+      || node.type === 'orderedList'
+      || node.type === 'listItem';
+    return { ...node, content: node.content.map(c => injectLineHeightTypes(c, childInList)) };
   }
   return node;
 }
