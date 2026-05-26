@@ -106,6 +106,12 @@
   margin-bottom: 0.5em;
 }
 
+.paper .tiptap h1:first-child,
+.paper .tiptap h2:first-child,
+.paper .tiptap h3:first-child {
+  margin-top: 0;
+}
+
 .paper .tiptap h1 {
   font-size: 20pt;
 }
