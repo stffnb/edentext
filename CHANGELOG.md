@@ -45,6 +45,16 @@
 - i18n
 - ...
 
+### Known issues / deferred
+- Zoom 100% does not visually match Word/LibreOffice at 100% on the same
+  screen. Root cause: the editor uses the browser's fixed 96 CSS DPI
+  (794×1123 px for A4 — see `editor.css`, `pageBreaks.ts`), while Word and
+  LibreOffice render against the OS-reported physical screen DPI so that
+  1 cm on paper ≈ 1 cm on screen. Possible future fix: add a user-side
+  calibration (DPI value or visual ruler) that scales the `zoom` factor.
+  Decided 2026-05-26 not worth the effort for now.
+- limited font types to make sure it works on all browsers ("web safe fonts")
+
 ---
 
 <!-- Add new entries above this line in the format: -->
