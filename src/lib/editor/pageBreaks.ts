@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
-import { Decoration, DecorationSet, EditorView } from '@tiptap/pm/view';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 // A4 page layout constants (px at 96 dpi)
 const PAGE_HEIGHT = 1123;
@@ -24,6 +24,17 @@ function getPageForY(y: number): number {
 
 const pageBreakKey = new PluginKey('pageBreaks');
 
+type Leaf = {
+  el: HTMLElement;
+  kind: 'atomic' | 'splittable';
+  naturalTop: number;
+  naturalHeight: number;
+};
+
+const ATOMIC_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+const SPLITTABLE_TAGS = new Set(['P']);
+const CONTAINER_TAGS = new Set(['UL', 'OL', 'LI', 'BLOCKQUOTE']);
+
 export const PageBreaks = Extension.create({
   name: 'pageBreaks',
 
@@ -40,6 +51,190 @@ export const PageBreaks = Extension.create({
         },
       },
       view(editorView) {
+        function docPosBeforeElement(el: HTMLElement): number | null {
+          const parent = el.parentNode;
+          if (!parent) return null;
+          const childIndex = Array.from(parent.childNodes).indexOf(el as ChildNode);
+          if (childIndex < 0) return null;
+          try {
+            return editorView.posAtDOM(parent as Node, childIndex);
+          } catch {
+            return null;
+          }
+        }
+
+        // For a pre-leaf push we want the spacer to render OUTSIDE any
+        // list-item wrapper, so the <li>'s bullet marker stays aligned with
+        // its own text. Walk up through <li> ancestors to the outermost one,
+        // then take the position before that.
+        function preLeafDocPos(leafEl: HTMLElement): number | null {
+          let target = leafEl;
+          while (target.parentElement && target.parentElement.tagName === 'LI') {
+            target = target.parentElement;
+          }
+          return docPosBeforeElement(target);
+        }
+
+        // Walks text nodes inside `el`, skipping any that live inside a spacer
+        // widget, and returns one rect per visual line (in viewport coords).
+        function getLineRects(el: HTMLElement): { top: number; bottom: number }[] {
+          const allRects: DOMRect[] = [];
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+              let parent = node.parentElement;
+              while (parent && parent !== el) {
+                if ((parent as HTMLElement).dataset?.pageBreakSpacer) {
+                  return NodeFilter.FILTER_REJECT;
+                }
+                parent = parent.parentElement;
+              }
+              return NodeFilter.FILTER_ACCEPT;
+            },
+          });
+          let textNode: Node | null;
+          while ((textNode = walker.nextNode())) {
+            if (!textNode.textContent || textNode.textContent.length === 0) continue;
+            const range = document.createRange();
+            range.selectNodeContents(textNode);
+            for (const rect of Array.from(range.getClientRects())) {
+              if (rect.width > 0 && rect.height > 0) allRects.push(rect);
+            }
+          }
+          allRects.sort((a, b) => a.top - b.top);
+          const lines: { top: number; bottom: number }[] = [];
+          for (const r of allRects) {
+            const last = lines[lines.length - 1];
+            if (!last || r.top - last.top > 2) {
+              lines.push({ top: r.top, bottom: r.bottom });
+            } else {
+              last.bottom = Math.max(last.bottom, r.bottom);
+            }
+          }
+          return lines;
+        }
+
+        function findLineSplit(
+          el: HTMLElement,
+          overflowDistance: number,
+        ): { naturalLineTop: number; docPos: number } | null {
+          const lines = getLineRects(el);
+          if (lines.length === 0) return null;
+          const elRect = el.getBoundingClientRect();
+
+          // Any pre-existing spacers inside this leaf distort the viewport
+          // y-coordinates of lines below them. Build a table to translate
+          // viewport y → natural offset within the leaf (i.e. the offset the
+          // line would have if no intra-leaf spacers existed).
+          const intraSpacers = Array.from(
+            el.querySelectorAll<HTMLElement>('[data-page-break-spacer]'),
+          )
+            .map((sp) => {
+              const r = sp.getBoundingClientRect();
+              return { viewportTop: r.top, height: r.height };
+            })
+            .sort((a, b) => a.viewportTop - b.viewportTop);
+
+          function toNatural(viewportY: number): number {
+            let dropped = 0;
+            for (const sp of intraSpacers) {
+              if (sp.viewportTop < viewportY) dropped += sp.height;
+            }
+            return viewportY - elRect.top - dropped;
+          }
+
+          let k = -1;
+          for (let i = 0; i < lines.length; i++) {
+            if (toNatural(lines[i].bottom) > overflowDistance + 0.5) {
+              k = i;
+              break;
+            }
+          }
+          if (k <= 0) return null;
+
+          const naturalLineTop = toNatural(lines[k].top);
+          const targetViewportTop = lines[k].top;
+
+          let startPos: number;
+          let endPos: number;
+          try {
+            startPos = editorView.posAtDOM(el, 0);
+            const $start = editorView.state.doc.resolve(startPos);
+            endPos = startPos + $start.parent.content.size;
+          } catch {
+            return null;
+          }
+
+          let lo = startPos;
+          let hi = endPos;
+          while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            let midTop: number;
+            try {
+              midTop = editorView.coordsAtPos(mid).top;
+            } catch {
+              lo = mid + 1;
+              continue;
+            }
+            if (midTop >= targetViewportTop - 0.5) {
+              hi = mid;
+            } else {
+              lo = mid + 1;
+            }
+          }
+          return { naturalLineTop, docPos: lo };
+        }
+
+        function collectLeaves(): Leaf[] {
+          const dom = editorView.dom;
+          const tiptapRect = dom.getBoundingClientRect();
+          const leaves: Leaf[] = [];
+          let cumulativeSpacerHeight = 0;
+
+          function walk(container: HTMLElement) {
+            for (const child of Array.from(container.children) as HTMLElement[]) {
+              if (child.dataset?.pageBreakSpacer) {
+                cumulativeSpacerHeight += child.offsetHeight;
+                continue;
+              }
+              const tag = child.tagName;
+              const isAtomic = ATOMIC_TAGS.has(tag);
+              const isSplittable = SPLITTABLE_TAGS.has(tag);
+              if (isAtomic || isSplittable) {
+                const rect = child.getBoundingClientRect();
+                let intraSpacerHeight = 0;
+                for (const sp of Array.from(
+                  child.querySelectorAll<HTMLElement>('[data-page-break-spacer]'),
+                )) {
+                  intraSpacerHeight += sp.offsetHeight;
+                }
+                leaves.push({
+                  el: child,
+                  kind: isAtomic ? 'atomic' : 'splittable',
+                  naturalTop: rect.top - tiptapRect.top - cumulativeSpacerHeight,
+                  naturalHeight: rect.height - intraSpacerHeight,
+                });
+                cumulativeSpacerHeight += intraSpacerHeight;
+                continue;
+              }
+              if (CONTAINER_TAGS.has(tag)) {
+                walk(child);
+                continue;
+              }
+              // Unknown block — measure as a splittable leaf with no intra-spacers
+              const rect = child.getBoundingClientRect();
+              leaves.push({
+                el: child,
+                kind: 'splittable',
+                naturalTop: rect.top - tiptapRect.top - cumulativeSpacerHeight,
+                naturalHeight: rect.height,
+              });
+            }
+          }
+
+          walk(dom);
+          return leaves;
+        }
+
         function calculate() {
           rafId = null;
           if (isUpdating || !editorView.dom.isConnected) return;
@@ -48,100 +243,81 @@ export const PageBreaks = Extension.create({
           const dom = editorView.dom;
           void dom.offsetHeight; // force reflow
 
-          // Walk DOM children: measure content blocks, track spacer heights
-          const blocks: { top: number; height: number }[] = [];
-          let spacerHeightAbove = 0;
+          const leaves = collectLeaves();
 
-          for (const child of Array.from(dom.children)) {
-            const el = child as HTMLElement;
-            if (el.dataset?.pageBreakSpacer) {
-              spacerHeightAbove += el.offsetHeight;
-            } else {
-              blocks.push({
-                // Subtract spacer heights to get "natural" position
-                top: el.offsetTop - spacerHeightAbove,
-                height: el.offsetHeight,
-              });
-            }
-          }
-
-          // Calculate which blocks need page break spacers
           let cumulativeShift = 0;
-          const spacers: { beforeIndex: number; height: number }[] = [];
+          const placements: { docPos: number; height: number }[] = [];
 
-          for (let i = 0; i < blocks.length; i++) {
-            const m = blocks[i];
-            const effectiveTop = m.top + cumulativeShift;
-            const effectiveBottom = effectiveTop + m.height;
-
+          for (let i = 0; i < leaves.length; i++) {
+            const leaf = leaves[i];
+            const effectiveTop = leaf.naturalTop + cumulativeShift;
+            const effectiveBottom = effectiveTop + leaf.naturalHeight;
             const page = getPageForY(effectiveTop);
             const contentStart = pageContentStart(page);
             const contentEnd = pageContentEnd(page);
 
             let spacerHeight = 0;
+            let spacerDocPos: number | null = null;
 
             if (effectiveTop < contentStart && i > 0) {
               spacerHeight = contentStart - effectiveTop;
+              spacerDocPos = preLeafDocPos(leaf.el);
             } else if (effectiveTop >= contentEnd) {
-              const nextStart = pageContentStart(page + 1);
-              spacerHeight = nextStart - effectiveTop;
-            } else if (effectiveBottom > contentEnd && m.height <= CONTENT_HEIGHT) {
-              const nextStart = pageContentStart(page + 1);
-              spacerHeight = nextStart - effectiveTop;
+              spacerHeight = pageContentStart(page + 1) - effectiveTop;
+              spacerDocPos = preLeafDocPos(leaf.el);
+            } else if (effectiveBottom > contentEnd) {
+              if (leaf.kind === 'atomic') {
+                if (leaf.naturalHeight <= CONTENT_HEIGHT) {
+                  spacerHeight = pageContentStart(page + 1) - effectiveTop;
+                  spacerDocPos = preLeafDocPos(leaf.el);
+                }
+              } else {
+                const split = findLineSplit(leaf.el, contentEnd - effectiveTop);
+                if (split === null) {
+                  if (leaf.naturalHeight <= CONTENT_HEIGHT) {
+                    spacerHeight = pageContentStart(page + 1) - effectiveTop;
+                    spacerDocPos = preLeafDocPos(leaf.el);
+                  }
+                } else {
+                  spacerHeight = pageContentStart(page + 1) - (effectiveTop + split.naturalLineTop);
+                  spacerDocPos = split.docPos;
+                }
+              }
             }
 
-            if (spacerHeight > 0) {
-              spacers.push({ beforeIndex: i, height: spacerHeight });
+            if (spacerHeight > 0 && spacerDocPos !== null) {
+              placements.push({ docPos: spacerDocPos, height: spacerHeight });
               cumulativeShift += spacerHeight;
             }
           }
 
-          // Build widget decorations at correct document positions
           const doc = editorView.state.doc;
-          const decoArray: Decoration[] = [];
-          const spacerMap = new Map(spacers.map((s) => [s.beforeIndex, s.height]));
-
-          let nodeIndex = 0;
-          doc.forEach((_node, offset) => {
-            const height = spacerMap.get(nodeIndex);
-            if (height !== undefined) {
-              const spacerEl = document.createElement('div');
-              spacerEl.dataset.pageBreakSpacer = 'true';
-              spacerEl.style.height = `${height}px`;
-              spacerEl.style.pointerEvents = 'none';
-              spacerEl.style.userSelect = 'none';
-              spacerEl.setAttribute('contenteditable', 'false');
-              decoArray.push(Decoration.widget(offset, spacerEl, { side: -1 }));
-            }
-            nodeIndex++;
+          const decoArray: Decoration[] = placements.map((p) => {
+            const spacerEl = document.createElement('div');
+            spacerEl.dataset.pageBreakSpacer = 'true';
+            spacerEl.style.height = `${p.height}px`;
+            spacerEl.style.pointerEvents = 'none';
+            spacerEl.style.userSelect = 'none';
+            spacerEl.setAttribute('contenteditable', 'false');
+            return Decoration.widget(p.docPos, spacerEl, { side: -1 });
           });
 
-          // Update decorations
-          const newDecorations = decoArray.length > 0
+          decorations = decoArray.length > 0
             ? DecorationSet.create(doc, decoArray)
             : DecorationSet.empty;
 
-          // Only dispatch if something actually changed
-          const oldCount = decorations === DecorationSet.empty ? 0 : -1; // force update comparison
-          decorations = newDecorations;
-
-          // Trigger view update with a no-op transaction
           const tr = editorView.state.tr.setMeta('addToHistory', false).setMeta(pageBreakKey, true);
           editorView.dispatch(tr);
 
-            // Set min-height based on the last content block's effective position.
-            // Using scrollHeight would be circular (scrollHeight is clamped by min-height
-            // itself, so it never shrinks when content is deleted).
-            let numPages = 1;
-            if (blocks.length > 0) {
-                const lastBlock = blocks[blocks.length - 1];
-                const effectiveBottom = lastBlock.top + cumulativeShift + lastBlock.height;
-                numPages = Math.max(1, getPageForY(effectiveBottom));
-            }
-            const targetHeight = numPages * CYCLE - PAGE_GAP; // = N*PAGE_HEIGHT + (N-1)*PAGE_GAP
+          let numPages = 1;
+          if (leaves.length > 0) {
+            const lastLeaf = leaves[leaves.length - 1];
+            const effectiveBottom = lastLeaf.naturalTop + cumulativeShift + lastLeaf.naturalHeight;
+            numPages = Math.max(1, getPageForY(effectiveBottom));
+          }
+          const targetHeight = numPages * CYCLE - PAGE_GAP;
           dom.style.minHeight = `${targetHeight}px`;
 
-          // Notify the Svelte layer of the current page count
           dom.dispatchEvent(new CustomEvent('pm-pagecount', { bubbles: true, detail: { numPages } }));
 
           isUpdating = false;
