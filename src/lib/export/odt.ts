@@ -8,6 +8,8 @@ import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, ty
 const LH_P = '__lh_p__';
 const LH_H = '__lh_h__';
 
+const DEFAULT_FONT = 'Georgia'; // must match DEFAULT_EDITOR_FONT in ToolbarExpanded.svelte
+
 function injectLineHeightTypes(node: TiptapNode, inList = false): TiptapNode {
   // Don't rename paragraphs inside list items — tiptapToOdt walks them by
   // type === "paragraph" to build list content; renaming breaks that.

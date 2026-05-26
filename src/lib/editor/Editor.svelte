@@ -1,9 +1,13 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { Editor } from '@tiptap/core';
+  import { Slice, Fragment } from 'prosemirror-model';
+  import type { Node as PmNode, MarkType } from 'prosemirror-model';
   import { extensions } from './extensions';
   import { saveDocument, loadDocument } from '../storage/autosave';
   import '../../styles/editor.css';
+
+  const DEFAULT_EDITOR_FONT = 'Georgia'; // must match ToolbarExpanded.svelte
 
   let { editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1), zoom = 100 }: {
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
@@ -47,6 +51,25 @@
     updateCurrentPage();
   }
 
+  function applyFontToFragment(frag: Fragment, textStyleType: MarkType, font: string): Fragment {
+    const nodes: PmNode[] = [];
+    frag.forEach((node: PmNode) => {
+      if (node.isText) {
+        const existingTS = node.marks.find(m => m.type === textStyleType);
+        if (existingTS?.attrs.fontFamily) {
+          nodes.push(node);
+        } else {
+          const newAttrs = { ...(existingTS?.attrs ?? {}), fontFamily: font };
+          const otherMarks = node.marks.filter(m => m.type !== textStyleType);
+          nodes.push(node.mark([...otherMarks, textStyleType.create(newAttrs)]));
+        }
+      } else {
+        nodes.push(node.copy(applyFontToFragment(node.content, textStyleType, font)));
+      }
+    });
+    return Fragment.fromArray(nodes);
+  }
+
   onMount(() => {
     const saved = loadDocument();
 
@@ -54,6 +77,16 @@
       element,
       extensions,
       content: saved || undefined,
+      editorProps: {
+        transformPasted(slice, view) {
+          const textStyleType = view.state.schema.marks.textStyle;
+          if (!textStyleType) return slice;
+          const cursorMarks = view.state.storedMarks ?? view.state.selection.$head.marks();
+          const cursorFont = cursorMarks.find(m => m.type === textStyleType)?.attrs.fontFamily as string | undefined;
+          const font = cursorFont ?? DEFAULT_EDITOR_FONT;
+          return new Slice(applyFontToFragment(slice.content, textStyleType, font), slice.openStart, slice.openEnd);
+        },
+      },
       onTransaction: () => {
         tick++;
       },
