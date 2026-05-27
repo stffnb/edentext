@@ -4,12 +4,16 @@
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 
   // $derived re-evaluates whenever `tick` changes (i.e. on every TipTap transaction)
-  let isBold       = $derived(tick >= 0 && !!editor?.isActive('bold'));
-  let isItalic     = $derived(tick >= 0 && !!editor?.isActive('italic'));
-  let isUnderline  = $derived(tick >= 0 && !!editor?.isActive('underline'));
   let isH1         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 1 }));
   let isH2         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 2 }));
   let isH3         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 3 }));
+  let isHeading    = $derived(isH1 || isH2 || isH3);
+  // fontWeight:'normal' is set explicitly to override heading boldness
+  let hasNormalWeight = $derived(tick >= 0 && !!editor?.isActive('textStyle', { fontWeight: 'normal' }));
+  // Bold = explicit bold mark, OR inside a heading that hasn't been un-bolded
+  let isBold       = $derived(tick >= 0 && (!!editor?.isActive('bold') || (isHeading && !hasNormalWeight)));
+  let isItalic     = $derived(tick >= 0 && !!editor?.isActive('italic'));
+  let isUnderline  = $derived(tick >= 0 && !!editor?.isActive('underline'));
   let isBulletList = $derived(tick >= 0 && !!editor?.isActive('bulletList'));
   let isOrderedList= $derived(tick >= 0 && !!editor?.isActive('orderedList'));
   let canUndo      = $derived(tick >= 0 && !!editor?.can().undo());
@@ -21,7 +25,19 @@
     <div class="toolbar-group">
       <button
         class:active={isBold}
-        onclick={() => editor?.chain().focus().toggleBold().run()}
+        onclick={() => {
+          if (isHeading) {
+            if (hasNormalWeight) {
+              // Restore heading's natural bold
+              editor?.chain().focus().unsetFontWeight().run();
+            } else {
+              // Override heading bold with explicit font-weight: normal
+              editor?.chain().focus().setFontWeight('normal').run();
+            }
+          } else {
+            editor?.chain().focus().toggleBold().run();
+          }
+        }}
         title="Bold (Ctrl+B)"
       >
         <strong>B</strong>
@@ -47,21 +63,21 @@
     <div class="toolbar-group">
       <button
         class:active={isH1}
-        onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).unsetFontSize().removeEmptyTextStyle().run()}
+        onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).unsetFontSize().unsetFontWeight().removeEmptyTextStyle().run()}
         title="Heading 1"
       >
         H1
       </button>
       <button
         class:active={isH2}
-        onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).unsetFontSize().removeEmptyTextStyle().run()}
+        onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).unsetFontSize().unsetFontWeight().removeEmptyTextStyle().run()}
         title="Heading 2"
       >
         H2
       </button>
       <button
         class:active={isH3}
-        onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).unsetFontSize().removeEmptyTextStyle().run()}
+        onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).unsetFontSize().unsetFontWeight().removeEmptyTextStyle().run()}
         title="Heading 3"
       >
         H3

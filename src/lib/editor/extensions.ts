@@ -5,6 +5,7 @@ import Bold from '@tiptap/extension-bold';
 import Italic from '@tiptap/extension-italic';
 import Underline from '@tiptap/extension-underline';
 import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style';
+import { FontWeight } from './fontWeight';
 import Heading from '@tiptap/extension-heading';
 import BulletList from '@tiptap/extension-bullet-list';
 import OrderedList from '@tiptap/extension-ordered-list';
@@ -24,6 +25,7 @@ export const extensions = [
   TextStyle,
   FontFamily,
   FontSize,
+  FontWeight,
   LineHeight,
   Heading.configure({ levels: [1, 2, 3] }),
   BulletList,
