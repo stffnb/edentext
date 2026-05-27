@@ -83,7 +83,11 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
-/* Page break spacer widgets (inserted by ProseMirror decorations) */
+/* Page break spacer widgets (inserted by ProseMirror decorations).
+   line-height/font-size are zeroed so the spacer doesn't pick up the
+   inherited inline strut when it sits mid-paragraph between text nodes —
+   otherwise the browser adds a phantom line of height around the widget
+   and the continuation text on the next page lands too low. */
 .paper .tiptap [data-page-break-spacer] {
   display: block;
   width: 100%;
@@ -91,9 +95,13 @@
   padding: 0;
   border: none;
   background: none;
+  line-height: 0;
+  font-size: 0;
+  overflow: hidden;
 }
 
 .paper .tiptap p {
+  margin-top: 0;
   margin-bottom: 0.75em;
 }
 
@@ -127,10 +135,12 @@
 .paper .tiptap ul,
 .paper .tiptap ol {
   padding-left: 1.5rem;
+  margin-top: 0;
   margin-bottom: 0.75em;
 }
 
 .paper .tiptap li {
+  margin-top: 0;
   margin-bottom: 0.25em;
 }
 

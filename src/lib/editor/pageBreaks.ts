@@ -136,6 +136,22 @@ export const PageBreaks = Extension.create({
           }
         }
 
+        // CSS `zoom` is applied to the `.paper` ancestor in Editor.svelte. Under
+        // zoom, getBoundingClientRect / Range.getClientRects / coordsAtPos all
+        // return viewport (scaled) pixels, while offsetTop/offsetHeight and the
+        // page layout constants stay in unscaled document pixels. Read the
+        // computed zoom so we can divide viewport measurements back into
+        // document coordinates.
+        function getZoomFactor(): number {
+          let el: HTMLElement | null = editorView.dom.parentElement;
+          while (el) {
+            const z = parseFloat(getComputedStyle(el).zoom || '1');
+            if (z && z !== 1) return z;
+            el = el.parentElement;
+          }
+          return 1;
+        }
+
         // For a pre-leaf push we want the spacer to render OUTSIDE any
         // list-item wrapper, so the <li>'s bullet marker stays aligned with
         // its own text. Walk up through <li> ancestors to the outermost one,
@@ -189,6 +205,7 @@ export const PageBreaks = Extension.create({
         function findLineSplit(
           el: HTMLElement,
           overflowDistance: number,
+          zoom: number,
         ): { naturalLineTop: number; docPos: number } | null {
           const lines = getLineRects(el);
           if (lines.length === 0) return null;
@@ -196,23 +213,25 @@ export const PageBreaks = Extension.create({
 
           // Any pre-existing spacers inside this leaf distort the viewport
           // y-coordinates of lines below them. Build a table to translate
-          // viewport y → natural offset within the leaf (i.e. the offset the
-          // line would have if no intra-leaf spacers existed).
+          // viewport y → natural offset within the leaf (unscaled, no intra-
+          // spacers). offsetHeight is already unscaled, so we don't divide it.
           const intraSpacers = Array.from(
             el.querySelectorAll<HTMLElement>('[data-page-break-spacer]'),
           )
             .map((sp) => {
               const r = sp.getBoundingClientRect();
-              return { viewportTop: r.top, height: r.height };
+              return { viewportTop: r.top, height: sp.offsetHeight };
             })
             .sort((a, b) => a.viewportTop - b.viewportTop);
 
+          // Returns the line's offset within the leaf in unscaled document
+          // pixels, with intra-leaf spacers subtracted.
           function toNatural(viewportY: number): number {
             let dropped = 0;
             for (const sp of intraSpacers) {
               if (sp.viewportTop < viewportY) dropped += sp.height;
             }
-            return viewportY - elRect.top - dropped;
+            return (viewportY - elRect.top) / zoom - dropped;
           }
 
           let k = -1;
@@ -225,6 +244,9 @@ export const PageBreaks = Extension.create({
           if (k <= 0) return null;
 
           const naturalLineTop = toNatural(lines[k].top);
+          // Binary search runs in viewport space (coordsAtPos returns scaled
+          // viewport coords just like Range.getClientRects()), so the target
+          // stays unscaled-free here.
           const targetViewportTop = lines[k].top;
 
           let startPos: number;
@@ -257,10 +279,13 @@ export const PageBreaks = Extension.create({
           return { naturalLineTop, docPos: lo };
         }
 
-        function collectLeaves(): Leaf[] {
+        function collectLeaves(zoom: number): Leaf[] {
           const dom = editorView.dom;
           const tiptapRect = dom.getBoundingClientRect();
           const leaves: Leaf[] = [];
+          // cumulativeSpacerHeight accumulates spacer offsetHeights — already
+          // in unscaled document pixels — so it pairs with the unscaled
+          // naturalTop/Height below.
           let cumulativeSpacerHeight = 0;
 
           function walk(container: HTMLElement) {
@@ -283,8 +308,8 @@ export const PageBreaks = Extension.create({
                 leaves.push({
                   el: child,
                   kind: isAtomic ? 'atomic' : 'splittable',
-                  naturalTop: rect.top - tiptapRect.top - cumulativeSpacerHeight,
-                  naturalHeight: rect.height - intraSpacerHeight,
+                  naturalTop: (rect.top - tiptapRect.top) / zoom - cumulativeSpacerHeight,
+                  naturalHeight: rect.height / zoom - intraSpacerHeight,
                 });
                 cumulativeSpacerHeight += intraSpacerHeight;
                 continue;
@@ -298,8 +323,8 @@ export const PageBreaks = Extension.create({
               leaves.push({
                 el: child,
                 kind: 'splittable',
-                naturalTop: rect.top - tiptapRect.top - cumulativeSpacerHeight,
-                naturalHeight: rect.height,
+                naturalTop: (rect.top - tiptapRect.top) / zoom - cumulativeSpacerHeight,
+                naturalHeight: rect.height / zoom,
               });
             }
           }
@@ -316,7 +341,8 @@ export const PageBreaks = Extension.create({
           const dom = editorView.dom;
           void dom.offsetHeight; // force reflow
 
-          const leaves = collectLeaves();
+          const zoom = getZoomFactor();
+          const leaves = collectLeaves(zoom);
 
           let cumulativeShift = 0;
           const placements: { docPos: number; height: number }[] = [];
@@ -353,7 +379,7 @@ export const PageBreaks = Extension.create({
                   reason = 'atomic-too-tall-no-push';
                 }
               } else {
-                const split = findLineSplit(leaf.el, contentEnd - effectiveTop);
+                const split = findLineSplit(leaf.el, contentEnd - effectiveTop, zoom);
                 if (split === null) {
                   if (leaf.naturalHeight <= CONTENT_HEIGHT) {
                     spacerHeight = pageContentStart(page + 1) - effectiveTop;
