@@ -4,6 +4,7 @@
   import Toolbar from './lib/editor/Toolbar.svelte';
   import ToolbarExpanded from './lib/editor/ToolbarExpanded.svelte';
   import { exportToOdt } from './lib/export/odt';
+  import { getPageBreakDebug } from './lib/editor/pageBreaks';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, type ThemeMode } from './lib/storage/theme';
 
   let editor: Editor | null = $state(null);
@@ -43,6 +44,28 @@
 
   async function handleExport() {
     if (editor) await exportToOdt(editor);
+  }
+
+  function handleDebugDump() {
+    if (!editor) return;
+    const snapshot = getPageBreakDebug(editor.view);
+    if (!snapshot) {
+      console.warn('[debug] No page-break snapshot yet — try again after the editor has rendered.');
+      return;
+    }
+    const payload = {
+      capturedAt: new Date().toISOString(),
+      zoom,
+      doc: editor.getJSON(),
+      pageBreaks: snapshot,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pagebreak-debug-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 </script>
 
@@ -111,6 +134,11 @@
           </div>
         {/if}
       </div>
+      {#if import.meta.env.DEV}
+        <button class="debug-btn" onclick={handleDebugDump} disabled={!editor} title="Download page-break debug snapshot">
+          Debug
+        </button>
+      {/if}
       <button class="export-btn" onclick={handleExport} disabled={!editor}>
         Download .odt
       </button>
@@ -258,6 +286,29 @@
     cursor: pointer;
     white-space: nowrap;
     transition: background 0.15s;
+  }
+
+  .debug-btn {
+    padding: 0.35rem 0.7rem;
+    background: transparent;
+    color: var(--color-text-muted);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius);
+    font-size: 0.75rem;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .debug-btn:hover:not(:disabled) {
+    background: var(--color-btn-hover);
+    color: var(--color-text);
+  }
+
+  .debug-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .export-btn:hover:not(:disabled) {

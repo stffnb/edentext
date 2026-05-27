@@ -1,6 +1,52 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
-import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
+
+export type PageBreakDebugSnapshot = {
+  timestamp: string;
+  layout: {
+    PAGE_HEIGHT: number;
+    PAGE_GAP: number;
+    PAGE_MARGIN_TOP: number;
+    PAGE_MARGIN_BOTTOM: number;
+    CONTENT_HEIGHT: number;
+    CYCLE: number;
+  };
+  numPages: number;
+  leaves: Array<{
+    index: number;
+    tag: string;
+    kind: 'atomic' | 'splittable';
+    naturalTop: number;
+    naturalHeight: number;
+    textPreview: string;
+    intraSpacerHeights: number[];
+    effectiveTop: number;
+    effectiveBottom: number;
+    pageOfTop: number;
+    pageOfBottom: number;
+    contentStart: number;
+    contentEnd: number;
+    overflowsPageEnd: boolean;
+  }>;
+  placements: Array<{
+    leafIndex: number;
+    docPos: number | null;
+    height: number;
+    reason: string;
+  }>;
+  renderedSpacers: Array<{
+    height: number;
+    offsetTopInDoc: number;
+    viewportTop: number;
+  }>;
+};
+
+const debugAccessors = new WeakMap<EditorView, () => PageBreakDebugSnapshot | null>();
+
+export function getPageBreakDebug(view: EditorView): PageBreakDebugSnapshot | null {
+  return debugAccessors.get(view)?.() ?? null;
+}
 
 // A4 page layout constants (px at 96 dpi)
 const PAGE_HEIGHT = 1123;
@@ -51,6 +97,33 @@ export const PageBreaks = Extension.create({
         },
       },
       view(editorView) {
+        let lastSnapshot: PageBreakDebugSnapshot | null = null;
+
+        debugAccessors.set(editorView, (): PageBreakDebugSnapshot | null => {
+          const snap: PageBreakDebugSnapshot | null = lastSnapshot;
+          if (snap === null) return null;
+          const dom = editorView.dom;
+          const tipRect = dom.getBoundingClientRect();
+          const renderedSpacers = Array.from(
+            dom.querySelectorAll<HTMLElement>('[data-page-break-spacer]'),
+          ).map((sp) => {
+            const r = sp.getBoundingClientRect();
+            return {
+              height: sp.offsetHeight,
+              offsetTopInDoc: r.top - tipRect.top,
+              viewportTop: r.top,
+            };
+          });
+          return {
+            timestamp: snap.timestamp,
+            layout: snap.layout,
+            numPages: snap.numPages,
+            leaves: snap.leaves,
+            placements: snap.placements,
+            renderedSpacers,
+          };
+        });
+
         function docPosBeforeElement(el: HTMLElement): number | null {
           const parent = el.parentNode;
           if (!parent) return null;
@@ -247,6 +320,8 @@ export const PageBreaks = Extension.create({
 
           let cumulativeShift = 0;
           const placements: { docPos: number; height: number }[] = [];
+          const leavesDebug: PageBreakDebugSnapshot['leaves'] = [];
+          const placementsDebug: PageBreakDebugSnapshot['placements'] = [];
 
           for (let i = 0; i < leaves.length; i++) {
             const leaf = leaves[i];
@@ -258,18 +333,24 @@ export const PageBreaks = Extension.create({
 
             let spacerHeight = 0;
             let spacerDocPos: number | null = null;
+            let reason = 'fits';
 
             if (effectiveTop < contentStart && i > 0) {
               spacerHeight = contentStart - effectiveTop;
               spacerDocPos = preLeafDocPos(leaf.el);
+              reason = 'pre-leaf-push-to-content-start';
             } else if (effectiveTop >= contentEnd) {
               spacerHeight = pageContentStart(page + 1) - effectiveTop;
               spacerDocPos = preLeafDocPos(leaf.el);
+              reason = 'leaf-jump-to-next-page';
             } else if (effectiveBottom > contentEnd) {
               if (leaf.kind === 'atomic') {
                 if (leaf.naturalHeight <= CONTENT_HEIGHT) {
                   spacerHeight = pageContentStart(page + 1) - effectiveTop;
                   spacerDocPos = preLeafDocPos(leaf.el);
+                  reason = 'atomic-push-to-next-page';
+                } else {
+                  reason = 'atomic-too-tall-no-push';
                 }
               } else {
                 const split = findLineSplit(leaf.el, contentEnd - effectiveTop);
@@ -277,17 +358,43 @@ export const PageBreaks = Extension.create({
                   if (leaf.naturalHeight <= CONTENT_HEIGHT) {
                     spacerHeight = pageContentStart(page + 1) - effectiveTop;
                     spacerDocPos = preLeafDocPos(leaf.el);
+                    reason = 'split-fallback-push-whole-leaf';
+                  } else {
+                    reason = 'splittable-too-tall-no-push';
                   }
                 } else {
                   spacerHeight = pageContentStart(page + 1) - (effectiveTop + split.naturalLineTop);
                   spacerDocPos = split.docPos;
+                  reason = 'line-split';
                 }
               }
             }
 
+            leavesDebug.push({
+              index: i,
+              tag: leaf.el.tagName,
+              kind: leaf.kind,
+              naturalTop: leaf.naturalTop,
+              naturalHeight: leaf.naturalHeight,
+              textPreview: (leaf.el.textContent ?? '').slice(0, 120),
+              intraSpacerHeights: Array.from(
+                leaf.el.querySelectorAll<HTMLElement>('[data-page-break-spacer]'),
+              ).map((sp) => sp.offsetHeight),
+              effectiveTop,
+              effectiveBottom,
+              pageOfTop: page,
+              pageOfBottom: getPageForY(effectiveBottom),
+              contentStart,
+              contentEnd,
+              overflowsPageEnd: effectiveBottom > contentEnd,
+            });
+
             if (spacerHeight > 0 && spacerDocPos !== null) {
               placements.push({ docPos: spacerDocPos, height: spacerHeight });
+              placementsDebug.push({ leafIndex: i, docPos: spacerDocPos, height: spacerHeight, reason });
               cumulativeShift += spacerHeight;
+            } else if (reason !== 'fits') {
+              placementsDebug.push({ leafIndex: i, docPos: spacerDocPos, height: spacerHeight, reason });
             }
           }
 
@@ -320,6 +427,22 @@ export const PageBreaks = Extension.create({
 
           dom.dispatchEvent(new CustomEvent('pm-pagecount', { bubbles: true, detail: { numPages } }));
 
+          lastSnapshot = {
+            timestamp: new Date().toISOString(),
+            layout: {
+              PAGE_HEIGHT,
+              PAGE_GAP,
+              PAGE_MARGIN_TOP,
+              PAGE_MARGIN_BOTTOM,
+              CONTENT_HEIGHT,
+              CYCLE,
+            },
+            numPages,
+            leaves: leavesDebug,
+            placements: placementsDebug,
+            renderedSpacers: [],
+          };
+
           isUpdating = false;
         }
 
@@ -339,6 +462,7 @@ export const PageBreaks = Extension.create({
           },
           destroy() {
             if (rafId !== null) cancelAnimationFrame(rafId);
+            debugAccessors.delete(editorView);
           },
         };
       },
