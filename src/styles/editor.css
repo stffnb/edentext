@@ -141,7 +141,11 @@
 
 .paper .tiptap li {
   margin-top: 0;
-  margin-bottom: 0.25em;
+  margin-bottom: 0;
+  }
+  
+  .paper .tiptap li p {
+    margin-bottom: 0;
 }
 
 .paper .tiptap p.is-editor-empty:first-child::before {
