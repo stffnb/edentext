@@ -12,6 +12,7 @@ import OrderedList from '@tiptap/extension-ordered-list';
 import ListItem from '@tiptap/extension-list-item';
 import History from '@tiptap/extension-history';
 import Placeholder from '@tiptap/extension-placeholder';
+import TextAlign from '@tiptap/extension-text-align';
 import { PageBreaks } from './pageBreaks';
 import { LineHeight } from './lineHeight';
 
@@ -33,5 +34,10 @@ export const extensions = [
   ListItem,
   History,
   Placeholder.configure({ placeholder: 'Start typing…' }),
+  TextAlign.configure({
+    types: ['paragraph', 'heading'],
+    alignments: ['left', 'center', 'right', 'justify'],
+    defaultAlignment: 'left',
+  }),
   PageBreaks,
 ];
