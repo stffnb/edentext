@@ -18,6 +18,33 @@
 
   const CYCLE = 1143; // PAGE_HEIGHT + PAGE_GAP, must match pageBreaks.ts
 
+  // Preserve the top-of-viewport anchor across zoom changes.
+  let prevZoom = -1;
+  let pendingAnchorDocY: number | null = null;
+
+  $effect.pre(() => {
+    const z = zoom;
+    if (prevZoom < 0 || !editorContainer || !element || z === prevZoom) {
+      prevZoom = z;
+      return;
+    }
+    const editorRect = editorContainer.getBoundingClientRect();
+    const paperRect = element.getBoundingClientRect();
+    pendingAnchorDocY = (editorRect.top - paperRect.top) / (prevZoom / 100);
+    prevZoom = z;
+  });
+
+  $effect(() => {
+    zoom; // track to fire after the pre-effect / DOM update
+    if (pendingAnchorDocY === null || !editorContainer || !element) return;
+    const docY = pendingAnchorDocY;
+    pendingAnchorDocY = null;
+    const editorRect = editorContainer.getBoundingClientRect();
+    const paperRect = element.getBoundingClientRect();
+    const targetScreenY = paperRect.top + docY * (zoom / 100);
+    editorContainer.scrollTop += targetScreenY - editorRect.top;
+  });
+
   function updateCurrentPage() {
     const tiptap = element?.querySelector('.tiptap') as HTMLElement | null;
     if (!tiptap || !editorContainer) return;
