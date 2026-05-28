@@ -152,13 +152,27 @@ export const PageBreaks = Extension.create({
           return 1;
         }
 
+        function previousNonSpacerSibling(el: HTMLElement): HTMLElement | null {
+          let prev = el.previousElementSibling as HTMLElement | null;
+          while (prev && prev.dataset?.pageBreakSpacer) {
+            prev = prev.previousElementSibling as HTMLElement | null;
+          }
+          return prev;
+        }
+
         // For a pre-leaf push we want the spacer to render OUTSIDE any
         // list-item wrapper, so the <li>'s bullet marker stays aligned with
-        // its own text. Walk up through <li> ancestors to the outermost one,
-        // then take the position before that.
+        // its own text. Walk up through <li> ancestors — but stop the moment
+        // `target` has a prior sibling, otherwise we'd also push earlier
+        // already-placed paragraphs inside the same <li> (e.g. a multi-
+        // paragraph LI produced by backspacing across a page break).
         function preLeafDocPos(leafEl: HTMLElement): number | null {
           let target = leafEl;
-          while (target.parentElement && target.parentElement.tagName === 'LI') {
+          while (
+            target.parentElement &&
+            target.parentElement.tagName === 'LI' &&
+            !previousNonSpacerSibling(target)
+          ) {
             target = target.parentElement;
           }
           return docPosBeforeElement(target);
@@ -193,10 +207,17 @@ export const PageBreaks = Extension.create({
           const lines: { top: number; bottom: number }[] = [];
           for (const r of allRects) {
             const last = lines[lines.length - 1];
-            if (!last || r.top - last.top > 2) {
-              lines.push({ top: r.top, bottom: r.bottom });
-            } else {
+            // Rects are sorted by top → r.top ≥ last.top. Merge into the
+            // current line when they vertically overlap, so an inline run with
+            // a smaller font (lower ascender → larger `top`) shares the line
+            // of its larger-font neighbours instead of becoming a phantom
+            // line. The −1 px tolerance keeps touching-but-not-overlapping
+            // rects on separate lines.
+            if (last && r.top < last.bottom - 1) {
+              last.top = Math.min(last.top, r.top);
               last.bottom = Math.max(last.bottom, r.bottom);
+            } else {
+              lines.push({ top: r.top, bottom: r.bottom });
             }
           }
           return lines;
@@ -234,9 +255,22 @@ export const PageBreaks = Extension.create({
             return (viewportY - elRect.top) / zoom - dropped;
           }
 
+          // Line-box bottom in natural coords. Range.getClientRects() reports
+          // glyph-level bottoms (descender), which can sit a hair above the
+          // line-box bottom used by layout — enough for sub-pixel overflows to
+          // be missed at zoom 100. Use the next line's top as the boundary,
+          // and the leaf's own offsetHeight for the last line so the threshold
+          // matches the outer `effectiveBottom > contentEnd` check.
+          const intraSpacerTotal = intraSpacers.reduce((s, sp) => s + sp.height, 0);
+          const leafNaturalHeight = el.offsetHeight - intraSpacerTotal;
+          function lineBoxBottomNatural(i: number): number {
+            if (i + 1 < lines.length) return toNatural(lines[i + 1].top);
+            return leafNaturalHeight;
+          }
+
           let k = -1;
           for (let i = 0; i < lines.length; i++) {
-            if (toNatural(lines[i].bottom) > overflowDistance + 0.5) {
+            if (lineBoxBottomNatural(i) > overflowDistance + 0.5) {
               k = i;
               break;
             }
