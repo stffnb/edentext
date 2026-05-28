@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import { Editor } from '@tiptap/core';
   import { Slice, Fragment } from 'prosemirror-model';
   import type { Node as PmNode, MarkType } from 'prosemirror-model';
@@ -18,12 +18,26 @@
 
   const CYCLE = 1143; // PAGE_HEIGHT + PAGE_GAP, must match pageBreaks.ts
 
+  // Throttle the value actually written to the DOM to one update per animation frame,
+  // so rapid slider events don't trigger 50+ layout/paint cycles per second.
+  let appliedZoom = $state(untrack(() => zoom));
+  let zoomRaf: number | null = null;
+
+  $effect(() => {
+    zoom; // track
+    if (zoomRaf !== null) return;
+    zoomRaf = requestAnimationFrame(() => {
+      zoomRaf = null;
+      appliedZoom = zoom; // pick up the latest value, not a captured snapshot
+    });
+  });
+
   // Preserve the top-of-viewport anchor across zoom changes.
   let prevZoom = -1;
   let pendingAnchorDocY: number | null = null;
 
   $effect.pre(() => {
-    const z = zoom;
+    const z = appliedZoom;
     if (prevZoom < 0 || !editorContainer || !element || z === prevZoom) {
       prevZoom = z;
       return;
@@ -35,13 +49,13 @@
   });
 
   $effect(() => {
-    zoom; // track to fire after the pre-effect / DOM update
+    appliedZoom; // track to fire after the pre-effect / DOM update
     if (pendingAnchorDocY === null || !editorContainer || !element) return;
     const docY = pendingAnchorDocY;
     pendingAnchorDocY = null;
     const editorRect = editorContainer.getBoundingClientRect();
     const paperRect = element.getBoundingClientRect();
-    const targetScreenY = paperRect.top + docY * (zoom / 100);
+    const targetScreenY = paperRect.top + docY * (appliedZoom / 100);
     editorContainer.scrollTop += targetScreenY - editorRect.top;
   });
 
@@ -53,7 +67,7 @@
     const tiptapRect = tiptap.getBoundingClientRect();
     // getBoundingClientRect and coordsAtPos return zoomed viewport pixels;
     // divide by zoom factor to convert to document coordinates before comparing with CYCLE.
-    const zoomFactor = zoom / 100;
+    const zoomFactor = appliedZoom / 100;
 
     if (editor) {
       try {
@@ -125,7 +139,7 @@
         if (!tiptap) return;
         try {
           const coords = e.view.coordsAtPos(e.state.selection.head);
-          const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (zoom / 100);
+          const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (appliedZoom / 100);
           currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / CYCLE) + 1));
         } catch { /* ignore */ }
       },
@@ -139,6 +153,7 @@
   });
 
   onDestroy(() => {
+    if (zoomRaf !== null) cancelAnimationFrame(zoomRaf);
     editor?.destroy();
     element?.removeEventListener('pm-pagecount', onPageCount);
     editorContainer?.removeEventListener('scroll', updateCurrentPage);
@@ -146,5 +161,5 @@
 </script>
 
 <div class="editor" bind:this={editorContainer}>
-  <div bind:this={element} class="paper" class:show-formatting-marks={showFormattingMarks} style="zoom: {zoom / 100}"></div>
+  <div bind:this={element} class="paper" class:show-formatting-marks={showFormattingMarks} style="zoom: {appliedZoom / 100}"></div>
 </div>
