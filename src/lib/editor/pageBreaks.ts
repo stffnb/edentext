@@ -88,6 +88,7 @@ export const PageBreaks = Extension.create({
     let decorations = DecorationSet.empty;
     let isUpdating = false;
     let rafId: number | null = null;
+    let lastPlacementsKey = '';
 
     const plugin = new Plugin({
       key: pageBreakKey,
@@ -450,31 +451,47 @@ export const PageBreaks = Extension.create({
             });
 
             if (spacerHeight > 0 && spacerDocPos !== null) {
-              placements.push({ docPos: spacerDocPos, height: spacerHeight });
-              placementsDebug.push({ leafIndex: i, docPos: spacerDocPos, height: spacerHeight, reason });
-              cumulativeShift += spacerHeight;
+              // Round to integer px: the browser renders the spacer at integer
+              // offsetHeight regardless, so storing the unrounded value would
+              // make the model disagree with the DOM on the next pass and
+              // cause 1-px shake on every keystroke at non-100 % zoom.
+              const h = Math.round(spacerHeight);
+              if (h > 0) {
+                placements.push({ docPos: spacerDocPos, height: h });
+                placementsDebug.push({ leafIndex: i, docPos: spacerDocPos, height: h, reason });
+                cumulativeShift += h;
+              }
             } else if (reason !== 'fits') {
               placementsDebug.push({ leafIndex: i, docPos: spacerDocPos, height: spacerHeight, reason });
             }
           }
 
-          const doc = editorView.state.doc;
-          const decoArray: Decoration[] = placements.map((p) => {
-            const spacerEl = document.createElement('div');
-            spacerEl.dataset.pageBreakSpacer = 'true';
-            spacerEl.style.height = `${p.height}px`;
-            spacerEl.style.pointerEvents = 'none';
-            spacerEl.style.userSelect = 'none';
-            spacerEl.setAttribute('contenteditable', 'false');
-            return Decoration.widget(p.docPos, spacerEl, { side: -1 });
-          });
+          // Skip the decoration rebuild + transaction dispatch when the
+          // placement set is identical to the previous pass. Most keystrokes
+          // don't change pagination, and re-dispatching forces ProseMirror to
+          // recreate the spacer DOM nodes (no `key` on the widgets) for no
+          // visible gain.
+          const placementsKey = placements.map((p) => `${p.docPos}:${p.height}`).join('|');
+          if (placementsKey !== lastPlacementsKey) {
+            lastPlacementsKey = placementsKey;
+            const doc = editorView.state.doc;
+            const decoArray: Decoration[] = placements.map((p) => {
+              const spacerEl = document.createElement('div');
+              spacerEl.dataset.pageBreakSpacer = 'true';
+              spacerEl.style.height = `${p.height}px`;
+              spacerEl.style.pointerEvents = 'none';
+              spacerEl.style.userSelect = 'none';
+              spacerEl.setAttribute('contenteditable', 'false');
+              return Decoration.widget(p.docPos, spacerEl, { side: -1 });
+            });
 
-          decorations = decoArray.length > 0
-            ? DecorationSet.create(doc, decoArray)
-            : DecorationSet.empty;
+            decorations = decoArray.length > 0
+              ? DecorationSet.create(doc, decoArray)
+              : DecorationSet.empty;
 
-          const tr = editorView.state.tr.setMeta('addToHistory', false).setMeta(pageBreakKey, true);
-          editorView.dispatch(tr);
+            const tr = editorView.state.tr.setMeta('addToHistory', false).setMeta(pageBreakKey, true);
+            editorView.dispatch(tr);
+          }
 
           let numPages = 1;
           if (leaves.length > 0) {
