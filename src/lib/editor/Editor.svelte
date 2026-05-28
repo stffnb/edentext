@@ -9,8 +9,8 @@
 
   const DEFAULT_EDITOR_FONT = 'Georgia'; // must match ToolbarExpanded.svelte
 
-  let { editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1), zoom = 100 }: {
-    editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
+  let { editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1), zoom = 100, showFormattingMarks = false }: {
+    editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number; showFormattingMarks?: boolean;
   } = $props();
 
   let element: HTMLDivElement;
@@ -119,5 +119,5 @@
 </script>
 
 <div class="editor" bind:this={editorContainer}>
-  <div bind:this={element} class="paper" style="zoom: {zoom / 100}"></div>
+  <div bind:this={element} class="paper" class:show-formatting-marks={showFormattingMarks} style="zoom: {zoom / 100}"></div>
 </div>

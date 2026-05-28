@@ -5,7 +5,7 @@
   import ToolbarExpanded from './lib/editor/ToolbarExpanded.svelte';
   import { exportToOdt } from './lib/export/odt';
   import { getPageBreakDebug } from './lib/editor/pageBreaks';
-  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, type ThemeMode } from './lib/storage/theme';
+  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
@@ -15,7 +15,12 @@
   let themeMode: ThemeMode = $state(loadTheme());
   let themeOpen = $state(false);
   let toolbarExpanded = $state(loadToolbarExpanded());
+  let showFormattingMarks = $state(loadFormattingMarks());
   let zoom = $state(Math.max(50, Math.min(200, parseInt(localStorage.getItem('odf-editor-zoom') ?? '100', 10))));
+
+  $effect(() => {
+    saveFormattingMarks(showFormattingMarks);
+  });
 
   function setZoom(value: number) {
     zoom = Math.max(50, Math.min(200, value));
@@ -145,9 +150,9 @@
     </div>
   </header>
   {#if toolbarExpanded}
-    <ToolbarExpanded {editor} {tick} />
+    <ToolbarExpanded {editor} {tick} bind:showFormattingMarks />
   {/if}
-  <EditorComponent bind:editor bind:tick bind:currentPage bind:numPages {zoom} />
+  <EditorComponent bind:editor bind:tick bind:currentPage bind:numPages {zoom} {showFormattingMarks} />
   <footer class="statusbar">
     <span>Page {currentPage} of {numPages}</span>
     <div class="zoom-controls">

@@ -35,6 +35,7 @@
 - font size selection
 - line spacing button
 - text alignment
+- show formatting marks
 
 ### Not yet implemented
 - ODT import / open existing file

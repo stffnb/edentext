@@ -156,6 +156,73 @@
   height: 0;
 }
 
+/* Formatting marks (Toggle in extended toolbar).
+   Zero-width inline-block with visible overflow: the ¶ glyph renders just
+   past the last character without consuming line width — so right/center/
+   justify alignment of the actual text is preserved. The leading NBSP in
+   the content gives a small visual gap from the text. */
+.paper.show-formatting-marks .tiptap p::after,
+.paper.show-formatting-marks .tiptap h1::after,
+.paper.show-formatting-marks .tiptap h2::after,
+.paper.show-formatting-marks .tiptap h3::after {
+  content: '\00A0¶';
+  display: inline-block;
+  width: 0;
+  overflow: visible;
+  white-space: pre;
+  color: var(--color-primary);
+  opacity: 0.5;
+  font-family: var(--font-sans);
+  font-weight: 400;
+  user-select: none;
+  pointer-events: none;
+}
+
+.paper.show-formatting-marks .tiptap li > p::after {
+  content: '\00A0¶';
+}
+
+/* Empty block fix: when a paragraph/heading/li-paragraph contains only the
+   ProseMirror trailing-break BR, the inline ::after would otherwise render
+   on a second line below the BR, doubling the block's height and shifting
+   the page-break calculation. Pull ::after out of flow via absolute positioning. */
+.paper.show-formatting-marks .tiptap p:has(> br.ProseMirror-trailingBreak:only-child),
+.paper.show-formatting-marks .tiptap h1:has(> br.ProseMirror-trailingBreak:only-child),
+.paper.show-formatting-marks .tiptap h2:has(> br.ProseMirror-trailingBreak:only-child),
+.paper.show-formatting-marks .tiptap h3:has(> br.ProseMirror-trailingBreak:only-child),
+.paper.show-formatting-marks .tiptap li > p:has(> br.ProseMirror-trailingBreak:only-child) {
+  position: relative;
+}
+
+.paper.show-formatting-marks .tiptap p:has(> br.ProseMirror-trailingBreak:only-child)::after,
+.paper.show-formatting-marks .tiptap h1:has(> br.ProseMirror-trailingBreak:only-child)::after,
+.paper.show-formatting-marks .tiptap h2:has(> br.ProseMirror-trailingBreak:only-child)::after,
+.paper.show-formatting-marks .tiptap h3:has(> br.ProseMirror-trailingBreak:only-child)::after,
+.paper.show-formatting-marks .tiptap li > p:has(> br.ProseMirror-trailingBreak:only-child)::after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin-left: 0;
+}
+
+.paper.show-formatting-marks .tiptap .pm-space-mark {
+  position: relative;
+}
+
+.paper.show-formatting-marks .tiptap .pm-space-mark::before {
+  content: '·';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+  opacity: 0.55;
+  font-weight: 700;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* Print styles: proper A4 pagination */
 @media print {
   .editor {
@@ -184,5 +251,14 @@
   @page {
     size: A4;
     margin: 25.4mm;
+  }
+
+  .paper.show-formatting-marks .tiptap p::after,
+  .paper.show-formatting-marks .tiptap h1::after,
+  .paper.show-formatting-marks .tiptap h2::after,
+  .paper.show-formatting-marks .tiptap h3::after,
+  .paper.show-formatting-marks .tiptap li > p::after,
+  .paper.show-formatting-marks .tiptap .pm-space-mark::before {
+    content: none;
   }
 }

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
 
-  let { editor, tick }: { editor: Editor | null; tick: number } = $props();
+  let { editor, tick, showFormattingMarks = $bindable() }: { editor: Editor | null; tick: number; showFormattingMarks: boolean } = $props();
 
   type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
@@ -455,6 +455,21 @@
           {/each}
         </div>
       {/if}
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <button
+        class:active={showFormattingMarks}
+        onclick={() => (showFormattingMarks = !showFormattingMarks)}
+        title="Formatting marks"
+        aria-pressed={showFormattingMarks}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M11 2.25v11.5M7.5 2.25v11.5M11 2.25H6.75a2.75 2.75 0 0 0 0 5.5H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
 
     <div class="toolbar-separator"></div>

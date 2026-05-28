@@ -15,6 +15,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import TextAlign from '@tiptap/extension-text-align';
 import { PageBreaks } from './pageBreaks';
 import { LineHeight } from './lineHeight';
+import { FormattingMarks } from './formattingMarks';
 
 export const extensions = [
   Document,
@@ -40,4 +41,5 @@ export const extensions = [
     defaultAlignment: 'left',
   }),
   PageBreaks,
+  FormattingMarks,
 ];

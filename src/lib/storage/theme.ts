@@ -2,6 +2,7 @@ export type ThemeMode = 'light' | 'dark' | 'auto';
 
 const THEME_KEY = 'odf-editor-theme';
 const TOOLBAR_KEY = 'odf-editor-toolbar-expanded';
+const FORMATTING_MARKS_KEY = 'odf-editor-formatting-marks';
 
 export function loadTheme(): ThemeMode {
     const saved = localStorage.getItem(THEME_KEY);
@@ -19,6 +20,14 @@ export function loadToolbarExpanded(): boolean {
 
 export function saveToolbarExpanded(expanded: boolean): void {
     localStorage.setItem(TOOLBAR_KEY, String(expanded));
+}
+
+export function loadFormattingMarks(): boolean {
+    return localStorage.getItem(FORMATTING_MARKS_KEY) === 'true';
+}
+
+export function saveFormattingMarks(enabled: boolean): void {
+    localStorage.setItem(FORMATTING_MARKS_KEY, String(enabled));
 }
 
 function resolveMode(mode: ThemeMode): 'light' | 'dark' {
