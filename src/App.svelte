@@ -16,14 +16,14 @@
   let themeOpen = $state(false);
   let toolbarExpanded = $state(loadToolbarExpanded());
   let showFormattingMarks = $state(loadFormattingMarks());
-  let zoom = $state(Math.max(50, Math.min(200, parseInt(localStorage.getItem('odf-editor-zoom') ?? '100', 10))));
+  let zoom = $state(Math.max(20, Math.min(300, parseInt(localStorage.getItem('odf-editor-zoom') ?? '100', 10))));
 
   $effect(() => {
     saveFormattingMarks(showFormattingMarks);
   });
 
   function setZoom(value: number) {
-    zoom = Math.max(50, Math.min(200, value));
+    zoom = Math.max(20, Math.min(300, value));
     localStorage.setItem('odf-editor-zoom', String(zoom));
   }
 
@@ -156,18 +156,18 @@
   <footer class="statusbar">
     <span>Page {currentPage} of {numPages}</span>
     <div class="zoom-controls">
-      <button class="zoom-btn" onclick={() => setZoom(zoom - 10)} disabled={zoom <= 50} title="Zoom out">−</button>
+      <button class="zoom-btn" onclick={() => setZoom(zoom - 10)} disabled={zoom <= 20} title="Zoom out">−</button>
       <input
         type="range"
         class="zoom-slider"
-        min="50"
-        max="200"
+        min="20"
+        max="300"
         step="1"
         value={zoom}
         oninput={(e) => setZoom(parseInt((e.target as HTMLInputElement).value, 10))}
         title="Zoom"
       />
-      <button class="zoom-btn" onclick={() => setZoom(zoom + 10)} disabled={zoom >= 200} title="Zoom in">+</button>
+      <button class="zoom-btn" onclick={() => setZoom(zoom + 10)} disabled={zoom >= 300} title="Zoom in">+</button>
       <button class="zoom-pct" onclick={() => setZoom(100)} title="Reset to 100%">{zoom}%</button>
     </div>
   </footer>
