@@ -33,7 +33,7 @@ export const FontColor = Extension.create({
             renderHTML: attributes => {
               if (!attributes.color) return {};
               return {
-                style: `color: ${attributes.color}`,
+                style: `--font-color: ${attributes.color}; color: ${attributes.color}`,
                 'data-color': attributes.color,
               };
             },

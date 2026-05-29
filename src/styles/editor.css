@@ -263,6 +263,14 @@
   }
 }
 
+/* Fallback channel: drive color from the --font-color custom property so the
+   visible color survives even if ProseMirror's incremental DOM update leaves
+   a reused span with a stale `style` attribute that no longer contains
+   `color:`. The inline `color:` declaration still wins when present. */
+.tiptap [data-color] {
+  color: var(--font-color, currentColor);
+}
+
 /* allBlack theme: force all explicitly-colored text to the page text color.
    The color is still stored on the textStyle mark, so .odt exports remain faithful. */
 [data-theme="allBlack"] .tiptap [data-color] {
