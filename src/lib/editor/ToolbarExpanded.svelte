@@ -71,13 +71,21 @@
     try { localStorage.setItem(RECENT_FONTS_KEY, JSON.stringify(fonts)); } catch { /* quota or disabled */ }
   }
 
-  onMount(() => { recentFonts = loadRecents(); });
-
   function ensureDetectionRan() {
     if (detectionRan) return;
     detectionRan = true;
     detectedFonts = detectAvailableFonts(CANDIDATE_FONTS);
   }
+
+  onMount(() => {
+    recentFonts = loadRecents();
+    // Run detection during browser idle time after first paint so the picker
+    // is primed before the user ever clicks it, without delaying initial render.
+    const schedule = typeof requestIdleCallback === 'function'
+      ? (cb: () => void) => requestIdleCallback(cb, { timeout: 1000 })
+      : (cb: () => void) => setTimeout(cb, 0);
+    schedule(() => ensureDetectionRan());
+  });
 
   let extraFontsList = $derived.by(() => {
     const source = allInstalledFonts ?? detectedFonts;
@@ -298,6 +306,8 @@
     // Save selection before the picker button steals focus.
     savedFrom = editor.state.selection.from;
     savedTo = editor.state.selection.to;
+    // Detection normally runs on mount; this is the safety net if the user
+    // somehow clicks the picker before the idle callback has fired.
     if (!fontOpen) ensureDetectionRan();
     fontOpen = !fontOpen;
   }
