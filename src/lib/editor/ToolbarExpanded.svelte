@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
+  import { onDestroy } from 'svelte';
 
   let { editor, tick, showFormattingMarks = $bindable() }: { editor: Editor | null; tick: number; showFormattingMarks: boolean } = $props();
 
@@ -449,13 +450,112 @@
   }
 
   async function pickFromPage() {
-    if (!eyeDropperSupported) return;
     colorOpen = false;
     moreColorsOpen = false;
-    try {
-      const result = await new (window as any).EyeDropper().open();
-      applyColor(String(result.sRGBHex).toUpperCase());
-    } catch {
+    if (eyeDropperSupported) {
+      try {
+        const result = await new (window as any).EyeDropper().open();
+        applyColor(String(result.sRGBHex).toUpperCase());
+      } catch {
+        savedFrom = null;
+        savedTo = null;
+      }
+      return;
+    }
+    startDomPickMode();
+  }
+
+  let domPickActive = $state(false);
+  let hoveredEl: HTMLElement | null = null;
+  let prevOutline = '';
+  let prevOutlineOffset = '';
+
+  function getEditorRoot(): HTMLElement | null {
+    return (editor?.view?.dom as HTMLElement | undefined) ?? null;
+  }
+
+  function rgbToHex(rgb: string): string | null {
+    const m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(rgb);
+    if (!m) return null;
+    const hex = (n: number) =>
+      Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0');
+    return `#${hex(+m[1])}${hex(+m[2])}${hex(+m[3])}`.toUpperCase();
+  }
+
+  function setHover(el: HTMLElement) {
+    if (hoveredEl === el) return;
+    clearHover();
+    hoveredEl = el;
+    prevOutline = el.style.outline;
+    prevOutlineOffset = el.style.outlineOffset;
+    el.style.outline = '2px solid var(--color-primary)';
+    el.style.outlineOffset = '-2px';
+  }
+
+  function clearHover() {
+    if (!hoveredEl) return;
+    hoveredEl.style.outline = prevOutline;
+    hoveredEl.style.outlineOffset = prevOutlineOffset;
+    hoveredEl = null;
+  }
+
+  function startDomPickMode() {
+    const root = getEditorRoot();
+    if (!root) return;
+    domPickActive = true;
+    root.style.cursor = 'crosshair';
+    root.addEventListener('mousemove', onPickMove, true);
+    root.addEventListener('mousedown', onPickMouseDown, true);
+    window.addEventListener('keydown', onPickKey, true);
+    window.addEventListener('mousedown', onOutsideMouseDown, true);
+  }
+
+  function stopDomPickMode() {
+    if (!domPickActive) return;
+    domPickActive = false;
+    const root = getEditorRoot();
+    if (root) {
+      root.style.cursor = '';
+      root.removeEventListener('mousemove', onPickMove, true);
+      root.removeEventListener('mousedown', onPickMouseDown, true);
+    }
+    window.removeEventListener('keydown', onPickKey, true);
+    window.removeEventListener('mousedown', onOutsideMouseDown, true);
+    clearHover();
+  }
+
+  onDestroy(stopDomPickMode);
+
+  function onPickMove(e: MouseEvent) {
+    const t = e.target;
+    if (t instanceof HTMLElement) setHover(t);
+  }
+
+  function onPickMouseDown(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const t = e.target;
+    let hex: string | null = null;
+    if (t instanceof HTMLElement) {
+      hex = rgbToHex(window.getComputedStyle(t).color);
+    }
+    stopDomPickMode();
+    if (hex) applyColor(hex);
+    else { savedFrom = null; savedTo = null; }
+  }
+
+  function onPickKey(e: KeyboardEvent) {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    stopDomPickMode();
+    savedFrom = null;
+    savedTo = null;
+  }
+
+  function onOutsideMouseDown(e: MouseEvent) {
+    const root = getEditorRoot();
+    if (root && !root.contains(e.target as Node)) {
+      stopDomPickMode();
       savedFrom = null;
       savedTo = null;
     }
@@ -625,22 +725,20 @@
             </div>
             <div class="color-extras">
               <button class="color-more-trigger" onclick={openMoreColors}>More colors…</button>
-              {#if eyeDropperSupported}
-                <button
-                  class="color-pipette-trigger"
-                  onclick={pickFromPage}
-                  title="Pick a color from the page"
-                  aria-label="Pick a color from the page"
-                >
-                  <svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <g transform="rotate(-45 8 8)" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round">
-                      <rect x="6.25" y="1.5" width="3.5" height="2.6" rx="1" fill="currentColor" stroke="none" />
-                      <rect x="5" y="4.2" width="6" height="1.6" rx="0.4" />
-                      <path d="M6.75 5.8 L6.75 11.4 L8 13.7 L9.25 11.4 L9.25 5.8 Z" />
-                    </g>
-                  </svg>
-                </button>
-              {/if}
+              <button
+                class="color-pipette-trigger"
+                onclick={pickFromPage}
+                title="Pick a color from the page"
+                aria-label="Pick a color from the page"
+              >
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <g transform="rotate(-45 8 8)" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round">
+                    <rect x="6.25" y="1.5" width="3.5" height="2.6" rx="1" fill="currentColor" stroke="none" />
+                    <rect x="5" y="4.2" width="6" height="1.6" rx="0.4" />
+                    <path d="M6.75 5.8 L6.75 11.4 L8 13.7 L9.25 11.4 L9.25 5.8 Z" />
+                  </g>
+                </svg>
+              </button>
             </div>
           </div>
         {/if}
