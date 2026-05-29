@@ -5,6 +5,7 @@
   import ToolbarExpanded from './lib/editor/ToolbarExpanded.svelte';
   import { exportToOdt } from './lib/export/odt';
   import { getPageBreakDebug } from './lib/editor/pageBreaks';
+  import { getColorDebug } from './lib/editor/colorDebug';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
 
   let editor: Editor | null = $state(null);
@@ -63,6 +64,7 @@
       zoom,
       doc: editor.getJSON(),
       pageBreaks: snapshot,
+      colors: getColorDebug(editor),
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
