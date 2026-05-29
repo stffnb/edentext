@@ -1,6 +1,12 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import {
+    CANDIDATE_FONTS,
+    detectAvailableFonts,
+    queryLocalFontsIfAllowed,
+    supportsLocalFontAccess,
+  } from './fontDetect';
 
   let { editor, tick, showFormattingMarks = $bindable() }: { editor: Editor | null; tick: number; showFormattingMarks: boolean } = $props();
 
@@ -35,14 +41,58 @@
   // Must match the first font in --font-serif in editor.css
   const DEFAULT_EDITOR_FONT = 'Georgia';
 
-  const FONTS = [
-    { value: 'Arial',            label: 'Arial'            },
-    { value: 'Verdana',          label: 'Verdana'          },
-    { value: 'Trebuchet MS',     label: 'Trebuchet MS'     },
-    { value: 'Georgia',          label: 'Georgia'          },
-    { value: 'Times New Roman',  label: 'Times New Roman'  },
-    { value: 'Courier New',      label: 'Courier New'      },
-  ] as const;
+  // Always-shown fonts — render in the picker even when detection fails or is blocked.
+  const WEB_SAFE_FONTS: readonly string[] = [
+    'Arial', 'Verdana', 'Trebuchet MS', 'Georgia', 'Times New Roman', 'Courier New',
+  ];
+  const WEB_SAFE_SET = new Set<string>(WEB_SAFE_FONTS);
+
+  const RECENT_FONTS_KEY = 'odf-editor-recent-fonts';
+  const MAX_RECENT_FONTS = 5;
+
+  let recentFonts = $state<string[]>([]);
+  let detectedFonts = $state<string[]>([]);
+  let allInstalledFonts = $state<string[] | null>(null);
+  let detectionRan = false;
+  const localFontAccessSupported =
+    typeof window !== 'undefined' && supportsLocalFontAccess();
+
+  function loadRecents(): string[] {
+    try {
+      const raw = localStorage.getItem(RECENT_FONTS_KEY);
+      if (!raw) return [];
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((x): x is string => typeof x === 'string').slice(0, MAX_RECENT_FONTS);
+    } catch { return []; }
+  }
+
+  function saveRecents(fonts: string[]) {
+    try { localStorage.setItem(RECENT_FONTS_KEY, JSON.stringify(fonts)); } catch { /* quota or disabled */ }
+  }
+
+  onMount(() => { recentFonts = loadRecents(); });
+
+  function ensureDetectionRan() {
+    if (detectionRan) return;
+    detectionRan = true;
+    detectedFonts = detectAvailableFonts(CANDIDATE_FONTS);
+  }
+
+  let extraFontsList = $derived.by(() => {
+    const source = allInstalledFonts ?? detectedFonts;
+    const out: string[] = [];
+    const recentSet = new Set(recentFonts);
+    for (const f of source) {
+      if (!WEB_SAFE_SET.has(f) && !recentSet.has(f)) out.push(f);
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  });
+
+  async function showAllInstalledFonts() {
+    const list = await queryLocalFontsIfAllowed();
+    if (list && list.length > 0) allInstalledFonts = list;
+  }
 
   // Returns the uniform font of the selection, or '' when fonts are mixed.
   // Plain Text without an explicit mark falls back to DEFAULT_EDITOR_FONT.
@@ -248,6 +298,7 @@
     // Save selection before the picker button steals focus.
     savedFrom = editor.state.selection.from;
     savedTo = editor.state.selection.to;
+    if (!fontOpen) ensureDetectionRan();
     fontOpen = !fontOpen;
   }
 
@@ -259,6 +310,10 @@
     savedFrom = null;
     savedTo   = null;
     editor.chain().focus().setTextSelection({ from, to }).setFontFamily(value).run();
+
+    const next = [value, ...recentFonts.filter((f) => f !== value)].slice(0, MAX_RECENT_FONTS);
+    recentFonts = next;
+    saveRecents(next);
   }
 
   function fontPickerClickOutside(node: HTMLElement) {
@@ -638,14 +693,45 @@
       </button>
       {#if fontOpen}
         <div class="font-dropdown">
-          {#each FONTS as font}
+          {#if recentFonts.length > 0}
+            <div class="font-section-label">Recent</div>
+            {#each recentFonts as font}
+              <button
+                class="font-option"
+                class:active={currentFont === font}
+                style="font-family: {font}"
+                onclick={() => pickFont(font)}
+              >{font}</button>
+            {/each}
+          {/if}
+
+          <div class="font-section-label">Web-safe</div>
+          {#each WEB_SAFE_FONTS as font}
             <button
               class="font-option"
-              class:active={currentFont === font.value}
-              style="font-family: {font.value}"
-              onclick={() => pickFont(font.value)}
-            >{font.label}</button>
+              class:active={currentFont === font}
+              style="font-family: {font}"
+              onclick={() => pickFont(font)}
+            >{font}</button>
           {/each}
+
+          {#if extraFontsList.length > 0}
+            <div class="font-section-label">All fonts</div>
+            {#each extraFontsList as font}
+              <button
+                class="font-option"
+                class:active={currentFont === font}
+                style="font-family: {font}"
+                onclick={() => pickFont(font)}
+              >{font}</button>
+            {/each}
+          {/if}
+
+          {#if localFontAccessSupported && !allInstalledFonts}
+            <button class="font-show-all" onclick={showAllInstalledFonts}>
+              Load all installed fonts
+            </button>
+          {/if}
         </div>
       {/if}
     </div>
@@ -1015,6 +1101,8 @@
     top: calc(100% + 3px);
     left: 0;
     min-width: 100%;
+    max-height: 360px;
+    overflow-y: auto;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -1023,6 +1111,43 @@
     padding: 2px;
     display: flex;
     flex-direction: column;
+  }
+
+  .font-section-label {
+    padding: 0.4rem 0.6rem 0.2rem;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    font-family: var(--font-sans);
+    user-select: none;
+  }
+
+  .font-section-label:not(:first-child) {
+    margin-top: 4px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .font-show-all {
+    display: block;
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    margin-top: 2px;
+    border: none;
+    border-top: 1px solid var(--color-border);
+    border-radius: 0;
+    background: var(--color-surface);
+    color: var(--color-primary);
+    font-size: 0.8rem;
+    font-family: var(--font-sans);
+    text-align: left;
+    cursor: pointer;
+    position: sticky;
+    bottom: -2px;
+  }
+
+  .font-show-all:hover {
+    background: var(--color-btn-hover);
   }
 
   .font-option {
