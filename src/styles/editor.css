@@ -25,43 +25,43 @@
   font-family: var(--font-serif);
   font-size: 1.05rem;
   line-height: 1.5;
-  color: var(--color-text);
+  color: var(--color-page-text);
 
   /* Multi-page background: page surfaces separated by editor background */
   background:
     /* Left border per page */
     repeating-linear-gradient(
       to bottom,
-      var(--color-border) 0px,
-      var(--color-border) var(--page-height),
+      var(--color-page-border) 0px,
+      var(--color-page-border) var(--page-height),
       transparent var(--page-height),
       transparent var(--page-cycle)
     ),
     /* Right border per page */
     repeating-linear-gradient(
       to bottom,
-      var(--color-border) 0px,
-      var(--color-border) var(--page-height),
+      var(--color-page-border) 0px,
+      var(--color-page-border) var(--page-height),
       transparent var(--page-height),
       transparent var(--page-cycle)
     ),
     /* Top/bottom border lines of each page */
     repeating-linear-gradient(
       to bottom,
-      var(--color-border) 0px,
-      var(--color-border) 1px,
+      var(--color-page-border) 0px,
+      var(--color-page-border) 1px,
       transparent 1px,
       transparent calc(var(--page-height) - 1px),
-      var(--color-border) calc(var(--page-height) - 1px),
-      var(--color-border) var(--page-height),
+      var(--color-page-border) calc(var(--page-height) - 1px),
+      var(--color-page-border) var(--page-height),
       transparent var(--page-height),
       transparent var(--page-cycle)
     ),
     /* Page surface (white) alternating with gap (transparent = editor bg shows) */
     repeating-linear-gradient(
       to bottom,
-      var(--color-surface) 0px,
-      var(--color-surface) var(--page-height),
+      var(--color-page-bg) 0px,
+      var(--color-page-bg) var(--page-height),
       transparent var(--page-height),
       transparent var(--page-cycle)
     );

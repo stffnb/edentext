@@ -1,4 +1,4 @@
-export type ThemeMode = 'light' | 'dark' | 'auto';
+export type ThemeMode = 'light' | 'dark' | 'allBlack' | 'auto';
 
 const THEME_KEY = 'odf-editor-theme';
 const TOOLBAR_KEY = 'odf-editor-toolbar-expanded';
@@ -6,7 +6,7 @@ const FORMATTING_MARKS_KEY = 'odf-editor-formatting-marks';
 
 export function loadTheme(): ThemeMode {
     const saved = localStorage.getItem(THEME_KEY);
-  if (saved === 'light' || saved === 'dark' || saved === 'auto') return saved;
+  if (saved === 'light' || saved === 'dark' || saved === 'allBlack' || saved === 'auto') return saved;
   return 'auto';
 }
 
@@ -30,7 +30,7 @@ export function saveFormattingMarks(enabled: boolean): void {
     localStorage.setItem(FORMATTING_MARKS_KEY, String(enabled));
 }
 
-function resolveMode(mode: ThemeMode): 'light' | 'dark' {
+function resolveMode(mode: ThemeMode): 'light' | 'dark' | 'allBlack' {
   if (mode === 'auto') {
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }

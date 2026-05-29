@@ -118,6 +118,10 @@
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
             </svg>
+          {:else if themeMode === 'allBlack'}
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="8" cy="8" r="5.5" fill="currentColor"/>
+            </svg>
           {:else}
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <rect x="1" y="2" width="14" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
@@ -128,7 +132,7 @@
         </button>
         {#if themeOpen}
           <div class="theme-dropdown" role="menu">
-            {#each ([['light', 'Light'], ['dark', 'Dark'], ['auto', 'Auto']] as const) as [m, label]}
+            {#each ([['light', 'Light'], ['dark', 'Dark'], ['allBlack', 'AllBlack'], ['auto', 'Auto']] as const) as [m, label]}
               <button
                 class="theme-option"
                 class:selected={themeMode === m}
@@ -317,7 +321,7 @@
   }
 
   .export-btn:hover:not(:disabled) {
-    background: var(--color-primary-hover);
+    background: var(--color-btn-hover);
   }
 
   .export-btn:disabled {
@@ -338,7 +342,7 @@
     border-top: 1px solid var(--color-border);
     font-family: var(--font-sans);
     font-size: 0.75rem;
-    color: var(--color-text-muted);
+    color: var(--color-text);
     user-select: none;
     z-index: 50;
   }
@@ -359,16 +363,15 @@
     padding: 0;
     border: none;
     background: transparent;
-    color: var(--color-text-muted);
+    color: var(--color-text);
     font-size: 14px;
     line-height: 1;
     cursor: pointer;
     border-radius: 2px;
-    transition: color 0.1s, background 0.1s;
+    transition: background 0.1s;
   }
 
   .zoom-btn:hover:not(:disabled) {
-    color: var(--color-text);
     background: var(--color-btn-hover);
   }
 
@@ -394,7 +397,7 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--color-text-muted);
+    background: var(--color-text);
     cursor: pointer;
     transition: background 0.1s;
   }
@@ -409,7 +412,7 @@
     height: 10px;
     border: none;
     border-radius: 50%;
-    background: var(--color-text-muted);
+    background: var(--color-text);
     cursor: pointer;
     transition: background 0.1s;
   }
@@ -424,17 +427,16 @@
     padding: 0 3px;
     border: none;
     background: transparent;
-    color: var(--color-text-muted);
+    color: var(--color-text);
     font-family: var(--font-sans);
     font-size: 0.75rem;
     text-align: right;
     cursor: pointer;
     border-radius: 2px;
-    transition: color 0.1s, background 0.1s;
+    transition: background 0.1s;
   }
 
   .zoom-pct:hover {
-    color: var(--color-text);
     background: var(--color-btn-hover);
   }
 </style>

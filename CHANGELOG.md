@@ -22,13 +22,9 @@
   - Filename derived from first H1/H2/H3 heading, fallback `document.odt`
 - Favicon (hand-coded SVG, no external assets)
 - Lists (ordered / unordered)
-- Light / Dark / Auto appearance mode (settings menu in toolbar)
+- Light / Dark / Allblack / Auto appearance mode (settings menu in toolbar)
 - expandable extended toolbar
 - DIN A4 print layout with visual page breaks
-  - Repeating multi-page background (page surface + gap between pages)
-  - Shadow edges at page boundaries for depth effect
-  - Dynamic page snapping (editor always shows full pages)
-  - Print-ready @media print styles with @page A4 sizing
 - add bottom toolbar to show page number
 - Zoom feature
 - font selection
