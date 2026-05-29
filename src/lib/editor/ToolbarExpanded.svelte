@@ -179,6 +179,8 @@
   let colorOpen = $state(false);
   let lastColor = $state<string>('#C00000');
   let moreColorsOpen = $state(false);
+  const eyeDropperSupported =
+    typeof window !== 'undefined' && 'EyeDropper' in window;
   let pickerH = $state<number>(0);
   let pickerS = $state<number>(1);
   let pickerV = $state<number>(0.75);
@@ -446,6 +448,19 @@
     moreColorsOpen = false;
   }
 
+  async function pickFromPage() {
+    if (!eyeDropperSupported) return;
+    colorOpen = false;
+    moreColorsOpen = false;
+    try {
+      const result = await new (window as any).EyeDropper().open();
+      applyColor(String(result.sRGBHex).toUpperCase());
+    } catch {
+      savedFrom = null;
+      savedTo = null;
+    }
+  }
+
   function onSvPointerDown(e: PointerEvent) {
     // Keep the editor's text selection visible by stopping the browser from
     // shifting focus / collapsing the selection on this click.
@@ -608,7 +623,25 @@
                 </div>
               {/each}
             </div>
-            <button class="color-more-trigger" onclick={openMoreColors}>More colors…</button>
+            <div class="color-extras">
+              <button class="color-more-trigger" onclick={openMoreColors}>More colors…</button>
+              {#if eyeDropperSupported}
+                <button
+                  class="color-pipette-trigger"
+                  onclick={pickFromPage}
+                  title="Pick a color from the page"
+                  aria-label="Pick a color from the page"
+                >
+                  <svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <g transform="rotate(-45 8 8)" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round">
+                      <rect x="6.25" y="1.5" width="3.5" height="2.6" rx="1" fill="currentColor" stroke="none" />
+                      <rect x="5" y="4.2" width="6" height="1.6" rx="0.4" />
+                      <path d="M6.75 5.8 L6.75 11.4 L8 13.7 L9.25 11.4 L9.25 5.8 Z" />
+                    </g>
+                  </svg>
+                </button>
+              {/if}
+            </div>
           </div>
         {/if}
         {#if moreColorsOpen}
@@ -1311,6 +1344,36 @@
   }
 
   .color-more-trigger:hover {
+    background: var(--color-btn-hover);
+  }
+
+  .color-extras {
+    display: flex;
+    gap: 4px;
+  }
+
+  .color-extras .color-more-trigger {
+    flex: 1;
+    width: auto;
+  }
+
+  .color-pipette-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: calc(var(--radius) - 2px);
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+    min-width: unset;
+    height: auto;
+    transition: background 0.1s;
+  }
+
+  .color-pipette-trigger:hover {
     background: var(--color-btn-hover);
   }
 
