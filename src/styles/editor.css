@@ -262,3 +262,9 @@
     content: none;
   }
 }
+
+/* allBlack theme: force all explicitly-colored text to the page text color.
+   The color is still stored on the textStyle mark, so .odt exports remain faithful. */
+[data-theme="allBlack"] .tiptap [data-color] {
+  color: var(--color-page-text) !important;
+}

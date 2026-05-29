@@ -138,7 +138,12 @@
                 class:selected={themeMode === m}
                 onclick={() => selectTheme(m)}
                 role="menuitem"
-              >{label}</button>
+              >
+                <span>{label}</span>
+                {#if m === 'allBlack'}
+                  <span class="theme-option-hint">font colors forced white</span>
+                {/if}
+              </button>
             {/each}
           </div>
         {/if}
@@ -259,7 +264,10 @@
   }
 
   .theme-option {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
     width: 100%;
     padding: 0.5rem 0.75rem;
     border: none;
@@ -279,6 +287,13 @@
   .theme-option.selected {
     color: var(--color-primary);
     font-weight: 600;
+  }
+
+  .theme-option-hint {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+    font-weight: 400;
   }
 
   .export-btn {
