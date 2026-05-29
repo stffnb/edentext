@@ -124,12 +124,33 @@
     return mixed ? '' : (lh ?? DEFAULT_LINE_HEIGHT);
   });
 
-  // Word/LibreOffice-style palette: greyscale + standard colors + tints + shades.
+  // Row 1 = greyscale, row 2 = standard hues. Rows 3–7 are generated per column
+  // as a light→dark gradient over the same hue, so each column reads as a shade ramp.
+  const COLUMN_HUES: { h: number; sBase: number }[] = [
+    { h: 0,   sBase: 0.85 }, // red (crimson side)
+    { h: 8,   sBase: 1.00 }, // red
+    { h: 35,  sBase: 1.00 }, // orange
+    { h: 55,  sBase: 1.00 }, // yellow
+    { h: 88,  sBase: 0.55 }, // yellow-green
+    { h: 146, sBase: 1.00 }, // green
+    { h: 195, sBase: 1.00 }, // cyan
+    { h: 210, sBase: 1.00 }, // blue
+    { h: 225, sBase: 1.00 }, // deep blue
+    { h: 275, sBase: 0.65 }, // purple
+  ];
+  const SHADE_STOPS: { sScale: number; v: number }[] = [
+    { sScale: 0.25, v: 1.00 },
+    { sScale: 0.50, v: 0.95 },
+    { sScale: 0.75, v: 0.82 },
+    { sScale: 1.00, v: 0.55 },
+    { sScale: 1.00, v: 0.30 },
+  ];
   const COLOR_PALETTE: string[][] = [
     ['#000000', '#1A1A1A', '#333333', '#4D4D4D', '#666666', '#808080', '#999999', '#B3B3B3', '#CCCCCC', '#FFFFFF'],
     ['#C00000', '#FF0000', '#FFC000', '#FFFF00', '#92D050', '#00B050', '#00B0F0', '#0070C0', '#002060', '#7030A0'],
-    ['#F4B5B5', '#FFB3B3', '#FFE08A', '#FFFFB3', '#C6E0B4', '#A9D08E', '#9DC3E6', '#BDD7EE', '#8FAADC', '#B4A7D6'],
-    ['#800000', '#A50000', '#BF8F00', '#BFBF00', '#538135', '#375623', '#2E75B6', '#1F4E79', '#0B274D', '#4A2474'],
+    ...SHADE_STOPS.map(stop =>
+      COLUMN_HUES.map(({ h, sBase }) => hsvToHex(h, sBase * stop.sScale, stop.v)),
+    ),
   ];
 
   // Uniform color of the selection. null = no color anywhere; '' = mixed.
