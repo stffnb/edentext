@@ -862,7 +862,7 @@
               <input class="color-window-hex" type="text" value={stagedColor} oninput={onHexInput} maxlength="7" />
             </div>
             <div class="color-more-actions">
-              <button class="color-cancel" onclick={cancelMoreColors}>Abbrechen</button>
+              <button class="color-cancel" onclick={cancelMoreColors}>Cancel</button>
               <button class="color-confirm" onclick={confirmMoreColors}>OK</button>
             </div>
           </div>
