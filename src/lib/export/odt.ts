@@ -114,6 +114,39 @@ function applyListItemAlignments(odtBytes: Uint8Array, aligns: (AlignValue | nul
   return zipSync(out);
 }
 
+// ODF requires fo:color in `#RRGGBB` form. TipTap stores whatever string went
+// in: hex from the color picker, but `rgb(r, g, b)` after any HTML round-trip
+// (paste, parseHTML in fontColor.ts). Anything that isn't valid hex is silently
+// dropped by Word/LibreOffice → text renders black.
+function normalizeColor(input: string): string | undefined {
+  const s = input.trim();
+  if (!s) return undefined;
+
+  const hex = s.match(/^#([0-9a-fA-F]{3,8})$/);
+  if (hex) {
+    const h = hex[1];
+    if (h.length === 3 || h.length === 4) {
+      return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`.toUpperCase();
+    }
+    if (h.length === 6 || h.length === 8) {
+      return `#${h.slice(0, 6)}`.toUpperCase();
+    }
+    return undefined;
+  }
+
+  const rgb = s.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*[\d.]+\s*)?\)$/i);
+  if (rgb) {
+    const toHex = (v: string) => {
+      const n = Math.max(0, Math.min(255, Math.round(parseFloat(v))));
+      return n.toString(16).padStart(2, '0');
+    };
+    return `#${toHex(rgb[1])}${toHex(rgb[2])}${toHex(rgb[3])}`.toUpperCase();
+  }
+
+  // Named colors (red, blue, …): pass through — odf-kit resolves them.
+  return s;
+}
+
 function applyRuns(p: ParagraphBuilder, content: TiptapNode[] = []) {
   for (const node of content) {
     if (node.type !== 'text' || !node.text) continue;
@@ -125,7 +158,10 @@ function applyRuns(p: ParagraphBuilder, content: TiptapNode[] = []) {
     if (marks.some(m => m.type === 'underline'))  fmt.underline = true;
     if (tsm?.attrs?.fontFamily) fmt.fontFamily = String(tsm.attrs.fontFamily);
     if (tsm?.attrs?.fontSize)   fmt.fontSize   = String(tsm.attrs.fontSize);
-    if (tsm?.attrs?.color)      fmt.color      = String(tsm.attrs.color);
+    if (tsm?.attrs?.color) {
+      const c = normalizeColor(String(tsm.attrs.color));
+      if (c) fmt.color = c;
+    }
     p.addText(node.text, Object.keys(fmt).length ? fmt : undefined);
   }
 }
