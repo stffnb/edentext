@@ -12,6 +12,7 @@ const CUST_P = '__cust_p__';
 const CUST_H = '__cust_h__';
 
 const DEFAULT_FONT = 'Georgia'; // must match DEFAULT_EDITOR_FONT in ToolbarExpanded.svelte
+const DEFAULT_LINE_HEIGHT = 1;  // must match line-height in editor.css (.paper .tiptap)
 
 function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (!attrs) return false;
@@ -177,6 +178,8 @@ export async function exportToOdt(editor: Editor): Promise<void> {
         const lhRaw = String(node.attrs.lineHeight);
         const lhNum = parseFloat(lhRaw);
         opts.lineHeight = isNaN(lhNum) ? lhRaw : lhNum;
+      } else {
+        opts.lineHeight = DEFAULT_LINE_HEIGHT;
       }
       const ta = node.attrs?.textAlign;
       if (ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify') {

@@ -24,7 +24,7 @@
   outline: none;
   font-family: var(--font-serif);
   font-size: 1.05rem;
-  line-height: 1.5;
+  line-height: 1;
   color: var(--color-page-text);
 
   /* Multi-page background: page surfaces separated by editor background */
@@ -109,7 +109,7 @@
 .paper .tiptap h2,
 .paper .tiptap h3 {
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1;
   margin-top: 1.5em;
   margin-bottom: 0.5em;
 }

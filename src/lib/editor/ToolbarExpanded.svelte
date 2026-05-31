@@ -158,7 +158,7 @@
   });
 
   // Must match line-height in editor.css (.paper .tiptap)
-  const DEFAULT_LINE_HEIGHT = '1.5';
+  const DEFAULT_LINE_HEIGHT = '1';
   const LINE_HEIGHTS = [
     { value: '1',    label: 'Single'      },
     { value: '1.15', label: '1.15'        },

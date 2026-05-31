@@ -39,14 +39,14 @@ export const LineHeight = Extension.create({
   addCommands() {
     return {
       setLineHeight: (lineHeight: string) => ({ commands }) => {
-        return this.options.types.every((type) =>
-          commands.updateAttributes(type, { lineHeight })
-        );
+        return this.options.types
+          .map((type) => commands.updateAttributes(type, { lineHeight }))
+          .some((r) => r);
       },
       unsetLineHeight: () => ({ commands }) => {
-        return this.options.types.every((type) =>
-          commands.resetAttributes(type, 'lineHeight')
-        );
+        return this.options.types
+          .map((type) => commands.resetAttributes(type, 'lineHeight'))
+          .some((r) => r);
       },
     };
   },
