@@ -156,6 +156,11 @@ function rewriteStylesXml(odtBytes: Uint8Array): Uint8Array {
   // font-face declaration and the Standard style's font-name attributes.
   styles = styles.split(ODFKIT_DEFAULT_FONT).join(EXPORT_FONT);
 
+  styles = styles.replace(
+    '<style:master-page style:name="Default"',
+    '<style:master-page style:name="Standard"',
+  );
+
   // Scope each rewrite to its own <style:style …>…</style:style> block so the
   // font-size/margin replacements never bleed across heading levels.
   for (const { name, fontSize, marginTop, marginBottom } of HEADING_STYLE_OVERRIDES) {
