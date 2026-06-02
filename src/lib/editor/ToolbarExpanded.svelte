@@ -38,12 +38,13 @@
     return mixed ? '' : (a ?? 'left');
   });
 
-  // Must match the first font in --font-serif in editor.css
-  const DEFAULT_EDITOR_FONT = 'Georgia';
+  // Must match the first font in --font-serif in global.css. Bundled as a
+  // webfont so it is always available and matches the exported .odt's font.
+  const DEFAULT_EDITOR_FONT = 'Liberation Serif';
 
   // Always-shown fonts — render in the picker even when detection fails or is blocked.
   const WEB_SAFE_FONTS: readonly string[] = [
-    'Arial', 'Verdana', 'Trebuchet MS', 'Georgia', 'Times New Roman', 'Courier New',
+    'Liberation Serif', 'Arial', 'Verdana', 'Trebuchet MS', 'Georgia', 'Times New Roman', 'Courier New',
   ];
   const WEB_SAFE_SET = new Set<string>(WEB_SAFE_FONTS);
 

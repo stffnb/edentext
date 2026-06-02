@@ -6,11 +6,45 @@
   padding: 0;
 }
 
+/* Liberation Serif — bundled so the editor renders the EXACT metrics of the
+   font the exported .odt uses. odf-kit emits Liberation Serif as the document
+   default, and LibreOffice ships the identical file; this keeps the on-screen
+   preview pixel-faithful to the export. (SIL Open Font License — see
+   src/assets/fonts/LICENSE-LiberationFonts.txt.) */
+@font-face {
+  font-family: 'Liberation Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/LiberationSerif-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Liberation Serif';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/LiberationSerif-Bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Liberation Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/LiberationSerif-Italic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Liberation Serif';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/LiberationSerif-BoldItalic.ttf') format('truetype');
+}
+
 :root {
   --radius: 6px;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --font-serif: Georgia, 'Times New Roman', serif;
+    --font-serif: 'Liberation Serif', 'Times New Roman', Georgia, serif;
   }
   
   [data-theme="light"] {

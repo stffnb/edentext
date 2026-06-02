@@ -11,8 +11,30 @@ type AlignValue = 'left' | 'center' | 'right' | 'justify';
 const CUST_P = '__cust_p__';
 const CUST_H = '__cust_h__';
 
-const DEFAULT_FONT = 'Georgia'; // must match DEFAULT_EDITOR_FONT in ToolbarExpanded.svelte
-const DEFAULT_LINE_HEIGHT = 1;  // must match line-height in editor.css (.paper .tiptap)
+// odf-kit emits this as the document's default font (Standard style). The editor
+// renders the bundled, metric-identical Liberation Serif on screen.
+const ODFKIT_DEFAULT_FONT = 'Liberation Serif';
+// …but we declare Times New Roman in the .odt: it is metric-identical to
+// Liberation Serif, so LibreOffice (substitutes TNR→Liberation Serif) and Word
+// (has the real TNR) both render with the same metrics as the editor.
+const EXPORT_FONT = 'Times New Roman';
+const DEFAULT_LINE_HEIGHT = 1;  // must match line-height multiplier default in ToolbarExpanded.svelte
+
+// Editor page geometry (see editor.css / pageBreaks.ts): 96px top/bottom and
+// 80px side padding on a 794px (≈A4) page. Match them so the exported text
+// column width — and therefore line wrapping and page flow — is identical.
+const PAGE_MARGIN_V = '2.54cm'; // 96px @96dpi
+const PAGE_MARGIN_H = '2.12cm'; // 80px @96dpi
+
+// Heading sizes/margins shown in the editor (editor.css). odf-kit's built-in
+// Heading_20_N styles use larger sizes (28/24/20pt), so we rewrite them on
+// export. Margins are the editor's em-based values resolved against each
+// heading's own font size (top 1.5em, bottom 0.5em), converted to cm.
+const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTop: string; marginBottom: string }[] = [
+  { name: 'Heading_20_1', fontSize: '20pt', marginTop: '1.058cm', marginBottom: '0.353cm' },
+  { name: 'Heading_20_2', fontSize: '16pt', marginTop: '0.847cm', marginBottom: '0.282cm' },
+  { name: 'Heading_20_3', fontSize: '14pt', marginTop: '0.741cm', marginBottom: '0.247cm' },
+];
 
 function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (!attrs) return false;
@@ -103,8 +125,11 @@ function applyListItemAlignments(odtBytes: Uint8Array, aligns: (AlignValue | nul
   content = content.replace('</office:automatic-styles>', `${newStyles}\n</office:automatic-styles>`);
 
   files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
 
-  // Re-zip preserving ODF's mimetype-first uncompressed requirement.
+// Re-zip an unpacked ODF, preserving the mimetype-first uncompressed requirement.
+function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
   const mimetype = files['mimetype'];
   const out: Record<string, [Uint8Array, { level: 0 | 6 }]> = {};
   if (mimetype) out['mimetype'] = [mimetype, { level: 0 }];
@@ -113,6 +138,40 @@ function applyListItemAlignments(odtBytes: Uint8Array, aligns: (AlignValue | nul
     out[path] = [data, { level: 6 }];
   }
   return zipSync(out);
+}
+
+// Rewrite styles.xml so the exported document matches the editor's preview:
+//  • default font Liberation Serif → Times New Roman (metric-identical; renders
+//    the same in the editor, LibreOffice, and Word — see EXPORT_FONT).
+//  • Heading_20_1/2/3 sizes & margins → the editor's values (odf-kit's defaults
+//    are larger). See HEADING_STYLE_OVERRIDES.
+function rewriteStylesXml(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const stylesBytes = files['styles.xml'];
+  if (!stylesBytes) return odtBytes;
+
+  let styles = strFromU8(stylesBytes);
+
+  // The only occurrences of "Liberation Serif" in styles.xml are the default
+  // font-face declaration and the Standard style's font-name attributes.
+  styles = styles.split(ODFKIT_DEFAULT_FONT).join(EXPORT_FONT);
+
+  // Scope each rewrite to its own <style:style …>…</style:style> block so the
+  // font-size/margin replacements never bleed across heading levels.
+  for (const { name, fontSize, marginTop, marginBottom } of HEADING_STYLE_OVERRIDES) {
+    const re = new RegExp(`<style:style style:name="${name}"[\\s\\S]*?</style:style>`);
+    styles = styles.replace(re, (block) =>
+      block
+        .replace(/fo:font-size="[^"]*"/g, `fo:font-size="${fontSize}"`)
+        .replace(/style:font-size-asian="[^"]*"/g, `style:font-size-asian="${fontSize}"`)
+        .replace(/style:font-size-complex="[^"]*"/g, `style:font-size-complex="${fontSize}"`)
+        .replace(/fo:margin-top="[^"]*"/g, `fo:margin-top="${marginTop}"`)
+        .replace(/fo:margin-bottom="[^"]*"/g, `fo:margin-bottom="${marginBottom}"`),
+    );
+  }
+
+  files['styles.xml'] = strToU8(styles);
+  return rezipOdt(files);
 }
 
 // ODF requires fo:color in `#RRGGBB` form. TipTap stores whatever string went
@@ -157,7 +216,12 @@ function applyRuns(p: ParagraphBuilder, content: TiptapNode[] = []) {
     if (marks.some(m => m.type === 'bold'))      fmt.bold = true;
     if (marks.some(m => m.type === 'italic'))     fmt.italic = true;
     if (marks.some(m => m.type === 'underline'))  fmt.underline = true;
-    if (tsm?.attrs?.fontFamily) fmt.fontFamily = String(tsm.attrs.fontFamily);
+    if (tsm?.attrs?.fontFamily) {
+      const ff = String(tsm.attrs.fontFamily);
+      // Explicitly choosing the editor default should match the untagged
+      // default, which resolves to EXPORT_FONT via the Standard style.
+      fmt.fontFamily = ff === ODFKIT_DEFAULT_FONT ? EXPORT_FONT : ff;
+    }
     if (tsm?.attrs?.fontSize)   fmt.fontSize   = String(tsm.attrs.fontSize);
     if (tsm?.attrs?.color) {
       const c = normalizeColor(String(tsm.attrs.color));
@@ -172,6 +236,10 @@ export async function exportToOdt(editor: Editor): Promise<void> {
   const json = injectCustomTypes(raw);
 
   const odt = await tiptapToOdt(json, {
+    marginTop: PAGE_MARGIN_V,
+    marginBottom: PAGE_MARGIN_V,
+    marginLeft: PAGE_MARGIN_H,
+    marginRight: PAGE_MARGIN_H,
     unknownNodeHandler(node: TiptapNode, doc: OdtDocument) {
       const opts: { lineHeight?: number | string; align?: AlignValue } = {};
       if (node.attrs?.lineHeight != null) {
@@ -202,7 +270,8 @@ export async function exportToOdt(editor: Editor): Promise<void> {
 
   const listAligns: (AlignValue | null)[] = [];
   collectListItemAligns(raw, listAligns);
-  const finalBytes = applyListItemAlignments(odt as Uint8Array, listAligns);
+  const aligned = applyListItemAlignments(odt as Uint8Array, listAligns);
+  const finalBytes = rewriteStylesXml(aligned);
 
   const blob = new Blob([finalBytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.oasis.opendocument.text' });
   const url = URL.createObjectURL(blob);

@@ -23,8 +23,12 @@
   padding: var(--page-margin-top) 80px var(--page-margin-bottom);
   outline: none;
   font-family: var(--font-serif);
-  font-size: 1.05rem;
-  line-height: 1;
+  /* 12pt matches odf-kit's Standard style and the toolbar's declared default. */
+  font-size: 12pt;
+  /* ODF/LibreOffice "single" spacing = the font's natural line height
+     (Liberation Serif ≈ 1.15× em), NOT 1.0× the font size like CSS unitless 1.
+     Keep this in sync with LINE_HEIGHT_RATIO in lineHeight.ts. */
+  line-height: 1.15;
   color: var(--color-page-text);
 
   /* Multi-page background: page surfaces separated by editor background */
@@ -102,23 +106,19 @@
 
 .paper .tiptap p {
   margin-top: 0;
-  margin-bottom: 0.75em;
+  /* matches odf-kit Standard style fo:margin-bottom (0.212cm ≈ 6pt) */
+  margin-bottom: 0.212cm;
 }
 
 .paper .tiptap h1,
 .paper .tiptap h2,
 .paper .tiptap h3 {
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.15;
   margin-top: 1.5em;
   margin-bottom: 0.5em;
 }
 
-.paper .tiptap h1:first-child,
-.paper .tiptap h2:first-child,
-.paper .tiptap h3:first-child {
-  margin-top: 0;
-}
 
 .paper .tiptap h1 {
   font-size: 20pt;
@@ -136,14 +136,14 @@
 .paper .tiptap ol {
   padding-left: 1.5rem;
   margin-top: 0;
-  margin-bottom: 0.75em;
+  margin-bottom: 0.212cm;
 }
 
 .paper .tiptap li {
   margin-top: 0;
   margin-bottom: 0;
   }
-  
+
   .paper .tiptap li p {
     margin-bottom: 0;
 }
