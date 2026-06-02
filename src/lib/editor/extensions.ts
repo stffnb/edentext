@@ -16,6 +16,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import TextAlign from '@tiptap/extension-text-align';
 import { PageBreaks } from './pageBreaks';
 import { LineHeight } from './lineHeight';
+import { ParagraphSpacing } from './paragraphSpacing';
 import { FormattingMarks } from './formattingMarks';
 
 export const extensions = [
@@ -31,6 +32,7 @@ export const extensions = [
   FontWeight,
   FontColor,
   LineHeight,
+  ParagraphSpacing,
   Heading.configure({ levels: [1, 2, 3] }),
   BulletList,
   OrderedList,

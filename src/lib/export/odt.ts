@@ -39,6 +39,8 @@ const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTop: stri
 function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (!attrs) return false;
   if (attrs.lineHeight) return true;
+  if (attrs.spaceBefore != null) return true;
+  if (attrs.spaceAfter != null) return true;
   const ta = attrs.textAlign;
   return ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify';
 }
@@ -60,40 +62,57 @@ function injectCustomTypes(node: TiptapNode, inList = false): TiptapNode {
   return node;
 }
 
-// Collect the alignment of each listItem's first paragraph, in DFS order —
-// matching the order that odf-kit emits <text:list-item> elements into
-// content.xml. Items without a non-default alignment yield null.
-function collectListItemAligns(node: TiptapNode, result: (AlignValue | null)[]): void {
+// Per-list-item paragraph properties carried over to the exported .odt.
+type ListItemStyle = {
+  align: AlignValue | null;
+  spaceBefore: number | null;
+  spaceAfter: number | null;
+};
+
+function listItemStyleIsEmpty(s: ListItemStyle): boolean {
+  return s.align === null && s.spaceBefore === null && s.spaceAfter === null;
+}
+
+// Collect the alignment + paragraph spacing of each listItem's first paragraph,
+// in DFS order — matching the order that odf-kit emits <text:list-item> elements
+// into content.xml. Items without overrides yield an all-null descriptor.
+function collectListItemStyles(node: TiptapNode, result: ListItemStyle[]): void {
   if (node.type === 'listItem') {
     const firstPara = node.content?.find(c => c.type === 'paragraph');
     const ta = firstPara?.attrs?.textAlign as AlignValue | undefined;
-    result.push(ta === 'center' || ta === 'right' || ta === 'justify' ? ta : null);
+    const sb = firstPara?.attrs?.spaceBefore;
+    const sa = firstPara?.attrs?.spaceAfter;
+    result.push({
+      align: ta === 'center' || ta === 'right' || ta === 'justify' ? ta : null,
+      spaceBefore: typeof sb === 'number' ? sb : null,
+      spaceAfter: typeof sa === 'number' ? sa : null,
+    });
     // Recurse into nested lists only (their listItems extend the DFS sequence).
     for (const child of node.content ?? []) {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
-        collectListItemAligns(child, result);
+        collectListItemStyles(child, result);
       }
     }
     return;
   }
   for (const child of node.content ?? []) {
-    collectListItemAligns(child, result);
+    collectListItemStyles(child, result);
   }
 }
 
 // odf-kit's ListBuilder doesn't support per-item paragraph options, so list-item
 // paragraphs always emit with text:style-name="List_20_Bullet" or "List_20_Number".
 // We rewrite content.xml to point those at custom automatic styles that inherit
-// from the list paragraph style and add fo:text-align.
-function applyListItemAlignments(odtBytes: Uint8Array, aligns: (AlignValue | null)[]): Uint8Array {
-  if (aligns.every(a => a === null)) return odtBytes;
+// from the list paragraph style and add fo:text-align / fo:margin-top / fo:margin-bottom.
+function applyListItemStyles(odtBytes: Uint8Array, styles: ListItemStyle[]): Uint8Array {
+  if (styles.every(listItemStyleIsEmpty)) return odtBytes;
 
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
   if (!contentBytes) return odtBytes;
 
   let content = strFromU8(contentBytes);
-  const styleDefs: { name: string; parent: string; align: AlignValue }[] = [];
+  const styleDefs: { name: string; parent: string; style: ListItemStyle }[] = [];
   const nameByKey = new Map<string, string>();
   let counter = 0;
   let idx = 0;
@@ -102,15 +121,15 @@ function applyListItemAlignments(odtBytes: Uint8Array, aligns: (AlignValue | nul
   content = content.replace(
     /(<text:list-item>\s*<text:p text:style-name=")(List_20_Bullet|List_20_Number)(")/g,
     (_match, pre, parentStyle, post) => {
-      const align = aligns[idx++];
-      if (!align) return `${pre}${parentStyle}${post}`;
-      const key = `${parentStyle}|${align}`;
+      const style = styles[idx++];
+      if (!style || listItemStyleIsEmpty(style)) return `${pre}${parentStyle}${post}`;
+      const key = `${parentStyle}|${style.align}|${style.spaceBefore}|${style.spaceAfter}`;
       let name = nameByKey.get(key);
       if (!name) {
         counter++;
         name = `LP${counter}`;
         nameByKey.set(key, name);
-        styleDefs.push({ name, parent: parentStyle, align });
+        styleDefs.push({ name, parent: parentStyle, style });
       }
       return `${pre}${name}${post}`;
     },
@@ -118,9 +137,13 @@ function applyListItemAlignments(odtBytes: Uint8Array, aligns: (AlignValue | nul
 
   if (styleDefs.length === 0) return odtBytes;
 
-  const newStyles = styleDefs.map(({ name, parent, align }) =>
-    `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties fo:text-align="${align}"/></style:style>`,
-  ).join('\n');
+  const newStyles = styleDefs.map(({ name, parent, style }) => {
+    const props: string[] = [];
+    if (style.align) props.push(`fo:text-align="${style.align}"`);
+    if (style.spaceBefore != null) props.push(`fo:margin-top="${style.spaceBefore}pt"`);
+    if (style.spaceAfter != null) props.push(`fo:margin-bottom="${style.spaceAfter}pt"`);
+    return `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${props.join(' ')}/></style:style>`;
+  }).join('\n');
 
   content = content.replace('</office:automatic-styles>', `${newStyles}\n</office:automatic-styles>`);
 
@@ -160,6 +183,20 @@ function rewriteStylesXml(odtBytes: Uint8Array): Uint8Array {
     '<style:master-page style:name="Default"',
     '<style:master-page style:name="Standard"',
   );
+
+  // List item paragraphs (List_20_Bullet/List_20_Number) inherit the Standard
+  // style's fo:margin-bottom (0.212cm). The editor zeroes the bottom margin on
+  // list items (editor.css: `li`/`li p` → margin-bottom: 0), so by default the
+  // gap between bullets is just line-height. Without this override every
+  // exported bullet would gain ~6pt of extra spacing vs. the editor preview.
+  // Items with an explicit paragraph spacing override this via their LP styles
+  // (see applyListItemStyles).
+  for (const name of ['List_20_Bullet', 'List_20_Number']) {
+    styles = styles.replace(
+      new RegExp(`(<style:style style:name="${name}"[^>]*?)/>`),
+      `$1><style:paragraph-properties fo:margin-bottom="0cm"/></style:style>`,
+    );
+  }
 
   // Scope each rewrite to its own <style:style …>…</style:style> block so the
   // font-size/margin replacements never bleed across heading levels.
@@ -246,7 +283,12 @@ export async function exportToOdt(editor: Editor): Promise<void> {
     marginLeft: PAGE_MARGIN_H,
     marginRight: PAGE_MARGIN_H,
     unknownNodeHandler(node: TiptapNode, doc: OdtDocument) {
-      const opts: { lineHeight?: number | string; align?: AlignValue } = {};
+      const opts: {
+        lineHeight?: number | string;
+        align?: AlignValue;
+        spaceBefore?: string;
+        spaceAfter?: string;
+      } = {};
       if (node.attrs?.lineHeight != null) {
         const lhRaw = String(node.attrs.lineHeight);
         const lhNum = parseFloat(lhRaw);
@@ -258,6 +300,8 @@ export async function exportToOdt(editor: Editor): Promise<void> {
       if (ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify') {
         opts.align = ta;
       }
+      if (node.attrs?.spaceBefore != null) opts.spaceBefore = `${node.attrs.spaceBefore}pt`;
+      if (node.attrs?.spaceAfter != null) opts.spaceAfter = `${node.attrs.spaceAfter}pt`;
       const content = node.content ?? [];
 
       if (node.type === CUST_P) {
@@ -273,10 +317,10 @@ export async function exportToOdt(editor: Editor): Promise<void> {
     },
   });
 
-  const listAligns: (AlignValue | null)[] = [];
-  collectListItemAligns(raw, listAligns);
-  const aligned = applyListItemAlignments(odt as Uint8Array, listAligns);
-  const finalBytes = rewriteStylesXml(aligned);
+  const listStyles: ListItemStyle[] = [];
+  collectListItemStyles(raw, listStyles);
+  const styledLists = applyListItemStyles(odt as Uint8Array, listStyles);
+  const finalBytes = rewriteStylesXml(styledLists);
 
   const blob = new Blob([finalBytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.oasis.opendocument.text' });
   const url = URL.createObjectURL(blob);

@@ -184,6 +184,64 @@
     return mixed ? '' : (lh ?? DEFAULT_LINE_HEIGHT);
   });
 
+  // Paragraph spacing (space above / below), in points. null = "Default" (the
+  // style/CSS default — see paragraphSpacing.ts). Shares the line-spacing dropdown.
+  const SPACING_PRESETS: (number | null)[] = [null, 0, 6, 12, 18, 24];
+
+  function spacingLabel(v: number | null): string {
+    return v === null ? 'Default' : `${v} pt`;
+  }
+
+  function currentSpacing(attr: 'spaceBefore' | 'spaceAfter'): number | null | '' {
+    if (tick < 0 || !editor) return null;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) {
+      return (editor.state.selection.$head.parent.attrs[attr] ?? null) as number | null;
+    }
+    let v: number | null | undefined;
+    let mixed = false;
+    editor.state.doc.nodesBetween(from, to, (node) => {
+      if (mixed || !(attr in node.attrs)) return;
+      const s = (node.attrs[attr] ?? null) as number | null;
+      if (v === undefined) v = s;
+      else if (v !== s) mixed = true;
+    });
+    return mixed ? '' : (v ?? null);
+  }
+
+  let currentSpaceBefore = $derived(currentSpacing('spaceBefore'));
+  let currentSpaceAfter = $derived(currentSpacing('spaceAfter'));
+
+  // Each spacing axis is a font-size–style combo: a free-text input plus a
+  // preset dropdown. Empty input = "Default" (null). State per axis.
+  let spaceBeforeOpen = $state(false);
+  let spaceAfterOpen = $state(false);
+  let spaceBeforeFocused = $state(false);
+  let spaceAfterFocused = $state(false);
+  let spaceBeforeInput = $state('');
+  let spaceAfterInput = $state('');
+
+  // Keep the inputs in sync with the selection while not being edited.
+  $effect(() => {
+    if (!spaceBeforeFocused) {
+      spaceBeforeInput = typeof currentSpaceBefore === 'number' ? String(currentSpaceBefore) : '';
+    }
+  });
+  $effect(() => {
+    if (!spaceAfterFocused) {
+      spaceAfterInput = typeof currentSpaceAfter === 'number' ? String(currentSpaceAfter) : '';
+    }
+  });
+
+  // Close the per-axis preset lists whenever the parent dropdown closes so they
+  // don't reappear open on the next open.
+  $effect(() => {
+    if (!lineHeightOpen) {
+      spaceBeforeOpen = false;
+      spaceAfterOpen = false;
+    }
+  });
+
   // Row 1 = greyscale, row 2 = standard hues. Rows 3–7 are generated per column
   // as a light→dark gradient over the same hue, so each column reads as a shade ramp.
   const COLUMN_HUES: { h: number; sBase: number }[] = [
@@ -417,6 +475,85 @@
     if (!editor) return;
     lineHeightOpen = false;
     editor.chain().focus().setLineHeight(value).run();
+  }
+
+  // Apply a resolved spacing value (pt number, or null for "Default") to the axis.
+  // Restores the saved selection so applying from the input doesn't lose it.
+  function applySpaceValue(axis: 'before' | 'after', value: number | null) {
+    if (!editor) return;
+    const from = savedFrom ?? editor.state.selection.from;
+    const to   = savedTo   ?? editor.state.selection.to;
+    savedFrom = null;
+    savedTo   = null;
+    const chain = editor.chain().focus().setTextSelection({ from, to });
+    (axis === 'before' ? chain.setSpaceBefore(value) : chain.setSpaceAfter(value)).run();
+  }
+
+  // Parse a free-text input. Empty → Default (null); otherwise a non-negative pt
+  // number (capped). Invalid input is ignored.
+  function applySpaceInput(axis: 'before' | 'after', raw: string) {
+    const t = raw.trim();
+    if (t === '') return applySpaceValue(axis, null);
+    const n = parseFloat(t);
+    if (isNaN(n) || n < 0 || n > 200) return;
+    applySpaceValue(axis, n);
+  }
+
+  function onSpaceFocus(axis: 'before' | 'after', e: FocusEvent) {
+    if (!editor) return;
+    fontOpen = false;
+    sizeOpen = false;
+    sizeInputFocused = false;
+    alignOpen = false;
+    colorOpen = false;
+    spaceBeforeOpen = false;
+    spaceAfterOpen = false;
+    if (axis === 'before') spaceBeforeFocused = true; else spaceAfterFocused = true;
+    savedFrom = editor.state.selection.from;
+    savedTo = editor.state.selection.to;
+    (e.target as HTMLInputElement).select();
+  }
+
+  function onSpaceKeydown(axis: 'before' | 'after', e: KeyboardEvent) {
+    const input = e.target as HTMLInputElement;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      applySpaceInput(axis, input.value);
+      if (axis === 'before') spaceBeforeFocused = false; else spaceAfterFocused = false;
+      input.blur();
+    } else if (e.key === 'Escape') {
+      if (axis === 'before') spaceBeforeFocused = false; else spaceAfterFocused = false;
+      input.blur();
+    }
+  }
+
+  function onSpaceBlur(axis: 'before' | 'after') {
+    if (axis === 'before') spaceBeforeFocused = false; else spaceAfterFocused = false;
+  }
+
+  function openSpacePreset(axis: 'before' | 'after') {
+    if (!editor) return;
+    if (axis === 'before') {
+      spaceAfterOpen = false;
+      spaceBeforeOpen = !spaceBeforeOpen;
+    } else {
+      spaceBeforeOpen = false;
+      spaceAfterOpen = !spaceAfterOpen;
+    }
+  }
+
+  function pickSpacePreset(axis: 'before' | 'after', value: number | null) {
+    if (axis === 'before') spaceBeforeOpen = false; else spaceAfterOpen = false;
+    applySpaceValue(axis, value);
+  }
+
+  function spacePresetClickOutside(node: HTMLElement, axis: 'before' | 'after') {
+    function handler(e: MouseEvent) {
+      if (node.contains(e.target as Node)) return;
+      if (axis === 'before') spaceBeforeOpen = false; else spaceAfterOpen = false;
+    }
+    window.addEventListener('mousedown', handler);
+    return { destroy() { window.removeEventListener('mousedown', handler); } };
   }
 
   function lineHeightPickerClickOutside(node: HTMLElement) {
@@ -880,7 +1017,7 @@
     <div class="toolbar-separator"></div>
 
     <div class="lh-picker" use:lineHeightPickerClickOutside>
-      <button class="lh-trigger" onclick={openLineHeightPicker} title="Line spacing">
+      <button class="lh-trigger" onclick={openLineHeightPicker} title="Line &amp; paragraph spacing">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <line x1="5" y1="3"  x2="14" y2="3"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           <line x1="5" y1="8"  x2="14" y2="8"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -894,6 +1031,7 @@
       </button>
       {#if lineHeightOpen}
         <div class="lh-dropdown">
+          <div class="lh-section-label">Line spacing</div>
           {#each LINE_HEIGHTS as lh}
             <button
               class="lh-option"
@@ -901,6 +1039,72 @@
               onclick={() => pickLineHeight(lh.value)}
             >{lh.label}</button>
           {/each}
+
+          <div class="lh-section-label">Space before paragraph (pt)</div>
+          <div class="sp-field" use:spacePresetClickOutside={'before'}>
+            <div class="sp-input-wrap">
+              <input
+                type="text"
+                class="sp-input"
+                bind:value={spaceBeforeInput}
+                onfocus={(e) => onSpaceFocus('before', e)}
+                onkeydown={(e) => onSpaceKeydown('before', e)}
+                onblur={() => onSpaceBlur('before')}
+                placeholder="Default"
+                inputmode="decimal"
+                title="Space before paragraph (pt)"
+              />
+              <button class="sp-chevron" onclick={() => openSpacePreset('before')} tabindex="-1" title="Space before presets">
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                  <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            {#if spaceBeforeOpen}
+              <div class="sp-dropdown">
+                {#each SPACING_PRESETS as v}
+                  <button
+                    class="sp-option"
+                    class:active={currentSpaceBefore === v}
+                    onclick={() => pickSpacePreset('before', v)}
+                  >{spacingLabel(v)}</button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+
+          <div class="lh-section-label">Space after paragraph (pt)</div>
+          <div class="sp-field" use:spacePresetClickOutside={'after'}>
+            <div class="sp-input-wrap">
+              <input
+                type="text"
+                class="sp-input"
+                bind:value={spaceAfterInput}
+                onfocus={(e) => onSpaceFocus('after', e)}
+                onkeydown={(e) => onSpaceKeydown('after', e)}
+                onblur={() => onSpaceBlur('after')}
+                placeholder="Default"
+                inputmode="decimal"
+                title="Space after paragraph (pt)"
+              />
+              <button class="sp-chevron" onclick={() => openSpacePreset('after')} tabindex="-1" title="Space after presets">
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                  <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            {#if spaceAfterOpen}
+              <div class="sp-dropdown">
+                {#each SPACING_PRESETS as v}
+                  <button
+                    class="sp-option"
+                    class:active={currentSpaceAfter === v}
+                    onclick={() => pickSpacePreset('after', v)}
+                  >{spacingLabel(v)}</button>
+                {/each}
+              </div>
+            {/if}
+          </div>
         </div>
       {/if}
     </div>
@@ -1314,7 +1518,7 @@
     position: absolute;
     top: calc(100% + 3px);
     left: 0;
-    min-width: 110px;
+    min-width: 200px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -1323,6 +1527,121 @@
     padding: 2px;
     display: flex;
     flex-direction: column;
+  }
+
+  .lh-section-label {
+    padding: 0.4rem 0.6rem 0.2rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    user-select: none;
+  }
+
+  .lh-section-label:not(:first-child) {
+    margin-top: 4px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .sp-field {
+    position: relative;
+    padding: 0 2px 2px;
+  }
+
+  .sp-input-wrap {
+    display: flex;
+    align-items: center;
+    height: 1.9rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+
+  .sp-input-wrap:hover,
+  .sp-input-wrap:focus-within {
+    border-color: var(--color-primary);
+  }
+
+  .sp-input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0 0 0 0.5rem;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.8rem;
+    font-family: var(--font-sans);
+    outline: none;
+  }
+
+  .sp-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    min-width: unset;
+    height: 100%;
+    padding: 0;
+    border: none;
+    border-left: 1px solid var(--color-border);
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+  }
+
+  .sp-chevron:hover {
+    background: var(--color-btn-hover);
+  }
+
+  .sp-dropdown {
+    position: absolute;
+    top: calc(100% + 1px);
+    left: 2px;
+    right: 2px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    z-index: 210;
+    padding: 2px;
+    display: flex;
+    flex-direction: column;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  .sp-option {
+    display: block;
+    width: 100%;
+    padding: 0.3rem 0.6rem;
+    border: none;
+    border-radius: calc(var(--radius) - 2px);
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.8rem;
+    font-family: var(--font-sans);
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s;
+    min-width: unset;
+    height: auto;
+    justify-content: flex-start;
+  }
+
+  .sp-option:hover {
+    background: var(--color-btn-hover);
+  }
+
+  .sp-option.active {
+    background: var(--color-primary);
+    color: white;
   }
 
   .lh-option {
