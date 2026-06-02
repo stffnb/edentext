@@ -1,6 +1,7 @@
 import type { Editor } from '@tiptap/core';
 import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, type ParagraphBuilder } from 'odf-kit';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
+import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
@@ -19,12 +20,6 @@ const ODFKIT_DEFAULT_FONT = 'Liberation Serif';
 // (has the real TNR) both render with the same metrics as the editor.
 const EXPORT_FONT = 'Times New Roman';
 const DEFAULT_LINE_HEIGHT = 1;  // must match line-height multiplier default in ToolbarExpanded.svelte
-
-// Editor page geometry (see editor.css / pageBreaks.ts): 96px top/bottom and
-// 80px side padding on a 794px (≈A4) page. Match them so the exported text
-// column width — and therefore line wrapping and page flow — is identical.
-const PAGE_MARGIN_V = '2.54cm'; // 96px @96dpi
-const PAGE_MARGIN_H = '2.12cm'; // 80px @96dpi
 
 // Heading sizes/margins shown in the editor (editor.css). odf-kit's built-in
 // Heading_20_N styles use larger sizes (28/24/20pt), so we rewrite them on
@@ -288,15 +283,17 @@ function applyRuns(p: ParagraphBuilder, content: TiptapNode[] = []) {
   }
 }
 
-export async function exportToOdt(editor: Editor): Promise<void> {
+export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT_MARGINS): Promise<void> {
   const raw = editor.getJSON() as TiptapNode;
   const json = injectCustomTypes(raw);
 
   const odt = await tiptapToOdt(json, {
-    marginTop: PAGE_MARGIN_V,
-    marginBottom: PAGE_MARGIN_V,
-    marginLeft: PAGE_MARGIN_H,
-    marginRight: PAGE_MARGIN_H,
+    // Margins (cm) come from the Layout panel via App state. They match the
+    // editor's on-screen padding so exported line wrapping / page flow is identical.
+    marginTop: `${margins.top}cm`,
+    marginBottom: `${margins.bottom}cm`,
+    marginLeft: `${margins.left}cm`,
+    marginRight: `${margins.right}cm`,
     unknownNodeHandler(node: TiptapNode, doc: OdtDocument) {
       const opts: {
         lineHeight?: number | string;

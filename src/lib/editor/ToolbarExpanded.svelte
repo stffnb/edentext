@@ -7,8 +7,10 @@
     queryLocalFontsIfAllowed,
     supportsLocalFontAccess,
   } from './fontDetect';
+  import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 
-  let { editor, tick, showFormattingMarks = $bindable() }: { editor: Editor | null; tick: number; showFormattingMarks: boolean } = $props();
+  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS) }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins } = $props();
 
   type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
@@ -583,6 +585,92 @@
   function alignPickerClickOutside(node: HTMLElement) {
     function handler(e: MouseEvent) {
       if (!node.contains(e.target as Node)) alignOpen = false;
+    }
+    window.addEventListener('mousedown', handler);
+    return { destroy() { window.removeEventListener('mousedown', handler); } };
+  }
+
+  // --- Page layout / margins (cm) ---
+  type MarginAxis = 'top' | 'bottom' | 'left' | 'right';
+  const MARGIN_FIELDS: { axis: MarginAxis; label: string }[] = [
+    { axis: 'top',    label: 'Top'    },
+    { axis: 'bottom', label: 'Bottom' },
+    { axis: 'left',   label: 'Left'   },
+    { axis: 'right',  label: 'Right'  },
+  ];
+  const MARGIN_STEP = 0.1;
+  const MARGIN_MIN = 0;
+  const MARGIN_MAX = 10;
+
+  let layoutOpen = $state(false);
+  let marginInputs = $state<Record<MarginAxis, string>>({ top: '', bottom: '', left: '', right: '' });
+
+  function fmtCm(n: number): string {
+    return String(Math.round(n * 100) / 100);
+  }
+
+  // Refresh the editable display strings from the current margins. Called on open
+  // and after each change — no $effect, so there's no chance of a reactive loop
+  // and typing is never clobbered mid-edit.
+  function syncMarginInputs() {
+    marginInputs = {
+      top:    fmtCm(pageMargins.top),
+      bottom: fmtCm(pageMargins.bottom),
+      left:   fmtCm(pageMargins.left),
+      right:  fmtCm(pageMargins.right),
+    };
+  }
+
+  function setMargin(axis: MarginAxis, value: number) {
+    const clamped = Math.min(MARGIN_MAX, Math.max(MARGIN_MIN, Math.round(value * 100) / 100));
+    pageMargins = { ...pageMargins, [axis]: clamped };
+    marginInputs[axis] = fmtCm(clamped);
+  }
+
+  function stepMargin(axis: MarginAxis, delta: number) {
+    setMargin(axis, pageMargins[axis] + delta);
+  }
+
+  function commitMarginInput(axis: MarginAxis) {
+    const n = parseFloat(marginInputs[axis]);
+    if (Number.isNaN(n)) {
+      marginInputs[axis] = fmtCm(pageMargins[axis]); // revert invalid input
+      return;
+    }
+    setMargin(axis, n);
+  }
+
+  function onMarginKeydown(axis: MarginAxis, e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitMarginInput(axis);
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      marginInputs[axis] = fmtCm(pageMargins[axis]);
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      stepMargin(axis, MARGIN_STEP);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      stepMargin(axis, -MARGIN_STEP);
+    }
+  }
+
+  function openLayout() {
+    fontOpen = false;
+    sizeOpen = false;
+    sizeInputFocused = false;
+    lineHeightOpen = false;
+    colorOpen = false;
+    alignOpen = false;
+    layoutOpen = !layoutOpen;
+    if (layoutOpen) syncMarginInputs();
+  }
+
+  function layoutClickOutside(node: HTMLElement) {
+    function handler(e: MouseEvent) {
+      if (!node.contains(e.target as Node)) layoutOpen = false;
     }
     window.addEventListener('mousedown', handler);
     return { destroy() { window.removeEventListener('mousedown', handler); } };
@@ -1185,6 +1273,56 @@
 
     <div class="toolbar-separator"></div>
 
+    <div class="layout-picker" use:layoutClickOutside>
+      <button class="layout-trigger" onclick={openLayout} title="Page layout &amp; margins" aria-pressed={layoutOpen}>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="2.5" y="1.5" width="11" height="13" rx="1" stroke="currentColor" stroke-width="1.3"/>
+          <rect x="4.5" y="3.5" width="7" height="9" rx="0.5" stroke="currentColor" stroke-width="1" stroke-dasharray="2 1.5"/>
+        </svg>
+        <span class="layout-trigger-label">Layout</span>
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+          <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      {#if layoutOpen}
+        <div class="layout-dropdown">
+          <div class="lh-section-label">Page margins (cm)</div>
+          <div class="margin-grid">
+            {#each MARGIN_FIELDS as f}
+              <div class="margin-field">
+                <span class="margin-label">{f.label}</span>
+                <div class="margin-input-wrap">
+                  <input
+                    type="text"
+                    class="margin-input"
+                    bind:value={marginInputs[f.axis]}
+                    onkeydown={(e) => onMarginKeydown(f.axis, e)}
+                    onblur={() => commitMarginInput(f.axis)}
+                    inputmode="decimal"
+                    title="{f.label} margin (cm)"
+                  />
+                  <div class="margin-steppers">
+                    <button class="margin-step" tabindex="-1" onclick={() => stepMargin(f.axis, MARGIN_STEP)} title="Increase {f.label.toLowerCase()} margin" aria-label="Increase {f.label.toLowerCase()} margin">
+                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                        <path d="M1 5.5l3-3 3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                    <button class="margin-step" tabindex="-1" onclick={() => stepMargin(f.axis, -MARGIN_STEP)} title="Decrease {f.label.toLowerCase()} margin" aria-label="Decrease {f.label.toLowerCase()} margin">
+                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                        <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="toolbar-separator"></div>
+
     <div class="toolbar-group">
       <button
         class:active={showFormattingMarks}
@@ -1527,6 +1665,127 @@
     padding: 2px;
     display: flex;
     flex-direction: column;
+  }
+
+  .layout-picker {
+    position: relative;
+  }
+
+  .layout-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 2rem;
+    padding: 0 0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+    cursor: pointer;
+    min-width: unset;
+    transition: border-color 0.15s;
+  }
+
+  .layout-trigger:hover {
+    border-color: var(--color-primary);
+  }
+
+  .layout-trigger-label {
+    font-size: 0.8rem;
+    font-family: var(--font-sans);
+  }
+
+  .layout-dropdown {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 0;
+    width: 232px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    z-index: 200;
+    padding: 2px 2px 6px;
+  }
+
+  .margin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 4px 6px 2px;
+  }
+
+  .margin-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    /* Allow the grid track to shrink below the input's intrinsic width so the
+       fields stay inside the panel instead of overflowing to the right. */
+    min-width: 0;
+  }
+
+  .margin-label {
+    font-size: 0.72rem;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+  }
+
+  .margin-input-wrap {
+    display: flex;
+    align-items: stretch;
+    height: 1.9rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+
+  .margin-input-wrap:hover,
+  .margin-input-wrap:focus-within {
+    border-color: var(--color-primary);
+  }
+
+  .margin-input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0 0.4rem;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.8rem;
+    font-family: var(--font-sans);
+    outline: none;
+  }
+
+  .margin-steppers {
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--color-border);
+  }
+
+  .margin-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    min-width: unset;
+    height: 50%;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+  }
+
+  .margin-step:first-child {
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .margin-step:hover {
+    background: var(--color-btn-hover);
   }
 
   .lh-section-label {

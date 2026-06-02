@@ -13,14 +13,18 @@
 .paper .tiptap {
   --page-height: 1123px;
   --page-gap: 20px;
-  --page-margin-top: 96px;
-  --page-margin-bottom: 96px;
+  /* Driven by --user-margin-* set on :root from the Layout panel (pageMargins.ts).
+     Fallbacks preserve the original hardcoded layout when unset. */
+  --page-margin-top: var(--user-margin-top, 96px);
+  --page-margin-bottom: var(--user-margin-bottom, 96px);
+  --page-margin-left: var(--user-margin-left, 80px);
+  --page-margin-right: var(--user-margin-right, 80px);
   --page-cycle: calc(var(--page-height) + var(--page-gap));
 
   position: relative;
   width: 100%;
   min-height: var(--page-height);
-  padding: var(--page-margin-top) 80px var(--page-margin-bottom);
+  padding: var(--page-margin-top) var(--page-margin-right) var(--page-margin-bottom) var(--page-margin-left);
   outline: none;
   font-family: var(--font-serif);
   /* 12pt matches odf-kit's Standard style and the toolbar's declared default. */

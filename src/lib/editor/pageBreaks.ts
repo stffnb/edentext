@@ -48,27 +48,49 @@ export function getPageBreakDebug(view: EditorView): PageBreakDebugSnapshot | nu
   return debugAccessors.get(view)?.() ?? null;
 }
 
-// A4 page layout constants (px at 96 dpi)
+// A4 page layout constants (px at 96 dpi). The page box (height/gap/cycle) is
+// fixed; only the content-area inset (top/bottom margin) is user-adjustable, so
+// it's read per layout pass from the live padding instead of being a constant.
 const PAGE_HEIGHT = 1123;
 const PAGE_GAP = 20;
-const PAGE_MARGIN_TOP = 96;
-const PAGE_MARGIN_BOTTOM = 96;
-const CONTENT_HEIGHT = PAGE_HEIGHT - PAGE_MARGIN_TOP - PAGE_MARGIN_BOTTOM; // 931
+const DEFAULT_MARGIN_TOP = 96;
+const DEFAULT_MARGIN_BOTTOM = 96;
 const CYCLE = PAGE_HEIGHT + PAGE_GAP; // 1143
 
-function pageContentStart(page: number): number {
-  return (page - 1) * CYCLE + PAGE_MARGIN_TOP;
+type VMargins = { top: number; bottom: number; contentHeight: number };
+
+// Reads the vertical page margins (px) from the --user-margin-* custom props the
+// Layout panel writes via applyMarginVars (pageMargins.ts). These are plain px
+// strings in document coordinates — unaffected by the ancestor CSS `zoom`, unlike
+// getComputedStyle padding — so they pair directly with the unscaled offsetTop
+// measurements below. Side margins don't affect pagination (they change line
+// wrapping, which we already measure from the live DOM), so we ignore them.
+function readVerticalMargins(dom: HTMLElement): VMargins {
+  const cs = getComputedStyle(dom);
+  const top = parseFloat(cs.getPropertyValue('--user-margin-top'));
+  const bottom = parseFloat(cs.getPropertyValue('--user-margin-bottom'));
+  const mt = Number.isFinite(top) ? top : DEFAULT_MARGIN_TOP;
+  const mb = Number.isFinite(bottom) ? bottom : DEFAULT_MARGIN_BOTTOM;
+  return { top: mt, bottom: mb, contentHeight: PAGE_HEIGHT - mt - mb };
 }
 
-function pageContentEnd(page: number): number {
-  return (page - 1) * CYCLE + PAGE_MARGIN_TOP + CONTENT_HEIGHT;
+function pageContentStart(page: number, marginTop: number): number {
+  return (page - 1) * CYCLE + marginTop;
+}
+
+function pageContentEnd(page: number, marginTop: number, contentHeight: number): number {
+  return (page - 1) * CYCLE + marginTop + contentHeight;
 }
 
 function getPageForY(y: number): number {
   return Math.floor(y / CYCLE) + 1;
 }
 
-const pageBreakKey = new PluginKey('pageBreaks');
+const pageBreakKey = new PluginKey<number>('pageBreaks');
+
+// Transaction meta flag: set it (e.g. when page margins change) to force a
+// pagination recompute even though the document content is unchanged.
+export const FORCE_PAGE_RECALC = 'forcePageBreakRecalc';
 
 type Leaf = {
   el: HTMLElement;
@@ -90,8 +112,17 @@ export const PageBreaks = Extension.create({
     let rafId: number | null = null;
     let lastPlacementsKey = '';
 
-    const plugin = new Plugin({
+    const plugin = new Plugin<number>({
       key: pageBreakKey,
+      // A counter bumped whenever a FORCE_PAGE_RECALC transaction arrives. The
+      // plugin's own decoration dispatches don't carry that meta, so this never
+      // self-triggers. `update` reschedules a layout pass when the counter moves.
+      state: {
+        init: () => 0,
+        apply(tr, value) {
+          return tr.getMeta(FORCE_PAGE_RECALC) ? value + 1 : value;
+        },
+      },
       props: {
         decorations() {
           return decorations;
@@ -376,6 +407,9 @@ export const PageBreaks = Extension.create({
           const dom = editorView.dom;
           void dom.offsetHeight; // force reflow
 
+          const vm = readVerticalMargins(dom);
+          const CONTENT_HEIGHT = vm.contentHeight;
+
           const zoom = getZoomFactor();
           const leaves = collectLeaves(zoom);
 
@@ -389,8 +423,8 @@ export const PageBreaks = Extension.create({
             const effectiveTop = leaf.naturalTop + cumulativeShift;
             const effectiveBottom = effectiveTop + leaf.naturalHeight;
             const page = getPageForY(effectiveTop);
-            const contentStart = pageContentStart(page);
-            const contentEnd = pageContentEnd(page);
+            const contentStart = pageContentStart(page, vm.top);
+            const contentEnd = pageContentEnd(page, vm.top, CONTENT_HEIGHT);
 
             let spacerHeight = 0;
             let spacerDocPos: number | null = null;
@@ -401,13 +435,13 @@ export const PageBreaks = Extension.create({
               spacerDocPos = preLeafDocPos(leaf.el);
               reason = 'pre-leaf-push-to-content-start';
             } else if (effectiveTop >= contentEnd) {
-              spacerHeight = pageContentStart(page + 1) - effectiveTop;
+              spacerHeight = pageContentStart(page + 1, vm.top) - effectiveTop;
               spacerDocPos = preLeafDocPos(leaf.el);
               reason = 'leaf-jump-to-next-page';
             } else if (effectiveBottom > contentEnd) {
               if (leaf.kind === 'atomic') {
                 if (leaf.naturalHeight <= CONTENT_HEIGHT) {
-                  spacerHeight = pageContentStart(page + 1) - effectiveTop;
+                  spacerHeight = pageContentStart(page + 1, vm.top) - effectiveTop;
                   spacerDocPos = preLeafDocPos(leaf.el);
                   reason = 'atomic-push-to-next-page';
                 } else {
@@ -417,14 +451,14 @@ export const PageBreaks = Extension.create({
                 const split = findLineSplit(leaf.el, contentEnd - effectiveTop, zoom);
                 if (split === null) {
                   if (leaf.naturalHeight <= CONTENT_HEIGHT) {
-                    spacerHeight = pageContentStart(page + 1) - effectiveTop;
+                    spacerHeight = pageContentStart(page + 1, vm.top) - effectiveTop;
                     spacerDocPos = preLeafDocPos(leaf.el);
                     reason = 'split-fallback-push-whole-leaf';
                   } else {
                     reason = 'splittable-too-tall-no-push';
                   }
                 } else {
-                  spacerHeight = pageContentStart(page + 1) - (effectiveTop + split.naturalLineTop);
+                  spacerHeight = pageContentStart(page + 1, vm.top) - (effectiveTop + split.naturalLineTop);
                   spacerDocPos = split.docPos;
                   reason = 'line-split';
                 }
@@ -509,8 +543,8 @@ export const PageBreaks = Extension.create({
             layout: {
               PAGE_HEIGHT,
               PAGE_GAP,
-              PAGE_MARGIN_TOP,
-              PAGE_MARGIN_BOTTOM,
+              PAGE_MARGIN_TOP: vm.top,
+              PAGE_MARGIN_BOTTOM: vm.bottom,
               CONTENT_HEIGHT,
               CYCLE,
             },
@@ -533,7 +567,9 @@ export const PageBreaks = Extension.create({
 
         return {
           update(_view, prevState) {
-            if (!isUpdating && prevState.doc !== editorView.state.doc) {
+            const forced =
+              pageBreakKey.getState(prevState) !== pageBreakKey.getState(editorView.state);
+            if (!isUpdating && (prevState.doc !== editorView.state.doc || forced)) {
               schedule();
             }
           },

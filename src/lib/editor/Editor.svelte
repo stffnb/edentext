@@ -5,13 +5,40 @@
   import type { Node as PmNode, MarkType } from 'prosemirror-model';
   import { extensions } from './extensions';
   import { saveDocument, loadDocument } from '../storage/autosave';
+  import { applyMarginVars, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
+  import { FORCE_PAGE_RECALC } from './pageBreaks';
   import '../../styles/editor.css';
 
   const DEFAULT_EDITOR_FONT = 'Georgia'; // must match ToolbarExpanded.svelte
 
-  let { editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1), zoom = 100, showFormattingMarks = false }: {
-    editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number; showFormattingMarks?: boolean;
+  let { editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1), zoom = 100, showFormattingMarks = false, pageMargins = DEFAULT_MARGINS }: {
+    editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number; showFormattingMarks?: boolean; pageMargins?: PageMargins;
   } = $props();
+
+  // Apply the page margins to the :root CSS vars (visual padding + pagination
+  // both read these). This only touches the DOM, so it's safe inside an effect.
+  $effect(() => {
+    applyMarginVars(pageMargins);
+  });
+
+  // Nudge the pageBreaks plugin to recompute with the new content area. The
+  // dispatch bumps the `tick`/`numPages` bindings (via onTransaction/pm-pagecount),
+  // so it must run OUTSIDE the Svelte effect flush — otherwise the child↔parent
+  // binding updates re-enter and trip effect_update_depth_exceeded. requestAnimation-
+  // Frame defers it past the flush; the empty transaction changes no document content.
+  let marginRecalcRaf = 0;
+  $effect(() => {
+    // track each margin so the effect re-runs on any change
+    void (pageMargins.top + pageMargins.bottom + pageMargins.left + pageMargins.right);
+    const ed = editor;
+    if (!ed) return;
+    cancelAnimationFrame(marginRecalcRaf);
+    marginRecalcRaf = requestAnimationFrame(() => {
+      ed.view.dispatch(
+        ed.state.tr.setMeta('addToHistory', false).setMeta(FORCE_PAGE_RECALC, true),
+      );
+    });
+  });
 
   let element: HTMLDivElement;
   let editorContainer: HTMLDivElement;
@@ -154,6 +181,7 @@
 
   onDestroy(() => {
     if (zoomRaf !== null) cancelAnimationFrame(zoomRaf);
+    cancelAnimationFrame(marginRecalcRaf);
     editor?.destroy();
     element?.removeEventListener('pm-pagecount', onPageCount);
     editorContainer?.removeEventListener('scroll', updateCurrentPage);

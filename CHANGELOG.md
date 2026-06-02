@@ -29,9 +29,10 @@
 - Zoom feature
 - font selection
 - font size selection
-- line spacing button
+- line spacing + paragraph spacing
 - text alignment
 - show formatting marks
+- margins
 
 ### Not yet implemented
 - ODT import / open existing file
@@ -51,7 +52,6 @@
   1 cm on paper ≈ 1 cm on screen. Possible future fix: add a user-side
   calibration (DPI value or visual ruler) that scales the `zoom` factor.
   Decided 2026-05-26 not worth the effort for now.
-- limited font types to make sure it works on all browsers ("web safe fonts")
 
 ---
 
