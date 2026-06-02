@@ -62,15 +62,22 @@ function injectCustomTypes(node: TiptapNode, inList = false): TiptapNode {
   return node;
 }
 
+// Mirror odf-kit's normalizeLineHeight (content.js): a number is a multiplier
+// (1.5 → "150%"); a string with a unit passes through ("18pt" → "18pt").
+function normalizeLineHeight(lh: number | string): string {
+  return typeof lh === 'number' ? `${Math.round(lh * 100)}%` : lh;
+}
+
 // Per-list-item paragraph properties carried over to the exported .odt.
 type ListItemStyle = {
   align: AlignValue | null;
   spaceBefore: number | null;
   spaceAfter: number | null;
+  lineHeight: number | string | null;
 };
 
 function listItemStyleIsEmpty(s: ListItemStyle): boolean {
-  return s.align === null && s.spaceBefore === null && s.spaceAfter === null;
+  return s.align === null && s.spaceBefore === null && s.spaceAfter === null && s.lineHeight === null;
 }
 
 // Collect the alignment + paragraph spacing of each listItem's first paragraph,
@@ -82,10 +89,17 @@ function collectListItemStyles(node: TiptapNode, result: ListItemStyle[]): void 
     const ta = firstPara?.attrs?.textAlign as AlignValue | undefined;
     const sb = firstPara?.attrs?.spaceBefore;
     const sa = firstPara?.attrs?.spaceAfter;
+    const lh = firstPara?.attrs?.lineHeight;
+    let lineHeight: number | string | null = null;
+    if (lh != null) {
+      const lhNum = parseFloat(String(lh));
+      lineHeight = isNaN(lhNum) ? String(lh) : lhNum;
+    }
     result.push({
       align: ta === 'center' || ta === 'right' || ta === 'justify' ? ta : null,
       spaceBefore: typeof sb === 'number' ? sb : null,
       spaceAfter: typeof sa === 'number' ? sa : null,
+      lineHeight,
     });
     // Recurse into nested lists only (their listItems extend the DFS sequence).
     for (const child of node.content ?? []) {
@@ -123,7 +137,7 @@ function applyListItemStyles(odtBytes: Uint8Array, styles: ListItemStyle[]): Uin
     (_match, pre, parentStyle, post) => {
       const style = styles[idx++];
       if (!style || listItemStyleIsEmpty(style)) return `${pre}${parentStyle}${post}`;
-      const key = `${parentStyle}|${style.align}|${style.spaceBefore}|${style.spaceAfter}`;
+      const key = `${parentStyle}|${style.align}|${style.spaceBefore}|${style.spaceAfter}|${style.lineHeight}`;
       let name = nameByKey.get(key);
       if (!name) {
         counter++;
@@ -142,6 +156,7 @@ function applyListItemStyles(odtBytes: Uint8Array, styles: ListItemStyle[]): Uin
     if (style.align) props.push(`fo:text-align="${style.align}"`);
     if (style.spaceBefore != null) props.push(`fo:margin-top="${style.spaceBefore}pt"`);
     if (style.spaceAfter != null) props.push(`fo:margin-bottom="${style.spaceAfter}pt"`);
+    if (style.lineHeight != null) props.push(`fo:line-height="${normalizeLineHeight(style.lineHeight)}"`);
     return `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${props.join(' ')}/></style:style>`;
   }).join('\n');
 
