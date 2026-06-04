@@ -2,6 +2,7 @@ import type { Editor } from '@tiptap/core';
 import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, type ParagraphBuilder } from 'odf-kit';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
+import type { Orientation } from '../storage/pageOrientation';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
@@ -283,11 +284,14 @@ function applyRuns(p: ParagraphBuilder, content: TiptapNode[] = []) {
   }
 }
 
-export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT_MARGINS): Promise<void> {
+export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait'): Promise<void> {
   const raw = editor.getJSON() as TiptapNode;
   const json = injectCustomTypes(raw);
 
   const odt = await tiptapToOdt(json, {
+    // Orientation comes from the Layout panel; odf-kit swaps the A4 dimensions
+    // automatically (29.7×21cm) and writes style:print-orientation accordingly.
+    orientation,
     // Margins (cm) come from the Layout panel via App state. They match the
     // editor's on-screen padding so exported line wrapping / page flow is identical.
     marginTop: `${margins.top}cm`,

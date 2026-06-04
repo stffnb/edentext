@@ -48,20 +48,27 @@ export function getPageBreakDebug(view: EditorView): PageBreakDebugSnapshot | nu
   return debugAccessors.get(view)?.() ?? null;
 }
 
-// A4 page layout constants (px at 96 dpi). The page box (height/gap/cycle) is
-// fixed; only the content-area inset (top/bottom margin) is user-adjustable, so
-// it's read per layout pass from the live padding instead of being a constant.
+// A4 page layout constants (px at 96 dpi). The page height (and thus cycle) is
+// orientation-dependent and the content-area inset (top/bottom margin) is
+// user-adjustable, so both are read per layout pass from live CSS vars instead
+// of being constants — the values below are only portrait fallbacks.
 const PAGE_HEIGHT = 1123;
 const PAGE_GAP = 20;
 const DEFAULT_MARGIN_TOP = 96;
 const DEFAULT_MARGIN_BOTTOM = 96;
-const CYCLE = PAGE_HEIGHT + PAGE_GAP; // 1143
 
-type VMargins = { top: number; bottom: number; contentHeight: number };
+type VMargins = {
+  top: number;
+  bottom: number;
+  contentHeight: number;
+  pageHeight: number;
+  cycle: number;
+};
 
-// Reads the vertical page margins (px) from the --user-margin-* custom props the
-// Layout panel writes via applyMarginVars (pageMargins.ts). These are plain px
-// strings in document coordinates — unaffected by the ancestor CSS `zoom`, unlike
+// Reads the vertical page margins + page height (px) from the --user-* custom
+// props the Layout panel writes via applyMarginVars (pageMargins.ts) and
+// applyOrientationVars (pageOrientation.ts). These are plain px strings in
+// document coordinates — unaffected by the ancestor CSS `zoom`, unlike
 // getComputedStyle padding — so they pair directly with the unscaled offsetTop
 // measurements below. Side margins don't affect pagination (they change line
 // wrapping, which we already measure from the live DOM), so we ignore them.
@@ -69,21 +76,29 @@ function readVerticalMargins(dom: HTMLElement): VMargins {
   const cs = getComputedStyle(dom);
   const top = parseFloat(cs.getPropertyValue('--user-margin-top'));
   const bottom = parseFloat(cs.getPropertyValue('--user-margin-bottom'));
+  const ph = parseFloat(cs.getPropertyValue('--user-page-height'));
   const mt = Number.isFinite(top) ? top : DEFAULT_MARGIN_TOP;
   const mb = Number.isFinite(bottom) ? bottom : DEFAULT_MARGIN_BOTTOM;
-  return { top: mt, bottom: mb, contentHeight: PAGE_HEIGHT - mt - mb };
+  const pageHeight = Number.isFinite(ph) ? ph : PAGE_HEIGHT;
+  return {
+    top: mt,
+    bottom: mb,
+    contentHeight: pageHeight - mt - mb,
+    pageHeight,
+    cycle: pageHeight + PAGE_GAP,
+  };
 }
 
-function pageContentStart(page: number, marginTop: number): number {
-  return (page - 1) * CYCLE + marginTop;
+function pageContentStart(page: number, marginTop: number, cycle: number): number {
+  return (page - 1) * cycle + marginTop;
 }
 
-function pageContentEnd(page: number, marginTop: number, contentHeight: number): number {
-  return (page - 1) * CYCLE + marginTop + contentHeight;
+function pageContentEnd(page: number, marginTop: number, contentHeight: number, cycle: number): number {
+  return (page - 1) * cycle + marginTop + contentHeight;
 }
 
-function getPageForY(y: number): number {
-  return Math.floor(y / CYCLE) + 1;
+function getPageForY(y: number, cycle: number): number {
+  return Math.floor(y / cycle) + 1;
 }
 
 const pageBreakKey = new PluginKey<number>('pageBreaks');
@@ -409,6 +424,7 @@ export const PageBreaks = Extension.create({
 
           const vm = readVerticalMargins(dom);
           const CONTENT_HEIGHT = vm.contentHeight;
+          const CYCLE_PX = vm.cycle;
 
           const zoom = getZoomFactor();
           const leaves = collectLeaves(zoom);
@@ -422,9 +438,9 @@ export const PageBreaks = Extension.create({
             const leaf = leaves[i];
             const effectiveTop = leaf.naturalTop + cumulativeShift;
             const effectiveBottom = effectiveTop + leaf.naturalHeight;
-            const page = getPageForY(effectiveTop);
-            const contentStart = pageContentStart(page, vm.top);
-            const contentEnd = pageContentEnd(page, vm.top, CONTENT_HEIGHT);
+            const page = getPageForY(effectiveTop, CYCLE_PX);
+            const contentStart = pageContentStart(page, vm.top, CYCLE_PX);
+            const contentEnd = pageContentEnd(page, vm.top, CONTENT_HEIGHT, CYCLE_PX);
 
             let spacerHeight = 0;
             let spacerDocPos: number | null = null;
@@ -435,13 +451,13 @@ export const PageBreaks = Extension.create({
               spacerDocPos = preLeafDocPos(leaf.el);
               reason = 'pre-leaf-push-to-content-start';
             } else if (effectiveTop >= contentEnd) {
-              spacerHeight = pageContentStart(page + 1, vm.top) - effectiveTop;
+              spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - effectiveTop;
               spacerDocPos = preLeafDocPos(leaf.el);
               reason = 'leaf-jump-to-next-page';
             } else if (effectiveBottom > contentEnd) {
               if (leaf.kind === 'atomic') {
                 if (leaf.naturalHeight <= CONTENT_HEIGHT) {
-                  spacerHeight = pageContentStart(page + 1, vm.top) - effectiveTop;
+                  spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - effectiveTop;
                   spacerDocPos = preLeafDocPos(leaf.el);
                   reason = 'atomic-push-to-next-page';
                 } else {
@@ -451,14 +467,14 @@ export const PageBreaks = Extension.create({
                 const split = findLineSplit(leaf.el, contentEnd - effectiveTop, zoom);
                 if (split === null) {
                   if (leaf.naturalHeight <= CONTENT_HEIGHT) {
-                    spacerHeight = pageContentStart(page + 1, vm.top) - effectiveTop;
+                    spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - effectiveTop;
                     spacerDocPos = preLeafDocPos(leaf.el);
                     reason = 'split-fallback-push-whole-leaf';
                   } else {
                     reason = 'splittable-too-tall-no-push';
                   }
                 } else {
-                  spacerHeight = pageContentStart(page + 1, vm.top) - (effectiveTop + split.naturalLineTop);
+                  spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - (effectiveTop + split.naturalLineTop);
                   spacerDocPos = split.docPos;
                   reason = 'line-split';
                 }
@@ -478,7 +494,7 @@ export const PageBreaks = Extension.create({
               effectiveTop,
               effectiveBottom,
               pageOfTop: page,
-              pageOfBottom: getPageForY(effectiveBottom),
+              pageOfBottom: getPageForY(effectiveBottom, CYCLE_PX),
               contentStart,
               contentEnd,
               overflowsPageEnd: effectiveBottom > contentEnd,
@@ -531,9 +547,9 @@ export const PageBreaks = Extension.create({
           if (leaves.length > 0) {
             const lastLeaf = leaves[leaves.length - 1];
             const effectiveBottom = lastLeaf.naturalTop + cumulativeShift + lastLeaf.naturalHeight;
-            numPages = Math.max(1, getPageForY(effectiveBottom));
+            numPages = Math.max(1, getPageForY(effectiveBottom, CYCLE_PX));
           }
-          const targetHeight = numPages * CYCLE - PAGE_GAP;
+          const targetHeight = numPages * CYCLE_PX - PAGE_GAP;
           dom.style.minHeight = `${targetHeight}px`;
 
           dom.dispatchEvent(new CustomEvent('pm-pagecount', { bubbles: true, detail: { numPages } }));
@@ -541,12 +557,12 @@ export const PageBreaks = Extension.create({
           lastSnapshot = {
             timestamp: new Date().toISOString(),
             layout: {
-              PAGE_HEIGHT,
+              PAGE_HEIGHT: vm.pageHeight,
               PAGE_GAP,
               PAGE_MARGIN_TOP: vm.top,
               PAGE_MARGIN_BOTTOM: vm.bottom,
               CONTENT_HEIGHT,
-              CYCLE,
+              CYCLE: CYCLE_PX,
             },
             numPages,
             leaves: leavesDebug,

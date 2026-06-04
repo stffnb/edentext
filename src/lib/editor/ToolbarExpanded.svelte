@@ -8,9 +8,10 @@
     supportsLocalFontAccess,
   } from './fontDetect';
   import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
+  import type { Orientation } from '../storage/pageOrientation';
 
-  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS) }:
-    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins } = $props();
+  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait') }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation } = $props();
 
   type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
@@ -1286,6 +1287,33 @@
       </button>
       {#if layoutOpen}
         <div class="layout-dropdown">
+          <div class="lh-section-label">Orientation</div>
+          <div class="orientation-row">
+            <button
+              class="orientation-btn"
+              class:active={pageOrientation === 'portrait'}
+              aria-pressed={pageOrientation === 'portrait'}
+              onclick={() => (pageOrientation = 'portrait')}
+              title="Portrait"
+            >
+              <svg width="14" height="16" viewBox="0 0 14 16" fill="none" aria-hidden="true">
+                <rect x="2.5" y="1.5" width="9" height="13" rx="1" stroke="currentColor" stroke-width="1.3"/>
+              </svg>
+              <span>Portrait</span>
+            </button>
+            <button
+              class="orientation-btn"
+              class:active={pageOrientation === 'landscape'}
+              aria-pressed={pageOrientation === 'landscape'}
+              onclick={() => (pageOrientation = 'landscape')}
+              title="Landscape"
+            >
+              <svg width="16" height="14" viewBox="0 0 16 14" fill="none" aria-hidden="true">
+                <rect x="1.5" y="2.5" width="13" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/>
+              </svg>
+              <span>Landscape</span>
+            </button>
+          </div>
           <div class="lh-section-label">Page margins (cm)</div>
           <div class="margin-grid">
             {#each MARGIN_FIELDS as f}
@@ -1706,6 +1734,39 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     z-index: 200;
     padding: 2px 2px 6px;
+  }
+
+  .orientation-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 4px 6px 2px;
+  }
+
+  .orientation-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px 4px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    cursor: pointer;
+  }
+
+  .orientation-btn:hover {
+    background: var(--color-btn-hover);
+  }
+
+  .orientation-btn.active {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: white;
   }
 
   .margin-grid {

@@ -6,19 +6,23 @@
   import { extensions } from './extensions';
   import { saveDocument, loadDocument } from '../storage/autosave';
   import { applyMarginVars, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
+  import { applyOrientationVars, type Orientation } from '../storage/pageOrientation';
   import { FORCE_PAGE_RECALC } from './pageBreaks';
   import '../../styles/editor.css';
 
   const DEFAULT_EDITOR_FONT = 'Georgia'; // must match ToolbarExpanded.svelte
 
-  let { editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1), zoom = 100, showFormattingMarks = false, pageMargins = DEFAULT_MARGINS }: {
-    editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number; showFormattingMarks?: boolean; pageMargins?: PageMargins;
+  let { editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1), zoom = 100, showFormattingMarks = false, pageMargins = DEFAULT_MARGINS, orientation = 'portrait' }: {
+    editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number; showFormattingMarks?: boolean; pageMargins?: PageMargins; orientation?: Orientation;
   } = $props();
 
-  // Apply the page margins to the :root CSS vars (visual padding + pagination
-  // both read these). This only touches the DOM, so it's safe inside an effect.
+  // Apply the page margins + orientation to the :root CSS vars (visual padding,
+  // page dimensions, and pagination all read these). DOM-only, safe in effects.
   $effect(() => {
     applyMarginVars(pageMargins);
+  });
+  $effect(() => {
+    applyOrientationVars(orientation);
   });
 
   // Nudge the pageBreaks plugin to recompute with the new content area. The
@@ -28,8 +32,9 @@
   // Frame defers it past the flush; the empty transaction changes no document content.
   let marginRecalcRaf = 0;
   $effect(() => {
-    // track each margin so the effect re-runs on any change
+    // track each margin + orientation so the effect re-runs on any change
     void (pageMargins.top + pageMargins.bottom + pageMargins.left + pageMargins.right);
+    void orientation;
     const ed = editor;
     if (!ed) return;
     cancelAnimationFrame(marginRecalcRaf);
@@ -43,7 +48,13 @@
   let element: HTMLDivElement;
   let editorContainer: HTMLDivElement;
 
-  const CYCLE = 1143; // PAGE_HEIGHT + PAGE_GAP, must match pageBreaks.ts
+  // Page cycle (page height + 20px gap) in document px. Orientation-dependent, so
+  // read live from --user-page-height (set by applyOrientationVars). Must match
+  // pageBreaks.ts. Fallback = A4 portrait (1123 + 20).
+  function getCycle(): number {
+    const ph = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--user-page-height'));
+    return (Number.isFinite(ph) ? ph : 1123) + 20;
+  }
 
   // Throttle the value actually written to the DOM to one update per animation frame,
   // so rapid slider events don't trigger 50+ layout/paint cycles per second.
@@ -93,8 +104,9 @@
     const editorRect = editorContainer.getBoundingClientRect();
     const tiptapRect = tiptap.getBoundingClientRect();
     // getBoundingClientRect and coordsAtPos return zoomed viewport pixels;
-    // divide by zoom factor to convert to document coordinates before comparing with CYCLE.
+    // divide by zoom factor to convert to document coordinates before comparing with the cycle.
     const zoomFactor = appliedZoom / 100;
+    const cycle = getCycle();
 
     if (editor) {
       try {
@@ -102,7 +114,7 @@
         const cursorMidY = (coords.top + coords.bottom) / 2;
         if (cursorMidY >= editorRect.top && cursorMidY <= editorRect.bottom) {
           const cursorInDoc = (cursorMidY - tiptapRect.top) / zoomFactor;
-          currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / CYCLE) + 1));
+          currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / cycle) + 1));
           return;
         }
       } catch {
@@ -111,7 +123,7 @@
     }
 
     const visibleTopInDoc = (editorRect.top - tiptapRect.top) / zoomFactor;
-    currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, visibleTopInDoc) / CYCLE) + 1));
+    currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, visibleTopInDoc) / cycle) + 1));
   }
 
   function onPageCount(e: Event) {
@@ -167,7 +179,7 @@
         try {
           const coords = e.view.coordsAtPos(e.state.selection.head);
           const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (appliedZoom / 100);
-          currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / CYCLE) + 1));
+          currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / getCycle()) + 1));
         } catch { /* ignore */ }
       },
       onUpdate: ({ editor: e }) => {

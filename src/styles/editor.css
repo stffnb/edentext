@@ -4,14 +4,16 @@
   overflow: auto;
 }
 
-/* Fixed A4 paper container (794px = 210mm at 96dpi) */
+/* A4 paper container (794px = 210mm at 96dpi by default; --user-page-width is
+   set from the Layout panel and swaps to 1123px in landscape — pageOrientation.ts) */
 .paper {
-  width: 794px;
+  width: var(--user-page-width, 794px);
   margin: 0 auto;
 }
 
 .paper .tiptap {
-  --page-height: 1123px;
+  /* Driven by --user-page-height (pageOrientation.ts); fallback = A4 portrait. */
+  --page-height: var(--user-page-height, 1123px);
   --page-gap: 20px;
   /* Driven by --user-margin-* set on :root from the Layout panel (pageMargins.ts).
      Fallbacks preserve the original hardcoded layout when unset. */

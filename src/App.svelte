@@ -8,6 +8,7 @@
   import { getColorDebug } from './lib/editor/colorDebug';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, type PageMargins } from './lib/storage/pageMargins';
+  import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
@@ -20,6 +21,7 @@
   let showFormattingMarks = $state(loadFormattingMarks());
   let zoom = $state(Math.max(20, Math.min(300, parseInt(localStorage.getItem('odf-editor-zoom') ?? '100', 10))));
   let pageMargins: PageMargins = $state(loadPageMargins());
+  let pageOrientation: Orientation = $state(loadOrientation());
 
   $effect(() => {
     saveFormattingMarks(showFormattingMarks);
@@ -27,6 +29,10 @@
 
   $effect(() => {
     savePageMargins(pageMargins);
+  });
+
+  $effect(() => {
+    saveOrientation(pageOrientation);
   });
 
   function setZoom(value: number) {
@@ -55,7 +61,7 @@
   }
 
   async function handleExport() {
-    if (editor) await exportToOdt(editor, pageMargins);
+    if (editor) await exportToOdt(editor, pageMargins, pageOrientation);
   }
 
   function handleDebugDump() {
@@ -167,9 +173,9 @@
     </div>
   </header>
   {#if toolbarExpanded}
-    <ToolbarExpanded {editor} {tick} bind:showFormattingMarks bind:pageMargins />
+    <ToolbarExpanded {editor} {tick} bind:showFormattingMarks bind:pageMargins bind:pageOrientation />
   {/if}
-  <EditorComponent bind:editor bind:tick bind:currentPage bind:numPages {zoom} {showFormattingMarks} {pageMargins} />
+  <EditorComponent bind:editor bind:tick bind:currentPage bind:numPages {zoom} {showFormattingMarks} {pageMargins} orientation={pageOrientation} />
   <footer class="statusbar">
     <span>Page {currentPage} of {numPages}</span>
     <div class="zoom-controls">

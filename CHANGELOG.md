@@ -33,6 +33,7 @@
 - text alignment
 - show formatting marks
 - margins
+- page orientation (odt-kit bug still open => export not working)
 
 ### Not yet implemented
 - ODT import / open existing file
