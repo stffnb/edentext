@@ -85,39 +85,58 @@ function normalizeLineHeight(lh: number | string): string {
   return typeof lh === 'number' ? `${Math.round(lh * 100)}%` : lh;
 }
 
-// Per-list-item paragraph properties carried over to the exported .odt.
-type ListItemStyle = {
+// Paragraph property overrides carried over to the exported .odt. Used for both
+// list-item paragraphs and table-cell paragraphs — odf-kit's ListBuilder and
+// TableBuilder neither support per-paragraph alignment/spacing/line-height, so we
+// inject them as automatic paragraph styles in a post-processing pass.
+type ParaStyle = {
   align: AlignValue | null;
   spaceBefore: number | null;
   spaceAfter: number | null;
   lineHeight: number | string | null;
 };
 
-function listItemStyleIsEmpty(s: ListItemStyle): boolean {
+function paraStyleIsEmpty(s: ParaStyle): boolean {
   return s.align === null && s.spaceBefore === null && s.spaceAfter === null && s.lineHeight === null;
+}
+
+// Extract the overridable paragraph properties from a node's attrs. Left
+// alignment yields null (it's the Standard-style default, so no override needed).
+function paraStyleFromAttrs(attrs: TiptapNode['attrs']): ParaStyle {
+  const ta = attrs?.textAlign as AlignValue | undefined;
+  const sb = attrs?.spaceBefore;
+  const sa = attrs?.spaceAfter;
+  const lh = attrs?.lineHeight;
+  let lineHeight: number | string | null = null;
+  if (lh != null) {
+    const lhNum = parseFloat(String(lh));
+    lineHeight = isNaN(lhNum) ? String(lh) : lhNum;
+  }
+  return {
+    align: ta === 'center' || ta === 'right' || ta === 'justify' ? ta : null,
+    spaceBefore: typeof sb === 'number' ? sb : null,
+    spaceAfter: typeof sa === 'number' ? sa : null,
+    lineHeight,
+  };
+}
+
+// fo:* paragraph-properties attribute strings for a ParaStyle override.
+function paraStyleProps(style: ParaStyle): string[] {
+  const props: string[] = [];
+  if (style.align) props.push(`fo:text-align="${style.align}"`);
+  if (style.spaceBefore != null) props.push(`fo:margin-top="${style.spaceBefore}pt"`);
+  if (style.spaceAfter != null) props.push(`fo:margin-bottom="${style.spaceAfter}pt"`);
+  if (style.lineHeight != null) props.push(`fo:line-height="${normalizeLineHeight(style.lineHeight)}"`);
+  return props;
 }
 
 // Collect the alignment + paragraph spacing of each listItem's first paragraph,
 // in DFS order — matching the order that odf-kit emits <text:list-item> elements
 // into content.xml. Items without overrides yield an all-null descriptor.
-function collectListItemStyles(node: TiptapNode, result: ListItemStyle[]): void {
+function collectListItemStyles(node: TiptapNode, result: ParaStyle[]): void {
   if (node.type === 'listItem') {
     const firstPara = node.content?.find(c => c.type === 'paragraph');
-    const ta = firstPara?.attrs?.textAlign as AlignValue | undefined;
-    const sb = firstPara?.attrs?.spaceBefore;
-    const sa = firstPara?.attrs?.spaceAfter;
-    const lh = firstPara?.attrs?.lineHeight;
-    let lineHeight: number | string | null = null;
-    if (lh != null) {
-      const lhNum = parseFloat(String(lh));
-      lineHeight = isNaN(lhNum) ? String(lh) : lhNum;
-    }
-    result.push({
-      align: ta === 'center' || ta === 'right' || ta === 'justify' ? ta : null,
-      spaceBefore: typeof sb === 'number' ? sb : null,
-      spaceAfter: typeof sa === 'number' ? sa : null,
-      lineHeight,
-    });
+    result.push(paraStyleFromAttrs(firstPara?.attrs));
     // Recurse into nested lists only (their listItems extend the DFS sequence).
     for (const child of node.content ?? []) {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
@@ -131,19 +150,39 @@ function collectListItemStyles(node: TiptapNode, result: ListItemStyle[]): void 
   }
 }
 
+// Collect the paragraph style of each table cell's first paragraph, in the same
+// row-major order that exportTable emits cells (and odf-kit writes <table:table-cell>
+// into content.xml). One descriptor per cell; cells without overrides are all-null.
+function collectTableCellStyles(node: TiptapNode, result: ParaStyle[]): void {
+  if (node.type === 'table') {
+    for (const row of node.content ?? []) {
+      if (row.type !== 'tableRow') continue;
+      for (const cell of row.content ?? []) {
+        if (cell.type !== 'tableCell' && cell.type !== 'tableHeader') continue;
+        const firstPara = cell.content?.find(c => c.type === 'paragraph');
+        result.push(paraStyleFromAttrs(firstPara?.attrs));
+      }
+    }
+    return;
+  }
+  for (const child of node.content ?? []) {
+    collectTableCellStyles(child, result);
+  }
+}
+
 // odf-kit's ListBuilder doesn't support per-item paragraph options, so list-item
 // paragraphs always emit with text:style-name="List_20_Bullet" or "List_20_Number".
 // We rewrite content.xml to point those at custom automatic styles that inherit
 // from the list paragraph style and add fo:text-align / fo:margin-top / fo:margin-bottom.
-function applyListItemStyles(odtBytes: Uint8Array, styles: ListItemStyle[]): Uint8Array {
-  if (styles.every(listItemStyleIsEmpty)) return odtBytes;
+function applyListItemStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Array {
+  if (styles.every(paraStyleIsEmpty)) return odtBytes;
 
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
   if (!contentBytes) return odtBytes;
 
   let content = strFromU8(contentBytes);
-  const styleDefs: { name: string; parent: string; style: ListItemStyle }[] = [];
+  const styleDefs: { name: string; parent: string; style: ParaStyle }[] = [];
   const nameByKey = new Map<string, string>();
   let counter = 0;
   let idx = 0;
@@ -153,7 +192,7 @@ function applyListItemStyles(odtBytes: Uint8Array, styles: ListItemStyle[]): Uin
     /(<text:list-item>\s*<text:p text:style-name=")(List_20_Bullet|List_20_Number)(")/g,
     (_match, pre, parentStyle, post) => {
       const style = styles[idx++];
-      if (!style || listItemStyleIsEmpty(style)) return `${pre}${parentStyle}${post}`;
+      if (!style || paraStyleIsEmpty(style)) return `${pre}${parentStyle}${post}`;
       const key = `${parentStyle}|${style.align}|${style.spaceBefore}|${style.spaceAfter}|${style.lineHeight}`;
       let name = nameByKey.get(key);
       if (!name) {
@@ -168,14 +207,58 @@ function applyListItemStyles(odtBytes: Uint8Array, styles: ListItemStyle[]): Uin
 
   if (styleDefs.length === 0) return odtBytes;
 
-  const newStyles = styleDefs.map(({ name, parent, style }) => {
-    const props: string[] = [];
-    if (style.align) props.push(`fo:text-align="${style.align}"`);
-    if (style.spaceBefore != null) props.push(`fo:margin-top="${style.spaceBefore}pt"`);
-    if (style.spaceAfter != null) props.push(`fo:margin-bottom="${style.spaceAfter}pt"`);
-    if (style.lineHeight != null) props.push(`fo:line-height="${normalizeLineHeight(style.lineHeight)}"`);
-    return `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${props.join(' ')}/></style:style>`;
-  }).join('\n');
+  const newStyles = styleDefs.map(({ name, parent, style }) =>
+    `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${paraStyleProps(style).join(' ')}/></style:style>`,
+  ).join('\n');
+
+  content = content.replace('</office:automatic-styles>', `${newStyles}\n</office:automatic-styles>`);
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+// odf-kit's TableBuilder emits every cell paragraph with text:style-name="Standard"
+// and offers no per-cell paragraph alignment. We rewrite content.xml to point each
+// overridden cell paragraph at a custom automatic style inheriting from Standard,
+// adding fo:text-align / fo:margin-top / fo:margin-bottom / fo:line-height. The
+// regex matches one <text:p> per cell, in the same row-major order as collectTableCellStyles.
+function applyTableCellStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Array {
+  if (styles.every(paraStyleIsEmpty)) return odtBytes;
+
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  const styleDefs: { name: string; style: ParaStyle }[] = [];
+  const nameByKey = new Map<string, string>();
+  let counter = 0;
+  let idx = 0;
+
+  // The cell's paragraph is the first child of <table:table-cell>. Matches both
+  // the filled (`>…</text:p>`) and empty (`/>`) forms — only the style-name is touched.
+  content = content.replace(
+    /(<table:table-cell\b[^>]*>\s*<text:p text:style-name=")Standard(")/g,
+    (_match, pre, post) => {
+      const style = styles[idx++];
+      if (!style || paraStyleIsEmpty(style)) return `${pre}Standard${post}`;
+      const key = `${style.align}|${style.spaceBefore}|${style.spaceAfter}|${style.lineHeight}`;
+      let name = nameByKey.get(key);
+      if (!name) {
+        counter++;
+        name = `TC${counter}`;
+        nameByKey.set(key, name);
+        styleDefs.push({ name, style });
+      }
+      return `${pre}${name}${post}`;
+    },
+  );
+
+  if (styleDefs.length === 0) return odtBytes;
+
+  const newStyles = styleDefs.map(({ name, style }) =>
+    `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties ${paraStyleProps(style).join(' ')}/></style:style>`,
+  ).join('\n');
 
   content = content.replace('</office:automatic-styles>', `${newStyles}\n</office:automatic-styles>`);
 
@@ -420,10 +503,15 @@ export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT
     },
   });
 
-  const listStyles: ListItemStyle[] = [];
+  const listStyles: ParaStyle[] = [];
   collectListItemStyles(raw, listStyles);
   const styledLists = applyListItemStyles(odt as Uint8Array, listStyles);
-  const cleaned = collapseRunWhitespace(styledLists);
+
+  const cellStyles: ParaStyle[] = [];
+  collectTableCellStyles(raw, cellStyles);
+  const styledCells = applyTableCellStyles(styledLists, cellStyles);
+
+  const cleaned = collapseRunWhitespace(styledCells);
   const finalBytes = rewriteStylesXml(cleaned);
 
   const blob = new Blob([finalBytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.oasis.opendocument.text' });
