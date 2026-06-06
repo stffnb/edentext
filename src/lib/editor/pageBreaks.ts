@@ -61,6 +61,10 @@ export type PageBreakDebugSnapshot = {
 // document px relative to .tiptap's top; Editor.svelte scales/positions them in
 // the non-zoomed .editor overlay. Carried on the pm-pagecount event detail.
 export type TableBreakBand = {
+  // Rounded openY = page-content-top where the cell content resumes. Matches the
+  // `data-page-break-boundary` attribute on this break's in-cell spacers, so
+  // Editor.svelte can group the (one per column) spacers belonging to this band.
+  key: number;
   closeY: number;
   height: number;
   left: number;
@@ -129,6 +133,21 @@ function getPageForY(y: number, cycle: number): number {
   return Math.floor(y / cycle) + 1;
 }
 
+// Sum offsetTop up the offsetParent chain to `ancestor`. offsetTop/offsetHeight
+// are unscaled layout px (independent of the CSS `zoom` on .paper), unlike
+// getBoundingClientRect which returns scaled values. Measuring in unscaled space
+// keeps the whole pagination model matching the rendered layout exactly, so
+// breaks land on the page edge at any zoom (no accumulated sub-pixel drift).
+function offsetTopWithin(el: HTMLElement, ancestor: HTMLElement): number {
+  let top = 0;
+  let node: HTMLElement | null = el;
+  while (node && node !== ancestor) {
+    top += node.offsetTop;
+    node = node.offsetParent as HTMLElement | null;
+  }
+  return top;
+}
+
 const pageBreakKey = new PluginKey<number>('pageBreaks');
 
 // Transaction meta flag: set it (e.g. when page margins change) to force a
@@ -150,6 +169,13 @@ type Leaf = {
   // border + margin/gap mask so the single table element looks closed at each
   // page break (it can't break structurally — it's one continuous box).
   inTableCell?: boolean;
+  // Flow brackets for a too-tall row's cells. Each cell is an independent vertical
+  // flow that starts at the row top, so the placement loop resets its cumulative
+  // shift per cell: `cellStart` marks a cell's first leaf (`rowStart` additionally
+  // the row's first cell), `rowEnd` the last leaf of the last cell.
+  cellStart?: boolean;
+  rowStart?: boolean;
+  rowEnd?: boolean;
 };
 
 const ATOMIC_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
@@ -408,13 +434,11 @@ export const PageBreaks = Extension.create({
           return { naturalLineTop, docPos: lo };
         }
 
-        function collectLeaves(zoom: number, contentHeight: number): Leaf[] {
+        function collectLeaves(contentHeight: number): Leaf[] {
           const dom = editorView.dom;
-          const tiptapRect = dom.getBoundingClientRect();
           const leaves: Leaf[] = [];
-          // cumulativeSpacerHeight accumulates spacer offsetHeights — already
-          // in unscaled document pixels — so it pairs with the unscaled
-          // naturalTop/Height below.
+          // cumulativeSpacerHeight accumulates spacer offsetHeights (unscaled
+          // layout px), matching the offsetTop/offsetHeight-based naturalTop/Height.
           let cumulativeSpacerHeight = 0;
 
           // Emit one atomic leaf per table row so the table can break between
@@ -433,12 +457,11 @@ export const PageBreaks = Extension.create({
             const realRows = rowEls.filter(r => r.tagName === 'TR' && !r.dataset?.pageBreakSpacer);
             // Fallback: no rows found — measure the whole wrapper as one atomic leaf.
             if (realRows.length === 0) {
-              const rect = wrapperEl.getBoundingClientRect();
               leaves.push({
                 el: wrapperEl,
                 kind: 'atomic',
-                naturalTop: (rect.top - tiptapRect.top) / zoom - cumulativeSpacerHeight,
-                naturalHeight: rect.height / zoom,
+                naturalTop: offsetTopWithin(wrapperEl, dom) - cumulativeSpacerHeight,
+                naturalHeight: wrapperEl.offsetHeight,
               });
               return;
             }
@@ -451,33 +474,48 @@ export const PageBreaks = Extension.create({
                 continue;
               }
               if (tr.tagName !== 'TR') continue;
-              const rect = tr.getBoundingClientRect();
-              const rowHeight = rect.height / zoom;
+              const rowHeight = tr.offsetHeight;
               if (rowHeight <= contentHeight) {
                 // Row fits on a page → atomic leaf; the table breaks between rows.
                 leaves.push({
                   el: tr,
                   kind: 'atomic',
-                  naturalTop: (rect.top - tiptapRect.top) / zoom - cumulativeSpacerHeight,
+                  naturalTop: offsetTopWithin(tr, dom) - cumulativeSpacerHeight,
                   naturalHeight: rowHeight,
                   tableRow: { columns, wrapperEl, isFirstRow: !seenRealRow },
                 });
               } else {
-                // Row taller than a page (a cell holds more than a page of content).
-                // Flow the tallest cell's blocks across pages via the normal walk —
-                // its paragraphs become splittable leaves and line-split, while the
-                // row's shorter cells stay top-aligned on the first page. This keeps
-                // naturalTop monotonic (only one cell's stacked content is emitted).
+                // Row taller than a page: each cell is an independent vertical flow
+                // that starts at the row top and breaks in its own column (like
+                // LibreOffice/Word row fragments per page). Walk every cell, resetting
+                // the spacer baseline per cell so a sibling cell's spacers don't shift
+                // this cell's measured tops; the row consumes the tallest cell's
+                // spacers. Flow markers (cellStart/rowStart/rowEnd) let the placement
+                // loop bracket its cumulative shift the same way.
                 const cells = (Array.from(tr.children) as HTMLElement[]).filter(
                   c => c.tagName === 'TD' || c.tagName === 'TH',
                 );
-                let dominant: HTMLElement | null = null;
-                let dominantH = -1;
-                for (const c of cells) {
-                  const h = c.getBoundingClientRect().height;
-                  if (h > dominantH) { dominantH = h; dominant = c; }
+                const baseline = cumulativeSpacerHeight;
+                let maxDelta = 0;
+                let rowStartSet = false;
+                let rowLastLeafIdx = -1;
+                for (const cell of cells) {
+                  cumulativeSpacerHeight = baseline; // reset for this cell's flow
+                  const startIdx = leaves.length;
+                  walk(cell, true);
+                  if (leaves.length > startIdx) {
+                    leaves[startIdx].cellStart = true;
+                    if (!rowStartSet) {
+                      leaves[startIdx].rowStart = true;
+                      rowStartSet = true;
+                    }
+                    rowLastLeafIdx = leaves.length - 1;
+                  }
+                  maxDelta = Math.max(maxDelta, cumulativeSpacerHeight - baseline);
                 }
-                if (dominant) walk(dominant, true);
+                // The row's height grows by the tallest cell's spacer total.
+                cumulativeSpacerHeight = baseline + maxDelta;
+                if (rowLastLeafIdx >= 0) leaves[rowLastLeafIdx].rowEnd = true;
               }
               seenRealRow = true;
             }
@@ -500,7 +538,6 @@ export const PageBreaks = Extension.create({
               const isAtomic = ATOMIC_TAGS.has(tag);
               const isSplittable = SPLITTABLE_TAGS.has(tag);
               if (isAtomic || isSplittable) {
-                const rect = child.getBoundingClientRect();
                 let intraSpacerHeight = 0;
                 for (const sp of Array.from(
                   child.querySelectorAll<HTMLElement>('[data-page-break-spacer]'),
@@ -510,8 +547,8 @@ export const PageBreaks = Extension.create({
                 leaves.push({
                   el: child,
                   kind: isAtomic ? 'atomic' : 'splittable',
-                  naturalTop: (rect.top - tiptapRect.top) / zoom - cumulativeSpacerHeight,
-                  naturalHeight: rect.height / zoom - intraSpacerHeight,
+                  naturalTop: offsetTopWithin(child, dom) - cumulativeSpacerHeight,
+                  naturalHeight: child.offsetHeight - intraSpacerHeight,
                   inTableCell,
                 });
                 cumulativeSpacerHeight += intraSpacerHeight;
@@ -522,12 +559,11 @@ export const PageBreaks = Extension.create({
                 continue;
               }
               // Unknown block — measure as a splittable leaf with no intra-spacers
-              const rect = child.getBoundingClientRect();
               leaves.push({
                 el: child,
                 kind: 'splittable',
-                naturalTop: (rect.top - tiptapRect.top) / zoom - cumulativeSpacerHeight,
-                naturalHeight: rect.height / zoom,
+                naturalTop: offsetTopWithin(child, dom) - cumulativeSpacerHeight,
+                naturalHeight: child.offsetHeight,
                 inTableCell,
               });
             }
@@ -560,9 +596,17 @@ export const PageBreaks = Extension.create({
           const contentWidth = (Number.isFinite(pwRaw) ? pwRaw : 794) - marginLeft - (Number.isFinite(mrRaw) ? mrRaw : 80);
 
           const zoom = getZoomFactor();
-          const leaves = collectLeaves(zoom, CONTENT_HEIGHT);
+          const leaves = collectLeaves(CONTENT_HEIGHT);
 
           let cumulativeShift = 0;
+          // Per-cell flow bracketing for a too-tall row (see Leaf flow markers): each
+          // cell restarts from the shift inherited at the row top; the row then
+          // advances the main shift by the tallest cell's added shift.
+          let rowBaseline = 0;
+          let maxCellDelta = 0;
+          // Lowest rendered content bottom across all leaves (incl. parallel cells),
+          // used for the page count — a single last-leaf reading misses taller cells.
+          let maxEffectiveBottom = 0;
           const placements: {
             docPos: number;
             height: number;
@@ -571,6 +615,9 @@ export const PageBreaks = Extension.create({
             // rendered DOM so Editor.svelte can align each close/open band to the
             // spacer's actual position.
             incell: boolean;
+            // Rounded openY of this break's band (null for non-cell spacers); written
+            // to the spacer DOM so a band can find all its columns' spacers.
+            bandKey: number | null;
           }[] = [];
           // Full-width close/open borders for in-cell table breaks (see Leaf.inTableCell).
           // openY is the page-content-top where the cell content resumes; the band runs
@@ -582,6 +629,17 @@ export const PageBreaks = Extension.create({
 
           for (let i = 0; i < leaves.length; i++) {
             const leaf = leaves[i];
+            // Enter a cell flow: capture the previous cell's added shift, then restart
+            // this cell from the row baseline so its measured tops align.
+            if (leaf.cellStart) {
+              if (leaf.rowStart) {
+                rowBaseline = cumulativeShift;
+                maxCellDelta = 0;
+              } else {
+                maxCellDelta = Math.max(maxCellDelta, cumulativeShift - rowBaseline);
+              }
+              cumulativeShift = rowBaseline;
+            }
             const effectiveTop = leaf.naturalTop + cumulativeShift;
             const effectiveBottom = effectiveTop + leaf.naturalHeight;
             const page = getPageForY(effectiveTop, CYCLE_PX);
@@ -670,7 +728,13 @@ export const PageBreaks = Extension.create({
               // cause 1-px shake on every keystroke at non-100 % zoom.
               const h = Math.round(spacerHeight);
               if (h > 0) {
-                placements.push({ docPos: spacerDocPos, height: h, row: spacerRow, incell: !!leaf.inTableCell });
+                placements.push({
+                  docPos: spacerDocPos,
+                  height: h,
+                  row: spacerRow,
+                  incell: !!leaf.inTableCell,
+                  bandKey: leaf.inTableCell && bandOpenY !== null ? Math.round(bandOpenY) : null,
+                });
                 placementsDebug.push({
                   leafIndex: i,
                   docPos: spacerDocPos,
@@ -690,6 +754,19 @@ export const PageBreaks = Extension.create({
                 spacerKind: 'none',
                 columns: null,
               });
+            }
+
+            // Track the lowest rendered content bottom (cumulativeShift now includes
+            // this leaf's own spacer, so a pushed/split leaf counts at its real spot).
+            maxEffectiveBottom = Math.max(
+              maxEffectiveBottom,
+              leaf.naturalTop + cumulativeShift + leaf.naturalHeight,
+            );
+            // Leave a cell flow: the row's added shift is its tallest cell's; the main
+            // flow continues below the row from there.
+            if (leaf.rowEnd) {
+              maxCellDelta = Math.max(maxCellDelta, cumulativeShift - rowBaseline);
+              cumulativeShift = rowBaseline + maxCellDelta;
             }
           }
 
@@ -720,9 +797,12 @@ export const PageBreaks = Extension.create({
               }
               const spacerEl = document.createElement('div');
               spacerEl.dataset.pageBreakSpacer = 'true';
-              // Tag in-cell spacers so the close/open band can be aligned to this
-              // spacer's rendered position (see Editor.svelte recomputeBands).
-              if (p.incell) spacerEl.dataset.pageBreakSpacerIncell = 'true';
+              // Tag in-cell spacers (with their band key) so Editor.svelte can group
+              // a break's per-column spacers and align the band to their real extent.
+              if (p.incell) {
+                spacerEl.dataset.pageBreakSpacerIncell = 'true';
+                if (p.bandKey !== null) spacerEl.dataset.pageBreakBoundary = String(p.bandKey);
+              }
               spacerEl.style.height = `${p.height}px`;
               spacerEl.style.pointerEvents = 'none';
               spacerEl.style.userSelect = 'none';
@@ -738,12 +818,10 @@ export const PageBreaks = Extension.create({
             editorView.dispatch(tr);
           }
 
-          let numPages = 1;
-          if (leaves.length > 0) {
-            const lastLeaf = leaves[leaves.length - 1];
-            const effectiveBottom = lastLeaf.naturalTop + cumulativeShift + lastLeaf.naturalHeight;
-            numPages = Math.max(1, getPageForY(effectiveBottom, CYCLE_PX));
-          }
+          // maxEffectiveBottom is the lowest rendered content across all leaves,
+          // including parallel cells of a too-tall row (a single last-leaf reading
+          // would miss a taller sibling column).
+          const numPages = Math.max(1, getPageForY(maxEffectiveBottom, CYCLE_PX));
           const targetHeight = numPages * CYCLE_PX - PAGE_GAP;
           dom.style.minHeight = `${targetHeight}px`;
 
@@ -754,6 +832,7 @@ export const PageBreaks = Extension.create({
           // positioned descendant's offsets, which misplaced an in-.tiptap band.
           const bandSpan = vm.bottom + PAGE_GAP + vm.top;
           const tableBreakBands = tableBands.map((openY) => ({
+            key: openY,
             closeY: openY - bandSpan,
             height: bandSpan,
             left: marginLeft,

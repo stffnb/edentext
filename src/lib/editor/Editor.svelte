@@ -126,32 +126,44 @@
     // the floating toolbar). A document-y maps to tiptapTop + docY * z.
     const tiptapTop = tRect.top - cRect.top + editorContainer.scrollTop;
     const tiptapLeft = tRect.left - cRect.left + editorContainer.scrollLeft;
-    // In-cell spacers in document order, paired 1:1 with the bands (both ordered).
-    const spacers = Array.from(
+    // A too-tall row break produces one in-cell spacer per column, all tagged with
+    // the same band key. Group them so each band can span its columns' real gaps.
+    const spacersByKey = new Map<string, HTMLElement[]>();
+    for (const sp of Array.from(
       tiptap.querySelectorAll<HTMLElement>('[data-page-break-spacer-incell]'),
-    );
-    bandStyles = tableBandsDoc.map((b, i) => {
+    )) {
+      const key = sp.dataset.pageBreakBoundary;
+      if (key === undefined) continue;
+      const arr = spacersByKey.get(key);
+      if (arr) arr.push(sp);
+      else spacersByKey.set(key, [sp]);
+    }
+    bandStyles = tableBandsDoc.map((b) => {
       const gapPx = b.gap * z;
       const left = tiptapLeft + b.left * z;
       const width = b.width * z;
-      // Anchor the band to the matching spacer's full rendered extent: its top is
-      // where the page's cell content ends, its bottom where the content resumes.
-      // The mask then exactly covers the gap the spacer creates, so it never eats
-      // content at either edge regardless of sub-pixel zoom drift (which can push
-      // the real break tens of px off the theoretical page edges). Fall back to
-      // the theoretical placement when no spacer is found.
-      const sp = spacers[i];
+      // Anchor the band to the real rendered extent of this break's spacers, so the
+      // mask exactly covers the gap and never eats content even under sub-pixel zoom
+      // drift. Across columns: top = the lowest column's content end (max spacer
+      // top), bottom = the highest column's resume (min spacer bottom) → no column's
+      // content is masked at either edge. Fall back to theoretical placement.
+      const group = spacersByKey.get(String(b.key));
       let top: number;
       let height: number;
       let gapTop: number;
-      if (sp) {
-        const r = sp.getBoundingClientRect();
-        top = r.top - cRect.top + editorContainer.scrollTop;
-        height = r.height;
-        // Place the canvas-coloured gap stripe at the real page surface bottom
-        // (= content-end + bottom margin) relative to the spacer's top.
-        const spacerTopDoc = (r.top - tRect.top) / z;
-        const gapTopDoc = b.closeY + b.marginBottom - spacerTopDoc;
+      if (group && group.length > 0) {
+        let topScreen = -Infinity; // max spacer top
+        let bottomScreen = Infinity; // min spacer bottom
+        for (const sp of group) {
+          const r = sp.getBoundingClientRect();
+          topScreen = Math.max(topScreen, r.top - cRect.top + editorContainer.scrollTop);
+          bottomScreen = Math.min(bottomScreen, r.bottom - cRect.top + editorContainer.scrollTop);
+        }
+        top = topScreen;
+        height = Math.max(0, bottomScreen - topScreen);
+        // Gap stripe at the real page surface bottom (content-end + bottom margin)
+        // relative to the band top.
+        const gapTopDoc = b.closeY + b.marginBottom - (top - tiptapTop) / z;
         gapTop = Math.min(Math.max(0, gapTopDoc * z), Math.max(0, height - gapPx));
       } else {
         top = tiptapTop + b.closeY * z;
