@@ -100,8 +100,9 @@
    line-height/font-size are zeroed so the spacer doesn't pick up the
    inherited inline strut when it sits mid-paragraph between text nodes —
    otherwise the browser adds a phantom line of height around the widget
-   and the continuation text on the next page lands too low. */
-.paper .tiptap [data-page-break-spacer] {
+   and the continuation text on the next page lands too low.
+   Scoped to div so it never overrides the display of the table-row spacer below. */
+.paper .tiptap div[data-page-break-spacer] {
   display: block;
   width: 100%;
   margin: 0;
@@ -111,6 +112,20 @@
   line-height: 0;
   font-size: 0;
   overflow: hidden;
+}
+
+/* Table page-break spacer: a borderless, empty <tr>/<td> that bridges the page
+   gap so the following rows start on the next page (a table can't hold a block
+   spacer between its rows). Keeps default table-row/cell display. */
+.paper .tiptap tr[data-page-break-spacer] {
+  background: none;
+}
+
+.paper .tiptap td[data-page-break-spacer-cell] {
+  padding: 0;
+  border: none;
+  line-height: 0;
+  font-size: 0;
 }
 
 .paper .tiptap p {

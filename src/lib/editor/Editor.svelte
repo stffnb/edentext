@@ -8,7 +8,7 @@
   import { saveDocument, loadDocument } from '../storage/autosave';
   import { applyMarginVars, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { applyOrientationVars, type Orientation } from '../storage/pageOrientation';
-  import { FORCE_PAGE_RECALC } from './pageBreaks';
+  import { FORCE_PAGE_RECALC, type TableBreakBand } from './pageBreaks';
   import '../../styles/editor.css';
 
   const DEFAULT_EDITOR_FONT = 'Georgia'; // must match ToolbarExpanded.svelte
@@ -103,11 +103,84 @@
     };
   }
 
+  // --- Table page-break close/open bands ---
+  // The pagination plugin (pageBreaks.ts) reports, via the pm-pagecount event,
+  // bands (in unscaled document px) where an in-cell table is split across a page
+  // boundary. We render them here in the non-zoomed .editor layer (screen space)
+  // so they stay aligned with the zoomed content at any zoom level — placing them
+  // inside the CSS-`zoom`ed .tiptap misplaced them.
+  type BandStyle = { top: number; left: number; width: number; height: number; background: string };
+  let tableBandsDoc = $state<TableBreakBand[]>([]);
+  let bandStyles = $state<BandStyle[]>([]);
+
+  function recomputeBands() {
+    const tiptap = element?.querySelector('.tiptap') as HTMLElement | null;
+    if (!tiptap || !editorContainer || tableBandsDoc.length === 0) {
+      if (bandStyles.length) bandStyles = [];
+      return;
+    }
+    const tRect = tiptap.getBoundingClientRect();
+    const cRect = editorContainer.getBoundingClientRect();
+    const z = appliedZoom / 100;
+    // .tiptap's top/left in the editor's scrollable content space (same basis as
+    // the floating toolbar). A document-y maps to tiptapTop + docY * z.
+    const tiptapTop = tRect.top - cRect.top + editorContainer.scrollTop;
+    const tiptapLeft = tRect.left - cRect.left + editorContainer.scrollLeft;
+    // In-cell spacers in document order, paired 1:1 with the bands (both ordered).
+    const spacers = Array.from(
+      tiptap.querySelectorAll<HTMLElement>('[data-page-break-spacer-incell]'),
+    );
+    bandStyles = tableBandsDoc.map((b, i) => {
+      const gapPx = b.gap * z;
+      const left = tiptapLeft + b.left * z;
+      const width = b.width * z;
+      // Anchor the band to the matching spacer's full rendered extent: its top is
+      // where the page's cell content ends, its bottom where the content resumes.
+      // The mask then exactly covers the gap the spacer creates, so it never eats
+      // content at either edge regardless of sub-pixel zoom drift (which can push
+      // the real break tens of px off the theoretical page edges). Fall back to
+      // the theoretical placement when no spacer is found.
+      const sp = spacers[i];
+      let top: number;
+      let height: number;
+      let gapTop: number;
+      if (sp) {
+        const r = sp.getBoundingClientRect();
+        top = r.top - cRect.top + editorContainer.scrollTop;
+        height = r.height;
+        // Place the canvas-coloured gap stripe at the real page surface bottom
+        // (= content-end + bottom margin) relative to the spacer's top.
+        const spacerTopDoc = (r.top - tRect.top) / z;
+        const gapTopDoc = b.closeY + b.marginBottom - spacerTopDoc;
+        gapTop = Math.min(Math.max(0, gapTopDoc * z), Math.max(0, height - gapPx));
+      } else {
+        top = tiptapTop + b.closeY * z;
+        height = b.height * z;
+        gapTop = b.marginBottom * z;
+      }
+      return {
+        top,
+        left,
+        width,
+        height,
+        // White over the page margins, canvas colour over the gap.
+        background:
+          `linear-gradient(to bottom,`
+          + ` var(--color-page-bg) 0, var(--color-page-bg) ${gapTop}px,`
+          + ` var(--color-bg) ${gapTop}px, var(--color-bg) ${gapTop + gapPx}px,`
+          + ` var(--color-page-bg) ${gapTop + gapPx}px, var(--color-page-bg) 100%)`,
+      };
+    });
+  }
+
   // Defer to the next frame so the DOM reflects the latest transaction /
   // pagination spacers before we measure (mirrors the page-break code).
   function scheduleTableUi() {
     cancelAnimationFrame(tableUiRaf);
-    tableUiRaf = requestAnimationFrame(recomputeTableUi);
+    tableUiRaf = requestAnimationFrame(() => {
+      recomputeTableUi();
+      recomputeBands();
+    });
   }
 
   // Throttle the value actually written to the DOM to one update per animation frame,
@@ -183,9 +256,11 @@
   }
 
   function onPageCount(e: Event) {
-    numPages = (e as CustomEvent<{ numPages: number }>).detail.numPages;
+    const detail = (e as CustomEvent<{ numPages: number; tableBreakBands?: TableBreakBand[] }>).detail;
+    numPages = detail.numPages;
+    tableBandsDoc = detail.tableBreakBands ?? [];
     updateCurrentPage();
-    // Pagination spacers can shift a table's position — re-place the toolbar.
+    // Pagination spacers can shift a table's position — re-place the toolbar/bands.
     scheduleTableUi();
   }
 
@@ -269,7 +344,26 @@
 
 <div class="editor" bind:this={editorContainer}>
   <div bind:this={element} class="paper" class:show-formatting-marks={showFormattingMarks} style="zoom: {appliedZoom / 100}"></div>
+  {#each bandStyles as b}
+    <div
+      class="table-break-band"
+      style="top: {b.top}px; left: {b.left}px; width: {b.width}px; height: {b.height}px; background: {b.background};"
+    ></div>
+  {/each}
   {#if tableUi.visible}
     <TableToolbar {editor} top={tableUi.top} left={tableUi.left} />
   {/if}
 </div>
+
+<style>
+  /* Table page-break close/open band: masks the table's bleeding vertical borders
+     across the margin/gap and draws the black close (top) + open (bottom) line.
+     Positioned in the non-zoomed .editor content space (see recomputeBands). */
+  .table-break-band {
+    position: absolute;
+    z-index: 50;
+    pointer-events: none;
+    border-top: 1px solid #000;
+    border-bottom: 1px solid #000;
+  }
+</style>

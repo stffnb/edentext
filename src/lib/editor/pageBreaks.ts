@@ -17,6 +17,12 @@ export type PageBreakDebugSnapshot = {
     index: number;
     tag: string;
     kind: 'atomic' | 'splittable';
+    // Table provenance: inTableCell = this leaf lives inside a cell of a row that
+    // was itself too tall to fit a page (so we split its content). tableRow is set
+    // when the leaf *is* a whole table row (columns = colspan to bridge, isFirstRow
+    // = the table's first row, which breaks before the wrapper rather than mid-table).
+    inTableCell: boolean;
+    tableRow: { columns: number; isFirstRow: boolean } | null;
     naturalTop: number;
     naturalHeight: number;
     textPreview: string;
@@ -34,12 +40,34 @@ export type PageBreakDebugSnapshot = {
     docPos: number | null;
     height: number;
     reason: string;
+    // How the gap was bridged: 'table-row' = borderless <tr> spacer inside the
+    // table (columns = its colspan), 'block' = normal <div> block spacer,
+    // 'none' = no spacer emitted (e.g. an over-tall leaf that couldn't be pushed).
+    spacerKind: 'block' | 'table-row' | 'none';
+    columns: number | null;
   }>;
   renderedSpacers: Array<{
     height: number;
     offsetTopInDoc: number;
     viewportTop: number;
   }>;
+  // The full-width close/open frame bands drawn over in-cell table page breaks
+  // (the visible black "table closes here" lines). Unscaled document px relative
+  // to .tiptap's top — same values handed to Editor.svelte via pm-pagecount.
+  tableBreakBands: TableBreakBand[];
+};
+
+// A close/open band for an in-cell table page break. All values are unscaled
+// document px relative to .tiptap's top; Editor.svelte scales/positions them in
+// the non-zoomed .editor overlay. Carried on the pm-pagecount event detail.
+export type TableBreakBand = {
+  closeY: number;
+  height: number;
+  left: number;
+  width: number;
+  marginBottom: number;
+  gap: number;
+  marginTop: number;
 };
 
 const debugAccessors = new WeakMap<EditorView, () => PageBreakDebugSnapshot | null>();
@@ -112,12 +140,19 @@ type Leaf = {
   kind: 'atomic' | 'splittable';
   naturalTop: number;
   naturalHeight: number;
+  // Present when the leaf is a <tr> of a paginated table. Each row is an atomic
+  // leaf so the table can break between rows across pages (a whole table is
+  // usually taller than a page). `isFirstRow` pushes the entire table (a block
+  // spacer before the wrapper); later rows push via a spacer <tr> inside the table.
+  tableRow?: { columns: number; wrapperEl: HTMLElement; isFirstRow: boolean };
+  // True for paragraph leaves emitted from inside a too-tall table cell (the cell
+  // content is flowed across pages). Their breaks get a full-width close/open
+  // border + margin/gap mask so the single table element looks closed at each
+  // page break (it can't break structurally — it's one continuous box).
+  inTableCell?: boolean;
 };
 
-// TABLE is atomic: a table that overflows the page is pushed whole to the next
-// page (we don't split a table across pages). A table taller than one page will
-// overflow visually — an accepted limitation of this version.
-const ATOMIC_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'TABLE']);
+const ATOMIC_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
 const SPLITTABLE_TAGS = new Set(['P']);
 const CONTAINER_TAGS = new Set(['UL', 'OL', 'LI', 'BLOCKQUOTE']);
 
@@ -164,14 +199,7 @@ export const PageBreaks = Extension.create({
               viewportTop: r.top,
             };
           });
-          return {
-            timestamp: snap.timestamp,
-            layout: snap.layout,
-            numPages: snap.numPages,
-            leaves: snap.leaves,
-            placements: snap.placements,
-            renderedSpacers,
-          };
+          return { ...snap, renderedSpacers };
         });
 
         function docPosBeforeElement(el: HTMLElement): number | null {
@@ -226,6 +254,23 @@ export const PageBreaks = Extension.create({
             target = target.parentElement;
           }
           return docPosBeforeElement(target);
+        }
+
+        // Where to place a leaf's page-break spacer, and whether it must be a
+        // table row (so the widget is valid markup inside a <tbody>).
+        function leafSpacer(leaf: Leaf): { docPos: number | null; row: { columns: number } | null } {
+          if (leaf.tableRow) {
+            // First row crossing the boundary → push the whole table with a block
+            // spacer before the wrapper (otherwise the table's top would be
+            // orphaned above an in-table gap).
+            if (leaf.tableRow.isFirstRow) {
+              return { docPos: preLeafDocPos(leaf.tableRow.wrapperEl), row: null };
+            }
+            // Later rows → a spacer <tr> before the row pushes it (and the rows
+            // after it) to the next page while the table stays one element.
+            return { docPos: docPosBeforeElement(leaf.el), row: { columns: leaf.tableRow.columns } };
+          }
+          return { docPos: preLeafDocPos(leaf.el), row: null };
         }
 
         // Walks text nodes inside `el`, skipping any that live inside a spacer
@@ -363,7 +408,7 @@ export const PageBreaks = Extension.create({
           return { naturalLineTop, docPos: lo };
         }
 
-        function collectLeaves(zoom: number): Leaf[] {
+        function collectLeaves(zoom: number, contentHeight: number): Leaf[] {
           const dom = editorView.dom;
           const tiptapRect = dom.getBoundingClientRect();
           const leaves: Leaf[] = [];
@@ -372,7 +417,73 @@ export const PageBreaks = Extension.create({
           // naturalTop/Height below.
           let cumulativeSpacerHeight = 0;
 
-          function walk(container: HTMLElement) {
+          // Emit one atomic leaf per table row so the table can break between
+          // rows across pages. TipTap renders tables inside a node-view
+          // <div class="tableWrapper"><table><colgroup><tbody>…. A whole table is
+          // typically taller than a page, so treating it as a single atomic leaf
+          // left it overflowing (atomic-too-tall-no-push); row leaves fix that.
+          function walkTableRows(wrapperEl: HTMLElement, inTableCell = false) {
+            const tableEl = (wrapperEl.tagName === 'TABLE'
+              ? wrapperEl
+              : wrapperEl.querySelector('table')) as HTMLElement | null;
+            const tbody = tableEl?.querySelector('tbody') as HTMLElement | null;
+            const rowEls = tbody
+              ? (Array.from(tbody.children) as HTMLElement[])
+              : [];
+            const realRows = rowEls.filter(r => r.tagName === 'TR' && !r.dataset?.pageBreakSpacer);
+            // Fallback: no rows found — measure the whole wrapper as one atomic leaf.
+            if (realRows.length === 0) {
+              const rect = wrapperEl.getBoundingClientRect();
+              leaves.push({
+                el: wrapperEl,
+                kind: 'atomic',
+                naturalTop: (rect.top - tiptapRect.top) / zoom - cumulativeSpacerHeight,
+                naturalHeight: rect.height / zoom,
+              });
+              return;
+            }
+            const colgroup = tableEl?.querySelector('colgroup');
+            const columns = colgroup?.children.length || realRows[0].children.length || 1;
+            let seenRealRow = false;
+            for (const tr of rowEls) {
+              if (tr.dataset?.pageBreakSpacer) {
+                cumulativeSpacerHeight += tr.offsetHeight;
+                continue;
+              }
+              if (tr.tagName !== 'TR') continue;
+              const rect = tr.getBoundingClientRect();
+              const rowHeight = rect.height / zoom;
+              if (rowHeight <= contentHeight) {
+                // Row fits on a page → atomic leaf; the table breaks between rows.
+                leaves.push({
+                  el: tr,
+                  kind: 'atomic',
+                  naturalTop: (rect.top - tiptapRect.top) / zoom - cumulativeSpacerHeight,
+                  naturalHeight: rowHeight,
+                  tableRow: { columns, wrapperEl, isFirstRow: !seenRealRow },
+                });
+              } else {
+                // Row taller than a page (a cell holds more than a page of content).
+                // Flow the tallest cell's blocks across pages via the normal walk —
+                // its paragraphs become splittable leaves and line-split, while the
+                // row's shorter cells stay top-aligned on the first page. This keeps
+                // naturalTop monotonic (only one cell's stacked content is emitted).
+                const cells = (Array.from(tr.children) as HTMLElement[]).filter(
+                  c => c.tagName === 'TD' || c.tagName === 'TH',
+                );
+                let dominant: HTMLElement | null = null;
+                let dominantH = -1;
+                for (const c of cells) {
+                  const h = c.getBoundingClientRect().height;
+                  if (h > dominantH) { dominantH = h; dominant = c; }
+                }
+                if (dominant) walk(dominant, true);
+              }
+              seenRealRow = true;
+            }
+          }
+
+          function walk(container: HTMLElement, inTableCell = false) {
             for (const child of Array.from(container.children) as HTMLElement[]) {
               if (child.dataset?.pageBreakSpacer) {
                 cumulativeSpacerHeight += child.offsetHeight;
@@ -381,11 +492,12 @@ export const PageBreaks = Extension.create({
               const tag = child.tagName;
               // TipTap renders tables inside a <div class="tableWrapper"> node
               // view (see extensions.ts Table config), so the top-level child is
-              // the wrapper DIV, not the TABLE. Treat either as an atomic table.
-              const isTable =
-                tag === 'TABLE' ||
-                (tag === 'DIV' && child.classList.contains('tableWrapper'));
-              const isAtomic = ATOMIC_TAGS.has(tag) || isTable;
+              // the wrapper DIV, not the TABLE. Break the table into per-row leaves.
+              if (tag === 'TABLE' || (tag === 'DIV' && child.classList.contains('tableWrapper'))) {
+                walkTableRows(child, inTableCell);
+                continue;
+              }
+              const isAtomic = ATOMIC_TAGS.has(tag);
               const isSplittable = SPLITTABLE_TAGS.has(tag);
               if (isAtomic || isSplittable) {
                 const rect = child.getBoundingClientRect();
@@ -400,12 +512,13 @@ export const PageBreaks = Extension.create({
                   kind: isAtomic ? 'atomic' : 'splittable',
                   naturalTop: (rect.top - tiptapRect.top) / zoom - cumulativeSpacerHeight,
                   naturalHeight: rect.height / zoom - intraSpacerHeight,
+                  inTableCell,
                 });
                 cumulativeSpacerHeight += intraSpacerHeight;
                 continue;
               }
               if (CONTAINER_TAGS.has(tag)) {
-                walk(child);
+                walk(child, inTableCell);
                 continue;
               }
               // Unknown block — measure as a splittable leaf with no intra-spacers
@@ -415,6 +528,7 @@ export const PageBreaks = Extension.create({
                 kind: 'splittable',
                 naturalTop: (rect.top - tiptapRect.top) / zoom - cumulativeSpacerHeight,
                 naturalHeight: rect.height / zoom,
+                inTableCell,
               });
             }
           }
@@ -435,11 +549,34 @@ export const PageBreaks = Extension.create({
           const CONTENT_HEIGHT = vm.contentHeight;
           const CYCLE_PX = vm.cycle;
 
+          // Side margins + page width (px) for table close/open bands. These don't
+          // affect pagination (only line wrapping), so readVerticalMargins ignores
+          // them; we read them here just to size the bands to the content width.
+          const csRoot = getComputedStyle(dom);
+          const mlRaw = parseFloat(csRoot.getPropertyValue('--user-margin-left'));
+          const mrRaw = parseFloat(csRoot.getPropertyValue('--user-margin-right'));
+          const pwRaw = parseFloat(csRoot.getPropertyValue('--user-page-width'));
+          const marginLeft = Number.isFinite(mlRaw) ? mlRaw : 80;
+          const contentWidth = (Number.isFinite(pwRaw) ? pwRaw : 794) - marginLeft - (Number.isFinite(mrRaw) ? mrRaw : 80);
+
           const zoom = getZoomFactor();
-          const leaves = collectLeaves(zoom);
+          const leaves = collectLeaves(zoom, CONTENT_HEIGHT);
 
           let cumulativeShift = 0;
-          const placements: { docPos: number; height: number }[] = [];
+          const placements: {
+            docPos: number;
+            height: number;
+            row: { columns: number } | null;
+            // True when the spacer sits inside a too-tall table cell; marked on the
+            // rendered DOM so Editor.svelte can align each close/open band to the
+            // spacer's actual position.
+            incell: boolean;
+          }[] = [];
+          // Full-width close/open borders for in-cell table breaks (see Leaf.inTableCell).
+          // openY is the page-content-top where the cell content resumes; the band runs
+          // from the previous page's content-bottom (close) down through margin/gap/margin
+          // to openY (open). Deduplicated by openY.
+          const tableBands: number[] = [];
           const leavesDebug: PageBreakDebugSnapshot['leaves'] = [];
           const placementsDebug: PageBreakDebugSnapshot['placements'] = [];
 
@@ -453,21 +590,26 @@ export const PageBreaks = Extension.create({
 
             let spacerHeight = 0;
             let spacerDocPos: number | null = null;
+            let spacerRow: { columns: number } | null = null;
+            let bandOpenY: number | null = null;
             let reason = 'fits';
 
             if (effectiveTop < contentStart && i > 0) {
               spacerHeight = contentStart - effectiveTop;
-              spacerDocPos = preLeafDocPos(leaf.el);
+              ({ docPos: spacerDocPos, row: spacerRow } = leafSpacer(leaf));
+              bandOpenY = contentStart;
               reason = 'pre-leaf-push-to-content-start';
             } else if (effectiveTop >= contentEnd) {
               spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - effectiveTop;
-              spacerDocPos = preLeafDocPos(leaf.el);
+              ({ docPos: spacerDocPos, row: spacerRow } = leafSpacer(leaf));
+              bandOpenY = pageContentStart(page + 1, vm.top, CYCLE_PX);
               reason = 'leaf-jump-to-next-page';
             } else if (effectiveBottom > contentEnd) {
               if (leaf.kind === 'atomic') {
                 if (leaf.naturalHeight <= CONTENT_HEIGHT) {
                   spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - effectiveTop;
-                  spacerDocPos = preLeafDocPos(leaf.el);
+                  ({ docPos: spacerDocPos, row: spacerRow } = leafSpacer(leaf));
+                  bandOpenY = pageContentStart(page + 1, vm.top, CYCLE_PX);
                   reason = 'atomic-push-to-next-page';
                 } else {
                   reason = 'atomic-too-tall-no-push';
@@ -478,6 +620,7 @@ export const PageBreaks = Extension.create({
                   if (leaf.naturalHeight <= CONTENT_HEIGHT) {
                     spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - effectiveTop;
                     spacerDocPos = preLeafDocPos(leaf.el);
+                    bandOpenY = pageContentStart(page + 1, vm.top, CYCLE_PX);
                     reason = 'split-fallback-push-whole-leaf';
                   } else {
                     reason = 'splittable-too-tall-no-push';
@@ -485,15 +628,26 @@ export const PageBreaks = Extension.create({
                 } else {
                   spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - (effectiveTop + split.naturalLineTop);
                   spacerDocPos = split.docPos;
+                  bandOpenY = pageContentStart(page + 1, vm.top, CYCLE_PX);
                   reason = 'line-split';
                 }
               }
+            }
+
+            // Record a close/open band for breaks inside a too-tall table cell.
+            if (leaf.inTableCell && bandOpenY !== null && spacerHeight > 0) {
+              const key = Math.round(bandOpenY);
+              if (!tableBands.includes(key)) tableBands.push(key);
             }
 
             leavesDebug.push({
               index: i,
               tag: leaf.el.tagName,
               kind: leaf.kind,
+              inTableCell: !!leaf.inTableCell,
+              tableRow: leaf.tableRow
+                ? { columns: leaf.tableRow.columns, isFirstRow: leaf.tableRow.isFirstRow }
+                : null,
               naturalTop: leaf.naturalTop,
               naturalHeight: leaf.naturalHeight,
               textPreview: (leaf.el.textContent ?? '').slice(0, 120),
@@ -516,12 +670,26 @@ export const PageBreaks = Extension.create({
               // cause 1-px shake on every keystroke at non-100 % zoom.
               const h = Math.round(spacerHeight);
               if (h > 0) {
-                placements.push({ docPos: spacerDocPos, height: h });
-                placementsDebug.push({ leafIndex: i, docPos: spacerDocPos, height: h, reason });
+                placements.push({ docPos: spacerDocPos, height: h, row: spacerRow, incell: !!leaf.inTableCell });
+                placementsDebug.push({
+                  leafIndex: i,
+                  docPos: spacerDocPos,
+                  height: h,
+                  reason,
+                  spacerKind: spacerRow ? 'table-row' : 'block',
+                  columns: spacerRow ? spacerRow.columns : null,
+                });
                 cumulativeShift += h;
               }
             } else if (reason !== 'fits') {
-              placementsDebug.push({ leafIndex: i, docPos: spacerDocPos, height: spacerHeight, reason });
+              placementsDebug.push({
+                leafIndex: i,
+                docPos: spacerDocPos,
+                height: spacerHeight,
+                reason,
+                spacerKind: 'none',
+                columns: null,
+              });
             }
           }
 
@@ -530,13 +698,31 @@ export const PageBreaks = Extension.create({
           // don't change pagination, and re-dispatching forces ProseMirror to
           // recreate the spacer DOM nodes (no `key` on the widgets) for no
           // visible gain.
-          const placementsKey = placements.map((p) => `${p.docPos}:${p.height}`).join('|');
+          const placementsKey =
+            placements.map((p) => `${p.docPos}:${p.height}:${p.row ? p.row.columns : 'b'}`).join('|');
           if (placementsKey !== lastPlacementsKey) {
             lastPlacementsKey = placementsKey;
             const doc = editorView.state.doc;
             const decoArray: Decoration[] = placements.map((p) => {
+              if (p.row) {
+                // A table breaks between rows: the spacer must be a <tr> so it's
+                // valid inside <tbody> and creates a borderless gap that pushes
+                // the following rows to the next page.
+                const trEl = document.createElement('tr');
+                trEl.dataset.pageBreakSpacer = 'true';
+                trEl.setAttribute('contenteditable', 'false');
+                const tdEl = document.createElement('td');
+                tdEl.dataset.pageBreakSpacerCell = 'true';
+                tdEl.setAttribute('colspan', String(p.row.columns));
+                tdEl.style.height = `${p.height}px`;
+                trEl.appendChild(tdEl);
+                return Decoration.widget(p.docPos, trEl, { side: -1 });
+              }
               const spacerEl = document.createElement('div');
               spacerEl.dataset.pageBreakSpacer = 'true';
+              // Tag in-cell spacers so the close/open band can be aligned to this
+              // spacer's rendered position (see Editor.svelte recomputeBands).
+              if (p.incell) spacerEl.dataset.pageBreakSpacerIncell = 'true';
               spacerEl.style.height = `${p.height}px`;
               spacerEl.style.pointerEvents = 'none';
               spacerEl.style.userSelect = 'none';
@@ -561,7 +747,26 @@ export const PageBreaks = Extension.create({
           const targetHeight = numPages * CYCLE_PX - PAGE_GAP;
           dom.style.minHeight = `${targetHeight}px`;
 
-          dom.dispatchEvent(new CustomEvent('pm-pagecount', { bubbles: true, detail: { numPages } }));
+          // Close/open bands for in-cell table breaks (all values in unscaled
+          // document px relative to .tiptap's top). Editor.svelte renders them in
+          // the non-zoomed .editor layer (screen space), so they stay aligned at
+          // any zoom — CSS `zoom` on .paper doesn't reliably scale an absolutely
+          // positioned descendant's offsets, which misplaced an in-.tiptap band.
+          const bandSpan = vm.bottom + PAGE_GAP + vm.top;
+          const tableBreakBands = tableBands.map((openY) => ({
+            closeY: openY - bandSpan,
+            height: bandSpan,
+            left: marginLeft,
+            width: contentWidth,
+            marginBottom: vm.bottom,
+            gap: PAGE_GAP,
+            marginTop: vm.top,
+          }));
+
+          dom.dispatchEvent(new CustomEvent('pm-pagecount', {
+            bubbles: true,
+            detail: { numPages, tableBreakBands },
+          }));
 
           lastSnapshot = {
             timestamp: new Date().toISOString(),
@@ -577,6 +782,7 @@ export const PageBreaks = Extension.create({
             leaves: leavesDebug,
             placements: placementsDebug,
             renderedSpacers: [],
+            tableBreakBands,
           };
 
           isUpdating = false;
