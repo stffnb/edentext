@@ -4,6 +4,7 @@
   import { Slice, Fragment } from 'prosemirror-model';
   import type { Node as PmNode, MarkType } from 'prosemirror-model';
   import { extensions } from './extensions';
+  import TableToolbar from './TableToolbar.svelte';
   import { saveDocument, loadDocument } from '../storage/autosave';
   import { applyMarginVars, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { applyOrientationVars, type Orientation } from '../storage/pageOrientation';
@@ -56,6 +57,59 @@
     return (Number.isFinite(ph) ? ph : 1123) + 20;
   }
 
+  // --- Floating table-editing toolbar ---
+  // Shown when the selection is inside a table; positioned just above that table.
+  let tableUi = $state<{ visible: boolean; top: number; left: number }>({ visible: false, top: 0, left: 0 });
+  let tableUiRaf = 0;
+
+  // The DOM element of the table containing the current selection, or null.
+  // nodeDOM(before(table)) returns the wrapper div the table node view renders.
+  function activeTableDOM(ed: Editor): HTMLElement | null {
+    const resolved = ed.state.selection.$from;
+    for (let d = resolved.depth; d > 0; d--) {
+      if (resolved.node(d).type.name === 'table') {
+        try {
+          const dom = ed.view.nodeDOM(resolved.before(d));
+          return dom instanceof HTMLElement ? dom : null;
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  }
+
+  function recomputeTableUi() {
+    const ed = editor;
+    if (!ed || !editorContainer) {
+      if (tableUi.visible) tableUi = { ...tableUi, visible: false };
+      return;
+    }
+    const dom = activeTableDOM(ed);
+    if (!dom) {
+      if (tableUi.visible) tableUi = { ...tableUi, visible: false };
+      return;
+    }
+    // Position in the editor container's content space: viewport delta + scroll.
+    // getBoundingClientRect and scrollTop share the same (zoom-affected) scale,
+    // so this stays aligned across zoom; the toolbar itself is a non-zoomed
+    // sibling of .paper, so it renders at a constant size.
+    const tRect = dom.getBoundingClientRect();
+    const cRect = editorContainer.getBoundingClientRect();
+    tableUi = {
+      visible: true,
+      top: tRect.top - cRect.top + editorContainer.scrollTop,
+      left: tRect.left - cRect.left + editorContainer.scrollLeft,
+    };
+  }
+
+  // Defer to the next frame so the DOM reflects the latest transaction /
+  // pagination spacers before we measure (mirrors the page-break code).
+  function scheduleTableUi() {
+    cancelAnimationFrame(tableUiRaf);
+    tableUiRaf = requestAnimationFrame(recomputeTableUi);
+  }
+
   // Throttle the value actually written to the DOM to one update per animation frame,
   // so rapid slider events don't trigger 50+ layout/paint cycles per second.
   let appliedZoom = $state(untrack(() => zoom));
@@ -88,6 +142,8 @@
 
   $effect(() => {
     appliedZoom; // track to fire after the pre-effect / DOM update
+    // Zoom changes the table's rendered position — re-place the floating toolbar.
+    scheduleTableUi();
     if (pendingAnchorDocY === null || !editorContainer || !element) return;
     const docY = pendingAnchorDocY;
     pendingAnchorDocY = null;
@@ -129,6 +185,8 @@
   function onPageCount(e: Event) {
     numPages = (e as CustomEvent<{ numPages: number }>).detail.numPages;
     updateCurrentPage();
+    // Pagination spacers can shift a table's position — re-place the toolbar.
+    scheduleTableUi();
   }
 
   function applyFontToFragment(frag: Fragment, textStyleType: MarkType, font: string): Fragment {
@@ -169,6 +227,9 @@
       },
       onTransaction: () => {
         tick++;
+        // Covers both doc and selection changes (entering/leaving a table,
+        // adding/removing rows or columns).
+        scheduleTableUi();
       },
       onSelectionUpdate: ({ editor: e }) => {
         // Use the editor instance passed by TipTap directly — avoids any Svelte
@@ -188,18 +249,27 @@
     });
 
     element.addEventListener('pm-pagecount', onPageCount);
-    editorContainer.addEventListener('scroll', updateCurrentPage);
+    editorContainer.addEventListener('scroll', onEditorScroll);
   });
+
+  function onEditorScroll() {
+    updateCurrentPage();
+    scheduleTableUi();
+  }
 
   onDestroy(() => {
     if (zoomRaf !== null) cancelAnimationFrame(zoomRaf);
     cancelAnimationFrame(marginRecalcRaf);
+    cancelAnimationFrame(tableUiRaf);
     editor?.destroy();
     element?.removeEventListener('pm-pagecount', onPageCount);
-    editorContainer?.removeEventListener('scroll', updateCurrentPage);
+    editorContainer?.removeEventListener('scroll', onEditorScroll);
   });
 </script>
 
 <div class="editor" bind:this={editorContainer}>
   <div bind:this={element} class="paper" class:show-formatting-marks={showFormattingMarks} style="zoom: {appliedZoom / 100}"></div>
+  {#if tableUi.visible}
+    <TableToolbar {editor} top={tableUi.top} left={tableUi.left} />
+  {/if}
 </div>

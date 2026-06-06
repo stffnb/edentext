@@ -2,6 +2,9 @@
   flex: 1;
   padding: 2rem 1rem 3rem; /* extra bottom padding clears the fixed status bar */
   overflow: auto;
+  /* Positioning context for the floating table toolbar (TableToolbar.svelte),
+     which is an absolutely-positioned child that scrolls with the content. */
+  position: relative;
 }
 
 /* A4 paper container (794px = 210mm at 96dpi by default; --user-page-width is
