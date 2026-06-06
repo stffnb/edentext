@@ -159,8 +159,10 @@ function collectTableCellStyles(node: TiptapNode, result: ParaStyle[]): void {
       if (row.type !== 'tableRow') continue;
       for (const cell of row.content ?? []) {
         if (cell.type !== 'tableCell' && cell.type !== 'tableHeader') continue;
-        const firstPara = cell.content?.find(c => c.type === 'paragraph');
-        result.push(paraStyleFromAttrs(firstPara?.attrs));
+        // Mirror exportTable: the cell's emitted <text:p> takes its alignment/
+        // spacing from the first block, paragraph or heading.
+        const firstBlock = cell.content?.find(c => c.type === 'paragraph' || c.type === 'heading');
+        result.push(paraStyleFromAttrs(firstBlock?.attrs));
       }
     }
     return;
@@ -364,12 +366,14 @@ function normalizeColor(input: string): string | undefined {
   return s;
 }
 
-function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []) {
+// `base` seeds each run's formatting (e.g. a heading's bold + font size when its
+// text is emitted inside a table cell). Explicit per-run marks/attrs override it.
+function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = [], base?: TextFormatting) {
   for (const node of content) {
     if (node.type !== 'text' || !node.text) continue;
     const marks = node.marks ?? [];
     const tsm = marks.find(m => m.type === 'textStyle');
-    const fmt: TextFormatting = {};
+    const fmt: TextFormatting = { ...base };
     if (marks.some(m => m.type === 'bold'))      fmt.bold = true;
     if (marks.some(m => m.type === 'italic'))     fmt.italic = true;
     if (marks.some(m => m.type === 'underline'))  fmt.underline = true;
@@ -396,6 +400,15 @@ function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []
   }
 }
 
+// odf-kit's CellBuilder is run-based — it has no notion of a heading node, so a
+// heading inside a cell can't be emitted as a real <text:h>. We render its text
+// as bold runs at the heading's font size instead (the same approach odf-kit uses
+// for header cells). Sizes match editor.css / HEADING_STYLE_OVERRIDES.
+function headingRunFormatting(level: number): TextFormatting {
+  const fontSize = level === 1 ? '20pt' : level === 2 ? '16pt' : '14pt';
+  return { bold: true, fontSize };
+}
+
 // Build an ODF table from a CUST_TABLE node (renamed from "table" in
 // injectCustomTypes). We bypass odf-kit's native walkTable so we can pass an
 // explicit cell border — the native path emits none, so the table would be
@@ -409,13 +422,19 @@ function exportTable(node: TiptapNode, doc: OdtDocument): void {
       t.addRow((r: RowBuilder) => {
         for (const cell of row.content ?? []) {
           if (cell.type !== 'tableCell' && cell.type !== 'tableHeader') continue;
-          const paras = (cell.content ?? []).filter(c => c.type === 'paragraph');
+          // Include headings as well as paragraphs — a cell containing only a
+          // heading would otherwise export empty (the heading text vanishes).
+          const blocks = (cell.content ?? []).filter(c => c.type === 'paragraph' || c.type === 'heading');
           r.addCell((c: CellBuilder) => {
-            // Multiple cell paragraphs are joined with a space, matching
-            // odf-kit's own walkTable behavior.
-            paras.forEach((para, i) => {
+            // Multiple cell blocks are joined with a space, matching odf-kit's
+            // own walkTable behavior. Heading blocks seed their runs with bold +
+            // the heading font size so the text survives and reads as a heading.
+            blocks.forEach((block, i) => {
               if (i > 0) c.addText(' ');
-              applyRuns(c, para.content);
+              const base = block.type === 'heading'
+                ? headingRunFormatting((block.attrs?.level as number) ?? 1)
+                : undefined;
+              applyRuns(c, block.content, base);
             });
           }, { padding: CELL_PADDING });
         }
