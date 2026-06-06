@@ -12,6 +12,7 @@ import Heading from '@tiptap/extension-heading';
 import BulletList from '@tiptap/extension-bullet-list';
 import OrderedList from '@tiptap/extension-ordered-list';
 import ListItem from '@tiptap/extension-list-item';
+import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
 import History from '@tiptap/extension-history';
 import Placeholder from '@tiptap/extension-placeholder';
 import TextAlign from '@tiptap/extension-text-align';
@@ -43,6 +44,13 @@ export const extensions = [
   BulletList,
   OrderedList,
   ListItem,
+  // resizable:false → equal-width, full-width columns. Kept non-resizable so the
+  // editor's column layout matches the ODT export (odf-kit distributes columns
+  // evenly when no column widths are emitted — see export/odt.ts CUST_TABLE path).
+  Table.configure({ resizable: false }),
+  TableRow,
+  TableHeader,
+  TableCell,
   History,
   Placeholder.configure({ placeholder: 'Start typing…' }),
   TextAlign.configure({

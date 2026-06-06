@@ -114,7 +114,10 @@ type Leaf = {
   naturalHeight: number;
 };
 
-const ATOMIC_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+// TABLE is atomic: a table that overflows the page is pushed whole to the next
+// page (we don't split a table across pages). A table taller than one page will
+// overflow visually — an accepted limitation of this version.
+const ATOMIC_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'TABLE']);
 const SPLITTABLE_TAGS = new Set(['P']);
 const CONTAINER_TAGS = new Set(['UL', 'OL', 'LI', 'BLOCKQUOTE']);
 
@@ -376,7 +379,13 @@ export const PageBreaks = Extension.create({
                 continue;
               }
               const tag = child.tagName;
-              const isAtomic = ATOMIC_TAGS.has(tag);
+              // TipTap renders tables inside a <div class="tableWrapper"> node
+              // view (see extensions.ts Table config), so the top-level child is
+              // the wrapper DIV, not the TABLE. Treat either as an atomic table.
+              const isTable =
+                tag === 'TABLE' ||
+                (tag === 'DIV' && child.classList.contains('tableWrapper'));
+              const isAtomic = ATOMIC_TAGS.has(tag) || isTable;
               const isSplittable = SPLITTABLE_TAGS.has(tag);
               if (isAtomic || isSplittable) {
                 const rect = child.getBoundingClientRect();

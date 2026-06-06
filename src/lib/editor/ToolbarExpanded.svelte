@@ -2,6 +2,7 @@
   import type { Editor } from '@tiptap/core';
   import { onMount } from 'svelte';
   import ColorPicker from './ColorPicker.svelte';
+  import TablePicker from './TablePicker.svelte';
   import {
     CANDIDATE_FONTS,
     detectAvailableFonts,
@@ -624,6 +625,26 @@
     if (which === 'font') highlightColorOpen = false;
     else fontColorOpen = false;
   }
+
+  // --- Table insertion (TablePicker.svelte) ---
+  let tableOpen = $state(false);
+
+  // Close the sibling dropdowns when the table picker opens (mirrors openLayout).
+  function onTablePickerOpen() {
+    fontOpen = false;
+    sizeOpen = false;
+    sizeInputFocused = false;
+    lineHeightOpen = false;
+    alignOpen = false;
+    fontColorOpen = false;
+    highlightColorOpen = false;
+    layoutOpen = false;
+  }
+
+  function insertTable(rows: number, cols: number, range: { from: number; to: number }) {
+    if (!editor) return;
+    editor.chain().focus().setTextSelection(range).insertTable({ rows, cols, withHeaderRow: false }).run();
+  }
 </script>
 
 <div class="toolbar-expanded">
@@ -1017,15 +1038,12 @@
     <div class="toolbar-separator"></div>
 
     <div class="toolbar-group">
-      <button disabled title="Insert table (coming soon)">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <rect x="1.5" y="1.5" width="13" height="13" rx="1" stroke="currentColor" stroke-width="1.5"/>
-          <line x1="1.5" y1="5.5" x2="14.5" y2="5.5" stroke="currentColor" stroke-width="1"/>
-          <line x1="1.5" y1="9.5" x2="14.5" y2="9.5" stroke="currentColor" stroke-width="1"/>
-          <line x1="5.5" y1="5.5" x2="5.5" y2="14.5" stroke="currentColor" stroke-width="1"/>
-          <line x1="10.5" y1="5.5" x2="10.5" y2="14.5" stroke="currentColor" stroke-width="1"/>
-        </svg>
-      </button>
+      <TablePicker
+        {editor}
+        bind:open={tableOpen}
+        onOpen={onTablePickerOpen}
+        onInsert={insertTable}
+      />
     </div>
 
     <div class="toolbar-separator"></div>

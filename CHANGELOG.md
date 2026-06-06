@@ -34,11 +34,12 @@
 - show formatting marks
 - margins
 - page orientation
+- tables
 
 ### Not yet implemented
 - ODT import / open existing file
 - undo history
-- Images, tables
+- Images
 - Custom right-click context menu (formatting, cut/copy)
 - Multi-document management
 - PWA / offline support

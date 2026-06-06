@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/core';
-import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, type ParagraphBuilder } from 'odf-kit';
+import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, type ParagraphBuilder, type TableBuilder, type RowBuilder, type CellBuilder } from 'odf-kit';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -12,6 +12,16 @@ type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
 const CUST_P = '__cust_p__';
 const CUST_H = '__cust_h__';
+// Tables are renamed to this so odf-kit routes them to unknownNodeHandler. Its
+// native table path (walkTable) calls addTable with no options, emitting cells
+// with no border — invisible in LibreOffice/Word. We build the table ourselves
+// and pass an explicit border instead.
+const CUST_TABLE = '__cust_table__';
+
+// Table export styling. Values mirror the editor's table CSS (src/styles/editor.css)
+// so the .odt matches the on-screen preview.
+const TABLE_BORDER = '0.5pt solid #000000';
+const CELL_PADDING = '0.1cm'; // must match td/th padding in editor.css
 
 // odf-kit emits this as the document's default font (Standard style). The editor
 // renders the bundled, metric-identical Liberation Serif on screen.
@@ -41,19 +51,30 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   return ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify';
 }
 
-function injectCustomTypes(node: TiptapNode, inList = false): TiptapNode {
-  // Don't rename paragraphs inside list items — tiptapToOdt walks them by
-  // type === "paragraph" to build list content; renaming breaks that.
-  if (!inList && hasCustomAttrs(node.attrs)) {
+function injectCustomTypes(node: TiptapNode, inContainer = false): TiptapNode {
+  // Rename tables so odf-kit routes them to our unknownNodeHandler (see
+  // CUST_TABLE). Recurse with inContainer=true so the cell paragraphs are NOT
+  // renamed — our table handler walks them by type === "paragraph".
+  if (node.type === 'table') {
+    return {
+      ...node,
+      type: CUST_TABLE,
+      content: node.content?.map(c => injectCustomTypes(c, true)),
+    };
+  }
+  // Don't rename paragraphs inside list items or table cells — tiptapToOdt's list
+  // builder (and our table handler) walk them by type === "paragraph"; renaming
+  // breaks that.
+  if (!inContainer && hasCustomAttrs(node.attrs)) {
     if (node.type === 'paragraph') return { ...node, type: CUST_P };
     if (node.type === 'heading')   return { ...node, type: CUST_H };
   }
   if (node.content?.length) {
-    const childInList = inList
+    const childInContainer = inContainer
       || node.type === 'bulletList'
       || node.type === 'orderedList'
       || node.type === 'listItem';
-    return { ...node, content: node.content.map(c => injectCustomTypes(c, childInList)) };
+    return { ...node, content: node.content.map(c => injectCustomTypes(c, childInContainer)) };
   }
   return node;
 }
@@ -260,7 +281,7 @@ function normalizeColor(input: string): string | undefined {
   return s;
 }
 
-function applyRuns(p: ParagraphBuilder, content: TiptapNode[] = []) {
+function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []) {
   for (const node of content) {
     if (node.type !== 'text' || !node.text) continue;
     const marks = node.marks ?? [];
@@ -290,6 +311,34 @@ function applyRuns(p: ParagraphBuilder, content: TiptapNode[] = []) {
     }
     p.addText(node.text, Object.keys(fmt).length ? fmt : undefined);
   }
+}
+
+// Build an ODF table from a CUST_TABLE node (renamed from "table" in
+// injectCustomTypes). We bypass odf-kit's native walkTable so we can pass an
+// explicit cell border — the native path emits none, so the table would be
+// invisible in LibreOffice/Word. No columnWidths are passed, so odf-kit
+// distributes columns evenly, matching the editor's equal-width fixed layout.
+function exportTable(node: TiptapNode, doc: OdtDocument): void {
+  const rows = (node.content ?? []).filter(r => r.type === 'tableRow');
+  if (rows.length === 0) return;
+  doc.addTable((t: TableBuilder) => {
+    for (const row of rows) {
+      t.addRow((r: RowBuilder) => {
+        for (const cell of row.content ?? []) {
+          if (cell.type !== 'tableCell' && cell.type !== 'tableHeader') continue;
+          const paras = (cell.content ?? []).filter(c => c.type === 'paragraph');
+          r.addCell((c: CellBuilder) => {
+            // Multiple cell paragraphs are joined with a space, matching
+            // odf-kit's own walkTable behavior.
+            paras.forEach((para, i) => {
+              if (i > 0) c.addText(' ');
+              applyRuns(c, para.content);
+            });
+          }, { padding: CELL_PADDING });
+        }
+      });
+    }
+  }, { border: TABLE_BORDER });
 }
 
 // odf-kit's XML builder serializes a multi-child element's children on separate
@@ -333,6 +382,10 @@ export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT
     marginLeft: `${margins.left}cm`,
     marginRight: `${margins.right}cm`,
     unknownNodeHandler(node: TiptapNode, doc: OdtDocument) {
+      if (node.type === CUST_TABLE) {
+        exportTable(node, doc);
+        return;
+      }
       const opts: {
         lineHeight?: number | string;
         align?: AlignValue;

@@ -154,6 +154,54 @@
     margin-bottom: 0;
 }
 
+/* Tables. The visual border/padding must match the ODT export so the editor
+   and the exported .odt look identical (see export/odt.ts CUST_TABLE handler):
+     • border  → export emits 0.5pt solid #000000; 1px solid renders crisply
+       on screen and is the visual equivalent of a thin 0.5pt line.
+     • padding → export emits fo:padding 0.1cm per cell (CELL_PADDING).
+   Tables are wrapped in <div class="tableWrapper"> by TipTap's node view. */
+.paper .tiptap .tableWrapper {
+  margin: 0 0 0.212cm;
+  overflow-x: auto;
+}
+
+.paper .tiptap table {
+  width: 100%;
+  /* fixed layout + width:100% → equal-width columns regardless of content,
+     matching odf-kit's even column distribution on export. */
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.paper .tiptap td,
+.paper .tiptap th {
+  border: 1px solid #000;
+  padding: 0.1cm;
+  vertical-align: top;
+  /* Cells hold paragraphs; suppress their bottom margin so a single-line cell
+     isn't taller than its text (matches the list-item paragraph treatment). */
+}
+
+.paper .tiptap td > p,
+.paper .tiptap th > p {
+  margin-bottom: 0;
+}
+
+/* Selected-cell highlight while editing (ProseMirror tables add .selectedCell).
+   A translucent overlay via the ::after avoids disturbing the cell border. */
+.paper .tiptap .selectedCell {
+  position: relative;
+}
+
+.paper .tiptap .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--color-primary);
+  opacity: 0.12;
+  pointer-events: none;
+}
+
 .paper .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
