@@ -280,8 +280,42 @@ function applyRuns(p: ParagraphBuilder, content: TiptapNode[] = []) {
       const c = normalizeColor(String(tsm.attrs.color));
       if (c) fmt.color = c;
     }
+    // Text highlight (background). odf-kit maps highlightColor → fo:background-color
+    // natively for normal paragraphs; this covers the custom-attr-paragraph path
+    // (CUST_P/CUST_H), which bypasses odf-kit's own mark handling.
+    const hl = marks.find(m => m.type === 'highlight');
+    if (hl?.attrs?.color) {
+      const c = normalizeColor(String(hl.attrs.color));
+      if (c) fmt.highlightColor = c;
+    }
     p.addText(node.text, Object.keys(fmt).length ? fmt : undefined);
   }
+}
+
+// odf-kit's XML builder serializes a multi-child element's children on separate
+// lines, joined by "\n" (core/xml.js). Inside a <text:p>/<text:h> that newline
+// is significant character data, so LibreOffice/Word collapse it to a space —
+// inserting a spurious space wherever a run boundary falls mid-word (e.g. a
+// highlight, bold, or colour that starts inside a word splits the text node, and
+// the two runs serialize as "He\n<text:span>llo</text:span>" → "He llo").
+//
+// We strip the bare "\n" separators inside every paragraph/heading element.
+// Only the newline characters are removed; any real space in the run text sits
+// adjacent to (not inside) the "\n" and is preserved, so word-boundary spacing
+// (e.g. "Hello " + bold "world") still round-trips correctly.
+function collapseRunWhitespace(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  content = content.replace(
+    /<text:(p|h)\b[^>]*>[\s\S]*?<\/text:\1>/g,
+    (block) => block.replace(/\n/g, ''),
+  );
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
 }
 
 export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait'): Promise<void> {
@@ -336,7 +370,8 @@ export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT
   const listStyles: ListItemStyle[] = [];
   collectListItemStyles(raw, listStyles);
   const styledLists = applyListItemStyles(odt as Uint8Array, listStyles);
-  const finalBytes = rewriteStylesXml(styledLists);
+  const cleaned = collapseRunWhitespace(styledLists);
+  const finalBytes = rewriteStylesXml(cleaned);
 
   const blob = new Blob([finalBytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.oasis.opendocument.text' });
   const url = URL.createObjectURL(blob);
