@@ -20,6 +20,8 @@ import { PageBreaks } from './pageBreaks';
 import { LineHeight } from './lineHeight';
 import { ParagraphSpacing } from './paragraphSpacing';
 import { FormattingMarks } from './formattingMarks';
+import { TableView } from './tableView';
+import { TableColumnResize } from './tableColumnResize';
 
 export const extensions = [
   Document,
@@ -44,13 +46,17 @@ export const extensions = [
   BulletList,
   OrderedList,
   ListItem,
-  // resizable:false → equal-width, full-width columns. Kept non-resizable so the
-  // editor's column layout matches the ODT export (odf-kit distributes columns
-  // evenly when no column widths are emitted — see export/odt.ts CUST_TABLE path).
-  Table.configure({ resizable: false }),
+  // Columns are flexible and drag-resizable (Word-style). We keep TipTap's own
+  // resizable:false (so its columnResizing plugin isn't loaded) and instead supply
+  // a custom node view that renders the <colgroup> with *percentage* widths from the
+  // `colwidth` cell attrs — so the table is always full text width and stays in sync
+  // with the ODT export (export/odt.ts emits per-column widths summing to the text
+  // width). The TableColumnResize extension below adds the Word-style drag handles.
+  Table.configure({ resizable: false, View: TableView }),
   TableRow,
   TableHeader,
   TableCell,
+  TableColumnResize,
   History,
   Placeholder.configure({ placeholder: 'Start typing…' }),
   TextAlign.configure({

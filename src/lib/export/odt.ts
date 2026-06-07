@@ -437,14 +437,49 @@ function addListToCell(c: CellBuilder, listNode: TiptapNode, depth: number, stat
   }
 }
 
+// Derive per-column widths (in cm) from the table's first row. The editor stores
+// proportional *weights* in each cell's `colwidth` attr (see tableView.ts); we turn
+// those into absolute cm widths that sum exactly to the text width. Combined with
+// odf-kit's table:align="margins", LibreOffice/Word render the columns at exactly
+// these proportions across the full text width — identical to the editor preview.
+// Returns undefined when no column has an explicit width (fresh/legacy tables) so
+// odf-kit falls back to even distribution.
+function tableColumnWidthsCm(node: TiptapNode, contentWidthCm: number): string[] | undefined {
+  const firstRow = (node.content ?? []).find(r => r.type === 'tableRow');
+  if (!firstRow) return undefined;
+
+  const weights: (number | null)[] = [];
+  for (const cell of firstRow.content ?? []) {
+    if (cell.type !== 'tableCell' && cell.type !== 'tableHeader') continue;
+    const colspan = (cell.attrs?.colspan as number) ?? 1;
+    const cw = cell.attrs?.colwidth as number[] | null | undefined;
+    for (let k = 0; k < colspan; k++) weights.push(cw && cw[k] ? cw[k] : null);
+  }
+  if (weights.length === 0 || weights.every(w => w == null)) return undefined;
+
+  const present = weights.filter((w): w is number => w != null);
+  const avg = present.reduce((a, b) => a + b, 0) / present.length;
+  const filled = weights.map(w => (w != null ? w : avg));
+  const total = filled.reduce((a, b) => a + b, 0);
+
+  const round3 = (v: number) => Math.round(v * 1000) / 1000;
+  const cm = filled.map(w => round3((w / total) * contentWidthCm));
+  // Absorb the rounding remainder into the last column so the widths sum exactly
+  // to the text width (table:align="margins" scales otherwise).
+  const sum = cm.reduce((a, b) => a + b, 0);
+  cm[cm.length - 1] = round3(cm[cm.length - 1] + (contentWidthCm - sum));
+  return cm.map(v => `${v}cm`);
+}
+
 // Build an ODF table from a CUST_TABLE node (renamed from "table" in
 // injectCustomTypes). We bypass odf-kit's native walkTable so we can pass an
 // explicit cell border — the native path emits none, so the table would be
-// invisible in LibreOffice/Word. No columnWidths are passed, so odf-kit
-// distributes columns evenly, matching the editor's equal-width fixed layout.
-function exportTable(node: TiptapNode, doc: OdtDocument): void {
+// invisible in LibreOffice/Word. Column widths come from the editor's per-column
+// weights (tableColumnWidthsCm); when absent odf-kit distributes columns evenly.
+function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number): void {
   const rows = (node.content ?? []).filter(r => r.type === 'tableRow');
   if (rows.length === 0) return;
+  const columnWidths = tableColumnWidthsCm(node, contentWidthCm);
   doc.addTable((t: TableBuilder) => {
     for (const row of rows) {
       t.addRow((r: RowBuilder) => {
@@ -482,7 +517,7 @@ function exportTable(node: TiptapNode, doc: OdtDocument): void {
         }
       });
     }
-  }, { border: TABLE_BORDER });
+  }, columnWidths ? { border: TABLE_BORDER, columnWidths } : { border: TABLE_BORDER });
 }
 
 // odf-kit's XML builder serializes a multi-child element's children on separate
@@ -515,6 +550,11 @@ export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT
   const raw = editor.getJSON() as TiptapNode;
   const json = injectCustomTypes(raw);
 
+  // Text width = A4 page width (portrait 21cm / landscape 29.7cm) minus the L/R
+  // margins. Table column widths are scaled to fill exactly this width.
+  const pageWidthCm = orientation === 'landscape' ? 29.7 : 21;
+  const contentWidthCm = pageWidthCm - margins.left - margins.right;
+
   const odt = await tiptapToOdt(json, {
     // Orientation comes from the Layout panel; odf-kit swaps the A4 dimensions
     // automatically (29.7×21cm) and writes style:print-orientation accordingly.
@@ -527,7 +567,7 @@ export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT
     marginRight: `${margins.right}cm`,
     unknownNodeHandler(node: TiptapNode, doc: OdtDocument) {
       if (node.type === CUST_TABLE) {
-        exportTable(node, doc);
+        exportTable(node, doc, contentWidthCm);
         return;
       }
       const opts: {

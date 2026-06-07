@@ -1,0 +1,107 @@
+import type { Node as PMNode } from '@tiptap/pm/model';
+import type { ViewMutationRecord } from '@tiptap/pm/view';
+
+// Custom table node view.
+//
+// Unlike TipTap's built-in TableView (which renders absolute px column widths and
+// sets the table's own width to their sum), this view renders the <colgroup> with
+// *percentage* widths and keeps the table at width:100%. Consequences:
+//   • the table is always exactly the full text width (matches the ODT export,
+//     where odf-kit emits table:align="margins"), and
+//   • it stays responsive to page-margin / orientation changes (Layout panel)
+//     without rewriting the document.
+//
+// The per-column values stored in the `colwidth` cell attribute are treated as
+// proportional *weights* (their absolute scale is irrelevant — only ratios matter).
+// `null` means "no explicit width" → equal share. The column-resize plugin
+// (tableColumnResize.ts) writes these weights and drives live drag feedback by
+// poking the <col> elements this view creates.
+
+// Expand the first row's cells into a per-column weight array, honouring colspan.
+// A cell with colspan k contributes k entries (its colwidth slice, or nulls).
+export function columnWeightsFromRow(row: PMNode | null | undefined): (number | null)[] {
+  const weights: (number | null)[] = [];
+  if (!row) return weights;
+  for (let i = 0; i < row.childCount; i++) {
+    const cell = row.child(i);
+    const colspan = (cell.attrs.colspan as number) ?? 1;
+    const colwidth = cell.attrs.colwidth as number[] | null;
+    for (let j = 0; j < colspan; j++) {
+      const w = colwidth && colwidth[j] ? colwidth[j] : null;
+      weights.push(w);
+    }
+  }
+  return weights;
+}
+
+// Convert column weights into percentages that sum to 100. All-null → equal
+// columns; otherwise null entries take the average present weight so they render
+// as "normal" columns until the user resizes them (after which all are explicit).
+export function columnPercents(weights: (number | null)[]): number[] {
+  const n = weights.length;
+  if (n === 0) return [];
+  const present = weights.filter((w): w is number => w != null && w > 0);
+  if (present.length === 0) return weights.map(() => 100 / n);
+  const avg = present.reduce((a, b) => a + b, 0) / present.length;
+  const filled = weights.map((w) => (w != null && w > 0 ? w : avg));
+  const total = filled.reduce((a, b) => a + b, 0);
+  return filled.map((w) => (w / total) * 100);
+}
+
+function buildColgroup(node: PMNode, colgroup: HTMLElement): void {
+  while (colgroup.firstChild) colgroup.removeChild(colgroup.firstChild);
+  const percents = columnPercents(columnWeightsFromRow(node.firstChild));
+  for (const p of percents) {
+    const col = document.createElement('col');
+    col.style.width = `${p}%`;
+    colgroup.appendChild(col);
+  }
+}
+
+export class TableView {
+  node: PMNode;
+  cellMinWidth: number;
+  dom: HTMLElement;
+  table: HTMLTableElement;
+  colgroup: HTMLElement;
+  contentDOM: HTMLElement;
+
+  constructor(node: PMNode, cellMinWidth: number) {
+    this.node = node;
+    this.cellMinWidth = cellMinWidth;
+    this.dom = document.createElement('div');
+    this.dom.className = 'tableWrapper';
+    this.table = this.dom.appendChild(document.createElement('table'));
+    // Percentage columns are authoritative only under fixed layout; the actual
+    // table-layout/border-collapse come from editor.css. width:100% keeps the
+    // table the full text width regardless of the stored weights.
+    this.table.style.width = '100%';
+    this.colgroup = this.table.appendChild(document.createElement('colgroup'));
+    buildColgroup(node, this.colgroup);
+    this.contentDOM = this.table.appendChild(document.createElement('tbody'));
+  }
+
+  update(node: PMNode): boolean {
+    if (node.type !== this.node.type) return false;
+    this.node = node;
+    buildColgroup(node, this.colgroup);
+    return true;
+  }
+
+  // Ignore DOM mutations the view makes to its own chrome (colgroup/table chrome),
+  // including the live <col> width pokes from the resize plugin — only the tbody
+  // content is ProseMirror-managed.
+  ignoreMutation(mutation: ViewMutationRecord): boolean {
+    const target = mutation.target as Node;
+    const isInsideWrapper = this.dom.contains(target);
+    const isInsideContent = this.contentDOM.contains(target);
+    if (isInsideWrapper && !isInsideContent) {
+      return (
+        mutation.type === 'attributes' ||
+        mutation.type === 'childList' ||
+        mutation.type === 'characterData'
+      );
+    }
+    return false;
+  }
+}
