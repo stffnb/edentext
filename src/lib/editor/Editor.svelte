@@ -103,29 +103,32 @@
     };
   }
 
-  // --- Table page-break close/open bands ---
-  // The pagination plugin (pageBreaks.ts) reports, via the pm-pagecount event,
-  // bands (in unscaled document px) where an in-cell table is split across a page
-  // boundary. We render them here in the non-zoomed .editor layer (screen space)
-  // so they stay aligned with the zoomed content at any zoom level — placing them
-  // inside the CSS-`zoom`ed .tiptap misplaced them.
-  type BandStyle = { top: number; left: number; width: number; height: number; background: string };
+  // --- Table page-break overlay ---
+  // pageBreaks.ts reports (via pm-pagecount) the in-cell table breaks in document px
+  // relative to .tiptap's top. We render the overlay in a .band-layer INSIDE the
+  // zoomed .paper (in document px) so CSS `zoom` scales it by the exact same transform
+  // as the .tiptap page background. Two pieces per break:
+  //   • band   — a solid page-coloured mask (content width) hiding the table's borders
+  //              bleeding through the page margins, plus the close/open lines.
+  //   • stripe — the dark page gap, drawn as ONE full-page-width element on top. Using
+  //              a single rectangle for the whole gap avoids a left/right edge where two
+  //              separately-rasterised gradients disagree by a sub-pixel (the seam).
+  type BandStyle = { top: number; left: number; width: number; height: number };
+  type GapStripeStyle = { top: number; width: number; height: number; background: string };
   let tableBandsDoc = $state<TableBreakBand[]>([]);
   let bandStyles = $state<BandStyle[]>([]);
+  let gapStripeStyles = $state<GapStripeStyle[]>([]);
 
   function recomputeBands() {
     const tiptap = element?.querySelector('.tiptap') as HTMLElement | null;
-    if (!tiptap || !editorContainer || tableBandsDoc.length === 0) {
+    if (!tiptap || tableBandsDoc.length === 0) {
       if (bandStyles.length) bandStyles = [];
+      if (gapStripeStyles.length) gapStripeStyles = [];
       return;
     }
     const tRect = tiptap.getBoundingClientRect();
-    const cRect = editorContainer.getBoundingClientRect();
     const z = appliedZoom / 100;
-    // .tiptap's top/left in the editor's scrollable content space (same basis as
-    // the floating toolbar). A document-y maps to tiptapTop + docY * z.
-    const tiptapTop = tRect.top - cRect.top + editorContainer.scrollTop;
-    const tiptapLeft = tRect.left - cRect.left + editorContainer.scrollLeft;
+    const pageWidth = tiptap.offsetWidth; // unscaled doc px = full page width
     // A too-tall row break produces one in-cell spacer per column, all tagged with
     // the same band key. Group them so each band can span its columns' real gaps.
     const spacersByKey = new Map<string, HTMLElement[]>();
@@ -138,49 +141,52 @@
       if (arr) arr.push(sp);
       else spacersByKey.set(key, [sp]);
     }
+    // Everything below is in document px (relative to .tiptap's top). The .band-layer
+    // lives inside the zoomed .paper, so `zoom` applies the scaling — no manual `* z`.
+    const border = 1; // 1px page-edge line, like the CSS .tiptap background
     bandStyles = tableBandsDoc.map((b) => {
-      const gapPx = b.gap * z;
-      const left = tiptapLeft + b.left * z;
-      const width = b.width * z;
-      // Anchor the band to the real rendered extent of this break's spacers, so the
-      // mask exactly covers the gap and never eats content even under sub-pixel zoom
-      // drift. Across columns: top = the lowest column's content end (max spacer
-      // top), bottom = the highest column's resume (min spacer bottom) → no column's
-      // content is masked at either edge. Fall back to theoretical placement.
+      // Anchor the band's vertical extent to the real rendered extent of this break's
+      // spacers (converted to doc px), so its close/open lines hug the actual content
+      // and the mask never eats content. Across columns: top = the lowest column's
+      // content end (max spacer top), bottom = the highest column's resume (min spacer
+      // bottom). Fall back to the theoretical placement when no spacer is found.
       const group = spacersByKey.get(String(b.key));
       let top: number;
       let height: number;
-      let gapTop: number;
       if (group && group.length > 0) {
-        let topScreen = -Infinity; // max spacer top
-        let bottomScreen = Infinity; // min spacer bottom
+        let maxTop = -Infinity; // lowest column's content end
+        let minBottom = Infinity; // highest column's resume
         for (const sp of group) {
           const r = sp.getBoundingClientRect();
-          topScreen = Math.max(topScreen, r.top - cRect.top + editorContainer.scrollTop);
-          bottomScreen = Math.min(bottomScreen, r.bottom - cRect.top + editorContainer.scrollTop);
+          maxTop = Math.max(maxTop, (r.top - tRect.top) / z);
+          minBottom = Math.min(minBottom, (r.bottom - tRect.top) / z);
         }
-        top = topScreen;
-        height = Math.max(0, bottomScreen - topScreen);
-        // Gap stripe at the real page surface bottom (content-end + bottom margin)
-        // relative to the band top.
-        const gapTopDoc = b.closeY + b.marginBottom - (top - tiptapTop) / z;
-        gapTop = Math.min(Math.max(0, gapTopDoc * z), Math.max(0, height - gapPx));
+        top = maxTop;
+        height = Math.max(0, minBottom - maxTop);
       } else {
-        top = tiptapTop + b.closeY * z;
-        height = b.height * z;
-        gapTop = b.marginBottom * z;
+        top = b.closeY;
+        height = b.height;
       }
+      // Solid white mask over the table band — hides the table's vertical borders
+      // bleeding through the page's bottom/top margins. The gap region is repainted
+      // by the full-width stripe below, so a solid fill here is fine.
+      return { top, left: b.left, width: b.width, height };
+    });
+    // Full-page-width gap stripe: the dark page gap + its two page-edge lines, at the
+    // true surface bottom (closeY + marginBottom = N·cycle − gap). Covers the entire
+    // natural gap (margins + table) with ONE element → no seam. Painted on top of the
+    // bands (later in DOM) so it overrides their white fill in the gap region.
+    gapStripeStyles = tableBandsDoc.map((b) => {
+      const gapStart = b.closeY + b.marginBottom;
       return {
-        top,
-        left,
-        width,
-        height,
-        // White over the page margins, canvas colour over the gap.
+        top: gapStart - border,
+        width: pageWidth,
+        height: b.gap + 2 * border,
         background:
           `linear-gradient(to bottom,`
-          + ` var(--color-page-bg) 0, var(--color-page-bg) ${gapTop}px,`
-          + ` var(--color-bg) ${gapTop}px, var(--color-bg) ${gapTop + gapPx}px,`
-          + ` var(--color-page-bg) ${gapTop + gapPx}px, var(--color-page-bg) 100%)`,
+          + ` var(--color-page-border) 0, var(--color-page-border) ${border}px,`
+          + ` var(--color-bg) ${border}px, var(--color-bg) ${border + b.gap}px,`
+          + ` var(--color-page-border) ${border + b.gap}px, var(--color-page-border) 100%)`,
       };
     });
   }
@@ -355,27 +361,63 @@
 </script>
 
 <div class="editor" bind:this={editorContainer}>
-  <div bind:this={element} class="paper" class:show-formatting-marks={showFormattingMarks} style="zoom: {appliedZoom / 100}"></div>
-  {#each bandStyles as b}
-    <div
-      class="table-break-band"
-      style="top: {b.top}px; left: {b.left}px; width: {b.width}px; height: {b.height}px; background: {b.background};"
-    ></div>
-  {/each}
+  <div class="paper" class:show-formatting-marks={showFormattingMarks} style="zoom: {appliedZoom / 100}">
+    <!-- Dedicated mount point that TipTap fully owns — keeping it free of Svelte
+         content avoids Svelte and ProseMirror fighting over the same parent's DOM. -->
+    <div bind:this={element} class="tiptap-host"></div>
+    {#if bandStyles.length}
+      <div class="band-layer">
+        {#each bandStyles as b}
+          <div
+            class="table-break-band"
+            style="top: {b.top}px; left: {b.left}px; width: {b.width}px; height: {b.height}px;"
+          ></div>
+        {/each}
+        {#each gapStripeStyles as s}
+          <div
+            class="page-gap-stripe"
+            style="top: {s.top}px; width: {s.width}px; height: {s.height}px; background: {s.background};"
+          ></div>
+        {/each}
+      </div>
+    {/if}
+  </div>
   {#if tableUi.visible}
     <TableToolbar {editor} top={tableUi.top} left={tableUi.left} />
   {/if}
 </div>
 
 <style>
-  /* Table page-break close/open band: masks the table's bleeding vertical borders
-     across the margin/gap and draws the black close (top) + open (bottom) line.
-     Positioned in the non-zoomed .editor content space (see recomputeBands). */
+  /* Overlay layer for the table page-break bands. It lives INSIDE the zoomed .paper
+     (filling it via inset:0) so the bands are scaled by the same CSS `zoom` as the
+     .tiptap page background — no sub-pixel seam at fractional zoom. z-index lifts it
+     above the .tiptap content; pointer-events:none keeps the editor clickable. */
+  .band-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  /* Table page-break mask: a solid page-coloured fill over the table's margin band
+     that hides the table's vertical borders bleeding through the page margins, plus
+     the black close (top) + open (bottom) line. Document px inside .band-layer. The
+     dark gap itself is drawn by .page-gap-stripe on top. */
   .table-break-band {
     position: absolute;
-    z-index: 50;
     pointer-events: none;
+    background: var(--color-page-bg);
     border-top: 1px solid #000;
     border-bottom: 1px solid #000;
+  }
+
+  /* The page gap at a table break, drawn as ONE full-page-width element on top of the
+     masks so the dark gap line is a single rasterised rectangle — no left/right edge
+     where it could disagree (sub-pixel, at fractional zoom) with the .tiptap
+     background gap in the side margins. */
+  .page-gap-stripe {
+    position: absolute;
+    left: 0;
+    pointer-events: none;
   }
 </style>

@@ -12,6 +12,10 @@
 .paper {
   width: var(--user-page-width, 794px);
   margin: 0 auto;
+  /* Positioning context for the table page-break overlay (.band-layer in
+     Editor.svelte), which lives inside .paper so the ancestor `zoom` scales it
+     identically to the .tiptap page background. */
+  position: relative;
 }
 
 .paper .tiptap {

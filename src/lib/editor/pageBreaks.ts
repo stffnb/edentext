@@ -51,27 +51,26 @@ export type PageBreakDebugSnapshot = {
     offsetTopInDoc: number;
     viewportTop: number;
   }>;
-  // The full-width close/open frame bands drawn over in-cell table page breaks
-  // (the visible black "table closes here" lines). Unscaled document px relative
-  // to .tiptap's top — same values handed to Editor.svelte via pm-pagecount.
+  // In-cell table page breaks (where a too-tall cell's content flows across a page).
+  // Unscaled document px relative to .tiptap's top — same values handed to
+  // Editor.svelte via pm-pagecount to render the mask + gap overlay.
   tableBreakBands: TableBreakBand[];
 };
 
-// A close/open band for an in-cell table page break. All values are unscaled
-// document px relative to .tiptap's top; Editor.svelte scales/positions them in
-// the non-zoomed .editor overlay. Carried on the pm-pagecount event detail.
+// One in-cell table page break. All values are unscaled document px relative to
+// .tiptap's top; Editor.svelte renders the mask + gap overlay from them inside the
+// zoomed .paper. Carried on the pm-pagecount event detail.
 export type TableBreakBand = {
   // Rounded openY = page-content-top where the cell content resumes. Matches the
   // `data-page-break-boundary` attribute on this break's in-cell spacers, so
   // Editor.svelte can group the (one per column) spacers belonging to this band.
   key: number;
-  closeY: number;
-  height: number;
-  left: number;
-  width: number;
+  closeY: number;     // content-end of the closing page (band/mask top fallback)
+  height: number;     // bandSpan = marginBottom + gap + marginTop
+  left: number;       // content-area left (mask left)
+  width: number;      // content-area width (mask width)
   marginBottom: number;
   gap: number;
-  marginTop: number;
 };
 
 const debugAccessors = new WeakMap<EditorView, () => PageBreakDebugSnapshot | null>();
@@ -622,8 +621,12 @@ export const PageBreaks = Extension.create({
           // Full-width close/open borders for in-cell table breaks (see Leaf.inTableCell).
           // openY is the page-content-top where the cell content resumes; the band runs
           // from the previous page's content-bottom (close) down through margin/gap/margin
-          // to openY (open). Deduplicated by openY.
-          const tableBands: number[] = [];
+          // to openY (open). Keyed by the ROUNDED openY (the grouping id, matching the
+          // spacers' data-page-break-boundary attr) → mapped to the UNROUNDED openY so the
+          // band geometry below lands on the exact page-cycle position. A rounded openY
+          // would shift the band's gap stripe up to ~0.5px off the CSS background gap,
+          // showing as a seam at the table's edges with non-integer margins.
+          const tableBands = new Map<number, number>();
           const leavesDebug: PageBreakDebugSnapshot['leaves'] = [];
           const placementsDebug: PageBreakDebugSnapshot['placements'] = [];
 
@@ -695,7 +698,7 @@ export const PageBreaks = Extension.create({
             // Record a close/open band for breaks inside a too-tall table cell.
             if (leaf.inTableCell && bandOpenY !== null && spacerHeight > 0) {
               const key = Math.round(bandOpenY);
-              if (!tableBands.includes(key)) tableBands.push(key);
+              if (!tableBands.has(key)) tableBands.set(key, bandOpenY);
             }
 
             leavesDebug.push({
@@ -825,21 +828,17 @@ export const PageBreaks = Extension.create({
           const targetHeight = numPages * CYCLE_PX - PAGE_GAP;
           dom.style.minHeight = `${targetHeight}px`;
 
-          // Close/open bands for in-cell table breaks (all values in unscaled
-          // document px relative to .tiptap's top). Editor.svelte renders them in
-          // the non-zoomed .editor layer (screen space), so they stay aligned at
-          // any zoom — CSS `zoom` on .paper doesn't reliably scale an absolutely
-          // positioned descendant's offsets, which misplaced an in-.tiptap band.
+          // In-cell table breaks (all values in unscaled document px relative to
+          // .tiptap's top). Editor.svelte renders the mask + gap overlay from these.
           const bandSpan = vm.bottom + PAGE_GAP + vm.top;
-          const tableBreakBands = tableBands.map((openY) => ({
-            key: openY,
+          const tableBreakBands = Array.from(tableBands, ([key, openY]) => ({
+            key,
             closeY: openY - bandSpan,
             height: bandSpan,
             left: marginLeft,
             width: contentWidth,
             marginBottom: vm.bottom,
             gap: PAGE_GAP,
-            marginTop: vm.top,
           }));
 
           dom.dispatchEvent(new CustomEvent('pm-pagecount', {
