@@ -132,21 +132,6 @@ function getPageForY(y: number, cycle: number): number {
   return Math.floor(y / cycle) + 1;
 }
 
-// Sum offsetTop up the offsetParent chain to `ancestor`. offsetTop/offsetHeight
-// are unscaled layout px (independent of the CSS `zoom` on .paper), unlike
-// getBoundingClientRect which returns scaled values. Measuring in unscaled space
-// keeps the whole pagination model matching the rendered layout exactly, so
-// breaks land on the page edge at any zoom (no accumulated sub-pixel drift).
-function offsetTopWithin(el: HTMLElement, ancestor: HTMLElement): number {
-  let top = 0;
-  let node: HTMLElement | null = el;
-  while (node && node !== ancestor) {
-    top += node.offsetTop;
-    node = node.offsetParent as HTMLElement | null;
-  }
-  return top;
-}
-
 const pageBreakKey = new PluginKey<number>('pageBreaks');
 
 // Transaction meta flag: set it (e.g. when page margins change) to force a
@@ -433,12 +418,30 @@ export const PageBreaks = Extension.create({
           return { naturalLineTop, docPos: lo };
         }
 
-        function collectLeaves(contentHeight: number): Leaf[] {
+        function collectLeaves(contentHeight: number, zoom: number): Leaf[] {
           const dom = editorView.dom;
+          const domRect = dom.getBoundingClientRect();
           const leaves: Leaf[] = [];
           // cumulativeSpacerHeight accumulates spacer offsetHeights (unscaled
-          // layout px), matching the offsetTop/offsetHeight-based naturalTop/Height.
+          // layout px), matching the offsetHeight-based naturalHeight.
           let cumulativeSpacerHeight = 0;
+
+          // A leaf's top within .tiptap, in unscaled document px. We read
+          // getBoundingClientRect (the real painted geometry) and divide by the CSS
+          // `zoom` on .paper — the same scaled→unscaled conversion findLineSplit and
+          // the CSS page background use. Summing offsetTop up the offsetParent chain
+          // (the previous approach) drifts from the rendered layout under zoom —
+          // notably through a table's nested offsetParents — so breaks landed a few
+          // percent off, accumulating down the page until content was clipped.
+          // offsetHeight stays the source for heights: it's a single-element read (no
+          // chain to drift) and integer-stable, avoiding per-keystroke spacer shake.
+          // Round to whole px: spacer heights / cumulativeSpacerHeight are integers, so
+          // an integer top keeps the model integer-stable (no sub-pixel jitter from the
+          // /zoom of a device-rounded spacer flipping a break on every keystroke), at a
+          // ≤0.5px cost that's immaterial next to the drift this replaces.
+          function topWithin(el: HTMLElement): number {
+            return Math.round((el.getBoundingClientRect().top - domRect.top) / zoom);
+          }
 
           // Emit one atomic leaf per table row so the table can break between
           // rows across pages. TipTap renders tables inside a node-view
@@ -459,7 +462,7 @@ export const PageBreaks = Extension.create({
               leaves.push({
                 el: wrapperEl,
                 kind: 'atomic',
-                naturalTop: offsetTopWithin(wrapperEl, dom) - cumulativeSpacerHeight,
+                naturalTop: topWithin(wrapperEl) - cumulativeSpacerHeight,
                 naturalHeight: wrapperEl.offsetHeight,
               });
               return;
@@ -479,7 +482,7 @@ export const PageBreaks = Extension.create({
                 leaves.push({
                   el: tr,
                   kind: 'atomic',
-                  naturalTop: offsetTopWithin(tr, dom) - cumulativeSpacerHeight,
+                  naturalTop: topWithin(tr) - cumulativeSpacerHeight,
                   naturalHeight: rowHeight,
                   tableRow: { columns, wrapperEl, isFirstRow: !seenRealRow },
                 });
@@ -526,6 +529,14 @@ export const PageBreaks = Extension.create({
                 cumulativeSpacerHeight += child.offsetHeight;
                 continue;
               }
+              // Skip the column-resize handle widget (tableColumnResize.ts), which
+              // ProseMirror injects as a direct child of the active column's cells.
+              // It's position:absolute and full-cell-height, so it's neither document
+              // content nor part of the flow — measuring it as a leaf yields garbage
+              // geometry (negative offsetTop, full-table height) that corrupts
+              // pagination. Being out of flow it takes no vertical space, so unlike a
+              // page-break spacer we skip it without touching cumulativeSpacerHeight.
+              if (child.classList.contains('column-resize-handle')) continue;
               const tag = child.tagName;
               // TipTap renders tables inside a <div class="tableWrapper"> node
               // view (see extensions.ts Table config), so the top-level child is
@@ -546,7 +557,7 @@ export const PageBreaks = Extension.create({
                 leaves.push({
                   el: child,
                   kind: isAtomic ? 'atomic' : 'splittable',
-                  naturalTop: offsetTopWithin(child, dom) - cumulativeSpacerHeight,
+                  naturalTop: topWithin(child) - cumulativeSpacerHeight,
                   naturalHeight: child.offsetHeight - intraSpacerHeight,
                   inTableCell,
                 });
@@ -557,11 +568,17 @@ export const PageBreaks = Extension.create({
                 walk(child, inTableCell);
                 continue;
               }
-              // Unknown block — measure as a splittable leaf with no intra-spacers
+              // Unknown block. Out-of-flow elements (absolute/fixed) — e.g. any other
+              // injected widget decoration — can't be paginated and measure as garbage,
+              // so skip them. getComputedStyle is read only here, off the common path
+              // (known block tags are handled above), to avoid a per-child reflow cost.
+              const position = getComputedStyle(child).position;
+              if (position === 'absolute' || position === 'fixed') continue;
+              // Otherwise measure as a splittable leaf with no intra-spacers.
               leaves.push({
                 el: child,
                 kind: 'splittable',
-                naturalTop: offsetTopWithin(child, dom) - cumulativeSpacerHeight,
+                naturalTop: topWithin(child) - cumulativeSpacerHeight,
                 naturalHeight: child.offsetHeight,
                 inTableCell,
               });
@@ -595,7 +612,7 @@ export const PageBreaks = Extension.create({
           const contentWidth = (Number.isFinite(pwRaw) ? pwRaw : 794) - marginLeft - (Number.isFinite(mrRaw) ? mrRaw : 80);
 
           const zoom = getZoomFactor();
-          const leaves = collectLeaves(CONTENT_HEIGHT);
+          const leaves = collectLeaves(CONTENT_HEIGHT, zoom);
 
           let cumulativeShift = 0;
           // Per-cell flow bracketing for a too-tall row (see Leaf flow markers): each
