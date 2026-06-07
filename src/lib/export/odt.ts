@@ -409,6 +409,34 @@ function headingRunFormatting(level: number): TextFormatting {
   return { bold: true, fontSize };
 }
 
+// odf-kit's CellBuilder is run-based — it has no notion of a list, so a list
+// inside a cell can't be emitted as a real <text:list>. We render each item as
+// its own line (text:line-break) prefixed with a marker (• for bullets, 1./2.…
+// for ordered lists); nested lists are indented. Same run-based fallback we use
+// for cell headings. `state.emitted` tracks whether the cell already holds
+// content so the very first line doesn't get a spurious leading break; it is
+// shared across nested calls so inter-item breaks continue correctly.
+function addListToCell(c: CellBuilder, listNode: TiptapNode, depth: number, state: { emitted: boolean }): void {
+  const ordered = listNode.type === 'orderedList';
+  let n = ordered ? ((listNode.attrs?.start as number) ?? 1) : 0;
+  const indent = '  '.repeat(depth); // two non-breaking spaces per nesting level
+  for (const item of listNode.content ?? []) {
+    if (item.type !== 'listItem') continue;
+    if (state.emitted) c.addLineBreak();
+    state.emitted = true;
+    c.addText(indent + (ordered ? `${n++}. ` : '• '));
+    // The item's text lives in its first paragraph; emit its runs.
+    const firstPara = item.content?.find(x => x.type === 'paragraph');
+    if (firstPara) applyRuns(c, firstPara.content);
+    // Nested lists extend the same cell paragraph, one indent level deeper.
+    for (const child of item.content ?? []) {
+      if (child.type === 'bulletList' || child.type === 'orderedList') {
+        addListToCell(c, child, depth + 1, state);
+      }
+    }
+  }
+}
+
 // Build an ODF table from a CUST_TABLE node (renamed from "table" in
 // injectCustomTypes). We bypass odf-kit's native walkTable so we can pass an
 // explicit cell border — the native path emits none, so the table would be
@@ -422,20 +450,34 @@ function exportTable(node: TiptapNode, doc: OdtDocument): void {
       t.addRow((r: RowBuilder) => {
         for (const cell of row.content ?? []) {
           if (cell.type !== 'tableCell' && cell.type !== 'tableHeader') continue;
-          // Include headings as well as paragraphs — a cell containing only a
-          // heading would otherwise export empty (the heading text vanishes).
-          const blocks = (cell.content ?? []).filter(c => c.type === 'paragraph' || c.type === 'heading');
+          // Walk every block in the cell, in order. Paragraphs/headings (a cell
+          // containing only a heading would otherwise export empty) emit as runs;
+          // bulletList/orderedList emit as marked lines — previously they were
+          // filtered out, dropping all list content in the cell.
+          const blocks = (cell.content ?? []).filter(
+            c => c.type === 'paragraph' || c.type === 'heading'
+              || c.type === 'bulletList' || c.type === 'orderedList',
+          );
           r.addCell((c: CellBuilder) => {
-            // Multiple cell blocks are joined with a space, matching odf-kit's
-            // own walkTable behavior. Heading blocks seed their runs with bold +
-            // the heading font size so the text survives and reads as a heading.
-            blocks.forEach((block, i) => {
-              if (i > 0) c.addText(' ');
+            // Consecutive paragraph/heading blocks are joined with a space
+            // (matching odf-kit's walkTable); a list is separated from its
+            // neighbours by a line break. Heading blocks seed their runs with
+            // bold + the heading font size so the text survives and reads as one.
+            let prev: 'none' | 'list' | 'text' = 'none';
+            for (const block of blocks) {
+              if (block.type === 'bulletList' || block.type === 'orderedList') {
+                addListToCell(c, block, 0, { emitted: prev !== 'none' });
+                prev = 'list';
+                continue;
+              }
+              if (prev === 'text') c.addText(' ');
+              else if (prev === 'list') c.addLineBreak();
               const base = block.type === 'heading'
                 ? headingRunFormatting((block.attrs?.level as number) ?? 1)
                 : undefined;
               applyRuns(c, block.content, base);
-            });
+              prev = 'text';
+            }
           }, { padding: CELL_PADDING });
         }
       });

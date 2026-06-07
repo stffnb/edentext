@@ -54,6 +54,14 @@
   1 cm on paper ≈ 1 cm on screen. Possible future fix: add a user-side
   calibration (DPI value or visual ruler) that scales the `zoom` factor.
   Decided 2026-05-26 not worth the effort for now.
+- Lists and headings inside a table cell are exported as plain text, not as
+  real ODF structures. odf-kit's `CellBuilder` is run-based (text runs only),
+  so a cell cannot hold a true `<text:list>` or `<text:h>`. On export
+  (`export/odt.ts`): headings render as bold runs at the heading font size,
+  and list items render as separate lines with literal markers (`•`, `1.`,
+  `2.`…), nested lists indented. Content is preserved and readable, but loses
+  list/heading semantics (no auto-numbering, not recognised as a heading).
+  Noted 2026-06-06.
 
 ---
 
