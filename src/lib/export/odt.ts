@@ -32,6 +32,19 @@ const ODFKIT_DEFAULT_FONT = 'Liberation Serif';
 const EXPORT_FONT = 'Times New Roman';
 const DEFAULT_LINE_HEIGHT = 1;  // must match line-height multiplier default in ToolbarExpanded.svelte
 
+// Sentinel inserted between a cell's blocks (and between list items) so the
+// single <text:p> odf-kit emits per cell can be split back into real block
+// elements in applyCellBlocks. A Unicode private-use char: never present in user
+// text, and passes through odf-kit's XML escaper untouched (escapeXml only
+// touches & < >) so it survives serialization as a literal, findable character.
+const SEG = '';
+
+// Automatic list styles minted for in-cell lists (see applyCellBlocks). odf-kit's
+// CellBuilder is run-based, so a list inside a cell can't reference a list style it
+// generates for top-level lists — we inject our own, mirroring its buildListStyle.
+const CELL_LIST_BULLET_STYLE = 'TblListBullet';
+const CELL_LIST_NUMBER_STYLE = 'TblListNumber';
+
 // Heading sizes/margins shown in the editor (editor.css). odf-kit's built-in
 // Heading_20_N styles use larger sizes (28/24/20pt), so we rewrite them on
 // export. Margins are the editor's em-based values resolved against each
@@ -130,6 +143,18 @@ function paraStyleProps(style: ParaStyle): string[] {
   return props;
 }
 
+// Per-cell block descriptors, built during exportTable and consumed in document
+// order by applyCellBlocks to rebuild real <text:h>/<text:p>/<text:list> elements
+// from the single SEG-segmented <text:p> odf-kit emits per cell. Each paragraph,
+// heading, and list *item* contributes exactly one SEG-delimited segment, in the
+// same DFS order they are emitted.
+type CellListItem = { style: ParaStyle; nested: CellListBlock | null };
+type CellListBlock = { kind: 'list'; ordered: boolean; start: number | null; items: CellListItem[] };
+type CellBlock =
+  | { kind: 'paragraph'; style: ParaStyle }
+  | { kind: 'heading'; level: number; style: ParaStyle }
+  | CellListBlock;
+
 // Collect the alignment + paragraph spacing of each listItem's first paragraph,
 // in DFS order — matching the order that odf-kit emits <text:list-item> elements
 // into content.xml. Items without overrides yield an all-null descriptor.
@@ -147,28 +172,6 @@ function collectListItemStyles(node: TiptapNode, result: ParaStyle[]): void {
   }
   for (const child of node.content ?? []) {
     collectListItemStyles(child, result);
-  }
-}
-
-// Collect the paragraph style of each table cell's first paragraph, in the same
-// row-major order that exportTable emits cells (and odf-kit writes <table:table-cell>
-// into content.xml). One descriptor per cell; cells without overrides are all-null.
-function collectTableCellStyles(node: TiptapNode, result: ParaStyle[]): void {
-  if (node.type === 'table') {
-    for (const row of node.content ?? []) {
-      if (row.type !== 'tableRow') continue;
-      for (const cell of row.content ?? []) {
-        if (cell.type !== 'tableCell' && cell.type !== 'tableHeader') continue;
-        // Mirror exportTable: the cell's emitted <text:p> takes its alignment/
-        // spacing from the first block, paragraph or heading.
-        const firstBlock = cell.content?.find(c => c.type === 'paragraph' || c.type === 'heading');
-        result.push(paraStyleFromAttrs(firstBlock?.attrs));
-      }
-    }
-    return;
-  }
-  for (const child of node.content ?? []) {
-    collectTableCellStyles(child, result);
   }
 }
 
@@ -291,50 +294,149 @@ function applyListItemStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Ar
   return rezipOdt(files);
 }
 
-// odf-kit's TableBuilder emits every cell paragraph with text:style-name="Standard"
-// and offers no per-cell paragraph alignment. We rewrite content.xml to point each
-// overridden cell paragraph at a custom automatic style inheriting from Standard,
-// adding fo:text-align / fo:margin-top / fo:margin-bottom / fo:line-height. The
-// regex matches one <text:p> per cell, in the same row-major order as collectTableCellStyles.
-function applyTableCellStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Array {
-  if (styles.every(paraStyleIsEmpty)) return odtBytes;
+// Mirror odf-kit's buildListStyle (content.js) for the automatic list style our
+// in-cell lists reference. Six nesting levels with identical bullet chars /
+// indents / numbering, so cell lists match the editor's top-level lists.
+const CELL_BULLET_CHARS = ['•', '◦', '▪', '▸', '–', '·'];
+function buildCellListStyle(styleName: string, ordered: boolean): string {
+  let levels = '';
+  for (let level = 1; level <= 6; level++) {
+    const indent = level * 0.635;
+    const marginLeft = `${(indent * 2).toFixed(3)}cm`;
+    const textIndent = `-${indent.toFixed(3)}cm`;
+    const labelAlign = `<style:list-level-properties text:list-level-position-and-space-mode="label-alignment"><style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="${marginLeft}" fo:text-indent="${textIndent}" fo:margin-left="${marginLeft}"/></style:list-level-properties>`;
+    if (ordered) {
+      levels += `<text:list-level-style-number text:level="${level}" style:num-format="1" style:num-suffix=".">${labelAlign}</text:list-level-style-number>`;
+    } else {
+      const ch = CELL_BULLET_CHARS[(level - 1) % CELL_BULLET_CHARS.length];
+      levels += `<text:list-level-style-bullet text:level="${level}" text:bullet-char="${ch}">${labelAlign}</text:list-level-style-bullet>`;
+    }
+  }
+  return `<text:list-style style:name="${styleName}">${levels}</text:list-style>`;
+}
+
+// odf-kit's TableBuilder serializes every cell to a single <text:p
+// text:style-name="Standard"> of runs — it has no API for headings, lists, or
+// multiple paragraphs in a cell. exportTable therefore emits all of a cell's
+// inline content into that one paragraph, separated by SEG markers, and records a
+// CellBlock[] descriptor per cell (in document order, via buildCellContent). This
+// pass splits each cell paragraph back on SEG and rebuilds the real
+// <text:h>/<text:p>/<text:list> elements, applying per-paragraph
+// alignment/spacing/line-height overrides as minted automatic styles (same
+// technique as applyListItemStyles). It subsumes the former applyTableCellStyles
+// (single-paragraph cell styling).
+//
+// Ordering: runs *after* applyListItemStyles (so that pass sees only genuine
+// top-level <text:list-item>s — cell lists are still flat runs here), and *before*
+// collapseRunWhitespace (so the new in-cell <text:p>/<text:h> get their inter-run
+// newlines stripped too).
+function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8Array {
+  const needsWork = (blocks: CellBlock[]): boolean => {
+    if (blocks.length !== 1) return true;
+    const b = blocks[0];
+    return b.kind !== 'paragraph' || !paraStyleIsEmpty(b.style);
+  };
+  if (!cellBlocks.some(needsWork)) return odtBytes;
 
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
   if (!contentBytes) return odtBytes;
 
   let content = strFromU8(contentBytes);
-  const styleDefs: { name: string; style: ParaStyle }[] = [];
-  const nameByKey = new Map<string, string>();
-  let counter = 0;
-  let idx = 0;
 
-  // The cell's paragraph is the first child of <table:table-cell>. Matches both
-  // the filled (`>…</text:p>`) and empty (`/>`) forms — only the style-name is touched.
-  content = content.replace(
-    /(<table:table-cell\b[^>]*>\s*<text:p text:style-name=")Standard(")/g,
-    (_match, pre, post) => {
-      const style = styles[idx++];
-      if (!style || paraStyleIsEmpty(style)) return `${pre}Standard${post}`;
-      const key = `${style.align}|${style.spaceBefore}|${style.spaceAfter}|${style.lineHeight}`;
-      let name = nameByKey.get(key);
-      if (!name) {
-        counter++;
-        name = `TC${counter}`;
-        nameByKey.set(key, name);
-        styleDefs.push({ name, style });
+  // Minted paragraph automatic styles (parent = Standard / Heading_20_N /
+  // List_20_*), deduped by parent + properties. An empty ParaStyle reuses the
+  // parent directly (no minted style).
+  const styleDefs: { name: string; parent: string; style: ParaStyle }[] = [];
+  const nameByKey = new Map<string, string>();
+  let styleCounter = 0;
+  const styleNameFor = (parent: string, style: ParaStyle): string => {
+    if (paraStyleIsEmpty(style)) return parent;
+    const key = `${parent}|${style.align}|${style.spaceBefore}|${style.spaceAfter}|${style.lineHeight}`;
+    let name = nameByKey.get(key);
+    if (!name) {
+      styleCounter++;
+      name = `CB${styleCounter}`;
+      nameByKey.set(key, name);
+      styleDefs.push({ name, parent, style });
+    }
+    return name;
+  };
+
+  let usedBulletList = false;
+  let usedNumberList = false;
+
+  // Each <text:list> (root or nested) carries its own style-name based on its own
+  // type, so mixed bullet/number nesting renders correctly; the actual indent
+  // level comes from the DOM nesting depth. One segment is consumed per list item,
+  // in DFS order — matching buildCellContent's emission.
+  const buildList = (list: CellListBlock, segments: string[], cur: { i: number }): string => {
+    const isBullet = !list.ordered;
+    if (isBullet) usedBulletList = true; else usedNumberList = true;
+    const listStyle = isBullet ? CELL_LIST_BULLET_STYLE : CELL_LIST_NUMBER_STYLE;
+    const paraParent = isBullet ? 'List_20_Bullet' : 'List_20_Number';
+    let out = `<text:list text:style-name="${listStyle}">`;
+    list.items.forEach((item, idx) => {
+      const startAttr = !isBullet && idx === 0 && list.start != null ? ` text:start-value="${list.start}"` : '';
+      const seg = segments[cur.i++] ?? '';
+      out += `<text:list-item${startAttr}><text:p text:style-name="${styleNameFor(paraParent, item.style)}">${seg}</text:p>`;
+      if (item.nested) out += buildList(item.nested, segments, cur);
+      out += '</text:list-item>';
+    });
+    return out + '</text:list>';
+  };
+
+  const buildBlocks = (blocks: CellBlock[], inner: string): string => {
+    const segments = inner.split(SEG);
+    const cur = { i: 0 };
+    let out = '';
+    for (const block of blocks) {
+      if (block.kind === 'list') {
+        out += buildList(block, segments, cur);
+      } else if (block.kind === 'heading') {
+        const seg = segments[cur.i++] ?? '';
+        const name = styleNameFor(`Heading_20_${block.level}`, block.style);
+        out += `<text:h text:style-name="${name}" text:outline-level="${block.level}">${seg}</text:h>`;
+      } else {
+        const seg = segments[cur.i++] ?? '';
+        out += `<text:p text:style-name="${styleNameFor('Standard', block.style)}">${seg}</text:p>`;
       }
-      return `${pre}${name}${post}`;
+    }
+    return out;
+  };
+
+  // Match each real cell's single paragraph (filled or empty form) in document
+  // order. Covered cells use <table:covered-table-cell> and never match; at this
+  // stage a cell holds exactly one <text:p> with no nested </text:p>, so the
+  // non-greedy inner capture is safe.
+  let idx = 0;
+  content = content.replace(
+    /(<table:table-cell\b[^>]*>\s*)<text:p\b[^>]*?(?:\/>|>([\s\S]*?)<\/text:p>)/g,
+    (match, pre: string, innerRaw: string | undefined) => {
+      const blocks = cellBlocks[idx++];
+      if (!blocks || !needsWork(blocks)) return match;
+      const inner = innerRaw ?? '';
+      // Trivial single paragraph that only needs a style override: keep one
+      // <text:p>, just point it at the minted style.
+      if (blocks.length === 1 && blocks[0].kind === 'paragraph') {
+        const name = styleNameFor('Standard', blocks[0].style);
+        return innerRaw === undefined
+          ? `${pre}<text:p text:style-name="${name}"/>`
+          : `${pre}<text:p text:style-name="${name}">${inner}</text:p>`;
+      }
+      return `${pre}${buildBlocks(blocks, inner)}`;
     },
   );
 
-  if (styleDefs.length === 0) return odtBytes;
+  const additions: string[] = styleDefs.map(({ name, parent, style }) =>
+    `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${paraStyleProps(style).join(' ')}/></style:style>`,
+  );
+  if (usedBulletList) additions.push(buildCellListStyle(CELL_LIST_BULLET_STYLE, false));
+  if (usedNumberList) additions.push(buildCellListStyle(CELL_LIST_NUMBER_STYLE, true));
 
-  const newStyles = styleDefs.map(({ name, style }) =>
-    `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties ${paraStyleProps(style).join(' ')}/></style:style>`,
-  ).join('\n');
-
-  content = content.replace('</office:automatic-styles>', `${newStyles}\n</office:automatic-styles>`);
+  if (additions.length) {
+    content = content.replace('</office:automatic-styles>', `${additions.join('\n')}\n</office:automatic-styles>`);
+  }
 
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
@@ -438,14 +540,14 @@ function normalizeColor(input: string): string | undefined {
   return s;
 }
 
-// `base` seeds each run's formatting (e.g. a heading's bold + font size when its
-// text is emitted inside a table cell). Explicit per-run marks/attrs override it.
-function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = [], base?: TextFormatting) {
+// Emit each text node as an odf-kit run, translating its TipTap marks/attrs into
+// TextFormatting (bold/italic/underline, font family/size, colour, highlight).
+function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []) {
   for (const node of content) {
     if (node.type !== 'text' || !node.text) continue;
     const marks = node.marks ?? [];
     const tsm = marks.find(m => m.type === 'textStyle');
-    const fmt: TextFormatting = { ...base };
+    const fmt: TextFormatting = {};
     if (marks.some(m => m.type === 'bold'))      fmt.bold = true;
     if (marks.some(m => m.type === 'italic'))     fmt.italic = true;
     if (marks.some(m => m.type === 'underline'))  fmt.underline = true;
@@ -472,41 +574,58 @@ function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []
   }
 }
 
-// odf-kit's CellBuilder is run-based — it has no notion of a heading node, so a
-// heading inside a cell can't be emitted as a real <text:h>. We render its text
-// as bold runs at the heading's font size instead (the same approach odf-kit uses
-// for header cells). Sizes match editor.css / HEADING_STYLE_OVERRIDES.
-function headingRunFormatting(level: number): TextFormatting {
-  const fontSize = level === 1 ? '20pt' : level === 2 ? '16pt' : '14pt';
-  return { bold: true, fontSize };
-}
+// Emit a cell's inline content into odf-kit's run-based CellBuilder and, in
+// lockstep, return a CellBlock[] descriptor of its block structure. odf-kit will
+// serialize all these runs into a single <text:p>; applyCellBlocks later splits
+// that paragraph on the SEG markers we insert between segments and rebuilds the
+// real <text:h>/<text:p>/<text:list> elements using this descriptor.
+//
+// A "segment" is one paragraph, one heading, or one list item's paragraph; we
+// emit exactly one SEG between consecutive segments (never leading/trailing), so
+// splitting yields one piece per segment in DFS order. Headings and list items
+// get no base run formatting here — the real <text:h> / List_20_* styles supply it.
+function buildCellContent(cell: TiptapNode, c: CellBuilder): CellBlock[] {
+  const blocks: CellBlock[] = [];
+  const state = { emitted: false }; // whether any segment has been emitted yet
 
-// odf-kit's CellBuilder is run-based — it has no notion of a list, so a list
-// inside a cell can't be emitted as a real <text:list>. We render each item as
-// its own line (text:line-break) prefixed with a marker (• for bullets, 1./2.…
-// for ordered lists); nested lists are indented. Same run-based fallback we use
-// for cell headings. `state.emitted` tracks whether the cell already holds
-// content so the very first line doesn't get a spurious leading break; it is
-// shared across nested calls so inter-item breaks continue correctly.
-function addListToCell(c: CellBuilder, listNode: TiptapNode, depth: number, state: { emitted: boolean }): void {
-  const ordered = listNode.type === 'orderedList';
-  let n = ordered ? ((listNode.attrs?.start as number) ?? 1) : 0;
-  const indent = '  '.repeat(depth); // two non-breaking spaces per nesting level
-  for (const item of listNode.content ?? []) {
-    if (item.type !== 'listItem') continue;
-    if (state.emitted) c.addLineBreak();
+  const emitSegment = (content: TiptapNode[] | undefined) => {
+    if (state.emitted) c.addText(SEG);
     state.emitted = true;
-    c.addText(indent + (ordered ? `${n++}. ` : '• '));
-    // The item's text lives in its first paragraph; emit its runs.
-    const firstPara = item.content?.find(x => x.type === 'paragraph');
-    if (firstPara) applyRuns(c, firstPara.content);
-    // Nested lists extend the same cell paragraph, one indent level deeper.
-    for (const child of item.content ?? []) {
-      if (child.type === 'bulletList' || child.type === 'orderedList') {
-        addListToCell(c, child, depth + 1, state);
-      }
+    applyRuns(c, content ?? []);
+  };
+
+  const walkList = (listNode: TiptapNode): CellListBlock => {
+    const ordered = listNode.type === 'orderedList';
+    const start = ordered ? ((listNode.attrs?.start as number) ?? null) : null;
+    const items: CellListItem[] = [];
+    for (const item of listNode.content ?? []) {
+      if (item.type !== 'listItem') continue;
+      const firstPara = item.content?.find(x => x.type === 'paragraph');
+      emitSegment(firstPara?.content); // one segment per item, in DFS order
+      const nested = item.content?.find(x => x.type === 'bulletList' || x.type === 'orderedList');
+      items.push({ style: paraStyleFromAttrs(firstPara?.attrs), nested: nested ? walkList(nested) : null });
+    }
+    return { kind: 'list', ordered, start, items };
+  };
+
+  for (const block of cell.content ?? []) {
+    if (block.type === 'paragraph') {
+      emitSegment(block.content);
+      blocks.push({ kind: 'paragraph', style: paraStyleFromAttrs(block.attrs) });
+    } else if (block.type === 'heading') {
+      emitSegment(block.content);
+      blocks.push({ kind: 'heading', level: (block.attrs?.level as number) ?? 1, style: paraStyleFromAttrs(block.attrs) });
+    } else if (block.type === 'bulletList' || block.type === 'orderedList') {
+      blocks.push(walkList(block));
     }
   }
+
+  // Empty cell: odf-kit emits an empty <text:p/>; record one empty paragraph so
+  // applyCellBlocks stays aligned and leaves it untouched.
+  if (blocks.length === 0) {
+    blocks.push({ kind: 'paragraph', style: paraStyleFromAttrs(undefined) });
+  }
+  return blocks;
 }
 
 // Derive per-column widths (in cm) from the table's first row. The editor stores
@@ -548,7 +667,7 @@ function tableColumnWidthsCm(node: TiptapNode, contentWidthCm: number): string[]
 // explicit cell border — the native path emits none, so the table would be
 // invisible in LibreOffice/Word. Column widths come from the editor's per-column
 // weights (tableColumnWidthsCm); when absent odf-kit distributes columns evenly.
-function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number): void {
+function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number, cellBlocks: CellBlock[][]): void {
   const rows = (node.content ?? []).filter(r => r.type === 'tableRow');
   if (rows.length === 0) return;
   const columnWidths = tableColumnWidthsCm(node, contentWidthCm);
@@ -557,34 +676,13 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number)
       t.addRow((r: RowBuilder) => {
         for (const cell of row.content ?? []) {
           if (cell.type !== 'tableCell' && cell.type !== 'tableHeader') continue;
-          // Walk every block in the cell, in order. Paragraphs/headings (a cell
-          // containing only a heading would otherwise export empty) emit as runs;
-          // bulletList/orderedList emit as marked lines — previously they were
-          // filtered out, dropping all list content in the cell.
-          const blocks = (cell.content ?? []).filter(
-            c => c.type === 'paragraph' || c.type === 'heading'
-              || c.type === 'bulletList' || c.type === 'orderedList',
-          );
+          // Emit the cell's runs (SEG-separated) and record its block descriptor.
+          // odf-kit serializes this to one <text:p>; applyCellBlocks splits it back
+          // into real <text:h>/<text:p>/<text:list> using the descriptor. The push
+          // happens in document order (addCell runs the callback synchronously),
+          // matching the order applyCellBlocks walks cells in content.xml.
           r.addCell((c: CellBuilder) => {
-            // Consecutive paragraph/heading blocks are joined with a space
-            // (matching odf-kit's walkTable); a list is separated from its
-            // neighbours by a line break. Heading blocks seed their runs with
-            // bold + the heading font size so the text survives and reads as one.
-            let prev: 'none' | 'list' | 'text' = 'none';
-            for (const block of blocks) {
-              if (block.type === 'bulletList' || block.type === 'orderedList') {
-                addListToCell(c, block, 0, { emitted: prev !== 'none' });
-                prev = 'list';
-                continue;
-              }
-              if (prev === 'text') c.addText(' ');
-              else if (prev === 'list') c.addLineBreak();
-              const base = block.type === 'heading'
-                ? headingRunFormatting((block.attrs?.level as number) ?? 1)
-                : undefined;
-              applyRuns(c, block.content, base);
-              prev = 'text';
-            }
+            cellBlocks.push(buildCellContent(cell, c));
           }, { padding: CELL_PADDING });
         }
       });
@@ -627,6 +725,10 @@ export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT
   const pageWidthCm = orientation === 'landscape' ? 29.7 : 21;
   const contentWidthCm = pageWidthCm - margins.left - margins.right;
 
+  // Filled by exportTable, in document order, one CellBlock[] per table cell.
+  // applyCellBlocks consumes it to rebuild real <text:h>/<text:p>/<text:list>.
+  const cellBlocks: CellBlock[][] = [];
+
   const odt = await tiptapToOdt(json, {
     // Orientation comes from the Layout panel; odf-kit swaps the A4 dimensions
     // automatically (29.7×21cm) and writes style:print-orientation accordingly.
@@ -639,7 +741,7 @@ export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT
     marginRight: `${margins.right}cm`,
     unknownNodeHandler(node: TiptapNode, doc: OdtDocument) {
       if (node.type === CUST_TABLE) {
-        exportTable(node, doc, contentWidthCm);
+        exportTable(node, doc, contentWidthCm, cellBlocks);
         return;
       }
       const opts: {
@@ -680,9 +782,9 @@ export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT
   collectListItemStyles(raw, listStyles);
   const styledLists = applyListItemStyles(odt as Uint8Array, listStyles);
 
-  const cellStyles: ParaStyle[] = [];
-  collectTableCellStyles(raw, cellStyles);
-  const styledCells = applyTableCellStyles(styledLists, cellStyles);
+  // Rebuild real headings/lists/paragraphs inside table cells. Must run after
+  // applyListItemStyles (cell lists don't exist yet) and before collapseRunWhitespace.
+  const styledCells = applyCellBlocks(styledLists, cellBlocks);
 
   const rowHeights: (string | null)[] = [];
   collectTableRowHeights(raw, rowHeights);
