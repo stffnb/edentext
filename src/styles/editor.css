@@ -253,6 +253,25 @@
   user-select: none;
 }
 
+/* Row resize (tableRowResize.ts). Mirrors the column handle but sits at a cell's
+   lower edge; one handle per cell forms a continuous line across the active row.
+   `.row-resize-cursor` is toggled on the whole editor while a row border is active.
+   Column resize takes precedence at a corner, so the two never fight. */
+.paper .tiptap.row-resize-cursor {
+  cursor: row-resize;
+}
+
+.paper .tiptap .row-resize-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 4px;
+  z-index: 20;
+  background: var(--color-primary);
+  pointer-events: none;
+}
+
 .paper .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;

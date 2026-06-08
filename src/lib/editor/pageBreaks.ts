@@ -529,14 +529,19 @@ export const PageBreaks = Extension.create({
                 cumulativeSpacerHeight += child.offsetHeight;
                 continue;
               }
-              // Skip the column-resize handle widget (tableColumnResize.ts), which
-              // ProseMirror injects as a direct child of the active column's cells.
-              // It's position:absolute and full-cell-height, so it's neither document
-              // content nor part of the flow — measuring it as a leaf yields garbage
-              // geometry (negative offsetTop, full-table height) that corrupts
-              // pagination. Being out of flow it takes no vertical space, so unlike a
-              // page-break spacer we skip it without touching cumulativeSpacerHeight.
-              if (child.classList.contains('column-resize-handle')) continue;
+              // Skip the column-/row-resize handle widgets (tableColumnResize.ts /
+              // tableRowResize.ts), which ProseMirror injects as direct children of
+              // the active cells. They're position:absolute, so they're neither
+              // document content nor part of the flow — measuring one as a leaf yields
+              // garbage geometry (negative offsetTop, full-table height) that corrupts
+              // pagination. Being out of flow they take no vertical space, so unlike a
+              // page-break spacer we skip them without touching cumulativeSpacerHeight.
+              if (
+                child.classList.contains('column-resize-handle') ||
+                child.classList.contains('row-resize-handle')
+              ) {
+                continue;
+              }
               const tag = child.tagName;
               // TipTap renders tables inside a <div class="tableWrapper"> node
               // view (see extensions.ts Table config), so the top-level child is

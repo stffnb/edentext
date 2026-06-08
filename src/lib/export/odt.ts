@@ -172,6 +172,78 @@ function collectTableCellStyles(node: TiptapNode, result: ParaStyle[]): void {
   }
 }
 
+// Collect each table row's explicit height (px → cm string), in DFS document
+// order — matching the order odf-kit emits <table:table-row> into content.xml.
+// rowHeight is stored as unscaled document px at 96 dpi (tableRow.ts); convert to
+// cm (px × 2.54 / 96). Rows without an explicit height yield null.
+function collectTableRowHeights(node: TiptapNode, result: (string | null)[]): void {
+  if (node.type === 'table') {
+    for (const row of node.content ?? []) {
+      if (row.type !== 'tableRow') continue;
+      const h = row.attrs?.rowHeight;
+      if (typeof h === 'number' && h > 0) {
+        const cm = Math.round(((h * 2.54) / 96) * 1000) / 1000;
+        result.push(`${cm}cm`);
+      } else {
+        result.push(null);
+      }
+    }
+    return;
+  }
+  for (const child of node.content ?? []) {
+    collectTableRowHeights(child, result);
+  }
+}
+
+// odf-kit's TableBuilder has no row-height option (TableRowOptions only carries
+// backgroundColor → fo:background-color on style:table-row-properties). We add the
+// dragged row heights by post-processing content.xml: each <table:table-row> with a
+// height gets a table:style-name pointing at a new automatic table-row style with
+// style:min-row-height — a *minimum*, so the row grows with content and nothing is
+// clipped (round-trips with LibreOffice/Word). use-optimal-row-height="false" stops
+// LibreOffice from auto-shrinking back to the content height. The regex consumes one
+// heights[] entry per <table:table-row> so the DFS order from collectTableRowHeights
+// stays aligned; rows already carrying a table:style-name (not produced today — the
+// editor sets no row background) are skipped.
+function applyTableRowHeights(odtBytes: Uint8Array, heights: (string | null)[]): Uint8Array {
+  if (heights.every(h => h === null)) return odtBytes;
+
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  const styleDefs: { name: string; height: string }[] = [];
+  const nameByHeight = new Map<string, string>();
+  let counter = 0;
+  let idx = 0;
+
+  content = content.replace(/<table:table-row\b([^>]*)>/g, (match, attrs: string) => {
+    const height = heights[idx++];
+    if (!height) return match;
+    if (/\btable:style-name=/.test(attrs)) return match;
+    let name = nameByHeight.get(height);
+    if (!name) {
+      counter++;
+      name = `TRH${counter}`;
+      nameByHeight.set(height, name);
+      styleDefs.push({ name, height });
+    }
+    return `<table:table-row table:style-name="${name}"${attrs}>`;
+  });
+
+  if (styleDefs.length === 0) return odtBytes;
+
+  const newStyles = styleDefs.map(({ name, height }) =>
+    `<style:style style:name="${name}" style:family="table-row"><style:table-row-properties style:min-row-height="${height}" style:use-optimal-row-height="false"/></style:style>`,
+  ).join('\n');
+
+  content = content.replace('</office:automatic-styles>', `${newStyles}\n</office:automatic-styles>`);
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 // odf-kit's ListBuilder doesn't support per-item paragraph options, so list-item
 // paragraphs always emit with text:style-name="List_20_Bullet" or "List_20_Number".
 // We rewrite content.xml to point those at custom automatic styles that inherit
@@ -612,7 +684,11 @@ export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT
   collectTableCellStyles(raw, cellStyles);
   const styledCells = applyTableCellStyles(styledLists, cellStyles);
 
-  const cleaned = collapseRunWhitespace(styledCells);
+  const rowHeights: (string | null)[] = [];
+  collectTableRowHeights(raw, rowHeights);
+  const styledRows = applyTableRowHeights(styledCells, rowHeights);
+
+  const cleaned = collapseRunWhitespace(styledRows);
   const finalBytes = rewriteStylesXml(cleaned);
 
   const blob = new Blob([finalBytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.oasis.opendocument.text' });

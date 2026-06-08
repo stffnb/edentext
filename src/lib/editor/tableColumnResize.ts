@@ -35,7 +35,7 @@ export const tableColumnResizeKey = new PluginKey<ResizeState>('tableColumnResiz
 
 // ─── DOM / geometry helpers (mirrors prosemirror-tables) ───────────────────
 
-function domCellAround(target: HTMLElement | null): HTMLElement | null {
+export function domCellAround(target: HTMLElement | null): HTMLElement | null {
   let el: HTMLElement | null = target;
   while (el && el.nodeName !== 'TD' && el.nodeName !== 'TH') {
     el = el.classList && el.classList.contains('ProseMirror') ? null : (el.parentNode as HTMLElement | null);
