@@ -55,17 +55,49 @@ export type PageBreakDebugSnapshot = {
   // Unscaled document px relative to .tiptap's top — same values handed to
   // Editor.svelte via pm-pagecount to render the mask + gap overlay.
   tableBreakBands: TableBreakBand[];
+  // Live snapshot of the *rendered* table-break overlay + table geometry (captured from
+  // the DOM at dump time), so we can tell whether the band-layer actually masks the
+  // table's borders bleeding through each gap. All rects are unscaled document px
+  // relative to .tiptap's top-left — the same space as `leaves`/`tableBreakBands` — so
+  // they line up directly. null until the first dump after the overlay mounts.
+  overlay: OverlayDebug | null;
 };
 
-// One in-cell table page break. All values are unscaled document px relative to
-// .tiptap's top; Editor.svelte renders the mask + gap overlay from them inside the
-// zoomed .paper. Carried on the pm-pagecount event detail.
+export type OverlayDebug = {
+  scale: number;          // measured .paper transform scale (1 at 100% zoom)
+  paperFound: boolean;
+  bandLayerFound: boolean;
+  // .band-layer's top/left in doc px relative to .tiptap. Should be ~(0,0): a non-zero
+  // value means the overlay's coordinate origin is offset from the page, so every band
+  // is painted off its intended gap (a prime suspect for "mask present but not covering").
+  bandLayerOrigin: { top: number; left: number } | null;
+  // Resolved page colours, to confirm the mask is opaque and the right colour.
+  cssVars: { pageBg: string; pageBorder: string; bg: string };
+  // Rendered .table-break-band mask rects (one per band) + their paint-relevant styles.
+  bands: Array<{
+    top: number; left: number; right: number; bottom: number;
+    width: number; height: number; background: string; zIndex: string; position: string;
+  }>;
+  // Rendered .page-gap-stripe rects.
+  stripes: Array<{ top: number; left: number; right: number; bottom: number; height: number }>;
+  // Every <table> in the doc: its rendered box + the x of each vertical cell border
+  // (the lines that bleed). A table taller than CONTENT_HEIGHT spans page gaps, so its
+  // verticalEdges are exactly the lines a band must cover in each gap.
+  tables: Array<{
+    top: number; left: number; right: number; bottom: number;
+    borderColor: string;
+    verticalEdges: number[];
+  }>;
+};
+
+// One page boundary crossed by a single continuous table box. All values are unscaled
+// document px relative to .tiptap's top; Editor.svelte renders the mask + gap overlay
+// from them inside the zoomed .paper. Carried on the pm-pagecount event detail.
 export type TableBreakBand = {
-  // Rounded openY = page-content-top where the cell content resumes. Matches the
-  // `data-page-break-boundary` attribute on this break's in-cell spacers, so
-  // Editor.svelte can group the (one per column) spacers belonging to this band.
+  // Rounded openY (page-content-top where the table resumes) — the dedup id, so two
+  // columns breaking at the same boundary collapse to one band.
   key: number;
-  closeY: number;     // content-end of the closing page (band/mask top fallback)
+  closeY: number;     // content-end of the closing page (band/mask top)
   height: number;     // bandSpan = marginBottom + gap + marginTop
   left: number;       // content-area left (mask left)
   width: number;      // content-area width (mask width)
@@ -206,8 +238,78 @@ export const PageBreaks = Extension.create({
               viewportTop: r.top,
             };
           });
-          return { ...snap, renderedSpacers };
+          return { ...snap, renderedSpacers, overlay: captureOverlay(tipRect) };
         });
+
+        // Capture the rendered table-break overlay + table geometry from the live DOM.
+        // The overlay (.band-layer) is a sibling of the editor's host inside .paper, so we
+        // reach it by climbing to .paper. Viewport rects are converted to unscaled doc px
+        // relative to .tiptap's top-left (divide by the measured paper scale) so they sit
+        // in the same coordinate space as the bands/leaves and can be compared directly.
+        function captureOverlay(tipRect: DOMRect): OverlayDebug {
+          const dom = editorView.dom;
+          const offH = dom.offsetHeight;
+          const scale = offH ? tipRect.height / offH : 1;
+          const toDoc = (r: DOMRect) => ({
+            top: (r.top - tipRect.top) / scale,
+            bottom: (r.bottom - tipRect.top) / scale,
+            left: (r.left - tipRect.left) / scale,
+            right: (r.right - tipRect.left) / scale,
+          });
+          const paper = dom.closest('.paper') as HTMLElement | null;
+          const bandLayer = paper?.querySelector('.band-layer') as HTMLElement | null;
+          const bandEls = paper
+            ? Array.from(paper.querySelectorAll<HTMLElement>('.table-break-band'))
+            : [];
+          const stripeEls = paper
+            ? Array.from(paper.querySelectorAll<HTMLElement>('.page-gap-stripe'))
+            : [];
+          const cs = getComputedStyle(dom);
+          return {
+            scale,
+            paperFound: !!paper,
+            bandLayerFound: !!bandLayer,
+            bandLayerOrigin: bandLayer
+              ? (() => { const d = toDoc(bandLayer.getBoundingClientRect()); return { top: d.top, left: d.left }; })()
+              : null,
+            cssVars: {
+              pageBg: cs.getPropertyValue('--color-page-bg').trim(),
+              pageBorder: cs.getPropertyValue('--color-page-border').trim(),
+              bg: cs.getPropertyValue('--color-bg').trim(),
+            },
+            bands: bandEls.map((e) => {
+              const d = toDoc(e.getBoundingClientRect());
+              const ecs = getComputedStyle(e);
+              return {
+                top: d.top, left: d.left, right: d.right, bottom: d.bottom,
+                width: d.right - d.left, height: d.bottom - d.top,
+                background: ecs.backgroundColor, zIndex: ecs.zIndex, position: ecs.position,
+              };
+            }),
+            stripes: stripeEls.map((e) => {
+              const d = toDoc(e.getBoundingClientRect());
+              return { top: d.top, left: d.left, right: d.right, bottom: d.bottom, height: d.bottom - d.top };
+            }),
+            tables: Array.from(dom.querySelectorAll<HTMLElement>('table')).map((t) => {
+              const d = toDoc(t.getBoundingClientRect());
+              // x of each vertical cell border: use the first body row's cells' left edges
+              // plus the row's right edge. These are the lines that bleed across gaps.
+              const firstRow = t.querySelector('tbody > tr:not([data-page-break-spacer])') as HTMLElement | null;
+              const cells = firstRow
+                ? (Array.from(firstRow.children) as HTMLElement[]).filter(c => c.tagName === 'TD' || c.tagName === 'TH')
+                : [];
+              const verticalEdges: number[] = [];
+              for (const c of cells) verticalEdges.push(toDoc(c.getBoundingClientRect()).left);
+              if (cells.length) verticalEdges.push(toDoc(cells[cells.length - 1].getBoundingClientRect()).right);
+              const firstCell = cells[0];
+              return {
+                top: d.top, left: d.left, right: d.right, bottom: d.bottom,
+                borderColor: firstCell ? getComputedStyle(firstCell).borderTopColor : '',
+                verticalEdges,
+              };
+            }),
+          };
+        }
 
         function docPosBeforeElement(el: HTMLElement): number | null {
           const parent = el.parentNode;
@@ -620,13 +722,6 @@ export const PageBreaks = Extension.create({
             docPos: number;
             height: number;
             row: { columns: number } | null;
-            // True when the spacer sits inside a too-tall table cell; marked on the
-            // rendered DOM so Editor.svelte can align each close/open band to the
-            // spacer's actual position.
-            incell: boolean;
-            // Rounded openY of this break's band (null for non-cell spacers); written
-            // to the spacer DOM so a band can find all its columns' spacers.
-            bandKey: number | null;
           }[] = [];
           // Full-width close/open borders for in-cell table breaks (see Leaf.inTableCell).
           // openY is the page-content-top where the cell content resumes; the band runs
@@ -705,8 +800,18 @@ export const PageBreaks = Extension.create({
               }
             }
 
-            // Record a close/open band for breaks inside a too-tall table cell.
-            if (leaf.inTableCell && bandOpenY !== null && spacerHeight > 0) {
+            // A leaf needs a close/open band whenever its break sits inside the single
+            // continuous table box, where the table's outer left/right borders bleed
+            // through the borderless page gap:
+            //   • inTableCell — a too-tall cell whose content flows across the page, or
+            //   • a between-rows push (spacerRow set) — the bridging spacer <tr> is
+            //     borderless, but the browser still paints the table's outer side
+            //     borders continuously across it (grey lines through the margins + gap).
+            // Both get the same page-coloured mask + gap stripe overlay (Editor.svelte).
+            // First-row pushes use a block spacer before the wrapper (spacerRow === null)
+            // → the whole table moves to the next page, no internal gap, so no band.
+            const inBand = !!leaf.inTableCell || spacerRow !== null;
+            if (inBand && bandOpenY !== null && spacerHeight > 0) {
               const key = Math.round(bandOpenY);
               if (!tableBands.has(key)) tableBands.set(key, bandOpenY);
             }
@@ -745,8 +850,6 @@ export const PageBreaks = Extension.create({
                   docPos: spacerDocPos,
                   height: h,
                   row: spacerRow,
-                  incell: !!leaf.inTableCell,
-                  bandKey: leaf.inTableCell && bandOpenY !== null ? Math.round(bandOpenY) : null,
                 });
                 placementsDebug.push({
                   leafIndex: i,
@@ -810,12 +913,6 @@ export const PageBreaks = Extension.create({
               }
               const spacerEl = document.createElement('div');
               spacerEl.dataset.pageBreakSpacer = 'true';
-              // Tag in-cell spacers (with their band key) so Editor.svelte can group
-              // a break's per-column spacers and align the band to their real extent.
-              if (p.incell) {
-                spacerEl.dataset.pageBreakSpacerIncell = 'true';
-                if (p.bandKey !== null) spacerEl.dataset.pageBreakBoundary = String(p.bandKey);
-              }
               spacerEl.style.height = `${p.height}px`;
               spacerEl.style.pointerEvents = 'none';
               spacerEl.style.userSelect = 'none';
@@ -872,6 +969,7 @@ export const PageBreaks = Extension.create({
             placements: placementsDebug,
             renderedSpacers: [],
             tableBreakBands,
+            overlay: null, // filled in live by the debug accessor (captureOverlay)
           };
 
           isUpdating = false;

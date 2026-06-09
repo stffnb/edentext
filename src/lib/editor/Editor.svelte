@@ -121,8 +121,10 @@
   }
 
   // --- Table page-break overlay ---
-  // pageBreaks.ts reports (via pm-pagecount) the in-cell table breaks in document px
-  // relative to .tiptap's top. We render the overlay in a .band-layer inside .paper
+  // pageBreaks.ts reports (via pm-pagecount) where a single continuous table box crosses
+  // a page boundary (a too-tall cell's content flowing across pages, or a between-rows
+  // push), each as one band in document px relative to .tiptap's top. We render the
+  // overlay in a .band-layer inside .paper
   // (in document px) so the same `transform: scale()` scales it identically to the
   // .tiptap page background. Two pieces per break:
   //   • band   — a solid page-coloured mask (content width) hiding the table's borders
@@ -143,51 +145,30 @@
       if (gapStripeStyles.length) gapStripeStyles = [];
       return;
     }
-    const tRect = tiptap.getBoundingClientRect();
-    const z = appliedZoom / 100;
     const pageWidth = tiptap.offsetWidth; // unscaled doc px = full page width
-    // A too-tall row break produces one in-cell spacer per column, all tagged with
-    // the same band key. Group them so each band can span its columns' real gaps.
-    const spacersByKey = new Map<string, HTMLElement[]>();
-    for (const sp of Array.from(
-      tiptap.querySelectorAll<HTMLElement>('[data-page-break-spacer-incell]'),
-    )) {
-      const key = sp.dataset.pageBreakBoundary;
-      if (key === undefined) continue;
-      const arr = spacersByKey.get(key);
-      if (arr) arr.push(sp);
-      else spacersByKey.set(key, [sp]);
-    }
     // Everything below is in document px (relative to .tiptap's top). The .band-layer
     // lives inside the scaled .paper, so the transform applies the scaling — no `* z`.
     const border = 1; // 1px page-edge line, like the CSS .tiptap background
     bandStyles = tableBandsDoc.map((b) => {
-      // Anchor the band's vertical extent to the real rendered extent of this break's
-      // spacers (converted to doc px), so its close/open lines hug the actual content
-      // and the mask never eats content. Across columns: top = the lowest column's
-      // content end (max spacer top), bottom = the highest column's resume (min spacer
-      // bottom). Fall back to the theoretical placement when no spacer is found.
-      const group = spacersByKey.get(String(b.key));
-      let top: number;
-      let height: number;
-      if (group && group.length > 0) {
-        let maxTop = -Infinity; // lowest column's content end
-        let minBottom = Infinity; // highest column's resume
-        for (const sp of group) {
-          const r = sp.getBoundingClientRect();
-          maxTop = Math.max(maxTop, (r.top - tRect.top) / z);
-          minBottom = Math.min(minBottom, (r.bottom - tRect.top) / z);
-        }
-        top = maxTop;
-        height = Math.max(0, minBottom - maxTop);
-      } else {
-        top = b.closeY;
-        height = b.height;
-      }
-      // Solid white mask over the table band — hides the table's vertical borders
-      // bleeding through the page's bottom/top margins. The gap region is repainted
-      // by the full-width stripe below, so a solid fill here is fine.
-      return { top, left: b.left, width: b.width, height };
+      // Use pure page geometry: the band spans exactly the inter-page region — from the
+      // closing page's content-bottom (closeY) down through margin/gap/margin to the next
+      // page's content-top. This is precisely where the table must show no vertical
+      // borders, and pagination guarantees no real content ever sits there, so a solid
+      // mask here can never eat content. (Anchoring the band to the break's spacers
+      // instead under-covered atomic-push / leaf-jump breaks, where the spacer renders
+      // below content-bottom — after the empty gap left by the pushed block — leaving the
+      // top of the page's bottom margin unmasked and the borders bleeding through it.)
+      // Solid page-coloured fill; the gap region is repainted by the stripe below.
+      // Overhang 1px past each side: the table's outer L/R borders are centred on the
+      // content edges (b.left and b.left+b.width), so their outer halves sit just beyond
+      // the content box. Widening the mask by `border` on each side swallows them whole
+      // instead of leaving a half-pixel sliver bleeding into the page margins.
+      return {
+        top: b.closeY,
+        left: b.left - border,
+        width: b.width + 2 * border,
+        height: b.height,
+      };
     });
     // Full-page-width gap stripe: the dark page gap + its two page-edge lines, at the
     // true surface bottom (closeY + marginBottom = N·cycle − gap). Covers the entire
