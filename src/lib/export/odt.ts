@@ -551,6 +551,7 @@ function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []
     if (marks.some(m => m.type === 'bold'))      fmt.bold = true;
     if (marks.some(m => m.type === 'italic'))     fmt.italic = true;
     if (marks.some(m => m.type === 'underline'))  fmt.underline = true;
+    if (marks.some(m => m.type === 'strike'))     fmt.strikethrough = true;
     if (tsm?.attrs?.fontFamily) {
       const ff = String(tsm.attrs.fontFamily);
       // Explicitly choosing the editor default should match the untagged

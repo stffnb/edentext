@@ -14,6 +14,7 @@
   let isBold       = $derived(tick >= 0 && (!!editor?.isActive('bold') || (isHeading && !hasNormalWeight)));
   let isItalic     = $derived(tick >= 0 && !!editor?.isActive('italic'));
   let isUnderline  = $derived(tick >= 0 && !!editor?.isActive('underline'));
+  let isStrike     = $derived(tick >= 0 && !!editor?.isActive('strike'));
   let isBulletList = $derived(tick >= 0 && !!editor?.isActive('bulletList'));
   let isOrderedList= $derived(tick >= 0 && !!editor?.isActive('orderedList'));
   let canUndo      = $derived(tick >= 0 && !!editor?.can().undo());
@@ -55,6 +56,13 @@
         title="Underline (Ctrl+U)"
       >
         <u>U</u>
+      </button>
+      <button
+        class:active={isStrike}
+        onclick={() => editor?.chain().focus().toggleStrike().run()}
+        title="Strikethrough (Ctrl+Shift+S)"
+      >
+        <s>S</s>
       </button>
     </div>
 

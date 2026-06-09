@@ -4,6 +4,7 @@ import Text from '@tiptap/extension-text';
 import Bold from '@tiptap/extension-bold';
 import Italic from '@tiptap/extension-italic';
 import Underline from '@tiptap/extension-underline';
+import Strike from '@tiptap/extension-strike';
 import Highlight from '@tiptap/extension-highlight';
 import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style';
 import { FontWeight } from './fontWeight';
@@ -32,6 +33,7 @@ export const extensions = [
   Bold,
   Italic,
   Underline,
+  Strike,
   TextStyle,
   FontFamily,
   FontSize,
