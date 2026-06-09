@@ -158,17 +158,13 @@
       // instead under-covered atomic-push / leaf-jump breaks, where the spacer renders
       // below content-bottom — after the empty gap left by the pushed block — leaving the
       // top of the page's bottom margin unmasked and the borders bleeding through it.)
-      // Solid page-coloured fill; the gap region is repainted by the stripe below.
-      // Overhang 1px past each side: the table's outer L/R borders are centred on the
-      // content edges (b.left and b.left+b.width), so their outer halves sit just beyond
-      // the content box. Widening the mask by `border` on each side swallows them whole
-      // instead of leaving a half-pixel sliver bleeding into the page margins.
-      return {
-        top: b.closeY,
-        left: b.left - border,
-        width: b.width + 2 * border,
-        height: b.height,
-      };
+      // Match the band exactly to the table's content box (b.left / b.width): the black
+      // close (top) + open (bottom) lines are this element's top/bottom borders, so they
+      // must line up with the table's own start/end borders, which span the content width.
+      // The 1px overhang to also mask the outer L/R borders' half-pixel slivers is done by
+      // a horizontal-only box-shadow (.table-break-band CSS) so the mask widens without
+      // lengthening those close/open lines.
+      return { top: b.closeY, left: b.left, width: b.width, height: b.height };
     });
     // Full-page-width gap stripe: the dark page gap + its two page-edge lines, at the
     // true surface bottom (closeY + marginBottom = N·cycle − gap). Covers the entire
@@ -424,6 +420,15 @@
     background: var(--color-page-bg);
     border-top: 1px solid #000;
     border-bottom: 1px solid #000;
+    /* The fill matches the table's content box exactly so the close/open lines line up
+       with the table's start/end borders. The table's outer L/R borders are centred on
+       the content edges, though, so their outer halves sit 0.5px into the margins. Two
+       horizontal-only box-shadows (0 blur/spread, ±1px x-offset) paint the page colour
+       1px beyond each side for the band's full height — swallowing those slivers without
+       extending the top/bottom borders (the close/open lines stay the table's width). */
+    box-shadow:
+      1px 0 0 0 var(--color-page-bg),
+      -1px 0 0 0 var(--color-page-bg);
   }
 
   /* The page gap at a table break, drawn as ONE full-page-width element on top of the
