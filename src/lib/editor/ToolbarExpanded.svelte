@@ -760,6 +760,7 @@
         defaultColor="#FFFF00"
         title="Highlight color"
         chevronTitle="Choose highlight color"
+        clearLabel="No color"
         bind:open={highlightColorOpen}
         onOpen={() => onColorPickerOpen('highlight')}
         onApply={(c, r) => editor?.chain().focus().setTextSelection(r).setHighlight({ color: c }).run()}

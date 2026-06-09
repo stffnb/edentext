@@ -9,6 +9,7 @@
     defaultColor,
     title,
     chevronTitle,
+    clearLabel = 'Automatic',
     open = $bindable(false),
     onApply,
     onClear,
@@ -21,6 +22,7 @@
     defaultColor: string;
     title: string;
     chevronTitle: string;
+    clearLabel?: string;
     open?: boolean;
     onApply: (color: string, range: { from: number; to: number }) => void;
     onClear: (range: { from: number; to: number }) => void;
@@ -374,7 +376,7 @@
         class="color-automatic"
         class:active={currentColor === null}
         onclick={clearColor}
-      >Automatic</button>
+      >{clearLabel}</button>
       <div class="color-grid">
         {#each COLOR_PALETTE as row}
           <div class="color-row">
