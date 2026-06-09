@@ -7,13 +7,22 @@
   position: relative;
 }
 
+/* Reserves the SCALED footprint of the transformed .paper (a CSS transform takes
+   no layout space of its own), so the scrollbars and horizontal centering reflect
+   the zoomed page. Its width/height are sized in JS (Editor.svelte). */
+.paper-scaler {
+  margin: 0 auto;
+}
+
 /* A4 paper container (794px = 210mm at 96dpi by default; --user-page-width is
    set from the Layout panel and swaps to 1123px in landscape — pageOrientation.ts) */
 .paper {
   width: var(--user-page-width, 794px);
-  margin: 0 auto;
+  /* Zoom is a `transform: scale()` set inline (Editor.svelte); pin the origin so the
+     page scales down/right from the top-left of its reserved footprint. */
+  transform-origin: top left;
   /* Positioning context for the table page-break overlay (.band-layer in
-     Editor.svelte), which lives inside .paper so the ancestor `zoom` scales it
+     Editor.svelte), which lives inside .paper so the same transform scales it
      identically to the .tiptap page background. */
   position: relative;
 }
@@ -354,9 +363,16 @@
     overflow: visible;
   }
 
+  /* Never scale for print — the real page size comes from @page below. */
+  .paper-scaler {
+    width: auto;
+    height: auto;
+  }
+
   .paper {
     width: 100%;
     max-width: none;
+    transform: none;
   }
 
   .paper .tiptap {

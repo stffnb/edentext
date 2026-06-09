@@ -97,12 +97,9 @@ type VMargins = {
 };
 
 // Reads the vertical page margins + page height (px) from the --user-* custom
-// props the Layout panel writes via applyMarginVars (pageMargins.ts) and
-// applyOrientationVars (pageOrientation.ts). These are plain px strings in
-// document coordinates — unaffected by the ancestor CSS `zoom`, unlike
-// getComputedStyle padding — so they pair directly with the unscaled offsetTop
-// measurements below. Side margins don't affect pagination (they change line
-// wrapping, which we already measure from the live DOM), so we ignore them.
+// props the Layout panel writes (pageMargins.ts / pageOrientation.ts). These are
+// document-px values, so they pair directly with the offsetTop measurements below.
+// Side margins don't affect pagination (only line wrapping), so we ignore them.
 function readVerticalMargins(dom: HTMLElement): VMargins {
   const cs = getComputedStyle(dom);
   const top = parseFloat(cs.getPropertyValue('--user-margin-top'));
@@ -224,20 +221,13 @@ export const PageBreaks = Extension.create({
           }
         }
 
-        // CSS `zoom` is applied to the `.paper` ancestor in Editor.svelte. Under
-        // zoom, getBoundingClientRect / Range.getClientRects / coordsAtPos all
-        // return viewport (scaled) pixels, while offsetTop/offsetHeight and the
-        // page layout constants stay in unscaled document pixels. Read the
-        // computed zoom so we can divide viewport measurements back into
-        // document coordinates.
-        function getZoomFactor(): number {
-          let el: HTMLElement | null = editorView.dom.parentElement;
-          while (el) {
-            const z = parseFloat(getComputedStyle(el).zoom || '1');
-            if (z && z !== 1) return z;
-            el = el.parentElement;
-          }
-          return 1;
+        // The display scale (.paper has `transform: scale()`): the ratio of .tiptap's
+        // painted height to its unscaled offsetHeight. findLineSplit uses it to convert
+        // scaled glyph rects back to document px.
+        function getScaleFactor(): number {
+          const r = editorView.dom.getBoundingClientRect();
+          const h = editorView.dom.offsetHeight;
+          return h ? r.height / h : 1;
         }
 
         function previousNonSpacerSibling(el: HTMLElement): HTMLElement | null {
@@ -331,7 +321,7 @@ export const PageBreaks = Extension.create({
         function findLineSplit(
           el: HTMLElement,
           overflowDistance: number,
-          zoom: number,
+          scale: number,
         ): { naturalLineTop: number; docPos: number } | null {
           const lines = getLineRects(el);
           if (lines.length === 0) return null;
@@ -357,7 +347,7 @@ export const PageBreaks = Extension.create({
             for (const sp of intraSpacers) {
               if (sp.viewportTop < viewportY) dropped += sp.height;
             }
-            return (viewportY - elRect.top) / zoom - dropped;
+            return (viewportY - elRect.top) / scale - dropped;
           }
 
           // Line-box bottom in natural coords. Range.getClientRects() reports
@@ -418,29 +408,27 @@ export const PageBreaks = Extension.create({
           return { naturalLineTop, docPos: lo };
         }
 
-        function collectLeaves(contentHeight: number, zoom: number): Leaf[] {
+        function collectLeaves(contentHeight: number): Leaf[] {
           const dom = editorView.dom;
-          const domRect = dom.getBoundingClientRect();
           const leaves: Leaf[] = [];
           // cumulativeSpacerHeight accumulates spacer offsetHeights (unscaled
           // layout px), matching the offsetHeight-based naturalHeight.
           let cumulativeSpacerHeight = 0;
 
-          // A leaf's top within .tiptap, in unscaled document px. We read
-          // getBoundingClientRect (the real painted geometry) and divide by the CSS
-          // `zoom` on .paper — the same scaled→unscaled conversion findLineSplit and
-          // the CSS page background use. Summing offsetTop up the offsetParent chain
-          // (the previous approach) drifts from the rendered layout under zoom —
-          // notably through a table's nested offsetParents — so breaks landed a few
-          // percent off, accumulating down the page until content was clipped.
-          // offsetHeight stays the source for heights: it's a single-element read (no
-          // chain to drift) and integer-stable, avoiding per-keystroke spacer shake.
-          // Round to whole px: spacer heights / cumulativeSpacerHeight are integers, so
-          // an integer top keeps the model integer-stable (no sub-pixel jitter from the
-          // /zoom of a device-rounded spacer flipping a break on every keystroke), at a
-          // ≤0.5px cost that's immaterial next to the drift this replaces.
+          // A leaf's border-box top within .tiptap, in document px. Summing offsetTop
+          // up the offsetParent chain is unaffected by the `transform: scale()` on
+          // .paper, so the value is the same at every display zoom. offsetTop includes
+          // each offsetParent's top padding; the chain ends at .tiptap, whose padding-
+          // top is the page top margin, so the sum already uses the page-cycle origin
+          // (page top = 0, content starts at the top margin).
           function topWithin(el: HTMLElement): number {
-            return Math.round((el.getBoundingClientRect().top - domRect.top) / zoom);
+            let top = 0;
+            let node: HTMLElement | null = el;
+            while (node && node !== dom) {
+              top += node.offsetTop;
+              node = node.offsetParent as HTMLElement | null;
+            }
+            return top;
           }
 
           // Emit one atomic leaf per table row so the table can break between
@@ -616,8 +604,8 @@ export const PageBreaks = Extension.create({
           const marginLeft = Number.isFinite(mlRaw) ? mlRaw : 80;
           const contentWidth = (Number.isFinite(pwRaw) ? pwRaw : 794) - marginLeft - (Number.isFinite(mrRaw) ? mrRaw : 80);
 
-          const zoom = getZoomFactor();
-          const leaves = collectLeaves(CONTENT_HEIGHT, zoom);
+          const scale = getScaleFactor();
+          const leaves = collectLeaves(CONTENT_HEIGHT);
 
           let cumulativeShift = 0;
           // Per-cell flow bracketing for a too-tall row (see Leaf flow markers): each
@@ -698,7 +686,7 @@ export const PageBreaks = Extension.create({
                   reason = 'atomic-too-tall-no-push';
                 }
               } else {
-                const split = findLineSplit(leaf.el, contentEnd - effectiveTop, zoom);
+                const split = findLineSplit(leaf.el, contentEnd - effectiveTop, scale);
                 if (split === null) {
                   if (leaf.naturalHeight <= CONTENT_HEIGHT) {
                     spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - effectiveTop;
@@ -863,9 +851,10 @@ export const PageBreaks = Extension.create({
             gap: PAGE_GAP,
           }));
 
+          // docHeight (document px) lets Editor.svelte size the scaled scroll footprint.
           dom.dispatchEvent(new CustomEvent('pm-pagecount', {
             bubbles: true,
-            detail: { numPages, tableBreakBands },
+            detail: { numPages, docHeight: targetHeight, tableBreakBands },
           }));
 
           lastSnapshot = {

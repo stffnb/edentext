@@ -49,6 +49,23 @@
   let element: HTMLDivElement;
   let editorContainer: HTMLDivElement;
 
+  // Zoom is a CSS `transform: scale()` on .paper (so layout and pagination stay at
+  // 100%). A transform reserves no layout space, so .paper-scaler reserves the scaled
+  // footprint to drive the scrollbars and horizontal centering.
+  let paperEl: HTMLDivElement;
+  let docHeightDoc = $state(0); // document height, from pm-pagecount
+  let scaledWidth = $state(0);
+  let scaledHeight = $state(0);
+
+  function recomputeScaledSize() {
+    if (!paperEl) return;
+    const z = appliedZoom / 100;
+    const w = paperEl.offsetWidth;                  // unscaled page width (= --user-page-width)
+    const h = docHeightDoc || paperEl.offsetHeight; // unscaled document height
+    scaledWidth = Math.round(w * z);
+    scaledHeight = Math.round(h * z);
+  }
+
   // Page cycle (page height + 20px gap) in document px. Orientation-dependent, so
   // read live from --user-page-height (set by applyOrientationVars). Must match
   // pageBreaks.ts. Fallback = A4 portrait (1123 + 20).
@@ -105,9 +122,9 @@
 
   // --- Table page-break overlay ---
   // pageBreaks.ts reports (via pm-pagecount) the in-cell table breaks in document px
-  // relative to .tiptap's top. We render the overlay in a .band-layer INSIDE the
-  // zoomed .paper (in document px) so CSS `zoom` scales it by the exact same transform
-  // as the .tiptap page background. Two pieces per break:
+  // relative to .tiptap's top. We render the overlay in a .band-layer inside .paper
+  // (in document px) so the same `transform: scale()` scales it identically to the
+  // .tiptap page background. Two pieces per break:
   //   • band   — a solid page-coloured mask (content width) hiding the table's borders
   //              bleeding through the page margins, plus the close/open lines.
   //   • stripe — the dark page gap, drawn as ONE full-page-width element on top. Using
@@ -142,7 +159,7 @@
       else spacersByKey.set(key, [sp]);
     }
     // Everything below is in document px (relative to .tiptap's top). The .band-layer
-    // lives inside the zoomed .paper, so `zoom` applies the scaling — no manual `* z`.
+    // lives inside the scaled .paper, so the transform applies the scaling — no `* z`.
     const border = 1; // 1px page-edge line, like the CSS .tiptap background
     bandStyles = tableBandsDoc.map((b) => {
       // Anchor the band's vertical extent to the real rendered extent of this break's
@@ -233,6 +250,8 @@
 
   $effect(() => {
     appliedZoom; // track to fire after the pre-effect / DOM update
+    // Re-reserve the scaled scroll footprint for the new zoom (layout itself is frozen).
+    recomputeScaledSize();
     // Zoom changes the table's rendered position — re-place the floating toolbar.
     scheduleTableUi();
     if (pendingAnchorDocY === null || !editorContainer || !element) return;
@@ -274,9 +293,12 @@
   }
 
   function onPageCount(e: Event) {
-    const detail = (e as CustomEvent<{ numPages: number; tableBreakBands?: TableBreakBand[] }>).detail;
+    const detail = (e as CustomEvent<{ numPages: number; docHeight?: number; tableBreakBands?: TableBreakBand[] }>).detail;
     numPages = detail.numPages;
+    if (typeof detail.docHeight === 'number') docHeightDoc = detail.docHeight;
     tableBandsDoc = detail.tableBreakBands ?? [];
+    // The document height changed → resize the scaled scroll footprint.
+    recomputeScaledSize();
     updateCurrentPage();
     // Pagination spacers can shift a table's position — re-place the toolbar/bands.
     scheduleTableUi();
@@ -343,6 +365,11 @@
 
     element.addEventListener('pm-pagecount', onPageCount);
     editorContainer.addEventListener('scroll', onEditorScroll);
+    // Seed the scaled footprint before the first paint (so the page is centered, not
+    // briefly left-aligned), then refine it once layout settles. The pageBreaks plugin
+    // also fires pm-pagecount shortly after with the precise document height.
+    recomputeScaledSize();
+    requestAnimationFrame(recomputeScaledSize);
   });
 
   function onEditorScroll() {
@@ -361,26 +388,30 @@
 </script>
 
 <div class="editor" bind:this={editorContainer}>
-  <div class="paper" class:show-formatting-marks={showFormattingMarks} style="zoom: {appliedZoom / 100}">
-    <!-- Dedicated mount point that TipTap fully owns — keeping it free of Svelte
-         content avoids Svelte and ProseMirror fighting over the same parent's DOM. -->
-    <div bind:this={element} class="tiptap-host"></div>
-    {#if bandStyles.length}
-      <div class="band-layer">
-        {#each bandStyles as b}
-          <div
-            class="table-break-band"
-            style="top: {b.top}px; left: {b.left}px; width: {b.width}px; height: {b.height}px;"
-          ></div>
-        {/each}
-        {#each gapStripeStyles as s}
-          <div
-            class="page-gap-stripe"
-            style="top: {s.top}px; width: {s.width}px; height: {s.height}px; background: {s.background};"
-          ></div>
-        {/each}
-      </div>
-    {/if}
+  <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
+       Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
+  <div class="paper-scaler" style={scaledWidth ? `width: ${scaledWidth}px; height: ${scaledHeight}px;` : ''}>
+    <div bind:this={paperEl} class="paper" class:show-formatting-marks={showFormattingMarks} style="transform: scale({appliedZoom / 100});">
+      <!-- Dedicated mount point that TipTap fully owns — keeping it free of Svelte
+           content avoids Svelte and ProseMirror fighting over the same parent's DOM. -->
+      <div bind:this={element} class="tiptap-host"></div>
+      {#if bandStyles.length}
+        <div class="band-layer">
+          {#each bandStyles as b}
+            <div
+              class="table-break-band"
+              style="top: {b.top}px; left: {b.left}px; width: {b.width}px; height: {b.height}px;"
+            ></div>
+          {/each}
+          {#each gapStripeStyles as s}
+            <div
+              class="page-gap-stripe"
+              style="top: {s.top}px; width: {s.width}px; height: {s.height}px; background: {s.background};"
+            ></div>
+          {/each}
+        </div>
+      {/if}
+    </div>
   </div>
   {#if tableUi.visible}
     <TableToolbar {editor} top={tableUi.top} left={tableUi.left} />
@@ -388,10 +419,10 @@
 </div>
 
 <style>
-  /* Overlay layer for the table page-break bands. It lives INSIDE the zoomed .paper
-     (filling it via inset:0) so the bands are scaled by the same CSS `zoom` as the
-     .tiptap page background — no sub-pixel seam at fractional zoom. pointer-events:none
-     keeps the editor clickable. The z-index must clear the column-/row-resize handles
+  /* Overlay layer for the table page-break bands. It lives inside .paper (filling it
+     via inset:0) so the bands are scaled by the same transform as the .tiptap page
+     background — no sub-pixel seam at fractional zoom. pointer-events:none keeps the
+     editor clickable. The z-index must clear the column-/row-resize handles
      (z-index:20 in editor.css): a too-tall cell is one continuous DOM box, so its resize
      handle spans every page gap it crosses; the band masks that handle in the gap just
      like it masks the table's borders bleeding through the page margins. */
