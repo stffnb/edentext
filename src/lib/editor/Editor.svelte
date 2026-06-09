@@ -390,12 +390,15 @@
 <style>
   /* Overlay layer for the table page-break bands. It lives INSIDE the zoomed .paper
      (filling it via inset:0) so the bands are scaled by the same CSS `zoom` as the
-     .tiptap page background — no sub-pixel seam at fractional zoom. z-index lifts it
-     above the .tiptap content; pointer-events:none keeps the editor clickable. */
+     .tiptap page background — no sub-pixel seam at fractional zoom. pointer-events:none
+     keeps the editor clickable. The z-index must clear the column-/row-resize handles
+     (z-index:20 in editor.css): a too-tall cell is one continuous DOM box, so its resize
+     handle spans every page gap it crosses; the band masks that handle in the gap just
+     like it masks the table's borders bleeding through the page margins. */
   .band-layer {
     position: absolute;
     inset: 0;
-    z-index: 2;
+    z-index: 21;
     pointer-events: none;
   }
 
