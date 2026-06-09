@@ -780,11 +780,11 @@
     <div class="lh-picker" use:lineHeightPickerClickOutside>
       <button class="lh-trigger" onclick={openLineHeightPicker} title="Line &amp; paragraph spacing">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <line x1="5" y1="3"  x2="14" y2="3"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="5" y1="8"  x2="14" y2="8"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="5" y1="13" x2="14" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <path d="M2 5.5V1.5M2 1.5L1 2.8M2 1.5L3 2.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M2 10.5V14.5M2 14.5L1 13.2M2 14.5L3 13.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="7" y1="3"  x2="16" y2="3"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="7" y1="8"  x2="16" y2="8"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="7" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M2 5.5V1.5M2 1.5L0.3 3.4M2 1.5L3.7 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M2 10.5V14.5M2 14.5L0.3 12.6M2 14.5L3.7 12.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
           <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -905,6 +905,7 @@
       </button>
       {#if alignOpen}
         <div class="align-dropdown">
+          <div class="lh-section-label">Alignment</div>
           {#each ALIGNMENTS as a}
             <button
               class="align-option"

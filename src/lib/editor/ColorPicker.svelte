@@ -372,6 +372,7 @@
   </div>
   {#if open && view === 'palette'}
     <div class="color-dropdown">
+      <div class="color-title">{title}</div>
       <button
         class="color-automatic"
         class:active={currentColor === null}
@@ -523,6 +524,17 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .color-title {
+    padding: 0.1rem 0.2rem 0.2rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    user-select: none;
   }
 
   .color-automatic {
