@@ -1,8 +1,15 @@
 {
   "name": "web-odf-editor",
-  "private": true,
   "version": "0.1.0",
   "type": "module",
+  "description": "A fully client-side, serverless rich-text editor that saves documents as .odt",
+  "license": "AGPL-3.0-only",
+  "author": "Steffen Becker <your-contact-email>",
+  "homepage": "https://github.com/",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
