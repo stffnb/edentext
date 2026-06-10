@@ -1091,9 +1091,32 @@
     <div class="toolbar-separator"></div>
 
     <div class="toolbar-group">
-      <button disabled title="Clear formatting (coming soon)">
+      <button
+        onclick={() =>
+          editor?.chain().focus()
+            .unsetAllMarks()
+            .clearNodes()
+            .unsetLineHeight()
+            .unsetTextAlign()
+            .setSpaceBefore(null)
+            .setSpaceAfter(null)
+            .run()}
+        title="Clear formatting"
+      >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <!-- bold + italic A -->
+          <text x="0" y="12" font-size="12" font-family="var(--font-serif, serif)"
+                font-weight="700" font-style="italic" fill="currentColor">A</text>
+          <!-- underline beneath the A -->
+          <line x1="0.5" y1="14.2" x2="7.5" y2="14.2"
+                stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          <!-- big eraser sweeping across the A's upper-right -->
+          <g transform="rotate(35 10 6)">
+            <rect x="6.5" y="3.4" width="9" height="4.4" rx="1.3"
+                  fill="currentColor" fill-opacity="0.12"
+                  stroke="currentColor" stroke-width="1.4"/>
+            <line x1="9.7" y1="3.4" x2="9.7" y2="7.8" stroke="currentColor" stroke-width="1.2"/>
+          </g>
         </svg>
       </button>
     </div>
