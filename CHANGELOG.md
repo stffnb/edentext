@@ -35,10 +35,11 @@
 - margins
 - page orientation
 - tables
+- undo history
+- ...
 
 ### Not yet implemented
 - ODT import / open existing file
-- undo history
 - Images
 - Custom right-click context menu (formatting, cut/copy)
 - Multi-document management

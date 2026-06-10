@@ -9,6 +9,7 @@
   import { applyMarginVars, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { applyOrientationVars, type Orientation } from '../storage/pageOrientation';
   import { FORCE_PAGE_RECALC, type TableBreakBand } from './pageBreaks';
+  import { recordTransaction, resetHistoryLog } from './historyLog.svelte';
   import '../../styles/editor.css';
 
   const DEFAULT_EDITOR_FONT = 'Georgia'; // must match ToolbarExpanded.svelte
@@ -301,6 +302,8 @@
   }
 
   onMount(() => {
+    // Start with empty history lists — loaded content is not an undoable edit.
+    resetHistoryLog();
     const saved = loadDocument();
 
     editor = new Editor({
@@ -317,8 +320,12 @@
           return new Slice(applyFontToFragment(slice.content, textStyleType, font), slice.openStart, slice.openEnd);
         },
       },
-      onTransaction: () => {
+      onTransaction: ({ editor: e, transaction }) => {
         tick++;
+        // Mirror this transaction into the labelled undo/redo log for the toolbar's
+        // history dropdowns. e.state is the POST-transaction state, so the history
+        // depths recordTransaction reads already reflect this transaction.
+        recordTransaction(e.state, transaction);
         // Covers both doc and selection changes (entering/leaving a table,
         // adding/removing rows or columns).
         scheduleTableUi();
@@ -359,6 +366,7 @@
     cancelAnimationFrame(marginRecalcRaf);
     cancelAnimationFrame(tableUiRaf);
     editor?.destroy();
+    resetHistoryLog();
     element?.removeEventListener('pm-pagecount', onPageCount);
     editorContainer?.removeEventListener('scroll', onEditorScroll);
   });

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
+  import HistoryButton from './HistoryButton.svelte';
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 
@@ -17,8 +18,6 @@
   let isStrike     = $derived(tick >= 0 && !!editor?.isActive('strike'));
   let isBulletList = $derived(tick >= 0 && !!editor?.isActive('bulletList'));
   let isOrderedList= $derived(tick >= 0 && !!editor?.isActive('orderedList'));
-  let canUndo      = $derived(tick >= 0 && !!editor?.can().undo());
-  let canRedo      = $derived(tick >= 0 && !!editor?.can().redo());
 </script>
 
 <div class="toolbar">
@@ -128,20 +127,13 @@
     <div class="toolbar-separator"></div>
 
     <div class="toolbar-group">
-      <button
-        onclick={() => editor?.chain().focus().undo().run()}
-        disabled={!canUndo}
-        title="Undo (Ctrl+Z)"
-      >
-        ↩
-      </button>
-      <button
-        onclick={() => editor?.chain().focus().redo().run()}
-        disabled={!canRedo}
-        title="Redo (Ctrl+Shift+Z)"
-      >
-        ↪
-      </button>
+      <HistoryButton {editor} {tick} direction="undo" />
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <HistoryButton {editor} {tick} direction="redo" />
     </div>
   {/if}
 </div>
