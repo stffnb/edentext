@@ -37,6 +37,8 @@
     "@tiptap/extension-paragraph": "^3.23.6",
     "@tiptap/extension-placeholder": "^3.23.6",
     "@tiptap/extension-strike": "^3.23.6",
+    "@tiptap/extension-subscript": "^3.23.6",
+    "@tiptap/extension-superscript": "^3.23.6",
     "@tiptap/extension-table": "3.23.6",
     "@tiptap/extension-text": "^3.23.6",
     "@tiptap/extension-text-align": "^3.23.6",

@@ -270,6 +270,19 @@
   let currentFontColor = $derived(uniformMarkColor('textStyle'));
   let currentHighlightColor = $derived(uniformMarkColor('highlight'));
 
+  // Sub/superscript are mutually exclusive (Word-style): toggling one clears the
+  // other. odf-kit maps these marks to text:position (round-trips with LibreOffice
+  // and Word). See export/odt.ts applyRuns for the custom-attr-paragraph path.
+  let isSuperscript = $derived(tick >= 0 && !!editor?.isActive('superscript'));
+  let isSubscript = $derived(tick >= 0 && !!editor?.isActive('subscript'));
+
+  function toggleSuperscript() {
+    editor?.chain().focus().unsetSubscript().toggleSuperscript().run();
+  }
+  function toggleSubscript() {
+    editor?.chain().focus().unsetSuperscript().toggleSubscript().run();
+  }
+
   let fontOpen = $state(false);
   let sizeOpen = $state(false);
   let lineHeightOpen = $state(false);
@@ -773,6 +786,33 @@
           </svg>
         {/snippet}
       </ColorPicker>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <button
+        class:active={isSuperscript}
+        onclick={toggleSuperscript}
+        title="Superscript (Ctrl+.)"
+        aria-pressed={isSuperscript}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M2.5 11.5L7 5M7 11.5L2.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M10.5 4.7c0-.8.7-1.4 1.5-1.4s1.5.6 1.5 1.4c0 1.2-1.6 1.5-3 3.1h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button
+        class:active={isSubscript}
+        onclick={toggleSubscript}
+        title="Subscript (Ctrl+,)"
+        aria-pressed={isSubscript}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M2.5 11.5L7 5M7 11.5L2.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M10.5 12.2c0-.8.7-1.4 1.5-1.4s1.5.6 1.5 1.4c0 1.2-1.6 1.5-3 3.1h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
 
     <div class="toolbar-separator"></div>
