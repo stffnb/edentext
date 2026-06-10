@@ -13,7 +13,7 @@ import { FontWeight } from './fontWeight';
 import { FontColor } from './fontColor';
 import Heading from '@tiptap/extension-heading';
 import BulletList from '@tiptap/extension-bullet-list';
-import OrderedList from '@tiptap/extension-ordered-list';
+import { OrderedList } from './orderedList';
 import ListItem from '@tiptap/extension-list-item';
 import { Table, TableHeader, TableCell } from '@tiptap/extension-table';
 import { ResizableTableRow } from './tableRow';

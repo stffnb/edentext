@@ -3,6 +3,7 @@ import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, ty
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
+import { DEFAULT_ORDERED_TYPE, orderedTypeDef } from '../editor/orderedListTypes';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
@@ -289,6 +290,61 @@ function applyListItemStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Ar
   ).join('\n');
 
   content = content.replace('</office:automatic-styles>', `${newStyles}\n</office:automatic-styles>`);
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+// odf-kit always emits ordered lists as style:num-format="1" style:num-suffix="."
+// (tiptap-to-odt.js hardcodes { type: "numbered" }; content.js buildListStyle has
+// no per-node format). The editor lets the user pick a numbering style per list
+// (orderedList `listStyleType` attr — see editor/orderedListTypes.ts); this pass
+// rewrites the matching automatic list style on export.
+//
+// odf-kit names each top-level list L1, L2, … in document order, counting BOTH
+// bullet and ordered lists (content.js), so `formats` is collected in that same
+// order — one (possibly-null) entry per top-level list. Lists inside table cells
+// go through the custom exportTable path and get no L# name, so they aren't
+// counted here. An entry is null for bullet lists and for default ('decimal')
+// ordered lists, whose output already matches odf-kit's default (no rewrite).
+//
+// Known limitation: odf-kit emits one L# style (6 levels) per top-level list, so
+// the chosen format is applied to *every* nesting level of that list. A nested
+// ordered list of a different type renders correctly on screen (per-<ol> CSS) but
+// inherits the outer list's numbering in the exported .odt.
+type OrderedFmt = { numFormat: string; numSuffix: string };
+
+function collectOrderedListFormats(node: TiptapNode, result: (OrderedFmt | null)[]): void {
+  for (const child of node.content ?? []) {
+    if (child.type === 'bulletList') {
+      result.push(null);
+    } else if (child.type === 'orderedList') {
+      const def = orderedTypeDef(child.attrs?.listStyleType as string | undefined);
+      result.push(def.key === DEFAULT_ORDERED_TYPE ? null : { numFormat: def.numFormat, numSuffix: def.numSuffix });
+    }
+  }
+}
+
+function applyOrderedListFormats(odtBytes: Uint8Array, formats: (OrderedFmt | null)[]): Uint8Array {
+  if (formats.every(f => f === null)) return odtBytes;
+
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  formats.forEach((fmt, i) => {
+    if (!fmt) return;
+    // Rewrite only inside this list's own <text:list-style> block (all 6 levels).
+    const re = new RegExp(`(<text:list-style style:name="L${i + 1}">)([\\s\\S]*?)(</text:list-style>)`);
+    content = content.replace(re, (_m, open: string, body: string, close: string) =>
+      open +
+      body
+        .replace(/style:num-format="1"/g, `style:num-format="${fmt.numFormat}"`)
+        .replace(/style:num-suffix="\."/g, `style:num-suffix="${fmt.numSuffix}"`) +
+      close,
+    );
+  });
 
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
@@ -781,9 +837,16 @@ export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT
     },
   });
 
+  // Rewrite odf-kit's default numbering (1.) into the per-list style the user
+  // chose (a) / I.) / …). Runs before applyListItemStyles, which only touches
+  // <text:p> styles, not the <text:list-style> definitions.
+  const olFormats: (OrderedFmt | null)[] = [];
+  collectOrderedListFormats(raw, olFormats);
+  const numberedOdt = applyOrderedListFormats(odt as Uint8Array, olFormats);
+
   const listStyles: ParaStyle[] = [];
   collectListItemStyles(raw, listStyles);
-  const styledLists = applyListItemStyles(odt as Uint8Array, listStyles);
+  const styledLists = applyListItemStyles(numberedOdt, listStyles);
 
   // Rebuild real headings/lists/paragraphs inside table cells. Must run after
   // applyListItemStyles (cell lists don't exist yet) and before collapseRunWhitespace.
