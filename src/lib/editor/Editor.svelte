@@ -114,11 +114,38 @@
     // sibling of .paper, so it renders at a constant size.
     const tRect = dom.getBoundingClientRect();
     const cRect = editorContainer.getBoundingClientRect();
-    tableUi = {
-      visible: true,
-      top: tRect.top - cRect.top + editorContainer.scrollTop,
-      left: tRect.left - cRect.left + editorContainer.scrollLeft,
-    };
+    const left = tRect.left - cRect.left + editorContainer.scrollLeft;
+    // Default: anchor just above the table's top-left corner.
+    let top = tRect.top - cRect.top + editorContainer.scrollTop;
+
+    // When a table spans page breaks, keep the toolbar on the page the cursor is
+    // actually on, so the user isn't forced to scroll back to the table's first
+    // page to reach it. Compare the cursor's page to the table's starting page
+    // (both in document px, via the same cycle math as the page indicator); if
+    // they differ, re-anchor to the active page's content-top — i.e. the table's
+    // resumed top on that page — so the toolbar floats in that page's top margin.
+    const tiptap = element?.querySelector('.tiptap') as HTMLElement | null;
+    if (tiptap) {
+      try {
+        const z = appliedZoom / 100;
+        const tiptapRect = tiptap.getBoundingClientRect();
+        const cycle = getCycle();
+        const tableTopDoc = (tRect.top - tiptapRect.top) / z;
+        const coords = ed.view.coordsAtPos(ed.state.selection.head);
+        const cursorDoc = ((coords.top + coords.bottom) / 2 - tiptapRect.top) / z;
+        const tableStartPage = Math.floor(Math.max(0, tableTopDoc) / cycle);
+        const cursorPage = Math.floor(Math.max(0, cursorDoc) / cycle);
+        if (cursorPage > tableStartPage) {
+          const marginTopDoc =
+            parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--user-margin-top')) || 96;
+          const pageContentTopDoc = cursorPage * cycle + marginTopDoc;
+          const tiptapTopInContainer = tiptapRect.top - cRect.top + editorContainer.scrollTop;
+          top = tiptapTopInContainer + pageContentTopDoc * z;
+        }
+      } catch { /* fall back to the table-top anchor */ }
+    }
+
+    tableUi = { visible: true, top, left };
   }
 
   // --- Table page-break overlay ---
