@@ -143,7 +143,9 @@ function paraStyleProps(style: ParaStyle): string[] {
 // applyCellBlocks to rebuild real <text:h>/<text:p>/<text:list> from the SEG-segmented
 // <text:p> odf-kit emits. Each paragraph/heading/list item is one segment, in DFS order.
 type CellListItem = { style: ParaStyle; nested: CellListBlock | null };
-type CellListBlock = { kind: 'list'; ordered: boolean; start: number | null; items: CellListItem[] };
+// numFormat/numSuffix carry the ordered-list numbering style (orderedTypeDef);
+// for bullet lists they hold the decimal defaults and are unused.
+type CellListBlock = { kind: 'list'; ordered: boolean; start: number | null; numFormat: string; numSuffix: string; items: CellListItem[] };
 type CellBlock =
   | { kind: 'paragraph'; style: ParaStyle }
   | { kind: 'heading'; level: number; style: ParaStyle }
@@ -327,7 +329,7 @@ function applyOrderedListFormats(odtBytes: Uint8Array, formats: (OrderedFmt | nu
 // in-cell lists reference. Six nesting levels with identical bullet chars /
 // indents / numbering, so cell lists match the editor's top-level lists.
 const CELL_BULLET_CHARS = ['•', '◦', '▪', '▸', '–', '·'];
-function buildCellListStyle(styleName: string, ordered: boolean): string {
+function buildCellListStyle(styleName: string, ordered: boolean, numFormat = '1', numSuffix = '.'): string {
   let levels = '';
   for (let level = 1; level <= 6; level++) {
     const indent = level * 0.635;
@@ -335,7 +337,7 @@ function buildCellListStyle(styleName: string, ordered: boolean): string {
     const textIndent = `-${indent.toFixed(3)}cm`;
     const labelAlign = `<style:list-level-properties text:list-level-position-and-space-mode="label-alignment"><style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="${marginLeft}" fo:text-indent="${textIndent}" fo:margin-left="${marginLeft}"/></style:list-level-properties>`;
     if (ordered) {
-      levels += `<text:list-level-style-number text:level="${level}" style:num-format="1" style:num-suffix=".">${labelAlign}</text:list-level-style-number>`;
+      levels += `<text:list-level-style-number text:level="${level}" style:num-format="${numFormat}" style:num-suffix="${numSuffix}">${labelAlign}</text:list-level-style-number>`;
     } else {
       const ch = CELL_BULLET_CHARS[(level - 1) % CELL_BULLET_CHARS.length];
       levels += `<text:list-level-style-bullet text:level="${level}" text:bullet-char="${ch}">${labelAlign}</text:list-level-style-bullet>`;
@@ -384,15 +386,29 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
   };
 
   let usedBulletList = false;
-  let usedNumberList = false;
+  // Ordered cell lists are minted one style per distinct numbering format (1. / a) /
+  // I. / …) so each list exports with its chosen type. The first format reuses the
+  // legacy CELL_LIST_NUMBER_STYLE name; further ones get a counter suffix.
+  const numberStyles: { name: string; numFormat: string; numSuffix: string }[] = [];
+  const numberStyleByKey = new Map<string, string>();
+  const numberStyleFor = (numFormat: string, numSuffix: string): string => {
+    const key = `${numFormat}|${numSuffix}`;
+    let name = numberStyleByKey.get(key);
+    if (!name) {
+      name = numberStyleByKey.size === 0 ? CELL_LIST_NUMBER_STYLE : `${CELL_LIST_NUMBER_STYLE}${numberStyleByKey.size}`;
+      numberStyleByKey.set(key, name);
+      numberStyles.push({ name, numFormat, numSuffix });
+    }
+    return name;
+  };
 
   // Each <text:list> (root or nested) carries its own type-based style-name, so mixed
   // bullet/number nesting renders correctly; indent comes from nesting depth. One
   // segment consumed per list item, DFS order (matching buildCellContent).
   const buildList = (list: CellListBlock, segments: string[], cur: { i: number }): string => {
     const isBullet = !list.ordered;
-    if (isBullet) usedBulletList = true; else usedNumberList = true;
-    const listStyle = isBullet ? CELL_LIST_BULLET_STYLE : CELL_LIST_NUMBER_STYLE;
+    if (isBullet) usedBulletList = true;
+    const listStyle = isBullet ? CELL_LIST_BULLET_STYLE : numberStyleFor(list.numFormat, list.numSuffix);
     const paraParent = isBullet ? 'List_20_Bullet' : 'List_20_Number';
     let out = `<text:list text:style-name="${listStyle}">`;
     list.items.forEach((item, idx) => {
@@ -450,7 +466,9 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
     `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${paraStyleProps(style).join(' ')}/></style:style>`,
   );
   if (usedBulletList) additions.push(buildCellListStyle(CELL_LIST_BULLET_STYLE, false));
-  if (usedNumberList) additions.push(buildCellListStyle(CELL_LIST_NUMBER_STYLE, true));
+  for (const { name, numFormat, numSuffix } of numberStyles) {
+    additions.push(buildCellListStyle(name, true, numFormat, numSuffix));
+  }
 
   if (additions.length) {
     content = content.replace('</office:automatic-styles>', `${additions.join('\n')}\n</office:automatic-styles>`);
@@ -607,6 +625,8 @@ function buildCellContent(cell: TiptapNode, c: CellBuilder): CellBlock[] {
   const walkList = (listNode: TiptapNode): CellListBlock => {
     const ordered = listNode.type === 'orderedList';
     const start = ordered ? ((listNode.attrs?.start as number) ?? null) : null;
+    // Same numbering style the editor shows / top-level export uses (orderedTypeDef).
+    const def = ordered ? orderedTypeDef(listNode.attrs?.listStyleType as string | undefined) : null;
     const items: CellListItem[] = [];
     for (const item of listNode.content ?? []) {
       if (item.type !== 'listItem') continue;
@@ -615,7 +635,7 @@ function buildCellContent(cell: TiptapNode, c: CellBuilder): CellBlock[] {
       const nested = item.content?.find(x => x.type === 'bulletList' || x.type === 'orderedList');
       items.push({ style: paraStyleFromAttrs(firstPara?.attrs), nested: nested ? walkList(nested) : null });
     }
-    return { kind: 'list', ordered, start, items };
+    return { kind: 'list', ordered, start, numFormat: def?.numFormat ?? '1', numSuffix: def?.numSuffix ?? '.', items };
   };
 
   for (const block of cell.content ?? []) {
