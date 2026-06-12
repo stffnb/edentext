@@ -10,11 +10,8 @@ declare module '@tiptap/core' {
   }
 }
 
-/**
- * Adds `color` as an attribute on the TextStyle mark. Emits a `data-color`
- * marker alongside the inline style so theme CSS (e.g. allBlack) can target
- * only color-bearing spans without affecting other inline styles.
- */
+// Adds a `color` attr on the TextStyle mark, plus a `data-color` marker so
+// theme CSS (e.g. allBlack) can target only color-bearing spans.
 export const FontColor = Extension.create({
   name: 'fontColor',
 

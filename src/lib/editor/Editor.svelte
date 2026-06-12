@@ -27,11 +27,9 @@
     applyOrientationVars(orientation);
   });
 
-  // Nudge the pageBreaks plugin to recompute with the new content area. The
-  // dispatch bumps the `tick`/`numPages` bindings (via onTransaction/pm-pagecount),
-  // so it must run OUTSIDE the Svelte effect flush — otherwise the child↔parent
-  // binding updates re-enter and trip effect_update_depth_exceeded. requestAnimation-
-  // Frame defers it past the flush; the empty transaction changes no document content.
+  // Nudge the pageBreaks plugin to recompute with the new content area. The dispatch
+  // bumps the tick/numPages bindings, so requestAnimationFrame defers it past the
+  // Svelte effect flush (re-entering it would trip effect_update_depth_exceeded).
   let marginRecalcRaf = 0;
   $effect(() => {
     // track each margin + orientation so the effect re-runs on any change
@@ -109,21 +107,17 @@
       return;
     }
     // Position in the editor container's content space: viewport delta + scroll.
-    // getBoundingClientRect and scrollTop share the same (zoom-affected) scale,
-    // so this stays aligned across zoom; the toolbar itself is a non-zoomed
-    // sibling of .paper, so it renders at a constant size.
+    // getBoundingClientRect and scrollTop share the same zoom scale, so this stays
+    // aligned across zoom; the toolbar is a non-zoomed sibling, rendered constant-size.
     const tRect = dom.getBoundingClientRect();
     const cRect = editorContainer.getBoundingClientRect();
     const left = tRect.left - cRect.left + editorContainer.scrollLeft;
     // Default: anchor just above the table's top-left corner.
     let top = tRect.top - cRect.top + editorContainer.scrollTop;
 
-    // When a table spans page breaks, keep the toolbar on the page the cursor is
-    // actually on, so the user isn't forced to scroll back to the table's first
-    // page to reach it. Compare the cursor's page to the table's starting page
-    // (both in document px, via the same cycle math as the page indicator); if
-    // they differ, re-anchor to the active page's content-top — i.e. the table's
-    // resumed top on that page — so the toolbar floats in that page's top margin.
+    // When a table spans page breaks, keep the toolbar on the cursor's page rather
+    // than the table's first page. If the cursor's page differs from the table's start
+    // page, re-anchor to that page's content-top so the toolbar floats in its margin.
     const tiptap = element?.querySelector('.tiptap') as HTMLElement | null;
     if (tiptap) {
       try {
@@ -148,18 +142,9 @@
     tableUi = { visible: true, top, left };
   }
 
-  // --- Table page-break overlay ---
-  // pageBreaks.ts reports (via pm-pagecount) where a single continuous table box crosses
-  // a page boundary (a too-tall cell's content flowing across pages, or a between-rows
-  // push), each as one band in document px relative to .tiptap's top. We render the
-  // overlay in a .band-layer inside .paper
-  // (in document px) so the same `transform: scale()` scales it identically to the
-  // .tiptap page background. Two pieces per break:
-  //   • band   — a solid page-coloured mask (content width) hiding the table's borders
-  //              bleeding through the page margins, plus the close/open lines.
-  //   • stripe — the dark page gap, drawn as ONE full-page-width element on top. Using
-  //              a single rectangle for the whole gap avoids a left/right edge where two
-  //              separately-rasterised gradients disagree by a sub-pixel (the seam).
+  // Table page-break overlay: pageBreaks.ts reports (via pm-pagecount) where a continuous
+  // table box crosses a page boundary, each as a band in doc px. Rendered in .band-layer
+  // inside the scaled .paper — a mask hides borders in the margins, a stripe is the gap.
   type BandStyle = { top: number; left: number; width: number; height: number };
   type GapStripeStyle = { top: number; width: number; height: number; background: string };
   let tableBandsDoc = $state<TableBreakBand[]>([]);
@@ -178,26 +163,14 @@
     // lives inside the scaled .paper, so the transform applies the scaling — no `* z`.
     const border = 1; // 1px page-edge line, like the CSS .tiptap background
     bandStyles = tableBandsDoc.map((b) => {
-      // Use pure page geometry: the band spans exactly the inter-page region — from the
-      // closing page's content-bottom (closeY) down through margin/gap/margin to the next
-      // page's content-top. This is precisely where the table must show no vertical
-      // borders, and pagination guarantees no real content ever sits there, so a solid
-      // mask here can never eat content. (Anchoring the band to the break's spacers
-      // instead under-covered atomic-push / leaf-jump breaks, where the spacer renders
-      // below content-bottom — after the empty gap left by the pushed block — leaving the
-      // top of the page's bottom margin unmasked and the borders bleeding through it.)
-      // Match the band exactly to the table's content box (b.left / b.width): the black
-      // close (top) + open (bottom) lines are this element's top/bottom borders, so they
-      // must line up with the table's own start/end borders, which span the content width.
-      // The 1px overhang to also mask the outer L/R borders' half-pixel slivers is done by
-      // a horizontal-only box-shadow (.table-break-band CSS) so the mask widens without
-      // lengthening those close/open lines.
+      // The band spans the inter-page region (closeY through margin/gap/margin to the
+      // next content-top), where pagination guarantees no content, so the mask can't eat
+      // content. Matched to the table's content box (b.left/b.width) so the lines align.
       return { top: b.closeY, left: b.left, width: b.width, height: b.height };
     });
-    // Full-page-width gap stripe: the dark page gap + its two page-edge lines, at the
-    // true surface bottom (closeY + marginBottom = N·cycle − gap). Covers the entire
-    // natural gap (margins + table) with ONE element → no seam. Painted on top of the
-    // bands (later in DOM) so it overrides their white fill in the gap region.
+    // Full-page-width gap stripe: the dark page gap + its two edge lines at the surface
+    // bottom (closeY + marginBottom). One element covers the whole gap → no seam; painted
+    // after the bands so it overrides their fill in the gap region.
     gapStripeStyles = tableBandsDoc.map((b) => {
       const gapStart = b.closeY + b.marginBottom;
       return {
@@ -431,13 +404,9 @@
 </div>
 
 <style>
-  /* Overlay layer for the table page-break bands. It lives inside .paper (filling it
-     via inset:0) so the bands are scaled by the same transform as the .tiptap page
-     background — no sub-pixel seam at fractional zoom. pointer-events:none keeps the
-     editor clickable. The z-index must clear the column-/row-resize handles
-     (z-index:20 in editor.css): a too-tall cell is one continuous DOM box, so its resize
-     handle spans every page gap it crosses; the band masks that handle in the gap just
-     like it masks the table's borders bleeding through the page margins. */
+  /* Overlay for the table page-break bands, inside .paper (inset:0) so it scales with
+     the page background. pointer-events:none keeps the editor clickable. z-index clears
+     the resize handles (20) so the band also masks a too-tall cell's handle in the gap. */
   .band-layer {
     position: absolute;
     inset: 0;
@@ -445,9 +414,8 @@
     pointer-events: none;
   }
 
-  /* Table page-break mask: a solid page-coloured fill over the table's margin band
-     that hides the table's vertical borders bleeding through the page margins, plus
-     the black close (top) + open (bottom) line. Document px inside .band-layer. The
+  /* Table page-break mask: a solid page-coloured fill over the margin band hiding the
+     table's vertical borders, plus the black close (top) + open (bottom) lines. The
      dark gap itself is drawn by .page-gap-stripe on top. */
   .table-break-band {
     position: absolute;
@@ -455,21 +423,17 @@
     background: var(--color-page-bg);
     border-top: 1px solid #000;
     border-bottom: 1px solid #000;
-    /* The fill matches the table's content box exactly so the close/open lines line up
-       with the table's start/end borders. The table's outer L/R borders are centred on
-       the content edges, though, so their outer halves sit 0.5px into the margins. Two
-       horizontal-only box-shadows (0 blur/spread, ±1px x-offset) paint the page colour
-       1px beyond each side for the band's full height — swallowing those slivers without
-       extending the top/bottom borders (the close/open lines stay the table's width). */
+    /* Fill matches the table's content box so the close/open lines align with its
+       start/end borders. The outer L/R borders sit 0.5px into the margins, so two
+       horizontal box-shadows paint 1px beyond each side to swallow those slivers. */
     box-shadow:
       1px 0 0 0 var(--color-page-bg),
       -1px 0 0 0 var(--color-page-bg);
   }
 
   /* The page gap at a table break, drawn as ONE full-page-width element on top of the
-     masks so the dark gap line is a single rasterised rectangle — no left/right edge
-     where it could disagree (sub-pixel, at fractional zoom) with the .tiptap
-     background gap in the side margins. */
+     masks so the dark gap is a single rasterised rectangle — no left/right edge to
+     disagree (sub-pixel, at fractional zoom) with the .tiptap background gap. */
   .page-gap-stripe {
     position: absolute;
     left: 0;

@@ -1,10 +1,8 @@
 import { Extension } from '@tiptap/core';
 
-// ODF/LibreOffice line spacing is a multiple of the font's NATURAL line height
-// (Liberation Serif ≈ 1.15× em), not of the font size. CSS unitless line-height
-// multiplies the font size, so to make the on-screen box match what LibreOffice
-// renders for the same "Single"/"1.5"/"Double" value, we scale by this ratio.
-// Keep in sync with the base line-height in editor.css (.paper .tiptap).
+// ODF line spacing multiplies the font's natural line height (Liberation Serif
+// ≈1.15× em); CSS unitless line-height multiplies the font size. Scale by this
+// ratio so the on-screen box matches LibreOffice. Keep in sync with editor.css.
 const LINE_HEIGHT_RATIO = 1.15;
 
 declare module '@tiptap/core' {

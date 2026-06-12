@@ -38,12 +38,9 @@ export const FormattingMarks = Extension.create({
           init: () => DecorationSet.empty,
           apply(tr: Transaction, old: DecorationSet, _oldState: EditorState, newState: EditorState) {
             const force = tr.getMeta(FORCE_REBUILD_META) === true;
-            // Resolve enabled-state via the DOM class on .paper. The plugin's
-            // `view` hook below installs a MutationObserver that dispatches a
-            // FORCE_REBUILD meta whenever that class toggles, so this check
-            // always reflects the current UI state.
-            // During init (no view yet) we can't read DOM, so default to keeping
-            // the previous set mapped through.
+            // Enabled-state comes from the `.paper` DOM class; the view hook's
+            // MutationObserver fires FORCE_REBUILD when it toggles. Before the
+            // view exists we can't read the DOM, so map the previous set through.
             if (typeof document === 'undefined') {
               return tr.docChanged ? old.map(tr.mapping, tr.doc) : old;
             }

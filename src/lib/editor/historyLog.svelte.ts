@@ -1,11 +1,6 @@
-// A labelled mirror of the undo/redo stacks, for the toolbar's history dropdowns.
-//
-// ProseMirror's history (prosemirror-history, via @tiptap/extension-history) stores no
-// human-readable labels for its undo groups — only `undoDepth`/`redoDepth` counts. So we
-// keep a parallel list of best-effort labels here, fed one transaction at a time from
-// Editor.svelte's onTransaction. The list LENGTHS are reconciled to the authoritative
-// depths on every transaction, so jumping N steps is always exact even when a label is
-// generic. See HistoryButton.svelte for the consumer.
+// Labelled mirror of the undo/redo stacks for the toolbar dropdowns. ProseMirror's
+// history exposes only depth counts, no labels, so we keep parallel best-effort
+// labels fed from onTransaction and reconcile lengths to the authoritative depths.
 import type { Editor } from '@tiptap/core';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { undoDepth, redoDepth, isHistoryTransaction } from '@tiptap/pm/history';

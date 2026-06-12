@@ -6,16 +6,9 @@ import type { EditorView } from '@tiptap/pm/view';
 import { TableMap, cellAround, pointsAtCell } from '@tiptap/pm/tables';
 import { columnWeightsFromRow, columnPercents } from './tableView';
 
-// Word-style column resizing.
-//
-// TipTap's built-in columnResizing resizes a single column and lets the table
-// width grow (it has no neighbour-trade mode). Instead, this plugin keeps the
-// table exactly the full text width: dragging the border between column i and i+1
-// only trades width between those two columns (their sum stays constant). Live
-// feedback pokes the <col> elements of the custom TableView (tableView.ts); on
-// release a single transaction writes the new proportional weights into the
-// `colwidth` attribute of every cell, so the document fully describes the layout
-// (→ exact, deterministic ODT export).
+// Word-style column resizing: dragging the border between columns i and i+1 trades
+// width between only those two (their sum stays constant, table stays full width).
+// Live drag pokes the TableView <col> elements; release writes `colwidth` weights.
 
 const HANDLE_WIDTH = 5; // px from a column border that activates the handle
 const CELL_MIN_PX = 30; // smallest a column may be dragged to

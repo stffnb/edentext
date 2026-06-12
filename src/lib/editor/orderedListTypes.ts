@@ -1,13 +1,6 @@
-// Numbering styles for ordered lists (Word/LibreOffice-style). Single source of
-// truth shared by:
-//   • orderedList.ts        — the `listStyleType` node attr (default 'decimal')
-//   • Toolbar.svelte        — the split-button dropdown
-//   • editor.css            — on-screen markers via list-style-type / @counter-style
-//   • export/odt.ts         — rewrites odf-kit's default L# list styles on export
-//
-// `decimal` is the default and deliberately maps to odf-kit's own default output
-// (style:num-format="1" style:num-suffix="."), so existing documents export
-// unchanged and the export rewrite pass is a no-op for them.
+// Ordered-list numbering styles — single source of truth for orderedList.ts (the
+// `listStyleType` attr), Toolbar.svelte, editor.css, and export/odt.ts. `decimal`
+// is the default and maps to odf-kit's own output, so the export rewrite skips it.
 
 export type OrderedListType =
   | 'decimal'      | 'decimal-paren'

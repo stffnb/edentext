@@ -1,13 +1,9 @@
 import OrderedListBase from '@tiptap/extension-ordered-list';
 import { DEFAULT_ORDERED_TYPE } from './orderedListTypes';
 
-// OrderedList carrying a `listStyleType` attr (one of the ORDERED_LIST_TYPES
-// keys). Rendered as `data-list-style` on the <ol>; editor.css turns that into
-// the on-screen marker (list-style-type / @counter-style) and export/odt.ts
-// rewrites odf-kit's default numbering into the matching style:num-format.
-//
-// We spread the parent's attributes so the inherited `start`/`type` attrs (and
-// their parse/render HTML) keep working.
+// OrderedList with a `listStyleType` attr (an ORDERED_LIST_TYPES key), rendered
+// as `data-list-style` on the <ol>: editor.css maps it to the on-screen marker,
+// export/odt.ts to style:num-format. Parent attrs spread in to keep start/type.
 export const OrderedList = OrderedListBase.extend({
   addAttributes() {
     return {

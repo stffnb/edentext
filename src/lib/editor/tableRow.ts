@@ -1,17 +1,8 @@
 import { TableRow } from '@tiptap/extension-table';
 
-// TableRow extended with a draggable row height.
-//
-// TipTap's stock TableRow has no height attribute. We add `rowHeight` (integer
-// CSS px, unscaled document pixels at 96 dpi) and render it as `style="height: Npx"`
-// on the <tr>. CSS treats a row's height as a *minimum* (the row grows if its
-// content is taller), which is exactly the semantics we export — odf-kit gets a
-// `style:min-row-height` (see export/odt.ts applyTableRowHeights). `null` means
-// "no explicit height" → the row auto-sizes to its content (back-compat for
-// documents saved before this feature).
-//
-// The actual drag interaction + live preview live in tableRowResize.ts; this file
-// only owns the persisted attribute and its DOM/serialization mapping.
+// TableRow with a `rowHeight` attr (integer CSS px @96dpi), rendered as a <tr>
+// min-height and exported as style:min-row-height (export/odt.ts). null auto-sizes
+// to content. The drag interaction lives in tableRowResize.ts; this file owns the attr.
 
 export const ResizableTableRow = TableRow.extend({
   addAttributes() {

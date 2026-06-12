@@ -14,9 +14,8 @@ type AlignValue = 'left' | 'center' | 'right' | 'justify';
 const CUST_P = '__cust_p__';
 const CUST_H = '__cust_h__';
 // Tables are renamed to this so odf-kit routes them to unknownNodeHandler. Its
-// native table path (walkTable) calls addTable with no options, emitting cells
-// with no border — invisible in LibreOffice/Word. We build the table ourselves
-// and pass an explicit border instead.
+// native path emits cells with no border (invisible in LibreOffice/Word), so we
+// build the table ourselves with an explicit border.
 const CUST_TABLE = '__cust_table__';
 
 // Table export styling. Values mirror the editor's table CSS (src/styles/editor.css)
@@ -33,11 +32,9 @@ const ODFKIT_DEFAULT_FONT = 'Liberation Serif';
 const EXPORT_FONT = 'Times New Roman';
 const DEFAULT_LINE_HEIGHT = 1;  // must match line-height multiplier default in ToolbarExpanded.svelte
 
-// Sentinel inserted between a cell's blocks (and between list items) so the
-// single <text:p> odf-kit emits per cell can be split back into real block
-// elements in applyCellBlocks. A Unicode private-use char: never present in user
-// text, and passes through odf-kit's XML escaper untouched (escapeXml only
-// touches & < >) so it survives serialization as a literal, findable character.
+// Sentinel between a cell's blocks (and list items) so the single <text:p> odf-kit
+// emits per cell can be split back into real blocks in applyCellBlocks. A private-use
+// char: never in user text, and passes odf-kit's XML escaper (only & < >) untouched.
 const SEG = '';
 
 // Automatic list styles minted for in-cell lists (see applyCellBlocks). odf-kit's
@@ -46,10 +43,9 @@ const SEG = '';
 const CELL_LIST_BULLET_STYLE = 'TblListBullet';
 const CELL_LIST_NUMBER_STYLE = 'TblListNumber';
 
-// Heading sizes/margins shown in the editor (editor.css). odf-kit's built-in
-// Heading_20_N styles use larger sizes (28/24/20pt), so we rewrite them on
-// export. Margins are the editor's em-based values resolved against each
-// heading's own font size (top 1.5em, bottom 0.5em), converted to cm.
+// Heading sizes/margins shown in the editor (editor.css); odf-kit's Heading_20_N
+// defaults are larger, so we rewrite them on export. Margins are the editor's em
+// values (top 1.5em, bottom 0.5em) resolved against each heading's font size, in cm.
 const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTop: string; marginBottom: string }[] = [
   { name: 'Heading_20_1', fontSize: '20pt', marginTop: '1.058cm', marginBottom: '0.353cm' },
   { name: 'Heading_20_2', fontSize: '16pt', marginTop: '0.847cm', marginBottom: '0.282cm' },
@@ -99,10 +95,9 @@ function normalizeLineHeight(lh: number | string): string {
   return typeof lh === 'number' ? `${Math.round(lh * 100)}%` : lh;
 }
 
-// Paragraph property overrides carried over to the exported .odt. Used for both
-// list-item paragraphs and table-cell paragraphs — odf-kit's ListBuilder and
-// TableBuilder neither support per-paragraph alignment/spacing/line-height, so we
-// inject them as automatic paragraph styles in a post-processing pass.
+// Paragraph property overrides for the exported .odt, for both list-item and
+// table-cell paragraphs (odf-kit's List/TableBuilder support no per-paragraph
+// alignment/spacing/line-height), injected as automatic styles in post-processing.
 type ParaStyle = {
   align: AlignValue | null;
   spaceBefore: number | null;
@@ -144,11 +139,9 @@ function paraStyleProps(style: ParaStyle): string[] {
   return props;
 }
 
-// Per-cell block descriptors, built during exportTable and consumed in document
-// order by applyCellBlocks to rebuild real <text:h>/<text:p>/<text:list> elements
-// from the single SEG-segmented <text:p> odf-kit emits per cell. Each paragraph,
-// heading, and list *item* contributes exactly one SEG-delimited segment, in the
-// same DFS order they are emitted.
+// Per-cell block descriptors, built in exportTable and consumed in document order by
+// applyCellBlocks to rebuild real <text:h>/<text:p>/<text:list> from the SEG-segmented
+// <text:p> odf-kit emits. Each paragraph/heading/list item is one segment, in DFS order.
 type CellListItem = { style: ParaStyle; nested: CellListBlock | null };
 type CellListBlock = { kind: 'list'; ordered: boolean; start: number | null; items: CellListItem[] };
 type CellBlock =
@@ -176,10 +169,9 @@ function collectListItemStyles(node: TiptapNode, result: ParaStyle[]): void {
   }
 }
 
-// Collect each table row's explicit height (px → cm string), in DFS document
-// order — matching the order odf-kit emits <table:table-row> into content.xml.
-// rowHeight is stored as unscaled document px at 96 dpi (tableRow.ts); convert to
-// cm (px × 2.54 / 96). Rows without an explicit height yield null.
+// Collect each table row's explicit height (px → cm), in DFS order matching odf-kit's
+// <table:table-row> emission. rowHeight is unscaled px @96dpi (tableRow.ts), converted
+// to cm (px × 2.54 / 96). Rows without an explicit height yield null.
 function collectTableRowHeights(node: TiptapNode, result: (string | null)[]): void {
   if (node.type === 'table') {
     for (const row of node.content ?? []) {
@@ -199,16 +191,9 @@ function collectTableRowHeights(node: TiptapNode, result: (string | null)[]): vo
   }
 }
 
-// odf-kit's TableBuilder has no row-height option (TableRowOptions only carries
-// backgroundColor → fo:background-color on style:table-row-properties). We add the
-// dragged row heights by post-processing content.xml: each <table:table-row> with a
-// height gets a table:style-name pointing at a new automatic table-row style with
-// style:min-row-height — a *minimum*, so the row grows with content and nothing is
-// clipped (round-trips with LibreOffice/Word). use-optimal-row-height="false" stops
-// LibreOffice from auto-shrinking back to the content height. The regex consumes one
-// heights[] entry per <table:table-row> so the DFS order from collectTableRowHeights
-// stays aligned; rows already carrying a table:style-name (not produced today — the
-// editor sets no row background) are skipped.
+// odf-kit's TableBuilder has no row-height option, so post-process content.xml: each
+// <table:table-row> with a height gets an automatic style with style:min-row-height
+// (a minimum) + use-optimal-row-height="false". One heights[] entry per row, in order.
 function applyTableRowHeights(odtBytes: Uint8Array, heights: (string | null)[]): Uint8Array {
   if (heights.every(h => h === null)) return odtBytes;
 
@@ -248,10 +233,9 @@ function applyTableRowHeights(odtBytes: Uint8Array, heights: (string | null)[]):
   return rezipOdt(files);
 }
 
-// odf-kit's ListBuilder doesn't support per-item paragraph options, so list-item
-// paragraphs always emit with text:style-name="List_20_Bullet" or "List_20_Number".
-// We rewrite content.xml to point those at custom automatic styles that inherit
-// from the list paragraph style and add fo:text-align / fo:margin-top / fo:margin-bottom.
+// odf-kit's ListBuilder has no per-item paragraph options, so list-item paragraphs all
+// emit as List_20_Bullet/Number. Rewrite content.xml to point those at automatic styles
+// that inherit the list style and add fo:text-align / fo:margin-top / fo:margin-bottom.
 function applyListItemStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Array {
   if (styles.every(paraStyleIsEmpty)) return odtBytes;
 
@@ -295,23 +279,12 @@ function applyListItemStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Ar
   return rezipOdt(files);
 }
 
-// odf-kit always emits ordered lists as style:num-format="1" style:num-suffix="."
-// (tiptap-to-odt.js hardcodes { type: "numbered" }; content.js buildListStyle has
-// no per-node format). The editor lets the user pick a numbering style per list
-// (orderedList `listStyleType` attr — see editor/orderedListTypes.ts); this pass
-// rewrites the matching automatic list style on export.
-//
-// odf-kit names each top-level list L1, L2, … in document order, counting BOTH
-// bullet and ordered lists (content.js), so `formats` is collected in that same
-// order — one (possibly-null) entry per top-level list. Lists inside table cells
-// go through the custom exportTable path and get no L# name, so they aren't
-// counted here. An entry is null for bullet lists and for default ('decimal')
-// ordered lists, whose output already matches odf-kit's default (no rewrite).
-//
-// Known limitation: odf-kit emits one L# style (6 levels) per top-level list, so
-// the chosen format is applied to *every* nesting level of that list. A nested
-// ordered list of a different type renders correctly on screen (per-<ol> CSS) but
-// inherits the outer list's numbering in the exported .odt.
+// odf-kit always emits ordered lists as "1." (num-format="1" num-suffix="."). This
+// rewrites the matching L# list style to the user's chosen format; formats[] has one
+// entry per top-level list in odf-kit's order (null for bullets/default 'decimal').
+
+// Limitation: the chosen format applies to every nesting level (odf-kit emits one
+// L# style per top-level list), so a nested list of a different type inherits it.
 type OrderedFmt = { numFormat: string; numSuffix: string };
 
 function collectOrderedListFormats(node: TiptapNode, result: (OrderedFmt | null)[]): void {
@@ -371,21 +344,12 @@ function buildCellListStyle(styleName: string, ordered: boolean): string {
   return `<text:list-style style:name="${styleName}">${levels}</text:list-style>`;
 }
 
-// odf-kit's TableBuilder serializes every cell to a single <text:p
-// text:style-name="Standard"> of runs — it has no API for headings, lists, or
-// multiple paragraphs in a cell. exportTable therefore emits all of a cell's
-// inline content into that one paragraph, separated by SEG markers, and records a
-// CellBlock[] descriptor per cell (in document order, via buildCellContent). This
-// pass splits each cell paragraph back on SEG and rebuilds the real
-// <text:h>/<text:p>/<text:list> elements, applying per-paragraph
-// alignment/spacing/line-height overrides as minted automatic styles (same
-// technique as applyListItemStyles). It subsumes the former applyTableCellStyles
-// (single-paragraph cell styling).
-//
-// Ordering: runs *after* applyListItemStyles (so that pass sees only genuine
-// top-level <text:list-item>s — cell lists are still flat runs here), and *before*
-// collapseRunWhitespace (so the new in-cell <text:p>/<text:h> get their inter-run
-// newlines stripped too).
+// odf-kit serializes every cell to a single <text:p> of runs (no API for headings,
+// lists, or multiple paragraphs). exportTable emits a cell's content into that paragraph
+// SEG-separated; this pass splits on SEG and rebuilds real <text:h>/<text:p>/<text:list>.
+
+// Ordering: after applyListItemStyles (so it sees only top-level list items, not cell
+// lists) and before collapseRunWhitespace (so new in-cell paragraphs get newlines stripped).
 function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8Array {
   const needsWork = (blocks: CellBlock[]): boolean => {
     if (blocks.length !== 1) return true;
@@ -422,10 +386,9 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
   let usedBulletList = false;
   let usedNumberList = false;
 
-  // Each <text:list> (root or nested) carries its own style-name based on its own
-  // type, so mixed bullet/number nesting renders correctly; the actual indent
-  // level comes from the DOM nesting depth. One segment is consumed per list item,
-  // in DFS order — matching buildCellContent's emission.
+  // Each <text:list> (root or nested) carries its own type-based style-name, so mixed
+  // bullet/number nesting renders correctly; indent comes from nesting depth. One
+  // segment consumed per list item, DFS order (matching buildCellContent).
   const buildList = (list: CellListBlock, segments: string[], cur: { i: number }): string => {
     const isBullet = !list.ordered;
     if (isBullet) usedBulletList = true; else usedNumberList = true;
@@ -461,10 +424,9 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
     return out;
   };
 
-  // Match each real cell's single paragraph (filled or empty form) in document
-  // order. Covered cells use <table:covered-table-cell> and never match; at this
-  // stage a cell holds exactly one <text:p> with no nested </text:p>, so the
-  // non-greedy inner capture is safe.
+  // Match each real cell's single paragraph (filled or empty) in document order.
+  // Covered cells use <table:covered-table-cell> and never match; a cell holds exactly
+  // one <text:p> with no nesting here, so the non-greedy inner capture is safe.
   let idx = 0;
   content = content.replace(
     /(<table:table-cell\b[^>]*>\s*)<text:p\b[^>]*?(?:\/>|>([\s\S]*?)<\/text:p>)/g,
@@ -510,11 +472,9 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
   return zipSync(out);
 }
 
-// Rewrite styles.xml so the exported document matches the editor's preview:
-//  • default font Liberation Serif → Times New Roman (metric-identical; renders
-//    the same in the editor, LibreOffice, and Word — see EXPORT_FONT).
-//  • Heading_20_1/2/3 sizes & margins → the editor's values (odf-kit's defaults
-//    are larger). See HEADING_STYLE_OVERRIDES.
+// Rewrite styles.xml to match the editor's preview: default font Liberation Serif →
+// Times New Roman (metric-identical; see EXPORT_FONT), and Heading_20_1/2/3 sizes &
+// margins → the editor's values (odf-kit's defaults are larger; HEADING_STYLE_OVERRIDES).
 function rewriteStylesXml(odtBytes: Uint8Array): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
@@ -531,13 +491,9 @@ function rewriteStylesXml(odtBytes: Uint8Array): Uint8Array {
     '<style:master-page style:name="Standard"',
   );
 
-  // List item paragraphs (List_20_Bullet/List_20_Number) inherit the Standard
-  // style's fo:margin-bottom (0.212cm). The editor zeroes the bottom margin on
-  // list items (editor.css: `li`/`li p` → margin-bottom: 0), so by default the
-  // gap between bullets is just line-height. Without this override every
-  // exported bullet would gain ~6pt of extra spacing vs. the editor preview.
-  // Items with an explicit paragraph spacing override this via their LP styles
-  // (see applyListItemStyles).
+  // List item paragraphs inherit Standard's fo:margin-bottom (0.212cm), but the editor
+  // zeroes it (editor.css), so without this override every exported bullet gains ~6pt
+  // vs. the preview. Explicit per-item spacing overrides this via LP styles.
   for (const name of ['List_20_Bullet', 'List_20_Number']) {
     styles = styles.replace(
       new RegExp(`(<style:style style:name="${name}"[^>]*?)/>`),
@@ -563,10 +519,9 @@ function rewriteStylesXml(odtBytes: Uint8Array): Uint8Array {
   return rezipOdt(files);
 }
 
-// ODF requires fo:color in `#RRGGBB` form. TipTap stores whatever string went
-// in: hex from the color picker, but `rgb(r, g, b)` after any HTML round-trip
-// (paste, parseHTML in fontColor.ts). Anything that isn't valid hex is silently
-// dropped by Word/LibreOffice → text renders black.
+// ODF requires fo:color as #RRGGBB. TipTap may store hex (color picker) or rgb(r,g,b)
+// after an HTML round-trip. Anything not valid hex is silently dropped by
+// Word/LibreOffice → text renders black, so coerce it here.
 function normalizeColor(input: string): string | undefined {
   const s = input.trim();
   if (!s) return undefined;
@@ -633,16 +588,12 @@ function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []
   }
 }
 
-// Emit a cell's inline content into odf-kit's run-based CellBuilder and, in
-// lockstep, return a CellBlock[] descriptor of its block structure. odf-kit will
-// serialize all these runs into a single <text:p>; applyCellBlocks later splits
-// that paragraph on the SEG markers we insert between segments and rebuilds the
-// real <text:h>/<text:p>/<text:list> elements using this descriptor.
-//
-// A "segment" is one paragraph, one heading, or one list item's paragraph; we
-// emit exactly one SEG between consecutive segments (never leading/trailing), so
-// splitting yields one piece per segment in DFS order. Headings and list items
-// get no base run formatting here — the real <text:h> / List_20_* styles supply it.
+// Emit a cell's inline content into odf-kit's run-based CellBuilder and, in lockstep,
+// return a CellBlock[] descriptor. odf-kit serializes the runs into one <text:p>;
+// applyCellBlocks splits on SEG and rebuilds real <text:h>/<text:p>/<text:list>.
+
+// A segment is one paragraph, heading, or list item's paragraph; exactly one SEG
+// between consecutive segments, so splitting yields one piece per segment in DFS order.
 function buildCellContent(cell: TiptapNode, c: CellBuilder): CellBlock[] {
   const blocks: CellBlock[] = [];
   const state = { emitted: false }; // whether any segment has been emitted yet
@@ -687,13 +638,9 @@ function buildCellContent(cell: TiptapNode, c: CellBuilder): CellBlock[] {
   return blocks;
 }
 
-// Derive per-column widths (in cm) from the table's first row. The editor stores
-// proportional *weights* in each cell's `colwidth` attr (see tableView.ts); we turn
-// those into absolute cm widths that sum exactly to the text width. Combined with
-// odf-kit's table:align="margins", LibreOffice/Word render the columns at exactly
-// these proportions across the full text width — identical to the editor preview.
-// Returns undefined when no column has an explicit width (fresh/legacy tables) so
-// odf-kit falls back to even distribution.
+// Per-column widths (cm) from the table's first row: the editor's proportional
+// `colwidth` weights (tableView.ts) turned into absolute cm summing to the text width.
+// With table:align="margins" this matches the preview. undefined → odf-kit even split.
 function tableColumnWidthsCm(node: TiptapNode, contentWidthCm: number): string[] | undefined {
   const firstRow = (node.content ?? []).find(r => r.type === 'tableRow');
   if (!firstRow) return undefined;
@@ -721,11 +668,9 @@ function tableColumnWidthsCm(node: TiptapNode, contentWidthCm: number): string[]
   return cm.map(v => `${v}cm`);
 }
 
-// Build an ODF table from a CUST_TABLE node (renamed from "table" in
-// injectCustomTypes). We bypass odf-kit's native walkTable so we can pass an
-// explicit cell border — the native path emits none, so the table would be
-// invisible in LibreOffice/Word. Column widths come from the editor's per-column
-// weights (tableColumnWidthsCm); when absent odf-kit distributes columns evenly.
+// Build an ODF table from a CUST_TABLE node, bypassing odf-kit's native walkTable to
+// pass an explicit cell border (the native path emits none → invisible). Column widths
+// come from tableColumnWidthsCm; when absent odf-kit distributes columns evenly.
 function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number, cellBlocks: CellBlock[][]): void {
   const rows = (node.content ?? []).filter(r => r.type === 'tableRow');
   if (rows.length === 0) return;
@@ -736,10 +681,8 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
         for (const cell of row.content ?? []) {
           if (cell.type !== 'tableCell' && cell.type !== 'tableHeader') continue;
           // Emit the cell's runs (SEG-separated) and record its block descriptor.
-          // odf-kit serializes this to one <text:p>; applyCellBlocks splits it back
-          // into real <text:h>/<text:p>/<text:list> using the descriptor. The push
-          // happens in document order (addCell runs the callback synchronously),
-          // matching the order applyCellBlocks walks cells in content.xml.
+          // addCell runs synchronously, so the push is in document order — matching
+          // how applyCellBlocks later walks cells in content.xml.
           r.addCell((c: CellBuilder) => {
             cellBlocks.push(buildCellContent(cell, c));
           }, { padding: CELL_PADDING });
@@ -749,17 +692,9 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
   }, columnWidths ? { border: TABLE_BORDER, columnWidths } : { border: TABLE_BORDER });
 }
 
-// odf-kit's XML builder serializes a multi-child element's children on separate
-// lines, joined by "\n" (core/xml.js). Inside a <text:p>/<text:h> that newline
-// is significant character data, so LibreOffice/Word collapse it to a space —
-// inserting a spurious space wherever a run boundary falls mid-word (e.g. a
-// highlight, bold, or colour that starts inside a word splits the text node, and
-// the two runs serialize as "He\n<text:span>llo</text:span>" → "He llo").
-//
-// We strip the bare "\n" separators inside every paragraph/heading element.
-// Only the newline characters are removed; any real space in the run text sits
-// adjacent to (not inside) the "\n" and is preserved, so word-boundary spacing
-// (e.g. "Hello " + bold "world") still round-trips correctly.
+// odf-kit joins a multi-child element's children with "\n"; inside a <text:p>/<text:h>
+// that newline is significant and collapses to a space, adding a spurious space at any
+// mid-word run boundary. Strip the bare "\n" separators (real spaces sit adjacent, kept).
 function collapseRunWhitespace(odtBytes: Uint8Array): Uint8Array {
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];

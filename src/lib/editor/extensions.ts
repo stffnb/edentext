@@ -44,9 +44,8 @@ export const extensions = [
   FontWeight,
   FontColor,
   // multicolor stores the chosen color on the `highlight` mark's `color` attr;
-  // odf-kit exports that natively to fo:background-color (round-trips with
-  // LibreOffice and Word). See src/lib/export/odt.ts applyRuns for the
-  // custom-attr-paragraph export path.
+  // odf-kit exports that natively to fo:background-color. See export/odt.ts
+  // applyRuns for the custom-attr-paragraph export path.
   Highlight.configure({ multicolor: true }),
   LineHeight,
   ParagraphSpacing,
@@ -54,15 +53,9 @@ export const extensions = [
   BulletList,
   OrderedList,
   ListItem,
-  // Columns and rows are flexible and drag-resizable (Word-style). We keep TipTap's
-  // own resizable:false (so its columnResizing plugin isn't loaded) and instead supply
-  // a custom node view that renders the <colgroup> with *percentage* widths from the
-  // `colwidth` cell attrs — so the table is always full text width and stays in sync
-  // with the ODT export (export/odt.ts emits per-column widths summing to the text
-  // width). TableColumnResize adds the Word-style column drag handles; ResizableTableRow
-  // carries a per-row `rowHeight` attr and TableRowResize adds the row drag handles
-  // (exported as style:min-row-height). Table alone — unlike TableKit — does NOT
-  // auto-add child extensions, so listing ResizableTableRow here is the only tableRow.
+  // resizable:false keeps TipTap's columnResizing plugin off; TableView, the two
+  // resize plugins, and ResizableTableRow supply Word-style drag instead. Table
+  // (unlike TableKit) doesn't auto-add children, so ResizableTableRow is listed here.
   Table.configure({ resizable: false, View: TableView }),
   ResizableTableRow,
   TableHeader,

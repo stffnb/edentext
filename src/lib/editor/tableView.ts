@@ -1,21 +1,9 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { ViewMutationRecord } from '@tiptap/pm/view';
 
-// Custom table node view.
-//
-// Unlike TipTap's built-in TableView (which renders absolute px column widths and
-// sets the table's own width to their sum), this view renders the <colgroup> with
-// *percentage* widths and keeps the table at width:100%. Consequences:
-//   • the table is always exactly the full text width (matches the ODT export,
-//     where odf-kit emits table:align="margins"), and
-//   • it stays responsive to page-margin / orientation changes (Layout panel)
-//     without rewriting the document.
-//
-// The per-column values stored in the `colwidth` cell attribute are treated as
-// proportional *weights* (their absolute scale is irrelevant — only ratios matter).
-// `null` means "no explicit width" → equal share. The column-resize plugin
-// (tableColumnResize.ts) writes these weights and drives live drag feedback by
-// poking the <col> elements this view creates.
+// Custom table node view: <colgroup> uses percentage widths and the table stays at
+// width:100%, so it's always full text width (matching the export) and responsive
+// to margin/orientation. `colwidth` cell attrs are proportional weights (null=equal).
 
 // Expand the first row's cells into a per-column weight array, honouring colspan.
 // A cell with colspan k contributes k entries (its colwidth slice, or nulls).

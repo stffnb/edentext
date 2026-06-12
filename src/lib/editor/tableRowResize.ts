@@ -7,22 +7,9 @@ import type { EditorView } from '@tiptap/pm/view';
 import { cellAround } from '@tiptap/pm/tables';
 import { domCellAround, tableColumnResizeKey } from './tableColumnResize';
 
-// Word-style row-height dragging.
-//
-// Dragging a horizontal grid line changes the height of the row ABOVE it (Word
-// behaviour). The height is a *minimum*: the row never clips, it grows when its
-// content is taller (CSS `height` on a <tr>, exported as style:min-row-height —
-// see export/odt.ts). The committed value lives in the tableRow node's `rowHeight`
-// attribute (tableRow.ts).
-//
-// Live feedback during a drag is applied via a Decoration.node carrying a `style:
-// height` — ProseMirror owns that DOM write, so (unlike a direct tr.style poke
-// inside the content DOM) the DOM observer doesn't revert it. Each move dispatches
-// a meta-only transaction (no doc change → no pagination recompute, no history
-// entry); release commits the final height in one real transaction.
-//
-// Column resizing (tableColumnResize.ts) takes precedence at a corner: this plugin
-// yields whenever a column border is the active handle.
+// Word-style row-height drag: changes the row above the grid line, min-height
+// semantics (stored as `rowHeight` in tableRow.ts). Live preview is a meta-only
+// Decoration.node (no history); yields to column resize at a corner.
 
 const HANDLE_WIDTH = 5; // px from a row border that activates the handle
 const MIN_ROW_PX = 16; // smallest a row may be dragged to (content still protects it)

@@ -17,10 +17,9 @@ export type PageBreakDebugSnapshot = {
     index: number;
     tag: string;
     kind: 'atomic' | 'splittable';
-    // Table provenance: inTableCell = this leaf lives inside a cell of a row that
-    // was itself too tall to fit a page (so we split its content). tableRow is set
-    // when the leaf *is* a whole table row (columns = colspan to bridge, isFirstRow
-    // = the table's first row, which breaks before the wrapper rather than mid-table).
+    // inTableCell = leaf lives in a cell of a too-tall row (content split). tableRow
+    // = leaf is a whole table row (columns = colspan to bridge; isFirstRow breaks
+    // before the wrapper rather than mid-table).
     inTableCell: boolean;
     tableRow: { columns: number; isFirstRow: boolean } | null;
     naturalTop: number;
@@ -55,11 +54,9 @@ export type PageBreakDebugSnapshot = {
   // Unscaled document px relative to .tiptap's top — same values handed to
   // Editor.svelte via pm-pagecount to render the mask + gap overlay.
   tableBreakBands: TableBreakBand[];
-  // Live snapshot of the *rendered* table-break overlay + table geometry (captured from
-  // the DOM at dump time), so we can tell whether the band-layer actually masks the
-  // table's borders bleeding through each gap. All rects are unscaled document px
-  // relative to .tiptap's top-left — the same space as `leaves`/`tableBreakBands` — so
-  // they line up directly. null until the first dump after the overlay mounts.
+  // Live snapshot of the rendered table-break overlay + table geometry, to check the
+  // band-layer actually masks the table borders bleeding through each gap. Rects are
+  // unscaled doc px relative to .tiptap (same space as leaves/bands). null before mount.
   overlay: OverlayDebug | null;
 };
 
@@ -111,10 +108,9 @@ export function getPageBreakDebug(view: EditorView): PageBreakDebugSnapshot | nu
   return debugAccessors.get(view)?.() ?? null;
 }
 
-// A4 page layout constants (px at 96 dpi). The page height (and thus cycle) is
-// orientation-dependent and the content-area inset (top/bottom margin) is
-// user-adjustable, so both are read per layout pass from live CSS vars instead
-// of being constants — the values below are only portrait fallbacks.
+// A4 page layout constants (px @96dpi). Page height (orientation-dependent) and
+// margins (user-adjustable) are read per pass from live CSS vars; the values below
+// are only portrait fallbacks.
 const PAGE_HEIGHT = 1123;
 const PAGE_GAP = 20;
 const DEFAULT_MARGIN_TOP = 96;
@@ -128,10 +124,9 @@ type VMargins = {
   cycle: number;
 };
 
-// Reads the vertical page margins + page height (px) from the --user-* custom
-// props the Layout panel writes (pageMargins.ts / pageOrientation.ts). These are
-// document-px values, so they pair directly with the offsetTop measurements below.
-// Side margins don't affect pagination (only line wrapping), so we ignore them.
+// Reads vertical page margins + page height (px) from the --user-* props the Layout
+// panel writes. Document-px values, so they pair directly with offsetTop below. Side
+// margins don't affect pagination (only line wrapping), so they're ignored.
 function readVerticalMargins(dom: HTMLElement): VMargins {
   const cs = getComputedStyle(dom);
   const top = parseFloat(cs.getPropertyValue('--user-margin-top'));
@@ -172,20 +167,17 @@ type Leaf = {
   kind: 'atomic' | 'splittable';
   naturalTop: number;
   naturalHeight: number;
-  // Present when the leaf is a <tr> of a paginated table. Each row is an atomic
-  // leaf so the table can break between rows across pages (a whole table is
-  // usually taller than a page). `isFirstRow` pushes the entire table (a block
+  // Set when the leaf is a <tr> of a paginated table; each row is atomic so the
+  // table breaks between rows across pages. `isFirstRow` pushes the whole table (block
   // spacer before the wrapper); later rows push via a spacer <tr> inside the table.
   tableRow?: { columns: number; wrapperEl: HTMLElement; isFirstRow: boolean };
-  // True for paragraph leaves emitted from inside a too-tall table cell (the cell
-  // content is flowed across pages). Their breaks get a full-width close/open
-  // border + margin/gap mask so the single table element looks closed at each
-  // page break (it can't break structurally — it's one continuous box).
+  // True for paragraph leaves from inside a too-tall cell whose content flows across
+  // pages. Their breaks get a full-width close/open mask so the single continuous
+  // table box looks closed at each page break (it can't break structurally).
   inTableCell?: boolean;
-  // Flow brackets for a too-tall row's cells. Each cell is an independent vertical
-  // flow that starts at the row top, so the placement loop resets its cumulative
-  // shift per cell: `cellStart` marks a cell's first leaf (`rowStart` additionally
-  // the row's first cell), `rowEnd` the last leaf of the last cell.
+  // Flow brackets for a too-tall row's cells (each cell is an independent flow from
+  // the row top, so placement resets cumulative shift per cell): cellStart = a cell's
+  // first leaf, rowStart = the row's first cell, rowEnd = last leaf of the last cell.
   cellStart?: boolean;
   rowStart?: boolean;
   rowEnd?: boolean;
@@ -242,10 +234,8 @@ export const PageBreaks = Extension.create({
         });
 
         // Capture the rendered table-break overlay + table geometry from the live DOM.
-        // The overlay (.band-layer) is a sibling of the editor's host inside .paper, so we
-        // reach it by climbing to .paper. Viewport rects are converted to unscaled doc px
-        // relative to .tiptap's top-left (divide by the measured paper scale) so they sit
-        // in the same coordinate space as the bands/leaves and can be compared directly.
+        // .band-layer is a sibling inside .paper, reached by climbing to .paper. Viewport
+        // rects are divided by the paper scale → unscaled doc px, same space as bands/leaves.
         function captureOverlay(tipRect: DOMRect): OverlayDebug {
           const dom = editorView.dom;
           const offH = dom.offsetHeight;
@@ -340,12 +330,9 @@ export const PageBreaks = Extension.create({
           return prev;
         }
 
-        // For a pre-leaf push we want the spacer to render OUTSIDE any
-        // list-item wrapper, so the <li>'s bullet marker stays aligned with
-        // its own text. Walk up through <li> ancestors — but stop the moment
-        // `target` has a prior sibling, otherwise we'd also push earlier
-        // already-placed paragraphs inside the same <li> (e.g. a multi-
-        // paragraph LI produced by backspacing across a page break).
+        // Render the spacer OUTSIDE any <li> wrapper so the bullet marker stays
+        // aligned with its text. Walk up <li> ancestors, but stop once `target` has a
+        // prior sibling, or we'd also push earlier paragraphs already placed in the LI.
         function preLeafDocPos(leafEl: HTMLElement): number | null {
           let target = leafEl;
           while (
@@ -404,12 +391,9 @@ export const PageBreaks = Extension.create({
           const lines: { top: number; bottom: number }[] = [];
           for (const r of allRects) {
             const last = lines[lines.length - 1];
-            // Rects are sorted by top → r.top ≥ last.top. Merge into the
-            // current line when they vertically overlap, so an inline run with
-            // a smaller font (lower ascender → larger `top`) shares the line
-            // of its larger-font neighbours instead of becoming a phantom
-            // line. The −1 px tolerance keeps touching-but-not-overlapping
-            // rects on separate lines.
+            // Rects are sorted by top. Merge into the current line when they overlap
+            // vertically, so a smaller-font inline run shares its neighbours' line
+            // instead of forming a phantom line. The −1px tolerance separates touching rects.
             if (last && r.top < last.bottom - 1) {
               last.top = Math.min(last.top, r.top);
               last.bottom = Math.max(last.bottom, r.bottom);
@@ -429,10 +413,9 @@ export const PageBreaks = Extension.create({
           if (lines.length === 0) return null;
           const elRect = el.getBoundingClientRect();
 
-          // Any pre-existing spacers inside this leaf distort the viewport
-          // y-coordinates of lines below them. Build a table to translate
-          // viewport y → natural offset within the leaf (unscaled, no intra-
-          // spacers). offsetHeight is already unscaled, so we don't divide it.
+          // Pre-existing spacers inside this leaf distort the viewport y of lines below
+          // them. Build a map: viewport y → natural offset within the leaf (unscaled, no
+          // intra-spacers). offsetHeight is already unscaled, so it isn't divided.
           const intraSpacers = Array.from(
             el.querySelectorAll<HTMLElement>('[data-page-break-spacer]'),
           )
@@ -452,12 +435,9 @@ export const PageBreaks = Extension.create({
             return (viewportY - elRect.top) / scale - dropped;
           }
 
-          // Line-box bottom in natural coords. Range.getClientRects() reports
-          // glyph-level bottoms (descender), which can sit a hair above the
-          // line-box bottom used by layout — enough for sub-pixel overflows to
-          // be missed at zoom 100. Use the next line's top as the boundary,
-          // and the leaf's own offsetHeight for the last line so the threshold
-          // matches the outer `effectiveBottom > contentEnd` check.
+          // Line-box bottom in natural coords. getClientRects reports glyph bottoms,
+          // which sit a hair above the layout line-box, missing sub-pixel overflows. Use
+          // the next line's top (and offsetHeight for the last line) as the boundary.
           const intraSpacerTotal = intraSpacers.reduce((s, sp) => s + sp.height, 0);
           const leafNaturalHeight = el.offsetHeight - intraSpacerTotal;
           function lineBoxBottomNatural(i: number): number {
@@ -517,12 +497,9 @@ export const PageBreaks = Extension.create({
           // layout px), matching the offsetHeight-based naturalHeight.
           let cumulativeSpacerHeight = 0;
 
-          // A leaf's border-box top within .tiptap, in document px. Summing offsetTop
-          // up the offsetParent chain is unaffected by the `transform: scale()` on
-          // .paper, so the value is the same at every display zoom. offsetTop includes
-          // each offsetParent's top padding; the chain ends at .tiptap, whose padding-
-          // top is the page top margin, so the sum already uses the page-cycle origin
-          // (page top = 0, content starts at the top margin).
+          // A leaf's border-box top within .tiptap, in document px. Summing offsetTop up
+          // the offsetParent chain is unaffected by .paper's transform:scale, so it's the
+          // same at every zoom; the chain ends at .tiptap so the origin is the page top.
           function topWithin(el: HTMLElement): number {
             let top = 0;
             let node: HTMLElement | null = el;
@@ -533,11 +510,9 @@ export const PageBreaks = Extension.create({
             return top;
           }
 
-          // Emit one atomic leaf per table row so the table can break between
-          // rows across pages. TipTap renders tables inside a node-view
-          // <div class="tableWrapper"><table><colgroup><tbody>…. A whole table is
-          // typically taller than a page, so treating it as a single atomic leaf
-          // left it overflowing (atomic-too-tall-no-push); row leaves fix that.
+          // Emit one atomic leaf per table row so the table breaks between rows across
+          // pages (a whole table is usually taller than a page). TipTap renders tables as
+          // <div class="tableWrapper"><table><colgroup><tbody>…, so walk the tbody rows.
           function walkTableRows(wrapperEl: HTMLElement, inTableCell = false) {
             const tableEl = (wrapperEl.tagName === 'TABLE'
               ? wrapperEl
@@ -577,13 +552,9 @@ export const PageBreaks = Extension.create({
                   tableRow: { columns, wrapperEl, isFirstRow: !seenRealRow },
                 });
               } else {
-                // Row taller than a page: each cell is an independent vertical flow
-                // that starts at the row top and breaks in its own column (like
-                // LibreOffice/Word row fragments per page). Walk every cell, resetting
-                // the spacer baseline per cell so a sibling cell's spacers don't shift
-                // this cell's measured tops; the row consumes the tallest cell's
-                // spacers. Flow markers (cellStart/rowStart/rowEnd) let the placement
-                // loop bracket its cumulative shift the same way.
+                // Row taller than a page: each cell is an independent flow from the row
+                // top, breaking in its own column. Walk every cell, resetting the spacer
+                // baseline per cell; the row consumes the tallest cell's spacers.
                 const cells = (Array.from(tr.children) as HTMLElement[]).filter(
                   c => c.tagName === 'TD' || c.tagName === 'TH',
                 );
@@ -619,13 +590,9 @@ export const PageBreaks = Extension.create({
                 cumulativeSpacerHeight += child.offsetHeight;
                 continue;
               }
-              // Skip the column-/row-resize handle widgets (tableColumnResize.ts /
-              // tableRowResize.ts), which ProseMirror injects as direct children of
-              // the active cells. They're position:absolute, so they're neither
-              // document content nor part of the flow — measuring one as a leaf yields
-              // garbage geometry (negative offsetTop, full-table height) that corrupts
-              // pagination. Being out of flow they take no vertical space, so unlike a
-              // page-break spacer we skip them without touching cumulativeSpacerHeight.
+              // Skip the resize-handle widgets (tableColumnResize/tableRowResize), which
+              // are position:absolute — not flow content, and measuring one yields garbage
+              // geometry. Out of flow, so skip without touching cumulativeSpacerHeight.
               if (
                 child.classList.contains('column-resize-handle') ||
                 child.classList.contains('row-resize-handle')
@@ -663,10 +630,9 @@ export const PageBreaks = Extension.create({
                 walk(child, inTableCell);
                 continue;
               }
-              // Unknown block. Out-of-flow elements (absolute/fixed) — e.g. any other
-              // injected widget decoration — can't be paginated and measure as garbage,
-              // so skip them. getComputedStyle is read only here, off the common path
-              // (known block tags are handled above), to avoid a per-child reflow cost.
+              // Unknown block. Out-of-flow elements (absolute/fixed) can't be paginated
+              // and measure as garbage, so skip them. getComputedStyle is read only here,
+              // off the common path, to avoid a per-child reflow cost.
               const position = getComputedStyle(child).position;
               if (position === 'absolute' || position === 'fixed') continue;
               // Otherwise measure as a splittable leaf with no intra-spacers.
@@ -723,14 +689,9 @@ export const PageBreaks = Extension.create({
             height: number;
             row: { columns: number } | null;
           }[] = [];
-          // Full-width close/open borders for in-cell table breaks (see Leaf.inTableCell).
-          // openY is the page-content-top where the cell content resumes; the band runs
-          // from the previous page's content-bottom (close) down through margin/gap/margin
-          // to openY (open). Keyed by the ROUNDED openY (the grouping id, matching the
-          // spacers' data-page-break-boundary attr) → mapped to the UNROUNDED openY so the
-          // band geometry below lands on the exact page-cycle position. A rounded openY
-          // would shift the band's gap stripe up to ~0.5px off the CSS background gap,
-          // showing as a seam at the table's edges with non-integer margins.
+          // Close/open bands for in-cell table breaks. Keyed by the rounded openY (the
+          // grouping id) → mapped to the unrounded openY so the band lands on the exact
+          // page-cycle position (a rounded value would show a ~0.5px seam at the edges).
           const tableBands = new Map<number, number>();
           const leavesDebug: PageBreakDebugSnapshot['leaves'] = [];
           const placementsDebug: PageBreakDebugSnapshot['placements'] = [];
@@ -800,16 +761,9 @@ export const PageBreaks = Extension.create({
               }
             }
 
-            // A leaf needs a close/open band whenever its break sits inside the single
-            // continuous table box, where the table's outer left/right borders bleed
-            // through the borderless page gap:
-            //   • inTableCell — a too-tall cell whose content flows across the page, or
-            //   • a between-rows push (spacerRow set) — the bridging spacer <tr> is
-            //     borderless, but the browser still paints the table's outer side
-            //     borders continuously across it (grey lines through the margins + gap).
-            // Both get the same page-coloured mask + gap stripe overlay (Editor.svelte).
-            // First-row pushes use a block spacer before the wrapper (spacerRow === null)
-            // → the whole table moves to the next page, no internal gap, so no band.
+            // A break needs a close/open band when it sits inside the continuous table
+            // box, where the outer borders bleed through the gap: inTableCell, or a
+            // between-rows push (spacerRow). First-row pushes move the whole table → no band.
             const inBand = !!leaf.inTableCell || spacerRow !== null;
             if (inBand && bandOpenY !== null && spacerHeight > 0) {
               const key = Math.round(bandOpenY);
@@ -841,9 +795,8 @@ export const PageBreaks = Extension.create({
 
             if (spacerHeight > 0 && spacerDocPos !== null) {
               // Round to integer px: the browser renders the spacer at integer
-              // offsetHeight regardless, so storing the unrounded value would
-              // make the model disagree with the DOM on the next pass and
-              // cause 1-px shake on every keystroke at non-100 % zoom.
+              // offsetHeight anyway, so an unrounded value would make the model disagree
+              // with the DOM next pass → 1px shake on every keystroke at non-100% zoom.
               const h = Math.round(spacerHeight);
               if (h > 0) {
                 placements.push({
@@ -886,11 +839,9 @@ export const PageBreaks = Extension.create({
             }
           }
 
-          // Skip the decoration rebuild + transaction dispatch when the
-          // placement set is identical to the previous pass. Most keystrokes
-          // don't change pagination, and re-dispatching forces ProseMirror to
-          // recreate the spacer DOM nodes (no `key` on the widgets) for no
-          // visible gain.
+          // Skip the decoration rebuild + dispatch when placements are identical to the
+          // previous pass. Most keystrokes don't change pagination, and re-dispatching
+          // recreates the spacer DOM nodes (no `key` on the widgets) for no gain.
           const placementsKey =
             placements.map((p) => `${p.docPos}:${p.height}:${p.row ? p.row.columns : 'b'}`).join('|');
           if (placementsKey !== lastPlacementsKey) {

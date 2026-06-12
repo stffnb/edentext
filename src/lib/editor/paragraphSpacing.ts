@@ -1,14 +1,8 @@
 import { Extension } from '@tiptap/core';
 
-// Paragraph spacing (space above / below a paragraph) — the LibreOffice/Word
-// "paragraph spacing" model. Stored as a plain point value (pt) so it round-trips
-// 1:1 to ODF's fo:margin-top / fo:margin-bottom on export. null means "inherit
-// the style/CSS default" (≈0.212cm below for body text, 0 for list items), so
-// untouched documents keep their existing spacing.
-//
-// On screen the value renders as an inline margin that overrides the base
-// margins in editor.css; on export it is emitted as fo:margin-top/bottom (see
-// export/odt.ts), including for list-item paragraphs.
+// Space above/below a paragraph, stored in pt so it round-trips 1:1 to ODF's
+// fo:margin-top/bottom. null inherits the style/CSS default. Renders as an
+// inline margin overriding editor.css; exported via export/odt.ts.
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {

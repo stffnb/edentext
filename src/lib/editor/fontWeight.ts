@@ -10,11 +10,8 @@ declare module '@tiptap/core' {
   }
 }
 
-/**
- * Adds `fontWeight` as an attribute on the TextStyle mark so that
- * font-weight can be set as an inline style (e.g. 'normal' to override
- * the bold appearance of a heading without changing the node type).
- */
+// Adds a `fontWeight` attr on the TextStyle mark, settable as an inline style
+// (e.g. 'normal' to un-bold a heading without changing the node type).
 export const FontWeight = Extension.create({
   name: 'fontWeight',
 
