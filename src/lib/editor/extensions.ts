@@ -27,6 +27,7 @@ import { FormattingMarks } from './formattingMarks';
 import { TableView } from './tableView';
 import { TableColumnResize } from './tableColumnResize';
 import { TableRowResize } from './tableRowResize';
+import { TrailingNode } from './trailingNode';
 
 export const extensions = [
   Document,
@@ -62,6 +63,9 @@ export const extensions = [
   TableCell,
   TableColumnResize,
   TableRowResize,
+  // Guarantees a paragraph after a trailing table so the cursor isn't trapped
+  // and the user can keep writing below a table at the document's end.
+  TrailingNode,
   History,
   Placeholder.configure({ placeholder: 'Start typing…' }),
   TextAlign.configure({
