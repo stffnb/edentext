@@ -37,6 +37,11 @@ const DEFAULT_LINE_HEIGHT = 1;  // must match line-height multiplier default in 
 // char: never in user text, and passes odf-kit's XML escaper (only & < >) untouched.
 const SEG = '';
 
+// Sentinel for hardBreak nodes: replaceHardBreaks turns them into text so every
+// odf-kit path (plain paragraphs, list items, cells) carries them; applyLineBreaks
+// swaps the char for <text:line-break/> in content.xml. U+E001 (SEG is U+E000).
+const LBR = '';
+
 // Automatic list styles minted for in-cell lists (see applyCellBlocks). odf-kit's
 // CellBuilder is run-based, so a list inside a cell can't reference a list style it
 // generates for top-level lists — we inject our own, mirroring its buildListStyle.
@@ -46,7 +51,8 @@ const CELL_LIST_NUMBER_STYLE = 'TblListNumber';
 // Heading sizes/margins shown in the editor (editor.css); odf-kit's Heading_20_N
 // defaults are larger, so we rewrite them on export. Margins are the editor's em
 // values (top 1.5em, bottom 0.5em) resolved against each heading's font size, in cm.
-const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTop: string; marginBottom: string }[] = [
+// Exported: import/odt.ts uses these as the defaults to suppress on re-import.
+export const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTop: string; marginBottom: string }[] = [
   { name: 'Heading_20_1', fontSize: '20pt', marginTop: '1.058cm', marginBottom: '0.353cm' },
   { name: 'Heading_20_2', fontSize: '16pt', marginTop: '0.847cm', marginBottom: '0.282cm' },
   { name: 'Heading_20_3', fontSize: '14pt', marginTop: '0.741cm', marginBottom: '0.247cm' },
@@ -59,6 +65,14 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (attrs.spaceAfter != null) return true;
   const ta = attrs.textAlign;
   return ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify';
+}
+
+// odf-kit's native run handling ignores the fontWeight textStyle attr (used to
+// un-bold heading text), so such blocks must go through applyRuns via CUST_P/_H.
+function hasFontWeightRun(content: TiptapNode['content']): boolean {
+  return !!content?.some(c =>
+    c.type === 'text' && c.marks?.some(m => m.type === 'textStyle' && m.attrs?.fontWeight),
+  );
 }
 
 function injectCustomTypes(node: TiptapNode, inContainer = false): TiptapNode {
@@ -75,7 +89,7 @@ function injectCustomTypes(node: TiptapNode, inContainer = false): TiptapNode {
   // Don't rename paragraphs inside list items or table cells — tiptapToOdt's list
   // builder (and our table handler) walk them by type === "paragraph"; renaming
   // breaks that.
-  if (!inContainer && hasCustomAttrs(node.attrs)) {
+  if (!inContainer && (hasCustomAttrs(node.attrs) || hasFontWeightRun(node.content))) {
     if (node.type === 'paragraph') return { ...node, type: CUST_P };
     if (node.type === 'heading')   return { ...node, type: CUST_H };
   }
@@ -87,6 +101,17 @@ function injectCustomTypes(node: TiptapNode, inContainer = false): TiptapNode {
     return { ...node, content: node.content.map(c => injectCustomTypes(c, childInContainer)) };
   }
   return node;
+}
+
+// Turn hardBreak nodes into LBR-sentinel text nodes so they ride through every
+// odf-kit serialization path as plain run text; applyLineBreaks rewrites the char
+// to <text:line-break/> in content.xml afterwards.
+function replaceHardBreaks(node: TiptapNode): TiptapNode {
+  if (!node.content?.length) return node;
+  return {
+    ...node,
+    content: node.content.map(c => c.type === 'hardBreak' ? { type: 'text', text: LBR } : replaceHardBreaks(c)),
+  };
 }
 
 // Mirror odf-kit's normalizeLineHeight (content.js): a number is a multiplier
@@ -325,6 +350,77 @@ function applyOrderedListFormats(odtBytes: Uint8Array, formats: (OrderedFmt | nu
   return rezipOdt(files);
 }
 
+// odf-kit emits nested lists as bare <text:list> sharing the top-level L# style,
+// so a nested list of a *different* kind/format (e.g. ordered inside bullets)
+// loses its type. Give those nested lists their own minted 6-level list style —
+// the same pattern applyCellBlocks uses for in-cell lists.
+type ListDef = { ordered: boolean; numFormat: string; numSuffix: string };
+
+function listDefOf(node: TiptapNode): ListDef {
+  const ordered = node.type === 'orderedList';
+  const def = ordered ? orderedTypeDef(node.attrs?.listStyleType as string | undefined) : null;
+  return { ordered, numFormat: def?.numFormat ?? '1', numSuffix: def?.numSuffix ?? '.' };
+}
+
+// One entry per nested <text:list> in DFS order (null = inherits its governing
+// style correctly). Only walks top-level lists — cell lists never emit bare tags.
+function collectNestedListFixes(doc: TiptapNode, result: (ListDef | null)[]): void {
+  const walkList = (list: TiptapNode, governing: ListDef, isTop: boolean) => {
+    let gov = governing;
+    if (!isTop) {
+      const def = listDefOf(list);
+      const differs = def.ordered !== governing.ordered
+        || (def.ordered && (def.numFormat !== governing.numFormat || def.numSuffix !== governing.numSuffix));
+      result.push(differs ? def : null);
+      if (differs) gov = def; // restyled list governs its own descendants
+    }
+    for (const item of list.content ?? []) {
+      if (item.type !== 'listItem') continue;
+      for (const child of item.content ?? []) {
+        if (child.type === 'bulletList' || child.type === 'orderedList') walkList(child, gov, false);
+      }
+    }
+  };
+  for (const child of doc.content ?? []) {
+    if (child.type === 'bulletList' || child.type === 'orderedList') walkList(child, listDefOf(child), true);
+  }
+}
+
+function applyNestedListTypes(odtBytes: Uint8Array, fixes: (ListDef | null)[]): Uint8Array {
+  if (fixes.every(f => f === null)) return odtBytes;
+
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  const minted: string[] = [];
+  const nameByKey = new Map<string, string>();
+  const styleFor = (fix: ListDef): string => {
+    const key = `${fix.ordered}|${fix.numFormat}|${fix.numSuffix}`;
+    let name = nameByKey.get(key);
+    if (!name) {
+      name = `NL${nameByKey.size + 1}`;
+      nameByKey.set(key, name);
+      minted.push(buildCellListStyle(name, fix.ordered, fix.numFormat, fix.numSuffix));
+    }
+    return name;
+  };
+
+  // Bare <text:list> tags are exactly odf-kit's nested lists, in DFS order.
+  let idx = 0;
+  content = content.replace(/<text:list>/g, (match) => {
+    const fix = fixes[idx++];
+    return fix ? `<text:list text:style-name="${styleFor(fix)}">` : match;
+  });
+
+  if (minted.length) {
+    content = content.replace('</office:automatic-styles>', `${minted.join('\n')}\n</office:automatic-styles>`);
+  }
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 // Mirror odf-kit's buildListStyle (content.js) for the automatic list style our
 // in-cell lists reference. Six nesting levels with identical bullet chars /
 // indents / numbering, so cell lists match the editor's top-level lists.
@@ -539,8 +635,8 @@ function rewriteStylesXml(odtBytes: Uint8Array): Uint8Array {
 
 // ODF requires fo:color as #RRGGBB. TipTap may store hex (color picker) or rgb(r,g,b)
 // after an HTML round-trip. Anything not valid hex is silently dropped by
-// Word/LibreOffice → text renders black, so coerce it here.
-function normalizeColor(input: string): string | undefined {
+// Word/LibreOffice → text renders black, so coerce it here. Also used on import.
+export function normalizeColor(input: string): string | undefined {
   const s = input.trim();
   if (!s) return undefined;
 
@@ -578,6 +674,11 @@ function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []
     const tsm = marks.find(m => m.type === 'textStyle');
     const fmt: TextFormatting = {};
     if (marks.some(m => m.type === 'bold'))      fmt.bold = true;
+    // Explicit weight (e.g. un-bolding heading text) overrides the bold shortcut.
+    if (tsm?.attrs?.fontWeight) {
+      const fw = String(tsm.attrs.fontWeight);
+      fmt.fontWeight = (/^\d+$/.test(fw) ? Number(fw) : fw) as TextFormatting['fontWeight'];
+    }
     if (marks.some(m => m.type === 'italic'))     fmt.italic = true;
     if (marks.some(m => m.type === 'underline'))  fmt.underline = true;
     if (marks.some(m => m.type === 'strike'))     fmt.strikethrough = true;
@@ -730,8 +831,23 @@ function collapseRunWhitespace(odtBytes: Uint8Array): Uint8Array {
   return rezipOdt(files);
 }
 
-export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait'): Promise<void> {
-  const raw = editor.getJSON() as TiptapNode;
+// Rewrite the LBR sentinels replaceHardBreaks planted into real <text:line-break/>
+// elements (valid both as bare paragraph text and inside <text:span>).
+function applyLineBreaks(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  const content = strFromU8(contentBytes);
+  if (!content.includes(LBR)) return odtBytes;
+
+  files['content.xml'] = strToU8(content.split(LBR).join('<text:line-break/>'));
+  return rezipOdt(files);
+}
+
+// The full document → .odt pipeline, DOM-free (exportToOdt adds the download).
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait'): Promise<Uint8Array> {
+  const raw = replaceHardBreaks(docJson);
   const json = injectCustomTypes(raw);
 
   // Text width = A4 page width (portrait 21cm / landscape 29.7cm) minus the L/R
@@ -797,7 +913,11 @@ export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT
   // <text:p> styles, not the <text:list-style> definitions.
   const olFormats: (OrderedFmt | null)[] = [];
   collectOrderedListFormats(raw, olFormats);
-  const numberedOdt = applyOrderedListFormats(odt as Uint8Array, olFormats);
+  let numberedOdt = applyOrderedListFormats(odt as Uint8Array, olFormats);
+
+  const nestedFixes: (ListDef | null)[] = [];
+  collectNestedListFixes(raw, nestedFixes);
+  numberedOdt = applyNestedListTypes(numberedOdt, nestedFixes);
 
   const listStyles: ParaStyle[] = [];
   collectListItemStyles(raw, listStyles);
@@ -812,7 +932,12 @@ export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT
   const styledRows = applyTableRowHeights(styledCells, rowHeights);
 
   const cleaned = collapseRunWhitespace(styledRows);
-  const finalBytes = rewriteStylesXml(cleaned);
+  const withBreaks = applyLineBreaks(cleaned);
+  return rewriteStylesXml(withBreaks);
+}
+
+export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait'): Promise<void> {
+  const finalBytes = await buildOdt(editor.getJSON() as TiptapNode, margins, orientation);
 
   const blob = new Blob([finalBytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.oasis.opendocument.text' });
   const url = URL.createObjectURL(blob);

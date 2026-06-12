@@ -39,3 +39,10 @@ const BY_KEY = new Map<string, OrderedTypeDef>(ORDERED_LIST_TYPES.map(t => [t.ke
 export function orderedTypeDef(key: string | null | undefined): OrderedTypeDef {
   return BY_KEY.get(key ?? DEFAULT_ORDERED_TYPE) ?? BY_KEY.get(DEFAULT_ORDERED_TYPE)!;
 }
+
+// Reverse lookup for the ODT importer: ODF numbering attrs → listStyleType key.
+// Unknown formats (e.g. "1.1.", figure numbering) fall back to decimal.
+export function orderedTypeFromFormat(numFormat: string | null, numSuffix: string | null): OrderedListType {
+  const match = ORDERED_LIST_TYPES.find(t => t.numFormat === numFormat && t.numSuffix === (numSuffix ?? '.'));
+  return match?.key ?? DEFAULT_ORDERED_TYPE;
+}

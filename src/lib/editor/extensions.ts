@@ -11,6 +11,7 @@ import Highlight from '@tiptap/extension-highlight';
 import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style';
 import { FontWeight } from './fontWeight';
 import { FontColor } from './fontColor';
+import HardBreak from '@tiptap/extension-hard-break';
 import Heading from '@tiptap/extension-heading';
 import BulletList from '@tiptap/extension-bullet-list';
 import { OrderedList } from './orderedList';
@@ -48,6 +49,9 @@ export const extensions = [
   // odf-kit exports that natively to fo:background-color. See export/odt.ts
   // applyRuns for the custom-attr-paragraph export path.
   Highlight.configure({ multicolor: true }),
+  // Shift+Enter line breaks; round-trips to ODF <text:line-break/> (export/odt.ts
+  // replaceHardBreaks, import/odt.ts).
+  HardBreak,
   LineHeight,
   ParagraphSpacing,
   Heading.configure({ levels: [1, 2, 3] }),

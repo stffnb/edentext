@@ -36,10 +36,10 @@
 - page orientation
 - tables
 - undo history
+- ODT import / open existing file
 - ...
 
 ### Not yet implemented
-- ODT import / open existing file
 - Images
 - Custom right-click context menu (formatting, cut/copy)
 - Multi-document management

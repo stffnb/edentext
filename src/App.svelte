@@ -4,6 +4,7 @@
   import Toolbar from './lib/editor/Toolbar.svelte';
   import ToolbarExpanded from './lib/editor/ToolbarExpanded.svelte';
   import { exportToOdt } from './lib/export/odt';
+  import { importOdt } from './lib/import/odt';
   import { getPageBreakDebug } from './lib/editor/pageBreaks';
   import { getColorDebug } from './lib/editor/colorDebug';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
@@ -62,6 +63,38 @@
 
   async function handleExport() {
     if (editor) await exportToOdt(editor, pageMargins, pageOrientation);
+  }
+
+  let fileInput: HTMLInputElement | null = $state(null);
+
+  async function handleImportFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // allow re-selecting the same file
+    if (!file || !editor) return;
+
+    try {
+      const result = importOdt(new Uint8Array(await file.arrayBuffer()));
+
+      const hasContent = editor.state.doc.textContent.length > 0 || editor.state.doc.childCount > 1;
+      if (hasContent && !confirm('Opening this file will replace the current document. Continue?')) {
+        return;
+      }
+
+      editor.commands.setContent(result.content); // onUpdate fires → autosave
+      // Adopt the document's page geometry; the $effects persist it and
+      // Editor.svelte re-paginates.
+      if (result.margins) pageMargins = result.margins;
+      if (result.orientation) pageOrientation = result.orientation;
+
+      if (result.warnings.length) {
+        console.warn('[import] Unsupported content in opened file:', result.warnings);
+        alert(`Opened with limitations:\n• ${result.warnings.join('\n• ')}`);
+      }
+    } catch (err) {
+      console.error('[import] Failed to open file:', err);
+      alert(err instanceof Error ? err.message : 'Could not open this file.');
+    }
   }
 
   function handleDebugDump() {
@@ -167,6 +200,16 @@
           Debug
         </button>
       {/if}
+      <input
+        bind:this={fileInput}
+        type="file"
+        accept=".odt,application/vnd.oasis.opendocument.text"
+        class="file-input"
+        onchange={handleImportFile}
+      />
+      <button class="export-btn open-btn" onclick={() => fileInput?.click()} disabled={!editor}>
+        Open .odt
+      </button>
       <button class="export-btn" onclick={handleExport} disabled={!editor}>
         Download .odt
       </button>
@@ -308,6 +351,21 @@
     color: var(--color-text-muted);
     font-style: italic;
     font-weight: 400;
+  }
+
+  .file-input {
+    display: none;
+  }
+
+  /* Compound selector: must outweigh the later .export-btn rules. */
+  .export-btn.open-btn {
+    background: transparent;
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+  }
+
+  .export-btn.open-btn:hover:not(:disabled) {
+    background: var(--color-btn-hover);
   }
 
   .export-btn {
