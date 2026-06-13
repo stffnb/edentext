@@ -1,8 +1,9 @@
 import type { Editor } from '@tiptap/core';
-import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, type ParagraphBuilder, type TableBuilder, type RowBuilder, type CellBuilder } from 'odf-kit';
+import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, type ParagraphBuilder, type TableBuilder, type RowBuilder, type CellBuilder, type HeaderFooterBuilder } from 'odf-kit';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
+import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
 import { DEFAULT_ORDERED_TYPE, orderedTypeDef } from '../editor/orderedListTypes';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
@@ -17,6 +18,9 @@ const CUST_H = '__cust_h__';
 // native path emits cells with no border (invisible in LibreOffice/Word), so we
 // build the table ourselves with an explicit border.
 const CUST_TABLE = '__cust_table__';
+// Synthetic first node: routes header/footer emission through unknownNodeHandler,
+// which is the only hook with access to the OdtDocument (setHeader/setFooter).
+const CUST_HF = '__cust_hf__';
 
 // Table export styling. Values mirror the editor's table CSS (src/styles/editor.css)
 // so the .odt matches the on-screen preview.
@@ -41,6 +45,10 @@ const SEG = '';
 // odf-kit path (plain paragraphs, list items, cells) carries them; applyLineBreaks
 // swaps the char for <text:line-break/> in content.xml. U+E001 (SEG is U+E000).
 const LBR = '';
+
+// Sentinel wrapping the page-count digits in header/footer runs; applyHfPostProcess
+// rewrites it to <text:page-count> in styles.xml. U+E002 (SEG/LBR are E000/E001).
+const PGC = '';
 
 // Automatic list styles minted for in-cell lists (see applyCellBlocks). odf-kit's
 // CellBuilder is run-based, so a list inside a cell can't reference a list style it
@@ -665,45 +673,64 @@ export function normalizeColor(input: string): string | undefined {
   return s;
 }
 
-// Emit each text node as an odf-kit run, translating its TipTap marks/attrs into
-// TextFormatting (bold/italic/underline, font family/size, colour, highlight).
+// Translate a TipTap mark set into odf-kit TextFormatting (bold/italic/underline,
+// font family/size, colour, highlight). Shared by body runs and header/footer runs.
+function formattingFromMarks(marks: TiptapNode['marks'] = []): TextFormatting {
+  const tsm = marks.find(m => m.type === 'textStyle');
+  const fmt: TextFormatting = {};
+  if (marks.some(m => m.type === 'bold'))      fmt.bold = true;
+  // Explicit weight (e.g. un-bolding heading text) overrides the bold shortcut.
+  if (tsm?.attrs?.fontWeight) {
+    const fw = String(tsm.attrs.fontWeight);
+    fmt.fontWeight = (/^\d+$/.test(fw) ? Number(fw) : fw) as TextFormatting['fontWeight'];
+  }
+  if (marks.some(m => m.type === 'italic'))     fmt.italic = true;
+  if (marks.some(m => m.type === 'underline'))  fmt.underline = true;
+  if (marks.some(m => m.type === 'strike'))     fmt.strikethrough = true;
+  if (marks.some(m => m.type === 'superscript')) fmt.superscript = true;
+  else if (marks.some(m => m.type === 'subscript')) fmt.subscript = true;
+  if (tsm?.attrs?.fontFamily) {
+    const ff = String(tsm.attrs.fontFamily);
+    // Explicitly choosing the editor default should match the untagged
+    // default, which resolves to EXPORT_FONT via the Standard style.
+    fmt.fontFamily = ff === ODFKIT_DEFAULT_FONT ? EXPORT_FONT : ff;
+  }
+  if (tsm?.attrs?.fontSize)   fmt.fontSize   = String(tsm.attrs.fontSize);
+  if (tsm?.attrs?.color) {
+    const c = normalizeColor(String(tsm.attrs.color));
+    if (c) fmt.color = c;
+  }
+  // Text highlight (background). odf-kit maps highlightColor → fo:background-color
+  // natively for normal paragraphs; this covers the custom-attr-paragraph path
+  // (CUST_P/CUST_H), which bypasses odf-kit's own mark handling.
+  const hl = marks.find(m => m.type === 'highlight');
+  if (hl?.attrs?.color) {
+    const c = normalizeColor(String(hl.attrs.color));
+    if (c) fmt.highlightColor = c;
+  }
+  return fmt;
+}
+
+// Emit each text node as an odf-kit run.
 function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []) {
   for (const node of content) {
     if (node.type !== 'text' || !node.text) continue;
-    const marks = node.marks ?? [];
-    const tsm = marks.find(m => m.type === 'textStyle');
-    const fmt: TextFormatting = {};
-    if (marks.some(m => m.type === 'bold'))      fmt.bold = true;
-    // Explicit weight (e.g. un-bolding heading text) overrides the bold shortcut.
-    if (tsm?.attrs?.fontWeight) {
-      const fw = String(tsm.attrs.fontWeight);
-      fmt.fontWeight = (/^\d+$/.test(fw) ? Number(fw) : fw) as TextFormatting['fontWeight'];
-    }
-    if (marks.some(m => m.type === 'italic'))     fmt.italic = true;
-    if (marks.some(m => m.type === 'underline'))  fmt.underline = true;
-    if (marks.some(m => m.type === 'strike'))     fmt.strikethrough = true;
-    if (marks.some(m => m.type === 'superscript')) fmt.superscript = true;
-    else if (marks.some(m => m.type === 'subscript')) fmt.subscript = true;
-    if (tsm?.attrs?.fontFamily) {
-      const ff = String(tsm.attrs.fontFamily);
-      // Explicitly choosing the editor default should match the untagged
-      // default, which resolves to EXPORT_FONT via the Standard style.
-      fmt.fontFamily = ff === ODFKIT_DEFAULT_FONT ? EXPORT_FONT : ff;
-    }
-    if (tsm?.attrs?.fontSize)   fmt.fontSize   = String(tsm.attrs.fontSize);
-    if (tsm?.attrs?.color) {
-      const c = normalizeColor(String(tsm.attrs.color));
-      if (c) fmt.color = c;
-    }
-    // Text highlight (background). odf-kit maps highlightColor → fo:background-color
-    // natively for normal paragraphs; this covers the custom-attr-paragraph path
-    // (CUST_P/CUST_H), which bypasses odf-kit's own mark handling.
-    const hl = marks.find(m => m.type === 'highlight');
-    if (hl?.attrs?.color) {
-      const c = normalizeColor(String(hl.attrs.color));
-      if (c) fmt.highlightColor = c;
-    }
+    const fmt = formattingFromMarks(node.marks);
     p.addText(node.text, Object.keys(fmt).length ? fmt : undefined);
+  }
+}
+
+// Emit the header/footer paragraph into odf-kit's HeaderFooterBuilder. hardBreak
+// and pageCount ride as sentinels (LBR / PGC-wrapped digits) and are rewritten to
+// <text:line-break/> / <text:page-count> in applyHfPostProcess (styles.xml).
+function applyHfRuns(b: HeaderFooterBuilder, para: TiptapNode, pageCount: number): void {
+  for (const node of para.content ?? []) {
+    const fmt = formattingFromMarks(node.marks);
+    const f = Object.keys(fmt).length ? fmt : undefined;
+    if (node.type === 'text' && node.text) b.addText(node.text, f);
+    else if (node.type === 'hardBreak')    b.addText(LBR);
+    else if (node.type === 'pageNumber')   b.addPageNumber(f);
+    else if (node.type === 'pageCount')    b.addText(`${PGC}${pageCount}${PGC}`, f);
   }
 }
 
@@ -845,10 +872,19 @@ function applyLineBreaks(odtBytes: Uint8Array): Uint8Array {
   return rezipOdt(files);
 }
 
+// Header/footer input for the export: one single-paragraph doc per zone (or null)
+// plus the page count snapshot used as the stored <text:page-count> value.
+export type HfExport = { header: HfDoc; footer: HfDoc; pageCount: number };
+
 // The full document → .odt pipeline, DOM-free (exportToOdt adds the download).
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait'): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport): Promise<Uint8Array> {
   const raw = replaceHardBreaks(docJson);
-  const json = injectCustomTypes(raw);
+  const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
+  const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
+  let json = injectCustomTypes(raw);
+  if (headerPara || footerPara) {
+    json = { ...json, content: [{ type: CUST_HF }, ...(json.content ?? [])] };
+  }
 
   // Text width = A4 page width (portrait 21cm / landscape 29.7cm) minus the L/R
   // margins. Table column widths are scaled to fill exactly this width.
@@ -865,11 +901,19 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
     orientation,
     // Margins (cm) come from the Layout panel via App state. They match the
     // editor's on-screen padding so exported line wrapping / page flow is identical.
-    marginTop: `${margins.top}cm`,
-    marginBottom: `${margins.bottom}cm`,
+    // With a header/footer, ODF's vertical margin is the page-edge→header distance;
+    // applyHfPostProcess sizes the header box so the body still starts at the
+    // editor's margin (Word-style mapping).
+    marginTop: `${headerPara ? HF_DISTANCE_CM : margins.top}cm`,
+    marginBottom: `${footerPara ? HF_DISTANCE_CM : margins.bottom}cm`,
     marginLeft: `${margins.left}cm`,
     marginRight: `${margins.right}cm`,
     unknownNodeHandler(node: TiptapNode, doc: OdtDocument) {
+      if (node.type === CUST_HF) {
+        if (headerPara) doc.setHeader((b: HeaderFooterBuilder) => applyHfRuns(b, headerPara, hf!.pageCount));
+        if (footerPara) doc.setFooter((b: HeaderFooterBuilder) => applyHfRuns(b, footerPara, hf!.pageCount));
+        return;
+      }
       if (node.type === CUST_TABLE) {
         exportTable(node, doc, contentWidthCm, cellBlocks);
         return;
@@ -933,11 +977,61 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
 
   const cleaned = collapseRunWhitespace(styledRows);
   const withBreaks = applyLineBreaks(cleaned);
-  return rewriteStylesXml(withBreaks);
+  const withStyles = rewriteStylesXml(withBreaks);
+  return applyHfPostProcess(withStyles, margins, headerPara, footerPara);
 }
 
-export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait'): Promise<void> {
-  const finalBytes = await buildOdt(editor.getJSON() as TiptapNode, margins, orientation);
+function hfAlign(para: TiptapNode): AlignValue | null {
+  const ta = para.attrs?.textAlign;
+  return ta === 'center' || ta === 'right' || ta === 'justify' ? ta : null;
+}
+
+// Header/footer post-processing on styles.xml: resolve the LBR/PGC sentinels in the
+// emitted runs, rewrite odf-kit's fixed header/footer geometry (0.6/0.5cm) to the
+// Word-style mapping (page margin = HF distance, min-height fills up to the body
+// margin so the body starts exactly at the editor's margin), and apply the
+// paragraph alignment to the named Header/Footer styles.
+function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPara: TiptapNode | null, footerPara: TiptapNode | null): Uint8Array {
+  if (!headerPara && !footerPara) return odtBytes;
+
+  const files = unzipSync(odtBytes);
+  const stylesBytes = files['styles.xml'];
+  if (!stylesBytes) return odtBytes;
+  let styles = strFromU8(stylesBytes);
+
+  // Same fix as collapseRunWhitespace: odf-kit joins runs with "\n", which would
+  // collapse into spurious spaces. styles.xml only has text:p inside header/footer.
+  styles = styles.replace(/<text:p\b[^>]*>[\s\S]*?<\/text:p>/g, (block) => block.replace(/\n/g, ''));
+  styles = styles.split(LBR).join('<text:line-break/>');
+  styles = styles.replace(new RegExp(`${PGC}(\\d*)${PGC}`, 'g'), '<text:page-count>$1</text:page-count>');
+
+  const round3 = (v: number) => Math.round(v * 1000) / 1000;
+  const zone = (kind: 'header' | 'footer', para: TiptapNode, bodyMarginCm: number) => {
+    const minH = round3(Math.max(0.2, bodyMarginCm - HF_DISTANCE_CM));
+    // The spacing attr sits on the body-facing side: below the header, above the footer.
+    const spacingAttr = kind === 'header' ? 'fo:margin-bottom' : 'fo:margin-top';
+    styles = styles.replace(
+      new RegExp(`<style:${kind}-style>[\\s\\S]*?</style:${kind}-style>`),
+      `<style:${kind}-style><style:header-footer-properties fo:min-height="${minH}cm" ${spacingAttr}="0cm" style:dynamic-spacing="false"/></style:${kind}-style>`,
+    );
+    const align = hfAlign(para);
+    if (align) {
+      const styleName = kind === 'header' ? 'Header' : 'Footer';
+      styles = styles.replace(
+        new RegExp(`(<style:style style:name="${styleName}"[^>]*?)/>`),
+        `$1><style:paragraph-properties fo:text-align="${align}"/></style:style>`,
+      );
+    }
+  };
+  if (headerPara) zone('header', headerPara, margins.top);
+  if (footerPara) zone('footer', footerPara, margins.bottom);
+
+  files['styles.xml'] = strToU8(styles);
+  return rezipOdt(files);
+}
+
+export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport): Promise<void> {
+  const finalBytes = await buildOdt(editor.getJSON() as TiptapNode, margins, orientation, hf);
 
   const blob = new Blob([finalBytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.oasis.opendocument.text' });
   const url = URL.createObjectURL(blob);

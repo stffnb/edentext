@@ -12,8 +12,8 @@
   import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import type { Orientation } from '../storage/pageOrientation';
 
-  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait') }:
-    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation } = $props();
+  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), hfActive = null, onEditZone }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void } = $props();
 
   type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
@@ -1058,6 +1058,20 @@
               </div>
             {/each}
           </div>
+
+          <div class="lh-section-label">Header &amp; footer</div>
+          <div class="hf-edit-row">
+            <button
+              class="hf-edit-btn"
+              class:active={hfActive === 'header'}
+              onclick={() => onEditZone?.('header')}
+            >Edit header</button>
+            <button
+              class="hf-edit-btn"
+              class:active={hfActive === 'footer'}
+              onclick={() => onEditZone?.('footer')}
+            >Edit footer</button>
+          </div>
         </div>
       {/if}
     </div>
@@ -1507,6 +1521,35 @@
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     padding: 4px 6px 2px;
+  }
+
+  .hf-edit-row {
+    display: flex;
+    gap: 6px;
+    padding: 2px 6px 4px;
+  }
+
+  .hf-edit-btn {
+    flex: 1;
+    padding: 5px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+
+  .hf-edit-btn:hover {
+    background: var(--color-btn-hover);
+  }
+
+  .hf-edit-btn.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
   }
 
   .margin-field {

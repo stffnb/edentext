@@ -230,31 +230,87 @@ export class StyleResolver {
     return name ? this.listStyles.get(name) ?? null : null;
   }
 
-  // Page margins + orientation from the first master page's page layout.
-  // Page *size* is intentionally ignored — the editor is A4-only.
-  pageGeometry(): { margins: PageMargins; orientation: Orientation } | null {
+  // The master page governing the document (prefer "Standard", else the first).
+  private masterPageEl(): Element | null {
     const doc = this.stylesDoc;
     if (!doc) return null;
-    const masterPage = doc.getElementsByTagNameNS(NS.style, 'master-page')[0];
-    const layoutName = masterPage?.getAttributeNS(NS.style, 'page-layout-name');
-    if (!layoutName) return null;
-    let props: Element | null = null;
+    const pages = Array.from(doc.getElementsByTagNameNS(NS.style, 'master-page'));
+    return pages.find(p => p.getAttributeNS(NS.style, 'name') === 'Standard') ?? pages[0] ?? null;
+  }
+
+  private pageLayoutEl(): Element | null {
+    const doc = this.stylesDoc;
+    const layoutName = this.masterPageEl()?.getAttributeNS(NS.style, 'page-layout-name');
+    if (!doc || !layoutName) return null;
     for (const layout of Array.from(doc.getElementsByTagNameNS(NS.style, 'page-layout'))) {
-      if (layout.getAttributeNS(NS.style, 'name') === layoutName) {
-        props = layout.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
-        break;
-      }
+      if (layout.getAttributeNS(NS.style, 'name') === layoutName) return layout;
     }
+    return null;
+  }
+
+  // Header/footer of the master page: the content elements, the vertical space the
+  // zone occupies below/above the page margin (height + body-side spacing, for the
+  // Word-style body-margin reconstruction), and whether per-page variants exist.
+  masterPageHF(): {
+    header: Element | null;
+    footer: Element | null;
+    headerExtraCm: number;
+    footerExtraCm: number;
+    hasVariants: boolean;
+  } {
+    const mp = this.masterPageEl();
+    const layout = this.pageLayoutEl();
+
+    const zone = (local: string): Element | null => {
+      if (!mp) return null;
+      for (const child of Array.from(mp.children)) {
+        if (child.namespaceURI === NS.style && child.localName === local) return child;
+      }
+      return null;
+    };
+    const extraCm = (local: 'header-style' | 'footer-style', spacingAttr: 'margin-bottom' | 'margin-top'): number => {
+      if (!layout) return 0;
+      let props: Element | null = null;
+      for (const child of Array.from(layout.children)) {
+        if (child.namespaceURI === NS.style && child.localName === local) {
+          props = child.getElementsByTagNameNS(NS.style, 'header-footer-properties')[0] ?? null;
+          break;
+        }
+      }
+      if (!props) return 0;
+      const height = lengthToCm(props.getAttributeNS(NS.svg, 'height'))
+        ?? lengthToCm(props.getAttributeNS(NS.fo, 'min-height'))
+        ?? 0;
+      const spacing = lengthToCm(props.getAttributeNS(NS.fo, spacingAttr)) ?? 0;
+      return height + spacing;
+    };
+
+    return {
+      header: zone('header'),
+      footer: zone('footer'),
+      headerExtraCm: extraCm('header-style', 'margin-bottom'),
+      footerExtraCm: extraCm('footer-style', 'margin-top'),
+      hasVariants: ['header-first', 'footer-first', 'header-left', 'footer-left'].some(l => zone(l) != null),
+    };
+  }
+
+  // Page margins + orientation from the master page's layout. With a header/footer,
+  // ODF's vertical margin ends at the zone — the editor's body margin is margin +
+  // zone height + spacing (inverse of the export's Word-style mapping). Page *size*
+  // is intentionally ignored — the editor is A4-only.
+  pageGeometry(): { margins: PageMargins; orientation: Orientation } | null {
+    const props = this.pageLayoutEl()?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
     if (!props) return null;
 
-    const cm = (attr: string, fallback: number) => {
+    const hf = this.masterPageHF();
+    const cm = (attr: string, fallback: number, extra = 0) => {
       const v = lengthToCm(props.getAttributeNS(NS.fo, attr));
       if (v == null) return fallback;
-      return Math.min(10, Math.max(0, Math.round(v * 100) / 100));
+      return Math.min(10, Math.max(0, Math.round((v + extra) * 100) / 100));
     };
     const margins: PageMargins = {
-      top: cm('margin-top', 2.54),
-      bottom: cm('margin-bottom', 2.54),
+      top: cm('margin-top', 2.54, hf.header ? hf.headerExtraCm : 0),
+      bottom: cm('margin-bottom', 2.54, hf.footer ? hf.footerExtraCm : 0),
       left: cm('margin-left', 2.12),
       right: cm('margin-right', 2.12),
     };

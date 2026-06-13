@@ -37,6 +37,7 @@
 - tables
 - undo history
 - ODT import / open existing file
+- header/footer
 - ...
 
 ### Not yet implemented

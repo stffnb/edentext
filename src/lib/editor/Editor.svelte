@@ -5,17 +5,27 @@
   import type { Node as PmNode, MarkType } from 'prosemirror-model';
   import { extensions } from './extensions';
   import TableToolbar from './TableToolbar.svelte';
+  import HeaderFooterLayer from './HeaderFooterLayer.svelte';
   import { saveDocument, loadDocument } from '../storage/autosave';
   import { applyMarginVars, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { applyOrientationVars, type Orientation } from '../storage/pageOrientation';
+  import type { HfDoc, HfZone } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, type TableBreakBand } from './pageBreaks';
   import { recordTransaction, resetHistoryLog } from './historyLog.svelte';
   import '../../styles/editor.css';
 
   const DEFAULT_EDITOR_FONT = 'Georgia'; // must match ToolbarExpanded.svelte
 
-  let { editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1), zoom = 100, showFormattingMarks = false, pageMargins = DEFAULT_MARGINS, orientation = 'portrait' }: {
-    editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number; showFormattingMarks?: boolean; pageMargins?: PageMargins; orientation?: Orientation;
+  let {
+    editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
+    zoom = 100, showFormattingMarks = false, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
+    headerDoc = $bindable(null), footerDoc = $bindable(null),
+    hfEditor = $bindable(null), hfActive = $bindable(null), hfTick = $bindable(0),
+  }: {
+    editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
+    showFormattingMarks?: boolean; pageMargins?: PageMargins; orientation?: Orientation;
+    headerDoc?: HfDoc; footerDoc?: HfDoc;
+    hfEditor?: Editor | null; hfActive?: HfZone | null; hfTick?: number;
   } = $props();
 
   // Apply the page margins + orientation to the :root CSS vars (visual padding,
@@ -345,6 +355,10 @@
       onUpdate: ({ editor: e }) => {
         saveDocument(e.getJSON());
       },
+      onFocus: () => {
+        // Clicking back into the body ends header/footer editing (Word behaviour).
+        hfActive = null;
+      },
     });
 
     element.addEventListener('pm-pagecount', onPageCount);
@@ -376,7 +390,7 @@
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
   <div class="paper-scaler" style={scaledWidth ? `width: ${scaledWidth}px; height: ${scaledHeight}px;` : ''}>
-    <div bind:this={paperEl} class="paper" class:show-formatting-marks={showFormattingMarks} style="transform: scale({appliedZoom / 100});">
+    <div bind:this={paperEl} class="paper" class:show-formatting-marks={showFormattingMarks} class:hf-editing={hfActive} style="transform: scale({appliedZoom / 100});">
       <!-- Dedicated mount point that TipTap fully owns — keeping it free of Svelte
            content avoids Svelte and ProseMirror fighting over the same parent's DOM. -->
       <div bind:this={element} class="tiptap-host"></div>
@@ -396,6 +410,17 @@
           {/each}
         </div>
       {/if}
+      <HeaderFooterLayer
+        bind:headerDoc
+        bind:footerDoc
+        bind:hfEditor
+        bind:hfActive
+        bind:hfTick
+        {numPages}
+        {currentPage}
+        {pageMargins}
+        {orientation}
+      />
     </div>
   </div>
   {#if tableUi.visible}
@@ -404,6 +429,12 @@
 </div>
 
 <style>
+  /* While editing a header/footer, dim the body so focus is on the margin zone. */
+  .paper.hf-editing :global(.tiptap) {
+    opacity: 0.5;
+    transition: opacity 0.15s;
+  }
+
   /* Overlay for the table page-break bands, inside .paper (inset:0) so it scales with
      the page background. pointer-events:none keeps the editor clickable. z-index clears
      the resize handles (20) so the band also masks a too-tall cell's handle in the gap. */

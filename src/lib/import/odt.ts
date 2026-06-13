@@ -23,6 +23,9 @@ export interface OdtImportResult {
   content: Node; // { type: 'doc', … }
   margins: PageMargins | null;
   orientation: Orientation | null;
+  // Single-paragraph docs in the hfExtensions schema; null = no zone.
+  header: Node | null;
+  footer: Node | null;
   warnings: string[];
 }
 
@@ -78,13 +81,56 @@ export function importOdt(bytes: Uint8Array): OdtImportResult {
   const blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 
+  const hf = resolver.masterPageHF();
+  if (hf.hasVariants) {
+    warnings.add('Per-page header/footer variants (first/even pages) are not supported — the default one was used');
+  }
+
   const geometry = resolver.pageGeometry();
   return {
     content: { type: 'doc', content: blocks },
     margins: geometry?.margins ?? null,
     orientation: geometry?.orientation ?? null,
+    header: hf.header ? convertHfZone(hf.header, ctx) : null,
+    footer: hf.footer ? convertHfZone(hf.footer, ctx) : null,
     warnings: [...warnings],
   };
+}
+
+// A header/footer zone → one single-paragraph doc (hfExtensions schema). Multiple
+// paragraphs collapse to hard line breaks; block structures flatten to their text.
+function convertHfZone(zoneEl: Element, ctx: Ctx): Node | null {
+  const inline: Node[] = [];
+  let textAlign: string | null = null;
+
+  const addPara = (p: Element) => {
+    if (inline.length) inline.push({ type: 'hardBreak' });
+    const styleName = p.getAttributeNS(NS.text, 'style-name');
+    if (textAlign === null) {
+      const ta = ctx.resolver.paraProps(styleName)['fo:text-align'] ?? '';
+      textAlign = ta === 'center' || ta === 'justify' ? ta : ta === 'right' || ta === 'end' ? 'right' : null;
+      if (textAlign === null) textAlign = ''; // only the first paragraph decides
+    }
+    inline.push(...convertInline(p, ctx, ctx.resolver.paraTextProps(styleName), null, true));
+  };
+
+  for (const child of Array.from(zoneEl.children)) {
+    if (child.namespaceURI === NS.text && (child.localName === 'p' || child.localName === 'h')) {
+      addPara(child);
+    } else if (child.namespaceURI === NS.text || child.namespaceURI === NS.table) {
+      // Lists/tables in headers are beyond the one-paragraph model — keep their text.
+      ctx.warnings.add('Lists/tables in headers or footers were flattened to text');
+      for (const p of Array.from(child.getElementsByTagNameNS(NS.text, 'p'))) addPara(p);
+    }
+  }
+  // Trim leading/trailing breaks from empty source paragraphs.
+  while (inline[0]?.type === 'hardBreak') inline.shift();
+  while (inline[inline.length - 1]?.type === 'hardBreak') inline.pop();
+  if (inline.length === 0) return null;
+
+  const para: Node = { type: 'paragraph', content: inline };
+  if (textAlign) para.attrs = { textAlign };
+  return { type: 'doc', content: [para] };
 }
 
 function parseXml(xml: string): Document {
@@ -201,12 +247,18 @@ function snapPt(v: number): number {
 
 // ---- inline conversion --------------------------------------------------------
 
-function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel: number | null): Node[] {
+function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel: number | null, hfFields = false): Node[] {
   const out: Node[] = [];
 
   const pushText = (text: string, props: PropMap) => {
     // Strip our export sentinels (SEG/LBR) defensively — never legitimate text.
-    const clean = text.replace(/[]/g, '');
+    let clean = text.replace(/[-]/g, '');
+    if (clean.includes('\n')) {
+      // Newlines in ODF text content are formatting whitespace (real breaks
+      // are text:line-break): drop whitespace-only nodes, collapse the rest.
+      if (!clean.trim()) return;
+      clean = clean.replace(/[ \t]*\n[ \t]*/g, ' ');
+    }
     if (!clean) return;
     const marks = marksFor(props, ctx.resolver, headingLevel);
     const node: Node = { type: 'text', text: clean };
@@ -255,8 +307,17 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
           case 'change-end':
             continue;
           default:
-            // Text fields (date, page number, title, …) store their evaluated
-            // value as element text — keep what the source document showed.
+            // In headers/footers, page fields stay live fields (pageField.ts).
+            if (hfFields && e.localName === 'page-number') {
+              out.push({ type: 'pageNumber' });
+              continue;
+            }
+            if (hfFields && e.localName === 'page-count') {
+              out.push({ type: 'pageCount' });
+              continue;
+            }
+            // Other text fields (date, title, …) store their evaluated value as
+            // element text — keep what the source document showed.
             if (e.textContent) pushText(e.textContent, props);
             continue;
         }

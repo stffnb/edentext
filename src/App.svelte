@@ -10,11 +10,23 @@
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
+  import { loadHfDoc, saveHfDoc, type HfDoc, type HfZone } from './lib/storage/headerFooter';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
   let currentPage: number = $state(1);
   let numPages: number = $state(1);
+
+  // Header/footer content + live-edit state. While a zone is being edited, the
+  // top toolbars target hfEditor instead of the body editor (activeEditor below).
+  let headerDoc: HfDoc = $state(loadHfDoc('header'));
+  let footerDoc: HfDoc = $state(loadHfDoc('footer'));
+  let hfEditor: Editor | null = $state(null);
+  let hfActive: HfZone | null = $state(null);
+  let hfTick: number = $state(0);
+
+  let activeEditor = $derived(hfActive ? hfEditor : editor);
+  let activeTick = $derived(hfActive ? hfTick : tick);
 
   let themeMode: ThemeMode = $state(loadTheme());
   let themeOpen = $state(false);
@@ -34,6 +46,14 @@
 
   $effect(() => {
     saveOrientation(pageOrientation);
+  });
+
+  $effect(() => {
+    saveHfDoc('header', headerDoc);
+  });
+
+  $effect(() => {
+    saveHfDoc('footer', footerDoc);
   });
 
   function setZoom(value: number) {
@@ -62,7 +82,9 @@
   }
 
   async function handleExport() {
-    if (editor) await exportToOdt(editor, pageMargins, pageOrientation);
+    if (editor) {
+      await exportToOdt(editor, pageMargins, pageOrientation, { header: headerDoc, footer: footerDoc, pageCount: numPages });
+    }
   }
 
   let fileInput: HTMLInputElement | null = $state(null);
@@ -86,6 +108,10 @@
       // Editor.svelte re-paginates.
       if (result.margins) pageMargins = result.margins;
       if (result.orientation) pageOrientation = result.orientation;
+      // Adopt header/footer (null clears the zone); end any active edit.
+      hfActive = null;
+      headerDoc = result.header;
+      footerDoc = result.footer;
 
       if (result.warnings.length) {
         console.warn('[import] Unsupported content in opened file:', result.warnings);
@@ -123,7 +149,7 @@
 
 <main>
   <header>
-    <Toolbar {editor} {tick} />
+    <Toolbar editor={activeEditor} tick={activeTick} />
     <div class="header-actions">
       <button
         class="toolbar-toggle-btn"
@@ -216,9 +242,31 @@
     </div>
   </header>
   {#if toolbarExpanded}
-    <ToolbarExpanded {editor} {tick} bind:showFormattingMarks bind:pageMargins bind:pageOrientation />
+    <ToolbarExpanded
+      editor={activeEditor}
+      tick={activeTick}
+      bind:showFormattingMarks
+      bind:pageMargins
+      bind:pageOrientation
+      hfActive={hfActive}
+      onEditZone={(zone) => (hfActive = zone)}
+    />
   {/if}
-  <EditorComponent bind:editor bind:tick bind:currentPage bind:numPages {zoom} {showFormattingMarks} {pageMargins} orientation={pageOrientation} />
+  <EditorComponent
+    bind:editor
+    bind:tick
+    bind:currentPage
+    bind:numPages
+    bind:headerDoc
+    bind:footerDoc
+    bind:hfEditor
+    bind:hfActive
+    bind:hfTick
+    {zoom}
+    {showFormattingMarks}
+    {pageMargins}
+    orientation={pageOrientation}
+  />
   <footer class="statusbar">
     <span>Page {currentPage} of {numPages}</span>
     <div class="zoom-controls">
