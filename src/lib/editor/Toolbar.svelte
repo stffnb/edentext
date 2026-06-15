@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import HistoryButton from './HistoryButton.svelte';
+  import AlignButton from './AlignButton.svelte';
   import { ORDERED_LIST_TYPES, DEFAULT_ORDERED_TYPE, type OrderedListType } from './orderedListTypes';
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
@@ -188,6 +189,12 @@
           </div>
         {/if}
       </div>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <AlignButton {editor} {tick} />
     </div>
 
     <div class="toolbar-separator"></div>

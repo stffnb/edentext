@@ -387,11 +387,6 @@
           </div>
         {/if}
       </div>
-      {#if import.meta.env.DEV}
-        <button class="debug-btn" onclick={handleDebugDump} disabled={!editor} title="Download page-break debug snapshot">
-          Debug
-        </button>
-      {/if}
       <input
         bind:this={fileInput}
         type="file"
@@ -411,6 +406,7 @@
       bind:hfDistances
       hfActive={hfActive}
       onEditZone={(zone) => (hfActive = zone)}
+      onDebugDump={handleDebugDump}
     />
   {/if}
   <EditorComponent
@@ -669,29 +665,6 @@
 
   .file-input {
     display: none;
-  }
-
-  .debug-btn {
-    padding: 0.35rem 0.7rem;
-    background: transparent;
-    color: var(--color-text-muted);
-    border: 1px dashed var(--color-border);
-    border-radius: var(--radius);
-    font-size: 0.75rem;
-    font-family: var(--font-sans);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background 0.15s, color 0.15s;
-  }
-
-  .debug-btn:hover:not(:disabled) {
-    background: var(--color-btn-hover);
-    color: var(--color-text);
-  }
-
-  .debug-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
   }
 
   .statusbar {

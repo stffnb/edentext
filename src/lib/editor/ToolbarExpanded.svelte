@@ -13,36 +13,8 @@
   import type { Orientation } from '../storage/pageOrientation';
   import { DEFAULT_HF_DISTANCES, clampHfDistance, type HfDistances } from '../storage/headerFooter';
 
-  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), hfActive = null, onEditZone }:
-    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; hfDistances?: HfDistances; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void } = $props();
-
-  type AlignValue = 'left' | 'center' | 'right' | 'justify';
-
-  const ALIGNMENTS: { value: AlignValue; label: string }[] = [
-    { value: 'left',    label: 'Left'    },
-    { value: 'center',  label: 'Center'  },
-    { value: 'right',   label: 'Right'   },
-    { value: 'justify', label: 'Justify' },
-  ];
-
-  // Empty string when the selection spans paragraphs/headings with different alignments.
-  let currentAlign = $derived.by<AlignValue | ''>(() => {
-    if (tick < 0 || !editor) return 'left';
-    const { from, to, empty } = editor.state.selection;
-    if (empty) {
-      return (editor.state.selection.$head.parent.attrs.textAlign ?? 'left') as AlignValue;
-    }
-    let a: AlignValue | undefined;
-    let mixed = false;
-    editor.state.doc.nodesBetween(from, to, (node) => {
-      if (mixed) return;
-      if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return;
-      const v = (node.attrs.textAlign ?? 'left') as AlignValue;
-      if (a === undefined) a = v;
-      else if (a !== v) mixed = true;
-    });
-    return mixed ? '' : (a ?? 'left');
-  });
+  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), hfActive = null, onEditZone, onDebugDump }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; hfDistances?: HfDistances; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void } = $props();
 
   // Must match the first font in --font-serif in global.css. Bundled as a
   // webfont so it is always available and matches the exported .odt's font.
@@ -287,7 +259,6 @@
   let fontOpen = $state(false);
   let sizeOpen = $state(false);
   let lineHeightOpen = $state(false);
-  let alignOpen = $state(false);
   let fontColorOpen = $state(false);
   let highlightColorOpen = $state(false);
   let sizeInputFocused = $state(false);
@@ -306,7 +277,6 @@
     sizeOpen = false;
     sizeInputFocused = false;
     lineHeightOpen = false;
-    alignOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
     // Save selection before the picker button steals focus.
@@ -354,7 +324,6 @@
     sizeInputFocused = true;
     fontOpen = false;
     lineHeightOpen = false;
-    alignOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
     savedFrom = editor.state.selection.from;
@@ -383,7 +352,6 @@
     if (!editor) return;
     fontOpen = false;
     lineHeightOpen = false;
-    alignOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
     if (!sizeInputFocused) {
@@ -415,7 +383,6 @@
     fontOpen = false;
     sizeOpen = false;
     sizeInputFocused = false;
-    alignOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
     lineHeightOpen = !lineHeightOpen;
@@ -454,7 +421,6 @@
     fontOpen = false;
     sizeOpen = false;
     sizeInputFocused = false;
-    alignOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
     spaceBeforeOpen = false;
@@ -510,31 +476,6 @@
   function lineHeightPickerClickOutside(node: HTMLElement) {
     function handler(e: MouseEvent) {
       if (!node.contains(e.target as Node)) lineHeightOpen = false;
-    }
-    window.addEventListener('mousedown', handler);
-    return { destroy() { window.removeEventListener('mousedown', handler); } };
-  }
-
-  function openAlignPicker() {
-    if (!editor) return;
-    fontOpen = false;
-    sizeOpen = false;
-    sizeInputFocused = false;
-    lineHeightOpen = false;
-    fontColorOpen = false;
-    highlightColorOpen = false;
-    alignOpen = !alignOpen;
-  }
-
-  function pickAlign(value: AlignValue) {
-    if (!editor) return;
-    alignOpen = false;
-    editor.chain().focus().setTextAlign(value).run();
-  }
-
-  function alignPickerClickOutside(node: HTMLElement) {
-    function handler(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) alignOpen = false;
     }
     window.addEventListener('mousedown', handler);
     return { destroy() { window.removeEventListener('mousedown', handler); } };
@@ -662,7 +603,6 @@
     lineHeightOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
-    alignOpen = false;
     layoutOpen = !layoutOpen;
     if (layoutOpen) {
       syncMarginInputs();
@@ -686,7 +626,6 @@
     sizeOpen = false;
     sizeInputFocused = false;
     lineHeightOpen = false;
-    alignOpen = false;
     if (which === 'font') highlightColorOpen = false;
     else fontColorOpen = false;
   }
@@ -700,7 +639,6 @@
     sizeOpen = false;
     sizeInputFocused = false;
     lineHeightOpen = false;
-    alignOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
     layoutOpen = false;
@@ -964,81 +902,6 @@
 
     <div class="toolbar-separator"></div>
 
-    <div class="align-picker" use:alignPickerClickOutside>
-      <button class="align-trigger" onclick={openAlignPicker} title="Text alignment">
-        {#if currentAlign === 'center'}
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="4" y1="7" x2="12" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="3" y1="11" x2="13" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-        {:else if currentAlign === 'right'}
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="6" y1="7" x2="14" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="4" y1="11" x2="14" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-        {:else if currentAlign === 'justify'}
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="2" y1="7" x2="14" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="2" y1="11" x2="14" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-        {:else}
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="2" y1="7" x2="10" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="2" y1="11" x2="12" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-        {/if}
-        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
-          <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      {#if alignOpen}
-        <div class="align-dropdown">
-          <div class="lh-section-label">Alignment</div>
-          {#each ALIGNMENTS as a}
-            <button
-              class="align-option"
-              class:active={currentAlign === a.value}
-              onclick={() => pickAlign(a.value)}
-              title="Align {a.label.toLowerCase()}"
-            >
-              {#if a.value === 'left'}
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  <line x1="2" y1="7" x2="10" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  <line x1="2" y1="11" x2="12" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-              {:else if a.value === 'center'}
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  <line x1="4" y1="7" x2="12" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  <line x1="3" y1="11" x2="13" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-              {:else if a.value === 'right'}
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  <line x1="6" y1="7" x2="14" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  <line x1="4" y1="11" x2="14" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-              {:else}
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  <line x1="2" y1="7" x2="14" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  <line x1="2" y1="11" x2="14" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-              {/if}
-              <span>{a.label}</span>
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </div>
-
-    <div class="toolbar-separator"></div>
-
     <div class="layout-picker" use:layoutClickOutside>
       <button class="layout-trigger" onclick={openLayout} title="Page layout &amp; margins" aria-pressed={layoutOpen}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1218,6 +1081,16 @@
         </svg>
       </button>
     </div>
+
+    {#if import.meta.env.DEV && onDebugDump}
+      <div class="toolbar-separator"></div>
+
+      <div class="toolbar-group">
+        <button class="debug-btn" onclick={onDebugDump} title="Download page-break debug snapshot">
+          Debug
+        </button>
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -1855,72 +1728,21 @@
     color: white;
   }
 
-  .align-picker {
-    position: relative;
-  }
-
-  .align-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    height: 2rem;
-    padding: 0 0.4rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    background: var(--color-surface);
-    color: var(--color-text);
-    cursor: pointer;
-    min-width: unset;
-    transition: border-color 0.15s;
-  }
-
-  .align-trigger:hover {
-    border-color: var(--color-primary);
-  }
-
-  .align-dropdown {
-    position: absolute;
-    top: calc(100% + 3px);
-    left: 0;
-    min-width: 130px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-    z-index: 200;
-    padding: 2px;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .align-option {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.35rem 0.6rem;
-    border: none;
-    border-radius: calc(var(--radius) - 2px);
+  .debug-btn {
+    padding: 0.35rem 0.7rem;
     background: transparent;
-    color: var(--color-text);
-    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius);
+    font-size: 0.75rem;
     font-family: var(--font-sans);
-    text-align: left;
     cursor: pointer;
     white-space: nowrap;
-    transition: background 0.1s;
-    min-width: unset;
-    height: auto;
-    justify-content: flex-start;
+    transition: background 0.15s, color 0.15s;
   }
 
-  .align-option:hover {
+  .debug-btn:hover:not(:disabled) {
     background: var(--color-btn-hover);
+    color: var(--color-text);
   }
-
-  .align-option.active {
-    background: var(--color-primary);
-    color: white;
-  }
-
 </style>
