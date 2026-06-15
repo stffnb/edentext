@@ -1,4 +1,3 @@
-import type { Editor } from '@tiptap/core';
 import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, type ParagraphBuilder, type TableBuilder, type RowBuilder, type CellBuilder, type HeaderFooterBuilder } from 'odf-kit';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
@@ -883,7 +882,7 @@ export type HfExport = {
   footerDistanceCm?: number;
 };
 
-// The full document → .odt pipeline, DOM-free (exportToOdt adds the download).
+// The full document → .odt pipeline, DOM-free; returns the .odt bytes.
 export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport): Promise<Uint8Array> {
   const raw = replaceHardBreaks(docJson);
   const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
@@ -1043,22 +1042,12 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
   return rezipOdt(files);
 }
 
-export async function exportToOdt(editor: Editor, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport): Promise<void> {
-  const finalBytes = await buildOdt(editor.getJSON() as TiptapNode, margins, orientation, hf);
-
-  const blob = new Blob([finalBytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.oasis.opendocument.text' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = getFilename(editor);
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function getFilename(editor: Editor): string {
+// Document filename derived from the first non-empty heading (sanitized, max 50
+// chars), falling back to document.odt.
+export function deriveFilename(json: TiptapNode): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const json = editor.getJSON() as any;
-  const heading = json.content?.find(
+  const content = (json as any).content as any[] | undefined;
+  const heading = content?.find(
     (node: any) => node.type === 'heading' && node.content?.length
   );
   const firstText: string | undefined = heading?.content?.[0]?.text;

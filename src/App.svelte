@@ -1,16 +1,18 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { Editor } from '@tiptap/core';
   import EditorComponent from './lib/editor/Editor.svelte';
   import Toolbar from './lib/editor/Toolbar.svelte';
   import ToolbarExpanded from './lib/editor/ToolbarExpanded.svelte';
-  import { exportToOdt } from './lib/export/odt';
+  import { buildOdt, deriveFilename } from './lib/export/odt';
+  import { supportsFsAccess, saveOdt, saveAsOdt, openOdt } from './lib/export/saveFile';
   import { importOdt } from './lib/import/odt';
   import { getPageBreakDebug } from './lib/editor/pageBreaks';
   import { getColorDebug } from './lib/editor/colorDebug';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
-  import { loadPageMargins, savePageMargins, type PageMargins } from './lib/storage/pageMargins';
+  import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
-  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
+  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
@@ -86,25 +88,48 @@
     return { destroy() { window.removeEventListener('mousedown', handler); } };
   }
 
-  async function handleExport() {
-    if (editor) {
-      await exportToOdt(editor, pageMargins, pageOrientation, {
-        header: headerDoc, footer: footerDoc, pageCount: numPages,
-        headerDistanceCm: hfDistances.header, footerDistanceCm: hfDistances.footer,
-      });
-    }
-  }
-
+  // The file the document is saved to (File System Access API). Session-only: a
+  // reload restores the doc from localStorage but the first Save re-prompts.
+  let fileHandle: FileSystemFileHandle | null = $state(null);
+  const fsSupported = supportsFsAccess();
+  let saveMenuOpen = $state(false);
   let fileInput: HTMLInputElement | null = $state(null);
 
-  async function handleImportFile(e: Event) {
-    const input = e.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = ''; // allow re-selecting the same file
-    if (!file || !editor) return;
+  // odf-kit export options for the current header/footer + page geometry.
+  function hfOpts() {
+    return {
+      header: headerDoc, footer: footerDoc, pageCount: numPages,
+      headerDistanceCm: hfDistances.header, footerDistanceCm: hfDistances.footer,
+    };
+  }
 
+  function isDocNonEmpty(): boolean {
+    if (!editor) return false;
+    const body = editor.state.doc.textContent.length > 0 || editor.state.doc.childCount > 1;
+    return body || !hfIsEmpty(headerDoc) || !hfIsEmpty(footerDoc);
+  }
+
+  function handleNew() {
+    if (!editor) return;
+    if (isDocNonEmpty() && !confirm('Start a new document? Any unsaved changes will be lost.')) return;
+    editor.commands.setContent('<p></p>'); // onUpdate fires → autosave
+    // Reset everything to defaults; the $effects persist these.
+    hfActive = null;
+    headerDoc = null;
+    footerDoc = null;
+    pageMargins = { ...DEFAULT_MARGINS };
+    pageOrientation = 'portrait';
+    hfDistances = { ...DEFAULT_HF_DISTANCES };
+    fileHandle = null;
+    editor.commands.focus();
+  }
+
+  // Replace the document with a parsed .odt; adopt its geometry/header/footer and
+  // track the source handle (null for the fallback file input) so Save overwrites it.
+  function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null) {
+    if (!editor) return;
     try {
-      const result = importOdt(new Uint8Array(await file.arrayBuffer()));
+      const result = importOdt(bytes);
 
       const hasContent = editor.state.doc.textContent.length > 0 || editor.state.doc.childCount > 1;
       if (hasContent && !confirm('Opening this file will replace the current document. Continue?')) {
@@ -124,6 +149,7 @@
         header: result.headerDistanceCm ?? DEFAULT_HF_DISTANCES.header,
         footer: result.footerDistanceCm ?? DEFAULT_HF_DISTANCES.footer,
       };
+      fileHandle = handle;
 
       if (result.warnings.length) {
         console.warn('[import] Unsupported content in opened file:', result.warnings);
@@ -134,6 +160,81 @@
       alert(err instanceof Error ? err.message : 'Could not open this file.');
     }
   }
+
+  async function handleOpen() {
+    if (!editor) return;
+    if (fsSupported) {
+      try {
+        const r = await openOdt();
+        if (r) applyImport(r.bytes, r.handle);
+      } catch (err) {
+        if ((err as DOMException)?.name !== 'AbortError') {
+          console.error('[open] Failed to open file:', err);
+          alert('Could not open this file.');
+        }
+      }
+    } else {
+      fileInput?.click();
+    }
+  }
+
+  async function handleImportFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // allow re-selecting the same file
+    if (!file) return;
+    applyImport(new Uint8Array(await file.arrayBuffer()), null);
+  }
+
+  async function handleSave() {
+    if (!editor) return;
+    saveMenuOpen = false;
+    const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
+    try {
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts());
+      fileHandle = await saveOdt(bytes, deriveFilename(json), fileHandle);
+    } catch (err) {
+      if ((err as DOMException)?.name === 'AbortError') return;
+      // A stored handle may have lost permission; re-prompt via Save As.
+      if (fileHandle) { fileHandle = null; await handleSaveAs(); return; }
+      console.error('[save] Failed to save file:', err);
+      alert('Could not save this file.');
+    }
+  }
+
+  async function handleSaveAs() {
+    if (!editor) return;
+    saveMenuOpen = false;
+    const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
+    try {
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts());
+      fileHandle = await saveAsOdt(bytes, deriveFilename(json));
+    } catch (err) {
+      if ((err as DOMException)?.name === 'AbortError') return;
+      console.error('[save] Failed to save file:', err);
+      alert('Could not save this file.');
+    }
+  }
+
+  function saveMenuClickOutside(node: HTMLElement) {
+    function handler(e: MouseEvent) {
+      if (!node.contains(e.target as Node)) saveMenuOpen = false;
+    }
+    window.addEventListener('mousedown', handler);
+    return { destroy() { window.removeEventListener('mousedown', handler); } };
+  }
+
+  onMount(() => {
+    function onKeydown(e: KeyboardEvent) {
+      // Ctrl/Cmd+S → Save (suppress the browser's save-page dialog).
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        handleSave();
+      }
+    }
+    window.addEventListener('keydown', onKeydown);
+    return () => window.removeEventListener('keydown', onKeydown);
+  });
 
   function handleDebugDump() {
     if (!editor) return;
@@ -163,6 +264,59 @@
   <header>
     <Toolbar editor={activeEditor} tick={activeTick} />
     <div class="header-actions">
+      {#snippet saveIcon()}
+        <!-- Floppy disk -->
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M2.75 2.5h7.65L13.5 5.6V12.75a.75.75 0 0 1-.75.75H3.25a.75.75 0 0 1-.75-.75V3.25a.75.75 0 0 1 .25-.75z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M5 2.5v3h4.5v-3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+          <rect x="4.75" y="8.75" width="6.5" height="4.75" rx="0.5" stroke="currentColor" stroke-width="1.3"/>
+        </svg>
+      {/snippet}
+      <div class="file-actions">
+        <button class="file-action-btn" onclick={handleNew} disabled={!editor} title="New document">
+          <!-- Page with folded corner + plus -->
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M9 1.75H4.5A1.25 1.25 0 0 0 3.25 3v10A1.25 1.25 0 0 0 4.5 14.25h7A1.25 1.25 0 0 0 12.75 13V5.5L9 1.75z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M9 1.75V5.5h3.75" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M8 8v3.5M6.25 9.75h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button class="file-action-btn" onclick={handleOpen} disabled={!editor} title="Open .odt…">
+          <!-- Folder -->
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M1.75 12.5V4a1 1 0 0 1 1-1h3.2a1 1 0 0 1 .8.4l.7.95a1 1 0 0 0 .8.4h4.2a1 1 0 0 1 1 1v6.75a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        {#if fsSupported}
+          <div class="save-split" use:saveMenuClickOutside>
+            <button class="file-action-btn save-main" onclick={handleSave} disabled={!editor} title="Save (Ctrl+S)">
+              {@render saveIcon()}
+            </button>
+            <button
+              class="save-chevron"
+              onclick={() => (saveMenuOpen = !saveMenuOpen)}
+              disabled={!editor}
+              title="Save options"
+              aria-haspopup="menu"
+              aria-expanded={saveMenuOpen}
+            >
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            {#if saveMenuOpen}
+              <div class="save-dropdown" role="menu">
+                <button class="save-option" onclick={handleSaveAs} role="menuitem">Save As…</button>
+              </div>
+            {/if}
+          </div>
+        {:else}
+          <button class="file-action-btn" onclick={handleSave} disabled={!editor} title="Save .odt">
+            {@render saveIcon()}
+          </button>
+        {/if}
+      </div>
+      <div class="action-separator"></div>
       <button
         class="toolbar-toggle-btn"
         class:active={toolbarExpanded}
@@ -245,12 +399,6 @@
         class="file-input"
         onchange={handleImportFile}
       />
-      <button class="export-btn open-btn" onclick={() => fileInput?.click()} disabled={!editor}>
-        Open .odt
-      </button>
-      <button class="export-btn" onclick={handleExport} disabled={!editor}>
-        Download .odt
-      </button>
     </div>
   </header>
   {#if toolbarExpanded}
@@ -322,6 +470,110 @@
     gap: 0.5rem;
     margin-left: auto;
     margin-right: 1rem;
+  }
+
+  .file-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .action-separator {
+    width: 1px;
+    height: 1.5rem;
+    background: var(--color-border);
+  }
+
+  .file-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .file-action-btn:hover:not(:disabled) {
+    background: var(--color-btn-hover);
+  }
+
+  .file-action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* Save split button: floppy + chevron that opens the Save As menu. */
+  .save-split {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .save-main {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .save-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 2rem;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius);
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .save-chevron:hover:not(:disabled) {
+    background: var(--color-btn-hover);
+  }
+
+  .save-chevron:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .save-dropdown {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    min-width: 120px;
+    z-index: 100;
+    overflow: hidden;
+  }
+
+  .save-option {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.85rem;
+    font-family: var(--font-sans);
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .save-option:hover {
+    background: var(--color-btn-hover);
   }
 
   .toolbar-toggle-btn {
@@ -419,33 +671,6 @@
     display: none;
   }
 
-  /* Compound selector: must outweigh the later .export-btn rules. */
-  .export-btn.open-btn {
-    background: transparent;
-    color: var(--color-text);
-    border: 1px solid var(--color-border);
-  }
-
-  .export-btn.open-btn:hover:not(:disabled) {
-    background: var(--color-btn-hover);
-  }
-
-  .export-btn {
-    margin-left: 0;
-    margin-right: 0;
-    padding: 0.4rem 1rem;
-    background: var(--color-primary);
-    color: white;
-    border: none;
-    border-radius: var(--radius);
-    font-size: 0.85rem;
-    font-family: var(--font-sans);
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background 0.15s;
-  }
-
   .debug-btn {
     padding: 0.35rem 0.7rem;
     background: transparent;
@@ -466,15 +691,6 @@
 
   .debug-btn:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .export-btn:hover:not(:disabled) {
-    background: var(--color-btn-hover);
-  }
-
-  .export-btn:disabled {
-    opacity: 0.5;
     cursor: not-allowed;
   }
 

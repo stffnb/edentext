@@ -197,10 +197,11 @@
     {@const box = zoneBox(hfActive, editingPage)}
     <div class="hf-zone hf-{hfActive} hf-active" style={boxStyle(box)} bind:this={liveMount}></div>
     <div class="hf-bar" style="top: {box.top}px; left: {box.left + box.width}px;">
-      <button class="hf-bar-btn" title="Insert current page number" onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageNumber')}>Page #</button>
-      <button class="hf-bar-btn" title="Insert total page count" onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageCount')}>Count</button>
+      <span class="hf-bar-label">Insert</span>
+      <button class="hf-bar-btn" title="Insert the current page number" onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageNumber')}>Page number</button>
+      <button class="hf-bar-btn" title="Insert the total page count" onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageCount')}>Page count</button>
       <span class="hf-bar-sep"></span>
-      <button class="hf-bar-btn hf-bar-done" title="Finish editing" onmousedown={(e) => e.preventDefault()} onclick={() => (hfActive = null)}>Done ✓</button>
+      <button class="hf-bar-btn hf-bar-done" title="Finish editing the header/footer" onmousedown={(e) => e.preventDefault()} onclick={() => (hfActive = null)}>Done</button>
     </div>
   {/if}
 </div>
@@ -295,28 +296,40 @@
     transform: translate(calc(-100% - 4px), -100%);
     z-index: 151;
     display: flex;
-    gap: 1px;
-    padding: 2px;
+    align-items: center;
+    gap: 2px;
+    padding: 3px 4px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
     pointer-events: auto;
+    white-space: nowrap;
+  }
+
+  .hf-bar-label {
+    padding: 0 4px 0 2px;
+    color: var(--color-text-muted);
+    font-family: var(--font-sans);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    user-select: none;
   }
 
   .hf-bar-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 1.6rem;
-    height: 1.6rem;
-    padding: 0 4px;
+    height: 1.8rem;
+    padding: 0 0.55rem;
     border: none;
     border-radius: calc(var(--radius) - 2px);
     background: transparent;
     color: var(--color-text);
     font-family: var(--font-sans);
     font-size: 0.8rem;
+    white-space: nowrap;
     cursor: pointer;
     transition: background 0.12s;
   }
@@ -331,7 +344,7 @@
   .hf-bar-sep {
     width: 1px;
     align-self: stretch;
-    margin: 2px 2px;
+    margin: 3px 2px;
     background: var(--color-border);
   }
 </style>
