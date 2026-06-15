@@ -11,8 +11,41 @@ const KEYS: Record<HfZone, string> = {
 
 // Word's default distance from the page edge to the header/footer text. The body
 // margin stays the body margin (Word semantics); export/import convert to ODF's
-// margin-to-header model (see export/odt.ts applyHeaderFooterGeometry).
-export const HF_DISTANCE_CM = 1.27;
+// margin-to-header model (see export/odt.ts applyHfPostProcess).
+export const HF_DISTANCE_CM = 1.25;
+
+// Per-zone distance from the page edge to the header (from top) / footer (from
+// bottom), in cm — user-configurable in the Layout panel.
+export type HfDistances = { header: number; footer: number };
+
+export const DEFAULT_HF_DISTANCES: HfDistances = { header: HF_DISTANCE_CM, footer: HF_DISTANCE_CM };
+
+const DIST_KEY = 'odf-editor-hf-distances';
+const DIST_MIN = 0;
+const DIST_MAX = 10;
+
+export function clampHfDistance(n: number): number {
+  if (!Number.isFinite(n)) return HF_DISTANCE_CM;
+  return Math.min(DIST_MAX, Math.max(DIST_MIN, Math.round(n * 100) / 100));
+}
+
+export function loadHfDistances(): HfDistances {
+  const raw = localStorage.getItem(DIST_KEY);
+  if (!raw) return { ...DEFAULT_HF_DISTANCES };
+  try {
+    const p = JSON.parse(raw);
+    return {
+      header: typeof p.header === 'number' ? clampHfDistance(p.header) : HF_DISTANCE_CM,
+      footer: typeof p.footer === 'number' ? clampHfDistance(p.footer) : HF_DISTANCE_CM,
+    };
+  } catch {
+    return { ...DEFAULT_HF_DISTANCES };
+  }
+}
+
+export function saveHfDistances(d: HfDistances): void {
+  localStorage.setItem(DIST_KEY, JSON.stringify(d));
+}
 
 export function loadHfDoc(zone: HfZone): HfDoc {
   const raw = localStorage.getItem(KEYS[zone]);

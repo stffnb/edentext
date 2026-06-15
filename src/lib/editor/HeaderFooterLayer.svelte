@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Editor, generateHTML } from '@tiptap/core';
   import { hfExtensions } from './hfExtensions';
-  import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfZone } from '../storage/headerFooter';
+  import { hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
   import { cmToPx, type PageMargins } from '../storage/pageMargins';
   import { PAGE_W_PORTRAIT, PAGE_H_PORTRAIT, type Orientation } from '../storage/pageOrientation';
 
@@ -12,6 +12,7 @@
     currentPage,
     pageMargins,
     orientation,
+    hfDistances = DEFAULT_HF_DISTANCES,
     hfEditor = $bindable(),
     hfActive = $bindable(),
     hfTick = $bindable(),
@@ -22,13 +23,13 @@
     currentPage: number;
     pageMargins: PageMargins;
     orientation: Orientation;
+    hfDistances?: HfDistances;
     hfEditor: Editor | null;
     hfActive: HfZone | null;
     hfTick: number;
   } = $props();
 
   const PAGE_GAP = 20;
-  const HF_DISTANCE_PX = cmToPx(HF_DISTANCE_CM);
   // Schema for static (read-only) rendering of the inactive zones.
   const renderExts = hfExtensions();
 
@@ -42,6 +43,10 @@
   let mLeft = $derived(cmToPx(pageMargins.left));
   let mRight = $derived(cmToPx(pageMargins.right));
   let contentWidth = $derived(Math.max(0, pageWidthPx - mLeft - mRight));
+  // Edge→zone distance in px, clamped below the body margin so the zone fits within
+  // the margin band (matches the export's Math.min(dist, margin) clamp).
+  let headerDistPx = $derived(Math.min(cmToPx(hfDistances.header), mTop));
+  let footerDistPx = $derived(Math.min(cmToPx(hfDistances.footer), mBottom));
 
   let pages = $derived(Array.from({ length: Math.max(1, numPages) }, (_, i) => i + 1));
 
@@ -49,11 +54,11 @@
     const left = mLeft;
     const width = contentWidth;
     if (zone === 'header') {
-      const top = (page - 1) * cycle + HF_DISTANCE_PX;
-      return { top, left, width, height: Math.max(0, mTop - HF_DISTANCE_PX) };
+      const top = (page - 1) * cycle + headerDistPx;
+      return { top, left, width, height: Math.max(0, mTop - headerDistPx) };
     }
     const top = (page - 1) * cycle + pageHeightPx - mBottom;
-    return { top, left, width, height: Math.max(0, mBottom - HF_DISTANCE_PX) };
+    return { top, left, width, height: Math.max(0, mBottom - footerDistPx) };
   }
   const boxStyle = (b: { top: number; left: number; width: number; height: number }) =>
     `top: ${b.top}px; left: ${b.left}px; width: ${b.width}px; height: ${b.height}px;`;

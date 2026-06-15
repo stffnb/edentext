@@ -11,9 +11,10 @@
   } from './fontDetect';
   import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import type { Orientation } from '../storage/pageOrientation';
+  import { DEFAULT_HF_DISTANCES, clampHfDistance, type HfDistances } from '../storage/headerFooter';
 
-  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), hfActive = null, onEditZone }:
-    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void } = $props();
+  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), hfActive = null, onEditZone }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; hfDistances?: HfDistances; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void } = $props();
 
   type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
@@ -606,6 +607,54 @@
     }
   }
 
+  // --- Header/footer edge distances (cm) ---
+  type HfAxis = 'header' | 'footer';
+  const HF_DIST_FIELDS: { axis: HfAxis; label: string }[] = [
+    { axis: 'header', label: 'Header from top' },
+    { axis: 'footer', label: 'Footer from bottom' },
+  ];
+  let hfDistInputs = $state<Record<HfAxis, string>>({ header: '', footer: '' });
+
+  function syncHfDistInputs() {
+    hfDistInputs = { header: fmtCm(hfDistances.header), footer: fmtCm(hfDistances.footer) };
+  }
+
+  function setHfDist(axis: HfAxis, value: number) {
+    const clamped = clampHfDistance(value);
+    hfDistances = { ...hfDistances, [axis]: clamped };
+    hfDistInputs[axis] = fmtCm(clamped);
+  }
+
+  function stepHfDist(axis: HfAxis, delta: number) {
+    setHfDist(axis, hfDistances[axis] + delta);
+  }
+
+  function commitHfDistInput(axis: HfAxis) {
+    const n = parseFloat(hfDistInputs[axis]);
+    if (Number.isNaN(n)) {
+      hfDistInputs[axis] = fmtCm(hfDistances[axis]); // revert invalid input
+      return;
+    }
+    setHfDist(axis, n);
+  }
+
+  function onHfDistKeydown(axis: HfAxis, e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitHfDistInput(axis);
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      hfDistInputs[axis] = fmtCm(hfDistances[axis]);
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      stepHfDist(axis, MARGIN_STEP);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      stepHfDist(axis, -MARGIN_STEP);
+    }
+  }
+
   function openLayout() {
     fontOpen = false;
     sizeOpen = false;
@@ -615,7 +664,10 @@
     highlightColorOpen = false;
     alignOpen = false;
     layoutOpen = !layoutOpen;
-    if (layoutOpen) syncMarginInputs();
+    if (layoutOpen) {
+      syncMarginInputs();
+      syncHfDistInputs();
+    }
   }
 
   function layoutClickOutside(node: HTMLElement) {
@@ -1071,6 +1123,38 @@
               class:active={hfActive === 'footer'}
               onclick={() => onEditZone?.('footer')}
             >Edit footer</button>
+          </div>
+
+          <div class="lh-section-label">Position (cm)</div>
+          <div class="margin-grid">
+            {#each HF_DIST_FIELDS as f}
+              <div class="margin-field">
+                <span class="margin-label">{f.label}</span>
+                <div class="margin-input-wrap">
+                  <input
+                    type="text"
+                    class="margin-input"
+                    bind:value={hfDistInputs[f.axis]}
+                    onkeydown={(e) => onHfDistKeydown(f.axis, e)}
+                    onblur={() => commitHfDistInput(f.axis)}
+                    inputmode="decimal"
+                    title="{f.label} (cm)"
+                  />
+                  <div class="margin-steppers">
+                    <button class="margin-step" tabindex="-1" onclick={() => stepHfDist(f.axis, MARGIN_STEP)} title="Increase" aria-label="Increase {f.label.toLowerCase()}">
+                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                        <path d="M1 5.5l3-3 3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                    <button class="margin-step" tabindex="-1" onclick={() => stepHfDist(f.axis, -MARGIN_STEP)} title="Decrease" aria-label="Decrease {f.label.toLowerCase()}">
+                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                        <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            {/each}
           </div>
         </div>
       {/if}
@@ -1570,6 +1654,9 @@
   .margin-input-wrap {
     display: flex;
     align-items: stretch;
+    /* Pin the input to the bottom of its grid cell so a wrapped two-line label
+       (e.g. "Footer from bottom") doesn't push its box below the sibling's. */
+    margin-top: auto;
     height: 1.9rem;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);

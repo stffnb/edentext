@@ -26,6 +26,9 @@ export interface OdtImportResult {
   // Single-paragraph docs in the hfExtensions schema; null = no zone.
   header: Node | null;
   footer: Node | null;
+  // Edge→zone distance (cm): header from top, footer from bottom. null = no zone.
+  headerDistanceCm: number | null;
+  footerDistanceCm: number | null;
   warnings: string[];
 }
 
@@ -87,12 +90,15 @@ export function importOdt(bytes: Uint8Array): OdtImportResult {
   }
 
   const geometry = resolver.pageGeometry();
+  const edge = resolver.edgeDistancesCm();
   return {
     content: { type: 'doc', content: blocks },
     margins: geometry?.margins ?? null,
     orientation: geometry?.orientation ?? null,
     header: hf.header ? convertHfZone(hf.header, ctx) : null,
     footer: hf.footer ? convertHfZone(hf.footer, ctx) : null,
+    headerDistanceCm: hf.header ? edge?.top ?? null : null,
+    footerDistanceCm: hf.footer ? edge?.bottom ?? null : null,
     warnings: [...warnings],
   };
 }

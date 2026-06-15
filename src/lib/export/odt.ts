@@ -872,15 +872,26 @@ function applyLineBreaks(odtBytes: Uint8Array): Uint8Array {
   return rezipOdt(files);
 }
 
-// Header/footer input for the export: one single-paragraph doc per zone (or null)
-// plus the page count snapshot used as the stored <text:page-count> value.
-export type HfExport = { header: HfDoc; footer: HfDoc; pageCount: number };
+// Header/footer input for the export: one single-paragraph doc per zone (or null),
+// the page count snapshot for the stored <text:page-count> value, and the page-edge
+// distances (cm; default HF_DISTANCE_CM) for header (from top) / footer (from bottom).
+export type HfExport = {
+  header: HfDoc;
+  footer: HfDoc;
+  pageCount: number;
+  headerDistanceCm?: number;
+  footerDistanceCm?: number;
+};
 
 // The full document → .odt pipeline, DOM-free (exportToOdt adds the download).
 export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport): Promise<Uint8Array> {
   const raw = replaceHardBreaks(docJson);
   const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
+  // Distance from the page edge to the header (top) / footer (bottom). Becomes the
+  // ODF page margin; clamped below the body margin so the body still starts at it.
+  const headerDist = Math.min(hf?.headerDistanceCm ?? HF_DISTANCE_CM, margins.top);
+  const footerDist = Math.min(hf?.footerDistanceCm ?? HF_DISTANCE_CM, margins.bottom);
   let json = injectCustomTypes(raw);
   if (headerPara || footerPara) {
     json = { ...json, content: [{ type: CUST_HF }, ...(json.content ?? [])] };
@@ -904,8 +915,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
     // With a header/footer, ODF's vertical margin is the page-edge→header distance;
     // applyHfPostProcess sizes the header box so the body still starts at the
     // editor's margin (Word-style mapping).
-    marginTop: `${headerPara ? HF_DISTANCE_CM : margins.top}cm`,
-    marginBottom: `${footerPara ? HF_DISTANCE_CM : margins.bottom}cm`,
+    marginTop: `${headerPara ? headerDist : margins.top}cm`,
+    marginBottom: `${footerPara ? footerDist : margins.bottom}cm`,
     marginLeft: `${margins.left}cm`,
     marginRight: `${margins.right}cm`,
     unknownNodeHandler(node: TiptapNode, doc: OdtDocument) {
@@ -978,7 +989,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const cleaned = collapseRunWhitespace(styledRows);
   const withBreaks = applyLineBreaks(cleaned);
   const withStyles = rewriteStylesXml(withBreaks);
-  return applyHfPostProcess(withStyles, margins, headerPara, footerPara);
+  return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist);
 }
 
 function hfAlign(para: TiptapNode): AlignValue | null {
@@ -991,7 +1002,7 @@ function hfAlign(para: TiptapNode): AlignValue | null {
 // Word-style mapping (page margin = HF distance, min-height fills up to the body
 // margin so the body starts exactly at the editor's margin), and apply the
 // paragraph alignment to the named Header/Footer styles.
-function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPara: TiptapNode | null, footerPara: TiptapNode | null): Uint8Array {
+function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPara: TiptapNode | null, footerPara: TiptapNode | null, headerDist: number, footerDist: number): Uint8Array {
   if (!headerPara && !footerPara) return odtBytes;
 
   const files = unzipSync(odtBytes);
@@ -1006,8 +1017,10 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
   styles = styles.replace(new RegExp(`${PGC}(\\d*)${PGC}`, 'g'), '<text:page-count>$1</text:page-count>');
 
   const round3 = (v: number) => Math.round(v * 1000) / 1000;
-  const zone = (kind: 'header' | 'footer', para: TiptapNode, bodyMarginCm: number) => {
-    const minH = round3(Math.max(0.2, bodyMarginCm - HF_DISTANCE_CM));
+  const zone = (kind: 'header' | 'footer', para: TiptapNode, bodyMarginCm: number, distCm: number) => {
+    // min-height fills the gap between the edge→zone distance and the body margin,
+    // so the body still starts at bodyMarginCm (page margin was set to distCm).
+    const minH = round3(Math.max(0.2, bodyMarginCm - distCm));
     // The spacing attr sits on the body-facing side: below the header, above the footer.
     const spacingAttr = kind === 'header' ? 'fo:margin-bottom' : 'fo:margin-top';
     styles = styles.replace(
@@ -1023,8 +1036,8 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
       );
     }
   };
-  if (headerPara) zone('header', headerPara, margins.top);
-  if (footerPara) zone('footer', footerPara, margins.bottom);
+  if (headerPara) zone('header', headerPara, margins.top, headerDist);
+  if (footerPara) zone('footer', footerPara, margins.bottom, footerDist);
 
   files['styles.xml'] = strToU8(styles);
   return rezipOdt(files);

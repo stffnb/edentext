@@ -9,7 +9,7 @@
   import { saveDocument, loadDocument } from '../storage/autosave';
   import { applyMarginVars, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { applyOrientationVars, type Orientation } from '../storage/pageOrientation';
-  import type { HfDoc, HfZone } from '../storage/headerFooter';
+  import { DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, type TableBreakBand } from './pageBreaks';
   import { recordTransaction, resetHistoryLog } from './historyLog.svelte';
   import '../../styles/editor.css';
@@ -19,12 +19,12 @@
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
     zoom = 100, showFormattingMarks = false, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
-    headerDoc = $bindable(null), footerDoc = $bindable(null),
+    headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     hfEditor = $bindable(null), hfActive = $bindable(null), hfTick = $bindable(0),
   }: {
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
     showFormattingMarks?: boolean; pageMargins?: PageMargins; orientation?: Orientation;
-    headerDoc?: HfDoc; footerDoc?: HfDoc;
+    headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
     hfEditor?: Editor | null; hfActive?: HfZone | null; hfTick?: number;
   } = $props();
 
@@ -420,6 +420,7 @@
         {currentPage}
         {pageMargins}
         {orientation}
+        {hfDistances}
       />
     </div>
   </div>

@@ -319,4 +319,16 @@ export class StyleResolver {
     const orientation: Orientation = w != null && h != null && w > h ? 'landscape' : 'portrait';
     return { margins, orientation };
   }
+
+  // Raw page margins (cm) = ODF's edge→zone distance, i.e. the header distance from
+  // the top and footer distance from the bottom when a header/footer is present.
+  edgeDistancesCm(): { top: number; bottom: number } | null {
+    const props = this.pageLayoutEl()?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
+    if (!props) return null;
+    const cm = (attr: string) => {
+      const v = lengthToCm(props.getAttributeNS(NS.fo, attr));
+      return v == null ? null : Math.min(10, Math.max(0, Math.round(v * 100) / 100));
+    };
+    return { top: cm('margin-top') ?? 1.25, bottom: cm('margin-bottom') ?? 1.25 };
+  }
 }

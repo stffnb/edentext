@@ -10,7 +10,7 @@
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
-  import { loadHfDoc, saveHfDoc, type HfDoc, type HfZone } from './lib/storage/headerFooter';
+  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
@@ -21,6 +21,7 @@
   // top toolbars target hfEditor instead of the body editor (activeEditor below).
   let headerDoc: HfDoc = $state(loadHfDoc('header'));
   let footerDoc: HfDoc = $state(loadHfDoc('footer'));
+  let hfDistances: HfDistances = $state(loadHfDistances());
   let hfEditor: Editor | null = $state(null);
   let hfActive: HfZone | null = $state(null);
   let hfTick: number = $state(0);
@@ -56,6 +57,10 @@
     saveHfDoc('footer', footerDoc);
   });
 
+  $effect(() => {
+    saveHfDistances(hfDistances);
+  });
+
   function setZoom(value: number) {
     zoom = Math.max(20, Math.min(300, value));
     localStorage.setItem('odf-editor-zoom', String(zoom));
@@ -83,7 +88,10 @@
 
   async function handleExport() {
     if (editor) {
-      await exportToOdt(editor, pageMargins, pageOrientation, { header: headerDoc, footer: footerDoc, pageCount: numPages });
+      await exportToOdt(editor, pageMargins, pageOrientation, {
+        header: headerDoc, footer: footerDoc, pageCount: numPages,
+        headerDistanceCm: hfDistances.header, footerDistanceCm: hfDistances.footer,
+      });
     }
   }
 
@@ -112,6 +120,10 @@
       hfActive = null;
       headerDoc = result.header;
       footerDoc = result.footer;
+      hfDistances = {
+        header: result.headerDistanceCm ?? DEFAULT_HF_DISTANCES.header,
+        footer: result.footerDistanceCm ?? DEFAULT_HF_DISTANCES.footer,
+      };
 
       if (result.warnings.length) {
         console.warn('[import] Unsupported content in opened file:', result.warnings);
@@ -248,6 +260,7 @@
       bind:showFormattingMarks
       bind:pageMargins
       bind:pageOrientation
+      bind:hfDistances
       hfActive={hfActive}
       onEditZone={(zone) => (hfActive = zone)}
     />
@@ -262,6 +275,7 @@
     bind:hfEditor
     bind:hfActive
     bind:hfTick
+    {hfDistances}
     {zoom}
     {showFormattingMarks}
     {pageMargins}
