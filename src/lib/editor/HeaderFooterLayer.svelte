@@ -224,7 +224,7 @@
     overflow: hidden;
     font-family: var(--font-serif);
     font-size: 12pt;
-    color: var(--color-text);
+    color: var(--color-page-text);
     cursor: text;
   }
 
@@ -233,11 +233,6 @@
   }
   .hf-footer {
     justify-content: flex-end;
-  }
-
-  /* Inactive zones render slightly muted, like Word's greyed header/footer. */
-  .hf-zone:not(.hf-active) {
-    opacity: 0.65;
   }
 
   /* Empty zone: invisible until hovered, then show a faint label hint. */
@@ -259,7 +254,6 @@
   .hf-active {
     outline: 1px dashed var(--color-primary);
     outline-offset: 2px;
-    opacity: 1;
   }
 
   /* Strip the page margins from the rendered header/footer paragraph. */

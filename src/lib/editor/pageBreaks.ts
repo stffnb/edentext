@@ -388,17 +388,29 @@ export const PageBreaks = Extension.create({
             }
           }
           allRects.sort((a, b) => a.top - b.top);
+          // Estimate the line advance (top-to-top distance) from the gaps between
+          // rects, ignoring near-zero gaps (multiple runs on one line).
+          const gaps: number[] = [];
+          for (let i = 1; i < allRects.length; i++) {
+            const g = allRects[i].top - allRects[i - 1].top;
+            if (g > 2) gaps.push(g);
+          }
+          gaps.sort((a, b) => a - b);
+          const advance = gaps.length ? gaps[gaps.length >> 1] : 0;
+          // Group rects into lines by top proximity, not vertical overlap: decorative
+          // fonts (e.g. Trattatello) render ink boxes taller than the line advance, so
+          // an overlap test chains whole paragraphs into one phantom line. Only the top
+          // is used downstream; same-line runs sit within a fraction of the advance.
+          const tol = advance > 0 ? advance * 0.6 : 3;
           const lines: { top: number; bottom: number }[] = [];
+          let lineTop = -Infinity;
           for (const r of allRects) {
-            const last = lines[lines.length - 1];
-            // Rects are sorted by top. Merge into the current line when they overlap
-            // vertically, so a smaller-font inline run shares its neighbours' line
-            // instead of forming a phantom line. The −1px tolerance separates touching rects.
-            if (last && r.top < last.bottom - 1) {
-              last.top = Math.min(last.top, r.top);
-              last.bottom = Math.max(last.bottom, r.bottom);
-            } else {
+            if (r.top - lineTop > tol) {
               lines.push({ top: r.top, bottom: r.bottom });
+              lineTop = r.top;
+            } else {
+              const last = lines[lines.length - 1];
+              last.bottom = Math.max(last.bottom, r.bottom);
             }
           }
           return lines;
@@ -715,59 +727,91 @@ export const PageBreaks = Extension.create({
             const contentStart = pageContentStart(page, vm.top, CYCLE_PX);
             const contentEnd = pageContentEnd(page, vm.top, CONTENT_HEIGHT, CYCLE_PX);
 
-            let spacerHeight = 0;
-            let spacerDocPos: number | null = null;
-            let spacerRow: { columns: number } | null = null;
-            let bandOpenY: number | null = null;
-            let reason = 'fits';
+            // A leaf may need several spacers: a splittable block taller than one
+            // page crosses multiple boundaries, one break each.
+            const breaks: {
+              height: number;
+              docPos: number | null;
+              row: { columns: number } | null;
+              bandOpenY: number | null;
+              reason: string;
+            }[] = [];
+            // Set when a leaf overflows but no spacer can bridge it (block > one page).
+            let noPushReason: string | null = null;
 
             if (effectiveTop < contentStart && i > 0) {
-              spacerHeight = contentStart - effectiveTop;
-              ({ docPos: spacerDocPos, row: spacerRow } = leafSpacer(leaf));
-              bandOpenY = contentStart;
-              reason = 'pre-leaf-push-to-content-start';
+              const { docPos, row } = leafSpacer(leaf);
+              breaks.push({
+                height: contentStart - effectiveTop,
+                docPos,
+                row,
+                bandOpenY: contentStart,
+                reason: 'pre-leaf-push-to-content-start',
+              });
             } else if (effectiveTop >= contentEnd) {
-              spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - effectiveTop;
-              ({ docPos: spacerDocPos, row: spacerRow } = leafSpacer(leaf));
-              bandOpenY = pageContentStart(page + 1, vm.top, CYCLE_PX);
-              reason = 'leaf-jump-to-next-page';
+              const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+              const { docPos, row } = leafSpacer(leaf);
+              breaks.push({
+                height: target - effectiveTop,
+                docPos,
+                row,
+                bandOpenY: target,
+                reason: 'leaf-jump-to-next-page',
+              });
             } else if (effectiveBottom > contentEnd) {
               if (leaf.kind === 'atomic') {
                 if (leaf.naturalHeight <= CONTENT_HEIGHT) {
-                  spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - effectiveTop;
-                  ({ docPos: spacerDocPos, row: spacerRow } = leafSpacer(leaf));
-                  bandOpenY = pageContentStart(page + 1, vm.top, CYCLE_PX);
-                  reason = 'atomic-push-to-next-page';
+                  const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+                  const { docPos, row } = leafSpacer(leaf);
+                  breaks.push({
+                    height: target - effectiveTop,
+                    docPos,
+                    row,
+                    bandOpenY: target,
+                    reason: 'atomic-push-to-next-page',
+                  });
                 } else {
-                  reason = 'atomic-too-tall-no-push';
+                  noPushReason = 'atomic-too-tall-no-push';
                 }
               } else {
-                const split = findLineSplit(leaf.el, contentEnd - effectiveTop, scale);
-                if (split === null) {
+                // A splittable leaf taller than one page crosses several boundaries:
+                // keep splitting until the rest fits. Boundaries are in the leaf's
+                // spacer-free natural coords, so successive splits stay correct.
+                let boundaryNatural = contentEnd - effectiveTop;
+                let targetPage = page + 1;
+                let extraShift = 0;
+                while (boundaryNatural < leaf.naturalHeight) {
+                  const split = findLineSplit(leaf.el, boundaryNatural, scale);
+                  if (split === null) break;
+                  const target = pageContentStart(targetPage, vm.top, CYCLE_PX);
+                  const h = target - (effectiveTop + extraShift + split.naturalLineTop);
+                  if (h <= 0) break;
+                  breaks.push({
+                    height: h,
+                    docPos: split.docPos,
+                    row: null,
+                    bandOpenY: target,
+                    reason: 'line-split',
+                  });
+                  extraShift += h;
+                  boundaryNatural = split.naturalLineTop + CONTENT_HEIGHT;
+                  targetPage++;
+                }
+                if (breaks.length === 0) {
                   if (leaf.naturalHeight <= CONTENT_HEIGHT) {
-                    spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - effectiveTop;
-                    spacerDocPos = preLeafDocPos(leaf.el);
-                    bandOpenY = pageContentStart(page + 1, vm.top, CYCLE_PX);
-                    reason = 'split-fallback-push-whole-leaf';
+                    const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+                    breaks.push({
+                      height: target - effectiveTop,
+                      docPos: preLeafDocPos(leaf.el),
+                      row: null,
+                      bandOpenY: target,
+                      reason: 'split-fallback-push-whole-leaf',
+                    });
                   } else {
-                    reason = 'splittable-too-tall-no-push';
+                    noPushReason = 'splittable-too-tall-no-push';
                   }
-                } else {
-                  spacerHeight = pageContentStart(page + 1, vm.top, CYCLE_PX) - (effectiveTop + split.naturalLineTop);
-                  spacerDocPos = split.docPos;
-                  bandOpenY = pageContentStart(page + 1, vm.top, CYCLE_PX);
-                  reason = 'line-split';
                 }
               }
-            }
-
-            // A break needs a close/open band when it sits inside the continuous table
-            // box, where the outer borders bleed through the gap: inTableCell, or a
-            // between-rows push (spacerRow). First-row pushes move the whole table → no band.
-            const inBand = !!leaf.inTableCell || spacerRow !== null;
-            if (inBand && bandOpenY !== null && spacerHeight > 0) {
-              const key = Math.round(bandOpenY);
-              if (!tableBands.has(key)) tableBands.set(key, bandOpenY);
             }
 
             leavesDebug.push({
@@ -793,33 +837,38 @@ export const PageBreaks = Extension.create({
               overflowsPageEnd: effectiveBottom > contentEnd,
             });
 
-            if (spacerHeight > 0 && spacerDocPos !== null) {
-              // Round to integer px: the browser renders the spacer at integer
-              // offsetHeight anyway, so an unrounded value would make the model disagree
-              // with the DOM next pass → 1px shake on every keystroke at non-100% zoom.
-              const h = Math.round(spacerHeight);
-              if (h > 0) {
-                placements.push({
-                  docPos: spacerDocPos,
-                  height: h,
-                  row: spacerRow,
-                });
-                placementsDebug.push({
-                  leafIndex: i,
-                  docPos: spacerDocPos,
-                  height: h,
-                  reason,
-                  spacerKind: spacerRow ? 'table-row' : 'block',
-                  columns: spacerRow ? spacerRow.columns : null,
-                });
-                cumulativeShift += h;
+            // Round each spacer to integer px (the browser renders spacers at integer
+            // height, so an unrounded model shakes 1px per keystroke at non-100% zoom).
+            let placedAny = false;
+            for (const br of breaks) {
+              if (br.docPos === null) continue;
+              const h = Math.round(br.height);
+              if (h <= 0) continue;
+              // In-cell or between-rows breaks sit inside the continuous table box,
+              // whose borders bleed through the gap, so they need a close/open band.
+              const inBand = !!leaf.inTableCell || br.row !== null;
+              if (inBand && br.bandOpenY !== null) {
+                const key = Math.round(br.bandOpenY);
+                if (!tableBands.has(key)) tableBands.set(key, br.bandOpenY);
               }
-            } else if (reason !== 'fits') {
+              placements.push({ docPos: br.docPos, height: h, row: br.row });
               placementsDebug.push({
                 leafIndex: i,
-                docPos: spacerDocPos,
-                height: spacerHeight,
-                reason,
+                docPos: br.docPos,
+                height: h,
+                reason: br.reason,
+                spacerKind: br.row ? 'table-row' : 'block',
+                columns: br.row ? br.row.columns : null,
+              });
+              cumulativeShift += h;
+              placedAny = true;
+            }
+            if (!placedAny && noPushReason !== null) {
+              placementsDebug.push({
+                leafIndex: i,
+                docPos: null,
+                height: 0,
+                reason: noPushReason,
                 spacerKind: 'none',
                 columns: null,
               });
