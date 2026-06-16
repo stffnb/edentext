@@ -371,6 +371,7 @@
         </button>
         {#if themeOpen}
           <div class="theme-dropdown" role="menu">
+            <div class="theme-heading">Appearance</div>
             {#each ([['light', 'Light'], ['dark', 'Dark'], ['allBlack', 'AllBlack'], ['auto', 'Auto']] as const) as [m, label]}
               <button
                 class="theme-option"
@@ -628,6 +629,18 @@
     min-width: 100px;
     z-index: 100;
     overflow: hidden;
+  }
+
+  .theme-heading {
+    padding: 0.45rem 0.75rem 0.3rem;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    user-select: none;
   }
 
   .theme-option {

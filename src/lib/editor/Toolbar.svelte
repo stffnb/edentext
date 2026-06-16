@@ -173,6 +173,7 @@
         </div>
         {#if olMenuOpen}
           <div class="ol-dropdown" role="menu">
+            <div class="ol-section-label">Numbering</div>
             {#each ORDERED_LIST_TYPES as t}
               <button
                 class="ol-option"
@@ -304,6 +305,17 @@
     padding: 2px;
     display: flex;
     flex-direction: column;
+  }
+
+  .ol-section-label {
+    padding: 0.4rem 0.6rem 0.2rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    user-select: none;
   }
 
   .ol-option {

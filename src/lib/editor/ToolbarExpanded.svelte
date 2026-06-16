@@ -726,6 +726,7 @@
       </div>
       {#if sizeOpen}
         <div class="size-dropdown">
+          <div class="lh-section-label">Font size</div>
           {#each FONT_SIZES as size}
             <button
               class="size-option"

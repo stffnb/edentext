@@ -91,6 +91,7 @@
   {#if open && displayed.length > 0}
     <!-- svelte-ignore a11y_mouse_events_have_key_events -->
     <div class="history-dropdown">
+      <div class="history-heading">{verb} history</div>
       <div class="history-list" role="menu" tabindex="-1" onmouseleave={() => (hoverIndex = -1)}>
         {#each displayed as entry, i}
           <button
@@ -174,6 +175,18 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     z-index: 200;
     overflow: hidden;
+  }
+
+  .history-heading {
+    padding: 0.4rem 0.6rem 0.3rem;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    user-select: none;
   }
 
   .history-list {
