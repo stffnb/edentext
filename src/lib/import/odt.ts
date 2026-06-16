@@ -1,5 +1,5 @@
 import { unzipSync, strFromU8 } from 'fflate';
-import { StyleResolver, NS, lengthToPt, layerTextProps, type PropMap } from './styleResolver';
+import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { DEFAULT_ORDERED_TYPE, orderedTypeFromFormat } from '../editor/orderedListTypes';
 import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
@@ -59,6 +59,11 @@ const DEFAULT_FONTS = new Set(['times new roman', 'liberation serif']);
 
 // ODF line spacing multiplies the font's natural line height; see lineHeight.ts.
 const LINE_HEIGHT_RATIO = 1.15;
+
+// odf-kit emits each list level at margin-left = level × 1.27cm (label-alignment).
+// A top-level list's margin beyond this level-1 base is its whole-list indent.
+const LIST_BASE_MARGIN_CM = 1.27;
+const LIST_INDENT_EPS_CM = 0.05;
 
 // ---- entry --------------------------------------------------------------------
 
@@ -239,6 +244,13 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, headingLevel: number
   const mb = lengthToPt(paraProps['fo:margin-bottom']);
   if (mt != null && Math.abs(mt - defTop) > EPS_PT) attrs.spaceBefore = snapPt(mt);
   if (mb != null && Math.abs(mb - defBottom) > EPS_PT) attrs.spaceAfter = snapPt(mb);
+
+  // Left indent → fo:margin-left (cm). Skip lists: their indent lives in the
+  // list-style level properties, not paraProps. Default 0 is suppressed.
+  if (kind !== 'list') {
+    const ml = lengthToPt(paraProps['fo:margin-left']);
+    if (ml != null && ml > EPS_PT) attrs.indent = Math.round((ml / 72) * 2.54 * 100) / 100;
+  }
 
   return attrs;
 }
@@ -455,7 +467,22 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
   }
   if (items.length === 0) return null;
 
-  if (!ordered) return { type: 'bulletList', content: items };
+  // Whole-list indent (top level only): margin beyond the level-1 base. Nested
+  // lists inherit it visually through DOM nesting, so only depth 1 carries it.
+  let indent: number | null = null;
+  if (depth === 1) {
+    const mlCm = listLevelMarginLeftCm(levelDef);
+    if (mlCm != null) {
+      const extra = Math.round((mlCm - LIST_BASE_MARGIN_CM) * 100) / 100;
+      if (extra > LIST_INDENT_EPS_CM) indent = extra;
+    }
+  }
+
+  if (!ordered) {
+    const node: Node = { type: 'bulletList', content: items };
+    if (indent != null) node.attrs = { indent };
+    return node;
+  }
 
   const listStyleType = orderedTypeFromFormat(
     levelDef!.getAttributeNS(NS.style, 'num-format'),
@@ -464,9 +491,25 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
   const attrs: Record<string, unknown> = {};
   if (start != null) attrs.start = start;
   if (listStyleType !== DEFAULT_ORDERED_TYPE) attrs.listStyleType = listStyleType;
+  if (indent != null) attrs.indent = indent;
   const node: Node = { type: 'orderedList', content: items };
   if (Object.keys(attrs).length) node.attrs = attrs;
   return node;
+}
+
+// Level's fo:margin-left (cm) from its <style:list-level-label-alignment> (the
+// label-alignment mode odf-kit/LibreOffice use). null when absent.
+function listLevelMarginLeftCm(levelDef: Element | null): number | null {
+  if (!levelDef) return null;
+  for (const props of Array.from(levelDef.children)) {
+    if (props.namespaceURI !== NS.style || props.localName !== 'list-level-properties') continue;
+    for (const la of Array.from(props.children)) {
+      if (la.namespaceURI === NS.style && la.localName === 'list-level-label-alignment') {
+        return lengthToCm(la.getAttributeNS(NS.fo, 'margin-left'));
+      }
+    }
+  }
+  return null;
 }
 
 function listLevelDef(listStyle: Element | null, depth: number): Element | null {

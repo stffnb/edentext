@@ -24,6 +24,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { PageBreaks } from './pageBreaks';
 import { LineHeight } from './lineHeight';
 import { ParagraphSpacing } from './paragraphSpacing';
+import { Indent } from './indent';
 import { FormattingMarks } from './formattingMarks';
 import { TableView } from './tableView';
 import { TableColumnResize } from './tableColumnResize';
@@ -54,6 +55,7 @@ export const extensions = [
   HardBreak,
   LineHeight,
   ParagraphSpacing,
+  Indent,
   Heading.configure({ levels: [1, 2, 3] }),
   BulletList,
   OrderedList,

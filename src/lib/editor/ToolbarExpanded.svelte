@@ -648,6 +648,51 @@
     if (!editor) return;
     editor.chain().focus().setTextSelection(range).insertTable({ rows, cols, withHeaderRow: false }).run();
   }
+
+  // --- Indent (Einzug) ---
+  // Resolve the selection's list context: whether the cursor is in a list, whether
+  // the whole list is targeted (cursor in the first item, or the selection spans
+  // every item), and the innermost list's current indent (cm).
+  function listContext(): { inList: boolean; wholeList: boolean; listIndent: number } {
+    if (!editor) return { inList: false, wholeList: false, listIndent: 0 };
+    const { empty } = editor.state.selection;
+    const head = editor.state.selection.$from;
+    const tail = editor.state.selection.$to;
+    let liDepth = -1;
+    for (let d = head.depth; d > 0; d--) {
+      if (head.node(d).type.name === 'listItem') { liDepth = d; break; }
+    }
+    if (liDepth < 0) return { inList: false, wholeList: false, listIndent: 0 };
+    const listDepth = liDepth - 1;
+    const list = head.node(listDepth);
+    const listIndent = typeof list.attrs.indent === 'number' ? list.attrs.indent : 0;
+    const fromFirst = head.index(listDepth) === 0;
+    // Guard: a selection ending outside the list has no index at listDepth.
+    const toLast = tail.depth >= listDepth && tail.node(listDepth) === list
+      && tail.index(listDepth) === list.childCount - 1;
+    const wholeList = fromFirst && (empty || toLast);
+    return { inList: true, wholeList, listIndent };
+  }
+
+  // Word/LibreOffice indent: with the whole list targeted, shift the list as a
+  // block; in a non-first item, change that item's nesting level; outside a list,
+  // step the paragraph's left indent (indent.ts).
+  function changeIndent(dir: 1 | -1) {
+    if (!editor) return;
+    const c = editor.chain().focus();
+    const ctx = listContext();
+    if (ctx.inList) {
+      if (ctx.wholeList) {
+        if (dir === 1) c.indentListMore().run();
+        else if (ctx.listIndent > 0) c.indentListLess().run();
+        else c.liftListItem('listItem').run();
+      } else {
+        (dir === 1 ? c.sinkListItem('listItem') : c.liftListItem('listItem')).run();
+      }
+    } else {
+      (dir === 1 ? c.indentMore() : c.indentLess()).run();
+    }
+  }
 </script>
 
 <div class="toolbar-expanded">
@@ -703,8 +748,6 @@
         </div>
       {/if}
     </div>
-
-    <div class="toolbar-separator"></div>
 
     <div class="size-picker" use:sizePickerClickOutside>
       <div class="size-trigger-wrap">
@@ -808,14 +851,35 @@
 
     <div class="toolbar-separator"></div>
 
+    <div class="toolbar-group">
+      <button onclick={() => changeIndent(-1)} title="Decrease indent">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <line x1="5" y1="3"  x2="14" y2="3"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="9" y1="8"  x2="14" y2="8"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="5" y1="13" x2="14" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M5.5 8H1.5M3.5 5.5L1.5 8L3.5 10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button onclick={() => changeIndent(1)} title="Increase indent">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <line x1="5" y1="3"  x2="14" y2="3"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="9" y1="8"  x2="14" y2="8"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="5" y1="13" x2="14" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M1.5 8H5.5M3.5 5.5L5.5 8L3.5 10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
     <div class="lh-picker" use:lineHeightPickerClickOutside>
       <button class="lh-trigger" onclick={openLineHeightPicker} title="Line &amp; paragraph spacing">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <line x1="7" y1="3"  x2="16" y2="3"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="7" y1="8"  x2="16" y2="8"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="7" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <path d="M2 5.5V1.5M2 1.5L0.3 3.4M2 1.5L3.7 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M2 10.5V14.5M2 14.5L0.3 12.6M2 14.5L3.7 12.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="8" y1="3"  x2="16" y2="3"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="8" y1="8"  x2="16" y2="8"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M2.8 6.5V1.6M2.8 1.6L0.7 4.1M2.8 1.6L4.9 4.1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M2.8 9.5V14.4M2.8 14.4L0.7 11.9M2.8 14.4L4.9 11.9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
           <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -901,9 +965,7 @@
       {/if}
     </div>
 
-    <div class="toolbar-separator"></div>
-
-    <div class="layout-picker" use:layoutClickOutside>
+    <div class="layout-picker right-group" use:layoutClickOutside>
       <button class="layout-trigger" onclick={openLayout} title="Page layout &amp; margins" aria-pressed={layoutOpen}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <rect x="2.5" y="1.5" width="11" height="13" rx="1" stroke="currentColor" stroke-width="1.3"/>
@@ -1062,6 +1124,7 @@
             .unsetTextAlign()
             .setSpaceBefore(null)
             .setSpaceAfter(null)
+            .unsetIndent()
             .run()}
         title="Clear formatting"
       >
@@ -1104,6 +1167,13 @@
     background: var(--color-toolbar-bg);
     border-bottom: 1px solid var(--color-border);
   }
+
+  /* Layout sits at the far right (logical separation from the rest). order:1
+     renders it after the left cluster; margin-left:auto opens the gap. Its
+     dropdown anchors right so it stays inside the viewport. */
+  .right-group { order: 1; }
+  .layout-picker.right-group { margin-left: auto; }
+  .layout-picker.right-group .layout-dropdown { left: auto; right: 0; }
 
   .toolbar-group {
     display: flex;

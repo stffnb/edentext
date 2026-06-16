@@ -70,6 +70,7 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (attrs.lineHeight) return true;
   if (attrs.spaceBefore != null) return true;
   if (attrs.spaceAfter != null) return true;
+  if (typeof attrs.indent === 'number' && attrs.indent > 0) return true;
   const ta = attrs.textAlign;
   return ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify';
 }
@@ -349,6 +350,47 @@ function applyOrderedListFormats(odtBytes: Uint8Array, formats: (OrderedFmt | nu
       body
         .replace(/style:num-format="1"/g, `style:num-format="${fmt.numFormat}"`)
         .replace(/style:num-suffix="\."/g, `style:num-suffix="${fmt.numSuffix}"`) +
+      close,
+    );
+  });
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+// Whole-list indent: the `indent` attr on a top-level bulletList/orderedList (cm)
+// shifts the entire list. odf-kit emits each level in label-alignment mode (the
+// paragraph margin is ignored), so the shift must be added to the L# list-style's
+// per-level fo:margin-left and text:list-tab-stop-position. One entry per top-level
+// list in odf-kit's L# order (0 = no shift).
+function collectListIndents(node: TiptapNode, result: number[]): void {
+  for (const child of node.content ?? []) {
+    if (child.type === 'bulletList' || child.type === 'orderedList') {
+      const ind = child.attrs?.indent;
+      result.push(typeof ind === 'number' && ind > 0 ? ind : 0);
+    }
+  }
+}
+
+function applyListIndents(odtBytes: Uint8Array, indents: number[]): Uint8Array {
+  if (indents.every(v => !v)) return odtBytes;
+
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  const bump = (cm: number) => (_m: string, attr: string, v: string) =>
+    `${attr}="${(parseFloat(v) + cm).toFixed(3)}cm"`;
+
+  indents.forEach((cm, i) => {
+    if (!cm) return;
+    const re = new RegExp(`(<text:list-style style:name="L${i + 1}">)([\\s\\S]*?)(</text:list-style>)`);
+    content = content.replace(re, (_m, open: string, body: string, close: string) =>
+      open +
+      body
+        .replace(/(fo:margin-left)="([\d.]+)cm"/g, bump(cm))
+        .replace(/(text:list-tab-stop-position)="([\d.]+)cm"/g, bump(cm)) +
       close,
     );
   });
@@ -933,6 +975,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
         align?: AlignValue;
         spaceBefore?: string;
         spaceAfter?: string;
+        indentLeft?: string;
       } = {};
       if (node.attrs?.lineHeight != null) {
         const lhRaw = String(node.attrs.lineHeight);
@@ -947,6 +990,10 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
       }
       if (node.attrs?.spaceBefore != null) opts.spaceBefore = `${node.attrs.spaceBefore}pt`;
       if (node.attrs?.spaceAfter != null) opts.spaceAfter = `${node.attrs.spaceAfter}pt`;
+      // Left indent → fo:margin-left (odf-kit emits it natively from indentLeft).
+      if (typeof node.attrs?.indent === 'number' && node.attrs.indent > 0) {
+        opts.indentLeft = `${node.attrs.indent}cm`;
+      }
       const content = node.content ?? [];
 
       if (node.type === CUST_P) {
@@ -977,9 +1024,14 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   collectListItemStyles(raw, listStyles);
   const styledLists = applyListItemStyles(numberedOdt, listStyles);
 
+  // Whole-list indent → added to each L# list-style's level margins.
+  const listIndents: number[] = [];
+  collectListIndents(raw, listIndents);
+  const indentedLists = applyListIndents(styledLists, listIndents);
+
   // Rebuild real headings/lists/paragraphs inside table cells. Must run after
   // applyListItemStyles (cell lists don't exist yet) and before collapseRunWhitespace.
-  const styledCells = applyCellBlocks(styledLists, cellBlocks);
+  const styledCells = applyCellBlocks(indentedLists, cellBlocks);
 
   const rowHeights: (string | null)[] = [];
   collectTableRowHeights(raw, rowHeights);
