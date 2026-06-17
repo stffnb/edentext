@@ -5,6 +5,7 @@
   import Toolbar from './lib/editor/Toolbar.svelte';
   import ToolbarExpanded from './lib/editor/ToolbarExpanded.svelte';
   import { buildOdt, deriveFilename } from './lib/export/odt';
+  import { exportPdf } from './lib/export/pdf';
   import { supportsFsAccess, saveOdt, saveAsOdt, openOdt } from './lib/export/saveFile';
   import { importOdt } from './lib/import/odt';
   import { getPageBreakDebug } from './lib/editor/pageBreaks';
@@ -94,6 +95,7 @@
   const fsSupported = supportsFsAccess();
   let saveMenuOpen = $state(false);
   let fileInput: HTMLInputElement | null = $state(null);
+  let pdfBusy = $state(false);
 
   // odf-kit export options for the current header/footer + page geometry.
   function hfOpts() {
@@ -216,6 +218,27 @@
     }
   }
 
+  // Lay the document out into A4 pages (Paged.js) and open the print dialog so the
+  // user can "Save as PDF" — vector text matching the editor, with header/footer.
+  async function handleExportPdf() {
+    if (!editor || pdfBusy) return;
+    saveMenuOpen = false;
+    pdfBusy = true;
+    try {
+      await exportPdf({
+        source: editor.view.dom as HTMLElement,
+        json: editor.getJSON(),
+        orientation: pageOrientation,
+        numPages,
+      });
+    } catch (err) {
+      console.error('[pdf] Export failed:', err);
+      alert('Could not export to PDF.');
+    } finally {
+      pdfBusy = false;
+    }
+  }
+
   function saveMenuClickOutside(node: HTMLElement) {
     function handler(e: MouseEvent) {
       if (!node.contains(e.target as Node)) saveMenuOpen = false;
@@ -272,6 +295,14 @@
           <rect x="4.75" y="8.75" width="6.5" height="4.75" rx="0.5" stroke="currentColor" stroke-width="1.3"/>
         </svg>
       {/snippet}
+      {#snippet pdfIcon()}
+        <!-- Page with a down arrow -->
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M9 1.75H4.5A1.25 1.25 0 0 0 3.25 3v10A1.25 1.25 0 0 0 4.5 14.25h7A1.25 1.25 0 0 0 12.75 13V5.5L9 1.75z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M9 1.75V5.5h3.75" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M8 8v3.4M6.4 9.9 8 11.5l1.6-1.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      {/snippet}
       <div class="file-actions">
         <button class="file-action-btn" onclick={handleNew} disabled={!editor} title="New document">
           <!-- Page with folded corner + plus -->
@@ -307,12 +338,18 @@
             {#if saveMenuOpen}
               <div class="save-dropdown" role="menu">
                 <button class="save-option" onclick={handleSaveAs} role="menuitem">Save As…</button>
+                <button class="save-option" onclick={handleExportPdf} disabled={pdfBusy} role="menuitem">
+                  {pdfBusy ? 'Exportiere…' : 'Als PDF exportieren…'}
+                </button>
               </div>
             {/if}
           </div>
         {:else}
           <button class="file-action-btn" onclick={handleSave} disabled={!editor} title="Save .odt">
             {@render saveIcon()}
+          </button>
+          <button class="file-action-btn" onclick={handleExportPdf} disabled={!editor || pdfBusy} title="Als PDF exportieren">
+            {@render pdfIcon()}
           </button>
         {/if}
       </div>
