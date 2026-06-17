@@ -195,6 +195,11 @@ export const PageBreaks = Extension.create({
     let isUpdating = false;
     let rafId: number | null = null;
     let lastPlacementsKey = '';
+    // Each pass measures against the spacers left by the previous pass, so a changed
+    // result needs one more pass to re-measure and settle (see calculate). Bounded so
+    // a hypothetical two-layout ping-pong can't loop forever; reset per external change.
+    let convergePasses = 0;
+    const MAX_CONVERGE_PASSES = 4;
 
     const plugin = new Plugin<number>({
       key: pageBreakKey,
@@ -893,7 +898,8 @@ export const PageBreaks = Extension.create({
           // recreates the spacer DOM nodes (no `key` on the widgets) for no gain.
           const placementsKey =
             placements.map((p) => `${p.docPos}:${p.height}:${p.row ? p.row.columns : 'b'}`).join('|');
-          if (placementsKey !== lastPlacementsKey) {
+          const placementsChanged = placementsKey !== lastPlacementsKey;
+          if (placementsChanged) {
             lastPlacementsKey = placementsKey;
             const doc = editorView.state.doc;
             const decoArray: Decoration[] = placements.map((p) => {
@@ -973,6 +979,16 @@ export const PageBreaks = Extension.create({
           };
 
           isUpdating = false;
+
+          // This pass measured against the spacers present at its start. When the result
+          // changes — e.g. after an orientation switch, where the prior orientation's
+          // spacers still sat in the DOM and suppressed a heading's top-margin collapse,
+          // shifting its measured top — re-run so the next pass measures with the new
+          // spacers and the layout settles. Bounded against a two-layout ping-pong.
+          if (placementsChanged && convergePasses < MAX_CONVERGE_PASSES) {
+            convergePasses++;
+            schedule();
+          }
         }
 
         function schedule() {
@@ -988,6 +1004,7 @@ export const PageBreaks = Extension.create({
             const forced =
               pageBreakKey.getState(prevState) !== pageBreakKey.getState(editorView.state);
             if (!isUpdating && (prevState.doc !== editorView.state.doc || forced)) {
+              convergePasses = 0; // fresh convergence budget per external change
               schedule();
             }
           },
