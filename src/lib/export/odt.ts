@@ -638,12 +638,22 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
 // Rewrite styles.xml to match the editor's preview: default font Liberation Serif →
 // Times New Roman (metric-identical; see EXPORT_FONT), and Heading_20_1/2/3 sizes &
 // margins → the editor's values (odf-kit's defaults are larger; HEADING_STYLE_OVERRIDES).
-function rewriteStylesXml(odtBytes: Uint8Array): Uint8Array {
+function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
   if (!stylesBytes) return odtBytes;
 
   let styles = strFromU8(stylesBytes);
+
+  // Document spell-check language: set fo:language/fo:country on the base
+  // Standard paragraph style, which every paragraph inherits from. LibreOffice
+  // and Word read this as the document default language.
+  if (lang) {
+    styles = styles.replace(
+      /(<style:style style:name="Standard"[\s\S]*?<style:text-properties\b[^>]*?)\/>/,
+      `$1 fo:language="${lang.language}" fo:country="${lang.country}"/>`,
+    );
+  }
 
   // The only occurrences of "Liberation Serif" in styles.xml are the default
   // font-face declaration and the Standard style's font-name attributes.
@@ -925,7 +935,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null): Promise<Uint8Array> {
   const raw = replaceHardBreaks(docJson);
   const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
@@ -1039,7 +1049,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
 
   const cleaned = collapseRunWhitespace(styledRows);
   const withBreaks = applyLineBreaks(cleaned);
-  const withStyles = rewriteStylesXml(withBreaks);
+  const withStyles = rewriteStylesXml(withBreaks, language ?? null);
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist);
 }
 

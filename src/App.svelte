@@ -15,6 +15,9 @@
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
+  import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
+  import { spellController } from './lib/spell/controller';
+  import LanguagePicker from './lib/editor/LanguagePicker.svelte';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
@@ -40,6 +43,10 @@
   let zoom = $state(Math.max(20, Math.min(300, parseInt(localStorage.getItem('odf-editor-zoom') ?? '100', 10))));
   let pageMargins: PageMargins = $state(loadPageMargins());
   let pageOrientation: Orientation = $state(loadOrientation());
+
+  // The document's spell-check language; round-trips through the .odt. The effect
+  // below persists it and switches the shared spell controller (loads the dict).
+  let documentLanguage: DocumentLanguage = $state(loadDocumentLanguage());
 
   // The document name (without .odt). Source of truth for the save filename;
   // set on open, editable in the header, blank → heading-derived fallback.
@@ -69,6 +76,11 @@
 
   $effect(() => {
     saveOrientation(pageOrientation);
+  });
+
+  $effect(() => {
+    saveDocumentLanguage(documentLanguage);
+    void spellController.setLanguage(documentLanguage);
   });
 
   $effect(() => {
@@ -169,6 +181,9 @@
       // Editor.svelte re-paginates.
       if (result.margins) pageMargins = result.margins;
       if (result.orientation) pageOrientation = result.orientation;
+      // Adopt the document's spell-check language (the $effect switches the
+      // controller + loads its dictionary). null = file declared none; keep ours.
+      if (result.language) documentLanguage = result.language;
       // Adopt header/footer (null clears the zone); end any active edit.
       hfActive = null;
       headerDoc = result.header;
@@ -219,7 +234,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts());
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage));
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -235,7 +250,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts());
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage));
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -524,7 +539,11 @@
     orientation={pageOrientation}
   />
   <footer class="statusbar">
-    <span>Page {currentPage} of {numPages}</span>
+    <span class="sb-left">Page {currentPage} of {numPages}</span>
+    <div class="sb-center">
+      <LanguagePicker value={documentLanguage} onChange={(code) => (documentLanguage = code)} />
+    </div>
+    <div class="sb-right">
     <div class="zoom-controls">
       <button class="zoom-btn" onclick={() => setZoom(zoom - 10)} disabled={zoom <= 20} title="Zoom out">−</button>
       <input
@@ -539,6 +558,7 @@
       />
       <button class="zoom-btn" onclick={() => setZoom(zoom + 10)} disabled={zoom >= 300} title="Zoom in">+</button>
       <button class="zoom-pct" onclick={() => setZoom(100)} title="Reset to 100%">{zoom}%</button>
+    </div>
     </div>
   </footer>
 </main>
@@ -809,11 +829,28 @@
     z-index: 50;
   }
 
+  /* Three zones: page count left, language picker centered, zoom right. The
+     equal-flex sides keep the center cell centered regardless of side widths. */
+  .sb-left {
+    flex: 1;
+  }
+
+  .sb-center {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+  }
+
+  .sb-right {
+    flex: 1;
+    display: flex;
+    justify-content: flex-end;
+  }
+
   .zoom-controls {
     display: flex;
     align-items: center;
     gap: 4px;
-    margin-left: auto;
   }
 
   .zoom-btn {

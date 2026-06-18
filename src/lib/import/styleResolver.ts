@@ -197,6 +197,15 @@ export class StyleResolver {
     return styleName ? this.merged('text', styleName).text : {};
   }
 
+  // The document's default spell-check language, read from the base Standard
+  // paragraph style (falls back to the paragraph default-style). null when unset.
+  documentLanguage(): { language: string; country: string } | null {
+    const props = this.merged('paragraph', 'Standard').text;
+    const language = props['fo:language'];
+    if (!language || language === 'none') return null;
+    return { language, country: props['fo:country'] ?? '' };
+  }
+
   // Resolve a text-props map's font: fo:font-family wins, else style:font-name
   // through the font-face declarations.
   fontFamilyOf(props: PropMap): string | null {

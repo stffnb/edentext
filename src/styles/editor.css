@@ -378,6 +378,13 @@
   user-select: none;
 }
 
+/* Spell-check: red wavy underline under misspelled words (drawn by spellCheck.ts).
+   skip-ink:none keeps the wave continuous under descenders. */
+.tiptap .pm-spell-error {
+  text-decoration: red wavy underline;
+  text-decoration-skip-ink: none;
+}
+
 /* Print styles: proper A4 pagination */
 @media print {
   .editor {
@@ -403,6 +410,11 @@
     border: none;
     padding: 0;
     min-height: auto;
+  }
+
+  /* Squiggles are an editing aid, never printed. */
+  .tiptap .pm-spell-error {
+    text-decoration: none;
   }
 
   .paper .tiptap > *[data-page-break] {

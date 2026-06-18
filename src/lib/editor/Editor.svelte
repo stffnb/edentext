@@ -3,8 +3,12 @@
   import { Editor } from '@tiptap/core';
   import { Slice, Fragment } from 'prosemirror-model';
   import type { Node as PmNode, MarkType } from 'prosemirror-model';
+  import type { EditorView } from '@tiptap/pm/view';
   import { extensions } from './extensions';
+  import { spellErrorAt } from './spellCheck';
+  import { spellController } from '../spell/controller';
   import TableToolbar from './TableToolbar.svelte';
+  import SpellContextMenu from './SpellContextMenu.svelte';
   import HeaderFooterLayer from './HeaderFooterLayer.svelte';
   import { saveDocument, loadDocument } from '../storage/autosave';
   import { applyMarginVars, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
@@ -81,6 +85,59 @@
   function getCycle(): number {
     const ph = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--user-page-height'));
     return (Number.isFinite(ph) ? ph : 1123) + 20;
+  }
+
+  // --- Spelling suggestion menu (right-click on a red-squiggled word) ---
+  let spellMenu = $state<{
+    visible: boolean; top: number; left: number;
+    from: number; to: number; word: string; suggestions: string[];
+  }>({ visible: false, top: 0, left: 0, from: 0, to: 0, word: '', suggestions: [] });
+
+  function openSpellMenu(view: EditorView, event: MouseEvent): boolean {
+    if (!spellController.isEnabled() || !editorContainer) return false;
+    const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+    if (!coords) return false;
+    const range = spellErrorAt(view.state, coords.pos);
+    if (!range) return false; // not on a misspelling → let the browser menu show
+    event.preventDefault();
+    const word = view.state.doc.textBetween(range.from, range.to);
+    const cRect = editorContainer.getBoundingClientRect();
+    spellMenu = {
+      visible: true,
+      top: event.clientY - cRect.top + editorContainer.scrollTop,
+      left: event.clientX - cRect.left + editorContainer.scrollLeft,
+      from: range.from, to: range.to, word,
+      suggestions: spellController.suggest(word).slice(0, 6),
+    };
+    return true;
+  }
+
+  function closeSpellMenu() {
+    if (spellMenu.visible) spellMenu = { ...spellMenu, visible: false };
+  }
+
+  // Replace the misspelled range, preserving the word's marks (font/bold/etc.).
+  function replaceSpellWord(replacement: string) {
+    const ed = editor;
+    if (!ed || !spellMenu.visible) return;
+    const { from, to } = spellMenu;
+    const { state } = ed.view;
+    const marks = state.doc.resolve(from).marksAcross(state.doc.resolve(to)) ?? state.doc.resolve(from).marks();
+    ed.view.dispatch(state.tr.replaceWith(from, to, state.schema.text(replacement, marks)).scrollIntoView());
+    ed.view.focus();
+    closeSpellMenu();
+  }
+
+  function addSpellWord() {
+    if (spellMenu.visible) spellController.addWord(spellMenu.word);
+    closeSpellMenu();
+    editor?.view.focus();
+  }
+
+  function ignoreSpellWord() {
+    if (spellMenu.visible) spellController.ignoreWord(spellMenu.word);
+    closeSpellMenu();
+    editor?.view.focus();
   }
 
   // --- Floating table-editing toolbar ---
@@ -321,6 +378,12 @@
       extensions,
       content: saved || undefined,
       editorProps: {
+        // Our SpellCheck extension draws squiggles; turn off the browser's so
+        // they don't double up.
+        attributes: { spellcheck: 'false' },
+        handleDOMEvents: {
+          contextmenu: (view, event) => openSpellMenu(view, event),
+        },
         transformPasted(slice, view) {
           const textStyleType = view.state.schema.marks.textStyle;
           if (!textStyleType) return slice;
@@ -426,6 +489,17 @@
   </div>
   {#if tableUi.visible}
     <TableToolbar {editor} top={tableUi.top} left={tableUi.left} />
+  {/if}
+  {#if spellMenu.visible}
+    <SpellContextMenu
+      top={spellMenu.top}
+      left={spellMenu.left}
+      suggestions={spellMenu.suggestions}
+      onReplace={replaceSpellWord}
+      onAdd={addSpellWord}
+      onIgnore={ignoreSpellWord}
+      onClose={closeSpellMenu}
+    />
   {/if}
 </div>
 

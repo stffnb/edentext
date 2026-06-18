@@ -4,6 +4,7 @@ import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { DEFAULT_ORDERED_TYPE, orderedTypeFromFormat } from '../editor/orderedListTypes';
 import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
+import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 
 // .odt → TipTap JSON, inverting export/odt.ts. Anything the editor can express
 // becomes its native node/mark/attr; values matching the editor's defaults are
@@ -29,6 +30,9 @@ export interface OdtImportResult {
   // Edge→zone distance (cm): header from top, footer from bottom. null = no zone.
   headerDistanceCm: number | null;
   footerDistanceCm: number | null;
+  // Document spell-check language; NO_LANGUAGE when the file's language has no
+  // bundled dictionary; null when the file declares none.
+  language: DocumentLanguage | null;
   warnings: string[];
 }
 
@@ -96,6 +100,20 @@ export function importOdt(bytes: Uint8Array): OdtImportResult {
 
   const geometry = resolver.pageGeometry();
   const edge = resolver.edgeDistancesCm();
+
+  const odfLang = resolver.documentLanguage();
+  let language: DocumentLanguage | null = null;
+  if (odfLang) {
+    const code = languageFromOdf(odfLang.language, odfLang.country || undefined);
+    if (code) {
+      language = code;
+    } else {
+      language = NO_LANGUAGE;
+      const tag = odfLang.country ? `${odfLang.language}-${odfLang.country}` : odfLang.language;
+      warnings.add(`Spell-check language "${tag}" has no bundled dictionary — spell check was turned off`);
+    }
+  }
+
   return {
     content: { type: 'doc', content: blocks },
     margins: geometry?.margins ?? null,
@@ -104,6 +122,7 @@ export function importOdt(bytes: Uint8Array): OdtImportResult {
     footer: hf.footer ? convertHfZone(hf.footer, ctx) : null,
     headerDistanceCm: hf.header ? edge?.top ?? null : null,
     footerDistanceCm: hf.footer ? edge?.bottom ?? null : null,
+    language,
     warnings: [...warnings],
   };
 }

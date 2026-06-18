@@ -26,6 +26,7 @@ import { LineHeight } from './lineHeight';
 import { ParagraphSpacing } from './paragraphSpacing';
 import { Indent } from './indent';
 import { FormattingMarks } from './formattingMarks';
+import { SpellCheck } from './spellCheck';
 import { TableView } from './tableView';
 import { TableColumnResize } from './tableColumnResize';
 import { TableRowResize } from './tableRowResize';
@@ -81,4 +82,5 @@ export const extensions = [
   }),
   PageBreaks,
   FormattingMarks,
+  SpellCheck,
 ];
