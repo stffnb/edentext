@@ -5,7 +5,7 @@
   import Toolbar from './lib/editor/Toolbar.svelte';
   import ToolbarExpanded from './lib/editor/ToolbarExpanded.svelte';
   import { buildOdt, deriveFilename } from './lib/export/odt';
-  import { exportPdf } from './lib/export/pdf';
+  import { exportPdf, printPdf } from './lib/export/pdf';
   import { supportsFsAccess, saveOdt, saveAsOdt, openOdt } from './lib/export/saveFile';
   import { importOdt } from './lib/import/odt';
   import { getPageBreakDebug } from './lib/editor/pageBreaks';
@@ -93,9 +93,9 @@
   // reload restores the doc from localStorage but the first Save re-prompts.
   let fileHandle: FileSystemFileHandle | null = $state(null);
   const fsSupported = supportsFsAccess();
-  let saveMenuOpen = $state(false);
   let fileInput: HTMLInputElement | null = $state(null);
   let pdfBusy = $state(false);
+  let exportMenuOpen = $state(false);
 
   // odf-kit export options for the current header/footer + page geometry.
   function hfOpts() {
@@ -190,7 +190,7 @@
 
   async function handleSave() {
     if (!editor) return;
-    saveMenuOpen = false;
+    exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
       const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts());
@@ -206,7 +206,7 @@
 
   async function handleSaveAs() {
     if (!editor) return;
-    saveMenuOpen = false;
+    exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
       const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts());
@@ -222,7 +222,7 @@
   // user can "Save as PDF" — vector text matching the editor, with header/footer.
   async function handleExportPdf() {
     if (!editor || pdfBusy) return;
-    saveMenuOpen = false;
+    exportMenuOpen = false;
     pdfBusy = true;
     try {
       await exportPdf({
@@ -239,9 +239,28 @@
     }
   }
 
-  function saveMenuClickOutside(node: HTMLElement) {
+  // Vector PDF via the browser's print dialog: crisp, tiny, fonts embedded. Tables
+  // break natively; header/footer become CSS @page boxes (basic text + page numbers).
+  function handlePrintPdf() {
+    if (!editor) return;
+    exportMenuOpen = false;
+    try {
+      printPdf({
+        json: editor.getJSON(),
+        margins: pageMargins,
+        orientation: pageOrientation,
+        headerDoc,
+        footerDoc,
+      });
+    } catch (err) {
+      console.error('[pdf] Print failed:', err);
+      alert('Could not print to PDF.');
+    }
+  }
+
+  function exportMenuClickOutside(node: HTMLElement) {
     function handler(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) saveMenuOpen = false;
+      if (!node.contains(e.target as Node)) exportMenuOpen = false;
     }
     window.addEventListener('mousedown', handler);
     return { destroy() { window.removeEventListener('mousedown', handler); } };
@@ -295,14 +314,6 @@
           <rect x="4.75" y="8.75" width="6.5" height="4.75" rx="0.5" stroke="currentColor" stroke-width="1.3"/>
         </svg>
       {/snippet}
-      {#snippet pdfIcon()}
-        <!-- Page with a down arrow -->
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M9 1.75H4.5A1.25 1.25 0 0 0 3.25 3v10A1.25 1.25 0 0 0 4.5 14.25h7A1.25 1.25 0 0 0 12.75 13V5.5L9 1.75z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-          <path d="M9 1.75V5.5h3.75" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-          <path d="M8 8v3.4M6.4 9.9 8 11.5l1.6-1.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      {/snippet}
       <div class="file-actions">
         <button class="file-action-btn" onclick={handleNew} disabled={!editor} title="New document">
           <!-- Page with folded corner + plus -->
@@ -318,40 +329,41 @@
             <path d="M1.75 12.5V4a1 1 0 0 1 1-1h3.2a1 1 0 0 1 .8.4l.7.95a1 1 0 0 0 .8.4h4.2a1 1 0 0 1 1 1v6.75a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
           </svg>
         </button>
-        {#if fsSupported}
-          <div class="save-split" use:saveMenuClickOutside>
-            <button class="file-action-btn save-main" onclick={handleSave} disabled={!editor} title="Save (Ctrl+S)">
-              {@render saveIcon()}
-            </button>
-            <button
-              class="save-chevron"
-              onclick={() => (saveMenuOpen = !saveMenuOpen)}
-              disabled={!editor}
-              title="Save options"
-              aria-haspopup="menu"
-              aria-expanded={saveMenuOpen}
-            >
-              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
-                <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-            {#if saveMenuOpen}
-              <div class="save-dropdown" role="menu">
-                <button class="save-option" onclick={handleSaveAs} role="menuitem">Save As…</button>
-                <button class="save-option" onclick={handleExportPdf} disabled={pdfBusy} role="menuitem">
-                  {pdfBusy ? 'Exportiere…' : 'Als PDF exportieren…'}
-                </button>
-              </div>
-            {/if}
-          </div>
-        {:else}
-          <button class="file-action-btn" onclick={handleSave} disabled={!editor} title="Save .odt">
+        <!-- Single Save / Export button → ODT, Raster PDF, or Vector PDF (beta). -->
+        <div class="save-split" use:exportMenuClickOutside>
+          <button class="file-action-btn save-main" onclick={handleSave} disabled={!editor || pdfBusy} title="Save .odt (Ctrl+S)">
             {@render saveIcon()}
           </button>
-          <button class="file-action-btn" onclick={handleExportPdf} disabled={!editor || pdfBusy} title="Als PDF exportieren">
-            {@render pdfIcon()}
+          <button
+            class="save-chevron"
+            onclick={() => (exportMenuOpen = !exportMenuOpen)}
+            disabled={!editor || pdfBusy}
+            title="Save / Export"
+            aria-haspopup="menu"
+            aria-expanded={exportMenuOpen}
+          >
+            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+              <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
           </button>
-        {/if}
+          {#if exportMenuOpen}
+            <div class="theme-dropdown" role="menu">
+              <div class="theme-heading">Save / Export</div>
+              <button class="theme-option" onclick={handleSave} role="menuitem">
+                <span>ODT</span>
+                <span class="theme-option-hint">OpenDocument · fully editable</span>
+              </button>
+              <button class="theme-option" onclick={handleExportPdf} disabled={pdfBusy} role="menuitem">
+                <span>{pdfBusy ? 'Exporting…' : 'Raster PDF'}</span>
+                <span class="theme-option-hint">Exact copy of the editor</span>
+              </button>
+              <button class="theme-option" onclick={handlePrintPdf} role="menuitem">
+                <span>Vector PDF (beta)</span>
+                <span class="theme-option-hint">Sharp &amp; small, but only basic headers/footers · opens print dialog</span>
+              </button>
+            </div>
+          {/if}
+        </div>
       </div>
       <div class="action-separator"></div>
       <button
@@ -579,37 +591,6 @@
     cursor: not-allowed;
   }
 
-  .save-dropdown {
-    position: absolute;
-    top: calc(100% + 0.4rem);
-    right: 0;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-    min-width: 120px;
-    z-index: 100;
-    overflow: hidden;
-  }
-
-  .save-option {
-    display: block;
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    border: none;
-    background: transparent;
-    color: var(--color-text);
-    font-size: 0.85rem;
-    font-family: var(--font-sans);
-    text-align: left;
-    cursor: pointer;
-    transition: background 0.1s;
-  }
-
-  .save-option:hover {
-    background: var(--color-btn-hover);
-  }
-
   .toolbar-toggle-btn {
     display: inline-flex;
     align-items: center;
@@ -664,6 +645,7 @@
     border-radius: var(--radius);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     min-width: 100px;
+    max-width: 240px;
     z-index: 100;
     overflow: hidden;
   }
@@ -711,6 +693,8 @@
     color: var(--color-text-muted);
     font-style: italic;
     font-weight: 400;
+    white-space: normal;
+    line-height: 1.3;
   }
 
   .file-input {

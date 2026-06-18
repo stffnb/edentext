@@ -7,8 +7,15 @@
 // text layer positioned from the same on-screen measurements — so the PDF looks like a
 // screenshot of the editor but its text can still be selected and searched.
 
+import { generateHTML } from '@tiptap/core';
 import { PAGE_W_PORTRAIT, PAGE_H_PORTRAIT, type Orientation } from '../storage/pageOrientation';
+import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
+import { hfIsEmpty, type HfDoc } from '../storage/headerFooter';
+import { extensions } from '../editor/extensions';
+import { columnPercents } from '../editor/tableView';
 import { deriveFilename } from './odt';
+import globalCss from '../../styles/global.css?inline';
+import editorCss from '../../styles/editor.css?inline';
 
 const PAGE_GAP = 20; // must match pageBreaks.ts / editor.css --page-gap
 const PT = 72 / 96;  // CSS px @96dpi → PDF points
@@ -40,6 +47,16 @@ function buildClone(paper: HTMLElement, pageW: number): { holder: HTMLElement; c
   clone.style.transform = 'none';
   clone.style.width = `${pageW}px`; // pin width so capture geometry can't drift on var inheritance
   clone.classList.remove('show-formatting-marks', 'hf-editing');
+
+  // html2canvas paints an inline background from one bounding rect, so a wrapped
+  // highlight covers the bold term preceding it on the first line. Lift bold-and-
+  // highlighted runs into a later paint pass so the highlight can't cover them.
+  clone.querySelectorAll('strong').forEach((el) => {
+    if (el.closest('mark') || el.querySelector('mark')) {
+      el.style.position = 'relative';
+      el.style.zIndex = '1';
+    }
+  });
 
   const holder = document.createElement('div');
   holder.setAttribute('data-pdf-export', '');
@@ -137,7 +154,8 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
 
     const { jsPDF } = await import('jspdf');
     const fmt: [number, number] = [pageW * PT, pageH * PT];
-    const doc = new jsPDF({ unit: 'pt', format: fmt, orientation: orientation === 'landscape' ? 'l' : 'p' });
+    // compress: Flate the streams (e.g. the text layer); page images are JPEG below.
+    const doc = new jsPDF({ unit: 'pt', format: fmt, orientation: orientation === 'landscape' ? 'l' : 'p', compress: true });
 
     const tmp = document.createElement('canvas');
     tmp.width = Math.round(pageW * SCALE);
@@ -151,7 +169,8 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, tmp.width, tmp.height);
       ctx.drawImage(canvas, 0, i * cycle * SCALE, pageW * SCALE, pageH * SCALE, 0, 0, pageW * SCALE, pageH * SCALE);
-      doc.addImage(tmp.toDataURL('image/png'), 'PNG', 0, 0, pageW * PT, pageH * PT);
+      // JPEG (DCTDecode) keeps the file small; q0.92 @2× scale stays visually crisp.
+      doc.addImage(tmp.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageW * PT, pageH * PT);
 
       // Invisible selectable text for this page.
       const top = i * cycle, bottom = i * cycle + pageH;
@@ -168,4 +187,147 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
     holder.remove();
     style.remove();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Vector path: native browser print. Crisp, tiny, fonts embedded by the browser
+// (incl. system fonts). The browser paginates natively (breaks tables cleanly),
+// and headers/footers are emitted as CSS @page margin boxes (basic text + page
+// numbers; rich inline formatting isn't expressible there).
+// ---------------------------------------------------------------------------
+
+export interface PrintPdfOptions {
+  json: Json;
+  margins: PageMargins;
+  orientation: Orientation;
+  headerDoc: HfDoc;
+  footerDoc: HfDoc;
+}
+
+// First-row column weights from table JSON (honours colspan); mirrors tableView.
+function weightsFromRow(row: Json): (number | null)[] {
+  const w: (number | null)[] = [];
+  for (const cell of row?.content ?? []) {
+    const colspan: number = cell.attrs?.colspan ?? 1;
+    const cw: number[] | null = cell.attrs?.colwidth ?? null;
+    for (let j = 0; j < colspan; j++) w.push(cw && cw[j] ? cw[j] : null);
+  }
+  return w;
+}
+
+// JSON → clean HTML, re-inserting the percentage <colgroup>s the table node view
+// builds at runtime but generateHTML omits (matches the editor's column widths).
+function buildBodyHtml(json: Json): string {
+  const host = document.createElement('div');
+  host.innerHTML = generateHTML(json, extensions);
+  const percents: number[][] = [];
+  (function walk(n: Json) {
+    if (!n) return;
+    if (n.type === 'table') percents.push(columnPercents(weightsFromRow(n.content?.[0])));
+    for (const c of n.content ?? []) walk(c);
+  })(json);
+  host.querySelectorAll('table').forEach((table, i) => {
+    const cols = percents[i];
+    if (!cols?.length) return;
+    table.querySelector(':scope > colgroup')?.remove();
+    const cg = document.createElement('colgroup');
+    for (const p of cols) {
+      const col = document.createElement('col');
+      col.style.width = `${p}%`;
+      cg.appendChild(col);
+    }
+    table.insertBefore(cg, table.firstChild);
+  });
+  return host.innerHTML;
+}
+
+function cssStr(t: string): string {
+  return '"' + t.replace(/\\/g, '\\5c ').replace(/"/g, '\\22 ') + '"';
+}
+
+// HfDoc (single paragraph) → a CSS `content` value + alignment, mapping page-field
+// atoms to counter(page)/counter(pages). Returns null for an empty zone.
+function hfContent(doc: HfDoc): { content: string; align: 'left' | 'center' | 'right' } | null {
+  if (hfIsEmpty(doc)) return null;
+  const para = (doc as Json).content?.[0] as Json;
+  const ta = para?.attrs?.textAlign;
+  const align: 'left' | 'center' | 'right' = ta === 'center' || ta === 'right' ? ta : 'left';
+  const parts: string[] = [];
+  for (const n of para?.content ?? []) {
+    if (n.type === 'text' && n.text) parts.push(cssStr(n.text));
+    else if (n.type === 'pageNumber') parts.push('counter(page)');
+    else if (n.type === 'pageCount') parts.push('counter(pages)');
+    else if (n.type === 'hardBreak') parts.push('"\\A0 "');
+  }
+  if (!parts.length) return null;
+  return { content: parts.join(' '), align };
+}
+
+function marginBoxes(headerDoc: HfDoc, footerDoc: HfDoc): string {
+  const box = (edge: 'top' | 'bottom', doc: HfDoc): string => {
+    const hf = hfContent(doc);
+    if (!hf) return '';
+    const name = `@${edge}-${hf.align === 'left' ? 'left' : hf.align === 'right' ? 'right' : 'center'}`;
+    return `${name} { content: ${hf.content}; font-family: var(--font-serif); font-size: 11pt; color: #000; }`;
+  };
+  return box('top', headerDoc) + '\n' + box('bottom', footerDoc);
+}
+
+function printCss(o: PrintPdfOptions): string {
+  const m = o.margins;
+  const size = o.orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait';
+  return `
+@page {
+  size: ${size};
+  margin: ${m.top}cm ${m.right}cm ${m.bottom}cm ${m.left}cm;
+  ${marginBoxes(o.headerDoc, o.footerDoc)}
+}
+html, body { margin: 0; padding: 0; background: #fff; }
+.paper { width: auto !important; transform: none !important; box-shadow: none !important; background: none !important; }
+.paper .tiptap { padding: 0 !important; min-height: 0 !important; background: #fff !important; box-shadow: none !important; color: #000 !important; }
+/* generateHTML drops TipTap's .tableWrapper, whose margin gives a table its bottom gap. */
+.paper .tiptap table { margin: 0 0 0.212cm; }
+.paper .tiptap tr { break-inside: avoid; }
+.paper .tiptap [data-color] { color: var(--font-color, currentColor) !important; }
+.column-resize-handle, .row-resize-handle, .is-editor-empty::before { display: none !important; }
+`;
+}
+
+// Build the document in a hidden iframe and invoke the browser's print → "Save as
+// PDF", which produces crisp vector text with the fonts embedded.
+export function printPdf(opts: PrintPdfOptions): void {
+  const o: PrintPdfOptions = {
+    json: opts.json,
+    margins: opts.margins ?? DEFAULT_MARGINS,
+    orientation: opts.orientation ?? 'portrait',
+    headerDoc: opts.headerDoc ?? null,
+    footerDoc: opts.footerDoc ?? null,
+  };
+  const title = deriveFilename(o.json).replace(/\.odt$/i, '');
+  const body = buildBodyHtml(o.json);
+
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0; visibility:hidden;';
+  document.body.appendChild(iframe);
+
+  const idoc = iframe.contentDocument!;
+  idoc.open();
+  idoc.write(
+    `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${title}</title>` +
+    `<style>${globalCss}\n${editorCss}\n${printCss(o)}</style></head>` +
+    `<body><div class="paper"><div class="tiptap">${body}</div></div></body></html>`,
+  );
+  idoc.close();
+
+  const cleanup = () => iframe.remove();
+  const run = async () => {
+    try { await idoc.fonts.ready; } catch { /* ignore */ }
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    iframe.contentWindow!.addEventListener('afterprint', cleanup, { once: true });
+    iframe.contentWindow!.focus();
+    iframe.contentWindow!.print();
+    setTimeout(cleanup, 120000); // fallback if afterprint never fires
+  };
+  void run();
 }
