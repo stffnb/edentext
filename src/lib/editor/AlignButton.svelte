@@ -137,16 +137,16 @@
     gap: 4px;
     height: 2rem;
     padding: 0 0.4rem;
-    border: 1px solid var(--color-border);
+    border: none;
     border-radius: var(--radius);
-    background: var(--color-surface);
+    background: transparent;
     color: var(--color-text);
     cursor: pointer;
-    transition: border-color 0.15s;
+    transition: background 0.15s;
   }
 
   .align-trigger:hover {
-    border-color: var(--color-primary);
+    background: var(--color-btn-hover);
   }
 
   .align-dropdown {
