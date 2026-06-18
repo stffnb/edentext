@@ -14,6 +14,7 @@
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
+  import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
@@ -40,6 +41,24 @@
   let pageMargins: PageMargins = $state(loadPageMargins());
   let pageOrientation: Orientation = $state(loadOrientation());
 
+  // The document name (without .odt). Source of truth for the save filename;
+  // set on open, editable in the header, blank → heading-derived fallback.
+  let documentName: string = $state(loadDocName());
+
+  // Shown in the empty title field: what an actual save would name the file.
+  // Only computed while the field is blank (otherwise the placeholder is hidden,
+  // so we skip the per-transaction getJSON).
+  let namePlaceholder = $derived.by(() => {
+    if (documentName.trim() || tick < 0 || !editor) return 'Untitled document';
+    const base = stripOdtExtension(deriveFilename(editor.getJSON() as Parameters<typeof buildOdt>[0]));
+    return base === 'document' ? 'Untitled document' : base;
+  });
+
+  function suggestedFilename(json: Parameters<typeof buildOdt>[0]): string {
+    const n = documentName.trim();
+    return n ? `${sanitizeNameForFile(n)}.odt` : deriveFilename(json);
+  }
+
   $effect(() => {
     saveFormattingMarks(showFormattingMarks);
   });
@@ -62,6 +81,10 @@
 
   $effect(() => {
     saveHfDistances(hfDistances);
+  });
+
+  $effect(() => {
+    saveDocName(documentName);
   });
 
   function setZoom(value: number) {
@@ -122,13 +145,14 @@
     pageMargins = { ...DEFAULT_MARGINS };
     pageOrientation = 'portrait';
     hfDistances = { ...DEFAULT_HF_DISTANCES };
+    documentName = '';
     fileHandle = null;
     editor.commands.focus();
   }
 
   // Replace the document with a parsed .odt; adopt its geometry/header/footer and
   // track the source handle (null for the fallback file input) so Save overwrites it.
-  function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null) {
+  function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string) {
     if (!editor) return;
     try {
       const result = importOdt(bytes);
@@ -139,6 +163,8 @@
       }
 
       editor.commands.setContent(result.content); // onUpdate fires → autosave
+      // Adopt the opened file's name as the document name (drives the save filename).
+      if (sourceName) documentName = stripOdtExtension(sourceName);
       // Adopt the document's page geometry; the $effects persist it and
       // Editor.svelte re-paginates.
       if (result.margins) pageMargins = result.margins;
@@ -168,7 +194,7 @@
     if (fsSupported) {
       try {
         const r = await openOdt();
-        if (r) applyImport(r.bytes, r.handle);
+        if (r) applyImport(r.bytes, r.handle, r.name);
       } catch (err) {
         if ((err as DOMException)?.name !== 'AbortError') {
           console.error('[open] Failed to open file:', err);
@@ -185,7 +211,7 @@
     const file = input.files?.[0];
     input.value = ''; // allow re-selecting the same file
     if (!file) return;
-    applyImport(new Uint8Array(await file.arrayBuffer()), null);
+    applyImport(new Uint8Array(await file.arrayBuffer()), null, file.name);
   }
 
   async function handleSave() {
@@ -194,7 +220,7 @@
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
       const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts());
-      fileHandle = await saveOdt(bytes, deriveFilename(json), fileHandle);
+      fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       // A stored handle may have lost permission; re-prompt via Save As.
@@ -210,7 +236,7 @@
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
       const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts());
-      fileHandle = await saveAsOdt(bytes, deriveFilename(json));
+      fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save file:', err);
@@ -225,9 +251,11 @@
     exportMenuOpen = false;
     pdfBusy = true;
     try {
+      const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       await exportPdf({
         source: editor.view.dom as HTMLElement,
-        json: editor.getJSON(),
+        json,
+        fileName: suggestedFilename(json),
         orientation: pageOrientation,
         numPages,
       });
@@ -245,8 +273,10 @@
     if (!editor) return;
     exportMenuOpen = false;
     try {
+      const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       printPdf({
-        json: editor.getJSON(),
+        json,
+        fileName: suggestedFilename(json),
         margins: pageMargins,
         orientation: pageOrientation,
         headerDoc,
@@ -314,6 +344,24 @@
           <rect x="4.75" y="8.75" width="6.5" height="4.75" rx="0.5" stroke="currentColor" stroke-width="1.3"/>
         </svg>
       {/snippet}
+      <div class="doc-name">
+        <!-- Document with lines -->
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M9 1.75H4.5A1.25 1.25 0 0 0 3.25 3v10A1.25 1.25 0 0 0 4.5 14.25h7A1.25 1.25 0 0 0 12.75 13V5.5L9 1.75z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M9 1.75V5.5h3.75" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <line x1="5.5" y1="8.25" x2="10" y2="8.25" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          <line x1="5.5" y1="10.5" x2="10" y2="10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+        <input
+          class="doc-name-input"
+          type="text"
+          bind:value={documentName}
+          placeholder={namePlaceholder}
+          title="Document name"
+          onkeydown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+          onblur={() => (documentName = documentName.trim())}
+        />
+      </div>
       <div class="file-actions">
         <button class="file-action-btn" onclick={handleNew} disabled={!editor} title="New document">
           <!-- Page with folded corner + plus -->
@@ -522,6 +570,48 @@
     display: flex;
     align-items: center;
     gap: 2px;
+  }
+
+  /* Editable document title (Google-Docs style): borderless at rest, subtle
+     frame on hover/focus. Drives the suggested save filename. */
+  .doc-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0 0.25rem 0 0.4rem;
+    margin-right: 0.25rem;
+    border-radius: var(--radius);
+    color: var(--color-text-muted);
+    transition: background 0.15s;
+  }
+
+  .doc-name:hover,
+  .doc-name:focus-within {
+    background: var(--color-btn-hover);
+  }
+
+  .doc-name-input {
+    width: 13rem;
+    height: 1.9rem;
+    padding: 0 0.25rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .doc-name-input::placeholder {
+    color: var(--color-text-muted);
+    font-style: italic;
+  }
+
+  .doc-name-input:focus {
+    border-color: var(--color-border);
+    background: var(--color-surface);
   }
 
   .action-separator {

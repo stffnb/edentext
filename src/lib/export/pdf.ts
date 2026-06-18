@@ -25,7 +25,8 @@ type Json = any;
 
 export interface PdfOptions {
   source: HTMLElement; // the live `.tiptap` element (editor.view.dom)
-  json: Json;          // for the suggested filename
+  json: Json;          // fallback for the suggested filename
+  fileName?: string;   // document name (any extension); overrides the heading-derived name
   orientation?: Orientation;
   numPages?: number;
 }
@@ -182,7 +183,7 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
       }
     }
 
-    doc.save(deriveFilename(opts.json).replace(/\.odt$/i, '') + '.pdf');
+    doc.save((opts.fileName ?? deriveFilename(opts.json)).replace(/\.(odt|pdf)$/i, '') + '.pdf');
   } finally {
     holder.remove();
     style.remove();
@@ -198,6 +199,7 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
 
 export interface PrintPdfOptions {
   json: Json;
+  fileName?: string; // document name (any extension); overrides the heading-derived name
   margins: PageMargins;
   orientation: Orientation;
   headerDoc: HfDoc;
@@ -298,12 +300,13 @@ html, body { margin: 0; padding: 0; background: #fff; }
 export function printPdf(opts: PrintPdfOptions): void {
   const o: PrintPdfOptions = {
     json: opts.json,
+    fileName: opts.fileName,
     margins: opts.margins ?? DEFAULT_MARGINS,
     orientation: opts.orientation ?? 'portrait',
     headerDoc: opts.headerDoc ?? null,
     footerDoc: opts.footerDoc ?? null,
   };
-  const title = deriveFilename(o.json).replace(/\.odt$/i, '');
+  const title = (o.fileName ?? deriveFilename(o.json)).replace(/\.(odt|pdf)$/i, '');
   const body = buildBodyHtml(o.json);
 
   const iframe = document.createElement('iframe');
