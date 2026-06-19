@@ -349,6 +349,7 @@
 
 <main>
   <header>
+    <img src="/PrimeText.png" alt="PrimeText" class="app-logo" />
     <Toolbar editor={activeEditor} tick={activeTick} />
     <div class="header-actions">
       {#snippet saveIcon()}
@@ -576,6 +577,14 @@
     background: var(--color-toolbar-bg);
     border-bottom: 1px solid var(--color-border);
     box-shadow: var(--shadow);
+  }
+
+  .app-logo {
+    height: 20px;
+    width: auto;
+    margin: 0 0.5rem 0 0.75rem;
+    opacity: 1.0;
+    flex-shrink: 0;
   }
 
   .header-actions {
