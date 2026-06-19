@@ -348,9 +348,9 @@
 </script>
 
 <main>
-  <header>
+  <header class:expanded={toolbarExpanded}>
     <img src="/PrimeText.png" alt="PrimeText" class="app-logo" />
-    <Toolbar editor={activeEditor} tick={activeTick} />
+    <Toolbar editor={activeEditor} tick={activeTick} expanded={toolbarExpanded} />
     <div class="header-actions">
       {#snippet saveIcon()}
         <!-- Floppy disk -->
@@ -579,20 +579,37 @@
     box-shadow: var(--shadow);
   }
 
+  /* With the extended toolbar visible the header merges into it: the divider and
+     elevation move to the extended toolbar so they read as one toolbar. */
+  header.expanded {
+    border-bottom: none;
+    box-shadow: none;
+  }
+
+  /* Anchored to a fixed offset from the header top (align-self + margin-top)
+     instead of vertically centered, so toggling the extended toolbar — which
+     changes the header height — doesn't shift the logo. The offset centers it on
+     the top toolbar's button row (padding-top 0.5rem + half the 2rem button). */
   .app-logo {
-    height: 20px;
+    height: 17px;
     width: auto;
-    margin: 0 0.5rem 0 0.75rem;
+    align-self: flex-start;
+    margin: 0.95rem 0.5rem 0 0.75rem;
     opacity: 1.0;
     flex-shrink: 0;
   }
 
+  /* Pinned to the top (like .app-logo) so the changing header height when the
+     extended toolbar toggles doesn't shift it. margin-top matches the top
+     toolbar's padding so the buttons share the same baseline. */
   .header-actions {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     margin-left: auto;
     margin-right: 1rem;
+    align-self: flex-start;
+    margin-top: 0.5rem;
   }
 
   .file-actions {
