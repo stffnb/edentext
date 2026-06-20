@@ -745,7 +745,10 @@
     display: flex;
     align-items: flex-start;
     position: relative;
-    z-index: 100;
+    /* Above the editor overlays (≤151) so the tab and extended dropdowns stay on
+       top, but below the basic toolbar (200) so its dropdowns open over this row;
+       the header menus sit above everything via a higher z-index. */
+    z-index: 160;
     /* The toggle is absolute (adds no height): collapsed the bar is 0-height so the
        document fills up to here; expanded it grows with the extended toolbar.
        padding-left reserves the tab's column. */
@@ -755,11 +758,13 @@
     transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
   }
 
+  /* Shadow casts downward only (negative spread) so it doesn't bleed up into the
+     junction with the basic toolbar — the two read as one seamless toolbar. */
   .toolbar-secondary.expanded {
     padding-bottom: 0.4rem;
     background: var(--color-toolbar-bg);
     border-bottom-color: var(--color-border);
-    box-shadow: var(--shadow);
+    box-shadow: 0 4px 4px -2px rgba(0, 0, 0, 0.08);
   }
 
   .extended-wrap {
@@ -846,7 +851,7 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     min-width: 100px;
     max-width: 240px;
-    z-index: 100;
+    z-index: 300;
     overflow: hidden;
   }
 
