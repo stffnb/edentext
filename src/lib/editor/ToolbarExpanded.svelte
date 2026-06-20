@@ -1159,14 +1159,15 @@
 </div>
 
 <style>
+  /* Inner content of the second toolbar row; the surrounding .toolbar-secondary
+     (App.svelte) owns the background, divider and elevation. */
   .toolbar-expanded {
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    padding: 0.2rem 1rem 0.4rem;
-    background: var(--color-toolbar-bg);
-    border-bottom: 1px solid var(--color-border);
-    box-shadow: var(--shadow);
+    flex: 1;
+    min-width: 0;
+    padding: 0;
   }
 
   /* Layout sits at the far right (logical separation from the rest). order:1

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { cubicOut } from 'svelte/easing';
   import type { Editor } from '@tiptap/core';
   import EditorComponent from './lib/editor/Editor.svelte';
   import Toolbar from './lib/editor/Toolbar.svelte';
@@ -114,6 +115,17 @@
   function toggleToolbar() {
     toolbarExpanded = !toolbarExpanded;
     saveToolbarExpanded(toolbarExpanded);
+  }
+
+  // Combined height + opacity transition: the extended toolbar slides and fades
+  // in/out as one motion when the toolbar is expanded/collapsed.
+  function expand(node: HTMLElement, { duration = 180 } = {}) {
+    const h = node.scrollHeight;
+    return {
+      duration,
+      easing: cubicOut,
+      css: (t: number) => `overflow: hidden; height: ${t * h}px; opacity: ${t};`,
+    };
   }
 
   function clickOutside(node: HTMLElement) {
@@ -350,7 +362,7 @@
 <main>
   <header class:expanded={toolbarExpanded}>
     <img src="/PrimeText.png" alt="PrimeText" class="app-logo" />
-    <Toolbar editor={activeEditor} tick={activeTick} expanded={toolbarExpanded} />
+    <Toolbar editor={activeEditor} tick={activeTick} />
     <div class="header-actions">
       {#snippet saveIcon()}
         <!-- Floppy disk -->
@@ -429,23 +441,6 @@
           {/if}
         </div>
       </div>
-      <div class="action-separator"></div>
-      <button
-        class="toolbar-toggle-btn"
-        class:active={toolbarExpanded}
-        onclick={toggleToolbar}
-        title={toolbarExpanded ? 'Hide extended toolbar' : 'Show extended toolbar'}
-      >
-        <!-- Sliders/settings icon -->
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <circle cx="5" cy="4" r="1.5" fill="var(--color-toolbar-bg)" stroke="currentColor" stroke-width="1.2"/>
-          <circle cx="10" cy="8" r="1.5" fill="var(--color-toolbar-bg)" stroke="currentColor" stroke-width="1.2"/>
-          <circle cx="7" cy="12" r="1.5" fill="var(--color-toolbar-bg)" stroke="currentColor" stroke-width="1.2"/>
-        </svg>
-      </button>
       <div class="theme-wrap" use:clickOutside>
         <button
           class="theme-btn"
@@ -510,19 +505,44 @@
       />
     </div>
   </header>
-  {#if toolbarExpanded}
-    <ToolbarExpanded
-      editor={activeEditor}
-      tick={activeTick}
-      bind:showFormattingMarks
-      bind:pageMargins
-      bind:pageOrientation
-      bind:hfDistances
-      hfActive={hfActive}
-      onEditZone={(zone) => (hfActive = zone)}
-      onDebugDump={handleDebugDump}
-    />
-  {/if}
+  <div class="toolbar-secondary" class:expanded={toolbarExpanded}>
+    <button
+      class="expand-toggle"
+      class:active={toolbarExpanded}
+      onclick={toggleToolbar}
+      title={toolbarExpanded ? 'Hide extra tools' : 'Show extra tools'}
+      aria-expanded={toolbarExpanded}
+    >
+      <!-- Sliders icon -->
+      <svg class="tools-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="5" cy="4" r="1.5" fill="var(--color-surface)" stroke="currentColor" stroke-width="1.2"/>
+        <circle cx="10" cy="8" r="1.5" fill="var(--color-surface)" stroke="currentColor" stroke-width="1.2"/>
+        <circle cx="7" cy="12" r="1.5" fill="var(--color-surface)" stroke="currentColor" stroke-width="1.2"/>
+      </svg>
+      <span class="expand-label">Tools</span>
+      <svg class="chevron" width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+        <path d="M2.5 1l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    {#if toolbarExpanded}
+      <div class="extended-wrap" transition:expand>
+        <ToolbarExpanded
+          editor={activeEditor}
+          tick={activeTick}
+          bind:showFormattingMarks
+          bind:pageMargins
+          bind:pageOrientation
+          bind:hfDistances
+          hfActive={hfActive}
+          onEditZone={(zone) => (hfActive = zone)}
+          onDebugDump={handleDebugDump}
+        />
+      </div>
+    {/if}
+  </div>
   <EditorComponent
     bind:editor
     bind:tick
@@ -571,45 +591,37 @@
     height: 100%;
   }
 
+  /* Basic toolbar: a complete toolbar with its own divider + elevation. When the
+     extended toolbar opens, those move to .toolbar-secondary so the two rows read
+     as one connected toolbar (border-color/shadow transition for a smooth merge). */
   header {
     display: flex;
     align-items: center;
     background: var(--color-toolbar-bg);
     border-bottom: 1px solid var(--color-border);
     box-shadow: var(--shadow);
+    transition: border-color 0.18s, box-shadow 0.18s;
   }
 
-  /* With the extended toolbar visible the header merges into it: the divider and
-     elevation move to the extended toolbar so they read as one toolbar. */
   header.expanded {
-    border-bottom: none;
+    border-bottom-color: transparent;
     box-shadow: none;
   }
 
-  /* Anchored to a fixed offset from the header top (align-self + margin-top)
-     instead of vertically centered, so toggling the extended toolbar — which
-     changes the header height — doesn't shift the logo. The offset centers it on
-     the top toolbar's button row (padding-top 0.5rem + half the 2rem button). */
   .app-logo {
     height: 17px;
     width: auto;
-    align-self: flex-start;
-    margin: 0.95rem 0.5rem 0 0.75rem;
+    margin: 0 0.5rem 0 0.75rem;
     opacity: 1.0;
     flex-shrink: 0;
   }
 
-  /* Pinned to the top (like .app-logo) so the changing header height when the
-     extended toolbar toggles doesn't shift it. margin-top matches the top
-     toolbar's padding so the buttons share the same baseline. */
   .header-actions {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     margin-left: auto;
     margin-right: 1rem;
-    align-self: flex-start;
-    margin-top: 0.5rem;
   }
 
   .file-actions {
@@ -727,27 +739,79 @@
     cursor: not-allowed;
   }
 
-  .toolbar-toggle-btn {
+  /* Second toolbar row: collapsed it's a transparent strip holding only the
+     floating Tools tab; expanded it becomes the extended-toolbar bar. */
+  .toolbar-secondary {
+    display: flex;
+    align-items: flex-start;
+    position: relative;
+    z-index: 100;
+    /* The toggle is absolute (adds no height): collapsed the bar is 0-height so the
+       document fills up to here; expanded it grows with the extended toolbar.
+       padding-left reserves the tab's column. */
+    padding: 0 1rem 0 6.5rem;
+    background: transparent;
+    border-bottom: 1px solid transparent;
+    transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
+  }
+
+  .toolbar-secondary.expanded {
+    padding-bottom: 0.4rem;
+    background: var(--color-toolbar-bg);
+    border-bottom-color: var(--color-border);
+    box-shadow: var(--shadow);
+  }
+
+  .extended-wrap {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* "Tools" expander. Overlay (out of flow) so it never reserves row height;
+     top: -1px straddles the basic toolbar's bottom border. Base shape is a normal
+     pill (used when expanded); the bulged tab look is collapsed-only below. */
+  .expand-toggle {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 2rem;
+    gap: 5px;
     height: 2rem;
-    border: none;
+    padding: 0 0.55rem;
+    position: absolute;
+    left: 0.75rem;
+    top: -1px;
+    border: 1px solid var(--color-border);
     border-radius: var(--radius);
-    background: transparent;
+    background: var(--color-toolbar-bg);
     color: var(--color-text);
+    font-size: 0.8rem;
+    font-family: var(--font-sans);
     cursor: pointer;
-    transition: background 0.15s;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
   }
 
-  .toolbar-toggle-btn:hover {
-    background: var(--color-btn-hover);
+  /* Collapsed: the tab hangs from the basic toolbar's bottom edge — drop the top
+     border and round only the bottom so the divider bulges around it, and carry
+     the toolbar's elevation so it reads as part of it. */
+  .toolbar-secondary:not(.expanded) .expand-toggle {
+    border-top-color: transparent;
+    border-radius: 0 0 var(--radius) var(--radius);
+    box-shadow: var(--shadow);
   }
 
-  .toolbar-toggle-btn.active {
-    background: var(--color-primary);
-    color: white;
+  .expand-toggle:hover {
+    border-color: var(--color-primary);
+  }
+
+  .expand-label {
+    line-height: 1;
+  }
+
+  .expand-toggle .chevron {
+    transition: transform 0.2s ease;
+  }
+
+  .expand-toggle.active .chevron {
+    transform: rotate(180deg);
   }
 
   .theme-wrap {

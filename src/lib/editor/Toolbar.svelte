@@ -4,7 +4,7 @@
   import AlignButton from './AlignButton.svelte';
   import { ORDERED_LIST_TYPES, DEFAULT_ORDERED_TYPE, type OrderedListType } from './orderedListTypes';
 
-  let { editor, tick, expanded = false }: { editor: Editor | null; tick: number; expanded?: boolean } = $props();
+  let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 
   // $derived re-evaluates whenever `tick` changes (i.e. on every TipTap transaction)
   let isH1         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 1 }));
@@ -53,7 +53,7 @@
   }
 </script>
 
-<div class="toolbar" class:expanded>
+<div class="toolbar">
   {#if editor}
     <div class="toolbar-group">
       <button
@@ -217,19 +217,11 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    padding: 0.5rem 1rem;
+    padding: 0.35rem 1rem;
     background: var(--color-toolbar-bg);
-    border-bottom: 1px solid var(--color-border);
     position: sticky;
     top: 0;
     z-index: 200;
-  }
-
-  /* When the extended toolbar is shown the two rows form one toolbar: drop the
-     divider and tighten the bottom padding so the buttons sit at normal spacing. */
-  .toolbar.expanded {
-    border-bottom: none;
-    padding-bottom: 0.2rem;
   }
 
   .toolbar-group {
