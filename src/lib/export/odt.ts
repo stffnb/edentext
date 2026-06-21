@@ -74,10 +74,9 @@ const EXT_BY_MIME: Record<string, string> = {
 const CELL_LIST_BULLET_STYLE = 'TblListBullet';
 const CELL_LIST_NUMBER_STYLE = 'TblListNumber';
 
-// Heading sizes/margins shown in the editor (editor.css); odf-kit's Heading_20_N
-// defaults are larger, so we rewrite them on export. Margins are the editor's em
-// values (top 1.5em, bottom 0.5em) resolved against each heading's font size, in cm.
-// Exported: import/odt.ts uses these as the defaults to suppress on re-import.
+// Heading sizes/margins shown in the editor (editor.css); odf-kit's larger Heading_20_N
+// defaults are rewritten to these on export. Margins are the em values (top 1.5em,
+// bottom 0.5em) in cm; import/odt.ts uses them as defaults to suppress on re-import.
 export const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTop: string; marginBottom: string }[] = [
   { name: 'Heading_20_1', fontSize: '20pt', marginTop: '1.058cm', marginBottom: '0.353cm' },
   { name: 'Heading_20_2', fontSize: '16pt', marginTop: '0.847cm', marginBottom: '0.282cm' },
@@ -453,11 +452,9 @@ function applyOrderedListFormats(odtBytes: Uint8Array, formats: (OrderedFmt | nu
   return rezipOdt(files);
 }
 
-// Whole-list indent: the `indent` attr on a top-level bulletList/orderedList (cm)
-// shifts the entire list. odf-kit emits each level in label-alignment mode (the
-// paragraph margin is ignored), so the shift must be added to the L# list-style's
-// per-level fo:margin-left and text:list-tab-stop-position. One entry per top-level
-// list in odf-kit's L# order (0 = no shift).
+// Whole-list indent (cm) on a top-level bulletList/orderedList. odf-kit uses
+// label-alignment mode (ignores the paragraph margin), so the shift goes onto the L#
+// list-style's per-level fo:margin-left + text:list-tab-stop-position. One per list (0=none).
 function collectListIndents(node: TiptapNode, result: number[]): void {
   for (const child of node.content ?? []) {
     if (child.type === 'bulletList' || child.type === 'orderedList') {
@@ -494,10 +491,9 @@ function applyListIndents(odtBytes: Uint8Array, indents: number[]): Uint8Array {
   return rezipOdt(files);
 }
 
-// odf-kit emits nested lists as bare <text:list> sharing the top-level L# style,
-// so a nested list of a *different* kind/format (e.g. ordered inside bullets)
-// loses its type. Give those nested lists their own minted 6-level list style —
-// the same pattern applyCellBlocks uses for in-cell lists.
+// odf-kit emits nested lists as bare <text:list> sharing the top-level L# style, so a
+// nested list of a different kind/format (e.g. ordered inside bullets) loses its type.
+// Mint it its own 6-level list style (same pattern applyCellBlocks uses for cell lists).
 type ListDef = { ordered: boolean; numFormat: string; numSuffix: string };
 
 function listDefOf(node: TiptapNode): ListDef {
@@ -1033,10 +1029,9 @@ function imageFrameXml(img: ImageExport, index: number): string {
   );
 }
 
-// Resolve image sentinels: swap each IMG{i}IMG for its <draw:frame>, add the
-// binary picture files, and register each in META-INF/manifest.xml. content.xml
-// already declares the draw/svg/xlink namespaces (odf-kit), and rezipOdt re-zips
-// arbitrary binary entries, so no other plumbing is needed.
+// Resolve image sentinels: swap each IMG{i}IMG for its <draw:frame>, add the binary
+// picture files, and register each in META-INF/manifest.xml. content.xml already
+// declares the draw/svg/xlink namespaces and rezipOdt handles binary entries.
 function applyImages(odtBytes: Uint8Array, images: ImageExport[]): Uint8Array {
   if (!images.length) return odtBytes;
   const files = unzipSync(odtBytes);
@@ -1106,11 +1101,9 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
     // Orientation comes from the Layout panel; odf-kit swaps the A4 dimensions
     // automatically (29.7×21cm) and writes style:print-orientation accordingly.
     orientation,
-    // Margins (cm) come from the Layout panel via App state. They match the
-    // editor's on-screen padding so exported line wrapping / page flow is identical.
-    // With a header/footer, ODF's vertical margin is the page-edge→header distance;
-    // applyHfPostProcess sizes the header box so the body still starts at the
-    // editor's margin (Word-style mapping).
+    // Margins (cm) from the Layout panel, matching the editor's padding so line
+    // wrapping / page flow is identical. With a header/footer the vertical margin is
+    // the edge→zone distance; applyHfPostProcess keeps the body starting at the margin.
     marginTop: `${headerPara ? headerDist : margins.top}cm`,
     marginBottom: `${footerPara ? footerDist : margins.bottom}cm`,
     marginLeft: `${margins.left}cm`,
@@ -1204,11 +1197,9 @@ function hfAlign(para: TiptapNode): AlignValue | null {
   return ta === 'center' || ta === 'right' || ta === 'justify' ? ta : null;
 }
 
-// Header/footer post-processing on styles.xml: resolve the LBR/PGC sentinels in the
-// emitted runs, rewrite odf-kit's fixed header/footer geometry (0.6/0.5cm) to the
-// Word-style mapping (page margin = HF distance, min-height fills up to the body
-// margin so the body starts exactly at the editor's margin), and apply the
-// paragraph alignment to the named Header/Footer styles.
+// Header/footer post-processing on styles.xml: resolve LBR/PGC sentinels, apply the
+// paragraph alignment to the Header/Footer styles, and rewrite the geometry to the
+// Word-style mapping (page margin = HF distance, min-height fills up to the body margin).
 function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPara: TiptapNode | null, footerPara: TiptapNode | null, headerDist: number, footerDist: number): Uint8Array {
   if (!headerPara && !footerPara) return odtBytes;
 

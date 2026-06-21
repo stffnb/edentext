@@ -6,10 +6,9 @@ import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 
-// .odt → TipTap JSON, inverting export/odt.ts. Anything the editor can express
-// becomes its native node/mark/attr; values matching the editor's defaults are
-// suppressed so a round trip (editor → LibreOffice → editor) doesn't accrete
-// explicit attrs. Unsupported content degrades gracefully and is reported.
+// .odt → TipTap JSON, inverting export/odt.ts. Editor-expressible content becomes its
+// native node/mark/attr; values matching the editor's defaults are suppressed so round
+// trips don't accrete explicit attrs. Unsupported content degrades gracefully (reported).
 
 type Mark = { type: string; attrs?: Record<string, unknown> };
 type Node = {

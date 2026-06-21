@@ -1,9 +1,8 @@
 import { Node } from '@tiptap/core';
 
-// Inline atom fields for header/footer content: current page number and total
-// page count. The DOM text is a placeholder — HeaderFooterLayer.svelte patches
-// every [data-page-field] span with the real per-page value after rendering.
-// Round-trips to ODF <text:page-number>/<text:page-count> (export/import odt.ts).
+// Inline atom fields for header/footer: current page number and total page count. The
+// DOM text is a placeholder — HeaderFooterLayer.svelte patches each [data-page-field]
+// span per page. Round-trips to ODF <text:page-number>/<text:page-count>.
 
 function pageFieldNode(name: string, kind: 'number' | 'count') {
   return Node.create({

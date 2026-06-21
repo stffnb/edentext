@@ -1,11 +1,6 @@
-// PDF export that matches the editor exactly AND keeps selectable/searchable text.
-//
-// Why this shape: letting the browser re-render at print time drifts the text (true
-// vector metrics ≠ on-screen hinted metrics), which broke the page-break band masks.
-// Instead we RASTER the editor's own on-screen render (where content, big text, tables,
-// page-break bands and headers/footers are already correct) and overlay an INVISIBLE
-// text layer positioned from the same on-screen measurements — so the PDF looks like a
-// screenshot of the editor but its text can still be selected and searched.
+// PDF export that matches the editor exactly AND keeps selectable text. The browser's
+// print-time re-render drifts text (vector ≠ hinted metrics) and broke the band masks,
+// so we raster the on-screen render and overlay an invisible, positioned text layer.
 
 import { generateHTML } from '@tiptap/core';
 import { PAGE_W_PORTRAIT, PAGE_H_PORTRAIT, type Orientation } from '../storage/pageOrientation';
@@ -190,12 +185,9 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Vector path: native browser print. Crisp, tiny, fonts embedded by the browser
-// (incl. system fonts). The browser paginates natively (breaks tables cleanly),
-// and headers/footers are emitted as CSS @page margin boxes (basic text + page
-// numbers; rich inline formatting isn't expressible there).
-// ---------------------------------------------------------------------------
+// Vector path: native browser print. Crisp, tiny, fonts embedded by the browser. It
+// paginates natively (clean table breaks); headers/footers become CSS @page margin
+// boxes (basic text + page numbers; rich inline formatting isn't expressible there).
 
 export interface PrintPdfOptions {
   json: Json;

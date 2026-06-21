@@ -402,10 +402,9 @@ export const PageBreaks = Extension.create({
           }
           gaps.sort((a, b) => a - b);
           const advance = gaps.length ? gaps[gaps.length >> 1] : 0;
-          // Group rects into lines by top proximity, not vertical overlap: decorative
-          // fonts (e.g. Trattatello) render ink boxes taller than the line advance, so
-          // an overlap test chains whole paragraphs into one phantom line. Only the top
-          // is used downstream; same-line runs sit within a fraction of the advance.
+          // Group rects into lines by top proximity, not overlap: decorative fonts (e.g.
+          // Trattatello) make ink boxes taller than the advance, so an overlap test would
+          // chain paragraphs into one phantom line. Tolerance is a fraction of the advance.
           const tol = advance > 0 ? advance * 0.6 : 3;
           const lines: { top: number; bottom: number }[] = [];
           let lineTop = -Infinity;
@@ -980,11 +979,9 @@ export const PageBreaks = Extension.create({
 
           isUpdating = false;
 
-          // This pass measured against the spacers present at its start. When the result
-          // changes — e.g. after an orientation switch, where the prior orientation's
-          // spacers still sat in the DOM and suppressed a heading's top-margin collapse,
-          // shifting its measured top — re-run so the next pass measures with the new
-          // spacers and the layout settles. Bounded against a two-layout ping-pong.
+          // Each pass measures against the spacers present at its start, so a changed
+          // result needs another pass to re-measure and settle (e.g. after an orientation
+          // switch). Bounded by MAX_CONVERGE_PASSES against a two-layout ping-pong.
           if (placementsChanged && convergePasses < MAX_CONVERGE_PASSES) {
             convergePasses++;
             schedule();

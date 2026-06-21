@@ -4,10 +4,8 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { dropCursor } from '@tiptap/pm/dropcursor';
 
 // Inline, as-character image (Word's "in line with text"). width/height are
-// unscaled document px @96dpi (like tableRow.ts rowHeight); export converts them
-// to cm and import back, so size round-trips exactly. Position is fully determined
-// by the paragraph + text offset + the paragraph's alignment — no free coordinates.
-// The node view adds corner resize handles (aspect-locked, zoom-aware).
+// unscaled doc px @96dpi (like tableRow.ts rowHeight); export converts to cm and
+// back, so size round-trips exactly. The node view adds aspect-locked resize handles.
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {

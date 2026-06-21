@@ -1,10 +1,9 @@
 import type { PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 
-// Resolves ODF style indirection for the importer: every producer (our export,
-// LibreOffice re-saves, Word) spreads formatting across named styles, automatic
-// styles, and parent-style-name chains. This module flattens those chains into
-// per-style property maps so import/odt.ts can read effective values directly.
+// Resolves ODF style indirection for the importer: producers (our export, LibreOffice,
+// Word) spread formatting across named/automatic styles and parent-style-name chains.
+// This flattens those into per-style property maps so import/odt.ts reads effective values.
 
 export const NS = {
   office: 'urn:oasis:names:tc:opendocument:xmlns:office:1.0',
@@ -304,10 +303,9 @@ export class StyleResolver {
     };
   }
 
-  // Page margins + orientation from the master page's layout. With a header/footer,
-  // ODF's vertical margin ends at the zone — the editor's body margin is margin +
-  // zone height + spacing (inverse of the export's Word-style mapping). Page *size*
-  // is intentionally ignored — the editor is A4-only.
+  // Page margins + orientation from the master page's layout. With a header/footer the
+  // body margin is page margin + zone height + spacing (inverse of the export mapping).
+  // Page size is intentionally ignored — the editor is A4-only.
   pageGeometry(): { margins: PageMargins; orientation: Orientation } | null {
     const props = this.pageLayoutEl()?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
     if (!props) return null;

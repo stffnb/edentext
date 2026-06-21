@@ -685,9 +685,8 @@
   }
 
   // --- Indent (Einzug) ---
-  // In a list, step the list point one level via indentListForward/Backward (the same
-  // commands the Tab keymap uses — see indent.ts); outside a list, step the paragraph's
-  // left indent.
+  // In a list, step the list point one level (indentListForward/Backward — the Tab
+  // keymap's commands, see indent.ts); outside a list, step the paragraph's left indent.
   function changeIndent(dir: 1 | -1) {
     if (!editor) return;
     const c = editor.chain().focus();
