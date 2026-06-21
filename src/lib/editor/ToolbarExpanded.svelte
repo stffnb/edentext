@@ -12,6 +12,7 @@
   import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import type { Orientation } from '../storage/pageOrientation';
   import { DEFAULT_HF_DISTANCES, clampHfDistance, type HfDistances } from '../storage/headerFooter';
+  import { listContext } from './indent';
 
   let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), hfActive = null, onEditZone, onDebugDump }:
     { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; hfDistances?: HfDistances; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void } = $props();
@@ -650,45 +651,14 @@
   }
 
   // --- Indent (Einzug) ---
-  // Resolve the selection's list context: whether the cursor is in a list, whether
-  // the whole list is targeted (cursor in the first item, or the selection spans
-  // every item), and the innermost list's current indent (cm).
-  function listContext(): { inList: boolean; wholeList: boolean; listIndent: number } {
-    if (!editor) return { inList: false, wholeList: false, listIndent: 0 };
-    const { empty } = editor.state.selection;
-    const head = editor.state.selection.$from;
-    const tail = editor.state.selection.$to;
-    let liDepth = -1;
-    for (let d = head.depth; d > 0; d--) {
-      if (head.node(d).type.name === 'listItem') { liDepth = d; break; }
-    }
-    if (liDepth < 0) return { inList: false, wholeList: false, listIndent: 0 };
-    const listDepth = liDepth - 1;
-    const list = head.node(listDepth);
-    const listIndent = typeof list.attrs.indent === 'number' ? list.attrs.indent : 0;
-    const fromFirst = head.index(listDepth) === 0;
-    // Guard: a selection ending outside the list has no index at listDepth.
-    const toLast = tail.depth >= listDepth && tail.node(listDepth) === list
-      && tail.index(listDepth) === list.childCount - 1;
-    const wholeList = fromFirst && (empty || toLast);
-    return { inList: true, wholeList, listIndent };
-  }
-
-  // Word/LibreOffice indent: with the whole list targeted, shift the list as a
-  // block; in a non-first item, change that item's nesting level; outside a list,
-  // step the paragraph's left indent (indent.ts).
+  // In a list, step the list point one level via indentListForward/Backward (the same
+  // commands the Tab keymap uses — see indent.ts); outside a list, step the paragraph's
+  // left indent.
   function changeIndent(dir: 1 | -1) {
     if (!editor) return;
     const c = editor.chain().focus();
-    const ctx = listContext();
-    if (ctx.inList) {
-      if (ctx.wholeList) {
-        if (dir === 1) c.indentListMore().run();
-        else if (ctx.listIndent > 0) c.indentListLess().run();
-        else c.liftListItem('listItem').run();
-      } else {
-        (dir === 1 ? c.sinkListItem('listItem') : c.liftListItem('listItem')).run();
-      }
+    if (listContext(editor.state).inList) {
+      (dir === 1 ? c.indentListForward() : c.indentListBackward()).run();
     } else {
       (dir === 1 ? c.indentMore() : c.indentLess()).run();
     }

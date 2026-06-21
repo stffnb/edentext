@@ -18,10 +18,10 @@ function buildDecorations(doc: PmNode): DecorationSet {
     if (!node.isText) return;
     const text = node.text ?? '';
     for (let i = 0; i < text.length; i++) {
-      if (text.charCodeAt(i) === 32) {
-        const from = pos + i;
-        decos.push(Decoration.inline(from, from + 1, { class: 'pm-space-mark' }));
-      }
+      const code = text.charCodeAt(i);
+      if (code !== 32 && code !== 9) continue;
+      const from = pos + i;
+      decos.push(Decoration.inline(from, from + 1, { class: code === 9 ? 'pm-tab-mark' : 'pm-space-mark' }));
     }
   });
   return decos.length ? DecorationSet.create(doc, decos) : DecorationSet.empty;

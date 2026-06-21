@@ -147,6 +147,11 @@
   margin-bottom: 0.212cm;
 }
 
+/* Tab stops every 1.25cm, matching ODF's default tab interval. */
+.paper .tiptap {
+  tab-size: 1.25cm;
+}
+
 .paper .tiptap h1,
 .paper .tiptap h2,
 .paper .tiptap h3 {
@@ -378,6 +383,23 @@
   user-select: none;
 }
 
+/* Tab marks: a → arrow overlaid at the start of the tab's width (the tab char
+   itself supplies the gap), mirroring Word/LibreOffice. */
+.paper.show-formatting-marks .tiptap .pm-tab-mark {
+  position: relative;
+}
+
+.paper.show-formatting-marks .tiptap .pm-tab-mark::before {
+  content: '→';
+  position: absolute;
+  left: 0.1em;
+  top: 0;
+  color: var(--color-primary);
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* Spell-check: red wavy underline under misspelled words (drawn by spellCheck.ts).
    skip-ink:none keeps the wave continuous under descenders. */
 .tiptap .pm-spell-error {
@@ -432,7 +454,8 @@
   .paper.show-formatting-marks .tiptap h2::after,
   .paper.show-formatting-marks .tiptap h3::after,
   .paper.show-formatting-marks .tiptap li > p::after,
-  .paper.show-formatting-marks .tiptap .pm-space-mark::before {
+  .paper.show-formatting-marks .tiptap .pm-space-mark::before,
+  .paper.show-formatting-marks .tiptap .pm-tab-mark::before {
     content: none;
   }
 }

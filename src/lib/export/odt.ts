@@ -41,13 +41,17 @@ const DEFAULT_LINE_HEIGHT = 1;  // must match line-height multiplier default in 
 const SEG = '';
 
 // Sentinel for hardBreak nodes: replaceHardBreaks turns them into text so every
-// odf-kit path (plain paragraphs, list items, cells) carries them; applyLineBreaks
+// odf-kit path (plain paragraphs, list items, cells) carries them; applyInlineSentinels
 // swaps the char for <text:line-break/> in content.xml. U+E001 (SEG is U+E000).
 const LBR = '';
 
-// Sentinel wrapping the page-count digits in header/footer runs; applyHfPostProcess
+// Sentinel wrapping page-count digits in header/footer runs; applyHfPostProcess
 // rewrites it to <text:page-count> in styles.xml. U+E002 (SEG/LBR are E000/E001).
 const PGC = '';
+
+// Sentinel for tab chars: \t collapses to a space in ODF, so replaceTabs swaps
+// each tab for this before odf-kit serializes; applyInlineSentinels → <text:tab/>. U+E003.
+const TAB = '';
 
 // Automatic list styles minted for in-cell lists (see applyCellBlocks). odf-kit's
 // CellBuilder is run-based, so a list inside a cell can't reference a list style it
@@ -112,7 +116,7 @@ function injectCustomTypes(node: TiptapNode, inContainer = false): TiptapNode {
 }
 
 // Turn hardBreak nodes into LBR-sentinel text nodes so they ride through every
-// odf-kit serialization path as plain run text; applyLineBreaks rewrites the char
+// odf-kit serialization path as plain run text; applyInlineSentinels rewrites the char
 // to <text:line-break/> in content.xml afterwards.
 function replaceHardBreaks(node: TiptapNode): TiptapNode {
   if (!node.content?.length) return node;
@@ -120,6 +124,17 @@ function replaceHardBreaks(node: TiptapNode): TiptapNode {
     ...node,
     content: node.content.map(c => c.type === 'hardBreak' ? { type: 'text', text: LBR } : replaceHardBreaks(c)),
   };
+}
+
+// Swap each tab character in run text for the TAB sentinel so it survives odf-kit
+// serialization (a literal \t would collapse to a space); applyInlineSentinels
+// rewrites it to <text:tab/> in content.xml afterwards.
+function replaceTabs(node: TiptapNode): TiptapNode {
+  if (node.type === 'text' && node.text?.includes('\t')) {
+    return { ...node, text: node.text.split('\t').join(TAB) };
+  }
+  if (!node.content?.length) return node;
+  return { ...node, content: node.content.map(replaceTabs) };
 }
 
 // Mirror odf-kit's normalizeLineHeight (content.js): a number is a multiplier
@@ -909,17 +924,19 @@ function collapseRunWhitespace(odtBytes: Uint8Array): Uint8Array {
   return rezipOdt(files);
 }
 
-// Rewrite the LBR sentinels replaceHardBreaks planted into real <text:line-break/>
-// elements (valid both as bare paragraph text and inside <text:span>).
-function applyLineBreaks(odtBytes: Uint8Array): Uint8Array {
+// Rewrite the inline sentinels planted before serialization into real ODF elements:
+// LBR (from replaceHardBreaks) → <text:line-break/>, TAB (from replaceTabs) →
+// <text:tab/>. Both are valid as bare paragraph text and inside <text:span>.
+function applyInlineSentinels(odtBytes: Uint8Array): Uint8Array {
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
   if (!contentBytes) return odtBytes;
 
-  const content = strFromU8(contentBytes);
-  if (!content.includes(LBR)) return odtBytes;
+  let content = strFromU8(contentBytes);
+  if (!content.includes(LBR) && !content.includes(TAB)) return odtBytes;
 
-  files['content.xml'] = strToU8(content.split(LBR).join('<text:line-break/>'));
+  content = content.split(LBR).join('<text:line-break/>').split(TAB).join('<text:tab/>');
+  files['content.xml'] = strToU8(content);
   return rezipOdt(files);
 }
 
@@ -936,7 +953,7 @@ export type HfExport = {
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
 export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null): Promise<Uint8Array> {
-  const raw = replaceHardBreaks(docJson);
+  const raw = replaceTabs(replaceHardBreaks(docJson));
   const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Distance from the page edge to the header (top) / footer (bottom). Becomes the
@@ -1048,7 +1065,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const styledRows = applyTableRowHeights(styledCells, rowHeights);
 
   const cleaned = collapseRunWhitespace(styledRows);
-  const withBreaks = applyLineBreaks(cleaned);
+  const withBreaks = applyInlineSentinels(cleaned);
   const withStyles = rewriteStylesXml(withBreaks, language ?? null);
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist);
 }

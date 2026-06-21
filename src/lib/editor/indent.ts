@@ -1,15 +1,36 @@
 import { Extension, type CommandProps } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import type { EditorState } from '@tiptap/pm/state';
 
-// Left indent stored in cm so it round-trips 1:1 to ODF's fo:margin-left.
-// On a paragraph/heading it maps to odf-kit's ParagraphOptions.indentLeft; on a
-// bulletList/orderedList it shifts the whole list (the indent is added to the
-// list style's level margins on export — see export/odt.ts applyListIndents).
-// Renders as an inline margin-left. List *items* indent by nesting
-// (sinkListItem/liftListItem); this list attr shifts the list as a block.
+// Left indent in cm: maps to fo:margin-left on paragraphs/headings; on lists it shifts
+// the whole list block (list items nest instead via sinkListItem/liftListItem).
 
 export const INDENT_STEP_CM = 1.25; // LibreOffice's default indent increment
 export const INDENT_MAX_CM = 12;    // keep the indent inside the text column
+
+export type ListIndentContext = { inList: boolean; wholeList: boolean; listIndent: number; nested: boolean };
+
+// Shared by the Tab keymap and toolbar indent buttons so both apply identical rules.
+export function listContext(state: EditorState): ListIndentContext {
+  const { empty } = state.selection;
+  const head = state.selection.$from;
+  const tail = state.selection.$to;
+  let liDepth = -1;
+  for (let d = head.depth; d > 0; d--) {
+    if (head.node(d).type.name === 'listItem') { liDepth = d; break; }
+  }
+  if (liDepth < 0) return { inList: false, wholeList: false, listIndent: 0, nested: false };
+  const listDepth = liDepth - 1;
+  const list = head.node(listDepth);
+  const listIndent = typeof list.attrs.indent === 'number' ? list.attrs.indent : 0;
+  const fromFirst = head.index(listDepth) === 0;
+  // Guard: a selection ending outside the list has no index at listDepth.
+  const toLast = tail.depth >= listDepth && tail.node(listDepth) === list
+    && tail.index(listDepth) === list.childCount - 1;
+  const wholeList = fromFirst && (empty || toLast);
+  const nested = listDepth > 0 && head.node(listDepth - 1).type.name === 'listItem';
+  return { inList: true, wholeList, listIndent, nested };
+}
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -18,6 +39,8 @@ declare module '@tiptap/core' {
       indentLess: () => ReturnType;
       indentListMore: () => ReturnType;
       indentListLess: () => ReturnType;
+      indentListForward: () => ReturnType;
+      indentListBackward: () => ReturnType;
       unsetIndent: () => ReturnType;
     };
   }
@@ -35,6 +58,10 @@ function parseIndent(value: string | null): number | null {
 
 export const Indent = Extension.create({
   name: 'indent',
+
+  // >100 so Tab/Shift-Tab beat ListItem's built-in sink/lift — TipTap priority-sorts
+  // after reversing extension order, so equal priority would let ListItem win.
+  priority: 1000,
 
   addOptions() {
     return {
@@ -113,8 +140,47 @@ export const Indent = Extension.create({
       indentLess: () => step(-INDENT_STEP_CM),
       indentListMore: () => stepList(INDENT_STEP_CM),
       indentListLess: () => stepList(-INDENT_STEP_CM),
+      indentListForward: () => ({ state, commands }) => {
+        const ctx = listContext(state);
+        if (!ctx.inList) return false;
+        return ctx.wholeList ? commands.indentListMore() : commands.sinkListItem('listItem');
+      },
+      indentListBackward: () => ({ state, commands }) => {
+        const ctx = listContext(state);
+        if (!ctx.inList) return false;
+        if (ctx.listIndent > 0) return commands.indentListLess();
+        if (ctx.nested) return commands.liftListItem('listItem');
+        return false;
+      },
       unsetIndent: () => ({ commands }) =>
         [...types, ...listTypes].map((type) => commands.resetAttributes(type, 'indent')).some((r) => r),
+    };
+  },
+
+  // In a list: Tab/Shift-Tab call indentListForward/Backward.
+  // Outside a list: Tab inserts \t, Shift-Tab steps paragraph indent.
+  // In a table cell: returns false so Table's own Tab navigates between cells.
+  addKeyboardShortcuts() {
+    const inCell = () => this.editor.isActive('tableCell') || this.editor.isActive('tableHeader');
+    return {
+      Tab: () => {
+        if (inCell()) return false;
+        if (listContext(this.editor.state).inList) {
+          this.editor.commands.indentListForward();
+          return true;
+        }
+        this.editor.commands.insertContent('\t');
+        return true;
+      },
+      'Shift-Tab': () => {
+        if (inCell()) return false;
+        if (listContext(this.editor.state).inList) {
+          this.editor.commands.indentListBackward();
+          return true;
+        }
+        this.editor.commands.indentLess();
+        return true;
+      },
     };
   },
 });
