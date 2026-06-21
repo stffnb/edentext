@@ -147,6 +147,41 @@
   margin-bottom: 0.212cm;
 }
 
+/* Inline, as-character images (image.ts). The span is the node view wrapper; it
+   carries selection chrome and positions the corner resize handles. */
+.paper .tiptap .image-node {
+  position: relative;
+  display: inline-block;
+  /* sit on the text baseline like a tall character, no descender gap */
+  vertical-align: bottom;
+  line-height: 0;
+}
+.paper .tiptap .image-node img {
+  max-width: 100%;
+  height: auto;
+}
+.paper .tiptap .image-node.image-selected img {
+  outline: 2px solid var(--accent, #3b82f6);
+  outline-offset: 1px;
+}
+.paper .tiptap .image-resize-handle {
+  display: none;
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--accent, #3b82f6);
+  border: 1px solid #fff;
+  border-radius: 50%;
+  z-index: 30;
+}
+.paper .tiptap .image-node.image-selected .image-resize-handle {
+  display: block;
+}
+.paper .tiptap .image-resize-nw { top: -5px; left: -5px; cursor: nwse-resize; }
+.paper .tiptap .image-resize-ne { top: -5px; right: -5px; cursor: nesw-resize; }
+.paper .tiptap .image-resize-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.paper .tiptap .image-resize-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+
 /* Tab stops every 1.25cm, matching ODF's default tab interval. */
 .paper .tiptap {
   tab-size: 1.25cm;

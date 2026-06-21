@@ -31,6 +31,7 @@ import { TableView } from './tableView';
 import { TableColumnResize } from './tableColumnResize';
 import { TableRowResize } from './tableRowResize';
 import { TrailingNode } from './trailingNode';
+import { Image } from './image';
 
 export const extensions = [
   Document,
@@ -54,6 +55,9 @@ export const extensions = [
   // Shift+Enter line breaks; round-trips to ODF <text:line-break/> (export/odt.ts
   // replaceHardBreaks, import/odt.ts).
   HardBreak,
+  // Inline, as-character image; round-trips to ODF <draw:frame>/<draw:image>
+  // (export/odt.ts replaceImages/applyImages, import/odt.ts).
+  Image,
   LineHeight,
   ParagraphSpacing,
   Indent,

@@ -38,10 +38,10 @@
 - undo history
 - ODT import / open existing file
 - header/footer
+- Images
 - ...
 
 ### Not yet implemented
-- Images
 - Custom right-click context menu (formatting, cut/copy)
 - Multi-document management
 - PWA / offline support

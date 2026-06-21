@@ -11,7 +11,7 @@
   import SpellContextMenu from './SpellContextMenu.svelte';
   import HeaderFooterLayer from './HeaderFooterLayer.svelte';
   import { saveDocument, loadDocument } from '../storage/autosave';
-  import { applyMarginVars, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
+  import { applyMarginVars, cmToPx, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { applyOrientationVars, type Orientation } from '../storage/pageOrientation';
   import { DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, type TableBreakBand } from './pageBreaks';
@@ -368,6 +368,52 @@
     return Fragment.fromArray(nodes);
   }
 
+  // --- Image insertion (drag-drop / paste); the toolbar button lives in
+  // ToolbarExpanded.svelte. Shared sizing mirrors the export content-width math. ---
+  function imageContentBoxPx(): { maxW: number; maxH: number } {
+    const land = orientation === 'landscape';
+    const wCm = (land ? 29.7 : 21) - pageMargins.left - pageMargins.right;
+    const hCm = (land ? 21 : 29.7) - pageMargins.top - pageMargins.bottom;
+    return { maxW: Math.round(cmToPx(wCm)), maxH: Math.round(cmToPx(hCm)) };
+  }
+
+  function imageFilesFrom(dt: DataTransfer | null): File[] {
+    if (!dt) return [];
+    const out: File[] = [];
+    for (const f of Array.from(dt.files)) if (f.type.startsWith('image/')) out.push(f);
+    if (!out.length && dt.items) {
+      for (const it of Array.from(dt.items)) {
+        if (it.kind === 'file' && it.type.startsWith('image/')) {
+          const f = it.getAsFile();
+          if (f) out.push(f);
+        }
+      }
+    }
+    return out;
+  }
+
+  function insertImageFile(file: File, pos: number | null): void {
+    const ed = editor;
+    if (!ed) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = reader.result as string;
+      const probe = document.createElement('img');
+      probe.onload = () => {
+        let w = probe.naturalWidth || 1;
+        let h = probe.naturalHeight || 1;
+        const { maxW, maxH } = imageContentBoxPx();
+        if (w > maxW) { h = (h * maxW) / w; w = maxW; }
+        if (h > maxH) { w = (w * maxH) / h; h = maxH; }
+        const attrs = { src, alt: file.name, width: Math.round(w), height: Math.round(h) };
+        if (pos == null) ed.chain().focus().setImage(attrs).run();
+        else ed.chain().focus().insertContentAt(pos, { type: 'image', attrs }).run();
+      };
+      probe.src = src;
+    };
+    reader.readAsDataURL(file);
+  }
+
   onMount(() => {
     // Start with empty history lists — loaded content is not an undoable edit.
     resetHistoryLog();
@@ -383,6 +429,23 @@
         attributes: { spellcheck: 'false' },
         handleDOMEvents: {
           contextmenu: (view, event) => openSpellMenu(view, event),
+          drop: (view, event) => {
+            const e = event as DragEvent;
+            const files = imageFilesFrom(e.dataTransfer);
+            if (!files.length) return false;
+            e.preventDefault();
+            const at = view.posAtCoords({ left: e.clientX, top: e.clientY });
+            for (const f of files) insertImageFile(f, at?.pos ?? null);
+            return true;
+          },
+          paste: (view, event) => {
+            const e = event as ClipboardEvent;
+            const files = imageFilesFrom(e.clipboardData);
+            if (!files.length) return false;
+            e.preventDefault();
+            for (const f of files) insertImageFile(f, null);
+            return true;
+          },
         },
         transformPasted(slice, view) {
           const textStyleType = view.state.schema.marks.textStyle;

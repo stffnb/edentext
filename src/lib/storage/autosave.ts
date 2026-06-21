@@ -2,11 +2,26 @@ const STORAGE_KEY = 'odf-editor-doc';
 const DEBOUNCE_MS = 1000;
 
 let timeout: ReturnType<typeof setTimeout> | null = null;
+// localStorage has a ~5 MB quota; embedded images (data-URIs) can exceed it. Warn
+// the user once so a failed autosave isn't silent, and swallow the throw so the
+// debounced timer doesn't surface an unhandled error.
+let quotaWarned = false;
 
 export function saveDocument(json: object): void {
   if (timeout) clearTimeout(timeout);
   timeout = setTimeout(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(json));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(json));
+    } catch (err) {
+      console.error('[autosave] Could not save the document:', err);
+      if (!quotaWarned) {
+        quotaWarned = true;
+        alert(
+          'The document is too large to save automatically (browser storage limit reached). ' +
+            'This usually happens with large embedded images. Save it as an .odt file to keep your work.',
+        );
+      }
+    }
   }, DEBOUNCE_MS);
 }
 

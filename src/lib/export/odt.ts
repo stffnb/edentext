@@ -53,6 +53,21 @@ const PGC = '';
 // each tab for this before odf-kit serializes; applyInlineSentinels → <text:tab/>. U+E003.
 const TAB = '';
 
+// Sentinel wrapping an image's index (IMG{i}IMG) emitted as plain run text by
+// replaceImages, so it rides every odf-kit path (body paragraphs and table cells);
+// applyImages rewrites it to a <draw:frame> in content.xml. U+E004.
+const IMG = '';
+
+const EXT_BY_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/gif': 'gif',
+  'image/svg+xml': 'svg',
+  'image/webp': 'webp',
+  'image/bmp': 'bmp',
+};
+
 // Automatic list styles minted for in-cell lists (see applyCellBlocks). odf-kit's
 // CellBuilder is run-based, so a list inside a cell can't reference a list style it
 // generates for top-level lists — we inject our own, mirroring its buildListStyle.
@@ -135,6 +150,71 @@ function replaceTabs(node: TiptapNode): TiptapNode {
   }
   if (!node.content?.length) return node;
   return { ...node, content: node.content.map(replaceTabs) };
+}
+
+// One embedded picture, collected by replaceImages and emitted by applyImages.
+// bytes is ArrayBuffer-backed to match fflate's zip entry map.
+type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string };
+
+function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+// Decode an `image` node's data-URI src into bytes + geometry. width/height are
+// px @96dpi → cm via round3 (sub-pixel, matches table column widths), so an
+// integer-px image round-trips exactly. Returns null for a non-data/empty src.
+function imageDescriptor(node: TiptapNode, index: number): ImageExport | null {
+  const src = node.attrs?.src;
+  if (typeof src !== 'string' || !src.startsWith('data:')) return null;
+  const m = /^data:([^;,]+)(;[^,]*)?,([\s\S]*)$/.exec(src);
+  if (!m) return null;
+  const mimeType = m[1] || 'image/png';
+  const isB64 = (m[2] ?? '').includes('base64');
+  let bytes: Uint8Array<ArrayBuffer>;
+  try {
+    bytes = isB64 ? base64ToBytes(m[3]) : new Uint8Array(new TextEncoder().encode(decodeURIComponent(m[3])));
+  } catch {
+    return null;
+  }
+  if (!bytes.length) return null;
+  const round3 = (v: number) => Math.round(v * 1000) / 1000;
+  const w = typeof node.attrs?.width === 'number' ? node.attrs.width : 0;
+  const h = typeof node.attrs?.height === 'number' ? node.attrs.height : 0;
+  return {
+    path: `Pictures/image${index + 1}.${EXT_BY_MIME[mimeType] ?? 'png'}`,
+    bytes,
+    mimeType,
+    widthCm: w > 0 ? round3((w * 2.54) / 96) : 0,
+    heightCm: h > 0 ? round3((h * 2.54) / 96) : 0,
+    alt: typeof node.attrs?.alt === 'string' ? node.attrs.alt : '',
+  };
+}
+
+// Replace every inline `image` node with an IMG-sentinel text node and collect its
+// bytes/geometry. Runs before odf-kit serialization so the sentinel rides through
+// both the native paragraph path and our cell path; applyImages resolves it later.
+function replaceImages(node: TiptapNode, images: ImageExport[]): TiptapNode {
+  if (!node.content?.length) return node;
+  const content: TiptapNode[] = [];
+  for (const child of node.content) {
+    if (child.type === 'image') {
+      const desc = imageDescriptor(child, images.length);
+      if (desc) {
+        images.push(desc);
+        content.push({ type: 'text', text: `${IMG}${images.length - 1}${IMG}` });
+      }
+      continue; // invalid image → dropped
+    }
+    content.push(replaceImages(child, images));
+  }
+  return { ...node, content };
+}
+
+function escapeXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // Mirror odf-kit's normalizeLineHeight (content.js): a number is a multiplier
@@ -940,6 +1020,51 @@ function applyInlineSentinels(odtBytes: Uint8Array): Uint8Array {
   return rezipOdt(files);
 }
 
+// One <draw:frame> for an as-character image. Position is purely the text-flow
+// anchor; size is the exact svg geometry, so it round-trips unchanged.
+function imageFrameXml(img: ImageExport, index: number): string {
+  const dims =
+    (img.widthCm ? ` svg:width="${img.widthCm}cm"` : '') +
+    (img.heightCm ? ` svg:height="${img.heightCm}cm"` : '');
+  const title = img.alt ? `<svg:title>${escapeXml(img.alt)}</svg:title>` : '';
+  return (
+    `<draw:frame draw:name="Image${index + 1}" text:anchor-type="as-char" draw:z-index="${index}"${dims}>` +
+    `<draw:image xlink:href="${img.path}"/>${title}</draw:frame>`
+  );
+}
+
+// Resolve image sentinels: swap each IMG{i}IMG for its <draw:frame>, add the
+// binary picture files, and register each in META-INF/manifest.xml. content.xml
+// already declares the draw/svg/xlink namespaces (odf-kit), and rezipOdt re-zips
+// arbitrary binary entries, so no other plumbing is needed.
+function applyImages(odtBytes: Uint8Array, images: ImageExport[]): Uint8Array {
+  if (!images.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  content = content.replace(new RegExp(`${IMG}(\\d+)${IMG}`, 'g'), (_m, idx: string) => {
+    const i = Number(idx);
+    const img = images[i];
+    return img ? imageFrameXml(img, i) : '';
+  });
+  files['content.xml'] = strToU8(content);
+
+  for (const img of images) files[img.path] = img.bytes;
+
+  const manifestBytes = files['META-INF/manifest.xml'];
+  if (manifestBytes) {
+    const entries = images
+      .map(img => `<manifest:file-entry manifest:full-path="${img.path}" manifest:media-type="${img.mimeType}"/>`)
+      .join('');
+    const manifest = strFromU8(manifestBytes).replace('</manifest:manifest>', `${entries}</manifest:manifest>`);
+    files['META-INF/manifest.xml'] = strToU8(manifest);
+  }
+
+  return rezipOdt(files);
+}
+
 // Header/footer input for the export: one single-paragraph doc per zone (or null),
 // the page count snapshot for the stored <text:page-count> value, and the page-edge
 // distances (cm; default HF_DISTANCE_CM) for header (from top) / footer (from bottom).
@@ -953,7 +1078,10 @@ export type HfExport = {
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
 export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null): Promise<Uint8Array> {
-  const raw = replaceTabs(replaceHardBreaks(docJson));
+  // Collect embedded images and swap them for IMG sentinels before serialization;
+  // applyImages resolves the sentinels and writes the Pictures/ + manifest entries.
+  const images: ImageExport[] = [];
+  const raw = replaceImages(replaceTabs(replaceHardBreaks(docJson)), images);
   const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Distance from the page edge to the header (top) / footer (bottom). Becomes the
@@ -1066,7 +1194,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
 
   const cleaned = collapseRunWhitespace(styledRows);
   const withBreaks = applyInlineSentinels(cleaned);
-  const withStyles = rewriteStylesXml(withBreaks, language ?? null);
+  const withImages = applyImages(withBreaks, images);
+  const withStyles = rewriteStylesXml(withImages, language ?? null);
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist);
 }
 

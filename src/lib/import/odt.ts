@@ -2,7 +2,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { DEFAULT_ORDERED_TYPE, orderedTypeFromFormat } from '../editor/orderedListTypes';
-import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
+import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 
@@ -40,7 +40,71 @@ export interface OdtImportResult {
 // match the editor); body/cell paragraphs default to Standard's 0.212cm.
 type BlockKind = 'body' | 'list' | 'cell';
 
-type Ctx = { resolver: StyleResolver; warnings: Set<string> };
+// `files` is the full unzipped archive so image converters can read Pictures/
+// binaries; imageCache dedupes repeated hrefs into one data-URI.
+type Ctx = {
+  resolver: StyleResolver;
+  warnings: Set<string>;
+  files: Record<string, Uint8Array>;
+  imageCache: Map<string, string>;
+};
+
+const MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+};
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = '';
+  const chunk = 0x8000; // chunk so String.fromCharCode doesn't blow the call stack
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+// Read a Pictures/ entry from the archive into a base64 data-URI (mime by extension).
+function loadImageDataUrl(href: string, ctx: Ctx): string | null {
+  const cached = ctx.imageCache.get(href);
+  if (cached) return cached;
+  const bytes = ctx.files[href];
+  if (!bytes) return null;
+  const ext = href.split('.').pop()?.toLowerCase() ?? '';
+  const url = `data:${MIME_BY_EXT[ext] ?? 'image/png'};base64,${bytesToBase64(bytes)}`;
+  ctx.imageCache.set(href, url);
+  return url;
+}
+
+// A <draw:frame><draw:image> → an inline image node. Size comes from the frame's
+// svg geometry (cm → px), so it round-trips unchanged; page-anchored (floating)
+// frames are flattened to inline with a warning.
+function convertFrame(frame: Element, ctx: Ctx): Node | null {
+  const image = frame.getElementsByTagNameNS(NS.draw, 'image')[0];
+  if (!image) return null;
+  const href = (image.getAttributeNS(NS.xlink, 'href') ?? '').replace(/^\.\//, '');
+  if (!href) return null;
+  const src = loadImageDataUrl(href, ctx);
+  if (!src) {
+    ctx.warnings.add('Some images could not be read and were skipped');
+    return null;
+  }
+  if (frame.getAttributeNS(NS.text, 'anchor-type') === 'page') {
+    ctx.warnings.add('Floating images were placed inline (position may differ)');
+  }
+  const attrs: Record<string, unknown> = { src };
+  const wCm = lengthToCm(frame.getAttributeNS(NS.svg, 'width'));
+  const hCm = lengthToCm(frame.getAttributeNS(NS.svg, 'height'));
+  if (wCm != null) attrs.width = Math.round(cmToPx(wCm));
+  if (hCm != null) attrs.height = Math.round(cmToPx(hCm));
+  const title = frame.getElementsByTagNameNS(NS.svg, 'title')[0]?.textContent;
+  if (title) attrs.alt = title;
+  return { type: 'image', attrs };
+}
 
 // ---- editor defaults to suppress on import -----------------------------------
 
@@ -89,7 +153,7 @@ export function importOdt(bytes: Uint8Array): OdtImportResult {
   const body = contentDoc.getElementsByTagNameNS(NS.office, 'text')[0];
   if (!body) throw new Error('Not a text document (no office:text body).');
 
-  const ctx: Ctx = { resolver, warnings };
+  const ctx: Ctx = { resolver, warnings, files, imageCache: new Map() };
   const blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 
@@ -199,8 +263,12 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind): Node[] {
         ctx.warnings.add('Nested tables were flattened to paragraphs');
         out.push(...flattenTable(el, ctx));
       }
+    } else if (el.namespaceURI === NS.draw && el.localName === 'frame') {
+      // A frame at block level (rare) → wrap the inline image in a paragraph.
+      const img = convertFrame(el, ctx);
+      if (img) out.push({ type: 'paragraph', content: [img] });
     } else if (el.namespaceURI === NS.draw) {
-      ctx.warnings.add('Images and drawings were removed');
+      ctx.warnings.add('Drawings were removed');
     }
   }
   return out;
@@ -359,8 +427,13 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
             continue;
         }
       }
+      if (e.namespaceURI === NS.draw && e.localName === 'frame') {
+        const img = convertFrame(e, ctx);
+        if (img) out.push(img);
+        continue;
+      }
       if (e.namespaceURI === NS.draw) {
-        ctx.warnings.add('Images and drawings were removed');
+        ctx.warnings.add('Drawings were removed');
         continue;
       }
       if (e.namespaceURI === NS.office && e.localName === 'annotation') {

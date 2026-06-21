@@ -9,7 +9,7 @@
     queryLocalFontsIfAllowed,
     supportsLocalFontAccess,
   } from './fontDetect';
-  import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
+  import { DEFAULT_MARGINS, cmToPx, type PageMargins } from '../storage/pageMargins';
   import type { Orientation } from '../storage/pageOrientation';
   import { DEFAULT_HF_DISTANCES, clampHfDistance, type HfDistances } from '../storage/headerFooter';
   import { listContext } from './indent';
@@ -650,6 +650,40 @@
     editor.chain().focus().setTextSelection(range).insertTable({ rows, cols, withHeaderRow: false }).run();
   }
 
+  // --- Image insertion (image.ts) ---
+  let imageInput = $state<HTMLInputElement | null>(null);
+
+  // The page text box in px, so an inserted image never starts wider/taller than
+  // one page (mirrors export's content-width math; A4 dims swap with orientation).
+  function contentBoxPx(): { maxW: number; maxH: number } {
+    const land = pageOrientation === 'landscape';
+    const wCm = (land ? 29.7 : 21) - pageMargins.left - pageMargins.right;
+    const hCm = (land ? 21 : 29.7) - pageMargins.top - pageMargins.bottom;
+    return { maxW: Math.round(cmToPx(wCm)), maxH: Math.round(cmToPx(hCm)) };
+  }
+
+  function onImageFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // allow re-selecting the same file
+    if (!file || !editor || hfActive) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = reader.result as string;
+      const probe = document.createElement('img');
+      probe.onload = () => {
+        let w = probe.naturalWidth || 1;
+        let h = probe.naturalHeight || 1;
+        const { maxW, maxH } = contentBoxPx();
+        if (w > maxW) { h = (h * maxW) / w; w = maxW; }
+        if (h > maxH) { w = (w * maxH) / h; h = maxH; }
+        editor!.chain().focus().setImage({ src, alt: file.name, width: Math.round(w), height: Math.round(h) }).run();
+      };
+      probe.src = src;
+    };
+    reader.readAsDataURL(file);
+  }
+
   // --- Indent (Einzug) ---
   // In a list, step the list point one level via indentListForward/Backward (the same
   // commands the Tab keymap uses — see indent.ts); outside a list, step the paragraph's
@@ -1079,6 +1113,25 @@
         bind:open={tableOpen}
         onOpen={onTablePickerOpen}
         onInsert={insertTable}
+      />
+      <button
+        onclick={() => imageInput?.click()}
+        disabled={!!hfActive}
+        title={hfActive ? 'Images are not available in headers/footers' : 'Insert image'}
+        aria-label="Insert image"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" />
+          <circle cx="5.3" cy="6" r="1.2" fill="currentColor" />
+          <path d="M2 12l3.7-3.6 2.4 2.4 2.8-2.8L14 11.5" stroke="currentColor" stroke-linejoin="round" />
+        </svg>
+      </button>
+      <input
+        bind:this={imageInput}
+        type="file"
+        accept="image/*"
+        style="display:none"
+        onchange={onImageFile}
       />
     </div>
 
