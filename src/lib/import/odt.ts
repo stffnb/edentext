@@ -102,6 +102,13 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
   if (hCm != null) attrs.height = Math.round(cmToPx(hCm));
   const title = frame.getElementsByTagNameNS(NS.svg, 'title')[0]?.textContent;
   if (title) attrs.alt = title;
+  // draw:transform rotate() is CCW radians; the editor stores CW degrees.
+  const transform = frame.getAttributeNS(NS.draw, 'transform');
+  const rot = transform && /rotate\s*\(\s*(-?[\d.eE+]+)\s*\)/.exec(transform);
+  if (rot) {
+    const deg = ((Math.round((-parseFloat(rot[1]) * 180) / Math.PI) % 360) + 360) % 360;
+    if (deg) attrs.rotation = deg;
+  }
   return { type: 'image', attrs };
 }
 

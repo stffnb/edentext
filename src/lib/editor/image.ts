@@ -4,23 +4,48 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { dropCursor } from '@tiptap/pm/dropcursor';
 
 // Inline, as-character image (Word's "in line with text"). width/height are
-// unscaled doc px @96dpi (like tableRow.ts rowHeight); export converts to cm and
-// back, so size round-trips exactly. The node view adds aspect-locked resize handles.
+// unscaled doc px @96dpi (like tableRow.ts rowHeight); rotation is CW degrees.
+// Export converts to cm + an ODF draw:transform, so size/rotation round-trip exactly.
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     image: {
-      setImage: (attrs: { src: string; alt?: string; width?: number | null; height?: number | null }) => ReturnType;
+      setImage: (attrs: { src: string; alt?: string; width?: number | null; height?: number | null; rotation?: number }) => ReturnType;
     };
   }
 }
 
 const MIN_SIZE_PX = 24;
 
+// Corners keep aspect (Word-style); edges (n/s/e/w) change one dimension only.
+const HANDLES: { k: string; x: -1 | 0 | 1; y: -1 | 0 | 1; aspect: boolean }[] = [
+  { k: 'nw', x: -1, y: -1, aspect: true },
+  { k: 'n', x: 0, y: -1, aspect: false },
+  { k: 'ne', x: 1, y: -1, aspect: true },
+  { k: 'e', x: 1, y: 0, aspect: false },
+  { k: 'se', x: 1, y: 1, aspect: true },
+  { k: 's', x: 0, y: 1, aspect: false },
+  { k: 'sw', x: -1, y: 1, aspect: true },
+  { k: 'w', x: -1, y: 0, aspect: false },
+];
+
 function parsePx(value: string | null): number | null {
   if (!value) return null;
   const n = parseFloat(value);
   return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+// The page text height in px, capping how tall an image can be stretched. Read live
+// from the :root vars the editor maintains (orientation/margins change them).
+function pageContentHeightPx(): number {
+  const cs = getComputedStyle(document.documentElement);
+  const h =
+    parseFloat(cs.getPropertyValue('--user-page-height')) -
+    parseFloat(cs.getPropertyValue('--user-margin-top')) -
+    parseFloat(cs.getPropertyValue('--user-margin-bottom'));
+  return h > 0 ? h : 4000;
 }
 
 export const Image = Node.create({
@@ -35,8 +60,8 @@ export const Image = Node.create({
     return {
       src: { default: null },
       alt: { default: '' },
-      // px @96dpi; rendered as inline style (not width/height attrs) so the
-      // value stays in one place for the node view to drive.
+      // px @96dpi and CW degrees; kept off the width/height attrs (rendered via
+      // inline style / data-rotation) so one place drives the node view.
       width: {
         default: null,
         parseHTML: el => parsePx(el.getAttribute('width') ?? (el as HTMLElement).style.width),
@@ -45,6 +70,11 @@ export const Image = Node.create({
       height: {
         default: null,
         parseHTML: el => parsePx(el.getAttribute('height') ?? (el as HTMLElement).style.height),
+        renderHTML: () => ({}),
+      },
+      rotation: {
+        default: 0,
+        parseHTML: el => parsePx((el as HTMLElement).getAttribute('data-rotation')) ?? 0,
         renderHTML: () => ({}),
       },
     };
@@ -57,8 +87,13 @@ export const Image = Node.create({
   renderHTML({ HTMLAttributes, node }) {
     const w = node.attrs.width as number | null;
     const h = node.attrs.height as number | null;
-    const style = [w ? `width:${w}px` : '', h ? `height:${h}px` : ''].filter(Boolean).join(';');
-    return ['img', mergeAttributes(HTMLAttributes, style ? { style } : {})];
+    const rot = (node.attrs.rotation as number) || 0;
+    const style = [
+      w ? `width:${w}px` : '',
+      h ? `height:${h}px` : '',
+      rot ? `transform:rotate(${rot}deg)` : '',
+    ].filter(Boolean).join(';');
+    return ['img', mergeAttributes(HTMLAttributes, { ...(style ? { style } : {}), ...(rot ? { 'data-rotation': String(rot) } : {}) })];
   },
 
   addCommands() {
@@ -81,12 +116,14 @@ export const Image = Node.create({
   },
 });
 
-// Node view: <img> wrapped in an inline-block span with four corner handles shown
-// while the node is selected. Mirrors the zoom trick from tableRowResize.ts
-// (offset size is unscaled, getBoundingClientRect is scaled → ratio is the zoom).
+// Node view: a bounding-box wrapper (reserves the rotated footprint for text flow)
+// holds a centered, rotated "rotor" with the <img>, eight resize handles (corners
+// aspect-locked, edges single-axis) and a rotate grip — all rotating with the image.
 class ImageView {
   dom: HTMLElement;
+  private rotor: HTMLElement;
   private img: HTMLImageElement;
+  private badge: HTMLElement;
   private node: PMNode;
   private editor: Editor;
   private getPos: () => number;
@@ -99,79 +136,180 @@ class ImageView {
     this.dom = document.createElement('span');
     this.dom.className = 'image-node';
 
+    this.rotor = document.createElement('span');
+    this.rotor.className = 'image-rotor';
+
     this.img = document.createElement('img');
     this.img.src = (node.attrs.src as string) ?? '';
     this.img.alt = (node.attrs.alt as string) ?? '';
-    this.applySize();
-    this.dom.appendChild(this.img);
+    // Pasted/HTML images may arrive without dimensions; adopt their natural size
+    // (capped to the text column) so every image is explicitly sized.
+    this.img.onload = () => this.adoptNaturalSize();
+    this.rotor.appendChild(this.img);
 
-    for (const corner of ['nw', 'ne', 'sw', 'se'] as const) {
-      const handle = document.createElement('span');
-      handle.className = `image-resize-handle image-resize-${corner}`;
-      handle.addEventListener('mousedown', e => this.startResize(e as MouseEvent, corner));
-      this.dom.appendChild(handle);
+    for (const cfg of HANDLES) {
+      const h = document.createElement('span');
+      h.className = `image-resize-handle image-resize-${cfg.k}`;
+      h.addEventListener('mousedown', e => this.startResize(e as MouseEvent, cfg));
+      this.rotor.appendChild(h);
     }
+    const rot = document.createElement('span');
+    rot.className = 'image-rotate-handle';
+    rot.addEventListener('mousedown', e => this.startRotate(e as MouseEvent));
+    this.rotor.appendChild(rot);
+
+    this.dom.appendChild(this.rotor);
+
+    // Live "Width … × Height …" readout shown while resizing (on the axis-aligned
+    // wrapper so it stays upright even when the image is rotated).
+    this.badge = document.createElement('span');
+    this.badge.className = 'image-size-badge';
+    this.dom.appendChild(this.badge);
+
+    this.applyLayout(this.attrW(), this.attrH(), this.attrRot());
   }
 
-  private applySize(): void {
-    const w = this.node.attrs.width as number | null;
-    const h = this.node.attrs.height as number | null;
-    this.img.style.width = w ? `${w}px` : '';
-    this.img.style.height = h ? `${h}px` : '';
+  private showBadge(w: number, h: number): void {
+    const cm = (px: number) => ((px * 2.54) / 96).toFixed(2);
+    this.badge.textContent = `Width ${cm(w)} cm × Height ${cm(h)} cm`;
+    this.badge.style.display = 'block';
   }
 
-  private startResize(event: MouseEvent, corner: 'nw' | 'ne' | 'sw' | 'se'): void {
+  private attrW(): number | null { const w = this.node.attrs.width; return typeof w === 'number' ? w : null; }
+  private attrH(): number | null { const h = this.node.attrs.height; return typeof h === 'number' ? h : null; }
+  private attrRot(): number { return (this.node.attrs.rotation as number) || 0; }
+
+  // Size the rotor to w×h, rotate it about its centre, and grow the axis-aligned
+  // wrapper to the rotated bounding box so the line reserves the right space.
+  private applyLayout(w: number | null, h: number | null, deg: number): void {
+    if (w && h) {
+      this.rotor.style.width = `${w}px`;
+      this.rotor.style.height = `${h}px`;
+      const rad = (deg * Math.PI) / 180;
+      const bw = Math.abs(w * Math.cos(rad)) + Math.abs(h * Math.sin(rad));
+      const bh = Math.abs(w * Math.sin(rad)) + Math.abs(h * Math.cos(rad));
+      this.dom.style.width = `${bw}px`;
+      this.dom.style.height = `${bh}px`;
+    } else {
+      this.rotor.style.width = '';
+      this.rotor.style.height = '';
+      this.dom.style.width = '';
+      this.dom.style.height = '';
+    }
+    this.rotor.style.transform = `translate(-50%, -50%) rotate(${deg}deg)`;
+  }
+
+  private adoptNaturalSize(): void {
+    if (this.attrW() != null && this.attrH() != null) return;
+    const nw = this.img.naturalWidth;
+    const nh = this.img.naturalHeight;
+    if (!nw || !nh) return;
+    const maxW = this.boxMaxWidth();
+    let w = nw;
+    let h = nh;
+    if (w > maxW) { h = Math.round((h * maxW) / w); w = maxW; }
+    this.commit({ width: Math.round(w), height: Math.round(h) });
+  }
+
+  // Largest width an image may take: the containing cell, else the page text column.
+  private boxMaxWidth(): number {
+    const box = (this.dom.closest('td,th') ?? this.dom.closest('.tiptap')) as HTMLElement | null;
+    if (!box) return 10000;
+    const cs = getComputedStyle(box);
+    const w = box.clientWidth - parseFloat(cs.paddingLeft || '0') - parseFloat(cs.paddingRight || '0');
+    return Math.max(MIN_SIZE_PX, w || 10000);
+  }
+
+  private commit(attrs: Record<string, unknown>): void {
+    const pos = this.getPos();
+    if (typeof pos !== 'number') return;
+    this.editor.view.dispatch(this.editor.state.tr.setNodeMarkup(pos, undefined, { ...this.node.attrs, ...attrs }));
+  }
+
+  private startResize(event: MouseEvent, cfg: typeof HANDLES[number]): void {
     event.preventDefault();
     event.stopPropagation();
     if (!this.editor.isEditable) return;
 
-    const startX = event.clientX;
-    const startW = this.img.offsetWidth;
-    const startH = this.img.offsetHeight;
+    const startW = this.rotor.offsetWidth;
+    const startH = this.rotor.offsetHeight;
     if (!startW || !startH) return;
     const aspect = startW / startH;
-    const zoom = this.img.getBoundingClientRect().width / startW || 1;
-    // Left-side corners grow when dragged left; right-side corners when dragged right.
-    const dirX = corner === 'ne' || corner === 'se' ? 1 : -1;
-    // Never wider than the containing cell, or the page text column outside tables.
-    // clientWidth/padding are unscaled layout px, matching our doc-px sizing.
-    const box = (this.dom.closest('td,th') ?? this.dom.closest('.tiptap')) as HTMLElement | null;
-    let maxW = startW;
-    if (box) {
-      const cs = getComputedStyle(box);
-      maxW = box.clientWidth - parseFloat(cs.paddingLeft || '0') - parseFloat(cs.paddingRight || '0');
-    }
-    maxW = Math.max(MIN_SIZE_PX, maxW || startW);
+    const deg = this.attrRot();
+    const th = (deg * Math.PI) / 180;
+    const cosT = Math.cos(th);
+    const sinT = Math.sin(th);
+    // The wrapper is axis-aligned, so its scaled/unscaled width ratio is the zoom.
+    const zoom = this.dom.getBoundingClientRect().width / this.dom.offsetWidth || 1;
+    const maxW = this.boxMaxWidth();
+    const maxH = pageContentHeightPx();
+    const sx = event.clientX;
+    const sy = event.clientY;
     const win = this.dom.ownerDocument.defaultView ?? window;
-
     let lastW = startW;
     let lastH = startH;
     let moved = false;
 
     const move = (e: MouseEvent): void => {
-      if (!e.buttons) {
-        finish();
-        return;
+      if (!e.buttons) { finish(); return; }
+      // Un-rotate the screen delta onto the image's own axes so handles track the
+      // pointer at any rotation.
+      const dx = (e.clientX - sx) / zoom;
+      const dy = (e.clientY - sy) / zoom;
+      const lx = dx * cosT + dy * sinT;
+      const ly = -dx * sinT + dy * cosT;
+      if (cfg.aspect) {
+        let w = clamp(startW + cfg.x * lx, MIN_SIZE_PX, maxW);
+        let h = w / aspect;
+        if (h > maxH) { h = maxH; w = h * aspect; }
+        lastW = Math.round(w);
+        lastH = Math.round(h);
+      } else {
+        if (cfg.x) lastW = Math.round(clamp(startW + cfg.x * lx, MIN_SIZE_PX, maxW));
+        if (cfg.y) lastH = Math.round(clamp(startH + cfg.y * ly, MIN_SIZE_PX, maxH));
       }
-      const dx = ((e.clientX - startX) / zoom) * dirX;
-      lastW = Math.max(MIN_SIZE_PX, Math.min(maxW, Math.round(startW + dx)));
-      lastH = Math.max(MIN_SIZE_PX, Math.round(lastW / aspect));
       moved = true;
-      this.img.style.width = `${lastW}px`;
-      this.img.style.height = `${lastH}px`;
+      this.applyLayout(lastW, lastH, deg);
+      this.showBadge(lastW, lastH);
     };
-
     const finish = (): void => {
       win.removeEventListener('mousemove', move);
       win.removeEventListener('mouseup', finish);
-      if (!moved) return;
-      const pos = this.getPos();
-      if (typeof pos !== 'number') return;
-      this.editor.view.dispatch(
-        this.editor.state.tr.setNodeMarkup(pos, undefined, { ...this.node.attrs, width: lastW, height: lastH }),
-      );
+      this.badge.style.display = 'none';
+      if (moved) this.commit({ width: lastW, height: lastH });
     };
+    win.addEventListener('mousemove', move);
+    win.addEventListener('mouseup', finish);
+  }
 
+  private startRotate(event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!this.editor.isEditable) return;
+
+    const w = this.rotor.offsetWidth;
+    const h = this.rotor.offsetHeight;
+    const rect = this.dom.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const win = this.dom.ownerDocument.defaultView ?? window;
+    let lastDeg = this.attrRot();
+    let moved = false;
+
+    const move = (e: MouseEvent): void => {
+      if (!e.buttons) { finish(); return; }
+      // Handle sits above centre, so 0° is straight up; Shift snaps to 15°.
+      let ang = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI + 90;
+      if (e.shiftKey) ang = Math.round(ang / 15) * 15;
+      lastDeg = ((Math.round(ang) % 360) + 360) % 360;
+      moved = true;
+      this.applyLayout(w, h, lastDeg);
+    };
+    const finish = (): void => {
+      win.removeEventListener('mousemove', move);
+      win.removeEventListener('mouseup', finish);
+      if (moved) this.commit({ rotation: lastDeg });
+    };
     win.addEventListener('mousemove', move);
     win.addEventListener('mouseup', finish);
   }
@@ -182,7 +320,7 @@ class ImageView {
     const src = (node.attrs.src as string) ?? '';
     if (this.img.getAttribute('src') !== src) this.img.src = src;
     this.img.alt = (node.attrs.alt as string) ?? '';
-    this.applySize();
+    this.applyLayout(this.attrW(), this.attrH(), this.attrRot());
     return true;
   }
 
@@ -194,16 +332,15 @@ class ImageView {
     this.dom.classList.remove('image-selected');
   }
 
-  // Atom node: no ProseMirror-managed content. Ignore the <img> load and our own
-  // size/handle pokes so PM doesn't try to re-read the DOM.
   ignoreMutation(): boolean {
     return true;
   }
 
-  // Keep ProseMirror out of resize-handle interactions so the drag isn't hijacked
-  // into a node drag or selection change.
+  // Keep ProseMirror out of handle interactions so a drag isn't hijacked into a
+  // node drag or selection change.
   stopEvent(event: Event): boolean {
     const t = event.target as HTMLElement | null;
-    return event.type.startsWith('mouse') && !!t?.classList?.contains('image-resize-handle');
+    if (!event.type.startsWith('mouse')) return false;
+    return !!t?.classList?.contains('image-resize-handle') || !!t?.classList?.contains('image-rotate-handle');
   }
 }

@@ -152,8 +152,8 @@ function replaceTabs(node: TiptapNode): TiptapNode {
 }
 
 // One embedded picture, collected by replaceImages and emitted by applyImages.
-// bytes is ArrayBuffer-backed to match fflate's zip entry map.
-type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string };
+// bytes is ArrayBuffer-backed to match fflate's zip entry map. rotationDeg is CW.
+type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number };
 
 function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
@@ -189,6 +189,7 @@ function imageDescriptor(node: TiptapNode, index: number): ImageExport | null {
     widthCm: w > 0 ? round3((w * 2.54) / 96) : 0,
     heightCm: h > 0 ? round3((h * 2.54) / 96) : 0,
     alt: typeof node.attrs?.alt === 'string' ? node.attrs.alt : '',
+    rotationDeg: typeof node.attrs?.rotation === 'number' ? node.attrs.rotation : 0,
   };
 }
 
@@ -1016,15 +1017,30 @@ function applyInlineSentinels(odtBytes: Uint8Array): Uint8Array {
   return rezipOdt(files);
 }
 
-// One <draw:frame> for an as-character image. Position is purely the text-flow
-// anchor; size is the exact svg geometry, so it round-trips unchanged.
+// ODF draw:transform for a rotated frame. ODF rotate() is CCW radians (ours is CW
+// degrees) about the origin, so the translate re-centres it on the unrotated box.
+function imageTransform(img: ImageExport): string {
+  if (!img.rotationDeg || !img.widthCm || !img.heightCm) return '';
+  const a = (-img.rotationDeg * Math.PI) / 180;
+  const cw = img.widthCm / 2;
+  const ch = img.heightCm / 2;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  const r3 = (v: number) => Math.round(v * 1000) / 1000;
+  const tx = r3(cos * cw - sin * ch - cw);
+  const ty = r3(sin * cw + cos * ch - ch);
+  return ` draw:transform="rotate (${a.toFixed(6)}) translate (${tx}cm ${ty}cm)"`;
+}
+
+// One <draw:frame> for an as-character image. Position is the text-flow anchor; size
+// is the exact svg geometry and rotation the draw:transform, so both round-trip.
 function imageFrameXml(img: ImageExport, index: number): string {
   const dims =
     (img.widthCm ? ` svg:width="${img.widthCm}cm"` : '') +
     (img.heightCm ? ` svg:height="${img.heightCm}cm"` : '');
   const title = img.alt ? `<svg:title>${escapeXml(img.alt)}</svg:title>` : '';
   return (
-    `<draw:frame draw:name="Image${index + 1}" text:anchor-type="as-char" draw:z-index="${index}"${dims}>` +
+    `<draw:frame draw:name="Image${index + 1}" text:anchor-type="as-char" draw:z-index="${index}"${dims}${imageTransform(img)}>` +
     `<draw:image xlink:href="${img.path}"/>${title}</draw:frame>`
   );
 }
