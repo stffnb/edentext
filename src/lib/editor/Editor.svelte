@@ -8,6 +8,9 @@
   import { spellErrorAt } from './spellCheck';
   import { spellController } from '../spell/controller';
   import TableToolbar from './TableToolbar.svelte';
+  import ImageToolbar from './ImageToolbar.svelte';
+  import type { WrapMode } from './image';
+  import { NodeSelection } from '@tiptap/pm/state';
   import SpellContextMenu from './SpellContextMenu.svelte';
   import HeaderFooterLayer from './HeaderFooterLayer.svelte';
   import { saveDocument, loadDocument } from '../storage/autosave';
@@ -209,6 +212,32 @@
     tableUi = { visible: true, top, left };
   }
 
+  // --- Floating image wrap toolbar ---
+  // Shown when a single image node is selected; positioned just above it.
+  let imageUi = $state<{ visible: boolean; top: number; left: number; wrap: WrapMode }>({ visible: false, top: 0, left: 0, wrap: 'inline' });
+
+  function recomputeImageUi() {
+    const ed = editor;
+    if (!ed || !editorContainer) {
+      if (imageUi.visible) imageUi = { ...imageUi, visible: false };
+      return;
+    }
+    const sel = ed.state.selection;
+    const dom = sel instanceof NodeSelection && sel.node.type.name === 'image' ? ed.view.nodeDOM(sel.from) : null;
+    if (!(dom instanceof HTMLElement)) {
+      if (imageUi.visible) imageUi = { ...imageUi, visible: false };
+      return;
+    }
+    const r = dom.getBoundingClientRect();
+    const cRect = editorContainer.getBoundingClientRect();
+    imageUi = {
+      visible: true,
+      top: r.top - cRect.top + editorContainer.scrollTop,
+      left: r.left - cRect.left + editorContainer.scrollLeft,
+      wrap: ((sel as NodeSelection).node.attrs.wrap as WrapMode) || 'inline',
+    };
+  }
+
   // Table page-break overlay: pageBreaks.ts reports (via pm-pagecount) where a continuous
   // table box crosses a page boundary, each as a band in doc px. Rendered in .band-layer
   // inside the scaled .paper — a mask hides borders in the margins, a stripe is the gap.
@@ -259,6 +288,7 @@
     cancelAnimationFrame(tableUiRaf);
     tableUiRaf = requestAnimationFrame(() => {
       recomputeTableUi();
+      recomputeImageUi();
       recomputeBands();
     });
   }
@@ -552,6 +582,9 @@
   </div>
   {#if tableUi.visible}
     <TableToolbar {editor} top={tableUi.top} left={tableUi.left} />
+  {/if}
+  {#if imageUi.visible}
+    <ImageToolbar {editor} top={imageUi.top} left={imageUi.left} wrap={imageUi.wrap} />
   {/if}
   {#if spellMenu.visible}
     <SpellContextMenu

@@ -155,6 +155,11 @@
   vertical-align: bottom;
   line-height: 0;
 }
+/* While selected, lift the node (and its handles) above the header/footer layer
+   (z-index 22) so a rotate/resize handle poking into a margin stays grabbable. */
+.paper .tiptap .image-node.image-selected {
+  z-index: 25;
+}
 .paper .tiptap .image-rotor {
   position: absolute;
   left: 50%;

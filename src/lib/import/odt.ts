@@ -79,9 +79,18 @@ function loadImageDataUrl(href: string, ctx: Ctx): string | null {
   return url;
 }
 
-// A <draw:frame><draw:image> → an inline image node. Size comes from the frame's
-// svg geometry (cm → px), so it round-trips unchanged; page-anchored (floating)
-// frames are flattened to inline with a warning.
+// ODF style:wrap names the side TEXT flows on (inverse of the image side); pick a
+// side from horizontal-pos when the value doesn't name one (parallel/dynamic/…).
+function wrapModeFromOdf(wrapVal: string | undefined, hpos: string | undefined): 'left' | 'right' | 'topBottom' {
+  if (wrapVal === 'none') return 'topBottom';
+  if (wrapVal === 'left') return 'right'; // text on left ⇒ image on the right
+  if (wrapVal === 'right') return 'left'; // text on right ⇒ image on the left
+  return hpos && /right/.test(hpos) ? 'right' : 'left';
+}
+
+// A <draw:frame><draw:image> → an image node. Size comes from the frame's svg
+// geometry (cm → px). as-char frames stay inline; paragraph/page-anchored frames
+// with a wrap become floating (wrap mode + svg:x/svg:y position).
 function convertFrame(frame: Element, ctx: Ctx): Node | null {
   const image = frame.getElementsByTagNameNS(NS.draw, 'image')[0];
   if (!image) return null;
@@ -91,9 +100,6 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
   if (!src) {
     ctx.warnings.add('Some images could not be read and were skipped');
     return null;
-  }
-  if (frame.getAttributeNS(NS.text, 'anchor-type') === 'page') {
-    ctx.warnings.add('Floating images were placed inline (position may differ)');
   }
   const attrs: Record<string, unknown> = { src };
   const wCm = lengthToCm(frame.getAttributeNS(NS.svg, 'width'));
@@ -108,6 +114,13 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
   if (rot) {
     const deg = ((Math.round((-parseFloat(rot[1]) * 180) / Math.PI) % 360) + 360) % 360;
     if (deg) attrs.rotation = deg;
+  }
+  // Floating frame → wrap mode (side). (as-char stays inline.)
+  const anchor = frame.getAttributeNS(NS.text, 'anchor-type');
+  const gp = ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
+  const wrapVal = gp['style:wrap'];
+  if ((anchor && anchor !== 'as-char') || wrapVal) {
+    attrs.wrap = wrapModeFromOdf(wrapVal, gp['style:horizontal-pos']);
   }
   return { type: 'image', attrs };
 }

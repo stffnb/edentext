@@ -1,16 +1,22 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { NodeSelection } from '@tiptap/pm/state';
 import { dropCursor } from '@tiptap/pm/dropcursor';
 
-// Inline, as-character image (Word's "in line with text"). width/height are
-// unscaled doc px @96dpi (like tableRow.ts rowHeight); rotation is CW degrees.
-// Export converts to cm + an ODF draw:transform, so size/rotation round-trip exactly.
+// Inline, as-character image, or a floating text-wrapped frame (wrap = flow mode);
+// width/height are doc px @96dpi, rotation CW degrees. Export → cm + ODF
+// draw:transform/style:wrap. A floating image floats at its anchor; drag re-anchors it.
+
+// 'inline' = as-character; 'left'/'right' = square wrap (text on the open side);
+// 'topBottom' = no side wrap (text only above/below).
+export type WrapMode = 'inline' | 'left' | 'right' | 'topBottom';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     image: {
-      setImage: (attrs: { src: string; alt?: string; width?: number | null; height?: number | null; rotation?: number }) => ReturnType;
+      setImage: (attrs: { src: string; alt?: string; width?: number | null; height?: number | null; rotation?: number; wrap?: WrapMode }) => ReturnType;
+      setImageWrap: (wrap: WrapMode) => ReturnType;
     };
   }
 }
@@ -77,6 +83,11 @@ export const Image = Node.create({
         parseHTML: el => parsePx((el as HTMLElement).getAttribute('data-rotation')) ?? 0,
         renderHTML: () => ({}),
       },
+      wrap: {
+        default: 'inline',
+        parseHTML: el => (el as HTMLElement).getAttribute('data-wrap') ?? 'inline',
+        renderHTML: () => ({}),
+      },
     };
   },
 
@@ -88,12 +99,17 @@ export const Image = Node.create({
     const w = node.attrs.width as number | null;
     const h = node.attrs.height as number | null;
     const rot = (node.attrs.rotation as number) || 0;
+    const wrap = (node.attrs.wrap as WrapMode) || 'inline';
     const style = [
       w ? `width:${w}px` : '',
       h ? `height:${h}px` : '',
       rot ? `transform:rotate(${rot}deg)` : '',
     ].filter(Boolean).join(';');
-    return ['img', mergeAttributes(HTMLAttributes, { ...(style ? { style } : {}), ...(rot ? { 'data-rotation': String(rot) } : {}) })];
+    return ['img', mergeAttributes(HTMLAttributes, {
+      ...(style ? { style } : {}),
+      ...(rot ? { 'data-rotation': String(rot) } : {}),
+      ...(wrap !== 'inline' ? { 'data-wrap': wrap } : {}),
+    })];
   },
 
   addCommands() {
@@ -102,6 +118,16 @@ export const Image = Node.create({
         attrs =>
         ({ commands }) =>
           commands.insertContent({ type: this.name, attrs }),
+
+      // Set the wrap mode on the selected image.
+      setImageWrap:
+        (wrap: WrapMode) =>
+        ({ state, dispatch }) => {
+          const sel = state.selection;
+          if (!(sel instanceof NodeSelection) || sel.node.type.name !== this.name) return false;
+          if (dispatch) dispatch(state.tr.setNodeMarkup(sel.from, undefined, { ...sel.node.attrs, wrap }));
+          return true;
+        },
     };
   },
 
@@ -167,6 +193,7 @@ class ImageView {
     this.dom.appendChild(this.badge);
 
     this.applyLayout(this.attrW(), this.attrH(), this.attrRot());
+    this.applyWrap();
   }
 
   private showBadge(w: number, h: number): void {
@@ -178,6 +205,7 @@ class ImageView {
   private attrW(): number | null { const w = this.node.attrs.width; return typeof w === 'number' ? w : null; }
   private attrH(): number | null { const h = this.node.attrs.height; return typeof h === 'number' ? h : null; }
   private attrRot(): number { return (this.node.attrs.rotation as number) || 0; }
+  private attrWrap(): WrapMode { const w = this.node.attrs.wrap; return w === 'left' || w === 'right' || w === 'topBottom' ? w : 'inline'; }
 
   // Size the rotor to w×h, rotate it about its centre, and grow the axis-aligned
   // wrapper to the rotated bounding box so the line reserves the right space.
@@ -197,6 +225,33 @@ class ImageView {
       this.dom.style.height = '';
     }
     this.rotor.style.transform = `translate(-50%, -50%) rotate(${deg}deg)`;
+  }
+
+  // Float the wrapper per wrap mode so text flows beside it at its anchor paragraph
+  // (left/right) or only above/below it (topBottom). Dragging re-anchors the image
+  // via ProseMirror's native node move, so it always floats where the text actually is.
+  private applyWrap(): void {
+    const d = this.dom;
+    const wrap = this.attrWrap();
+    d.style.float = '';
+    d.style.display = '';
+    d.style.clear = '';
+    d.style.margin = '';
+    if (wrap === 'left') {
+      d.style.float = 'left';
+      d.style.margin = '0 14px 6px 0';
+    } else if (wrap === 'right') {
+      d.style.float = 'right';
+      d.style.margin = '0 0 6px 14px';
+    } else if (wrap === 'topBottom') {
+      // A full-width float (not display:block — which on an inline atom node view
+      // disrupts ProseMirror's view + page-break spacer widgets): text can only flow
+      // above/below it. applyLayout reset the width to the box; widen to the column here.
+      d.style.float = 'left';
+      d.style.clear = 'both';
+      d.style.width = '100%';
+      d.style.margin = '6px 0';
+    }
   }
 
   private adoptNaturalSize(): void {
@@ -270,6 +325,7 @@ class ImageView {
       }
       moved = true;
       this.applyLayout(lastW, lastH, deg);
+      this.applyWrap();
       this.showBadge(lastW, lastH);
     };
     const finish = (): void => {
@@ -304,6 +360,7 @@ class ImageView {
       lastDeg = ((Math.round(ang) % 360) + 360) % 360;
       moved = true;
       this.applyLayout(w, h, lastDeg);
+      this.applyWrap();
     };
     const finish = (): void => {
       win.removeEventListener('mousemove', move);
@@ -321,6 +378,7 @@ class ImageView {
     if (this.img.getAttribute('src') !== src) this.img.src = src;
     this.img.alt = (node.attrs.alt as string) ?? '';
     this.applyLayout(this.attrW(), this.attrH(), this.attrRot());
+    this.applyWrap();
     return true;
   }
 
@@ -336,11 +394,11 @@ class ImageView {
     return true;
   }
 
-  // Keep ProseMirror out of handle interactions so a drag isn't hijacked into a
-  // node drag or selection change.
+  // Keep ProseMirror out of handle interactions only; dragging the image itself runs
+  // PM's native node move (which re-anchors a floating image to the drop paragraph).
   stopEvent(event: Event): boolean {
-    const t = event.target as HTMLElement | null;
     if (!event.type.startsWith('mouse')) return false;
+    const t = event.target as HTMLElement | null;
     return !!t?.classList?.contains('image-resize-handle') || !!t?.classList?.contains('image-rotate-handle');
   }
 }

@@ -90,6 +90,7 @@ function entryFromStyleElement(el: Element): StyleEntry {
   collectProps(el, 'table-column-properties', entry.misc);
   collectProps(el, 'table-row-properties', entry.misc);
   collectProps(el, 'table-cell-properties', entry.misc);
+  collectProps(el, 'graphic-properties', entry.misc);
   return entry;
 }
 
@@ -195,6 +196,11 @@ export class StyleResolver {
   // over the paragraph's by the importer.
   spanTextProps(styleName: string | null): PropMap {
     return styleName ? this.merged('text', styleName).text : {};
+  }
+
+  // Graphic-properties of a draw:frame's style (style:wrap, positioning, …).
+  graphicProps(styleName: string | null): PropMap {
+    return styleName ? this.merged('graphic', styleName).misc : {};
   }
 
   // The document's default spell-check language, read from the base Standard

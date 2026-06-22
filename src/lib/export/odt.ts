@@ -152,8 +152,10 @@ function replaceTabs(node: TiptapNode): TiptapNode {
 }
 
 // One embedded picture, collected by replaceImages and emitted by applyImages.
-// bytes is ArrayBuffer-backed to match fflate's zip entry map. rotationDeg is CW.
-type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number };
+// bytes is ArrayBuffer-backed to match fflate's zip entry map. rotationDeg is CW;
+// wrap floats the frame at its anchor paragraph (left/right/top-bottom).
+type WrapMode = 'inline' | 'left' | 'right' | 'topBottom';
+type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number; wrap: WrapMode };
 
 function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
@@ -180,16 +182,20 @@ function imageDescriptor(node: TiptapNode, index: number): ImageExport | null {
   }
   if (!bytes.length) return null;
   const round3 = (v: number) => Math.round(v * 1000) / 1000;
+  const pxToCm = (px: number) => round3((px * 2.54) / 96);
   const w = typeof node.attrs?.width === 'number' ? node.attrs.width : 0;
   const h = typeof node.attrs?.height === 'number' ? node.attrs.height : 0;
+  const wrapAttr = node.attrs?.wrap;
+  const wrap: WrapMode = wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' ? wrapAttr : 'inline';
   return {
     path: `Pictures/image${index + 1}.${EXT_BY_MIME[mimeType] ?? 'png'}`,
     bytes,
     mimeType,
-    widthCm: w > 0 ? round3((w * 2.54) / 96) : 0,
-    heightCm: h > 0 ? round3((h * 2.54) / 96) : 0,
+    widthCm: w > 0 ? pxToCm(w) : 0,
+    heightCm: h > 0 ? pxToCm(h) : 0,
     alt: typeof node.attrs?.alt === 'string' ? node.attrs.alt : '',
     rotationDeg: typeof node.attrs?.rotation === 'number' ? node.attrs.rotation : 0,
+    wrap,
   };
 }
 
@@ -1032,17 +1038,55 @@ function imageTransform(img: ImageExport): string {
   return ` draw:transform="rotate (${a.toFixed(6)}) translate (${tx}cm ${ty}cm)"`;
 }
 
-// One <draw:frame> for an as-character image. Position is the text-flow anchor; size
-// is the exact svg geometry and rotation the draw:transform, so both round-trip.
+// ODF style:wrap is the side TEXT flows on (inverse of the image side); horizontal-pos
+// places the frame on that side. topBottom ⇒ no wrap, centred.
+function imageWrapProps(wrap: WrapMode): string {
+  if (wrap === 'left') return 'style:wrap="right" style:horizontal-pos="left"';
+  if (wrap === 'right') return 'style:wrap="left" style:horizontal-pos="right"';
+  return 'style:wrap="none" style:horizontal-pos="center"';
+}
+
+// Graphic style for a floating frame (wrap + side, anchored to the paragraph top).
+// Inline images need none. Injected into content.xml automatic-styles by applyImages.
+function imageGraphicStyle(img: ImageExport, index: number): string {
+  if (img.wrap === 'inline') return '';
+  return (
+    `<style:style style:name="ImgFr${index + 1}" style:family="graphic">` +
+    `<style:graphic-properties ${imageWrapProps(img.wrap)}` +
+    ` style:number-wrapped-paragraphs="no-limit"` +
+    ` style:horizontal-rel="paragraph-content"` +
+    ` style:vertical-pos="top" style:vertical-rel="paragraph"/>` +
+    `</style:style>`
+  );
+}
+
+// One <draw:frame>. Inline = as-character (text-flow anchor). Floating = paragraph
+// anchor + a graphic style (wrap + side). Size is the exact svg geometry and rotation
+// the draw:transform, so all of it round-trips.
 function imageFrameXml(img: ImageExport, index: number): string {
   const dims =
     (img.widthCm ? ` svg:width="${img.widthCm}cm"` : '') +
     (img.heightCm ? ` svg:height="${img.heightCm}cm"` : '');
   const title = img.alt ? `<svg:title>${escapeXml(img.alt)}</svg:title>` : '';
+  const inner = `<draw:image xlink:href="${img.path}"/>${title}`;
+  const anchor = img.wrap === 'inline' ? 'as-char' : 'paragraph';
+  const styleName = img.wrap === 'inline' ? '' : ` draw:style-name="ImgFr${index + 1}"`;
   return (
-    `<draw:frame draw:name="Image${index + 1}" text:anchor-type="as-char" draw:z-index="${index}"${dims}${imageTransform(img)}>` +
-    `<draw:image xlink:href="${img.path}"/>${title}</draw:frame>`
+    `<draw:frame draw:name="Image${index + 1}"${styleName} text:anchor-type="${anchor}" draw:z-index="${index}"${dims}${imageTransform(img)}>` +
+    `${inner}</draw:frame>`
   );
+}
+
+// Inject automatic styles, tolerating an empty/self-closed or absent section.
+function injectAutomaticStyles(content: string, styles: string): string {
+  if (!styles) return content;
+  if (content.includes('</office:automatic-styles>')) {
+    return content.replace('</office:automatic-styles>', `${styles}</office:automatic-styles>`);
+  }
+  if (content.includes('<office:automatic-styles/>')) {
+    return content.replace('<office:automatic-styles/>', `<office:automatic-styles>${styles}</office:automatic-styles>`);
+  }
+  return content.replace('<office:body', `<office:automatic-styles>${styles}</office:automatic-styles><office:body`);
 }
 
 // Resolve image sentinels: swap each IMG{i}IMG for its <draw:frame>, add the binary
@@ -1060,6 +1104,8 @@ function applyImages(odtBytes: Uint8Array, images: ImageExport[]): Uint8Array {
     const img = images[i];
     return img ? imageFrameXml(img, i) : '';
   });
+  // Graphic styles for the floating frames.
+  content = injectAutomaticStyles(content, images.map((img, i) => imageGraphicStyle(img, i)).join(''));
   files['content.xml'] = strToU8(content);
 
   for (const img of images) files[img.path] = img.bytes;
