@@ -11,6 +11,7 @@
   import { importOdt } from './lib/import/odt';
   import { getPageBreakDebug } from './lib/editor/pageBreaks';
   import { getColorDebug } from './lib/editor/colorDebug';
+  import { countText, type TextStats } from './lib/editor/wordCount';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
@@ -36,6 +37,21 @@
 
   let activeEditor = $derived(hfActive ? hfEditor : editor);
   let activeTick = $derived(hfActive ? hfTick : tick);
+
+  // Word/character counts for the status-bar counter. Reading `tick` makes these
+  // recompute on every body transaction (incl. selection changes), so they stay
+  // live without subscribing to ProseMirror directly.
+  let wordCountOpen = $state(false);
+  let docStats = $derived.by<TextStats>(() => {
+    if (tick < 0 || !editor) return { words: 0, charsWithSpaces: 0, charsNoSpaces: 0, paragraphs: 0 };
+    const { doc } = editor.state;
+    return countText(doc, 0, doc.content.size);
+  });
+  let selStats = $derived.by<TextStats | null>(() => {
+    if (tick < 0 || !editor) return null;
+    const { from, to, empty } = editor.state.selection;
+    return empty ? null : countText(editor.state.doc, from, to);
+  });
 
   let themeMode: ThemeMode = $state(loadTheme());
   let themeOpen = $state(false);
@@ -323,6 +339,14 @@
     return { destroy() { window.removeEventListener('mousedown', handler); } };
   }
 
+  function wordCountClickOutside(node: HTMLElement) {
+    function handler(e: MouseEvent) {
+      if (!node.contains(e.target as Node)) wordCountOpen = false;
+    }
+    window.addEventListener('mousedown', handler);
+    return { destroy() { window.removeEventListener('mousedown', handler); } };
+  }
+
   onMount(() => {
     function onKeydown(e: KeyboardEvent) {
       // Ctrl/Cmd+S → Save (suppress the browser's save-page dialog).
@@ -560,7 +584,42 @@
     orientation={pageOrientation}
   />
   <footer class="statusbar">
-    <span class="sb-left">Page {currentPage} of {numPages}</span>
+    <div class="sb-left">
+      <span>Page {currentPage} of {numPages}</span>
+      <div class="wordcount-wrap" use:wordCountClickOutside>
+        <button
+          class="wordcount-btn"
+          onclick={() => (wordCountOpen = !wordCountOpen)}
+          title="Statistics"
+          aria-haspopup="dialog"
+          aria-expanded={wordCountOpen}
+        >
+          {#if selStats}
+            {selStats.words.toLocaleString()} of {docStats.words.toLocaleString()} words
+          {:else}
+            {docStats.words.toLocaleString()} {docStats.words === 1 ? 'Word' : 'Words'}
+          {/if}
+        </button>
+        {#if wordCountOpen}
+          <div class="wordcount-popup" role="dialog" aria-label="Statistics">
+            <div class="wc-heading">Statistics</div>
+            {#if selStats}
+              <div class="wc-section">Selection</div>
+              <div class="wc-row"><span>Words</span><span>{selStats.words.toLocaleString()}</span></div>
+              <div class="wc-row"><span>Characters (with spaces)</span><span>{selStats.charsWithSpaces.toLocaleString()}</span></div>
+              <div class="wc-row"><span>Characters (no spaces)</span><span>{selStats.charsNoSpaces.toLocaleString()}</span></div>
+              <div class="wc-divider"></div>
+              <div class="wc-section">Document</div>
+            {/if}
+            <div class="wc-row"><span>Words</span><span>{docStats.words.toLocaleString()}</span></div>
+            <div class="wc-row"><span>Characters (with spaces)</span><span>{docStats.charsWithSpaces.toLocaleString()}</span></div>
+            <div class="wc-row"><span>Characters (no spaces)</span><span>{docStats.charsNoSpaces.toLocaleString()}</span></div>
+            <div class="wc-row"><span>Paragraphs</span><span>{docStats.paragraphs.toLocaleString()}</span></div>
+            <div class="wc-row"><span>Pages</span><span>{numPages.toLocaleString()}</span></div>
+          </div>
+        {/if}
+      </div>
+    </div>
     <div class="sb-center">
       <LanguagePicker value={documentLanguage} onChange={(code) => (documentLanguage = code)} />
     </div>
@@ -928,6 +987,85 @@
      equal-flex sides keep the center cell centered regardless of side widths. */
   .sb-left {
     flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .wordcount-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .wordcount-btn {
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    padding: 0 6px;
+    height: 18px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .wordcount-btn:hover {
+    background: var(--color-btn-hover);
+  }
+
+  /* Opens upward from the status bar; mirrors the theme/export dropdown styling. */
+  .wordcount-popup {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    min-width: 220px;
+    padding: 0 0 0.35rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    z-index: 300;
+  }
+
+  .wc-heading {
+    padding: 0.45rem 0.75rem 0.3rem;
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 0.3rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text);
+  }
+
+  .wc-section {
+    padding: 0.25rem 0.75rem 0.1rem;
+    font-size: 0.62rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+  }
+
+  .wc-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding: 0.18rem 0.75rem;
+    font-size: 0.78rem;
+    color: var(--color-text);
+  }
+
+  .wc-row span:last-child {
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .wc-divider {
+    height: 1px;
+    margin: 0.3rem 0;
+    background: var(--color-border);
   }
 
   .sb-center {
