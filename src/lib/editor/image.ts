@@ -171,6 +171,9 @@ class ImageView {
     // Pasted/HTML images may arrive without dimensions; adopt their natural size
     // (capped to the text column) so every image is explicitly sized.
     this.img.onload = () => this.adoptNaturalSize();
+    // Dragging a floating image live re-anchors it to the paragraph under the cursor
+    // (text reflows in real time). Inline images keep ProseMirror's native node move.
+    this.img.addEventListener('mousedown', e => this.startReposition(e as MouseEvent));
     this.rotor.appendChild(this.img);
 
     for (const cfg of HANDLES) {
@@ -252,6 +255,79 @@ class ImageView {
       d.style.width = '100%';
       d.style.margin = '6px 0';
     }
+  }
+
+  // Drag a floating image to re-anchor it to the paragraph under the cursor, live (the
+  // node moves so text reflows in real time; throttled, only on paragraph change). Undo
+  // is one step: first move records history, later moves are addToHistory:false (rebased).
+  private startReposition(event: MouseEvent): void {
+    if (this.attrWrap() === 'inline' || !this.editor.isEditable) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const view = this.editor.view;
+    const origPos = this.getPos();
+    if (typeof origPos !== 'number') return;
+    const win = this.dom.ownerDocument.defaultView ?? window;
+
+    let curPos = origPos;
+    let firstMove = true;
+    let moved = false;
+    let raf = 0;
+    let lastX = event.clientX;
+    let lastY = event.clientY;
+
+    const lineTop = (pos: number): number | null => {
+      try { return view.coordsAtPos(pos).top; } catch { return null; }
+    };
+
+    // Re-anchor the image at the exact text position under the cursor (so it follows
+    // line by line, not paragraph by paragraph), but only when the cursor's line differs
+    // from the image's current line — a float won't move within a line, so skip churn.
+    const step = (): void => {
+      raf = 0;
+      const found = view.posAtCoords({ left: lastX, top: lastY });
+      if (!found) return;
+      const target = found.pos;
+      if (target === curPos || target === curPos + 1) return;
+      const $t = view.state.doc.resolve(target);
+      if (!$t.parent.isTextblock) return;
+      const curY = lineTop(curPos);
+      const tgtY = lineTop(target);
+      if (curY != null && tgtY != null && Math.abs(curY - tgtY) < 6) return; // same line
+      const node = view.state.doc.nodeAt(curPos);
+      if (!node || node.type.name !== 'image') return;
+      try {
+        const tr = view.state.tr;
+        tr.delete(curPos, curPos + node.nodeSize);
+        const ip = tr.mapping.map(target);
+        tr.insert(ip, node);
+        tr.setSelection(NodeSelection.create(tr.doc, ip));
+        if (!firstMove) tr.setMeta('addToHistory', false);
+        view.dispatch(tr);
+        curPos = ip;
+        firstMove = false;
+        moved = true;
+      } catch { /* target can't hold an inline image — ignore */ }
+    };
+
+    const move = (e: MouseEvent): void => {
+      if (!e.buttons) { finish(); return; }
+      lastX = e.clientX;
+      lastY = e.clientY;
+      if (!raf) raf = win.requestAnimationFrame(step);
+    };
+    const finish = (): void => {
+      if (raf) win.cancelAnimationFrame(raf);
+      win.removeEventListener('mousemove', move);
+      win.removeEventListener('mouseup', finish);
+      // A plain click (no move) just selects the image so its toolbar/handles show.
+      if (!moved && typeof this.getPos() === 'number') {
+        const pos = this.getPos();
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
+      }
+    };
+    win.addEventListener('mousemove', move);
+    win.addEventListener('mouseup', finish);
   }
 
   private adoptNaturalSize(): void {
@@ -394,11 +470,13 @@ class ImageView {
     return true;
   }
 
-  // Keep ProseMirror out of handle interactions only; dragging the image itself runs
-  // PM's native node move (which re-anchors a floating image to the drop paragraph).
+  // Keep ProseMirror out of handle interactions, and out of all mouse handling for
+  // floating images (startReposition owns their drag). Inline images keep PM's native
+  // node move + drop cursor.
   stopEvent(event: Event): boolean {
     if (!event.type.startsWith('mouse')) return false;
     const t = event.target as HTMLElement | null;
-    return !!t?.classList?.contains('image-resize-handle') || !!t?.classList?.contains('image-rotate-handle');
+    if (t?.classList?.contains('image-resize-handle') || t?.classList?.contains('image-rotate-handle')) return true;
+    return this.attrWrap() !== 'inline';
   }
 }

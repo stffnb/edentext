@@ -623,8 +623,13 @@ export const PageBreaks = Extension.create({
                 walkTableRows(child, inTableCell);
                 continue;
               }
-              const isAtomic = ATOMIC_TAGS.has(tag);
-              const isSplittable = SPLITTABLE_TAGS.has(tag);
+              // A paragraph holding a floated/block image paginates atomically (pushed
+              // whole, spacer placed before it): a line-split spacer inside it would sit
+              // next to the float, where ProseMirror drops the widget.
+              const splittableTag = SPLITTABLE_TAGS.has(tag);
+              const hasImage = splittableTag && !!child.querySelector('.image-node');
+              const isAtomic = ATOMIC_TAGS.has(tag) || hasImage;
+              const isSplittable = splittableTag && !hasImage;
               if (isAtomic || isSplittable) {
                 let intraSpacerHeight = 0;
                 for (const sp of Array.from(
