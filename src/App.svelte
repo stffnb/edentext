@@ -20,11 +20,13 @@
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { spellController } from './lib/spell/controller';
   import LanguagePicker from './lib/editor/LanguagePicker.svelte';
+  import AboutDialog from './lib/AboutDialog.svelte';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
   let currentPage: number = $state(1);
   let numPages: number = $state(1);
+  let aboutOpen = $state(false);
 
   // Header/footer content + live-edit state. While a zone is being edited, the
   // top toolbars target hfEditor instead of the body editor (activeEditor below).
@@ -385,7 +387,9 @@
 
 <main>
   <header class:expanded={toolbarExpanded}>
-    <img src="/PrimeText.png" alt="PrimeText" class="app-logo" />
+    <button class="logo-btn" onclick={() => (aboutOpen = true)} aria-label="About PrimeText" title="About PrimeText">
+      <img src="/PrimeText.png" alt="PrimeText" class="app-logo" />
+    </button>
     <Toolbar editor={activeEditor} tick={activeTick} />
     <div class="header-actions">
       {#snippet saveIcon()}
@@ -641,6 +645,8 @@
     </div>
     </div>
   </footer>
+
+  <AboutDialog bind:open={aboutOpen} />
 </main>
 
 <style>
@@ -667,10 +673,26 @@
     box-shadow: none;
   }
 
+  .logo-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px;
+    margin: 0 0.25rem 0 0.5rem;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.12s;
+    flex-shrink: 0;
+  }
+  .logo-btn:hover {
+    background: var(--color-btn-hover);
+  }
+
   .app-logo {
     height: 17px;
     width: auto;
-    margin: 0 0.5rem 0 0.75rem;
+    display: block;
     opacity: 1.0;
     flex-shrink: 0;
   }
