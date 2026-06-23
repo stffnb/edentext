@@ -356,6 +356,11 @@
         e.preventDefault();
         handleSave();
       }
+      // Ctrl/Cmd+P → Print the paginated document (not the whole app UI).
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        handlePrintPdf();
+      }
     }
     window.addEventListener('keydown', onKeydown);
     return () => window.removeEventListener('keydown', onKeydown);
@@ -468,6 +473,14 @@
             </div>
           {/if}
         </div>
+        <button class="file-action-btn" onclick={handlePrintPdf} disabled={!editor} title="Print (Ctrl+P)">
+          <!-- Printer -->
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M4.5 6V2.25h7V6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M4.5 12H3.25A1.25 1.25 0 0 1 2 10.75V7.25A1.25 1.25 0 0 1 3.25 6h9.5A1.25 1.25 0 0 1 14 7.25v3.5A1.25 1.25 0 0 1 12.75 12H11.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <rect x="4.5" y="10" width="7" height="4" rx="0.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
       <div class="theme-wrap" use:clickOutside>
         <button
