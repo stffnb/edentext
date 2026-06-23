@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import ColorPicker from './ColorPicker.svelte';
   import TablePicker from './TablePicker.svelte';
+  import SpecialCharPicker from './SpecialCharPicker.svelte';
   import {
     CANDIDATE_FONTS,
     detectAvailableFonts,
@@ -643,11 +644,32 @@
     fontColorOpen = false;
     highlightColorOpen = false;
     layoutOpen = false;
+    specialCharOpen = false;
   }
 
   function insertTable(rows: number, cols: number, range: { from: number; to: number }) {
     if (!editor) return;
     editor.chain().focus().setTextSelection(range).insertTable({ rows, cols, withHeaderRow: false }).run();
+  }
+
+  // --- Special character insertion (SpecialCharPicker.svelte) ---
+  let specialCharOpen = $state(false);
+
+  // Close the sibling dropdowns when the special-character picker opens.
+  function onSpecialCharPickerOpen() {
+    fontOpen = false;
+    sizeOpen = false;
+    sizeInputFocused = false;
+    lineHeightOpen = false;
+    fontColorOpen = false;
+    highlightColorOpen = false;
+    layoutOpen = false;
+    tableOpen = false;
+  }
+
+  function insertSpecialChar(char: string, range: { from: number; to: number }) {
+    if (!editor) return;
+    editor.chain().focus().setTextSelection(range).insertContent(char).run();
   }
 
   // --- Image insertion (image.ts) ---
@@ -1112,6 +1134,12 @@
         bind:open={tableOpen}
         onOpen={onTablePickerOpen}
         onInsert={insertTable}
+      />
+      <SpecialCharPicker
+        {editor}
+        bind:open={specialCharOpen}
+        onOpen={onSpecialCharPickerOpen}
+        onInsert={insertSpecialChar}
       />
       <button
         onclick={() => imageInput?.click()}
