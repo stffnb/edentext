@@ -3,7 +3,7 @@ import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
-import { DEFAULT_ORDERED_TYPE, orderedTypeDef } from '../editor/orderedListTypes';
+import { DEFAULT_ORDERED_TYPE, orderedTypeDef } from '../utils/orderedListTypes';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
 

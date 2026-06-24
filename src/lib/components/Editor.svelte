@@ -4,12 +4,12 @@
   import { Slice, Fragment } from 'prosemirror-model';
   import type { Node as PmNode, MarkType } from 'prosemirror-model';
   import type { EditorView } from '@tiptap/pm/view';
-  import { extensions } from './extensions';
-  import { spellErrorAt } from './spellCheck';
+  import { extensions } from '../editor/extensions';
+  import { spellErrorAt } from '../editor/extensions/spellCheck';
   import { spellController } from '../spell/controller';
   import TableToolbar from './TableToolbar.svelte';
   import ImageToolbar from './ImageToolbar.svelte';
-  import type { WrapMode } from './image';
+  import type { WrapMode } from '../editor/extensions/image';
   import { NodeSelection } from '@tiptap/pm/state';
   import SpellContextMenu from './SpellContextMenu.svelte';
   import HeaderFooterLayer from './HeaderFooterLayer.svelte';
@@ -17,8 +17,8 @@
   import { applyMarginVars, cmToPx, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { applyOrientationVars, type Orientation } from '../storage/pageOrientation';
   import { DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
-  import { FORCE_PAGE_RECALC, type TableBreakBand } from './pageBreaks';
-  import { recordTransaction, resetHistoryLog } from './historyLog.svelte';
+  import { FORCE_PAGE_RECALC, type TableBreakBand } from '../editor/extensions/pageBreaks';
+  import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
   import '../../styles/editor.css';
 
   const DEFAULT_EDITOR_FONT = 'Georgia'; // must match ToolbarExpanded.svelte

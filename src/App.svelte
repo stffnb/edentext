@@ -2,16 +2,16 @@
   import { onMount } from 'svelte';
   import { cubicOut } from 'svelte/easing';
   import type { Editor } from '@tiptap/core';
-  import EditorComponent from './lib/editor/Editor.svelte';
-  import Toolbar from './lib/editor/Toolbar.svelte';
-  import ToolbarExpanded from './lib/editor/ToolbarExpanded.svelte';
+  import EditorComponent from './lib/components/Editor.svelte';
+  import Toolbar from './lib/components/Toolbar.svelte';
+  import ToolbarExpanded from './lib/components/ToolbarExpanded.svelte';
   import { buildOdt, deriveFilename } from './lib/export/odt';
   import { exportPdf, printPdf } from './lib/export/pdf';
   import { supportsFsAccess, saveOdt, saveAsOdt, openOdt } from './lib/export/saveFile';
   import { importOdt } from './lib/import/odt';
-  import { getPageBreakDebug } from './lib/editor/pageBreaks';
-  import { getColorDebug } from './lib/editor/colorDebug';
-  import { countText, type TextStats } from './lib/editor/wordCount';
+  import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
+  import { getColorDebug } from './lib/utils/colorDebug';
+  import { countText, type TextStats } from './lib/utils/wordCount';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
@@ -19,8 +19,8 @@
   import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { spellController } from './lib/spell/controller';
-  import LanguagePicker from './lib/editor/LanguagePicker.svelte';
-  import AboutDialog from './lib/AboutDialog.svelte';
+  import LanguagePicker from './lib/components/LanguagePicker.svelte';
+  import AboutDialog from './lib/components/AboutDialog.svelte';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);

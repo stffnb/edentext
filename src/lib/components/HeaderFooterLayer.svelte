@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Editor, generateHTML, type Content } from '@tiptap/core';
-  import { hfExtensions } from './hfExtensions';
+  import { hfExtensions } from '../editor/extensions/headerFooter';
   import { hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
   import { cmToPx, type PageMargins } from '../storage/pageMargins';
   import { PAGE_W_PORTRAIT, PAGE_H_PORTRAIT, type Orientation } from '../storage/pageOrientation';

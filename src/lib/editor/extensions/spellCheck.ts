@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { spellController } from '../spell/controller';
+import { spellController } from '../../spell/controller';
 
 const spellCheckKey = new PluginKey<DecorationSet>('spellCheck');
 

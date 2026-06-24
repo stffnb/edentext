@@ -2,7 +2,7 @@
   import type { Editor } from '@tiptap/core';
   import HistoryButton from './HistoryButton.svelte';
   import AlignButton from './AlignButton.svelte';
-  import { ORDERED_LIST_TYPES, DEFAULT_ORDERED_TYPE, type OrderedListType } from './orderedListTypes';
+  import { ORDERED_LIST_TYPES, DEFAULT_ORDERED_TYPE, type OrderedListType } from '../utils/orderedListTypes';
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import { historyLog, undoSteps, redoSteps } from './historyLog.svelte';
+  import { historyLog, undoSteps, redoSteps } from '../utils/historyLog.svelte';
 
   let { editor, tick, direction }: { editor: Editor | null; tick: number; direction: 'undo' | 'redo' } = $props();
 

@@ -1,5 +1,5 @@
 import OrderedListBase from '@tiptap/extension-ordered-list';
-import { DEFAULT_ORDERED_TYPE } from './orderedListTypes';
+import { DEFAULT_ORDERED_TYPE } from '../../utils/orderedListTypes';
 
 // OrderedList with a `listStyleType` attr (an ORDERED_LIST_TYPES key), rendered
 // as `data-list-style` on the <ol>: editor.css maps it to the on-screen marker,

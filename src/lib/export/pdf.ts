@@ -7,8 +7,8 @@ import { PAGE_W_PORTRAIT, PAGE_H_PORTRAIT, type Orientation } from '../storage/p
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import { hfIsEmpty, type HfDoc } from '../storage/headerFooter';
 import { extensions } from '../editor/extensions';
-import { columnPercents } from '../editor/tableView';
-import { orderedTypeDef } from '../editor/orderedListTypes';
+import { columnPercents } from '../editor/extensions/tableView';
+import { orderedTypeDef } from '../utils/orderedListTypes';
 import { deriveFilename } from './odt';
 import globalCss from '../../styles/global.css?inline';
 import editorCss from '../../styles/editor.css?inline';

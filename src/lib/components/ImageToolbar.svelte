@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import type { WrapMode } from './image';
+  import type { WrapMode } from '../editor/extensions/image';
 
   let {
     editor,

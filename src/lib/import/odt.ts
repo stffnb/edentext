@@ -1,7 +1,7 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
-import { DEFAULT_ORDERED_TYPE, orderedTypeFromFormat } from '../editor/orderedListTypes';
+import { DEFAULT_ORDERED_TYPE, orderedTypeFromFormat } from '../utils/orderedListTypes';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';

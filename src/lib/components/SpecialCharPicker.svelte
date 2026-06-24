@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import { CHAR_CATEGORIES, type SpecialChar } from './specialChars';
+  import { CHAR_CATEGORIES, type SpecialChar } from '../utils/specialChars';
 
   let {
     editor,

@@ -9,11 +9,11 @@
     detectAvailableFonts,
     queryLocalFontsIfAllowed,
     supportsLocalFontAccess,
-  } from './fontDetect';
+  } from '../utils/fontDetect';
   import { DEFAULT_MARGINS, cmToPx, type PageMargins } from '../storage/pageMargins';
   import type { Orientation } from '../storage/pageOrientation';
   import { DEFAULT_HF_DISTANCES, clampHfDistance, type HfDistances } from '../storage/headerFooter';
-  import { listContext } from './indent';
+  import { listContext } from '../editor/extensions/indent';
 
   let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), hfActive = null, onEditZone, onDebugDump }:
     { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; hfDistances?: HfDistances; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void } = $props();

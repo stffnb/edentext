@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { orderedTypeDef, orderedTypeFromFormat, DEFAULT_ORDERED_TYPE } from '../../src/lib/editor/orderedListTypes';
+import { orderedTypeDef, orderedTypeFromFormat, DEFAULT_ORDERED_TYPE } from '../../src/lib/utils/orderedListTypes';
 
 describe('orderedTypeDef', () => {
   it('returns the matching definition for a known key', () => {

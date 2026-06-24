@@ -7,7 +7,7 @@ import { getSchema } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
 import { buildOdt } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
-import { hfExtensions } from '../src/lib/editor/hfExtensions';
+import { hfExtensions } from '../src/lib/editor/extensions/headerFooter';
 
 type N = any;
 
