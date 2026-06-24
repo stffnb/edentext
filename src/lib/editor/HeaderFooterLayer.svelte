@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Editor, generateHTML } from '@tiptap/core';
+  import { Editor, generateHTML, type Content } from '@tiptap/core';
   import { hfExtensions } from './hfExtensions';
   import { hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
   import { cmToPx, type PageMargins } from '../storage/pageMargins';
@@ -131,7 +131,7 @@
     const ed = new Editor({
       element: mount,
       extensions: hfExtensions(zone === 'header' ? 'Header…' : 'Footer…'),
-      content: zoneDoc(zone) ?? emptyDoc(),
+      content: (zoneDoc(zone) ?? emptyDoc()) as Content,
       // No autofocus: its scrollIntoView nudges the page so the just-clicked zone
       // appears to jump. Focus the zone explicitly without scrolling instead.
       onTransaction: () => {

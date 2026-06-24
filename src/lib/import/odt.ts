@@ -5,6 +5,7 @@ import { DEFAULT_ORDERED_TYPE, orderedTypeFromFormat } from '../editor/orderedLi
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
+import type { HfDoc } from '../storage/headerFooter';
 
 // .odt → TipTap JSON, inverting export/odt.ts. Editor-expressible content becomes its
 // native node/mark/attr; values matching the editor's defaults are suppressed so round
@@ -24,8 +25,8 @@ export interface OdtImportResult {
   margins: PageMargins | null;
   orientation: Orientation | null;
   // Single-paragraph docs in the hfExtensions schema; null = no zone.
-  header: Node | null;
-  footer: Node | null;
+  header: HfDoc;
+  footer: HfDoc;
   // Edge→zone distance (cm): header from top, footer from bottom. null = no zone.
   headerDistanceCm: number | null;
   footerDistanceCm: number | null;
@@ -212,7 +213,7 @@ export function importOdt(bytes: Uint8Array): OdtImportResult {
 
 // A header/footer zone → one single-paragraph doc (hfExtensions schema). Multiple
 // paragraphs collapse to hard line breaks; block structures flatten to their text.
-function convertHfZone(zoneEl: Element, ctx: Ctx): Node | null {
+function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
   const inline: Node[] = [];
   let textAlign: string | null = null;
 
