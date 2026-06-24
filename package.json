@@ -13,15 +13,22 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:lo": "vitest run tests/lo-roundtrip.test.ts"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tsconfig/svelte": "^5.0.8",
     "dictionary-en": "^4.0.0",
+    "jsdom": "^29.1.1",
     "svelte": "^5.55.9",
+    "svelte-check": "^4.7.1",
     "typescript": "^6.0.3",
-    "vite": "^8.0.14"
+    "vite": "^8.0.14",
+    "vitest": "^4.1.9"
   },
   "dependencies": {
     "@tiptap/core": "^3.23.6",
