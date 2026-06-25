@@ -258,7 +258,9 @@
     // Everything below is in document px (relative to .tiptap's top). The .band-layer
     // lives inside the scaled .paper, so the transform applies the scaling — no `* z`.
     const border = 1; // 1px page-edge line, like the CSS .tiptap background
-    bandStyles = tableBandsDoc.map((b) => {
+    // Only in-cell breaks get the white mask + close/open lines; between-rows breaks
+    // are capped by the rows' own cell borders, so a band there would double them.
+    bandStyles = tableBandsDoc.filter((b) => !b.rowBreak).map((b) => {
       // The band spans the inter-page region (closeY through margin/gap/margin to the
       // next content-top), where pagination guarantees no content, so the mask can't eat
       // content. Matched to the table's content box (b.left/b.width) so the lines align.
@@ -550,7 +552,7 @@
       <!-- Dedicated mount point that TipTap fully owns — keeping it free of Svelte
            content avoids Svelte and ProseMirror fighting over the same parent's DOM. -->
       <div bind:this={element} class="tiptap-host"></div>
-      {#if bandStyles.length}
+      {#if gapStripeStyles.length}
         <div class="band-layer">
           {#each bandStyles as b}
             <div

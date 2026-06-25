@@ -96,6 +96,10 @@ export type TableBreakBand = {
   key: number;
   closeY: number;     // content-end of the closing page (band/mask top)
   height: number;     // bandSpan = marginBottom + gap + marginTop
+  // True when the break falls between whole table rows: the rows' own cell borders
+  // already cap the table at the gap, so only the gap stripe is painted (no mask /
+  // close-open lines, which would double the real borders). False for in-cell splits.
+  rowBreak: boolean;
   left: number;       // content-area left (mask left)
   width: number;      // content-area width (mask width)
   marginBottom: number;
@@ -710,10 +714,10 @@ export const PageBreaks = Extension.create({
             height: number;
             row: { columns: number } | null;
           }[] = [];
-          // Close/open bands for in-cell table breaks. Keyed by the rounded openY (the
-          // grouping id) → mapped to the unrounded openY so the band lands on the exact
-          // page-cycle position (a rounded value would show a ~0.5px seam at the edges).
-          const tableBands = new Map<number, number>();
+          // Close/open bands for in-cell + between-rows table breaks. Keyed by the
+          // rounded openY (the grouping id) → the unrounded openY (so the band lands
+          // exactly on the page cycle) plus whether it's a between-rows break.
+          const tableBands = new Map<number, { openY: number; rowBreak: boolean }>();
           const leavesDebug: PageBreakDebugSnapshot['leaves'] = [];
           const placementsDebug: PageBreakDebugSnapshot['placements'] = [];
 
@@ -858,7 +862,12 @@ export const PageBreaks = Extension.create({
               const inBand = !!leaf.inTableCell || br.row !== null;
               if (inBand && br.bandOpenY !== null) {
                 const key = Math.round(br.bandOpenY);
-                if (!tableBands.has(key)) tableBands.set(key, br.bandOpenY);
+                const rowBreak = br.row !== null;
+                const existing = tableBands.get(key);
+                if (!existing) tableBands.set(key, { openY: br.bandOpenY, rowBreak });
+                // An in-cell break sharing the boundary needs the full mask, so a
+                // band stays rowBreak only if every break at this key is one.
+                else if (!rowBreak) existing.rowBreak = false;
               }
               placements.push({ docPos: br.docPos, height: h, row: br.row });
               placementsDebug.push({
@@ -948,10 +957,11 @@ export const PageBreaks = Extension.create({
           // In-cell table breaks (all values in unscaled document px relative to
           // .tiptap's top). Editor.svelte renders the mask + gap overlay from these.
           const bandSpan = vm.bottom + PAGE_GAP + vm.top;
-          const tableBreakBands = Array.from(tableBands, ([key, openY]) => ({
+          const tableBreakBands = Array.from(tableBands, ([key, info]) => ({
             key,
-            closeY: openY - bandSpan,
+            closeY: info.openY - bandSpan,
             height: bandSpan,
+            rowBreak: info.rowBreak,
             left: marginLeft,
             width: contentWidth,
             marginBottom: vm.bottom,
