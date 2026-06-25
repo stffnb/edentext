@@ -46,27 +46,31 @@
       onclick={() => set(m.mode)}
     >
       {#if m.mode === 'inline'}
-        <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-          <rect x="2.5" y="6" width="5" height="6" rx="1" fill="currentColor" />
-          <line x1="9" y1="7.5" x2="15.5" y2="7.5" stroke="currentColor" stroke-width="1.2" />
-          <line x1="9" y1="10.5" x2="15.5" y2="10.5" stroke="currentColor" stroke-width="1.2" />
+        <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <line x1="2.5" y1="3" x2="15.5" y2="3" stroke="currentColor" stroke-width="1.2" />
+          <line x1="2.5" y1="12" x2="5.5" y2="12" stroke="currentColor" stroke-width="1.2" />
+          <rect x="6.5" y="6" width="5" height="6" rx="1" fill="currentColor" />
+          <line x1="12.5" y1="12" x2="15.5" y2="12" stroke="currentColor" stroke-width="1.2" />
+          <line x1="2.5" y1="15" x2="15.5" y2="15" stroke="currentColor" stroke-width="1.2" />
         </svg>
       {:else if m.mode === 'left'}
-        <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-          <rect x="2.5" y="4" width="6" height="6" rx="1" fill="currentColor" />
-          <line x1="10" y1="5" x2="15.5" y2="5" stroke="currentColor" stroke-width="1.2" />
-          <line x1="10" y1="8" x2="15.5" y2="8" stroke="currentColor" stroke-width="1.2" />
-          <line x1="2.5" y1="13" x2="15.5" y2="13" stroke="currentColor" stroke-width="1.2" />
+        <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <line x1="2.5" y1="3" x2="15.5" y2="3" stroke="currentColor" stroke-width="1.2" />
+          <rect x="2.5" y="6" width="6" height="6" rx="1" fill="currentColor" />
+          <line x1="10" y1="7" x2="15.5" y2="7" stroke="currentColor" stroke-width="1.2" />
+          <line x1="10" y1="10" x2="15.5" y2="10" stroke="currentColor" stroke-width="1.2" />
+          <line x1="2.5" y1="15" x2="15.5" y2="15" stroke="currentColor" stroke-width="1.2" />
         </svg>
       {:else if m.mode === 'right'}
-        <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-          <rect x="9.5" y="4" width="6" height="6" rx="1" fill="currentColor" />
-          <line x1="2.5" y1="5" x2="8" y2="5" stroke="currentColor" stroke-width="1.2" />
-          <line x1="2.5" y1="8" x2="8" y2="8" stroke="currentColor" stroke-width="1.2" />
-          <line x1="2.5" y1="13" x2="15.5" y2="13" stroke="currentColor" stroke-width="1.2" />
+        <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <line x1="2.5" y1="3" x2="15.5" y2="3" stroke="currentColor" stroke-width="1.2" />
+          <rect x="9.5" y="6" width="6" height="6" rx="1" fill="currentColor" />
+          <line x1="2.5" y1="7" x2="8" y2="7" stroke="currentColor" stroke-width="1.2" />
+          <line x1="2.5" y1="10" x2="8" y2="10" stroke="currentColor" stroke-width="1.2" />
+          <line x1="2.5" y1="15" x2="15.5" y2="15" stroke="currentColor" stroke-width="1.2" />
         </svg>
       {:else}
-        <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
           <line x1="2.5" y1="3" x2="15.5" y2="3" stroke="currentColor" stroke-width="1.2" />
           <rect x="6" y="6" width="6" height="6" rx="1" fill="currentColor" />
           <line x1="2.5" y1="15" x2="15.5" y2="15" stroke="currentColor" stroke-width="1.2" />
