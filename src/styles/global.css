@@ -40,13 +40,169 @@
   src: url('../assets/fonts/LiberationSerif-BoldItalic.ttf') format('truetype');
 }
 
+/* Metric-compatible substitutes for the common MS-Office fonts that imported
+   .odt files reference. Each face is keyed to the MS name but prefers a real
+   local copy, then a system twin, then the bundled open-source twin — so text
+   renders with matching metrics (like LibreOffice) instead of dropping to the
+   browser's default serif. (OFL — see src/assets/fonts/LICENSE-*.) */
+
+/* Calibri → Carlito */
+@font-face {
+  font-family: 'Calibri';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Calibri'), local('Carlito'), url('../assets/fonts/Carlito-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Calibri';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Calibri Bold'), local('Carlito Bold'), url('../assets/fonts/Carlito-Bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Calibri';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Calibri Italic'), local('Carlito Italic'), url('../assets/fonts/Carlito-Italic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Calibri';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Calibri Bold Italic'), local('Carlito Bold Italic'), url('../assets/fonts/Carlito-BoldItalic.ttf') format('truetype');
+}
+
+/* Arial → Liberation Sans */
+@font-face {
+  font-family: 'Arial';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Arial'), local('Liberation Sans'), url('../assets/fonts/LiberationSans-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Arial';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Arial Bold'), local('Liberation Sans Bold'), url('../assets/fonts/LiberationSans-Bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Arial';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Arial Italic'), local('Liberation Sans Italic'), url('../assets/fonts/LiberationSans-Italic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Arial';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Arial Bold Italic'), local('Liberation Sans Bold Italic'), url('../assets/fonts/LiberationSans-BoldItalic.ttf') format('truetype');
+}
+
+/* Cambria → Caladea */
+@font-face {
+  font-family: 'Cambria';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Cambria'), local('Caladea'), url('../assets/fonts/Caladea-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Cambria';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Cambria Bold'), local('Caladea Bold'), url('../assets/fonts/Caladea-Bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Cambria';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Cambria Italic'), local('Caladea Italic'), url('../assets/fonts/Caladea-Italic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Cambria';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Cambria Bold Italic'), local('Caladea Bold Italic'), url('../assets/fonts/Caladea-BoldItalic.ttf') format('truetype');
+}
+
+/* Courier New → Liberation Mono */
+@font-face {
+  font-family: 'Courier New';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Courier New'), local('Liberation Mono'), url('../assets/fonts/LiberationMono-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Courier New';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Courier New Bold'), local('Liberation Mono Bold'), url('../assets/fonts/LiberationMono-Bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Courier New';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Courier New Italic'), local('Liberation Mono Italic'), url('../assets/fonts/LiberationMono-Italic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Courier New';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Courier New Bold Italic'), local('Liberation Mono Bold Italic'), url('../assets/fonts/LiberationMono-BoldItalic.ttf') format('truetype');
+}
+
+/* Times New Roman → Liberation Serif (reuses the bundled Serif files) */
+@font-face {
+  font-family: 'Times New Roman';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Times New Roman'), local('Liberation Serif'), url('../assets/fonts/LiberationSerif-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Times New Roman';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Times New Roman Bold'), local('Liberation Serif Bold'), url('../assets/fonts/LiberationSerif-Bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Times New Roman';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Times New Roman Italic'), local('Liberation Serif Italic'), url('../assets/fonts/LiberationSerif-Italic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Times New Roman';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Times New Roman Bold Italic'), local('Liberation Serif Bold Italic'), url('../assets/fonts/LiberationSerif-BoldItalic.ttf') format('truetype');
+}
+
 :root {
   --radius: 6px;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-serif: 'Liberation Serif', 'Times New Roman', Georgia, serif;
   }
-  
+
   [data-theme="light"] {
   --color-bg: #e6e9eb;
   --color-surface: #ffffff;
@@ -60,7 +216,7 @@
   --color-page-text: #1e293b;
   --color-page-border: #e2e8f0;
   }
-  
+
   [data-theme="dark"] {
     --color-bg: #0d1117;
     --color-surface: #161b22;
