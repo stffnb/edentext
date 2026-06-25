@@ -302,6 +302,11 @@ function buildBodyHtml(json: Json): string {
     }
     table.insertBefore(cg, table.firstChild);
   });
+  // generateHTML omits ProseMirror's trailing <br>, so empty textblocks collapse to zero
+  // height and blank lines vanish in print. Re-add a break so each keeps a line.
+  host.querySelectorAll('p, h1, h2, h3').forEach((el) => {
+    if (!el.firstChild) el.appendChild(document.createElement('br'));
+  });
   return host.innerHTML;
 }
 
