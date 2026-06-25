@@ -301,6 +301,8 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: Letter stays portrait', f.orientation === 'portrait');
 
     check('foreign: plain run has no marks', c[0].content![0].marks === undefined, c[0]);
+    // Omitted fo:margin-bottom → ODF default 0, not the editor's 6pt body default.
+    check('foreign: omitted margin → spaceAfter 0', c[0].attrs?.spaceAfter === 0, c[0].attrs);
 
     const p1 = c[1];
     check('foreign: P1 align end → right', p1.attrs?.textAlign === 'right', p1.attrs);

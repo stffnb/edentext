@@ -347,10 +347,13 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, headingLevel: number
 
   const defTop = hdef ? hdef.marginTopPt : 0;
   const defBottom = hdef ? hdef.marginBottomPt : kind === 'list' ? 0 : STD_MARGIN_BOTTOM_PT;
-  const mt = lengthToPt(paraProps['fo:margin-top']);
-  const mb = lengthToPt(paraProps['fo:margin-bottom']);
-  if (mt != null && Math.abs(mt - defTop) > EPS_PT) attrs.spaceBefore = snapPt(mt);
-  if (mb != null && Math.abs(mb - defBottom) > EPS_PT) attrs.spaceAfter = snapPt(mb);
+  // An unspecified fo:margin is ODF's default of 0 (not the editor's 6pt body
+  // default), so a foreign paragraph that omits it gets 0 spacing like
+  // Word/LibreOffice. Editor exports write the margins explicitly, so suppressed.
+  const mt = lengthToPt(paraProps['fo:margin-top']) ?? 0;
+  const mb = lengthToPt(paraProps['fo:margin-bottom']) ?? 0;
+  if (Math.abs(mt - defTop) > EPS_PT) attrs.spaceBefore = snapPt(mt);
+  if (Math.abs(mb - defBottom) > EPS_PT) attrs.spaceAfter = snapPt(mb);
 
   // Left indent → fo:margin-left (cm). Skip lists: their indent lives in the
   // list-style level properties, not paraProps. Default 0 is suppressed.
