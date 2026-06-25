@@ -180,7 +180,7 @@
         <div
           class="hf-zone hf-{zone}"
           class:hf-empty={!html}
-          data-hf-label={zone === 'header' ? 'Header' : 'Footer'}
+          data-hf-label={zone === 'header' ? 'Double-click to add a header' : 'Double-click to add a footer'}
           style={boxStyle(zoneBox(zone, p))}
           ondblclick={() => startEdit(zone, p)}
           role="button"
@@ -235,11 +235,11 @@
     justify-content: flex-end;
   }
 
-  /* Empty zone: invisible until hovered, then show a faint label hint. */
+  /* Empty zone: invisible until hovered, then show a faint double-click hint. */
   .hf-empty::before {
     content: attr(data-hf-label);
     color: var(--color-text-muted);
-    font-size: 0.7rem;
+    font-size: 0.9rem;
     font-family: var(--font-sans);
     opacity: 0;
     transition: opacity 0.12s;
