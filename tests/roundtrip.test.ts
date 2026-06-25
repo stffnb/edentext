@@ -95,6 +95,8 @@ const fixture: N = {
         CELL([240], P(null, T('B2'))),
       ] },
     ] },
+    P({ breakBefore: 'page', textAlign: 'center', lineHeight: '1.5' }, T('Forced page (styled)')),
+    P({ breakBefore: 'page' }, T('Forced page (plain)')),
     P(null, T('The end.')),
   ],
 };

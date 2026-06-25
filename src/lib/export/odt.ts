@@ -58,6 +58,11 @@ const TAB = '';
 // applyImages rewrites it to a <draw:frame> in content.xml. U+E004.
 const IMG = '';
 
+// Sentinel prepended to a top-level paragraph/heading carrying a manual page break
+// (breakBefore: 'page'); applyPageBreaks finds the marked block in content.xml, mints a
+// fo:break-before="page" paragraph style for it, and strips the sentinel. U+E005.
+const PGB = '';
+
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -149,6 +154,22 @@ function replaceTabs(node: TiptapNode): TiptapNode {
   }
   if (!node.content?.length) return node;
   return { ...node, content: node.content.map(replaceTabs) };
+}
+
+// Prepend a PGB sentinel run to each top-level paragraph/heading with breakBefore so it
+// rides every odf-kit path; applyPageBreaks resolves it. Top-level only: a sentinel in a
+// cell/list paragraph would corrupt the SEG-based cell/list rebuild (applyCellBlocks).
+function replacePageBreaks(doc: TiptapNode): TiptapNode {
+  if (!doc.content?.length) return doc;
+  return {
+    ...doc,
+    content: doc.content.map(child => {
+      if ((child.type === 'paragraph' || child.type === 'heading') && child.attrs?.breakBefore === 'page') {
+        return { ...child, content: [{ type: 'text', text: PGB }, ...(child.content ?? [])] };
+      }
+      return child;
+    }),
+  };
 }
 
 // One embedded picture, collected by replaceImages and emitted by applyImages.
@@ -410,6 +431,90 @@ function applyListItemStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Ar
   ).join('\n');
 
   content = content.replace('</office:automatic-styles>', `${newStyles}\n</office:automatic-styles>`);
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+// The whole <style:style …>…</style:style> (or self-closing) for an automatic style by
+// name from content.xml. null when the name is a common/named style (defined in
+// styles.xml), so applyPageBreaks mints a child of it instead of cloning.
+function findAutoStyle(content: string, name: string): string | null {
+  const open = content.indexOf(`<style:style style:name="${name}"`);
+  if (open < 0) return null;
+  const gt = content.indexOf('>', open);
+  if (gt < 0) return null;
+  if (content[gt - 1] === '/') return content.slice(open, gt + 1);
+  const closeTag = '</style:style>';
+  const close = content.indexOf(closeTag, gt);
+  if (close < 0) return null;
+  return content.slice(open, close + closeTag.length);
+}
+
+// Clone a <style:style> definition under newName, ensuring its paragraph-properties
+// carry fo:break-before="page" (paragraph-properties precedes text-properties in ODF, so
+// a freshly inserted one stays first child).
+function cloneStyleWithBreak(def: string, newName: string): string {
+  const s = def.replace(/style:name="[^"]*"/, `style:name="${newName}"`);
+  if (/fo:break-before=/.test(s)) return s;
+  const pp = '<style:paragraph-properties fo:break-before="page"/>';
+  if (/^<style:style\b[^>]*\/>\s*$/.test(s)) {
+    return s.replace(/\/>\s*$/, `>${pp}</style:style>`);
+  }
+  if (/<style:paragraph-properties\b[^>]*\/>/.test(s)) {
+    return s.replace(/<style:paragraph-properties\b([^>]*?)\s*\/>/, '<style:paragraph-properties$1 fo:break-before="page"/>');
+  }
+  if (/<style:paragraph-properties\b/.test(s)) {
+    return s.replace(/<style:paragraph-properties\b([^>]*)>/, '<style:paragraph-properties$1 fo:break-before="page">');
+  }
+  return s.replace(/(<style:style\b[^>]*[^/]>)/, `$1${pp}`);
+}
+
+// Resolve PGB sentinels: per source style, mint a fo:break-before="page" paragraph style
+// (cloning its props so blocks sharing the style aren't affected, reused across blocks),
+// reassign each marked block's style-name, and strip the sentinel.
+function applyPageBreaks(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  if (!content.includes(PGB)) return odtBytes;
+
+  const minted: string[] = [];
+  const nameBySource = new Map<string, string>();
+  let counter = 0;
+
+  const breakStyleFor = (source: string): string => {
+    const existing = nameBySource.get(source);
+    if (existing) return existing;
+    const name = `PB${++counter}`;
+    nameBySource.set(source, name);
+    const def = source ? findAutoStyle(content, source) : null;
+    minted.push(def
+      ? cloneStyleWithBreak(def, name)
+      : `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${source || 'Standard'}"><style:paragraph-properties fo:break-before="page"/></style:style>`,
+    );
+    return name;
+  };
+
+  content = content.replace(
+    new RegExp(`<text:(p|h)\\b([^>]*)>${PGB}`, 'g'),
+    (_m, tag: string, attrs: string) => {
+      const sm = /text:style-name="([^"]*)"/.exec(attrs);
+      const name = breakStyleFor(sm ? sm[1] : '');
+      const newAttrs = sm
+        ? attrs.replace(/text:style-name="[^"]*"/, `text:style-name="${name}"`)
+        : ` text:style-name="${name}"${attrs}`;
+      return `<text:${tag}${newAttrs}>`;
+    },
+  );
+  // Drop any sentinels not consumed above (defensive — never legitimate text).
+  content = content.split(PGB).join('');
+
+  if (minted.length) {
+    content = content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`);
+  }
 
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
@@ -1138,7 +1243,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Collect embedded images and swap them for IMG sentinels before serialization;
   // applyImages resolves the sentinels and writes the Pictures/ + manifest entries.
   const images: ImageExport[] = [];
-  const raw = replaceImages(replaceTabs(replaceHardBreaks(docJson)), images);
+  const raw = replaceImages(replaceTabs(replaceHardBreaks(replacePageBreaks(docJson))), images);
   const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Distance from the page edge to the header (top) / footer (bottom). Becomes the
@@ -1250,7 +1355,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const cleaned = collapseRunWhitespace(styledRows);
   const withBreaks = applyInlineSentinels(cleaned);
   const withImages = applyImages(withBreaks, images);
-  const withStyles = rewriteStylesXml(withImages, language ?? null);
+  const withPageBreaks = applyPageBreaks(withImages);
+  const withStyles = rewriteStylesXml(withPageBreaks, language ?? null);
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist);
 }
 

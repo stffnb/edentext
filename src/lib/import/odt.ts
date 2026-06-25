@@ -362,6 +362,11 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, headingLevel: number
     if (ml != null && ml > EPS_PT) attrs.indent = Math.round((ml / 72) * 2.54 * 100) / 100;
   }
 
+  // Manual page break (fo:break-before). Honored for top-level blocks only
+  // (pageBreaks.ts forces them to the next page top); the editor has no column
+  // breaks, so only "page". Cell/list blocks can't carry it.
+  if (kind === 'body' && paraProps['fo:break-before'] === 'page') attrs.breakBefore = 'page';
+
   return attrs;
 }
 

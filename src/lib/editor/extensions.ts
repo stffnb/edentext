@@ -24,6 +24,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { PageBreaks } from './extensions/pageBreaks';
 import { LineHeight } from './extensions/lineHeight';
 import { ParagraphSpacing } from './extensions/paragraphSpacing';
+import { PageBreak } from './extensions/pageBreak';
 import { Indent } from './extensions/indent';
 import { FormattingMarks } from './extensions/formattingMarks';
 import { SpellCheck } from './extensions/spellCheck';
@@ -60,6 +61,7 @@ export const extensions = [
   Image,
   LineHeight,
   ParagraphSpacing,
+  PageBreak,
   Indent,
   Heading.configure({ levels: [1, 2, 3] }),
   BulletList,

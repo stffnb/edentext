@@ -179,6 +179,9 @@ type Leaf = {
   // pages. Their breaks get a full-width close/open mask so the single continuous
   // table box looks closed at each page break (it can't break structurally).
   inTableCell?: boolean;
+  // Manual page break before this block (ODF fo:break-before; pageBreak.ts): force the
+  // leaf to the next page's top even when it would otherwise fit on the current page.
+  forceBreakBefore?: boolean;
   // Flow brackets for a too-tall row's cells (each cell is an independent flow from
   // the row top, so placement resets cumulative shift per cell): cellStart = a cell's
   // first leaf, rowStart = the row's first cell, rowEnd = last leaf of the last cell.
@@ -647,6 +650,9 @@ export const PageBreaks = Extension.create({
                   naturalTop: topWithin(child) - cumulativeSpacerHeight,
                   naturalHeight: child.offsetHeight - intraSpacerHeight,
                   inTableCell,
+                  // A manual page break is honored for top-level blocks only (not in
+                  // a table cell, where the table breaks atomically between rows).
+                  forceBreakBefore: !inTableCell && child.dataset?.pageBreakBefore === 'page',
                 });
                 cumulativeSpacerHeight += intraSpacerHeight;
                 continue;
@@ -752,7 +758,22 @@ export const PageBreaks = Extension.create({
             // Set when a leaf overflows but no spacer can bridge it (block > one page).
             let noPushReason: string | null = null;
 
-            if (effectiveTop < contentStart && i > 0) {
+            // A manual page break forces the block to the next page's top (never the first
+            // leaf, so no leading blank page); once settled at a page top the guard stops.
+            // A forced block that then overflows is split by the normal logic next pass.
+            const forced = !!leaf.forceBreakBefore && i > 0 && effectiveTop > contentStart + 0.5;
+
+            if (forced) {
+              const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+              const { docPos, row } = leafSpacer(leaf);
+              breaks.push({
+                height: target - effectiveTop,
+                docPos,
+                row,
+                bandOpenY: target,
+                reason: 'forced-page-break',
+              });
+            } else if (effectiveTop < contentStart && i > 0) {
               const { docPos, row } = leafSpacer(leaf);
               breaks.push({
                 height: contentStart - effectiveTop,
