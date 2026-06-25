@@ -440,21 +440,23 @@
         </button>
         <!-- Single Save / Export button → ODT, Raster PDF, or Vector PDF (beta). -->
         <div class="save-split" use:exportMenuClickOutside>
-          <button class="file-action-btn save-main" onclick={handleSave} disabled={!editor || pdfBusy} title="Save .odt (Ctrl+S)">
-            {@render saveIcon()}
-          </button>
-          <button
-            class="save-chevron"
-            onclick={() => (exportMenuOpen = !exportMenuOpen)}
-            disabled={!editor || pdfBusy}
-            title="Save / Export"
-            aria-haspopup="menu"
-            aria-expanded={exportMenuOpen}
-          >
-            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
-              <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
+          <div class="save-control">
+            <button class="file-action-btn save-main" onclick={handleSave} disabled={!editor || pdfBusy} title="Save .odt (Ctrl+S)">
+              {@render saveIcon()}
+            </button>
+            <button
+              class="save-chevron"
+              onclick={() => (exportMenuOpen = !exportMenuOpen)}
+              disabled={!editor || pdfBusy}
+              title="Save / Export"
+              aria-haspopup="menu"
+              aria-expanded={exportMenuOpen}
+            >
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
           {#if exportMenuOpen}
             <div class="theme-dropdown" role="menu">
               <div class="theme-heading">Save / Export</div>
@@ -795,16 +797,48 @@
     cursor: not-allowed;
   }
 
-  /* Save split button: floppy + chevron that opens the Save As menu. */
+  /* Standalone file actions get a hover outline; save-main lives inside
+     .save-control, which carries its own shared border, so it's excluded. */
+  .file-actions > .file-action-btn {
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .file-actions > .file-action-btn:hover:not(:disabled) {
+    border-color: var(--color-primary);
+  }
+
+  /* Save split button: floppy + chevron that opens the Save As menu, joined in
+     one bordered control whose shared border highlights on hover. */
   .save-split {
     position: relative;
     display: inline-flex;
     align-items: center;
   }
 
+  .save-control {
+    display: inline-flex;
+    align-items: stretch;
+    height: 2rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+
+  .save-control:hover:not(:has(:disabled)) {
+    border-color: var(--color-primary);
+  }
+
+  .save-control:hover:not(:has(:disabled)) .save-chevron {
+    border-left-color: var(--color-border);
+  }
+
   .save-main {
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
+    width: auto;
+    height: 100%;
+    padding: 0 0.2rem 0 0.5rem;
+    border-radius: 0;
   }
 
   .save-chevron {
@@ -812,16 +846,15 @@
     align-items: center;
     justify-content: center;
     width: 1rem;
-    height: 2rem;
+    height: 100%;
     padding: 0;
     border: none;
-    border-radius: var(--radius);
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
+    border-left: 1px solid transparent;
+    border-radius: 0;
     background: transparent;
     color: var(--color-text);
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, border-color 0.15s;
   }
 
   .save-chevron:hover:not(:disabled) {
@@ -923,16 +956,17 @@
     justify-content: center;
     width: 2rem;
     height: 2rem;
-    border: none;
+    border: 1px solid transparent;
     border-radius: var(--radius);
     background: transparent;
     color: var(--color-text);
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, border-color 0.15s;
   }
 
   .theme-btn:hover {
     background: var(--color-btn-hover);
+    border-color: var(--color-primary);
   }
 
   .theme-dropdown {

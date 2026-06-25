@@ -1270,6 +1270,17 @@
     cursor: not-allowed;
   }
 
+  /* Plain toolbar buttons gain a primary outline on hover (combobox triggers and
+     split buttons handle their own; menu items keep border:none → no-op). */
+  .toolbar-group > button {
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .toolbar-group > button:hover:not(:disabled) {
+    border-color: var(--color-primary);
+  }
+
   .font-picker {
     position: relative;
   }
@@ -1494,16 +1505,17 @@
     gap: 4px;
     height: 2rem;
     padding: 0 0.4rem;
-    border: 1px solid var(--color-border);
+    border: 1px solid transparent;
     border-radius: var(--radius);
-    background: var(--color-surface);
+    background: transparent;
     color: var(--color-text);
     cursor: pointer;
     min-width: unset;
-    transition: border-color 0.15s;
+    transition: background 0.15s, border-color 0.15s;
   }
 
   .lh-trigger:hover {
+    background: var(--color-btn-hover);
     border-color: var(--color-primary);
   }
 

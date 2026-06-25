@@ -168,16 +168,17 @@
     min-width: 2rem;
     height: 2rem;
     padding: 0 0.5rem;
-    border: none;
+    border: 1px solid transparent;
     border-radius: var(--radius);
     background: transparent;
     color: var(--color-text);
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, border-color 0.15s;
   }
 
   .table-trigger:hover {
     background: var(--color-btn-hover);
+    border-color: var(--color-primary);
   }
 
   .table-trigger[aria-pressed='true'] {

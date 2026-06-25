@@ -67,26 +67,28 @@
 </script>
 
 <div class="history-split" use:popover>
-  <button
-    class="history-main"
-    onclick={runSingle}
-    disabled={!canRun}
-    title={direction === 'undo' ? 'Undo (Ctrl+Z)' : 'Redo (Ctrl+Shift+Z)'}
-  >
-    {direction === 'undo' ? '↩' : '↪'}
-  </button>
-  <button
-    class="history-caret"
-    onclick={toggle}
-    disabled={displayed.length === 0}
-    aria-haspopup="menu"
-    aria-expanded={open}
-    title={`${verb} history`}
-  >
-    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
-      <path d="M1 2.5 L4 5.5 L7 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  </button>
+  <div class="history-control">
+    <button
+      class="history-main"
+      onclick={runSingle}
+      disabled={!canRun}
+      title={direction === 'undo' ? 'Undo (Ctrl+Z)' : 'Redo (Ctrl+Shift+Z)'}
+    >
+      {direction === 'undo' ? '↩' : '↪'}
+    </button>
+    <button
+      class="history-caret"
+      onclick={toggle}
+      disabled={displayed.length === 0}
+      aria-haspopup="menu"
+      aria-expanded={open}
+      title={`${verb} history`}
+    >
+      <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+        <path d="M1 2.5 L4 5.5 L7 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
 
   {#if open && displayed.length > 0}
     <!-- svelte-ignore a11y_mouse_events_have_key_events -->
@@ -122,7 +124,25 @@
   .history-split {
     position: relative;
     display: inline-flex;
+    align-items: center;
+  }
+
+  .history-control {
+    display: inline-flex;
     align-items: stretch;
+    height: 2rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+
+  .history-control:hover:not(:has(:disabled)) {
+    border-color: var(--color-primary);
+  }
+
+  .history-control:hover:not(:has(:disabled)) .history-caret {
+    border-left-color: var(--color-border);
   }
 
   .history-main,
@@ -130,26 +150,27 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 2rem;
+    height: 100%;
     border: none;
     background: transparent;
     color: var(--color-text);
     font-size: 0.85rem;
     font-family: var(--font-sans);
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, border-color 0.15s;
   }
 
   .history-main {
     min-width: 2rem;
     padding: 0 0.4rem;
-    border-radius: var(--radius) 0 0 var(--radius);
+    border-radius: 0;
   }
 
   .history-caret {
     min-width: 1.1rem;
     padding: 0 0.2rem;
-    border-radius: 0 var(--radius) var(--radius) 0;
+    border-left: 1px solid transparent;
+    border-radius: 0;
   }
 
   .history-main:hover:not(:disabled),

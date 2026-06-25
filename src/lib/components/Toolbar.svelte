@@ -202,11 +202,6 @@
 
     <div class="toolbar-group">
       <HistoryButton {editor} {tick} direction="undo" />
-    </div>
-
-    <div class="toolbar-separator"></div>
-
-    <div class="toolbar-group">
       <HistoryButton {editor} {tick} direction="redo" />
     </div>
   {/if}
@@ -267,6 +262,17 @@
     cursor: not-allowed;
   }
 
+  /* Plain toolbar buttons gain a primary outline on hover (split buttons handle
+     their own; menu items keep border:none so border-color is a no-op). */
+  .toolbar-group > button {
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .toolbar-group > button:hover:not(:disabled) {
+    border-color: var(--color-primary);
+  }
+
   /* Ordered-list split button: main toggle + chevron that opens the numbering
      style menu, rendered as one joined control. */
   .ol-picker {
@@ -275,20 +281,37 @@
 
   .ol-split {
     display: inline-flex;
-    align-items: center;
+    align-items: stretch;
+    height: 2rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+
+  .ol-split:hover {
+    border-color: var(--color-primary);
+  }
+
+  .ol-split:hover .ol-chevron {
+    border-left-color: var(--color-border);
   }
 
   .ol-main {
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
+    min-width: unset;
+    height: 100%;
+    padding: 0 0.2rem 0 0.5rem;
+    border-radius: 0;
   }
 
   .ol-chevron {
     min-width: unset;
     width: 1rem;
+    height: 100%;
     padding: 0;
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
+    border-left: 1px solid transparent;
+    border-radius: 0;
+    transition: background 0.15s, border-color 0.15s;
   }
 
   .ol-dropdown {
