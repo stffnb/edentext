@@ -135,6 +135,86 @@
     saveToolbarExpanded(toolbarExpanded);
   }
 
+  // Horizontal toolbar scrolling: when too narrow for all buttons, the toolbar stack
+  // is translated left via a custom scrollbar (a native one auto-hides on macOS), so
+  // the document stays centered — the page itself never scrolls horizontally.
+  const MIN_THUMB = 24;
+  let toolbarClipEl: HTMLDivElement | null = $state(null);
+  let toolbarStackEl: HTMLDivElement | null = $state(null);
+  let toolbarStackWidth = $state(0); // full content width of the stack
+  let toolbarViewWidth = $state(0);  // visible (clipped) width
+  let tbScroll = $state(0);          // current left offset in px
+  let tbOverflow = $derived(Math.max(0, toolbarStackWidth - toolbarViewWidth));
+  let thumbWidth = $derived(
+    toolbarStackWidth > 0 ? Math.max(MIN_THUMB, (toolbarViewWidth / toolbarStackWidth) * toolbarViewWidth) : 0,
+  );
+  let thumbTravel = $derived(Math.max(0, toolbarViewWidth - thumbWidth));
+  let thumbLeft = $derived(tbOverflow > 0 ? (tbScroll / tbOverflow) * thumbTravel : 0);
+
+  // Track the stack's content width and the visible width; clamp the offset into
+  // range when either changes (e.g. window resize, toolbar expand/collapse).
+  $effect(() => {
+    const clip = toolbarClipEl, stack = toolbarStackEl;
+    if (!clip || !stack) return;
+    const measure = () => {
+      toolbarViewWidth = clip.clientWidth;
+      toolbarStackWidth = stack.scrollWidth;
+      tbScroll = Math.min(tbScroll, Math.max(0, toolbarStackWidth - toolbarViewWidth));
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(clip);
+    ro.observe(stack);
+    measure();
+    return () => ro.disconnect();
+  });
+
+  // Wheel over the toolbar scrolls it horizontally (it has no vertical scroll), so a
+  // trackpad/mouse can pan to the hidden buttons without grabbing the scrollbar.
+  function onToolbarWheel(e: WheelEvent) {
+    if (tbOverflow <= 0) return;
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (delta === 0) return;
+    e.preventDefault();
+    tbScroll = Math.min(tbOverflow, Math.max(0, tbScroll + delta));
+  }
+
+  // Custom scrollbar drag. All handlers live on the track; a press outside the thumb
+  // first jumps it under the pointer, then both modes drag from there.
+  let tbDragX = 0, tbDragScroll = 0, tbDragging = false;
+  function onScrollbarPointerDown(e: PointerEvent) {
+    if (thumbTravel <= 0) return;
+    const track = e.currentTarget as HTMLElement;
+    const thumb = track.querySelector('.toolbar-scrollbar-thumb');
+    if (!thumb?.contains(e.target as Node)) {
+      const rect = track.getBoundingClientRect();
+      tbScroll = Math.min(tbOverflow, Math.max(0, ((e.clientX - rect.left - thumbWidth / 2) / thumbTravel) * tbOverflow));
+    }
+    tbDragging = true;
+    tbDragX = e.clientX;
+    tbDragScroll = tbScroll;
+    track.setPointerCapture(e.pointerId);
+  }
+  function onScrollbarPointerMove(e: PointerEvent) {
+    if (!tbDragging || thumbTravel <= 0) return;
+    const delta = ((e.clientX - tbDragX) / thumbTravel) * tbOverflow;
+    tbScroll = Math.min(tbOverflow, Math.max(0, tbDragScroll + delta));
+  }
+  function onScrollbarPointerUp(e: PointerEvent) {
+    tbDragging = false;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* already released */ }
+  }
+  function onScrollbarKeydown(e: KeyboardEvent) {
+    if (thumbTravel <= 0) return;
+    let next = tbScroll;
+    if (e.key === 'ArrowLeft') next -= 40;
+    else if (e.key === 'ArrowRight') next += 40;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = tbOverflow;
+    else return;
+    e.preventDefault();
+    tbScroll = Math.min(tbOverflow, Math.max(0, next));
+  }
+
   // Combined height + opacity transition: the extended toolbar slides and fades
   // in/out as one motion when the toolbar is expanded/collapsed.
   function expand(node: HTMLElement, { duration = 180 } = {}) {
@@ -391,6 +471,9 @@
 </script>
 
 <main>
+  <div class="toolbar-region">
+    <div class="toolbar-clip" id="primary-toolbar" bind:this={toolbarClipEl} onwheel={onToolbarWheel}>
+      <div class="toolbar-stack" bind:this={toolbarStackEl} style="transform: translateX(-{tbScroll}px);">
   <header class:expanded={toolbarExpanded}>
     <button class="logo-btn" onclick={() => (aboutOpen = true)} aria-label="About PrimeText" title="About PrimeText">
       <img src="/PrimeText.png" alt="PrimeText" class="app-logo" />
@@ -586,6 +669,27 @@
       </div>
     {/if}
   </div>
+      </div>
+    </div>
+    {#if tbOverflow > 0}
+      <div
+        class="toolbar-scrollbar"
+        role="scrollbar"
+        tabindex={0}
+        aria-orientation="horizontal"
+        aria-controls="primary-toolbar"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(tbOverflow)}
+        aria-valuenow={Math.round(tbScroll)}
+        onpointerdown={onScrollbarPointerDown}
+        onpointermove={onScrollbarPointerMove}
+        onpointerup={onScrollbarPointerUp}
+        onkeydown={onScrollbarKeydown}
+      >
+        <div class="toolbar-scrollbar-thumb" style="width: {thumbWidth}px; transform: translateX({thumbLeft}px);"></div>
+      </div>
+    {/if}
+  </div>
   <EditorComponent
     bind:editor
     bind:tick
@@ -669,6 +773,60 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+  }
+
+  /* Toolbar scroll region. A stacking context (z-index) so the whole toolbar — incl.
+     its dropdowns, which live inside the translated stack — paints above the editor
+     and its overlays. */
+  .toolbar-region {
+    position: relative;
+    z-index: 200;
+  }
+
+  /* Clips the off-screen part of the toolbar horizontally only, so the page never
+     scrolls sideways (document stays centered). overflow-y stays visible so the
+     toolbar dropdowns can still open downward over the document. */
+  .toolbar-clip {
+    overflow-x: clip;
+  }
+
+  /* Both toolbar rows share one column sized to its widest row (buttons don't shrink);
+     translated left via inline transform to reveal hidden buttons. min-width keeps it
+     filling the viewport when the window is wide. */
+  .toolbar-stack {
+    width: max-content;
+    min-width: 100%;
+  }
+
+  /* Custom scrollbar strip under the toolbar (a native one auto-hides on macOS).
+     The thumb's width/position track the visible fraction of the stack; only rendered
+     when the toolbar overflows. */
+  .toolbar-scrollbar {
+    position: relative;
+    height: 9px;
+    background: var(--color-toolbar-bg);
+    border-bottom: 1px solid var(--color-border);
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  .toolbar-scrollbar-thumb {
+    position: absolute;
+    top: 2px;
+    left: 0;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--color-btn-hover);
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .toolbar-scrollbar-thumb:hover {
+    background: var(--color-text-muted);
+  }
+
+  .toolbar-scrollbar-thumb:active {
+    cursor: grabbing;
   }
 
   /* Basic toolbar: a complete toolbar with its own divider + elevation. When the
