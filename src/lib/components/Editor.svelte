@@ -143,6 +143,38 @@
     editor?.view.focus();
   }
 
+  // --- Link hover hint (Word/LibreOffice style) ---
+  // Hovering a link shows its URL + a modifier-click hint; the link only follows on
+  // Ctrl/Cmd+click (handleClick in editorProps), so a plain click can edit the text.
+  const linkHintKey =
+    typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform) ? '⌘' : 'Ctrl';
+  let linkTip = $state<{ top: number; left: number; href: string } | null>(null);
+
+  function showLinkTip(a: HTMLAnchorElement) {
+    const href = a.getAttribute('href');
+    if (!href || !editorContainer) return;
+    const aRect = a.getBoundingClientRect();
+    const cRect = editorContainer.getBoundingClientRect();
+    linkTip = {
+      top: aRect.top - cRect.top + editorContainer.scrollTop,
+      left: aRect.left - cRect.left + editorContainer.scrollLeft,
+      href,
+    };
+  }
+
+  function onEditorPointerOver(e: MouseEvent) {
+    const a = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+    if (a && editorContainer?.contains(a)) showLinkTip(a);
+  }
+
+  function onEditorPointerOut(e: MouseEvent) {
+    const a = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+    if (!a) return;
+    const to = e.relatedTarget as Node | null;
+    if (to && a.contains(to)) return; // moving within the same link
+    linkTip = null;
+  }
+
   // --- Floating table-editing toolbar ---
   // Shown when the selection is inside a table; positioned just above that table.
   let tableUi = $state<{ visible: boolean; top: number; left: number }>({ visible: false, top: 0, left: 0 });
@@ -459,6 +491,15 @@
         // Our SpellCheck extension draws squiggles; turn off the browser's so
         // they don't double up.
         attributes: { spellcheck: 'false' },
+        // Ctrl/Cmd+click opens a hyperlink (a plain click just places the cursor).
+        handleClick: (_view, _pos, event) => {
+          if (!(event.metaKey || event.ctrlKey)) return false;
+          const a = (event.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+          const href = a?.getAttribute('href');
+          if (!href) return false;
+          window.open(href, '_blank', 'noopener,noreferrer');
+          return true;
+        },
         handleDOMEvents: {
           contextmenu: (view, event) => openSpellMenu(view, event),
           drop: (view, event) => {
@@ -521,6 +562,8 @@
 
     element.addEventListener('pm-pagecount', onPageCount);
     editorContainer.addEventListener('scroll', onEditorScroll);
+    editorContainer.addEventListener('mouseover', onEditorPointerOver);
+    editorContainer.addEventListener('mouseout', onEditorPointerOut);
     // Seed the scaled footprint before the first paint (so the page is centered, not
     // briefly left-aligned), then refine it once layout settles. The pageBreaks plugin
     // also fires pm-pagecount shortly after with the precise document height.
@@ -531,6 +574,7 @@
   function onEditorScroll() {
     updateCurrentPage();
     scheduleTableUi();
+    if (linkTip) linkTip = null;
   }
 
   onDestroy(() => {
@@ -541,6 +585,8 @@
     resetHistoryLog();
     element?.removeEventListener('pm-pagecount', onPageCount);
     editorContainer?.removeEventListener('scroll', onEditorScroll);
+    editorContainer?.removeEventListener('mouseover', onEditorPointerOver);
+    editorContainer?.removeEventListener('mouseout', onEditorPointerOut);
   });
 </script>
 
@@ -599,6 +645,12 @@
       onClose={closeSpellMenu}
     />
   {/if}
+  {#if linkTip}
+    <div class="link-tooltip" style="top: {linkTip.top}px; left: {linkTip.left}px;">
+      <span class="link-tooltip-url">{linkTip.href}</span>
+      <span class="link-tooltip-hint">{linkHintKey}+Click to open link</span>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -607,6 +659,37 @@
     opacity: 0.5;
     transition: opacity 0.15s;
   }
+
+  /* Hover hint for links (Word/LibreOffice style): URL + modifier-click tip, sitting
+     just above the link. A child of .editor so it scrolls with content but isn't scaled
+     by the zoom transform; pointer-events:none keeps the link itself clickable. */
+  .link-tooltip {
+    position: absolute;
+    z-index: 160;
+    transform: translateY(calc(-100% - 6px));
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    max-width: 28rem;
+    padding: 0.3rem 0.55rem;
+    background: var(--color-tooltip-bg, #2b2f36);
+    color: #fff;
+    border-radius: var(--radius);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
+  .link-tooltip-url {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .link-tooltip-hint { opacity: 0.75; }
 
   /* Overlay for the table page-break bands, inside .paper (inset:0) so it scales with
      the page background. pointer-events:none keeps the editor clickable. z-index clears

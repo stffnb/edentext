@@ -383,7 +383,7 @@ function snapPt(v: number): number {
 function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel: number | null, hfFields = false): Node[] {
   const out: Node[] = [];
 
-  const pushText = (text: string, props: PropMap) => {
+  const pushText = (text: string, props: PropMap, linkHref?: string) => {
     // Strip our export sentinels (SEG/LBR) defensively — never legitimate text.
     let clean = text.replace(/[-]/g, '');
     if (clean.includes('\n')) {
@@ -394,15 +394,16 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
     }
     if (!clean) return;
     const marks = marksFor(props, ctx.resolver, headingLevel);
+    if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
     const node: Node = { type: 'text', text: clean };
     if (marks.length) node.marks = marks;
     out.push(node);
   };
 
-  const walk = (el: Element, props: PropMap) => {
+  const walk = (el: Element, props: PropMap, linkHref?: string) => {
     for (const child of Array.from(el.childNodes)) {
       if (child.nodeType === 3 /* text */) {
-        pushText(child.nodeValue ?? '', props);
+        pushText(child.nodeValue ?? '', props, linkHref);
         continue;
       }
       if (child.nodeType !== 1) continue;
@@ -411,23 +412,26 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
       if (e.namespaceURI === NS.text) {
         switch (e.localName) {
           case 'span':
-            walk(e, layerTextProps(props, ctx.resolver.spanTextProps(e.getAttributeNS(NS.text, 'style-name'))));
+            walk(e, layerTextProps(props, ctx.resolver.spanTextProps(e.getAttributeNS(NS.text, 'style-name'))), linkHref);
             continue;
           case 's': {
             const c = parseInt(e.getAttributeNS(NS.text, 'c') ?? '1', 10);
-            pushText(' '.repeat(Number.isFinite(c) && c > 0 ? c : 1), props);
+            pushText(' '.repeat(Number.isFinite(c) && c > 0 ? c : 1), props, linkHref);
             continue;
           }
           case 'tab':
-            pushText('\t', props);
+            pushText('\t', props, linkHref);
             continue;
           case 'line-break':
             out.push({ type: 'hardBreak' });
             continue;
-          case 'a':
-            ctx.warnings.add('Hyperlinks were converted to plain text');
-            walk(e, props);
+          case 'a': {
+            // ODF hyperlink → link mark on the contained text (internal #bookmark
+            // links are kept as-is though the editor has no bookmark targets).
+            const href = e.getAttributeNS(NS.xlink, 'href') ?? '';
+            walk(e, props, href || linkHref);
             continue;
+          }
           case 'note':
             ctx.warnings.add('Footnotes and endnotes were removed');
             continue;
@@ -451,7 +455,7 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
             }
             // Other text fields (date, title, …) store their evaluated value as
             // element text — keep what the source document showed.
-            if (e.textContent) pushText(e.textContent, props);
+            if (e.textContent) pushText(e.textContent, props, linkHref);
             continue;
         }
       }

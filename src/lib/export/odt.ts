@@ -965,12 +965,22 @@ function formattingFromMarks(marks: TiptapNode['marks'] = []): TextFormatting {
   return fmt;
 }
 
-// Emit each text node as an odf-kit run.
+// Hyperlink target of a run, if any. odf-kit's native run path handles the link mark
+// itself; this covers the custom emitters (CUST_P/_H, cells) that bypass it.
+function linkHrefOf(marks: TiptapNode['marks'] = []): string | undefined {
+  const href = marks.find(m => m.type === 'link')?.attrs?.href;
+  return href ? String(href) : undefined;
+}
+
+// Emit each text node as an odf-kit run; link-marked runs become <text:a> via addLink.
 function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []) {
   for (const node of content) {
     if (node.type !== 'text' || !node.text) continue;
     const fmt = formattingFromMarks(node.marks);
-    p.addText(node.text, Object.keys(fmt).length ? fmt : undefined);
+    const f = Object.keys(fmt).length ? fmt : undefined;
+    const href = linkHrefOf(node.marks);
+    if (href) p.addLink(node.text, href, f);
+    else p.addText(node.text, f);
   }
 }
 

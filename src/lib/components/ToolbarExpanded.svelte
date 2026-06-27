@@ -4,6 +4,8 @@
   import ColorPicker from './ColorPicker.svelte';
   import TablePicker from './TablePicker.svelte';
   import SpecialCharPicker from './SpecialCharPicker.svelte';
+  import LinkDialog from './LinkDialog.svelte';
+  import { OPEN_LINK_DIALOG_EVENT } from '../editor/extensions/link';
   import {
     CANDIDATE_FONTS,
     detectAvailableFonts,
@@ -715,6 +717,60 @@
     reader.readAsDataURL(file);
   }
 
+  // --- Link insertion (link.ts) ---
+  let isLink = $derived(tick >= 0 && !!editor?.isActive('link'));
+  let linkDialogOpen = $state(false);
+  let linkInitialUrl = $state('');
+
+  function openLinkDialog() {
+    if (!editor || hfActive) return; // body-only; HF has no link mark
+    linkInitialUrl = (editor.getAttributes('link').href as string) ?? '';
+    linkDialogOpen = true;
+  }
+
+  // Add a scheme/mailto when the user types a bare host or e-mail (like Word/LO).
+  function normalizeUrl(raw: string): string {
+    const t = raw.trim();
+    if (!t) return '';
+    if (/^(https?:|mailto:|tel:|ftp:|#|\/)/i.test(t)) return t;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return `mailto:${t}`;
+    return `https://${t}`;
+  }
+
+  function applyLink(rawUrl: string) {
+    linkDialogOpen = false;
+    if (!editor) return;
+    const href = normalizeUrl(rawUrl);
+    if (!href) return;
+    const chain = editor.chain().focus().extendMarkRange('link');
+    if (editor.state.selection.empty && !editor.isActive('link')) {
+      // No selection and not inside a link: insert the URL as the link text.
+      chain.insertContent({ type: 'text', text: href, marks: [{ type: 'link', attrs: { href } }] }).run();
+    } else {
+      chain.setLink({ href }).run();
+    }
+  }
+
+  function removeLink() {
+    linkDialogOpen = false;
+    editor?.chain().focus().extendMarkRange('link').unsetLink().run();
+  }
+
+  function linkClickOutside(node: HTMLElement) {
+    function handler(e: MouseEvent) {
+      if (!node.contains(e.target as Node)) linkDialogOpen = false;
+    }
+    window.addEventListener('mousedown', handler);
+    return { destroy() { window.removeEventListener('mousedown', handler); } };
+  }
+
+  // Ctrl/Cmd+K (from the Link extension) opens the dialog.
+  $effect(() => {
+    const open = () => openLinkDialog();
+    window.addEventListener(OPEN_LINK_DIALOG_EVENT, open);
+    return () => window.removeEventListener(OPEN_LINK_DIALOG_EVENT, open);
+  });
+
   // --- Indent (Einzug) ---
   // In a list, step the list point one level (indentListForward/Backward — the Tab
   // keymap's commands, see indent.ts); outside a list, step the paragraph's left indent.
@@ -1169,6 +1225,31 @@
         style="display:none"
         onchange={onImageFile}
       />
+      <div class="link-wrap" use:linkClickOutside>
+        <button
+          class:active={isLink}
+          onclick={openLinkDialog}
+          disabled={!!hfActive}
+          title={hfActive ? 'Links are not available in headers/footers' : 'Insert link (Ctrl+K)'}
+          aria-label="Insert link"
+          aria-haspopup="dialog"
+          aria-expanded={linkDialogOpen}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M6.5 9.5l3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            <path d="M8.5 5l.9-.9a2.5 2.5 0 0 1 3.5 3.5l-.9.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7.5 11l-.9.9a2.5 2.5 0 0 1-3.5-3.5l.9-.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <LinkDialog
+          open={linkDialogOpen}
+          initialUrl={linkInitialUrl}
+          canRemove={isLink}
+          onApply={applyLink}
+          onRemove={removeLink}
+          onClose={() => (linkDialogOpen = false)}
+        />
+      </div>
     </div>
 
     <div class="toolbar-separator"></div>
@@ -1281,13 +1362,21 @@
 
   /* Plain toolbar buttons gain a primary outline on hover (combobox triggers and
      split buttons handle their own; menu items keep border:none → no-op). */
-  .toolbar-group > button {
+  .toolbar-group > button,
+  .link-wrap > button {
     border: 1px solid transparent;
     transition: background 0.15s, border-color 0.15s;
   }
 
-  .toolbar-group > button:hover:not(:disabled) {
+  .toolbar-group > button:hover:not(:disabled),
+  .link-wrap > button:hover:not(:disabled) {
     border-color: var(--color-primary);
+  }
+
+  /* Anchor for the link popover (LinkDialog), like .font-picker. */
+  .link-wrap {
+    position: relative;
+    display: inline-flex;
   }
 
   .font-picker {

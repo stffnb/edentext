@@ -41,6 +41,7 @@
     "@tiptap/extension-highlight": "3.23.6",
     "@tiptap/extension-history": "^3.23.6",
     "@tiptap/extension-italic": "^3.23.6",
+    "@tiptap/extension-link": "3.23.6",
     "@tiptap/extension-list-item": "^3.23.6",
     "@tiptap/extension-ordered-list": "^3.23.6",
     "@tiptap/extension-paragraph": "^3.23.6",

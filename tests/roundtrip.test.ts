@@ -52,6 +52,13 @@ const fixture: N = {
       T('red', { type: 'textStyle', attrs: { color: '#C00000' } }),
       T(' marked', { type: 'highlight', attrs: { color: '#FFFF00' } }),
     ),
+    // Links: native run path, plus a bold link inside a styled (CUST_P) paragraph.
+    P(null, T('Visit '), T('our site', { type: 'link', attrs: { href: 'https://example.com/' } }), T(' today.')),
+    P({ lineHeight: '1.5' },
+      T('A '),
+      T('bold link', { type: 'bold' }, { type: 'link', attrs: { href: 'https://styled.example/' } }),
+      T(' here.'),
+    ),
     P({ textAlign: 'justify', lineHeight: '1.5', spaceBefore: 12, spaceAfter: 18 }, T('spaced and justified paragraph')),
     P({ indent: 2.5 }, T('indented paragraph')),
     P(null, T('first line'), { type: 'hardBreak' }, T('second line')),
@@ -92,7 +99,7 @@ const fixture: N = {
       ] },
       { type: 'tableRow', content: [
         CELL([120], P(null, T('A2'))),
-        CELL([240], P(null, T('B2'))),
+        CELL([240], P(null, T('B2 '), T('cell link', { type: 'link', attrs: { href: 'https://cell.example/' } }))),
       ] },
     ] },
     P({ breakBefore: 'page', textAlign: 'center', lineHeight: '1.5' }, T('Forced page (styled)')),
@@ -198,6 +205,16 @@ describe('Leg 1: editor → buildOdt → importOdt', () => {
     check('image wrap=left round-trips', wrapImg?.attrs?.width === 90 && wrapImg?.attrs?.height === 60, wrapImg?.attrs);
     const tbImg = collectImages(res.content).find((i: N) => i.attrs?.wrap === 'topBottom');
     check('image wrap=topBottom round-trips', !!tbImg, tbImg?.attrs);
+
+    // Hyperlinks: collect every link mark's href from the imported doc (body + cell).
+    const links: string[] = [];
+    (function walkLinks(n: N) {
+      for (const m of n.marks ?? []) if (m.type === 'link' && m.attrs?.href) links.push(m.attrs.href);
+      for (const c of n.content ?? []) walkLinks(c);
+    })(res.content);
+    check('native-path link round-trips', links.includes('https://example.com/'), links);
+    check('styled-path (CUST_P) bold link round-trips', links.includes('https://styled.example/'), links);
+    check('table-cell link round-trips', links.includes('https://cell.example/'), links);
 
     const indented = (res.content.content ?? []).find((n: N) => n.content?.[0]?.text === 'indented paragraph');
     check('indent → fo:margin-left round-trips (2.5cm)',
@@ -317,7 +334,8 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: lowercase color → #FF0000', p2.content![0].marks?.some((m: N) => m.type === 'textStyle' && m.attrs?.color === '#FF0000'), p2.content![0]);
     check('foreign: highlight #FFFF00', p2.content![0].marks?.some((m: N) => m.type === 'highlight' && m.attrs?.color === '#FFFF00'), p2.content![0]);
     check('foreign: line-break → hardBreak', p2.content!.some((n: N) => n.type === 'hardBreak'));
-    check('foreign: link flattened to text', p2.content!.some((n: N) => n.text === 'a link'));
+    check('foreign: text:a → link mark (href preserved)',
+      p2.content!.some((n: N) => n.text === 'a link' && n.marks?.some((m: N) => m.type === 'link' && m.attrs?.href === 'https://x.example')), p2.content);
 
     const mono = c[3];
     check('foreign: font-face resolves Courier New', mono.content![0].marks?.some((m: N) => m.type === 'textStyle' && m.attrs?.fontFamily === 'Courier New' && m.attrs?.fontSize === '10pt'), mono.content![0]);
@@ -340,8 +358,9 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: spanned cell colwidth [500,1000]', JSON.stringify(row.content![0].attrs?.colwidth) === JSON.stringify([500, 1000]), row.content![0].attrs);
     check('foreign: min-row-height 2cm → 76px', row.attrs?.rowHeight === 76, row.attrs);
 
-    const expectWarn = ['Hyperlinks were converted to plain text', 'Footnotes and endnotes were removed'];
+    const expectWarn = ['Footnotes and endnotes were removed'];
     check('foreign: warnings reported', expectWarn.every(w => f.warnings.includes(w)), f.warnings);
+    check('foreign: no hyperlink warning (now round-tripped)', !f.warnings.includes('Hyperlinks were converted to plain text'), f.warnings);
   });
 });
 

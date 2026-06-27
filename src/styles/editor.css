@@ -147,6 +147,13 @@
   margin-bottom: 0.212cm;
 }
 
+/* Hyperlinks (link.ts). Ctrl/Cmd+click opens them (Editor.svelte). */
+.paper .tiptap a {
+  color: #1a56db;
+  text-decoration: underline;
+  cursor: text;
+}
+
 /* Inline, as-character images (image.ts). The wrapper reserves the rotated bounding
    box; the rotor holds the <img>, resize handles and rotate grip, rotating together. */
 .paper .tiptap .image-node {

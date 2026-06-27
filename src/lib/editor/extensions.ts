@@ -8,6 +8,7 @@ import Strike from '@tiptap/extension-strike';
 import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import Highlight from '@tiptap/extension-highlight';
+import { Link } from './extensions/link';
 import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style';
 import { FontWeight } from './extensions/fontWeight';
 import { FontColor } from './extensions/fontColor';
@@ -42,6 +43,7 @@ export const extensions = [
   Italic,
   Underline,
   Strike,
+  Link,
   Subscript,
   Superscript,
   TextStyle,
