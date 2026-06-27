@@ -10,6 +10,7 @@ declare module '@tiptap/core' {
       setPageBreakBefore: () => ReturnType;
       unsetPageBreakBefore: () => ReturnType;
       togglePageBreakBefore: () => ReturnType;
+      insertPageBreak: () => ReturnType;
     };
   }
 }
@@ -60,6 +61,23 @@ export const PageBreak = Extension.create({
           .map((type) => commands.updateAttributes(type, { breakBefore: next }))
           .some((r) => r);
       },
+      // Ctrl+Enter: start a new page at the cursor. Splits the block (unless already at its
+      // start) and marks the following block. Top-level blocks only — breakBefore is ignored
+      // inside lists/table cells, so there it does nothing.
+      insertPageBreak: () => ({ state, chain }) => {
+        const { $from, empty } = state.selection;
+        if ($from.depth !== 1) return false;
+        const atBlockStart = empty && $from.parentOffset === 0;
+        const c = chain();
+        if (!atBlockStart) c.splitBlock();
+        return c.setPageBreakBefore().run();
+      },
+    };
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      'Mod-Enter': () => this.editor.commands.insertPageBreak(),
     };
   },
 });
