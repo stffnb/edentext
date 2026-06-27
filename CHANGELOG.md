@@ -9,39 +9,79 @@
 - No backend — fully client-side
 
 ### Implemented
-- WYSIWYG editor with TipTap
-  - Bold, Italic, Underline
-  - Headings H1–H3
-  - Undo / Redo (History extension)
-  - Placeholder text on empty document
-- Toolbar with active-state highlighting per button
-  - Reactivity via `tick` counter (Svelte 5 same-reference workaround)
-- Fixed A4 paper canvas (794 × 1123 px at 96 dpi)
-- LocalStorage auto-save (debounced 1 s, restores on reload)
-- ODT export via `tiptapToOdt()` from odf-kit
-  - Filename derived from first H1/H2/H3 heading, fallback `document.odt`
-- Favicon (hand-coded SVG, no external assets)
-- Lists (ordered / unordered)
-- Light / Dark / Allblack / Auto appearance mode (settings menu in toolbar)
-- expandable extended toolbar
-- DIN A4 print layout with visual page breaks
-- add bottom toolbar to show page number
-- Zoom feature
-- font selection
-- font size selection
-- line spacing + paragraph spacing
-- text alignment
-- show formatting marks
-- margins
-- page orientation
-- tables
-- undo history
-- ODT import / open existing file
-- header/footer
-- Images
-- ...
+
+**Architecture**
+- WYSIWYG editor built on TipTap 3 (individual extensions, no starter-kit); toolbar active-states stay reactive via a `tick` counter (Svelte 5 same-reference workaround)
+- Fixed A4 paper canvas (794 × 1123 px @ 96 dpi) with CSS-simulated pagination and visual page breaks
+- LocalStorage auto-save (debounced 1 s); restores document, theme, zoom, margins, orientation, etc. on reload
+- Fully client-side / serverless; hand-coded SVG favicon (no external assets)
+- Placeholder text on an empty document
+
+**Text formatting**
+- Bold, Italic, Underline, Strikethrough
+- Subscript / Superscript
+- Font family picker (lists only fonts installed on the machine; remembers recently used fonts)
+- Font size
+- Font color and highlight color (color picker with custom colors)
+- Headings H1–H3, including un-bolding a heading
+
+**Paragraphs & lists**
+- Text alignment: left, center, right, justify
+- Line spacing and paragraph spacing (space before / after)
+- Increase / decrease indent (paragraphs and lists)
+- Bulleted and ordered lists — nested, with multiple numbering styles (decimal, alpha, roman; `.` or `)` suffix) and whole-list indent; Tab / Shift-Tab to nest / un-nest
+- Tab stops (real tab character) and manual line breaks (Shift+Enter)
+
+**Insert**
+- Tables: insert via size picker, Word-style row/column drag-resize, add / delete rows & columns, delete table, cell borders; a table splits cleanly across page boundaries
+- Images: inline or floating with text wrap (left / right / top-bottom), resize handles, rotation, live size badge; insert via toolbar, drag-and-drop, or paste
+- Special characters picker
+- Hyperlinks: create / edit / remove (toolbar + Ctrl+K), Ctrl/Cmd+click to open, hover hint showing the URL; ODF `text:a` round-trip
+- Manual page break (Ctrl+Enter); round-trips to ODF `fo:break-before`
+
+**Page & layout**
+- Page margins (cm) and page orientation (portrait / landscape)
+- Headers & footers with page-number / page-count fields and configurable edge distances
+- Zoom (20–300 %)
+- Show formatting marks (spaces, tabs, paragraph marks)
+
+**Editing aids**
+- Undo / Redo with a labelled history dropdown
+- Search & Replace (Ctrl+F / Ctrl+H): live match highlighting, match count, next / previous, match-case and whole-word options, replace current / replace all
+- Spell check in English with squiggles and a suggestions context menu (add / ignore word); selectable document language
+- Word / character count statistics (whole document and selection)
+
+**UI & theming**
+- Light / Dark / AllBlack / Auto appearance modes (settings menu in toolbar)
+- Primary toolbar plus an expandable extended toolbar (horizontal scroll on narrow windows)
+- Status bar with page number, word count, language and zoom controls
+- About dialog
+
+**File & export**
+- ODT export via odf-kit with extensive content.xml / styles.xml post-processing (custom node types, tables with borders, images, fonts and colors); filename derived from the first heading (fallback `document.odt`)
+- ODT import / open existing file: parses content.xml / styles.xml directly, adopts the file's margins and orientation, and reports graceful-degradation warnings
+- PDF export — Raster (pixel-exact copy of the editor with a selectable text layer) and Vector / Print (crisp, fonts embedded, via the browser print dialog)
 
 ### Not yet implemented
+
+Planned word-processor features (to match Word/LibreOffice):
+- Table cells: merge / split, cell background/shading, header-row toggle
+- Footnotes / endnotes (currently dropped on import)
+- Clear formatting (remove all marks)
+- Multi-column (newspaper) layout
+- Table of contents (generated from headings)
+- Comments / annotations (currently dropped on import)
+- Horizontal rule
+- Page numbering options (start value / format) + different first-page header
+- Heading levels H4–H6 (currently clamped to H3)
+- Paragraph borders / shading
+- Track changes (revisions)
+- Text boxes / shapes / drawings (currently dropped on import)
+- Equations / formulas
+- Cross-references / bookmarks
+- Named paragraph / character styles (style gallery)
+
+Other:
 - Custom right-click context menu (formatting, cut/copy)
 - Multi-document management
 - PWA / offline support
