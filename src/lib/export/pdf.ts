@@ -358,6 +358,9 @@ html, body { margin: 0; padding: 0; background: #fff; }
 .paper .tiptap table { margin: 0 0 0.212cm; }
 .paper .tiptap tr { break-inside: avoid; }
 .paper .tiptap [data-color] { color: var(--font-color, currentColor) !important; }
+/* Manual page break (breakBefore) → native page break; never on the first block (no blank leading page). */
+.paper .tiptap > [data-page-break-before="page"] { break-before: page; }
+.paper .tiptap > [data-page-break-before="page"]:first-child { break-before: auto; }
 .column-resize-handle, .row-resize-handle, .is-editor-empty::before { display: none !important; }
 `;
 }
