@@ -154,6 +154,15 @@
   cursor: text;
 }
 
+/* Find & Replace match highlights (searchReplace.ts); current match is stronger. */
+.paper .tiptap .search-match {
+  background: rgba(255, 213, 0, 0.45);
+  border-radius: 2px;
+}
+.paper .tiptap .search-match-current {
+  background: rgba(255, 145, 0, 0.8);
+}
+
 /* Inline, as-character images (image.ts). The wrapper reserves the rotated bounding
    box; the rotor holds the <img>, resize handles and rotate grip, rotating together. */
 .paper .tiptap .image-node {

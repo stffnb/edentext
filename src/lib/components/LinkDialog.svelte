@@ -84,7 +84,8 @@
     padding: 0.4rem 0.5rem;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
-    background: var(--color-page-bg, #fff);
+    /* --color-surface (not page-bg): page-bg stays white in dark mode, surface follows the theme. */
+    background: var(--color-surface);
     color: var(--color-text);
     font-size: 0.85rem;
   }

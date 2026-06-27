@@ -29,6 +29,7 @@ import { PageBreak } from './extensions/pageBreak';
 import { Indent } from './extensions/indent';
 import { FormattingMarks } from './extensions/formattingMarks';
 import { SpellCheck } from './extensions/spellCheck';
+import { SearchReplace } from './extensions/searchReplace';
 import { TableView } from './extensions/tableView';
 import { TableColumnResize } from './extensions/tableColumnResize';
 import { TableRowResize } from './extensions/tableRowResize';
@@ -91,4 +92,5 @@ export const extensions = [
   PageBreaks,
   FormattingMarks,
   SpellCheck,
+  SearchReplace,
 ];

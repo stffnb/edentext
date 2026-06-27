@@ -5,6 +5,7 @@
   import EditorComponent from './lib/components/Editor.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
   import ToolbarExpanded from './lib/components/ToolbarExpanded.svelte';
+  import FindReplaceBar from './lib/components/FindReplaceBar.svelte';
   import { buildOdt, deriveFilename } from './lib/export/odt';
   import { exportPdf, printPdf } from './lib/export/pdf';
   import { supportsFsAccess, saveOdt, saveAsOdt, openOdt } from './lib/export/saveFile';
@@ -39,6 +40,24 @@
 
   let activeEditor = $derived(hfActive ? hfEditor : editor);
   let activeTick = $derived(hfActive ? hfTick : tick);
+
+  // Find & Replace bar (searchReplace.ts). Targets the body editor; positioned just
+  // below the toolbar region (toolbarRegionH tracks its height, expanded or not).
+  let findOpen = $state(false);
+  let findMode: 'find' | 'replace' = $state('find');
+  let findNonce = $state(0);
+  let toolbarRegionH = $state(0);
+
+  function openFind(mode: 'find' | 'replace') {
+    findMode = mode;
+    findOpen = true;
+    findNonce++;
+  }
+
+  function closeFind() {
+    findOpen = false;
+    editor?.commands.clearSearch();
+  }
 
   // Word/character counts for the status-bar counter. Reading `tick` makes these
   // recompute on every body transaction (incl. selection changes), so they stay
@@ -441,6 +460,17 @@
         e.preventDefault();
         handlePrintPdf();
       }
+      // Ctrl/Cmd+F → Find, Ctrl/Cmd+H → Find & Replace (suppress the browser's own find).
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        openFind('find');
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'h' || e.key === 'H')) {
+        e.preventDefault();
+        openFind('replace');
+      }
+      // Escape closes the bar (when it isn't handled inside an input).
+      if (e.key === 'Escape' && findOpen) closeFind();
     }
     window.addEventListener('keydown', onKeydown);
     return () => window.removeEventListener('keydown', onKeydown);
@@ -471,7 +501,7 @@
 </script>
 
 <main>
-  <div class="toolbar-region">
+  <div class="toolbar-region" bind:clientHeight={toolbarRegionH}>
     <div class="toolbar-clip" id="primary-toolbar" bind:this={toolbarClipEl} onwheel={onToolbarWheel}>
       <div class="toolbar-stack" bind:this={toolbarStackEl} style="transform: translateX(-{tbScroll}px);">
   <header class:expanded={toolbarExpanded}>
@@ -706,6 +736,11 @@
     {pageMargins}
     orientation={pageOrientation}
   />
+  {#if findOpen && editor}
+    <div class="find-bar-anchor" style="top: {toolbarRegionH + 8}px;">
+      <FindReplaceBar {editor} {tick} mode={findMode} focusNonce={findNonce} onClose={closeFind} />
+    </div>
+  {/if}
   <footer class="statusbar">
     <div class="sb-left">
       <span>Page {currentPage} of {numPages}</span>
@@ -773,6 +808,14 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+  }
+
+  /* Find & Replace bar: floats at the top-right of the editing area, just under the
+     toolbar (top is set inline from the toolbar height). Below the toolbar's z-index. */
+  .find-bar-anchor {
+    position: fixed;
+    right: 1.5rem;
+    z-index: 190;
   }
 
   /* Toolbar scroll region. A stacking context (z-index) so the whole toolbar — incl.
