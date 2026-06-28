@@ -1,4 +1,4 @@
-import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, type ParagraphBuilder, type TableBuilder, type RowBuilder, type CellBuilder, type HeaderFooterBuilder } from 'odf-kit';
+import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, type ParagraphBuilder, type TableBuilder, type RowBuilder, type CellBuilder, type CellOptions, type HeaderFooterBuilder } from 'odf-kit';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -1095,9 +1095,17 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
           // Emit the cell's runs (SEG-separated) and record its block descriptor.
           // addCell runs synchronously, so the push is in document order — matching
           // how applyCellBlocks later walks cells in content.xml.
+          // colSpan/rowSpan make odf-kit emit number-columns/rows-spanned and the
+          // <table:covered-table-cell> placeholders; those never match the
+          // applyCellBlocks cell regex, so cellBlocks stays one-per-real-cell aligned.
+          const opts: CellOptions = { padding: CELL_PADDING };
+          const colspan = (cell.attrs?.colspan as number) ?? 1;
+          const rowspan = (cell.attrs?.rowspan as number) ?? 1;
+          if (colspan > 1) opts.colSpan = colspan;
+          if (rowspan > 1) opts.rowSpan = rowspan;
           r.addCell((c: CellBuilder) => {
             cellBlocks.push(buildCellContent(cell, c));
-          }, { padding: CELL_PADDING });
+          }, opts);
         }
       });
     }

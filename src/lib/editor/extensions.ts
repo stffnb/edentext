@@ -33,6 +33,7 @@ import { SearchReplace } from './extensions/searchReplace';
 import { TableView } from './extensions/tableView';
 import { TableColumnResize } from './extensions/tableColumnResize';
 import { TableRowResize } from './extensions/tableRowResize';
+import { TableSplit } from './extensions/tableSplit';
 import { TrailingNode } from './extensions/trailingNode';
 import { Image } from './extensions/image';
 
@@ -79,6 +80,8 @@ export const extensions = [
   TableCell,
   TableColumnResize,
   TableRowResize,
+  // Word-style "Split Cells…" (N×M); merge uses extension-table's built-in mergeCells.
+  TableSplit,
   // Guarantees a paragraph after a trailing table so the cursor isn't trapped
   // and the user can keep writing below a table at the document's end.
   TrailingNode,

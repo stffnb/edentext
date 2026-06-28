@@ -8,6 +8,7 @@
   import { spellErrorAt } from '../editor/extensions/spellCheck';
   import { spellController } from '../spell/controller';
   import TableToolbar from './TableToolbar.svelte';
+  import TableSplitDialog from './TableSplitDialog.svelte';
   import ImageToolbar from './ImageToolbar.svelte';
   import type { WrapMode } from '../editor/extensions/image';
   import { NodeSelection } from '@tiptap/pm/state';
@@ -179,6 +180,12 @@
   // Shown when the selection is inside a table; positioned just above that table.
   let tableUi = $state<{ visible: boolean; top: number; left: number }>({ visible: false, top: 0, left: 0 });
   let tableUiRaf = 0;
+  // Word-style "Split Cells…" popover, opened from the table toolbar.
+  let splitDialogOpen = $state(false);
+  // Drop the dialog if the selection leaves the table (toolbar hidden).
+  $effect(() => {
+    if (!tableUi.visible && splitDialogOpen) splitDialogOpen = false;
+  });
 
   // The DOM element of the table containing the current selection, or null.
   // nodeDOM(before(table)) returns the wrapper div the table node view renders.
@@ -628,8 +635,26 @@
       />
     </div>
   </div>
-  {#if tableUi.visible}
-    <TableToolbar {editor} top={tableUi.top} left={tableUi.left} />
+  {#if tableUi.visible && !splitDialogOpen}
+    <TableToolbar
+      {editor}
+      {tick}
+      top={tableUi.top}
+      left={tableUi.left}
+      onSplit={() => (splitDialogOpen = true)}
+    />
+  {/if}
+  {#if splitDialogOpen && tableUi.visible}
+    <TableSplitDialog
+      open={splitDialogOpen}
+      top={tableUi.top}
+      left={tableUi.left}
+      onApply={(cols, rows) => {
+        editor?.chain().focus().splitCellInto(cols, rows).run();
+        splitDialogOpen = false;
+      }}
+      onClose={() => (splitDialogOpen = false)}
+    />
   {/if}
   {#if imageUi.visible}
     <ImageToolbar {editor} top={imageUi.top} left={imageUi.left} wrap={imageUi.wrap} />

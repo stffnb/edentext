@@ -2,7 +2,7 @@
 // plus a hand-crafted LibreOffice/Word-style .odt exercising the style resolver.
 // jsdom (vitest `environment`) supplies the global DOMParser.
 import { describe, it, expect } from 'vitest';
-import { zipSync, strToU8 } from 'fflate';
+import { zipSync, strToU8, unzipSync, strFromU8 } from 'fflate';
 import { getSchema } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
 import { buildOdt } from '../src/lib/export/odt';
@@ -23,6 +23,9 @@ const H = (attrs: N, ...content: N[]): N => ({ type: 'heading', attrs, ...(conte
 const LI = (...content: N[]): N => ({ type: 'listItem', content });
 const CELL = (colwidth: number[] | null, ...content: N[]): N =>
   ({ type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth }, content });
+const CELLM = (colspan: number, rowspan: number, colwidth: number[] | null, text: string): N =>
+  ({ type: 'tableCell', attrs: { colspan, rowspan, colwidth }, content: [P(null, T(text))] });
+const ROW = (...cells: N[]): N => ({ type: 'tableRow', content: cells });
 
 // A tiny valid PNG; only its bytes matter for the round-trip (no image decoding).
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -233,6 +236,45 @@ describe('Leg 1: editor → buildOdt → importOdt', () => {
     const fracOut = cwOut.flat().map((w, _, all) => w / all.reduce((a, b) => a + b, 0));
     check('column ratios round-trip', fracIn.length === fracOut.length &&
       fracIn.every((f, i) => Math.abs(f - fracOut[i]) < 0.02), { fracIn, fracOut });
+  });
+});
+
+describe('Leg 1b: merged table cells (colspan/rowspan)', () => {
+  // 3×3 grid: A spans 2 cols (row 0); C spans 2 rows (col 0, rows 1–2).
+  //   row0: [A A][B]    row1: [C][D][E]    row2: [C][F][G]
+  const mergedDoc: N = {
+    type: 'doc',
+    content: [
+      P(null, T('Merged cells:')),
+      { type: 'table', content: [
+        ROW(CELLM(2, 1, [100, 100], 'A'), CELLM(1, 1, [100], 'B')),
+        ROW(CELLM(1, 2, [100], 'C'), CELLM(1, 1, [100], 'D'), CELLM(1, 1, [100], 'E')),
+        ROW(CELLM(1, 1, [100], 'F'), CELLM(1, 1, [100], 'G')),
+      ] },
+    ],
+  };
+
+  it('exports spans + covered cells and re-imports them', async () => {
+    const bytes = await buildOdt(mergedDoc, margins, 'portrait');
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('content.xml emits number-columns-spanned=2', content.includes('table:number-columns-spanned="2"'));
+    check('content.xml emits number-rows-spanned=2', content.includes('table:number-rows-spanned="2"'));
+    check('content.xml emits a covered-table-cell', content.includes('<table:covered-table-cell'));
+
+    const res = importOdt(bytes);
+    check('no warnings on own export', res.warnings.length === 0, res.warnings);
+    const table = (res.content.content ?? []).find((n: N) => n.type === 'table');
+    const rows = table?.content ?? [];
+    check('row 0 has 2 cells', rows[0]?.content?.length === 2, rows[0]?.content?.length);
+    check('row 1 has 3 cells', rows[1]?.content?.length === 3, rows[1]?.content?.length);
+    check('row 2 has 2 cells (covered slot skipped)', rows[2]?.content?.length === 2, rows[2]?.content?.length);
+    check('A has colspan 2', rows[0]?.content?.[0]?.attrs?.colspan === 2, rows[0]?.content?.[0]?.attrs);
+    check('C has rowspan 2', rows[1]?.content?.[0]?.attrs?.rowspan === 2, rows[1]?.content?.[0]?.attrs);
+
+    const textOf = (cell: N) => cell?.content?.[0]?.content?.[0]?.text;
+    check('A text preserved', textOf(rows[0]?.content?.[0]) === 'A', textOf(rows[0]?.content?.[0]));
+    check('F at col 1 of row 2', textOf(rows[2]?.content?.[0]) === 'F', textOf(rows[2]?.content?.[0]));
+    check('G at col 2 of row 2', textOf(rows[2]?.content?.[1]) === 'G', textOf(rows[2]?.content?.[1]));
   });
 });
 

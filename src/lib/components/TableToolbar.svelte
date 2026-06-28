@@ -5,10 +5,14 @@
     editor,
     top,
     left,
+    tick,
+    onSplit,
   }: {
     editor: Editor | null;
     top: number;
     left: number;
+    tick: number;
+    onSplit: () => void;
   } = $props();
 
   // Run a table command without disturbing the cell selection: preventDefault on
@@ -18,6 +22,9 @@
     if (!editor) return;
     cmd(editor.chain().focus()).run();
   }
+
+  // Merge needs a multi-cell selection; re-evaluated per transaction via `tick`.
+  const canMerge = $derived(tick >= 0 && !!editor && editor.can().mergeCells());
 </script>
 
 <div
@@ -116,6 +123,34 @@
       <path d="M3.5 5h11M7 5V3.5h4V5M5 5l.7 9.5a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9L13 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
+
+  <span class="tt-sep"></span>
+
+  <button
+    class="tt-btn"
+    title="Merge cells"
+    aria-label="Merge cells"
+    disabled={!canMerge}
+    onclick={() => run((c) => c.mergeCells())}
+  >
+    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="3" y="4" width="12" height="10" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M6 9h6M6 9l1.6-1.6M6 9l1.6 1.6M12 9l-1.6-1.6M12 9l-1.6 1.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <button
+    class="tt-btn"
+    title="Split cells…"
+    aria-label="Split cells"
+    onclick={() => onSplit()}
+  >
+    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="3" y="4" width="12" height="10" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <line x1="9" y1="4" x2="9" y2="14" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M9 7.4L7.4 9 9 10.6M9 7.4L10.6 9 9 10.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
 </div>
 
 <style>
@@ -152,8 +187,13 @@
     transition: background 0.12s, color 0.12s;
   }
 
-  .tt-btn:hover {
+  .tt-btn:hover:not(:disabled) {
     background: var(--color-btn-hover);
+  }
+
+  .tt-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
 
   .tt-danger:hover {
