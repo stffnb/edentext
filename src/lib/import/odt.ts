@@ -1,6 +1,7 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
+import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { DEFAULT_ORDERED_TYPE, orderedTypeFromFormat } from '../utils/orderedListTypes';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -257,21 +258,21 @@ function parseXml(xml: string): Document {
 
 // ---- block conversion -----------------------------------------------------------
 
-function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind): Node[] {
+function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDefault = false): Node[] {
   const out: Node[] = [];
   for (const el of elements) {
     if (el.namespaceURI === NS.text) {
       if (el.localName === 'p' || el.localName === 'h') {
-        out.push(convertParaLike(el, ctx, kind));
+        out.push(convertParaLike(el, ctx, kind, boldByDefault));
       } else if (el.localName === 'list') {
         const list = convertList(el, ctx, null, 1);
         if (list) out.push(list);
       } else if (el.localName === 'section') {
-        out.push(...convertBlocks(Array.from(el.children), ctx, kind));
+        out.push(...convertBlocks(Array.from(el.children), ctx, kind, boldByDefault));
       } else if (/-index$|^table-of-content$|^bibliography$/.test(el.localName)) {
         // Generated indexes (ToC, …): keep the rendered text from index-body.
         const indexBody = el.getElementsByTagNameNS(NS.text, 'index-body')[0];
-        if (indexBody) out.push(...convertBlocks(Array.from(indexBody.children), ctx, kind));
+        if (indexBody) out.push(...convertBlocks(Array.from(indexBody.children), ctx, kind, boldByDefault));
       }
       // tracked-changes registry, decls, soft-page-break, … → no visual content
     } else if (el.namespaceURI === NS.table && el.localName === 'table') {
@@ -294,7 +295,7 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind): Node[] {
   return out;
 }
 
-function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind): Node {
+function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault = false): Node {
   const { resolver } = ctx;
   const styleName = el.getAttributeNS(NS.text, 'style-name');
   const paraProps = resolver.paraProps(styleName);
@@ -308,7 +309,7 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind): Node {
   }
 
   const attrs = blockAttrs(paraProps, baseTextProps, isHeading ? level : null, kind);
-  const content = convertInline(el, ctx, baseTextProps, isHeading ? level : null);
+  const content = convertInline(el, ctx, baseTextProps, isHeading ? level : null, false, boldByDefault);
 
   const node: Node = { type: isHeading ? 'heading' : 'paragraph' };
   if (isHeading) attrs.level = level;
@@ -380,7 +381,7 @@ function snapPt(v: number): number {
 
 // ---- inline conversion --------------------------------------------------------
 
-function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel: number | null, hfFields = false): Node[] {
+function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel: number | null, hfFields = false, boldByDefault = false): Node[] {
   const out: Node[] = [];
 
   const pushText = (text: string, props: PropMap, linkHref?: string) => {
@@ -393,7 +394,7 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
       clean = clean.replace(/[ \t]*\n[ \t]*/g, ' ');
     }
     if (!clean) return;
-    const marks = marksFor(props, ctx.resolver, headingLevel);
+    const marks = marksFor(props, ctx.resolver, headingLevel, boldByDefault);
     if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
     const node: Node = { type: 'text', text: clean };
     if (marks.length) node.marks = marks;
@@ -496,14 +497,15 @@ function mergeAdjacentText(nodes: Node[]): Node[] {
   return out;
 }
 
-function marksFor(props: PropMap, resolver: StyleResolver, headingLevel: number | null): Mark[] {
+function marksFor(props: PropMap, resolver: StyleResolver, headingLevel: number | null, boldByDefault = false): Mark[] {
   const marks: Mark[] = [];
   const textStyle: Record<string, unknown> = {};
 
   const weight = props['fo:font-weight'];
   const bold = weight ? weight === 'bold' || parseInt(weight, 10) >= 600 : null;
-  if (headingLevel != null) {
-    // Headings render bold by default; only a *non*-bold run needs a mark.
+  // Headings and header-row cells render bold by default (CSS): only a *non*-bold run
+  // needs a mark (fontWeight:normal), and a bold run needs none.
+  if (headingLevel != null || boldByDefault) {
     if (bold === false) textStyle.fontWeight = 'normal';
   } else if (bold === true) {
     marks.push({ type: 'bold' });
@@ -668,7 +670,9 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       const rowspan = parseInt(cellEl.getAttributeNS(NS.table, 'number-rows-spanned') ?? '1', 10) || 1;
       const rawBg = ctx.resolver.cellBackgroundColor(cellEl.getAttributeNS(NS.table, 'style-name'));
       const backgroundColor = rawBg ? normalizeColor(rawBg) ?? rawBg : null;
-      const blocks = convertBlocks(Array.from(cellEl.children), ctx, 'cell');
+      // Header-shaded cells render bold by default (CSS); convert their runs like headings
+      // so a baked-bold run needs no mark and only an explicitly normal run gets one.
+      const blocks = convertBlocks(Array.from(cellEl.children), ctx, 'cell', backgroundColor === HEADER_SHADE);
       for (let r = 0; r < repeated; r++) {
         const attrs: Record<string, unknown> = { colspan, rowspan };
         if (backgroundColor) attrs.backgroundColor = backgroundColor;

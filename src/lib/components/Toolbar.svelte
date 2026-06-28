@@ -3,6 +3,7 @@
   import HistoryButton from './HistoryButton.svelte';
   import AlignButton from './AlignButton.svelte';
   import { ORDERED_LIST_TYPES, DEFAULT_ORDERED_TYPE, type OrderedListType } from '../utils/orderedListTypes';
+  import { isInHeaderCell } from '../editor/extensions/tableHeaderRow';
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 
@@ -11,10 +12,14 @@
   let isH2         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 2 }));
   let isH3         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 3 }));
   let isHeading    = $derived(isH1 || isH2 || isH3);
-  // fontWeight:'normal' is set explicitly to override heading boldness
+  // Header-row cells render bold by default (CSS), like headings — so the Bold button
+  // toggles the fontWeight:'normal' override there too (keeps header bold editable).
+  let inHeaderCell = $derived(tick >= 0 && !!editor && isInHeaderCell(editor.state));
+  let boldByDefault = $derived(isHeading || inHeaderCell);
+  // fontWeight:'normal' is set explicitly to override the default boldness
   let hasNormalWeight = $derived(tick >= 0 && !!editor?.isActive('textStyle', { fontWeight: 'normal' }));
-  // Bold = explicit bold mark, OR inside a heading that hasn't been un-bolded
-  let isBold       = $derived(tick >= 0 && (!!editor?.isActive('bold') || (isHeading && !hasNormalWeight)));
+  // Bold = explicit bold mark, OR a bold-by-default context that hasn't been un-bolded
+  let isBold       = $derived(tick >= 0 && (!!editor?.isActive('bold') || (boldByDefault && !hasNormalWeight)));
   let isItalic     = $derived(tick >= 0 && !!editor?.isActive('italic'));
   let isUnderline  = $derived(tick >= 0 && !!editor?.isActive('underline'));
   let isStrike     = $derived(tick >= 0 && !!editor?.isActive('strike'));
@@ -59,12 +64,12 @@
       <button
         class:active={isBold}
         onclick={() => {
-          if (isHeading) {
+          if (boldByDefault) {
             if (hasNormalWeight) {
-              // Restore heading's natural bold
+              // Restore the default (heading / header-row) bold
               editor?.chain().focus().unsetFontWeight().run();
             } else {
-              // Override heading bold with explicit font-weight: normal
+              // Override the default bold with explicit font-weight: normal
               editor?.chain().focus().setFontWeight('normal').run();
             }
           } else {

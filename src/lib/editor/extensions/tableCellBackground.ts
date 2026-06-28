@@ -1,4 +1,5 @@
 import { Extension } from '@tiptap/core';
+import { HEADER_SHADE } from './tableHeaderRow';
 
 // Word/LibreOffice cell shading: a `backgroundColor` attr on table cells, rendered
 // as the cell's CSS background and round-tripped to ODF fo:background-color
@@ -19,7 +20,11 @@ export const TableCellBackground = Extension.create({
             parseHTML: (element: HTMLElement) => element.style.backgroundColor || null,
             renderHTML: (attributes: Record<string, unknown>) => {
               const bg = attributes.backgroundColor;
-              return bg ? { style: `background-color: ${bg}` } : {};
+              if (!bg) return {};
+              // The header-row fill doubles as a marker: tag the cell so CSS can render
+              // its text bold (presentational, covers typed/pasted text). See tableHeaderRow.
+              const cls = bg === HEADER_SHADE ? { class: 'cell-header' } : {};
+              return { style: `background-color: ${bg}`, ...cls };
             },
           },
         },

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Editor, ChainedCommands } from '@tiptap/core';
   import { CellSelection } from '@tiptap/pm/tables';
+  import { isHeaderRowStyled } from '../editor/extensions/tableHeaderRow';
   import ColorPicker from './ColorPicker.svelte';
 
   let {
@@ -27,6 +28,9 @@
 
   // Merge needs a multi-cell selection; re-evaluated per transaction via `tick`.
   const canMerge = $derived(tick >= 0 && !!editor && editor.can().mergeCells());
+
+  // Whether the first row is styled as a header (bold + light shading).
+  const isHeaderRow = $derived(tick >= 0 && !!editor && isHeaderRowStyled(editor.state));
 
   // Background colour of the selected cell(s): the uniform value, '' if mixed, null if
   // none. Drives the ColorPicker's "current" swatch (re-evaluated per `tick`).
@@ -205,6 +209,24 @@
       </svg>
     {/snippet}
   </ColorPicker>
+
+  <span class="tt-sep"></span>
+
+  <button
+    class="tt-btn"
+    class:active={isHeaderRow}
+    title="Header row (bold + shading)"
+    aria-label="Header row"
+    aria-pressed={isHeaderRow}
+    onclick={() => run((c) => c.toggleHeaderRowStyle())}
+  >
+    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="3" y="3" width="12" height="12" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <rect x="3" y="3" width="12" height="4" fill="currentColor" opacity="0.85"/>
+      <line x1="9" y1="7" x2="9" y2="15" stroke="currentColor" stroke-width="1.1"/>
+      <line x1="3" y1="11" x2="15" y2="11" stroke="currentColor" stroke-width="1.1"/>
+    </svg>
+  </button>
 </div>
 
 <style>
@@ -248,6 +270,11 @@
   .tt-btn:disabled {
     opacity: 0.35;
     cursor: default;
+  }
+
+  .tt-btn.active {
+    background: var(--color-btn-hover);
+    color: var(--color-primary);
   }
 
   .tt-danger:hover {

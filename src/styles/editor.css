@@ -361,6 +361,14 @@
   margin-bottom: 0;
 }
 
+/* Header-row cells (tableHeaderRow.ts toggle): bold rendered presentationally so all
+   text — existing, typed, or pasted — is bold. The light fill comes from the cell's
+   inline background-color; export bakes the bold for Word/LibreOffice consistency. */
+.paper .tiptap td.cell-header,
+.paper .tiptap th.cell-header {
+  font-weight: 600;
+}
+
 /* Selected-cell highlight while editing (ProseMirror tables add .selectedCell).
    A translucent overlay via the ::after avoids disturbing the cell border. */
 .paper .tiptap .selectedCell {

@@ -3,6 +3,7 @@ import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
+import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { DEFAULT_ORDERED_TYPE, orderedTypeDef } from '../utils/orderedListTypes';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
@@ -973,10 +974,14 @@ function linkHrefOf(marks: TiptapNode['marks'] = []): string | undefined {
 }
 
 // Emit each text node as an odf-kit run; link-marked runs become <text:a> via addLink.
-function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []) {
+// forceBold bakes bold onto every run regardless of marks — used for header-row cells,
+// whose bold is presentational (CSS) in the editor and so isn't stored as a mark.
+function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = [], forceBold = false) {
   for (const node of content) {
     if (node.type !== 'text' || !node.text) continue;
     const fmt = formattingFromMarks(node.marks);
+    // Bake header bold, but respect an explicit un-bold (fontWeight:normal) override.
+    if (forceBold && fmt.fontWeight !== 'normal') fmt.bold = true;
     const f = Object.keys(fmt).length ? fmt : undefined;
     const href = linkHrefOf(node.marks);
     if (href) p.addLink(node.text, href, f);
@@ -1004,14 +1009,14 @@ function applyHfRuns(b: HeaderFooterBuilder, para: TiptapNode, pageCount: number
 
 // A segment is one paragraph, heading, or list item's paragraph; exactly one SEG
 // between consecutive segments, so splitting yields one piece per segment in DFS order.
-function buildCellContent(cell: TiptapNode, c: CellBuilder): CellBlock[] {
+function buildCellContent(cell: TiptapNode, c: CellBuilder, forceBold = false): CellBlock[] {
   const blocks: CellBlock[] = [];
   const state = { emitted: false }; // whether any segment has been emitted yet
 
   const emitSegment = (content: TiptapNode[] | undefined) => {
     if (state.emitted) c.addText(SEG);
     state.emitted = true;
-    applyRuns(c, content ?? []);
+    applyRuns(c, content ?? [], forceBold);
   };
 
   const walkList = (listNode: TiptapNode): CellListBlock => {
@@ -1109,8 +1114,11 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
             const c = normalizeColor(bg);
             if (c) opts.backgroundColor = c;
           }
+          // Header-row cells render bold via CSS (presentational), so bake bold into the
+          // runs on export to keep Word/LibreOffice consistent (incl. freshly-typed text).
+          const headerBold = bg === HEADER_SHADE;
           r.addCell((c: CellBuilder) => {
-            cellBlocks.push(buildCellContent(cell, c));
+            cellBlocks.push(buildCellContent(cell, c, headerBold));
           }, opts);
         }
       });

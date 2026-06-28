@@ -35,6 +35,7 @@ import { TableColumnResize } from './extensions/tableColumnResize';
 import { TableRowResize } from './extensions/tableRowResize';
 import { TableSplit } from './extensions/tableSplit';
 import { TableCellBackground } from './extensions/tableCellBackground';
+import { TableHeaderRow } from './extensions/tableHeaderRow';
 import { TrailingNode } from './extensions/trailingNode';
 import { Image } from './extensions/image';
 
@@ -85,6 +86,8 @@ export const extensions = [
   TableSplit,
   // Cell shading: backgroundColor attr on tableCell/tableHeader (→ fo:background-color).
   TableCellBackground,
+  // "Header row" styling preset: bold + light shading on the first row (toggle).
+  TableHeaderRow,
   // Guarantees a paragraph after a trailing table so the cursor isn't trapped
   // and the user can keep writing below a table at the document's end.
   TrailingNode,

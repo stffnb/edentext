@@ -8,6 +8,7 @@ import { Node as PMNode } from '@tiptap/pm/model';
 import { buildOdt } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
 import { hfExtensions } from '../src/lib/editor/extensions/headerFooter';
+import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
 
 type N = any;
 
@@ -278,6 +279,41 @@ describe('Leg 1b: merged table cells (colspan/rowspan)', () => {
     check('A text preserved', textOf(rows[0]?.content?.[0]) === 'A', textOf(rows[0]?.content?.[0]));
     check('F at col 1 of row 2', textOf(rows[2]?.content?.[0]) === 'F', textOf(rows[2]?.content?.[0]));
     check('G at col 2 of row 2', textOf(rows[2]?.content?.[1]) === 'G', textOf(rows[2]?.content?.[1]));
+  });
+});
+
+describe('Leg 1c: header-row cells (bold-by-default, editable)', () => {
+  // Header-shaded cells render bold via CSS; bold is editable via fontWeight:normal.
+  // Round-trip: a default-bold run carries no mark (CSS bolds), an un-bolded run keeps
+  // fontWeight:normal, and export bakes bold so Word/LibreOffice match.
+  const hcell = (...content: N[]): N =>
+    ({ type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: [100], backgroundColor: HEADER_SHADE }, content: [P(null, ...content)] });
+  const FW_NORMAL = { type: 'textStyle', attrs: { fontWeight: 'normal' } };
+
+  const doc: N = { type: 'doc', content: [
+    { type: 'table', content: [
+      ROW(hcell(T('Bold')), hcell(T('Plain', FW_NORMAL))),
+      ROW(CELLM(1, 1, [100], 'x'), CELLM(1, 1, [100], 'y')),
+    ] },
+  ] };
+
+  it('bakes header bold on export and round-trips an un-bolded run', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('export bakes bold on the default-bold header run', /fo:font-weight="bold"/.test(xml), xml.match(/fo:font-weight="[^"]*"/g));
+    check('export emits the un-bold override', /fo:font-weight="normal"/.test(xml));
+
+    const res = importOdt(bytes);
+    const table = (res.content.content ?? []).find((n: N) => n.type === 'table');
+    const row0 = table?.content?.[0]?.content ?? [];
+    const marksOf = (cell: N) => cell?.content?.[0]?.content?.[0]?.marks ?? [];
+    // Both cells keep the header fill.
+    check('header cells keep the fill', row0[0]?.attrs?.backgroundColor === HEADER_SHADE && row0[1]?.attrs?.backgroundColor === HEADER_SHADE, row0.map((c: N) => c?.attrs?.backgroundColor));
+    // Default-bold run carries no mark (CSS provides bold).
+    check('default-bold run has no bold mark', !marksOf(row0[0]).some((m: N) => m.type === 'bold'), marksOf(row0[0]));
+    // Un-bolded run keeps fontWeight:normal.
+    const fw = marksOf(row0[1]).find((m: N) => m.type === 'textStyle')?.attrs?.fontWeight;
+    check('un-bolded run keeps fontWeight:normal', fw === 'normal', marksOf(row0[1]));
   });
 });
 
