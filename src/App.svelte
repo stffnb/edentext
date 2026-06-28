@@ -7,7 +7,7 @@
   import ToolbarExpanded from './lib/components/ToolbarExpanded.svelte';
   import FindReplaceBar from './lib/components/FindReplaceBar.svelte';
   import { buildOdt, deriveFilename } from './lib/export/odt';
-  import { exportPdf, printPdf } from './lib/export/pdf';
+  import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
   import { supportsFsAccess, saveOdt, saveAsOdt, openOdt } from './lib/export/saveFile';
   import { importOdt } from './lib/import/odt';
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
@@ -411,6 +411,30 @@
     }
   }
 
+  // Print via the browser's print dialog using the exact raster of the editor (tables,
+  // header/footer, band masks intact) — print or "Save as PDF". Used by the printer
+  // button and Ctrl+P, since the vector path re-paginates and mangles tables.
+  async function handlePrint() {
+    if (!editor || pdfBusy) return;
+    exportMenuOpen = false;
+    pdfBusy = true;
+    try {
+      const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
+      await printRaster({
+        source: editor.view.dom as HTMLElement,
+        json,
+        fileName: suggestedFilename(json),
+        orientation: pageOrientation,
+        numPages,
+      });
+    } catch (err) {
+      console.error('[pdf] Print failed:', err);
+      alert('Could not print.');
+    } finally {
+      pdfBusy = false;
+    }
+  }
+
   // Vector PDF via the browser's print dialog: crisp, tiny, fonts embedded. Tables
   // break natively; header/footer become CSS @page boxes (basic text + page numbers).
   function handlePrintPdf() {
@@ -458,7 +482,7 @@
       // Ctrl/Cmd+P → Print the paginated document (not the whole app UI).
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
         e.preventDefault();
-        handlePrintPdf();
+        handlePrint();
       }
       // Ctrl/Cmd+F → Find, Ctrl/Cmd+H → Find & Replace (suppress the browser's own find).
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'f' || e.key === 'F')) {
@@ -583,12 +607,12 @@
               </button>
               <button class="theme-option" onclick={handlePrintPdf} role="menuitem">
                 <span>Vector PDF (beta)</span>
-                <span class="theme-option-hint">Sharp &amp; small, but only basic headers/footers · opens print dialog</span>
+                <span class="theme-option-hint">Sharp &amp; small, but problems with tables</span>
               </button>
             </div>
           {/if}
         </div>
-        <button class="file-action-btn" onclick={handlePrintPdf} disabled={!editor} title="Print (Ctrl+P)">
+        <button class="file-action-btn" onclick={handlePrint} disabled={!editor || pdfBusy} title="Print (Ctrl+P)">
           <!-- Printer -->
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M4.5 6V2.25h7V6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>

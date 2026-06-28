@@ -60,7 +60,8 @@
 **File & export**
 - ODT export via odf-kit with extensive content.xml / styles.xml post-processing (custom node types, tables with borders, images, fonts and colors); filename derived from the first heading (fallback `document.odt`)
 - ODT import / open existing file: parses content.xml / styles.xml directly, adopts the file's margins and orientation, and reports graceful-degradation warnings
-- PDF export — Raster (pixel-exact copy of the editor with a selectable text layer) and Vector / Print (crisp, fonts embedded, via the browser print dialog)
+- PDF export — Raster (pixel-exact copy of the editor with a selectable text layer) and Vector (crisp, fonts embedded, via the browser print dialog)
+- Print (printer button / Ctrl+P) — opens the browser print dialog with a pixel-exact raster of the document (tables, headers/footers and page breaks intact)
 
 ### Not yet implemented
 

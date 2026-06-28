@@ -189,8 +189,14 @@ function relocateFloatPushedMarkers(root: HTMLElement): void {
   }
 }
 
-// Render the document to A4 pages (raster + invisible text) and download the PDF.
-export async function exportPdf(opts: PdfOptions): Promise<void> {
+// Off-screen raster of the live .paper at scale 1, captured to one tall canvas covering
+// every page (page i occupies [i*cycle, i*cycle+pageH]). Shared by the PDF download and
+// the raster print path; the caller invokes cleanup() once done reading `clone`. `scale`
+// is the oversampling factor @ A4 (2 ≈ 192 dpi, 3 ≈ 288 dpi).
+async function renderPaperToCanvas(opts: PdfOptions, scale = 2): Promise<{
+  canvas: HTMLCanvasElement; clone: HTMLElement; pages: number;
+  pageW: number; pageH: number; cycle: number; scale: number; cleanup: () => void;
+}> {
   const paper = opts.source.closest('.paper') as HTMLElement | null;
   if (!paper) throw new Error('paper element not found');
   const orientation: Orientation = opts.orientation ?? 'portrait';
@@ -200,43 +206,60 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
   const { holder, clone, style } = buildClone(paper, pageW);
   document.head.appendChild(style);
   document.body.appendChild(holder);
+  const cleanup = () => { holder.remove(); style.remove(); };
 
   try {
     await document.fonts.ready;
     relocateFloatPushedMarkers(clone);
     const pages = Math.max(1, opts.numPages ?? Math.round((clone.offsetHeight + PAGE_GAP) / cycle));
-    const runs = collectRuns(clone);
 
-    const SCALE = 2;
     const html2canvas = (await import('html2canvas')).default;
     const canvas = await html2canvas(clone, {
-      scale: SCALE,
+      scale,
       backgroundColor: '#ffffff',
       width: pageW,
       height: pages * cycle,
       windowWidth: pageW,
       logging: false,
     });
+    return { canvas, clone, pages, pageW, pageH, cycle, scale, cleanup };
+  } catch (err) {
+    cleanup();
+    throw err;
+  }
+}
 
+// Crop page i's surface [i*cycle, i*cycle+pageH] out of the full capture into a data URL.
+function cropPageDataUrl(
+  canvas: HTMLCanvasElement, i: number,
+  pageW: number, pageH: number, cycle: number, scale: number,
+  mime = 'image/jpeg', quality = 0.92,
+): string {
+  const tmp = document.createElement('canvas');
+  tmp.width = Math.round(pageW * scale);
+  tmp.height = Math.round(pageH * scale);
+  const ctx = tmp.getContext('2d')!;
+  // JPEG (DCTDecode) keeps the file small; q0.92 @2× scale stays visually crisp.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, tmp.width, tmp.height);
+  ctx.drawImage(canvas, 0, i * cycle * scale, pageW * scale, pageH * scale, 0, 0, pageW * scale, pageH * scale);
+  return tmp.toDataURL(mime, quality);
+}
+
+// Render the document to A4 pages (raster + invisible text) and download the PDF.
+export async function exportPdf(opts: PdfOptions): Promise<void> {
+  const { canvas, clone, pages, pageW, pageH, cycle, scale, cleanup } = await renderPaperToCanvas(opts);
+  const landscape = (opts.orientation ?? 'portrait') === 'landscape';
+  try {
+    const runs = collectRuns(clone);
     const { jsPDF } = await import('jspdf');
     const fmt: [number, number] = [pageW * PT, pageH * PT];
-    // compress: Flate the streams (e.g. the text layer); page images are JPEG below.
-    const doc = new jsPDF({ unit: 'pt', format: fmt, orientation: orientation === 'landscape' ? 'l' : 'p', compress: true });
-
-    const tmp = document.createElement('canvas');
-    tmp.width = Math.round(pageW * SCALE);
-    tmp.height = Math.round(pageH * SCALE);
-    const ctx = tmp.getContext('2d')!;
+    // compress: Flate the streams (e.g. the text layer); page images are JPEG.
+    const doc = new jsPDF({ unit: 'pt', format: fmt, orientation: landscape ? 'l' : 'p', compress: true });
 
     for (let i = 0; i < pages; i++) {
-      if (i > 0) doc.addPage(fmt, orientation === 'landscape' ? 'l' : 'p');
-
-      // Crop this page's surface [i*cycle, i*cycle+pageH] out of the full capture.
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, tmp.width, tmp.height);
-      ctx.drawImage(canvas, 0, i * cycle * SCALE, pageW * SCALE, pageH * SCALE, 0, 0, pageW * SCALE, pageH * SCALE);
-      // JPEG (DCTDecode) keeps the file small; q0.92 @2× scale stays visually crisp.
-      doc.addImage(tmp.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageW * PT, pageH * PT);
+      if (i > 0) doc.addPage(fmt, landscape ? 'l' : 'p');
+      doc.addImage(cropPageDataUrl(canvas, i, pageW, pageH, cycle, scale), 'JPEG', 0, 0, pageW * PT, pageH * PT);
 
       // Invisible selectable text for this page.
       const top = i * cycle, bottom = i * cycle + pageH;
@@ -250,9 +273,61 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
 
     doc.save((opts.fileName ?? deriveFilename(opts.json)).replace(/\.(odt|pdf)$/i, '') + '.pdf');
   } finally {
-    holder.remove();
-    style.remove();
+    cleanup();
   }
+}
+
+// Raster the document to A4 pages exactly as the editor renders them (tables, header/
+// footer, band masks included) and open the browser's print dialog — print or "Save as
+// PDF". Unlike the vector path it never re-paginates, so tables print intact.
+export async function printRaster(opts: PdfOptions): Promise<void> {
+  // scale 3 (~288 dpi) for print: near typical printer resolution, sharper on paper
+  // than the download's scale-2 raster — at no cost for printing (no file is kept).
+  const { canvas, pages, pageW, pageH, cycle, scale, cleanup } = await renderPaperToCanvas(opts, 3);
+  let imgs: string[];
+  try {
+    imgs = Array.from({ length: pages }, (_, i) => cropPageDataUrl(canvas, i, pageW, pageH, cycle, scale));
+  } finally {
+    cleanup();
+  }
+
+  const title = (opts.fileName ?? deriveFilename(opts.json)).replace(/\.(odt|pdf)$/i, '');
+  const landscape = (opts.orientation ?? 'portrait') === 'landscape';
+  // Explicit pt dimensions matching the @page box pin each image to exactly one page
+  // (a hair of rounding overflow would otherwise spill a blank page after each).
+  const css = `
+@page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 0; }
+html, body { margin: 0; padding: 0; background: #fff; }
+img.pg { display: block; width: ${pageW * PT}pt; height: ${pageH * PT}pt; break-after: page; page-break-after: always; }
+img.pg:last-child { break-after: auto; page-break-after: auto; }
+`;
+  const body = imgs.map((src) => `<img class="pg" src="${src}">`).join('');
+
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0; visibility:hidden;';
+  document.body.appendChild(iframe);
+
+  const idoc = iframe.contentDocument!;
+  idoc.open();
+  idoc.write(
+    `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>` +
+    `<style>${css}</style></head><body>${body}</body></html>`,
+  );
+  idoc.close();
+
+  const cleanupFrame = () => iframe.remove();
+  const run = async () => {
+    // Decode the page images before printing, or the print output comes out blank.
+    await Promise.all(Array.from(idoc.images).map((im) =>
+      im.complete ? Promise.resolve() : new Promise((res) => { im.onload = im.onerror = () => res(null); })));
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    iframe.contentWindow!.addEventListener('afterprint', cleanupFrame, { once: true });
+    iframe.contentWindow!.focus();
+    iframe.contentWindow!.print();
+    setTimeout(cleanupFrame, 120000); // fallback if afterprint never fires
+  };
+  void run();
 }
 
 // Vector path: native browser print. Crisp, tiny, fonts embedded by the browser. It
