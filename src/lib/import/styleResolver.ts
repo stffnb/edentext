@@ -241,6 +241,13 @@ export class StyleResolver {
     return lengthToCm(this.merged('table-row', styleName).misc['style:min-row-height']);
   }
 
+  // A cell style's fo:background-color (cell shading). null when none/transparent.
+  cellBackgroundColor(styleName: string | null): string | null {
+    if (!styleName) return null;
+    const c = this.merged('table-cell', styleName).misc['fo:background-color'];
+    return c && c !== 'transparent' && c !== 'none' ? c : null;
+  }
+
   listStyle(name: string | null): Element | null {
     return name ? this.listStyles.get(name) ?? null : null;
   }

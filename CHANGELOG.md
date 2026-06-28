@@ -33,7 +33,7 @@
 - Tab stops (real tab character) and manual line breaks (Shift+Enter)
 
 **Insert**
-- Tables: insert via size picker, Word-style row/column drag-resize, add / delete rows & columns, delete table, cell borders, merge cells and split cells (N×M, Word/LibreOffice-style); a table splits cleanly across page boundaries
+- Tables: insert via size picker, Word-style row/column drag-resize, add / delete rows & columns, delete table, cell borders, merge cells and split cells (N×M, Word/LibreOffice-style), cell background shading; a table splits cleanly across page boundaries
 - Images: inline or floating with text wrap (left / right / top-bottom), resize handles, rotation, live size badge; insert via toolbar, drag-and-drop, or paste
 - Special characters picker
 - Hyperlinks: create / edit / remove (toolbar + Ctrl+K), Ctrl/Cmd+click to open, hover hint showing the URL; ODF `text:a` round-trip
@@ -65,7 +65,7 @@
 ### Not yet implemented
 
 Planned word-processor features (to match Word/LibreOffice):
-- Table cells: cell background/shading, header-row toggle
+- Table cells: header-row toggle
 - Footnotes / endnotes (currently dropped on import)
 - Clear formatting (remove all marks)
 - Multi-column (newspaper) layout

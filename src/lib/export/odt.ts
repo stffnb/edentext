@@ -1103,6 +1103,12 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
           const rowspan = (cell.attrs?.rowspan as number) ?? 1;
           if (colspan > 1) opts.colSpan = colspan;
           if (rowspan > 1) opts.rowSpan = rowspan;
+          // Cell shading → fo:background-color (odf-kit mints the cell style).
+          const bg = cell.attrs?.backgroundColor;
+          if (typeof bg === 'string') {
+            const c = normalizeColor(bg);
+            if (c) opts.backgroundColor = c;
+          }
           r.addCell((c: CellBuilder) => {
             cellBlocks.push(buildCellContent(cell, c));
           }, opts);

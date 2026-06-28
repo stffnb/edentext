@@ -23,8 +23,8 @@ const H = (attrs: N, ...content: N[]): N => ({ type: 'heading', attrs, ...(conte
 const LI = (...content: N[]): N => ({ type: 'listItem', content });
 const CELL = (colwidth: number[] | null, ...content: N[]): N =>
   ({ type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth }, content });
-const CELLM = (colspan: number, rowspan: number, colwidth: number[] | null, text: string): N =>
-  ({ type: 'tableCell', attrs: { colspan, rowspan, colwidth }, content: [P(null, T(text))] });
+const CELLM = (colspan: number, rowspan: number, colwidth: number[] | null, text: string, bg?: string): N =>
+  ({ type: 'tableCell', attrs: { colspan, rowspan, colwidth, ...(bg ? { backgroundColor: bg } : {}) }, content: [P(null, T(text))] });
 const ROW = (...cells: N[]): N => ({ type: 'tableRow', content: cells });
 
 // A tiny valid PNG; only its bytes matter for the round-trip (no image decoding).
@@ -247,7 +247,7 @@ describe('Leg 1b: merged table cells (colspan/rowspan)', () => {
     content: [
       P(null, T('Merged cells:')),
       { type: 'table', content: [
-        ROW(CELLM(2, 1, [100, 100], 'A'), CELLM(1, 1, [100], 'B')),
+        ROW(CELLM(2, 1, [100, 100], 'A', '#FFFF00'), CELLM(1, 1, [100], 'B')),
         ROW(CELLM(1, 2, [100], 'C'), CELLM(1, 1, [100], 'D'), CELLM(1, 1, [100], 'E')),
         ROW(CELLM(1, 1, [100], 'F'), CELLM(1, 1, [100], 'G')),
       ] },
@@ -260,6 +260,7 @@ describe('Leg 1b: merged table cells (colspan/rowspan)', () => {
     check('content.xml emits number-columns-spanned=2', content.includes('table:number-columns-spanned="2"'));
     check('content.xml emits number-rows-spanned=2', content.includes('table:number-rows-spanned="2"'));
     check('content.xml emits a covered-table-cell', content.includes('<table:covered-table-cell'));
+    check('content.xml emits cell shading (fo:background-color)', content.includes('fo:background-color="#FFFF00"'), content.match(/fo:background-color="[^"]*"/g));
 
     const res = importOdt(bytes);
     check('no warnings on own export', res.warnings.length === 0, res.warnings);
@@ -270,6 +271,8 @@ describe('Leg 1b: merged table cells (colspan/rowspan)', () => {
     check('row 2 has 2 cells (covered slot skipped)', rows[2]?.content?.length === 2, rows[2]?.content?.length);
     check('A has colspan 2', rows[0]?.content?.[0]?.attrs?.colspan === 2, rows[0]?.content?.[0]?.attrs);
     check('C has rowspan 2', rows[1]?.content?.[0]?.attrs?.rowspan === 2, rows[1]?.content?.[0]?.attrs);
+    check('A shading round-trips (#FFFF00)', rows[0]?.content?.[0]?.attrs?.backgroundColor === '#FFFF00', rows[0]?.content?.[0]?.attrs?.backgroundColor);
+    check('B has no shading', rows[0]?.content?.[1]?.attrs?.backgroundColor == null, rows[0]?.content?.[1]?.attrs?.backgroundColor);
 
     const textOf = (cell: N) => cell?.content?.[0]?.content?.[0]?.text;
     check('A text preserved', textOf(rows[0]?.content?.[0]) === 'A', textOf(rows[0]?.content?.[0]));

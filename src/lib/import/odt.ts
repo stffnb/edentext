@@ -666,9 +666,12 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
 
       const colspan = parseInt(cellEl.getAttributeNS(NS.table, 'number-columns-spanned') ?? '1', 10) || 1;
       const rowspan = parseInt(cellEl.getAttributeNS(NS.table, 'number-rows-spanned') ?? '1', 10) || 1;
+      const rawBg = ctx.resolver.cellBackgroundColor(cellEl.getAttributeNS(NS.table, 'style-name'));
+      const backgroundColor = rawBg ? normalizeColor(rawBg) ?? rawBg : null;
       const blocks = convertBlocks(Array.from(cellEl.children), ctx, 'cell');
       for (let r = 0; r < repeated; r++) {
         const attrs: Record<string, unknown> = { colspan, rowspan };
+        if (backgroundColor) attrs.backgroundColor = backgroundColor;
         if (weights) attrs.colwidth = weights.slice(colIndex, colIndex + colspan);
         cells.push({
           type: header ? 'tableHeader' : 'tableCell',

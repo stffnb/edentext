@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { Editor, ChainedCommands } from '@tiptap/core';
+  import { CellSelection } from '@tiptap/pm/tables';
+  import ColorPicker from './ColorPicker.svelte';
 
   let {
     editor,
@@ -25,6 +27,37 @@
 
   // Merge needs a multi-cell selection; re-evaluated per transaction via `tick`.
   const canMerge = $derived(tick >= 0 && !!editor && editor.can().mergeCells());
+
+  // Background colour of the selected cell(s): the uniform value, '' if mixed, null if
+  // none. Drives the ColorPicker's "current" swatch (re-evaluated per `tick`).
+  function cellBg(): string | null {
+    if (!editor) return null;
+    const sel = editor.state.selection;
+    const colors = new Set<string | null>();
+    if (sel instanceof CellSelection) {
+      sel.forEachCell((cell) => colors.add((cell.attrs.backgroundColor as string) ?? null));
+    } else {
+      const from = sel.$from;
+      for (let d = from.depth; d > 0; d--) {
+        const role = from.node(d).type.spec.tableRole;
+        if (role === 'cell' || role === 'header_cell') {
+          colors.add((from.node(d).attrs.backgroundColor as string) ?? null);
+          break;
+        }
+      }
+    }
+    if (colors.size === 0) return null;
+    if (colors.size > 1) return '';
+    return [...colors][0] ?? null;
+  }
+  const currentCellColor = $derived(tick >= 0 ? cellBg() : null);
+
+  function applyCellColor(color: string) {
+    editor?.chain().focus().setCellAttribute('backgroundColor', color).run();
+  }
+  function clearCellColor() {
+    editor?.chain().focus().setCellAttribute('backgroundColor', null).run();
+  }
 </script>
 
 <div
@@ -33,7 +66,7 @@
   role="toolbar"
   tabindex="-1"
   aria-label="Table editing"
-  onmousedown={(e) => e.preventDefault()}
+  onmousedown={(e) => { if (!(e.target as HTMLElement).closest('.color-picker')) e.preventDefault(); }}
 >
   <button
     class="tt-btn"
@@ -151,6 +184,27 @@
       <path d="M9 7.4L7.4 9 9 10.6M9 7.4L10.6 9 9 10.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
+
+  <span class="tt-sep"></span>
+
+  <ColorPicker
+    {editor}
+    currentColor={currentCellColor}
+    defaultColor="#D9D9D9"
+    title="Cell shading"
+    chevronTitle="Choose cell color"
+    clearLabel="No fill"
+    onApply={(c) => applyCellColor(c)}
+    onClear={() => clearCellColor()}
+  >
+    {#snippet icon()}
+      <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+        <path d="M7.5 2.5l6 6-5 5a1.4 1.4 0 0 1-2 0l-4-4a1.4 1.4 0 0 1 0-2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M7.5 2.5L6 1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M15 12c0 1-.7 2-1.5 2S12 13 12 12c0-.8 1.5-2.3 1.5-2.3S15 11.2 15 12z" fill="currentColor" stroke="none"/>
+      </svg>
+    {/snippet}
+  </ColorPicker>
 </div>
 
 <style>
