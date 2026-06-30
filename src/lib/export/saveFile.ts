@@ -81,10 +81,10 @@ export async function saveAsDocx(bytes: Uint8Array, suggestedName: string): Prom
   await writeHandle(handle, bytes);
 }
 
-// Prompt for an .odt to open, capturing its handle so a later save can overwrite
+// Prompt for an .odt/.docx to open, capturing its handle so a later save can overwrite
 // the same file. Returns null if cancelled. Only call when supportsFsAccess().
 export async function openOdt(): Promise<{ bytes: Uint8Array; handle: FileSystemFileHandle; name: string } | null> {
-  const [handle] = await (window as WinFs).showOpenFilePicker!({ types: PICKER_TYPES, multiple: false });
+  const [handle] = await (window as WinFs).showOpenFilePicker!({ types: [...PICKER_TYPES, ...DOCX_PICKER_TYPES], multiple: false });
   if (!handle) return null;
   const file = await handle.getFile();
   return { bytes: new Uint8Array(await file.arrayBuffer()), handle, name: file.name };

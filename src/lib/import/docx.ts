@@ -1,0 +1,616 @@
+import { unzipSync, strFromU8 } from 'fflate';
+import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, wVal, W, R, WP, A, PKG_REL, type RunProps } from './docxStyles';
+import { lengthToPt } from './styleResolver';
+import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
+import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
+import { DEFAULT_ORDERED_TYPE, orderedTypeFromFormat } from '../utils/orderedListTypes';
+import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
+import type { Orientation } from '../storage/pageOrientation';
+import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
+import type { HfDoc } from '../storage/headerFooter';
+import type { OdtImportResult } from './odt';
+
+// .docx → TipTap JSON, inverting export/docx.ts. Editor-expressible OOXML becomes its
+// native node/mark/attr; values matching the editor's defaults are suppressed so round
+// trips don't accrete attrs. Real Word/LibreOffice files degrade gracefully (reported).
+
+type Mark = { type: string; attrs?: Record<string, unknown> };
+type Node = { type: string; attrs?: Record<string, unknown>; content?: Node[]; marks?: Mark[]; text?: string };
+type BlockKind = 'body' | 'list' | 'cell';
+
+type RelInfo = { target: string; external: boolean };
+type Ctx = {
+  styles: DocxStyles;
+  warnings: Set<string>;
+  files: Record<string, Uint8Array>;
+  rels: Map<string, RelInfo>;
+  imageCache: Map<string, string>;
+};
+
+// ---- units & editor defaults to suppress -----------------------------------
+const twipToCm = (tw: number) => (tw / 1440) * 2.54;
+const twipToPt = (tw: number) => tw / 20;
+const twipToPx = (tw: number) => (tw / 1440) * 96;
+const emuToPx = (emu: number) => emu / 9525;
+const round2 = (v: number) => Math.round(v * 100) / 100;
+
+const BODY_FONT_SIZE_PT = 12;
+const HEADING_SIZES = HEADING_STYLE_OVERRIDES.map((h) => lengthToPt(h.fontSize)!); // [20,16,14]
+const DEFAULT_FONTS = new Set(['times new roman', 'liberation serif']);
+const LIST_LEFT_STEP_CM = 1.27; // matches export/docx.ts
+const LIST_INDENT_EPS_CM = 0.05;
+const LINK_BLUE = '#0563C1'; // the visual the exporter paints on hyperlink runs
+
+const MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', webp: 'image/webp',
+};
+
+// ---- small DOM helpers ------------------------------------------------------
+function fc(el: Element | null, localName: string): Element | null {
+  if (!el) return null;
+  for (const c of Array.from(el.children)) if (c.namespaceURI === W && c.localName === localName) return c;
+  return null;
+}
+function fcAll(el: Element, localName: string): Element[] {
+  return Array.from(el.children).filter((c) => c.namespaceURI === W && c.localName === localName);
+}
+function intAttr(el: Element | null, ns: string, name: string): number | null {
+  if (!el) return null;
+  const v = ns ? el.getAttributeNS(ns, name) : el.getAttribute(name);
+  if (v == null) return null;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+}
+function parseXml(xml: string): Document {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('Not a valid .docx file (malformed XML).');
+  return doc;
+}
+
+// '#RRGGBB' from a Word color (6-hex without #, or named). null for auto/empty.
+function hexColor(v: string | null | undefined): string | undefined {
+  if (!v || v === 'auto') return undefined;
+  return /^[0-9a-fA-F]{6}$/.test(v) ? normalizeColor(`#${v}`) : normalizeColor(v);
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  return btoa(bin);
+}
+
+// ---- entry ------------------------------------------------------------------
+export function importDocx(bytes: Uint8Array): OdtImportResult {
+  let files: Record<string, Uint8Array>;
+  try {
+    files = unzipSync(bytes);
+  } catch {
+    throw new Error('Not a valid .docx file (could not read the archive).');
+  }
+  const docBytes = files['word/document.xml'];
+  if (!docBytes) throw new Error('Not a valid .docx file (word/document.xml is missing).');
+
+  const docDoc = parseXml(strFromU8(docBytes));
+  const stylesDoc = files['word/styles.xml'] ? parseXml(strFromU8(files['word/styles.xml'])) : null;
+  const numberingDoc = files['word/numbering.xml'] ? parseXml(strFromU8(files['word/numbering.xml'])) : null;
+  const themeDoc = files['word/theme/theme1.xml'] ? parseXml(strFromU8(files['word/theme/theme1.xml'])) : null;
+  const styles = new DocxStyles(stylesDoc, numberingDoc, themeDoc);
+  const warnings = new Set<string>();
+
+  const ctx: Ctx = { styles, warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map() };
+
+  const body = docDoc.getElementsByTagNameNS(W, 'body')[0];
+  if (!body) throw new Error('Not a Word document (no w:body).');
+
+  const blocks = convertBlocks(Array.from(body.children), ctx, 'body');
+  if (blocks.length === 0) blocks.push({ type: 'paragraph' });
+
+  const sect = parseSectPr(fc(body, 'sectPr'), ctx);
+
+  return {
+    content: { type: 'doc', content: blocks },
+    margins: sect.margins,
+    orientation: sect.orientation,
+    header: sect.header,
+    footer: sect.footer,
+    headerDistanceCm: sect.header ? sect.headerDistCm : null,
+    footerDistanceCm: sect.footer ? sect.footerDistCm : null,
+    language: documentLanguage(stylesDoc, warnings),
+    warnings: [...warnings],
+  };
+}
+
+function parseRels(bytes: Uint8Array | undefined): Map<string, RelInfo> {
+  const map = new Map<string, RelInfo>();
+  if (!bytes) return map;
+  let doc: Document;
+  try { doc = parseXml(strFromU8(bytes)); } catch { return map; }
+  for (const rel of Array.from(doc.getElementsByTagNameNS(PKG_REL, 'Relationship'))) {
+    const id = rel.getAttribute('Id');
+    const target = rel.getAttribute('Target');
+    if (id && target) map.set(id, { target, external: rel.getAttribute('TargetMode') === 'External' });
+  }
+  return map;
+}
+
+function documentLanguage(stylesDoc: Document | null, warnings: Set<string>): DocumentLanguage | null {
+  const lang = stylesDoc?.getElementsByTagNameNS(W, 'docDefaults')[0]
+    ?.getElementsByTagNameNS(W, 'lang')[0]?.getAttributeNS(W, 'val');
+  if (!lang) return null;
+  const [language, country] = lang.split('-');
+  const code = languageFromOdf(language, country);
+  if (code) return code;
+  warnings.add(`Spell-check language "${lang}" has no bundled dictionary — spell check was turned off`);
+  return NO_LANGUAGE;
+}
+
+// ---- block conversion (paragraphs, lists, tables) --------------------------
+function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDefault = false): Node[] {
+  const out: Node[] = [];
+  const stack: { ilvl: number; numId: number; list: Node }[] = [];
+
+  const closeTop = () => {
+    const top = stack.pop()!;
+    if (stack.length) {
+      const parent = stack[stack.length - 1].list;
+      let item = parent.content![parent.content!.length - 1];
+      if (!item) { item = { type: 'listItem', content: [{ type: 'paragraph' }] }; parent.content!.push(item); }
+      item.content!.push(top.list);
+    } else {
+      out.push(top.list);
+    }
+  };
+  const flush = () => { while (stack.length) closeTop(); };
+
+  for (const el of children) {
+    if (el.namespaceURI !== W) continue;
+    if (el.localName === 'p') {
+      const num = paragraphNum(el, ctx);
+      if (num) {
+        const para = convertParagraph(el, ctx, 'list', boldByDefault);
+        while (stack.length && stack[stack.length - 1].ilvl > num.ilvl) closeTop();
+        let top = stack[stack.length - 1];
+        if (top && top.ilvl === num.ilvl && top.numId !== num.numId) { closeTop(); top = stack[stack.length - 1]; }
+        while (stack.length === 0 || stack[stack.length - 1].ilvl < num.ilvl) {
+          const ilvl = stack.length ? stack[stack.length - 1].ilvl + 1 : 0;
+          stack.push({ ilvl, numId: num.numId, list: makeListNode(ctx, num.numId, ilvl) });
+          if (ilvl === num.ilvl) break;
+        }
+        stack[stack.length - 1].list.content!.push({ type: 'listItem', content: [para] });
+      } else {
+        flush();
+        out.push(convertParagraph(el, ctx, kind, boldByDefault));
+      }
+    } else if (el.localName === 'tbl') {
+      flush();
+      if (kind === 'body') {
+        const t = convertTable(el, ctx);
+        if (t) out.push(t);
+      } else {
+        ctx.warnings.add('Nested tables were flattened to paragraphs');
+        out.push(...flattenTable(el, ctx));
+      }
+    } else if (el.localName === 'sdt') {
+      const content = fc(el, 'sdtContent');
+      if (content) { flush(); out.push(...convertBlocks(Array.from(content.children), ctx, kind, boldByDefault)); }
+    }
+  }
+  flush();
+  return out;
+}
+
+function paragraphNum(el: Element, ctx: Ctx): { numId: number; ilvl: number } | null {
+  const ppr = fc(el, 'pPr');
+  let np: { numId: number; ilvl: number } | null = null;
+  const numPr = fc(ppr, 'numPr');
+  if (numPr) np = readNumPr(numPr);
+  if (!np) { const ps = fc(ppr, 'pStyle'); np = ctx.styles.styleNumPr(ps ? wVal(ps) : null); }
+  return np && np.numId !== 0 ? np : null; // numId 0 = "no list"
+}
+
+function makeListNode(ctx: Ctx, numId: number, ilvl: number): Node {
+  const def = ctx.styles.level(numId, ilvl);
+  const bullet = !def.numFmt || def.numFmt === 'bullet' || def.numFmt === 'none';
+  const attrs: Record<string, unknown> = {};
+  if (!bullet) {
+    const lst = orderedTypeFromFormat(wordFmtChar(def.numFmt), lvlSuffix(def.lvlText));
+    if (lst !== DEFAULT_ORDERED_TYPE) attrs.listStyleType = lst;
+    if (def.start != null && def.start > 1) attrs.start = def.start;
+  }
+  if (ilvl === 0 && def.leftTwip != null) {
+    const extra = round2(twipToCm(def.leftTwip) - LIST_LEFT_STEP_CM);
+    if (extra > LIST_INDENT_EPS_CM) attrs.indent = extra;
+  }
+  const node: Node = { type: bullet ? 'bulletList' : 'orderedList', content: [] };
+  if (Object.keys(attrs).length) node.attrs = attrs;
+  return node;
+}
+
+function wordFmtChar(fmt: string | undefined): string {
+  switch (fmt) {
+    case 'lowerLetter': return 'a';
+    case 'upperLetter': return 'A';
+    case 'lowerRoman': return 'i';
+    case 'upperRoman': return 'I';
+    default: return '1';
+  }
+}
+function lvlSuffix(lvlText: string | undefined): string {
+  if (!lvlText) return '.';
+  const trail = lvlText.replace(/^.*%\d+/, '');
+  return trail.charAt(0) === ')' ? ')' : '.';
+}
+
+function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault: boolean): Node {
+  const ppr = fc(el, 'pPr');
+  const pStyle = fc(ppr, 'pStyle');
+  const level = headingLevelOf(ppr, ctx);
+  const attrs = blockAttrs(ppr, kind, level);
+  const baseRun = mergeRunProps(ctx.styles.defaultRun(), ctx.styles.styleOwn(pStyle ? wVal(pStyle) : null));
+  const content = convertInline(el, ctx, baseRun, level, false, boldByDefault);
+
+  const node: Node = { type: level ? 'heading' : 'paragraph' };
+  if (level) attrs.level = level;
+  if (Object.keys(attrs).length) node.attrs = attrs;
+  if (content.length) node.content = content;
+  return node;
+}
+
+// Heading + clamped level. Detect via the paragraph style id (fast path for our own
+// files / English Word), then the style's resolved outline level (locale-independent,
+// catches LibreOffice/localized heading styles), then a direct paragraph outline level.
+function headingLevelOf(ppr: Element | null, ctx: Ctx): number | null {
+  const clamp = (n: number) => Math.min(3, Math.max(1, n));
+  if (!ppr) return null;
+  const ps = fc(ppr, 'pStyle');
+  const id = ps ? wVal(ps) : null;
+  if (id) {
+    const m = /^Heading\s?([1-9])$/i.exec(id);
+    if (m) return clamp(parseInt(m[1], 10));
+    const ol = ctx.styles.styleOutlineLvl(id);
+    if (ol != null && ol >= 0 && ol <= 8) return clamp(ol + 1);
+  }
+  const olEl = fc(ppr, 'outlineLvl');
+  const n = olEl ? parseInt(wVal(olEl) ?? '', 10) : NaN;
+  if (Number.isFinite(n) && n >= 0 && n <= 8) return clamp(n + 1);
+  return null;
+}
+
+// Block attrs from DIRECT w:pPr only — Word stores per-paragraph formatting inline
+// (style-level defaults stay in the style and are left as the editor's defaults).
+function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number | null): Record<string, unknown> {
+  const attrs: Record<string, unknown> = {};
+  if (!ppr) return attrs;
+
+  const jc = fc(ppr, 'jc');
+  const ta = jc ? wVal(jc) : null;
+  if (ta === 'center') attrs.textAlign = 'center';
+  else if (ta === 'both' || ta === 'distribute') attrs.textAlign = 'justify';
+  else if (ta === 'right' || ta === 'end') attrs.textAlign = 'right';
+
+  const sp = fc(ppr, 'spacing');
+  if (sp) {
+    const before = intAttr(sp, W, 'before');
+    const after = intAttr(sp, W, 'after');
+    if (before != null) attrs.spaceBefore = snapPt(twipToPt(before));
+    if (after != null) attrs.spaceAfter = snapPt(twipToPt(after));
+    const line = intAttr(sp, W, 'line');
+    const rule = sp.getAttributeNS(W, 'lineRule');
+    if (line != null && (!rule || rule === 'auto')) {
+      const mult = round2(line / 240);
+      if (Math.abs(mult - 1) > 0.01) attrs.lineHeight = String(mult);
+    }
+  }
+
+  if (kind !== 'list') {
+    const ind = fc(ppr, 'ind');
+    const left = ind ? intAttr(ind, W, 'left') ?? intAttr(ind, W, 'start') : null;
+    if (left != null) { const cm = round2(twipToCm(left)); if (cm > LIST_INDENT_EPS_CM) attrs.indent = cm; }
+  }
+
+  if (kind === 'body') {
+    const pb = fc(ppr, 'pageBreakBefore');
+    if (pb && wVal(pb) !== 'false' && wVal(pb) !== '0') attrs.breakBefore = 'page';
+  }
+  return attrs;
+}
+
+function snapPt(v: number): number {
+  const r = Math.round(v * 100) / 100;
+  const i = Math.round(r);
+  return Math.abs(r - i) <= 0.03 ? i : r;
+}
+
+// ---- inline conversion (runs, marks, fields, images) -----------------------
+function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: number | null, hfFields: boolean, boldByDefault: boolean): Node[] {
+  const out: Node[] = [];
+  let fieldMode: 'none' | 'instr' | 'result' = 'none';
+  let fieldInstr = '';
+
+  const pushText = (text: string, marks: Mark[]) => {
+    if (!text) return;
+    const node: Node = { type: 'text', text };
+    if (marks.length) node.marks = marks;
+    out.push(node);
+  };
+
+  // A run may hold a whole field (begin/instrText/separate/end) or just part of one,
+  // so walk its children in order and keep the field state across runs.
+  const handleRun = (r: Element, linkHref?: string) => {
+    const rPr = fc(r, 'rPr');
+    const rStyle = fc(rPr, 'rStyle');
+    const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
+    if (!props.font && props.fontTheme) props.font = ctx.styles.themeFont(props.fontTheme);
+    const marks = marksFor(props, headingLevel, boldByDefault, !!linkHref);
+    if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
+    const skipResult = () => fieldMode === 'result' && hfFields; // hide a hf field's cached value
+
+    for (const child of Array.from(r.children)) {
+      if (child.namespaceURI !== W) continue;
+      switch (child.localName) {
+        case 'fldChar': {
+          const t = child.getAttributeNS(W, 'fldCharType');
+          if (t === 'begin') { fieldMode = 'instr'; fieldInstr = ''; }
+          else if (t === 'separate') fieldMode = 'result';
+          else if (t === 'end') { emitField(out, fieldInstr, hfFields); fieldMode = 'none'; }
+          break;
+        }
+        case 'instrText': if (fieldMode === 'instr') fieldInstr += child.textContent ?? ''; break;
+        case 't': if (!skipResult()) pushText(child.textContent ?? '', marks); break;
+        case 'tab': if (!skipResult()) pushText('\t', marks); break;
+        case 'br': case 'cr': out.push({ type: 'hardBreak' }); break;
+        case 'drawing': { const img = convertDrawing(child, ctx); if (img) out.push(img); break; }
+      }
+    }
+  };
+
+  for (const el of Array.from(p.children)) {
+    if (el.namespaceURI !== W) continue;
+    switch (el.localName) {
+      case 'r': handleRun(el); break;
+      case 'hyperlink': {
+        const rid = el.getAttributeNS(R, 'id');
+        const href = rid ? ctx.rels.get(rid)?.target : undefined;
+        for (const r of fcAll(el, 'r')) handleRun(r, href);
+        break;
+      }
+      case 'fldSimple': {
+        const instr = el.getAttributeNS(W, 'instr') ?? '';
+        if (hfFields) emitField(out, instr, true);
+        else for (const r of fcAll(el, 'r')) handleRun(r); // body: keep the shown value
+        break;
+      }
+      case 'ins': // accepted tracked-change insertion → keep its runs
+        for (const r of fcAll(el, 'r')) handleRun(r);
+        break;
+      case 'smartTag':
+        for (const r of fcAll(el, 'r')) handleRun(r);
+        break;
+    }
+  }
+  return mergeAdjacentText(out);
+}
+
+function emitField(out: Node[], instr: string, hfFields: boolean): void {
+  if (!hfFields) return;
+  if (/\bNUMPAGES\b/.test(instr)) out.push({ type: 'pageCount' });
+  else if (/\bPAGE\b/.test(instr)) out.push({ type: 'pageNumber' });
+}
+
+function mergeAdjacentText(nodes: Node[]): Node[] {
+  const out: Node[] = [];
+  for (const n of nodes) {
+    const prev = out[out.length - 1];
+    if (prev && n.type === 'text' && prev.type === 'text' && JSON.stringify(prev.marks ?? []) === JSON.stringify(n.marks ?? [])) {
+      prev.text! += n.text!;
+    } else {
+      out.push(n);
+    }
+  }
+  return out;
+}
+
+function marksFor(props: RunProps, headingLevel: number | null, boldByDefault: boolean, inLink: boolean): Mark[] {
+  const marks: Mark[] = [];
+  const textStyle: Record<string, unknown> = {};
+
+  // Headings and header-row cells render bold via CSS: only a non-bold run needs a mark.
+  if (headingLevel != null || boldByDefault) {
+    if (props.bold === false) textStyle.fontWeight = 'normal';
+  } else if (props.bold === true) {
+    marks.push({ type: 'bold' });
+  }
+
+  if (props.italic) marks.push({ type: 'italic' });
+  if (props.underline && !inLink) marks.push({ type: 'underline' }); // link underline is the CSS default
+  if (props.strike) marks.push({ type: 'strike' });
+  if (props.vertAlign === 'superscript') marks.push({ type: 'superscript' });
+  else if (props.vertAlign === 'subscript') marks.push({ type: 'subscript' });
+
+  if (props.highlightFill) { const c = hexColor(props.highlightFill); if (c) marks.push({ type: 'highlight', attrs: { color: c } }); }
+
+  let color = hexColor(props.color);
+  if (inLink && color === LINK_BLUE) color = undefined; // strip the exporter's link visual
+  if (color && color !== '#000000') textStyle.color = color;
+
+  const sizePt = props.sizeHalfPt != null ? props.sizeHalfPt / 2 : null;
+  const defSize = headingLevel != null ? HEADING_SIZES[headingLevel - 1] : BODY_FONT_SIZE_PT;
+  if (sizePt != null && Math.abs(sizePt - defSize) > 0.05) textStyle.fontSize = `${Math.round(sizePt * 10) / 10}pt`;
+
+  if (props.font && !DEFAULT_FONTS.has(props.font.toLowerCase())) textStyle.fontFamily = props.font;
+
+  if (Object.keys(textStyle).length) marks.push({ type: 'textStyle', attrs: textStyle });
+  return marks;
+}
+
+// ---- images -----------------------------------------------------------------
+function loadImageDataUrl(path: string, ctx: Ctx): string | null {
+  const cached = ctx.imageCache.get(path);
+  if (cached) return cached;
+  const bytes = ctx.files[path];
+  if (!bytes) return null;
+  const ext = path.split('.').pop()?.toLowerCase() ?? '';
+  const url = `data:${MIME_BY_EXT[ext] ?? 'image/png'};base64,${bytesToBase64(bytes)}`;
+  ctx.imageCache.set(path, url);
+  return url;
+}
+
+function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
+  const anchor = drawing.getElementsByTagNameNS(WP, 'anchor')[0];
+  const root = drawing.getElementsByTagNameNS(WP, 'inline')[0] ?? anchor;
+  if (!root) return null;
+  const blip = drawing.getElementsByTagNameNS(A, 'blip')[0];
+  const embed = blip?.getAttributeNS(R, 'embed');
+  const rel = embed ? ctx.rels.get(embed) : undefined;
+  if (!rel || rel.external) { ctx.warnings.add('Some images could not be read and were skipped'); return null; }
+  const src = loadImageDataUrl(`word/${rel.target.replace(/^\/+/, '')}`, ctx);
+  if (!src) { ctx.warnings.add('Some images could not be read and were skipped'); return null; }
+
+  const attrs: Record<string, unknown> = { src };
+  const extent = root.getElementsByTagNameNS(WP, 'extent')[0];
+  const cx = intAttr(extent, '', 'cx');
+  const cy = intAttr(extent, '', 'cy');
+  if (cx) attrs.width = Math.round(emuToPx(cx));
+  if (cy) attrs.height = Math.round(emuToPx(cy));
+  const docPr = root.getElementsByTagNameNS(WP, 'docPr')[0];
+  const alt = docPr?.getAttribute('title') || docPr?.getAttribute('descr');
+  if (alt) attrs.alt = alt;
+  const xfrm = drawing.getElementsByTagNameNS(A, 'xfrm')[0];
+  const rot = xfrm ? parseInt(xfrm.getAttribute('rot') ?? '', 10) : NaN;
+  if (Number.isFinite(rot) && rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
+
+  if (anchor) attrs.wrap = anchorWrap(anchor);
+  return { type: 'image', attrs };
+}
+
+function anchorWrap(anchor: Element): 'left' | 'right' | 'topBottom' {
+  if (anchor.getElementsByTagNameNS(WP, 'wrapTopAndBottom')[0]) return 'topBottom';
+  const sq = anchor.getElementsByTagNameNS(WP, 'wrapSquare')[0];
+  const wt = sq?.getAttribute('wrapText');
+  if (wt === 'right') return 'left'; // text on right ⇒ image on left
+  if (wt === 'left') return 'right';
+  const align = anchor.getElementsByTagNameNS(WP, 'align')[0]?.textContent;
+  return align === 'right' ? 'right' : 'left';
+}
+
+// ---- tables -----------------------------------------------------------------
+function convertTable(tbl: Element, ctx: Ctx): Node | null {
+  const grid = fc(tbl, 'tblGrid');
+  const weights = grid ? fcAll(grid, 'gridCol').map((g) => Math.max(1, intAttr(g, W, 'w') ?? 1)) : null;
+  const useWeights = weights && weights.length ? weights : null;
+
+  const rows: Node[] = [];
+  const pending: (Node | null)[] = []; // origin cell per grid column, for vMerge spans
+  for (const tr of fcAll(tbl, 'tr')) {
+    const cells: Node[] = [];
+    let col = 0;
+    for (const tc of fcAll(tr, 'tc')) {
+      const tcPr = fc(tc, 'tcPr');
+      const colspan = intAttr(fc(tcPr, 'gridSpan'), W, 'val') ?? 1;
+      const vMergeEl = fc(tcPr, 'vMerge');
+      const vMerge = vMergeEl ? wVal(vMergeEl) ?? 'continue' : null;
+      if (vMerge && vMerge !== 'restart') {
+        const origin = pending[col];
+        if (origin) origin.attrs!.rowspan = ((origin.attrs!.rowspan as number) || 1) + 1;
+        col += colspan;
+        continue; // covered cell — dropped, span folded into its origin
+      }
+      const fill = fc(tcPr, 'shd')?.getAttributeNS(W, 'fill');
+      const bg = fill ? hexColor(fill) : undefined;
+      const blocks = convertBlocks(Array.from(tc.children), ctx, 'cell', bg === HEADER_SHADE);
+      const attrs: Record<string, unknown> = { colspan, rowspan: 1 };
+      if (bg) attrs.backgroundColor = bg;
+      if (useWeights) attrs.colwidth = useWeights.slice(col, col + colspan);
+      const cell: Node = { type: 'tableCell', attrs, content: blocks.length ? blocks : [{ type: 'paragraph' }] };
+      cells.push(cell);
+      for (let c = col; c < col + colspan; c++) pending[c] = vMerge === 'restart' ? cell : null;
+      col += colspan;
+    }
+    if (cells.length === 0) continue;
+    const row: Node = { type: 'tableRow', content: cells };
+    const h = intAttr(fc(fc(tr, 'trPr'), 'trHeight'), W, 'val');
+    if (h && h > 0) row.attrs = { rowHeight: Math.round(twipToPx(h)) };
+    rows.push(row);
+  }
+  return rows.length ? { type: 'table', content: rows } : null;
+}
+
+function flattenTable(tbl: Element, ctx: Ctx): Node[] {
+  const out: Node[] = [];
+  for (const tr of fcAll(tbl, 'tr')) for (const tc of fcAll(tr, 'tc')) out.push(...convertBlocks(Array.from(tc.children), ctx, 'cell'));
+  return out;
+}
+
+// ---- section: page geometry + headers/footers ------------------------------
+function parseSectPr(sect: Element | null, ctx: Ctx): {
+  margins: PageMargins | null; orientation: Orientation | null;
+  header: HfDoc; footer: HfDoc; headerDistCm: number | null; footerDistCm: number | null;
+} {
+  const empty = { margins: null, orientation: null, header: null, footer: null, headerDistCm: null, footerDistCm: null };
+  if (!sect) return empty;
+
+  const pgSz = fc(sect, 'pgSz');
+  const w = intAttr(pgSz, W, 'w');
+  const h = intAttr(pgSz, W, 'h');
+  const orientation: Orientation = pgSz?.getAttributeNS(W, 'orient') === 'landscape' || (w && h && w > h) ? 'landscape' : 'portrait';
+
+  const pgMar = fc(sect, 'pgMar');
+  const clampCm = (tw: number | null) => (tw == null ? null : Math.min(10, Math.max(0, round2(twipToCm(tw)))));
+  const margins: PageMargins | null = pgMar
+    ? { top: clampCm(intAttr(pgMar, W, 'top')) ?? 2.54, bottom: clampCm(intAttr(pgMar, W, 'bottom')) ?? 2.54, left: clampCm(intAttr(pgMar, W, 'left')) ?? 2.12, right: clampCm(intAttr(pgMar, W, 'right')) ?? 2.12 }
+    : null;
+
+  const refId = (type: string) => {
+    for (const ref of fcAll(sect, `${type}Reference`)) {
+      const t = ref.getAttributeNS(W, 'type') ?? 'default';
+      if (t === 'first' || t === 'even') ctx.warnings.add('Per-page header/footer variants (first/even pages) are not supported — the default one was used');
+    }
+    const def = fcAll(sect, `${type}Reference`).find((r) => (r.getAttributeNS(W, 'type') ?? 'default') === 'default');
+    return def?.getAttributeNS(R, 'id') ?? null;
+  };
+
+  const header = convertHfPart(refId('header'), ctx);
+  const footer = convertHfPart(refId('footer'), ctx);
+  return {
+    margins, orientation, header, footer,
+    headerDistCm: clampCm(intAttr(pgMar, W, 'header')),
+    footerDistCm: clampCm(intAttr(pgMar, W, 'footer')),
+  };
+}
+
+function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
+  if (!relId) return null;
+  const target = ctx.rels.get(relId)?.target;
+  if (!target) return null;
+  const path = `word/${target.replace(/^\/+/, '')}`;
+  const bytes = ctx.files[path];
+  if (!bytes) return null;
+  let doc: Document;
+  try { doc = parseXml(strFromU8(bytes)); } catch { return null; }
+  const root = doc.getElementsByTagNameNS(W, 'hdr')[0] ?? doc.getElementsByTagNameNS(W, 'ftr')[0];
+  if (!root) return null;
+
+  const relsPath = path.replace(/^word\/(.*)$/, 'word/_rels/$1.rels');
+  const hfCtx: Ctx = { ...ctx, rels: parseRels(ctx.files[relsPath]) };
+
+  const inline: Node[] = [];
+  let textAlign: string | null = null;
+  for (const p of fcAll(root, 'p')) {
+    if (inline.length) inline.push({ type: 'hardBreak' });
+    const ppr = fc(p, 'pPr');
+    if (textAlign === null) {
+      const ta = (fc(ppr, 'jc') ? wVal(fc(ppr, 'jc')!) : null) ?? '';
+      textAlign = ta === 'center' || ta === 'both' ? (ta === 'both' ? 'justify' : 'center') : ta === 'right' || ta === 'end' ? 'right' : '';
+    }
+    const baseRun = mergeRunProps(hfCtx.styles.defaultRun(), hfCtx.styles.styleOwn(fc(ppr, 'pStyle') ? wVal(fc(ppr, 'pStyle')!) : null));
+    inline.push(...convertInline(p, hfCtx, baseRun, null, true, false));
+  }
+  while (inline[0]?.type === 'hardBreak') inline.shift();
+  while (inline[inline.length - 1]?.type === 'hardBreak') inline.pop();
+  if (inline.length === 0) return null;
+
+  const para: Node = { type: 'paragraph', content: inline };
+  if (textAlign) para.attrs = { textAlign };
+  return { type: 'doc', content: [para] };
+}

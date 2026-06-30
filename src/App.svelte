@@ -10,6 +10,7 @@
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
   import { supportsFsAccess, saveOdt, saveAsOdt, saveAsDocx, openOdt } from './lib/export/saveFile';
   import { importOdt } from './lib/import/odt';
+  import { importDocx } from './lib/import/docx';
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
   import { getColorDebug } from './lib/utils/colorDebug';
   import { countText, type TextStats } from './lib/utils/wordCount';
@@ -302,7 +303,8 @@
   function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string) {
     if (!editor) return;
     try {
-      const result = importOdt(bytes);
+      const isDocx = sourceName?.toLowerCase().endsWith('.docx');
+      const result = isDocx ? importDocx(bytes) : importOdt(bytes);
 
       const hasContent = editor.state.doc.textContent.length > 0 || editor.state.doc.childCount > 1;
       if (hasContent && !confirm('Opening this file will replace the current document. Continue?')) {
@@ -311,7 +313,7 @@
 
       editor.commands.setContent(result.content); // onUpdate fires → autosave
       // Adopt the opened file's name as the document name (drives the save filename).
-      if (sourceName) documentName = stripOdtExtension(sourceName);
+      if (sourceName) documentName = stripOdtExtension(sourceName).replace(/\.docx$/i, '');
       // Adopt the document's page geometry; the $effects persist it and
       // Editor.svelte re-paginates.
       if (result.margins) pageMargins = result.margins;
@@ -709,7 +711,7 @@
       <input
         bind:this={fileInput}
         type="file"
-        accept=".odt,application/vnd.oasis.opendocument.text"
+        accept=".odt,.docx,application/vnd.oasis.opendocument.text,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         class="file-input"
         onchange={handleImportFile}
       />
