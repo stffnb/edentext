@@ -2,9 +2,14 @@
 // plain browser download / no-op where the API is unavailable (Firefox/Safari).
 
 const ODT_MIME = 'application/vnd.oasis.opendocument.text';
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 const PICKER_TYPES = [
   { description: 'OpenDocument Text', accept: { [ODT_MIME]: ['.odt'] } },
+];
+
+const DOCX_PICKER_TYPES = [
+  { description: 'Word Document', accept: { [DOCX_MIME]: ['.docx'] } },
 ];
 
 // showSaveFilePicker/showOpenFilePicker are not in lib.dom yet; reach them via casts.
@@ -17,8 +22,8 @@ export function supportsFsAccess(): boolean {
   return typeof (window as WinFs).showSaveFilePicker === 'function';
 }
 
-function download(bytes: Uint8Array, name: string): void {
-  const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: ODT_MIME });
+function download(bytes: Uint8Array, name: string, mime: string = ODT_MIME): void {
+  const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -62,6 +67,18 @@ export async function saveAsOdt(
   const handle = await (window as WinFs).showSaveFilePicker!({ suggestedName, types: PICKER_TYPES });
   await writeHandle(handle, bytes);
   return handle;
+}
+
+// Export a .docx: always prompt for a location (no handle is tracked — .docx is an
+// export target, like PDF, while DOCX import doesn't exist yet). Falls back to a
+// plain download. Returns null. Throws AbortError if the user cancels.
+export async function saveAsDocx(bytes: Uint8Array, suggestedName: string): Promise<void> {
+  if (!supportsFsAccess()) {
+    download(bytes, suggestedName, DOCX_MIME);
+    return;
+  }
+  const handle = await (window as WinFs).showSaveFilePicker!({ suggestedName, types: DOCX_PICKER_TYPES });
+  await writeHandle(handle, bytes);
 }
 
 // Prompt for an .odt to open, capturing its handle so a later save can overwrite

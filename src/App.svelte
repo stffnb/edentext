@@ -8,7 +8,7 @@
   import FindReplaceBar from './lib/components/FindReplaceBar.svelte';
   import { buildOdt, deriveFilename } from './lib/export/odt';
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
-  import { supportsFsAccess, saveOdt, saveAsOdt, openOdt } from './lib/export/saveFile';
+  import { supportsFsAccess, saveOdt, saveAsOdt, saveAsDocx, openOdt } from './lib/export/saveFile';
   import { importOdt } from './lib/import/odt';
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
   import { getColorDebug } from './lib/utils/colorDebug';
@@ -102,6 +102,11 @@
   function suggestedFilename(json: Parameters<typeof buildOdt>[0]): string {
     const n = documentName.trim();
     return n ? `${sanitizeNameForFile(n)}.odt` : deriveFilename(json);
+  }
+
+  function suggestedFilenameDocx(json: Parameters<typeof buildOdt>[0]): string {
+    const n = documentName.trim();
+    return n ? `${sanitizeNameForFile(n)}.docx` : deriveFilename(json).replace(/\.odt$/, '.docx');
   }
 
   $effect(() => {
@@ -259,6 +264,7 @@
   const fsSupported = supportsFsAccess();
   let fileInput: HTMLInputElement | null = $state(null);
   let pdfBusy = $state(false);
+  let docxBusy = $state(false);
   let exportMenuOpen = $state(false);
 
   // odf-kit export options for the current header/footer + page geometry.
@@ -385,6 +391,26 @@
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save file:', err);
       alert('Could not save this file.');
+    }
+  }
+
+  // Export to Word .docx. The exporter (and the `docx` library) is lazy-loaded so it
+  // never enters the initial bundle. Export-style like PDF: always prompt, no handle.
+  async function handleSaveDocx() {
+    if (!editor || docxBusy) return;
+    exportMenuOpen = false;
+    docxBusy = true;
+    try {
+      const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
+      const { buildDocx } = await import('./lib/export/docx');
+      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage));
+      await saveAsDocx(bytes, suggestedFilenameDocx(json));
+    } catch (err) {
+      if ((err as DOMException)?.name === 'AbortError') return;
+      console.error('[docx] Export failed:', err);
+      alert('Could not export to Word (.docx).');
+    } finally {
+      docxBusy = false;
     }
   }
 
@@ -600,6 +626,10 @@
               <button class="theme-option" onclick={handleSave} role="menuitem">
                 <span>ODT</span>
                 <span class="theme-option-hint">OpenDocument · fully editable</span>
+              </button>
+              <button class="theme-option" onclick={handleSaveDocx} disabled={docxBusy} role="menuitem">
+                <span>{docxBusy ? 'Exporting…' : 'Word (.docx)'}</span>
+                <span class="theme-option-hint">Microsoft Word · editable</span>
               </button>
               <button class="theme-option" onclick={handleExportPdf} disabled={pdfBusy} role="menuitem">
                 <span>{pdfBusy ? 'Exporting…' : 'Raster PDF'}</span>
