@@ -63,6 +63,16 @@
     });
   });
 
+  // Bundled fonts (Liberation Serif, Carlito, …) load with font-display:swap, so text
+  // can reflow after pagination first runs (e.g. imported content in a not-yet-loaded
+  // font). Re-paginate when fonts finish so page positions and the HF band settle.
+  function repaginateOnFontLoad() {
+    if (!editor || !editor.view.dom.isConnected) return;
+    editor.view.dispatch(
+      editor.state.tr.setMeta('addToHistory', false).setMeta(FORCE_PAGE_RECALC, true),
+    );
+  }
+
   let element: HTMLDivElement;
   let editorContainer: HTMLDivElement;
 
@@ -568,6 +578,8 @@
     });
 
     element.addEventListener('pm-pagecount', onPageCount);
+    document.fonts?.addEventListener('loadingdone', repaginateOnFontLoad);
+    document.fonts?.ready.then(repaginateOnFontLoad);
     editorContainer.addEventListener('scroll', onEditorScroll);
     editorContainer.addEventListener('mouseover', onEditorPointerOver);
     editorContainer.addEventListener('mouseout', onEditorPointerOut);
@@ -591,6 +603,7 @@
     editor?.destroy();
     resetHistoryLog();
     element?.removeEventListener('pm-pagecount', onPageCount);
+    document.fonts?.removeEventListener('loadingdone', repaginateOnFontLoad);
     editorContainer?.removeEventListener('scroll', onEditorScroll);
     editorContainer?.removeEventListener('mouseover', onEditorPointerOver);
     editorContainer?.removeEventListener('mouseout', onEditorPointerOut);
