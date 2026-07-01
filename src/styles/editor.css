@@ -163,6 +163,52 @@
   background: rgba(255, 145, 0, 0.8);
 }
 
+/* Generated table of contents (tableOfContents.ts). A non-editable block listing
+   headings with dot leaders to their live page number; entries are clickable. */
+.paper .tiptap .toc {
+  margin: 0 0 0.5cm;
+  user-select: none;
+  cursor: default;
+}
+.paper .tiptap .toc-title {
+  font-size: 16pt;
+  font-weight: bold;
+  margin-bottom: 0.3cm;
+}
+.paper .tiptap .toc-empty {
+  font-style: italic;
+  opacity: 0.6;
+}
+.paper .tiptap .toc-entry {
+  display: flex;
+  align-items: baseline;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.paper .tiptap .toc-entry:hover .toc-text {
+  text-decoration: underline;
+}
+.paper .tiptap .toc-level-2 { padding-left: 0.6cm; }
+.paper .tiptap .toc-level-3 { padding-left: 1.2cm; }
+.paper .tiptap .toc-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+}
+/* Dotted leader filling the gap; nudged up to sit on the text baseline. */
+.paper .tiptap .toc-leader {
+  flex: 1 1 auto;
+  min-width: 1em;
+  margin: 0 4px;
+  border-bottom: 1px dotted currentColor;
+  transform: translateY(-0.25em);
+}
+.paper .tiptap .toc-page {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 /* Inline, as-character images (image.ts). The wrapper reserves the rotated bounding
    box; the rotor holds the <img>, resize handles and rotate grip, rotating together. */
 .paper .tiptap .image-node {

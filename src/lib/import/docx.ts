@@ -146,9 +146,52 @@ function documentLanguage(stylesDoc: Document | null, warnings: Set<string>): Do
 }
 
 // ---- block conversion (paragraphs, lists, tables) --------------------------
+// A Word/LibreOffice TOC is a `TOC` field spanning several paragraphs (begin+instrText
+// first, cached entries between, end last), each entry itself a nested PAGEREF field — so
+// field depth is tracked (across one convertBlocks call) to match the TOC's own end.
+type TocFieldState = { fieldDepth: number; tocDepth: number; instr: string[] };
+
+function scanTocField(p: Element, st: TocFieldState): { emit: boolean } {
+  let emit = false;
+  for (const r of Array.from(p.getElementsByTagNameNS(W, 'r'))) {
+    for (const c of Array.from(r.children)) {
+      if (c.namespaceURI !== W) continue;
+      if (c.localName === 'fldChar') {
+        const t = c.getAttributeNS(W, 'fldCharType');
+        if (t === 'begin') { st.fieldDepth++; st.instr[st.fieldDepth] = ''; }
+        else if (t === 'end') {
+          if (st.tocDepth === st.fieldDepth) st.tocDepth = -1;
+          st.instr[st.fieldDepth] = '';
+          st.fieldDepth = Math.max(0, st.fieldDepth - 1);
+        }
+      } else if (c.localName === 'instrText' && st.fieldDepth > 0) {
+        st.instr[st.fieldDepth] += c.textContent ?? '';
+        if (st.tocDepth < 0 && /\bTOC\b/.test(st.instr[st.fieldDepth])) {
+          st.tocDepth = st.fieldDepth;
+          emit = true;
+        }
+      }
+    }
+  }
+  return { emit };
+}
+
+// docx-lib (and Word) wrap a TOC in a content control; detect it by its gallery type or
+// a TOC field instruction inside its content.
+function sdtIsToc(sdt: Element): boolean {
+  const gallery = fc(sdt, 'sdtPr')?.getElementsByTagNameNS(W, 'docPartGallery')[0];
+  if (gallery && /table of contents/i.test(gallery.getAttributeNS(W, 'val') ?? '')) return true;
+  const content = fc(sdt, 'sdtContent');
+  if (!content) return false;
+  return Array.from(content.getElementsByTagNameNS(W, 'instrText')).some(i => /\bTOC\b/.test(i.textContent ?? ''));
+}
+
 function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDefault = false): Node[] {
   const out: Node[] = [];
   const stack: { ilvl: number; numId: number; list: Node }[] = [];
+  // Table-of-contents field tracking (see scanTocField). A TOC node is emitted for the
+  // body only; its cached paragraphs are skipped. The node view regenerates entries live.
+  const tocState: TocFieldState = { fieldDepth: 0, tocDepth: -1, instr: [] };
 
   const closeTop = () => {
     const top = stack.pop()!;
@@ -166,6 +209,11 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
   for (const el of children) {
     if (el.namespaceURI !== W) continue;
     if (el.localName === 'p') {
+      // A paragraph owned by a TOC field is skipped; the field emits one node.
+      const startedInToc = tocState.tocDepth >= 0;
+      const { emit } = scanTocField(el, tocState);
+      if (emit && kind === 'body') { flush(); out.push({ type: 'tableOfContents', attrs: { entries: [] } }); }
+      if (startedInToc || emit) continue;
       const num = paragraphNum(el, ctx);
       if (num) {
         const para = convertParagraph(el, ctx, 'list', boldByDefault);
@@ -192,8 +240,14 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         out.push(...flattenTable(el, ctx));
       }
     } else if (el.localName === 'sdt') {
-      const content = fc(el, 'sdtContent');
-      if (content) { flush(); out.push(...convertBlocks(Array.from(content.children), ctx, kind, boldByDefault)); }
+      flush();
+      if (sdtIsToc(el)) {
+        // A content-control-wrapped TOC → one node (regenerated live); skip its content.
+        if (kind === 'body') out.push({ type: 'tableOfContents', attrs: { entries: [] } });
+      } else {
+        const content = fc(el, 'sdtContent');
+        if (content) out.push(...convertBlocks(Array.from(content.children), ctx, kind, boldByDefault));
+      }
     }
   }
   flush();

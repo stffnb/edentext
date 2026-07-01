@@ -663,6 +663,12 @@
     editor.chain().focus().setTextSelection(range).insertTable({ rows, cols, withHeaderRow: false }).run();
   }
 
+  // --- Table of contents insertion (tableOfContents.ts) ---
+  function insertToc() {
+    if (!editor || hfActive) return; // body-only; the HF schema has no TOC node
+    editor.chain().focus().setTableOfContents().run();
+  }
+
   // --- Special character insertion (SpecialCharPicker.svelte) ---
   let specialCharOpen = $state(false);
 
@@ -1225,6 +1231,17 @@
         style="display:none"
         onchange={onImageFile}
       />
+      <button
+        onclick={insertToc}
+        disabled={!!hfActive}
+        title={hfActive ? 'A table of contents is not available in headers/footers' : 'Insert table of contents'}
+        aria-label="Insert table of contents"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M2 3.5h6M2 6.5h8M2 9.5h5M2 12.5h7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+          <path d="M12.5 3.5h1.5M13.5 6.5H14M12 9.5h2M12.5 12.5H14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+        </svg>
+      </button>
       <div class="link-wrap" use:linkClickOutside>
         <button
           class:active={isLink}

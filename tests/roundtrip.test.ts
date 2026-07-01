@@ -542,3 +542,43 @@ describe('Leg 4: foreign header/footer → importOdt', () => {
       fhf.warnings.some(w => /per-page/i.test(w)), fhf.warnings);
   });
 });
+
+describe('Leg 5: table of contents (text:table-of-content)', () => {
+  const tocDoc: N = {
+    type: 'doc',
+    content: [
+      { type: 'tableOfContents', attrs: { entries: [
+        { text: 'Introduction', level: 1, page: 1 },
+        { text: 'Background & Aims', level: 2, page: 2 },
+        { text: 'Deep Dive', level: 3, page: 3 },
+      ] } },
+      H({ level: 1 }, T('Introduction')),
+      P(null, T('intro text')),
+      H({ level: 2 }, T('Background & Aims')),
+      H({ level: 3 }, T('Deep Dive')),
+    ],
+  };
+
+  it('exports a real <text:table-of-content> and re-imports it as a tableOfContents node', async () => {
+    const bytes = await buildOdt(tocDoc, margins, 'portrait');
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('emits <text:table-of-content>', content.includes('<text:table-of-content '), content.slice(0, 200));
+    check('source spans outline-level 3', content.includes('text:outline-level="3"'));
+    check('mints Contents_20_1 style', content.includes('style:name="Contents_20_1"'));
+    check('cached entry carries a tab + page', /Contents_20_1">Introduction<text:tab\/>1<\/text:p>/.test(content));
+    check('ampersand in entry text is escaped', content.includes('Background &amp; Aims'));
+    check('no leftover sentinel', !content.includes(''));
+
+    const res = importOdt(bytes);
+    const blocks = res.content.content ?? [];
+    const toc = blocks.find((n: N) => n.type === 'tableOfContents');
+    check('imports a tableOfContents node', !!toc, blocks.map((n: N) => n.type));
+    const entries = toc?.attrs?.entries ?? [];
+    check('3 entries parsed', entries.length === 3, entries);
+    check('entry 1 text/level', entries[0]?.text === 'Introduction' && entries[0]?.level === 1, entries[0]);
+    check('entry 2 text/level (ampersand)', entries[1]?.text === 'Background & Aims' && entries[1]?.level === 2, entries[1]);
+    check('entry 3 level 3', entries[2]?.level === 3, entries[2]);
+    check('headings after the TOC survive',
+      blocks.some((n: N) => n.type === 'heading' && n.content?.[0]?.text === 'Introduction'));
+  });
+});

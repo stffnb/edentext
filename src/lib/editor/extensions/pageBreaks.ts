@@ -630,6 +630,19 @@ export const PageBreaks = Extension.create({
                 walkTableRows(child, inTableCell);
                 continue;
               }
+              // The generated table of contents (tableOfContents.ts) is a block atom with
+              // no inner doc positions, so it can't be line-split — measure it atomically
+              // (pushed whole if it overflows; a TOC taller than a page can't be pushed).
+              if (child.dataset?.toc) {
+                leaves.push({
+                  el: child,
+                  kind: 'atomic',
+                  naturalTop: topWithin(child) - cumulativeSpacerHeight,
+                  naturalHeight: child.offsetHeight,
+                  inTableCell,
+                });
+                continue;
+              }
               // A paragraph holding a floated/block image paginates atomically (pushed
               // whole, spacer placed before it): a line-split spacer inside it would sit
               // next to the float, where ProseMirror drops the widget.

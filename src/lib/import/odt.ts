@@ -269,8 +269,12 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         if (list) out.push(list);
       } else if (el.localName === 'section') {
         out.push(...convertBlocks(Array.from(el.children), ctx, kind, boldByDefault));
+      } else if (el.localName === 'table-of-content' && kind === 'body') {
+        // Generated table of contents → a tableOfContents node (regenerated live).
+        out.push(convertToc(el));
       } else if (/-index$|^table-of-content$|^bibliography$/.test(el.localName)) {
-        // Generated indexes (ToC, …): keep the rendered text from index-body.
+        // Other generated indexes (bibliography, …) or a TOC nested in a cell: keep the
+        // rendered text from index-body.
         const indexBody = el.getElementsByTagNameNS(NS.text, 'index-body')[0];
         if (indexBody) out.push(...convertBlocks(Array.from(indexBody.children), ctx, kind, boldByDefault));
       }
@@ -293,6 +297,44 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
     }
   }
   return out;
+}
+
+// A <text:table-of-content> → a tableOfContents node. Entries (text + level + page) are
+// parsed from the cached index-body as a starting cache; the node view recomputes page
+// numbers live after mount, so parse fidelity isn't critical.
+function convertToc(el: Element): Node {
+  const indexBody = el.getElementsByTagNameNS(NS.text, 'index-body')[0];
+  const entries: { text: string; level: number; page: number }[] = [];
+  if (indexBody) {
+    for (const p of Array.from(indexBody.children)) {
+      if (p.namespaceURI !== NS.text || p.localName !== 'p') continue; // skip index-title
+      const style = p.getAttributeNS(NS.text, 'style-name') ?? '';
+      const m = /Contents_20_(\d+)/.exec(style);
+      const level = m ? Math.min(3, Math.max(1, parseInt(m[1], 10))) : 1;
+      const { text, page } = tocEntryTextAndPage(p);
+      if (text) entries.push({ text, level, page: Math.max(1, parseInt(page, 10) || 1) });
+    }
+  }
+  return { type: 'tableOfContents', attrs: { entries } };
+}
+
+// Split a TOC entry paragraph around its last <text:tab/>: the text before it is the
+// entry text, the run after it is the page number. Tabs contribute no textContent, so
+// partition the text nodes by their document position relative to the tab element.
+function tocEntryTextAndPage(p: Element): { text: string; page: string } {
+  const FOLLOWING = 0x04; // Node.DOCUMENT_POSITION_FOLLOWING (the DOM Node is shadowed here)
+  const tabs = p.getElementsByTagNameNS(NS.text, 'tab');
+  const lastTab = tabs.length ? tabs[tabs.length - 1] : null;
+  let before = '';
+  let after = '';
+  const walker = p.ownerDocument.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+  let n: ChildNode | null;
+  while ((n = walker.nextNode() as ChildNode | null)) {
+    const txt = n.nodeValue ?? '';
+    if (lastTab && lastTab.compareDocumentPosition(n) & FOLLOWING) after += txt;
+    else before += txt;
+  }
+  return { text: before.trim(), page: after.trim() };
 }
 
 function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault = false): Node {

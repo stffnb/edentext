@@ -1,5 +1,6 @@
 import {
   Document, Packer, Paragraph, TextRun, ImageRun, ExternalHyperlink, Tab,
+  TableOfContents,
   Table, TableRow, TableCell, Header, Footer, PageNumber,
   AlignmentType, HeadingLevel, LevelFormat, UnderlineType, BorderStyle, ShadingType,
   WidthType, HeightRule, PageOrientation, LineRuleType, TableLayoutType,
@@ -329,7 +330,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
 // ---- lists -----------------------------------------------------------------
 function listToParagraphs(
   node: TiptapNode, depth: number, reference: string, extraIndentCm: number,
-  num: Numbering, out: (Paragraph | Table)[],
+  num: Numbering, out: (Paragraph | Table | TableOfContents)[],
 ): void {
   const indentCm = extraIndentCm + (typeof node.attrs?.indent === 'number' ? node.attrs.indent : 0);
   num.ensureLevel(reference, depth, node, indentCm);
@@ -441,8 +442,8 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
 }
 
 // ---- top-level walk --------------------------------------------------------
-function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: number): (Paragraph | Table)[] {
-  const out: (Paragraph | Table)[] = [];
+function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: number): (Paragraph | Table | TableOfContents)[] {
+  const out: (Paragraph | Table | TableOfContents)[] = [];
   for (const node of content) {
     if (node.type === 'paragraph' || node.type === 'heading') {
       out.push(paragraphToDocx(node));
@@ -452,6 +453,12 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       out.push(tableToDocx(node, contentWidthCm, num));
     } else if (node.type === 'image') {
       out.push(new Paragraph({ children: inlineToRuns([node]) }));
+    } else if (node.type === 'tableOfContents') {
+      // A real, recognized TOC field (levels 1–3, hyperlinked); Word/LibreOffice populate
+      // + link it on field update (features.updateFields does this on open). Title is a
+      // plain bold paragraph so it isn't itself listed; our importer regenerates the node.
+      out.push(new Paragraph({ children: [new TextRun({ text: 'Table of Contents', bold: true, size: 32 })], spacing: { after: cmToTwip(0.3) } }));
+      out.push(new TableOfContents('Table of Contents', { hyperlink: true, headingStyleRange: '1-3' }));
     }
   }
   return out;
@@ -495,6 +502,10 @@ export async function buildDocx(
   const body = blocksToDocx(docJson.content ?? [], num, contentWidthCm);
   if (body.length === 0) body.push(new Paragraph({}));
 
+  // A TOC field is empty until its field is calculated; ask the reader to update fields
+  // on open so Word/LibreOffice populate + hyperlink it (standard for TOC fields).
+  const hasToc = (docJson.content ?? []).some(n => n.type === 'tableOfContents');
+
   const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Word's model: header/footer distance is from the page edge; the body still starts
@@ -505,6 +516,7 @@ export async function buildDocx(
   const doc = new Document({
     creator: 'Web ODF Editor',
     defaultTabStop: cmToTwip(1.25),
+    ...(hasToc ? { features: { updateFields: true } } : {}),
     styles: buildStyles(language),
     numbering: { config: num.config },
     sections: [{

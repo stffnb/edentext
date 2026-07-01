@@ -38,6 +38,7 @@ import { TableCellBackground } from './extensions/tableCellBackground';
 import { TableHeaderRow } from './extensions/tableHeaderRow';
 import { TrailingNode } from './extensions/trailingNode';
 import { Image } from './extensions/image';
+import { TableOfContents } from './extensions/tableOfContents';
 
 export const extensions = [
   Document,
@@ -65,6 +66,9 @@ export const extensions = [
   // Inline, as-character image; round-trips to ODF <draw:frame>/<draw:image>
   // (export/odt.ts replaceImages/applyImages, import/odt.ts).
   Image,
+  // Generated table of contents from headings; round-trips to ODF
+  // <text:table-of-content> (export/odt.ts, import/odt.ts) and a DOCX TOC field.
+  TableOfContents,
   LineHeight,
   ParagraphSpacing,
   PageBreak,

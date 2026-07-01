@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zipSync, strToU8 } from 'fflate';
+import { zipSync, strToU8, unzipSync, strFromU8 } from 'fflate';
 import { buildDocx } from '../src/lib/export/docx';
 import { importDocx } from '../src/lib/import/docx';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
@@ -233,5 +233,36 @@ describe('DOCX import detects headings by outline level (non-"HeadingN" style id
     expect(h.type).toBe('heading');
     expect(h.attrs.level).toBe(1);
     expect(walk(h, 'text')[0].text).toBe('Localised heading');
+  });
+});
+
+describe('DOCX table of contents (TOC field) round trip', () => {
+  const tocDoc = {
+    type: 'doc',
+    content: [
+      { type: 'tableOfContents', attrs: { entries: [
+        { text: 'Alpha', level: 1, page: 1 },
+        { text: 'Beta', level: 2, page: 2 },
+      ] } },
+      heading(1, 'Alpha'),
+      para('body of alpha'),
+      heading(2, 'Beta'),
+    ],
+  };
+
+  it('exports a TOC field (updateFields) and re-imports it as a tableOfContents node', async () => {
+    const bytes = await buildDocx(tocDoc as any);
+    const files = unzipSync(bytes);
+    const docXml = strFromU8(files['word/document.xml']);
+    expect(/\bTOC\b/.test(docXml)).toBe(true);
+    const settings = files['word/settings.xml'];
+    expect(settings ? strFromU8(settings).includes('updateFields') : false).toBe(true);
+
+    const res = importDocx(bytes).content as N;
+    const tocs = walk(res, 'tableOfContents');
+    expect(tocs.length).toBe(1);
+    // Headings survive alongside the TOC.
+    const headings = walk(res, 'heading');
+    expect(headings.map(h => walk(h, 'text')[0]?.text)).toEqual(['Alpha', 'Beta']);
   });
 });

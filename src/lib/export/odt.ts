@@ -64,6 +64,11 @@ const IMG = '';
 // fo:break-before="page" paragraph style for it, and strips the sentinel. U+E005.
 const PGB = '';
 
+// Sentinel wrapping a table-of-contents index (TOC{i}TOC), emitted as a marker
+// paragraph's run text by replaceTableOfContents so it rides odf-kit's paragraph path;
+// applyToc rewrites the whole marker <text:p> to a <text:table-of-content>. U+E006.
+const TOC_SENT = '';
+
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -239,6 +244,36 @@ function replaceImages(node: TiptapNode, images: ImageExport[]): TiptapNode {
     content.push(replaceImages(child, images));
   }
   return { ...node, content };
+}
+
+// One generated table of contents, collected by replaceTableOfContents and emitted by
+// applyToc. Entries are the cached heading→page rows (the node view keeps them current).
+type TocEntry = { text: string; level: number; page: number };
+type TocExport = { entries: TocEntry[] };
+
+// Swap each top-level tableOfContents node for a marker paragraph carrying the TOC
+// sentinel and collect its cached entries. Top-level only (like replacePageBreaks): a
+// sentinel in a cell/list paragraph would corrupt the SEG-based cell rebuild.
+function replaceTableOfContents(doc: TiptapNode, tocs: TocExport[]): TiptapNode {
+  if (!doc.content?.length) return doc;
+  const content: TiptapNode[] = [];
+  for (const child of doc.content) {
+    if (child.type === 'tableOfContents') {
+      const raw = Array.isArray(child.attrs?.entries) ? (child.attrs!.entries as TocEntry[]) : [];
+      const entries = raw
+        .filter(e => e && typeof e.text === 'string')
+        .map(e => ({
+          text: String(e.text),
+          level: Math.min(3, Math.max(1, Number(e.level) || 1)),
+          page: Math.max(1, Number(e.page) || 1),
+        }));
+      tocs.push({ entries });
+      content.push({ type: 'paragraph', content: [{ type: 'text', text: `${TOC_SENT}${tocs.length - 1}${TOC_SENT}` }] });
+      continue;
+    }
+    content.push(child);
+  }
+  return { ...doc, content };
 }
 
 function escapeXml(s: string): string {
@@ -1259,6 +1294,96 @@ function applyImages(odtBytes: Uint8Array, images: ImageExport[]): Uint8Array {
   return rezipOdt(files);
 }
 
+// Minted automatic paragraph style for a TOC entry level: per-level left indent and a
+// right tab stop at the text width with a dotted leader (so the page number right-aligns
+// with dots, matching the on-screen TOC and Word/LibreOffice).
+function contentsEntryStyle(name: string, level: number, tabPosCm: number): string {
+  const indentCm = level === 2 ? 0.6 : level === 3 ? 1.2 : 0;
+  const margin = indentCm > 0 ? ` fo:margin-left="${indentCm}cm"` : '';
+  return (
+    `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="Standard">` +
+    `<style:paragraph-properties${margin}>` +
+    `<style:tab-stops><style:tab-stop style:position="${tabPosCm}cm" style:type="right" style:leader-style="dotted" style:leader-text="."/></style:tab-stops>` +
+    `</style:paragraph-properties></style:style>`
+  );
+}
+
+// The TOC title style (bold, 16pt) — mirrors the .toc-title on screen.
+function contentsHeadingStyle(): string {
+  return (
+    `<style:style style:name="Contents_20_Heading" style:family="paragraph" style:parent-style-name="Standard">` +
+    `<style:paragraph-properties fo:margin-top="0cm" fo:margin-bottom="0.212cm"/>` +
+    `<style:text-properties fo:font-size="16pt" fo:font-weight="bold"/></style:style>`
+  );
+}
+
+// The full <text:table-of-content>: a source (title + per-level entry templates that
+// carry a right tab stop, page number, and link markers so LibreOffice rebuilds it as a
+// linking TOC) plus a cached index-body (title + one entry paragraph per heading).
+function tocXml(toc: TocExport, index: number): string {
+  const title = 'Table of Contents';
+  const name = `${title}${index + 1}`;
+  const source =
+    `<text:table-of-content-source text:outline-level="3" text:use-index-marks="false" text:use-index-source-styles="false">` +
+    `<text:index-title-template text:style-name="Contents_20_Heading">${escapeXml(title)}</text:index-title-template>` +
+    [1, 2, 3]
+      .map(
+        l =>
+          `<text:table-of-content-entry-template text:outline-level="${l}" text:style-name="Contents_20_${l}">` +
+          `<text:index-entry-link-start/>` +
+          `<text:index-entry-text/>` +
+          `<text:index-entry-tab-stop style:type="right" style:leader-char="."/>` +
+          `<text:index-entry-page-number/>` +
+          `<text:index-entry-link-end/>` +
+          `</text:table-of-content-entry-template>`,
+      )
+      .join('') +
+    `</text:table-of-content-source>`;
+  const body =
+    `<text:index-body>` +
+    `<text:index-title text:name="${escapeXml(name)}_Head">` +
+    `<text:p text:style-name="Contents_20_Heading">${escapeXml(title)}</text:p>` +
+    `</text:index-title>` +
+    toc.entries
+      .map(e => `<text:p text:style-name="Contents_20_${e.level}">${escapeXml(e.text)}<text:tab/>${e.page}</text:p>`)
+      .join('') +
+    `</text:index-body>`;
+  return `<text:table-of-content text:name="${escapeXml(name)}" text:protected="true">${source}${body}</text:table-of-content>`;
+}
+
+// Resolve TOC sentinels: rewrite each marker <text:p>TOC{i}TOC</text:p> to its
+// <text:table-of-content> and mint the Contents_20_* paragraph styles it references.
+function applyToc(odtBytes: Uint8Array, tocs: TocExport[], contentWidthCm: number): Uint8Array {
+  if (!tocs.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  if (!content.includes(TOC_SENT)) return odtBytes;
+
+  content = content.replace(
+    new RegExp(`<text:p\\b[^>]*>${TOC_SENT}(\\d+)${TOC_SENT}</text:p>`, 'g'),
+    (_m, idx: string) => {
+      const toc = tocs[Number(idx)];
+      return toc ? tocXml(toc, Number(idx)) : '';
+    },
+  );
+  // Defensive: strip any sentinels not consumed above.
+  content = content.split(TOC_SENT).join('');
+
+  const tabPosCm = Math.max(1, Math.round(contentWidthCm * 1000) / 1000);
+  const styles =
+    contentsHeadingStyle() +
+    contentsEntryStyle('Contents_20_1', 1, tabPosCm) +
+    contentsEntryStyle('Contents_20_2', 2, tabPosCm) +
+    contentsEntryStyle('Contents_20_3', 3, tabPosCm);
+  content = injectAutomaticStyles(content, styles);
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 // Header/footer input for the export: one single-paragraph doc per zone (or null),
 // the page count snapshot for the stored <text:page-count> value, and the page-edge
 // distances (cm; default HF_DISTANCE_CM) for header (from top) / footer (from bottom).
@@ -1275,7 +1400,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Collect embedded images and swap them for IMG sentinels before serialization;
   // applyImages resolves the sentinels and writes the Pictures/ + manifest entries.
   const images: ImageExport[] = [];
-  const raw = replaceImages(replaceTabs(replaceHardBreaks(replacePageBreaks(docJson))), images);
+  const tocs: TocExport[] = [];
+  const raw = replaceImages(replaceTabs(replaceHardBreaks(replacePageBreaks(replaceTableOfContents(docJson, tocs)))), images);
   const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Distance from the page edge to the header (top) / footer (bottom). Becomes the
@@ -1387,7 +1513,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const cleaned = collapseRunWhitespace(styledRows);
   const withBreaks = applyInlineSentinels(cleaned);
   const withImages = applyImages(withBreaks, images);
-  const withPageBreaks = applyPageBreaks(withImages);
+  const withToc = applyToc(withImages, tocs, contentWidthCm);
+  const withPageBreaks = applyPageBreaks(withToc);
   const withStyles = rewriteStylesXml(withPageBreaks, language ?? null);
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist);
 }

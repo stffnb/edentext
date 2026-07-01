@@ -36,6 +36,7 @@
 - Tables: insert via size picker, Word-style row/column drag-resize, add / delete rows & columns, delete table, cell borders, merge cells and split cells (N×M, Word/LibreOffice-style), cell background shading, header-row toggle (bold + shading); a table splits cleanly across page boundaries
 - Images: inline or floating with text wrap (left / right / top-bottom), resize handles, rotation, live size badge; insert via toolbar, drag-and-drop, or paste
 - Special characters picker
+- Table of contents: generated from headings (H1–H3) with live page numbers and dot leaders, click an entry to jump to its heading; round-trips to ODF `text:table-of-content` and a Word TOC field
 - Hyperlinks: create / edit / remove (toolbar + Ctrl+K), Ctrl/Cmd+click to open, hover hint showing the URL; ODF `text:a` round-trip
 - Manual page break (Ctrl+Enter); round-trips to ODF `fo:break-before`
 
@@ -70,7 +71,6 @@ Planned word-processor features (to match Word/LibreOffice):
 - Footnotes / endnotes (currently dropped on import)
 - Clear formatting (remove all marks)
 - Multi-column (newspaper) layout
-- Table of contents (generated from headings)
 - Comments / annotations (currently dropped on import)
 - Horizontal rule
 - Page numbering options (start value / format) + different first-page header
