@@ -895,6 +895,8 @@
   .toolbar-stack {
     width: max-content;
     min-width: 100%;
+    position: relative;
+    z-index: 1;
   }
 
   /* Custom scrollbar strip under the toolbar (a native one auto-hides on macOS).
