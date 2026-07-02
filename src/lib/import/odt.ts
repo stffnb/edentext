@@ -353,6 +353,14 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   const attrs = blockAttrs(paraProps, baseTextProps, isHeading ? level : null, kind);
   const content = convertInline(el, ctx, baseTextProps, isHeading ? level : null, false, boldByDefault);
 
+  // An empty line has no runs, so its height comes from the paragraph style's own
+  // font size; carry it as a block attr (mirrors the docx paragraph-mark size).
+  if (content.length === 0) {
+    const sizePt = lengthToPt(baseTextProps['fo:font-size']);
+    const defSize = isHeading ? HEADING_DEFAULTS[level - 1].fontSizePt : BODY_FONT_SIZE_PT;
+    if (sizePt != null && Math.abs(sizePt - defSize) > 0.05) attrs.fontSize = formatPt(sizePt);
+  }
+
   const node: Node = { type: isHeading ? 'heading' : 'paragraph' };
   if (isHeading) attrs.level = level;
   if (Object.keys(attrs).length) node.attrs = attrs;

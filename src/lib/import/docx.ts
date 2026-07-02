@@ -304,11 +304,31 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   const baseRun = mergeRunProps(ctx.styles.defaultRun(), ctx.styles.styleOwn(pStyle ? wVal(pStyle) : null));
   const content = convertInline(el, ctx, baseRun, level, false, boldByDefault);
 
+  // An empty line's height comes from the paragraph mark's own run props (w:pPr/w:rPr),
+  // which convertInline never sees (there are no runs). Carry its font size as a block
+  // attr so the empty line renders at the right height (and typed text inherits it).
+  if (content.length === 0) {
+    const fs = emptyLineFontSize(ppr, ctx, baseRun, level);
+    if (fs) attrs.fontSize = fs;
+  }
+
   const node: Node = { type: level ? 'heading' : 'paragraph' };
   if (level) attrs.level = level;
   if (Object.keys(attrs).length) node.attrs = attrs;
   if (content.length) node.content = content;
   return node;
+}
+
+// The paragraph mark's resolved font size (w:pPr/w:rPr, incl. its rStyle), as a CSS
+// pt string, or null when it matches the block's default (suppressed like run sizes).
+function emptyLineFontSize(ppr: Element | null, ctx: Ctx, baseRun: RunProps, level: number | null): string | null {
+  const rPr = fc(ppr, 'rPr');
+  const rStyle = fc(rPr, 'rStyle');
+  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
+  if (props.sizeHalfPt == null) return null;
+  const sizePt = props.sizeHalfPt / 2;
+  const defSize = level != null ? HEADING_SIZES[level - 1] : BODY_FONT_SIZE_PT;
+  return Math.abs(sizePt - defSize) > 0.05 ? `${Math.round(sizePt * 10) / 10}pt` : null;
 }
 
 // Heading + clamped level. Detect via the paragraph style id (fast path for our own

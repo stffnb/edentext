@@ -38,6 +38,7 @@ describe('DOCX export → import round trip', () => {
         text(' '),
         text('site', [{ type: 'link', attrs: { href: 'https://example.com' } }]),
       ], { spaceBefore: 6, spaceAfter: 6, lineHeight: '1.5', indent: 1 }),
+      { type: 'paragraph', attrs: { fontSize: '22pt', textAlign: 'center' } }, // empty sized line
       para([text('a\tb')]),
       para([text('line1'), { type: 'hardBreak' }, text('line2')]),
       { type: 'bulletList', content: [li(para('one')), li(para('two'), { type: 'bulletList', content: [li(para('nested'))] })] },
@@ -76,6 +77,12 @@ describe('DOCX export → import round trip', () => {
     expect(p.attrs.spaceAfter).toBe(6);
     expect(p.attrs.lineHeight).toBe('1.5');
     expect(p.attrs.indent).toBe(1);
+  });
+
+  it('round-trips an empty line\'s font size (paragraph-mark size)', () => {
+    const empty = doc.content!.find((n) => n.type === 'paragraph' && !n.content && n.attrs?.fontSize);
+    expect(empty).toBeTruthy();
+    expect(empty!.attrs.fontSize).toBe('22pt');
   });
 
   it('round-trips run marks (bold, color, highlight, link)', () => {
@@ -182,6 +189,33 @@ describe('DOCX import of a foreign Word document', () => {
     expect(rows[0].content![0].attrs.rowspan).toBe(2); // vMerge restart → rowspan
     expect(rows[1].content!.length).toBe(1); // covered cell dropped
     expect(result.margins.top).toBeCloseTo(2.54, 1);
+  });
+});
+
+describe('DOCX import: empty line keeps its paragraph-mark font size', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  // An empty paragraph whose only formatting is the paragraph mark (w:pPr/w:rPr) — 44
+  // half-points = 22pt, like a title's blank spacer lines. And a plain empty paragraph.
+  const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+    <w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:sz w:val="44"/></w:rPr></w:pPr></w:p>
+    <w:p><w:pPr><w:rPr><w:sz w:val="24"/></w:rPr></w:pPr></w:p>
+    <w:p/>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr>
+  </w:body></w:document>`;
+  const bytes = zipSync({ 'word/document.xml': strToU8(documentXml) });
+  const doc = importDocx(bytes).content as N;
+
+  it('carries the 22pt paragraph-mark size onto the empty line', () => {
+    const p = doc.content![0];
+    expect(p.type).toBe('paragraph');
+    expect(p.content).toBeUndefined(); // still empty
+    expect(p.attrs.fontSize).toBe('22pt');
+    expect(p.attrs.textAlign).toBe('center');
+  });
+
+  it('suppresses a paragraph-mark size equal to the 12pt body default', () => {
+    expect(doc.content![1].attrs?.fontSize ?? null).toBeNull();
+    expect(doc.content![2].attrs?.fontSize ?? null).toBeNull();
   });
 });
 

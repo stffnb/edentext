@@ -42,6 +42,8 @@ const fixture: N = {
   type: 'doc',
   content: [
     H({ level: 1, textAlign: 'center' }, T('Invoice Report 2026')),
+    P({ fontSize: '22pt' }),                       // empty sized line (bare)
+    P({ fontSize: '18pt', textAlign: 'center' }),  // empty sized line + centered
     P(null,
       T('Plain '),
       T('bold', { type: 'bold' }),
@@ -194,6 +196,11 @@ describe('Leg 1: editor → buildOdt → importOdt', () => {
 
     const diff = firstDiff(normalize(fixture), normalize(res.content));
     check('document JSON round-trips', diff === null, diff);
+
+    // Empty lines keep their paragraph font size (drives the empty line's height).
+    const sized = (res.content.content ?? []).filter((n: N) => n.type === 'paragraph' && !n.content?.length && n.attrs?.fontSize);
+    check('empty sized lines round-trip', sized.length === 2, sized.map((n: N) => n.attrs.fontSize));
+    check('bare empty line keeps 22pt', sized.some((n: N) => n.attrs.fontSize === '22pt'), sized);
 
     // Images: src bytes (data-URI) and px size must round-trip exactly (body + cell).
     const logoPara = (res.content.content ?? []).find((n: N) => n.content?.some((c: N) => c.type === 'image'));

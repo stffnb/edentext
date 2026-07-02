@@ -316,6 +316,8 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     else if (opts.indentLeftTwip) indent.left = opts.indentLeftTwip;
   }
   const heading = node.type === 'heading' ? HEADING_LEVEL[Math.min(3, Math.max(1, Number(attrs.level) || 1))] : undefined;
+  // Paragraph-mark run props carry an empty line's font size (see import/docx.ts).
+  const markSize = typeof attrs.fontSize === 'string' ? fontSizeToHalfPoints(attrs.fontSize) : undefined;
   return new Paragraph({
     heading,
     alignment: alignOf(attrs),
@@ -323,6 +325,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     indent: indent.left != null ? indent : undefined,
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,
     numbering: opts.numbering,
+    run: markSize ? { size: markSize } : undefined,
     children: inlineToRuns(node.content, opts.forceBold),
   });
 }

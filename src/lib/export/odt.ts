@@ -64,6 +64,11 @@ const IMG = '';
 // fo:break-before="page" paragraph style for it, and strips the sentinel. U+E005.
 const PGB = '';
 
+// Sentinel wrapping an empty line's font size (FSZ<size>FSZ), the sole text of a
+// top-level empty CUST_P/CUST_H; applyEmptyLineFontSizes turns it into a paragraph
+// style fo:font-size (odf-kit has no paragraph font-size option). U+E007.
+const FSZ = '\uE007';
+
 // Sentinel wrapping a table-of-contents index (TOC{i}TOC), emitted as a marker
 // paragraph's run text by replaceTableOfContents so it rides odf-kit's paragraph path;
 // applyToc rewrites the whole marker <text:p> to a <text:table-of-content>. U+E006.
@@ -99,6 +104,7 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (attrs.lineHeight) return true;
   if (attrs.spaceBefore != null) return true;
   if (attrs.spaceAfter != null) return true;
+  if (typeof attrs.fontSize === 'string' && attrs.fontSize) return true;
   if (typeof attrs.indent === 'number' && attrs.indent > 0) return true;
   const ta = attrs.textAlign;
   return ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify';
@@ -547,6 +553,78 @@ function applyPageBreaks(odtBytes: Uint8Array): Uint8Array {
   );
   // Drop any sentinels not consumed above (defensive — never legitimate text).
   content = content.split(PGB).join('');
+
+  if (minted.length) {
+    content = content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`);
+  }
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+// fo:font-size (+ asian/complex aliases) attribute string for a paragraph style.
+function fontSizeProps(size: string): string {
+  return `fo:font-size="${size}" style:font-size-asian="${size}" style:font-size-complex="${size}"`;
+}
+
+// Clone a <style:style> def under newName, adding fo:font-size to its text-properties.
+function cloneStyleWithFontSize(def: string, newName: string, size: string): string {
+  const s = def.replace(/style:name="[^"]*"/, `style:name="${newName}"`);
+  const props = fontSizeProps(size);
+  if (/<style:text-properties\b[^>]*\/>/.test(s)) {
+    return s.replace(/<style:text-properties\b([^>]*?)\s*\/>/, `<style:text-properties$1 ${props}/>`);
+  }
+  if (/<style:text-properties\b/.test(s)) {
+    return s.replace(/<style:text-properties\b([^>]*)>/, `<style:text-properties$1 ${props}>`);
+  }
+  if (/^<style:style\b[^>]*\/>\s*$/.test(s)) {
+    return s.replace(/\s*\/>\s*$/, `><style:text-properties ${props}/></style:style>`);
+  }
+  return s.replace('</style:style>', `<style:text-properties ${props}/></style:style>`);
+}
+
+// Resolve FSZ sentinels (empty-line font size): per (source style, size) mint a style
+// cloning the source's props plus that fo:font-size, reassign the block's style-name,
+// and strip the sentinel. Mirrors applyPageBreaks.
+function applyEmptyLineFontSizes(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  if (!content.includes(FSZ)) return odtBytes;
+
+  const minted: string[] = [];
+  const nameByKey = new Map<string, string>();
+  let counter = 0;
+
+  const sizeStyleFor = (source: string, size: string): string => {
+    const key = `${source}|${size}`;
+    const existing = nameByKey.get(key);
+    if (existing) return existing;
+    const name = `EF${++counter}`;
+    nameByKey.set(key, name);
+    const def = source ? findAutoStyle(content, source) : null;
+    minted.push(def
+      ? cloneStyleWithFontSize(def, name, size)
+      : `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${source || 'Standard'}"><style:text-properties ${fontSizeProps(size)}/></style:style>`,
+    );
+    return name;
+  };
+
+  content = content.replace(
+    new RegExp(`<text:(p|h)\\b([^>]*)>${FSZ}([^${FSZ}]*)${FSZ}`, 'g'),
+    (_m, tag: string, attrs: string, size: string) => {
+      const sm = /text:style-name="([^"]*)"/.exec(attrs);
+      const name = sizeStyleFor(sm ? sm[1] : '', size);
+      const newAttrs = sm
+        ? attrs.replace(/text:style-name="[^"]*"/, `text:style-name="${name}"`)
+        : ` text:style-name="${name}"${attrs}`;
+      return `<text:${tag}${newAttrs}>`;
+    },
+  );
+  // Drop any sentinels not consumed above (defensive — never legitimate text).
+  content = content.replace(new RegExp(`${FSZ}[^${FSZ}]*${FSZ}`, 'g'), '');
 
   if (minted.length) {
     content = content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`);
@@ -1468,16 +1546,21 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
         opts.indentLeft = `${node.attrs.indent}cm`;
       }
       const content = node.content ?? [];
+      // An empty line's font size (its paragraph-mark size) rides as an FSZ sentinel
+      // that applyEmptyLineFontSizes turns into a paragraph-style fo:font-size.
+      const emptyFs = content.length === 0 && typeof node.attrs?.fontSize === 'string' && node.attrs.fontSize
+        ? `${FSZ}${node.attrs.fontSize}${FSZ}` : '';
 
       if (node.type === CUST_P) {
         if (content.length === 0) {
-          doc.addParagraph('', opts);
+          doc.addParagraph(emptyFs, opts);
         } else {
           doc.addParagraph((p: ParagraphBuilder) => applyRuns(p, content), opts);
         }
       } else if (node.type === CUST_H) {
         const level = (node.attrs?.level as number) ?? 1;
-        doc.addHeading((p: ParagraphBuilder) => applyRuns(p, content), level, opts);
+        if (content.length === 0) doc.addHeading(emptyFs, level, opts);
+        else doc.addHeading((p: ParagraphBuilder) => applyRuns(p, content), level, opts);
       }
     },
   });
@@ -1515,7 +1598,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withImages = applyImages(withBreaks, images);
   const withToc = applyToc(withImages, tocs, contentWidthCm);
   const withPageBreaks = applyPageBreaks(withToc);
-  const withStyles = rewriteStylesXml(withPageBreaks, language ?? null);
+  const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
+  const withStyles = rewriteStylesXml(withEmptyFontSizes, language ?? null);
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist);
 }
 
