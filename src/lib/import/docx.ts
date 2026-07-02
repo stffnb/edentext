@@ -300,7 +300,11 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   const ppr = fc(el, 'pPr');
   const pStyle = fc(ppr, 'pStyle');
   const level = headingLevelOf(ppr, ctx);
-  const attrs = blockAttrs(ppr, kind, level);
+  // Alignment: direct w:pPr/w:jc wins, else resolve it from the style chain (the default
+  // paragraph style commonly carries justify), so style-level alignment isn't lost.
+  const directJc = fc(ppr, 'jc');
+  const jcVal = directJc ? wVal(directJc) : ctx.styles.paragraphAlign(pStyle ? wVal(pStyle) : null);
+  const attrs = blockAttrs(ppr, kind, level, jcVal);
   const baseRun = mergeRunProps(ctx.styles.defaultRun(), ctx.styles.styleOwn(pStyle ? wVal(pStyle) : null));
   const content = convertInline(el, ctx, baseRun, level, false, boldByDefault);
 
@@ -351,17 +355,17 @@ function headingLevelOf(ppr: Element | null, ctx: Ctx): number | null {
   return null;
 }
 
-// Block attrs from DIRECT w:pPr only — Word stores per-paragraph formatting inline
-// (style-level defaults stay in the style and are left as the editor's defaults).
-function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number | null): Record<string, unknown> {
+// Spacing/indent come from DIRECT w:pPr only — Word stores per-paragraph formatting
+// inline (style-level defaults stay in the style and are left as the editor's defaults).
+// Alignment (jcVal) is resolved through the style chain by the caller.
+function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number | null, jcVal: string | null): Record<string, unknown> {
   const attrs: Record<string, unknown> = {};
-  if (!ppr) return attrs;
 
-  const jc = fc(ppr, 'jc');
-  const ta = jc ? wVal(jc) : null;
-  if (ta === 'center') attrs.textAlign = 'center';
-  else if (ta === 'both' || ta === 'distribute') attrs.textAlign = 'justify';
-  else if (ta === 'right' || ta === 'end') attrs.textAlign = 'right';
+  if (jcVal === 'center') attrs.textAlign = 'center';
+  else if (jcVal === 'both' || jcVal === 'distribute') attrs.textAlign = 'justify';
+  else if (jcVal === 'right' || jcVal === 'end') attrs.textAlign = 'right';
+
+  if (!ppr) return attrs;
 
   const sp = fc(ppr, 'spacing');
   if (sp) {

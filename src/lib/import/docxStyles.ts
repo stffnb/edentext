@@ -85,6 +85,9 @@ export class DocxStyles {
   private memoOwn = new Map<string, RunProps>();
   private styleNum = new Map<string, { numId: number; ilvl: number }>();
   private ownOutline = new Map<string, number>(); // style's own w:outlineLvl (heading marker)
+  private ownAlign = new Map<string, string>(); // style's own w:pPr/w:jc
+  private defaultParaStyle: string | null = null; // the w:default="1" paragraph style
+  private defaultsAlign: string | null = null; // docDefaults w:pPrDefault/w:jc
   private numToAbstract = new Map<string, string>();
   private abstractLevels = new Map<string, Map<number, LevelDef>>();
   private minorFont?: string; // theme1.xml body font (e.g. Calibri)
@@ -115,12 +118,18 @@ export class DocxStyles {
     if (defs) {
       const rPr = defs.getElementsByTagNameNS(W, 'rPrDefault')[0]?.getElementsByTagNameNS(W, 'rPr')[0];
       this.defaultsRun = parseRunProps(rPr);
+      const pPr = defs.getElementsByTagNameNS(W, 'pPrDefault')[0]?.getElementsByTagNameNS(W, 'pPr')[0];
+      const ddJc = pPr ? firstChild(pPr, 'jc') : null;
+      if (ddJc) this.defaultsAlign = wVal(ddJc);
     }
     for (const style of Array.from(doc.getElementsByTagNameNS(W, 'style'))) {
       const id = style.getAttributeNS(W, 'styleId');
       if (!id) continue;
       this.basedOn.set(id, firstChild(style, 'basedOn') ? wVal(firstChild(style, 'basedOn')!) : null);
       this.ownRun.set(id, parseRunProps(firstChild(style, 'rPr')));
+      if (style.getAttributeNS(W, 'type') === 'paragraph' && (style.getAttributeNS(W, 'default') === '1' || style.getAttributeNS(W, 'default') === 'true')) {
+        this.defaultParaStyle = id;
+      }
       const ppr = firstChild(style, 'pPr');
       const numPr = ppr && firstChild(ppr, 'numPr');
       if (numPr) {
@@ -129,6 +138,8 @@ export class DocxStyles {
       }
       const ol = ppr && firstChild(ppr, 'outlineLvl');
       if (ol) { const n = parseInt(wVal(ol) ?? '', 10); if (Number.isFinite(n)) this.ownOutline.set(id, n); }
+      const jc = ppr && firstChild(ppr, 'jc');
+      if (jc) { const v = wVal(jc); if (v) this.ownAlign.set(id, v); }
     }
   }
 
@@ -186,6 +197,28 @@ export class DocxStyles {
     const own = this.ownOutline.get(styleId);
     if (own != null) return own;
     return this.styleOutlineLvl(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // The style's own w:jc, nearest along the w:basedOn chain (null if none in the chain).
+  private styleAlign(styleId: string | null | undefined, seen = new Set<string>()): string | null {
+    if (!styleId || seen.has(styleId)) return null;
+    seen.add(styleId);
+    const own = this.ownAlign.get(styleId);
+    if (own != null) return own;
+    return this.styleAlign(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // Effective paragraph alignment from styles only (direct w:pPr/w:jc is read and wins in
+  // the caller): the pStyle's basedOn chain, else the default paragraph style, else
+  // docDefaults. Lets a paragraph inheriting justify from its style keep it. null = unset.
+  paragraphAlign(pStyleId: string | null | undefined): string | null {
+    const own = this.styleAlign(pStyleId);
+    if (own != null) return own;
+    if (this.defaultParaStyle && this.defaultParaStyle !== pStyleId) {
+      const def = this.styleAlign(this.defaultParaStyle);
+      if (def != null) return def;
+    }
+    return this.defaultsAlign;
   }
 
   level(numId: number, ilvl: number): LevelDef {

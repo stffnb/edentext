@@ -219,6 +219,35 @@ describe('DOCX import: empty line keeps its paragraph-mark font size', () => {
   });
 });
 
+describe('DOCX import: alignment inherited from a paragraph style', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  // The default paragraph style (Standard) sets justify; body paragraphs and a heading
+  // based on it inherit it. A direct w:jc still wins over the style.
+  const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+    <w:p><w:r><w:t>Inherits justify from Standard</w:t></w:r></w:p>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>Direct center wins</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Heading based on Standard</w:t></w:r></w:p>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr>
+  </w:body></w:document>`;
+  const stylesXml = `<?xml version="1.0"?><w:styles ${W}>
+    <w:style w:type="paragraph" w:default="1" w:styleId="Standard"><w:name w:val="Normal"/><w:pPr><w:jc w:val="both"/></w:pPr></w:style>
+    <w:style w:type="paragraph" w:styleId="Heading1"><w:basedOn w:val="Standard"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:style>
+  </w:styles>`;
+  const bytes = zipSync({ 'word/document.xml': strToU8(documentXml), 'word/styles.xml': strToU8(stylesXml) });
+  const doc = importDocx(bytes).content as N;
+
+  it('inherits justify onto a body paragraph with no direct alignment', () => {
+    expect(doc.content![0].attrs.textAlign).toBe('justify');
+  });
+  it('lets a direct w:jc override the style', () => {
+    expect(doc.content![1].attrs.textAlign).toBe('center');
+  });
+  it('inherits justify onto a heading based on the default style', () => {
+    expect(doc.content![2].type).toBe('heading');
+    expect(doc.content![2].attrs.textAlign).toBe('justify');
+  });
+});
+
 describe('DOCX import resolves theme fonts (Word default = Calibri)', () => {
   const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
   const A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
