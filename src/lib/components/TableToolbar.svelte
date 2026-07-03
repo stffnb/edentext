@@ -79,10 +79,10 @@
     aria-label="Insert row above"
     onclick={() => run((c) => c.addRowBefore())}
   >
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="3" y="9" width="12" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/>
-      <line x1="9" y1="9" x2="9" y2="15" stroke="currentColor" stroke-width="1.1"/>
-      <path d="M9 2v4M7 4l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="1.5" y="9.5" width="15" height="7" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <line x1="1.5" y1="13" x2="16.5" y2="13" stroke="currentColor" stroke-width="1.1"/>
+      <path d="M9 1.5v6M6 4.5h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
     </svg>
   </button>
 
@@ -92,10 +92,10 @@
     aria-label="Insert row below"
     onclick={() => run((c) => c.addRowAfter())}
   >
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="3" y="3" width="12" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/>
-      <line x1="9" y1="3" x2="9" y2="9" stroke="currentColor" stroke-width="1.1"/>
-      <path d="M9 16v-4M7 14l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="15" height="7" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <line x1="1.5" y1="5" x2="16.5" y2="5" stroke="currentColor" stroke-width="1.1"/>
+      <path d="M9 10.5v6M6 13.5h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
     </svg>
   </button>
 
@@ -105,10 +105,10 @@
     aria-label="Insert column left"
     onclick={() => run((c) => c.addColumnBefore())}
   >
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="9" y="3" width="6" height="12" rx="1" stroke="currentColor" stroke-width="1.3"/>
-      <line x1="9" y1="9" x2="15" y2="9" stroke="currentColor" stroke-width="1.1"/>
-      <path d="M2 9h4M4 7l-2 2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="9.5" y="1.5" width="7" height="15" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <line x1="13" y1="1.5" x2="13" y2="16.5" stroke="currentColor" stroke-width="1.1"/>
+      <path d="M1.5 9h6M4.5 6v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
     </svg>
   </button>
 
@@ -118,10 +118,10 @@
     aria-label="Insert column right"
     onclick={() => run((c) => c.addColumnAfter())}
   >
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="3" y="3" width="6" height="12" rx="1" stroke="currentColor" stroke-width="1.3"/>
-      <line x1="9" y1="9" x2="3" y2="9" stroke="currentColor" stroke-width="1.1"/>
-      <path d="M16 9h-4M14 7l2 2-2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="7" height="15" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <line x1="5" y1="1.5" x2="5" y2="16.5" stroke="currentColor" stroke-width="1.1"/>
+      <path d="M10.5 9h6M13.5 6v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
     </svg>
   </button>
 
@@ -133,9 +133,10 @@
     aria-label="Delete row"
     onclick={() => run((c) => c.deleteRow())}
   >
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="3" y="6" width="12" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/>
-      <line x1="6" y1="9" x2="12" y2="9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M1.5 2.5H16.5M1.5 15.5H16.5" stroke="currentColor" stroke-width="1.1" opacity="0.35"/>
+      <rect x="1.5" y="6.5" width="15" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M2 15.5L16 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
     </svg>
   </button>
 
@@ -145,9 +146,10 @@
     aria-label="Delete column"
     onclick={() => run((c) => c.deleteColumn())}
   >
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="6" y="3" width="6" height="12" rx="1" stroke="currentColor" stroke-width="1.3"/>
-      <line x1="9" y1="6" x2="9" y2="12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M2.5 1.5V16.5M15.5 1.5V16.5" stroke="currentColor" stroke-width="1.1" opacity="0.35"/>
+      <rect x="6.5" y="1.5" width="5" height="15" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M2.5 16L15.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
     </svg>
   </button>
 
@@ -157,8 +159,8 @@
     aria-label="Delete table"
     onclick={() => run((c) => c.deleteTable())}
   >
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <path d="M3.5 5h11M7 5V3.5h4V5M5 5l.7 9.5a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9L13 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M2.5 4.5h13M6.5 4.5V2h5v2.5M4.5 4.5l.8 11a1.1 1.1 0 0 0 1.1 1h5.2a1.1 1.1 0 0 0 1.1-1l.8-11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
 
@@ -171,9 +173,10 @@
     disabled={!canMerge}
     onclick={() => run((c) => c.mergeCells())}
   >
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="3" y="4" width="12" height="10" rx="1" stroke="currentColor" stroke-width="1.3"/>
-      <path d="M6 9h6M6 9l1.6-1.6M6 9l1.6 1.6M12 9l-1.6-1.6M12 9l-1.6 1.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="1.5" y="3.5" width="15" height="11" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <line x1="9" y1="3.5" x2="9" y2="14.5" stroke="currentColor" stroke-width="1" stroke-dasharray="1.6 1.6"/>
+      <path d="M2.5 9h4.5M7 9L4.8 6.8M7 9l-2.2 2.2M15.5 9H11M11 9l2.2-2.2M11 9l2.2 2.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
 
@@ -183,10 +186,10 @@
     aria-label="Split cells"
     onclick={() => onSplit()}
   >
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="3" y="4" width="12" height="10" rx="1" stroke="currentColor" stroke-width="1.3"/>
-      <line x1="9" y1="4" x2="9" y2="14" stroke="currentColor" stroke-width="1.3"/>
-      <path d="M9 7.4L7.4 9 9 10.6M9 7.4L10.6 9 9 10.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="1.5" y="3.5" width="15" height="11" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <line x1="9" y1="3.5" x2="9" y2="14.5" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M7.5 9H3M3 9l2.2-2.2M3 9l2.2 2.2M10.5 9H15M15 9l-2.2-2.2M15 9l-2.2 2.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
 
@@ -223,11 +226,12 @@
     aria-pressed={isHeaderRow}
     onclick={() => run((c) => c.toggleHeaderRowStyle())}
   >
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="3" y="3" width="12" height="12" rx="1" stroke="currentColor" stroke-width="1.3"/>
-      <rect x="3" y="3" width="12" height="4" fill="currentColor" opacity="0.85"/>
-      <line x1="9" y1="7" x2="9" y2="15" stroke="currentColor" stroke-width="1.1"/>
-      <line x1="3" y1="11" x2="15" y2="11" stroke="currentColor" stroke-width="1.1"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="15" height="15" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <rect x="1.5" y="1.5" width="15" height="5" fill="currentColor" opacity="0.85"/>
+      <line x1="1.5" y1="6.5" x2="16.5" y2="6.5" stroke="currentColor" stroke-width="1.1"/>
+      <line x1="1.5" y1="11.5" x2="16.5" y2="11.5" stroke="currentColor" stroke-width="1.1"/>
+      <line x1="9" y1="6.5" x2="9" y2="16.5" stroke="currentColor" stroke-width="1.1"/>
     </svg>
   </button>
 </div>

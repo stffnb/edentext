@@ -20,8 +20,8 @@
   // draw solid, the rest as faint guides.
   type Seg = 'top' | 'right' | 'bottom' | 'left' | 'h' | 'v';
   const SEG_PATH: Record<Seg, string> = {
-    top: 'M2 2H16', right: 'M16 2V16', bottom: 'M2 16H16', left: 'M2 2V16',
-    h: 'M2 9H16', v: 'M9 2V16',
+    top: 'M1 1H17', right: 'M17 1V17', bottom: 'M1 17H17', left: 'M1 1V17',
+    h: 'M1 9H17', v: 'M9 1V17',
   };
   const ALL_SEGS: Seg[] = ['top', 'right', 'bottom', 'left', 'h', 'v'];
   const PRESETS: { id: BorderPreset | 'none'; title: string; on: Seg[] }[] = [
@@ -70,9 +70,10 @@
     aria-expanded={open}
     onclick={() => (open = !open)}
   >
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="2.5" y="2.5" width="13" height="13" stroke="currentColor" stroke-width="1.3"/>
-      <path d="M9 2.5V15.5M2.5 9H15.5" stroke="currentColor" stroke-width="1.1" stroke-dasharray="1.6 1.6"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="15" height="15" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M9 1.5V16.5" stroke="currentColor" stroke-width="1.1" stroke-dasharray="1.9 1.375"/>
+      <path d="M1.5 9H16.5" stroke="currentColor" stroke-width="1.1" stroke-dasharray="1.9 1.375"/>
     </svg>
     <svg class="bp-chevron" width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
       <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -96,16 +97,16 @@
               <!-- Prohibition sign over a faint grid: unmistakably "remove borders". -->
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
                 {#each ALL_SEGS as seg}
-                  <path d={SEG_PATH[seg]} stroke="currentColor" stroke-width="1" opacity="0.22" stroke-dasharray="1.4 1.4"/>
+                  <path d={SEG_PATH[seg]} stroke="currentColor" stroke-width="1" opacity="0.22" stroke-dasharray="2 1.5"/>
                 {/each}
-                <circle cx="9" cy="9" r="4.6" fill="var(--color-surface)" stroke="currentColor" stroke-width="1.3"/>
-                <path d="M5.9 12.1L12.1 5.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                <circle cx="9" cy="9" r="5.5" fill="var(--color-surface)" stroke="currentColor" stroke-width="1.3"/>
+                <path d="M5.2 12.8L12.8 5.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
               </svg>
             {:else}
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
                 {#each ALL_SEGS as seg}
                   {#if !preset.on.includes(seg)}
-                    <path d={SEG_PATH[seg]} stroke="currentColor" stroke-width="1" opacity="0.22" stroke-dasharray="1.4 1.4"/>
+                    <path d={SEG_PATH[seg]} stroke="currentColor" stroke-width="1" opacity="0.22" stroke-dasharray="2 1.5"/>
                   {/if}
                 {/each}
                 {#each preset.on as seg}
