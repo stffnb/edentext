@@ -10,7 +10,9 @@
   import TableToolbar from './TableToolbar.svelte';
   import TableSplitDialog from './TableSplitDialog.svelte';
   import ImageToolbar from './ImageToolbar.svelte';
+  import TextBoxToolbar from './TextBoxToolbar.svelte';
   import type { WrapMode } from '../editor/extensions/image';
+  import { findTextBox, type ShapeKind } from '../editor/extensions/textBox';
   import { NodeSelection } from '@tiptap/pm/state';
   import SpellContextMenu from './SpellContextMenu.svelte';
   import HeaderFooterLayer from './HeaderFooterLayer.svelte';
@@ -287,6 +289,38 @@
     };
   }
 
+  // --- Floating text-box toolbar ---
+  // Shown when a text box is node-selected or the cursor is inside one; positioned
+  // just above it. Hidden while the image toolbar shows (an image inside a box).
+  let textBoxUi = $state<{
+    visible: boolean; top: number; left: number;
+    wrap: WrapMode; shapeKind: ShapeKind; fillColor: string | null;
+    strokeColor: string | null; strokeWidthPt: number;
+  }>({ visible: false, top: 0, left: 0, wrap: 'inline', shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 });
+
+  function recomputeTextBoxUi() {
+    const ed = editor;
+    const found = ed && editorContainer && !imageUi.visible ? findTextBox(ed.state) : null;
+    const dom = found ? ed!.view.nodeDOM(found.pos) : null;
+    if (!found || !(dom instanceof HTMLElement)) {
+      if (textBoxUi.visible) textBoxUi = { ...textBoxUi, visible: false };
+      return;
+    }
+    const r = dom.getBoundingClientRect();
+    const cRect = editorContainer.getBoundingClientRect();
+    const a = found.node.attrs;
+    textBoxUi = {
+      visible: true,
+      top: r.top - cRect.top + editorContainer.scrollTop,
+      left: r.left - cRect.left + editorContainer.scrollLeft,
+      wrap: (a.wrap as WrapMode) || 'inline',
+      shapeKind: (a.shapeKind as ShapeKind) || 'textbox',
+      fillColor: (a.fillColor as string | null) ?? null,
+      strokeColor: (a.strokeColor as string | null) ?? null,
+      strokeWidthPt: (a.strokeWidthPt as number) ?? 1,
+    };
+  }
+
   // Table page-break overlay: pageBreaks.ts reports (via pm-pagecount) where a continuous
   // table box crosses a page boundary, each as a band in doc px. Rendered in .band-layer
   // inside the scaled .paper — a mask hides borders in the margins, a stripe is the gap.
@@ -340,6 +374,7 @@
     tableUiRaf = requestAnimationFrame(() => {
       recomputeTableUi();
       recomputeImageUi();
+      recomputeTextBoxUi();
       recomputeBands();
     });
   }
@@ -671,6 +706,18 @@
   {/if}
   {#if imageUi.visible}
     <ImageToolbar {editor} top={imageUi.top} left={imageUi.left} wrap={imageUi.wrap} />
+  {/if}
+  {#if textBoxUi.visible}
+    <TextBoxToolbar
+      {editor}
+      top={textBoxUi.top}
+      left={textBoxUi.left}
+      wrap={textBoxUi.wrap}
+      shapeKind={textBoxUi.shapeKind}
+      fillColor={textBoxUi.fillColor}
+      strokeColor={textBoxUi.strokeColor}
+      strokeWidthPt={textBoxUi.strokeWidthPt}
+    />
   {/if}
   {#if spellMenu.visible}
     <SpellContextMenu

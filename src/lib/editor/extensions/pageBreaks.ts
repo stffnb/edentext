@@ -643,6 +643,18 @@ export const PageBreaks = Extension.create({
                 });
                 continue;
               }
+              // A text box (textBox.ts) paginates atomically: its content lives inside a
+              // rotated/floated node view where a line-split spacer can't render sanely.
+              if (child.classList.contains('textbox-node')) {
+                leaves.push({
+                  el: child,
+                  kind: 'atomic',
+                  naturalTop: topWithin(child) - cumulativeSpacerHeight,
+                  naturalHeight: child.offsetHeight,
+                  inTableCell,
+                });
+                continue;
+              }
               // A paragraph holding a floated/block image paginates atomically (pushed
               // whole, spacer placed before it): a line-split spacer inside it would sit
               // next to the float, where ProseMirror drops the widget.

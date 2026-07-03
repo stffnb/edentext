@@ -1,5 +1,5 @@
 import { unzipSync, strFromU8 } from 'fflate';
-import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, wVal, W, R, WP, A, PKG_REL, type RunProps } from './docxStyles';
+import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, wVal, W, R, WP, A, WPS, MC, VML, PKG_REL, type RunProps } from './docxStyles';
 import { lengthToPt } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
@@ -19,12 +19,15 @@ type Node = { type: string; attrs?: Record<string, unknown>; content?: Node[]; m
 type BlockKind = 'body' | 'list' | 'cell';
 
 type RelInfo = { target: string; external: boolean };
+// pendingBlocks: text boxes/shapes found inside runs — block nodes that convertBlocks
+// flushes after the anchor paragraph (mirrors import/odt.ts).
 type Ctx = {
   styles: DocxStyles;
   warnings: Set<string>;
   files: Record<string, Uint8Array>;
   rels: Map<string, RelInfo>;
   imageCache: Map<string, string>;
+  pendingBlocks: Node[];
 };
 
 // ---- units & editor defaults to suppress -----------------------------------
@@ -98,7 +101,7 @@ export function importDocx(bytes: Uint8Array): OdtImportResult {
   const styles = new DocxStyles(stylesDoc, numberingDoc, themeDoc);
   const warnings = new Set<string>();
 
-  const ctx: Ctx = { styles, warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map() };
+  const ctx: Ctx = { styles, warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), pendingBlocks: [] };
 
   const body = docDoc.getElementsByTagNameNS(W, 'body')[0];
   if (!body) throw new Error('Not a Word document (no w:body).');
@@ -206,6 +209,22 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
   };
   const flush = () => { while (stack.length) closeTop(); };
 
+  // Emit an anchor paragraph, then any text boxes found inside it. In the body they
+  // follow the anchor at top level — and an empty anchor (our own export's wrapper
+  // paragraph) is dropped; elsewhere their blocks are unwrapped in place.
+  const pushWithPending = (anchor: Node | null) => {
+    const pending = ctx.pendingBlocks.splice(0);
+    const anchorIsEmpty = anchor?.type === 'paragraph' && !anchor.content?.length;
+    if (anchor && !(pending.length && anchorIsEmpty)) out.push(anchor);
+    if (!pending.length) return;
+    if (kind === 'body') {
+      out.push(...pending);
+    } else {
+      ctx.warnings.add('Text boxes nested in table cells or other text boxes were flattened');
+      for (const box of pending) out.push(...(box.content ?? [{ type: 'paragraph' }]));
+    }
+  };
+
   for (const el of children) {
     if (el.namespaceURI !== W) continue;
     if (el.localName === 'p') {
@@ -228,7 +247,7 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         stack[stack.length - 1].list.content!.push({ type: 'listItem', content: [para] });
       } else {
         flush();
-        out.push(convertParagraph(el, ctx, kind, boldByDefault));
+        pushWithPending(convertParagraph(el, ctx, kind, boldByDefault));
       }
     } else if (el.localName === 'tbl') {
       flush();
@@ -251,6 +270,8 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
     }
   }
   flush();
+  // Boxes anchored inside list items land after the whole list.
+  pushWithPending(null);
   return out;
 }
 
@@ -424,7 +445,31 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
     if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
     const skipResult = () => fieldMode === 'result' && hfFields; // hide a hf field's cached value
 
+    // Route a drawing/pict result: an image is inline; a text box is a block node
+    // riding ctx.pendingBlocks (dropped in the one-paragraph header/footer schema).
+    const pushDrawn = (n: Node | null) => {
+      if (!n) return;
+      if (n.type !== 'textBox') { out.push(n); return; }
+      if (hfFields) ctx.warnings.add('Drawings were removed');
+      else ctx.pendingBlocks.push(n);
+    };
+
     for (const child of Array.from(r.children)) {
+      // Word wraps every shape in mc:AlternateContent; use only the mc:Choice branch
+      // (the mc:Fallback VML duplicates it and would double-import).
+      if (child.namespaceURI === MC && child.localName === 'AlternateContent') {
+        const choice = Array.from(child.children).find((c) => c.namespaceURI === MC && c.localName === 'Choice');
+        const drawing = choice?.getElementsByTagNameNS(W, 'drawing')[0];
+        if (drawing) pushDrawn(convertDrawing(drawing, ctx));
+        else {
+          const pict = Array.from(child.children)
+            .find((c) => c.namespaceURI === MC && c.localName === 'Fallback')
+            ?.getElementsByTagNameNS(W, 'pict')[0];
+          if (pict) pushDrawn(convertPict(pict, ctx));
+          else ctx.warnings.add('Drawings were removed');
+        }
+        continue;
+      }
       if (child.namespaceURI !== W) continue;
       switch (child.localName) {
         case 'fldChar': {
@@ -438,7 +483,8 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
         case 't': if (!skipResult()) pushText(child.textContent ?? '', marks); break;
         case 'tab': if (!skipResult()) pushText('\t', marks); break;
         case 'br': case 'cr': out.push({ type: 'hardBreak' }); break;
-        case 'drawing': { const img = convertDrawing(child, ctx); if (img) out.push(img); break; }
+        case 'drawing': pushDrawn(convertDrawing(child, ctx)); break;
+        case 'pict': pushDrawn(convertPict(child, ctx)); break;
       }
     }
   };
@@ -538,8 +584,12 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   const anchor = drawing.getElementsByTagNameNS(WP, 'anchor')[0];
   const root = drawing.getElementsByTagNameNS(WP, 'inline')[0] ?? anchor;
   if (!root) return null;
+  // A wordprocessingShape (text box / preset shape) has no blip — convert it first.
+  const wsp = root.getElementsByTagNameNS(WPS, 'wsp')[0];
+  if (wsp) return convertWpsShape(wsp, root, !!anchor, ctx);
   const blip = drawing.getElementsByTagNameNS(A, 'blip')[0];
-  const embed = blip?.getAttributeNS(R, 'embed');
+  if (!blip) { ctx.warnings.add('Drawings were removed'); return null; }
+  const embed = blip.getAttributeNS(R, 'embed');
   const rel = embed ? ctx.rels.get(embed) : undefined;
   if (!rel || rel.external) { ctx.warnings.add('Some images could not be read and were skipped'); return null; }
   const src = loadImageDataUrl(`word/${rel.target.replace(/^\/+/, '')}`, ctx);
@@ -570,6 +620,105 @@ function anchorWrap(anchor: Element): 'left' | 'right' | 'topBottom' {
   if (wt === 'left') return 'right';
   const align = anchor.getElementsByTagNameNS(WP, 'align')[0]?.textContent;
   return align === 'right' ? 'right' : 'left';
+}
+
+// ---- text boxes / shapes ------------------------------------------------------
+function nsChild(el: Element | null, ns: string, localName: string): Element | null {
+  if (!el) return null;
+  for (const c of Array.from(el.children)) if (c.namespaceURI === ns && c.localName === localName) return c;
+  return null;
+}
+
+const KIND_BY_PRST: Record<string, 'textbox' | 'roundRect' | 'ellipse'> = {
+  rect: 'textbox',
+  roundRect: 'roundRect',
+  ellipse: 'ellipse',
+};
+
+// Fill/stroke attrs from a shape's spPr (or VML equivalents), suppressing the editor
+// defaults (white fill, 1pt black stroke); none → explicit null, since omitting the
+// attr would re-apply the default.
+function setShapeStyleAttrs(attrs: Record<string, unknown>, fill: string | null, stroke: string | null, strokeWidthPt: number | null): void {
+  if (fill !== '#FFFFFF') attrs.fillColor = fill;
+  if (stroke !== '#000000') attrs.strokeColor = stroke;
+  if (stroke && strokeWidthPt != null && Math.abs(strokeWidthPt - 1) > 0.1) {
+    attrs.strokeWidthPt = Math.round(strokeWidthPt * 100) / 100;
+  }
+}
+
+// A DrawingML <wps:wsp> (text box or preset shape) → a textBox node. Unsupported
+// preset geometries (stars, arrows, …) are dropped with a warning. All property
+// lookups are scoped to spPr so a nested image's fill/xfrm can't leak in.
+function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ctx): Node | null {
+  const spPr = nsChild(wsp, WPS, 'spPr');
+  const prst = nsChild(spPr, A, 'prstGeom')?.getAttribute('prst') ?? 'rect';
+  const kind = KIND_BY_PRST[prst];
+  if (!kind) { ctx.warnings.add('Unsupported shapes were removed'); return null; }
+
+  const attrs: Record<string, unknown> = {};
+  if (kind !== 'textbox') attrs.shapeKind = kind;
+  const extent = root.getElementsByTagNameNS(WP, 'extent')[0];
+  const cx = intAttr(extent, '', 'cx');
+  const cy = intAttr(extent, '', 'cy');
+  if (cx) attrs.width = Math.round(emuToPx(cx));
+  if (cy) attrs.height = Math.round(emuToPx(cy));
+  const rot = intAttr(nsChild(spPr, A, 'xfrm'), '', 'rot');
+  if (rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
+  if (isAnchor) attrs.wrap = anchorWrap(root);
+
+  const fillClr = nsChild(nsChild(spPr, A, 'solidFill'), A, 'srgbClr')?.getAttribute('val');
+  const fill = fillClr ? hexColor(fillClr) ?? null : null;
+  const ln = nsChild(spPr, A, 'ln');
+  const lnClr = nsChild(nsChild(ln, A, 'solidFill'), A, 'srgbClr')?.getAttribute('val');
+  const stroke = ln && !nsChild(ln, A, 'noFill') ? hexColor(lnClr ?? '000000') ?? '#000000' : null;
+  const lnW = intAttr(ln, '', 'w');
+  setShapeStyleAttrs(attrs, fill, stroke, lnW != null ? lnW / 12700 : null);
+
+  const txbxContent = nsChild(nsChild(wsp, WPS, 'txbx'), W, 'txbxContent');
+  const blocks = txbxContent ? convertBlocks(Array.from(txbxContent.children), ctx, 'cell') : [];
+  return { type: 'textBox', attrs, content: blocks.length ? blocks : [{ type: 'paragraph' }] };
+}
+
+// Legacy VML (w:pict): v:rect/v:oval/v:roundrect/v:shape with a v:textbox. Geometry
+// comes from the CSS-ish style string; shapes without text content are dropped.
+function convertPict(pict: Element, ctx: Ctx): Node | null {
+  const shape = Array.from(pict.children).find(
+    (c) => c.namespaceURI === VML && ['shape', 'rect', 'oval', 'roundrect'].includes(c.localName),
+  );
+  const txbxContent = shape
+    ? nsChild(shape.getElementsByTagNameNS(VML, 'textbox')[0] ?? null, W, 'txbxContent')
+    : null;
+  if (!shape || !txbxContent) { ctx.warnings.add('Drawings were removed'); return null; }
+
+  const attrs: Record<string, unknown> = {};
+  const kind = shape.localName === 'oval' ? 'ellipse' : shape.localName === 'roundrect' ? 'roundRect' : 'textbox';
+  if (kind !== 'textbox') attrs.shapeKind = kind;
+
+  const style = shape.getAttribute('style') ?? '';
+  const dimPx = (key: string): number | null => {
+    const m = new RegExp(`(?:^|;)\\s*${key}:\\s*([\\d.]+)(pt|in|cm|mm|px)?`).exec(style);
+    if (!m) return null;
+    const v = parseFloat(m[1]);
+    const u = m[2] ?? 'pt';
+    const pt = u === 'pt' ? v : u === 'in' ? v * 72 : u === 'cm' ? (v * 72) / 2.54 : u === 'mm' ? (v * 7.2) / 2.54 : v * 0.75;
+    return Math.round((pt * 96) / 72);
+  };
+  const w = dimPx('width');
+  const h = dimPx('height');
+  if (w) attrs.width = w;
+  if (h) attrs.height = h;
+
+  const fillAttr = shape.getAttribute('fillcolor');
+  const fill = fillAttr ? normalizeColor(fillAttr) ?? null : null;
+  const stroked = shape.getAttribute('stroked');
+  const stroke = stroked === 'f' || stroked === 'false'
+    ? null
+    : normalizeColor(shape.getAttribute('strokecolor') ?? '#000000') ?? '#000000';
+  const swm = /^([\d.]+)\s*(pt)?$/.exec(shape.getAttribute('strokeweight') ?? '');
+  setShapeStyleAttrs(attrs, fill, stroke, swm ? parseFloat(swm[1]) : null);
+
+  const blocks = convertBlocks(Array.from(txbxContent.children), ctx, 'cell');
+  return { type: 'textBox', attrs, content: blocks.length ? blocks : [{ type: 'paragraph' }] };
 }
 
 // ---- tables -----------------------------------------------------------------

@@ -42,12 +42,15 @@ export interface OdtImportResult {
 type BlockKind = 'body' | 'list' | 'cell';
 
 // `files` is the full unzipped archive so image converters can read Pictures/
-// binaries; imageCache dedupes repeated hrefs into one data-URI.
+// binaries; imageCache dedupes repeated hrefs into one data-URI. pendingBlocks is
+// the side channel for text boxes/shapes found while converting inline content —
+// they are block nodes, so convertBlocks flushes them after the anchor paragraph.
 type Ctx = {
   resolver: StyleResolver;
   warnings: Set<string>;
   files: Record<string, Uint8Array>;
   imageCache: Map<string, string>;
+  pendingBlocks: Node[];
 };
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -90,6 +93,30 @@ function wrapModeFromOdf(wrapVal: string | undefined, hpos: string | undefined):
   return hpos && /right/.test(hpos) ? 'right' : 'left';
 }
 
+// draw:transform rotate() is CCW radians; the editor stores CW degrees.
+function frameRotationDeg(el: Element): number {
+  const transform = el.getAttributeNS(NS.draw, 'transform');
+  const rot = transform && /rotate\s*\(\s*(-?[\d.eE+]+)\s*\)/.exec(transform);
+  if (!rot) return 0;
+  return ((Math.round((-parseFloat(rot[1]) * 180) / Math.PI) % 360) + 360) % 360;
+}
+
+// Set rotation + wrap attrs shared by images, text boxes and shapes. A non-as-char
+// anchor or an explicit style:wrap makes the element floating (free x/y positions
+// collapse to the nearest side — the editor's anchor-float model). An explicit
+// as-char anchor is always inline: LibreOffice's named Graphics style carries a
+// style:wrap that would otherwise float every inherited as-char frame.
+function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap): void {
+  const deg = frameRotationDeg(el);
+  if (deg) attrs.rotation = deg;
+  const anchor = el.getAttributeNS(NS.text, 'anchor-type');
+  if (anchor === 'as-char') return;
+  const wrapVal = gp['style:wrap'];
+  if (anchor || wrapVal) {
+    attrs.wrap = wrapModeFromOdf(wrapVal, gp['style:horizontal-pos']);
+  }
+}
+
 // A <draw:frame><draw:image> → an image node. Size comes from the frame's svg
 // geometry (cm → px). as-char frames stay inline; paragraph/page-anchored frames
 // with a wrap become floating (wrap mode + svg:x/svg:y position).
@@ -110,21 +137,104 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
   if (hCm != null) attrs.height = Math.round(cmToPx(hCm));
   const title = frame.getElementsByTagNameNS(NS.svg, 'title')[0]?.textContent;
   if (title) attrs.alt = title;
-  // draw:transform rotate() is CCW radians; the editor stores CW degrees.
-  const transform = frame.getAttributeNS(NS.draw, 'transform');
-  const rot = transform && /rotate\s*\(\s*(-?[\d.eE+]+)\s*\)/.exec(transform);
-  if (rot) {
-    const deg = ((Math.round((-parseFloat(rot[1]) * 180) / Math.PI) % 360) + 360) % 360;
-    if (deg) attrs.rotation = deg;
-  }
-  // Floating frame → wrap mode (side). (as-char stays inline.)
-  const anchor = frame.getAttributeNS(NS.text, 'anchor-type');
-  const gp = ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
-  const wrapVal = gp['style:wrap'];
-  if ((anchor && anchor !== 'as-char') || wrapVal) {
-    attrs.wrap = wrapModeFromOdf(wrapVal, gp['style:horizontal-pos']);
-  }
+  applyFrameRotationAndWrap(frame, attrs, ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name')));
   return { type: 'image', attrs };
+}
+
+// Fill/stroke attrs from a shape's graphic style, suppressing the editor defaults
+// (white fill, 1pt black stroke). Absent/none → explicit null (transparent/no border),
+// since omitting the attr would re-apply the default.
+function shapeStyleAttrs(gp: PropMap, attrs: Record<string, unknown>): void {
+  const fillColor = gp['draw:fill'] === 'solid' ? normalizeColor(gp['draw:fill-color'] ?? '') ?? null : null;
+  if (fillColor !== '#FFFFFF') attrs.fillColor = fillColor;
+  const strokeColor = gp['draw:stroke'] && gp['draw:stroke'] !== 'none'
+    ? normalizeColor(gp['svg:stroke-color'] ?? '#000000') ?? '#000000'
+    : null;
+  if (strokeColor !== '#000000') attrs.strokeColor = strokeColor;
+  if (strokeColor) {
+    const widthPt = lengthToPt(gp['svg:stroke-width']);
+    if (widthPt != null && Math.abs(widthPt - 1) > 0.1) {
+      attrs.strokeWidthPt = Math.round(widthPt * 100) / 100;
+    }
+  }
+}
+
+// The block content of a text box / shape: its text:* children via the cell path
+// (which flattens whatever the box schema can't hold), at least one paragraph.
+function textBoxContent(children: Element[], ctx: Ctx): Node[] {
+  const textChildren = children.filter(c => c.namespaceURI === NS.text);
+  const blocks = convertBlocks(textChildren, ctx, 'cell');
+  return blocks.length ? blocks : [{ type: 'paragraph' }];
+}
+
+// A <draw:frame><draw:text-box> → a textBox node. The height is the text-box's
+// fo:min-height when present (our own export; height = minimum, content grows the
+// box), else the frame's computed svg:height (LibreOffice re-saves).
+function convertTextBoxFrame(frame: Element, textBoxEl: Element, ctx: Ctx): Node {
+  const attrs: Record<string, unknown> = {};
+  const wCm = lengthToCm(frame.getAttributeNS(NS.svg, 'width'));
+  if (wCm != null) attrs.width = Math.round(cmToPx(wCm));
+  const hCm = lengthToCm(textBoxEl.getAttributeNS(NS.fo, 'min-height'))
+    ?? lengthToCm(frame.getAttributeNS(NS.svg, 'height'));
+  if (hCm != null) attrs.height = Math.round(cmToPx(hCm));
+  const gp = ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
+  applyFrameRotationAndWrap(frame, attrs, gp);
+  shapeStyleAttrs(gp, attrs);
+  return { type: 'textBox', attrs, content: textBoxContent(Array.from(textBoxEl.children), ctx) };
+}
+
+// draw:rect / draw:ellipse / draw:custom-shape (rect/round-rect/ellipse preset) → a
+// textBox with the matching shapeKind; the shape's text is its content. Other
+// custom-shape presets (stars, arrows, …) are dropped with a warning.
+function convertShape(el: Element, ctx: Ctx): Node | null {
+  let kind: 'textbox' | 'roundRect' | 'ellipse' | null = null;
+  if (el.localName === 'rect') kind = 'textbox';
+  else if (el.localName === 'ellipse') kind = 'ellipse';
+  else {
+    const geo = el.getElementsByTagNameNS(NS.draw, 'enhanced-geometry')[0];
+    const type = geo?.getAttributeNS(NS.draw, 'type') ?? '';
+    if (type === 'ellipse' || type === 'circle') kind = 'ellipse';
+    else if (type === 'round-rectangle') kind = 'roundRect';
+    else if (type === 'rectangle' || !type) kind = 'textbox';
+  }
+  if (!kind) {
+    ctx.warnings.add('Unsupported shapes were removed');
+    return null;
+  }
+  const attrs: Record<string, unknown> = {};
+  if (kind !== 'textbox') attrs.shapeKind = kind;
+  const wCm = lengthToCm(el.getAttributeNS(NS.svg, 'width'));
+  const hCm = lengthToCm(el.getAttributeNS(NS.svg, 'height'));
+  if (wCm != null) attrs.width = Math.round(cmToPx(wCm));
+  if (hCm != null) attrs.height = Math.round(cmToPx(hCm));
+  const gp = ctx.resolver.graphicProps(el.getAttributeNS(NS.draw, 'style-name'));
+  applyFrameRotationAndWrap(el, attrs, gp);
+  shapeStyleAttrs(gp, attrs);
+  return { type: 'textBox', attrs, content: textBoxContent(Array.from(el.children), ctx) };
+}
+
+// Dispatch any draw:* element: an image stays inline; a text box / shape is a block
+// node routed through ctx.pendingBlocks; everything else is dropped with a warning.
+function convertDrawElement(e: Element, ctx: Ctx): { inline?: Node; block?: Node } | null {
+  if (e.localName === 'frame') {
+    const textBoxEl = Array.from(e.children).find(
+      c => c.namespaceURI === NS.draw && c.localName === 'text-box',
+    );
+    if (textBoxEl) return { block: convertTextBoxFrame(e, textBoxEl, ctx) };
+    const hasImage = !!e.getElementsByTagNameNS(NS.draw, 'image')[0];
+    const img = convertFrame(e, ctx);
+    if (img) return { inline: img };
+    // A frame with neither image nor text box (OLE object, …) — report the drop;
+    // an unreadable image already warned inside convertFrame.
+    if (!hasImage) ctx.warnings.add('Drawings were removed');
+    return null;
+  }
+  if (e.localName === 'rect' || e.localName === 'ellipse' || e.localName === 'custom-shape') {
+    const shape = convertShape(e, ctx);
+    return shape ? { block: shape } : null;
+  }
+  ctx.warnings.add('Drawings were removed');
+  return null;
 }
 
 // ---- editor defaults to suppress on import -----------------------------------
@@ -174,7 +284,7 @@ export function importOdt(bytes: Uint8Array): OdtImportResult {
   const body = contentDoc.getElementsByTagNameNS(NS.office, 'text')[0];
   if (!body) throw new Error('Not a text document (no office:text body).');
 
-  const ctx: Ctx = { resolver, warnings, files, imageCache: new Map() };
+  const ctx: Ctx = { resolver, warnings, files, imageCache: new Map(), pendingBlocks: [] };
   const blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 
@@ -260,13 +370,32 @@ function parseXml(xml: string): Document {
 
 function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDefault = false): Node[] {
   const out: Node[] = [];
+
+  // Emit an anchor block, then any text boxes found inside it (block nodes riding
+  // ctx.pendingBlocks). In the body they follow the anchor at top level — and an
+  // empty anchor (our own export's wrapper paragraph) is dropped; elsewhere (cells,
+  // other boxes) their blocks are unwrapped in place.
+  const pushWithPending = (anchor: Node | null) => {
+    const pending = ctx.pendingBlocks.splice(0);
+    const anchorIsEmpty = anchor?.type === 'paragraph' && !anchor.content?.length;
+    if (anchor && !(pending.length && anchorIsEmpty)) out.push(anchor);
+    if (!pending.length) return;
+    if (kind === 'body') {
+      out.push(...pending);
+    } else {
+      ctx.warnings.add('Text boxes nested in table cells or other text boxes were flattened');
+      for (const box of pending) out.push(...(box.content ?? [{ type: 'paragraph' }]));
+    }
+  };
+
   for (const el of elements) {
     if (el.namespaceURI === NS.text) {
       if (el.localName === 'p' || el.localName === 'h') {
-        out.push(convertParaLike(el, ctx, kind, boldByDefault));
+        pushWithPending(convertParaLike(el, ctx, kind, boldByDefault));
       } else if (el.localName === 'list') {
         const list = convertList(el, ctx, null, 1);
         if (list) out.push(list);
+        pushWithPending(null);
       } else if (el.localName === 'section') {
         out.push(...convertBlocks(Array.from(el.children), ctx, kind, boldByDefault));
       } else if (el.localName === 'table-of-content' && kind === 'body') {
@@ -288,12 +417,14 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         ctx.warnings.add('Nested tables were flattened to paragraphs');
         out.push(...flattenTable(el, ctx));
       }
-    } else if (el.namespaceURI === NS.draw && el.localName === 'frame') {
-      // A frame at block level (rare) → wrap the inline image in a paragraph.
-      const img = convertFrame(el, ctx);
-      if (img) out.push({ type: 'paragraph', content: [img] });
     } else if (el.namespaceURI === NS.draw) {
-      ctx.warnings.add('Drawings were removed');
+      const conv = convertDrawElement(el, ctx);
+      // An image at block level (rare) → wrapped in a paragraph.
+      if (conv?.inline) out.push({ type: 'paragraph', content: [conv.inline] });
+      else if (conv?.block) {
+        ctx.pendingBlocks.push(conv.block);
+        pushWithPending(null);
+      }
     }
   }
   return out;
@@ -510,13 +641,15 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
             continue;
         }
       }
-      if (e.namespaceURI === NS.draw && e.localName === 'frame') {
-        const img = convertFrame(e, ctx);
-        if (img) out.push(img);
-        continue;
-      }
       if (e.namespaceURI === NS.draw) {
-        ctx.warnings.add('Drawings were removed');
+        // The one-paragraph header/footer schema can't hold images or boxes.
+        if (hfFields) {
+          ctx.warnings.add('Drawings were removed');
+          continue;
+        }
+        const conv = convertDrawElement(e, ctx);
+        if (conv?.inline) out.push(conv.inline);
+        else if (conv?.block) ctx.pendingBlocks.push(conv.block);
         continue;
       }
       if (e.namespaceURI === NS.office && e.localName === 'annotation') {

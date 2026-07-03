@@ -39,6 +39,7 @@
 - Table of contents: generated from headings (H1–H3) with live page numbers and dot leaders, click an entry to jump to its heading; round-trips to ODF `text:table-of-content` and a Word TOC field
 - Hyperlinks: create / edit / remove (toolbar + Ctrl+K), Ctrl/Cmd+click to open, hover hint showing the URL; ODF `text:a` round-trip
 - Manual page break (Ctrl+Enter); round-trips to ODF `fo:break-before`
+- Text boxes and basic shapes (rectangle / rounded rectangle / ellipse): editable block content, fill and border colors, border width, resize/rotate handles, text wrap (inline / left / right / top-bottom) like images; floating toolbar for wrap, shape kind and colors. Round-trips to ODF `draw:frame`/`draw:text-box` + `draw:custom-shape` and DOCX DrawingML `wps:wsp`/`wps:txbx` (imports Word's `mc:AlternateContent` and legacy VML text boxes too)
 
 **Page & layout**
 - Page margins (cm) and page orientation (portrait / landscape)
@@ -77,7 +78,7 @@ Planned word-processor features (to match Word/LibreOffice):
 - Heading levels H4–H6 (currently clamped to H3)
 - Paragraph borders / shading
 - Track changes (revisions)
-- Text boxes / shapes / drawings (currently dropped on import)
+- Lines / arrows / connectors / freeform and other shape presets (currently dropped on import with a warning; text boxes + rect/round-rect/ellipse are supported)
 - Equations / formulas
 - Cross-references / bookmarks
 - Named paragraph / character styles (style gallery)
@@ -105,6 +106,15 @@ Other:
   `2.`…), nested lists indented. Content is preserved and readable, but loses
   list/heading semantics (no auto-numbering, not recognised as a heading).
   Noted 2026-06-06.
+- Text boxes in the DOCX export: lists inside a box are flattened to
+  literal-marker paragraphs (`•` / `1.`), and images inside a box are dropped —
+  the box XML is injected by a post-pack string pass (`export/docx.ts`
+  `applyTextBoxesDocx`) that cannot mint numbering.xml or media/rels entries.
+  ODT export has neither limitation. Noted 2026-07-03.
+- A plain text box's height is a *minimum* (content grows the box, like the
+  editor). LibreOffice recomputes auto-grow heights on open, so a re-saved box
+  keeps its content but sheds excess empty height. Shapes (rect/ellipse) export
+  with fixed geometry instead. Noted 2026-07-03.
 
 ---
 

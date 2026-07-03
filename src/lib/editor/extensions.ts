@@ -39,10 +39,12 @@ import { TableCellBackground } from './extensions/tableCellBackground';
 import { TableHeaderRow } from './extensions/tableHeaderRow';
 import { TrailingNode } from './extensions/trailingNode';
 import { Image } from './extensions/image';
+import { TextBox } from './extensions/textBox';
 import { TableOfContents } from './extensions/tableOfContents';
 
 export const extensions = [
-  Document,
+  // textBox has its own group so only the document (not cells/lists) admits it.
+  Document.extend({ content: '(block | textBox)+' }),
   Paragraph,
   Text,
   Bold,
@@ -67,6 +69,9 @@ export const extensions = [
   // Inline, as-character image; round-trips to ODF <draw:frame>/<draw:image>
   // (export/odt.ts replaceImages/applyImages, import/odt.ts).
   Image,
+  // Block-level text box / basic shape with editable content; round-trips to ODF
+  // draw:frame/draw:text-box + draw:custom-shape and DOCX wps:wsp/wps:txbx.
+  TextBox,
   // Generated table of contents from headings; round-trips to ODF
   // <text:table-of-content> (export/odt.ts, import/odt.ts) and a DOCX TOC field.
   TableOfContents,

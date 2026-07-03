@@ -12,6 +12,8 @@ import type {
   IRunStylePropertiesOptions, ISpacingProperties, IIndentAttributesProperties,
   ILevelsOptions, IFloating, IBorderOptions,
 } from 'docx';
+import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
+import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { HF_DISTANCE_CM, hfIsEmpty } from '../storage/headerFooter';
@@ -51,6 +53,14 @@ const TWIPS_PER_CM = 1440 / 2.54; // 566.929
 const cmToTwip = (cm: number) => Math.round(cm * TWIPS_PER_CM);
 const ptToTwip = (pt: number) => Math.round(pt * 20);
 const pxToTwip = (px: number) => Math.round((px * 1440) / 96); // px @96dpi → twips
+const EMU_PER_PX = 9525;
+const EMU_PER_PT = 12700;
+const EMU_PER_CM = 360000;
+
+// Sentinel wrapping a text box's index in a marker paragraph (same trick as
+// export/odt.ts): the docx library can't emit DrawingML shapes, so buildDocx swaps
+// the marker for a hand-built <w:drawing><wps:wsp> in a zip post-processing pass.
+const TBX = '';
 
 // CSS font-size string ("12pt", "16px", "1.2em") → Word half-points. em is relative
 // to the 12pt body. Returns undefined when unparseable.
@@ -273,6 +283,221 @@ function imageRun(node: TiptapNode): ImageRun | null {
   });
 }
 
+// ---- text boxes / shapes ---------------------------------------------------
+// A textBox node collected by blocksToDocx; applyTextBoxesDocx rewrites its marker
+// paragraph into DrawingML (wp:inline/wp:anchor > wps:wsp > wps:txbx) after packing.
+type TextBoxDocx = {
+  widthPx: number;
+  heightPx: number;
+  rotationDeg: number;
+  wrap: 'inline' | 'left' | 'right' | 'topBottom';
+  shapeKind: 'textbox' | 'roundRect' | 'ellipse';
+  fill: string | null;
+  stroke: string | null;
+  strokeWidthPt: number;
+  content: TiptapNode[];
+};
+
+function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
+  const a = node.attrs ?? {};
+  const wrapAttr = a.wrap;
+  const kind = a.shapeKind;
+  return {
+    widthPx: typeof a.width === 'number' && a.width > 0 ? Math.round(a.width) : 280,
+    heightPx: typeof a.height === 'number' && a.height > 0 ? Math.round(a.height) : 96,
+    rotationDeg: typeof a.rotation === 'number' ? a.rotation : 0,
+    wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' ? wrapAttr : 'inline',
+    shapeKind: kind === 'roundRect' || kind === 'ellipse' ? kind : 'textbox',
+    fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
+    stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
+    strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
+    content: node.content ?? [],
+  };
+}
+
+function escapeXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Run properties for the hand-serialized txbxContent, in CT_RPr schema order
+// (rFonts, b, i, strike, color, sz, u, shd, vertAlign). Mirrors runPropsFromMarks.
+function txbxRunPropsXml(marks: TiptapNode['marks'] = []): string {
+  const ts = marks.find((m) => m.type === 'textStyle');
+  const parts: string[] = [];
+  const ff = ts?.attrs?.fontFamily;
+  if (ff) {
+    const f = escapeXml(String(ff) === SCREEN_FONT ? DOC_FONT : String(ff));
+    parts.push(`<w:rFonts w:ascii="${f}" w:hAnsi="${f}" w:cs="${f}"/>`);
+  }
+  let bold = markPresent(marks, 'bold');
+  const fw = ts?.attrs?.fontWeight;
+  if (fw != null) {
+    const s = String(fw);
+    if (s === 'normal' || s === '400') bold = false;
+    else if (s === 'bold' || /^[5-9]\d\d$/.test(s)) bold = true;
+  }
+  if (bold) parts.push('<w:b/>');
+  if (markPresent(marks, 'italic')) parts.push('<w:i/>');
+  if (markPresent(marks, 'strike')) parts.push('<w:strike/>');
+  const col = ts?.attrs?.color;
+  if (col) {
+    const h = hexColor(String(col));
+    if (h) parts.push(`<w:color w:val="${h}"/>`);
+  }
+  const fs = ts?.attrs?.fontSize;
+  if (fs) {
+    const hp = fontSizeToHalfPoints(String(fs));
+    if (hp) parts.push(`<w:sz w:val="${hp}"/><w:szCs w:val="${hp}"/>`);
+  }
+  if (markPresent(marks, 'underline')) parts.push('<w:u w:val="single"/>');
+  const hl = marks.find((m) => m.type === 'highlight');
+  if (hl?.attrs?.color) {
+    const h = hexColor(String(hl.attrs.color));
+    if (h) parts.push(`<w:shd w:val="clear" w:fill="${h}"/>`);
+  }
+  if (markPresent(marks, 'superscript')) parts.push('<w:vertAlign w:val="superscript"/>');
+  else if (markPresent(marks, 'subscript')) parts.push('<w:vertAlign w:val="subscript"/>');
+  return parts.length ? `<w:rPr>${parts.join('')}</w:rPr>` : '';
+}
+
+// One paragraph/heading of a text box. markerText prefixes a literal list marker
+// (in-box lists are flattened, like ODT cell lists once were); images are dropped
+// (media/rels can't be minted from a string pass).
+function txbxParagraphXml(node: TiptapNode, indentTwip = 0, markerText = ''): string {
+  const attrs = node.attrs ?? {};
+  const pPr: string[] = [];
+  if (node.type === 'heading') {
+    const lvl = Math.min(3, Math.max(1, Number(attrs.level) || 1));
+    pPr.push(`<w:pStyle w:val="Heading${lvl}"/>`);
+  }
+  if (indentTwip) pPr.push(`<w:ind w:left="${indentTwip}"/>`);
+  const ta = attrs.textAlign;
+  const jc = ta === 'center' ? 'center' : ta === 'right' ? 'right' : ta === 'justify' ? 'both' : '';
+  if (jc) pPr.push(`<w:jc w:val="${jc}"/>`);
+  let runs = markerText ? `<w:r><w:t xml:space="preserve">${escapeXml(markerText)}</w:t></w:r>` : '';
+  for (const child of node.content ?? []) {
+    if (child.type === 'text' && child.text) {
+      const rPr = txbxRunPropsXml(child.marks);
+      let inner = '';
+      child.text.split('\t').forEach((seg, i) => {
+        if (i > 0) inner += '<w:tab/>';
+        if (seg) inner += `<w:t xml:space="preserve">${escapeXml(seg)}</w:t>`;
+      });
+      runs += `<w:r>${rPr}${inner}</w:r>`;
+    } else if (child.type === 'hardBreak') {
+      runs += '<w:r><w:br/></w:r>';
+    }
+  }
+  return `<w:p>${pPr.length ? `<w:pPr>${pPr.join('')}</w:pPr>` : ''}${runs}</w:p>`;
+}
+
+// In-box lists flatten to literal-marker paragraphs (real numbering would need
+// numbering.xml references, which the post-pack string pass can't mint).
+function txbxListXml(node: TiptapNode, depth: number): string {
+  const ordered = node.type === 'orderedList';
+  let n = typeof node.attrs?.start === 'number' ? node.attrs.start : 1;
+  let out = '';
+  for (const item of node.content ?? []) {
+    if (item.type !== 'listItem') continue;
+    let first = true;
+    for (const child of item.content ?? []) {
+      if (child.type === 'bulletList' || child.type === 'orderedList') {
+        out += txbxListXml(child, depth + 1);
+      } else if (child.type === 'paragraph' || child.type === 'heading') {
+        const marker = first ? (ordered ? `${n}. ` : `${BULLET_CHARS[depth % BULLET_CHARS.length]} `) : '';
+        out += txbxParagraphXml(child, cmToTwip((depth + 1) * LIST_HANGING_CM), marker);
+        first = false;
+      }
+    }
+    n++;
+  }
+  return out;
+}
+
+function txbxContentXml(blocks: TiptapNode[]): string {
+  let out = '';
+  for (const b of blocks) {
+    if (b.type === 'paragraph' || b.type === 'heading') out += txbxParagraphXml(b);
+    else if (b.type === 'bulletList' || b.type === 'orderedList') out += txbxListXml(b, 0);
+  }
+  return out || '<w:p/>';
+}
+
+const PRST_BY_KIND: Record<TextBoxDocx['shapeKind'], string> = {
+  textbox: 'rect',
+  roundRect: 'roundRect',
+  ellipse: 'ellipse',
+};
+
+// The full <w:drawing> for one text box. Namespaces are declared inline on the
+// wp/a/wps elements so the output never depends on what the library declares on
+// the document root.
+function textBoxDrawingXml(box: TextBoxDocx, index: number): string {
+  const cx = Math.round(box.widthPx * EMU_PER_PX);
+  const cy = Math.round(box.heightPx * EMU_PER_PX);
+  const rot = box.rotationDeg ? ` rot="${Math.round(box.rotationDeg * 60000)}"` : '';
+  const fill = box.fill
+    ? `<a:solidFill><a:srgbClr val="${hexColor(box.fill) ?? 'FFFFFF'}"/></a:solidFill>`
+    : '<a:noFill/>';
+  const ln = box.stroke
+    ? `<a:ln w="${Math.round(box.strokeWidthPt * EMU_PER_PT)}"><a:solidFill><a:srgbClr val="${hexColor(box.stroke) ?? '000000'}"/></a:solidFill></a:ln>`
+    : '<a:ln><a:noFill/></a:ln>';
+  const inset = Math.round(TEXTBOX_PADDING_CM * EMU_PER_CM);
+  // Auto-grow only for plain text boxes, matching the ODT export.
+  const autofit = box.shapeKind === 'textbox' ? '<a:spAutoFit/>' : '';
+  const wsp =
+    `<wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">` +
+    `<wps:cNvSpPr txBox="1"/>` +
+    `<wps:spPr><a:xfrm${rot}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
+    `<a:prstGeom prst="${PRST_BY_KIND[box.shapeKind]}"><a:avLst/></a:prstGeom>${fill}${ln}</wps:spPr>` +
+    `<wps:txbx><w:txbxContent>${txbxContentXml(box.content)}</w:txbxContent></wps:txbx>` +
+    `<wps:bodyPr rot="0" vert="horz" wrap="square" lIns="${inset}" tIns="${inset}" rIns="${inset}" bIns="${inset}" anchor="t">${autofit}</wps:bodyPr>` +
+    `</wps:wsp>`;
+  const graphic =
+    `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+    `<a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">${wsp}</a:graphicData></a:graphic>`;
+  const docPr = `<wp:docPr id="${9001 + index}" name="TextBox${index + 1}"/>`;
+  const extent = `<wp:extent cx="${cx}" cy="${cy}"/>`;
+  const wpNs = 'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"';
+  if (box.wrap === 'inline') {
+    return `<w:drawing><wp:inline ${wpNs} distT="0" distB="0" distL="0" distR="0">${extent}${docPr}${graphic}</wp:inline></w:drawing>`;
+  }
+  // wrapText names the side TEXT flows on (inverse of the box side), like ODT.
+  const wrapEl = box.wrap === 'topBottom'
+    ? '<wp:wrapTopAndBottom/>'
+    : `<wp:wrapSquare wrapText="${box.wrap === 'right' ? 'left' : 'right'}"/>`;
+  const align = box.wrap === 'right' ? 'right' : 'left';
+  return (
+    `<w:drawing><wp:anchor ${wpNs} distT="0" distB="0" distL="114300" distR="114300"` +
+    ` simplePos="0" relativeHeight="${251658240 + index}" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="0">` +
+    `<wp:simplePos x="0" y="0"/>` +
+    `<wp:positionH relativeFrom="margin"><wp:align>${align}</wp:align></wp:positionH>` +
+    `<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>` +
+    `${extent}${wrapEl}${docPr}${graphic}</wp:anchor></w:drawing>`
+  );
+}
+
+// Post-pack pass: swap each marker paragraph in word/document.xml for its drawing.
+// The tempered pattern keeps the match inside one paragraph.
+function applyTextBoxesDocx(bytes: Uint8Array, boxes: TextBoxDocx[]): Uint8Array {
+  if (!boxes.length) return bytes;
+  const files = unzipSync(bytes);
+  const docBytes = files['word/document.xml'];
+  if (!docBytes) return bytes;
+  let xml = strFromU8(docBytes);
+  xml = xml.replace(
+    new RegExp(`<w:p\\b[^>]*?>(?:(?!</w:p>)[\\s\\S])*?${TBX}(\\d+)${TBX}(?:(?!</w:p>)[\\s\\S])*?</w:p>`, 'g'),
+    (_m, idx: string) => {
+      const box = boxes[Number(idx)];
+      return box ? `<w:p><w:r>${textBoxDrawingXml(box, Number(idx))}</w:r></w:p>` : '';
+    },
+  );
+  files['word/document.xml'] = strToU8(xml);
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
 // ---- paragraphs ------------------------------------------------------------
 function alignOf(attrs: TiptapNode['attrs']): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
   switch (attrs?.textAlign) {
@@ -445,7 +670,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
 }
 
 // ---- top-level walk --------------------------------------------------------
-function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: number): (Paragraph | Table | TableOfContents)[] {
+function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: number, textBoxes: TextBoxDocx[]): (Paragraph | Table | TableOfContents)[] {
   const out: (Paragraph | Table | TableOfContents)[] = [];
   for (const node of content) {
     if (node.type === 'paragraph' || node.type === 'heading') {
@@ -456,6 +681,11 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       out.push(tableToDocx(node, contentWidthCm, num));
     } else if (node.type === 'image') {
       out.push(new Paragraph({ children: inlineToRuns([node]) }));
+    } else if (node.type === 'textBox') {
+      // Marker paragraph; applyTextBoxesDocx swaps it for the DrawingML shape.
+      const i = textBoxes.length;
+      textBoxes.push(textBoxDocxDescriptor(node));
+      out.push(new Paragraph({ children: [new TextRun({ text: `${TBX}${i}${TBX}` })] }));
     } else if (node.type === 'tableOfContents') {
       // A real, recognized TOC field (levels 1–3, hyperlinked); Word/LibreOffice populate
       // + link it on field update (features.updateFields does this on open). Title is a
@@ -502,7 +732,8 @@ export async function buildDocx(
   const pageHeightCm = landscape ? 21 : 29.7;
   const contentWidthCm = pageWidthCm - margins.left - margins.right;
 
-  const body = blocksToDocx(docJson.content ?? [], num, contentWidthCm);
+  const textBoxes: TextBoxDocx[] = [];
+  const body = blocksToDocx(docJson.content ?? [], num, contentWidthCm, textBoxes);
   if (body.length === 0) body.push(new Paragraph({}));
 
   // A TOC field is empty until its field is calculated; ask the reader to update fields
@@ -540,5 +771,5 @@ export async function buildDocx(
   });
 
   const blob = await Packer.toBlob(doc);
-  return new Uint8Array(await blob.arrayBuffer());
+  return applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes);
 }

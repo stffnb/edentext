@@ -35,6 +35,7 @@ const IMGN = (width: number, height: number, alt?: string, rotation?: number, wr
     src: PNG, width, height,
     ...(alt ? { alt } : {}), ...(rotation ? { rotation } : {}), ...(wrap ? { wrap } : {}),
   } });
+const TBX = (attrs: N, ...content: N[]): N => ({ type: 'textBox', attrs, content });
 
 const margins = { top: 3, bottom: 2, left: 2.5, right: 1.5 };
 
@@ -73,6 +74,8 @@ const fixture: N = {
     P(null, T('rotated: '), IMGN(120, 80, 'Rotated', 30)),
     P(null, T('wrapped left '), IMGN(90, 60, 'Float', 0, 'left'), T(' text flows beside it')),
     P(null, T('top/bottom '), IMGN(70, 50, 'Banner', 0, 'topBottom')),
+    TBX({ width: 288, height: 96 }, P(null, T('box para one')), P(null, T('box '), T('bold', { type: 'bold' }))),
+    TBX({ width: 192, height: 80, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, P(null, T('in ellipse'))),
     { type: 'bulletList', content: [
       LI(P(null, T('bullet one'))),
       LI(P(null, T('bullet two')), { type: 'orderedList', attrs: { listStyleType: 'upper-roman-paren' }, content: [
@@ -119,6 +122,7 @@ const ORDERED_DEFAULTS: Record<string, unknown> = {
   textAlign: 'left', lineHeight: null, spaceBefore: null, spaceAfter: null,
   listStyleType: 'decimal', start: 1, rowHeight: null, colspan: 1, rowspan: 1,
   type: null, level: undefined, rotation: 0, wrap: 'inline',
+  shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1,
 };
 
 function normalize(node: N): N {
@@ -547,6 +551,109 @@ describe('Leg 4: foreign header/footer → importOdt', () => {
     check('foreign hf: body bottom margin reconstructed', Math.abs((fhf.margins?.bottom ?? 0) - 2.4) < 0.02, fhf.margins);
     check('foreign hf: first-page variant warning',
       fhf.warnings.some(w => /per-page/i.test(w)), fhf.warnings);
+  });
+});
+
+describe('Leg 6: text boxes / shapes (ODT)', () => {
+  const boxDoc: N = {
+    type: 'doc',
+    content: [
+      P(null, T('before')),
+      TBX({ width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 },
+        P(null, T('plain box')),
+        P(null, T('with '), T('marks', { type: 'italic' })),
+      ),
+      TBX({ width: 192, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 },
+        P(null, T('in ellipse')),
+      ),
+      TBX({ width: 192, height: 80, wrap: 'left', shapeKind: 'roundRect', fillColor: null, strokeColor: null },
+        P(null, T('transparent round')),
+      ),
+      P(null, T('after')),
+    ],
+  };
+
+  it('emits frames/shapes with graphic styles and round-trips every attr', async () => {
+    const bytes = await buildOdt(boxDoc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('emits <draw:frame><draw:text-box>', /<draw:frame [^>]*><draw:text-box/.test(xml));
+    check('emits <draw:custom-shape> with ellipse geometry', /<draw:custom-shape[\s\S]*?draw:type="ellipse"/.test(xml));
+    check('emits round-rectangle geometry', xml.includes('draw:type="round-rectangle"'));
+    check('mints TbxFr graphic styles', xml.includes('style:name="TbxFr1"') && xml.includes('style:name="TbxFr3"'));
+    check('graphic style carries fill + stroke', xml.includes('draw:fill-color="#FFEE00"') && xml.includes('svg:stroke-color="#FF0000"'));
+    check('transparent box has fill/stroke none', /draw:fill="none" draw:stroke="none"/.test(xml));
+    check('no leftover TBX sentinel', !xml.includes(''));
+
+    const res = importOdt(bytes);
+    check('no warnings on own export', res.warnings.length === 0, res.warnings);
+    const boxes = (res.content.content ?? []).filter((n: N) => n.type === 'textBox');
+    check('all 3 boxes round-trip', boxes.length === 3, (res.content.content ?? []).map((n: N) => n.type));
+
+    const [plain, ellipse, round] = boxes;
+    check('plain box: size 288×96, defaults suppressed', plain?.attrs?.width === 288 && plain?.attrs?.height === 96 &&
+      plain?.attrs?.fillColor === undefined && plain?.attrs?.strokeColor === undefined && plain?.attrs?.shapeKind === undefined, plain?.attrs);
+    check('plain box: both paragraphs + marks survive',
+      plain?.content?.length === 2 && plain?.content?.[1]?.content?.some((n: N) => n.marks?.some((m: N) => m.type === 'italic')), plain?.content);
+    check('ellipse: shapeKind + wrap + rotation', ellipse?.attrs?.shapeKind === 'ellipse' && ellipse?.attrs?.wrap === 'right' && ellipse?.attrs?.rotation === 30, ellipse?.attrs);
+    check('ellipse: fill/stroke/width exact', ellipse?.attrs?.fillColor === '#FFEE00' && ellipse?.attrs?.strokeColor === '#FF0000' && ellipse?.attrs?.strokeWidthPt === 2.25, ellipse?.attrs);
+    check('roundRect: explicit null fill/stroke survive (transparent, no border)',
+      round?.attrs?.shapeKind === 'roundRect' && round?.attrs?.fillColor === null && round?.attrs?.strokeColor === null, round?.attrs);
+    check('document JSON round-trips', firstDiff(normalize(boxDoc), normalize(res.content)) === null,
+      firstDiff(normalize(boxDoc), normalize(res.content)));
+  });
+});
+
+describe('Leg 7: foreign shapes/text boxes → importOdt', () => {
+  it('imports text-box frames + preset shapes, flattens boxes in cells, warns on the rest', () => {
+    const contentXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0">
+ <office:automatic-styles>
+  <style:style style:name="gr1" style:family="graphic">
+   <style:graphic-properties draw:fill="solid" draw:fill-color="#ccffcc" draw:stroke="solid" svg:stroke-color="#003300" svg:stroke-width="0.0292in" style:wrap="left" style:horizontal-pos="right"/>
+  </style:style>
+  <style:style style:name="gr2" style:family="graphic">
+   <style:graphic-properties draw:fill="none" draw:stroke="none"/>
+  </style:style>
+ </office:automatic-styles>
+ <office:body><office:text>
+  <text:p>anchor <draw:frame draw:style-name="gr1" text:anchor-type="paragraph" svg:width="2in" svg:x="1cm" svg:y="2cm"><draw:text-box fo:min-height="1in"><text:p>floating box</text:p><text:p>second</text:p></draw:text-box></draw:frame>text continues</text:p>
+  <text:p><draw:rect draw:style-name="gr2" text:anchor-type="as-char" svg:width="5.08cm" svg:height="2.54cm"><text:p>rect text</text:p></draw:rect></text:p>
+  <text:p><draw:custom-shape draw:style-name="gr1" text:anchor-type="as-char" svg:width="5.08cm" svg:height="2.54cm"><text:p>lo ellipse</text:p><draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:glue-points="10800 0 3163 3163 0 10800" draw:text-areas="3163 3163 18437 18437" draw:type="ellipse" draw:enhanced-path="U 10800 10800 10800 10800 0 360 Z N"/></draw:custom-shape></text:p>
+  <text:p><draw:custom-shape text:anchor-type="as-char" svg:width="2cm" svg:height="2cm"><text:p>star</text:p><draw:enhanced-geometry draw:type="star5"/></draw:custom-shape></text:p>
+  <text:p><draw:line svg:x1="0cm" svg:y1="0cm" svg:x2="5cm" svg:y2="0cm"/></text:p>
+  <table:table>
+   <table:table-column/>
+   <table:table-row><table:table-cell><text:p>cell <draw:frame text:anchor-type="as-char" svg:width="2cm"><draw:text-box><text:p>box in cell</text:p></draw:text-box></draw:frame></text:p></table:table-cell></table:table-row>
+  </table:table>
+ </office:text></office:body>
+</office:document-content>`;
+    const foreign = zipSync({
+      mimetype: [strToU8('application/vnd.oasis.opendocument.text'), { level: 0 }],
+      'content.xml': [strToU8(contentXml), { level: 6 }],
+    } as any);
+
+    const f = importOdt(foreign);
+    const c = f.content.content!;
+    const boxes = c.filter((n: N) => n.type === 'textBox');
+    check('3 supported shapes imported', boxes.length === 3, c.map((n: N) => n.type));
+
+    const [floatBox, rect, ellipse] = boxes;
+    check('frame: free x/y collapses to wrap side (right)', floatBox?.attrs?.wrap === 'right', floatBox?.attrs);
+    check('frame: 2in → 192px, min-height 1in → 96px', floatBox?.attrs?.width === 192 && floatBox?.attrs?.height === 96, floatBox?.attrs);
+    check('frame: fill + stroke from graphic style', floatBox?.attrs?.fillColor === '#CCFFCC' && floatBox?.attrs?.strokeColor === '#003300', floatBox?.attrs);
+    check('frame: stroke width 0.0292in → ≈2.1pt', Math.abs((floatBox?.attrs?.strokeWidthPt ?? 0) - 2.1) < 0.05, floatBox?.attrs);
+    check('frame: both paragraphs kept', floatBox?.content?.length === 2, floatBox?.content);
+    check('frame: anchor paragraph text kept', c[0]?.content?.map((n: N) => n.text).join('') === 'anchor text continues', c[0]);
+    check('rect: imports as plain textbox, transparent', rect?.attrs?.shapeKind === undefined && rect?.attrs?.fillColor === null && rect?.attrs?.strokeColor === null, rect?.attrs);
+    check('rect: text preserved', rect?.content?.[0]?.content?.[0]?.text === 'rect text', rect?.content);
+    check('custom-shape ellipse: shapeKind + geometry', ellipse?.attrs?.shapeKind === 'ellipse' && ellipse?.attrs?.width === 192 && ellipse?.attrs?.height === 96, ellipse?.attrs);
+    check('star5 dropped with warning', f.warnings.includes('Unsupported shapes were removed'), f.warnings);
+    check('draw:line dropped with warning', f.warnings.includes('Drawings were removed'), f.warnings);
+
+    const table = c.find((n: N) => n.type === 'table');
+    const cellBlocks = table?.content?.[0]?.content?.[0]?.content ?? [];
+    check('box in cell flattened into the cell', cellBlocks.some((b: N) => b.content?.some((t: N) => t.text === 'box in cell')), cellBlocks);
+    check('cell flatten warning reported', f.warnings.includes('Text boxes nested in table cells or other text boxes were flattened'), f.warnings);
   });
 });
 

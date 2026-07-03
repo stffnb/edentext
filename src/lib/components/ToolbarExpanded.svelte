@@ -1232,6 +1232,17 @@
         onchange={onImageFile}
       />
       <button
+        onclick={() => editor?.chain().focus().insertTextBox().run()}
+        disabled={!!hfActive}
+        title={hfActive ? 'Text boxes are not available in headers/footers' : 'Insert text box'}
+        aria-label="Insert text box"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="1.5" y="3.5" width="13" height="9" rx="1" stroke="currentColor" />
+          <path d="M5.5 6.5h5M8 6.5v4" stroke="currentColor" stroke-linecap="round" />
+        </svg>
+      </button>
+      <button
         onclick={insertToc}
         disabled={!!hfActive}
         title={hfActive ? 'A table of contents is not available in headers/footers' : 'Insert table of contents'}

@@ -44,6 +44,11 @@ describe('DOCX export → import round trip', () => {
       { type: 'bulletList', content: [li(para('one')), li(para('two'), { type: 'bulletList', content: [li(para('nested'))] })] },
       { type: 'orderedList', attrs: { listStyleType: 'lower-alpha' }, content: [li(para('alpha'))] },
       para([{ type: 'image', attrs: { src: PNG, width: 100, height: 80, wrap: 'left', alt: 'pic' } }]),
+      { type: 'textBox', attrs: { width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 }, content: [
+        para('box text'),
+        para([text('bold in box', [{ type: 'bold' }])]),
+      ] },
+      { type: 'textBox', attrs: { width: 192, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, content: [para('ellipse text')] },
       { type: 'table', content: [
         { type: 'tableRow', content: [headerCell('Name', { colwidth: [6] }), headerCell('Qty', { colwidth: [3] })] },
         { type: 'tableRow', attrs: { rowHeight: 40 }, content: [cell('Widget', { backgroundColor: '#FFFF00', rowspan: 2 }), cell('1')] },
@@ -116,6 +121,26 @@ describe('DOCX export → import round trip', () => {
     expect(img.attrs.height).toBe(80);
     expect(img.attrs.wrap).toBe('left');
     expect(img.attrs.src.startsWith('data:image/png')).toBe(true);
+  });
+
+  it('round-trips text boxes: geometry, shape kind, fill/stroke, wrap, rotation', () => {
+    const boxes = walk(doc, 'textBox');
+    expect(boxes.length).toBe(2);
+    const [plain, ellipse] = boxes;
+    expect(plain.attrs.width).toBe(288);
+    expect(plain.attrs.height).toBe(96);
+    // Editor defaults (white fill, 1pt black stroke, no wrap/kind) are suppressed.
+    expect(plain.attrs.fillColor).toBeUndefined();
+    expect(plain.attrs.strokeColor).toBeUndefined();
+    expect(plain.attrs.shapeKind).toBeUndefined();
+    expect(plain.content!.length).toBe(2);
+    expect(hasMark(walk(plain, 'text')[1], 'bold')).toBe(true);
+    expect(ellipse.attrs.shapeKind).toBe('ellipse');
+    expect(ellipse.attrs.wrap).toBe('right');
+    expect(ellipse.attrs.rotation).toBe(30);
+    expect(ellipse.attrs.fillColor).toBe('#FFEE00');
+    expect(ellipse.attrs.strokeColor).toBe('#FF0000');
+    expect(ellipse.attrs.strokeWidthPt).toBe(2.25);
   });
 
   it('round-trips the table: header shade, merged cell, covered-cell drop, row height', () => {
@@ -296,6 +321,108 @@ describe('DOCX import detects headings by outline level (non-"HeadingN" style id
     expect(h.type).toBe('heading');
     expect(h.attrs.level).toBe(1);
     expect(walk(h, 'text')[0].text).toBe('Localised heading');
+  });
+});
+
+describe('DOCX import of foreign text boxes / shapes', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const MC = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
+  const WPNS = 'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"';
+  const ANS = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
+  const WPSNS = 'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"';
+  const VNS = 'xmlns:v="urn:schemas-microsoft-com:vml"';
+
+  it('imports a Word-style mc:AlternateContent-wrapped wps text box (Choice only, no VML double-import)', () => {
+    // Real Word structure: mc:Choice carries the DrawingML shape, mc:Fallback a VML copy.
+    const documentXml = `<?xml version="1.0"?><w:document ${W} ${MC} ${WPNS} ${ANS} ${WPSNS} ${VNS}><w:body>
+      <w:p><w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing>
+        <wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="2" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="0">
+          <wp:simplePos x="0" y="0"/>
+          <wp:positionH relativeFrom="margin"><wp:align>right</wp:align></wp:positionH>
+          <wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>
+          <wp:extent cx="1828800" cy="914400"/>
+          <wp:wrapSquare wrapText="left"/>
+          <wp:docPr id="7" name="Textfeld 7"/>
+          <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+            <wps:wsp><wps:cNvSpPr txBox="1"/><wps:spPr>
+              <a:xfrm rot="1800000"><a:off x="0" y="0"/><a:ext cx="1828800" cy="914400"/></a:xfrm>
+              <a:prstGeom prst="roundRect"><a:avLst/></a:prstGeom>
+              <a:solidFill><a:srgbClr val="CCFFCC"/></a:solidFill>
+              <a:ln w="28575"><a:solidFill><a:srgbClr val="003300"/></a:solidFill></a:ln>
+            </wps:spPr>
+            <wps:txbx><w:txbxContent>
+              <w:p><w:r><w:t>choice text</w:t></w:r></w:p>
+              <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>bold line</w:t></w:r></w:p>
+            </w:txbxContent></wps:txbx>
+            <wps:bodyPr/></wps:wsp>
+          </a:graphicData></a:graphic>
+        </wp:anchor>
+      </w:drawing></mc:Choice><mc:Fallback><w:pict>
+        <v:rect style="width:144pt;height:72pt" fillcolor="#ccffcc"><v:textbox><w:txbxContent><w:p><w:r><w:t>choice text</w:t></w:r></w:p></w:txbxContent></v:textbox></v:rect>
+      </w:pict></mc:Fallback></mc:AlternateContent></w:r><w:r><w:t>anchor text</w:t></w:r></w:p>
+      <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr>
+    </w:body></w:document>`;
+    const result = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml) }));
+    const boxes = walk(result.content as N, 'textBox');
+    expect(boxes.length).toBe(1); // the VML fallback must not double-import
+    const b = boxes[0];
+    expect(b.attrs.shapeKind).toBe('roundRect');
+    expect(b.attrs.width).toBe(192); // 1828800 EMU
+    expect(b.attrs.height).toBe(96);
+    expect(b.attrs.wrap).toBe('right'); // text left ⇒ box right
+    expect(b.attrs.rotation).toBe(30);
+    expect(b.attrs.fillColor).toBe('#CCFFCC');
+    expect(b.attrs.strokeColor).toBe('#003300');
+    expect(b.attrs.strokeWidthPt).toBe(2.25); // 28575 EMU
+    expect(walk(b, 'text').map((t) => t.text)).toEqual(['choice text', 'bold line']);
+    expect(hasMark(walk(b, 'text')[1], 'bold')).toBe(true);
+    // The anchor paragraph's own text survives, the box follows it at top level.
+    expect(walk(result.content as N, 'text').some((t) => t.text === 'anchor text')).toBe(true);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('imports a legacy VML-only text box (w:pict)', () => {
+    const documentXml = `<?xml version="1.0"?><w:document ${W} ${VNS}><w:body>
+      <w:p><w:r><w:pict>
+        <v:oval style="width:144pt;height:72pt" fillcolor="#ffee00" strokecolor="#ff0000" strokeweight="2.25pt">
+          <v:textbox><w:txbxContent><w:p><w:r><w:t>vml text</w:t></w:r></w:p></w:txbxContent></v:textbox>
+        </v:oval>
+      </w:pict></w:r></w:p>
+      <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr>
+    </w:body></w:document>`;
+    const result = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml) }));
+    const boxes = walk(result.content as N, 'textBox');
+    expect(boxes.length).toBe(1);
+    const b = boxes[0];
+    expect(b.attrs.shapeKind).toBe('ellipse');
+    expect(b.attrs.width).toBe(192); // 144pt
+    expect(b.attrs.height).toBe(96);
+    expect(b.attrs.fillColor).toBe('#FFEE00');
+    expect(b.attrs.strokeColor).toBe('#FF0000');
+    expect(b.attrs.strokeWidthPt).toBe(2.25);
+    expect(walk(b, 'text')[0].text).toBe('vml text');
+  });
+
+  it('drops unsupported shapes / blip-less drawings with accurate warnings', () => {
+    const documentXml = `<?xml version="1.0"?><w:document ${W} ${WPNS} ${ANS} ${WPSNS}><w:body>
+      <w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">
+        <wp:extent cx="914400" cy="914400"/><wp:docPr id="1" name="Star"/>
+        <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+          <wps:wsp><wps:spPr><a:prstGeom prst="star5"><a:avLst/></a:prstGeom></wps:spPr><wps:bodyPr/></wps:wsp>
+        </a:graphicData></a:graphic>
+      </wp:inline></w:drawing></w:r></w:p>
+      <w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">
+        <wp:extent cx="914400" cy="914400"/><wp:docPr id="2" name="Chart"/>
+        <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"/></a:graphic>
+      </wp:inline></w:drawing></w:r></w:p>
+      <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr>
+    </w:body></w:document>`;
+    const result = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml) }));
+    expect(walk(result.content as N, 'textBox').length).toBe(0);
+    expect(result.warnings).toContain('Unsupported shapes were removed');
+    expect(result.warnings).toContain('Drawings were removed');
+    // The wrong "images could not be read" warning must NOT appear for shapes.
+    expect(result.warnings).not.toContain('Some images could not be read and were skipped');
   });
 });
 

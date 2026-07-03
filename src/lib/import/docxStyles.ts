@@ -7,6 +7,11 @@ export const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relation
 export const WP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
 export const A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
 export const PKG_REL = 'http://schemas.openxmlformats.org/package/2006/relationships';
+// Text boxes / shapes: DrawingML shape container, markup-compatibility wrapper
+// (Word wraps every shape in mc:AlternateContent), and legacy VML.
+export const WPS = 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape';
+export const MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006';
+export const VML = 'urn:schemas-microsoft-com:vml';
 
 // A run's resolved character properties; only set keys are present so layers merge cleanly.
 export type RunProps = {

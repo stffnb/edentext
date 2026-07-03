@@ -21,10 +21,11 @@ declare module '@tiptap/core' {
   }
 }
 
-const MIN_SIZE_PX = 24;
+export const MIN_SIZE_PX = 24;
 
 // Corners keep aspect (Word-style); edges (n/s/e/w) change one dimension only.
-const HANDLES: { k: string; x: -1 | 0 | 1; y: -1 | 0 | 1; aspect: boolean }[] = [
+// Shared with textBox.ts, whose node view uses the same handle set.
+export const HANDLES: { k: string; x: -1 | 0 | 1; y: -1 | 0 | 1; aspect: boolean }[] = [
   { k: 'nw', x: -1, y: -1, aspect: true },
   { k: 'n', x: 0, y: -1, aspect: false },
   { k: 'ne', x: 1, y: -1, aspect: true },
@@ -35,17 +36,17 @@ const HANDLES: { k: string; x: -1 | 0 | 1; y: -1 | 0 | 1; aspect: boolean }[] = 
   { k: 'w', x: -1, y: 0, aspect: false },
 ];
 
-function parsePx(value: string | null): number | null {
+export function parsePx(value: string | null): number | null {
   if (!value) return null;
   const n = parseFloat(value);
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
-const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 // The page text height in px, capping how tall an image can be stretched. Read live
 // from the :root vars the editor maintains (orientation/margins change them).
-function pageContentHeightPx(): number {
+export function pageContentHeightPx(): number {
   const cs = getComputedStyle(document.documentElement);
   const h =
     parseFloat(cs.getPropertyValue('--user-page-height')) -

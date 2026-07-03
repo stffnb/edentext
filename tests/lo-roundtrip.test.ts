@@ -30,6 +30,7 @@ const IMGN = (width: number, height: number, alt?: string, rotation?: number, wr
     src: PNG, width, height,
     ...(alt ? { alt } : {}), ...(rotation ? { rotation } : {}), ...(wrap ? { wrap } : {}),
   } });
+const TBX = (attrs: N, ...content: N[]): N => ({ type: 'textBox', attrs, content });
 
 const margins = { top: 3, bottom: 2, left: 2.5, right: 1.5 };
 
@@ -78,6 +79,10 @@ const fixture: N = {
         { type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: [240] }, content: [P(null, T('B2'))] },
       ] },
     ] },
+    TBX({ width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 },
+      P(null, T('box text')), P(null, T('second para'))),
+    TBX({ width: 192, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 },
+      P(null, T('in ellipse'))),
     P(null, T('The end.')),
   ],
 };
@@ -86,6 +91,7 @@ const fixture: N = {
 const DEFAULTS: Record<string, unknown> = {
   textAlign: 'left', lineHeight: null, spaceBefore: null, spaceAfter: null,
   listStyleType: 'decimal', start: 1, rowHeight: null, colspan: 1, rowspan: 1, type: null,
+  shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1,
 };
 function normalize(node: N): N {
   const out: N = { type: node.type };
@@ -107,12 +113,22 @@ function normalize(node: N): N {
     if (k === 'width' || k === 'height') { attrs[k] = Math.round((v as number) / 3) * 3; continue; } // ±unit noise
     if (k === 'rotation') { attrs.rotation = 'R'; continue; } // exact angle checked leniently below
     if (k === 'wrap') { attrs.wrap = 'W'; continue; } // float survives; exact mode checked leniently
+    if (k === 'strokeWidthPt') { attrs.strokeWidthPt = Math.round((v as number) * 4) / 4; continue; } // pt↔in noise
+    if (k === 'fillColor' || k === 'strokeColor') { attrs[k] = typeof v === 'string' ? v.toUpperCase() : v; continue; }
+    // LO re-parents text-box paragraphs onto its Frame-contents style (margin 0), so
+    // an explicit spaceAfter 0 comes back where Standard's default was suppressed.
+    if (k === 'spaceAfter' && v === 0) continue;
     attrs[k] = v;
   }
   if (Object.keys(attrs).length) out.attrs = attrs;
   if (node.content?.length) {
+    const mapped = node.content.map(normalize);
+    // LibreOffice re-anchors paragraph-anchored (floating) frames to the paragraph
+    // start; a float's inline position is visually meaningless, so canonicalize it.
+    const isFloat = (c: N) => c.type === 'image' && c.attrs?.wrap;
+    const ordered = [...mapped.filter(isFloat), ...mapped.filter((c: N) => !isFloat(c))];
     const kids: N[] = [];
-    for (const c of node.content.map(normalize)) {
+    for (const c of ordered) {
       const prev = kids[kids.length - 1];
       if (prev && prev.type === 'text' && c.type === 'text' &&
           JSON.stringify(prev.marks ?? null) === JSON.stringify(c.marks ?? null)) prev.text += c.text;
@@ -134,8 +150,10 @@ function firstDiff(a: N, b: N, path = '$'): string | null {
   return null;
 }
 
+// Generous per-test timeouts: a cold soffice start under a parallel `npm test`
+// run easily exceeds vitest's 5s default.
 describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () => {
-  it('survives a `soffice --convert-to odt` re-save of the body document', async () => {
+  it('survives a `soffice --convert-to odt` re-save of the body document', { timeout: 180000 }, async () => {
     const bytes = await buildOdt(fixture, margins, 'landscape');
     mkdirSync('/tmp/lo-rt', { recursive: true });
     writeFileSync('/tmp/lo-rt/doc.odt', bytes);
@@ -160,9 +178,20 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     check('LO: image rotation survives (~30°)', Math.abs(rot - 30) <= 2 || Math.abs(rot - 330) <= 2, rot);
     const floated = imgs.find((i: N) => i.attrs?.wrap && i.attrs.wrap !== 'inline');
     check('LO: image text-wrap survives', !!floated, imgs.map((i: N) => i.attrs?.wrap));
+
+    // Text boxes: geometry, colors and shape kind must survive the LO re-save.
+    const boxes = (res.content.content ?? []).filter((n: N) => n.type === 'textBox');
+    check('LO: both text boxes survive', boxes.length === 2, (res.content.content ?? []).map((n: N) => n.type));
+    const [plain, ellipse] = boxes;
+    check('LO: box geometry survives (288×96)', Math.abs((plain?.attrs?.width ?? 0) - 288) <= 3 && Math.abs((plain?.attrs?.height ?? 0) - 96) <= 3, plain?.attrs);
+    check('LO: box paragraphs survive', plain?.content?.length === 2, plain?.content);
+    check('LO: ellipse kind + fill survive', ellipse?.attrs?.shapeKind === 'ellipse' && String(ellipse?.attrs?.fillColor).toUpperCase() === '#FFEE00', ellipse?.attrs);
+    const brot = ellipse?.attrs?.rotation ?? 0;
+    check('LO: ellipse rotation survives (~30°)', Math.abs(brot - 30) <= 2 || Math.abs(brot - 330) <= 2, brot);
+    check('LO: ellipse wrap survives', !!ellipse?.attrs?.wrap && ellipse.attrs.wrap !== 'inline', ellipse?.attrs);
   });
 
-  it('survives a `soffice` re-save of the header/footer geometry', async () => {
+  it('survives a `soffice` re-save of the header/footer geometry', { timeout: 180000 }, async () => {
     const header: N = { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'right' }, content: [
       T('Bericht ', { type: 'bold' }, { type: 'textStyle', attrs: { color: '#C00000' } }),
       T('2026'),

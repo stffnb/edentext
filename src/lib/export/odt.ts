@@ -4,6 +4,7 @@ import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
+import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { DEFAULT_ORDERED_TYPE, orderedTypeDef } from '../utils/orderedListTypes';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
@@ -73,6 +74,12 @@ const FSZ = '\uE007';
 // paragraph's run text by replaceTableOfContents so it rides odf-kit's paragraph path;
 // applyToc rewrites the whole marker <text:p> to a <text:table-of-content>. U+E006.
 const TOC_SENT = '';
+
+// Sentinel bracketing a hoisted text box's blocks (marker paragraphs TBX S{i} TBX …
+// TBX E{i} TBX): replaceTextBoxes hoists the box's blocks to top level so every
+// existing pass serializes them; applyTextBoxes wraps the region back into a
+// <draw:frame>/<draw:text-box> or <draw:custom-shape>. U+E008.
+const TBX = '';
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
@@ -250,6 +257,58 @@ function replaceImages(node: TiptapNode, images: ImageExport[]): TiptapNode {
     content.push(replaceImages(child, images));
   }
   return { ...node, content };
+}
+
+// One text box / shape, collected by replaceTextBoxes and emitted by applyTextBoxes.
+type ShapeKind = 'textbox' | 'roundRect' | 'ellipse';
+type TextBoxExport = {
+  widthCm: number;
+  heightCm: number;
+  rotationDeg: number;
+  wrap: WrapMode;
+  shapeKind: ShapeKind;
+  fill: string | null;
+  stroke: string | null;
+  strokeWidthPt: number;
+};
+
+function textBoxDescriptor(node: TiptapNode): TextBoxExport {
+  const round3 = (v: number) => Math.round(v * 1000) / 1000;
+  const pxToCm = (px: number) => round3((px * 2.54) / 96);
+  const a = node.attrs ?? {};
+  const wrapAttr = a.wrap;
+  const kind = a.shapeKind;
+  return {
+    widthCm: pxToCm(typeof a.width === 'number' && a.width > 0 ? a.width : 280),
+    heightCm: pxToCm(typeof a.height === 'number' && a.height > 0 ? a.height : 96),
+    rotationDeg: typeof a.rotation === 'number' ? a.rotation : 0,
+    wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' ? wrapAttr : 'inline',
+    shapeKind: kind === 'roundRect' || kind === 'ellipse' ? kind : 'textbox',
+    fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
+    stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
+    strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
+  };
+}
+
+// Swap each top-level textBox for a pair of marker paragraphs bracketing its child
+// blocks, hoisted to top level. The hoisted blocks then ride every existing export
+// pass unchanged (custom attrs, list styles, inline sentinels, images); applyTextBoxes
+// re-wraps the serialized region into the drawing element. Top-level only by schema.
+function replaceTextBoxes(doc: TiptapNode, boxes: TextBoxExport[]): TiptapNode {
+  if (!doc.content?.length) return doc;
+  const content: TiptapNode[] = [];
+  for (const child of doc.content) {
+    if (child.type === 'textBox') {
+      const i = boxes.length;
+      boxes.push(textBoxDescriptor(child));
+      content.push({ type: 'paragraph', content: [{ type: 'text', text: `${TBX}S${i}${TBX}` }] });
+      content.push(...(child.content ?? []));
+      content.push({ type: 'paragraph', content: [{ type: 'text', text: `${TBX}E${i}${TBX}` }] });
+      continue;
+    }
+    content.push(child);
+  }
+  return { ...doc, content };
 }
 
 // One generated table of contents, collected by replaceTableOfContents and emitted by
@@ -1273,19 +1332,23 @@ function applyInlineSentinels(odtBytes: Uint8Array): Uint8Array {
   return rezipOdt(files);
 }
 
-// ODF draw:transform for a rotated frame. ODF rotate() is CCW radians (ours is CW
-// degrees) about the origin, so the translate re-centres it on the unrotated box.
-function imageTransform(img: ImageExport): string {
-  if (!img.rotationDeg || !img.widthCm || !img.heightCm) return '';
-  const a = (-img.rotationDeg * Math.PI) / 180;
-  const cw = img.widthCm / 2;
-  const ch = img.heightCm / 2;
+// ODF draw:transform for a rotated frame/shape. ODF rotate() is CCW radians (ours is
+// CW degrees) about the origin, so the translate re-centres it on the unrotated box.
+function frameTransform(rotationDeg: number, widthCm: number, heightCm: number): string {
+  if (!rotationDeg || !widthCm || !heightCm) return '';
+  const a = (-rotationDeg * Math.PI) / 180;
+  const cw = widthCm / 2;
+  const ch = heightCm / 2;
   const cos = Math.cos(a);
   const sin = Math.sin(a);
   const r3 = (v: number) => Math.round(v * 1000) / 1000;
   const tx = r3(cos * cw - sin * ch - cw);
   const ty = r3(sin * cw + cos * ch - ch);
   return ` draw:transform="rotate (${a.toFixed(6)}) translate (${tx}cm ${ty}cm)"`;
+}
+
+function imageTransform(img: ImageExport): string {
+  return frameTransform(img.rotationDeg, img.widthCm, img.heightCm);
 }
 
 // ODF style:wrap is the side TEXT flows on (inverse of the image side); horizontal-pos
@@ -1369,6 +1432,92 @@ function applyImages(odtBytes: Uint8Array, images: ImageExport[]): Uint8Array {
     files['META-INF/manifest.xml'] = strToU8(manifest);
   }
 
+  return rezipOdt(files);
+}
+
+// Static enhanced geometry for the two non-rectangular shape kinds, matching what
+// LibreOffice emits (round-rectangle path pre-evaluated for modifier 3600).
+const ENHANCED_GEOMETRY: Record<'roundRect' | 'ellipse', string> = {
+  ellipse:
+    '<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="ellipse"' +
+    ' draw:enhanced-path="U 10800 10800 10800 10800 0 360 Z N"/>',
+  roundRect:
+    '<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="round-rectangle" draw:modifiers="3600"' +
+    ' draw:enhanced-path="M 3600 0 X 0 3600 L 0 18000 Y 3600 21600 L 18000 21600 X 21600 18000 L 21600 3600 Y 18000 0 Z N"/>',
+};
+
+// Graphic style for a text box / shape: fill, stroke, text padding, auto-grow, and —
+// for floating boxes — the same wrap/position props as floating images.
+function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
+  const r3 = (v: number) => Math.round(v * 1000) / 1000;
+  const fill = box.fill
+    ? `draw:fill="solid" draw:fill-color="${normalizeColor(box.fill) ?? '#FFFFFF'}"`
+    : 'draw:fill="none"';
+  const stroke = box.stroke
+    ? `draw:stroke="solid" svg:stroke-color="${normalizeColor(box.stroke) ?? '#000000'}" svg:stroke-width="${r3(box.strokeWidthPt)}pt"`
+    : 'draw:stroke="none"';
+  const wrap = box.wrap === 'inline'
+    ? ''
+    : ` ${imageWrapProps(box.wrap)} style:number-wrapped-paragraphs="no-limit"` +
+      ` style:horizontal-rel="paragraph-content" style:vertical-pos="top" style:vertical-rel="paragraph"`;
+  // auto-grow only for plain text boxes; a custom-shape needs both explicitly
+  // false, or LibreOffice's shape autofit shrinks it to its text.
+  const grow = box.shapeKind === 'textbox'
+    ? ' draw:auto-grow-height="true"'
+    : ' draw:auto-grow-height="false" draw:auto-grow-width="false"';
+  return (
+    `<style:style style:name="TbxFr${index + 1}" style:family="graphic">` +
+    `<style:graphic-properties ${fill} ${stroke} fo:padding="${TEXTBOX_PADDING_CM}cm"` +
+    `${grow} draw:textarea-vertical-align="top"${wrap}/>` +
+    `</style:style>`
+  );
+}
+
+// The drawing element wrapping a box's serialized blocks: a <draw:frame>/<draw:text-box>
+// for plain text boxes (height = fo:min-height, so it grows with content like the
+// editor), or a <draw:custom-shape> with preset geometry for roundRect/ellipse.
+function textBoxXml(box: TextBoxExport, inner: string, index: number): string {
+  const n = index + 1;
+  const anchor = box.wrap === 'inline' ? 'as-char' : 'paragraph';
+  const transform = frameTransform(box.rotationDeg, box.widthCm, box.heightCm);
+  const common =
+    ` draw:style-name="TbxFr${n}" text:anchor-type="${anchor}" draw:z-index="${index}"` +
+    ` svg:width="${box.widthCm}cm"`;
+  if (box.shapeKind === 'textbox') {
+    // svg:height for consumers without auto-grow; fo:min-height is the real semantic
+    // (height = minimum, content grows the box) and wins on our own re-import.
+    return (
+      `<draw:frame draw:name="TextBox${n}"${common} svg:height="${box.heightCm}cm"${transform}>` +
+      `<draw:text-box fo:min-height="${box.heightCm}cm">${inner}</draw:text-box></draw:frame>`
+    );
+  }
+  return (
+    `<draw:custom-shape draw:name="Shape${n}"${common} svg:height="${box.heightCm}cm"${transform}>` +
+    `${inner}${ENHANCED_GEOMETRY[box.shapeKind]}</draw:custom-shape>`
+  );
+}
+
+// Resolve the text-box marker paragraphs: wrap each S{i}…E{i} region (the box's
+// hoisted, fully serialized blocks) into its drawing element inside a fresh anchor
+// paragraph, and inject the minted graphic styles.
+function applyTextBoxes(odtBytes: Uint8Array, boxes: TextBoxExport[]): Uint8Array {
+  if (!boxes.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  content = content.replace(
+    new RegExp(`<text:p\\b[^>]*>${TBX}S(\\d+)${TBX}</text:p>([\\s\\S]*?)<text:p\\b[^>]*>${TBX}E\\1${TBX}</text:p>`, 'g'),
+    (_m, idx: string, inner: string) => {
+      const i = Number(idx);
+      const box = boxes[i];
+      if (!box) return '';
+      return `<text:p text:style-name="Standard">${textBoxXml(box, inner, i)}</text:p>`;
+    },
+  );
+  content = injectAutomaticStyles(content, boxes.map((b, i) => textBoxGraphicStyle(b, i)).join(''));
+  files['content.xml'] = strToU8(content);
   return rezipOdt(files);
 }
 
@@ -1477,9 +1626,12 @@ export type HfExport = {
 export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null): Promise<Uint8Array> {
   // Collect embedded images and swap them for IMG sentinels before serialization;
   // applyImages resolves the sentinels and writes the Pictures/ + manifest entries.
+  // Text boxes are hoisted after replacePageBreaks (so PGB never lands on their
+  // blocks) and before the inline passes (which then cover the hoisted blocks too).
   const images: ImageExport[] = [];
   const tocs: TocExport[] = [];
-  const raw = replaceImages(replaceTabs(replaceHardBreaks(replacePageBreaks(replaceTableOfContents(docJson, tocs)))), images);
+  const textBoxes: TextBoxExport[] = [];
+  const raw = replaceImages(replaceTabs(replaceHardBreaks(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes))), images);
   const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Distance from the page edge to the header (top) / footer (bottom). Becomes the
@@ -1596,7 +1748,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const cleaned = collapseRunWhitespace(styledRows);
   const withBreaks = applyInlineSentinels(cleaned);
   const withImages = applyImages(withBreaks, images);
-  const withToc = applyToc(withImages, tocs, contentWidthCm);
+  const withTextBoxes = applyTextBoxes(withImages, textBoxes);
+  const withToc = applyToc(withTextBoxes, tocs, contentWidthCm);
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withStyles = rewriteStylesXml(withEmptyFontSizes, language ?? null);

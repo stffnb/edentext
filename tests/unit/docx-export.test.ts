@@ -39,6 +39,7 @@ const fixture = {
     ] },
     { type: 'orderedList', attrs: { listStyleType: 'lower-alpha' }, content: [li(para('alpha'))] },
     para([{ type: 'image', attrs: { src: PNG, width: 100, height: 80, wrap: 'left', alt: 'pic' } }]),
+    { type: 'textBox', attrs: { width: 288, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, content: [para('box text')] },
     { type: 'table', content: [
       { type: 'tableRow', content: [headerCell('Name', { colwidth: [6] }), headerCell('Qty', { colwidth: [3] })] },
       { type: 'tableRow', attrs: { rowHeight: 40 }, content: [cell('Widget', { backgroundColor: '#FFFF00', rowspan: 2 }), cell('1')] },
@@ -130,6 +131,15 @@ describe('buildDocx', () => {
   it('embeds the image as a floating (wrapped) drawing', () => {
     expect(docXml).toContain('<w:drawing>');
     expect(docXml).toContain('wp:anchor'); // floating, not inline
+  });
+
+  it('rewrites the text-box marker into a DrawingML shape (post-pack pass)', () => {
+    expect(docXml).toContain('<wps:wsp');
+    expect(docXml).toContain('<wps:txbx><w:txbxContent>');
+    expect(docXml).toContain('prst="ellipse"');
+    expect(docXml).toMatch(/a:xfrm rot="1800000"/); // 30° × 60000
+    expect(docXml).toMatch(/<wp:wrapSquare wrapText="left"\/>/); // box right ⇒ text left
+    expect(docXml).not.toContain('\uE008'); // marker sentinel fully consumed
   });
 
   it('writes page geometry with header/footer distances', () => {

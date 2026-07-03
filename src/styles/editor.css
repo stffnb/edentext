@@ -248,7 +248,9 @@
   z-index: 30;
 }
 .paper .tiptap .image-node.image-selected .image-resize-handle,
-.paper .tiptap .image-node.image-selected .image-rotate-handle {
+.paper .tiptap .image-node.image-selected .image-rotate-handle,
+.paper .tiptap .textbox-node.textbox-selected .image-resize-handle,
+.paper .tiptap .textbox-node.textbox-selected .image-rotate-handle {
   display: block;
 }
 .paper .tiptap .image-resize-nw { top: -5px; left: -5px; cursor: nwse-resize; }
@@ -302,6 +304,41 @@
   border-radius: 4px;
   pointer-events: none;
   z-index: 32;
+}
+
+/* Text boxes / shapes (textBox.ts). Same wrapper/rotor split as images: the wrapper
+   reserves the rotated bounding box, the rotor carries fill/stroke/rotation and the
+   shared image-* handles; .textbox-content is the editable area. */
+.paper .tiptap .textbox-node {
+  position: relative;
+}
+.paper .tiptap .textbox-node.textbox-selected {
+  z-index: 25;
+}
+.paper .tiptap .textbox-rotor {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+}
+.paper .tiptap .textbox-node.textbox-selected .textbox-rotor {
+  outline: 2px solid var(--accent, #3b82f6);
+  outline-offset: 1px;
+}
+/* Grab affordance on the frame edge (outside the text area). */
+.paper .tiptap .textbox-rotor {
+  cursor: move;
+}
+.paper .tiptap .textbox-content {
+  cursor: text;
+  min-height: 1em;
+}
+.paper .tiptap .textbox-content > :first-child {
+  margin-top: 0;
+}
+.paper .tiptap .textbox-content > :last-child {
+  margin-bottom: 0;
 }
 
 /* Tab stops every 1.25cm, matching ODF's default tab interval. */
