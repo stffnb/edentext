@@ -3,6 +3,7 @@
   import { CellSelection } from '@tiptap/pm/tables';
   import { isHeaderRowStyled } from '../editor/extensions/tableHeaderRow';
   import ColorPicker from './ColorPicker.svelte';
+  import TableBorderPicker from './TableBorderPicker.svelte';
 
   let {
     editor,
@@ -209,6 +210,8 @@
       </svg>
     {/snippet}
   </ColorPicker>
+
+  <TableBorderPicker {editor} {tick} />
 
   <span class="tt-sep"></span>
 

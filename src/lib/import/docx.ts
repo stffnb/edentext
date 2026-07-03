@@ -722,14 +722,41 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
 }
 
 // ---- tables -----------------------------------------------------------------
+
+// A w:tcBorders/w:tblBorders side element → border attr value: null = the editor
+// default (0.5pt black), 'none', or '<W>pt solid #RRGGBB' (w:sz is eighth-points).
+// undefined when the element is absent (side not declared at this level).
+function docxBorderAttr(el: Element | null): string | null | undefined {
+  if (!el) return undefined;
+  const val = el.getAttributeNS(W, 'val');
+  if (!val || val === 'none' || val === 'nil') return 'none';
+  const sz = intAttr(el, W, 'sz');
+  const w = Math.round(((sz != null ? sz / 8 : 0.5)) * 100) / 100;
+  const c = (hexColor(el.getAttributeNS(W, 'color')) ?? '#000000').toUpperCase();
+  if (Math.abs(w - 0.5) < 0.11 && c === '#000000') return null;
+  return `${w}pt solid ${c}`;
+}
+
 function convertTable(tbl: Element, ctx: Ctx): Node | null {
   const grid = fc(tbl, 'tblGrid');
   const weights = grid ? fcAll(grid, 'gridCol').map((g) => Math.max(1, intAttr(g, W, 'w') ?? 1)) : null;
   const useWeights = weights && weights.length ? weights : null;
 
+  // Table-level border defaults; per-cell w:tcBorders override per side. Edge cells
+  // fall back to the outer sides, interior cells to insideH/insideV.
+  const tblBorders = fc(fc(tbl, 'tblPr'), 'tblBorders');
+  const tblSide = (name: string) => docxBorderAttr(fc(tblBorders, name));
+  const tblDef = {
+    top: tblSide('top'), bottom: tblSide('bottom'), left: tblSide('left'),
+    right: tblSide('right'), insideH: tblSide('insideH'), insideV: tblSide('insideV'),
+  };
+  const gridWidth = useWeights?.length ?? null;
+
   const rows: Node[] = [];
   const pending: (Node | null)[] = []; // origin cell per grid column, for vMerge spans
-  for (const tr of fcAll(tbl, 'tr')) {
+  const trs = fcAll(tbl, 'tr');
+  for (let ri = 0; ri < trs.length; ri++) {
+    const tr = trs[ri];
     const cells: Node[] = [];
     let col = 0;
     for (const tc of fcAll(tr, 'tc')) {
@@ -748,6 +775,20 @@ function convertTable(tbl: Element, ctx: Ctx): Node | null {
       const blocks = convertBlocks(Array.from(tc.children), ctx, 'cell', bg === HEADER_SHADE);
       const attrs: Record<string, unknown> = { colspan, rowspan: 1 };
       if (bg) attrs.backgroundColor = bg;
+      const tcBorders = fc(tcPr, 'tcBorders');
+      const isRight = gridWidth != null && col + colspan >= gridWidth;
+      const resolve = (name: string, tblVal: string | null | undefined) => {
+        const own = docxBorderAttr(fc(tcBorders, name));
+        return own !== undefined ? own : tblVal;
+      };
+      const sides: [string, string | null | undefined][] = [
+        ['borderTop', resolve('top', ri === 0 ? tblDef.top : tblDef.insideH)],
+        ['borderBottom', resolve('bottom', ri === trs.length - 1 ? tblDef.bottom : tblDef.insideH)],
+        ['borderLeft', resolve('left', col === 0 ? tblDef.left : tblDef.insideV)],
+        ['borderRight', resolve('right', isRight ? tblDef.right : tblDef.insideV)],
+      ];
+      // undefined (nothing declared) and null (= editor default) both leave the attr off.
+      for (const [attr, v] of sides) if (typeof v === 'string') attrs[attr] = v;
       if (useWeights) attrs.colwidth = useWeights.slice(col, col + colspan);
       const cell: Node = { type: 'tableCell', attrs, content: blocks.length ? blocks : [{ type: 'paragraph' }] };
       cells.push(cell);

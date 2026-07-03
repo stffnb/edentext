@@ -4,6 +4,7 @@ import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
+import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { DEFAULT_ORDERED_TYPE, orderedTypeDef } from '../utils/orderedListTypes';
 
@@ -1285,6 +1286,12 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
           if (typeof bg === 'string') {
             const c = normalizeColor(bg);
             if (c) opts.backgroundColor = c;
+          }
+          // Per-side borders → fo:border-* (null = the table default border below).
+          for (const side of BORDER_SIDES) {
+            const b = parseBorderAttr(cell.attrs?.[side] as string | null);
+            if (b === 'none') opts[side] = 'none';
+            else if (b) opts[side] = `${b.widthPt}pt solid ${normalizeColor(b.color) ?? b.color}`;
           }
           // Header-row cells render bold via CSS (presentational), so bake bold into the
           // runs on export to keep Word/LibreOffice consistent (incl. freshly-typed text).

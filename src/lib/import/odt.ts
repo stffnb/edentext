@@ -833,6 +833,28 @@ function listLevelDef(listStyle: Element | null, depth: number): Element | null 
 
 // ---- tables ------------------------------------------------------------------------
 
+// ODF border ("0.5pt solid #000000" / "none" / absent) → border attr value: null for
+// the editor default (0.5pt black, tolerance for producer unit rounding), 'none' for
+// no border, else the canonical '<W>pt solid #RRGGBB'. Non-solid styles are coerced
+// to solid (the editor only renders solid lines).
+export function borderAttrFromOdf(raw: string | null | undefined): string | null {
+  if (!raw || raw === 'none' || raw === 'hidden') return 'none';
+  let widthPt: number | null = null;
+  let color: string | null = null;
+  let styleTok: string | null = null;
+  for (const part of raw.trim().split(/\s+/)) {
+    if (/^-?[\d.]+\s*(pt|cm|mm|in|px|pc)?$/.test(part)) widthPt = lengthToPt(part);
+    else if (part.startsWith('#')) color = normalizeColor(part) ?? part;
+    else styleTok = part;
+  }
+  if (styleTok === 'none' || styleTok === 'hidden') return 'none';
+  if (widthPt != null && widthPt <= 0) return 'none';
+  const w = Math.round((widthPt ?? 0.5) * 100) / 100;
+  const c = (color ?? '#000000').toUpperCase();
+  if (Math.abs(w - 0.5) < 0.11 && c === '#000000') return null;
+  return `${w}pt solid ${c}`;
+}
+
 function convertTable(el: Element, ctx: Ctx): Node | null {
   const weights = columnWeights(el, ctx.resolver);
 
@@ -851,13 +873,24 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
 
       const colspan = parseInt(cellEl.getAttributeNS(NS.table, 'number-columns-spanned') ?? '1', 10) || 1;
       const rowspan = parseInt(cellEl.getAttributeNS(NS.table, 'number-rows-spanned') ?? '1', 10) || 1;
-      const rawBg = ctx.resolver.cellBackgroundColor(cellEl.getAttributeNS(NS.table, 'style-name'));
+      const cellStyleName = cellEl.getAttributeNS(NS.table, 'style-name');
+      const rawBg = ctx.resolver.cellBackgroundColor(cellStyleName);
       const backgroundColor = rawBg ? normalizeColor(rawBg) ?? rawBg : null;
+      // Per-side borders; an undeclared side means no border in ODF → 'none'.
+      // Only null (= the editor's 0.5pt-black default) is left off the attrs.
+      const rawBorders = ctx.resolver.cellBorders(cellStyleName);
+      const borders: Record<string, string> = {};
+      for (const [attr, side] of [
+        ['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left'],
+      ] as const) {
+        const v = borderAttrFromOdf(rawBorders[side]);
+        if (v !== null) borders[attr] = v;
+      }
       // Header-shaded cells render bold by default (CSS); convert their runs like headings
       // so a baked-bold run needs no mark and only an explicitly normal run gets one.
       const blocks = convertBlocks(Array.from(cellEl.children), ctx, 'cell', backgroundColor === HEADER_SHADE);
       for (let r = 0; r < repeated; r++) {
-        const attrs: Record<string, unknown> = { colspan, rowspan };
+        const attrs: Record<string, unknown> = { colspan, rowspan, ...borders };
         if (backgroundColor) attrs.backgroundColor = backgroundColor;
         if (weights) attrs.colwidth = weights.slice(colIndex, colIndex + colspan);
         cells.push({

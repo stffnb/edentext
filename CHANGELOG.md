@@ -34,6 +34,7 @@
 
 **Insert**
 - Tables: insert via size picker, Word-style row/column drag-resize, add / delete rows & columns, delete table, cell borders, merge cells and split cells (N×M, Word/LibreOffice-style), cell background shading, header-row toggle (bold + shading); a table splits cleanly across page boundaries
+- Table border control (Word/LibreOffice-style): per-side cell borders with presets (all / outside / inside / single edges / none), line width and color; buttons show active states matching the current pen and toggle borders off; round-trips to ODF `fo:border-*` and DOCX `w:tcBorders`
 - Images: inline or floating with text wrap (left / right / top-bottom), resize handles, rotation, live size badge; insert via toolbar, drag-and-drop, or paste
 - Special characters picker
 - Table of contents: generated from headings (H1–H3) with live page numbers and dot leaders, click an entry to jump to its heading; round-trips to ODF `text:table-of-content` and a Word TOC field

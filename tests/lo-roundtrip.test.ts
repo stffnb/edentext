@@ -76,7 +76,7 @@ const fixture: N = {
       ] },
       { type: 'tableRow', content: [
         { type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: [120] }, content: [P(null, T('A2'))] },
-        { type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: [240] }, content: [P(null, T('B2'))] },
+        { type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: [240], borderTop: 'none', borderRight: '2.25pt solid #FF0000' }, content: [P(null, T('B2'))] },
       ] },
     ] },
     TBX({ width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 },
@@ -114,6 +114,11 @@ function normalize(node: N): N {
     if (k === 'rotation') { attrs.rotation = 'R'; continue; } // exact angle checked leniently below
     if (k === 'wrap') { attrs.wrap = 'W'; continue; } // float survives; exact mode checked leniently
     if (k === 'strokeWidthPt') { attrs.strokeWidthPt = Math.round((v as number) * 4) / 4; continue; } // pt↔in noise
+    // Cell borders: LO re-saves widths with pt↔cm noise; quantize to 0.25pt steps.
+    if (k.startsWith('border') && typeof v === 'string' && v !== 'none') {
+      const bm = /^([\d.]+)pt solid (#[0-9A-F]{6})$/i.exec(v);
+      if (bm) { attrs[k] = `${Math.round(parseFloat(bm[1]) * 4) / 4}pt solid ${bm[2].toUpperCase()}`; continue; }
+    }
     if (k === 'fillColor' || k === 'strokeColor') { attrs[k] = typeof v === 'string' ? v.toUpperCase() : v; continue; }
     // LO re-parents text-box paragraphs onto its Frame-contents style (margin 0), so
     // an explicit spaceAfter 0 comes back where Standard's default was suppressed.

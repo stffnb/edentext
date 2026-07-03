@@ -51,7 +51,7 @@ describe('DOCX export → import round trip', () => {
       { type: 'textBox', attrs: { width: 192, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, content: [para('ellipse text')] },
       { type: 'table', content: [
         { type: 'tableRow', content: [headerCell('Name', { colwidth: [6] }), headerCell('Qty', { colwidth: [3] })] },
-        { type: 'tableRow', attrs: { rowHeight: 40 }, content: [cell('Widget', { backgroundColor: '#FFFF00', rowspan: 2 }), cell('1')] },
+        { type: 'tableRow', attrs: { rowHeight: 40 }, content: [cell('Widget', { backgroundColor: '#FFFF00', rowspan: 2 }), cell('1', { borderTop: 'none', borderRight: '2.25pt solid #FF0000' })] },
         { type: 'tableRow', content: [cell('2')] },
       ] },
     ],
@@ -157,6 +157,12 @@ describe('DOCX export → import round trip', () => {
     expect(widget.attrs.backgroundColor).toBe('#FFFF00');
     expect(rows[2].content!.length).toBe(1);
     expect(rows[1].attrs.rowHeight).toBe(40);
+    // per-side borders (w:tcBorders): hidden top + custom red right; defaults stay null
+    const qty = rows[1].content![1];
+    expect(qty.attrs.borderTop).toBe('none');
+    expect(qty.attrs.borderRight).toBe('2.25pt solid #FF0000');
+    expect(qty.attrs.borderBottom ?? null).toBe(null);
+    expect(widget.attrs.borderTop ?? null).toBe(null);
   });
 
   it('round-trips page geometry + header/footer with page fields', () => {

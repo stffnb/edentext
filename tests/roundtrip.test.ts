@@ -328,6 +328,41 @@ describe('Leg 1c: header-row cells (bold-by-default, editable)', () => {
   });
 });
 
+describe('Leg 1d: table cell borders (per-side, fo:border-*)', () => {
+  const bcell = (text: string, borders: Record<string, string> = {}): N =>
+    ({ type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: [100], ...borders }, content: [P(null, T(text))] });
+
+  // A: default borders (null attrs) · B: top hidden + custom red right ·
+  // C/D: fully borderless.
+  const doc: N = { type: 'doc', content: [
+    { type: 'table', content: [
+      ROW(bcell('A'), bcell('B', { borderTop: 'none', borderRight: '2.25pt solid #FF0000' })),
+      ROW(bcell('C', { borderTop: 'none', borderRight: 'none', borderBottom: 'none', borderLeft: 'none' }),
+          bcell('D', { borderTop: 'none', borderRight: 'none', borderBottom: 'none', borderLeft: 'none' })),
+    ] },
+  ] };
+
+  it('exports fo:border-* per side and re-imports the attrs', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('export emits fo:border-top="none"', xml.includes('fo:border-top="none"'), xml.match(/fo:border-top="[^"]*"/g));
+    check('export emits the custom red right border', xml.includes('fo:border-right="2.25pt solid #FF0000"'), xml.match(/fo:border-right="[^"]*"/g));
+
+    const res = importOdt(bytes);
+    check('no warnings on own export', res.warnings.length === 0, res.warnings);
+    const table = (res.content.content ?? []).find((n: N) => n.type === 'table');
+    const [row0, row1] = table?.content ?? [];
+    const a = row0?.content?.[0]?.attrs ?? {};
+    const b = row0?.content?.[1]?.attrs ?? {};
+    const c = row1?.content?.[0]?.attrs ?? {};
+    check('A keeps default borders (attrs null)', a.borderTop == null && a.borderRight == null && a.borderBottom == null && a.borderLeft == null, a);
+    check('B top border stays hidden', b.borderTop === 'none', b);
+    check('B custom right border round-trips', b.borderRight === '2.25pt solid #FF0000', b);
+    check('B bottom/left stay default', b.borderBottom == null && b.borderLeft == null, b);
+    check('C is fully borderless', c.borderTop === 'none' && c.borderRight === 'none' && c.borderBottom === 'none' && c.borderLeft === 'none', c);
+  });
+});
+
 describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
   it('resolves named/automatic styles, repeated cells, lists, and reports degradations', () => {
     const stylesXml = `<?xml version="1.0" encoding="UTF-8"?>

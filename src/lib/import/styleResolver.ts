@@ -248,6 +248,21 @@ export class StyleResolver {
     return c && c !== 'transparent' && c !== 'none' ? c : null;
   }
 
+  // A cell style's raw fo:border-* values (per-side overriding the fo:border
+  // shorthand). Sides the style doesn't declare stay undefined (= no border in ODF).
+  cellBorders(styleName: string | null): Partial<Record<'top' | 'right' | 'bottom' | 'left', string>> {
+    if (!styleName) return {};
+    const misc = this.merged('table-cell', styleName).misc;
+    const all = misc['fo:border'];
+    const pick = (side: string) => misc[`fo:border-${side}`] ?? all;
+    const out: Partial<Record<'top' | 'right' | 'bottom' | 'left', string>> = {};
+    for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+      const v = pick(side);
+      if (v != null) out[side] = v;
+    }
+    return out;
+  }
+
   listStyle(name: string | null): Element | null {
     return name ? this.listStyles.get(name) ?? null : null;
   }

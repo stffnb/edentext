@@ -18,6 +18,7 @@ import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { HF_DISTANCE_CM, hfIsEmpty } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
+import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { orderedTypeDef } from '../utils/orderedListTypes';
 import { normalizeColor, HEADING_STYLE_OVERRIDES, type HfExport } from './odt';
 
@@ -608,6 +609,14 @@ function columnWidthsCm(node: TiptapNode, contentWidthCm: number): number[] | un
 
 const cellBorder: IBorderOptions = { style: BorderStyle.SINGLE, size: 4, color: '000000' }; // 0.5pt
 
+// A cell's per-side border attr → w:tcBorders options (size in eighth-points).
+function docxCellBorder(attrs: Record<string, unknown> | undefined, side: BorderSide): IBorderOptions {
+  const b = parseBorderAttr(attrs?.[side] as string | null);
+  if (b === 'none') return { style: BorderStyle.NONE, size: 0, color: 'auto' };
+  if (b) return { style: BorderStyle.SINGLE, size: Math.max(2, Math.round(b.widthPt * 8)), color: hexColor(b.color) ?? '000000' };
+  return cellBorder;
+}
+
 function cellBlocksToDocx(content: TiptapNode[] = [], headerBold: boolean, num: Numbering, contentWidthCm: number): (Paragraph | Table)[] {
   const out: (Paragraph | Table)[] = [];
   for (const child of content) {
@@ -646,7 +655,12 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
         rowSpan: rowspan > 1 ? rowspan : undefined,
         shading: fill ? { type: ShadingType.CLEAR, fill } : undefined,
         width: widthTwip ? { size: widthTwip, type: WidthType.DXA } : undefined,
-        borders: { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder },
+        borders: {
+          top: docxCellBorder(cell.attrs, 'borderTop'),
+          bottom: docxCellBorder(cell.attrs, 'borderBottom'),
+          left: docxCellBorder(cell.attrs, 'borderLeft'),
+          right: docxCellBorder(cell.attrs, 'borderRight'),
+        },
         children: cellBlocksToDocx(cell.content, bg === HEADER_SHADE, num, contentWidthCm),
       }));
     }
