@@ -1,6 +1,8 @@
 .editor {
   flex: 1;
-  padding: 2rem 1rem 3rem; /* extra bottom padding clears the fixed status bar */
+  /* Top padding clears the toolbar island overlaying this scroll area (height set
+     by App.svelte); extra bottom padding clears the fixed status bar. */
+  padding: calc(var(--toolbar-overlay-h, 0px) + 1.25rem) 1rem 3rem;
   overflow: auto;
   /* Positioning context for the floating table toolbar (TableToolbar.svelte),
      which is an absolutely-positioned child that scrolls with the content. */

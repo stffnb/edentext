@@ -166,14 +166,23 @@
   const MIN_THUMB = 24;
   let toolbarClipEl: HTMLDivElement | null = $state(null);
   let toolbarStackEl: HTMLDivElement | null = $state(null);
+  // The track lives inside the island (header / expanded row) so its dropdowns can
+  // paint above it, and is counter-translated so it stays viewport-fixed while the
+  // stack scrolls. Its width spans the visible island minus an edge inset.
+  const STACK_PAD_PX = 13.6; // 0.85rem — keep in sync with .toolbar-stack padding
+  const TRACK_EDGE = 20;     // track inset from the island's side edges
   let toolbarStackWidth = $state(0); // full content width of the stack
   let toolbarViewWidth = $state(0);  // visible (clipped) width
   let tbScroll = $state(0);          // current left offset in px
   let tbOverflow = $derived(Math.max(0, toolbarStackWidth - toolbarViewWidth));
+  let tbTrackW = $derived(Math.max(0, toolbarViewWidth - 2 * (STACK_PAD_PX + TRACK_EDGE)));
+  // Thumb: proportional, but capped short (25% of the track) so it reads clearly.
   let thumbWidth = $derived(
-    toolbarStackWidth > 0 ? Math.max(MIN_THUMB, (toolbarViewWidth / toolbarStackWidth) * toolbarViewWidth) : 0,
+    toolbarStackWidth > 0
+      ? Math.max(MIN_THUMB, Math.min(0.25 * tbTrackW, (toolbarViewWidth / toolbarStackWidth) * tbTrackW))
+      : 0,
   );
-  let thumbTravel = $derived(Math.max(0, toolbarViewWidth - thumbWidth));
+  let thumbTravel = $derived(Math.max(0, tbTrackW - thumbWidth));
   let thumbLeft = $derived(tbOverflow > 0 ? (tbScroll / tbOverflow) * thumbTravel : 0);
 
   // Track the stack's content width and the visible width; clamp the offset into
@@ -209,6 +218,10 @@
   function onScrollbarPointerDown(e: PointerEvent) {
     if (thumbTravel <= 0) return;
     const track = e.currentTarget as HTMLElement;
+    // The track overlays the island: suppress native text selection under the
+    // drag, and re-focus manually since preventDefault also blocks click-focus.
+    e.preventDefault();
+    track.focus();
     const thumb = track.querySelector('.toolbar-scrollbar-thumb');
     if (!thumb?.contains(e.target as Node)) {
       const rect = track.getBoundingClientRect();
@@ -552,7 +565,28 @@
   }
 </script>
 
-<main>
+<main style="--toolbar-overlay-h: {toolbarRegionH}px">
+  {#snippet toolbarScrollbar()}
+    {#if tbOverflow > 0}
+      <div
+        class="toolbar-scrollbar"
+        style="width: {tbTrackW}px; transform: translateX({tbScroll + TRACK_EDGE}px);"
+        role="scrollbar"
+        tabindex={0}
+        aria-orientation="horizontal"
+        aria-controls="primary-toolbar"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(tbOverflow)}
+        aria-valuenow={Math.round(tbScroll)}
+        onpointerdown={onScrollbarPointerDown}
+        onpointermove={onScrollbarPointerMove}
+        onpointerup={onScrollbarPointerUp}
+        onkeydown={onScrollbarKeydown}
+      >
+        <div class="toolbar-scrollbar-thumb" style="width: {thumbWidth}px; transform: translateX({thumbLeft}px);"></div>
+      </div>
+    {/if}
+  {/snippet}
   <div class="toolbar-region" bind:clientHeight={toolbarRegionH}>
     <div class="toolbar-clip" id="primary-toolbar" bind:this={toolbarClipEl} onwheel={onToolbarWheel}>
       <div class="toolbar-stack" bind:this={toolbarStackEl} style="transform: translateX(-{tbScroll}px);">
@@ -716,6 +750,9 @@
         onchange={handleImportFile}
       />
     </div>
+    {#if !toolbarExpanded}
+      {@render toolbarScrollbar()}
+    {/if}
   </header>
   <div class="toolbar-secondary" class:expanded={toolbarExpanded}>
     <button
@@ -753,28 +790,11 @@
           onDebugDump={handleDebugDump}
         />
       </div>
+      {@render toolbarScrollbar()}
     {/if}
   </div>
       </div>
     </div>
-    {#if tbOverflow > 0}
-      <div
-        class="toolbar-scrollbar"
-        role="scrollbar"
-        tabindex={0}
-        aria-orientation="horizontal"
-        aria-controls="primary-toolbar"
-        aria-valuemin={0}
-        aria-valuemax={Math.round(tbOverflow)}
-        aria-valuenow={Math.round(tbScroll)}
-        onpointerdown={onScrollbarPointerDown}
-        onpointermove={onScrollbarPointerMove}
-        onpointerup={onScrollbarPointerUp}
-        onkeydown={onScrollbarKeydown}
-      >
-        <div class="toolbar-scrollbar-thumb" style="width: {thumbWidth}px; transform: translateX({thumbLeft}px);"></div>
-      </div>
-    {/if}
   </div>
   <EditorComponent
     bind:editor
@@ -864,6 +884,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    position: relative;
   }
 
   /* Find & Replace bar: floats at the top-right of the editing area, just under the
@@ -874,12 +895,24 @@
     z-index: 190;
   }
 
-  /* Toolbar scroll region. A stacking context (z-index) so the whole toolbar — incl.
-     its dropdowns, which live inside the translated stack — paints above the editor
-     and its overlays. */
+  /* Toolbar scroll region: an overlay pinned over the editor (which fills the full
+     height), so the document scrolls under the floating island and stays visible in
+     the transparent gaps around it. pointer-events pass through everywhere except
+     the island pieces themselves. The z-index keeps the whole toolbar — incl. its
+     dropdowns, which live inside the translated stack — above the editor overlays. */
   .toolbar-region {
-    position: relative;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     z-index: 200;
+    pointer-events: none;
+  }
+
+  .toolbar-region header,
+  .toolbar-region .expand-toggle,
+  .toolbar-region .toolbar-secondary.expanded {
+    pointer-events: auto;
   }
 
   /* Clips the off-screen part of the toolbar horizontally only, so the page never
@@ -897,52 +930,83 @@
     min-width: 100%;
     position: relative;
     z-index: 1;
+    /* Inset that floats the toolbar island off the window edges. */
+    padding: 0.55rem 0.85rem 0.35rem;
   }
 
   /* Custom scrollbar strip under the toolbar (a native one auto-hides on macOS).
      The thumb's width/position track the visible fraction of the stack; only rendered
      when the toolbar overflows. */
+  /* Runs along the inside of the island's bottom edge. Lives inside the island
+     (header / expanded row) and is counter-translated (inline style) so it stays
+     put while the stack scrolls; z:1 paints it above the island surface but below
+     the dropdowns (z ≥ 200 in the same stacking context). */
   .toolbar-scrollbar {
-    position: relative;
-    height: 9px;
-    background: var(--color-toolbar-bg);
-    border-bottom: 1px solid var(--color-border);
+    position: absolute;
+    left: 0;
+    bottom: 4px;
+    height: 3px;
+    z-index: 1;
+    background: color-mix(in srgb, var(--color-btn-hover) 35%, transparent);
+    border-radius: 2px;
     cursor: pointer;
     touch-action: none;
   }
 
   .toolbar-scrollbar-thumb {
     position: absolute;
-    top: 2px;
+    top: 0;
     left: 0;
-    height: 5px;
-    border-radius: 3px;
-    background: var(--color-btn-hover);
+    height: 100%;
+    border-radius: 2px;
+    background: var(--scrollbar-thumb, var(--color-btn-hover));
     cursor: grab;
     touch-action: none;
   }
 
   .toolbar-scrollbar-thumb:hover {
-    background: var(--color-text-muted);
+    background: var(--scrollbar-thumb-hover, var(--color-text-muted));
   }
 
   .toolbar-scrollbar-thumb:active {
     cursor: grabbing;
   }
 
-  /* Basic toolbar: a complete toolbar with its own divider + elevation. When the
-     extended toolbar opens, those move to .toolbar-secondary so the two rows read
-     as one connected toolbar (border-color/shadow transition for a smooth merge). */
+  /* Basic toolbar: a floating rounded "command island" (frosted card) rather than
+     an edge-to-edge bar. When the extended toolbar opens, the island's bottom half
+     moves to .toolbar-secondary so the two rows read as one card. */
   header {
     display: flex;
     align-items: center;
-    background: var(--color-toolbar-bg);
-    border-bottom: 1px solid var(--color-border);
-    box-shadow: var(--shadow);
-    transition: border-color 0.18s, box-shadow 0.18s;
+    position: relative;
+    /* backdrop-filter makes this a stacking context; z-index keeps its dropdowns
+       above .toolbar-secondary (160). */
+    z-index: 200;
+    background: color-mix(in srgb, var(--color-toolbar-bg) 92%, transparent);
+    backdrop-filter: blur(12px) saturate(1.35);
+    -webkit-backdrop-filter: blur(12px) saturate(1.35);
+    border: 1px solid var(--color-border);
+    border-radius: var(--island-radius);
+    box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.06);
+    transition: border-color 0.18s, box-shadow 0.18s, border-radius 0.18s;
+  }
+
+  /* Brand hairline: the signature gradient along the island's top edge. */
+  header::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 1.25rem;
+    right: 1.25rem;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--brand-gradient);
+    opacity: 0.65;
+    pointer-events: none;
   }
 
   header.expanded {
+    border-radius: var(--island-radius) var(--island-radius) 0 0;
     border-bottom-color: transparent;
     box-shadow: none;
   }
@@ -951,7 +1015,7 @@
     display: inline-flex;
     align-items: center;
     padding: 4px;
-    margin: 0 0.25rem 0 0.5rem;
+    margin: 0 0.25rem 0 1.4rem;
     border: none;
     border-radius: var(--radius);
     background: transparent;
@@ -1005,7 +1069,7 @@
 
   .doc-name-input {
     width: 13rem;
-    height: 1.9rem;
+    height: var(--toolbar-btn-size);
     padding: 0 0.25rem;
     border: 1px solid transparent;
     border-radius: var(--radius);
@@ -1037,8 +1101,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
+    width: var(--toolbar-btn-size);
+    height: var(--toolbar-btn-size);
     border: none;
     border-radius: var(--radius);
     background: transparent;
@@ -1078,7 +1142,7 @@
   .save-control {
     display: inline-flex;
     align-items: stretch;
-    height: 2rem;
+    height: var(--toolbar-btn-size);
     border: 1px solid transparent;
     border-radius: var(--radius);
     overflow: hidden;
@@ -1140,17 +1204,22 @@
        padding-left reserves the tab's column. */
     padding: 0 1rem 0 6.5rem;
     background: transparent;
-    border-bottom: 1px solid transparent;
+    border: 1px solid transparent;
+    border-top: none;
+    border-radius: 0 0 var(--island-radius) var(--island-radius);
     transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
   }
 
-  /* Shadow casts downward only (negative spread) so it doesn't bleed up into the
-     junction with the basic toolbar — the two read as one seamless toolbar. */
+  /* Expanded it becomes the island's bottom half: same frosted fill, side/bottom
+     borders and the bottom corner radius complete the card. Shadow casts downward
+     only so it doesn't bleed up into the junction with the basic toolbar. */
   .toolbar-secondary.expanded {
-    padding-bottom: 0.4rem;
-    background: var(--color-toolbar-bg);
-    border-bottom-color: var(--color-border);
-    box-shadow: 0 4px 4px -2px rgba(0, 0, 0, 0.08);
+    padding-bottom: 0.5rem;
+    background: color-mix(in srgb, var(--color-toolbar-bg) 92%, transparent);
+    backdrop-filter: blur(12px) saturate(1.35);
+    -webkit-backdrop-filter: blur(12px) saturate(1.35);
+    border-color: var(--color-border);
+    box-shadow: 0 10px 26px -14px rgba(0, 0, 0, 0.25);
   }
 
   .extended-wrap {
@@ -1168,8 +1237,9 @@
     height: var(--toolbar-btn-size);
     padding: 0 0.45rem;
     position: absolute;
-    left: 0.75rem;
-    top: -1px;
+    /* Clear of the island's rounded bottom-left corner. */
+    left: 1.35rem;
+    top: 0;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     background: var(--color-toolbar-bg);
@@ -1180,10 +1250,11 @@
     transition: border-color 0.15s, background 0.15s, color 0.15s;
   }
 
-  /* Collapsed: the tab hangs from the basic toolbar's bottom edge — drop the top
-     border and round only the bottom so the divider bulges around it, and carry
-     the toolbar's elevation so it reads as part of it. */
+  /* Collapsed: the tab hangs from the basic toolbar's bottom edge — straddle the
+     island's border, drop the top border and round only the bottom so the divider
+     bulges around it, and carry the toolbar's elevation so it reads as part of it. */
   .toolbar-secondary:not(.expanded) .expand-toggle {
+    top: -1px;
     border-top-color: transparent;
     border-radius: 0 0 var(--radius) var(--radius);
     box-shadow: var(--shadow);
@@ -1213,8 +1284,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
+    width: var(--toolbar-btn-size);
+    height: var(--toolbar-btn-size);
     border: 1px solid transparent;
     border-radius: var(--radius);
     background: transparent;

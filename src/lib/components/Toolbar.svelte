@@ -284,15 +284,15 @@
 </div>
 
 <style>
+  /* Sits inside the header island (which paints the frosted background). Not a
+     stacking context: its dropdowns (z:200) must join the header's context so they
+     paint above the island scrollbar (z:1) while it stays above the island surface. */
   .toolbar {
     display: flex;
     align-items: center;
     gap: 0.125rem;
-    padding: 0.25rem 1rem;
-    background: var(--color-toolbar-bg);
-    position: sticky;
-    top: 0;
-    z-index: 200;
+    padding: 0.5rem 1rem;
+    background: transparent;
   }
 
   .toolbar-group {

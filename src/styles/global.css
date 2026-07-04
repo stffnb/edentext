@@ -210,11 +210,38 @@
 
 :root {
   --radius: 6px;
+    --island-radius: 14px; /* corner radius of the floating toolbar card */
     --toolbar-btn-size: 1.7rem; /* height of all toolbar controls (matches the floating toolbars) */
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-serif: 'Liberation Serif', 'Times New Roman', Georgia, serif;
+    /* Brand accents: the primary slate + the logo's warm coral; the gradient is
+       the app's signature (island hairline). */
+    --accent-warm: #d96b4a;
+    --brand-gradient: linear-gradient(90deg, var(--color-primary), var(--accent-warm));
   }
+
+/* Signature micro-interactions, shared across all toolbar components. */
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(-5px); }
+}
+
+.toolbar-region button:active:not(:disabled) {
+  transform: scale(0.93);
+}
+
+.theme-dropdown, .ol-dropdown, .align-dropdown, .font-dropdown, .size-dropdown,
+.color-dropdown, .char-dropdown, .history-dropdown, .layout-dropdown,
+.lh-dropdown, .sp-dropdown, .table-dropdown, .bp-dropdown {
+  animation: menu-in 0.14s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toolbar-region button:active:not(:disabled) { transform: none; }
+  .theme-dropdown, .ol-dropdown, .align-dropdown, .font-dropdown, .size-dropdown,
+  .color-dropdown, .char-dropdown, .history-dropdown, .layout-dropdown,
+  .lh-dropdown, .sp-dropdown, .table-dropdown, .bp-dropdown { animation: none; }
+}
 
   [data-theme="light"] {
   --color-bg: #e6e9eb;
@@ -228,10 +255,11 @@
   --color-page-bg: #ffffff;
   --color-page-text: #1e293b;
   --color-page-border: #e2e8f0;
+  --scrollbar-thumb: #cbd5e1;
   }
 
   [data-theme="dark"] {
-    --color-bg: #0d1117;
+    --color-bg: #2f2f31;
     --color-surface: #161b22;
     --color-border: #30363d;
     --color-text: #f2e6f3;
@@ -242,6 +270,9 @@
     --color-page-bg: #ffffff;
     --color-page-text: #1e293b;
     --color-page-border: #e2e8f0;
+    /* Primary (active-button color) so the toolbar scrollbar stands out on dark. */
+    --scrollbar-thumb: var(--color-primary);
+    --scrollbar-thumb-hover: color-mix(in srgb, var(--color-primary) 75%, white);
 }
 
 [data-theme="allBlack"] {
@@ -256,6 +287,8 @@
   --color-page-bg: #161b22;
   --color-page-text: #e6edf3;
   --color-page-border: #30363d;
+  --scrollbar-thumb: var(--color-primary);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--color-primary) 75%, white);
 }
 
 html, body {
