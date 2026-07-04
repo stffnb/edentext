@@ -3,6 +3,7 @@ import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap
 import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { DEFAULT_ORDERED_TYPE, orderedTypeFromFormat } from '../utils/orderedListTypes';
+import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
@@ -788,8 +789,13 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
   }
 
   if (!ordered) {
+    const raw = levelDef?.getAttributeNS(NS.text, 'bullet-char') ?? null;
+    const bulletChar = bulletCharAttr(bulletCharFromOdf(raw, listLevelFontName(levelDef)), depth - 1);
+    const attrs: Record<string, unknown> = {};
+    if (bulletChar) attrs.bulletChar = bulletChar;
+    if (indent != null) attrs.indent = indent;
     const node: Node = { type: 'bulletList', content: items };
-    if (indent != null) node.attrs = { indent };
+    if (Object.keys(attrs).length) node.attrs = attrs;
     return node;
   }
 
@@ -817,6 +823,17 @@ function listLevelMarginLeftCm(levelDef: Element | null): number | null {
         return lengthToCm(la.getAttributeNS(NS.fo, 'margin-left'));
       }
     }
+  }
+  return null;
+}
+
+// The level def's declared font (Word-written .odt puts Wingdings/Symbol here for
+// its private-use bullet chars; LibreOffice writes real Unicode chars instead).
+function listLevelFontName(levelDef: Element | null): string | null {
+  if (!levelDef) return null;
+  for (const props of Array.from(levelDef.children)) {
+    if (props.namespaceURI !== NS.style || props.localName !== 'text-properties') continue;
+    return props.getAttributeNS(NS.style, 'font-name') ?? props.getAttributeNS(NS.fo, 'font-family');
   }
   return null;
 }

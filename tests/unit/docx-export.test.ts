@@ -33,7 +33,7 @@ const fixture = {
     ),
     para([text('a\tb')]),
     para([text('line1'), { type: 'hardBreak' }, text('line2')]),
-    { type: 'bulletList', attrs: { indent: 0 }, content: [
+    { type: 'bulletList', attrs: { indent: 0, bulletChar: '❖' }, content: [
       li(para('one')),
       li(para('two'), { type: 'bulletList', content: [li(para('nested'))] }),
     ] },
@@ -111,6 +111,9 @@ describe('buildDocx', () => {
     const numXml = strFromU8(files['word/numbering.xml']);
     expect(numXml).toContain('w:val="bullet"');
     expect(numXml).toContain('w:val="lowerLetter"');
+    // Custom bullet char → level 0 lvlText; nested default level keeps the cycle (◦)
+    expect(numXml).toMatch(/w:lvlText[^>]*w:val="❖"/);
+    expect(numXml).toMatch(/w:lvlText[^>]*w:val="◦"/);
   });
 
   it('emits a fixed-layout table with merged cells and shading', () => {

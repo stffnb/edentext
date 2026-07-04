@@ -627,11 +627,11 @@
               <div class="theme-heading">Save / Export</div>
               <button class="theme-option" onclick={handleSave} role="menuitem">
                 <span>ODT</span>
-                <span class="theme-option-hint">OpenDocument · fully editable</span>
+                <span class="theme-option-hint">OpenDocument</span>
               </button>
               <button class="theme-option" onclick={handleSaveDocx} disabled={docxBusy} role="menuitem">
                 <span>{docxBusy ? 'Exporting…' : 'Word (.docx)'}</span>
-                <span class="theme-option-hint">Microsoft Word · editable</span>
+                <span class="theme-option-hint">Microsoft Word</span>
               </button>
               <button class="theme-option" onclick={handleExportPdf} disabled={pdfBusy} role="menuitem">
                 <span>{pdfBusy ? 'Exporting…' : 'Raster PDF'}</span>
@@ -639,7 +639,7 @@
               </button>
               <button class="theme-option" onclick={handlePrintPdf} role="menuitem">
                 <span>Vector PDF (beta)</span>
-                <span class="theme-option-hint">Sharp &amp; small, but problems with tables</span>
+                <span class="theme-option-hint">Sharp, but problems with tables</span>
               </button>
             </div>
           {/if}

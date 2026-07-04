@@ -40,6 +40,18 @@
   src: url('../assets/fonts/LiberationSerif-BoldItalic.ttf') format('truetype');
 }
 
+/* Bullet-marker symbols Liberation Serif lacks (❖ ➢ ⇨ ✓ ▸ ◆), subset from DejaVu
+   Sans so markers render compact and identical on every platform. First in the
+   ::marker/picker stacks; per-glyph fallback keeps all other chars in the text
+   font. (Bitstream Vera license — see src/assets/fonts/LICENSE-DejaVu.txt.) */
+@font-face {
+  font-family: 'EdenText Symbols';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/EdenSymbols.woff2') format('woff2');
+}
+
 /* Metric-compatible substitutes for the common MS-Office fonts that imported
    .odt files reference. Each face is keyed to the MS name but prefers a real
    local copy, then a system twin, then the bundled open-source twin — so text

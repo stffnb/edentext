@@ -397,6 +397,23 @@
 .paper .tiptap ol[data-list-style="upper-roman"]       { list-style-type: upper-roman; }
 .paper .tiptap ol[data-list-style="upper-roman-paren"] { list-style-type: oledit-upper-roman-paren; }
 
+/* Bullet markers render through the bundled symbol shim first: it holds only the
+   glyphs Liberation Serif lacks (❖ ➢ ⇨ ✓ ▸ ◆), so those come out compact and
+   platform-independent while every other char falls through to the text font. */
+.paper .tiptap ul > li::marker {
+  font-family: 'EdenText Symbols', 'Liberation Serif', serif;
+}
+
+/* Default bullet markers per nesting depth — the same cycle the ODT/DOCX export
+   writes (DEFAULT_BULLET_CYCLE in bulletListTypes.ts). A custom `bulletChar` attr
+   overrides these via an inline list-style-type from bulletList.ts renderHTML. */
+.paper .tiptap ul                { list-style-type: "• "; }
+.paper .tiptap ul ul             { list-style-type: "◦ "; }
+.paper .tiptap ul ul ul          { list-style-type: "▪ "; }
+.paper .tiptap ul ul ul ul       { list-style-type: "▸ "; }
+.paper .tiptap ul ul ul ul ul    { list-style-type: "– "; }
+.paper .tiptap ul ul ul ul ul ul { list-style-type: "· "; }
+
 .paper .tiptap li {
   margin-top: 0;
   margin-bottom: 0;

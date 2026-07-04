@@ -3,6 +3,7 @@
   import HistoryButton from './HistoryButton.svelte';
   import AlignButton from './AlignButton.svelte';
   import { ORDERED_LIST_TYPES, DEFAULT_ORDERED_TYPE, type OrderedListType } from '../utils/orderedListTypes';
+  import { BULLET_TYPES } from '../utils/bulletListTypes';
   import { isInHeaderCell } from '../editor/extensions/tableHeaderRow';
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
@@ -33,6 +34,30 @@
   });
 
   let olMenuOpen = $state(false);
+  let blMenuOpen = $state(false);
+
+  // Marker char of the innermost bullet list at the cursor (null = default cycle
+  // or not in a bullet list).
+  let currentBulletChar = $derived.by<string | null>(() => {
+    if (tick < 0 || !editor || !editor.isActive('bulletList')) return null;
+    return (editor.getAttributes('bulletList').bulletChar ?? null) as string | null;
+  });
+
+  // Toggle a plain bullet list — the split button's main half.
+  function toggleBulletList() {
+    blMenuOpen = false;
+    editor?.chain().focus().toggleBulletList().run();
+  }
+
+  // Apply a marker char to the innermost list level (null = default); creates the
+  // list first if the selection isn't in one.
+  function applyBulletChar(char: string | null) {
+    if (!editor) return;
+    blMenuOpen = false;
+    const chain = editor.chain().focus();
+    if (!editor.isActive('bulletList')) chain.toggleBulletList();
+    chain.setBulletChar(char).run();
+  }
 
   // Toggle a plain (decimal) ordered list — the split button's main half.
   function toggleOrderedList() {
@@ -49,9 +74,9 @@
     chain.updateAttributes('orderedList', { listStyleType: key }).run();
   }
 
-  function olMenuClickOutside(node: HTMLElement) {
+  function menuClickOutside(node: HTMLElement, close: () => void) {
     function handler(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) olMenuOpen = false;
+      if (!node.contains(e.target as Node)) close();
     }
     window.addEventListener('mousedown', handler);
     return { destroy() { window.removeEventListener('mousedown', handler); } };
@@ -132,21 +157,65 @@
     <div class="toolbar-separator"></div>
 
     <div class="toolbar-group">
-      <button
-        class:active={isBulletList}
-        onclick={() => editor?.chain().focus().toggleBulletList().run()}
-        title="Bullet list"
-      >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <circle cx="2" cy="4" r="1.5" fill="currentColor"/>
-          <circle cx="2" cy="8" r="1.5" fill="currentColor"/>
-          <circle cx="2" cy="12" r="1.5" fill="currentColor"/>
-          <line x1="5.5" y1="4" x2="15" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="5.5" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="5.5" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-      </button>
-      <div class="ol-picker" use:olMenuClickOutside>
+      <div class="ol-picker" use:menuClickOutside={() => (blMenuOpen = false)}>
+        <div class="ol-split">
+          <button
+            class="ol-main"
+            class:active={isBulletList}
+            onclick={toggleBulletList}
+            title="Bullet list"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="2" cy="4" r="1.5" fill="currentColor"/>
+              <circle cx="2" cy="8" r="1.5" fill="currentColor"/>
+              <circle cx="2" cy="12" r="1.5" fill="currentColor"/>
+              <line x1="5.5" y1="4" x2="15" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="5.5" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="5.5" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <button
+            class="ol-chevron"
+            class:active={isBulletList}
+            onclick={() => (blMenuOpen = !blMenuOpen)}
+            title="Bullet symbol"
+            aria-haspopup="menu"
+            aria-expanded={blMenuOpen}
+          >
+            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+              <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        {#if blMenuOpen}
+          <div class="ol-dropdown bl-dropdown" role="menu">
+            <div class="ol-section-label">Bullet symbol</div>
+            <button
+              class="ol-option"
+              class:active={isBulletList && currentBulletChar === null}
+              onclick={() => applyBulletChar(null)}
+              role="menuitemradio"
+              aria-checked={isBulletList && currentBulletChar === null}
+            >
+              <span class="ol-option-preview">•</span>
+              <span class="ol-option-label">Default (by level)</span>
+            </button>
+            <div class="bl-grid">
+              {#each BULLET_TYPES as t}
+                <button
+                  class="bl-tile"
+                  class:active={currentBulletChar === t.char}
+                  onclick={() => applyBulletChar(t.char)}
+                  title={t.label}
+                  role="menuitemradio"
+                  aria-checked={currentBulletChar === t.char}
+                >{t.char}</button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      </div>
+      <div class="ol-picker" use:menuClickOutside={() => (olMenuOpen = false)}>
         <div class="ol-split">
           <button
             class="ol-main"
@@ -381,6 +450,37 @@
   }
 
   .ol-option.active .ol-option-label {
+    color: white;
+  }
+
+  /* Bullet-symbol picker: the curated chars as a compact tile grid. */
+  .bl-dropdown {
+    min-width: 130px;
+  }
+
+  .bl-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    padding: 2px;
+  }
+
+  .bl-tile {
+    min-width: unset;
+    height: 1.9rem;
+    padding: 0;
+    border-radius: calc(var(--radius) - 2px);
+    /* Same symbol shim the list markers use, so tiles preview the real glyphs. */
+    font-family: 'EdenText Symbols', var(--font-serif, serif);
+    font-size: 1rem;
+  }
+
+  .bl-tile:hover {
+    background: var(--color-btn-hover);
+  }
+
+  .bl-tile.active {
+    background: var(--color-primary);
     color: white;
   }
 </style>

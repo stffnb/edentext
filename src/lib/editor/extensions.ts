@@ -14,7 +14,7 @@ import { FontWeight } from './extensions/fontWeight';
 import { FontColor } from './extensions/fontColor';
 import HardBreak from '@tiptap/extension-hard-break';
 import Heading from '@tiptap/extension-heading';
-import BulletList from '@tiptap/extension-bullet-list';
+import { BulletList } from './extensions/bulletList';
 import { OrderedList } from './extensions/orderedList';
 import ListItem from '@tiptap/extension-list-item';
 import { Table, TableHeader, TableCell } from '@tiptap/extension-table';

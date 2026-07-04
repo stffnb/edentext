@@ -20,6 +20,7 @@ import { HF_DISTANCE_CM, hfIsEmpty } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { orderedTypeDef } from '../utils/orderedListTypes';
+import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, HEADING_STYLE_OVERRIDES, type HfExport } from './odt';
 
 // DOCX export. Mirrors export/odt.ts feature-for-feature, but builds OOXML via the
@@ -33,8 +34,11 @@ type Writable<T> = { -readonly [P in keyof T]: T[P] };
 const SCREEN_FONT = 'Liberation Serif';
 const DOC_FONT = 'Times New Roman';
 
-// Word's bullet glyph per nesting level (matches odt.ts CELL_BULLET_CHARS).
-const BULLET_CHARS = ['•', '◦', '▪', '▸', '–', '·'];
+// Effective bullet glyph of a list node: its bulletChar attr, else the default cycle.
+function bulletCharOf(node: TiptapNode, depth0: number): string {
+  const ch = node.attrs?.bulletChar;
+  return typeof ch === 'string' && ch ? ch : defaultBulletChar(depth0);
+}
 
 // List geometry: 0.5in left step per level, 0.25in hanging for the marker (Word defaults).
 const LIST_LEFT_STEP_CM = 1.27;
@@ -120,7 +124,9 @@ class Numbering {
       levels.push({
         level: depth,
         format: LevelFormat.BULLET,
-        text: BULLET_CHARS[depth % BULLET_CHARS.length],
+        // The Unicode char goes into w:lvlText literally; Word renders it in the
+        // paragraph font (no Wingdings/Symbol rFonts needed).
+        text: bulletCharOf(node, depth),
         alignment: AlignmentType.LEFT,
         style: { paragraph: { indent } },
       });
@@ -405,7 +411,7 @@ function txbxListXml(node: TiptapNode, depth: number): string {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
         out += txbxListXml(child, depth + 1);
       } else if (child.type === 'paragraph' || child.type === 'heading') {
-        const marker = first ? (ordered ? `${n}. ` : `${BULLET_CHARS[depth % BULLET_CHARS.length]} `) : '';
+        const marker = first ? (ordered ? `${n}. ` : `${bulletCharOf(node, depth)} `) : '';
         out += txbxParagraphXml(child, cmToTwip((depth + 1) * LIST_HANGING_CM), marker);
         first = false;
       }

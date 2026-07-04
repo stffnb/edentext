@@ -27,8 +27,9 @@ export type RunProps = {
   highlightFill?: string; // run-level w:shd w:fill (text highlight)
 };
 
-// A numbering level definition (numbering.xml w:lvl).
-export type LevelDef = { numFmt?: string; lvlText?: string; leftTwip?: number; start?: number };
+// A numbering level definition (numbering.xml w:lvl). bulletFont is the level's
+// w:rPr/w:rFonts (Wingdings/Symbol give the bullet glyph its meaning).
+export type LevelDef = { numFmt?: string; lvlText?: string; leftTwip?: number; start?: number; bulletFont?: string };
 
 export function wVal(el: Element): string | null {
   return el.getAttributeNS(W, 'val');
@@ -162,6 +163,8 @@ export class DocxStyles {
         const start = firstChild(lvl, 'start'); if (start) { const n = parseInt(wVal(start) ?? '', 10); if (Number.isFinite(n)) def.start = n; }
         const ind = firstChild(lvl, 'pPr') && firstChild(firstChild(lvl, 'pPr')!, 'ind');
         if (ind) { const l = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10); if (Number.isFinite(l)) def.leftTwip = l; }
+        const rf = firstChild(lvl, 'rPr') && firstChild(firstChild(lvl, 'rPr')!, 'rFonts');
+        if (rf) { const f = rf.getAttributeNS(W, 'ascii') ?? rf.getAttributeNS(W, 'hAnsi'); if (f) def.bulletFont = f; }
         levels.set(ilvl, def);
       }
       this.abstractLevels.set(id, levels);

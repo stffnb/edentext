@@ -9,6 +9,7 @@ import { hfIsEmpty, type HfDoc } from '../storage/headerFooter';
 import { extensions } from '../editor/extensions';
 import { columnPercents } from '../editor/extensions/tableView';
 import { orderedTypeDef } from '../utils/orderedListTypes';
+import { defaultBulletChar } from '../utils/bulletListTypes';
 import { deriveFilename } from './odt';
 import globalCss from '../../styles/global.css?inline';
 import editorCss from '../../styles/editor.css?inline';
@@ -121,8 +122,6 @@ function collectRuns(root: HTMLElement): Run[] {
   return runs;
 }
 
-const BULLET_CHARS = ['•', '◦', '▪']; // <ul> nesting cycle (disc/circle/square)
-
 function toRoman(n: number): string {
   const map: [number, string][] = [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']];
   let s = '';
@@ -152,11 +151,38 @@ function listMarkerGlyph(li: HTMLElement, root: HTMLElement): string {
       : String(n);
     return body + def.numSuffix;
   }
+  // Explicit bulletChar attr wins; otherwise the default cycle keyed by the number
+  // of <ul> ancestors (matching editor.css's `ul ul …` depth rules).
+  const explicit = parent.getAttribute('data-bullet');
+  if (explicit) return explicit;
   let depth = 0;
   for (let e: HTMLElement | null = li.parentElement; e && e !== root; e = e.parentElement) {
-    if (e.tagName === 'UL' || e.tagName === 'OL') depth++;
+    if (e.tagName === 'UL') depth++;
   }
-  return BULLET_CHARS[(depth - 1 + BULLET_CHARS.length) % BULLET_CHARS.length];
+  return defaultBulletChar(depth - 1);
+}
+
+// html2canvas can't paint string list-style-type values (all our <ul> markers), so
+// bullets become real spans hanging left of the first line — the same markup
+// relocateFloatPushedMarkers uses, which also puts the glyphs into the text layer.
+function materializeBulletMarkers(root: HTMLElement): void {
+  for (const li of Array.from(root.querySelectorAll<HTMLLIElement>('ul > li'))) {
+    const cs = getComputedStyle(li);
+    if (cs.listStyleType === 'none') continue;
+    const glyph = listMarkerGlyph(li, root);
+    if (!glyph) continue;
+    li.style.listStyleType = 'none';
+    const target = li.querySelector(':scope > p, :scope > h1, :scope > h2, :scope > h3') ?? li;
+    const slot = document.createElement('span');
+    slot.style.cssText = 'display:inline-block;width:0;overflow:visible;vertical-align:baseline';
+    const label = document.createElement('span');
+    label.style.cssText = `display:inline-block;white-space:pre;transform:translateX(-100%);padding-right:0.33em;color:${cs.color}`;
+    // Same symbol shim the editor's ::marker uses (glyphs Liberation Serif lacks).
+    label.style.fontFamily = `'EdenText Symbols', ${cs.fontFamily}`;
+    label.textContent = glyph;
+    slot.appendChild(label);
+    target.insertBefore(slot, target.firstChild);
+  }
 }
 
 // html2canvas paints list markers at the item's content-box left edge, ignoring floats, so
@@ -193,7 +219,7 @@ function relocateFloatPushedMarkers(root: HTMLElement): void {
 // every page (page i occupies [i*cycle, i*cycle+pageH]). Shared by the PDF download and
 // the raster print path; the caller invokes cleanup() once done reading `clone`. `scale`
 // is the oversampling factor @ A4 (2 ≈ 192 dpi, 3 ≈ 288 dpi).
-async function renderPaperToCanvas(opts: PdfOptions, scale = 2): Promise<{
+export async function renderPaperToCanvas(opts: PdfOptions, scale = 2): Promise<{
   canvas: HTMLCanvasElement; clone: HTMLElement; pages: number;
   pageW: number; pageH: number; cycle: number; scale: number; cleanup: () => void;
 }> {
@@ -210,6 +236,9 @@ async function renderPaperToCanvas(opts: PdfOptions, scale = 2): Promise<{
 
   try {
     await document.fonts.ready;
+    // Bullets first: it sets list-style none on <ul> items, so the float pass
+    // (which skips those) only re-hangs ordered-list markers.
+    materializeBulletMarkers(clone);
     relocateFloatPushedMarkers(clone);
     const pages = Math.max(1, opts.numPages ?? Math.round((clone.offsetHeight + PAGE_GAP) / cycle));
 

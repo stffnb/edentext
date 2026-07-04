@@ -91,13 +91,23 @@ const fixture: N = {
       LI(P(null, T('shifted bullet a'))),
       LI(P(null, T('shifted bullet b'))),
     ] },
+    // Custom bullet chars: ❖ at level 1; ✓ on the DFS-first nested list (drives the
+    // L# level-2 char); a default nested sibling (must NL-mint back to ◦).
+    { type: 'bulletList', attrs: { bulletChar: '❖' }, content: [
+      LI(P(null, T('diamond one')), { type: 'bulletList', attrs: { bulletChar: '✓' }, content: [
+        LI(P(null, T('check nested'))),
+      ] }),
+      LI(P(null, T('diamond two')), { type: 'bulletList', content: [
+        LI(P(null, T('default nested'))),
+      ] }),
+    ] },
     H({ level: 2 }, T('Un', { type: 'textStyle', attrs: { fontWeight: 'normal' } }), T('bolded')),
     { type: 'table', content: [
       { type: 'tableRow', attrs: { rowHeight: 60 }, content: [
         CELL([120],
           H({ level: 3 }, T('Cell head')),
           P(null, T('cell para')),
-          { type: 'bulletList', content: [
+          { type: 'bulletList', attrs: { bulletChar: '➢' }, content: [
             LI(P(null, T('cell bullet'))),
             LI(P(null, T('with nested')), { type: 'orderedList', attrs: { listStyleType: 'decimal-paren' }, content: [
               LI(P(null, T('cell nested 1'))),
@@ -401,6 +411,11 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
    <text:list-level-style-number text:level="1" style:num-format="i" style:num-suffix=")"/>
    <text:list-level-style-bullet text:level="2" text:bullet-char="•"/>
   </text:list-style>
+  <text:list-style style:name="L2">
+   <text:list-level-style-bullet text:level="1" text:bullet-char="&#xF0D8;">
+    <style:text-properties style:font-name="Wingdings"/>
+   </text:list-level-style-bullet>
+  </text:list-style>
   <style:style style:name="co1" style:family="table-column"><style:table-column-properties style:column-width="5cm"/></style:style>
   <style:style style:name="co2" style:family="table-column"><style:table-column-properties style:column-width="10cm"/></style:style>
   <style:style style:name="ro1" style:family="table-row"><style:table-row-properties style:min-row-height="2cm"/></style:style>
@@ -415,6 +430,9 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
    <text:list-item text:start-value="3"><text:p>roman three</text:p>
     <text:list><text:list-item><text:p>sub bullet</text:p></text:list-item></text:list>
    </text:list-item>
+  </text:list>
+  <text:list text:style-name="L2">
+   <text:list-item><text:p>wingdings arrow</text:p></text:list-item>
   </text:list>
   <table:table>
    <table:table-column table:style-name="co1"/>
@@ -475,7 +493,10 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: list → lower-roman-paren, start 3', list.type === 'orderedList' && list.attrs?.listStyleType === 'lower-roman-paren' && list.attrs?.start === 3, list.attrs);
     check('foreign: level-2 def → nested bulletList', list.content![0].content![1]?.type === 'bulletList', list.content![0]);
 
-    const table = c[6];
+    const wdList = c.find((n: N) => n.type === 'bulletList' && n.content?.[0]?.content?.[0]?.content?.[0]?.text === 'wingdings arrow');
+    check('foreign: Wingdings PUA bullet-char → ➢', wdList?.attrs?.bulletChar === '➢', wdList?.attrs);
+
+    const table = c[7];
     check('foreign: table present', table.type === 'table');
     const [hdr, row] = table.content!;
     check('foreign: header row → tableHeader ×3', hdr.content!.length === 3 && hdr.content!.every((cell: N) => cell.type === 'tableHeader'), hdr.content!.map((x: N) => x.type));

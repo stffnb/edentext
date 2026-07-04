@@ -4,6 +4,7 @@ import { lengthToPt } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { DEFAULT_ORDERED_TYPE, orderedTypeFromFormat } from '../utils/orderedListTypes';
+import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
@@ -288,7 +289,10 @@ function makeListNode(ctx: Ctx, numId: number, ilvl: number): Node {
   const def = ctx.styles.level(numId, ilvl);
   const bullet = !def.numFmt || def.numFmt === 'bullet' || def.numFmt === 'none';
   const attrs: Record<string, unknown> = {};
-  if (!bullet) {
+  if (bullet) {
+    const ch = bulletCharAttr(bulletCharFromDocx(def.lvlText, def.bulletFont), ilvl);
+    if (ch) attrs.bulletChar = ch;
+  } else {
     const lst = orderedTypeFromFormat(wordFmtChar(def.numFmt), lvlSuffix(def.lvlText));
     if (lst !== DEFAULT_ORDERED_TYPE) attrs.listStyleType = lst;
     if (def.start != null && def.start > 1) attrs.start = def.start;

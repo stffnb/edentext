@@ -41,7 +41,7 @@ describe('DOCX export → import round trip', () => {
       { type: 'paragraph', attrs: { fontSize: '22pt', textAlign: 'center' } }, // empty sized line
       para([text('a\tb')]),
       para([text('line1'), { type: 'hardBreak' }, text('line2')]),
-      { type: 'bulletList', content: [li(para('one')), li(para('two'), { type: 'bulletList', content: [li(para('nested'))] })] },
+      { type: 'bulletList', attrs: { bulletChar: '❖' }, content: [li(para('one')), li(para('two'), { type: 'bulletList', attrs: { bulletChar: '➢' }, content: [li(para('nested'))] })] },
       { type: 'orderedList', attrs: { listStyleType: 'lower-alpha' }, content: [li(para('alpha'))] },
       para([{ type: 'image', attrs: { src: PNG, width: 100, height: 80, wrap: 'left', alt: 'pic' } }]),
       { type: 'textBox', attrs: { width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 }, content: [
@@ -111,6 +111,9 @@ describe('DOCX export → import round trip', () => {
     const nested = top.content![1].content!.find((c) => c.type === 'bulletList')!;
     expect(nested).toBeTruthy();
     expect(walk(nested, 'text')[0].text).toBe('nested');
+    // Custom bullet chars survive via w:lvlText
+    expect(top.attrs?.bulletChar).toBe('❖');
+    expect(nested.attrs?.bulletChar).toBe('➢');
     const ol = walk(doc, 'orderedList')[0];
     expect(ol.attrs.listStyleType).toBe('lower-alpha');
   });
@@ -181,6 +184,8 @@ describe('DOCX import of a foreign Word document', () => {
   const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
     <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Foreign Title</w:t></w:r></w:p>
     <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>First</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t>Wingdings diamond</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t>Courier hollow</w:t></w:r></w:p>
     <w:tbl><w:tblGrid><w:gridCol w:w="4000"/><w:gridCol w:w="4000"/></w:tblGrid>
       <w:tr><w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>B</w:t></w:r></w:p></w:tc></w:tr>
       <w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc><w:tc><w:p><w:r><w:t>C</w:t></w:r></w:p></w:tc></w:tr>
@@ -194,7 +199,12 @@ describe('DOCX import of a foreign Word document', () => {
   </w:styles>`;
   const numberingXml = `<?xml version="1.0"?><w:numbering ${W}>
     <w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>
+    <w:abstractNum w:abstractNumId="1">
+      <w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/><w:lvlText w:val="&#xF076;"/><w:rPr><w:rFonts w:ascii="Wingdings" w:hAnsi="Wingdings"/></w:rPr></w:lvl>
+      <w:lvl w:ilvl="1"><w:numFmt w:val="bullet"/><w:lvlText w:val="o"/><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/></w:rPr></w:lvl>
+    </w:abstractNum>
     <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
+    <w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>
   </w:numbering>`;
 
   const bytes = zipSync({
@@ -212,6 +222,16 @@ describe('DOCX import of a foreign Word document', () => {
     const t = walk(h, 'text')[0];
     expect(hasMark(t, 'bold')).toBe(false); // heading bold is presentational
     expect(markAttrs(t, 'textStyle')?.fontFamily).toBe('Arial'); // resolved from the style
+  });
+
+  it('maps Word symbol-font bullets and suppresses the default cycle', () => {
+    const bullets = walk(doc, 'bulletList');
+    const top = bullets.find((b) => walk(b, 'text').some((t) => t.text === 'Wingdings diamond'))!;
+    expect(top).toBeTruthy();
+    expect(top.attrs?.bulletChar).toBe('❖'); // Wingdings U+F076
+    const nested = walk(top, 'bulletList').find((b) => b !== top)!;
+    expect(walk(nested, 'text')[0].text).toBe('Courier hollow');
+    expect(nested.attrs?.bulletChar ?? null).toBe(null); // Courier 'o' = default ◦ at level 2
   });
 
   it('reconstructs a numbered list and a vertically-merged table', () => {
