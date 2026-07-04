@@ -155,9 +155,9 @@
             title="Ordered list"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <text x="0" y="5.5" font-size="5" font-family="sans-serif" fill="currentColor">1.</text>
-              <text x="0" y="9.5" font-size="5" font-family="sans-serif" fill="currentColor">2.</text>
-              <text x="0" y="13.5" font-size="5" font-family="sans-serif" fill="currentColor">3.</text>
+              <text x="0" y="5.5" font-size="5" font-weight="bold" font-family="sans-serif" fill="currentColor">1.</text>
+              <text x="0" y="9.5" font-size="5" font-weight="bold" font-family="sans-serif" fill="currentColor">2.</text>
+              <text x="0" y="13.5" font-size="5" font-weight="bold" font-family="sans-serif" fill="currentColor">3.</text>
               <line x1="5.5" y1="4" x2="15" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               <line x1="5.5" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               <line x1="5.5" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -216,8 +216,8 @@
   .toolbar {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.35rem 1rem;
+    gap: 0.125rem;
+    padding: 0.25rem 1rem;
     background: var(--color-toolbar-bg);
     position: sticky;
     top: 0;
@@ -226,23 +226,23 @@
 
   .toolbar-group {
     display: flex;
-    gap: 2px;
+    gap: 1px;
   }
 
   .toolbar-separator {
     width: 1px;
-    height: 1.5rem;
+    height: 1.2rem;
     background: var(--color-border);
-    margin: 0 0.5rem;
+    margin: 0 0.3rem;
   }
 
   button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 2rem;
-    height: 2rem;
-    padding: 0 0.5rem;
+    min-width: var(--toolbar-btn-size);
+    height: var(--toolbar-btn-size);
+    padding: 0 0.3rem;
     border: none;
     border-radius: var(--radius);
     background: transparent;
@@ -287,7 +287,7 @@
   .ol-split {
     display: inline-flex;
     align-items: stretch;
-    height: 2rem;
+    height: var(--toolbar-btn-size);
     border: 1px solid transparent;
     border-radius: var(--radius);
     overflow: hidden;
@@ -305,7 +305,7 @@
   .ol-main {
     min-width: unset;
     height: 100%;
-    padding: 0 0.2rem 0 0.5rem;
+    padding: 0 0.2rem 0 0.3rem;
     border-radius: 0;
   }
 

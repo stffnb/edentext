@@ -130,7 +130,7 @@
   .history-control {
     display: inline-flex;
     align-items: stretch;
-    height: 2rem;
+    height: var(--toolbar-btn-size);
     border: 1px solid transparent;
     border-radius: var(--radius);
     overflow: hidden;
@@ -161,8 +161,8 @@
   }
 
   .history-main {
-    min-width: 2rem;
-    padding: 0 0.4rem;
+    min-width: var(--toolbar-btn-size);
+    padding: 0 0.3rem;
     border-radius: 0;
   }
 

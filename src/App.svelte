@@ -964,7 +964,7 @@
   }
 
   .app-logo {
-    height: 17px;
+    height: 15px;
     width: auto;
     display: block;
     opacity: 1.0;
@@ -1165,8 +1165,8 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    height: 2rem;
-    padding: 0 0.55rem;
+    height: var(--toolbar-btn-size);
+    padding: 0 0.45rem;
     position: absolute;
     left: 0.75rem;
     top: -1px;

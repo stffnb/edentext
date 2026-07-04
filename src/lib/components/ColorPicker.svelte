@@ -452,7 +452,7 @@
   .color-split {
     display: inline-flex;
     align-items: stretch;
-    height: 2rem;
+    height: var(--toolbar-btn-size);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     background: var(--color-surface);

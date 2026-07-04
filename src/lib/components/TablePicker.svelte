@@ -165,9 +165,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 2rem;
-    height: 2rem;
-    padding: 0 0.5rem;
+    min-width: var(--toolbar-btn-size);
+    height: var(--toolbar-btn-size);
+    padding: 0 0.3rem;
     border: 1px solid transparent;
     border-radius: var(--radius);
     background: transparent;

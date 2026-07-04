@@ -122,7 +122,7 @@
 
 <div class="char-picker" use:charPickerClickOutside>
   <button class="char-trigger" onclick={openPicker} title="Insert special character" aria-pressed={open}>
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <text x="8" y="12.5" font-size="14" font-weight="700" font-family="var(--font-serif, serif)" fill="currentColor" text-anchor="middle">Ω</text>
     </svg>
   </button>
@@ -184,9 +184,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 2rem;
-    height: 2rem;
-    padding: 0 0.5rem;
+    min-width: var(--toolbar-btn-size);
+    height: var(--toolbar-btn-size);
+    padding: 0 0.3rem;
     border: 1px solid transparent;
     border-radius: var(--radius);
     background: transparent;

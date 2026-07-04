@@ -135,8 +135,8 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    height: 2rem;
-    padding: 0 0.4rem;
+    height: var(--toolbar-btn-size);
+    padding: 0 0.3rem;
     border: 1px solid transparent;
     border-radius: var(--radius);
     background: transparent;

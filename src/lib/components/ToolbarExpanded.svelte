@@ -893,7 +893,7 @@
       >
         {#snippet icon()}
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <text x="3" y="11" font-size="10" font-weight="bold" font-family="sans-serif" fill="currentColor">A</text>
+            <text x="8" y="14" text-anchor="middle" font-size="15" font-family="sans-serif" fill="currentColor">A</text>
           </svg>
         {/snippet}
       </ColorPicker>
@@ -1237,7 +1237,7 @@
         title={hfActive ? 'Text boxes are not available in headers/footers' : 'Insert text box'}
         aria-label="Insert text box"
       >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <rect x="1.5" y="3.5" width="13" height="9" rx="1" stroke="currentColor" />
           <path d="M5.5 6.5h5M8 6.5v4" stroke="currentColor" stroke-linecap="round" />
         </svg>
@@ -1332,7 +1332,7 @@
   .toolbar-expanded {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 0.125rem;
     flex: 1;
     min-width: 0;
     padding: 0;
@@ -1347,23 +1347,23 @@
 
   .toolbar-group {
     display: flex;
-    gap: 2px;
+    gap: 1px;
   }
 
   .toolbar-separator {
     width: 1px;
-    height: 1.5rem;
+    height: 1.2rem;
     background: var(--color-border);
-    margin: 0 0.5rem;
+    margin: 0 0.3rem;
   }
 
   button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 2rem;
-    height: 2rem;
-    padding: 0 0.5rem;
+    min-width: var(--toolbar-btn-size);
+    height: var(--toolbar-btn-size);
+    padding: 0 0.3rem;
     border: none;
     border-radius: var(--radius);
     background: transparent;
@@ -1415,7 +1415,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    height: 2rem;
+    height: var(--toolbar-btn-size);
     padding: 0 0.4rem 0 0.6rem;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -1529,7 +1529,7 @@
   .size-trigger-wrap {
     display: inline-flex;
     align-items: center;
-    height: 2rem;
+    height: var(--toolbar-btn-size);
     width: 62px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -1629,7 +1629,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    height: 2rem;
+    height: var(--toolbar-btn-size);
     padding: 0 0.4rem;
     border: 1px solid transparent;
     border-radius: var(--radius);
@@ -1668,7 +1668,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    height: 2rem;
+    height: var(--toolbar-btn-size);
     padding: 0 0.5rem;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
