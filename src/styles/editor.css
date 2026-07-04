@@ -387,6 +387,7 @@
 @counter-style oledit-lower-roman-paren { system: extends lower-roman; suffix: ") "; }
 @counter-style oledit-upper-roman-paren { system: extends upper-roman; suffix: ") "; }
 
+.paper .tiptap ol[data-list-style="decimal"]           { list-style-type: decimal; }
 .paper .tiptap ol[data-list-style="decimal-paren"]     { list-style-type: oledit-decimal-paren; }
 .paper .tiptap ol[data-list-style="lower-alpha"]       { list-style-type: lower-alpha; }
 .paper .tiptap ol[data-list-style="lower-alpha-paren"] { list-style-type: oledit-lower-alpha-paren; }
@@ -396,6 +397,24 @@
 .paper .tiptap ol[data-list-style="lower-roman-paren"] { list-style-type: oledit-lower-roman-paren; }
 .paper .tiptap ol[data-list-style="upper-roman"]       { list-style-type: upper-roman; }
 .paper .tiptap ol[data-list-style="upper-roman-paren"] { list-style-type: oledit-upper-roman-paren; }
+
+/* Default numbering per nesting depth when no data-list-style is set — Word's
+   multilevel template 1. → a. → i., repeating (DEFAULT_ORDERED_CYCLE in
+   orderedListTypes.ts). Explicit attrs win via the higher-specificity rules above. */
+.paper .tiptap ol          { list-style-type: decimal; }
+.paper .tiptap ol ol       { list-style-type: lower-alpha; }
+.paper .tiptap ol ol ol    { list-style-type: lower-roman; }
+.paper .tiptap ol ol ol ol { list-style-type: decimal; }
+.paper .tiptap ol ol ol ol ol    { list-style-type: lower-alpha; }
+.paper .tiptap ol ol ol ol ol ol { list-style-type: lower-roman; }
+
+/* Legal/outline numbering (1., 1.1., 1.2.1. …): the whole chain rendered via CSS
+   counters. Applies to the multilevel list and its attr-less nested ordered lists;
+   a nested explicit style breaks out via its own data-list-style rule. */
+.paper .tiptap ol[data-list-style="multilevel"] > li::marker,
+.paper .tiptap ol[data-list-style="multilevel"] ol:not([data-list-style]) > li::marker {
+  content: counters(list-item, ".") ". ";
+}
 
 /* Bullet markers render through the bundled symbol shim first: it holds only the
    glyphs Liberation Serif lacks (❖ ➢ ⇨ ✓ ▸ ◆), so those come out compact and

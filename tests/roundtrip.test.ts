@@ -87,6 +87,28 @@ const fixture: N = {
       LI(P({ textAlign: 'center' }, T('centered item'))),
       LI(P(null, T('plain item'))),
     ] },
+    // Depth-default numbering: attr-less nested levels export as a./i. and re-import
+    // as null (cycle suppression).
+    { type: 'orderedList', content: [
+      LI(P(null, T('cycle one')), { type: 'orderedList', content: [
+        LI(P(null, T('cycle sub')), { type: 'orderedList', content: [
+          LI(P(null, T('cycle subsub'))),
+        ] }),
+      ] }),
+    ] },
+    // Multilevel (1. / 1.1. / 1.1.1.): attr on the top list only; an explicit style
+    // inside the chain breaks out (NL mint) and must survive as an explicit attr.
+    { type: 'orderedList', attrs: { listStyleType: 'multilevel' }, content: [
+      LI(P(null, T('ml one')), { type: 'orderedList', content: [
+        LI(P(null, T('ml one-one')), { type: 'orderedList', content: [
+          LI(P(null, T('ml deep'))),
+        ] }),
+        LI(P(null, T('ml one-two')), { type: 'orderedList', attrs: { listStyleType: 'upper-alpha' }, content: [
+          LI(P(null, T('ml override'))),
+        ] }),
+      ] }),
+      LI(P(null, T('ml two'))),
+    ] },
     { type: 'bulletList', attrs: { indent: 2.5 }, content: [
       LI(P(null, T('shifted bullet a'))),
       LI(P(null, T('shifted bullet b'))),

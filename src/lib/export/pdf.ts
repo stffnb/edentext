@@ -8,7 +8,7 @@ import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import { hfIsEmpty, type HfDoc } from '../storage/headerFooter';
 import { extensions } from '../editor/extensions';
 import { columnPercents } from '../editor/extensions/tableView';
-import { orderedTypeDef } from '../utils/orderedListTypes';
+import { effectiveOrderedDef, formatOrdinal } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { deriveFilename } from './odt';
 import globalCss from '../../styles/global.css?inline';
@@ -122,34 +122,50 @@ function collectRuns(root: HTMLElement): Run[] {
   return runs;
 }
 
-function toRoman(n: number): string {
-  const map: [number, string][] = [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']];
-  let s = '';
-  for (const [v, sym] of map) while (n >= v) { s += sym; n -= v; }
-  return s;
+// 1-based ordinal of a li within its list (start attr respected).
+function liOrdinal(li: HTMLElement): number {
+  const parent = li.parentElement!;
+  const items = Array.from(parent.children).filter((c) => c.tagName === 'LI');
+  return parseInt(parent.getAttribute('start') ?? '1', 10) + items.indexOf(li);
 }
 
-function toAlpha(n: number): string {
-  let s = '';
-  while (n > 0) { n--; s = String.fromCharCode(97 + (n % 26)) + s; n = Math.floor(n / 26); }
-  return s;
+// The <ol> whose 'multilevel' style governs this list: itself, or the nearest
+// ordered ancestor with the attr reached without crossing another explicit style.
+function multilevelRoot(ol: HTMLElement, root: HTMLElement): HTMLElement | null {
+  for (let e: HTMLElement | null = ol; e && e !== root; e = e.parentElement) {
+    if (e.tagName !== 'OL') continue;
+    const t = e.getAttribute('data-list-style');
+    if (t === 'multilevel') return e;
+    if (t) return null; // a nearer explicit style cuts the chain
+  }
+  return null;
 }
 
-// The marker text the browser renders for a list item: the nesting-depth bullet for a
-// <ul>, or the formatted ordinal (orderedListTypes) for an <ol>.
+// The marker text the browser renders for a list item: the depth bullet/bulletChar
+// for a <ul>, the effective ordinal (depth cycle 1. → a. → i., explicit type, or
+// the multilevel chain "1.2.1.") for an <ol>.
 function listMarkerGlyph(li: HTMLElement, root: HTMLElement): string {
   const parent = li.parentElement;
   if (!parent) return '';
   if (parent.tagName === 'OL') {
-    const items = Array.from(parent.children).filter((c) => c.tagName === 'LI');
-    const n = parseInt(parent.getAttribute('start') ?? '1', 10) + items.indexOf(li);
-    const def = orderedTypeDef(parent.getAttribute('data-list-style'));
-    const body = def.numFormat === 'a' ? toAlpha(n)
-      : def.numFormat === 'A' ? toAlpha(n).toUpperCase()
-      : def.numFormat === 'i' ? toRoman(n)
-      : def.numFormat === 'I' ? toRoman(n).toUpperCase()
-      : String(n);
-    return body + def.numSuffix;
+    const mlRoot = multilevelRoot(parent, root);
+    if (mlRoot) {
+      // Chain: ordinals of every ordered level from the multilevel root down.
+      const chain: number[] = [];
+      for (let e: HTMLElement | null = li; e && e !== root; e = e.parentElement) {
+        if (e.tagName === 'LI' && e.parentElement?.tagName === 'OL') {
+          chain.unshift(liOrdinal(e));
+          if (e.parentElement === mlRoot) break;
+        }
+      }
+      return chain.join('.') + '.';
+    }
+    let olDepth = 0;
+    for (let e: HTMLElement | null = parent; e && e !== root; e = e.parentElement) {
+      if (e.tagName === 'OL') olDepth++;
+    }
+    const def = effectiveOrderedDef(parent.getAttribute('data-list-style'), olDepth - 1);
+    return formatOrdinal(liOrdinal(li), def.numFormat) + def.numSuffix;
   }
   // Explicit bulletChar attr wins; otherwise the default cycle keyed by the number
   // of <ul> ancestors (matching editor.css's `ul ul …` depth rules).
@@ -162,11 +178,11 @@ function listMarkerGlyph(li: HTMLElement, root: HTMLElement): string {
   return defaultBulletChar(depth - 1);
 }
 
-// html2canvas can't paint string list-style-type values (all our <ul> markers), so
-// bullets become real spans hanging left of the first line — the same markup
-// relocateFloatPushedMarkers uses, which also puts the glyphs into the text layer.
-function materializeBulletMarkers(root: HTMLElement): void {
-  for (const li of Array.from(root.querySelectorAll<HTMLLIElement>('ul > li'))) {
+// html2canvas can't paint our markers (string list-style-type, @counter-style paren
+// numbering, counters() chains), so each marker becomes a real span hanging left of the
+// item's first line — also keeping it beside float-pushed lines and in the text layer.
+function materializeListMarkers(root: HTMLElement): void {
+  for (const li of Array.from(root.querySelectorAll<HTMLLIElement>('li'))) {
     const cs = getComputedStyle(li);
     if (cs.listStyleType === 'none') continue;
     const glyph = listMarkerGlyph(li, root);
@@ -182,36 +198,6 @@ function materializeBulletMarkers(root: HTMLElement): void {
     label.textContent = glyph;
     slot.appendChild(label);
     target.insertBefore(slot, target.firstChild);
-  }
-}
-
-// html2canvas paints list markers at the item's content-box left edge, ignoring floats, so
-// a floating image that pushes an item's first line right strands the marker on the far side
-// of the image. Re-hang such markers beside the shifted line (matching the editor's render).
-function relocateFloatPushedMarkers(root: HTMLElement): void {
-  for (const li of Array.from(root.querySelectorAll<HTMLLIElement>('li'))) {
-    const cs = getComputedStyle(li);
-    if (cs.listStyleType === 'none' || cs.textAlign === 'center' || cs.textAlign === 'right') continue;
-    const p = li.querySelector(':scope > p');
-    if (!p) continue;
-    const range = document.createRange();
-    range.selectNodeContents(p);
-    const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
-    if (!rects.length) continue;
-    const liRect = li.getBoundingClientRect();
-    const contentLeft = liRect.left + parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth);
-    // First line sits in the normal marker column → html2canvas already paints it right.
-    if (rects[0].left <= contentLeft + 6) continue;
-    const glyph = listMarkerGlyph(li, root);
-    if (!glyph) continue;
-    li.style.listStyleType = 'none';
-    const slot = document.createElement('span');
-    slot.style.cssText = 'display:inline-block;width:0;overflow:visible;vertical-align:baseline';
-    const label = document.createElement('span');
-    label.style.cssText = `display:inline-block;white-space:pre;transform:translateX(-100%);padding-right:0.4em;color:${cs.color}`;
-    label.textContent = glyph;
-    slot.appendChild(label);
-    p.insertBefore(slot, p.firstChild);
   }
 }
 
@@ -236,10 +222,7 @@ export async function renderPaperToCanvas(opts: PdfOptions, scale = 2): Promise<
 
   try {
     await document.fonts.ready;
-    // Bullets first: it sets list-style none on <ul> items, so the float pass
-    // (which skips those) only re-hangs ordered-list markers.
-    materializeBulletMarkers(clone);
-    relocateFloatPushedMarkers(clone);
+    materializeListMarkers(clone);
     const pages = Math.max(1, opts.numPages ?? Math.round((clone.offsetHeight + PAGE_GAP) / cycle));
 
     const html2canvas = (await import('html2canvas')).default;

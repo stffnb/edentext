@@ -3,7 +3,7 @@ import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, wVal, W, R, WP, A,
 import { lengthToPt } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
-import { DEFAULT_ORDERED_TYPE, orderedTypeFromFormat } from '../utils/orderedListTypes';
+import { orderedTypeFromFormat, orderedTypeAttr } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -293,8 +293,17 @@ function makeListNode(ctx: Ctx, numId: number, ilvl: number): Node {
     const ch = bulletCharAttr(bulletCharFromDocx(def.lvlText, def.bulletFont), ilvl);
     if (ch) attrs.bulletChar = ch;
   } else {
-    const lst = orderedTypeFromFormat(wordFmtChar(def.numFmt), lvlSuffix(def.lvlText));
-    if (lst !== DEFAULT_ORDERED_TYPE) attrs.listStyleType = lst;
+    const placeholders = (def.lvlText?.match(/%\d/g) ?? []).length;
+    // Multilevel chains ("%1.%2." lvlText below level 0): the attr sits on the top
+    // list only; chain members stay attr-less.
+    const chainBelow = ((ctx.styles.level(numId, 1).lvlText ?? '').match(/%\d/g) ?? []).length > 1;
+    if (ilvl === 0 && chainBelow) {
+      attrs.listStyleType = 'multilevel';
+    } else if (placeholders <= 1) {
+      const key = orderedTypeFromFormat(wordFmtChar(def.numFmt), lvlSuffix(def.lvlText));
+      const attr = orderedTypeAttr(key, ilvl);
+      if (attr) attrs.listStyleType = attr;
+    }
     if (def.start != null && def.start > 1) attrs.start = def.start;
   }
   if (ilvl === 0 && def.leftTwip != null) {

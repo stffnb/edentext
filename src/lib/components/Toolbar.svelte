@@ -2,8 +2,9 @@
   import type { Editor } from '@tiptap/core';
   import HistoryButton from './HistoryButton.svelte';
   import AlignButton from './AlignButton.svelte';
-  import { ORDERED_LIST_TYPES, DEFAULT_ORDERED_TYPE, type OrderedListType } from '../utils/orderedListTypes';
+  import { ORDERED_LIST_TYPES, type OrderedListType } from '../utils/orderedListTypes';
   import { BULLET_TYPES } from '../utils/bulletListTypes';
+  import { effectiveOrderedTypeAt } from '../editor/extensions/orderedList';
   import { isInHeaderCell } from '../editor/extensions/tableHeaderRow';
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
@@ -27,10 +28,11 @@
   let isBulletList = $derived(tick >= 0 && !!editor?.isActive('bulletList'));
   let isOrderedList= $derived(tick >= 0 && !!editor?.isActive('orderedList'));
 
-  // Numbering style of the ordered list at the cursor (null when not in one).
+  // Effective numbering at the cursor's list level — explicit attr, inherited
+  // multilevel chain, or the depth default (null when not in an ordered list).
   let currentOrderedType = $derived.by<OrderedListType | null>(() => {
     if (tick < 0 || !editor || !editor.isActive('orderedList')) return null;
-    return (editor.getAttributes('orderedList').listStyleType ?? DEFAULT_ORDERED_TYPE) as OrderedListType;
+    return effectiveOrderedTypeAt(editor.state);
   });
 
   let olMenuOpen = $state(false);
@@ -71,7 +73,7 @@
     olMenuOpen = false;
     const chain = editor.chain().focus();
     if (!editor.isActive('orderedList')) chain.toggleOrderedList();
-    chain.updateAttributes('orderedList', { listStyleType: key }).run();
+    chain.setOrderedListType(key).run();
   }
 
   function menuClickOutside(node: HTMLElement, close: () => void) {

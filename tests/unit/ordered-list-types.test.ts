@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { orderedTypeDef, orderedTypeFromFormat, DEFAULT_ORDERED_TYPE } from '../../src/lib/utils/orderedListTypes';
+import { orderedTypeDef, orderedTypeFromFormat, DEFAULT_ORDERED_TYPE, defaultOrderedType, orderedTypeAttr, effectiveOrderedDef, formatOrdinal } from '../../src/lib/utils/orderedListTypes';
 
 describe('orderedTypeDef', () => {
   it('returns the matching definition for a known key', () => {
@@ -37,5 +37,36 @@ describe('orderedTypeFromFormat (ODF → listStyleType)', () => {
 
   it('falls back to decimal for an unknown format', () => {
     expect(orderedTypeFromFormat('Z', '.')).toBe('decimal');
+  });
+});
+
+describe('depth defaults (null attr → 1. → a. → i. cycle)', () => {
+  it('cycles decimal → lower-alpha → lower-roman and wraps', () => {
+    expect(defaultOrderedType(0)).toBe('decimal');
+    expect(defaultOrderedType(1)).toBe('lower-alpha');
+    expect(defaultOrderedType(2)).toBe('lower-roman');
+    expect(defaultOrderedType(3)).toBe('decimal');
+  });
+
+  it('orderedTypeAttr suppresses the cycle key at its own depth only', () => {
+    expect(orderedTypeAttr('decimal', 0)).toBeNull();
+    expect(orderedTypeAttr('lower-alpha', 1)).toBeNull();
+    expect(orderedTypeAttr('lower-alpha', 0)).toBe('lower-alpha');
+    expect(orderedTypeAttr('upper-roman-paren', 1)).toBe('upper-roman-paren');
+  });
+
+  it('effectiveOrderedDef resolves null by depth and keys explicitly', () => {
+    expect(effectiveOrderedDef(null, 1).numFormat).toBe('a');
+    expect(effectiveOrderedDef('upper-roman', 1).numFormat).toBe('I');
+  });
+});
+
+describe('formatOrdinal', () => {
+  it('formats alpha and roman ordinals', () => {
+    expect(formatOrdinal(3, '1')).toBe('3');
+    expect(formatOrdinal(3, 'a')).toBe('c');
+    expect(formatOrdinal(28, 'a')).toBe('ab');
+    expect(formatOrdinal(4, 'i')).toBe('iv');
+    expect(formatOrdinal(9, 'I')).toBe('IX');
   });
 });

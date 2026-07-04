@@ -43,6 +43,11 @@ describe('DOCX export → import round trip', () => {
       para([text('line1'), { type: 'hardBreak' }, text('line2')]),
       { type: 'bulletList', attrs: { bulletChar: '❖' }, content: [li(para('one')), li(para('two'), { type: 'bulletList', attrs: { bulletChar: '➢' }, content: [li(para('nested'))] })] },
       { type: 'orderedList', attrs: { listStyleType: 'lower-alpha' }, content: [li(para('alpha'))] },
+      { type: 'orderedList', content: [li(para('cycle top'), { type: 'orderedList', content: [li(para('cycle sub'))] })] },
+      { type: 'orderedList', attrs: { listStyleType: 'multilevel' }, content: [
+        li(para('ml one'), { type: 'orderedList', content: [li(para('ml one-one'))] }),
+        li(para('ml two')),
+      ] },
       para([{ type: 'image', attrs: { src: PNG, width: 100, height: 80, wrap: 'left', alt: 'pic' } }]),
       { type: 'textBox', attrs: { width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 }, content: [
         para('box text'),
@@ -118,6 +123,20 @@ describe('DOCX export → import round trip', () => {
     expect(ol.attrs.listStyleType).toBe('lower-alpha');
   });
 
+  it('round-trips depth-default and multilevel numbering', () => {
+    const ols = walk(doc, 'orderedList');
+    // Attr-less nesting: exports 1. / a. and re-imports as null (cycle suppression).
+    const cycleTop = ols.find((o) => walk(o, 'text').some((t) => t.text === 'cycle top'))!;
+    expect(cycleTop.attrs?.listStyleType ?? null).toBe(null);
+    const cycleSub = walk(cycleTop, 'orderedList').find((o) => o !== cycleTop)!;
+    expect(cycleSub.attrs?.listStyleType ?? null).toBe(null);
+    // Multilevel: "%1.%2." chain lvlText → attr on the top list only.
+    const mlTop = ols.find((o) => walk(o, 'text').some((t) => t.text === 'ml one'))!;
+    expect(mlTop.attrs?.listStyleType).toBe('multilevel');
+    const mlSub = walk(mlTop, 'orderedList').find((o) => o !== mlTop)!;
+    expect(mlSub.attrs?.listStyleType ?? null).toBe(null);
+  });
+
   it('round-trips the image (size + floating wrap)', () => {
     const img = walk(doc, 'image')[0];
     expect(img.attrs.width).toBe(100);
@@ -186,6 +205,8 @@ describe('DOCX import of a foreign Word document', () => {
     <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>First</w:t></w:r></w:p>
     <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t>Wingdings diamond</w:t></w:r></w:p>
     <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t>Courier hollow</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="3"/></w:numPr></w:pPr><w:r><w:t>Legal one</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="3"/></w:numPr></w:pPr><w:r><w:t>Legal one-one</w:t></w:r></w:p>
     <w:tbl><w:tblGrid><w:gridCol w:w="4000"/><w:gridCol w:w="4000"/></w:tblGrid>
       <w:tr><w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>B</w:t></w:r></w:p></w:tc></w:tr>
       <w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc><w:tc><w:p><w:r><w:t>C</w:t></w:r></w:p></w:tc></w:tr>
@@ -203,8 +224,13 @@ describe('DOCX import of a foreign Word document', () => {
       <w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/><w:lvlText w:val="&#xF076;"/><w:rPr><w:rFonts w:ascii="Wingdings" w:hAnsi="Wingdings"/></w:rPr></w:lvl>
       <w:lvl w:ilvl="1"><w:numFmt w:val="bullet"/><w:lvlText w:val="o"/><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/></w:rPr></w:lvl>
     </w:abstractNum>
+    <w:abstractNum w:abstractNumId="2">
+      <w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>
+      <w:lvl w:ilvl="1"><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2."/></w:lvl>
+    </w:abstractNum>
     <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
     <w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>
+    <w:num w:numId="3"><w:abstractNumId w:val="2"/></w:num>
   </w:numbering>`;
 
   const bytes = zipSync({
@@ -234,8 +260,16 @@ describe('DOCX import of a foreign Word document', () => {
     expect(nested.attrs?.bulletChar ?? null).toBe(null); // Courier 'o' = default ◦ at level 2
   });
 
+  it("imports Word's legal numbering (%1.%2.) as a multilevel list", () => {
+    const ols = walk(doc, 'orderedList');
+    const top = ols.find((o) => walk(o, 'text').some((t) => t.text === 'Legal one'))!;
+    expect(top.attrs?.listStyleType).toBe('multilevel');
+    const sub = walk(top, 'orderedList').find((o) => o !== top)!;
+    expect(sub.attrs?.listStyleType ?? null).toBe(null);
+  });
+
   it('reconstructs a numbered list and a vertically-merged table', () => {
-    expect(walk(doc, 'orderedList').length).toBe(1);
+    expect(walk(doc, 'orderedList').filter((o) => walk(o, 'text').some((t) => t.text === 'First')).length).toBe(1);
     const rows = walk(doc, 'table')[0].content!;
     expect(rows[0].content![0].attrs.rowspan).toBe(2); // vMerge restart → rowspan
     expect(rows[1].content!.length).toBe(1); // covered cell dropped

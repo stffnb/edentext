@@ -2,7 +2,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
-import { DEFAULT_ORDERED_TYPE, orderedTypeFromFormat } from '../utils/orderedListTypes';
+import { orderedTypeFromFormat, orderedTypeAttr } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -744,10 +744,17 @@ function formatPt(v: number): string {
 
 // `inheritedStyleName`: nested text:list elements usually carry no style-name of
 // their own — the outermost list's style governs, with one level def per depth.
-function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, depth: number): Node | null {
+// `govMultilevel`: this list sits inside a multilevel (display-levels) chain, so an
+// explicit numbering here must never be suppressed to null (null = rejoin the chain).
+function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, depth: number, govMultilevel = false): Node | null {
   const styleName = el.getAttributeNS(NS.text, 'style-name') ?? inheritedStyleName;
   const levelDef = listLevelDef(ctx.resolver.listStyle(styleName), depth);
   const ordered = levelDef?.localName === 'list-level-style-number';
+  const displayLevels = parseInt(levelDef?.getAttributeNS(NS.text, 'display-levels') ?? '1', 10);
+  // A multilevel top shows plain numbers itself — detect it from its level-2 def.
+  const isMultilevelTop = ordered && depth === 1
+    && parseInt(listLevelDef(ctx.resolver.listStyle(styleName), 2)?.getAttributeNS(NS.text, 'display-levels') ?? '1', 10) > 1;
+  const inChain = ordered && (isMultilevelTop || displayLevels > 1);
 
   const items: Node[] = [];
   let start: number | null = null;
@@ -764,7 +771,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
       if (child.namespaceURI === NS.text && (child.localName === 'p' || child.localName === 'h')) {
         blocks.push(convertParaLike(child, ctx, 'list'));
       } else if (child.namespaceURI === NS.text && child.localName === 'list') {
-        const nested = convertList(child, ctx, styleName, depth + 1);
+        const nested = convertList(child, ctx, styleName, depth + 1, inChain);
         if (nested) blocks.push(nested);
       } else if (child.namespaceURI === NS.table && child.localName === 'table') {
         ctx.warnings.add('Nested tables were flattened to paragraphs');
@@ -799,13 +806,23 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     return node;
   }
 
-  const listStyleType = orderedTypeFromFormat(
-    levelDef!.getAttributeNS(NS.style, 'num-format'),
-    levelDef!.getAttributeNS(NS.style, 'num-suffix'),
-  );
+  let listStyleType: string | null;
+  if (isMultilevelTop) {
+    listStyleType = 'multilevel';
+  } else if (displayLevels > 1) {
+    listStyleType = null; // chain member — the multilevel top carries the attr
+  } else {
+    const key = orderedTypeFromFormat(
+      levelDef!.getAttributeNS(NS.style, 'num-format'),
+      levelDef!.getAttributeNS(NS.style, 'num-suffix'),
+    );
+    // Explicit styles inside a chain stay explicit; elsewhere the depth default
+    // (1. → a. → i.) imports as null so round trips don't accrete attrs.
+    listStyleType = govMultilevel ? key : orderedTypeAttr(key, depth - 1);
+  }
   const attrs: Record<string, unknown> = {};
   if (start != null) attrs.start = start;
-  if (listStyleType !== DEFAULT_ORDERED_TYPE) attrs.listStyleType = listStyleType;
+  if (listStyleType) attrs.listStyleType = listStyleType;
   if (indent != null) attrs.indent = indent;
   const node: Node = { type: 'orderedList', content: items };
   if (Object.keys(attrs).length) node.attrs = attrs;

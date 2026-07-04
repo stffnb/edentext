@@ -38,6 +38,9 @@ const fixture = {
       li(para('two'), { type: 'bulletList', content: [li(para('nested'))] }),
     ] },
     { type: 'orderedList', attrs: { listStyleType: 'lower-alpha' }, content: [li(para('alpha'))] },
+    { type: 'orderedList', attrs: { listStyleType: 'multilevel' }, content: [
+      li(para('legal'), { type: 'orderedList', content: [li(para('legal sub'))] }),
+    ] },
     para([{ type: 'image', attrs: { src: PNG, width: 100, height: 80, wrap: 'left', alt: 'pic' } }]),
     { type: 'textBox', attrs: { width: 288, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, content: [para('box text')] },
     { type: 'table', content: [
@@ -114,6 +117,8 @@ describe('buildDocx', () => {
     // Custom bullet char → level 0 lvlText; nested default level keeps the cycle (◦)
     expect(numXml).toMatch(/w:lvlText[^>]*w:val="❖"/);
     expect(numXml).toMatch(/w:lvlText[^>]*w:val="◦"/);
+    // Multilevel list → chained lvlText below level 0
+    expect(numXml).toMatch(/w:lvlText[^>]*w:val="%1\.%2\."/);
   });
 
   it('emits a fixed-layout table with merged cells and shading', () => {

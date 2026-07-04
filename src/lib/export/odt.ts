@@ -6,7 +6,7 @@ import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
-import { DEFAULT_ORDERED_TYPE, orderedTypeDef } from '../utils/orderedListTypes';
+import { orderedTypeDef, effectiveOrderedDef } from '../utils/orderedListTypes';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
@@ -401,10 +401,9 @@ function paraStyleProps(style: ParaStyle): string[] {
 // applyCellBlocks to rebuild real <text:h>/<text:p>/<text:list> from the SEG-segmented
 // <text:p> odf-kit emits. Each paragraph/heading/list item is one segment, in DFS order.
 type CellListItem = { style: ParaStyle; nested: CellListBlock | null };
-// numFormat/numSuffix carry the ordered-list numbering style (orderedTypeDef);
-// for bullet lists they hold the decimal defaults and are unused. bulletChar is
-// the bullet list's marker attr (null = default cycle).
-type CellListBlock = { kind: 'list'; ordered: boolean; start: number | null; numFormat: string; numSuffix: string; bulletChar: string | null; items: CellListItem[] };
+// listStyleType is the ordered list's raw attr (null = depth default / inherited
+// multilevel chain); bulletChar the bullet list's marker attr (null = default cycle).
+type CellListBlock = { kind: 'list'; ordered: boolean; start: number | null; listStyleType: string | null; bulletChar: string | null; items: CellListItem[] };
 type CellBlock =
   | { kind: 'paragraph'; style: ParaStyle }
   | { kind: 'heading'; level: number; style: ParaStyle }
@@ -696,26 +695,64 @@ function applyEmptyLineFontSizes(odtBytes: Uint8Array): Uint8Array {
   return rezipOdt(files);
 }
 
-// odf-kit always emits ordered lists as "1." (num-format="1" num-suffix="."). This
-// rewrites the matching L# list style to the user's chosen format; formats[] has one
-// entry per top-level list in odf-kit's order (null for bullets/default 'decimal').
-
-// Limitation: the chosen format applies to every nesting level (odf-kit emits one
-// L# style per top-level list), so a nested list of a different type inherits it.
+// odf-kit always emits ordered lists as "1." at every level. This rewrites the
+// matching L# list style per level: the depth-default cycle (1. → a. → i.), explicit
+// listStyleType attrs, or the multilevel chain (decimal + text:display-levels).
 type OrderedFmt = { numFormat: string; numSuffix: string };
+type OlStyleFix = { fmts: OrderedFmt[]; multilevel: boolean };
 
-function collectOrderedListFormats(node: TiptapNode, result: (OrderedFmt | null)[]): void {
+const DEFAULT_ORDERED_FMTS: OrderedFmt[] = Array.from({ length: 6 }, (_, i) => {
+  const d = effectiveOrderedDef(null, i);
+  return { numFormat: d.numFormat, numSuffix: d.numSuffix };
+});
+const MULTILEVEL_FMTS: OrderedFmt[] = Array.from({ length: 6 }, () => ({ numFormat: '1', numSuffix: '.' }));
+
+// Effective numbering of an ordered list at a 1-based depth: its attr, else the
+// depth-default cycle ('multilevel' handled by the callers).
+function effOrderedFmt(list: TiptapNode, depth: number): OrderedFmt {
+  const key = list.attrs?.listStyleType as string | null | undefined;
+  const def = effectiveOrderedDef(key === 'multilevel' ? 'decimal' : key, depth - 1);
+  return { numFormat: def.numFormat, numSuffix: def.numSuffix };
+}
+
+// Per-level numbering for a list subtree — same DFS-first model as bulletCharVector.
+function orderedFmtVector(list: TiptapNode, startDepth: number, base: OrderedFmt[]): OrderedFmt[] {
+  const vec = [...base];
+  const seen = new Set<number>();
+  const walk = (node: TiptapNode, depth: number) => {
+    if (depth > vec.length) return;
+    if (node.type === 'orderedList' && !seen.has(depth)) {
+      seen.add(depth);
+      vec[depth - 1] = effOrderedFmt(node, depth);
+    }
+    for (const item of node.content ?? []) {
+      if (item.type !== 'listItem') continue;
+      for (const child of item.content ?? []) {
+        if (child.type === 'bulletList' || child.type === 'orderedList') walk(child, depth + 1);
+      }
+    }
+  };
+  walk(list, startDepth);
+  return vec;
+}
+
+function collectOrderedListFormats(node: TiptapNode, result: (OlStyleFix | null)[]): void {
   for (const child of node.content ?? []) {
     if (child.type === 'bulletList') {
       result.push(null);
     } else if (child.type === 'orderedList') {
-      const def = orderedTypeDef(child.attrs?.listStyleType as string | undefined);
-      result.push(def.key === DEFAULT_ORDERED_TYPE ? null : { numFormat: def.numFormat, numSuffix: def.numSuffix });
+      if (child.attrs?.listStyleType === 'multilevel') {
+        result.push({ fmts: MULTILEVEL_FMTS, multilevel: true });
+      } else {
+        const vec = orderedFmtVector(child, 1, DEFAULT_ORDERED_FMTS);
+        // odf-kit's own output is all-decimal; only an all-"1." vector needs no rewrite.
+        result.push(vec.every(f => f.numFormat === '1' && f.numSuffix === '.') ? null : { fmts: vec, multilevel: false });
+      }
     }
   }
 }
 
-function applyOrderedListFormats(odtBytes: Uint8Array, formats: (OrderedFmt | null)[]): Uint8Array {
+function applyOrderedListFormats(odtBytes: Uint8Array, formats: (OlStyleFix | null)[]): Uint8Array {
   if (formats.every(f => f === null)) return odtBytes;
 
   const files = unzipSync(odtBytes);
@@ -723,15 +760,20 @@ function applyOrderedListFormats(odtBytes: Uint8Array, formats: (OrderedFmt | nu
   if (!contentBytes) return odtBytes;
 
   let content = strFromU8(contentBytes);
-  formats.forEach((fmt, i) => {
-    if (!fmt) return;
-    // Rewrite only inside this list's own <text:list-style> block (all 6 levels).
+  formats.forEach((fix, i) => {
+    if (!fix) return;
+    // Rewrite only inside this list's own <text:list-style> block, level by level.
     const re = new RegExp(`(<text:list-style style:name="L${i + 1}">)([\\s\\S]*?)(</text:list-style>)`);
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
       open +
-      body
-        .replace(/style:num-format="1"/g, `style:num-format="${fmt.numFormat}"`)
-        .replace(/style:num-suffix="\."/g, `style:num-suffix="${fmt.numSuffix}"`) +
+      body.replace(
+        /(<text:list-level-style-number text:level=")(\d)(" style:num-format=")[^"]*(" style:num-suffix=")[^"]*(")/g,
+        (_mm, a: string, lvl: string, b: string, c: string, d: string) => {
+          const f = fix.fmts[+lvl - 1] ?? DEFAULT_ORDERED_FMTS[+lvl - 1];
+          const disp = fix.multilevel && +lvl > 1 ? ` text:display-levels="${lvl}"` : '';
+          return a + lvl + b + f.numFormat + c + f.numSuffix + d + disp;
+        },
+      ) +
       close,
     );
   });
@@ -852,15 +894,14 @@ function applyListIndents(odtBytes: Uint8Array, indents: number[]): Uint8Array {
 // odf-kit emits nested lists as bare <text:list> sharing the top-level L# style, so a
 // nested list of a different kind/format/marker loses its look. Mint it its own
 // 6-level list style (same pattern applyCellBlocks uses for cell lists).
-type ListDef = { ordered: boolean; numFormat: string; numSuffix: string; bulletChars: string[] };
+type ListDef = { ordered: boolean; multilevel: boolean; fmts: OrderedFmt[]; bulletChars: string[] };
 
-function listDefOf(node: TiptapNode, depth: number, baseChars: string[]): ListDef {
-  const ordered = node.type === 'orderedList';
-  const def = ordered ? orderedTypeDef(node.attrs?.listStyleType as string | undefined) : null;
+function listDefOf(node: TiptapNode, depth: number, baseChars: string[], baseFmts: OrderedFmt[]): ListDef {
+  const multilevel = node.attrs?.listStyleType === 'multilevel';
   return {
-    ordered,
-    numFormat: def?.numFormat ?? '1',
-    numSuffix: def?.numSuffix ?? '.',
+    ordered: node.type === 'orderedList',
+    multilevel,
+    fmts: multilevel ? MULTILEVEL_FMTS : orderedFmtVector(node, depth, baseFmts),
     bulletChars: bulletCharVector(node, depth, baseChars),
   };
 }
@@ -872,11 +913,21 @@ function collectNestedListFixes(doc: TiptapNode, result: (ListDef | null)[]): vo
     let gov = governing;
     if (!isTop) {
       const ordered = list.type === 'orderedList';
-      const fmt = ordered ? orderedTypeDef(list.attrs?.listStyleType as string | undefined) : null;
-      const differs = ordered !== governing.ordered
-        || (ordered && (fmt!.numFormat !== governing.numFormat || fmt!.numSuffix !== governing.numSuffix))
-        || (!ordered && effBulletChar(list, depth) !== governing.bulletChars[(depth - 1) % governing.bulletChars.length]);
-      const def = differs ? listDefOf(list, depth, governing.bulletChars) : null;
+      let differs: boolean;
+      if (ordered !== governing.ordered) {
+        differs = true;
+      } else if (!ordered) {
+        differs = effBulletChar(list, depth) !== governing.bulletChars[(depth - 1) % governing.bulletChars.length];
+      } else if (governing.multilevel) {
+        // Attr-less lists inherit the chain; only an explicit style breaks out.
+        const attr = list.attrs?.listStyleType;
+        differs = !!attr && attr !== 'multilevel';
+      } else {
+        const f = effOrderedFmt(list, depth);
+        const g = governing.fmts[(depth - 1) % governing.fmts.length];
+        differs = f.numFormat !== g.numFormat || f.numSuffix !== g.numSuffix;
+      }
+      const def = differs ? listDefOf(list, depth, governing.bulletChars, governing.fmts) : null;
       result.push(def);
       if (def) gov = def; // restyled list governs its own descendants
     }
@@ -889,7 +940,7 @@ function collectNestedListFixes(doc: TiptapNode, result: (ListDef | null)[]): vo
   };
   for (const child of doc.content ?? []) {
     if (child.type === 'bulletList' || child.type === 'orderedList') {
-      walkList(child, listDefOf(child, 1, DEFAULT_BULLET_CYCLE), true, 1);
+      walkList(child, listDefOf(child, 1, DEFAULT_BULLET_CYCLE, DEFAULT_ORDERED_FMTS), true, 1);
     }
   }
 }
@@ -905,12 +956,14 @@ function applyNestedListTypes(odtBytes: Uint8Array, fixes: (ListDef | null)[]): 
   const minted: string[] = [];
   const nameByKey = new Map<string, string>();
   const styleFor = (fix: ListDef): string => {
-    const key = fix.ordered ? `o|${fix.numFormat}|${fix.numSuffix}` : `b|${fix.bulletChars.join('')}`;
+    const key = fix.ordered
+      ? `o|${fix.multilevel ? 'M' : ''}|${fix.fmts.map(f => f.numFormat + f.numSuffix).join('')}`
+      : `b|${fix.bulletChars.join('')}`;
     let name = nameByKey.get(key);
     if (!name) {
       name = `NL${nameByKey.size + 1}`;
       nameByKey.set(key, name);
-      minted.push(buildCellListStyle(name, fix.ordered, fix.numFormat, fix.numSuffix, fix.bulletChars));
+      minted.push(buildCellListStyle(name, fix.ordered, { fmts: fix.fmts, multilevel: fix.multilevel, bulletChars: fix.bulletChars }));
     }
     return name;
   };
@@ -932,7 +985,13 @@ function applyNestedListTypes(odtBytes: Uint8Array, fixes: (ListDef | null)[]): 
 // Mirror odf-kit's buildListStyle (content.js) for the automatic list style our
 // in-cell lists reference. Six nesting levels with the given bullet chars /
 // indents / numbering, so cell lists match the editor's top-level lists.
-function buildCellListStyle(styleName: string, ordered: boolean, numFormat = '1', numSuffix = '.', bulletChars: string[] = DEFAULT_BULLET_CYCLE): string {
+function buildCellListStyle(
+  styleName: string,
+  ordered: boolean,
+  opts: { fmts?: OrderedFmt[]; multilevel?: boolean; bulletChars?: string[] } = {},
+): string {
+  const fmts = opts.multilevel ? MULTILEVEL_FMTS : opts.fmts ?? MULTILEVEL_FMTS;
+  const bulletChars = opts.bulletChars ?? DEFAULT_BULLET_CYCLE;
   let levels = '';
   for (let level = 1; level <= 6; level++) {
     const indent = level * 0.635;
@@ -940,7 +999,9 @@ function buildCellListStyle(styleName: string, ordered: boolean, numFormat = '1'
     const textIndent = `-${indent.toFixed(3)}cm`;
     const labelAlign = `<style:list-level-properties text:list-level-position-and-space-mode="label-alignment"><style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="${marginLeft}" fo:text-indent="${textIndent}" fo:margin-left="${marginLeft}"/></style:list-level-properties>`;
     if (ordered) {
-      levels += `<text:list-level-style-number text:level="${level}" style:num-format="${numFormat}" style:num-suffix="${numSuffix}">${labelAlign}</text:list-level-style-number>`;
+      const f = fmts[(level - 1) % fmts.length];
+      const disp = opts.multilevel && level > 1 ? ` text:display-levels="${level}"` : '';
+      levels += `<text:list-level-style-number text:level="${level}" style:num-format="${f.numFormat}" style:num-suffix="${f.numSuffix}"${disp}>${labelAlign}</text:list-level-style-number>`;
     } else {
       const ch = bulletChars[(level - 1) % bulletChars.length];
       levels += `<text:list-level-style-bullet text:level="${level}" text:bullet-char="${ch}">${labelAlign}</text:list-level-style-bullet>`;
@@ -1011,18 +1072,18 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
     }
     return name;
   };
-  // Ordered cell lists are minted one style per distinct numbering format (1. / a) /
-  // I. / …) so each list exports with its chosen type. The first format reuses the
-  // legacy CELL_LIST_NUMBER_STYLE name; further ones get a counter suffix.
-  const numberStyles: { name: string; numFormat: string; numSuffix: string }[] = [];
+  // One minted style per distinct numbering format (first = CELL_LIST_NUMBER_STYLE,
+  // further ones counter-suffixed). The multilevel chain shares one style: nested lists
+  // reference the same name, and their nesting depth selects the display-levels def.
+  const numberStyles: { name: string; numFormat: string; numSuffix: string; multilevel?: boolean }[] = [];
   const numberStyleByKey = new Map<string, string>();
-  const numberStyleFor = (numFormat: string, numSuffix: string): string => {
-    const key = `${numFormat}|${numSuffix}`;
+  const numberStyleFor = (numFormat: string, numSuffix: string, multilevel = false): string => {
+    const key = multilevel ? 'ML' : `${numFormat}|${numSuffix}`;
     let name = numberStyleByKey.get(key);
     if (!name) {
       name = numberStyleByKey.size === 0 ? CELL_LIST_NUMBER_STYLE : `${CELL_LIST_NUMBER_STYLE}${numberStyleByKey.size}`;
       numberStyleByKey.set(key, name);
-      numberStyles.push({ name, numFormat, numSuffix });
+      numberStyles.push({ name, numFormat, numSuffix, multilevel });
     }
     return name;
   };
@@ -1030,16 +1091,25 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
   // Each <text:list> (root or nested) carries its own type-based style-name, so mixed
   // bullet/number nesting renders correctly; indent comes from nesting depth. One
   // segment consumed per list item, DFS order (matching buildCellContent).
-  const buildList = (list: CellListBlock, segments: string[], cur: { i: number }, depth = 1): string => {
+  const buildList = (list: CellListBlock, segments: string[], cur: { i: number }, depth = 1, mlGov = false): string => {
     const isBullet = !list.ordered;
-    const listStyle = isBullet ? bulletStyleFor(list.bulletChar, depth) : numberStyleFor(list.numFormat, list.numSuffix);
+    const ml = !isBullet && (list.listStyleType === 'multilevel' || (mlGov && !list.listStyleType));
+    let listStyle: string;
+    if (isBullet) {
+      listStyle = bulletStyleFor(list.bulletChar, depth);
+    } else if (ml) {
+      listStyle = numberStyleFor('1', '.', true);
+    } else {
+      const def = effectiveOrderedDef(list.listStyleType, depth - 1);
+      listStyle = numberStyleFor(def.numFormat, def.numSuffix);
+    }
     const paraParent = isBullet ? 'List_20_Bullet' : 'List_20_Number';
     let out = `<text:list text:style-name="${listStyle}">`;
     list.items.forEach((item, idx) => {
       const startAttr = !isBullet && idx === 0 && list.start != null ? ` text:start-value="${list.start}"` : '';
       const seg = segments[cur.i++] ?? '';
       out += `<text:list-item${startAttr}><text:p text:style-name="${styleNameFor(paraParent, item.style)}">${seg}</text:p>`;
-      if (item.nested) out += buildList(item.nested, segments, cur, depth + 1);
+      if (item.nested) out += buildList(item.nested, segments, cur, depth + 1, ml);
       out += '</text:list-item>';
     });
     return out + '</text:list>';
@@ -1091,10 +1161,10 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
   );
   if (usedBulletList) additions.push(buildCellListStyle(CELL_LIST_BULLET_STYLE, false));
   for (const { name, chars } of bulletStyles) {
-    additions.push(buildCellListStyle(name, false, '1', '.', chars));
+    additions.push(buildCellListStyle(name, false, { bulletChars: chars }));
   }
-  for (const { name, numFormat, numSuffix } of numberStyles) {
-    additions.push(buildCellListStyle(name, true, numFormat, numSuffix));
+  for (const { name, numFormat, numSuffix, multilevel } of numberStyles) {
+    additions.push(buildCellListStyle(name, true, { fmts: Array.from({ length: 6 }, () => ({ numFormat, numSuffix })), multilevel }));
   }
 
   if (additions.length) {
@@ -1300,8 +1370,6 @@ function buildCellContent(cell: TiptapNode, c: CellBuilder, forceBold = false): 
   const walkList = (listNode: TiptapNode): CellListBlock => {
     const ordered = listNode.type === 'orderedList';
     const start = ordered ? ((listNode.attrs?.start as number) ?? null) : null;
-    // Same numbering style the editor shows / top-level export uses (orderedTypeDef).
-    const def = ordered ? orderedTypeDef(listNode.attrs?.listStyleType as string | undefined) : null;
     const items: CellListItem[] = [];
     for (const item of listNode.content ?? []) {
       if (item.type !== 'listItem') continue;
@@ -1310,8 +1378,10 @@ function buildCellContent(cell: TiptapNode, c: CellBuilder, forceBold = false): 
       const nested = item.content?.find(x => x.type === 'bulletList' || x.type === 'orderedList');
       items.push({ style: paraStyleFromAttrs(firstPara?.attrs), nested: nested ? walkList(nested) : null });
     }
+    // Raw attrs; applyCellBlocks resolves the depth defaults when it knows the depth.
+    const listStyleType = ordered && typeof listNode.attrs?.listStyleType === 'string' ? (listNode.attrs.listStyleType as string) : null;
     const bulletChar = !ordered && typeof listNode.attrs?.bulletChar === 'string' ? (listNode.attrs.bulletChar as string) : null;
-    return { kind: 'list', ordered, start, numFormat: def?.numFormat ?? '1', numSuffix: def?.numSuffix ?? '.', bulletChar, items };
+    return { kind: 'list', ordered, start, listStyleType, bulletChar, items };
   };
 
   for (const block of cell.content ?? []) {
@@ -1830,10 +1900,10 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
     },
   });
 
-  // Rewrite odf-kit's default numbering (1.) into the per-list style the user
-  // chose (a) / I.) / …). Runs before applyListItemStyles, which only touches
-  // <text:p> styles, not the <text:list-style> definitions.
-  const olFormats: (OrderedFmt | null)[] = [];
+  // Rewrite odf-kit's default numbering (1.) into per-level formats (depth cycle,
+  // explicit types, multilevel chains). Runs before applyListItemStyles, which only
+  // touches <text:p> styles, not the <text:list-style> definitions.
+  const olFormats: (OlStyleFix | null)[] = [];
   collectOrderedListFormats(raw, olFormats);
   let numberedOdt = applyOrderedListFormats(odt as Uint8Array, olFormats);
 
