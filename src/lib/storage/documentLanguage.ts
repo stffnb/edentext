@@ -17,6 +17,7 @@ export interface LanguageDef {
 // public/dictionaries/<code>/ and appending an entry here.
 export const LANGUAGES: LanguageDef[] = [
   { code: 'en', label: 'English (US)', odf: { language: 'en', country: 'US' } },
+  { code: 'de', label: 'Deutsch', odf: { language: 'de', country: 'DE' } },
 ];
 
 export const DEFAULT_LANGUAGE: DocumentLanguage = 'en';

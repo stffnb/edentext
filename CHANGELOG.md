@@ -54,7 +54,7 @@
 **Editing aids**
 - Undo / Redo with a labelled history dropdown
 - Search & Replace (Ctrl+F / Ctrl+H): live match highlighting, match count, next / previous, match-case and whole-word options, replace current / replace all
-- Spell check in English with squiggles and a suggestions context menu (add / ignore word); selectable document language
+- Spell check in English and German with squiggles and a suggestions context menu (add / ignore word); selectable document language. Powered by Hunspell (WASM), so German compound words (Fußgänger, Krankenversicherung …) are recognised; dictionaries are lazy-loaded per language on demand
 - Word / character count statistics (whole document and selection)
 
 **UI & theming**
