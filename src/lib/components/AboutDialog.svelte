@@ -1,6 +1,6 @@
 <script lang="ts">
   // Placeholder until the project's repository is public; swap the URL when known.
-  const REPO_URL = 'https://github.com/your-org/primetext';
+  const REPO_URL = 'https://github.com/your-org/edentext';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -31,7 +31,7 @@
   bind:this={dialogEl}
   onclose={onClose}
   onclick={onClick}
-  aria-label="About PrimeText"
+  aria-label="About EdenText"
 >
   <div class="card">
     <button class="close" onclick={() => (open = false)} aria-label="Close" title="Close">
@@ -40,7 +40,7 @@
       </svg>
     </button>
 
-    <img class="logo" src="/PrimeText.png" alt="PrimeText" />
+    <img class="logo" src="/EdenText.png" alt="EdenText" />
 
     <p class="tagline">A private editor for OpenDocument files — runs entirely in your browser.</p>
 

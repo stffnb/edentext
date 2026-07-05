@@ -591,8 +591,8 @@
     <div class="toolbar-clip" id="primary-toolbar" bind:this={toolbarClipEl} onwheel={onToolbarWheel}>
       <div class="toolbar-stack" bind:this={toolbarStackEl} style="transform: translateX(-{tbScroll}px);">
   <header class:expanded={toolbarExpanded}>
-    <button class="logo-btn" onclick={() => (aboutOpen = true)} aria-label="About PrimeText" title="About PrimeText">
-      <img src="/PrimeText.png" alt="PrimeText" class="app-logo" />
+    <button class="logo-btn" onclick={() => (aboutOpen = true)} aria-label="About EdenText" title="About EdenText">
+      <img src="/EdenText.png" alt="EdenText" class="app-logo" />
     </button>
     <Toolbar editor={activeEditor} tick={activeTick} />
     <div class="header-actions">
@@ -1014,17 +1014,20 @@
   .logo-btn {
     display: inline-flex;
     align-items: center;
-    padding: 4px;
+    justify-content: center;
+    height: var(--toolbar-btn-size);
+    padding: 0 0.4rem;
     margin: 0 0.25rem 0 1.4rem;
-    border: none;
+    border: 1px solid transparent;
     border-radius: var(--radius);
     background: transparent;
     cursor: pointer;
-    transition: background 0.12s;
+    transition: background 0.15s, border-color 0.15s;
     flex-shrink: 0;
   }
   .logo-btn:hover {
     background: var(--color-btn-hover);
+    border-color: var(--color-primary);
   }
 
   .app-logo {
