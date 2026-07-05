@@ -6,6 +6,13 @@
   import { BULLET_TYPES } from '../utils/bulletListTypes';
   import { effectiveOrderedTypeAt } from '../editor/extensions/orderedList';
   import { isInHeaderCell } from '../editor/extensions/tableHeaderRow';
+  import { t } from '../i18n/i18n.svelte';
+  import { withShortcut } from '../i18n/shortcut';
+
+  // Bullet-marker tooltip by char, with the char itself as fallback.
+  function bulletName(char: string): string {
+    return (t().toolbar.bullets as Record<string, string>)[char] ?? char;
+  }
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 
@@ -103,28 +110,28 @@
             editor?.chain().focus().toggleBold().run();
           }
         }}
-        title="Bold (Ctrl+B)"
+        title={`${t().toolbar.bold} (${withShortcut('Ctrl+B')})`}
       >
         <strong>B</strong>
       </button>
       <button
         class:active={isItalic}
         onclick={() => editor?.chain().focus().toggleItalic().run()}
-        title="Italic (Ctrl+I)"
+        title={`${t().toolbar.italic} (${withShortcut('Ctrl+I')})`}
       >
         <em>I</em>
       </button>
       <button
         class:active={isUnderline}
         onclick={() => editor?.chain().focus().toggleUnderline().run()}
-        title="Underline (Ctrl+U)"
+        title={`${t().toolbar.underline} (${withShortcut('Ctrl+U')})`}
       >
         <u>U</u>
       </button>
       <button
         class:active={isStrike}
         onclick={() => editor?.chain().focus().toggleStrike().run()}
-        title="Strikethrough (Ctrl+Shift+S)"
+        title={`${t().toolbar.strikethrough} (${withShortcut('Ctrl+Shift+S')})`}
       >
         <s>S</s>
       </button>
@@ -136,21 +143,21 @@
       <button
         class:active={isH1}
         onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).unsetFontSize().unsetFontWeight().removeEmptyTextStyle().run()}
-        title="Heading 1"
+        title={t().toolbar.heading1}
       >
         H1
       </button>
       <button
         class:active={isH2}
         onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).unsetFontSize().unsetFontWeight().removeEmptyTextStyle().run()}
-        title="Heading 2"
+        title={t().toolbar.heading2}
       >
         H2
       </button>
       <button
         class:active={isH3}
         onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).unsetFontSize().unsetFontWeight().removeEmptyTextStyle().run()}
-        title="Heading 3"
+        title={t().toolbar.heading3}
       >
         H3
       </button>
@@ -165,7 +172,7 @@
             class="ol-main"
             class:active={isBulletList}
             onclick={toggleBulletList}
-            title="Bullet list"
+            title={t().toolbar.bulletList}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <circle cx="2" cy="4" r="1.5" fill="currentColor"/>
@@ -180,7 +187,7 @@
             class="ol-chevron"
             class:active={isBulletList}
             onclick={() => (blMenuOpen = !blMenuOpen)}
-            title="Bullet symbol"
+            title={t().toolbar.bulletSymbol}
             aria-haspopup="menu"
             aria-expanded={blMenuOpen}
           >
@@ -191,7 +198,7 @@
         </div>
         {#if blMenuOpen}
           <div class="ol-dropdown bl-dropdown" role="menu">
-            <div class="ol-section-label">Bullet symbol</div>
+            <div class="ol-section-label">{t().toolbar.bulletSymbol}</div>
             <button
               class="ol-option"
               class:active={isBulletList && currentBulletChar === null}
@@ -200,18 +207,18 @@
               aria-checked={isBulletList && currentBulletChar === null}
             >
               <span class="ol-option-preview">•</span>
-              <span class="ol-option-label">Default (by level)</span>
+              <span class="ol-option-label">{t().toolbar.bulletDefault}</span>
             </button>
             <div class="bl-grid">
-              {#each BULLET_TYPES as t}
+              {#each BULLET_TYPES as b}
                 <button
                   class="bl-tile"
-                  class:active={currentBulletChar === t.char}
-                  onclick={() => applyBulletChar(t.char)}
-                  title={t.label}
+                  class:active={currentBulletChar === b.char}
+                  onclick={() => applyBulletChar(b.char)}
+                  title={bulletName(b.char)}
                   role="menuitemradio"
-                  aria-checked={currentBulletChar === t.char}
-                >{t.char}</button>
+                  aria-checked={currentBulletChar === b.char}
+                >{b.char}</button>
               {/each}
             </div>
           </div>
@@ -223,7 +230,7 @@
             class="ol-main"
             class:active={isOrderedList}
             onclick={toggleOrderedList}
-            title="Ordered list"
+            title={t().toolbar.orderedList}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <text x="0" y="5.5" font-size="5" font-weight="bold" font-family="sans-serif" fill="currentColor">1.</text>
@@ -238,7 +245,7 @@
             class="ol-chevron"
             class:active={isOrderedList}
             onclick={() => (olMenuOpen = !olMenuOpen)}
-            title="Numbering style"
+            title={t().toolbar.numberingStyle}
             aria-haspopup="menu"
             aria-expanded={olMenuOpen}
           >
@@ -249,18 +256,18 @@
         </div>
         {#if olMenuOpen}
           <div class="ol-dropdown" role="menu">
-            <div class="ol-section-label">Numbering</div>
-            {#each ORDERED_LIST_TYPES as t}
+            <div class="ol-section-label">{t().toolbar.numbering}</div>
+            {#each ORDERED_LIST_TYPES as o}
               <button
                 class="ol-option"
-                class:active={currentOrderedType === t.key}
-                onclick={() => applyOrderedType(t.key)}
-                title={t.label}
+                class:active={currentOrderedType === o.key}
+                onclick={() => applyOrderedType(o.key)}
+                title={o.label}
                 role="menuitemradio"
-                aria-checked={currentOrderedType === t.key}
+                aria-checked={currentOrderedType === o.key}
               >
-                <span class="ol-option-preview">{t.preview}</span>
-                <span class="ol-option-label">{t.label}</span>
+                <span class="ol-option-preview">{o.preview}</span>
+                <span class="ol-option-label">{o.label}</span>
               </button>
             {/each}
           </div>

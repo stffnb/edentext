@@ -16,6 +16,8 @@
   import type { Orientation } from '../storage/pageOrientation';
   import { DEFAULT_HF_DISTANCES, clampHfDistance, type HfDistances } from '../storage/headerFooter';
   import { listContext } from '../editor/extensions/indent';
+  import { t } from '../i18n/i18n.svelte';
+  import { withShortcut } from '../i18n/shortcut';
 
   let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), hfActive = null, onEditZone, onDebugDump }:
     { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; hfDistances?: HfDistances; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void } = $props();
@@ -151,12 +153,14 @@
 
   // Must match line-height in editor.css (.paper .tiptap)
   const DEFAULT_LINE_HEIGHT = '1';
-  const LINE_HEIGHTS = [
-    { value: '1',    label: 'Single'      },
-    { value: '1.15', label: '1.15'        },
-    { value: '1.5',  label: '1.5'         },
-    { value: '2',    label: 'Double'      },
-  ] as const;
+  const LINE_HEIGHTS = ['1', '1.15', '1.5', '2'];
+
+  // Numeric values show verbatim; the single/double presets are localized.
+  function lineHeightLabel(value: string): string {
+    if (value === '1') return t().toolbarExpanded.lineSingle;
+    if (value === '2') return t().toolbarExpanded.lineDouble;
+    return value;
+  }
 
   let currentLineHeight = $derived.by(() => {
     if (tick < 0 || !editor) return DEFAULT_LINE_HEIGHT;
@@ -180,7 +184,7 @@
   const SPACING_PRESETS: (number | null)[] = [null, 0, 6, 12, 18, 24];
 
   function spacingLabel(v: number | null): string {
-    return v === null ? 'Default' : `${v} pt`;
+    return v === null ? t().toolbarExpanded.spacingDefault : t().toolbarExpanded.pt(v);
   }
 
   function currentSpacing(attr: 'spaceBefore' | 'spaceAfter'): number | null | '' {
@@ -422,9 +426,9 @@
   // Parse a free-text input. Empty → Default (null); otherwise a non-negative pt
   // number (capped). Invalid input is ignored.
   function applySpaceInput(axis: 'before' | 'after', raw: string) {
-    const t = raw.trim();
-    if (t === '') return applySpaceValue(axis, null);
-    const n = parseFloat(t);
+    const trimmed = raw.trim();
+    if (trimmed === '') return applySpaceValue(axis, null);
+    const n = parseFloat(trimmed);
     if (isNaN(n) || n < 0 || n > 200) return;
     applySpaceValue(axis, n);
   }
@@ -496,12 +500,7 @@
 
   // --- Page layout / margins (cm) ---
   type MarginAxis = 'top' | 'bottom' | 'left' | 'right';
-  const MARGIN_FIELDS: { axis: MarginAxis; label: string }[] = [
-    { axis: 'top',    label: 'Top'    },
-    { axis: 'bottom', label: 'Bottom' },
-    { axis: 'left',   label: 'Left'   },
-    { axis: 'right',  label: 'Right'  },
-  ];
+  const MARGIN_FIELDS: MarginAxis[] = ['top', 'bottom', 'left', 'right'];
   const MARGIN_STEP = 0.1;
   const MARGIN_MIN = 0;
   const MARGIN_MAX = 10;
@@ -563,10 +562,7 @@
 
   // --- Header/footer edge distances (cm) ---
   type HfAxis = 'header' | 'footer';
-  const HF_DIST_FIELDS: { axis: HfAxis; label: string }[] = [
-    { axis: 'header', label: 'Header from top' },
-    { axis: 'footer', label: 'Footer from bottom' },
-  ];
+  const HF_DIST_FIELDS: HfAxis[] = ['header', 'footer'];
   let hfDistInputs = $state<Record<HfAxis, string>>({ header: '', footer: '' });
 
   function syncHfDistInputs() {
@@ -736,11 +732,11 @@
 
   // Add a scheme/mailto when the user types a bare host or e-mail (like Word/LO).
   function normalizeUrl(raw: string): string {
-    const t = raw.trim();
-    if (!t) return '';
-    if (/^(https?:|mailto:|tel:|ftp:|#|\/)/i.test(t)) return t;
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return `mailto:${t}`;
-    return `https://${t}`;
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    if (/^(https?:|mailto:|tel:|ftp:|#|\/)/i.test(trimmed)) return trimmed;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return `mailto:${trimmed}`;
+    return `https://${trimmed}`;
   }
 
   function applyLink(rawUrl: string) {
@@ -794,7 +790,7 @@
 <div class="toolbar-expanded">
   {#if editor}
     <div class="font-picker" use:fontPickerClickOutside>
-      <button class="font-trigger" onclick={openFontPicker} title="Font Name">
+      <button class="font-trigger" onclick={openFontPicker} title={t().toolbarExpanded.fontName}>
         <span class="font-trigger-label" style={currentFont ? `font-family: ${currentFont}` : ''}>{currentFont}</span>
         <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
           <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -803,7 +799,7 @@
       {#if fontOpen}
         <div class="font-dropdown">
           {#if recentFonts.length > 0}
-            <div class="font-section-label">Recent</div>
+            <div class="font-section-label">{t().toolbarExpanded.recent}</div>
             {#each recentFonts as font}
               <button
                 class="font-option"
@@ -814,7 +810,7 @@
             {/each}
           {/if}
 
-          <div class="font-section-label">Web-safe</div>
+          <div class="font-section-label">{t().toolbarExpanded.webSafe}</div>
           {#each WEB_SAFE_FONTS as font}
             <button
               class="font-option"
@@ -825,7 +821,7 @@
           {/each}
 
           {#if extraFontsList.length > 0}
-            <div class="font-section-label">All fonts</div>
+            <div class="font-section-label">{t().toolbarExpanded.allFonts}</div>
             {#each extraFontsList as font}
               <button
                 class="font-option"
@@ -838,7 +834,7 @@
 
           {#if localFontAccessSupported && !allInstalledFonts}
             <button class="font-show-all" onclick={showAllInstalledFonts}>
-              Load all installed fonts
+              {t().toolbarExpanded.loadAllFonts}
             </button>
           {/if}
         </div>
@@ -855,9 +851,9 @@
           onkeydown={onSizeInputKeydown}
           onblur={onSizeInputBlur}
           inputmode="numeric"
-          title="Font size"
+          title={t().toolbarExpanded.fontSize}
         />
-        <button class="size-chevron" onclick={openSizePicker} tabindex="-1" title="Font size list">
+        <button class="size-chevron" onclick={openSizePicker} tabindex="-1" title={t().toolbarExpanded.fontSizeList}>
           <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
             <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -865,7 +861,7 @@
       </div>
       {#if sizeOpen}
         <div class="size-dropdown">
-          <div class="lh-section-label">Font size</div>
+          <div class="lh-section-label">{t().toolbarExpanded.fontSize}</div>
           {#each FONT_SIZES as size}
             <button
               class="size-option"
@@ -884,8 +880,8 @@
         {editor}
         currentColor={currentFontColor}
         defaultColor="#C00000"
-        title="Font color"
-        chevronTitle="Choose font color"
+        title={t().toolbarExpanded.fontColor}
+        chevronTitle={t().toolbarExpanded.chooseFontColor}
         bind:open={fontColorOpen}
         onOpen={() => onColorPickerOpen('font')}
         onApply={(c, r) => editor?.chain().focus().setTextSelection(r).setColor(c).run()}
@@ -901,9 +897,9 @@
         {editor}
         currentColor={currentHighlightColor}
         defaultColor="#FFFF00"
-        title="Highlight color"
-        chevronTitle="Choose highlight color"
-        clearLabel="No color"
+        title={t().toolbarExpanded.highlightColor}
+        chevronTitle={t().toolbarExpanded.chooseHighlightColor}
+        clearLabel={t().toolbarExpanded.noColor}
         bind:open={highlightColorOpen}
         onOpen={() => onColorPickerOpen('highlight')}
         onApply={(c, r) => editor?.chain().focus().setTextSelection(r).setHighlight({ color: c }).run()}
@@ -924,7 +920,7 @@
       <button
         class:active={isSuperscript}
         onclick={toggleSuperscript}
-        title="Superscript (Ctrl+.)"
+        title={`${t().toolbarExpanded.superscript} (${withShortcut('Ctrl+.')})`}
         aria-pressed={isSuperscript}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -935,7 +931,7 @@
       <button
         class:active={isSubscript}
         onclick={toggleSubscript}
-        title="Subscript (Ctrl+,)"
+        title={`${t().toolbarExpanded.subscript} (${withShortcut('Ctrl+,')})`}
         aria-pressed={isSubscript}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -948,7 +944,7 @@
     <div class="toolbar-separator"></div>
 
     <div class="toolbar-group">
-      <button onclick={() => changeIndent(-1)} title="Decrease indent">
+      <button onclick={() => changeIndent(-1)} title={t().toolbarExpanded.decreaseIndent}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <line x1="5" y1="3"  x2="14" y2="3"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           <line x1="9" y1="8"  x2="14" y2="8"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -956,7 +952,7 @@
           <path d="M5.5 8H1.5M3.5 5.5L1.5 8L3.5 10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
-      <button onclick={() => changeIndent(1)} title="Increase indent">
+      <button onclick={() => changeIndent(1)} title={t().toolbarExpanded.increaseIndent}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <line x1="5" y1="3"  x2="14" y2="3"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           <line x1="9" y1="8"  x2="14" y2="8"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -969,7 +965,7 @@
     <div class="toolbar-separator"></div>
 
     <div class="lh-picker" use:lineHeightPickerClickOutside>
-      <button class="lh-trigger" onclick={openLineHeightPicker} title="Line &amp; paragraph spacing">
+      <button class="lh-trigger" onclick={openLineHeightPicker} title={t().toolbarExpanded.lineParagraphSpacing}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <line x1="8" y1="3"  x2="16" y2="3"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           <line x1="8" y1="8"  x2="16" y2="8"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -983,16 +979,16 @@
       </button>
       {#if lineHeightOpen}
         <div class="lh-dropdown">
-          <div class="lh-section-label">Line spacing</div>
+          <div class="lh-section-label">{t().toolbarExpanded.lineSpacing}</div>
           {#each LINE_HEIGHTS as lh}
             <button
               class="lh-option"
-              class:active={currentLineHeight === lh.value}
-              onclick={() => pickLineHeight(lh.value)}
-            >{lh.label}</button>
+              class:active={currentLineHeight === lh}
+              onclick={() => pickLineHeight(lh)}
+            >{lineHeightLabel(lh)}</button>
           {/each}
 
-          <div class="lh-section-label">Space before paragraph (pt)</div>
+          <div class="lh-section-label">{t().toolbarExpanded.spaceBefore}</div>
           <div class="sp-field" use:spacePresetClickOutside={'before'}>
             <div class="sp-input-wrap">
               <input
@@ -1002,11 +998,11 @@
                 onfocus={(e) => onSpaceFocus('before', e)}
                 onkeydown={(e) => onSpaceKeydown('before', e)}
                 onblur={() => onSpaceBlur('before')}
-                placeholder="Default"
+                placeholder={t().toolbarExpanded.spacingDefault}
                 inputmode="decimal"
-                title="Space before paragraph (pt)"
+                title={t().toolbarExpanded.spaceBefore}
               />
-              <button class="sp-chevron" onclick={() => openSpacePreset('before')} tabindex="-1" title="Space before presets">
+              <button class="sp-chevron" onclick={() => openSpacePreset('before')} tabindex="-1" title={t().toolbarExpanded.spaceBeforePresets}>
                 <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
                   <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
@@ -1025,7 +1021,7 @@
             {/if}
           </div>
 
-          <div class="lh-section-label">Space after paragraph (pt)</div>
+          <div class="lh-section-label">{t().toolbarExpanded.spaceAfter}</div>
           <div class="sp-field" use:spacePresetClickOutside={'after'}>
             <div class="sp-input-wrap">
               <input
@@ -1035,11 +1031,11 @@
                 onfocus={(e) => onSpaceFocus('after', e)}
                 onkeydown={(e) => onSpaceKeydown('after', e)}
                 onblur={() => onSpaceBlur('after')}
-                placeholder="Default"
+                placeholder={t().toolbarExpanded.spacingDefault}
                 inputmode="decimal"
-                title="Space after paragraph (pt)"
+                title={t().toolbarExpanded.spaceAfter}
               />
-              <button class="sp-chevron" onclick={() => openSpacePreset('after')} tabindex="-1" title="Space after presets">
+              <button class="sp-chevron" onclick={() => openSpacePreset('after')} tabindex="-1" title={t().toolbarExpanded.spaceAfterPresets}>
                 <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
                   <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
@@ -1062,67 +1058,67 @@
     </div>
 
     <div class="layout-picker right-group" use:layoutClickOutside>
-      <button class="layout-trigger" onclick={openLayout} title="Page layout &amp; margins" aria-pressed={layoutOpen}>
+      <button class="layout-trigger" onclick={openLayout} title={t().toolbarExpanded.pageLayoutMargins} aria-pressed={layoutOpen}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <rect x="2.5" y="1.5" width="11" height="13" rx="1" stroke="currentColor" stroke-width="1.3"/>
           <rect x="4.5" y="3.5" width="7" height="9" rx="0.5" stroke="currentColor" stroke-width="1" stroke-dasharray="2 1.5"/>
         </svg>
-        <span class="layout-trigger-label">Layout</span>
+        <span class="layout-trigger-label">{t().toolbarExpanded.layout}</span>
         <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
           <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
       {#if layoutOpen}
         <div class="layout-dropdown">
-          <div class="lh-section-label">Orientation</div>
+          <div class="lh-section-label">{t().toolbarExpanded.orientation}</div>
           <div class="orientation-row">
             <button
               class="orientation-btn"
               class:active={pageOrientation === 'portrait'}
               aria-pressed={pageOrientation === 'portrait'}
               onclick={() => (pageOrientation = 'portrait')}
-              title="Portrait"
+              title={t().toolbarExpanded.portrait}
             >
               <svg width="14" height="16" viewBox="0 0 14 16" fill="none" aria-hidden="true">
                 <rect x="2.5" y="1.5" width="9" height="13" rx="1" stroke="currentColor" stroke-width="1.3"/>
               </svg>
-              <span>Portrait</span>
+              <span>{t().toolbarExpanded.portrait}</span>
             </button>
             <button
               class="orientation-btn"
               class:active={pageOrientation === 'landscape'}
               aria-pressed={pageOrientation === 'landscape'}
               onclick={() => (pageOrientation = 'landscape')}
-              title="Landscape"
+              title={t().toolbarExpanded.landscape}
             >
               <svg width="16" height="14" viewBox="0 0 16 14" fill="none" aria-hidden="true">
                 <rect x="1.5" y="2.5" width="13" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/>
               </svg>
-              <span>Landscape</span>
+              <span>{t().toolbarExpanded.landscape}</span>
             </button>
           </div>
-          <div class="lh-section-label">Page margins (cm)</div>
+          <div class="lh-section-label">{t().toolbarExpanded.pageMargins}</div>
           <div class="margin-grid">
-            {#each MARGIN_FIELDS as f}
+            {#each MARGIN_FIELDS as axis}
               <div class="margin-field">
-                <span class="margin-label">{f.label}</span>
+                <span class="margin-label">{t().toolbarExpanded.margins[axis]}</span>
                 <div class="margin-input-wrap">
                   <input
                     type="text"
                     class="margin-input"
-                    bind:value={marginInputs[f.axis]}
-                    onkeydown={(e) => onMarginKeydown(f.axis, e)}
-                    onblur={() => commitMarginInput(f.axis)}
+                    bind:value={marginInputs[axis]}
+                    onkeydown={(e) => onMarginKeydown(axis, e)}
+                    onblur={() => commitMarginInput(axis)}
                     inputmode="decimal"
-                    title="{f.label} margin (cm)"
+                    title={t().toolbarExpanded.marginField(t().toolbarExpanded.margins[axis])}
                   />
                   <div class="margin-steppers">
-                    <button class="margin-step" tabindex="-1" onclick={() => stepMargin(f.axis, MARGIN_STEP)} title="Increase {f.label.toLowerCase()} margin" aria-label="Increase {f.label.toLowerCase()} margin">
+                    <button class="margin-step" tabindex="-1" onclick={() => stepMargin(axis, MARGIN_STEP)} title={t().toolbarExpanded.increaseMargin(t().toolbarExpanded.margins[axis])} aria-label={t().toolbarExpanded.increaseMargin(t().toolbarExpanded.margins[axis])}>
                       <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
                         <path d="M1 5.5l3-3 3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                       </svg>
                     </button>
-                    <button class="margin-step" tabindex="-1" onclick={() => stepMargin(f.axis, -MARGIN_STEP)} title="Decrease {f.label.toLowerCase()} margin" aria-label="Decrease {f.label.toLowerCase()} margin">
+                    <button class="margin-step" tabindex="-1" onclick={() => stepMargin(axis, -MARGIN_STEP)} title={t().toolbarExpanded.decreaseMargin(t().toolbarExpanded.margins[axis])} aria-label={t().toolbarExpanded.decreaseMargin(t().toolbarExpanded.margins[axis])}>
                       <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
                         <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                       </svg>
@@ -1133,42 +1129,42 @@
             {/each}
           </div>
 
-          <div class="lh-section-label">Header &amp; footer</div>
+          <div class="lh-section-label">{t().toolbarExpanded.headerFooter}</div>
           <div class="hf-edit-row">
             <button
               class="hf-edit-btn"
               class:active={hfActive === 'header'}
               onclick={() => onEditZone?.('header')}
-            >Edit header</button>
+            >{t().toolbarExpanded.editHeader}</button>
             <button
               class="hf-edit-btn"
               class:active={hfActive === 'footer'}
               onclick={() => onEditZone?.('footer')}
-            >Edit footer</button>
+            >{t().toolbarExpanded.editFooter}</button>
           </div>
 
-          <div class="lh-section-label">Position (cm)</div>
+          <div class="lh-section-label">{t().toolbarExpanded.position}</div>
           <div class="margin-grid">
-            {#each HF_DIST_FIELDS as f}
+            {#each HF_DIST_FIELDS as axis}
               <div class="margin-field">
-                <span class="margin-label">{f.label}</span>
+                <span class="margin-label">{t().toolbarExpanded.hfDist[axis]}</span>
                 <div class="margin-input-wrap">
                   <input
                     type="text"
                     class="margin-input"
-                    bind:value={hfDistInputs[f.axis]}
-                    onkeydown={(e) => onHfDistKeydown(f.axis, e)}
-                    onblur={() => commitHfDistInput(f.axis)}
+                    bind:value={hfDistInputs[axis]}
+                    onkeydown={(e) => onHfDistKeydown(axis, e)}
+                    onblur={() => commitHfDistInput(axis)}
                     inputmode="decimal"
-                    title="{f.label} (cm)"
+                    title={t().toolbarExpanded.hfField(t().toolbarExpanded.hfDist[axis])}
                   />
                   <div class="margin-steppers">
-                    <button class="margin-step" tabindex="-1" onclick={() => stepHfDist(f.axis, MARGIN_STEP)} title="Increase" aria-label="Increase {f.label.toLowerCase()}">
+                    <button class="margin-step" tabindex="-1" onclick={() => stepHfDist(axis, MARGIN_STEP)} title={t().toolbarExpanded.increaseShort} aria-label={t().toolbarExpanded.increase(t().toolbarExpanded.hfDist[axis])}>
                       <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
                         <path d="M1 5.5l3-3 3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                       </svg>
                     </button>
-                    <button class="margin-step" tabindex="-1" onclick={() => stepHfDist(f.axis, -MARGIN_STEP)} title="Decrease" aria-label="Decrease {f.label.toLowerCase()}">
+                    <button class="margin-step" tabindex="-1" onclick={() => stepHfDist(axis, -MARGIN_STEP)} title={t().toolbarExpanded.decreaseShort} aria-label={t().toolbarExpanded.decrease(t().toolbarExpanded.hfDist[axis])}>
                       <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
                         <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                       </svg>
@@ -1188,7 +1184,7 @@
       <button
         class:active={showFormattingMarks}
         onclick={() => (showFormattingMarks = !showFormattingMarks)}
-        title="Formatting marks"
+        title={t().toolbarExpanded.formattingMarks}
         aria-pressed={showFormattingMarks}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1215,8 +1211,8 @@
       <button
         onclick={() => imageInput?.click()}
         disabled={!!hfActive}
-        title={hfActive ? 'Images are not available in headers/footers' : 'Insert image'}
-        aria-label="Insert image"
+        title={hfActive ? t().toolbarExpanded.imageNotInHf : t().toolbarExpanded.insertImage}
+        aria-label={t().toolbarExpanded.insertImage}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" />
@@ -1234,8 +1230,8 @@
       <button
         onclick={() => editor?.chain().focus().insertTextBox().run()}
         disabled={!!hfActive}
-        title={hfActive ? 'Text boxes are not available in headers/footers' : 'Insert text box'}
-        aria-label="Insert text box"
+        title={hfActive ? t().toolbarExpanded.textBoxNotInHf : t().toolbarExpanded.insertTextBox}
+        aria-label={t().toolbarExpanded.insertTextBox}
       >
         <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <rect x="1.5" y="3.5" width="13" height="9" rx="1" stroke="currentColor" />
@@ -1245,8 +1241,8 @@
       <button
         onclick={insertToc}
         disabled={!!hfActive}
-        title={hfActive ? 'A table of contents is not available in headers/footers' : 'Insert table of contents'}
-        aria-label="Insert table of contents"
+        title={hfActive ? t().toolbarExpanded.tocNotInHf : t().toolbarExpanded.insertToc}
+        aria-label={t().toolbarExpanded.insertToc}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M2 3.5h6M2 6.5h8M2 9.5h5M2 12.5h7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
@@ -1258,8 +1254,8 @@
           class:active={isLink}
           onclick={openLinkDialog}
           disabled={!!hfActive}
-          title={hfActive ? 'Links are not available in headers/footers' : 'Insert link (Ctrl+K)'}
-          aria-label="Insert link"
+          title={hfActive ? t().toolbarExpanded.linkNotInHf : `${t().toolbarExpanded.insertLink} (${withShortcut('Ctrl+K')})`}
+          aria-label={t().toolbarExpanded.insertLink}
           aria-haspopup="dialog"
           aria-expanded={linkDialogOpen}
         >
@@ -1294,7 +1290,7 @@
             .setSpaceAfter(null)
             .unsetIndent()
             .run()}
-        title="Clear formatting"
+        title={t().toolbarExpanded.clearFormatting}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <!-- bold + italic A -->

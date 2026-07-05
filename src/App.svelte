@@ -22,6 +22,7 @@
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { spellController } from './lib/spell/controller';
   import LanguagePicker from './lib/components/LanguagePicker.svelte';
+  import UiLanguagePicker from './lib/components/UiLanguagePicker.svelte';
   import AboutDialog from './lib/components/AboutDialog.svelte';
 
   let editor: Editor | null = $state(null);
@@ -742,6 +743,7 @@
           </div>
         {/if}
       </div>
+      <UiLanguagePicker />
       <input
         bind:this={fileInput}
         type="file"

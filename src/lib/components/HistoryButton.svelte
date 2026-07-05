@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { historyLog, undoSteps, redoSteps } from '../utils/historyLog.svelte';
+  import { t } from '../i18n/i18n.svelte';
+  import { withShortcut } from '../i18n/shortcut';
 
   let { editor, tick, direction }: { editor: Editor | null; tick: number; direction: 'undo' | 'redo' } = $props();
 
@@ -12,8 +14,6 @@
   let canRun = $derived(
     tick >= 0 && (direction === 'undo' ? !!editor?.can().undo() : !!editor?.can().redo()),
   );
-
-  let verb = $derived(direction === 'undo' ? 'Undo' : 'Redo');
 
   let open = $state(false);
   let hoverIndex = $state(-1);
@@ -72,7 +72,7 @@
       class="history-main"
       onclick={runSingle}
       disabled={!canRun}
-      title={direction === 'undo' ? 'Undo (Ctrl+Z)' : 'Redo (Ctrl+Shift+Z)'}
+      title={`${direction === 'undo' ? t().history.undo : t().history.redo} (${withShortcut(direction === 'undo' ? 'Ctrl+Z' : 'Ctrl+Shift+Z')})`}
     >
       {direction === 'undo' ? '↩' : '↪'}
     </button>
@@ -82,7 +82,7 @@
       disabled={displayed.length === 0}
       aria-haspopup="menu"
       aria-expanded={open}
-      title={`${verb} history`}
+      title={t().history.heading(direction)}
     >
       <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
         <path d="M1 2.5 L4 5.5 L7 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -93,7 +93,7 @@
   {#if open && displayed.length > 0}
     <!-- svelte-ignore a11y_mouse_events_have_key_events -->
     <div class="history-dropdown">
-      <div class="history-heading">{verb} history</div>
+      <div class="history-heading">{t().history.heading(direction)}</div>
       <div class="history-list" role="menu" tabindex="-1" onmouseleave={() => (hoverIndex = -1)}>
         {#each displayed as entry, i}
           <button
@@ -111,9 +111,9 @@
       </div>
       <div class="history-footer">
         {#if hoverIndex >= 0}
-          {verb} {hoverIndex + 1} action{hoverIndex > 0 ? 's' : ''}
+          {t().history.revertCount(direction, hoverIndex + 1)}
         {:else}
-          {displayed.length} action{displayed.length !== 1 ? 's' : ''}
+          {t().history.actionCount(displayed.length)}
         {/if}
       </div>
     </div>

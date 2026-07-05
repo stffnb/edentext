@@ -1,16 +1,12 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
+  import { t } from '../i18n/i18n.svelte';
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 
   type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
-  const ALIGNMENTS: { value: AlignValue; label: string }[] = [
-    { value: 'left',    label: 'Left'    },
-    { value: 'center',  label: 'Center'  },
-    { value: 'right',   label: 'Right'   },
-    { value: 'justify', label: 'Justify' },
-  ];
+  const ALIGNMENTS: AlignValue[] = ['left', 'center', 'right', 'justify'];
 
   // Empty string when the selection spans paragraphs/headings with different alignments.
   let currentAlign = $derived.by<AlignValue | ''>(() => {
@@ -54,7 +50,7 @@
 </script>
 
 <div class="align-picker" use:alignPickerClickOutside>
-  <button class="align-trigger" onclick={openAlignPicker} title="Text alignment">
+  <button class="align-trigger" onclick={openAlignPicker} title={t().align.title}>
     {#if currentAlign === 'center'}
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -86,27 +82,27 @@
   </button>
   {#if alignOpen}
     <div class="align-dropdown">
-      <div class="align-section-label">Alignment</div>
+      <div class="align-section-label">{t().align.section}</div>
       {#each ALIGNMENTS as a}
         <button
           class="align-option"
-          class:active={currentAlign === a.value}
-          onclick={() => pickAlign(a.value)}
-          title="Align {a.label.toLowerCase()}"
+          class:active={currentAlign === a}
+          onclick={() => pickAlign(a)}
+          title={t().align.alignTo(t().align[a])}
         >
-          {#if a.value === 'left'}
+          {#if a === 'left'}
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               <line x1="2" y1="7" x2="10" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               <line x1="2" y1="11" x2="12" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
-          {:else if a.value === 'center'}
+          {:else if a === 'center'}
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               <line x1="4" y1="7" x2="12" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               <line x1="3" y1="11" x2="13" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
-          {:else if a.value === 'right'}
+          {:else if a === 'right'}
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               <line x1="6" y1="7" x2="14" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -119,7 +115,7 @@
               <line x1="2" y1="11" x2="14" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
           {/if}
-          <span>{a.label}</span>
+          <span>{t().align[a]}</span>
         </button>
       {/each}
     </div>
