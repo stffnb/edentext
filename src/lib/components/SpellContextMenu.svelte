@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n/i18n.svelte';
   let {
     top,
     left,
@@ -42,18 +43,18 @@
   style="top: {top}px; left: {left}px;"
   role="menu"
   tabindex="-1"
-  aria-label="Spelling suggestions"
+  aria-label={t().spell.suggestions}
 >
   {#if suggestions.length}
     {#each suggestions as s}
       <button class="sm-item sm-suggest" role="menuitem" onclick={() => onReplace(s)}>{s}</button>
     {/each}
   {:else}
-    <span class="sm-empty">No suggestions</span>
+    <span class="sm-empty">{t().spell.noSuggestions}</span>
   {/if}
   <span class="sm-sep"></span>
-  <button class="sm-item" role="menuitem" onclick={onAdd}>Add to Dictionary</button>
-  <button class="sm-item" role="menuitem" onclick={onIgnore}>Ignore All</button>
+  <button class="sm-item" role="menuitem" onclick={onAdd}>{t().spell.addToDictionary}</button>
+  <button class="sm-item" role="menuitem" onclick={onIgnore}>{t().spell.ignoreAll}</button>
 </div>
 
 <style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n/i18n.svelte';
   // Small popover to enter/edit a hyperlink URL. The parent owns `open` and decides how
   // to apply the URL to the selection (insert vs. set vs. extend); this just collects it.
   let {
@@ -40,7 +41,7 @@
 </script>
 
 {#if open}
-  <div class="link-dialog" role="dialog" aria-label="Insert link">
+  <div class="link-dialog" role="dialog" aria-label={t().link.dialogLabel}>
     <input
       bind:this={input}
       bind:value={url}
@@ -52,11 +53,11 @@
     />
     <div class="link-actions">
       {#if canRemove}
-        <button class="link-remove" onclick={onRemove}>Remove</button>
+        <button class="link-remove" onclick={onRemove}>{t().common.remove}</button>
       {/if}
       <span class="link-spacer"></span>
-      <button class="link-cancel" onclick={onClose}>Cancel</button>
-      <button class="link-apply" onclick={apply} disabled={!url.trim()}>Apply</button>
+      <button class="link-cancel" onclick={onClose}>{t().common.cancel}</button>
+      <button class="link-apply" onclick={apply} disabled={!url.trim()}>{t().common.apply}</button>
     </div>
   </div>
 {/if}

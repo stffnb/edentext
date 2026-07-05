@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n/i18n.svelte';
   // Word/LibreOffice "Split Cells…" popover: collects column + row counts. The parent
   // owns `open` and runs the splitCellInto command against the saved cell selection
   // (focus moves to the inputs, like LinkDialog/TablePicker).
@@ -55,11 +56,11 @@
     style="top: {top}px; left: {left}px;"
     role="dialog"
     tabindex="-1"
-    aria-label="Split cells"
+    aria-label={t().table.splitDialogLabel}
   >
     <div class="split-fields">
       <label>
-        <span>Columns</span>
+        <span>{t().table.columns}</span>
         <input
           bind:this={firstField}
           bind:value={colsInput}
@@ -70,7 +71,7 @@
         />
       </label>
       <label>
-        <span>Rows</span>
+        <span>{t().table.rowsField}</span>
         <input
           bind:value={rowsInput}
           type="number"
@@ -82,8 +83,8 @@
     </div>
     <div class="split-actions">
       <span class="split-spacer"></span>
-      <button class="split-cancel" onclick={onClose}>Cancel</button>
-      <button class="split-apply" onclick={apply}>Split</button>
+      <button class="split-cancel" onclick={onClose}>{t().common.cancel}</button>
+      <button class="split-apply" onclick={apply}>{t().table.split}</button>
     </div>
   </div>
 {/if}

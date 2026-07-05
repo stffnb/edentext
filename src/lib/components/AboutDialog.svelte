@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n/i18n.svelte';
   // Placeholder until the project's repository is public; swap the URL when known.
   const REPO_URL = 'https://github.com/your-org/edentext';
 
@@ -31,10 +32,10 @@
   bind:this={dialogEl}
   onclose={onClose}
   onclick={onClick}
-  aria-label="About EdenText"
+  aria-label={t().about.label}
 >
   <div class="card">
-    <button class="close" onclick={() => (open = false)} aria-label="Close" title="Close">
+    <button class="close" onclick={() => (open = false)} aria-label={t().common.close} title={t().common.close}>
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
         <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
       </svg>
@@ -42,15 +43,15 @@
 
     <img class="logo" src="/EdenText.png" alt="EdenText" />
 
-    <p class="tagline">A private editor for OpenDocument files — runs entirely in your browser.</p>
+    <p class="tagline">{t().about.tagline}</p>
 
-    <p class="version">Version {__APP_VERSION__}</p>
+    <p class="version">{t().about.version(__APP_VERSION__)}</p>
 
     <a class="repo" href={REPO_URL} target="_blank" rel="noopener">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
         <path d="M8 .2a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38l-.01-1.34c-2.23.49-2.7-1.07-2.7-1.07-.36-.93-.89-1.18-.89-1.18-.72-.5.06-.49.06-.49.8.06 1.22.83 1.22.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.83-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.22 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.52.56.83 1.28.83 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48l-.01 2.19c0 .21.15.46.55.38A8 8 0 0 0 8 .2z" />
       </svg>
-      <span>View on GitHub</span>
+      <span>{t().about.viewOnGitHub}</span>
     </a>
   </div>
 </dialog>

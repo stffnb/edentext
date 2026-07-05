@@ -2,6 +2,7 @@
   import type { Editor } from '@tiptap/core';
   import type { Snippet } from 'svelte';
   import { onDestroy, untrack } from 'svelte';
+  import { t } from '../i18n/i18n.svelte';
 
   let {
     editor,
@@ -9,7 +10,7 @@
     defaultColor,
     title,
     chevronTitle,
-    clearLabel = 'Automatic',
+    clearLabel,
     open = $bindable(false),
     onApply,
     onClear,
@@ -377,7 +378,7 @@
         class="color-automatic"
         class:active={currentColor === null}
         onclick={clearColor}
-      >{clearLabel}</button>
+      >{clearLabel ?? t().color.automatic}</button>
       <div class="color-grid">
         {#each COLOR_PALETTE as row}
           <div class="color-row">
@@ -395,12 +396,12 @@
         {/each}
       </div>
       <div class="color-extras">
-        <button class="color-more-trigger" onclick={openMoreColors}>More colors…</button>
+        <button class="color-more-trigger" onclick={openMoreColors}>{t().color.moreColors}</button>
         <button
           class="color-pipette-trigger"
           onclick={pickFromPage}
-          title="Pick a color from the page"
-          aria-label="Pick a color from the page"
+          title={t().color.pickFromPage}
+          aria-label={t().color.pickFromPage}
         >
           <svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <g transform="rotate(-45 8 8)" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round">
@@ -414,7 +415,7 @@
     </div>
   {/if}
   {#if open && view === 'custom'}
-    <div class="color-window" role="dialog" aria-label="Choose color">
+    <div class="color-window" role="dialog" aria-label={t().color.chooseColor}>
       <div class="color-window-body">
         <div
           class="sv-square"
@@ -437,8 +438,8 @@
         <input class="color-window-hex" type="text" value={stagedColor} oninput={onHexInput} maxlength="7" />
       </div>
       <div class="color-more-actions">
-        <button class="color-cancel" onclick={cancelMoreColors}>Cancel</button>
-        <button class="color-confirm" onclick={confirmMoreColors}>OK</button>
+        <button class="color-cancel" onclick={cancelMoreColors}>{t().common.cancel}</button>
+        <button class="color-confirm" onclick={confirmMoreColors}>{t().common.ok}</button>
       </div>
     </div>
   {/if}

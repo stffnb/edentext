@@ -1,6 +1,12 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { CHAR_CATEGORIES, type SpecialChar } from '../utils/specialChars';
+  import { t } from '../i18n/i18n.svelte';
+
+  // Category tab label by its English name, with the name itself as fallback.
+  function categoryLabel(name: string): string {
+    return (t().special.categories as Record<string, string>)[name] ?? name;
+  }
 
   let {
     editor,
@@ -121,26 +127,26 @@
 </script>
 
 <div class="char-picker" use:charPickerClickOutside>
-  <button class="char-trigger" onclick={openPicker} title="Insert special character" aria-pressed={open}>
+  <button class="char-trigger" onclick={openPicker} title={t().special.insertChar} aria-pressed={open}>
     <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <text x="8" y="12.5" font-size="14" font-weight="700" font-family="var(--font-serif, serif)" fill="currentColor" text-anchor="middle">Ω</text>
     </svg>
   </button>
 
   {#if open}
-    <div class="char-dropdown" role="dialog" aria-label="Insert special character" tabindex="-1" onkeydown={onKeydown}>
+    <div class="char-dropdown" role="dialog" aria-label={t().special.insertChar} tabindex="-1" onkeydown={onKeydown}>
       <!-- svelte-ignore a11y_autofocus -->
       <input
         type="text"
         class="char-search"
         bind:value={query}
-        placeholder="Search by name or code…"
-        aria-label="Search special characters"
+        placeholder={t().special.searchPlaceholder}
+        aria-label={t().special.searchAria}
         autofocus
       />
 
       {#if !query && recentChars.length > 0}
-        <div class="char-section-label">Recent</div>
+        <div class="char-section-label">{t().special.recent}</div>
         <div class="char-grid">
           {#each recentChars as c (c)}
             <button class="char-cell" title={titleOf(c)} onclick={() => pick(c)}>{c}</button>
@@ -157,7 +163,7 @@
               role="tab"
               aria-selected={i === activeIndex}
               onclick={() => (activeIndex = i)}
-            >{cat.name}</button>
+            >{categoryLabel(cat.name)}</button>
           {/each}
         </div>
       {/if}
@@ -169,7 +175,7 @@
           {/each}
         </div>
       {:else}
-        <div class="char-empty">No matching characters</div>
+        <div class="char-empty">{t().special.noMatch}</div>
       {/if}
     </div>
   {/if}

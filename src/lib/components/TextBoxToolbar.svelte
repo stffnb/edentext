@@ -3,6 +3,7 @@
   import type { WrapMode } from '../editor/extensions/image';
   import type { ShapeKind, TextBoxAttrs } from '../editor/extensions/textBox';
   import ColorPicker from './ColorPicker.svelte';
+  import { t } from '../i18n/i18n.svelte';
 
   let {
     editor,
@@ -31,18 +32,20 @@
     editor?.chain().focus().setTextBoxAttrs(attrs).run();
   }
 
-  const wrapModes: { mode: WrapMode; title: string }[] = [
-    { mode: 'inline', title: 'In line with text' },
-    { mode: 'left', title: 'Wrap text — box left' },
-    { mode: 'right', title: 'Wrap text — box right' },
-    { mode: 'topBottom', title: 'Top and bottom' },
-  ];
+  const wrapModes: WrapMode[] = ['inline', 'left', 'right', 'topBottom'];
+  function wrapTitle(m: WrapMode): string {
+    return m === 'inline' ? t().textBox.wrapInline
+      : m === 'left' ? t().textBox.wrapLeft
+      : m === 'right' ? t().textBox.wrapRight
+      : t().textBox.wrapTopBottom;
+  }
 
-  const shapes: { kind: ShapeKind; title: string }[] = [
-    { kind: 'textbox', title: 'Rectangle' },
-    { kind: 'roundRect', title: 'Rounded rectangle' },
-    { kind: 'ellipse', title: 'Ellipse' },
-  ];
+  const shapes: ShapeKind[] = ['textbox', 'roundRect', 'ellipse'];
+  function shapeTitle(k: ShapeKind): string {
+    return k === 'textbox' ? t().textBox.shapeRect
+      : k === 'roundRect' ? t().textBox.shapeRoundRect
+      : t().textBox.shapeEllipse;
+  }
 
   const strokeWidths = [0.5, 1, 2.25];
 </script>
@@ -52,7 +55,7 @@
   style="top: {top}px; left: {left}px;"
   role="toolbar"
   tabindex="-1"
-  aria-label="Text box options"
+  aria-label={t().textBox.toolbar}
   onmousedown={(e) => {
     // Keep the box selection/caret; buttons work via click.
     if ((e.target as HTMLElement).closest('select') === null) e.preventDefault();
@@ -61,13 +64,13 @@
   {#each wrapModes as m}
     <button
       class="tb-btn"
-      class:active={wrap === m.mode}
-      title={m.title}
-      aria-label={m.title}
-      aria-pressed={wrap === m.mode}
-      onclick={() => set({ wrap: m.mode })}
+      class:active={wrap === m}
+      title={wrapTitle(m)}
+      aria-label={wrapTitle(m)}
+      aria-pressed={wrap === m}
+      onclick={() => set({ wrap: m })}
     >
-      {#if m.mode === 'inline'}
+      {#if m === 'inline'}
         <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
           <line x1="2.5" y1="3" x2="15.5" y2="3" stroke="currentColor" stroke-width="1.2" />
           <line x1="2.5" y1="12" x2="5.5" y2="12" stroke="currentColor" stroke-width="1.2" />
@@ -75,7 +78,7 @@
           <line x1="12.5" y1="12" x2="15.5" y2="12" stroke="currentColor" stroke-width="1.2" />
           <line x1="2.5" y1="15" x2="15.5" y2="15" stroke="currentColor" stroke-width="1.2" />
         </svg>
-      {:else if m.mode === 'left'}
+      {:else if m === 'left'}
         <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
           <line x1="2.5" y1="3" x2="15.5" y2="3" stroke="currentColor" stroke-width="1.2" />
           <rect x="2.5" y="6" width="6" height="6" rx="1" fill="currentColor" />
@@ -83,7 +86,7 @@
           <line x1="10" y1="10" x2="15.5" y2="10" stroke="currentColor" stroke-width="1.2" />
           <line x1="2.5" y1="15" x2="15.5" y2="15" stroke="currentColor" stroke-width="1.2" />
         </svg>
-      {:else if m.mode === 'right'}
+      {:else if m === 'right'}
         <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
           <line x1="2.5" y1="3" x2="15.5" y2="3" stroke="currentColor" stroke-width="1.2" />
           <rect x="9.5" y="6" width="6" height="6" rx="1" fill="currentColor" />
@@ -106,17 +109,17 @@
   {#each shapes as s}
     <button
       class="tb-btn"
-      class:active={shapeKind === s.kind}
-      title={s.title}
-      aria-label={s.title}
-      aria-pressed={shapeKind === s.kind}
-      onclick={() => set({ shapeKind: s.kind })}
+      class:active={shapeKind === s}
+      title={shapeTitle(s)}
+      aria-label={shapeTitle(s)}
+      aria-pressed={shapeKind === s}
+      onclick={() => set({ shapeKind: s })}
     >
-      {#if s.kind === 'textbox'}
+      {#if s === 'textbox'}
         <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
           <rect x="2.5" y="4.5" width="13" height="9" stroke="currentColor" stroke-width="1.3" />
         </svg>
-      {:else if s.kind === 'roundRect'}
+      {:else if s === 'roundRect'}
         <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
           <rect x="2.5" y="4.5" width="13" height="9" rx="3" stroke="currentColor" stroke-width="1.3" />
         </svg>
@@ -135,9 +138,9 @@
     bind:open={fillOpen}
     currentColor={fillColor}
     defaultColor="#FFFFFF"
-    title="Fill color"
-    chevronTitle="Choose fill color"
-    clearLabel="No fill"
+    title={t().textBox.fillColor}
+    chevronTitle={t().textBox.chooseFillColor}
+    clearLabel={t().textBox.noFill}
     onOpen={() => (strokeOpen = false)}
     onApply={(c) => set({ fillColor: c })}
     onClear={() => set({ fillColor: null })}
@@ -156,9 +159,9 @@
     bind:open={strokeOpen}
     currentColor={strokeColor}
     defaultColor="#000000"
-    title="Border color"
-    chevronTitle="Choose border color"
-    clearLabel="No border"
+    title={t().textBox.borderColor}
+    chevronTitle={t().textBox.chooseBorderColor}
+    clearLabel={t().textBox.noBorder}
     onOpen={() => (fillOpen = false)}
     onApply={(c) => set({ strokeColor: c })}
     onClear={() => set({ strokeColor: null })}
@@ -173,16 +176,16 @@
 
   <select
     class="tb-width"
-    title="Border width"
-    aria-label="Border width"
+    title={t().textBox.borderWidth}
+    aria-label={t().textBox.borderWidth}
     value={String(strokeWidthPt)}
     onchange={(e) => set({ strokeWidthPt: parseFloat((e.target as HTMLSelectElement).value) })}
   >
     {#each strokeWidths as w}
-      <option value={String(w)}>{w} pt</option>
+      <option value={String(w)}>{t().textBox.pt(w)}</option>
     {/each}
     {#if !strokeWidths.includes(strokeWidthPt)}
-      <option value={String(strokeWidthPt)}>{strokeWidthPt} pt</option>
+      <option value={String(strokeWidthPt)}>{t().textBox.pt(strokeWidthPt)}</option>
     {/if}
   </select>
 </div>

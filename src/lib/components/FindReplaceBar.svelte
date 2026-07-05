@@ -2,6 +2,8 @@
   import type { Editor } from '@tiptap/core';
   import { onMount } from 'svelte';
   import { getSearchState } from '../editor/extensions/searchReplace';
+  import { t } from '../i18n/i18n.svelte';
+  import { withShortcut } from '../i18n/shortcut';
 
   let { editor, tick, mode, focusNonce, onClose }:
     { editor: Editor | null; tick: number; mode: 'find' | 'replace'; focusNonce: number; onClose: () => void } = $props();
@@ -62,8 +64,8 @@
   });
 </script>
 
-<div class="find-bar" role="dialog" aria-label="Find and replace">
-  <button class="fb-expand" onclick={() => (showReplace = !showReplace)} title={showReplace ? 'Hide replace' : 'Show replace'} aria-label="Toggle replace">
+<div class="find-bar" role="dialog" aria-label={t().findReplace.dialogLabel}>
+  <button class="fb-expand" onclick={() => (showReplace = !showReplace)} title={showReplace ? t().findReplace.hideReplace : t().findReplace.showReplace} aria-label={t().findReplace.toggleReplace}>
     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style="transform: rotate({showReplace ? 90 : 0}deg)">
       <path d="M3 1.5l3.5 3.5L3 8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
@@ -77,26 +79,26 @@
         oninput={applySearch}
         onkeydown={onFindKeydown}
         type="text"
-        placeholder="Find"
+        placeholder={t().findReplace.findPlaceholder}
         spellcheck="false"
         autocomplete="off"
       />
       <span class="fb-count">
-        {#if findText && results.count === 0}No results
+        {#if findText && results.count === 0}{t().findReplace.noResults}
         {:else if results.count > 0}{results.current + 1}/{results.count}
         {/if}
       </span>
-      <button class="fb-opt" class:on={matchCase} onclick={toggleCase} title="Match case" aria-pressed={matchCase}>Aa</button>
-      <button class="fb-opt fb-word" class:on={wholeWord} onclick={toggleWord} title="Whole word" aria-pressed={wholeWord}>
+      <button class="fb-opt" class:on={matchCase} onclick={toggleCase} title={t().findReplace.matchCase} aria-pressed={matchCase}>Aa</button>
+      <button class="fb-opt fb-word" class:on={wholeWord} onclick={toggleWord} title={t().findReplace.wholeWord} aria-pressed={wholeWord}>
         <span>W</span>
       </button>
-      <button class="fb-nav" onclick={prev} disabled={!results.count} title="Previous (Shift+Enter)" aria-label="Previous match">
+      <button class="fb-nav" onclick={prev} disabled={!results.count} title={`${t().findReplace.previous} (${withShortcut('Shift+Enter')})`} aria-label={t().findReplace.previousAria}>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 7.5L6 4l3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <button class="fb-nav" onclick={next} disabled={!results.count} title="Next (Enter)" aria-label="Next match">
+      <button class="fb-nav" onclick={next} disabled={!results.count} title={`${t().findReplace.next} (Enter)`} aria-label={t().findReplace.nextAria}>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <button class="fb-close" onclick={onClose} title="Close (Esc)" aria-label="Close">
+      <button class="fb-close" onclick={onClose} title={`${t().common.close} (Esc)`} aria-label={t().common.close}>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
       </button>
     </div>
@@ -107,12 +109,12 @@
           bind:value={replaceText}
           onkeydown={onReplaceKeydown}
           type="text"
-          placeholder="Replace"
+          placeholder={t().findReplace.replacePlaceholder}
           spellcheck="false"
           autocomplete="off"
         />
-        <button class="fb-text-btn" onclick={replaceOne} disabled={!results.count} title="Replace current match">Replace</button>
-        <button class="fb-text-btn" onclick={replaceEvery} disabled={!results.count} title="Replace all matches">All</button>
+        <button class="fb-text-btn" onclick={replaceOne} disabled={!results.count} title={t().findReplace.replaceCurrent}>{t().findReplace.replace}</button>
+        <button class="fb-text-btn" onclick={replaceEvery} disabled={!results.count} title={t().findReplace.replaceAllTitle}>{t().findReplace.all}</button>
       </div>
     {/if}
   </div>

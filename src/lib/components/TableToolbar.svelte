@@ -4,6 +4,7 @@
   import { isHeaderRowStyled } from '../editor/extensions/tableHeaderRow';
   import ColorPicker from './ColorPicker.svelte';
   import TableBorderPicker from './TableBorderPicker.svelte';
+  import { t } from '../i18n/i18n.svelte';
 
   let {
     editor,
@@ -70,13 +71,13 @@
   style="top: {top}px; left: {left}px;"
   role="toolbar"
   tabindex="-1"
-  aria-label="Table editing"
+  aria-label={t().table.editing}
   onmousedown={(e) => { if (!(e.target as HTMLElement).closest('.color-picker')) e.preventDefault(); }}
 >
   <button
     class="tt-btn"
-    title="Insert row above"
-    aria-label="Insert row above"
+    title={t().table.insertRowAbove}
+    aria-label={t().table.insertRowAbove}
     onclick={() => run((c) => c.addRowBefore())}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -88,8 +89,8 @@
 
   <button
     class="tt-btn"
-    title="Insert row below"
-    aria-label="Insert row below"
+    title={t().table.insertRowBelow}
+    aria-label={t().table.insertRowBelow}
     onclick={() => run((c) => c.addRowAfter())}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -101,8 +102,8 @@
 
   <button
     class="tt-btn"
-    title="Insert column left"
-    aria-label="Insert column left"
+    title={t().table.insertColumnLeft}
+    aria-label={t().table.insertColumnLeft}
     onclick={() => run((c) => c.addColumnBefore())}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -114,8 +115,8 @@
 
   <button
     class="tt-btn"
-    title="Insert column right"
-    aria-label="Insert column right"
+    title={t().table.insertColumnRight}
+    aria-label={t().table.insertColumnRight}
     onclick={() => run((c) => c.addColumnAfter())}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -129,8 +130,8 @@
 
   <button
     class="tt-btn tt-danger"
-    title="Delete row"
-    aria-label="Delete row"
+    title={t().table.deleteRow}
+    aria-label={t().table.deleteRow}
     onclick={() => run((c) => c.deleteRow())}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -142,8 +143,8 @@
 
   <button
     class="tt-btn tt-danger"
-    title="Delete column"
-    aria-label="Delete column"
+    title={t().table.deleteColumn}
+    aria-label={t().table.deleteColumn}
     onclick={() => run((c) => c.deleteColumn())}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -155,8 +156,8 @@
 
   <button
     class="tt-btn tt-danger"
-    title="Delete table"
-    aria-label="Delete table"
+    title={t().table.deleteTable}
+    aria-label={t().table.deleteTable}
     onclick={() => run((c) => c.deleteTable())}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -168,8 +169,8 @@
 
   <button
     class="tt-btn"
-    title="Merge cells"
-    aria-label="Merge cells"
+    title={t().table.mergeCells}
+    aria-label={t().table.mergeCells}
     disabled={!canMerge}
     onclick={() => run((c) => c.mergeCells())}
   >
@@ -182,8 +183,8 @@
 
   <button
     class="tt-btn"
-    title="Split cells…"
-    aria-label="Split cells"
+    title={t().table.splitCells}
+    aria-label={t().table.splitCellsAria}
     onclick={() => onSplit()}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -199,9 +200,9 @@
     {editor}
     currentColor={currentCellColor}
     defaultColor="#D9D9D9"
-    title="Cell shading"
-    chevronTitle="Choose cell color"
-    clearLabel="No fill"
+    title={t().table.cellShading}
+    chevronTitle={t().table.chooseCellColor}
+    clearLabel={t().table.noFill}
     onApply={(c) => applyCellColor(c)}
     onClear={() => clearCellColor()}
   >
@@ -221,8 +222,8 @@
   <button
     class="tt-btn"
     class:active={isHeaderRow}
-    title="Header row (bold + shading)"
-    aria-label="Header row"
+    title={t().table.headerRow}
+    aria-label={t().table.headerRowAria}
     aria-pressed={isHeaderRow}
     onclick={() => run((c) => c.toggleHeaderRowStyle())}
   >

@@ -4,6 +4,7 @@
   import { hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
   import { cmToPx, type PageMargins } from '../storage/pageMargins';
   import { PAGE_W_PORTRAIT, PAGE_H_PORTRAIT, type Orientation } from '../storage/pageOrientation';
+  import { t } from '../i18n/i18n.svelte';
 
   let {
     headerDoc = $bindable(),
@@ -130,7 +131,7 @@
     liveZone = zone;
     const ed = new Editor({
       element: mount,
-      extensions: hfExtensions(zone === 'header' ? 'Header…' : 'Footer…'),
+      extensions: hfExtensions(zone === 'header' ? t().hf.headerPlaceholder : t().hf.footerPlaceholder),
       content: (zoneDoc(zone) ?? emptyDoc()) as Content,
       // No autofocus: its scrollIntoView nudges the page so the just-clicked zone
       // appears to jump. Focus the zone explicitly without scrolling instead.
@@ -180,7 +181,7 @@
         <div
           class="hf-zone hf-{zone}"
           class:hf-empty={!html}
-          data-hf-label={zone === 'header' ? 'Double-click to add a header' : 'Double-click to add a footer'}
+          data-hf-label={zone === 'header' ? t().hf.addHeaderHint : t().hf.addFooterHint}
           style={boxStyle(zoneBox(zone, p))}
           ondblclick={() => startEdit(zone, p)}
           role="button"
@@ -197,11 +198,11 @@
     {@const box = zoneBox(hfActive, editingPage)}
     <div class="hf-zone hf-{hfActive} hf-active" style={boxStyle(box)} bind:this={liveMount}></div>
     <div class="hf-bar" style="top: {box.top}px; left: {box.left + box.width}px;">
-      <span class="hf-bar-label">Insert</span>
-      <button class="hf-bar-btn" title="Insert the current page number" onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageNumber')}>Page number</button>
-      <button class="hf-bar-btn" title="Insert the total page count" onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageCount')}>Page count</button>
+      <span class="hf-bar-label">{t().hf.insert}</span>
+      <button class="hf-bar-btn" title={t().hf.pageNumberTitle} onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageNumber')}>{t().hf.pageNumber}</button>
+      <button class="hf-bar-btn" title={t().hf.pageCountTitle} onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageCount')}>{t().hf.pageCount}</button>
       <span class="hf-bar-sep"></span>
-      <button class="hf-bar-btn hf-bar-done" title="Finish editing the header/footer" onmousedown={(e) => e.preventDefault()} onclick={() => (hfActive = null)}>Done</button>
+      <button class="hf-bar-btn hf-bar-done" title={t().hf.doneTitle} onmousedown={(e) => e.preventDefault()} onclick={() => (hfActive = null)}>{t().hf.done}</button>
     </div>
   {/if}
 </div>

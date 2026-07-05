@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import type { WrapMode } from '../editor/extensions/image';
+  import { t } from '../i18n/i18n.svelte';
 
   let {
     editor,
@@ -20,12 +21,13 @@
     editor?.chain().focus().setImageWrap(mode).run();
   }
 
-  const modes: { mode: WrapMode; title: string }[] = [
-    { mode: 'inline', title: 'In line with text' },
-    { mode: 'left', title: 'Wrap text — image left' },
-    { mode: 'right', title: 'Wrap text — image right' },
-    { mode: 'topBottom', title: 'Top and bottom' },
-  ];
+  const modes: WrapMode[] = ['inline', 'left', 'right', 'topBottom'];
+  function wrapTitle(m: WrapMode): string {
+    return m === 'inline' ? t().image.wrapInline
+      : m === 'left' ? t().image.wrapLeft
+      : m === 'right' ? t().image.wrapRight
+      : t().image.wrapTopBottom;
+  }
 </script>
 
 <div
@@ -33,19 +35,19 @@
   style="top: {top}px; left: {left}px;"
   role="toolbar"
   tabindex="-1"
-  aria-label="Image text wrap"
+  aria-label={t().image.wrapToolbar}
   onmousedown={(e) => e.preventDefault()}
 >
   {#each modes as m}
     <button
       class="it-btn"
-      class:active={wrap === m.mode}
-      title={m.title}
-      aria-label={m.title}
-      aria-pressed={wrap === m.mode}
-      onclick={() => set(m.mode)}
+      class:active={wrap === m}
+      title={wrapTitle(m)}
+      aria-label={wrapTitle(m)}
+      aria-pressed={wrap === m}
+      onclick={() => set(m)}
     >
-      {#if m.mode === 'inline'}
+      {#if m === 'inline'}
         <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
           <line x1="2.5" y1="3" x2="15.5" y2="3" stroke="currentColor" stroke-width="1.2" />
           <line x1="2.5" y1="12" x2="5.5" y2="12" stroke="currentColor" stroke-width="1.2" />
@@ -53,7 +55,7 @@
           <line x1="12.5" y1="12" x2="15.5" y2="12" stroke="currentColor" stroke-width="1.2" />
           <line x1="2.5" y1="15" x2="15.5" y2="15" stroke="currentColor" stroke-width="1.2" />
         </svg>
-      {:else if m.mode === 'left'}
+      {:else if m === 'left'}
         <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
           <line x1="2.5" y1="3" x2="15.5" y2="3" stroke="currentColor" stroke-width="1.2" />
           <rect x="2.5" y="6" width="6" height="6" rx="1" fill="currentColor" />
@@ -61,7 +63,7 @@
           <line x1="10" y1="10" x2="15.5" y2="10" stroke="currentColor" stroke-width="1.2" />
           <line x1="2.5" y1="15" x2="15.5" y2="15" stroke="currentColor" stroke-width="1.2" />
         </svg>
-      {:else if m.mode === 'right'}
+      {:else if m === 'right'}
         <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
           <line x1="2.5" y1="3" x2="15.5" y2="3" stroke="currentColor" stroke-width="1.2" />
           <rect x="9.5" y="6" width="6" height="6" rx="1" fill="currentColor" />

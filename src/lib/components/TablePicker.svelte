@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
+  import { t } from '../i18n/i18n.svelte';
 
   let {
     editor,
@@ -84,7 +85,7 @@
 </script>
 
 <div class="table-picker" use:tablePickerClickOutside>
-  <button class="table-trigger" onclick={openPicker} title="Insert table" aria-pressed={open}>
+  <button class="table-trigger" onclick={openPicker} title={t().table.insertTable} aria-pressed={open}>
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <rect x="1.5" y="1.5" width="13" height="13" rx="1" stroke="currentColor" stroke-width="1.5"/>
       <line x1="1.5" y1="5.5" x2="14.5" y2="5.5" stroke="currentColor" stroke-width="1"/>
@@ -98,9 +99,9 @@
     <div class="table-dropdown">
       <div class="table-dim-label">
         {#if hoverRows > 0 && hoverCols > 0}
-          {hoverCols} × {hoverRows}
+          {t().table.dimensions(hoverCols, hoverRows)}
         {:else}
-          Insert table
+          {t().table.insertTable}
         {/if}
       </div>
 
@@ -109,7 +110,7 @@
         class="table-grid"
         role="grid"
         tabindex="-1"
-        aria-label="Select table size"
+        aria-label={t().table.selectSize}
         onmouseleave={() => { hoverRows = 0; hoverCols = 0; }}
       >
         {#each ROW_INDICES as r}
@@ -119,7 +120,7 @@
                 class="table-grid-cell"
                 class:hot={r <= hoverRows && c <= hoverCols}
                 role="gridcell"
-                aria-label={`${c} by ${r}`}
+                aria-label={t().table.byDimension(c, r)}
                 onmouseover={() => { hoverRows = r; hoverCols = c; }}
                 onfocus={() => { hoverRows = r; hoverCols = c; }}
                 onclick={() => insert(r, c)}
@@ -131,26 +132,26 @@
 
       <div class="table-manual">
         <label class="table-manual-field">
-          <span>Rows</span>
+          <span>{t().table.rows}</span>
           <input
             type="text"
             inputmode="numeric"
             bind:value={rowsInput}
             onkeydown={onInputKeydown}
-            aria-label="Number of rows"
+            aria-label={t().table.numberOfRows}
           />
         </label>
         <label class="table-manual-field">
-          <span>Cols</span>
+          <span>{t().table.cols}</span>
           <input
             type="text"
             inputmode="numeric"
             bind:value={colsInput}
             onkeydown={onInputKeydown}
-            aria-label="Number of columns"
+            aria-label={t().table.numberOfColumns}
           />
         </label>
-        <button class="table-insert-btn" onclick={insertFromInputs}>Insert</button>
+        <button class="table-insert-btn" onclick={insertFromInputs}>{t().table.insert}</button>
       </div>
     </div>
   {/if}

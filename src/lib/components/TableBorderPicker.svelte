@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { activeBorderPresets, type BorderPreset } from '../editor/extensions/tableCellBorders';
+  import { t } from '../i18n/i18n.svelte';
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 
@@ -24,17 +25,17 @@
     h: 'M1 9H17', v: 'M9 1V17',
   };
   const ALL_SEGS: Seg[] = ['top', 'right', 'bottom', 'left', 'h', 'v'];
-  const PRESETS: { id: BorderPreset | 'none'; title: string; on: Seg[] }[] = [
-    { id: 'all', title: 'All borders', on: ['top', 'right', 'bottom', 'left', 'h', 'v'] },
-    { id: 'outer', title: 'Outside borders', on: ['top', 'right', 'bottom', 'left'] },
-    { id: 'inner', title: 'Inside borders', on: ['h', 'v'] },
-    { id: 'innerH', title: 'Inside horizontal border', on: ['h'] },
-    { id: 'innerV', title: 'Inside vertical border', on: ['v'] },
-    { id: 'top', title: 'Top border', on: ['top'] },
-    { id: 'bottom', title: 'Bottom border', on: ['bottom'] },
-    { id: 'left', title: 'Left border', on: ['left'] },
-    { id: 'right', title: 'Right border', on: ['right'] },
-    { id: 'none', title: 'No border', on: [] },
+  const PRESETS: { id: BorderPreset | 'none'; on: Seg[] }[] = [
+    { id: 'all', on: ['top', 'right', 'bottom', 'left', 'h', 'v'] },
+    { id: 'outer', on: ['top', 'right', 'bottom', 'left'] },
+    { id: 'inner', on: ['h', 'v'] },
+    { id: 'innerH', on: ['h'] },
+    { id: 'innerV', on: ['v'] },
+    { id: 'top', on: ['top'] },
+    { id: 'bottom', on: ['bottom'] },
+    { id: 'left', on: ['left'] },
+    { id: 'right', on: ['right'] },
+    { id: 'none', on: [] },
   ];
 
   // Word-like button states, re-read per transaction (tick) and pen change: a preset
@@ -65,8 +66,8 @@
   <button
     class="bp-trigger"
     class:active={open}
-    title="Borders"
-    aria-label="Borders"
+    title={t().borders.title}
+    aria-label={t().borders.title}
     aria-expanded={open}
     onclick={() => (open = !open)}
   >
@@ -82,14 +83,14 @@
 
   {#if open}
     <div class="bp-dropdown">
-      <div class="bp-title">Borders</div>
+      <div class="bp-title">{t().borders.title}</div>
       <div class="bp-presets">
         {#each PRESETS as preset}
           <button
             class="bp-preset"
             class:active={!!active?.[preset.id]}
-            title={preset.title}
-            aria-label={preset.title}
+            title={t().borders[preset.id]}
+            aria-label={t().borders[preset.id]}
             aria-pressed={!!active?.[preset.id]}
             onclick={() => apply(preset.id)}
           >
@@ -118,14 +119,14 @@
         {/each}
       </div>
 
-      <div class="bp-title">Line width</div>
+      <div class="bp-title">{t().borders.lineWidth}</div>
       <div class="bp-widths">
         {#each WIDTHS as w}
           <button
             class="bp-width"
             class:active={widthPt === w}
-            title="{w}pt"
-            aria-label="{w}pt"
+            title={t().borders.pt(w)}
+            aria-label={t().borders.pt(w)}
             aria-pressed={widthPt === w}
             onclick={() => (widthPt = w)}
           >
@@ -134,7 +135,7 @@
         {/each}
       </div>
 
-      <div class="bp-title">Line color</div>
+      <div class="bp-title">{t().borders.lineColor}</div>
       <div class="bp-colors">
         {#each COLORS as row}
           <div class="bp-color-row">
