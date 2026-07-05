@@ -62,6 +62,8 @@
 - Primary toolbar plus an expandable extended toolbar (horizontal scroll on narrow windows)
 - Status bar with page number, word count, language and zoom controls
 - About dialog
+- UI internationalization (English / German): language picker, auto-detects the browser
+  language on first load, persisted; covers toolbar, dialogs, menus, status bar and warnings
 
 **File & export**
 - ODT export via odf-kit with extensive content.xml / styles.xml post-processing (custom node types, tables with borders, images, fonts and colors); filename derived from the first heading (fallback `document.odt`)
@@ -91,7 +93,6 @@ Other:
 - Custom right-click context menu (formatting, cut/copy)
 - Multi-document management
 - PWA / offline support
-- i18n
 - ...
 
 ### Known issues / deferred

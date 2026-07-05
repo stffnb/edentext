@@ -1,5 +1,6 @@
 <script lang="ts">
   import { LANGUAGES, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
+  import { t } from '../i18n/i18n.svelte';
 
   let {
     value,
@@ -10,19 +11,19 @@
   } = $props();
 </script>
 
-<label class="lang-picker" title="Spell-check language">
+<label class="lang-picker" title={t().spellPicker.label}>
   <svg width="13" height="13" viewBox="0 0 18 18" fill="none" aria-hidden="true">
     <path d="M2 13l3-8 3 8M3.2 10.5h3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M11 14.5l1.6-1.6 1.6 1.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
   <select
-    aria-label="Spell-check language"
+    aria-label={t().spellPicker.label}
     onchange={(e) => onChange((e.currentTarget as HTMLSelectElement).value)}
   >
     {#each LANGUAGES as l}
       <option value={l.code} selected={l.code === value}>{l.label}</option>
     {/each}
-    <option value={NO_LANGUAGE} selected={value === NO_LANGUAGE}>No spell check</option>
+    <option value={NO_LANGUAGE} selected={value === NO_LANGUAGE}>{t().spellPicker.noSpellCheck}</option>
   </select>
 </label>
 

@@ -1,3 +1,5 @@
+import { t } from '../i18n/i18n.svelte';
+
 const STORAGE_KEY = 'odf-editor-doc';
 const DEBOUNCE_MS = 1000;
 
@@ -16,10 +18,7 @@ export function saveDocument(json: object): void {
       console.error('[autosave] Could not save the document:', err);
       if (!quotaWarned) {
         quotaWarned = true;
-        alert(
-          'The document is too large to save automatically (browser storage limit reached). ' +
-            'This usually happens with large embedded images. Save it as an .odt file to keep your work.',
-        );
+        alert(t().dialogs.autosaveQuota);
       }
     }
   }, DEBOUNCE_MS);

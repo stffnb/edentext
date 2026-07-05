@@ -22,6 +22,8 @@
   import { DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
+  import { t } from '../i18n/i18n.svelte';
+  import { withShortcut } from '../i18n/shortcut';
   import '../../styles/editor.css';
 
   const DEFAULT_EDITOR_FONT = 'Georgia'; // must match ToolbarExpanded.svelte
@@ -159,8 +161,6 @@
   // --- Link hover hint (Word/LibreOffice style) ---
   // Hovering a link shows its URL + a modifier-click hint; the link only follows on
   // Ctrl/Cmd+click (handleClick in editorProps), so a plain click can edit the text.
-  const linkHintKey =
-    typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform) ? '⌘' : 'Ctrl';
   let linkTip = $state<{ top: number; left: number; href: string } | null>(null);
 
   function showLinkTip(a: HTMLAnchorElement) {
@@ -733,7 +733,7 @@
   {#if linkTip}
     <div class="link-tooltip" style="top: {linkTip.top}px; left: {linkTip.left}px;">
       <span class="link-tooltip-url">{linkTip.href}</span>
-      <span class="link-tooltip-hint">{linkHintKey}+Click to open link</span>
+      <span class="link-tooltip-hint">{t().link.openHint(withShortcut('Ctrl'))}</span>
     </div>
   {/if}
 </div>

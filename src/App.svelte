@@ -24,6 +24,9 @@
   import LanguagePicker from './lib/components/LanguagePicker.svelte';
   import UiLanguagePicker from './lib/components/UiLanguagePicker.svelte';
   import AboutDialog from './lib/components/AboutDialog.svelte';
+  import { t } from './lib/i18n/i18n.svelte';
+  import { withShortcut } from './lib/i18n/shortcut';
+  import { localizeImportMessage } from './lib/i18n/importMessages';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
@@ -96,9 +99,9 @@
   // Only computed while the field is blank (otherwise the placeholder is hidden,
   // so we skip the per-transaction getJSON).
   let namePlaceholder = $derived.by(() => {
-    if (documentName.trim() || tick < 0 || !editor) return 'Untitled document';
+    if (documentName.trim() || tick < 0 || !editor) return t().app.untitled;
     const base = stripOdtExtension(deriveFilename(editor.getJSON() as Parameters<typeof buildOdt>[0]));
-    return base === 'document' ? 'Untitled document' : base;
+    return base === 'document' ? t().app.untitled : base;
   });
 
   function suggestedFilename(json: Parameters<typeof buildOdt>[0]): string {
@@ -298,7 +301,7 @@
 
   function handleNew() {
     if (!editor) return;
-    if (isDocNonEmpty() && !confirm('Start a new document? Any unsaved changes will be lost.')) return;
+    if (isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
     editor.commands.setContent('<p></p>'); // onUpdate fires → autosave
     // Reset everything to defaults; the $effects persist these.
     hfActive = null;
@@ -321,7 +324,7 @@
       const result = isDocx ? importDocx(bytes) : importOdt(bytes);
 
       const hasContent = editor.state.doc.textContent.length > 0 || editor.state.doc.childCount > 1;
-      if (hasContent && !confirm('Opening this file will replace the current document. Continue?')) {
+      if (hasContent && !confirm(t().dialogs.confirmReplace)) {
         return;
       }
 
@@ -347,11 +350,11 @@
 
       if (result.warnings.length) {
         console.warn('[import] Unsupported content in opened file:', result.warnings);
-        alert(`Opened with limitations:\n• ${result.warnings.join('\n• ')}`);
+        alert(t().dialogs.openedWithLimitations(result.warnings.map(localizeImportMessage).join('\n• ')));
       }
     } catch (err) {
       console.error('[import] Failed to open file:', err);
-      alert(err instanceof Error ? err.message : 'Could not open this file.');
+      alert(err instanceof Error ? localizeImportMessage(err.message) : t().dialogs.couldNotOpen);
     }
   }
 
@@ -364,7 +367,7 @@
       } catch (err) {
         if ((err as DOMException)?.name !== 'AbortError') {
           console.error('[open] Failed to open file:', err);
-          alert('Could not open this file.');
+          alert(t().dialogs.couldNotOpen);
         }
       }
     } else {
@@ -392,7 +395,7 @@
       // A stored handle may have lost permission; re-prompt via Save As.
       if (fileHandle) { fileHandle = null; await handleSaveAs(); return; }
       console.error('[save] Failed to save file:', err);
-      alert('Could not save this file.');
+      alert(t().dialogs.couldNotSave);
     }
   }
 
@@ -406,7 +409,7 @@
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save file:', err);
-      alert('Could not save this file.');
+      alert(t().dialogs.couldNotSave);
     }
   }
 
@@ -424,7 +427,7 @@
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[docx] Export failed:', err);
-      alert('Could not export to Word (.docx).');
+      alert(t().dialogs.couldNotExportDocx);
     } finally {
       docxBusy = false;
     }
@@ -447,7 +450,7 @@
       });
     } catch (err) {
       console.error('[pdf] Export failed:', err);
-      alert('Could not export to PDF.');
+      alert(t().dialogs.couldNotExportPdf);
     } finally {
       pdfBusy = false;
     }
@@ -471,7 +474,7 @@
       });
     } catch (err) {
       console.error('[pdf] Print failed:', err);
-      alert('Could not print.');
+      alert(t().dialogs.couldNotPrint);
     } finally {
       pdfBusy = false;
     }
@@ -494,7 +497,7 @@
       });
     } catch (err) {
       console.error('[pdf] Print failed:', err);
-      alert('Could not print to PDF.');
+      alert(t().dialogs.couldNotPrintPdf);
     }
   }
 
@@ -592,7 +595,7 @@
     <div class="toolbar-clip" id="primary-toolbar" bind:this={toolbarClipEl} onwheel={onToolbarWheel}>
       <div class="toolbar-stack" bind:this={toolbarStackEl} style="transform: translateX(-{tbScroll}px);">
   <header class:expanded={toolbarExpanded}>
-    <button class="logo-btn" onclick={() => (aboutOpen = true)} aria-label="About EdenText" title="About EdenText">
+    <button class="logo-btn" onclick={() => (aboutOpen = true)} aria-label={t().about.label} title={t().about.label}>
       <img src="/EdenText.png" alt="EdenText" class="app-logo" />
     </button>
     <Toolbar editor={activeEditor} tick={activeTick} />
@@ -618,13 +621,13 @@
           type="text"
           bind:value={documentName}
           placeholder={namePlaceholder}
-          title="Document name"
+          title={t().app.documentName}
           onkeydown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
           onblur={() => (documentName = documentName.trim())}
         />
       </div>
       <div class="file-actions">
-        <button class="file-action-btn" onclick={handleNew} disabled={!editor} title="New document">
+        <button class="file-action-btn" onclick={handleNew} disabled={!editor} title={t().app.newDocument}>
           <!-- Page with folded corner + plus -->
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M9 1.75H4.5A1.25 1.25 0 0 0 3.25 3v10A1.25 1.25 0 0 0 4.5 14.25h7A1.25 1.25 0 0 0 12.75 13V5.5L9 1.75z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
@@ -632,7 +635,7 @@
             <path d="M8 8v3.5M6.25 9.75h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
         </button>
-        <button class="file-action-btn" onclick={handleOpen} disabled={!editor} title="Open .odt…">
+        <button class="file-action-btn" onclick={handleOpen} disabled={!editor} title={t().app.openOdt}>
           <!-- Folder -->
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M1.75 12.5V4a1 1 0 0 1 1-1h3.2a1 1 0 0 1 .8.4l.7.95a1 1 0 0 0 .8.4h4.2a1 1 0 0 1 1 1v6.75a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
@@ -641,14 +644,14 @@
         <!-- Single Save / Export button → ODT, Raster PDF, or Vector PDF (beta). -->
         <div class="save-split" use:exportMenuClickOutside>
           <div class="save-control">
-            <button class="file-action-btn save-main" onclick={handleSave} disabled={!editor || pdfBusy} title="Save .odt (Ctrl+S)">
+            <button class="file-action-btn save-main" onclick={handleSave} disabled={!editor || pdfBusy} title={`${t().app.save} (${withShortcut('Ctrl+S')})`}>
               {@render saveIcon()}
             </button>
             <button
               class="save-chevron"
               onclick={() => (exportMenuOpen = !exportMenuOpen)}
               disabled={!editor || pdfBusy}
-              title="Save / Export"
+              title={t().app.saveExport}
               aria-haspopup="menu"
               aria-expanded={exportMenuOpen}
             >
@@ -659,27 +662,27 @@
           </div>
           {#if exportMenuOpen}
             <div class="theme-dropdown" role="menu">
-              <div class="theme-heading">Save / Export</div>
+              <div class="theme-heading">{t().app.saveExport}</div>
               <button class="theme-option" onclick={handleSave} role="menuitem">
-                <span>ODT</span>
-                <span class="theme-option-hint">OpenDocument</span>
+                <span>{t().app.odt}</span>
+                <span class="theme-option-hint">{t().app.openDocument}</span>
               </button>
               <button class="theme-option" onclick={handleSaveDocx} disabled={docxBusy} role="menuitem">
-                <span>{docxBusy ? 'Exporting…' : 'Word (.docx)'}</span>
-                <span class="theme-option-hint">Microsoft Word</span>
+                <span>{docxBusy ? t().app.exporting : t().app.wordDocx}</span>
+                <span class="theme-option-hint">{t().app.microsoftWord}</span>
               </button>
               <button class="theme-option" onclick={handleExportPdf} disabled={pdfBusy} role="menuitem">
-                <span>{pdfBusy ? 'Exporting…' : 'Raster PDF'}</span>
-                <span class="theme-option-hint">Exact copy of the editor</span>
+                <span>{pdfBusy ? t().app.exporting : t().app.rasterPdf}</span>
+                <span class="theme-option-hint">{t().app.rasterHint}</span>
               </button>
               <button class="theme-option" onclick={handlePrintPdf} role="menuitem">
-                <span>Vector PDF (beta)</span>
-                <span class="theme-option-hint">Sharp, but problems with tables</span>
+                <span>{t().app.vectorPdf}</span>
+                <span class="theme-option-hint">{t().app.vectorHint}</span>
               </button>
             </div>
           {/if}
         </div>
-        <button class="file-action-btn" onclick={handlePrint} disabled={!editor || pdfBusy} title="Print (Ctrl+P)">
+        <button class="file-action-btn" onclick={handlePrint} disabled={!editor || pdfBusy} title={`${t().app.print} (${withShortcut('Ctrl+P')})`}>
           <!-- Printer -->
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M4.5 6V2.25h7V6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
@@ -692,7 +695,7 @@
         <button
           class="theme-btn"
           onclick={() => (themeOpen = !themeOpen)}
-          title="Appearance"
+          title={t().appearance.title}
           aria-haspopup="true"
           aria-expanded={themeOpen}
         >
@@ -726,17 +729,17 @@
         </button>
         {#if themeOpen}
           <div class="theme-dropdown" role="menu">
-            <div class="theme-heading">Appearance</div>
-            {#each ([['light', 'Light'], ['dark', 'Dark'], ['allBlack', 'AllBlack'], ['auto', 'Auto']] as const) as [m, label]}
+            <div class="theme-heading">{t().appearance.title}</div>
+            {#each (['light', 'dark', 'allBlack', 'auto'] as const) as m}
               <button
                 class="theme-option"
                 class:selected={themeMode === m}
                 onclick={() => selectTheme(m)}
                 role="menuitem"
               >
-                <span>{label}</span>
+                <span>{t().appearance[m]}</span>
                 {#if m === 'allBlack'}
-                  <span class="theme-option-hint">font colors forced white</span>
+                  <span class="theme-option-hint">{t().appearance.allBlackHint}</span>
                 {/if}
               </button>
             {/each}
@@ -761,7 +764,7 @@
       class="expand-toggle"
       class:active={toolbarExpanded}
       onclick={toggleToolbar}
-      title={toolbarExpanded ? 'Hide extra tools' : 'Show extra tools'}
+      title={toolbarExpanded ? t().app.hideExtraTools : t().app.showExtraTools}
       aria-expanded={toolbarExpanded}
     >
       <!-- Sliders icon -->
@@ -773,7 +776,7 @@
         <circle cx="10" cy="8" r="1.5" fill="var(--color-surface)" stroke="currentColor" stroke-width="1.2"/>
         <circle cx="7" cy="12" r="1.5" fill="var(--color-surface)" stroke="currentColor" stroke-width="1.2"/>
       </svg>
-      <span class="expand-label">Tools</span>
+      <span class="expand-label">{t().app.tools}</span>
       <svg class="chevron" width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
         <path d="M2.5 1l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
@@ -821,37 +824,37 @@
   {/if}
   <footer class="statusbar">
     <div class="sb-left">
-      <span>Page {currentPage} of {numPages}</span>
+      <span>{t().status.pageOf(currentPage, numPages)}</span>
       <div class="wordcount-wrap" use:wordCountClickOutside>
         <button
           class="wordcount-btn"
           onclick={() => (wordCountOpen = !wordCountOpen)}
-          title="Statistics"
+          title={t().status.statistics}
           aria-haspopup="dialog"
           aria-expanded={wordCountOpen}
         >
           {#if selStats}
-            {selStats.words.toLocaleString()} of {docStats.words.toLocaleString()} words
+            {t().status.selectedOf(selStats.words, docStats.words)}
           {:else}
-            {docStats.words.toLocaleString()} {docStats.words === 1 ? 'Word' : 'Words'}
+            {t().status.words(docStats.words)}
           {/if}
         </button>
         {#if wordCountOpen}
-          <div class="wordcount-popup" role="dialog" aria-label="Statistics">
-            <div class="wc-heading">Statistics</div>
+          <div class="wordcount-popup" role="dialog" aria-label={t().status.statistics}>
+            <div class="wc-heading">{t().status.statistics}</div>
             {#if selStats}
-              <div class="wc-section">Selection</div>
-              <div class="wc-row"><span>Words</span><span>{selStats.words.toLocaleString()}</span></div>
-              <div class="wc-row"><span>Characters (with spaces)</span><span>{selStats.charsWithSpaces.toLocaleString()}</span></div>
-              <div class="wc-row"><span>Characters (no spaces)</span><span>{selStats.charsNoSpaces.toLocaleString()}</span></div>
+              <div class="wc-section">{t().status.selection}</div>
+              <div class="wc-row"><span>{t().status.wordsLabel}</span><span>{t().status.num(selStats.words)}</span></div>
+              <div class="wc-row"><span>{t().status.charsWithSpaces}</span><span>{t().status.num(selStats.charsWithSpaces)}</span></div>
+              <div class="wc-row"><span>{t().status.charsNoSpaces}</span><span>{t().status.num(selStats.charsNoSpaces)}</span></div>
               <div class="wc-divider"></div>
-              <div class="wc-section">Document</div>
+              <div class="wc-section">{t().status.document}</div>
             {/if}
-            <div class="wc-row"><span>Words</span><span>{docStats.words.toLocaleString()}</span></div>
-            <div class="wc-row"><span>Characters (with spaces)</span><span>{docStats.charsWithSpaces.toLocaleString()}</span></div>
-            <div class="wc-row"><span>Characters (no spaces)</span><span>{docStats.charsNoSpaces.toLocaleString()}</span></div>
-            <div class="wc-row"><span>Paragraphs</span><span>{docStats.paragraphs.toLocaleString()}</span></div>
-            <div class="wc-row"><span>Pages</span><span>{numPages.toLocaleString()}</span></div>
+            <div class="wc-row"><span>{t().status.wordsLabel}</span><span>{t().status.num(docStats.words)}</span></div>
+            <div class="wc-row"><span>{t().status.charsWithSpaces}</span><span>{t().status.num(docStats.charsWithSpaces)}</span></div>
+            <div class="wc-row"><span>{t().status.charsNoSpaces}</span><span>{t().status.num(docStats.charsNoSpaces)}</span></div>
+            <div class="wc-row"><span>{t().status.paragraphs}</span><span>{t().status.num(docStats.paragraphs)}</span></div>
+            <div class="wc-row"><span>{t().status.pages}</span><span>{t().status.num(numPages)}</span></div>
           </div>
         {/if}
       </div>
@@ -861,7 +864,7 @@
     </div>
     <div class="sb-right">
     <div class="zoom-controls">
-      <button class="zoom-btn" onclick={() => setZoom(zoom - 10)} disabled={zoom <= 20} title="Zoom out">−</button>
+      <button class="zoom-btn" onclick={() => setZoom(zoom - 10)} disabled={zoom <= 20} title={t().status.zoomOut}>−</button>
       <input
         type="range"
         class="zoom-slider"
@@ -870,10 +873,10 @@
         step="1"
         value={zoom}
         oninput={(e) => setZoom(parseInt((e.target as HTMLInputElement).value, 10))}
-        title="Zoom"
+        title={t().status.zoom}
       />
-      <button class="zoom-btn" onclick={() => setZoom(zoom + 10)} disabled={zoom >= 300} title="Zoom in">+</button>
-      <button class="zoom-pct" onclick={() => setZoom(100)} title="Reset to 100%">{zoom}%</button>
+      <button class="zoom-btn" onclick={() => setZoom(zoom + 10)} disabled={zoom >= 300} title={t().status.zoomIn}>+</button>
+      <button class="zoom-pct" onclick={() => setZoom(100)} title={t().status.resetZoom}>{zoom}%</button>
     </div>
     </div>
   </footer>
@@ -1204,10 +1207,10 @@
        top, but below the basic toolbar (200) so its dropdowns open over this row;
        the header menus sit above everything via a higher z-index. */
     z-index: 160;
-    /* The toggle is absolute (adds no height): collapsed the bar is 0-height so the
-       document fills up to here; expanded it grows with the extended toolbar.
-       padding-left reserves the tab's column. */
-    padding: 0 1rem 0 6.5rem;
+    /* The toggle is absolute while collapsed (adds no height) so the bar is 0-height
+       and the document fills up to here; expanded, the toggle joins the flex flow
+       (rule below) and the extended toolbar follows it — no reserved column needed. */
+    padding: 0 1rem;
     background: transparent;
     border: 1px solid transparent;
     border-top: none;
@@ -1263,6 +1266,16 @@
     border-top-color: transparent;
     border-radius: 0 0 var(--radius) var(--radius);
     box-shadow: var(--shadow);
+  }
+
+  /* Expanded: the toggle sits in the flex flow so its width is content-driven (any
+     language) and the extended toolbar starts right after it, never overlapping. */
+  .toolbar-secondary.expanded .expand-toggle {
+    position: relative;
+    left: auto;
+    top: auto;
+    flex: none;
+    margin: 0 0.6rem 0 0.35rem;
   }
 
   .expand-toggle:hover {
