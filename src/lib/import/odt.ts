@@ -2,7 +2,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
-import { orderedTypeFromFormat, orderedTypeAttr } from '../utils/orderedListTypes';
+import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -746,7 +746,7 @@ function formatPt(v: number): string {
 // their own — the outermost list's style governs, with one level def per depth.
 // `govMultilevel`: this list sits inside a multilevel (display-levels) chain, so an
 // explicit numbering here must never be suppressed to null (null = rejoin the chain).
-function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, depth: number, govMultilevel = false): Node | null {
+function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, depth: number, govMultilevel = false, baseCycle: OrderedCycle = ROOT_ORDERED_CYCLE): Node | null {
   const styleName = el.getAttributeNS(NS.text, 'style-name') ?? inheritedStyleName;
   const levelDef = listLevelDef(ctx.resolver.listStyle(styleName), depth);
   const ordered = levelDef?.localName === 'list-level-style-number';
@@ -755,6 +755,11 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
   const isMultilevelTop = ordered && depth === 1
     && parseInt(listLevelDef(ctx.resolver.listStyle(styleName), 2)?.getAttributeNS(NS.text, 'display-levels') ?? '1', 10) > 1;
   const inChain = ordered && (isMultilevelTop || displayLevels > 1);
+  // This list's rendered numbering re-anchors its children's default cycle (slot + suffix).
+  const renderedKey = ordered && !inChain
+    ? orderedTypeFromFormat(levelDef!.getAttributeNS(NS.style, 'num-format'), levelDef!.getAttributeNS(NS.style, 'num-suffix'))
+    : null;
+  const childBaseCycle = childCycle(baseCycle, inChain ? 'multilevel' : renderedKey, ordered);
 
   const items: Node[] = [];
   let start: number | null = null;
@@ -771,7 +776,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
       if (child.namespaceURI === NS.text && (child.localName === 'p' || child.localName === 'h')) {
         blocks.push(convertParaLike(child, ctx, 'list'));
       } else if (child.namespaceURI === NS.text && child.localName === 'list') {
-        const nested = convertList(child, ctx, styleName, depth + 1, inChain);
+        const nested = convertList(child, ctx, styleName, depth + 1, inChain, childBaseCycle);
         if (nested) blocks.push(nested);
       } else if (child.namespaceURI === NS.table && child.localName === 'table') {
         ctx.warnings.add('Nested tables were flattened to paragraphs');
@@ -812,13 +817,10 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
   } else if (displayLevels > 1) {
     listStyleType = null; // chain member — the multilevel top carries the attr
   } else {
-    const key = orderedTypeFromFormat(
-      levelDef!.getAttributeNS(NS.style, 'num-format'),
-      levelDef!.getAttributeNS(NS.style, 'num-suffix'),
-    );
-    // Explicit styles inside a chain stay explicit; elsewhere the depth default
-    // (1. → a. → i.) imports as null so round trips don't accrete attrs.
-    listStyleType = govMultilevel ? key : orderedTypeAttr(key, depth - 1);
+    const key = renderedKey!;
+    // Explicit styles inside a chain stay explicit; elsewhere the cycle default
+    // (re-anchored per ancestor) imports as null so round trips don't accrete attrs.
+    listStyleType = govMultilevel ? key : orderedTypeAttrAt(key, baseCycle);
   }
   const attrs: Record<string, unknown> = {};
   if (start != null) attrs.start = start;

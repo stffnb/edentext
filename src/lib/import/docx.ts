@@ -3,7 +3,7 @@ import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, wVal, W, R, WP, A,
 import { lengthToPt } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
-import { orderedTypeFromFormat, orderedTypeAttr } from '../utils/orderedListTypes';
+import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -285,6 +285,20 @@ function paragraphNum(el: Element, ctx: Ctx): { numId: number; ilvl: number } | 
   return np && np.numId !== 0 ? np : null; // numId 0 = "no list"
 }
 
+// Cycle position of level `ilvl` — walks the shallower levels of the same numbering,
+// advancing one slot each and re-anchoring slot + suffix at explicit ordered formats
+// (like the ODT importer), so an attr-less nested default advances past its parent.
+function listBaseCycle(ctx: Ctx, numId: number, ilvl: number): OrderedCycle {
+  let cycle = ROOT_ORDERED_CYCLE;
+  for (let l = 0; l < ilvl; l++) {
+    const d = ctx.styles.level(numId, l);
+    const bullet = !d.numFmt || d.numFmt === 'bullet' || d.numFmt === 'none';
+    const key = bullet ? null : orderedTypeFromFormat(wordFmtChar(d.numFmt), lvlSuffix(d.lvlText));
+    cycle = childCycle(cycle, key, !bullet);
+  }
+  return cycle;
+}
+
 function makeListNode(ctx: Ctx, numId: number, ilvl: number): Node {
   const def = ctx.styles.level(numId, ilvl);
   const bullet = !def.numFmt || def.numFmt === 'bullet' || def.numFmt === 'none';
@@ -301,7 +315,7 @@ function makeListNode(ctx: Ctx, numId: number, ilvl: number): Node {
       attrs.listStyleType = 'multilevel';
     } else if (placeholders <= 1) {
       const key = orderedTypeFromFormat(wordFmtChar(def.numFmt), lvlSuffix(def.lvlText));
-      const attr = orderedTypeAttr(key, ilvl);
+      const attr = orderedTypeAttrAt(key, listBaseCycle(ctx, numId, ilvl));
       if (attr) attrs.listStyleType = attr;
     }
     if (def.start != null && def.start > 1) attrs.start = def.start;

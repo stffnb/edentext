@@ -6,7 +6,7 @@ import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
-import { orderedTypeDef, effectiveOrderedDef } from '../utils/orderedListTypes';
+import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
@@ -707,32 +707,35 @@ const DEFAULT_ORDERED_FMTS: OrderedFmt[] = Array.from({ length: 6 }, (_, i) => {
 });
 const MULTILEVEL_FMTS: OrderedFmt[] = Array.from({ length: 6 }, () => ({ numFormat: '1', numSuffix: '.' }));
 
-// Effective numbering of an ordered list at a 1-based depth: its attr, else the
-// depth-default cycle ('multilevel' handled by the callers).
-function effOrderedFmt(list: TiptapNode, depth: number): OrderedFmt {
+// Effective numbering of an ordered list at a cycle position: its attr, else the
+// cycle default (re-anchoring slot + suffix at explicit styles; 'multilevel' handled
+// by the callers).
+function effOrderedFmt(list: TiptapNode, cycle: OrderedCycle): OrderedFmt {
   const key = list.attrs?.listStyleType as string | null | undefined;
-  const def = effectiveOrderedDef(key === 'multilevel' ? 'decimal' : key, depth - 1);
+  const def = effectiveOrderedDefAt(key === 'multilevel' ? 'decimal' : key, cycle);
   return { numFormat: def.numFormat, numSuffix: def.numSuffix };
 }
 
-// Per-level numbering for a list subtree — same DFS-first model as bulletCharVector.
-function orderedFmtVector(list: TiptapNode, startDepth: number, base: OrderedFmt[]): OrderedFmt[] {
+// Per-level numbering for a list subtree — same DFS-first model as bulletCharVector,
+// threading each list's cycle position down so nested defaults advance past their parent.
+function orderedFmtVector(list: TiptapNode, startDepth: number, base: OrderedFmt[], startCycle: OrderedCycle): OrderedFmt[] {
   const vec = [...base];
   const seen = new Set<number>();
-  const walk = (node: TiptapNode, depth: number) => {
+  const walk = (node: TiptapNode, depth: number, cycle: OrderedCycle) => {
     if (depth > vec.length) return;
     if (node.type === 'orderedList' && !seen.has(depth)) {
       seen.add(depth);
-      vec[depth - 1] = effOrderedFmt(node, depth);
+      vec[depth - 1] = effOrderedFmt(node, cycle);
     }
+    const cChild = childCycle(cycle, node.attrs?.listStyleType as string | null | undefined, node.type === 'orderedList');
     for (const item of node.content ?? []) {
       if (item.type !== 'listItem') continue;
       for (const child of item.content ?? []) {
-        if (child.type === 'bulletList' || child.type === 'orderedList') walk(child, depth + 1);
+        if (child.type === 'bulletList' || child.type === 'orderedList') walk(child, depth + 1, cChild);
       }
     }
   };
-  walk(list, startDepth);
+  walk(list, startDepth, startCycle);
   return vec;
 }
 
@@ -744,7 +747,7 @@ function collectOrderedListFormats(node: TiptapNode, result: (OlStyleFix | null)
       if (child.attrs?.listStyleType === 'multilevel') {
         result.push({ fmts: MULTILEVEL_FMTS, multilevel: true });
       } else {
-        const vec = orderedFmtVector(child, 1, DEFAULT_ORDERED_FMTS);
+        const vec = orderedFmtVector(child, 1, DEFAULT_ORDERED_FMTS, ROOT_ORDERED_CYCLE);
         // odf-kit's own output is all-decimal; only an all-"1." vector needs no rewrite.
         result.push(vec.every(f => f.numFormat === '1' && f.numSuffix === '.') ? null : { fmts: vec, multilevel: false });
       }
@@ -896,12 +899,12 @@ function applyListIndents(odtBytes: Uint8Array, indents: number[]): Uint8Array {
 // 6-level list style (same pattern applyCellBlocks uses for cell lists).
 type ListDef = { ordered: boolean; multilevel: boolean; fmts: OrderedFmt[]; bulletChars: string[] };
 
-function listDefOf(node: TiptapNode, depth: number, baseChars: string[], baseFmts: OrderedFmt[]): ListDef {
+function listDefOf(node: TiptapNode, depth: number, cycle: OrderedCycle, baseChars: string[], baseFmts: OrderedFmt[]): ListDef {
   const multilevel = node.attrs?.listStyleType === 'multilevel';
   return {
     ordered: node.type === 'orderedList',
     multilevel,
-    fmts: multilevel ? MULTILEVEL_FMTS : orderedFmtVector(node, depth, baseFmts),
+    fmts: multilevel ? MULTILEVEL_FMTS : orderedFmtVector(node, depth, baseFmts, cycle),
     bulletChars: bulletCharVector(node, depth, baseChars),
   };
 }
@@ -909,7 +912,7 @@ function listDefOf(node: TiptapNode, depth: number, baseChars: string[], baseFmt
 // One entry per nested <text:list> in DFS order (null = inherits its governing
 // style correctly). Only walks top-level lists — cell lists never emit bare tags.
 function collectNestedListFixes(doc: TiptapNode, result: (ListDef | null)[]): void {
-  const walkList = (list: TiptapNode, governing: ListDef, isTop: boolean, depth: number) => {
+  const walkList = (list: TiptapNode, governing: ListDef, isTop: boolean, depth: number, cycle: OrderedCycle) => {
     let gov = governing;
     if (!isTop) {
       const ordered = list.type === 'orderedList';
@@ -923,24 +926,25 @@ function collectNestedListFixes(doc: TiptapNode, result: (ListDef | null)[]): vo
         const attr = list.attrs?.listStyleType;
         differs = !!attr && attr !== 'multilevel';
       } else {
-        const f = effOrderedFmt(list, depth);
+        const f = effOrderedFmt(list, cycle);
         const g = governing.fmts[(depth - 1) % governing.fmts.length];
         differs = f.numFormat !== g.numFormat || f.numSuffix !== g.numSuffix;
       }
-      const def = differs ? listDefOf(list, depth, governing.bulletChars, governing.fmts) : null;
+      const def = differs ? listDefOf(list, depth, cycle, governing.bulletChars, governing.fmts) : null;
       result.push(def);
       if (def) gov = def; // restyled list governs its own descendants
     }
+    const cChild = childCycle(cycle, list.attrs?.listStyleType as string | null | undefined, list.type === 'orderedList');
     for (const item of list.content ?? []) {
       if (item.type !== 'listItem') continue;
       for (const child of item.content ?? []) {
-        if (child.type === 'bulletList' || child.type === 'orderedList') walkList(child, gov, false, depth + 1);
+        if (child.type === 'bulletList' || child.type === 'orderedList') walkList(child, gov, false, depth + 1, cChild);
       }
     }
   };
   for (const child of doc.content ?? []) {
     if (child.type === 'bulletList' || child.type === 'orderedList') {
-      walkList(child, listDefOf(child, 1, DEFAULT_BULLET_CYCLE, DEFAULT_ORDERED_FMTS), true, 1);
+      walkList(child, listDefOf(child, 1, ROOT_ORDERED_CYCLE, DEFAULT_BULLET_CYCLE, DEFAULT_ORDERED_FMTS), true, 1, ROOT_ORDERED_CYCLE);
     }
   }
 }
@@ -1091,7 +1095,7 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
   // Each <text:list> (root or nested) carries its own type-based style-name, so mixed
   // bullet/number nesting renders correctly; indent comes from nesting depth. One
   // segment consumed per list item, DFS order (matching buildCellContent).
-  const buildList = (list: CellListBlock, segments: string[], cur: { i: number }, depth = 1, mlGov = false): string => {
+  const buildList = (list: CellListBlock, segments: string[], cur: { i: number }, depth = 1, mlGov = false, cycle: OrderedCycle = ROOT_ORDERED_CYCLE): string => {
     const isBullet = !list.ordered;
     const ml = !isBullet && (list.listStyleType === 'multilevel' || (mlGov && !list.listStyleType));
     let listStyle: string;
@@ -1100,16 +1104,17 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
     } else if (ml) {
       listStyle = numberStyleFor('1', '.', true);
     } else {
-      const def = effectiveOrderedDef(list.listStyleType, depth - 1);
+      const def = effectiveOrderedDefAt(list.listStyleType, cycle);
       listStyle = numberStyleFor(def.numFormat, def.numSuffix);
     }
+    const cChild = childCycle(cycle, list.listStyleType, list.ordered);
     const paraParent = isBullet ? 'List_20_Bullet' : 'List_20_Number';
     let out = `<text:list text:style-name="${listStyle}">`;
     list.items.forEach((item, idx) => {
       const startAttr = !isBullet && idx === 0 && list.start != null ? ` text:start-value="${list.start}"` : '';
       const seg = segments[cur.i++] ?? '';
       out += `<text:list-item${startAttr}><text:p text:style-name="${styleNameFor(paraParent, item.style)}">${seg}</text:p>`;
-      if (item.nested) out += buildList(item.nested, segments, cur, depth + 1, ml);
+      if (item.nested) out += buildList(item.nested, segments, cur, depth + 1, ml, cChild);
       out += '</text:list-item>';
     });
     return out + '</text:list>';

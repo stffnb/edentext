@@ -164,7 +164,9 @@ function listMarkerGlyph(li: HTMLElement, root: HTMLElement): string {
     for (let e: HTMLElement | null = parent; e && e !== root; e = e.parentElement) {
       if (e.tagName === 'OL') olDepth++;
     }
-    const def = effectiveOrderedDef(parent.getAttribute('data-list-style'), olDepth - 1);
+    // orderedList.ts's plugin resolves the effective numbering onto data-eff-list-style
+    // (re-anchoring nested defaults); olDepth is only a fallback if it is absent.
+    const def = effectiveOrderedDef(parent.getAttribute('data-eff-list-style'), olDepth - 1);
     return formatOrdinal(liOrdinal(li), def.numFormat) + def.numSuffix;
   }
   // Explicit bulletChar attr wins; otherwise the default cycle keyed by the number

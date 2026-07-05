@@ -19,7 +19,7 @@ import type { Orientation } from '../storage/pageOrientation';
 import { HF_DISTANCE_CM, hfIsEmpty } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
-import { effectiveOrderedDef, formatOrdinal } from '../utils/orderedListTypes';
+import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, HEADING_STYLE_OVERRIDES, type HfExport } from './odt';
 
@@ -104,7 +104,7 @@ class Numbering {
     return reference;
   }
 
-  ensureLevel(reference: string, depth: number, node: TiptapNode, extraIndentCm: number): void {
+  ensureLevel(reference: string, depth: number, node: TiptapNode, extraIndentCm: number, cycle: OrderedCycle): void {
     // A multilevel top list turns the whole reference into a "%1.%2." chain; its
     // attr-less nested lists inherit it (the top registers first — pre-order walk).
     if (depth === 0 && node.attrs?.listStyleType === 'multilevel') this.mlRefs.add(reference);
@@ -117,7 +117,7 @@ class Numbering {
     if (node.type === 'orderedList') {
       const attr = node.attrs?.listStyleType as string | null | undefined;
       const chained = this.mlRefs.has(reference) && (depth === 0 || !attr);
-      const def = effectiveOrderedDef(attr === 'multilevel' ? 'decimal' : attr, depth);
+      const def = effectiveOrderedDefAt(attr === 'multilevel' ? 'decimal' : attr, cycle);
       levels.push({
         level: depth,
         format: chained ? LevelFormat.DECIMAL : ORDERED_FORMAT[def.numFormat] ?? LevelFormat.DECIMAL,
@@ -409,11 +409,12 @@ function txbxParagraphXml(node: TiptapNode, indentTwip = 0, markerText = ''): st
 // In-box lists flatten to literal-marker paragraphs (real numbering would need
 // numbering.xml references, which the post-pack string pass can't mint).
 // `mlPrefix`: parent chain ("1.2.") when inside a multilevel list, else null.
-function txbxListXml(node: TiptapNode, depth: number, mlPrefix: string | null = null): string {
+function txbxListXml(node: TiptapNode, depth: number, mlPrefix: string | null = null, cycle: OrderedCycle = ROOT_ORDERED_CYCLE): string {
   const ordered = node.type === 'orderedList';
   const attr = node.attrs?.listStyleType as string | null | undefined;
   const chained = ordered && (attr === 'multilevel' || (mlPrefix !== null && !attr));
-  const def = effectiveOrderedDef(attr === 'multilevel' ? 'decimal' : attr, depth);
+  const def = effectiveOrderedDefAt(attr === 'multilevel' ? 'decimal' : attr, cycle);
+  const cChild = childCycle(cycle, attr, ordered);
   let n = typeof node.attrs?.start === 'number' ? node.attrs.start : 1;
   let out = '';
   for (const item of node.content ?? []) {
@@ -421,7 +422,7 @@ function txbxListXml(node: TiptapNode, depth: number, mlPrefix: string | null = 
     let first = true;
     for (const child of item.content ?? []) {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
-        out += txbxListXml(child, depth + 1, chained ? `${mlPrefix ?? ''}${n}.` : null);
+        out += txbxListXml(child, depth + 1, chained ? `${mlPrefix ?? ''}${n}.` : null, cChild);
       } else if (child.type === 'paragraph' || child.type === 'heading') {
         const ordinal = chained ? `${mlPrefix ?? ''}${n}. ` : `${formatOrdinal(n, def.numFormat)}${def.numSuffix} `;
         const marker = first ? (ordered ? ordinal : `${bulletCharOf(node, depth)} `) : '';
@@ -578,17 +579,18 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
 // ---- lists -----------------------------------------------------------------
 function listToParagraphs(
   node: TiptapNode, depth: number, reference: string, extraIndentCm: number,
-  num: Numbering, out: (Paragraph | Table | TableOfContents)[],
+  num: Numbering, out: (Paragraph | Table | TableOfContents)[], cycle: OrderedCycle = ROOT_ORDERED_CYCLE,
 ): void {
   const indentCm = extraIndentCm + (typeof node.attrs?.indent === 'number' ? node.attrs.indent : 0);
-  num.ensureLevel(reference, depth, node, indentCm);
+  num.ensureLevel(reference, depth, node, indentCm, cycle);
   const levelLeftTwip = cmToTwip((depth + 1) * LIST_LEFT_STEP_CM + indentCm);
+  const cChild = childCycle(cycle, node.attrs?.listStyleType as string | null | undefined, node.type === 'orderedList');
   for (const item of node.content ?? []) {
     if (item.type !== 'listItem') continue;
     let numberedFirst = false;
     for (const child of item.content ?? []) {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
-        listToParagraphs(child, depth + 1, reference, indentCm, num, out);
+        listToParagraphs(child, depth + 1, reference, indentCm, num, out, cChild);
       } else if (child.type === 'paragraph' || child.type === 'heading') {
         if (!numberedFirst) {
           out.push(paragraphToDocx(child, { numbering: { reference, level: depth } }));

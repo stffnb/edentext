@@ -1,6 +1,6 @@
 import { Extension, type CommandProps } from '@tiptap/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
-import type { EditorState } from '@tiptap/pm/state';
+import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
+import type { EditorState, Transaction } from '@tiptap/pm/state';
 
 // Left indent in cm: maps to fo:margin-left on paragraphs/headings; on lists it shifts
 // the whole list block (list items nest instead via sinkListItem/liftListItem).
@@ -30,6 +30,57 @@ export function listContext(state: EditorState): ListIndentContext {
   const wholeList = fromFirst && (empty || toLast);
   const nested = listDepth > 0 && head.node(listDepth - 1).type.name === 'listItem';
   return { inList: true, wholeList, listIndent, nested };
+}
+
+// The innermost list wrapping the head, with its 0-based nesting depth (bullet +
+// ordered ancestors counted), or null when the head is not in a list.
+function innermostList($from: ResolvedPos): { node: PMNode; depth: number; depth0: number } | null {
+  let depth0 = -1;
+  let found: { node: PMNode; depth: number; depth0: number } | null = null;
+  for (let d = 1; d <= $from.depth; d++) {
+    const name = $from.node(d).type.name;
+    if (name === 'bulletList' || name === 'orderedList') found = { node: $from.node(d), depth: d, depth0: ++depth0 };
+  }
+  return found;
+}
+
+// The type-defining attr an explicit same-kind list at `depth0` already uses in this
+// tree (DFS-first), so a freshly nested list can reuse it — Word's per-level memory.
+function rememberedListStyle(root: PMNode, kind: string, depth0: number): Record<string, unknown> | null {
+  let found: Record<string, unknown> | null = null;
+  const walk = (list: PMNode, d: number) => {
+    if (found) return;
+    if (d === depth0 && list.type.name === kind) {
+      const attr = kind === 'orderedList' ? list.attrs.listStyleType : list.attrs.bulletChar;
+      if (attr) { found = kind === 'orderedList' ? { listStyleType: attr } : { bulletChar: attr }; return; }
+    }
+    list.forEach((item) => {
+      if (item.type.name !== 'listItem') return;
+      item.forEach((child) => {
+        if (!found && (child.type.name === 'bulletList' || child.type.name === 'orderedList')) walk(child, d + 1);
+      });
+    });
+  };
+  walk(root, 0);
+  return found;
+}
+
+// After a Tab-sink deepens the list, stamp the new (attr-less) nested list with the
+// per-level style a sibling already uses, so the chosen numbering/bullet is remembered.
+function stampRememberedStyle(tr: Transaction, beforeDepth0: number): void {
+  const $from = tr.selection.$from;
+  const inner = innermostList($from);
+  if (!inner || inner.depth0 <= beforeDepth0) return;
+  const kind = inner.node.type.name;
+  const has = kind === 'orderedList' ? inner.node.attrs.listStyleType : inner.node.attrs.bulletChar;
+  if (has) return;
+  let rootDepth = inner.depth;
+  for (let d = inner.depth - 1; d > 0; d--) {
+    const name = $from.node(d).type.name;
+    if (name === 'bulletList' || name === 'orderedList') rootDepth = d;
+  }
+  const remembered = rememberedListStyle($from.node(rootDepth), kind, inner.depth0);
+  if (remembered) tr.setNodeMarkup($from.before(inner.depth), undefined, { ...inner.node.attrs, ...remembered });
 }
 
 declare module '@tiptap/core' {
@@ -140,10 +191,15 @@ export const Indent = Extension.create({
       indentLess: () => step(-INDENT_STEP_CM),
       indentListMore: () => stepList(INDENT_STEP_CM),
       indentListLess: () => stepList(-INDENT_STEP_CM),
-      indentListForward: () => ({ state, commands }) => {
+      indentListForward: () => ({ state, chain, commands }) => {
         const ctx = listContext(state);
         if (!ctx.inList) return false;
-        return ctx.wholeList ? commands.indentListMore() : commands.sinkListItem('listItem');
+        if (ctx.wholeList) return commands.indentListMore();
+        const beforeDepth0 = innermostList(state.selection.$from)?.depth0 ?? -1;
+        return chain()
+          .sinkListItem('listItem')
+          .command(({ tr }) => { stampRememberedStyle(tr, beforeDepth0); return true; })
+          .run();
       },
       indentListBackward: () => ({ state, commands }) => {
         const ctx = listContext(state);

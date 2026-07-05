@@ -96,6 +96,22 @@ const fixture: N = {
         ] }),
       ] }),
     ] },
+    // Re-anchoring: an explicit "a., b." parent makes its attr-less child default to
+    // i. (not another a., b.), and the child re-imports as null (no accreted attr).
+    { type: 'orderedList', attrs: { listStyleType: 'lower-alpha' }, content: [
+      LI(P(null, T('reanchor a')), { type: 'orderedList', content: [
+        LI(P(null, T('reanchor i'))),
+      ] }),
+    ] },
+    // Suffix inheritance: an explicit "a)" parent makes attr-less children default to
+    // i) then 1) (paren, not dot), all re-importing as null.
+    { type: 'orderedList', attrs: { listStyleType: 'lower-alpha-paren' }, content: [
+      LI(P(null, T('paren a')), { type: 'orderedList', content: [
+        LI(P(null, T('paren i')), { type: 'orderedList', content: [
+          LI(P(null, T('paren 1'))),
+        ] }),
+      ] }),
+    ] },
     // Multilevel (1. / 1.1. / 1.1.1.): attr on the top list only; an explicit style
     // inside the chain breaks out (NL mint) and must survive as an explicit attr.
     { type: 'orderedList', attrs: { listStyleType: 'multilevel' }, content: [

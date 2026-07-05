@@ -1,7 +1,8 @@
 import OrderedListBase from '@tiptap/extension-ordered-list';
-import type { EditorState } from '@tiptap/pm/state';
-import type { ResolvedPos } from '@tiptap/pm/model';
-import { defaultOrderedType, orderedTypeAttr, type OrderedListType } from '../../utils/orderedListTypes';
+import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import type { Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
+import { childCycle, defaultOrderedTypeAt, orderedTypeAttrAt, ROOT_ORDERED_CYCLE, type OrderedCycle, type OrderedListType } from '../../utils/orderedListTypes';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -12,15 +13,21 @@ declare module '@tiptap/core' {
   }
 }
 
-// 0-based list nesting depth of the node at resolved depth `d` (counts bullet and
-// ordered ancestors — the level Word/ODF assign to it).
-function listDepth0($from: ResolvedPos, d: number): number {
-  let depth0 = 0;
-  for (let i = d - 1; i > 0; i--) {
+// Cycle position of the list node at resolved depth `d` — walks its list ancestors
+// (bullet + ordered) from the outermost in, advancing one slot per level and
+// re-anchoring at each explicit ordered style (see childCycle).
+function baseCycleAt($from: ResolvedPos, d: number): OrderedCycle {
+  const depths: number[] = [];
+  for (let i = 1; i <= d; i++) {
     const name = $from.node(i).type.name;
-    if (name === 'bulletList' || name === 'orderedList') depth0++;
+    if (name === 'bulletList' || name === 'orderedList') depths.push(i);
   }
-  return depth0;
+  let cycle = ROOT_ORDERED_CYCLE;
+  for (let k = 1; k < depths.length; k++) {
+    const parent = $from.node(depths[k - 1]);
+    cycle = childCycle(cycle, parent.attrs.listStyleType, parent.type.name === 'orderedList');
+  }
+  return cycle;
 }
 
 // Innermost/outermost ordered-list ancestor depths at the cursor (null = not in one).
@@ -52,7 +59,7 @@ export function effectiveOrderedTypeAt(state: EditorState): OrderedListType | nu
     if (t === 'multilevel') return 'multilevel';
     if (t) break; // a nearer explicit style cuts the chain
   }
-  return defaultOrderedType(listDepth0($from, ctx.innermost));
+  return defaultOrderedTypeAt(baseCycleAt($from, ctx.innermost));
 }
 
 // OrderedList with a `listStyleType` attr (an ORDERED_LIST_TYPES key; null = the
@@ -94,7 +101,7 @@ export const OrderedList = OrderedListBase.extend({
           const inChain = target !== ctx.outermost && $from.node(ctx.outermost).attrs.listStyleType === 'multilevel';
           const value = key === 'multilevel' ? 'multilevel'
             : inChain ? key
-            : orderedTypeAttr(key, listDepth0($from, target));
+            : orderedTypeAttrAt(key, baseCycleAt($from, target));
           if (dispatch) {
             tr.setNodeMarkup(pos, undefined, { ...node.attrs, listStyleType: value });
             if (key === 'multilevel') {
@@ -109,4 +116,60 @@ export const OrderedList = OrderedListBase.extend({
         },
     };
   },
+
+  addProseMirrorPlugins() {
+    return [
+      ...(this.parent?.() ?? []),
+      new Plugin({
+        key: orderedListStyleKey,
+        state: {
+          init: (_, state) => orderedListStyleDecos(state.doc),
+          apply: (tr, old) => (tr.docChanged ? orderedListStyleDecos(tr.doc) : old),
+        },
+        props: {
+          decorations(state) {
+            return orderedListStyleKey.getState(state);
+          },
+        },
+      }),
+    ];
+  },
 });
+
+const orderedListStyleKey = new PluginKey<DecorationSet>('orderedListEffStyle');
+
+// An attr-less <ol>'s marker depends on its list-ancestor chain. This walk resolves
+// each list's effective numbering (re-anchoring at explicit styles, propagating
+// multilevel) and tags the <ol> with `data-eff-list-style`, which editor.css maps.
+export function orderedListStyleDecos(doc: ProseMirrorNode): DecorationSet {
+  const decos: Decoration[] = [];
+  const walk = (node: ProseMirrorNode, pos: number, cycle: OrderedCycle, multilevel: boolean, inList: boolean) => {
+    let nextCycle = ROOT_ORDERED_CYCLE;
+    let nextMultilevel = false;
+    let nextInList = false;
+    const name = node.type.name;
+    if (name === 'orderedList' || name === 'bulletList') {
+      const listCycle = inList ? cycle : ROOT_ORDERED_CYCLE;
+      const listMultilevel = inList && multilevel;
+      if (name === 'orderedList') {
+        const own = node.attrs.listStyleType as string | null;
+        const eff = own === 'multilevel' || (listMultilevel && !own) ? 'multilevel' : own ?? defaultOrderedTypeAt(listCycle);
+        decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-eff-list-style': eff }));
+        nextMultilevel = eff === 'multilevel';
+      }
+      nextCycle = childCycle(listCycle, node.attrs.listStyleType as string | null, name === 'orderedList');
+      nextInList = true;
+    } else if (name === 'listItem') {
+      nextCycle = cycle;
+      nextMultilevel = multilevel;
+      nextInList = inList;
+    }
+    let p = pos + 1;
+    node.forEach((child) => {
+      walk(child, p, nextCycle, nextMultilevel, nextInList);
+      p += child.nodeSize;
+    });
+  };
+  walk(doc, -1, ROOT_ORDERED_CYCLE, false, false);
+  return DecorationSet.create(doc, decos);
+}

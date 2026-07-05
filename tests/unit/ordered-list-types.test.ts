@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { orderedTypeDef, orderedTypeFromFormat, DEFAULT_ORDERED_TYPE, defaultOrderedType, orderedTypeAttr, effectiveOrderedDef, formatOrdinal } from '../../src/lib/utils/orderedListTypes';
+import { orderedTypeDef, orderedTypeFromFormat, DEFAULT_ORDERED_TYPE, defaultOrderedType, orderedTypeAttr, effectiveOrderedDef, formatOrdinal, cycleSlotOf, childCycle, defaultOrderedTypeAt, ROOT_ORDERED_CYCLE } from '../../src/lib/utils/orderedListTypes';
 
 describe('orderedTypeDef', () => {
   it('returns the matching definition for a known key', () => {
@@ -58,6 +58,32 @@ describe('depth defaults (null attr → 1. → a. → i. cycle)', () => {
   it('effectiveOrderedDef resolves null by depth and keys explicitly', () => {
     expect(effectiveOrderedDef(null, 1).numFormat).toBe('a');
     expect(effectiveOrderedDef('upper-roman', 1).numFormat).toBe('I');
+  });
+});
+
+describe('cycle re-anchoring (nested default advances past its parent)', () => {
+  it('cycleSlotOf keys by num-format, sharing paren/case variants', () => {
+    expect(cycleSlotOf('decimal')).toBe(0);
+    expect(cycleSlotOf('decimal-paren')).toBe(0);
+    expect(cycleSlotOf('lower-alpha')).toBe(1);
+    expect(cycleSlotOf('upper-alpha-paren')).toBe(1);
+    expect(cycleSlotOf('lower-roman')).toBe(2);
+    expect(cycleSlotOf(null)).toBe(0);
+  });
+
+  it('childCycle advances one slot, re-anchoring slot + suffix at an explicit parent', () => {
+    // Plain cycle from the root: top → a., → i. (dot suffix throughout).
+    expect(defaultOrderedTypeAt(childCycle(ROOT_ORDERED_CYCLE, null, true))).toBe('lower-alpha');
+    expect(defaultOrderedTypeAt(childCycle(childCycle(ROOT_ORDERED_CYCLE, null, true), null, true))).toBe('lower-roman');
+    // An explicit "a., b." parent makes its child default to i. (not another a.).
+    expect(defaultOrderedTypeAt(childCycle(ROOT_ORDERED_CYCLE, 'lower-alpha', true))).toBe('lower-roman');
+    // Suffix inherits: an explicit "a)" parent makes the child default to i) not i.
+    expect(defaultOrderedTypeAt(childCycle(ROOT_ORDERED_CYCLE, 'lower-alpha-paren', true))).toBe('lower-roman-paren');
+    // And the ")" keeps propagating a further level down (→ decimal-paren, "1)").
+    const twoDeep = childCycle(childCycle(ROOT_ORDERED_CYCLE, 'lower-alpha-paren', true), null, true);
+    expect(defaultOrderedTypeAt(twoDeep)).toBe('decimal-paren');
+    // A bullet parent doesn't re-anchor; it still advances the depth, keeping the suffix.
+    expect(childCycle({ slot: 1, suffix: ')' }, null, false)).toEqual({ slot: 2, suffix: ')' });
   });
 });
 

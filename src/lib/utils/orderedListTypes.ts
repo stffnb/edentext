@@ -65,6 +65,51 @@ export function orderedTypeAttr(key: OrderedListType, depth0: number): OrderedLi
   return key === defaultOrderedType(depth0) ? null : key;
 }
 
+// The cycle slot (0=decimal, 1=alpha, 2=roman) a numbering type renders as, keyed
+// by its num-format so paren/upper variants share their base slot. A nested list
+// advances one slot past its parent's *effective* type, so it never repeats it.
+export function cycleSlotOf(key: string | null | undefined): number {
+  switch (orderedTypeDef(key).numFormat) {
+    case 'a': case 'A': return 1;
+    case 'i': case 'I': return 2;
+    default: return 0;
+  }
+}
+
+// A list's position in the default cycle: its base slot plus the suffix inherited down
+// the chain (so "a)" at one level makes deeper defaults keep the ")" suffix).
+export type OrderedCycle = { slot: number; suffix: '.' | ')' };
+export const ROOT_ORDERED_CYCLE: OrderedCycle = { slot: 0, suffix: '.' };
+
+const DOT_SLOTS: OrderedListType[] = ['decimal', 'lower-alpha', 'lower-roman'];
+const PAREN_SLOTS: OrderedListType[] = ['decimal-paren', 'lower-alpha-paren', 'lower-roman-paren'];
+
+// The default numbering at a cycle position: the slot's base form (1./a./i.) carrying
+// the inherited suffix, so a level-1 "a)" makes level 2 default to i), not i.
+export function defaultOrderedTypeAt(cycle: OrderedCycle): OrderedListType {
+  return (cycle.suffix === ')' ? PAREN_SLOTS : DOT_SLOTS)[cycle.slot % DOT_SLOTS.length];
+}
+
+// Cycle position of a list nested under a parent: advance one slot; an explicit ordered
+// parent re-anchors both slot and suffix to its own, so a level-1 "a., b." makes level 2
+// default to i. and a level-1 "a)" makes it i) — others pass the context through.
+export function childCycle(parent: OrderedCycle, parentKey: string | null | undefined, parentOrdered: boolean): OrderedCycle {
+  if (parentOrdered && parentKey && parentKey !== 'multilevel') {
+    return { slot: cycleSlotOf(parentKey) + 1, suffix: orderedTypeDef(parentKey).numSuffix };
+  }
+  return { slot: parent.slot + 1, suffix: parent.suffix };
+}
+
+// Cycle-aware variants of orderedTypeAttr/effectiveOrderedDef (null = matches the
+// cycle default, so round trips don't accrete explicit attrs).
+export function orderedTypeAttrAt(key: OrderedListType, cycle: OrderedCycle): OrderedListType | null {
+  return key === defaultOrderedTypeAt(cycle) ? null : key;
+}
+
+export function effectiveOrderedDefAt(key: string | null | undefined, cycle: OrderedCycle): OrderedTypeDef {
+  return orderedTypeDef(key ?? defaultOrderedTypeAt(cycle));
+}
+
 function toRoman(n: number): string {
   const map: [number, string][] = [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']];
   let s = '';
