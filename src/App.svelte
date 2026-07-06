@@ -993,7 +993,7 @@
     border: 1px solid var(--color-border);
     border-radius: var(--island-radius);
     box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.06);
-    transition: border-color 0.18s, box-shadow 0.18s, border-radius 0.18s;
+    transition: background 0.18s, border-color 0.18s, box-shadow 0.18s, border-radius 0.18s;
   }
 
   /* Brand hairline: the signature gradient along the island's top edge. */
