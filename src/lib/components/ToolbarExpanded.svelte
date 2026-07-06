@@ -1472,6 +1472,7 @@
   .font-show-all {
     display: block;
     width: 100%;
+    min-height: fit-content;
     padding: 0.4rem 0.6rem;
     margin-top: 2px;
     border: none;

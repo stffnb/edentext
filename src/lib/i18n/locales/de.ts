@@ -16,7 +16,7 @@ const de: Messages = {
     title: 'Darstellung',
     light: 'Hell',
     dark: 'Dunkel',
-    allBlack: 'Ganz schwarz',
+    allBlack: 'Komplett Dunkel',
     auto: 'Automatisch',
     allBlackHint: 'Schriftfarben werden weiß erzwungen',
   },
