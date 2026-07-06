@@ -4,8 +4,12 @@
 
 ### Stack
 - Vite + Svelte 5 (runes mode) + TypeScript
-- TipTap (individual extensions, no starter-kit)
-- odf-kit for ODT generation
+- TipTap 3 / ProseMirror (individual extensions, no starter-kit)
+- odf-kit for ODT generation, `fflate` for (un)zipping `.odt`/`.docx`
+- `docx` for Word (.docx) export/import
+- `jspdf` + `html2canvas` for PDF export
+- Hunspell (`hunspell-asm`, WASM) with `dictionary-en` / `dictionary-de` for spell check
+- Vitest (+ jsdom) for testing; `svelte-check` for type-checking
 - No backend — fully client-side
 
 ### Implemented
@@ -14,7 +18,7 @@
 - WYSIWYG editor built on TipTap 3 (individual extensions, no starter-kit); toolbar active-states stay reactive via a `tick` counter (Svelte 5 same-reference workaround)
 - Fixed A4 paper canvas (794 × 1123 px @ 96 dpi) with CSS-simulated pagination and visual page breaks
 - LocalStorage auto-save (debounced 1 s); restores document, theme, zoom, margins, orientation, etc. on reload
-- Fully client-side / serverless; hand-coded SVG favicon (no external assets)
+- Fully client-side / serverless; hand-coded SVG favicon
 - Placeholder text on an empty document
 
 **Text formatting**
