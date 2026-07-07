@@ -1161,7 +1161,7 @@
           <div class="lh-section-label">{t().toolbarExpanded.pageFormat}</div>
           <select class="format-select" bind:value={pageFormat} title={t().toolbarExpanded.pageFormat}>
             {#each PAGE_FORMATS as fmt}
-              <option value={fmt}>{t().toolbarExpanded.pageFormats[fmt]}</option>
+              <option value={fmt}>{t().toolbarExpanded.pageFormats[fmt]} — {fmtCm(PAGE_FORMAT_CM[fmt].w)} × {fmtCm(PAGE_FORMAT_CM[fmt].h)} cm</option>
             {/each}
           </select>
           <div class="lh-section-label">{t().toolbarExpanded.orientation}</div>
