@@ -130,9 +130,8 @@ export type VMargins = {
 };
 
 // Reads vertical page margins + page height (px) from the --user-* props the Layout
-// panel writes. Document-px values, so they pair directly with offsetTop below. Side
-// margins don't affect pagination (only line wrapping), so they're ignored.
-// Exported for columnsFlow.ts, which shares this geometry.
+// panel writes (document-px, pairing directly with offsetTop below); side margins
+// are ignored (they affect line wrapping, not pagination). Shared with columnsFlow.ts.
 export function readVerticalMargins(dom: HTMLElement): VMargins {
   const cs = getComputedStyle(dom);
   const top = parseFloat(cs.getPropertyValue('--user-margin-top'));
@@ -190,10 +189,9 @@ type Leaf = {
   cellStart?: boolean;
   rowStart?: boolean;
   rowEnd?: boolean;
-  // A multi-column section fragment (columns.ts). columnsFlow.ts splits an
-  // overflowing fragment at a block boundary, so pagination must NOT push it when
-  // the flow can act: it only pushes when the first block alone can't fit the
-  // remaining page space (then the flow splits it at the next page top).
+  // A multi-column section fragment (columns.ts): pagination only pushes it when
+  // the first block alone can't fit the remaining space (else columnsFlow.ts splits
+  // the overflow at a block boundary).
   columnsFragment?: { blockCount: number; firstBlockNeededPx: number };
 };
 
@@ -817,10 +815,9 @@ export const PageBreaks = Extension.create({
             // Set when a leaf overflows but no spacer can bridge it (block > one page).
             let noPushReason: string | null = null;
 
-            // The empty trailing paragraph after a document-final columns chain: its
-            // fragment box may run to the page bottom (sequential fill), which would
-            // shove this invisible paragraph onto a phantom extra page. Leave it in
-            // place and keep it out of the page count; typed text re-enables it.
+            // A sequential-fill chain's fragment box may run to the page bottom, which
+            // would shove this trailing empty paragraph onto a phantom extra page —
+            // leave it in place and out of the page count; typed text re-enables it.
             if (
               i === leaves.length - 1 &&
               leaf.el.tagName === 'P' &&

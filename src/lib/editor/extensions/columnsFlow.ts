@@ -7,20 +7,9 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { readVerticalMargins, FORCE_PAGE_RECALC } from './pageBreaks';
 import { sameColumnsAttrs, COLUMNS_FIT_MARGIN_PX } from './columns';
 
-// Cross-page column flow: the document holds a columns section as adjacent
-// equal-attr fragments ("chain"). This layout pass keeps the fragmentation in sync
-// with the page grid — an overflowing fragment is split at a block boundary (or,
-// for a paragraph taller than the page slot, at a LINE boundary: the second part
-// carries the layout-internal joinPrev attr and is re-merged by joins/export), and
-// a fragment with room pulls the continuation back. Splits/joins are pure layout:
-// they never enter the undo history, and export merges a chain into one section.
-//
-// Fill order is sequential like Word (column 1 fills to the page bottom, then
-// column 2, then the next page): fragments get a node decoration with an explicit
-// height + column-fill:auto — full page slot for fragments with a continuation,
-// content height for the open last fragment of a document-final chain (so typing
-// grows column 1 first). A chain followed by real content keeps CSS balance on its
-// last fragment (Word balances the end of a continuous section).
+// Cross-page column flow: keeps a columns chain's fragmentation in sync with the
+// page grid (split an overflowing fragment at a block or line boundary, pull a
+// fragment with room back) via layout-only transactions that never enter undo history.
 
 const flowKey = new PluginKey<number>('columnsFlow');
 const FLOW_TX = 'columnsFlowTx';
@@ -208,11 +197,9 @@ export const ColumnsFlow = Extension.create({
           return open;
         }
 
-        // Split the paragraph at child `blockIndex` at the line whose prefix
-        // consumes `budgetPx` of content flow (Word's mid-paragraph page break);
-        // the second part is marked joinPrev so joins/export restore the original.
-        // `force` takes at least one line even when the budget is tiny (progress
-        // guard for a paragraph taller than the whole page slot).
+        // Split the paragraph at `blockIndex` at the line consuming `budgetPx` (Word's
+        // mid-paragraph page break); the second part is marked joinPrev so joins/export
+        // restore the original. `force` takes at least one line for an over-tall paragraph.
         function splitParagraphInBlock(
           frag: Fragment, children: Element[], blockIndex: number, budgetPx: number,
           scale: number, force: boolean,
@@ -346,10 +333,9 @@ export const ColumnsFlow = Extension.create({
               const headIsJoinPrev =
                 headBlock.type.name === 'paragraph' && headBlock.attrs.joinPrev &&
                 node.child(node.childCount - 1).type.name === 'paragraph';
-              // A joinPrev head needs only one more line row to make progress; a
-              // multi-line paragraph head can be pulled PARTIALLY (the overflow
-              // split hands the excess back via a line split), so ~two line rows
-              // of room justify the pull; any other block needs its full share.
+              // A joinPrev head needs only one more line row; a multi-line head can be
+              // pulled PARTIALLY (the overflow split hands the excess back), so ~two
+              // line rows justify the pull — any other block needs its full share.
               const headLines = headBlock.type.name === 'paragraph' ? lineRects(nextFirst) : [];
               const headAdvance = (lineAdvance(headLines) || DEFAULT_LINE_PX * scale) / scale;
               const need = headIsJoinPrev
@@ -373,10 +359,9 @@ export const ColumnsFlow = Extension.create({
           return false;
         }
 
-        // Sequential-fill heights: a fragment with a continuation spans its page
-        // slot; the open last fragment of a document-final chain hugs its content
-        // (plus slack) so typing fills column 1 first. A chain followed by real
-        // content keeps its last fragment undecorated (CSS balance).
+        // Sequential-fill heights: a fragment with a continuation spans its page slot;
+        // an open last fragment hugs its content (plus slack) so typing fills column 1
+        // first. Otherwise the last fragment stays undecorated (CSS balance).
         function updateDecorations(): void {
           const frags = fragments();
           const vm = readVerticalMargins(editorView.dom);

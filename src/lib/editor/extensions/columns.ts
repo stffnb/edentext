@@ -3,10 +3,9 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 
-// A multi-column (newspaper) section: a block region whose content flows through
-// balanced CSS columns. The document may hold it as several adjacent fragments with
-// equal attrs — a "chain" — so the flow can continue across page breaks
-// (columnsFlow.ts splits/joins fragments); export merges a chain into one section.
+// A multi-column (newspaper) section: content flows through balanced CSS columns.
+// The doc may hold it as adjacent equal-attr fragments (a "chain") so columnsFlow.ts
+// can split/join across page breaks; export merges a chain into one section.
 
 export const DEFAULT_COLUMN_GAP_CM = 0.5;
 export const MAX_COLUMN_GAP_CM = 5;
@@ -26,11 +25,9 @@ declare module '@tiptap/core' {
   }
 }
 
-// Shared fit margin for the "does the first block fit the remaining page space"
-// test: the balanced-height estimate (block height / count) undershoots the real
-// fragment height by margins + line quantization. pageBreaks.ts (push vs. wait for
-// the flow) and columnsFlow.ts (split vs. leave) MUST use the same margin, or the
-// two disagree at the boundary and split/push/join cycle forever.
+// Fit margin for "does the first block fit the remaining page space": the
+// balanced-height estimate undershoots real height by margins + line quantization.
+// pageBreaks.ts and columnsFlow.ts MUST share this or split/push/join cycles forever.
 export const COLUMNS_FIT_MARGIN_PX = 32;
 
 export function clampColumnCount(n: number): number {

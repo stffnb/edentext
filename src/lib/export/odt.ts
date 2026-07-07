@@ -83,10 +83,9 @@ const TOC_SENT = '';
 // <draw:frame>/<draw:text-box> or <draw:custom-shape>. U+E008.
 const TBX = '';
 
-// Sentinel bracketing a hoisted multi-column section's blocks (marker paragraphs
-// COL S{i} COL … COL E{i} COL): replaceColumns hoists like replaceTextBoxes;
-// applyColumns wraps the region into a <text:section> with a minted section style
-// carrying <style:columns>. U+E009.
+// Sentinel bracketing a hoisted multi-column section's blocks, same mechanism as
+// TBX above; applyColumns wraps the region into a <text:section> with a minted
+// section style carrying <style:columns>. U+E009.
 const COL = '';
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -346,10 +345,9 @@ export function mergeJoinedParagraphsJson(blocks: TiptapNode[]): TiptapNode[] {
   return out;
 }
 
-// Swap each top-level columns section for marker paragraphs bracketing its hoisted
-// child blocks (same mechanism as replaceTextBoxes); applyColumns re-wraps the
-// serialized region into a <text:section>. Adjacent equal-attr fragments are a
-// columnsFlow.ts page-split chain — one section, so they coalesce here.
+// Swap each top-level columns section for marker paragraphs (same mechanism as
+// replaceTextBoxes). Adjacent equal-attr fragments are a columnsFlow.ts page-split
+// chain — one section, so they coalesce here.
 function replaceColumns(doc: TiptapNode, cols: ColumnsExport[]): TiptapNode {
   if (!doc.content?.length) return doc;
   const content: TiptapNode[] = [];

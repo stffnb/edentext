@@ -859,8 +859,7 @@ function flattenTable(tbl: Element, ctx: Ctx): Node[] {
 
 // ---- section: page geometry + headers/footers ------------------------------
 // Split body children into sections: a <w:p> whose pPr carries a sectPr ends the
-// group before it (a continuous section break). The marker paragraph is dropped
-// unless it has run content (ours and Word's are empty). The trailing group has
+// group before it (dropped unless it has run content). The trailing group has
 // sectPr null — the caller pairs it with the body-final <w:sectPr>.
 function splitBodySections(children: Element[]): {
   groups: { els: Element[]; sectPr: Element | null }[];
