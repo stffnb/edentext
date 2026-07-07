@@ -916,7 +916,7 @@ function pushColumnRuns(inner: Node[], cols: { count: number; gapCm: number }, o
     if (COLUMNS_ALLOWED.has(block.type)) {
       run.push(block);
     } else {
-      ctx.warnings.add('Tables, text boxes and nested sections inside a multi-column section were moved out of the columns');
+      ctx.warnings.add('Tables and text boxes inside a multi-column layout were moved out of the columns');
       flush();
       out.push(block);
     }

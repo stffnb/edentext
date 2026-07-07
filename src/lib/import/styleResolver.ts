@@ -272,12 +272,23 @@ export class StyleResolver {
   }
 
   // A section style's column layout: { count, gapCm } when it declares more than one
-  // column, else null. The gap falls back to the per-column indent form (first
-  // column's fo:end-indent + second's fo:start-indent) LibreOffice sometimes writes.
+  // column, else null.
   sectionColumns(name: string | null): { count: number; gapCm: number } | null {
     const el = name ? this.sectionStyleEls.get(name) : null;
-    if (!el) return null;
-    const props = el.getElementsByTagNameNS(NS.style, 'section-properties')[0];
+    const props = el?.getElementsByTagNameNS(NS.style, 'section-properties')[0];
+    return this.columnsFrom(props ?? null);
+  }
+
+  // Column layout of the master page's page layout — Word-produced files put
+  // whole-document columns here instead of in a text:section.
+  pageColumns(): { count: number; gapCm: number } | null {
+    return this.columnsFrom(this.pageLayoutEl()?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null);
+  }
+
+  // <style:columns> under a properties element: { count, gapCm } when it declares more
+  // than one column, else null. The gap falls back to LibreOffice's per-column indent
+  // form (first column's fo:end-indent + second's fo:start-indent).
+  private columnsFrom(props: Element | null): { count: number; gapCm: number } | null {
     const cols = props?.getElementsByTagNameNS(NS.style, 'columns')[0];
     if (!cols) return null;
     const count = parseInt(cols.getAttributeNS(NS.fo, 'column-count') ?? '', 10);

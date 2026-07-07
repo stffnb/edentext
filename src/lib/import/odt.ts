@@ -286,8 +286,17 @@ export function importOdt(bytes: Uint8Array): OdtImportResult {
   if (!body) throw new Error('Not a text document (no office:text body).');
 
   const ctx: Ctx = { resolver, warnings, files, imageCache: new Map(), pendingBlocks: [] };
-  const blocks = convertBlocks(Array.from(body.children), ctx, 'body');
+  let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
+
+  // Whole-document columns declared on the page layout (Word-style) instead of a
+  // text:section: wrap the body's wrappable runs the way a section would be.
+  const pageCols = resolver.pageColumns();
+  if (pageCols) {
+    const wrapped: Node[] = [];
+    pushColumnRuns(blocks, pageCols, wrapped, ctx);
+    blocks = wrapped;
+  }
 
   const hf = resolver.masterPageHF();
   if (hf.hasVariants) {
@@ -372,9 +381,9 @@ function parseXml(xml: string): Document {
 // Block types a columns section (columns.ts) can contain.
 const COLUMNS_ALLOWED = new Set(['paragraph', 'heading', 'bulletList', 'orderedList']);
 
-// Wrap a multi-column <text:section>'s converted blocks into columns nodes: maximal
-// runs of allowed types become one node each; anything else (tables, text boxes,
-// nested sections) is emitted between the runs at top level with a warning.
+// Wrap a multi-column region's converted blocks into columns nodes: maximal runs of
+// allowed types become one node each; anything else is emitted between the runs at
+// top level — with a warning, except columns nodes (they keep their own layout).
 function pushColumnRuns(inner: Node[], cols: { count: number; gapCm: number }, out: Node[], ctx: Ctx): void {
   let count = cols.count;
   if (count > 3) {
@@ -390,7 +399,9 @@ function pushColumnRuns(inner: Node[], cols: { count: number; gapCm: number }, o
     if (COLUMNS_ALLOWED.has(block.type)) {
       run.push(block);
     } else {
-      ctx.warnings.add('Tables, text boxes and nested sections inside a multi-column section were moved out of the columns');
+      if (block.type !== 'columns') {
+        ctx.warnings.add('Tables and text boxes inside a multi-column layout were moved out of the columns');
+      }
       flush();
       out.push(block);
     }

@@ -550,6 +550,52 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: warnings reported', expectWarn.every(w => f.warnings.includes(w)), f.warnings);
     check('foreign: no hyperlink warning (now round-tripped)', !f.warnings.includes('Hyperlinks were converted to plain text'), f.warnings);
   });
+
+  it('wraps the body in columns when the page layout declares them (Word-style)', () => {
+    const stylesXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0">
+ <office:automatic-styles>
+  <style:page-layout style:name="pm1">
+   <style:page-layout-properties fo:page-width="21cm" fo:page-height="29.7cm" fo:margin-top="1in" fo:margin-bottom="1in" fo:margin-left="1in" fo:margin-right="1in">
+    <style:columns fo:column-count="3" fo:column-gap="0.1965in"/>
+   </style:page-layout-properties>
+  </style:page-layout>
+ </office:automatic-styles>
+ <office:master-styles>
+  <style:master-page style:name="Standard" style:page-layout-name="pm1"/>
+ </office:master-styles>
+</office:document-styles>`;
+
+    const contentXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+ <office:automatic-styles>
+  <style:style style:name="S1" style:family="section">
+   <style:section-properties><style:columns fo:column-count="1" fo:column-gap="0.5in"/></style:section-properties>
+  </style:style>
+ </office:automatic-styles>
+ <office:body><office:text>
+  <text:p>first</text:p>
+  <table:table><table:table-column/><table:table-row><table:table-cell><text:p>cell</text:p></table:table-cell></table:table-row></table:table>
+  <text:p>second</text:p>
+  <text:section text:name="Sect1" text:style-name="S1"><text:p>in section</text:p></text:section>
+ </office:text></office:body>
+</office:document-content>`;
+
+    const foreign = zipSync({
+      mimetype: [strToU8('application/vnd.oasis.opendocument.text'), { level: 0 }],
+      'content.xml': [strToU8(contentXml), { level: 6 }],
+      'styles.xml': [strToU8(stylesXml), { level: 6 }],
+    } as any);
+
+    const f = importOdt(foreign);
+    const c = f.content.content!;
+
+    check('page-cols: shape columns/table/columns', c.map((n: N) => n.type).join(',') === 'columns,table,columns', c.map((n: N) => n.type));
+    check('page-cols: count 3, gap 0.1965in → 0.5cm', c[0].attrs?.count === 3 && c[0].attrs?.gapCm === 0.5, c[0].attrs);
+    check('page-cols: 1-col section content joins the run',
+      c[2].content!.map((n: N) => n.content?.[0]?.text).join(',') === 'second,in section', c[2].content);
+    check('page-cols: table move-out warned', f.warnings.some(w => w.includes('moved out of the columns')), f.warnings);
+  });
 });
 
 describe('Leg 3: header/footer → buildOdt → importOdt', () => {
@@ -915,7 +961,7 @@ describe('Leg 9: foreign multi-column sections → importOdt', () => {
       c[s2idx + 2]?.type === 'columns' && c[s2idx + 2]?.content?.[0]?.content?.[0]?.text === 'after table',
       c.slice(s2idx, s2idx + 3).map((n: N) => n.type));
     check('S2: move-out warning reported',
-      f.warnings.includes('Tables, text boxes and nested sections inside a multi-column section were moved out of the columns'), f.warnings);
+      f.warnings.includes('Tables and text boxes inside a multi-column layout were moved out of the columns'), f.warnings);
 
     const s3 = cols[cols.length - 1];
     check('S3: count clamped to 3', s3?.attrs?.count === 3 && s3?.attrs?.gapCm === 0.3, s3?.attrs);

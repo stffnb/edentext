@@ -658,6 +658,6 @@ describe('DOCX import of foreign multi-column sections', () => {
     const result = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml) }));
     const doc = result.content as N;
     expect(doc.content!.map((n) => n.type)).toEqual(['columns', 'table', 'columns']);
-    expect(result.warnings).toContain('Tables, text boxes and nested sections inside a multi-column section were moved out of the columns');
+    expect(result.warnings).toContain('Tables and text boxes inside a multi-column layout were moved out of the columns');
   });
 });
