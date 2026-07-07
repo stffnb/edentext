@@ -54,6 +54,7 @@ describe('DOCX export → import round trip', () => {
         para([text('bold in box', [{ type: 'bold' }])]),
       ] },
       { type: 'textBox', attrs: { width: 192, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, content: [para('ellipse text')] },
+      { type: 'columns', attrs: { count: 2, gapCm: 0.8 }, content: [para('newspaper one'), para('newspaper two')] },
       { type: 'table', content: [
         { type: 'tableRow', content: [headerCell('Name', { colwidth: [6] }), headerCell('Qty', { colwidth: [3] })] },
         { type: 'tableRow', attrs: { rowHeight: 40 }, content: [cell('Widget', { backgroundColor: '#FFFF00', rowspan: 2 }), cell('1', { borderTop: 'none', borderRight: '2.25pt solid #FF0000' })] },
@@ -70,11 +71,80 @@ describe('DOCX export → import round trip', () => {
 
   let doc: N;
   let result: any;
+  let documentXml = '';
   it('imports without throwing', async () => {
     const bytes = await buildDocx(fixture, { top: 2.54, bottom: 2.54, left: 2.12, right: 2.12 }, 'portrait', hf, { language: 'en', country: 'US' });
+    documentXml = strFromU8(unzipSync(bytes)['word/document.xml']);
     result = importDocx(bytes);
     doc = result.content;
     expect(doc.type).toBe('doc');
+  });
+
+  it('emits the columns region as its own continuous section with w:cols', () => {
+    // Three sections: before / columns / after (each earlier sectPr rides an empty
+    // paragraph's pPr; the last is the body-final one).
+    expect(documentXml.match(/<w:sectPr/g)!.length).toBe(3);
+    expect(documentXml).toMatch(/<w:cols[^>]*w:num="2"/);
+    expect(documentXml).toMatch(/<w:cols[^>]*w:space="454"/); // 0.8cm in twips
+    expect(documentXml.match(/<w:type w:val="continuous"\/>/g)!.length).toBe(2);
+    // Word wants the page geometry repeated per sectPr.
+    expect(documentXml.match(/<w:pgSz/g)!.length).toBe(3);
+    expect(documentXml.match(/<w:pgMar/g)!.length).toBe(3);
+    // The body-final sectPr (the one the importer reads) still references the header.
+    const finalSect = documentXml.slice(documentXml.lastIndexOf('<w:sectPr'));
+    expect(finalSect).toContain('<w:headerReference');
+  });
+
+  it('coalesces adjacent equal-attr fragments (columnsFlow page splits) into one section', async () => {
+    const fragmented = {
+      type: 'doc',
+      content: [
+        para('lead'),
+        { type: 'columns', attrs: { count: 2, gapCm: 0.5 }, content: [para('frag one a'), para('frag one b')] },
+        { type: 'columns', attrs: { count: 2, gapCm: 0.5 }, content: [para('frag two')] },
+        { type: 'columns', attrs: { count: 3, gapCm: 0.5 }, content: [para('other section')] },
+        para('tail'),
+      ],
+    } as any;
+    const bytes = await buildDocx(fragmented);
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    expect(xml.match(/<w:sectPr/g)!.length).toBe(4); // lead / merged 2-col / 3-col / tail
+    const res = importDocx(bytes).content as N;
+    const cols = walk(res, 'columns');
+    expect(cols.map((c) => c.content!.length)).toEqual([3, 1]);
+    expect(cols[0].attrs.count).toBe(2);
+    expect(cols[1].attrs.count).toBe(3);
+  });
+
+  it('re-merges a page-boundary line-split paragraph (joinPrev) on export', async () => {
+    const split = {
+      type: 'doc',
+      content: [
+        { type: 'columns', attrs: { count: 2, gapCm: 0.5 }, content: [para('first half ')] },
+        { type: 'columns', attrs: { count: 2, gapCm: 0.5 }, content: [
+          { type: 'paragraph', attrs: { joinPrev: true }, content: [text('second half.')] },
+          para('tail'),
+        ] },
+      ],
+    } as any;
+    const bytes = await buildDocx(split);
+    const res = importDocx(bytes).content as N;
+    const cols = walk(res, 'columns');
+    expect(cols.length).toBe(1);
+    expect(cols[0].content!.length).toBe(2);
+    expect(walk(cols[0].content![0], 'text').map((t) => t.text).join('')).toBe('first half second half.');
+  });
+
+  it('round-trips the columns section (count + gap + content, marker dropped)', () => {
+    const cols = walk(doc, 'columns');
+    expect(cols.length).toBe(1);
+    expect(cols[0].attrs.count).toBe(2);
+    expect(cols[0].attrs.gapCm).toBe(0.8);
+    const texts = walk(cols[0], 'text').map((t) => t.text);
+    expect(texts).toEqual(['newspaper one', 'newspaper two']);
+    // The empty section-break marker paragraphs must not leak into the document.
+    const paras = walk(doc, 'paragraph');
+    expect(paras.filter((p) => !p.content && !p.attrs?.fontSize).length).toBe(0);
   });
 
   it('round-trips headings + paragraph block attrs', () => {
@@ -514,5 +584,80 @@ describe('DOCX table of contents (TOC field) round trip', () => {
     // Headings survive alongside the TOC.
     const headings = walk(res, 'heading');
     expect(headings.map(h => walk(h, 'text')[0]?.text)).toEqual(['Alpha', 'Beta']);
+  });
+});
+
+describe('DOCX import of foreign multi-column sections', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+
+  it('wraps a mid-body continuous section with w:cols and drops the empty marker paragraph', () => {
+    const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+      <w:p><w:r><w:t>intro text</w:t></w:r></w:p>
+      <w:p><w:pPr><w:sectPr><w:type w:val="continuous"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr></w:pPr></w:p>
+      <w:p><w:r><w:t>col one</w:t></w:r></w:p>
+      <w:p><w:r><w:t>col two</w:t></w:r></w:p>
+      <w:p><w:pPr><w:sectPr><w:type w:val="continuous"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/><w:cols w:num="2" w:space="708"/></w:sectPr></w:pPr></w:p>
+      <w:p><w:r><w:t>outro text</w:t></w:r></w:p>
+      <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr>
+    </w:body></w:document>`;
+    const result = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml) }));
+    const doc = result.content as N;
+
+    const cols = walk(doc, 'columns');
+    expect(cols.length).toBe(1);
+    expect(cols[0].attrs.count).toBe(2);
+    expect(cols[0].attrs.gapCm).toBe(1.25); // 708 twips
+    expect(walk(cols[0], 'text').map((t) => t.text)).toEqual(['col one', 'col two']);
+    // A sectPr paragraph closes the group before it: intro (single-col) / columns /
+    // trailing outro on the body-final sectPr. Empty markers are dropped.
+    const top = doc.content!.map((n) => n.type);
+    expect(top).toEqual(['paragraph', 'columns', 'paragraph']);
+    expect(walk(doc.content![0], 'text')[0].text).toBe('intro text');
+    expect(walk(doc.content![2], 'text')[0].text).toBe('outro text');
+  });
+
+  it('keeps a text-bearing sectPr paragraph and clamps >3 columns', () => {
+    const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+      <w:p><w:r><w:t>kept marker text</w:t></w:r><w:pPr><w:sectPr><w:type w:val="continuous"/><w:cols w:num="4" w:space="200"/></w:sectPr></w:pPr></w:p>
+      <w:p><w:r><w:t>tail</w:t></w:r></w:p>
+      <w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>
+    </w:body></w:document>`;
+    const result = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml) }));
+    const doc = result.content as N;
+    const cols = walk(doc, 'columns');
+    expect(cols.length).toBe(1);
+    expect(cols[0].attrs.count).toBe(3);
+    expect(walk(cols[0], 'text')[0].text).toBe('kept marker text');
+    expect(result.warnings).toContain('Sections with more than 3 columns were reduced to 3 columns');
+  });
+
+  it('wraps a whole-document multi-column file (cols on the body-final sectPr only)', () => {
+    const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+      <w:p><w:r><w:t>all of it</w:t></w:r></w:p>
+      <w:p><w:r><w:t>flows in columns</w:t></w:r></w:p>
+      <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:cols w:num="3" w:space="425"/></w:sectPr>
+    </w:body></w:document>`;
+    const result = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml) }));
+    const doc = result.content as N;
+    const cols = walk(doc, 'columns');
+    expect(cols.length).toBe(1);
+    expect(cols[0].attrs.count).toBe(3);
+    expect(cols[0].attrs.gapCm).toBe(0.75); // 425 twips
+    expect(walk(cols[0], 'text').map((t) => t.text)).toEqual(['all of it', 'flows in columns']);
+  });
+
+  it('splits a columned section around a table with a warning', () => {
+    const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+      <w:p><w:r><w:t>before table</w:t></w:r></w:p>
+      <w:tbl><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid>
+        <w:tr><w:tc><w:p><w:r><w:t>in table</w:t></w:r></w:p></w:tc></w:tr>
+      </w:tbl>
+      <w:p><w:r><w:t>after table</w:t></w:r></w:p>
+      <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:cols w:num="2" w:space="283"/></w:sectPr>
+    </w:body></w:document>`;
+    const result = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml) }));
+    const doc = result.content as N;
+    expect(doc.content!.map((n) => n.type)).toEqual(['columns', 'table', 'columns']);
+    expect(result.warnings).toContain('Tables, text boxes and nested sections inside a multi-column section were moved out of the columns');
   });
 });

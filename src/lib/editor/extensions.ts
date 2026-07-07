@@ -41,11 +41,14 @@ import { TableHeaderRow } from './extensions/tableHeaderRow';
 import { TrailingNode } from './extensions/trailingNode';
 import { Image } from './extensions/image';
 import { TextBox } from './extensions/textBox';
+import { Columns } from './extensions/columns';
+import { ColumnsFlow } from './extensions/columnsFlow';
 import { TableOfContents } from './extensions/tableOfContents';
 
 export const extensions = [
-  // textBox has its own group so only the document (not cells/lists) admits it.
-  Document.extend({ content: '(block | textBox)+' }),
+  // textBox and columns have their own groups so only the document (not
+  // cells/lists/boxes) admits them.
+  Document.extend({ content: '(block | textBox | columns)+' }),
   Paragraph,
   Text,
   Bold,
@@ -73,6 +76,11 @@ export const extensions = [
   // Block-level text box / basic shape with editable content; round-trips to ODF
   // draw:frame/draw:text-box + draw:custom-shape and DOCX wps:wsp/wps:txbx.
   TextBox,
+  // Multi-column (newspaper) section; round-trips to ODF <text:section> +
+  // style:columns and DOCX continuous sections with w:cols. ColumnsFlow splits a
+  // section into per-page fragments so the text flows across page breaks.
+  Columns,
+  ColumnsFlow,
   // Generated table of contents from headings; round-trips to ODF
   // <text:table-of-content> (export/odt.ts, import/odt.ts) and a DOCX TOC field.
   TableOfContents,

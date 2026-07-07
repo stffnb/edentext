@@ -1,6 +1,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
+import { COLUMNS_FIT_MARGIN_PX } from './columns';
 
 export type PageBreakDebugSnapshot = {
   timestamp: string;
@@ -120,7 +121,7 @@ const PAGE_GAP = 20;
 const DEFAULT_MARGIN_TOP = 96;
 const DEFAULT_MARGIN_BOTTOM = 96;
 
-type VMargins = {
+export type VMargins = {
   top: number;
   bottom: number;
   contentHeight: number;
@@ -131,7 +132,8 @@ type VMargins = {
 // Reads vertical page margins + page height (px) from the --user-* props the Layout
 // panel writes. Document-px values, so they pair directly with offsetTop below. Side
 // margins don't affect pagination (only line wrapping), so they're ignored.
-function readVerticalMargins(dom: HTMLElement): VMargins {
+// Exported for columnsFlow.ts, which shares this geometry.
+export function readVerticalMargins(dom: HTMLElement): VMargins {
   const cs = getComputedStyle(dom);
   const top = parseFloat(cs.getPropertyValue('--user-margin-top'));
   const bottom = parseFloat(cs.getPropertyValue('--user-margin-bottom'));
@@ -188,6 +190,11 @@ type Leaf = {
   cellStart?: boolean;
   rowStart?: boolean;
   rowEnd?: boolean;
+  // A multi-column section fragment (columns.ts). columnsFlow.ts splits an
+  // overflowing fragment at a block boundary, so pagination must NOT push it when
+  // the flow can act: it only pushes when the first block alone can't fit the
+  // remaining page space (then the flow splits it at the next page top).
+  columnsFragment?: { blockCount: number; firstBlockNeededPx: number };
 };
 
 const ATOMIC_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
@@ -513,7 +520,7 @@ export const PageBreaks = Extension.create({
           return { naturalLineTop, docPos: lo };
         }
 
-        function collectLeaves(contentHeight: number): Leaf[] {
+        function collectLeaves(contentHeight: number, scaleFactor: number): Leaf[] {
           const dom = editorView.dom;
           const leaves: Leaf[] = [];
           // cumulativeSpacerHeight accumulates spacer offsetHeights (unscaled
@@ -643,8 +650,8 @@ export const PageBreaks = Extension.create({
                 });
                 continue;
               }
-              // A text box (textBox.ts) paginates atomically: its content lives inside a
-              // rotated/floated node view where a line-split spacer can't render sanely.
+              // A text box paginates atomically: a line-split spacer can't render
+              // sanely inside a rotated/floated node view.
               if (child.classList.contains('textbox-node')) {
                 leaves.push({
                   el: child,
@@ -652,6 +659,30 @@ export const PageBreaks = Extension.create({
                   naturalTop: topWithin(child) - cumulativeSpacerHeight,
                   naturalHeight: child.offsetHeight,
                   inTableCell,
+                });
+                continue;
+              }
+              // A multi-column section fragment: also atomic for spacer purposes (a
+              // spacer inside a multicol container rebalances around it), but the
+              // placement logic defers overflow to columnsFlow.ts via columnsFragment.
+              if (child.classList.contains('columns-node')) {
+                const count = Math.max(1, parseInt(child.dataset?.columns ?? '', 10) || 1);
+                const first = child.firstElementChild as HTMLElement | null;
+                let firstPx = 0;
+                if (first) {
+                  for (const r of Array.from(first.getClientRects())) firstPx += r.height;
+                  firstPx = firstPx / scaleFactor / count;
+                }
+                leaves.push({
+                  el: child,
+                  kind: 'atomic',
+                  naturalTop: topWithin(child) - cumulativeSpacerHeight,
+                  naturalHeight: child.offsetHeight,
+                  inTableCell,
+                  columnsFragment: {
+                    blockCount: child.children.length,
+                    firstBlockNeededPx: Math.max(firstPx, 16),
+                  },
                 });
                 continue;
               }
@@ -729,7 +760,7 @@ export const PageBreaks = Extension.create({
           const contentWidth = (Number.isFinite(pwRaw) ? pwRaw : 794) - marginLeft - (Number.isFinite(mrRaw) ? mrRaw : 80);
 
           const scale = getScaleFactor();
-          const leaves = collectLeaves(CONTENT_HEIGHT);
+          const leaves = collectLeaves(CONTENT_HEIGHT, scale);
 
           let cumulativeShift = 0;
           // Per-cell flow bracketing for a too-tall row (see Leaf flow markers): each
@@ -783,6 +814,45 @@ export const PageBreaks = Extension.create({
             // Set when a leaf overflows but no spacer can bridge it (block > one page).
             let noPushReason: string | null = null;
 
+            // The empty trailing paragraph after a document-final columns chain: its
+            // fragment box may run to the page bottom (sequential fill), which would
+            // shove this invisible paragraph onto a phantom extra page. Leave it in
+            // place and keep it out of the page count; typed text re-enables it.
+            if (
+              i === leaves.length - 1 &&
+              leaf.el.tagName === 'P' &&
+              !(leaf.el.textContent ?? '').length &&
+              leaves[i - 1]?.columnsFragment
+            ) {
+              leavesDebug.push({
+                index: i,
+                tag: leaf.el.tagName,
+                kind: leaf.kind,
+                inTableCell: !!leaf.inTableCell,
+                tableRow: null,
+                naturalTop: leaf.naturalTop,
+                naturalHeight: leaf.naturalHeight,
+                textPreview: '',
+                intraSpacerHeights: [],
+                effectiveTop,
+                effectiveBottom,
+                pageOfTop: page,
+                pageOfBottom: getPageForY(effectiveBottom, CYCLE_PX),
+                contentStart,
+                contentEnd,
+                overflowsPageEnd: effectiveBottom > contentEnd,
+              });
+              placementsDebug.push({
+                leafIndex: i,
+                docPos: null,
+                height: 0,
+                reason: 'trailing-empty-after-columns',
+                spacerKind: 'none',
+                columns: null,
+              });
+              continue;
+            }
+
             // A manual page break forces the block to the next page's top (never the first
             // leaf, so no leading blank page); once settled at a page top the guard stops.
             // A forced block that then overflows is split by the normal logic next pass.
@@ -819,7 +889,19 @@ export const PageBreaks = Extension.create({
               });
             } else if (effectiveBottom > contentEnd) {
               if (leaf.kind === 'atomic') {
-                if (leaf.naturalHeight <= CONTENT_HEIGHT) {
+                const cf = leaf.columnsFragment;
+                if (cf && cf.blockCount > 1 && cf.firstBlockNeededPx + COLUMNS_FIT_MARGIN_PX <= contentEnd - effectiveTop) {
+                  // columnsFlow.ts will split the fragment so a prefix fills this
+                  // page; pushing it whole here would fight that.
+                  noPushReason = 'columns-await-flow';
+                } else if (cf && effectiveTop <= contentStart + 0.5) {
+                  // Already at a page top and still too tall (a paragraph taller
+                  // than the page slot): pushing just moves the problem one page
+                  // down forever — the flow line-splits the paragraph instead.
+                  noPushReason = 'columns-line-split-pending';
+                } else if (leaf.naturalHeight <= CONTENT_HEIGHT || cf) {
+                  // A columns fragment may be pushed even when taller than a page:
+                  // the flow splits it again once it sits at the next page top.
                   const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
                   const { docPos, row } = leafSpacer(leaf);
                   breaks.push({

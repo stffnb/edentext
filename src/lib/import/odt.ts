@@ -369,6 +369,35 @@ function parseXml(xml: string): Document {
 
 // ---- block conversion -----------------------------------------------------------
 
+// Block types a columns section (columns.ts) can contain.
+const COLUMNS_ALLOWED = new Set(['paragraph', 'heading', 'bulletList', 'orderedList']);
+
+// Wrap a multi-column <text:section>'s converted blocks into columns nodes: maximal
+// runs of allowed types become one node each; anything else (tables, text boxes,
+// nested sections) is emitted between the runs at top level with a warning.
+function pushColumnRuns(inner: Node[], cols: { count: number; gapCm: number }, out: Node[], ctx: Ctx): void {
+  let count = cols.count;
+  if (count > 3) {
+    ctx.warnings.add('Sections with more than 3 columns were reduced to 3 columns');
+    count = 3;
+  }
+  let run: Node[] = [];
+  const flush = () => {
+    if (run.length) out.push({ type: 'columns', attrs: { count, gapCm: cols.gapCm }, content: run });
+    run = [];
+  };
+  for (const block of inner) {
+    if (COLUMNS_ALLOWED.has(block.type)) {
+      run.push(block);
+    } else {
+      ctx.warnings.add('Tables, text boxes and nested sections inside a multi-column section were moved out of the columns');
+      flush();
+      out.push(block);
+    }
+  }
+  flush();
+}
+
 function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDefault = false): Node[] {
   const out: Node[] = [];
 
@@ -398,7 +427,10 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         if (list) out.push(list);
         pushWithPending(null);
       } else if (el.localName === 'section') {
-        out.push(...convertBlocks(Array.from(el.children), ctx, kind, boldByDefault));
+        const inner = convertBlocks(Array.from(el.children), ctx, kind, boldByDefault);
+        const cols = ctx.resolver.sectionColumns(el.getAttributeNS(NS.text, 'style-name'));
+        if (kind === 'body' && cols) pushColumnRuns(inner, cols, out, ctx);
+        else out.push(...inner);
       } else if (el.localName === 'table-of-content' && kind === 'body') {
         // Generated table of contents → a tableOfContents node (regenerated live).
         out.push(convertToc(el));

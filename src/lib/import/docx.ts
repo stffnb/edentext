@@ -107,10 +107,30 @@ export function importDocx(bytes: Uint8Array): OdtImportResult {
   const body = docDoc.getElementsByTagNameNS(W, 'body')[0];
   if (!body) throw new Error('Not a Word document (no w:body).');
 
-  const blocks = convertBlocks(Array.from(body.children), ctx, 'body');
+  // Mid-body sectPr paragraphs delimit sections; a section whose w:cols declares
+  // more than one column becomes a columns node (the trailing group is described
+  // by the body-final sectPr, covering whole-document multi-column files).
+  const { groups, midSectPrs } = splitBodySections(Array.from(body.children));
+  const finalSectPr = fc(body, 'sectPr');
+  const blocks: Node[] = [];
+  for (const g of groups) {
+    const inner = convertBlocks(g.els, ctx, 'body');
+    const cols = sectPrColumns(g.sectPr ?? finalSectPr, ctx);
+    if (cols) pushColumnRuns(inner, cols, blocks, ctx);
+    else blocks.push(...inner);
+  }
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 
-  const sect = parseSectPr(fc(body, 'sectPr'), ctx);
+  let sect = parseSectPr(finalSectPr, ctx);
+  // LibreOffice-produced multi-section files may reference headers/footers only on
+  // an earlier section; page geometry still comes from the body-final sectPr.
+  if (!sect.header && !sect.footer) {
+    const prev = [...midSectPrs].reverse().find((s) => fc(s, 'headerReference') || fc(s, 'footerReference'));
+    if (prev) {
+      const prevSect = parseSectPr(prev, ctx);
+      sect = { ...sect, header: prevSect.header, footer: prevSect.footer, headerDistCm: prevSect.headerDistCm, footerDistCm: prevSect.footerDistCm };
+    }
+  }
 
   return {
     content: { type: 'doc', content: blocks },
@@ -838,6 +858,72 @@ function flattenTable(tbl: Element, ctx: Ctx): Node[] {
 }
 
 // ---- section: page geometry + headers/footers ------------------------------
+// Split body children into sections: a <w:p> whose pPr carries a sectPr ends the
+// group before it (a continuous section break). The marker paragraph is dropped
+// unless it has run content (ours and Word's are empty). The trailing group has
+// sectPr null — the caller pairs it with the body-final <w:sectPr>.
+function splitBodySections(children: Element[]): {
+  groups: { els: Element[]; sectPr: Element | null }[];
+  midSectPrs: Element[];
+} {
+  const groups: { els: Element[]; sectPr: Element | null }[] = [];
+  const midSectPrs: Element[] = [];
+  let els: Element[] = [];
+  for (const el of children) {
+    if (el.namespaceURI === W && el.localName === 'sectPr') continue; // body-final
+    const sectPr = el.namespaceURI === W && el.localName === 'p' ? fc(fc(el, 'pPr'), 'sectPr') : null;
+    if (sectPr) {
+      if (fc(el, 'r') || fc(el, 'hyperlink')) els.push(el);
+      groups.push({ els, sectPr });
+      midSectPrs.push(sectPr);
+      els = [];
+      continue;
+    }
+    els.push(el);
+  }
+  groups.push({ els, sectPr: null });
+  return { groups, midSectPrs };
+}
+
+// A sectPr's w:cols → columns attrs when it declares more than one column.
+function sectPrColumns(sectPr: Element | null, ctx: Ctx): { count: number; gapCm: number } | null {
+  const cols = fc(sectPr, 'cols');
+  if (!cols) return null;
+  const colEls = fcAll(cols, 'col');
+  const num = intAttr(cols, W, 'num') ?? (colEls.length > 1 ? colEls.length : null);
+  if (!num || num <= 1) return null;
+  let count = num;
+  if (count > 3) {
+    ctx.warnings.add('Sections with more than 3 columns were reduced to 3 columns');
+    count = 3;
+  }
+  const space = intAttr(cols, W, 'space') ?? (colEls[0] ? intAttr(colEls[0], W, 'space') : null) ?? 283;
+  return { count, gapCm: Math.min(5, Math.max(0, round2(twipToCm(space)))) };
+}
+
+// Block types a columns node can contain (mirrors import/odt.ts).
+const COLUMNS_ALLOWED = new Set(['paragraph', 'heading', 'bulletList', 'orderedList']);
+
+// Wrap a multi-column section's converted blocks into columns nodes: maximal runs of
+// allowed types become one node each; anything else is emitted between them.
+function pushColumnRuns(inner: Node[], cols: { count: number; gapCm: number }, out: Node[], ctx: Ctx): void {
+  let run: Node[] = [];
+  const flush = () => {
+    if (run.length) out.push({ type: 'columns', attrs: { count: cols.count, gapCm: cols.gapCm }, content: run });
+    run = [];
+  };
+  for (const block of inner) {
+    if (COLUMNS_ALLOWED.has(block.type)) {
+      run.push(block);
+    } else {
+      ctx.warnings.add('Tables, text boxes and nested sections inside a multi-column section were moved out of the columns');
+      flush();
+      out.push(block);
+    }
+  }
+  flush();
+}
+
 function parseSectPr(sect: Element | null, ctx: Ctx): {
   margins: PageMargins | null; orientation: Orientation | null;
   header: HfDoc; footer: HfDoc; headerDistCm: number | null; footerDistCm: number | null;

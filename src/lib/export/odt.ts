@@ -83,6 +83,12 @@ const TOC_SENT = '';
 // <draw:frame>/<draw:text-box> or <draw:custom-shape>. U+E008.
 const TBX = '';
 
+// Sentinel bracketing a hoisted multi-column section's blocks (marker paragraphs
+// COL S{i} COL … COL E{i} COL): replaceColumns hoists like replaceTextBoxes;
+// applyColumns wraps the region into a <text:section> with a minted section style
+// carrying <style:columns>. U+E009.
+const COL = '';
+
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -306,6 +312,64 @@ function replaceTextBoxes(doc: TiptapNode, boxes: TextBoxExport[]): TiptapNode {
       content.push({ type: 'paragraph', content: [{ type: 'text', text: `${TBX}S${i}${TBX}` }] });
       content.push(...(child.content ?? []));
       content.push({ type: 'paragraph', content: [{ type: 'text', text: `${TBX}E${i}${TBX}` }] });
+      continue;
+    }
+    content.push(child);
+  }
+  return { ...doc, content };
+}
+
+// A multi-column section's geometry, collected by replaceColumns.
+type ColumnsExport = { count: number; gapCm: number };
+
+function columnsDescriptor(node: TiptapNode): ColumnsExport {
+  const a = node.attrs ?? {};
+  const count = typeof a.count === 'number' ? Math.min(3, Math.max(2, Math.round(a.count))) : 2;
+  const gapRaw = typeof a.gapCm === 'number' && Number.isFinite(a.gapCm) ? a.gapCm : 0.5;
+  const clamped = Math.min(5, Math.max(0, gapRaw));
+  return { count, gapCm: Math.round(clamped * 1000) / 1000 };
+}
+
+// Re-merge paragraphs split by columnsFlow at a page boundary (the second part
+// carries the layout-internal joinPrev attr) — the file must hold ONE paragraph.
+// Also used by the DOCX exporter.
+export function mergeJoinedParagraphsJson(blocks: TiptapNode[]): TiptapNode[] {
+  const out: TiptapNode[] = [];
+  for (const b of blocks) {
+    const prev = out[out.length - 1];
+    if (b.type === 'paragraph' && b.attrs?.joinPrev && prev?.type === 'paragraph') {
+      out[out.length - 1] = { ...prev, content: [...(prev.content ?? []), ...(b.content ?? [])] };
+    } else {
+      out.push(b);
+    }
+  }
+  return out;
+}
+
+// Swap each top-level columns section for marker paragraphs bracketing its hoisted
+// child blocks (same mechanism as replaceTextBoxes); applyColumns re-wraps the
+// serialized region into a <text:section>. Adjacent equal-attr fragments are a
+// columnsFlow.ts page-split chain — one section, so they coalesce here.
+function replaceColumns(doc: TiptapNode, cols: ColumnsExport[]): TiptapNode {
+  if (!doc.content?.length) return doc;
+  const content: TiptapNode[] = [];
+  const children = doc.content;
+  for (let c = 0; c < children.length; c++) {
+    const child = children[c];
+    if (child.type === 'columns') {
+      const i = cols.length;
+      const desc = columnsDescriptor(child);
+      cols.push(desc);
+      const inner: TiptapNode[] = [...(child.content ?? [])];
+      while (c + 1 < children.length && children[c + 1].type === 'columns') {
+        const next = columnsDescriptor(children[c + 1]);
+        if (next.count !== desc.count || next.gapCm !== desc.gapCm) break;
+        inner.push(...(children[c + 1].content ?? []));
+        c++;
+      }
+      content.push({ type: 'paragraph', content: [{ type: 'text', text: `${COL}S${i}${COL}` }] });
+      content.push(...mergeJoinedParagraphsJson(inner));
+      content.push({ type: 'paragraph', content: [{ type: 'text', text: `${COL}E${i}${COL}` }] });
       continue;
     }
     content.push(child);
@@ -1709,6 +1773,41 @@ function applyTextBoxes(odtBytes: Uint8Array, boxes: TextBoxExport[]): Uint8Arra
   return rezipOdt(files);
 }
 
+// Section style for a multi-column region: balanced columns with a uniform gap.
+// text:dont-balance-text-columns sits on <style:columns> (not section-properties).
+function columnsSectionStyle(cols: ColumnsExport, index: number): string {
+  return (
+    `<style:style style:name="ColSec${index + 1}" style:family="section">` +
+    `<style:section-properties style:editable="false">` +
+    `<style:columns fo:column-count="${cols.count}" fo:column-gap="${cols.gapCm}cm"` +
+    ` text:dont-balance-text-columns="false"/>` +
+    `</style:section-properties></style:style>`
+  );
+}
+
+// Resolve the columns marker paragraphs: wrap each S{i}…E{i} region (the section's
+// hoisted, fully serialized blocks) into a <text:section> — a block-level element,
+// so no anchor paragraph — and inject the minted section styles.
+function applyColumns(odtBytes: Uint8Array, cols: ColumnsExport[]): Uint8Array {
+  if (!cols.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  content = content.replace(
+    new RegExp(`<text:p\\b[^>]*>${COL}S(\\d+)${COL}</text:p>([\\s\\S]*?)<text:p\\b[^>]*>${COL}E\\1${COL}</text:p>`, 'g'),
+    (_m, idx: string, inner: string) => {
+      const i = Number(idx);
+      if (!cols[i]) return '';
+      return `<text:section text:style-name="ColSec${i + 1}" text:name="ColumnsSection${i + 1}">${inner}</text:section>`;
+    },
+  );
+  content = injectAutomaticStyles(content, cols.map((c, i) => columnsSectionStyle(c, i)).join(''));
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 // Minted automatic paragraph style for a TOC entry level: per-level left indent and a
 // right tab stop at the text width with a dotted leader (so the page number right-aligns
 // with dots, matching the on-screen TOC and Word/LibreOffice).
@@ -1814,12 +1913,14 @@ export type HfExport = {
 export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null): Promise<Uint8Array> {
   // Collect embedded images and swap them for IMG sentinels before serialization;
   // applyImages resolves the sentinels and writes the Pictures/ + manifest entries.
-  // Text boxes are hoisted after replacePageBreaks (so PGB never lands on their
-  // blocks) and before the inline passes (which then cover the hoisted blocks too).
+  // Text boxes and columns sections are hoisted after replacePageBreaks (so PGB never
+  // lands on their blocks) and before the inline passes (which then cover the hoisted
+  // blocks too).
   const images: ImageExport[] = [];
   const tocs: TocExport[] = [];
   const textBoxes: TextBoxExport[] = [];
-  const raw = replaceImages(replaceTabs(replaceHardBreaks(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes))), images);
+  const columns: ColumnsExport[] = [];
+  const raw = replaceImages(replaceTabs(replaceHardBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns))), images);
   const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Distance from the page edge to the header (top) / footer (bottom). Becomes the
@@ -1942,7 +2043,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withBreaks = applyInlineSentinels(cleaned);
   const withImages = applyImages(withBreaks, images);
   const withTextBoxes = applyTextBoxes(withImages, textBoxes);
-  const withToc = applyToc(withTextBoxes, tocs, contentWidthCm);
+  const withColumns = applyColumns(withTextBoxes, columns);
+  const withToc = applyToc(withColumns, tocs, contentWidthCm);
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withStyles = rewriteStylesXml(withEmptyFontSizes, language ?? null);

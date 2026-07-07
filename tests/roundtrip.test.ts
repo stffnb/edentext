@@ -36,6 +36,7 @@ const IMGN = (width: number, height: number, alt?: string, rotation?: number, wr
     ...(alt ? { alt } : {}), ...(rotation ? { rotation } : {}), ...(wrap ? { wrap } : {}),
   } });
 const TBX = (attrs: N, ...content: N[]): N => ({ type: 'textBox', attrs, content });
+const COLS = (attrs: N, ...content: N[]): N => ({ type: 'columns', attrs, content });
 
 const margins = { top: 3, bottom: 2, left: 2.5, right: 1.5 };
 
@@ -76,6 +77,7 @@ const fixture: N = {
     P(null, T('top/bottom '), IMGN(70, 50, 'Banner', 0, 'topBottom')),
     TBX({ width: 288, height: 96 }, P(null, T('box para one')), P(null, T('box '), T('bold', { type: 'bold' }))),
     TBX({ width: 192, height: 80, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, P(null, T('in ellipse'))),
+    COLS({ count: 2, gapCm: 0.5 }, P(null, T('newspaper column text one')), P(null, T('newspaper column text two'))),
     { type: 'bulletList', content: [
       LI(P(null, T('bullet one'))),
       LI(P(null, T('bullet two')), { type: 'orderedList', attrs: { listStyleType: 'upper-roman-paren' }, content: [
@@ -748,6 +750,179 @@ describe('Leg 7: foreign shapes/text boxes → importOdt', () => {
     const cellBlocks = table?.content?.[0]?.content?.[0]?.content ?? [];
     check('box in cell flattened into the cell', cellBlocks.some((b: N) => b.content?.some((t: N) => t.text === 'box in cell')), cellBlocks);
     check('cell flatten warning reported', f.warnings.includes('Text boxes nested in table cells or other text boxes were flattened'), f.warnings);
+  });
+});
+
+describe('Leg 8: multi-column sections (ODT)', () => {
+  const colsDoc: N = {
+    type: 'doc',
+    content: [
+      P(null, T('before')),
+      COLS({ count: 2, gapCm: 0.8 },
+        P(null, T('col text with '), T('bold', { type: 'bold' })),
+        { type: 'bulletList', content: [
+          LI(P(null, T('col bullet one'))),
+          LI(P(null, T('col bullet two'))),
+        ] },
+        H({ level: 3 }, T('Col heading')),
+      ),
+      P(null, T('between')),
+      COLS({ count: 3, gapCm: 0.5 }, P(null, T('three column text'))),
+      P(null, T('after')),
+    ],
+  };
+
+  it('emits <text:section> with a section style and round-trips attrs + content', async () => {
+    const bytes = await buildOdt(colsDoc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('emits <text:section> with the minted style', /<text:section text:style-name="ColSec1"/.test(xml));
+    check('mints a section-family style', xml.includes('style:family="section"'));
+    check('2-col style carries count + gap', xml.includes('fo:column-count="2"') && xml.includes('fo:column-gap="0.8cm"'));
+    check('3-col style carries count + default gap', xml.includes('fo:column-count="3"') && xml.includes('fo:column-gap="0.5cm"'));
+    check('columns balance (dont-balance false)', xml.includes('text:dont-balance-text-columns="false"'));
+    check('section content is real block markup', /<text:section[^>]*>[\s\S]*?<text:list/.test(xml));
+    check('no leftover COL sentinel', !xml.includes(''));
+
+    const res = importOdt(bytes);
+    check('no warnings on own export', res.warnings.length === 0, res.warnings);
+    const cols = (res.content.content ?? []).filter((n: N) => n.type === 'columns');
+    check('both sections round-trip', cols.length === 2, (res.content.content ?? []).map((n: N) => n.type));
+    const [two, three] = cols;
+    check('2-col attrs exact', two?.attrs?.count === 2 && two?.attrs?.gapCm === 0.8, two?.attrs);
+    check('3-col attrs exact', three?.attrs?.count === 3 && three?.attrs?.gapCm === 0.5, three?.attrs);
+    check('marks + list + heading survive inside the section',
+      two?.content?.[0]?.content?.some((n: N) => n.marks?.some((m: N) => m.type === 'bold')) &&
+      two?.content?.[1]?.type === 'bulletList' && two?.content?.[2]?.type === 'heading', two?.content);
+    check('document JSON round-trips', firstDiff(normalize(colsDoc), normalize(res.content)) === null,
+      firstDiff(normalize(colsDoc), normalize(res.content)));
+  });
+
+  it('coalesces adjacent equal-attr fragments (columnsFlow page splits) into one section', async () => {
+    const fragmented: N = {
+      type: 'doc',
+      content: [
+        COLS({ count: 2, gapCm: 0.5 }, P(null, T('frag one a')), P(null, T('frag one b'))),
+        COLS({ count: 2, gapCm: 0.5 }, P(null, T('frag two'))),
+        COLS({ count: 3, gapCm: 0.5 }, P(null, T('other section'))),
+        P(null, T('tail')),
+      ],
+    };
+    const bytes = await buildOdt(fragmented, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('two sections emitted (chain merged, 3-col separate)',
+      (xml.match(/<text:section /g) ?? []).length === 2, (xml.match(/<text:section /g) ?? []).length);
+
+    const res = importOdt(bytes);
+    const cols = (res.content.content ?? []).filter((n: N) => n.type === 'columns');
+    check('chain reimports as one node with all three blocks',
+      cols.length === 2 && cols[0]?.content?.length === 3 && cols[1]?.content?.length === 1,
+      cols.map((n: N) => n.content?.length));
+  });
+
+  it('re-merges a page-boundary line-split paragraph (joinPrev) on export', async () => {
+    const split: N = {
+      type: 'doc',
+      content: [
+        COLS({ count: 2, gapCm: 0.5 },
+          P(null, T('intact lead. ')),
+          P(null, T('first half of the long paragraph ')),
+        ),
+        COLS({ count: 2, gapCm: 0.5 },
+          P({ joinPrev: true }, T('second half of it.')),
+          P(null, T('intact tail.')),
+        ),
+        P(null, T('after')),
+      ],
+    };
+    const bytes = await buildOdt(split, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('split paragraph exported as ONE text:p',
+      /first half of the long paragraph second half of it\./.test(xml.replace(/<[^>]+>/g, '')), null);
+    check('one section, three paragraphs inside',
+      (xml.match(/<text:section /g) ?? []).length === 1, null);
+
+    const res = importOdt(bytes);
+    const col = (res.content.content ?? []).find((n: N) => n.type === 'columns');
+    check('reimports as one section with three paragraphs', col?.content?.length === 3, col?.content?.length);
+    const texts = (col?.content ?? []).map((p: N) => (p.content ?? []).map((t: N) => t.text).join(''));
+    check('merged paragraph text intact',
+      texts[1] === 'first half of the long paragraph second half of it.', texts);
+  });
+});
+
+describe('Leg 9: foreign multi-column sections → importOdt', () => {
+  it('derives the gap from column indents, moves tables out, clamps counts, splices style-less sections', () => {
+    const contentXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+ <office:automatic-styles>
+  <style:style style:name="Sect1" style:family="section">
+   <style:section-properties style:editable="false">
+    <style:columns fo:column-count="2">
+     <style:column style:rel-width="4818*" fo:start-indent="0cm" fo:end-indent="0.25cm"/>
+     <style:column style:rel-width="4818*" fo:start-indent="0.25cm" fo:end-indent="0cm"/>
+    </style:columns>
+   </style:section-properties>
+  </style:style>
+  <style:style style:name="Sect2" style:family="section">
+   <style:section-properties>
+    <style:columns fo:column-count="2" fo:column-gap="1cm"/>
+   </style:section-properties>
+  </style:style>
+  <style:style style:name="Sect3" style:family="section">
+   <style:section-properties>
+    <style:columns fo:column-count="4" fo:column-gap="0.3cm"/>
+   </style:section-properties>
+  </style:style>
+ </office:automatic-styles>
+ <office:body><office:text>
+  <text:section text:style-name="Sect1" text:name="S1">
+   <text:p>lo col one</text:p>
+   <text:p>lo col two</text:p>
+  </text:section>
+  <text:section text:style-name="Sect2" text:name="S2">
+   <text:p>before table</text:p>
+   <table:table>
+    <table:table-column/>
+    <table:table-row><table:table-cell><text:p>in table</text:p></table:table-cell></table:table-row>
+   </table:table>
+   <text:p>after table</text:p>
+  </text:section>
+  <text:section text:style-name="Sect3" text:name="S3">
+   <text:p>four cols</text:p>
+  </text:section>
+  <text:section text:name="S4">
+   <text:p>plain section text</text:p>
+  </text:section>
+ </office:text></office:body>
+</office:document-content>`;
+    const foreign = zipSync({
+      mimetype: [strToU8('application/vnd.oasis.opendocument.text'), { level: 0 }],
+      'content.xml': [strToU8(contentXml), { level: 6 }],
+    } as any);
+
+    const f = importOdt(foreign);
+    const c = f.content.content!;
+    const cols = c.filter((n: N) => n.type === 'columns');
+    check('4 columns nodes (S1, S2 split around the table, S3)', cols.length === 4, c.map((n: N) => n.type));
+
+    const s1 = cols[0];
+    check('S1: gap derived from column indents (0.25+0.25)', s1?.attrs?.count === 2 && s1?.attrs?.gapCm === 0.5, s1?.attrs);
+    check('S1: both paragraphs inside', s1?.content?.length === 2 && s1?.content?.[0]?.content?.[0]?.text === 'lo col one', s1?.content);
+
+    const s2idx = c.findIndex((n: N) => n.type === 'columns' && n.content?.[0]?.content?.[0]?.text === 'before table');
+    check('S2: table moved out between two columns nodes',
+      c[s2idx]?.attrs?.gapCm === 1 && c[s2idx + 1]?.type === 'table' &&
+      c[s2idx + 2]?.type === 'columns' && c[s2idx + 2]?.content?.[0]?.content?.[0]?.text === 'after table',
+      c.slice(s2idx, s2idx + 3).map((n: N) => n.type));
+    check('S2: move-out warning reported',
+      f.warnings.includes('Tables, text boxes and nested sections inside a multi-column section were moved out of the columns'), f.warnings);
+
+    const s3 = cols[cols.length - 1];
+    check('S3: count clamped to 3', s3?.attrs?.count === 3 && s3?.attrs?.gapCm === 0.3, s3?.attrs);
+    check('S3: clamp warning reported', f.warnings.includes('Sections with more than 3 columns were reduced to 3 columns'), f.warnings);
+
+    check('style-less section spliced to plain paragraphs',
+      c.some((n: N) => n.type === 'paragraph' && n.content?.[0]?.text === 'plain section text'), c.map((n: N) => n.type));
   });
 });
 

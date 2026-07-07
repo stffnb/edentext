@@ -51,6 +51,7 @@
 
 **Page & layout**
 - Page margins (cm) and page orientation (portrait / landscape)
+- Multi-column (newspaper) layout: 1–3 columns with adjustable gap, applied to the whole document (no selection) or to selected paragraphs, Word-style — text fills column 1 to the page bottom, then column 2, and flows across pages with mid-paragraph line breaks; a section followed by other content balances its columns. Round-trips to ODF `text:section`/`style:columns` and DOCX continuous sections with `w:cols`
 - Headers & footers with page-number / page-count fields and configurable edge distances
 - Zoom (20–300 %)
 - Show formatting marks (spaces, tabs, paragraph marks)
@@ -81,7 +82,6 @@
 Planned word-processor features (to match Word/LibreOffice):
 - Footnotes / endnotes (currently dropped on import)
 - Clear formatting (remove all marks)
-- Multi-column (newspaper) layout
 - Comments / annotations (currently dropped on import)
 - Horizontal rule
 - Page numbering options (start value / format) + different first-page header

@@ -343,6 +343,19 @@
   margin-bottom: 0;
 }
 
+/* Multi-column section (columns.ts); column-count/gap come from the node's
+   inline style. Balanced fill matches ODF/Word section behavior; no visual
+   affordance — the section must read as plain flowing text. */
+.paper .tiptap .columns-node {
+  column-fill: balance;
+}
+.paper .tiptap .columns-node > :first-child {
+  margin-top: 0;
+}
+.paper .tiptap .columns-node > :last-child {
+  margin-bottom: 0;
+}
+
 /* Tab stops every 1.25cm, matching ODF's default tab interval. */
 .paper .tiptap {
   tab-size: 1.25cm;

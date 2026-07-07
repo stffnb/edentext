@@ -12,6 +12,7 @@
   import { importOdt } from './lib/import/odt';
   import { importDocx } from './lib/import/docx';
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
+  import { getColumnsFlowDebug } from './lib/editor/extensions/columnsFlow';
   import { getColorDebug } from './lib/utils/colorDebug';
   import { countText, type TextStats } from './lib/utils/wordCount';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
@@ -557,6 +558,7 @@
       zoom,
       doc: editor.getJSON(),
       pageBreaks: snapshot,
+      columnsFlow: getColumnsFlowDebug(editor.view),
       colors: getColorDebug(editor),
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });

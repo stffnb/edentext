@@ -16,6 +16,7 @@
   import type { Orientation } from '../storage/pageOrientation';
   import { DEFAULT_HF_DISTANCES, clampHfDistance, type HfDistances } from '../storage/headerFooter';
   import { listContext } from '../editor/extensions/indent';
+  import { findColumns, DEFAULT_COLUMN_GAP_CM } from '../editor/extensions/columns';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
 
@@ -612,6 +613,7 @@
     lineHeightOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
+    columnsOpen = false;
     layoutOpen = !layoutOpen;
     if (layoutOpen) {
       syncMarginInputs();
@@ -635,6 +637,7 @@
     sizeOpen = false;
     sizeInputFocused = false;
     lineHeightOpen = false;
+    columnsOpen = false;
     if (which === 'font') highlightColorOpen = false;
     else fontColorOpen = false;
   }
@@ -652,6 +655,7 @@
     highlightColorOpen = false;
     layoutOpen = false;
     specialCharOpen = false;
+    columnsOpen = false;
   }
 
   function insertTable(rows: number, cols: number, range: { from: number; to: number }) {
@@ -663,6 +667,86 @@
   function insertToc() {
     if (!editor || hfActive) return; // body-only; the HF schema has no TOC node
     editor.chain().focus().setTableOfContents().run();
+  }
+
+  // --- Multi-column section (columns.ts) ---
+  let columnsOpen = $state(false);
+  let columnGapInput = $state('');
+
+  // Count/gap of the columns section around the cursor; count 1 = not in one.
+  let colState = $derived.by(() => {
+    if (tick < 0 || !editor) return { count: 1, gapCm: DEFAULT_COLUMN_GAP_CM, inColumns: false };
+    const found = findColumns(editor.state);
+    return found
+      ? { count: found.node.attrs.count as number, gapCm: found.node.attrs.gapCm as number, inColumns: true }
+      : { count: 1, gapCm: DEFAULT_COLUMN_GAP_CM, inColumns: false };
+  });
+
+  function openColumnsPicker() {
+    fontOpen = false;
+    sizeOpen = false;
+    sizeInputFocused = false;
+    lineHeightOpen = false;
+    fontColorOpen = false;
+    highlightColorOpen = false;
+    layoutOpen = false;
+    tableOpen = false;
+    specialCharOpen = false;
+    columnsOpen = !columnsOpen;
+    if (columnsOpen) columnGapInput = fmtCm(colState.gapCm);
+  }
+
+  function columnsClickOutside(node: HTMLElement) {
+    function handler(e: MouseEvent) {
+      if (!node.contains(e.target as Node)) columnsOpen = false;
+    }
+    window.addEventListener('mousedown', handler);
+    return { destroy() { window.removeEventListener('mousedown', handler); } };
+  }
+
+  // The current gap straight from the document (colState may not have recomputed yet
+  // within the same handler after a command ran).
+  function liveColumnGap(): number {
+    const found = editor ? findColumns(editor.state) : null;
+    return (found?.node.attrs.gapCm as number | undefined) ?? DEFAULT_COLUMN_GAP_CM;
+  }
+
+  function applyColumnCount(n: number) {
+    if (!editor || hfActive) return;
+    editor.chain().focus().setColumns(n).run();
+    columnGapInput = fmtCm(liveColumnGap());
+  }
+
+  function setColumnGap(value: number) {
+    if (!editor) return;
+    editor.chain().focus().setColumnGap(value).run();
+    columnGapInput = fmtCm(liveColumnGap());
+  }
+
+  function commitColumnGapInput() {
+    const n = parseFloat(columnGapInput);
+    if (Number.isNaN(n)) {
+      columnGapInput = fmtCm(liveColumnGap()); // revert invalid input
+      return;
+    }
+    setColumnGap(n);
+  }
+
+  function onColumnGapKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitColumnGapInput();
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      columnGapInput = fmtCm(liveColumnGap());
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setColumnGap(liveColumnGap() + MARGIN_STEP);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setColumnGap(liveColumnGap() - MARGIN_STEP);
+    }
   }
 
   // --- Special character insertion (SpecialCharPicker.svelte) ---
@@ -678,6 +762,7 @@
     highlightColorOpen = false;
     layoutOpen = false;
     tableOpen = false;
+    columnsOpen = false;
   }
 
   function insertSpecialChar(char: string, range: { from: number; to: number }) {
@@ -1238,6 +1323,95 @@
           <path d="M5.5 6.5h5M8 6.5v4" stroke="currentColor" stroke-linecap="round" />
         </svg>
       </button>
+      <div class="columns-wrap" use:columnsClickOutside>
+        <button
+          class:active={colState.inColumns}
+          onclick={openColumnsPicker}
+          disabled={!!hfActive}
+          title={hfActive ? t().toolbarExpanded.columnsNotInHf : t().toolbarExpanded.columns}
+          aria-label={t().toolbarExpanded.columns}
+          aria-haspopup="true"
+          aria-expanded={columnsOpen}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M2 3.5h5M2 6h5M2 8.5h5M2 11h5M2 13.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+            <path d="M9 3.5h5M9 6h5M9 8.5h5M9 11h5M9 13.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+          </svg>
+        </button>
+        {#if columnsOpen}
+          <div class="columns-dropdown">
+            <div class="lh-section-label">{t().toolbarExpanded.columns}</div>
+            <div class="columns-row">
+              <button
+                class="orientation-btn"
+                class:active={colState.count === 1}
+                aria-pressed={colState.count === 1}
+                onclick={() => applyColumnCount(1)}
+                title={t().toolbarExpanded.columnsOne}
+              >
+                <svg width="22" height="18" viewBox="0 0 22 18" fill="none" aria-hidden="true">
+                  <path d="M3 3h16M3 6h16M3 9h16M3 12h16M3 15h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                </svg>
+                <span>1</span>
+              </button>
+              <button
+                class="orientation-btn"
+                class:active={colState.count === 2}
+                aria-pressed={colState.count === 2}
+                onclick={() => applyColumnCount(2)}
+                title={t().toolbarExpanded.columnsTwo}
+              >
+                <svg width="22" height="18" viewBox="0 0 22 18" fill="none" aria-hidden="true">
+                  <path d="M3 3h7M3 6h7M3 9h7M3 12h7M3 15h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                  <path d="M12 3h7M12 6h7M12 9h7M12 12h7M12 15h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                </svg>
+                <span>2</span>
+              </button>
+              <button
+                class="orientation-btn"
+                class:active={colState.count === 3}
+                aria-pressed={colState.count === 3}
+                onclick={() => applyColumnCount(3)}
+                title={t().toolbarExpanded.columnsThree}
+              >
+                <svg width="22" height="18" viewBox="0 0 22 18" fill="none" aria-hidden="true">
+                  <path d="M3 3h4M3 6h4M3 9h4M3 12h4M3 15h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                  <path d="M9 3h4M9 6h4M9 9h4M9 12h4M9 15h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                  <path d="M15 3h4M15 6h4M15 9h4M15 12h4M15 15h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                </svg>
+                <span>3</span>
+              </button>
+            </div>
+            <div class="lh-section-label">{t().toolbarExpanded.columnGap}</div>
+            <div class="columns-gap-row">
+              <div class="margin-input-wrap">
+                <input
+                  type="text"
+                  class="margin-input"
+                  bind:value={columnGapInput}
+                  disabled={!colState.inColumns}
+                  onkeydown={onColumnGapKeydown}
+                  onblur={commitColumnGapInput}
+                  inputmode="decimal"
+                  title={t().toolbarExpanded.columnGap}
+                />
+                <div class="margin-steppers">
+                  <button class="margin-step" tabindex="-1" disabled={!colState.inColumns} onclick={() => setColumnGap(liveColumnGap() + MARGIN_STEP)} title={t().toolbarExpanded.increaseShort} aria-label={t().toolbarExpanded.increase(t().toolbarExpanded.columnGap)}>
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                      <path d="M1 5.5l3-3 3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <button class="margin-step" tabindex="-1" disabled={!colState.inColumns} onclick={() => setColumnGap(liveColumnGap() - MARGIN_STEP)} title={t().toolbarExpanded.decreaseShort} aria-label={t().toolbarExpanded.decrease(t().toolbarExpanded.columnGap)}>
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                      <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        {/if}
+      </div>
       <button
         onclick={insertToc}
         disabled={!!hfActive}
@@ -1729,6 +1903,34 @@
     border-color: var(--color-primary);
     background: var(--color-primary);
     color: white;
+  }
+
+  .columns-wrap {
+    position: relative;
+  }
+
+  .columns-dropdown {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 0;
+    width: 200px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    z-index: 200;
+    padding: 2px 2px 6px;
+  }
+
+  .columns-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    padding: 4px 6px 2px;
+  }
+
+  .columns-gap-row {
+    padding: 4px 6px 2px;
   }
 
   .margin-grid {

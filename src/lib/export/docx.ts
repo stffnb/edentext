@@ -3,7 +3,7 @@ import {
   TableOfContents,
   Table, TableRow, TableCell, Header, Footer, PageNumber,
   AlignmentType, HeadingLevel, LevelFormat, UnderlineType, BorderStyle, ShadingType,
-  WidthType, HeightRule, PageOrientation, LineRuleType, TableLayoutType,
+  WidthType, HeightRule, PageOrientation, LineRuleType, TableLayoutType, SectionType,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
   TextWrappingType, TextWrappingSide,
 } from 'docx';
@@ -21,7 +21,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
-import { normalizeColor, HEADING_STYLE_OVERRIDES, type HfExport } from './odt';
+import { normalizeColor, HEADING_STYLE_OVERRIDES, mergeJoinedParagraphsJson, type HfExport } from './odt';
 
 // DOCX export. Mirrors export/odt.ts feature-for-feature, but builds OOXML via the
 // `docx` library instead of odf-kit. Lazy-loaded from App.svelte so neither this
@@ -732,6 +732,56 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
   return out;
 }
 
+// One body section: a run of ordinary blocks (columns: null) or one columns node's
+// content. DOCX has no block-level column container — a mid-document multi-column
+// region is its own section, delimited by continuous section breaks.
+type BodyGroup = {
+  columns: { count: number; gapCm: number } | null;
+  children: (Paragraph | Table | TableOfContents)[];
+};
+
+function bodyGroups(content: TiptapNode[], num: Numbering, contentWidthCm: number, textBoxes: TextBoxDocx[]): BodyGroup[] {
+  const groups: BodyGroup[] = [];
+  let plain: TiptapNode[] = [];
+  // Adjacent equal-attr fragments (a columnsFlow page-split chain) = one section;
+  // their blocks are collected raw so page-split paragraphs merge before serializing.
+  let cols: { count: number; gapCm: number; blocks: TiptapNode[] } | null = null;
+  const flushPlain = () => {
+    if (!plain.length) return;
+    groups.push({ columns: null, children: blocksToDocx(plain, num, contentWidthCm, textBoxes) });
+    plain = [];
+  };
+  const flushCols = () => {
+    if (!cols) return;
+    groups.push({
+      columns: { count: cols.count, gapCm: cols.gapCm },
+      children: blocksToDocx(mergeJoinedParagraphsJson(cols.blocks), num, contentWidthCm, textBoxes),
+    });
+    cols = null;
+  };
+  for (const node of content) {
+    if (node.type === 'columns') {
+      const a = node.attrs ?? {};
+      const count = typeof a.count === 'number' ? Math.min(3, Math.max(2, Math.round(a.count))) : 2;
+      const gapCm = typeof a.gapCm === 'number' && Number.isFinite(a.gapCm) ? Math.min(5, Math.max(0, a.gapCm)) : 0.5;
+      if (cols && cols.count === count && cols.gapCm === gapCm) {
+        cols.blocks.push(...(node.content ?? []));
+      } else {
+        flushCols();
+        flushPlain();
+        cols = { count, gapCm, blocks: [...(node.content ?? [])] };
+      }
+    } else {
+      flushCols();
+      plain.push(node);
+    }
+  }
+  flushCols();
+  flushPlain();
+  if (!groups.length) groups.push({ columns: null, children: [] });
+  return groups;
+}
+
 // ---- document styles -------------------------------------------------------
 function headingStyle(o: { fontSize: string; marginTop: string; marginBottom: string }) {
   return {
@@ -768,8 +818,7 @@ export async function buildDocx(
   const contentWidthCm = pageWidthCm - margins.left - margins.right;
 
   const textBoxes: TextBoxDocx[] = [];
-  const body = blocksToDocx(docJson.content ?? [], num, contentWidthCm, textBoxes);
-  if (body.length === 0) body.push(new Paragraph({}));
+  const groups = bodyGroups(docJson.content ?? [], num, contentWidthCm, textBoxes);
 
   // A TOC field is empty until its field is calculated; ask the reader to update fields
   // on open so Word/LibreOffice populate + hyperlink it (standard for TOC fields).
@@ -782,27 +831,40 @@ export async function buildDocx(
   const headerDist = Math.min(hf?.headerDistanceCm ?? HF_DISTANCE_CM, margins.top);
   const footerDist = Math.min(hf?.footerDistanceCm ?? HF_DISTANCE_CM, margins.bottom);
 
+  // Identical page geometry on every sectPr (Word requires it per section). Fresh
+  // Header/Footer instances per section so each sectPr — including the body-final
+  // one our importer reads — carries its own references (Word's "Link to Previous").
+  const pageProps = {
+    size: { width: cmToTwip(pageWidthCm), height: cmToTwip(pageHeightCm), orientation: landscape ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT },
+    margin: {
+      top: cmToTwip(margins.top), bottom: cmToTwip(margins.bottom),
+      left: cmToTwip(margins.left), right: cmToTwip(margins.right),
+      header: cmToTwip(headerDist), footer: cmToTwip(footerDist),
+    },
+  };
+  const mkHeaders = () => headerPara ? { default: new Header({ children: [paragraphToDocx(headerPara)] }) } : undefined;
+  const mkFooters = () => footerPara ? { default: new Footer({ children: [paragraphToDocx(footerPara)] }) } : undefined;
+
   const doc = new Document({
     creator: 'Web ODF Editor',
     defaultTabStop: cmToTwip(1.25),
     ...(hasToc ? { features: { updateFields: true } } : {}),
     styles: buildStyles(language),
     numbering: { config: num.config },
-    sections: [{
+    // A columns group is its own section; w:type=continuous describes the break
+    // BEFORE a section, so it goes on every section but the first.
+    sections: groups.map((g, i) => ({
       properties: {
-        page: {
-          size: { width: cmToTwip(pageWidthCm), height: cmToTwip(pageHeightCm), orientation: landscape ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT },
-          margin: {
-            top: cmToTwip(margins.top), bottom: cmToTwip(margins.bottom),
-            left: cmToTwip(margins.left), right: cmToTwip(margins.right),
-            header: cmToTwip(headerDist), footer: cmToTwip(footerDist),
-          },
-        },
+        page: pageProps,
+        ...(i > 0 ? { type: SectionType.CONTINUOUS } : {}),
+        ...(g.columns
+          ? { column: { count: g.columns.count, space: cmToTwip(g.columns.gapCm), equalWidth: true } }
+          : {}),
       },
-      headers: headerPara ? { default: new Header({ children: [paragraphToDocx(headerPara)] }) } : undefined,
-      footers: footerPara ? { default: new Footer({ children: [paragraphToDocx(footerPara)] }) } : undefined,
-      children: body,
-    }],
+      headers: mkHeaders(),
+      footers: mkFooters(),
+      children: g.children.length ? g.children : [new Paragraph({})],
+    })),
   });
 
   const blob = await Packer.toBlob(doc);

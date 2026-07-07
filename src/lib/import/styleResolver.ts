@@ -101,6 +101,9 @@ export class StyleResolver {
   private defaults = new Map<string, StyleEntry>(); // family → style:default-style
   private fontFaces = new Map<string, string>();    // style:name → first font-family
   private listStyles = new Map<string, Element>();  // style:name → text:list-style
+  // Section styles kept as raw elements: <style:columns> is a child element of
+  // <style:section-properties>, which the attribute-only StyleEntry drops.
+  private sectionStyleEls = new Map<string, Element>();
   private mergedCache = new Map<string, { text: PropMap; para: PropMap; misc: PropMap }>();
   private stylesDoc: Document | null;
 
@@ -140,6 +143,7 @@ export class StyleResolver {
         const name = el.getAttributeNS(NS.style, 'name');
         const family = el.getAttributeNS(NS.style, 'family');
         if (name && family) this.styles.set(`${family}\0${name}`, entryFromStyleElement(el));
+        if (name && family === 'section') this.sectionStyleEls.set(name, el);
       } else if (el.namespaceURI === NS.style && el.localName === 'default-style') {
         const family = el.getAttributeNS(NS.style, 'family');
         if (family) this.defaults.set(family, entryFromStyleElement(el));
@@ -265,6 +269,30 @@ export class StyleResolver {
 
   listStyle(name: string | null): Element | null {
     return name ? this.listStyles.get(name) ?? null : null;
+  }
+
+  // A section style's column layout: { count, gapCm } when it declares more than one
+  // column, else null. The gap falls back to the per-column indent form (first
+  // column's fo:end-indent + second's fo:start-indent) LibreOffice sometimes writes.
+  sectionColumns(name: string | null): { count: number; gapCm: number } | null {
+    const el = name ? this.sectionStyleEls.get(name) : null;
+    if (!el) return null;
+    const props = el.getElementsByTagNameNS(NS.style, 'section-properties')[0];
+    const cols = props?.getElementsByTagNameNS(NS.style, 'columns')[0];
+    if (!cols) return null;
+    const count = parseInt(cols.getAttributeNS(NS.fo, 'column-count') ?? '', 10);
+    if (!Number.isFinite(count) || count <= 1) return null;
+    let gap = lengthToCm(cols.getAttributeNS(NS.fo, 'column-gap'));
+    if (gap == null) {
+      const colEls = Array.from(cols.getElementsByTagNameNS(NS.style, 'column'));
+      if (colEls.length >= 2) {
+        const end = lengthToCm(colEls[0].getAttributeNS(NS.fo, 'end-indent')) ?? 0;
+        const start = lengthToCm(colEls[1].getAttributeNS(NS.fo, 'start-indent')) ?? 0;
+        if (end + start > 0) gap = end + start;
+      }
+    }
+    const gapCm = Math.min(5, Math.max(0, gap ?? 0.5));
+    return { count, gapCm: Math.round(gapCm * 100) / 100 };
   }
 
   // The master page governing the document (prefer "Standard", else the first).
