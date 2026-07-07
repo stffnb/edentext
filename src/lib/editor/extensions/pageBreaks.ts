@@ -776,6 +776,9 @@ export const PageBreaks = Extension.create({
             height: number;
             row: { columns: number } | null;
           }[] = [];
+          // Node-decoration range collapsing the trailing empty paragraph after a
+          // document-final columns chain when it sits past the page content area.
+          let collapsedTrailing: { from: number; to: number } | null = null;
           // Close/open bands for in-cell + between-rows table breaks. Keyed by the
           // rounded openY (the grouping id) → the unrounded openY (so the band lands
           // exactly on the page cycle) plus whether it's a between-rows break.
@@ -824,6 +827,14 @@ export const PageBreaks = Extension.create({
               !(leaf.el.textContent ?? '').length &&
               leaves[i - 1]?.columnsFragment
             ) {
+              // Past the content area its height (+ .tiptap bottom padding) grows the
+              // element into the next page cycle, where the background gradient paints
+              // a phantom page top — collapse it visually (height:0 node decoration).
+              if (effectiveBottom > contentEnd) {
+                const from = docPosBeforeElement(leaf.el);
+                const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
+                if (from !== null && node) collapsedTrailing = { from, to: from + node.nodeSize };
+              }
               leavesDebug.push({
                 index: i,
                 tag: leaf.el.tagName,
@@ -846,7 +857,9 @@ export const PageBreaks = Extension.create({
                 leafIndex: i,
                 docPos: null,
                 height: 0,
-                reason: 'trailing-empty-after-columns',
+                reason: collapsedTrailing
+                  ? 'trailing-empty-after-columns-collapsed'
+                  : 'trailing-empty-after-columns',
                 spacerKind: 'none',
                 columns: null,
               });
@@ -1038,7 +1051,8 @@ export const PageBreaks = Extension.create({
           // previous pass. Most keystrokes don't change pagination, and re-dispatching
           // recreates the spacer DOM nodes (no `key` on the widgets) for no gain.
           const placementsKey =
-            placements.map((p) => `${p.docPos}:${p.height}:${p.row ? p.row.columns : 'b'}`).join('|');
+            placements.map((p) => `${p.docPos}:${p.height}:${p.row ? p.row.columns : 'b'}`).join('|') +
+            (collapsedTrailing ? `|c${collapsedTrailing.from}` : '');
           const placementsChanged = placementsKey !== lastPlacementsKey;
           if (placementsChanged) {
             lastPlacementsKey = placementsKey;
@@ -1066,6 +1080,11 @@ export const PageBreaks = Extension.create({
               spacerEl.setAttribute('contenteditable', 'false');
               return Decoration.widget(p.docPos, spacerEl, { side: -1 });
             });
+            if (collapsedTrailing) {
+              decoArray.push(Decoration.node(collapsedTrailing.from, collapsedTrailing.to, {
+                style: 'height:0;min-height:0;margin:0;overflow:hidden',
+              }));
+            }
 
             decorations = decoArray.length > 0
               ? DecorationSet.create(doc, decoArray)
