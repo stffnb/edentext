@@ -305,11 +305,11 @@ export async function printRaster(opts: PdfOptions): Promise<void> {
   }
 
   const title = (opts.fileName ?? deriveFilename(opts.json)).replace(/\.(odt|pdf)$/i, '');
-  const landscape = (opts.orientation ?? 'portrait') === 'landscape';
-  // Explicit pt dimensions matching the @page box pin each image to exactly one page
-  // (a hair of rounding overflow would otherwise spill a blank page after each).
+  // Explicit cm size (orientation baked into w/h) works for any format, unlike a CSS
+  // size keyword. Explicit pt image dims pin each image to exactly one page.
+  const dims = pageDimsCm(opts.pageFormat ?? 'A4', opts.orientation ?? 'portrait');
   const css = `
-@page { size: ${opts.pageFormat ?? 'A4'} ${landscape ? 'landscape' : 'portrait'}; margin: 0; }
+@page { size: ${dims.w}cm ${dims.h}cm; margin: 0; }
 html, body { margin: 0; padding: 0; background: #fff; }
 img.pg { display: block; width: ${pageW * PT}pt; height: ${pageH * PT}pt; break-after: page; page-break-after: always; }
 img.pg:last-child { break-after: auto; page-break-after: auto; }
@@ -433,7 +433,10 @@ function marginBoxes(headerDoc: HfDoc, footerDoc: HfDoc): string {
 
 function printCss(o: PrintPdfOptions): string {
   const m = o.margins;
-  const size = `${o.pageFormat ?? 'A4'} ${o.orientation === 'landscape' ? 'landscape' : 'portrait'}`;
+  // Explicit cm size (orientation baked into w/h) works for any format, unlike a CSS
+  // size keyword such as A4/letter.
+  const d = pageDimsCm(o.pageFormat ?? 'A4', o.orientation);
+  const size = `${d.w}cm ${d.h}cm`;
   return `
 @page {
   size: ${size};

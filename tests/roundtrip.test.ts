@@ -317,6 +317,25 @@ describe('Leg 1a: page format', () => {
     const res = importOdt(await buildOdt(doc, margins, 'portrait', undefined, null, 'letter'));
     check('format round-trips as letter', res.format === 'letter', res.format);
   });
+
+  it('round-trips a non-preset format via the styles.xml override (tabloid)', async () => {
+    const doc: N = { type: 'doc', content: [P(null, T('Tabloid page.'))] };
+    const bytes = await buildOdt(doc, margins, 'portrait', undefined, null, 'tabloid');
+    const styles = strFromU8(unzipSync(bytes)['styles.xml']);
+    check('styles.xml emits tabloid width (27.94cm)', styles.includes('fo:page-width="27.94cm"'), styles.match(/fo:page-(width|height)="[^"]*"/g));
+    check('styles.xml emits tabloid height (43.18cm)', styles.includes('fo:page-height="43.18cm"'));
+    check('format round-trips as tabloid', importOdt(bytes).format === 'tabloid', importOdt(bytes).format);
+  });
+
+  it('round-trips executive (fractional cm) and landscape swap', async () => {
+    const doc: N = { type: 'doc', content: [P(null, T('Executive landscape.'))] };
+    const bytes = await buildOdt(doc, margins, 'landscape', undefined, null, 'executive');
+    const styles = strFromU8(unzipSync(bytes)['styles.xml']);
+    check('landscape swaps executive width (26.67cm)', styles.includes('fo:page-width="26.67cm"'), styles.match(/fo:page-(width|height)="[^"]*"/g));
+    const res = importOdt(bytes);
+    check('format round-trips as executive', res.format === 'executive', res.format);
+    check('orientation round-trips as landscape', res.orientation === 'landscape', res.orientation);
+  });
 });
 
 describe('Leg 1b: merged table cells (colspan/rowspan)', () => {

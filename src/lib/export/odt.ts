@@ -1258,12 +1258,20 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
 // Rewrite styles.xml to match the editor's preview: default font Liberation Serif →
 // Times New Roman (metric-identical; see EXPORT_FONT), and Heading_20_1/2/3 sizes &
 // margins → the editor's values (odf-kit's defaults are larger; HEADING_STYLE_OVERRIDES).
-function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null): Uint8Array {
+function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
   if (!stylesBytes) return odtBytes;
 
   let styles = strFromU8(stylesBytes);
+
+  // Exact page box for the chosen format; odf-kit only emits its 5 presets, so
+  // override the single fo:page-width/height in the page layout (round to 3 dp).
+  const round3 = (v: number) => Math.round(v * 1000) / 1000;
+  const dims = pageDimsCm(pageFormat, orientation);
+  styles = styles
+    .replace(/fo:page-width="[^"]*"/, `fo:page-width="${round3(dims.w)}cm"`)
+    .replace(/fo:page-height="[^"]*"/, `fo:page-height="${round3(dims.h)}cm"`);
 
   // Document spell-check language: set fo:language/fo:country on the base
   // Standard paragraph style, which every paragraph inherits from. LibreOffice
@@ -1941,10 +1949,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const cellBlocks: CellBlock[][] = [];
 
   const odt = await tiptapToOdt(json, {
-    // Format + orientation come from the Layout panel; odf-kit emits the preset's
-    // fo:page-width/height and swaps them for landscape. Our explicit margins below
-    // override the preset's default margins, so only the page size follows the format.
-    pageFormat,
+    // Orientation sets style:print-orientation; rewriteStylesXml overrides the exact
+    // fo:page-width/height for the chosen format (odf-kit only knows 5 presets).
     orientation,
     // Margins (cm) from the Layout panel, matching the editor's padding so line
     // wrapping / page flow is identical. With a header/footer the vertical margin is
@@ -2048,7 +2054,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withToc = applyToc(withColumns, tocs, contentWidthCm);
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
-  const withStyles = rewriteStylesXml(withEmptyFontSizes, language ?? null);
+  const withStyles = rewriteStylesXml(withEmptyFontSizes, language ?? null, pageFormat, orientation);
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist);
 }
 

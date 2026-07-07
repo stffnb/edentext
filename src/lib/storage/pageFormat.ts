@@ -1,18 +1,32 @@
 import { PX_PER_CM } from './pageMargins';
 import type { Orientation } from './pageOrientation';
 
-export type PageFormat = 'A4' | 'letter' | 'legal' | 'A3' | 'A5';
+export type PageFormat =
+  | 'A3' | 'A4' | 'A5' | 'A6'
+  | 'isoB4' | 'isoB5' | 'isoB6'
+  | 'jisB4' | 'jisB5'
+  | 'letter' | 'legal' | 'tabloid' | 'executive' | 'folio' | 'statement';
 
 const KEY = 'odf-editor-page-format';
 
 // Portrait page dimensions in cm per format (width < height). Landscape swaps them.
-// Matches odf-kit's pageFormat presets so ODT/DOCX round-trip is lossless.
+// Grouped A / ISO-B / JIS-B / US, matching the Word/LibreOffice paper menus.
 export const PAGE_FORMAT_CM: Record<PageFormat, { w: number; h: number }> = {
-  A4:     { w: 21,    h: 29.7 },
-  letter: { w: 21.59, h: 27.94 },
-  legal:  { w: 21.59, h: 35.56 },
-  A3:     { w: 29.7,  h: 42 },
-  A5:     { w: 14.8,  h: 21 },
+  A3:        { w: 29.7,   h: 42 },
+  A4:        { w: 21,     h: 29.7 },
+  A5:        { w: 14.8,   h: 21 },
+  A6:        { w: 10.5,   h: 14.8 },
+  isoB4:     { w: 25,     h: 35.3 },
+  isoB5:     { w: 17.6,   h: 25 },
+  isoB6:     { w: 12.5,   h: 17.6 },
+  jisB4:     { w: 25.7,   h: 36.4 },
+  jisB5:     { w: 18.2,   h: 25.7 },
+  letter:    { w: 21.59,  h: 27.94 },
+  legal:     { w: 21.59,  h: 35.56 },
+  tabloid:   { w: 27.94,  h: 43.18 },
+  executive: { w: 18.415, h: 26.67 },
+  folio:     { w: 21.59,  h: 33.02 },
+  statement: { w: 13.97,  h: 21.59 },
 };
 
 const FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
