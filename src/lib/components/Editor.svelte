@@ -18,7 +18,8 @@
   import HeaderFooterLayer from './HeaderFooterLayer.svelte';
   import { saveDocument, loadDocument } from '../storage/autosave';
   import { applyMarginVars, cmToPx, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
-  import { applyOrientationVars, type Orientation } from '../storage/pageOrientation';
+  import { type Orientation } from '../storage/pageOrientation';
+  import { applyPageSizeVars, type PageFormat } from '../storage/pageFormat';
   import { DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
@@ -31,11 +32,12 @@
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
     zoom = 100, showFormattingMarks = false, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
+    pageFormat = 'A4',
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     hfEditor = $bindable(null), hfActive = $bindable(null), hfTick = $bindable(0),
   }: {
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
-    showFormattingMarks?: boolean; pageMargins?: PageMargins; orientation?: Orientation;
+    showFormattingMarks?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat;
     headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
     hfEditor?: Editor | null; hfActive?: HfZone | null; hfTick?: number;
   } = $props();
@@ -46,7 +48,7 @@
     applyMarginVars(pageMargins);
   });
   $effect(() => {
-    applyOrientationVars(orientation);
+    applyPageSizeVars(pageFormat, orientation);
   });
 
   // Nudge the pageBreaks plugin to recompute with the new content area. The dispatch
@@ -54,9 +56,10 @@
   // Svelte effect flush (re-entering it would trip effect_update_depth_exceeded).
   let marginRecalcRaf = 0;
   $effect(() => {
-    // track each margin + orientation so the effect re-runs on any change
+    // track each margin + orientation + format so the effect re-runs on any change
     void (pageMargins.top + pageMargins.bottom + pageMargins.left + pageMargins.right);
     void orientation;
+    void pageFormat;
     const ed = editor;
     if (!ed) return;
     cancelAnimationFrame(marginRecalcRaf);
@@ -97,8 +100,8 @@
     scaledHeight = Math.round(h * z);
   }
 
-  // Page cycle (page height + 20px gap) in document px. Orientation-dependent, so
-  // read live from --user-page-height (set by applyOrientationVars). Must match
+  // Page cycle (page height + 20px gap) in document px. Format/orientation-dependent,
+  // so read live from --user-page-height (set by applyPageSizeVars). Must match
   // pageBreaks.ts. Fallback = A4 portrait (1123 + 20).
   function getCycle(): number {
     const ph = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--user-page-height'));
@@ -679,6 +682,7 @@
         {currentPage}
         {pageMargins}
         {orientation}
+        {pageFormat}
         {hfDistances}
       />
     </div>

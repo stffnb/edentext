@@ -99,6 +99,8 @@ const en = {
     pt: (v: number) => `${v} pt`,
     pageLayoutMargins: 'Page layout & margins',
     layout: 'Layout',
+    pageFormat: 'Page format',
+    pageFormats: { A4: 'A4', letter: 'Letter', legal: 'Legal', A3: 'A3', A5: 'A5' },
     orientation: 'Orientation',
     portrait: 'Portrait',
     landscape: 'Landscape',

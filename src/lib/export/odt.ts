@@ -2,6 +2,7 @@ import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, ty
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
+import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
@@ -1908,7 +1909,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4'): Promise<Uint8Array> {
   // Collect embedded images and swap them for IMG sentinels before serialization;
   // applyImages resolves the sentinels and writes the Pictures/ + manifest entries.
   // Text boxes and columns sections are hoisted after replacePageBreaks (so PGB never
@@ -1930,9 +1931,9 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
     json = { ...json, content: [{ type: CUST_HF }, ...(json.content ?? [])] };
   }
 
-  // Text width = A4 page width (portrait 21cm / landscape 29.7cm) minus the L/R
+  // Text width = the format's page width (orientation-swapped) minus the L/R
   // margins. Table column widths are scaled to fill exactly this width.
-  const pageWidthCm = orientation === 'landscape' ? 29.7 : 21;
+  const pageWidthCm = pageDimsCm(pageFormat, orientation).w;
   const contentWidthCm = pageWidthCm - margins.left - margins.right;
 
   // Filled by exportTable, in document order, one CellBlock[] per table cell.
@@ -1940,8 +1941,10 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const cellBlocks: CellBlock[][] = [];
 
   const odt = await tiptapToOdt(json, {
-    // Orientation comes from the Layout panel; odf-kit swaps the A4 dimensions
-    // automatically (29.7×21cm) and writes style:print-orientation accordingly.
+    // Format + orientation come from the Layout panel; odf-kit emits the preset's
+    // fo:page-width/height and swaps them for landscape. Our explicit margins below
+    // override the preset's default margins, so only the page size follows the format.
+    pageFormat,
     orientation,
     // Margins (cm) from the Layout panel, matching the editor's padding so line
     // wrapping / page flow is identical. With a header/footer the vertical margin is

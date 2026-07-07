@@ -96,6 +96,8 @@ const de: Messages = {
     pt: (v) => `${v} pt`,
     pageLayoutMargins: 'Seitenlayout & Ränder',
     layout: 'Layout',
+    pageFormat: 'Seitenformat',
+    pageFormats: { A4: 'A4', letter: 'Letter', legal: 'Legal', A3: 'A3', A5: 'A5' },
     orientation: 'Ausrichtung',
     portrait: 'Hochformat',
     landscape: 'Querformat',

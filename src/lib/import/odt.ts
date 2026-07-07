@@ -6,6 +6,7 @@ import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCL
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
+import type { PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import type { HfDoc } from '../storage/headerFooter';
 
@@ -26,6 +27,7 @@ export interface OdtImportResult {
   content: Node; // { type: 'doc', … }
   margins: PageMargins | null;
   orientation: Orientation | null;
+  format: PageFormat | null;
   // Single-paragraph docs in the hfExtensions schema; null = no zone.
   header: HfDoc;
   footer: HfDoc;
@@ -323,6 +325,7 @@ export function importOdt(bytes: Uint8Array): OdtImportResult {
     content: { type: 'doc', content: blocks },
     margins: geometry?.margins ?? null,
     orientation: geometry?.orientation ?? null,
+    format: geometry?.format ?? null,
     header: hf.header ? convertHfZone(hf.header, ctx) : null,
     footer: hf.footer ? convertHfZone(hf.footer, ctx) : null,
     headerDistanceCm: hf.header ? edge?.top ?? null : null,

@@ -2,8 +2,9 @@
   import { Editor, generateHTML, type Content } from '@tiptap/core';
   import { hfExtensions } from '../editor/extensions/headerFooter';
   import { hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
-  import { cmToPx, type PageMargins } from '../storage/pageMargins';
-  import { PAGE_W_PORTRAIT, PAGE_H_PORTRAIT, type Orientation } from '../storage/pageOrientation';
+  import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
+  import { type Orientation } from '../storage/pageOrientation';
+  import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
   import { t } from '../i18n/i18n.svelte';
 
   let {
@@ -13,6 +14,7 @@
     currentPage,
     pageMargins,
     orientation,
+    pageFormat = 'A4',
     hfDistances = DEFAULT_HF_DISTANCES,
     hfEditor = $bindable(),
     hfActive = $bindable(),
@@ -24,6 +26,7 @@
     currentPage: number;
     pageMargins: PageMargins;
     orientation: Orientation;
+    pageFormat?: PageFormat;
     hfDistances?: HfDistances;
     hfEditor: Editor | null;
     hfActive: HfZone | null;
@@ -36,8 +39,8 @@
 
   // All geometry is in unscaled document px — the layer lives inside the scaled
   // .paper, so the zoom transform applies to it identically to the page background.
-  let pageWidthPx = $derived(orientation === 'landscape' ? PAGE_H_PORTRAIT : PAGE_W_PORTRAIT);
-  let pageHeightPx = $derived(orientation === 'landscape' ? PAGE_W_PORTRAIT : PAGE_H_PORTRAIT);
+  let pageWidthPx = $derived(pageDimsCm(pageFormat, orientation).w * PX_PER_CM);
+  let pageHeightPx = $derived(pageDimsCm(pageFormat, orientation).h * PX_PER_CM);
   let cycle = $derived(pageHeightPx + PAGE_GAP);
   let mTop = $derived(cmToPx(pageMargins.top));
   let mBottom = $derived(cmToPx(pageMargins.bottom));

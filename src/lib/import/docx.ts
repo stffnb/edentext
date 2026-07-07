@@ -7,6 +7,7 @@ import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCL
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
+import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import type { HfDoc } from '../storage/headerFooter';
 import type { OdtImportResult } from './odt';
@@ -136,6 +137,7 @@ export function importDocx(bytes: Uint8Array): OdtImportResult {
     content: { type: 'doc', content: blocks },
     margins: sect.margins,
     orientation: sect.orientation,
+    format: sect.format,
     header: sect.header,
     footer: sect.footer,
     headerDistanceCm: sect.header ? sect.headerDistCm : null,
@@ -924,16 +926,17 @@ function pushColumnRuns(inner: Node[], cols: { count: number; gapCm: number }, o
 }
 
 function parseSectPr(sect: Element | null, ctx: Ctx): {
-  margins: PageMargins | null; orientation: Orientation | null;
+  margins: PageMargins | null; orientation: Orientation | null; format: PageFormat | null;
   header: HfDoc; footer: HfDoc; headerDistCm: number | null; footerDistCm: number | null;
 } {
-  const empty = { margins: null, orientation: null, header: null, footer: null, headerDistCm: null, footerDistCm: null };
+  const empty = { margins: null, orientation: null, format: null, header: null, footer: null, headerDistCm: null, footerDistCm: null };
   if (!sect) return empty;
 
   const pgSz = fc(sect, 'pgSz');
   const w = intAttr(pgSz, W, 'w');
   const h = intAttr(pgSz, W, 'h');
   const orientation: Orientation = pgSz?.getAttributeNS(W, 'orient') === 'landscape' || (w && h && w > h) ? 'landscape' : 'portrait';
+  const format: PageFormat | null = w && h ? (formatFromCm(twipToCm(w), twipToCm(h)) ?? 'A4') : null;
 
   const pgMar = fc(sect, 'pgMar');
   const clampCm = (tw: number | null) => (tw == null ? null : Math.min(10, Math.max(0, round2(twipToCm(tw)))));
@@ -953,7 +956,7 @@ function parseSectPr(sect: Element | null, ctx: Ctx): {
   const header = convertHfPart(refId('header'), ctx);
   const footer = convertHfPart(refId('footer'), ctx);
   return {
-    margins, orientation, header, footer,
+    margins, orientation, format, header, footer,
     headerDistCm: clampCm(intAttr(pgMar, W, 'header')),
     footerDistCm: clampCm(intAttr(pgMar, W, 'footer')),
   };

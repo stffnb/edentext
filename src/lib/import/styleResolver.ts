@@ -1,5 +1,6 @@
 import type { PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
+import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 
 // Resolves ODF style indirection for the importer: producers (our export, LibreOffice,
 // Word) spread formatting across named/automatic styles and parent-style-name chains.
@@ -370,10 +371,10 @@ export class StyleResolver {
     };
   }
 
-  // Page margins + orientation from the master page's layout. With a header/footer the
-  // body margin is page margin + zone height + spacing (inverse of the export mapping).
-  // Page size is intentionally ignored — the editor is A4-only.
-  pageGeometry(): { margins: PageMargins; orientation: Orientation } | null {
+  // Page margins + orientation + format from the master page's layout. With a
+  // header/footer the body margin is page margin + zone height + spacing (inverse of
+  // the export mapping). Format is matched from fo:page-width/height (fallback A4).
+  pageGeometry(): { margins: PageMargins; orientation: Orientation; format: PageFormat } | null {
     const props = this.pageLayoutEl()?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
     if (!props) return null;
 
@@ -392,7 +393,8 @@ export class StyleResolver {
     const w = lengthToCm(props.getAttributeNS(NS.fo, 'page-width'));
     const h = lengthToCm(props.getAttributeNS(NS.fo, 'page-height'));
     const orientation: Orientation = w != null && h != null && w > h ? 'landscape' : 'portrait';
-    return { margins, orientation };
+    const format: PageFormat = w != null && h != null ? (formatFromCm(w, h) ?? 'A4') : 'A4';
+    return { margins, orientation, format };
   }
 
   // Raw page margins (cm) = ODF's edge→zone distance, i.e. the header distance from

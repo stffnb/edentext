@@ -14,14 +14,17 @@
   } from '../utils/fontDetect';
   import { DEFAULT_MARGINS, cmToPx, type PageMargins } from '../storage/pageMargins';
   import type { Orientation } from '../storage/pageOrientation';
+  import { pageDimsCm, PAGE_FORMAT_CM, type PageFormat } from '../storage/pageFormat';
   import { DEFAULT_HF_DISTANCES, clampHfDistance, type HfDistances } from '../storage/headerFooter';
   import { listContext } from '../editor/extensions/indent';
   import { findColumns, DEFAULT_COLUMN_GAP_CM } from '../editor/extensions/columns';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
 
-  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), hfActive = null, onEditZone, onDebugDump }:
-    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; hfDistances?: HfDistances; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void } = $props();
+  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), hfActive = null, onEditZone, onDebugDump }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hfDistances?: HfDistances; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void } = $props();
+
+  const PAGE_FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
 
   // Must match the first font in --font-serif in global.css. Bundled as a
   // webfont so it is always available and matches the exported .odt's font.
@@ -774,11 +777,11 @@
   let imageInput = $state<HTMLInputElement | null>(null);
 
   // The page text box in px, so an inserted image never starts wider/taller than
-  // one page (mirrors export's content-width math; A4 dims swap with orientation).
+  // one page (mirrors export's content-width math; dims follow format + orientation).
   function contentBoxPx(): { maxW: number; maxH: number } {
-    const land = pageOrientation === 'landscape';
-    const wCm = (land ? 29.7 : 21) - pageMargins.left - pageMargins.right;
-    const hCm = (land ? 21 : 29.7) - pageMargins.top - pageMargins.bottom;
+    const { w, h } = pageDimsCm(pageFormat, pageOrientation);
+    const wCm = w - pageMargins.left - pageMargins.right;
+    const hCm = h - pageMargins.top - pageMargins.bottom;
     return { maxW: Math.round(cmToPx(wCm)), maxH: Math.round(cmToPx(hCm)) };
   }
 
@@ -1155,6 +1158,12 @@
       </button>
       {#if layoutOpen}
         <div class="layout-dropdown">
+          <div class="lh-section-label">{t().toolbarExpanded.pageFormat}</div>
+          <select class="format-select" bind:value={pageFormat} title={t().toolbarExpanded.pageFormat}>
+            {#each PAGE_FORMATS as fmt}
+              <option value={fmt}>{t().toolbarExpanded.pageFormats[fmt]}</option>
+            {/each}
+          </select>
           <div class="lh-section-label">{t().toolbarExpanded.orientation}</div>
           <div class="orientation-row">
             <button
@@ -1877,6 +1886,19 @@
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     padding: 4px 6px 2px;
+  }
+
+  .format-select {
+    margin: 4px 6px 2px;
+    width: calc(100% - 12px);
+    padding: 6px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    cursor: pointer;
   }
 
   .orientation-btn {

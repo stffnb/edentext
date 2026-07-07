@@ -3,8 +3,9 @@
 // so we raster the on-screen render and overlay an invisible, positioned text layer.
 
 import { generateHTML } from '@tiptap/core';
-import { PAGE_W_PORTRAIT, PAGE_H_PORTRAIT, type Orientation } from '../storage/pageOrientation';
-import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
+import { type Orientation } from '../storage/pageOrientation';
+import { DEFAULT_MARGINS, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
+import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { hfIsEmpty, type HfDoc } from '../storage/headerFooter';
 import { extensions } from '../editor/extensions';
 import { columnPercents } from '../editor/extensions/tableView';
@@ -25,17 +26,15 @@ export interface PdfOptions {
   json: Json;          // fallback for the suggested filename
   fileName?: string;   // document name (any extension); overrides the heading-derived name
   orientation?: Orientation;
+  pageFormat?: PageFormat;
   numPages?: number;
 }
 
 type Run = { str: string; x: number; y: number; h: number }; // doc px, relative to .paper top-left
 
-function pageDims(orientation: Orientation): { pageW: number; pageH: number } {
-  const landscape = orientation === 'landscape';
-  return {
-    pageW: landscape ? PAGE_H_PORTRAIT : PAGE_W_PORTRAIT,
-    pageH: landscape ? PAGE_W_PORTRAIT : PAGE_H_PORTRAIT,
-  };
+function pageDims(format: PageFormat, orientation: Orientation): { pageW: number; pageH: number } {
+  const { w, h } = pageDimsCm(format, orientation);
+  return { pageW: w * PX_PER_CM, pageH: h * PX_PER_CM };
 }
 
 // Off-screen, scale-1, theme-neutral copy of the live .paper. Rendered identically to
@@ -214,7 +213,7 @@ export async function renderPaperToCanvas(opts: PdfOptions, scale = 2): Promise<
   const paper = opts.source.closest('.paper') as HTMLElement | null;
   if (!paper) throw new Error('paper element not found');
   const orientation: Orientation = opts.orientation ?? 'portrait';
-  const { pageW, pageH } = pageDims(orientation);
+  const { pageW, pageH } = pageDims(opts.pageFormat ?? 'A4', orientation);
   const cycle = pageH + PAGE_GAP;
 
   const { holder, clone, style } = buildClone(paper, pageW);
@@ -310,7 +309,7 @@ export async function printRaster(opts: PdfOptions): Promise<void> {
   // Explicit pt dimensions matching the @page box pin each image to exactly one page
   // (a hair of rounding overflow would otherwise spill a blank page after each).
   const css = `
-@page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 0; }
+@page { size: ${opts.pageFormat ?? 'A4'} ${landscape ? 'landscape' : 'portrait'}; margin: 0; }
 html, body { margin: 0; padding: 0; background: #fff; }
 img.pg { display: block; width: ${pageW * PT}pt; height: ${pageH * PT}pt; break-after: page; page-break-after: always; }
 img.pg:last-child { break-after: auto; page-break-after: auto; }
@@ -353,6 +352,7 @@ export interface PrintPdfOptions {
   fileName?: string; // document name (any extension); overrides the heading-derived name
   margins: PageMargins;
   orientation: Orientation;
+  pageFormat?: PageFormat;
   headerDoc: HfDoc;
   footerDoc: HfDoc;
 }
@@ -433,7 +433,7 @@ function marginBoxes(headerDoc: HfDoc, footerDoc: HfDoc): string {
 
 function printCss(o: PrintPdfOptions): string {
   const m = o.margins;
-  const size = o.orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait';
+  const size = `${o.pageFormat ?? 'A4'} ${o.orientation === 'landscape' ? 'landscape' : 'portrait'}`;
   return `
 @page {
   size: ${size};
@@ -462,6 +462,7 @@ export function printPdf(opts: PrintPdfOptions): void {
     fileName: opts.fileName,
     margins: opts.margins ?? DEFAULT_MARGINS,
     orientation: opts.orientation ?? 'portrait',
+    pageFormat: opts.pageFormat ?? 'A4',
     headerDoc: opts.headerDoc ?? null,
     footerDoc: opts.footerDoc ?? null,
   };

@@ -16,6 +16,7 @@ import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
+import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { HF_DISTANCE_CM, hfIsEmpty } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
@@ -810,11 +811,11 @@ export async function buildDocx(
   orientation: Orientation = 'portrait',
   hf?: HfExport,
   language?: { language: string; country: string } | null,
+  pageFormat: PageFormat = 'A4',
 ): Promise<Uint8Array> {
   const num = new Numbering();
   const landscape = orientation === 'landscape';
-  const pageWidthCm = landscape ? 29.7 : 21;
-  const pageHeightCm = landscape ? 21 : 29.7;
+  const { w: pageWidthCm, h: pageHeightCm } = pageDimsCm(pageFormat, orientation);
   const contentWidthCm = pageWidthCm - margins.left - margins.right;
 
   const textBoxes: TextBoxDocx[] = [];

@@ -301,6 +301,24 @@ describe('Leg 1: editor → buildOdt → importOdt', () => {
   });
 });
 
+describe('Leg 1a: page format', () => {
+  it('round-trips a non-A4 format (legal)', async () => {
+    const doc: N = { type: 'doc', content: [P(null, T('Legal page.'))] };
+    const bytes = await buildOdt(doc, margins, 'portrait', undefined, null, 'legal');
+    const styles = strFromU8(unzipSync(bytes)['styles.xml']);
+    check('styles.xml emits legal page height (35.56cm)', styles.includes('35.56cm'), styles.match(/fo:page-(width|height)="[^"]*"/g));
+
+    const res = importOdt(bytes);
+    check('format round-trips as legal', res.format === 'legal', res.format);
+  });
+
+  it('detects letter format', async () => {
+    const doc: N = { type: 'doc', content: [P(null, T('US letter.'))] };
+    const res = importOdt(await buildOdt(doc, margins, 'portrait', undefined, null, 'letter'));
+    check('format round-trips as letter', res.format === 'letter', res.format);
+  });
+});
+
 describe('Leg 1b: merged table cells (colspan/rowspan)', () => {
   // 3×3 grid: A spans 2 cols (row 0); C spans 2 rows (col 0, rows 1–2).
   //   row0: [A A][B]    row1: [C][D][E]    row2: [C][F][G]

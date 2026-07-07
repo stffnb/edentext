@@ -18,6 +18,7 @@
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
+  import { loadPageFormat, savePageFormat, type PageFormat } from './lib/storage/pageFormat';
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
@@ -87,6 +88,7 @@
   let zoom = $state(Math.max(20, Math.min(300, parseInt(localStorage.getItem('odf-editor-zoom') ?? '100', 10))));
   let pageMargins: PageMargins = $state(loadPageMargins());
   let pageOrientation: Orientation = $state(loadOrientation());
+  let pageFormat: PageFormat = $state(loadPageFormat());
 
   // The document's spell-check language; round-trips through the .odt. The effect
   // below persists it and switches the shared spell controller (loads the dict).
@@ -125,6 +127,10 @@
 
   $effect(() => {
     saveOrientation(pageOrientation);
+  });
+
+  $effect(() => {
+    savePageFormat(pageFormat);
   });
 
   $effect(() => {
@@ -310,6 +316,7 @@
     footerDoc = null;
     pageMargins = { ...DEFAULT_MARGINS };
     pageOrientation = 'portrait';
+    pageFormat = 'A4';
     hfDistances = { ...DEFAULT_HF_DISTANCES };
     documentName = '';
     fileHandle = null;
@@ -336,6 +343,7 @@
       // Editor.svelte re-paginates.
       if (result.margins) pageMargins = result.margins;
       if (result.orientation) pageOrientation = result.orientation;
+      if (result.format) pageFormat = result.format;
       // Adopt the document's spell-check language (the $effect switches the
       // controller + loads its dictionary). null = file declared none; keep ours.
       if (result.language) documentLanguage = result.language;
@@ -389,7 +397,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage));
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat);
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -405,7 +413,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage));
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat);
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -423,7 +431,7 @@
     try {
       const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       const { buildDocx } = await import('./lib/export/docx');
-      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage));
+      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat);
       await saveAsDocx(bytes, suggestedFilenameDocx(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -447,6 +455,7 @@
         json,
         fileName: suggestedFilename(json),
         orientation: pageOrientation,
+        pageFormat,
         numPages,
       });
     } catch (err) {
@@ -471,6 +480,7 @@
         json,
         fileName: suggestedFilename(json),
         orientation: pageOrientation,
+        pageFormat,
         numPages,
       });
     } catch (err) {
@@ -493,6 +503,7 @@
         fileName: suggestedFilename(json),
         margins: pageMargins,
         orientation: pageOrientation,
+        pageFormat,
         headerDoc,
         footerDoc,
       });
@@ -791,6 +802,7 @@
           bind:showFormattingMarks
           bind:pageMargins
           bind:pageOrientation
+          bind:pageFormat
           bind:hfDistances
           hfActive={hfActive}
           onEditZone={(zone) => (hfActive = zone)}
@@ -818,6 +830,7 @@
     {showFormattingMarks}
     {pageMargins}
     orientation={pageOrientation}
+    {pageFormat}
   />
   {#if findOpen && editor}
     <div class="find-bar-anchor" style="top: {toolbarRegionH + 8}px;">
