@@ -15,6 +15,7 @@ export const NS = {
   svg: 'urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0',
   draw: 'urn:oasis:names:tc:opendocument:xmlns:drawing:1.0',
   xlink: 'http://www.w3.org/1999/xlink',
+  number: 'urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0',
 } as const;
 
 // Property keys are stored as "alias:localName" for the namespaces we care
@@ -102,6 +103,7 @@ export class StyleResolver {
   private defaults = new Map<string, StyleEntry>(); // family → style:default-style
   private fontFaces = new Map<string, string>();    // style:name → first font-family
   private listStyles = new Map<string, Element>();  // style:name → text:list-style
+  private numberStyles = new Map<string, Element>(); // style:name → number:date/time-style
   // Section styles kept as raw elements: <style:columns> is a child element of
   // <style:section-properties>, which the attribute-only StyleEntry drops.
   private sectionStyleEls = new Map<string, Element>();
@@ -151,6 +153,9 @@ export class StyleResolver {
       } else if (el.namespaceURI === NS.text && el.localName === 'list-style') {
         const name = el.getAttributeNS(NS.style, 'name');
         if (name) this.listStyles.set(name, el);
+      } else if (el.namespaceURI === NS.number && (el.localName === 'date-style' || el.localName === 'time-style')) {
+        const name = el.getAttributeNS(NS.style, 'name');
+        if (name) this.numberStyles.set(name, el);
       }
     }
   }
@@ -270,6 +275,11 @@ export class StyleResolver {
 
   listStyle(name: string | null): Element | null {
     return name ? this.listStyles.get(name) ?? null : null;
+  }
+
+  // The <number:date-style>/<number:time-style> element a date/time field references.
+  numberStyle(name: string | null): Element | null {
+    return name ? this.numberStyles.get(name) ?? null : null;
   }
 
   // A section style's column layout: { count, gapCm } when it declares more than one

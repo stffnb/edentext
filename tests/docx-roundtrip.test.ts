@@ -268,6 +268,35 @@ describe('DOCX export → import round trip', () => {
   });
 });
 
+describe('DOCX date/time fields', () => {
+  const dtf = (kind: string, format: string, fixed: boolean, value: string): N =>
+    ({ type: 'dateTimeField', attrs: { kind, format, fixed, value } });
+  const doc: N = { type: 'doc', content: [
+    para([text('Auto '), dtf('date', 'dmy_dots', false, '2026-07-08T00:00:00')]),
+    para([text('Fixed '), dtf('date', 'mdy_long', true, '2026-07-08T14:30:00')]),
+    para([text('Time '), dtf('time', 'hm24', false, '2026-07-08T14:30:00')]),
+  ] };
+
+  it('exports an auto field as a DATE fldSimple and a fixed field as text', async () => {
+    const bytes = await buildDocx(doc, undefined, 'portrait', undefined, { language: 'de', country: 'DE' });
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    expect(xml).toMatch(/<w:fldSimple[^>]*w:instr="[^"]*DATE[^"]*dd\.MM\.yyyy/);
+    expect(xml).toMatch(/<w:fldSimple[^>]*w:instr="[^"]*TIME[^"]*HH:mm/);
+    // The fixed field has no fldSimple wrapper — just a plain run rendered in the
+    // document language (German month name here).
+    expect(xml).toContain('Juli 8, 2026');
+    expect(xml).not.toMatch(/<w:fldSimple[^>]*>[^<]*<w:r><w:t[^>]*>Juli/);
+  });
+
+  it('re-imports the auto DATE/TIME fields as live dateTimeField nodes', async () => {
+    const bytes = await buildDocx(doc, undefined, 'portrait', undefined, { language: 'de', country: 'DE' });
+    const res = importDocx(bytes).content as N;
+    const fields = walk(res, 'dateTimeField');
+    expect(fields.map((f: N) => f.attrs.format).sort()).toEqual(['dmy_dots', 'hm24']);
+    expect(fields.every((f: N) => f.attrs.fixed === false)).toBe(true);
+  });
+});
+
 describe('DOCX import of a foreign Word document', () => {
   const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
   const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>

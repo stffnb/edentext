@@ -44,6 +44,7 @@
 - Table border control (Word/LibreOffice-style): per-side cell borders with presets (all / outside / inside / single edges / none), line width and color; buttons show active states matching the current pen and toggle borders off; round-trips to ODF `fo:border-*` and DOCX `w:tcBorders`
 - Images: inline or floating with text wrap (left / right / top-bottom), resize handles, rotation, live size badge; insert via toolbar, drag-and-drop, or paste
 - Special characters picker
+- Date and time fields: picker with 7 date and 4 time formats (live samples) and an "update automatically" toggle — fixed fields keep the inserted moment, auto fields refresh on open. Round-trips to ODF `text:date`/`text:time` (minted `number:date/time-style`) and DOCX `DATE`/`TIME` fields; the field carries the surrounding font
 - Table of contents: generated from headings (H1–H3) with live page numbers and dot leaders, click an entry to jump to its heading; round-trips to ODF `text:table-of-content` and a Word TOC field
 - Hyperlinks: create / edit / remove (toolbar + Ctrl+K), Ctrl/Cmd+click to open, hover hint showing the URL; ODF `text:a` round-trip
 - Manual page break (Ctrl+Enter); round-trips to ODF `fo:break-before`

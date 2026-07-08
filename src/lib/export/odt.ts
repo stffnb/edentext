@@ -9,6 +9,7 @@ import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBor
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
+import { findFormat, renderFormat, odfNumberStyle, toDateValue, toTimeValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
@@ -88,6 +89,11 @@ const TBX = '';
 // TBX above; applyColumns wraps the region into a <text:section> with a minted
 // section style carrying <style:columns>. U+E009.
 const COL = '';
+
+// Sentinel wrapping a date/time field's index (DTF{i}DTF), emitted as plain run text
+// by replaceDateTimeFields so it rides every odf-kit path; applyDateTimeFields
+// rewrites it to <text:date>/<text:time> + a minted number style. U+E00A.
+const DTF = '';
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
@@ -263,6 +269,33 @@ function replaceImages(node: TiptapNode, images: ImageExport[]): TiptapNode {
       continue; // invalid image → dropped
     }
     content.push(replaceImages(child, images));
+  }
+  return { ...node, content };
+}
+
+// One inserted date/time field, collected by replaceDateTimeFields and emitted by
+// applyDateTimeFields. `value` is the field's stored moment (ISO local datetime).
+type DateTimeFieldExport = { kind: 'date' | 'time'; format: string; fixed: boolean; value: string };
+
+// Replace every inline `dateTimeField` node with a DTF-sentinel text run (carrying
+// the node's marks) and collect its attrs; mirrors replaceImages so the sentinel
+// rides every odf-kit path. applyDateTimeFields resolves it after serialization.
+function replaceDateTimeFields(node: TiptapNode, fields: DateTimeFieldExport[]): TiptapNode {
+  if (!node.content?.length) return node;
+  const content: TiptapNode[] = [];
+  for (const child of node.content) {
+    if (child.type === 'dateTimeField') {
+      const a = child.attrs ?? {};
+      fields.push({
+        kind: a.kind === 'time' ? 'time' : 'date',
+        format: typeof a.format === 'string' ? a.format : '',
+        fixed: a.fixed === true,
+        value: typeof a.value === 'string' ? a.value : '',
+      });
+      content.push({ type: 'text', text: `${DTF}${fields.length - 1}${DTF}`, marks: child.marks });
+      continue;
+    }
+    content.push(replaceDateTimeFields(child, fields));
   }
   return { ...node, content };
 }
@@ -1694,6 +1727,61 @@ function applyImages(odtBytes: Uint8Array, images: ImageExport[]): Uint8Array {
   return rezipOdt(files);
 }
 
+// Ensure content.xml declares the number namespace (odf-kit may omit it); the minted
+// <number:date-style>/<number:time-style> and their references need the prefix.
+function ensureNumberNamespace(content: string): string {
+  if (content.includes('xmlns:number=')) return content;
+  return content.replace(
+    /<office:document-content\b/,
+    '<office:document-content xmlns:number="urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0"',
+  );
+}
+
+// Resolve date/time field sentinels: swap each DTF{i}DTF for a <text:date>/<text:time>
+// carrying the displayed value, the ISO date/time-value, text:fixed, and a minted
+// data style. Auto fields render (and store) the current moment; fixed ones use `value`.
+function applyDateTimeFields(odtBytes: Uint8Array, fields: DateTimeFieldExport[], lang: { language: string; country: string } | null): Uint8Array {
+  if (!fields.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  const tag = localeTag(lang ? `${lang.language}` : 'en');
+  // One data style per distinct format actually used; reference it by minted name.
+  const styleNames = new Map<string, string>();
+  const mintedStyles: string[] = [];
+  const styleFor = (fmt: DtFormat): string => {
+    const existing = styleNames.get(fmt.key);
+    if (existing) return existing;
+    const name = `Ndt${styleNames.size + 1}`;
+    styleNames.set(fmt.key, name);
+    mintedStyles.push(odfNumberStyle(fmt, name, lang));
+    return name;
+  };
+
+  let content = strFromU8(contentBytes);
+  content = content.replace(new RegExp(`${DTF}(\\d+)${DTF}`, 'g'), (_m, idx: string) => {
+    const field = fields[Number(idx)];
+    if (!field) return '';
+    const fmt = findFormat(field.format)
+      ?? findFormat(field.kind === 'time' ? DEFAULT_TIME_FORMAT : DEFAULT_DATE_FORMAT)!;
+    const parsed = field.fixed && field.value ? new Date(field.value) : new Date();
+    const when = isNaN(parsed.getTime()) ? new Date() : parsed;
+    const display = escapeXml(renderFormat(fmt, when, tag));
+    const styleName = styleFor(fmt);
+    const fixedAttr = ` text:fixed="${field.fixed ? 'true' : 'false'}"`;
+    if (fmt.kind === 'time') {
+      return `<text:time text:time-value="${toTimeValue(when)}"${fixedAttr} style:data-style-name="${styleName}">${display}</text:time>`;
+    }
+    return `<text:date text:date-value="${toDateValue(when)}"${fixedAttr} style:data-style-name="${styleName}">${display}</text:date>`;
+  });
+
+  content = ensureNumberNamespace(content);
+  content = injectAutomaticStyles(content, mintedStyles.join(''));
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 // Static enhanced geometry for the two non-rectangular shape kinds, matching what
 // LibreOffice emits (round-rectangle path pre-evaluated for modifier 3600).
 const ENHANCED_GEOMETRY: Record<'roundRect' | 'ellipse', string> = {
@@ -1927,7 +2015,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const tocs: TocExport[] = [];
   const textBoxes: TextBoxExport[] = [];
   const columns: ColumnsExport[] = [];
-  const raw = replaceImages(replaceTabs(replaceHardBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns))), images);
+  const dateFields: DateTimeFieldExport[] = [];
+  const raw = replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns))), images), dateFields);
   const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Distance from the page edge to the header (top) / footer (bottom). Becomes the
@@ -2049,7 +2138,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const cleaned = collapseRunWhitespace(styledRows);
   const withBreaks = applyInlineSentinels(cleaned);
   const withImages = applyImages(withBreaks, images);
-  const withTextBoxes = applyTextBoxes(withImages, textBoxes);
+  const withDateFields = applyDateTimeFields(withImages, dateFields, language ?? null);
+  const withTextBoxes = applyTextBoxes(withDateFields, textBoxes);
   const withColumns = applyColumns(withTextBoxes, columns);
   const withToc = applyToc(withColumns, tocs, contentWidthCm);
   const withPageBreaks = applyPageBreaks(withToc);

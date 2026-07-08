@@ -40,6 +40,7 @@ import { TableCellBorders } from './extensions/tableCellBorders';
 import { TableHeaderRow } from './extensions/tableHeaderRow';
 import { TrailingNode } from './extensions/trailingNode';
 import { Image } from './extensions/image';
+import { DateTimeField } from './extensions/dateTimeField';
 import { TextBox } from './extensions/textBox';
 import { Columns } from './extensions/columns';
 import { ColumnsFlow } from './extensions/columnsFlow';
@@ -73,6 +74,9 @@ export const extensions = [
   // Inline, as-character image; round-trips to ODF <draw:frame>/<draw:image>
   // (export/odt.ts replaceImages/applyImages, import/odt.ts).
   Image,
+  // Inline date/time field (fixed or auto-updating); round-trips to ODF
+  // <text:date>/<text:time> and DOCX DATE/TIME fields.
+  DateTimeField,
   // Block-level text box / basic shape with editable content; round-trips to ODF
   // draw:frame/draw:text-box + draw:custom-shape and DOCX wps:wsp/wps:txbx.
   TextBox,

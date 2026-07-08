@@ -1048,3 +1048,50 @@ describe('Leg 5: table of contents (text:table-of-content)', () => {
       blocks.some((n: N) => n.type === 'heading' && n.content?.[0]?.text === 'Introduction'));
   });
 });
+
+describe('Leg 10: date/time fields (text:date / text:time)', () => {
+  const DTF = (kind: string, format: string, fixed: boolean, value: string, marks?: N[]): N =>
+    ({ type: 'dateTimeField', attrs: { kind, format, fixed, value }, ...(marks ? { marks } : {}) });
+  const FONT = { type: 'textStyle', attrs: { fontFamily: 'Calibri' } };
+  const dtDoc: N = {
+    type: 'doc',
+    content: [
+      P(null, T('Signed on '), DTF('date', 'dmy_dots', true, '2026-07-08T14:30:45', [FONT]), T(' at '),
+              DTF('time', 'hms24', true, '2026-07-08T14:30:45')),
+      P(null, T('Printed: '), DTF('date', 'weekday_mdy', false, '2026-07-08T09:00:00')),
+    ],
+  };
+
+  it('exports <text:date>/<text:time> with a minted number style and re-imports the fields', async () => {
+    const bytes = await buildOdt(dtDoc, margins, 'portrait', undefined, { language: 'de', country: 'DE' });
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('emits <text:date>', content.includes('<text:date '), content.slice(0, 120));
+    check('emits <text:time>', content.includes('<text:time '));
+    check('fixed date carries text:fixed=true', /<text:date[^>]*text:fixed="true"/.test(content));
+    check('auto date carries text:fixed=false', /<text:date[^>]*text:fixed="false"/.test(content));
+    check('date-value present', content.includes('text:date-value="2026-07-08T14:30:45"'));
+    check('time-value present', content.includes('text:time-value="PT14H30M45S"'));
+    check('mints a number:date-style', content.includes('<number:date-style '));
+    check('mints a number:time-style', content.includes('<number:time-style '));
+    check('declares number namespace', content.includes('xmlns:number='));
+    check('no leftover sentinel', !content.includes(''));
+
+    const res = importOdt(bytes);
+    const fields: N[] = [];
+    (function walk(n: N) { if (n.type === 'dateTimeField') fields.push(n); for (const c of n.content ?? []) walk(c); })(res.content);
+    check('3 date/time fields imported', fields.length === 3, fields.map((f) => f.attrs));
+    const fixedDate = fields.find((f) => f.attrs.kind === 'date' && f.attrs.fixed);
+    check('fixed date format round-trips', fixedDate?.attrs.format === 'dmy_dots', fixedDate?.attrs);
+    check('fixed date value round-trips', fixedDate?.attrs.value === '2026-07-08T14:30:45', fixedDate?.attrs);
+    // The field carries the surrounding font so the atom doesn't fall back to the
+    // editor default (regression: DOCX date field imported without its font).
+    const font = (fixedDate?.marks ?? []).find((m: N) => m.type === 'textStyle')?.attrs?.fontFamily;
+    check('fixed date carries its font mark', font === 'Calibri', fixedDate?.marks);
+    const fixedTime = fields.find((f) => f.attrs.kind === 'time');
+    check('fixed time format round-trips', fixedTime?.attrs.format === 'hms24', fixedTime?.attrs);
+    const autoDate = fields.find((f) => f.attrs.kind === 'date' && !f.attrs.fixed);
+    check('auto date format round-trips', autoDate?.attrs.format === 'weekday_mdy', autoDate?.attrs);
+    check('surrounding text preserved',
+      (res.content.content ?? [])[0]?.content?.[0]?.text === 'Signed on ');
+  });
+});

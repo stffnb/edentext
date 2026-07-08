@@ -4,6 +4,7 @@ import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
+import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import type { PageFormat } from '../storage/pageFormat';
@@ -607,6 +608,66 @@ function snapPt(v: number): number {
   return Math.abs(r - i) <= 0.03 ? i : r;
 }
 
+// ---- date/time fields ---------------------------------------------------------
+
+// Parse a <number:date-style>/<number:time-style> body into our token model so it can
+// be matched to a catalog format. number:style="long" = padded/4-digit, and hours
+// become 12-hour when an am-pm token is present.
+function parseNumberStyleTokens(styleEl: Element): Token[] {
+  const toks: Token[] = [];
+  for (const c of Array.from(styleEl.children)) {
+    if (c.namespaceURI !== NS.number) continue;
+    const long = c.getAttributeNS(NS.number, 'style') === 'long';
+    switch (c.localName) {
+      case 'text': toks.push({ t: 'lit', s: c.textContent ?? '' }); break;
+      case 'year': toks.push({ t: 'year', long }); break;
+      case 'month': {
+        const textual = c.getAttributeNS(NS.number, 'textual') === 'true';
+        toks.push({ t: 'month', style: textual ? (long ? 'longText' : 'shortText') : (long ? 'num2' : 'num') });
+        break;
+      }
+      case 'day': toks.push({ t: 'day', pad: long }); break;
+      case 'day-of-week': toks.push({ t: 'weekday', long }); break;
+      case 'hours': toks.push({ t: 'hour24', pad: long }); break;
+      case 'minutes': toks.push({ t: 'minute' }); break;
+      case 'seconds': toks.push({ t: 'second' }); break;
+      case 'am-pm': toks.push({ t: 'ampm' }); break;
+    }
+  }
+  if (toks.some(t => t.t === 'ampm')) {
+    for (let i = 0; i < toks.length; i++) {
+      if (toks[i].t === 'hour24') toks[i] = { t: 'hour12', pad: (toks[i] as { pad: boolean }).pad };
+    }
+  }
+  return toks;
+}
+
+// ISO local datetime for the node's `value`: a date-value is kept; a time-value
+// (PThHmMsS) is placed on today's date (only its time part is rendered).
+function fieldValue(kind: 'date' | 'time', raw: string | null): string {
+  if (kind === 'date') {
+    const d = raw ? new Date(raw) : null;
+    return d && !isNaN(d.getTime()) ? raw! : '';
+  }
+  const m = raw ? /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(raw) : null;
+  if (!m) return '';
+  const now = new Date();
+  now.setHours(Number(m[1] ?? 0), Number(m[2] ?? 0), Number(m[3] ?? 0), 0);
+  return toDateValue(now);
+}
+
+// A <text:date>/<text:time> whose data style matches a known format → a live field
+// node; returns null (keep the shown text) for an unrecognised format.
+function convertDateTimeField(e: Element, ctx: Ctx): Node | null {
+  const kind: 'date' | 'time' = e.localName === 'time' ? 'time' : 'date';
+  const styleEl = ctx.resolver.numberStyle(e.getAttributeNS(NS.style, 'data-style-name'));
+  const format = styleEl ? matchFormat(parseNumberStyleTokens(styleEl), kind) : null;
+  if (!format) return null;
+  const fixed = e.getAttributeNS(NS.text, 'fixed') === 'true';
+  const raw = e.getAttributeNS(NS.text, kind === 'time' ? 'time-value' : 'date-value');
+  return { type: 'dateTimeField', attrs: { kind, format, fixed, value: fieldValue(kind, raw) } };
+}
+
 // ---- inline conversion --------------------------------------------------------
 
 function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel: number | null, hfFields = false, boldByDefault = false): Node[] {
@@ -682,8 +743,24 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
               out.push({ type: 'pageCount' });
               continue;
             }
-            // Other text fields (date, title, …) store their evaluated value as
-            // element text — keep what the source document showed.
+            // Date/time fields become live dateTimeField nodes in the body (a known
+            // format; falls through to the shown text otherwise). The one-paragraph
+            // header/footer schema has no such node, so there they stay text.
+            if (!hfFields && (e.localName === 'date' || e.localName === 'time')) {
+              const field = convertDateTimeField(e, ctx);
+              if (field) {
+                // The field is an atom without inline children, so it can't inherit
+                // the surrounding run's font from a sibling span — carry the run's
+                // marks on the node so it renders in the same font/size/etc.
+                const marks = marksFor(props, ctx.resolver, headingLevel, boldByDefault);
+                if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
+                if (marks.length) field.marks = marks;
+                out.push(field);
+                continue;
+              }
+            }
+            // Other text fields (title, …) store their evaluated value as element
+            // text — keep what the source document showed.
             if (e.textContent) pushText(e.textContent, props, linkHref);
             continue;
         }

@@ -5,6 +5,7 @@ import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
+import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
 import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
@@ -475,6 +476,9 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
   const out: Node[] = [];
   let fieldMode: 'none' | 'instr' | 'result' = 'none';
   let fieldInstr = '';
+  // A recognized body date/time field: its cached result runs are dropped and a live
+  // dateTimeField node is emitted in their place when the field ends.
+  let fieldDateTime: Node | null = null;
 
   const pushText = (text: string, marks: Mark[]) => {
     if (!text) return;
@@ -485,14 +489,22 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
 
   // A run may hold a whole field (begin/instrText/separate/end) or just part of one,
   // so walk its children in order and keep the field state across runs.
-  const handleRun = (r: Element, linkHref?: string) => {
+  // Resolved marks for a run element (font/size/color/etc.), including a link mark.
+  const runMarks = (r: Element, linkHref?: string): Mark[] => {
     const rPr = fc(r, 'rPr');
     const rStyle = fc(rPr, 'rStyle');
     const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
     if (!props.font && props.fontTheme) props.font = ctx.styles.themeFont(props.fontTheme);
     const marks = marksFor(props, headingLevel, boldByDefault, !!linkHref);
     if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
-    const skipResult = () => fieldMode === 'result' && hfFields; // hide a hf field's cached value
+    return marks;
+  };
+
+  const handleRun = (r: Element, linkHref?: string) => {
+    const marks = runMarks(r, linkHref);
+    // Hide a field's cached result: always for a hf field, and for a recognized body
+    // date/time field (replaced by its live node).
+    const skipResult = () => fieldMode === 'result' && (hfFields || !!fieldDateTime);
 
     // Route a drawing/pict result: an image is inline; a text box is a block node
     // riding ctx.pendingBlocks (dropped in the one-paragraph header/footer schema).
@@ -523,9 +535,20 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
       switch (child.localName) {
         case 'fldChar': {
           const t = child.getAttributeNS(W, 'fldCharType');
-          if (t === 'begin') { fieldMode = 'instr'; fieldInstr = ''; }
-          else if (t === 'separate') fieldMode = 'result';
-          else if (t === 'end') { emitField(out, fieldInstr, hfFields); fieldMode = 'none'; }
+          if (t === 'begin') { fieldMode = 'instr'; fieldInstr = ''; fieldDateTime = null; }
+          else if (t === 'separate') {
+            fieldMode = 'result';
+            if (!hfFields) {
+              fieldDateTime = dateTimeFieldFromInstr(fieldInstr);
+              // Carry the field run's marks so the atom renders in the run's font.
+              if (fieldDateTime && marks.length) fieldDateTime.marks = marks;
+            }
+          } else if (t === 'end') {
+            if (fieldDateTime) out.push(fieldDateTime);
+            else emitField(out, fieldInstr, hfFields);
+            fieldMode = 'none';
+            fieldDateTime = null;
+          }
           break;
         }
         case 'instrText': if (fieldMode === 'instr') fieldInstr += child.textContent ?? ''; break;
@@ -550,8 +573,16 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
       }
       case 'fldSimple': {
         const instr = el.getAttributeNS(W, 'instr') ?? '';
-        if (hfFields) emitField(out, instr, true);
-        else for (const r of fcAll(el, 'r')) handleRun(r); // body: keep the shown value
+        if (hfFields) { emitField(out, instr, true); break; }
+        const field = dateTimeFieldFromInstr(instr);
+        if (field) {
+          const first = fcAll(el, 'r')[0];
+          const m = first ? runMarks(first) : [];
+          if (m.length) field.marks = m;
+          out.push(field);
+          break;
+        }
+        for (const r of fcAll(el, 'r')) handleRun(r); // body: keep the shown value
         break;
       }
       case 'ins': // accepted tracked-change insertion → keep its runs
@@ -569,6 +600,18 @@ function emitField(out: Node[], instr: string, hfFields: boolean): void {
   if (!hfFields) return;
   if (/\bNUMPAGES\b/.test(instr)) out.push({ type: 'pageCount' });
   else if (/\bPAGE\b/.test(instr)) out.push({ type: 'pageNumber' });
+}
+
+// A DATE/TIME field instruction with a picture switch we recognize → a live
+// dateTimeField node (always auto: Word writes a fixed date as plain text). Returns
+// null for an unknown picture so the caller keeps the field's shown text.
+function dateTimeFieldFromInstr(instr: string): Node | null {
+  if (!/\b(DATE|TIME)\b/i.test(instr)) return null;
+  const m = /\\@\s*"([^"]*)"/.exec(instr);
+  if (!m) return null;
+  const fmt = [...DATE_FORMATS, ...TIME_FORMATS].find((f) => docxPicture(f) === m[1]);
+  if (!fmt) return null;
+  return { type: 'dateTimeField', attrs: { kind: fmt.kind, format: fmt.key, fixed: false, value: toDateValue(new Date()) } };
 }
 
 function mergeAdjacentText(nodes: Node[]): Node[] {

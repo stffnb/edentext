@@ -1,7 +1,7 @@
 import {
   Document, Packer, Paragraph, TextRun, ImageRun, ExternalHyperlink, Tab,
   TableOfContents,
-  Table, TableRow, TableCell, Header, Footer, PageNumber,
+  Table, TableRow, TableCell, Header, Footer, PageNumber, SimpleField,
   AlignmentType, HeadingLevel, LevelFormat, UnderlineType, BorderStyle, ShadingType,
   WidthType, HeightRule, PageOrientation, LineRuleType, TableLayoutType, SectionType,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
@@ -23,6 +23,11 @@ import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCell
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, HEADING_STYLE_OVERRIDES, mergeJoinedParagraphsJson, type HfExport } from './odt';
+import { findFormat, renderFormat, docxPicture, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../utils/dateTime';
+
+// BCP-47 tag for rendering a fixed field's cached text; set at buildDocx start from
+// the document language (Word recomputes an auto field on open using its own locale).
+let docLangTag = 'en-US';
 
 // DOCX export. Mirrors export/odt.ts feature-for-feature, but builds OOXML via the
 // `docx` library instead of odf-kit. Lazy-loaded from App.svelte so neither this
@@ -210,7 +215,23 @@ function textNodeToRuns(node: TiptapNode, forceBold: boolean): TextRun[] {
   return [new TextRun({ children, ...props })];
 }
 
-type Inline = TextRun | ImageRun | ExternalHyperlink;
+type Inline = TextRun | ImageRun | ExternalHyperlink | SimpleField;
+
+// A date/time field. A fixed field is plain text (Word has no fixed-date field); an
+// auto field is a DATE/TIME field with the picture switch and a cached value.
+function dateTimeRun(node: TiptapNode): Inline {
+  const a = node.attrs ?? {};
+  const kind = a.kind === 'time' ? 'time' : 'date';
+  const fmt = findFormat(String(a.format ?? ''))
+    ?? findFormat(kind === 'time' ? DEFAULT_TIME_FORMAT : DEFAULT_DATE_FORMAT)!;
+  const parsed = a.fixed && typeof a.value === 'string' && a.value ? new Date(a.value) : new Date();
+  const when = isNaN(parsed.getTime()) ? new Date() : parsed;
+  const text = renderFormat(fmt, when, docLangTag);
+  // A fixed field is a plain run, so carry its font/size/etc.; SimpleField takes no
+  // run props, so an auto field inherits the paragraph font (Word recomputes it).
+  if (a.fixed) return new TextRun({ text, ...runPropsFromMarks(node.marks) });
+  return new SimpleField(`${kind === 'time' ? 'TIME' : 'DATE'} \\@ "${docxPicture(fmt)}"`, text);
+}
 
 function inlineToRuns(content: TiptapNode[] = [], forceBold = false): Inline[] {
   const out: Inline[] = [];
@@ -229,6 +250,8 @@ function inlineToRuns(content: TiptapNode[] = [], forceBold = false): Inline[] {
       out.push(new TextRun({ children: [PageNumber.CURRENT] }));
     } else if (node.type === 'pageCount') {
       out.push(new TextRun({ children: [PageNumber.TOTAL_PAGES] }));
+    } else if (node.type === 'dateTimeField') {
+      out.push(dateTimeRun(node));
     }
   }
   return out;
@@ -813,6 +836,7 @@ export async function buildDocx(
   language?: { language: string; country: string } | null,
   pageFormat: PageFormat = 'A4',
 ): Promise<Uint8Array> {
+  docLangTag = localeTag(language ? language.language : 'en');
   const num = new Numbering();
   const landscape = orientation === 'landscape';
   const { w: pageWidthCm, h: pageHeightCm } = pageDimsCm(pageFormat, orientation);

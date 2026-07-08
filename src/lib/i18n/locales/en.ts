@@ -275,6 +275,13 @@ const en = {
       Symbols: 'Symbols',
     },
   },
+  dateTime: {
+    insert: 'Insert date and time',
+    dateHeading: 'Date',
+    timeHeading: 'Time',
+    updateAutomatically: 'Update automatically',
+    updateHint: 'Refresh to the current date/time each time the document is opened',
+  },
   hf: {
     addHeaderHint: 'Double-click to add a header',
     addFooterHint: 'Double-click to add a footer',

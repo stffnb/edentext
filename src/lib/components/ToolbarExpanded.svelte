@@ -4,6 +4,7 @@
   import ColorPicker from './ColorPicker.svelte';
   import TablePicker from './TablePicker.svelte';
   import SpecialCharPicker from './SpecialCharPicker.svelte';
+  import DateTimePicker from './DateTimePicker.svelte';
   import LinkDialog from './LinkDialog.svelte';
   import { OPEN_LINK_DIALOG_EVENT } from '../editor/extensions/link';
   import {
@@ -100,6 +101,12 @@
     if (list && list.length > 0) allInstalledFonts = list;
   }
 
+  // A node that carries text formatting in the selection: a text node, or an inline
+  // atom (e.g. a date/time field) bearing the mark in question. Selecting such an atom
+  // makes a NodeSelection, so without this its font/size/color would read as default.
+  const bearsMark = (node: { isText: boolean; isInline: boolean; isAtom: boolean; marks: readonly { type: { name: string } }[] }, markName: string): boolean =>
+    node.isText || (node.isInline && node.isAtom && node.marks.some(m => m.type.name === markName));
+
   // Returns the uniform font of the selection, or '' when fonts are mixed.
   // Plain Text without an explicit mark falls back to DEFAULT_EDITOR_FONT.
   let currentFont = $derived.by(() => {
@@ -112,7 +119,7 @@
     let font: string | undefined;
     let mixed = false;
     editor.state.doc.nodesBetween(from, to, (node) => {
-      if (mixed || !node.isText) return;
+      if (mixed || !bearsMark(node, 'textStyle')) return;
       const f: string = node.marks.find(m => m.type.name === 'textStyle')?.attrs.fontFamily ?? DEFAULT_EDITOR_FONT;
       if (font === undefined) font = f;
       else if (font !== f) mixed = true;
@@ -147,7 +154,7 @@
     let size: string | undefined;
     let mixed = false;
     editor.state.doc.nodesBetween(from, to, (node, _pos, parent) => {
-      if (mixed || !node.isText) return;
+      if (mixed || !bearsMark(node, 'textStyle')) return;
       const s = effectiveSize(node as Parameters<typeof effectiveSize>[0], parent as Parameters<typeof effectiveSize>[1]);
       if (size === undefined) size = s;
       else if (size !== s) mixed = true;
@@ -252,7 +259,7 @@
     let color: string | null | undefined;
     let mixed = false;
     editor.state.doc.nodesBetween(from, to, (node) => {
-      if (mixed || !node.isText) return;
+      if (mixed || !bearsMark(node, markName)) return;
       const c = node.marks.find(m => m.type.name === markName)?.attrs.color ?? null;
       if (color === undefined) color = c;
       else if (color !== c) mixed = true;
@@ -766,11 +773,38 @@
     layoutOpen = false;
     tableOpen = false;
     columnsOpen = false;
+    dateTimeOpen = false;
   }
 
   function insertSpecialChar(char: string, range: { from: number; to: number }) {
     if (!editor) return;
     editor.chain().focus().setTextSelection(range).insertContent(char).run();
+  }
+
+  // --- Date/time field insertion (DateTimePicker.svelte) ---
+  let dateTimeOpen = $state(false);
+
+  // Close the sibling dropdowns (incl. the special-char picker) without touching
+  // dateTimeOpen, so the trigger's own open/close toggle keeps working.
+  function onDateTimePickerOpen() {
+    fontOpen = false;
+    sizeOpen = false;
+    sizeInputFocused = false;
+    lineHeightOpen = false;
+    fontColorOpen = false;
+    highlightColorOpen = false;
+    layoutOpen = false;
+    tableOpen = false;
+    columnsOpen = false;
+    specialCharOpen = false;
+  }
+
+  function insertDateTime(
+    opts: { kind: 'date' | 'time'; format: string; fixed: boolean },
+    range: { from: number; to: number },
+  ) {
+    if (!editor) return;
+    editor.chain().focus().setTextSelection(range).insertDateTimeField(opts).run();
   }
 
   // --- Image insertion (image.ts) ---
@@ -1301,6 +1335,12 @@
         bind:open={specialCharOpen}
         onOpen={onSpecialCharPickerOpen}
         onInsert={insertSpecialChar}
+      />
+      <DateTimePicker
+        {editor}
+        bind:open={dateTimeOpen}
+        onOpen={onDateTimePickerOpen}
+        onInsert={insertDateTime}
       />
       <button
         onclick={() => imageInput?.click()}

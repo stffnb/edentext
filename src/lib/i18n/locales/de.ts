@@ -272,6 +272,13 @@ const de: Messages = {
       Symbols: 'Symbole',
     },
   },
+  dateTime: {
+    insert: 'Datum und Uhrzeit einfügen',
+    dateHeading: 'Datum',
+    timeHeading: 'Uhrzeit',
+    updateAutomatically: 'Automatisch aktualisieren',
+    updateHint: 'Beim Öffnen des Dokuments auf das aktuelle Datum/die Uhrzeit aktualisieren',
+  },
   hf: {
     addHeaderHint: 'Zum Hinzufügen einer Kopfzeile doppelklicken',
     addFooterHint: 'Zum Hinzufügen einer Fußzeile doppelklicken',
