@@ -1,5 +1,5 @@
 import { unzipSync, strFromU8 } from 'fflate';
-import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, wVal, W, R, WP, A, WPS, MC, VML, PKG_REL, type RunProps } from './docxStyles';
+import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, wVal, W, R, WP, A, WPS, MC, VML, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { lengthToPt } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
@@ -375,7 +375,11 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // paragraph style commonly carries justify), so style-level alignment isn't lost.
   const directJc = fc(ppr, 'jc');
   const jcVal = directJc ? wVal(directJc) : ctx.styles.paragraphAlign(pStyle ? wVal(pStyle) : null);
-  const attrs = blockAttrs(ppr, kind, level, jcVal);
+  // Spacing: a paragraph style's own w:spacing (e.g. "No Spacing" after=0) is honored so
+  // it isn't lost to the editor default; direct w:pPr wins per attribute (in blockAttrs).
+  // Headings keep their em-based editor defaults (direct-only), so skip style resolution.
+  const styleSpacing = level == null ? ctx.styles.paragraphSpacing(pStyle ? wVal(pStyle) : null) : {};
+  const attrs = blockAttrs(ppr, kind, level, jcVal, styleSpacing);
   const baseRun = mergeRunProps(ctx.styles.defaultRun(), ctx.styles.styleOwn(pStyle ? wVal(pStyle) : null));
   const content = convertInline(el, ctx, baseRun, level, false, boldByDefault);
 
@@ -426,31 +430,29 @@ function headingLevelOf(ppr: Element | null, ctx: Ctx): number | null {
   return null;
 }
 
-// Spacing/indent come from DIRECT w:pPr only — Word stores per-paragraph formatting
-// inline (style-level defaults stay in the style and are left as the editor's defaults).
-// Alignment (jcVal) is resolved through the style chain by the caller.
-function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number | null, jcVal: string | null): Record<string, unknown> {
+// Spacing = the paragraph style's own w:spacing (styleSpacing, resolved by the caller)
+// overridden per-attribute by DIRECT w:pPr; indent comes from direct w:pPr only.
+// docDefaults stay the editor's defaults. jcVal is resolved through the chain by the caller.
+function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number | null, jcVal: string | null, styleSpacing: ParaSpacing): Record<string, unknown> {
   const attrs: Record<string, unknown> = {};
 
   if (jcVal === 'center') attrs.textAlign = 'center';
   else if (jcVal === 'both' || jcVal === 'distribute') attrs.textAlign = 'justify';
   else if (jcVal === 'right' || jcVal === 'end') attrs.textAlign = 'right';
 
-  if (!ppr) return attrs;
-
-  const sp = fc(ppr, 'spacing');
-  if (sp) {
-    const before = intAttr(sp, W, 'before');
-    const after = intAttr(sp, W, 'after');
-    if (before != null) attrs.spaceBefore = snapPt(twipToPt(before));
-    if (after != null) attrs.spaceAfter = snapPt(twipToPt(after));
-    const line = intAttr(sp, W, 'line');
-    const rule = sp.getAttributeNS(W, 'lineRule');
-    if (line != null && (!rule || rule === 'auto')) {
-      const mult = round2(line / 240);
-      if (Math.abs(mult - 1) > 0.01) attrs.lineHeight = String(mult);
-    }
+  const sp = ppr ? fc(ppr, 'spacing') : null;
+  const before = (sp ? intAttr(sp, W, 'before') : null) ?? styleSpacing.before ?? null;
+  const after = (sp ? intAttr(sp, W, 'after') : null) ?? styleSpacing.after ?? null;
+  const line = (sp ? intAttr(sp, W, 'line') : null) ?? styleSpacing.line ?? null;
+  const rule = (sp && sp.getAttributeNS(W, 'lineRule')) || styleSpacing.lineRule || null;
+  if (before != null) attrs.spaceBefore = snapPt(twipToPt(before));
+  if (after != null) attrs.spaceAfter = snapPt(twipToPt(after));
+  if (line != null && (!rule || rule === 'auto')) {
+    const mult = round2(line / 240);
+    if (Math.abs(mult - 1) > 0.01) attrs.lineHeight = String(mult);
   }
+
+  if (!ppr) return attrs;
 
   if (kind !== 'list') {
     const ind = fc(ppr, 'ind');

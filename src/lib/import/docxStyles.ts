@@ -31,6 +31,10 @@ export type RunProps = {
 // w:rPr/w:rFonts (Wingdings/Symbol give the bullet glyph its meaning).
 export type LevelDef = { numFmt?: string; lvlText?: string; leftTwip?: number; start?: number; bulletFont?: string };
 
+// Paragraph spacing from a w:pPr/w:spacing (only the attributes actually present, so
+// omitted ones inherit up the style chain). before/after in twips, line per w:line.
+export type ParaSpacing = { before?: number; after?: number; line?: number; lineRule?: string };
+
 export function wVal(el: Element): string | null {
   return el.getAttributeNS(W, 'val');
 }
@@ -92,6 +96,7 @@ export class DocxStyles {
   private styleNum = new Map<string, { numId: number; ilvl: number }>();
   private ownOutline = new Map<string, number>(); // style's own w:outlineLvl (heading marker)
   private ownAlign = new Map<string, string>(); // style's own w:pPr/w:jc
+  private ownSpacing = new Map<string, ParaSpacing>(); // style's own w:pPr/w:spacing
   private defaultParaStyle: string | null = null; // the w:default="1" paragraph style
   private defaultsAlign: string | null = null; // docDefaults w:pPrDefault/w:jc
   private numToAbstract = new Map<string, string>();
@@ -146,6 +151,8 @@ export class DocxStyles {
       if (ol) { const n = parseInt(wVal(ol) ?? '', 10); if (Number.isFinite(n)) this.ownOutline.set(id, n); }
       const jc = ppr && firstChild(ppr, 'jc');
       if (jc) { const v = wVal(jc); if (v) this.ownAlign.set(id, v); }
+      const sp = ppr && firstChild(ppr, 'spacing');
+      if (sp) this.ownSpacing.set(id, readSpacing(sp));
     }
   }
 
@@ -229,6 +236,23 @@ export class DocxStyles {
     return this.defaultsAlign;
   }
 
+  // The style's effective spacing along the w:basedOn chain (root → leaf, leaf wins per
+  // attribute). Excludes docDefaults on purpose: those stay the editor's own defaults.
+  private styleSpacing(styleId: string | null | undefined, seen = new Set<string>()): ParaSpacing {
+    if (!styleId || seen.has(styleId)) return {};
+    seen.add(styleId);
+    const base = this.styleSpacing(this.basedOn.get(styleId) ?? null, seen);
+    return { ...base, ...(this.ownSpacing.get(styleId) ?? {}) };
+  }
+
+  // Effective paragraph spacing from styles only (direct w:pPr/w:spacing wins in the
+  // caller): the pStyle's basedOn chain, else the default paragraph style. Honors an
+  // explicit style like "No Spacing" (after=0) that the editor default would otherwise
+  // override. docDefaults are deliberately left as the editor's defaults.
+  paragraphSpacing(pStyleId: string | null | undefined): ParaSpacing {
+    return this.styleSpacing(pStyleId ?? this.defaultParaStyle);
+  }
+
   level(numId: number, ilvl: number): LevelDef {
     const abs = this.numToAbstract.get(String(numId));
     if (!abs) return {};
@@ -239,6 +263,22 @@ export class DocxStyles {
 function firstChild(el: Element, localName: string): Element | null {
   for (const c of Array.from(el.children)) if (c.namespaceURI === W && c.localName === localName) return c;
   return null;
+}
+
+// A w:spacing element's present attributes only (omitted ones inherit up the chain).
+export function readSpacing(sp: Element): ParaSpacing {
+  const num = (name: string) => {
+    const v = sp.getAttributeNS(W, name);
+    if (v == null) return undefined;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const out: ParaSpacing = {};
+  const before = num('before'); if (before != null) out.before = before;
+  const after = num('after'); if (after != null) out.after = after;
+  const line = num('line'); if (line != null) out.line = line;
+  const rule = sp.getAttributeNS(W, 'lineRule'); if (rule) out.lineRule = rule;
+  return out;
 }
 
 export function readNumPr(numPr: Element): { numId: number; ilvl: number } | null {
