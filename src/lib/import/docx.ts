@@ -6,6 +6,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
+import { imageDataUrl } from './imageFormats';
 import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
@@ -51,10 +52,6 @@ const LIST_LEFT_STEP_CM = 1.27; // matches export/docx.ts
 const LIST_INDENT_EPS_CM = 0.05;
 const LINK_BLUE = '#0563C1'; // the visual the exporter paints on hyperlink runs
 
-const MIME_BY_EXT: Record<string, string> = {
-  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', webp: 'image/webp',
-};
-
 // ---- small DOM helpers ------------------------------------------------------
 function fc(el: Element | null, localName: string): Element | null {
   if (!el) return null;
@@ -81,13 +78,6 @@ function parseXml(xml: string): Document {
 function hexColor(v: string | null | undefined): string | undefined {
   if (!v || v === 'auto') return undefined;
   return /^[0-9a-fA-F]{6}$/.test(v) ? normalizeColor(`#${v}`) : normalizeColor(v);
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let bin = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  return btoa(bin);
 }
 
 // ---- entry ------------------------------------------------------------------
@@ -716,8 +706,8 @@ function loadImageDataUrl(path: string, ctx: Ctx): string | null {
   if (cached) return cached;
   const bytes = ctx.files[path];
   if (!bytes) return null;
-  const ext = path.split('.').pop()?.toLowerCase() ?? '';
-  const url = `data:${MIME_BY_EXT[ext] ?? 'image/png'};base64,${bytesToBase64(bytes)}`;
+  const url = imageDataUrl(bytes, path);
+  if (!url) return null;
   ctx.imageCache.set(path, url);
   return url;
 }
@@ -731,11 +721,25 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   if (wsp) return convertWpsShape(wsp, root, !!anchor, ctx);
   const blip = drawing.getElementsByTagNameNS(A, 'blip')[0];
   if (!blip) { ctx.warnings.add('Drawings were removed'); return null; }
-  const embed = blip.getAttributeNS(R, 'embed');
-  const rel = embed ? ctx.rels.get(embed) : undefined;
-  if (!rel || rel.external) { ctx.warnings.add('Some images could not be read and were skipped'); return null; }
-  const src = loadImageDataUrl(`word/${rel.target.replace(/^\/+/, '')}`, ctx);
-  if (!src) { ctx.warnings.add('Some images could not be read and were skipped'); return null; }
+  // Candidate media: the primary blip plus any SVG alternative (Word 2016+ stores an
+  // svgBlip beside a raster fallback) — prefer whichever the browser can display.
+  const candidates: string[] = [];
+  const pushEmbed = (id: string | null) => {
+    const rel = id ? ctx.rels.get(id) : undefined;
+    if (rel && !rel.external) candidates.push(`word/${rel.target.replace(/^\/+/, '')}`);
+  };
+  pushEmbed(blip.getAttributeNS(R, 'embed'));
+  for (const sb of Array.from(blip.getElementsByTagName('*')))
+    if (sb.localName === 'svgBlip') pushEmbed(sb.getAttributeNS(R, 'embed'));
+  if (!candidates.length) { ctx.warnings.add('Some images could not be read and were skipped'); return null; }
+  const path = candidates.find(p => loadImageDataUrl(p, ctx)) ?? candidates[0];
+  const src = loadImageDataUrl(path, ctx);
+  if (!src) {
+    ctx.warnings.add(ctx.files[path]
+      ? 'Images in a format the browser can’t display (e.g. WMF, EMF, TIFF) were removed'
+      : 'Some images could not be read and were skipped');
+    return null;
+  }
 
   const attrs: Record<string, unknown> = { src };
   const extent = root.getElementsByTagNameNS(WP, 'extent')[0];
@@ -827,14 +831,7 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
   const shape = Array.from(pict.children).find(
     (c) => c.namespaceURI === VML && ['shape', 'rect', 'oval', 'roundrect'].includes(c.localName),
   );
-  const txbxContent = shape
-    ? nsChild(shape.getElementsByTagNameNS(VML, 'textbox')[0] ?? null, W, 'txbxContent')
-    : null;
-  if (!shape || !txbxContent) { ctx.warnings.add('Drawings were removed'); return null; }
-
-  const attrs: Record<string, unknown> = {};
-  const kind = shape.localName === 'oval' ? 'ellipse' : shape.localName === 'roundrect' ? 'roundRect' : 'textbox';
-  if (kind !== 'textbox') attrs.shapeKind = kind;
+  if (!shape) { ctx.warnings.add('Drawings were removed'); return null; }
 
   const style = shape.getAttribute('style') ?? '';
   const dimPx = (key: string): number | null => {
@@ -847,6 +844,31 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
   };
   const w = dimPx('width');
   const h = dimPx('height');
+
+  // A v:imagedata is a legacy inline picture (no text box) → an image node.
+  const imagedata = shape.getElementsByTagNameNS(VML, 'imagedata')[0];
+  const imgRel = imagedata ? ctx.rels.get(imagedata.getAttributeNS(R, 'id') ?? '') : undefined;
+  if (imagedata && imgRel && !imgRel.external) {
+    const path = `word/${imgRel.target.replace(/^\/+/, '')}`;
+    const src = loadImageDataUrl(path, ctx);
+    if (!src) {
+      ctx.warnings.add(ctx.files[path]
+        ? 'Images in a format the browser can’t display (e.g. WMF, EMF, TIFF) were removed'
+        : 'Some images could not be read and were skipped');
+      return null;
+    }
+    const imgAttrs: Record<string, unknown> = { src };
+    if (w) imgAttrs.width = w;
+    if (h) imgAttrs.height = h;
+    return { type: 'image', attrs: imgAttrs };
+  }
+
+  const txbxContent = nsChild(shape.getElementsByTagNameNS(VML, 'textbox')[0] ?? null, W, 'txbxContent');
+  if (!txbxContent) { ctx.warnings.add('Drawings were removed'); return null; }
+
+  const attrs: Record<string, unknown> = {};
+  const kind = shape.localName === 'oval' ? 'ellipse' : shape.localName === 'roundrect' ? 'roundRect' : 'textbox';
+  if (kind !== 'textbox') attrs.shapeKind = kind;
   if (w) attrs.width = w;
   if (h) attrs.height = h;
 

@@ -5,6 +5,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
+import { imageDataUrl } from './imageFormats';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import type { PageFormat } from '../storage/pageFormat';
@@ -57,33 +58,15 @@ type Ctx = {
   pendingBlocks: Node[];
 };
 
-const MIME_BY_EXT: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  svg: 'image/svg+xml',
-  webp: 'image/webp',
-  bmp: 'image/bmp',
-};
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let bin = '';
-  const chunk = 0x8000; // chunk so String.fromCharCode doesn't blow the call stack
-  for (let i = 0; i < bytes.length; i += chunk) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(bin);
-}
-
-// Read a Pictures/ entry from the archive into a base64 data-URI (mime by extension).
+// Read a Pictures/ entry into a base64 data-URI; null when it's missing or in a format
+// the browser can't display (the caller distinguishes the two for its warning).
 function loadImageDataUrl(href: string, ctx: Ctx): string | null {
   const cached = ctx.imageCache.get(href);
   if (cached) return cached;
   const bytes = ctx.files[href];
   if (!bytes) return null;
-  const ext = href.split('.').pop()?.toLowerCase() ?? '';
-  const url = `data:${MIME_BY_EXT[ext] ?? 'image/png'};base64,${bytesToBase64(bytes)}`;
+  const url = imageDataUrl(bytes, href);
+  if (!url) return null;
   ctx.imageCache.set(href, url);
   return url;
 }
@@ -125,13 +108,18 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
 // geometry (cm → px). as-char frames stay inline; paragraph/page-anchored frames
 // with a wrap become floating (wrap mode + svg:x/svg:y position).
 function convertFrame(frame: Element, ctx: Ctx): Node | null {
-  const image = frame.getElementsByTagNameNS(NS.draw, 'image')[0];
-  if (!image) return null;
-  const href = (image.getAttributeNS(NS.xlink, 'href') ?? '').replace(/^\.\//, '');
-  if (!href) return null;
+  // A frame may list several <draw:image> alternatives (e.g. a metafile + a bitmap
+  // fallback) — prefer the first the browser can display.
+  const hrefs = Array.from(frame.getElementsByTagNameNS(NS.draw, 'image'))
+    .map(im => (im.getAttributeNS(NS.xlink, 'href') ?? '').replace(/^\.\//, ''))
+    .filter(Boolean);
+  if (!hrefs.length) return null;
+  const href = hrefs.find(h => loadImageDataUrl(h, ctx)) ?? hrefs[0];
   const src = loadImageDataUrl(href, ctx);
   if (!src) {
-    ctx.warnings.add('Some images could not be read and were skipped');
+    ctx.warnings.add(ctx.files[href]
+      ? 'Images in a format the browser can’t display (e.g. WMF, EMF, SVM, TIFF) were removed'
+      : 'Some images could not be read and were skipped');
     return null;
   }
   const attrs: Record<string, unknown> = { src };
@@ -236,6 +224,16 @@ function convertDrawElement(e: Element, ctx: Ctx): { inline?: Node; block?: Node
   if (e.localName === 'rect' || e.localName === 'ellipse' || e.localName === 'custom-shape') {
     const shape = convertShape(e, ctx);
     return shape ? { block: shape } : null;
+  }
+  if (e.localName === 'a') {
+    // draw:a wraps a drawing in a hyperlink; the editor has no image link, so unwrap
+    // to the inner drawing (the link is dropped, like other flattened hyperlinks).
+    for (const child of Array.from(e.children)) {
+      if (child.namespaceURI !== NS.draw) continue;
+      const conv = convertDrawElement(child, ctx);
+      if (conv) return conv;
+    }
+    return null;
   }
   ctx.warnings.add('Drawings were removed');
   return null;
@@ -438,8 +436,15 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
       if (el.localName === 'p' || el.localName === 'h') {
         pushWithPending(convertParaLike(el, ctx, kind, boldByDefault));
       } else if (el.localName === 'list') {
-        const list = convertList(el, ctx, null, 1);
-        if (list) out.push(list);
+        // A list wrapping only headings is ODF outline (chapter) numbering, not a real
+        // list — unwrap it to plain headings instead of empty nested list levels.
+        const headingEls = kind === 'body' ? outlineHeadingEls(el) : null;
+        if (headingEls) {
+          for (const h of headingEls) out.push(convertParaLike(h, ctx, 'body'));
+        } else {
+          const list = convertList(el, ctx, null, 1);
+          if (list) out.push(list);
+        }
         pushWithPending(null);
       } else if (el.localName === 'section') {
         const inner = convertBlocks(Array.from(el.children), ctx, kind, boldByDefault);
@@ -659,13 +664,24 @@ function fieldValue(kind: 'date' | 'time', raw: string | null): string {
 // A <text:date>/<text:time> whose data style matches a known format → a live field
 // node; returns null (keep the shown text) for an unrecognised format.
 function convertDateTimeField(e: Element, ctx: Ctx): Node | null {
-  const kind: 'date' | 'time' = e.localName === 'time' ? 'time' : 'date';
   const styleEl = ctx.resolver.numberStyle(e.getAttributeNS(NS.style, 'data-style-name'));
-  const format = styleEl ? matchFormat(parseNumberStyleTokens(styleEl), kind) : null;
+  if (!styleEl) return null;
+  const tokens = parseNumberStyleTokens(styleEl);
+  // Kind follows the number style's actual tokens, not the element name: OpenOffice
+  // can wrap a date field in <text:time> yet reference a date-style, and vice versa.
+  const kind = numberStyleKind(tokens) ?? (e.localName === 'time' ? 'time' : 'date');
+  const format = matchFormat(tokens, kind);
   if (!format) return null;
   const fixed = e.getAttributeNS(NS.text, 'fixed') === 'true';
-  const raw = e.getAttributeNS(NS.text, kind === 'time' ? 'time-value' : 'date-value');
+  const raw = e.getAttributeNS(NS.text, 'date-value') ?? e.getAttributeNS(NS.text, 'time-value');
   return { type: 'dateTimeField', attrs: { kind, format, fixed, value: fieldValue(kind, raw) } };
+}
+
+// A number style with any calendar token is a date style; hours/minutes → time; else null.
+function numberStyleKind(tokens: Token[]): 'date' | 'time' | null {
+  if (tokens.some(t => t.t === 'year' || t.t === 'month' || t.t === 'day' || t.t === 'weekday')) return 'date';
+  if (tokens.some(t => t.t === 'hour24' || t.t === 'hour12' || t.t === 'minute' || t.t === 'second' || t.t === 'ampm')) return 'time';
+  return null;
 }
 
 // ---- inline conversion --------------------------------------------------------
@@ -864,6 +880,29 @@ function formatPt(v: number): string {
 }
 
 // ---- lists -----------------------------------------------------------------------
+
+// The heading elements of a <text:list> whose leaves are all headings (each list-item
+// holds only a text:h and/or nested such lists) — ODF outline/chapter numbering, not a
+// real list, so they import as plain headings. null when it's a genuine list.
+function outlineHeadingEls(listEl: Element): Element[] | null {
+  const out: Element[] = [];
+  for (const item of Array.from(listEl.children)) {
+    if (item.namespaceURI !== NS.text || (item.localName !== 'list-item' && item.localName !== 'list-header')) continue;
+    for (const child of Array.from(item.children)) {
+      if (child.namespaceURI !== NS.text) return null;
+      if (child.localName === 'h') {
+        out.push(child);
+      } else if (child.localName === 'list') {
+        const nested = outlineHeadingEls(child);
+        if (!nested) return null;
+        out.push(...nested);
+      } else {
+        return null; // a paragraph or other content ⇒ a genuine list
+      }
+    }
+  }
+  return out.length ? out : null;
+}
 
 // `inheritedStyleName`: nested text:list elements usually carry no style-name of
 // their own — the outermost list's style governs, with one level def per depth.
