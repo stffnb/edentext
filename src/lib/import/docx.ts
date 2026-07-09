@@ -40,6 +40,10 @@ const twipToPx = (tw: number) => (tw / 1440) * 96;
 const emuToPx = (emu: number) => emu / 9525;
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
+// A run-level <w:br w:type="page"/> becomes this sentinel inline node in convertInline;
+// splitParaAtPageBreaks consumes it (body only) into breakBefore, and it never survives.
+const PB_MARKER = '__docxPageBreak__';
+
 const BODY_FONT_SIZE_PT = 12;
 const HEADING_SIZES = HEADING_STYLE_OVERRIDES.map((h) => lengthToPt(h.fontSize)!); // [20,16,14]
 const DEFAULT_FONTS = new Set(['times new roman', 'liberation serif']);
@@ -216,6 +220,14 @@ function sdtIsToc(sdt: Element): boolean {
 function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDefault = false): Node[] {
   const out: Node[] = [];
   const stack: { ilvl: number; numId: number; list: Node }[] = [];
+  // A page break ending one paragraph moves the next block to a new page (breakBefore).
+  // Only body paragraphs/headings carry it; other block kinds clear it (break dropped).
+  let breakPending = false;
+  const applyBreakBefore = (node: Node | undefined) => {
+    if (node && (node.type === 'paragraph' || node.type === 'heading')) {
+      node.attrs = { ...(node.attrs ?? {}), breakBefore: 'page' };
+    }
+  };
   // Table-of-contents field tracking (see scanTocField). A TOC node is emitted for the
   // body only; its cached paragraphs are skipped. The node view regenerates entries live.
   const tocState: TocFieldState = { fieldDepth: 0, tocDepth: -1, instr: [] };
@@ -259,7 +271,8 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
       if (startedInToc || emit) continue;
       const num = paragraphNum(el, ctx);
       if (num) {
-        const para = convertParagraph(el, ctx, 'list', boldByDefault);
+        breakPending = false; // a break before a list item can't be modeled; drop it
+        const para = splitParaAtPageBreaks(convertParagraph(el, ctx, 'list', boldByDefault), 'list').blocks[0];
         while (stack.length && stack[stack.length - 1].ilvl > num.ilvl) closeTop();
         let top = stack[stack.length - 1];
         if (top && top.ilvl === num.ilvl && top.numId !== num.numId) { closeTop(); top = stack[stack.length - 1]; }
@@ -271,9 +284,13 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         stack[stack.length - 1].list.content!.push({ type: 'listItem', content: [para] });
       } else {
         flush();
-        pushWithPending(convertParagraph(el, ctx, kind, boldByDefault));
+        const { blocks, trailingBreak } = splitParaAtPageBreaks(convertParagraph(el, ctx, kind, boldByDefault), kind);
+        if (breakPending) { applyBreakBefore(blocks[0]); breakPending = false; }
+        for (const b of blocks) pushWithPending(b);
+        breakPending = trailingBreak;
       }
     } else if (el.localName === 'tbl') {
+      breakPending = false; // a break before a table can't be modeled; drop it
       flush();
       if (kind === 'body') {
         const t = convertTable(el, ctx);
@@ -283,6 +300,7 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         out.push(...flattenTable(el, ctx));
       }
     } else if (el.localName === 'sdt') {
+      breakPending = false;
       flush();
       if (sdtIsToc(el)) {
         // A content-control-wrapped TOC → one node (regenerated live); skip its content.
@@ -365,6 +383,35 @@ function lvlSuffix(lvlText: string | undefined): string {
   if (!lvlText) return '.';
   const trail = lvlText.replace(/^.*%\d+/, '');
   return trail.charAt(0) === ')' ? ')' : '.';
+}
+
+// Split a converted body paragraph at run-level page breaks (PB_MARKER): each break
+// starts a new block via breakBefore: 'page'. A break at the paragraph's end reports
+// trailingBreak so the caller moves the NEXT block. Cells/lists just strip the markers.
+function splitParaAtPageBreaks(para: Node, kind: BlockKind): { blocks: Node[]; trailingBreak: boolean } {
+  const content = para.content ?? [];
+  if (!content.some((n) => n.type === PB_MARKER)) return { blocks: [para], trailingBreak: false };
+  if (kind !== 'body') {
+    const kept = content.filter((n) => n.type !== PB_MARKER);
+    if (kept.length) para.content = kept; else delete para.content;
+    return { blocks: [para], trailingBreak: false };
+  }
+  const segs: Node[][] = [[]];
+  for (const n of content) {
+    if (n.type === PB_MARKER) segs.push([]);
+    else segs[segs.length - 1].push(n);
+  }
+  let trailingBreak = false;
+  if (segs.length > 1 && segs[segs.length - 1].length === 0) { segs.pop(); trailingBreak = true; }
+  const blocks = segs.map((seg, i) => {
+    const node: Node = { type: para.type };
+    const attrs = { ...(para.attrs ?? {}) };
+    if (i > 0) attrs.breakBefore = 'page';
+    if (Object.keys(attrs).length) node.attrs = attrs;
+    if (seg.length) node.content = seg;
+    return node;
+  });
+  return { blocks, trailingBreak };
 }
 
 function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault: boolean): Node {
@@ -556,7 +603,8 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
         case 'instrText': if (fieldMode === 'instr') fieldInstr += child.textContent ?? ''; break;
         case 't': if (!skipResult()) pushText(child.textContent ?? '', marks); break;
         case 'tab': if (!skipResult()) pushText('\t', marks); break;
-        case 'br': case 'cr': out.push({ type: 'hardBreak' }); break;
+        case 'br': out.push(child.getAttributeNS(W, 'type') === 'page' ? { type: PB_MARKER } : { type: 'hardBreak' }); break;
+        case 'cr': out.push({ type: 'hardBreak' }); break;
         case 'drawing': pushDrawn(convertDrawing(child, ctx)); break;
         case 'pict': pushDrawn(convertPict(child, ctx)); break;
       }
@@ -1032,7 +1080,7 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
       textAlign = ta === 'center' || ta === 'both' ? (ta === 'both' ? 'justify' : 'center') : ta === 'right' || ta === 'end' ? 'right' : '';
     }
     const baseRun = mergeRunProps(hfCtx.styles.defaultRun(), hfCtx.styles.styleOwn(fc(ppr, 'pStyle') ? wVal(fc(ppr, 'pStyle')!) : null));
-    inline.push(...convertInline(p, hfCtx, baseRun, null, true, false));
+    inline.push(...convertInline(p, hfCtx, baseRun, null, true, false).filter((n) => n.type !== PB_MARKER));
   }
   while (inline[0]?.type === 'hardBreak') inline.shift();
   while (inline[inline.length - 1]?.type === 'hardBreak') inline.pop();
