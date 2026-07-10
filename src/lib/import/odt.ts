@@ -137,21 +137,47 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
   return { type: 'image', attrs };
 }
 
+// A shape's fill color. fo:background-color (LibreOffice's per-shape fill) wins over
+// draw:fill when set — the two coexist because the default graphic style carries a
+// draw:fill that a "no fill" shape overrides only via fo:background-color="transparent".
+function shapeFill(gp: PropMap): string | null {
+  const bg = gp['fo:background-color'];
+  if (bg !== undefined) return bg === 'transparent' || bg === 'none' ? null : normalizeColor(bg) ?? null;
+  return gp['draw:fill'] === 'solid' ? normalizeColor(gp['draw:fill-color'] ?? '') ?? null : null;
+}
+
+// A shape's stroke as { color, widthPt }. fo:border ("<w> <style> <color>", LibreOffice's
+// per-shape border) wins over draw:stroke for the same reason as shapeFill.
+function shapeStroke(gp: PropMap): { color: string | null; widthPt: number | null } {
+  const border = gp['fo:border'];
+  if (border !== undefined) {
+    let widthPt: number | null = null, color: string | null = null, styleTok: string | null = null;
+    for (const part of border.trim().split(/\s+/)) {
+      if (/^-?[\d.]+\s*(pt|cm|mm|in|px|pc)?$/.test(part)) widthPt = lengthToPt(part);
+      else if (part.startsWith('#')) color = normalizeColor(part) ?? part;
+      else styleTok = part;
+    }
+    if (styleTok === 'none' || styleTok === 'hidden' || (widthPt != null && widthPt <= 0)) {
+      return { color: null, widthPt: null };
+    }
+    return { color: color ?? '#000000', widthPt };
+  }
+  const color = gp['draw:stroke'] && gp['draw:stroke'] !== 'none'
+    ? normalizeColor(gp['svg:stroke-color'] ?? '#000000') ?? '#000000'
+    : null;
+  return { color, widthPt: color ? lengthToPt(gp['svg:stroke-width']) : null };
+}
+
 // Fill/stroke attrs from a shape's graphic style, suppressing the editor defaults
 // (white fill, 1pt black stroke). Absent/none → explicit null (transparent/no border),
 // since omitting the attr would re-apply the default.
 function shapeStyleAttrs(gp: PropMap, attrs: Record<string, unknown>): void {
-  const fillColor = gp['draw:fill'] === 'solid' ? normalizeColor(gp['draw:fill-color'] ?? '') ?? null : null;
+  const fillColor = shapeFill(gp);
   if (fillColor !== '#FFFFFF') attrs.fillColor = fillColor;
-  const strokeColor = gp['draw:stroke'] && gp['draw:stroke'] !== 'none'
-    ? normalizeColor(gp['svg:stroke-color'] ?? '#000000') ?? '#000000'
-    : null;
+  const { color: strokeColor, widthPt } = shapeStroke(gp);
   if (strokeColor !== '#000000') attrs.strokeColor = strokeColor;
-  if (strokeColor) {
-    const widthPt = lengthToPt(gp['svg:stroke-width']);
-    if (widthPt != null && Math.abs(widthPt - 1) > 0.1) {
-      attrs.strokeWidthPt = Math.round(widthPt * 100) / 100;
-    }
+  if (strokeColor && widthPt != null && Math.abs(widthPt - 1) > 0.1) {
+    attrs.strokeWidthPt = Math.round(widthPt * 100) / 100;
   }
 }
 

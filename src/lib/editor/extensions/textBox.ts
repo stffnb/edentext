@@ -1,8 +1,10 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection, Plugin } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import type { EditorView } from '@tiptap/pm/view';
 import { HANDLES, MIN_SIZE_PX, clamp, parsePx, pageContentHeightPx, type WrapMode } from './image';
 
 // A text box / basic shape: a block-level frame with editable block content, a fill,
@@ -183,6 +185,29 @@ export const TextBox = Node.create({
   addNodeView() {
     return ({ node, editor, getPos }) => new TextBoxView(node as PMNode, editor, getPos as () => number);
   },
+
+  // Show the resize frame + handles (via .textbox-active) whenever the caret sits
+  // inside a box, so a plain click into it reveals the editing frame like an image.
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          decorations(state) {
+            const { from, to } = state.selection;
+            const decos: Decoration[] = [];
+            state.doc.descendants((node, pos) => {
+              if (node.type.name !== 'textBox') return false;
+              if (from >= pos && to <= pos + node.nodeSize) {
+                decos.push(Decoration.node(pos, pos + node.nodeSize, { class: 'textbox-active' }));
+              }
+              return false;
+            });
+            return DecorationSet.create(state.doc, decos);
+          },
+        },
+      }),
+    ];
+  },
 });
 
 // Node view: like ImageView, an axis-aligned wrapper reserves the rotated bounding
@@ -235,7 +260,8 @@ class TextBoxView {
     this.badge.className = 'image-size-badge';
     this.dom.appendChild(this.badge);
 
-    // A mousedown on the frame (border, not the text area) selects the box whole.
+    // A mousedown on the frame ring (border, not the text area) object-selects the box
+    // so it can be dragged/moved; clicks further inside place the caret and edit.
     this.dom.addEventListener('mousedown', e => this.onFrameMouseDown(e));
 
     // The rotor is out of flow and grows with its content; refit the wrapper to the
@@ -328,13 +354,27 @@ class TextBoxView {
   }
 
   private onFrameMouseDown(e: MouseEvent): void {
-    if (this.isOwnUi(e.target) || !this.isFrameHit(e)) return;
+    if (this.isOwnUi(e.target)) return;
     const pos = this.getPos();
     if (typeof pos !== 'number') return;
-    // No preventDefault: the browser must still be able to start a native drag of
-    // the (now selected, draggable) box.
     const view = this.editor.view;
-    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
+    const already = view.state.selection instanceof NodeSelection && view.state.selection.from === pos;
+    if (this.isFrameHit(e)) {
+      // First ring click: block the native caret so the NodeSelection sticks (then
+      // refocus, since preventDefault also drops focus). Once selected the box is
+      // draggable, so a later ring drag still moves it natively.
+      view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
+      if (!already) { e.preventDefault(); view.focus(); }
+    } else if (already) {
+      // Body click on an object-selected (draggable) box: the browser won't place a
+      // caret, so do it ourselves at the click point to enter text editing.
+      e.preventDefault();
+      const from = pos + 1, to = pos + this.node.nodeSize - 1;
+      const hit = view.posAtCoords({ left: e.clientX, top: e.clientY })?.pos;
+      const target = hit != null && hit >= from && hit <= to ? hit : from;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, target)));
+      view.focus();
+    }
   }
 
   private showBadge(w: number, h: number): void {
@@ -483,4 +523,36 @@ class TextBoxView {
     this.observer?.disconnect();
     this.observer = null;
   }
+}
+
+export type TextBoxDebugEntry = {
+  pos: number;
+  attrs: TextBoxAttrs;
+  textPreview: string;
+  // What the node view actually rendered — to compare against the attrs when a
+  // fill/stroke round-trips wrong (e.g. a stray blue background on import).
+  rendered: { background: string; border: string } | null;
+};
+
+// Every textBox node's attrs plus its live rendered fill/stroke, for the dev Debug
+// dump. Reads the .textbox-rotor's computed style via the view's DOM lookup.
+export function getTextBoxDebug(view: EditorView): TextBoxDebugEntry[] {
+  const out: TextBoxDebugEntry[] = [];
+  view.state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'textBox') return;
+    let rendered: TextBoxDebugEntry['rendered'] = null;
+    const dom = view.nodeDOM(pos);
+    const rotor = dom instanceof HTMLElement ? dom.querySelector('.textbox-rotor') : null;
+    if (rotor && typeof getComputedStyle === 'function') {
+      const cs = getComputedStyle(rotor);
+      rendered = { background: cs.backgroundColor, border: `${cs.borderTopWidth} ${cs.borderTopStyle} ${cs.borderTopColor}` };
+    }
+    out.push({
+      pos,
+      attrs: node.attrs as TextBoxAttrs,
+      textPreview: (node.textContent ?? '').slice(0, 80),
+      rendered,
+    });
+  });
+  return out;
 }

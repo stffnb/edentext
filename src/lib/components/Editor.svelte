@@ -312,9 +312,14 @@
     const r = dom.getBoundingClientRect();
     const cRect = editorContainer.getBoundingClientRect();
     const a = found.node.attrs;
+    // Anchor above the rotate grip (it protrudes above the box) so the toolbar never
+    // covers it; fall back to the box top when the grip isn't rendered.
+    const grip = dom.querySelector('.image-rotate-handle');
+    const gr = grip instanceof HTMLElement ? grip.getBoundingClientRect() : null;
+    const anchorTop = gr && gr.height > 0 ? Math.min(r.top, gr.top) : r.top;
     textBoxUi = {
       visible: true,
-      top: r.top - cRect.top + editorContainer.scrollTop,
+      top: anchorTop - cRect.top + editorContainer.scrollTop,
       left: r.left - cRect.left + editorContainer.scrollLeft,
       wrap: (a.wrap as WrapMode) || 'inline',
       shapeKind: (a.shapeKind as ShapeKind) || 'textbox',

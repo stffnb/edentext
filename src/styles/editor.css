@@ -252,7 +252,9 @@
 .paper .tiptap .image-node.image-selected .image-resize-handle,
 .paper .tiptap .image-node.image-selected .image-rotate-handle,
 .paper .tiptap .textbox-node.textbox-selected .image-resize-handle,
-.paper .tiptap .textbox-node.textbox-selected .image-rotate-handle {
+.paper .tiptap .textbox-node.textbox-selected .image-rotate-handle,
+.paper .tiptap .textbox-node.textbox-active .image-resize-handle,
+.paper .tiptap .textbox-node.textbox-active .image-rotate-handle {
   display: block;
 }
 .paper .tiptap .image-resize-nw { top: -5px; left: -5px; cursor: nwse-resize; }
@@ -314,7 +316,8 @@
 .paper .tiptap .textbox-node {
   position: relative;
 }
-.paper .tiptap .textbox-node.textbox-selected {
+.paper .tiptap .textbox-node.textbox-selected,
+.paper .tiptap .textbox-node.textbox-active {
   z-index: 25;
 }
 .paper .tiptap .textbox-rotor {
@@ -324,7 +327,8 @@
   box-sizing: border-box;
   transform: translate(-50%, -50%);
 }
-.paper .tiptap .textbox-node.textbox-selected .textbox-rotor {
+.paper .tiptap .textbox-node.textbox-selected .textbox-rotor,
+.paper .tiptap .textbox-node.textbox-active .textbox-rotor {
   outline: 2px solid var(--accent, #3b82f6);
   outline-offset: 1px;
 }
