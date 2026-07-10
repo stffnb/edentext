@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayableImageMime, imageDataUrl, imageExtOf } from '../../src/lib/import/imageFormats';
+import { displayableImageMime, imageDataUrl, imageExtOf, isConvertibleImage } from '../../src/lib/import/imageFormats';
 
 const bytesOf = (...b: number[]) => new Uint8Array(b);
 const PNG = bytesOf(0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0);
@@ -36,6 +36,22 @@ describe('displayableImageMime', () => {
   });
   it('does not mislabel a metafile as a bitmap when the extension is unknown', () => {
     expect(displayableImageMime(SVM, 'Pictures/x')).toBeNull();
+  });
+});
+
+const TIFF_LE = bytesOf(0x49, 0x49, 0x2a, 0x00, 8, 0, 0, 0);
+const TIFF_BE = bytesOf(0x4d, 0x4d, 0x00, 0x2a, 0, 0, 0, 8);
+
+describe('isConvertibleImage', () => {
+  it('flags TIFF (by extension or magic) as client-side convertible', () => {
+    expect(isConvertibleImage(TIFF_LE, 'scan.tiff')).toBe(true);
+    expect(isConvertibleImage(TIFF_BE, 'scan.tif')).toBe(true);
+    expect(isConvertibleImage(TIFF_LE, 'noext')).toBe(true); // magic-byte fallback
+  });
+  it('does not flag renderable or truly-unsupported formats', () => {
+    expect(isConvertibleImage(PNG, 'a.png')).toBe(false); // already displayable
+    expect(isConvertibleImage(SVM, 'a.svm')).toBe(false); // no client-side decoder
+    expect(isConvertibleImage(bytesOf(0, 0, 0, 0), 'a.wmf')).toBe(false);
   });
 });
 

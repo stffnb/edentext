@@ -5,7 +5,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
-import { imageDataUrl } from './imageFormats';
+import { imageDataUrl, type ConvertedImages } from './imageFormats';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import type { PageFormat } from '../storage/pageFormat';
@@ -55,6 +55,7 @@ type Ctx = {
   warnings: Set<string>;
   files: Record<string, Uint8Array>;
   imageCache: Map<string, string>;
+  convertedImages: ConvertedImages;
   pendingBlocks: Node[];
 };
 
@@ -63,6 +64,9 @@ type Ctx = {
 function loadImageDataUrl(href: string, ctx: Ctx): string | null {
   const cached = ctx.imageCache.get(href);
   if (cached) return cached;
+  // A format the browser can't render may have been pre-decoded to PNG by the async pass.
+  const converted = ctx.convertedImages.get(href);
+  if (converted) { ctx.imageCache.set(href, converted); return converted; }
   const bytes = ctx.files[href];
   if (!bytes) return null;
   const url = imageDataUrl(bytes, href);
@@ -268,7 +272,7 @@ const LIST_INDENT_EPS_CM = 0.05;
 
 // ---- entry --------------------------------------------------------------------
 
-export function importOdt(bytes: Uint8Array): OdtImportResult {
+export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = new Map()): OdtImportResult {
   let files: Record<string, Uint8Array>;
   try {
     files = unzipSync(bytes);
@@ -286,7 +290,7 @@ export function importOdt(bytes: Uint8Array): OdtImportResult {
   const body = contentDoc.getElementsByTagNameNS(NS.office, 'text')[0];
   if (!body) throw new Error('Not a text document (no office:text body).');
 
-  const ctx: Ctx = { resolver, warnings, files, imageCache: new Map(), pendingBlocks: [] };
+  const ctx: Ctx = { resolver, warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [] };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 

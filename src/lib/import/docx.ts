@@ -6,7 +6,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
-import { imageDataUrl } from './imageFormats';
+import { imageDataUrl, type ConvertedImages } from './imageFormats';
 import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
@@ -31,6 +31,7 @@ type Ctx = {
   files: Record<string, Uint8Array>;
   rels: Map<string, RelInfo>;
   imageCache: Map<string, string>;
+  convertedImages: ConvertedImages;
   pendingBlocks: Node[];
 };
 
@@ -81,7 +82,7 @@ function hexColor(v: string | null | undefined): string | undefined {
 }
 
 // ---- entry ------------------------------------------------------------------
-export function importDocx(bytes: Uint8Array): OdtImportResult {
+export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages = new Map()): OdtImportResult {
   let files: Record<string, Uint8Array>;
   try {
     files = unzipSync(bytes);
@@ -98,7 +99,7 @@ export function importDocx(bytes: Uint8Array): OdtImportResult {
   const styles = new DocxStyles(stylesDoc, numberingDoc, themeDoc);
   const warnings = new Set<string>();
 
-  const ctx: Ctx = { styles, warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), pendingBlocks: [] };
+  const ctx: Ctx = { styles, warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [] };
 
   const body = docDoc.getElementsByTagNameNS(W, 'body')[0];
   if (!body) throw new Error('Not a Word document (no w:body).');
@@ -704,6 +705,9 @@ function marksFor(props: RunProps, headingLevel: number | null, boldByDefault: b
 function loadImageDataUrl(path: string, ctx: Ctx): string | null {
   const cached = ctx.imageCache.get(path);
   if (cached) return cached;
+  // A format the browser can't render may have been pre-decoded to PNG by the async pass.
+  const converted = ctx.convertedImages.get(path);
+  if (converted) { ctx.imageCache.set(path, converted); return converted; }
   const bytes = ctx.files[path];
   if (!bytes) return null;
   const url = imageDataUrl(bytes, path);

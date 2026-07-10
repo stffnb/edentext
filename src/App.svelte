@@ -11,6 +11,7 @@
   import { supportsFsAccess, saveOdt, saveAsOdt, saveAsDocx, openOdt } from './lib/export/saveFile';
   import { importOdt } from './lib/import/odt';
   import { importDocx } from './lib/import/docx';
+  import { convertUnsupportedImages } from './lib/import/imageFormats';
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
   import { getColumnsFlowDebug } from './lib/editor/extensions/columnsFlow';
   import { getColorDebug } from './lib/utils/colorDebug';
@@ -325,11 +326,14 @@
 
   // Replace the document with a parsed .odt; adopt its geometry/header/footer and
   // track the source handle (null for the fallback file input) so Save overwrites it.
-  function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string) {
+  async function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string) {
     if (!editor) return;
     try {
       const isDocx = sourceName?.toLowerCase().endsWith('.docx');
-      const result = isDocx ? importDocx(bytes) : importOdt(bytes);
+      // Pre-decode any images in a format the browser can't render (TIFF, …) to PNG.
+      // Lazy: the decoder loads only when such an image is present, else this is a no-op.
+      const converted = await convertUnsupportedImages(bytes);
+      const result = isDocx ? importDocx(bytes, converted) : importOdt(bytes, converted);
 
       const hasContent = editor.state.doc.textContent.length > 0 || editor.state.doc.childCount > 1;
       if (hasContent && !confirm(t().dialogs.confirmReplace)) {
@@ -372,7 +376,7 @@
     if (fsSupported) {
       try {
         const r = await openOdt();
-        if (r) applyImport(r.bytes, r.handle, r.name);
+        if (r) await applyImport(r.bytes, r.handle, r.name);
       } catch (err) {
         if ((err as DOMException)?.name !== 'AbortError') {
           console.error('[open] Failed to open file:', err);
@@ -389,7 +393,7 @@
     const file = input.files?.[0];
     input.value = ''; // allow re-selecting the same file
     if (!file) return;
-    applyImport(new Uint8Array(await file.arrayBuffer()), null, file.name);
+    await applyImport(new Uint8Array(await file.arrayBuffer()), null, file.name);
   }
 
   async function handleSave() {

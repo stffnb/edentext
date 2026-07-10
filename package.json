@@ -60,6 +60,7 @@
     "html2canvas": "^1.4.1",
     "hunspell-asm": "^4.0.2",
     "jspdf": "^4.2.1",
-    "odf-kit": "^0.13.5"
+    "odf-kit": "^0.13.5",
+    "utif2": "^4.1.0"
   }
 }

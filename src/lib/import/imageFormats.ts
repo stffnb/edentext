@@ -1,8 +1,10 @@
 // Image-format handling shared by the ODF and DOCX importers. An <img> can only
-// render a fixed set of formats; anything else (WMF/EMF/SVM/TIFF/…) has to be skipped
-// with a warning rather than emitted as a broken image. The format is resolved from
-// the file extension first, then confirmed/recovered from the bytes' magic number so a
-// mislabelled or extensionless entry still works.
+// render a fixed set of formats; anything else (WMF/EMF/SVM/TIFF/…) is either decoded
+// client-side (see convertUnsupportedImages) or skipped with a warning rather than
+// emitted as a broken image. The format is resolved from the file extension first, then
+// confirmed/recovered from the bytes' magic number so a mislabelled or extensionless
+// entry still works.
+import { unzipSync } from 'fflate';
 
 const MIME_BY_EXT: Record<string, string> = {
   png: 'image/png',
@@ -69,4 +71,75 @@ export function imageDataUrl(bytes: Uint8Array, path: string): string | null {
   const mime = displayableImageMime(bytes, path);
   if (!mime) return null;
   return `data:${mime};base64,${bytesToBase64(bytes)}`;
+}
+
+// ---- client-side decoding of formats the browser can't render ----------------
+
+// A map from archive path to a decoded PNG data-URI, produced by the async pre-pass and
+// consulted by the synchronous importers before they read the raw bytes.
+export type ConvertedImages = Map<string, string>;
+
+// TIFF: 'II*\0' (little-endian) or 'MM\0*' (big-endian), or a .tif/.tiff extension.
+function isTiff(bytes: Uint8Array, path: string): boolean {
+  const ext = imageExtOf(path);
+  if (ext === 'tif' || ext === 'tiff') return true;
+  return bytes.length >= 4
+    && ((bytes[0] === 0x49 && bytes[1] === 0x49 && bytes[2] === 0x2a && bytes[3] === 0x00)
+      || (bytes[0] === 0x4d && bytes[1] === 0x4d && bytes[2] === 0x00 && bytes[3] === 0x2a));
+}
+
+// True when the browser can't display the bytes directly but a lazy decoder can turn
+// them into something it can (see convertImageToDataUrl).
+export function isConvertibleImage(bytes: Uint8Array, path: string): boolean {
+  return displayableImageMime(bytes, path) === null && isTiff(bytes, path);
+}
+
+// RGBA pixels → a PNG data-URI via an offscreen canvas (browser only, which is where
+// import runs). null when there's no 2D context or the dimensions are empty.
+function rgbaToPngDataUrl(rgba: Uint8Array, w: number, h: number): string | null {
+  if (!w || !h) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const cctx = canvas.getContext('2d');
+  if (!cctx) return null;
+  cctx.putImageData(new ImageData(new Uint8ClampedArray(rgba), w, h), 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
+// Decode a convertible format to a PNG data-URI, lazy-loading the decoder so it never
+// enters the baseline bundle. null when it isn't convertible or decoding fails.
+export async function convertImageToDataUrl(bytes: Uint8Array, path: string): Promise<string | null> {
+  try {
+    if (isTiff(bytes, path)) {
+      const UTIF = await import('utif2');
+      // A fresh ArrayBuffer (not the possibly-shared source buffer) for UTIF's typing.
+      const buf = new Uint8Array(bytes).buffer;
+      const ifds = UTIF.decode(buf);
+      if (!ifds.length) return null;
+      UTIF.decodeImage(buf, ifds[0]);
+      return rgbaToPngDataUrl(UTIF.toRGBA8(ifds[0]), ifds[0].width, ifds[0].height);
+    }
+  } catch { /* corrupt/unsupported → the importer skips it with a warning */ }
+  return null;
+}
+
+// Only archive entries in an image folder (ODF Pictures/, DOCX word/media/) are probed.
+function looksLikeMedia(path: string): boolean {
+  return /(^|\/)(Pictures|media)\//i.test(path);
+}
+
+// Pre-decode every convertible image in an .odt/.docx archive to a PNG data-URI, so the
+// synchronous importer can resolve them. Lazy: the decoder is only imported when such an
+// image is actually present, so ordinary documents load with zero extra cost.
+export async function convertUnsupportedImages(bytes: Uint8Array): Promise<ConvertedImages> {
+  const out: ConvertedImages = new Map();
+  let files: Record<string, Uint8Array>;
+  try { files = unzipSync(bytes); } catch { return out; }
+  for (const [path, data] of Object.entries(files)) {
+    if (!looksLikeMedia(path) || !isConvertibleImage(data, path)) continue;
+    const url = await convertImageToDataUrl(data, path);
+    if (url) out.set(path, url);
+  }
+  return out;
 }
