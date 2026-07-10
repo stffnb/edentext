@@ -99,6 +99,10 @@
   // set on open, editable in the header, blank → heading-derived fallback.
   let documentName: string = $state(loadDocName());
 
+  // Width of the hidden mirror span (below), so the title input grows/shrinks
+  // with its text instead of sitting in a fixed-width box.
+  let docNameSizerWidth = $state(0);
+
   // Shown in the empty title field: what an actual save would name the file.
   // Only computed while the field is blank (otherwise the placeholder is hidden,
   // so we skip the per-transaction getJSON).
@@ -625,23 +629,29 @@
           <rect x="4.75" y="8.75" width="6.5" height="4.75" rx="0.5" stroke="currentColor" stroke-width="1.3"/>
         </svg>
       {/snippet}
-      <div class="doc-name">
+      <div class="doc-name" class:has-value={documentName.trim().length > 0}>
         <!-- Document with lines -->
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <svg class="doc-name-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M9 1.75H4.5A1.25 1.25 0 0 0 3.25 3v10A1.25 1.25 0 0 0 4.5 14.25h7A1.25 1.25 0 0 0 12.75 13V5.5L9 1.75z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
           <path d="M9 1.75V5.5h3.75" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
           <line x1="5.5" y1="8.25" x2="10" y2="8.25" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           <line x1="5.5" y1="10.5" x2="10" y2="10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
         </svg>
+        <span class="doc-name-sizer" aria-hidden="true" bind:clientWidth={docNameSizerWidth}>{documentName || namePlaceholder}</span>
         <input
           class="doc-name-input"
           type="text"
+          style="width: {docNameSizerWidth + 4}px"
           bind:value={documentName}
           placeholder={namePlaceholder}
           title={t().app.documentName}
           onkeydown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
           onblur={() => (documentName = documentName.trim())}
         />
+        <span class="doc-name-ext">.odt</span>
+        <svg class="doc-name-pencil" width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M11.3 2.3a1 1 0 0 1 1.4 0l1 1a1 1 0 0 1 0 1.4l-7 7-2.8.9.9-2.8 7-7.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>
+        </svg>
       </div>
       <div class="file-actions">
         <button class="file-action-btn" onclick={handleNew} disabled={!editor} title={t().app.newDocument}>
@@ -1076,14 +1086,18 @@
     gap: 2px;
   }
 
-  /* Editable document title (Google-Docs style): borderless at rest, subtle
-     frame on hover/focus. Drives the suggested save filename. */
+  /* Editable document title: borderless at rest, text auto-sizes to its
+     content (via the hidden .doc-name-sizer mirror), an animated underline
+     grows in on focus, and a pencil hint fades in on hover. Drives the
+     suggested save filename. */
   .doc-name {
+    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0 0.25rem 0 0.4rem;
+    gap: 0.3rem;
+    padding: 0 0.4rem;
     margin-right: 0.25rem;
+    height: var(--toolbar-btn-size);
     border-radius: var(--radius);
     color: var(--color-text-muted);
     transition: background 0.15s;
@@ -1094,18 +1108,38 @@
     background: var(--color-btn-hover);
   }
 
+  .doc-name-icon {
+    flex-shrink: 0;
+    transition: color 0.15s;
+  }
+
+  .doc-name:focus-within .doc-name-icon {
+    color: var(--color-primary);
+  }
+
+  /* Invisible twin of the input's text; its measured width drives the
+     input's width so the field grows/shrinks like a title, not a box. */
+  .doc-name-sizer {
+    position: absolute;
+    visibility: hidden;
+    white-space: pre;
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+  }
+
   .doc-name-input {
-    width: 13rem;
-    height: var(--toolbar-btn-size);
-    padding: 0 0.25rem;
-    border: 1px solid transparent;
-    border-radius: var(--radius);
+    min-width: 3ch;
+    max-width: 15rem;
+    height: 100%;
+    padding: 0 1px;
+    border: none;
+    border-bottom: 1.5px solid transparent;
     background: transparent;
     color: var(--color-text);
     font-family: var(--font-sans);
     font-size: 0.85rem;
     outline: none;
-    transition: border-color 0.15s, background 0.15s;
+    transition: border-color 0.15s ease;
   }
 
   .doc-name-input::placeholder {
@@ -1114,8 +1148,33 @@
   }
 
   .doc-name-input:focus {
-    border-color: var(--color-border);
-    background: var(--color-surface);
+    border-bottom-color: var(--color-primary);
+  }
+
+  .doc-name-ext {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    letter-spacing: 0.01em;
+    color: var(--color-text-muted);
+    opacity: 0.7;
+  }
+
+  .doc-name:not(.has-value) .doc-name-ext {
+    display: none;
+  }
+
+  .doc-name-pencil {
+    flex-shrink: 0;
+    color: var(--color-text-muted);
+    opacity: 0;
+    transform: translateX(-3px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+
+  .doc-name:hover .doc-name-pencil,
+  .doc-name:focus-within .doc-name-pencil {
+    opacity: 1;
+    transform: none;
   }
 
   .action-separator {
