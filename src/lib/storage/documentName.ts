@@ -11,9 +11,9 @@ export function saveDocName(name: string): void {
   localStorage.setItem(KEY, name);
 }
 
-// Drop a trailing .odt (case-insensitive) so the field shows just the name.
+// Drop a trailing .odt or .ott (case-insensitive) so the field shows just the name.
 export function stripOdtExtension(name: string): string {
-  return name.replace(/\.odt$/i, '');
+  return name.replace(/\.o[dt]t$/i, '');
 }
 
 // Strip filesystem-illegal characters; keep spaces so user-typed titles read

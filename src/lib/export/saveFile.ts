@@ -2,6 +2,7 @@
 // plain browser download / no-op where the API is unavailable (Firefox/Safari).
 
 const ODT_MIME = 'application/vnd.oasis.opendocument.text';
+const OTT_MIME = 'application/vnd.oasis.opendocument.text-template';
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 const PICKER_TYPES = [
@@ -10,6 +11,12 @@ const PICKER_TYPES = [
 
 const DOCX_PICKER_TYPES = [
   { description: 'Word Document', accept: { [DOCX_MIME]: ['.docx'] } },
+];
+
+// The open picker also accepts .ott templates (read-only; saving stays .odt-only).
+const OPEN_PICKER_TYPES = [
+  { description: 'OpenDocument Text', accept: { [ODT_MIME]: ['.odt'], [OTT_MIME]: ['.ott'] } },
+  ...DOCX_PICKER_TYPES,
 ];
 
 // showSaveFilePicker/showOpenFilePicker are not in lib.dom yet; reach them via casts.
@@ -81,10 +88,10 @@ export async function saveAsDocx(bytes: Uint8Array, suggestedName: string): Prom
   await writeHandle(handle, bytes);
 }
 
-// Prompt for an .odt/.docx to open, capturing its handle so a later save can overwrite
-// the same file. Returns null if cancelled. Only call when supportsFsAccess().
+// Prompt for an .odt/.ott/.docx to open, capturing its handle so a later save can
+// overwrite the same file. Returns null if cancelled. Only call when supportsFsAccess().
 export async function openOdt(): Promise<{ bytes: Uint8Array; handle: FileSystemFileHandle; name: string } | null> {
-  const [handle] = await (window as WinFs).showOpenFilePicker!({ types: [...PICKER_TYPES, ...DOCX_PICKER_TYPES], multiple: false });
+  const [handle] = await (window as WinFs).showOpenFilePicker!({ types: OPEN_PICKER_TYPES, multiple: false });
   if (!handle) return null;
   const file = await handle.getFile();
   return { bytes: new Uint8Array(await file.arrayBuffer()), handle, name: file.name };

@@ -75,6 +75,7 @@
 **File & export**
 - ODT export via odf-kit with extensive content.xml / styles.xml post-processing (custom node types, tables with borders, images, fonts and colors); filename derived from the first heading (fallback `document.odt`)
 - ODT import / open existing file: parses content.xml / styles.xml directly, adopts the file's margins and orientation, and reports graceful-degradation warnings
+- Opens `.ott` templates (OpenDocument Text Template): read like an `.odt`, but as a new untitled document — the first Save writes a fresh `.odt` and never overwrites the template (Word/LibreOffice behavior)
 - Word (.docx) export and import — round-trips the editor's formatting (text, fonts, lists, tables, images, headers/footers, page geometry) and opens real Word documents
 - PDF export — Raster (pixel-exact copy of the editor with a selectable text layer) and Vector (crisp, fonts embedded, via the browser print dialog)
 - Print (printer button / Ctrl+P) — opens the browser print dialog with a pixel-exact raster of the document (tables, headers/footers and page breaks intact)

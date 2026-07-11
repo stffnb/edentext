@@ -335,6 +335,9 @@
     if (!editor) return;
     try {
       const isDocx = sourceName?.toLowerCase().endsWith('.docx');
+      // An .ott is a template: load its content but don't bind the handle, so the
+      // first Save prompts for a new .odt instead of overwriting the template.
+      const isTemplate = sourceName?.toLowerCase().endsWith('.ott');
       // Pre-decode any images in a format the browser can't render (TIFF, …) to PNG.
       // Lazy: the decoder loads only when such an image is present, else this is a no-op.
       const converted = await convertUnsupportedImages(bytes);
@@ -364,7 +367,7 @@
         header: result.headerDistanceCm ?? DEFAULT_HF_DISTANCES.header,
         footer: result.footerDistanceCm ?? DEFAULT_HF_DISTANCES.footer,
       };
-      fileHandle = handle;
+      fileHandle = isTemplate ? null : handle;
 
       if (result.warnings.length) {
         console.warn('[import] Unsupported content in opened file:', result.warnings);
@@ -779,7 +782,7 @@
       <input
         bind:this={fileInput}
         type="file"
-        accept=".odt,.docx,application/vnd.oasis.opendocument.text,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        accept=".odt,.ott,.docx,application/vnd.oasis.opendocument.text,application/vnd.oasis.opendocument.text-template,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         class="file-input"
         onchange={handleImportFile}
       />
