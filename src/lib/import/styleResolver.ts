@@ -16,7 +16,17 @@ export const NS = {
   draw: 'urn:oasis:names:tc:opendocument:xmlns:drawing:1.0',
   xlink: 'http://www.w3.org/1999/xlink',
   number: 'urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0',
+  loext: 'urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0',
 } as const;
+
+// One embedded-font binary referenced from a <style:font-face>: the CSS family runs use,
+// the package href of the font file, and the face's weight/style.
+export interface EmbeddedFontSource {
+  family: string;
+  href: string;
+  weight: 'normal' | 'bold';
+  style: 'normal' | 'italic';
+}
 
 // Property keys are stored as "alias:localName" for the namespaces we care
 // about; attributes from other namespaces are dropped.
@@ -102,6 +112,7 @@ export class StyleResolver {
   private styles = new Map<string, StyleEntry>();
   private defaults = new Map<string, StyleEntry>(); // family → style:default-style
   private fontFaces = new Map<string, string>();    // style:name → first font-family
+  private fontSources: EmbeddedFontSource[] = [];   // embedded font binaries
   private listStyles = new Map<string, Element>();  // style:name → text:list-style
   private numberStyles = new Map<string, Element>(); // style:name → number:date/time-style
   // Section styles kept as raw elements: <style:columns> is a child element of
@@ -131,13 +142,25 @@ export class StyleResolver {
     for (const el of Array.from(container.children)) {
       if (el.namespaceURI !== NS.style || el.localName !== 'font-face') continue;
       const name = el.getAttributeNS(NS.style, 'name');
+      if (!name) continue;
+      // svg:font-family may be a quoted list: 'Liberation Serif', 'Times New Roman'
       const family = el.getAttributeNS(NS.svg, 'font-family');
-      if (name && family) {
-        // svg:font-family may be a quoted list: 'Liberation Serif', 'Times New Roman'
-        const first = family.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
-        if (first) this.fontFaces.set(name, first);
+      const first = family ? family.split(',')[0].trim().replace(/^['"]|['"]$/g, '') : '';
+      if (first) this.fontFaces.set(name, first);
+      const cssFamily = first || name;
+      for (const uri of Array.from(el.getElementsByTagNameNS(NS.svg, 'font-face-uri'))) {
+        const href = uri.getAttributeNS(NS.xlink, 'href');
+        if (!href) continue;
+        const weight = uri.getAttributeNS(NS.loext, 'font-weight') === 'bold' ? 'bold' : 'normal';
+        const style = uri.getAttributeNS(NS.loext, 'font-style') === 'italic' ? 'italic' : 'normal';
+        this.fontSources.push({ family: cssFamily, href, weight, style });
       }
     }
+  }
+
+  // Embedded font binaries (one per <svg:font-face-uri>); importOdt maps href → bytes.
+  embeddedFontSources(): readonly EmbeddedFontSource[] {
+    return this.fontSources;
   }
 
   private scanContainer(container: Element): void {

@@ -32,6 +32,8 @@
   import { withShortcut } from './lib/i18n/shortcut';
   import { localizeImportMessage } from './lib/i18n/importMessages';
   import { unavailableFonts } from './lib/utils/fontDetect';
+  import { registerEmbeddedFonts, clearEmbeddedFonts } from './lib/fonts/embeddedFonts';
+  import { saveEmbeddedFonts, loadEmbeddedFonts, clearEmbeddedFontStore } from './lib/storage/embeddedFontStore';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
@@ -327,6 +329,8 @@
     hfDistances = { ...DEFAULT_HF_DISTANCES };
     documentName = '';
     fileHandle = null;
+    clearEmbeddedFonts();
+    void clearEmbeddedFontStore();
     editor.commands.focus();
   }
 
@@ -360,6 +364,11 @@
       if (hasContent && !confirm(t().dialogs.confirmReplace)) {
         return;
       }
+
+      // Register the document's embedded fonts (and persist them for next reload) before
+      // rendering, so its text shows in the right face and isn't flagged as missing below.
+      await registerEmbeddedFonts(result.fonts);
+      void saveEmbeddedFonts(result.fonts);
 
       editor.commands.setContent(result.content); // onUpdate fires → autosave
       // Adopt the opened file's name as the document name (drives the save filename).
@@ -565,6 +574,10 @@
   }
 
   onMount(() => {
+    // Re-register the restored document's embedded fonts so it renders in the right face;
+    // FontFace load fires 'loadingdone', which Editor.svelte re-paginates on.
+    void loadEmbeddedFonts().then(registerEmbeddedFonts);
+
     function onKeydown(e: KeyboardEvent) {
       // Ctrl/Cmd+S → Save (suppress the browser's save-page dialog).
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 's' || e.key === 'S')) {

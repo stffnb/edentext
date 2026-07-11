@@ -13,6 +13,7 @@ import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import type { HfDoc } from '../storage/headerFooter';
 import type { OdtImportResult } from './odt';
+import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 
 // .docx → TipTap JSON, inverting export/docx.ts. Editor-expressible OOXML becomes its
 // native node/mark/attr; values matching the editor's defaults are suppressed so round
@@ -139,8 +140,38 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     headerDistanceCm: sect.header ? sect.headerDistCm : null,
     footerDistanceCm: sect.footer ? sect.footerDistCm : null,
     language: documentLanguage(stylesDoc, warnings),
+    fonts: extractDocxFonts(files),
     warnings: [...warnings],
   };
+}
+
+// Fonts embedded via word/fontTable.xml: each <w:font> may reference regular/bold/italic/
+// bold-italic .odttf binaries (obfuscated). Resolve r:id → package path, read + de-obfuscate.
+function extractDocxFonts(files: Record<string, Uint8Array>): EmbeddedFont[] {
+  const ftBytes = files['word/fontTable.xml'];
+  if (!ftBytes) return [];
+  let doc: Document;
+  try { doc = parseXml(strFromU8(ftBytes)); } catch { return []; }
+  const rels = parseRels(files['word/_rels/fontTable.xml.rels']);
+  const embeds: [string, 'normal' | 'bold', 'normal' | 'italic'][] = [
+    ['embedRegular', 'normal', 'normal'], ['embedBold', 'bold', 'normal'],
+    ['embedItalic', 'normal', 'italic'], ['embedBoldItalic', 'bold', 'italic'],
+  ];
+  const out: EmbeddedFont[] = [];
+  for (const font of Array.from(doc.getElementsByTagNameNS(W, 'font'))) {
+    const family = font.getAttributeNS(W, 'name');
+    if (!family) continue;
+    for (const [tag, weight, style] of embeds) {
+      const el = fc(font, tag);
+      const rel = el ? rels.get(el.getAttributeNS(R, 'id') ?? '') : undefined;
+      if (!el || !rel || rel.external) continue;
+      const data = files['word/' + rel.target.replace(/^\/+/, '')];
+      if (!data) continue;
+      const key = el.getAttributeNS(W, 'fontKey');
+      out.push({ family, weight, style, data: key ? deobfuscateOdttf(data, key) : data });
+    }
+  }
+  return out;
 }
 
 function parseRels(bytes: Uint8Array | undefined): Map<string, RelInfo> {

@@ -11,6 +11,7 @@ import type { Orientation } from '../storage/pageOrientation';
 import type { PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import type { HfDoc } from '../storage/headerFooter';
+import type { EmbeddedFont } from '../fonts/embeddedFonts';
 
 // .odt → TipTap JSON, inverting export/odt.ts. Editor-expressible content becomes its
 // native node/mark/attr; values matching the editor's defaults are suppressed so round
@@ -39,6 +40,8 @@ export interface OdtImportResult {
   // Document spell-check language; NO_LANGUAGE when the file's language has no
   // bundled dictionary; null when the file declares none.
   language: DocumentLanguage | null;
+  // Fonts embedded in the package, to register via FontFace so they render.
+  fonts: EmbeddedFont[];
   warnings: string[];
 }
 
@@ -343,6 +346,12 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const geometry = resolver.pageGeometry();
   const edge = resolver.edgeDistancesCm();
 
+  const fonts: EmbeddedFont[] = [];
+  for (const s of resolver.embeddedFontSources()) {
+    const data = files[s.href];
+    if (data) fonts.push({ family: s.family, weight: s.weight, style: s.style, data });
+  }
+
   const odfLang = resolver.documentLanguage();
   let language: DocumentLanguage | null = null;
   if (odfLang) {
@@ -366,6 +375,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     headerDistanceCm: hf.header ? edge?.top ?? null : null,
     footerDistanceCm: hf.footer ? edge?.bottom ?? null : null,
     language,
+    fonts,
     warnings: [...warnings],
   };
 }
