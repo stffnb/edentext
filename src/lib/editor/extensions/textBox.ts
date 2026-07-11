@@ -18,6 +18,10 @@ export type ShapeKind = 'textbox' | 'roundRect' | 'ellipse';
 export const TEXTBOX_PADDING_CM = 0.15;
 const PADDING_PX = (TEXTBOX_PADDING_CM * 96) / 2.54;
 
+// Extra per-axis inset that fits the text area into an ellipse's inscribed
+// rectangle (half-axis / √2), so text follows the oval instead of the bbox.
+const ELLIPSE_INSET_RATIO = (1 - 1 / Math.SQRT2) / 2;
+
 const DEFAULT_WIDTH_PX = 280;
 const DEFAULT_HEIGHT_PX = 96;
 const PX_PER_PT = 96 / 72;
@@ -224,6 +228,9 @@ class TextBoxView {
   private getPos: () => number;
   private observer: ResizeObserver | null = null;
   private resizing = false;
+  // Last ellipse text-area inset applied; guards the ResizeObserver feedback loop.
+  private lastInsetX = -1;
+  private lastInsetY = -1;
 
   constructor(node: PMNode, editor: Editor, getPos: () => number) {
     this.node = node;
@@ -265,8 +272,12 @@ class TextBoxView {
     this.dom.addEventListener('mousedown', e => this.onFrameMouseDown(e));
 
     // The rotor is out of flow and grows with its content; refit the wrapper to the
-    // rotated bounding box whenever the rendered size changes (typing, resizing).
-    this.observer = new ResizeObserver(() => this.fitWrapper());
+    // rotated bounding box whenever the rendered size changes (typing, resizing), and
+    // re-fit an ellipse's text area to its now-current height.
+    this.observer = new ResizeObserver(() => {
+      this.applyShapeInset();
+      this.fitWrapper();
+    });
     this.observer.observe(this.rotor);
 
     this.applyAll();
@@ -287,7 +298,28 @@ class TextBoxView {
     this.rotor.style.borderRadius = shapeRadius(a.shapeKind);
     this.rotor.style.transform = `translate(-50%, -50%) rotate(${a.rotation}deg)`;
     this.applyWrap();
+    this.applyShapeInset();
     this.fitWrapper();
+  }
+
+  // For an ellipse, pad the content into the inscribed rectangle so text stays inside
+  // the oval. The vertical inset feeds back into the auto-grown height, so rewrite it
+  // only past a threshold — the ResizeObserver then settles (ratio < 0.5 converges).
+  private applyShapeInset(): void {
+    if (this.attrs().shapeKind !== 'ellipse') {
+      if (this.contentDOM.style.padding) this.contentDOM.style.padding = '';
+      this.lastInsetX = this.lastInsetY = -1;
+      return;
+    }
+    const w = this.rotor.offsetWidth;
+    const h = this.rotor.offsetHeight;
+    if (!w || !h) return;
+    const insetX = w * ELLIPSE_INSET_RATIO;
+    const insetY = h * ELLIPSE_INSET_RATIO;
+    if (Math.abs(insetX - this.lastInsetX) < 0.5 && Math.abs(insetY - this.lastInsetY) < 0.5) return;
+    this.lastInsetX = insetX;
+    this.lastInsetY = insetY;
+    this.contentDOM.style.padding = `${insetY.toFixed(2)}px ${insetX.toFixed(2)}px`;
   }
 
   // Size the wrapper to the rotor's rotated bounding box so surrounding text
@@ -443,6 +475,7 @@ class TextBoxView {
       moved = true;
       this.rotor.style.width = `${lastW}px`;
       this.rotor.style.minHeight = `${lastH}px`;
+      this.applyShapeInset();
       this.fitWrapper();
       this.showBadge(lastW, lastH);
     };
@@ -508,6 +541,9 @@ class TextBoxView {
   }
 
   ignoreMutation(m: MutationRecord | { type: 'selection'; target: globalThis.Node }): boolean {
+    // The ellipse inset padding we write to contentDOM is our own styling, not a content
+    // edit — without this PM rebuilds the node view mid-resize and the wrapper collapses.
+    if (m.type === 'attributes' && m.target === this.contentDOM) return true;
     return !this.contentDOM.contains(m.target);
   }
 

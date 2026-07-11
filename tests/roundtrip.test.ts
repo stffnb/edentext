@@ -588,6 +588,45 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: no hyperlink warning (now round-tripped)', !f.warnings.includes('Hyperlinks were converted to plain text'), f.warnings);
   });
 
+  it('resolves a drawn shape\'s fill/stroke inherited from the default graphic style', () => {
+    // LibreOffice omits draw:fill/draw:stroke on a shape that keeps the app default
+    // (solid), taking the color from the default graphic style; only "none" turns it off.
+    const stylesXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0">
+ <office:styles>
+  <style:default-style style:family="graphic">
+   <style:graphic-properties svg:stroke-color="#3465a4" draw:fill-color="#729fcf"/>
+  </style:default-style>
+ </office:styles>
+</office:document-styles>`;
+    const contentXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0">
+ <office:automatic-styles>
+  <style:style style:name="grInherit" style:family="graphic"><style:graphic-properties draw:auto-grow-height="false"/></style:style>
+  <style:style style:name="grNone" style:family="graphic"><style:graphic-properties draw:fill="none" draw:stroke="none"/></style:style>
+ </office:automatic-styles>
+ <office:body><office:text>
+  <text:p><draw:custom-shape draw:style-name="grInherit" svg:width="4cm" svg:height="3cm"><text:p>inherit</text:p><draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="ellipse"/></draw:custom-shape></text:p>
+  <text:p><draw:custom-shape draw:style-name="grNone" svg:width="4cm" svg:height="3cm"><text:p>none</text:p><draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="ellipse"/></draw:custom-shape></text:p>
+ </office:text></office:body>
+</office:document-content>`;
+    const foreign = zipSync({
+      mimetype: [strToU8('application/vnd.oasis.opendocument.text'), { level: 0 }],
+      'content.xml': [strToU8(contentXml), { level: 6 }],
+      'styles.xml': [strToU8(stylesXml), { level: 6 }],
+    } as any);
+
+    const boxes: N[] = [];
+    const walk = (n: N): void => { if (n?.type === 'textBox') boxes.push(n); (n?.content || []).forEach(walk); };
+    walk(importOdt(foreign).content);
+    check('shape fill/stroke: two ellipses imported', boxes.length === 2, boxes.map((b: N) => b.attrs));
+    const [inherit, none] = boxes;
+    check('shape fill/stroke: inherited fill #729FCF', inherit.attrs.fillColor === '#729FCF', inherit.attrs);
+    check('shape fill/stroke: inherited stroke #3465A4', inherit.attrs.strokeColor === '#3465A4', inherit.attrs);
+    check('shape fill/stroke: explicit none → null fill', none.attrs.fillColor === null, none.attrs);
+    check('shape fill/stroke: explicit none → null stroke', none.attrs.strokeColor === null, none.attrs);
+  });
+
   it('wraps the body in columns when the page layout declares them (Word-style)', () => {
     const stylesXml = `<?xml version="1.0" encoding="UTF-8"?>
 <office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0">

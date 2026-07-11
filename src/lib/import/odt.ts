@@ -138,17 +138,22 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
 }
 
 // A shape's fill color. fo:background-color (LibreOffice's per-shape fill) wins over
-// draw:fill when set — the two coexist because the default graphic style carries a
-// draw:fill that a "no fill" shape overrides only via fo:background-color="transparent".
-function shapeFill(gp: PropMap): string | null {
+// draw:fill when set. A drawn shape's fill defaults to solid when the keyword is
+// absent — LibreOffice omits draw:fill and only writes "none" to turn it off, taking
+// the color from the (usually inherited) draw:fill-color. defaultSolid is false for
+// plain text frames, whose fill defaults to none.
+function shapeFill(gp: PropMap, defaultSolid: boolean): string | null {
   const bg = gp['fo:background-color'];
   if (bg !== undefined) return bg === 'transparent' || bg === 'none' ? null : normalizeColor(bg) ?? null;
-  return gp['draw:fill'] === 'solid' ? normalizeColor(gp['draw:fill-color'] ?? '') ?? null : null;
+  const fill = gp['draw:fill'];
+  const solid = fill === 'solid' || (fill === undefined && defaultSolid);
+  return solid ? normalizeColor(gp['draw:fill-color'] ?? '') ?? null : null;
 }
 
 // A shape's stroke as { color, widthPt }. fo:border ("<w> <style> <color>", LibreOffice's
-// per-shape border) wins over draw:stroke for the same reason as shapeFill.
-function shapeStroke(gp: PropMap): { color: string | null; widthPt: number | null } {
+// per-shape border) wins over draw:stroke. Like the fill, a drawn shape's stroke defaults
+// to solid when draw:stroke is absent (color from svg:stroke-color); "none" turns it off.
+function shapeStroke(gp: PropMap, defaultSolid: boolean): { color: string | null; widthPt: number | null } {
   const border = gp['fo:border'];
   if (border !== undefined) {
     let widthPt: number | null = null, color: string | null = null, styleTok: string | null = null;
@@ -162,19 +167,20 @@ function shapeStroke(gp: PropMap): { color: string | null; widthPt: number | nul
     }
     return { color: color ?? '#000000', widthPt };
   }
-  const color = gp['draw:stroke'] && gp['draw:stroke'] !== 'none'
-    ? normalizeColor(gp['svg:stroke-color'] ?? '#000000') ?? '#000000'
-    : null;
+  const stroke = gp['draw:stroke'];
+  const present = stroke === undefined ? defaultSolid && gp['svg:stroke-color'] !== undefined : stroke !== 'none';
+  const color = present ? normalizeColor(gp['svg:stroke-color'] ?? '#000000') ?? '#000000' : null;
   return { color, widthPt: color ? lengthToPt(gp['svg:stroke-width']) : null };
 }
 
 // Fill/stroke attrs from a shape's graphic style, suppressing the editor defaults
 // (white fill, 1pt black stroke). Absent/none → explicit null (transparent/no border),
-// since omitting the attr would re-apply the default.
-function shapeStyleAttrs(gp: PropMap, attrs: Record<string, unknown>): void {
-  const fillColor = shapeFill(gp);
+// since omitting the attr would re-apply the default. defaultSolid marks drawn shapes,
+// whose fill/stroke default to solid (unlike a plain text frame's).
+function shapeStyleAttrs(gp: PropMap, attrs: Record<string, unknown>, defaultSolid: boolean): void {
+  const fillColor = shapeFill(gp, defaultSolid);
   if (fillColor !== '#FFFFFF') attrs.fillColor = fillColor;
-  const { color: strokeColor, widthPt } = shapeStroke(gp);
+  const { color: strokeColor, widthPt } = shapeStroke(gp, defaultSolid);
   if (strokeColor !== '#000000') attrs.strokeColor = strokeColor;
   if (strokeColor && widthPt != null && Math.abs(widthPt - 1) > 0.1) {
     attrs.strokeWidthPt = Math.round(widthPt * 100) / 100;
@@ -201,7 +207,7 @@ function convertTextBoxFrame(frame: Element, textBoxEl: Element, ctx: Ctx): Node
   if (hCm != null) attrs.height = Math.round(cmToPx(hCm));
   const gp = ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
   applyFrameRotationAndWrap(frame, attrs, gp);
-  shapeStyleAttrs(gp, attrs);
+  shapeStyleAttrs(gp, attrs, false);
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(textBoxEl.children), ctx) };
 }
 
@@ -231,7 +237,7 @@ function convertShape(el: Element, ctx: Ctx): Node | null {
   if (hCm != null) attrs.height = Math.round(cmToPx(hCm));
   const gp = ctx.resolver.graphicProps(el.getAttributeNS(NS.draw, 'style-name'));
   applyFrameRotationAndWrap(el, attrs, gp);
-  shapeStyleAttrs(gp, attrs);
+  shapeStyleAttrs(gp, attrs, true);
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(el.children), ctx) };
 }
 

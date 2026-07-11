@@ -1787,6 +1787,7 @@ function applyDateTimeFields(odtBytes: Uint8Array, fields: DateTimeFieldExport[]
 const ENHANCED_GEOMETRY: Record<'roundRect' | 'ellipse', string> = {
   ellipse:
     '<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="ellipse"' +
+    ' draw:text-areas="3163 3163 18437 18437"' +
     ' draw:enhanced-path="U 10800 10800 10800 10800 0 360 Z N"/>',
   roundRect:
     '<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="round-rectangle" draw:modifiers="3600"' +
