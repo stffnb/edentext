@@ -361,6 +361,7 @@ const en = {
     nestedTables: 'Nested tables were flattened to paragraphs',
     footnotes: 'Footnotes and endnotes were removed',
     comments: 'Comments were removed',
+    missingFonts: (fonts: string) => `These fonts aren't installed and were shown with a substitute: ${fonts}`,
   },
   importError: {
     odtArchive: 'Not a valid .odt file (could not read the archive).',

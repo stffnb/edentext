@@ -31,6 +31,7 @@
   import { t } from './lib/i18n/i18n.svelte';
   import { withShortcut } from './lib/i18n/shortcut';
   import { localizeImportMessage } from './lib/i18n/importMessages';
+  import { unavailableFonts } from './lib/utils/fontDetect';
 
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
@@ -331,6 +332,18 @@
 
   // Replace the document with a parsed .odt; adopt its geometry/header/footer and
   // track the source handle (null for the fallback file input) so Save overwrites it.
+  // Distinct explicit fontFamily values (textStyle marks) anywhere in a TipTap JSON tree.
+  function collectFontFamilies(node: unknown, out: Set<string>): void {
+    if (!node || typeof node !== 'object') return;
+    const n = node as { marks?: { type?: string; attrs?: { fontFamily?: unknown } }[]; content?: unknown[] };
+    if (Array.isArray(n.marks)) {
+      for (const m of n.marks) {
+        if (m?.type === 'textStyle' && typeof m.attrs?.fontFamily === 'string') out.add(m.attrs.fontFamily);
+      }
+    }
+    if (Array.isArray(n.content)) for (const c of n.content) collectFontFamilies(c, out);
+  }
+
   async function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string) {
     if (!editor) return;
     try {
@@ -369,9 +382,19 @@
       };
       fileHandle = isTemplate ? null : handle;
 
-      if (result.warnings.length) {
-        console.warn('[import] Unsupported content in opened file:', result.warnings);
-        alert(t().dialogs.openedWithLimitations(result.warnings.map(localizeImportMessage).join('\n• ')));
+      // Warn about fonts the document uses but the browser can't render, so text
+      // silently shown in a substitute (Liberation Serif) is at least flagged.
+      const fontSet = new Set<string>();
+      collectFontFamilies(result.content, fontSet);
+      collectFontFamilies(result.header, fontSet);
+      collectFontFamilies(result.footer, fontSet);
+      const missingFonts = await unavailableFonts(fontSet);
+
+      const warnings = result.warnings.map(localizeImportMessage);
+      if (missingFonts.length) warnings.push(t().importWarn.missingFonts(missingFonts.join(', ')));
+      if (warnings.length) {
+        console.warn('[import] Opened file with limitations:', result.warnings, missingFonts);
+        alert(t().dialogs.openedWithLimitations(warnings.join('\n• ')));
       }
     } catch (err) {
       console.error('[import] Failed to open file:', err);

@@ -356,6 +356,7 @@ const de: Messages = {
     nestedTables: 'Verschachtelte Tabellen wurden in Absätze umgewandelt',
     footnotes: 'Fuß- und Endnoten wurden entfernt',
     comments: 'Kommentare wurden entfernt',
+    missingFonts: (fonts) => `Diese Schriftarten sind nicht installiert und wurden durch Ersatzschriften dargestellt: ${fonts}`,
   },
   importError: {
     odtArchive: 'Keine gültige .odt-Datei (Archiv konnte nicht gelesen werden).',

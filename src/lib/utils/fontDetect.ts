@@ -106,6 +106,35 @@ export function detectAvailableFonts(candidates: readonly string[]): string[] {
   return found;
 }
 
+// Families the app always renders via bundled @font-face twins, plus CSS generics —
+// never flagged as missing. The bundled names must match the @font-face in global.css.
+const BUNDLED_FONTS = ['Liberation Serif', 'Times New Roman', 'Calibri', 'Arial', 'Cambria', 'Courier New'];
+const GENERIC_FAMILIES = ['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui'];
+
+// Of the given family names, those the browser can't render (so text declaring them is
+// silently substituted). Bundled families and generics are excluded; result is deduped.
+export async function unavailableFonts(families: Iterable<string>): Promise<string[]> {
+  const ctx = getCtx();
+  if (!ctx) return [];
+  if (typeof document !== 'undefined' && document.fonts) {
+    try {
+      await Promise.all(BUNDLED_FONTS.map((f) => document.fonts.load(`12px "${f}"`)));
+    } catch { /* measure with whatever loaded */ }
+  }
+  baselineWidths = null;
+  const skip = new Set([...BUNDLED_FONTS, ...GENERIC_FAMILIES].map((f) => f.toLowerCase()));
+  const seen = new Set<string>();
+  const missing: string[] = [];
+  for (const raw of families) {
+    const family = raw.trim();
+    const key = family.toLowerCase();
+    if (!family || seen.has(key) || skip.has(key)) continue;
+    seen.add(key);
+    if (!isAvailable(ctx, family)) missing.push(family);
+  }
+  return missing;
+}
+
 interface LocalFontData { family: string }
 interface QueryLocalFontsWindow {
   queryLocalFonts?: () => Promise<LocalFontData[]>;
