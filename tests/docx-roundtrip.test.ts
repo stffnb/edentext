@@ -461,6 +461,35 @@ describe('DOCX import resolves theme fonts (Word default = Calibri)', () => {
   });
 });
 
+describe('DOCX import falls back to the theme font when nothing references it', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
+  // No w:rFonts anywhere (not even a theme ref): Word still uses the theme minor font as the
+  // implicit body default. A heading must keep the editor default, not the theme major font.
+  const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+    <w:p><w:r><w:t>Body text</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Heading text</w:t></w:r></w:p>
+  </w:body></w:document>`;
+  const themeXml = `<?xml version="1.0"?><a:theme ${A}><a:themeElements><a:fontScheme>
+    <a:majorFont><a:latin typeface="Calibri Light"/></a:majorFont>
+    <a:minorFont><a:latin typeface="Calibri"/></a:minorFont>
+  </a:fontScheme></a:themeElements></a:theme>`;
+
+  const bytes = zipSync({ 'word/document.xml': strToU8(documentXml), 'word/theme/theme1.xml': strToU8(themeXml) });
+  const doc = importDocx(bytes).content as N;
+
+  it('applies the theme minor font to body text with no font of its own', () => {
+    const t = walk(doc.content![0], 'text')[0];
+    expect(t.text).toBe('Body text');
+    expect(markAttrs(t, 'textStyle')?.fontFamily).toBe('Calibri');
+  });
+  it('leaves a heading on the editor default (no theme major font)', () => {
+    const h = doc.content![1];
+    expect(h.type).toBe('heading');
+    expect(markAttrs(walk(h, 'text')[0], 'textStyle')?.fontFamily).toBeUndefined();
+  });
+});
+
 describe('DOCX import detects headings by outline level (non-"HeadingN" style ids)', () => {
   const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
   // A heading style whose id is NOT "Heading1" — only its w:outlineLvl marks it a heading.
@@ -688,5 +717,94 @@ describe('DOCX import of foreign multi-column sections', () => {
     const doc = result.content as N;
     expect(doc.content!.map((n) => n.type)).toEqual(['columns', 'table', 'columns']);
     expect(result.warnings).toContain('Tables and text boxes inside a multi-column layout were moved out of the columns');
+  });
+});
+
+describe('DOCX import: hardBreak carries its run font (empty-line height)', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  // "Muster" <br/> <br/> "Arbeitsvertrag", every run at 36pt (sz=72): the blank line
+  // between the two breaks must keep the 36pt height, like Word/LibreOffice.
+  const run = (inner: string) => `<w:r><w:rPr><w:sz w:val="72"/></w:rPr>${inner}</w:r>`;
+  const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+    <w:p><w:pPr><w:rPr><w:sz w:val="72"/></w:rPr></w:pPr>
+      ${run('<w:t>Muster</w:t>')}${run('<w:br/>')}${run('<w:br/>')}${run('<w:t>Arbeitsvertrag</w:t>')}
+    </w:p>
+  </w:body></w:document>`;
+  const bytes = zipSync({ 'word/document.xml': strToU8(documentXml) });
+
+  it('tags both hardBreaks with the run font size', () => {
+    const doc = importDocx(bytes).content as N;
+    const brs = walk(doc.content![0], 'hardBreak');
+    expect(brs.length).toBe(2);
+    for (const br of brs) expect(markAttrs(br, 'textStyle')?.fontSize).toBe('36pt');
+  });
+
+  it('keeps the break font size through a DOCX export round trip', async () => {
+    const doc = importDocx(bytes).content as N;
+    const round = importDocx(await buildDocx(doc as never)).content as N;
+    const brs = walk(round.content![0], 'hardBreak');
+    expect(brs.length).toBe(2);
+    for (const br of brs) expect(markAttrs(br, 'textStyle')?.fontSize).toBe('36pt');
+  });
+});
+
+describe('DOCX import: a list continued across paragraphs keeps counting (same numId)', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const item = (numId: number, t: string) =>
+    `<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t>${t}</w:t></w:r></w:p>`;
+  const gap = (t: string) => `<w:p><w:r><w:t>${t}</w:t></w:r></w:p>`;
+  // numId 5 (upperRoman) split by body paragraphs; numId 6 shares the format but is its own
+  // counter, so it must restart — Word continues per numId, not per glyph style.
+  const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+    ${item(5, 'One')}${gap('body a')}${item(5, 'Two')}${gap('body b')}${item(5, 'Three')}${item(6, 'Other')}
+  </w:body></w:document>`;
+  const numberingXml = `<?xml version="1.0"?><w:numbering ${W}>
+    <w:abstractNum w:abstractNumId="5"><w:lvl w:ilvl="0"><w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum>
+    <w:num w:numId="5"><w:abstractNumId w:val="5"/></w:num>
+    <w:num w:numId="6"><w:abstractNumId w:val="5"/></w:num>
+  </w:numbering>`;
+  const bytes = zipSync({ 'word/document.xml': strToU8(documentXml), 'word/numbering.xml': strToU8(numberingXml) });
+  const doc = importDocx(bytes).content as N;
+
+  it('emits separate ordered lists whose start values continue the numId', () => {
+    const ols = doc.content!.filter((n) => n.type === 'orderedList');
+    expect(ols.length).toBe(4);
+    expect(ols.map((o) => o.attrs?.start)).toEqual([undefined, 2, 3, undefined]);
+    expect(ols.every((o) => o.attrs?.listStyleType === 'upper-roman')).toBe(true);
+    expect(walk(ols[3], 'text')[0].text).toBe('Other'); // separate numId → restarts at 1
+  });
+});
+
+describe('DOCX import: a mid-body section break starts a new page', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const geom = '<w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/>';
+  const build = (type: string | null) => {
+    const t = type ? `<w:type w:val="${type}"/>` : '';
+    const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+      <w:p><w:r><w:t>section one</w:t></w:r></w:p>
+      <w:p><w:pPr><w:sectPr>${geom}</w:sectPr></w:pPr></w:p>
+      <w:p><w:r><w:t>section two</w:t></w:r></w:p>
+      <w:sectPr>${t}${geom}</w:sectPr>
+    </w:body></w:document>`;
+    return importDocx(zipSync({ 'word/document.xml': strToU8(documentXml) })).content as N;
+  };
+
+  it("marks the next section's first block with breakBefore for a default (nextPage) break", () => {
+    const top = build(null).content!;
+    expect(top.map((n) => n.type)).toEqual(['paragraph', 'paragraph']);
+    expect(walk(top[1], 'text')[0].text).toBe('section two');
+    expect(top[0].attrs?.breakBefore).toBeFalsy();
+    expect(top[1].attrs?.breakBefore).toBe('page');
+  });
+
+  it('does not break for a continuous section', () => {
+    const top = build('continuous').content!;
+    expect(top[1].attrs?.breakBefore).toBeFalsy();
+  });
+
+  it('keeps the section-break page break through a DOCX export round trip', async () => {
+    const round = importDocx(await buildDocx(build(null) as never)).content as N;
+    const two = round.content!.find((n) => walk(n, 'text').some((t) => t.text === 'section two'))!;
+    expect(two.attrs?.breakBefore).toBe('page');
   });
 });

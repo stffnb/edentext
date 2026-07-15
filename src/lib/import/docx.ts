@@ -34,6 +34,7 @@ type Ctx = {
   imageCache: Map<string, string>;
   convertedImages: ConvertedImages;
   pendingBlocks: Node[];
+  listCounters: Map<number, Map<number, number>>; // numId → ilvl → last number used
 };
 
 // ---- units & editor defaults to suppress -----------------------------------
@@ -100,7 +101,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const styles = new DocxStyles(stylesDoc, numberingDoc, themeDoc);
   const warnings = new Set<string>();
 
-  const ctx: Ctx = { styles, warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [] };
+  const ctx: Ctx = { styles, warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map() };
 
   const body = docDoc.getElementsByTagNameNS(W, 'body')[0];
   if (!body) throw new Error('Not a Word document (no w:body).');
@@ -111,12 +112,19 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const { groups, midSectPrs } = splitBodySections(Array.from(body.children));
   const finalSectPr = fc(body, 'sectPr');
   const blocks: Node[] = [];
-  for (const g of groups) {
+  groups.forEach((g, gi) => {
     const inner = convertBlocks(g.els, ctx, 'body');
+    // A section's own w:type says how it begins: a page-starting break (nextPage/odd/even,
+    // or the default) puts its first block on a new page; continuous/nextColumn flow on.
+    if (gi > 0 && inner.length && sectionStartsNewPage(g.sectPr ?? finalSectPr)) {
+      const first = inner[0];
+      if (first.type === 'paragraph' || first.type === 'heading')
+        first.attrs = { ...(first.attrs ?? {}), breakBefore: 'page' };
+    }
     const cols = sectPrColumns(g.sectPr ?? finalSectPr, ctx);
     if (cols) pushColumnRuns(inner, cols, blocks, ctx);
     else blocks.push(...inner);
-  }
+  });
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 
   let sect = parseSectPr(finalSectPr, ctx);
@@ -303,7 +311,14 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
           stack.push({ ilvl, numId: num.numId, list: makeListNode(ctx, num.numId, ilvl) });
           if (ilvl === num.ilvl) break;
         }
-        stack[stack.length - 1].list.content!.push({ type: 'listItem', content: [para] });
+        const targetList = stack[stack.length - 1].list;
+        const number = nextListNumber(ctx, num.numId, num.ilvl);
+        // A non-list paragraph splits one Word list into separate nodes here; carry the
+        // running count onto a fresh ordered node so numbering continues, not restarts at 1.
+        if (targetList.type === 'orderedList' && targetList.content!.length === 0 && number > 1) {
+          targetList.attrs = { ...(targetList.attrs ?? {}), start: number };
+        }
+        targetList.content!.push({ type: 'listItem', content: [para] });
       } else {
         flush();
         const { blocks, trailingBreak } = splitParaAtPageBreaks(convertParagraph(el, ctx, kind, boldByDefault), kind);
@@ -337,6 +352,19 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
   // Boxes anchored inside list items land after the whole list.
   pushWithPending(null);
   return out;
+}
+
+// Word numbering is document-global per numId: a level keeps counting across intervening
+// non-list paragraphs (which split the list into separate nodes here) and resets its deeper
+// levels whenever a shallower level advances. Returns this item's number.
+function nextListNumber(ctx: Ctx, numId: number, ilvl: number): number {
+  let per = ctx.listCounters.get(numId);
+  if (!per) { per = new Map(); ctx.listCounters.set(numId, per); }
+  const cur = per.get(ilvl);
+  const n = cur == null ? (ctx.styles.level(numId, ilvl).start ?? 1) : cur + 1;
+  per.set(ilvl, n);
+  for (const l of Array.from(per.keys())) if (l > ilvl) per.delete(l);
+  return n;
 }
 
 function paragraphNum(el: Element, ctx: Ctx): { numId: number; ilvl: number } | null {
@@ -449,7 +477,7 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // Headings keep their em-based editor defaults (direct-only), so skip style resolution.
   const styleSpacing = level == null ? ctx.styles.paragraphSpacing(pStyle ? wVal(pStyle) : null) : {};
   const attrs = blockAttrs(ppr, kind, level, jcVal, styleSpacing);
-  const baseRun = mergeRunProps(ctx.styles.defaultRun(), ctx.styles.styleOwn(pStyle ? wVal(pStyle) : null));
+  const baseRun = ctx.styles.paragraphRun(pStyle ? wVal(pStyle) : null);
   const content = convertInline(el, ctx, baseRun, level, false, boldByDefault);
 
   // An empty line's height comes from the paragraph mark's own run props (w:pPr/w:rPr),
@@ -499,9 +527,9 @@ function headingLevelOf(ppr: Element | null, ctx: Ctx): number | null {
   return null;
 }
 
-// Spacing = the paragraph style's own w:spacing (styleSpacing, resolved by the caller)
-// overridden per-attribute by DIRECT w:pPr; indent comes from direct w:pPr only.
-// docDefaults stay the editor's defaults. jcVal is resolved through the chain by the caller.
+// Spacing = the style chain's w:spacing (styleSpacing, resolved by the caller) overridden
+// per-attribute by DIRECT w:pPr; indent comes from direct w:pPr only. jcVal is resolved
+// through the chain by the caller.
 function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number | null, jcVal: string | null, styleSpacing: ParaSpacing): Record<string, unknown> {
   const attrs: Record<string, unknown> = {};
 
@@ -514,6 +542,8 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
   const after = (sp ? intAttr(sp, W, 'after') : null) ?? styleSpacing.after ?? null;
   const line = (sp ? intAttr(sp, W, 'line') : null) ?? styleSpacing.line ?? null;
   const rule = (sp && sp.getAttributeNS(W, 'lineRule')) || styleSpacing.lineRule || null;
+  // An attribute no layer sets is Word's implied 0, which is also the editor's paragraph
+  // default (editor.css) — so it stays unset rather than accreting an explicit 0.
   if (before != null) attrs.spaceBefore = snapPt(twipToPt(before));
   if (after != null) attrs.spaceAfter = snapPt(twipToPt(after));
   if (line != null && (!rule || rule === 'auto')) {
@@ -565,7 +595,13 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
     const rPr = fc(r, 'rPr');
     const rStyle = fc(rPr, 'rStyle');
     const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
-    if (!props.font && props.fontTheme) props.font = ctx.styles.themeFont(props.fontTheme);
+    // No font resolved anywhere: Word's implicit body default is the theme's minor font, so
+    // fall back to the document's own theme (not the editor default). Headings keep the editor
+    // heading default, so only body text falls back.
+    if (!props.font) {
+      const theme = props.fontTheme ?? (headingLevel == null ? 'minor' : null);
+      if (theme) props.font = ctx.styles.themeFont(theme);
+    }
     const marks = marksFor(props, headingLevel, boldByDefault, !!linkHref);
     if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
     return marks;
@@ -625,8 +661,8 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
         case 'instrText': if (fieldMode === 'instr') fieldInstr += child.textContent ?? ''; break;
         case 't': if (!skipResult()) pushText(child.textContent ?? '', marks); break;
         case 'tab': if (!skipResult()) pushText('\t', marks); break;
-        case 'br': out.push(child.getAttributeNS(W, 'type') === 'page' ? { type: PB_MARKER } : { type: 'hardBreak' }); break;
-        case 'cr': out.push({ type: 'hardBreak' }); break;
+        case 'br': out.push(child.getAttributeNS(W, 'type') === 'page' ? { type: PB_MARKER } : hardBreakNode(marks)); break;
+        case 'cr': out.push(hardBreakNode(marks)); break;
         case 'drawing': pushDrawn(convertDrawing(child, ctx)); break;
         case 'pict': pushDrawn(convertPict(child, ctx)); break;
       }
@@ -697,6 +733,14 @@ function mergeAdjacentText(nodes: Node[]): Node[] {
     }
   }
   return out;
+}
+
+// A hardBreak carries its run's marks so an empty line between two breaks keeps the run's
+// font size (Word/LibreOffice render such a line at that size, not the paragraph default).
+function hardBreakNode(marks: Mark[]): Node {
+  const n: Node = { type: 'hardBreak' };
+  if (marks.length) n.marks = marks;
+  return n;
 }
 
 function marksFor(props: RunProps, headingLevel: number | null, boldByDefault: boolean, inLink: boolean): Mark[] {
@@ -1036,6 +1080,14 @@ function splitBodySections(children: Element[]): {
   return { groups, midSectPrs };
 }
 
+// A section break's w:type: 'continuous'/'nextColumn' flow within the page; anything
+// else (nextPage/oddPage/evenPage, or absent = the default nextPage) begins a new page.
+function sectionStartsNewPage(sectPr: Element | null): boolean {
+  const t = fc(sectPr, 'type');
+  const val = t ? wVal(t) : null;
+  return val !== 'continuous' && val !== 'nextColumn';
+}
+
 // A sectPr's w:cols → columns attrs when it declares more than one column.
 function sectPrColumns(sectPr: Element | null, ctx: Ctx): { count: number; gapCm: number } | null {
   const cols = fc(sectPr, 'cols');
@@ -1136,7 +1188,7 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
       const ta = (fc(ppr, 'jc') ? wVal(fc(ppr, 'jc')!) : null) ?? '';
       textAlign = ta === 'center' || ta === 'both' ? (ta === 'both' ? 'justify' : 'center') : ta === 'right' || ta === 'end' ? 'right' : '';
     }
-    const baseRun = mergeRunProps(hfCtx.styles.defaultRun(), hfCtx.styles.styleOwn(fc(ppr, 'pStyle') ? wVal(fc(ppr, 'pStyle')!) : null));
+    const baseRun = hfCtx.styles.paragraphRun(fc(ppr, 'pStyle') ? wVal(fc(ppr, 'pStyle')!) : null);
     inline.push(...convertInline(p, hfCtx, baseRun, null, true, false).filter((n) => n.type !== PB_MARKER));
   }
   while (inline[0]?.type === 'hardBreak') inline.shift();

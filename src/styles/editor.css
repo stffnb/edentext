@@ -143,10 +143,12 @@
   font-size: 0;
 }
 
+/* No paragraph spacing by default, like LibreOffice's Default Paragraph Style and
+   Word's implied 0 — an editor default here would show up as extra space in every
+   imported document (export/odt.ts zeroes odf-kit's Standard style to match). */
 .paper .tiptap p {
   margin-top: 0;
-  /* matches odf-kit Standard style fo:margin-bottom (0.212cm ≈ 6pt) */
-  margin-bottom: 0.212cm;
+  margin-bottom: 0;
 }
 
 /* Hyperlinks (link.ts). Ctrl/Cmd+click opens them (Editor.svelte). */
@@ -391,7 +393,8 @@
 .paper .tiptap ol {
   padding-left: 1.5rem;
   margin-top: 0;
-  margin-bottom: 0.212cm;
+  /* Matches the exported List_20_* styles, which inherit Standard's zeroed margin. */
+  margin-bottom: 0;
 }
 
 /* Ordered-list numbering, keyed by data-eff-list-style — the effective numbering
@@ -454,7 +457,8 @@
      • padding → export emits fo:padding 0.1cm per cell (CELL_PADDING).
    Tables are wrapped in <div class="tableWrapper"> by TipTap's node view. */
 .paper .tiptap .tableWrapper {
-  margin: 0 0 0.212cm;
+  /* The exported table style carries no margin (nor do Word/LO tables). */
+  margin: 0;
   overflow-x: auto;
 }
 

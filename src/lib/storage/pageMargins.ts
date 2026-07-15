@@ -2,9 +2,9 @@ export type PageMargins = { top: number; bottom: number; left: number; right: nu
 
 const KEY = 'odf-editor-page-margins';
 
-// Match the editor's historical hardcoded layout: 2.54cm (96px) top/bottom,
-// 2.12cm (≈80px) left/right. Keeps existing documents rendering/exporting unchanged.
-export const DEFAULT_MARGINS: PageMargins = { top: 2.54, bottom: 2.54, left: 2.12, right: 2.12 };
+// LibreOffice Writer's default page margins (Word uses 2.54cm all round). Only a new
+// document gets these — an imported one always adopts its own page geometry.
+export const DEFAULT_MARGINS: PageMargins = { top: 2, bottom: 2, left: 2, right: 2 };
 
 export const PX_PER_CM = 96 / 2.54; // 37.795 — A4 @96dpi
 export const cmToPx = (cm: number) => cm * PX_PER_CM;

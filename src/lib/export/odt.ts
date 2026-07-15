@@ -174,7 +174,11 @@ function replaceHardBreaks(node: TiptapNode): TiptapNode {
   if (!node.content?.length) return node;
   return {
     ...node,
-    content: node.content.map(c => c.type === 'hardBreak' ? { type: 'text', text: LBR } : replaceHardBreaks(c)),
+    content: node.content.map(c =>
+      c.type === 'hardBreak'
+        ? { type: 'text', text: LBR, ...(c.marks ? { marks: c.marks } : {}) }
+        : replaceHardBreaks(c),
+    ),
   };
 }
 
@@ -881,6 +885,39 @@ function applyOrderedListFormats(odtBytes: Uint8Array, formats: (OlStyleFix | nu
   return rezipOdt(files);
 }
 
+// One slot per top-level list (matching odf-kit's L# order): an ordered list's
+// start value when >1 (a continued Word list), else null.
+function collectListStartValues(node: TiptapNode, result: (number | null)[]): void {
+  for (const child of node.content ?? []) {
+    if (child.type === 'bulletList') {
+      result.push(null);
+    } else if (child.type === 'orderedList') {
+      const s = child.attrs?.start;
+      result.push(typeof s === 'number' && s > 1 ? s : null);
+    }
+  }
+}
+
+// odf-kit drops the ordered-list `start` attr, so a list continued across an intervening
+// paragraph would restart at 1. Add text:start-value to each such list's first item.
+function applyListStartValues(odtBytes: Uint8Array, starts: (number | null)[]): Uint8Array {
+  if (starts.every(s => s === null)) return odtBytes;
+
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  starts.forEach((start, i) => {
+    if (start == null) return;
+    const re = new RegExp(`(<text:list text:style-name="L${i + 1}"[^>]*>\\s*<text:list-item)>`);
+    content = content.replace(re, `$1 text:start-value="${start}">`);
+  });
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 // Effective marker char of a bullet list at a 1-based depth: its bulletChar attr,
 // else the default cycle.
 function effBulletChar(list: TiptapNode, depth: number): string {
@@ -1325,15 +1362,13 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
     '<style:master-page style:name="Standard"',
   );
 
-  // List item paragraphs inherit Standard's fo:margin-bottom (0.212cm), but the editor
-  // zeroes it (editor.css), so without this override every exported bullet gains ~6pt
-  // vs. the preview. Explicit per-item spacing overrides this via LP styles.
-  for (const name of ['List_20_Bullet', 'List_20_Number']) {
-    styles = styles.replace(
-      new RegExp(`(<style:style style:name="${name}"[^>]*?)/>`),
-      `$1><style:paragraph-properties fo:margin-bottom="0cm"/></style:style>`,
-    );
-  }
+  // odf-kit's Standard style carries fo:margin-bottom="0.212cm", but the editor (like
+  // LibreOffice and Word) has no paragraph spacing by default — every paragraph and list
+  // item inherits this, so zero it or the export gains ~6pt per block vs. the preview.
+  styles = styles.replace(
+    /(<style:style style:name="Standard"[\s\S]*?<style:paragraph-properties[^>]*?)fo:margin-bottom="[^"]*"/,
+    `$1fo:margin-bottom="0cm"`,
+  );
 
   // Scope each rewrite to its own <style:style …>…</style:style> block so the
   // font-size/margin replacements never bleed across heading levels.
@@ -1922,7 +1957,7 @@ function contentsEntryStyle(name: string, level: number, tabPosCm: number): stri
 function contentsHeadingStyle(): string {
   return (
     `<style:style style:name="Contents_20_Heading" style:family="paragraph" style:parent-style-name="Standard">` +
-    `<style:paragraph-properties fo:margin-top="0cm" fo:margin-bottom="0.212cm"/>` +
+    `<style:paragraph-properties fo:margin-top="0cm" fo:margin-bottom="0.3cm"/>` +
     `<style:text-properties fo:font-size="16pt" fo:font-weight="bold"/></style:style>`
   );
 }
@@ -2109,6 +2144,12 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const olFormats: (OlStyleFix | null)[] = [];
   collectOrderedListFormats(raw, olFormats);
   let numberedOdt = applyOrderedListFormats(odt as Uint8Array, olFormats);
+
+  // A Word list continued across an intervening paragraph splits into separate nodes with
+  // a `start` attr; odf-kit drops it, so emit text:start-value on each such list's first item.
+  const listStarts: (number | null)[] = [];
+  collectListStartValues(raw, listStarts);
+  numberedOdt = applyListStartValues(numberedOdt, listStarts);
 
   // Rewrite odf-kit's default bullet chars into the per-level bulletChar attrs.
   const blChars: (string[] | null)[] = [];

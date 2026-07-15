@@ -18,7 +18,7 @@ describe('pageMargins units', () => {
     expect(cmToPx(0)).toBe(0);
   });
 
-  it('default margins are the documented A4 values', () => {
-    expect(DEFAULT_MARGINS).toEqual({ top: 2.54, bottom: 2.54, left: 2.12, right: 2.12 });
+  it("default margins are LibreOffice's 2cm all round", () => {
+    expect(DEFAULT_MARGINS).toEqual({ top: 2, bottom: 2, left: 2, right: 2 });
   });
 });

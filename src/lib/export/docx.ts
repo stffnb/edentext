@@ -242,7 +242,8 @@ function inlineToRuns(content: TiptapNode[] = [], forceBold = false): Inline[] {
       if (href) out.push(new ExternalHyperlink({ link: String(href), children: runs }));
       else out.push(...runs);
     } else if (node.type === 'hardBreak') {
-      out.push(new TextRun({ break: 1 }));
+      // Carry the run's props so an empty line between two breaks keeps its font size.
+      out.push(new TextRun({ break: 1, ...runPropsFromMarks(node.marks) }));
     } else if (node.type === 'image') {
       const img = imageRun(node);
       if (img) out.push(img);
@@ -424,7 +425,7 @@ function txbxParagraphXml(node: TiptapNode, indentTwip = 0, markerText = ''): st
       });
       runs += `<w:r>${rPr}${inner}</w:r>`;
     } else if (child.type === 'hardBreak') {
-      runs += '<w:r><w:br/></w:r>';
+      runs += `<w:r>${txbxRunPropsXml(child.marks)}<w:br/></w:r>`;
     }
   }
   return `<w:p>${pPr.length ? `<w:pPr>${pPr.join('')}</w:pPr>` : ''}${runs}</w:p>`;

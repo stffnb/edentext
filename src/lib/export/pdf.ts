@@ -446,8 +446,8 @@ function printCss(o: PrintPdfOptions): string {
 html, body { margin: 0; padding: 0; background: #fff; }
 .paper { width: auto !important; transform: none !important; box-shadow: none !important; background: none !important; }
 .paper .tiptap { padding: 0 !important; min-height: 0 !important; background: #fff !important; box-shadow: none !important; color: #000 !important; }
-/* generateHTML drops TipTap's .tableWrapper, whose margin gives a table its bottom gap. */
-.paper .tiptap table { margin: 0 0 0.212cm; }
+/* generateHTML drops TipTap's .tableWrapper; mirror its (zero) margin. */
+.paper .tiptap table { margin: 0; }
 .paper .tiptap tr { break-inside: avoid; }
 .paper .tiptap [data-color] { color: var(--font-color, currentColor) !important; }
 /* Manual page break (breakBefore) → native page break; never on the first block (no blank leading page). */

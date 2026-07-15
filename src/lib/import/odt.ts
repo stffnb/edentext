@@ -45,8 +45,8 @@ export interface OdtImportResult {
   warnings: string[];
 }
 
-// 'list' zeroes the default bottom margin (export rewrites List_20_* to 0cm to
-// match the editor); body/cell paragraphs default to Standard's 0.212cm.
+// Where a block sits: only 'body' takes page breaks/columns/TOCs, and a 'list'
+// paragraph's indent lives in the list style rather than its own margin.
 type BlockKind = 'body' | 'list' | 'cell';
 
 // `files` is the full unzipped archive so image converters can read Pictures/
@@ -281,8 +281,6 @@ function convertDrawElement(e: Element, ctx: Ctx): { inline?: Node; block?: Node
 // ---- editor defaults to suppress on import -----------------------------------
 
 const BODY_FONT_SIZE_PT = 12;
-// Standard paragraph style's fo:margin-bottom as odf-kit emits it.
-const STD_MARGIN_BOTTOM_PT = lengthToPt('0.212cm')!;
 // Match LO/Word producer rounding noise (cm: ≤0.014pt, twips: ≤0.025pt), not
 // genuine user values.
 const EPS_PT = 0.15;
@@ -627,10 +625,10 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, headingLevel: number
   }
 
   const defTop = hdef ? hdef.marginTopPt : 0;
-  const defBottom = hdef ? hdef.marginBottomPt : kind === 'list' ? 0 : STD_MARGIN_BOTTOM_PT;
-  // An unspecified fo:margin is ODF's default of 0 (not the editor's 6pt body
-  // default), so a foreign paragraph that omits it gets 0 spacing like
-  // Word/LibreOffice. Editor exports write the margins explicitly, so suppressed.
+  const defBottom = hdef ? hdef.marginBottomPt : 0;
+  // An unspecified fo:margin is ODF's default of 0, which is also the editor's
+  // paragraph default — so it is suppressed, and a file that does declare spacing
+  // (e.g. LO's 0.212cm Text Body) keeps it as an explicit value.
   const mt = lengthToPt(paraProps['fo:margin-top']) ?? 0;
   const mb = lengthToPt(paraProps['fo:margin-bottom']) ?? 0;
   if (Math.abs(mt - defTop) > EPS_PT) attrs.spaceBefore = snapPt(mt);
@@ -774,9 +772,14 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
           case 'tab':
             pushText('\t', props, linkHref);
             continue;
-          case 'line-break':
-            out.push({ type: 'hardBreak' });
+          case 'line-break': {
+            // Carry the run's marks so an empty line between two breaks keeps its font size.
+            const marks = marksFor(props, ctx.resolver, headingLevel, boldByDefault);
+            const br: Node = { type: 'hardBreak' };
+            if (marks.length) br.marks = marks;
+            out.push(br);
             continue;
+          }
           case 'a': {
             // ODF hyperlink → link mark on the contained text (internal #bookmark
             // links are kept as-is though the editor has no bookmark targets).

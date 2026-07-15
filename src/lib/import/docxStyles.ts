@@ -99,6 +99,7 @@ export class DocxStyles {
   private ownSpacing = new Map<string, ParaSpacing>(); // style's own w:pPr/w:spacing
   private defaultParaStyle: string | null = null; // the w:default="1" paragraph style
   private defaultsAlign: string | null = null; // docDefaults w:pPrDefault/w:jc
+  private defaultsSpacing: ParaSpacing = {}; // docDefaults w:pPrDefault/w:spacing
   private numToAbstract = new Map<string, string>();
   private abstractLevels = new Map<string, Map<number, LevelDef>>();
   private minorFont?: string; // theme1.xml body font (e.g. Calibri)
@@ -132,6 +133,8 @@ export class DocxStyles {
       const pPr = defs.getElementsByTagNameNS(W, 'pPrDefault')[0]?.getElementsByTagNameNS(W, 'pPr')[0];
       const ddJc = pPr ? firstChild(pPr, 'jc') : null;
       if (ddJc) this.defaultsAlign = wVal(ddJc);
+      const ddSp = pPr ? firstChild(pPr, 'spacing') : null;
+      if (ddSp) this.defaultsSpacing = readSpacing(ddSp);
     }
     for (const style of Array.from(doc.getElementsByTagNameNS(W, 'style'))) {
       const id = style.getAttributeNS(W, 'styleId');
@@ -196,8 +199,11 @@ export class DocxStyles {
     return merged;
   }
 
-  defaultRun(): RunProps {
-    return { ...this.defaultsRun };
+  // A paragraph's run baseline: docDefaults ← its paragraph style's basedOn chain. With no
+  // w:pStyle the w:default="1" paragraph style (Word's "Normal") applies — it usually
+  // carries the document's real body font, which docDefaults alone gets wrong.
+  paragraphRun(pStyleId: string | null | undefined): RunProps {
+    return mergeRunProps(this.defaultsRun, this.styleOwn(pStyleId ?? this.defaultParaStyle));
   }
 
   styleNumPr(styleId: string | null | undefined): { numId: number; ilvl: number } | null {
@@ -237,7 +243,7 @@ export class DocxStyles {
   }
 
   // The style's effective spacing along the w:basedOn chain (root → leaf, leaf wins per
-  // attribute). Excludes docDefaults on purpose: those stay the editor's own defaults.
+  // attribute).
   private styleSpacing(styleId: string | null | undefined, seen = new Set<string>()): ParaSpacing {
     if (!styleId || seen.has(styleId)) return {};
     seen.add(styleId);
@@ -245,12 +251,11 @@ export class DocxStyles {
     return { ...base, ...(this.ownSpacing.get(styleId) ?? {}) };
   }
 
-  // Effective paragraph spacing from styles only (direct w:pPr/w:spacing wins in the
-  // caller): the pStyle's basedOn chain, else the default paragraph style. Honors an
-  // explicit style like "No Spacing" (after=0) that the editor default would otherwise
-  // override. docDefaults are deliberately left as the editor's defaults.
+  // Effective paragraph spacing from styles only (direct w:pPr/w:spacing wins in the caller):
+  // docDefaults ← the pStyle's basedOn chain, or the default paragraph style when there is no
+  // w:pStyle. An attribute no layer sets is Word's implied 0 (applied in blockAttrs).
   paragraphSpacing(pStyleId: string | null | undefined): ParaSpacing {
-    return this.styleSpacing(pStyleId ?? this.defaultParaStyle);
+    return { ...this.defaultsSpacing, ...this.styleSpacing(pStyleId ?? this.defaultParaStyle) };
   }
 
   level(numId: number, ilvl: number): LevelDef {

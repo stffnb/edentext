@@ -338,6 +338,39 @@ describe('Leg 1a: page format', () => {
   });
 });
 
+describe('Leg 1a2: hardBreak font size (empty-line height)', () => {
+  it('round-trips a break run font so a blank line between two breaks keeps its size', async () => {
+    const fs36: N = { type: 'textStyle', attrs: { fontSize: '36pt' } };
+    const br = (): N => ({ type: 'hardBreak', marks: [fs36] });
+    const doc: N = { type: 'doc', content: [P(null, T('Muster', fs36), br(), br(), T('Arbeitsvertrag', fs36))] };
+    const res = importOdt(await buildOdt(doc, margins, 'portrait'));
+    const brs: N[] = [];
+    (function walk(n: N) { if (n.type === 'hardBreak') brs.push(n); for (const c of n.content ?? []) walk(c); })(res.content);
+    check('both hardBreaks survive', brs.length === 2, brs.length);
+    const sized = brs.every((b) => b.marks?.some((m) => m.type === 'textStyle' && m.attrs?.fontSize === '36pt'));
+    check('both hardBreaks carry the 36pt run font', sized, JSON.stringify(brs));
+  });
+});
+
+describe('Leg 1a3: continued ordered-list start value', () => {
+  it('round-trips a start > 1 (odf-kit drops it) via text:start-value', async () => {
+    const olist = (start: number | null, t: string): N => ({
+      type: 'orderedList',
+      attrs: { listStyleType: 'upper-roman', ...(start ? { start } : {}) },
+      content: [{ type: 'listItem', content: [P(null, T(t))] }],
+    });
+    const doc: N = { type: 'doc', content: [
+      olist(null, 'First'), P(null, T('gap 1')), olist(2, 'Second'), P(null, T('gap 2')), olist(3, 'Third'),
+    ] };
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('content.xml carries text:start-value 2 and 3', /start-value="2"/.test(content) && /start-value="3"/.test(content), content.match(/text:start-value="\d+"/g));
+    const round = importOdt(bytes).content;
+    const starts = (round.content ?? []).filter((n: N) => n.type === 'orderedList').map((n: N) => n.attrs?.start ?? null);
+    check('re-imported starts continue (1, 2, 3)', JSON.stringify(starts) === JSON.stringify([null, 2, 3]), starts);
+  });
+});
+
 describe('Leg 1b: merged table cells (colspan/rowspan)', () => {
   // 3×3 grid: A spans 2 cols (row 0); C spans 2 rows (col 0, rows 1–2).
   //   row0: [A A][B]    row1: [C][D][E]    row2: [C][F][G]
@@ -542,8 +575,8 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: Letter stays portrait', f.orientation === 'portrait');
 
     check('foreign: plain run has no marks', c[0].content![0].marks === undefined, c[0]);
-    // Omitted fo:margin-bottom → ODF default 0, not the editor's 6pt body default.
-    check('foreign: omitted margin → spaceAfter 0', c[0].attrs?.spaceAfter === 0, c[0].attrs);
+    // Omitted fo:margin-bottom → ODF's default 0, which is the editor's default too, so no attr.
+    check('foreign: omitted margin → no spaceAfter', c[0].attrs?.spaceAfter == null, c[0].attrs);
 
     const p1 = c[1];
     check('foreign: P1 align end → right', p1.attrs?.textAlign === 'right', p1.attrs);
