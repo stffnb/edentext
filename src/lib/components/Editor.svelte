@@ -70,6 +70,22 @@
     });
   });
 
+  // Toggling formatting marks flips the .paper class but doesn't touch the doc, so the
+  // pageBreaks plugin wouldn't re-run. The ¶/·/→ marks are zero-footprint, but force a
+  // recalc anyway so page positions can never be left stale by a sub-pixel platform delta.
+  let marksRecalcRaf = 0;
+  $effect(() => {
+    void showFormattingMarks;
+    const ed = editor;
+    if (!ed) return;
+    cancelAnimationFrame(marksRecalcRaf);
+    marksRecalcRaf = requestAnimationFrame(() => {
+      ed.view.dispatch(
+        ed.state.tr.setMeta('addToHistory', false).setMeta(FORCE_PAGE_RECALC, true),
+      );
+    });
+  });
+
   // Bundled fonts (Liberation Serif, Carlito, …) load with font-display:swap, so text
   // can reflow after pagination first runs (e.g. imported content in a not-yet-loaded
   // font). Re-paginate when fonts finish so page positions and the HF band settle.
@@ -642,6 +658,7 @@
   onDestroy(() => {
     if (zoomRaf !== null) cancelAnimationFrame(zoomRaf);
     cancelAnimationFrame(marginRecalcRaf);
+    cancelAnimationFrame(marksRecalcRaf);
     cancelAnimationFrame(tableUiRaf);
     editor?.destroy();
     resetHistoryLog();

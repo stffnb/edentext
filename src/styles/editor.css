@@ -563,21 +563,21 @@
   height: 0;
 }
 
-/* Formatting marks (Toggle in extended toolbar).
-   Zero-width inline-block with visible overflow: the ¶ glyph renders just
-   past the last character without consuming line width — so right/center/
-   justify alignment of the actual text is preserved. The leading NBSP in
-   the content gives a small visual gap from the text. */
-.paper.show-formatting-marks .tiptap p::after,
-.paper.show-formatting-marks .tiptap h1::after,
-.paper.show-formatting-marks .tiptap h2::after,
-.paper.show-formatting-marks .tiptap h3::after {
+/* Paragraph mark (¶). Reserved in the layout at all times (Word's model) so the toggle
+   only recolors it and text never reflows. Zero-size inline-block, glyph overflows
+   visibly: width/height/line-height 0 drop both footprint and line-box strut. */
+.paper .tiptap p::after,
+.paper .tiptap h1::after,
+.paper .tiptap h2::after,
+.paper .tiptap h3::after {
   content: '\00A0¶';
   display: inline-block;
   width: 0;
+  height: 0;
+  line-height: 0;
   overflow: visible;
   white-space: pre;
-  color: var(--color-primary);
+  color: transparent;
   opacity: 0.5;
   font-family: var(--font-sans);
   font-weight: 400;
@@ -585,31 +585,36 @@
   pointer-events: none;
 }
 
-.paper.show-formatting-marks .tiptap li > p::after {
-  content: '\00A0¶';
+.paper.show-formatting-marks .tiptap p::after,
+.paper.show-formatting-marks .tiptap h1::after,
+.paper.show-formatting-marks .tiptap h2::after,
+.paper.show-formatting-marks .tiptap h3::after {
+  color: var(--color-primary);
 }
 
-/* Empty block fix: when a paragraph/heading/li-paragraph contains only the
-   ProseMirror trailing-break BR, the inline ::after would otherwise render
-   on a second line below the BR, doubling the block's height and shifting
-   the page-break calculation. Pull ::after out of flow via absolute positioning. */
-.paper.show-formatting-marks .tiptap p:has(> br.ProseMirror-trailingBreak:only-child),
-.paper.show-formatting-marks .tiptap h1:has(> br.ProseMirror-trailingBreak:only-child),
-.paper.show-formatting-marks .tiptap h2:has(> br.ProseMirror-trailingBreak:only-child),
-.paper.show-formatting-marks .tiptap h3:has(> br.ProseMirror-trailingBreak:only-child),
-.paper.show-formatting-marks .tiptap li > p:has(> br.ProseMirror-trailingBreak:only-child) {
+/* Empty block fix: a paragraph/heading/li-paragraph holding only the ProseMirror
+   trailing-break BR would render the inline ¶ on a second line, doubling its height.
+   Pull ::after out of flow. Applied always so the reserved ¶ stays zero-height. */
+.paper .tiptap p:has(> br.ProseMirror-trailingBreak:only-child),
+.paper .tiptap h1:has(> br.ProseMirror-trailingBreak:only-child),
+.paper .tiptap h2:has(> br.ProseMirror-trailingBreak:only-child),
+.paper .tiptap h3:has(> br.ProseMirror-trailingBreak:only-child),
+.paper .tiptap li > p:has(> br.ProseMirror-trailingBreak:only-child) {
   position: relative;
 }
 
-.paper.show-formatting-marks .tiptap p:has(> br.ProseMirror-trailingBreak:only-child)::after,
-.paper.show-formatting-marks .tiptap h1:has(> br.ProseMirror-trailingBreak:only-child)::after,
-.paper.show-formatting-marks .tiptap h2:has(> br.ProseMirror-trailingBreak:only-child)::after,
-.paper.show-formatting-marks .tiptap h3:has(> br.ProseMirror-trailingBreak:only-child)::after,
-.paper.show-formatting-marks .tiptap li > p:has(> br.ProseMirror-trailingBreak:only-child)::after {
+.paper .tiptap p:has(> br.ProseMirror-trailingBreak:only-child)::after,
+.paper .tiptap h1:has(> br.ProseMirror-trailingBreak:only-child)::after,
+.paper .tiptap h2:has(> br.ProseMirror-trailingBreak:only-child)::after,
+.paper .tiptap h3:has(> br.ProseMirror-trailingBreak:only-child)::after,
+.paper .tiptap li > p:has(> br.ProseMirror-trailingBreak:only-child)::after {
   position: absolute;
   top: 0;
   left: 0;
   margin-left: 0;
+  /* Out of flow, so restore the paragraph's line-height (the base rule zeroes it) to
+     seat the glyph on the empty line instead of the collapsed top edge. */
+  line-height: inherit;
 }
 
 .paper.show-formatting-marks .tiptap .pm-space-mark {
@@ -696,14 +701,19 @@
     margin: 25.4mm;
   }
 
-  .paper.show-formatting-marks .tiptap p::after,
-  .paper.show-formatting-marks .tiptap h1::after,
-  .paper.show-formatting-marks .tiptap h2::after,
-  .paper.show-formatting-marks .tiptap h3::after,
-  .paper.show-formatting-marks .tiptap li > p::after,
+  /* Hide the space/tab glyphs when printing (they're out-of-flow ::before, so removing
+     them changes nothing). The ¶ stays reserved but transparent so print pagination
+     matches the screen — removing it would reflow paragraphs it shares a full line with. */
   .paper.show-formatting-marks .tiptap .pm-space-mark::before,
   .paper.show-formatting-marks .tiptap .pm-tab-mark::before {
     content: none;
+  }
+
+  .paper.show-formatting-marks .tiptap p::after,
+  .paper.show-formatting-marks .tiptap h1::after,
+  .paper.show-formatting-marks .tiptap h2::after,
+  .paper.show-formatting-marks .tiptap h3::after {
+    color: transparent;
   }
 }
 
