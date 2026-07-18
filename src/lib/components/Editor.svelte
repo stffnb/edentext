@@ -20,7 +20,7 @@
   import { applyMarginVars, cmToPx, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { type Orientation } from '../storage/pageOrientation';
   import { applyPageSizeVars, type PageFormat } from '../storage/pageFormat';
-  import { DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
+  import { DEFAULT_HF_DISTANCES, hfIsEmpty, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
   import { t } from '../i18n/i18n.svelte';
@@ -34,11 +34,13 @@
     zoom = 100, showFormattingMarks = false, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
     pageFormat = 'A4',
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
+    headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
     hfEditor = $bindable(null), hfActive = $bindable(null), hfTick = $bindable(0),
   }: {
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
     showFormattingMarks?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat;
     headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
+    headerFirstDoc?: HfDoc; footerFirstDoc?: HfDoc; differentFirstPage?: boolean;
     hfEditor?: Editor | null; hfActive?: HfZone | null; hfTick?: number;
   } = $props();
 
@@ -51,6 +53,35 @@
     applyPageSizeVars(pageFormat, orientation);
   });
 
+  // A header/footer that reaches past the body's margin (its distance from the edge plus
+  // its line count) pushes the body's content area in so text doesn't overlap it — Word
+  // grows the margin to fit the zone. ~18.4px = one 12pt line.
+  const HF_LINE_PX = 16 * 1.15;
+  function hfReachPx(doc: HfDoc, distPx: number): number {
+    if (!doc || hfIsEmpty(doc)) return 0;
+    const inline = ((doc.content?.[0] as { content?: { type?: string }[] } | undefined)?.content ?? []);
+    const lines = 1 + inline.filter((n) => n.type === 'hardBreak').length;
+    return distPx + lines * HF_LINE_PX;
+  }
+  let footerDistPx = $derived(cmToPx((hfDistances ?? DEFAULT_HF_DISTANCES).footer));
+  let headerDistPx = $derived(cmToPx((hfDistances ?? DEFAULT_HF_DISTANCES).header));
+  let mBottomPx = $derived(cmToPx(pageMargins.bottom));
+  let mTopPx = $derived(cmToPx(pageMargins.top));
+  // Effective top/bottom margins (px) for other pages vs. page 1's own header/footer
+  // (different first page); pageBreaks reads these to start each page's content below
+  // its header and end it above its footer.
+  let effTopRest = $derived(Math.max(mTopPx, hfReachPx(headerDoc ?? null, headerDistPx)));
+  let effTopFirst = $derived(Math.max(mTopPx, hfReachPx((differentFirstPage ? headerFirstDoc : headerDoc) ?? null, headerDistPx)));
+  let effBottomRest = $derived(Math.max(mBottomPx, hfReachPx(footerDoc ?? null, footerDistPx)));
+  let effBottomFirst = $derived(Math.max(mBottomPx, hfReachPx((differentFirstPage ? footerFirstDoc : footerDoc) ?? null, footerDistPx)));
+  $effect(() => {
+    const s = document.documentElement.style;
+    s.setProperty('--pb-content-top-rest', `${effTopRest}px`);
+    s.setProperty('--pb-content-top-first', `${effTopFirst}px`);
+    s.setProperty('--pb-content-bottom-rest', `${effBottomRest}px`);
+    s.setProperty('--pb-content-bottom-first', `${effBottomFirst}px`);
+  });
+
   // Nudge the pageBreaks plugin to recompute with the new content area. The dispatch
   // bumps the tick/numPages bindings, so requestAnimationFrame defers it past the
   // Svelte effect flush (re-entering it would trip effect_update_depth_exceeded).
@@ -60,6 +91,8 @@
     void (pageMargins.top + pageMargins.bottom + pageMargins.left + pageMargins.right);
     void orientation;
     void pageFormat;
+    // …and the header/footer-driven effective margins, so growing a zone re-paginates.
+    void (effTopRest + effTopFirst + effBottomRest + effBottomFirst);
     const ed = editor;
     if (!ed) return;
     cancelAnimationFrame(marginRecalcRaf);
@@ -697,6 +730,9 @@
       <HeaderFooterLayer
         bind:headerDoc
         bind:footerDoc
+        bind:headerFirstDoc
+        bind:footerFirstDoc
+        {differentFirstPage}
         bind:hfEditor
         bind:hfActive
         bind:hfTick

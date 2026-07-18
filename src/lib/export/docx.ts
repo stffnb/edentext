@@ -248,9 +248,9 @@ function inlineToRuns(content: TiptapNode[] = [], forceBold = false): Inline[] {
       const img = imageRun(node);
       if (img) out.push(img);
     } else if (node.type === 'pageNumber') {
-      out.push(new TextRun({ children: [PageNumber.CURRENT] }));
+      out.push(new TextRun({ children: [PageNumber.CURRENT], ...runPropsFromMarks(node.marks) }));
     } else if (node.type === 'pageCount') {
-      out.push(new TextRun({ children: [PageNumber.TOTAL_PAGES] }));
+      out.push(new TextRun({ children: [PageNumber.TOTAL_PAGES], ...runPropsFromMarks(node.marks) }));
     } else if (node.type === 'dateTimeField') {
       out.push(dateTimeRun(node));
     }
@@ -852,6 +852,10 @@ export async function buildDocx(
 
   const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
+  // Different first page (Word w:titlePg): page 1 gets its own header/footer.
+  const differentFirstPage = !!hf?.differentFirstPage;
+  const firstHeaderPara = differentFirstPage && !hfIsEmpty(hf?.headerFirst ?? null) ? (hf!.headerFirst!.content![0] as TiptapNode) : null;
+  const firstFooterPara = differentFirstPage && !hfIsEmpty(hf?.footerFirst ?? null) ? (hf!.footerFirst!.content![0] as TiptapNode) : null;
   // Word's model: header/footer distance is from the page edge; the body still starts
   // at the body margin. Clamp the distance below the margin (matches odt.ts).
   const headerDist = Math.min(hf?.headerDistanceCm ?? HF_DISTANCE_CM, margins.top);
@@ -868,8 +872,22 @@ export async function buildDocx(
       header: cmToTwip(headerDist), footer: cmToTwip(footerDist),
     },
   };
-  const mkHeaders = () => headerPara ? { default: new Header({ children: [paragraphToDocx(headerPara)] }) } : undefined;
-  const mkFooters = () => footerPara ? { default: new Footer({ children: [paragraphToDocx(footerPara)] }) } : undefined;
+  // Fresh instances per section (Word's per-sectPr references). A first-page variant
+  // rides `first:` and is activated by properties.titlePage below.
+  const mkHeaders = () => {
+    if (!headerPara && !firstHeaderPara) return undefined;
+    const h: { default?: Header; first?: Header } = {};
+    if (headerPara) h.default = new Header({ children: [paragraphToDocx(headerPara)] });
+    if (firstHeaderPara) h.first = new Header({ children: [paragraphToDocx(firstHeaderPara)] });
+    return h;
+  };
+  const mkFooters = () => {
+    if (!footerPara && !firstFooterPara) return undefined;
+    const f: { default?: Footer; first?: Footer } = {};
+    if (footerPara) f.default = new Footer({ children: [paragraphToDocx(footerPara)] });
+    if (firstFooterPara) f.first = new Footer({ children: [paragraphToDocx(firstFooterPara)] });
+    return f;
+  };
 
   const doc = new Document({
     creator: 'Web ODF Editor',
@@ -882,6 +900,7 @@ export async function buildDocx(
     sections: groups.map((g, i) => ({
       properties: {
         page: pageProps,
+        ...(differentFirstPage ? { titlePage: true } : {}),
         ...(i > 0 ? { type: SectionType.CONTINUOUS } : {}),
         ...(g.columns
           ? { column: { count: g.columns.count, space: cmToTwip(g.columns.gapCm), equalWidth: true } }

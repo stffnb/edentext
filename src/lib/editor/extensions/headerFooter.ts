@@ -23,6 +23,18 @@ import { PageNumber, PageCount } from './pageField';
 
 const HfDocument = Document.extend({ content: 'paragraph' });
 
+// The single-paragraph schema can't split, so plain Enter inserts a line break instead
+// (Word: Enter in a footer adds a blank line, growing the zone into the page). Shift-/
+// Mod-Enter keep their default break binding.
+const HfHardBreak = HardBreak.extend({
+  addKeyboardShortcuts() {
+    return {
+      ...this.parent?.(),
+      Enter: () => this.editor.commands.setHardBreak(),
+    };
+  },
+});
+
 export function hfExtensions(placeholder = '') {
   return [
     HfDocument,
@@ -40,7 +52,7 @@ export function hfExtensions(placeholder = '') {
     FontWeight,
     FontColor,
     Highlight.configure({ multicolor: true }),
-    HardBreak,
+    HfHardBreak,
     PageNumber,
     PageCount,
     History,

@@ -268,6 +268,61 @@ describe('DOCX export → import round trip', () => {
   });
 });
 
+describe('DOCX different first page (w:titlePg)', () => {
+  const fixture: N = { type: 'doc', content: [para('Body')] };
+  // Arial 10pt on the runs and the page-field atoms, so the field digits keep the font.
+  const arial = [{ type: 'textStyle', attrs: { fontFamily: 'Arial', fontSize: '10pt' } }];
+  const hf = {
+    header: { type: 'doc', content: [para('Default header')] },
+    footer: { type: 'doc', content: [para([text('Seite ', arial), { type: 'pageNumber', marks: arial }, text(' von ', arial), { type: 'pageCount', marks: arial }])] },
+    headerFirst: { type: 'doc', content: [para('Cover header')] },
+    footerFirst: { type: 'doc', content: [para('Stand 2025')] },
+    differentFirstPage: true,
+    pageCount: 3,
+  } as any;
+
+  it('emits w:titlePg + first-type header/footer refs and round-trips the variants', async () => {
+    const bytes = await buildDocx(fixture, undefined, 'portrait', hf, { language: 'de', country: 'DE' });
+    const documentXml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    expect(documentXml).toContain('<w:titlePg');
+    expect(documentXml).toMatch(/<w:headerReference[^>]*w:type="first"/);
+    expect(documentXml).toMatch(/<w:footerReference[^>]*w:type="first"/);
+
+    const res = importDocx(bytes);
+    expect(res.differentFirstPage).toBe(true);
+    expect(walk(res.header, 'text')[0].text).toBe('Default header');
+    expect(walk(res.footer, 'pageNumber').length).toBe(1);
+    expect(walk(res.headerFirst, 'text')[0].text).toBe('Cover header');
+    expect(walk(res.footerFirst, 'text')[0].text).toBe('Stand 2025');
+    // The page-field atom keeps the run's font (Arial 10pt) so its digits match the text.
+    const pn = walk(res.footer, 'pageNumber')[0];
+    expect(markAttrs(pn, 'textStyle')).toMatchObject({ fontFamily: 'Arial', fontSize: '10pt' });
+  });
+
+  it('keeps trailing blank lines (empty footer paragraphs) as hardBreaks', async () => {
+    const br = (): N => ({ type: 'hardBreak' });
+    const withBlanks = {
+      ...hf,
+      footerFirst: { type: 'doc', content: [para([text('Stand 2025'), br(), br()])] },
+    } as any;
+    const bytes = await buildDocx(fixture, undefined, 'portrait', withBlanks, { language: 'de', country: 'DE' });
+    const res = importDocx(bytes);
+    const inline = res.footerFirst.content[0].content as N[];
+    expect(inline.filter((n) => n.type === 'hardBreak').length).toBe(2);
+    expect(inline[inline.length - 1].type).toBe('hardBreak');
+  });
+
+  it('omits titlePg and first-page zones when the flag is off', async () => {
+    const bytes = await buildDocx(fixture, undefined, 'portrait', { ...hf, differentFirstPage: false }, { language: 'de', country: 'DE' });
+    const documentXml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    expect(documentXml).not.toContain('<w:titlePg');
+    const res = importDocx(bytes);
+    expect(res.differentFirstPage).toBe(false);
+    expect(res.headerFirst).toBeNull();
+    expect(res.footerFirst).toBeNull();
+  });
+});
+
 describe('DOCX date/time fields', () => {
   const dtf = (kind: string, format: string, fixed: boolean, value: string): N =>
     ({ type: 'dateTimeField', attrs: { kind, format, fixed, value } });

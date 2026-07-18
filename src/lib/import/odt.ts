@@ -34,6 +34,11 @@ export interface OdtImportResult {
   // Single-paragraph docs in the hfExtensions schema; null = no zone.
   header: HfDoc;
   footer: HfDoc;
+  // First-page variants (Word "Different First Page" / ODF header-first). null when
+  // the file has no first-page override; only used when differentFirstPage is set.
+  headerFirst: HfDoc;
+  footerFirst: HfDoc;
+  differentFirstPage: boolean;
   // Edge→zone distance (cm): header from top, footer from bottom. null = no zone.
   headerDistanceCm: number | null;
   footerDistanceCm: number | null;
@@ -363,6 +368,15 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     }
   }
 
+  const headerFirst = hf.headerFirst ? convertHfZone(hf.headerFirst, ctx) : null;
+  const footerFirst = hf.footerFirst ? convertHfZone(hf.footerFirst, ctx) : null;
+  // The presence of a first-page element is the flag, even when it's empty (an empty
+  // first-page zone deliberately blanks page 1 while the default fills later pages).
+  const differentFirstPage = !!(hf.headerFirst || hf.footerFirst);
+  // A first-page zone reserves the band even if its default counterpart is empty.
+  const hasHeader = hf.header || headerFirst;
+  const hasFooter = hf.footer || footerFirst;
+
   return {
     content: { type: 'doc', content: blocks },
     margins: geometry?.margins ?? null,
@@ -370,8 +384,11 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     format: geometry?.format ?? null,
     header: hf.header ? convertHfZone(hf.header, ctx) : null,
     footer: hf.footer ? convertHfZone(hf.footer, ctx) : null,
-    headerDistanceCm: hf.header ? edge?.top ?? null : null,
-    footerDistanceCm: hf.footer ? edge?.bottom ?? null : null,
+    headerFirst,
+    footerFirst,
+    differentFirstPage,
+    headerDistanceCm: hasHeader ? edge?.top ?? null : null,
+    footerDistanceCm: hasFooter ? edge?.bottom ?? null : null,
     language,
     fonts,
     warnings: [...warnings],
@@ -404,9 +421,8 @@ function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
       for (const p of Array.from(child.getElementsByTagNameNS(NS.text, 'p'))) addPara(p);
     }
   }
-  // Trim leading/trailing breaks from empty source paragraphs.
-  while (inline[0]?.type === 'hardBreak') inline.shift();
-  while (inline[inline.length - 1]?.type === 'hardBreak') inline.pop();
+  // Empty source paragraphs become blank lines (hardBreaks); an all-empty zone has no
+  // runs and no inter-paragraph break, so inline stays empty and the zone is dropped.
   if (inline.length === 0) return null;
 
   const para: Node = { type: 'paragraph', content: inline };
@@ -799,13 +815,13 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
           case 'change-end':
             continue;
           default:
-            // In headers/footers, page fields stay live fields (pageField.ts).
-            if (hfFields && e.localName === 'page-number') {
-              out.push({ type: 'pageNumber' });
-              continue;
-            }
-            if (hfFields && e.localName === 'page-count') {
-              out.push({ type: 'pageCount' });
+            // In headers/footers, page fields stay live fields (pageField.ts). The atom
+            // carries the run's marks so its digits render in the run's font/size.
+            if (hfFields && (e.localName === 'page-number' || e.localName === 'page-count')) {
+              const field: Node = { type: e.localName === 'page-count' ? 'pageCount' : 'pageNumber' };
+              const marks = marksFor(props, ctx.resolver, headingLevel, boldByDefault);
+              if (marks.length) field.marks = marks;
+              out.push(field);
               continue;
             }
             // Date/time fields become live dateTimeField nodes in the body (a known

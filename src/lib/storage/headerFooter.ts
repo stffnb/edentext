@@ -1,13 +1,27 @@
 // Header/footer content: one single-paragraph TipTap doc per zone (hfExtensions
-// schema), identical on every page. null = zone empty → not exported.
+// schema). The 'default' variant repeats on every page; the 'first' variant (Word
+// "Different First Page" / ODF header-first) overrides page 1. null = empty zone.
 
 export type HfZone = 'header' | 'footer';
+export type HfVariant = 'default' | 'first';
 export type HfDoc = { type: 'doc'; content?: unknown[] } | null;
 
-const KEYS: Record<HfZone, string> = {
-  header: 'odf-editor-header',
-  footer: 'odf-editor-footer',
+const KEYS: Record<HfZone, Record<HfVariant, string>> = {
+  header: { default: 'odf-editor-header', first: 'odf-editor-header-first' },
+  footer: { default: 'odf-editor-footer', first: 'odf-editor-footer-first' },
 };
+
+// Whether page 1 uses its own header/footer (Word w:titlePg / ODF header-first).
+const DIFFERENT_FIRST_KEY = 'odf-editor-hf-different-first';
+
+export function loadDifferentFirstPage(): boolean {
+  return localStorage.getItem(DIFFERENT_FIRST_KEY) === 'true';
+}
+
+export function saveDifferentFirstPage(on: boolean): void {
+  if (on) localStorage.setItem(DIFFERENT_FIRST_KEY, 'true');
+  else localStorage.removeItem(DIFFERENT_FIRST_KEY);
+}
 
 // Word's default distance from the page edge to the header/footer text. The body
 // margin stays the body margin (Word semantics); export/import convert to ODF's
@@ -47,8 +61,8 @@ export function saveHfDistances(d: HfDistances): void {
   localStorage.setItem(DIST_KEY, JSON.stringify(d));
 }
 
-export function loadHfDoc(zone: HfZone): HfDoc {
-  const raw = localStorage.getItem(KEYS[zone]);
+export function loadHfDoc(zone: HfZone, variant: HfVariant = 'default'): HfDoc {
+  const raw = localStorage.getItem(KEYS[zone][variant]);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
@@ -58,9 +72,9 @@ export function loadHfDoc(zone: HfZone): HfDoc {
   }
 }
 
-export function saveHfDoc(zone: HfZone, doc: HfDoc): void {
-  if (hfIsEmpty(doc)) localStorage.removeItem(KEYS[zone]);
-  else localStorage.setItem(KEYS[zone], JSON.stringify(doc));
+export function saveHfDoc(zone: HfZone, doc: HfDoc, variant: HfVariant = 'default'): void {
+  if (hfIsEmpty(doc)) localStorage.removeItem(KEYS[zone][variant]);
+  else localStorage.setItem(KEYS[zone][variant], JSON.stringify(doc));
 }
 
 // Empty = null or a single paragraph without inline content. Empty zones render

@@ -128,15 +128,25 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 
   let sect = parseSectPr(finalSectPr, ctx);
-  // LibreOffice-produced multi-section files may reference headers/footers only on
-  // an earlier section; page geometry still comes from the body-final sectPr.
-  if (!sect.header && !sect.footer) {
+  // Multi-section files may reference headers/footers only on an earlier section (page
+  // geometry still comes from the body-final sectPr). Adopt its header/footer + first-
+  // page variants, keeping the different-first-page flag if either section set it.
+  if (!sect.header && !sect.footer && !sect.headerFirst && !sect.footerFirst) {
     const prev = [...midSectPrs].reverse().find((s) => fc(s, 'headerReference') || fc(s, 'footerReference'));
     if (prev) {
       const prevSect = parseSectPr(prev, ctx);
-      sect = { ...sect, header: prevSect.header, footer: prevSect.footer, headerDistCm: prevSect.headerDistCm, footerDistCm: prevSect.footerDistCm };
+      sect = {
+        ...sect,
+        header: prevSect.header, footer: prevSect.footer,
+        headerFirst: prevSect.headerFirst, footerFirst: prevSect.footerFirst,
+        differentFirstPage: sect.differentFirstPage || prevSect.differentFirstPage,
+        headerDistCm: prevSect.headerDistCm, footerDistCm: prevSect.footerDistCm,
+      };
     }
   }
+  // A first-page zone reserves the header/footer band even when its default is empty.
+  const hasHeader = sect.header || (sect.differentFirstPage && sect.headerFirst);
+  const hasFooter = sect.footer || (sect.differentFirstPage && sect.footerFirst);
 
   return {
     content: { type: 'doc', content: blocks },
@@ -145,8 +155,11 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     format: sect.format,
     header: sect.header,
     footer: sect.footer,
-    headerDistanceCm: sect.header ? sect.headerDistCm : null,
-    footerDistanceCm: sect.footer ? sect.footerDistCm : null,
+    headerFirst: sect.differentFirstPage ? sect.headerFirst : null,
+    footerFirst: sect.differentFirstPage ? sect.footerFirst : null,
+    differentFirstPage: sect.differentFirstPage,
+    headerDistanceCm: hasHeader ? sect.headerDistCm : null,
+    footerDistanceCm: hasFooter ? sect.footerDistCm : null,
     language: documentLanguage(stylesDoc, warnings),
     fonts: extractDocxFonts(files),
     warnings: [...warnings],
@@ -614,12 +627,13 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
     const skipResult = () => fieldMode === 'result' && (hfFields || !!fieldDateTime);
 
     // Route a drawing/pict result: an image is inline; a text box is a block node
-    // riding ctx.pendingBlocks (dropped in the one-paragraph header/footer schema).
+    // riding ctx.pendingBlocks. The one-paragraph header/footer schema holds neither,
+    // so drawings there are dropped with a warning.
     const pushDrawn = (n: Node | null) => {
       if (!n) return;
+      if (hfFields) { ctx.warnings.add('Drawings were removed'); return; }
       if (n.type !== 'textBox') { out.push(n); return; }
-      if (hfFields) ctx.warnings.add('Drawings were removed');
-      else ctx.pendingBlocks.push(n);
+      ctx.pendingBlocks.push(n);
     };
 
     for (const child of Array.from(r.children)) {
@@ -652,7 +666,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
             }
           } else if (t === 'end') {
             if (fieldDateTime) out.push(fieldDateTime);
-            else emitField(out, fieldInstr, hfFields);
+            else emitField(out, fieldInstr, hfFields, marks);
             fieldMode = 'none';
             fieldDateTime = null;
           }
@@ -681,7 +695,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
       }
       case 'fldSimple': {
         const instr = el.getAttributeNS(W, 'instr') ?? '';
-        if (hfFields) { emitField(out, instr, true); break; }
+        if (hfFields) { const first = fcAll(el, 'r')[0]; emitField(out, instr, true, first ? runMarks(first) : []); break; }
         const field = dateTimeFieldFromInstr(instr);
         if (field) {
           const first = fcAll(el, 'r')[0];
@@ -704,10 +718,12 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
   return mergeAdjacentText(out);
 }
 
-function emitField(out: Node[], instr: string, hfFields: boolean): void {
+function emitField(out: Node[], instr: string, hfFields: boolean, marks: Mark[] = []): void {
   if (!hfFields) return;
-  if (/\bNUMPAGES\b/.test(instr)) out.push({ type: 'pageCount' });
-  else if (/\bPAGE\b/.test(instr)) out.push({ type: 'pageNumber' });
+  // The atom carries the field run's marks so its digits render in the run's font/size.
+  const push = (type: string) => out.push(marks.length ? { type, marks } : { type });
+  if (/\bNUMPAGES\b/.test(instr)) push('pageCount');
+  else if (/\bPAGE\b/.test(instr)) push('pageNumber');
 }
 
 // A DATE/TIME field instruction with a picture switch we recognize → a live
@@ -1129,9 +1145,10 @@ function pushColumnRuns(inner: Node[], cols: { count: number; gapCm: number }, o
 
 function parseSectPr(sect: Element | null, ctx: Ctx): {
   margins: PageMargins | null; orientation: Orientation | null; format: PageFormat | null;
-  header: HfDoc; footer: HfDoc; headerDistCm: number | null; footerDistCm: number | null;
+  header: HfDoc; footer: HfDoc; headerFirst: HfDoc; footerFirst: HfDoc; differentFirstPage: boolean;
+  headerDistCm: number | null; footerDistCm: number | null;
 } {
-  const empty = { margins: null, orientation: null, format: null, header: null, footer: null, headerDistCm: null, footerDistCm: null };
+  const empty = { margins: null, orientation: null, format: null, header: null, footer: null, headerFirst: null, footerFirst: null, differentFirstPage: false, headerDistCm: null, footerDistCm: null };
   if (!sect) return empty;
 
   const pgSz = fc(sect, 'pgSz');
@@ -1146,19 +1163,25 @@ function parseSectPr(sect: Element | null, ctx: Ctx): {
     ? { top: clampCm(intAttr(pgMar, W, 'top')) ?? 2.54, bottom: clampCm(intAttr(pgMar, W, 'bottom')) ?? 2.54, left: clampCm(intAttr(pgMar, W, 'left')) ?? 2.12, right: clampCm(intAttr(pgMar, W, 'right')) ?? 2.12 }
     : null;
 
-  const refId = (type: string) => {
-    for (const ref of fcAll(sect, `${type}Reference`)) {
-      const t = ref.getAttributeNS(W, 'type') ?? 'default';
-      if (t === 'first' || t === 'even') ctx.warnings.add('Per-page header/footer variants (first/even pages) are not supported — the default one was used');
-    }
-    const def = fcAll(sect, `${type}Reference`).find((r) => (r.getAttributeNS(W, 'type') ?? 'default') === 'default');
-    return def?.getAttributeNS(R, 'id') ?? null;
+  // Different first page: w:titlePg turns on the "first"-type refs for page 1.
+  const titlePg = !!fc(sect, 'titlePg');
+  const refId = (type: string, variant: 'default' | 'first' = 'default') => {
+    const want = variant === 'first' ? 'first' : 'default';
+    const ref = fcAll(sect, `${type}Reference`).find((r) => (r.getAttributeNS(W, 'type') ?? 'default') === want);
+    return ref?.getAttributeNS(R, 'id') ?? null;
   };
+  // The even/left variant stays unsupported (later pages fall back to the default).
+  if (fcAll(sect, 'headerReference').concat(fcAll(sect, 'footerReference')).some((r) => r.getAttributeNS(W, 'type') === 'even')) {
+    ctx.warnings.add('Per-page header/footer variants (first/even pages) are not supported — the default one was used');
+  }
 
   const header = convertHfPart(refId('header'), ctx);
   const footer = convertHfPart(refId('footer'), ctx);
+  const headerFirst = titlePg ? convertHfPart(refId('header', 'first'), ctx) : null;
+  const footerFirst = titlePg ? convertHfPart(refId('footer', 'first'), ctx) : null;
   return {
     margins, orientation, format, header, footer,
+    headerFirst, footerFirst, differentFirstPage: titlePg,
     headerDistCm: clampCm(intAttr(pgMar, W, 'header')),
     footerDistCm: clampCm(intAttr(pgMar, W, 'footer')),
   };
@@ -1191,8 +1214,8 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
     const baseRun = hfCtx.styles.paragraphRun(fc(ppr, 'pStyle') ? wVal(fc(ppr, 'pStyle')!) : null);
     inline.push(...convertInline(p, hfCtx, baseRun, null, true, false).filter((n) => n.type !== PB_MARKER));
   }
-  while (inline[0]?.type === 'hardBreak') inline.shift();
-  while (inline[inline.length - 1]?.type === 'hardBreak') inline.pop();
+  // Empty source paragraphs become blank lines (hardBreaks); an all-empty zone has no
+  // runs and no inter-paragraph break, so inline stays empty and the zone is dropped.
   if (inline.length === 0) return null;
 
   const para: Node = { type: 'paragraph', content: inline };

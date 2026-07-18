@@ -22,8 +22,8 @@
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
 
-  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), hfActive = null, onEditZone, onDebugDump }:
-    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hfDistances?: HfDistances; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void } = $props();
+  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), hfActive = null, onEditZone, onDebugDump }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hfDistances?: HfDistances; differentFirstPage?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void } = $props();
 
   const PAGE_FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
 
@@ -1270,6 +1270,10 @@
               onclick={() => onEditZone?.('footer')}
             >{t().toolbarExpanded.editFooter}</button>
           </div>
+          <label class="hf-firstpage-row" title={t().toolbarExpanded.differentFirstPageHint}>
+            <input type="checkbox" bind:checked={differentFirstPage} />
+            <span>{t().toolbarExpanded.differentFirstPage}</span>
+          </label>
 
           <div class="lh-section-label">{t().toolbarExpanded.position}</div>
           <div class="margin-grid">
@@ -2029,6 +2033,21 @@
     background: var(--color-primary);
     border-color: var(--color-primary);
     color: #fff;
+  }
+
+  .hf-firstpage-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px 4px;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .hf-firstpage-row input {
+    cursor: pointer;
   }
 
   .margin-field {

@@ -364,6 +364,8 @@ export class StyleResolver {
   masterPageHF(): {
     header: Element | null;
     footer: Element | null;
+    headerFirst: Element | null;
+    footerFirst: Element | null;
     headerExtraCm: number;
     footerExtraCm: number;
     hasVariants: boolean;
@@ -375,6 +377,15 @@ export class StyleResolver {
       if (!mp) return null;
       for (const child of Array.from(mp.children)) {
         if (child.namespaceURI === NS.style && child.localName === local) return child;
+      }
+      return null;
+    };
+    // header-first/footer-first (ODF 1.3 style: or older LibreOffice loext:) — match
+    // by local name in either namespace so both producers round-trip.
+    const firstZone = (local: string): Element | null => {
+      if (!mp) return null;
+      for (const child of Array.from(mp.children)) {
+        if (child.localName === local && (child.namespaceURI === NS.style || child.namespaceURI === NS.loext)) return child;
       }
       return null;
     };
@@ -398,9 +409,12 @@ export class StyleResolver {
     return {
       header: zone('header'),
       footer: zone('footer'),
+      headerFirst: firstZone('header-first'),
+      footerFirst: firstZone('footer-first'),
       headerExtraCm: extraCm('header-style', 'margin-bottom'),
       footerExtraCm: extraCm('footer-style', 'margin-top'),
-      hasVariants: ['header-first', 'footer-first', 'header-left', 'footer-left'].some(l => zone(l) != null),
+      // Only the left/right (even) variant stays unsupported; -first is handled below.
+      hasVariants: ['header-left', 'footer-left'].some(l => zone(l) != null),
     };
   }
 

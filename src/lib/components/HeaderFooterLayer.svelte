@@ -10,6 +10,9 @@
   let {
     headerDoc = $bindable(),
     footerDoc = $bindable(),
+    headerFirstDoc = $bindable(),
+    footerFirstDoc = $bindable(),
+    differentFirstPage = false,
     numPages,
     currentPage,
     pageMargins,
@@ -22,6 +25,9 @@
   }: {
     headerDoc: HfDoc;
     footerDoc: HfDoc;
+    headerFirstDoc: HfDoc;
+    footerFirstDoc: HfDoc;
+    differentFirstPage?: boolean;
     numPages: number;
     currentPage: number;
     pageMargins: PageMargins;
@@ -34,6 +40,9 @@
   } = $props();
 
   const PAGE_GAP = 20;
+  // Minimum zone height (~one 12pt line), so a thin margin band (footer distance ≥
+  // bottom margin, as some Word docs have) still renders instead of collapsing to 0.
+  const MIN_ZONE_PX = 20;
   // Schema for static (read-only) rendering of the inactive zones.
   const renderExts = hfExtensions();
 
@@ -47,10 +56,10 @@
   let mLeft = $derived(cmToPx(pageMargins.left));
   let mRight = $derived(cmToPx(pageMargins.right));
   let contentWidth = $derived(Math.max(0, pageWidthPx - mLeft - mRight));
-  // Edge→zone distance in px, clamped below the body margin so the zone fits within
-  // the margin band (matches the export's Math.min(dist, margin) clamp).
-  let headerDistPx = $derived(Math.min(cmToPx(hfDistances.header), mTop));
-  let footerDistPx = $derived(Math.min(cmToPx(hfDistances.footer), mBottom));
+  // Edge→zone distance in px. The footer may sit farther from the edge than the body
+  // bottom margin (Word's w:footer > w:bottom); the zone then grows up into the margin.
+  let headerDistPx = $derived(Math.min(cmToPx(hfDistances.header), pageHeightPx));
+  let footerDistPx = $derived(Math.min(cmToPx(hfDistances.footer), pageHeightPx));
 
   let pages = $derived(Array.from({ length: Math.max(1, numPages) }, (_, i) => i + 1));
 
@@ -59,10 +68,25 @@
     const width = contentWidth;
     if (zone === 'header') {
       const top = (page - 1) * cycle + headerDistPx;
-      return { top, left, width, height: Math.max(0, mTop - headerDistPx) };
+      return { top, left, width, height: Math.max(MIN_ZONE_PX, mTop - headerDistPx) };
     }
-    const top = (page - 1) * cycle + pageHeightPx - mBottom;
-    return { top, left, width, height: Math.max(0, mBottom - footerDistPx) };
+    // Footer anchors its bottom edge at footerDistPx from the page bottom and grows up.
+    const height = Math.max(MIN_ZONE_PX, mBottom - footerDistPx);
+    const top = (page - 1) * cycle + pageHeightPx - footerDistPx - height;
+    return { top, left, width, height };
+  }
+  // The active (edited) zone grows to fit its content, keeping the anchored edge fixed
+  // (footer bottom at footerDistPx, header top at headerDistPx) so the Word-style
+  // boundary line sits exactly at the content's edge toward the body.
+  function activeZoneBox(zone: HfZone, page: number) {
+    const b = zoneBox(zone, page);
+    // A visible ProseMirror trailing break (a caret line past the real content) is
+    // discounted: the frame tracks the real content and the break overflows past the
+    // anchored edge, so entering edit never shifts the text.
+    const contentPx = Math.max(0, activeContentPx - activeTrailingPx);
+    const height = Math.max(b.height, contentPx);
+    if (zone === 'footer') return { ...b, top: b.top + b.height - height, height };
+    return { ...b, height };
   }
   const boxStyle = (b: { top: number; left: number; width: number; height: number }) =>
     `top: ${b.top}px; left: ${b.left}px; width: ${b.width}px; height: ${b.height}px;`;
@@ -70,13 +94,27 @@
   function staticHtml(doc: HfDoc): string {
     if (hfIsEmpty(doc)) return '';
     try {
-      return generateHTML(doc as Parameters<typeof generateHTML>[0], renderExts);
+      const html = generateHTML(doc as Parameters<typeof generateHTML>[0], renderExts);
+      // A paragraph ending in a hardBreak loses its last blank line: a bare trailing <br>
+      // collapses, so the live editor adds a ProseMirror trailing break but generateHTML
+      // doesn't. Append one (past any mark close-tags) so static matches editing.
+      return html.replace(/(<br\s*\/?>)((?:<\/[a-zA-Z]+>)*<\/p>)/g, '$1<br>$2');
     } catch {
       return '';
     }
   }
   let headerHtml = $derived(staticHtml(headerDoc));
   let footerHtml = $derived(staticHtml(footerDoc));
+  let headerFirstHtml = $derived(staticHtml(headerFirstDoc));
+  let footerFirstHtml = $derived(staticHtml(footerFirstDoc));
+
+  // Page 1 uses the first-page variant when the feature is on. Word: the first page
+  // then always shows its own (possibly empty) zone, never the default.
+  let isFirstVariant = (page: number) => differentFirstPage && page === 1;
+  function zoneHtml(zone: HfZone, page: number): string {
+    if (zone === 'header') return isFirstVariant(page) ? headerFirstHtml : headerHtml;
+    return isFirstVariant(page) ? footerFirstHtml : footerHtml;
+  }
 
   // Replace the placeholder text in every page-field span with the real value:
   // current page number, or the total page count. Re-runs when its param changes.
@@ -92,13 +130,17 @@
 
   // --- live editing of one zone ---
   let liveMount = $state<HTMLDivElement | null>(null);
+  let activeContentPx = $state(0);
+  let activeTrailingPx = $state(0);
   let editingPage = $state(1);
   // Set by a double-click (that page); null when editing is triggered externally
   // (Layout-panel buttons), where the current page is used instead.
   let pendingPage: number | null = null;
   let liveZone: HfZone | null = null;
 
-  function zoneDoc(zone: HfZone): HfDoc {
+  // The doc for a zone + whether page 1's own variant is being edited.
+  function zoneDoc(zone: HfZone, first: boolean): HfDoc {
+    if (first) return zone === 'header' ? headerFirstDoc : footerFirstDoc;
     return zone === 'header' ? headerDoc : footerDoc;
   }
   function emptyDoc(): HfDoc {
@@ -132,10 +174,13 @@
     editingPage = pendingPage ?? currentPage;
     pendingPage = null;
     liveZone = zone;
+    // Which variant this edit session targets — fixed for its lifetime (page 1 with the
+    // feature on edits the first-page doc; App ends the edit when the flag toggles).
+    const editingFirst = isFirstVariant(editingPage);
     const ed = new Editor({
       element: mount,
       extensions: hfExtensions(zone === 'header' ? t().hf.headerPlaceholder : t().hf.footerPlaceholder),
-      content: (zoneDoc(zone) ?? emptyDoc()) as Content,
+      content: (zoneDoc(zone, editingFirst) ?? emptyDoc()) as Content,
       // No autofocus: its scrollIntoView nudges the page so the just-clicked zone
       // appears to jump. Focus the zone explicitly without scrolling instead.
       onTransaction: () => {
@@ -143,7 +188,10 @@
       },
       onUpdate: ({ editor }) => {
         const json = editor.getJSON() as HfDoc;
-        if (zone === 'header') headerDoc = json;
+        if (editingFirst) {
+          if (zone === 'header') headerFirstDoc = json;
+          else footerFirstDoc = json;
+        } else if (zone === 'header') headerDoc = json;
         else footerDoc = json;
       },
       editorProps: {
@@ -169,6 +217,15 @@
     for (const el of Array.from(liveMount.querySelectorAll('[data-page-field]'))) {
       el.textContent = String(el.getAttribute('data-page-field') === 'count' ? numPages : editingPage);
     }
+    // Content height (unscaled by the zoom transform) drives the active zone's frame.
+    const tt = liveMount.querySelector('.tiptap') as HTMLElement | null;
+    activeContentPx = tt ? tt.offsetHeight : 0;
+    // A rendered trailing break adds one caret line past the real content; measure that
+    // line height (the CSS var below shifts the editor down so it overflows the anchor).
+    const p = tt?.querySelector('p') as HTMLElement | null;
+    const tb = p?.querySelector(':scope > br.ProseMirror-trailingBreak') as HTMLElement | null;
+    const lineH = p ? parseFloat(getComputedStyle(p).lineHeight) : 0;
+    activeTrailingPx = tb && getComputedStyle(tb).display !== 'none' && Number.isFinite(lineH) ? lineH : 0;
   });
 
   function insertField(kind: 'pageNumber' | 'pageCount') {
@@ -180,7 +237,7 @@
   {#each pages as p}
     {#each ['header', 'footer'] as const as zone}
       {#if !(hfActive === zone && editingPage === p)}
-        {@const html = zone === 'header' ? headerHtml : footerHtml}
+        {@const html = zoneHtml(zone, p)}
         <div
           class="hf-zone hf-{zone}"
           class:hf-empty={!html}
@@ -198,8 +255,14 @@
   {/each}
 
   {#if hfActive}
-    {@const box = zoneBox(hfActive, editingPage)}
-    <div class="hf-zone hf-{hfActive} hf-active" style={boxStyle(box)} bind:this={liveMount}></div>
+    {@const box = activeZoneBox(hfActive, editingPage)}
+    {@const first = isFirstVariant(editingPage)}
+    <div class="hf-zone hf-{hfActive} hf-active" style={boxStyle(box) + ` --hf-tb-offset: ${-activeTrailingPx}px;`} bind:this={liveMount}></div>
+    <div class="hf-tag" style="top: {box.top}px; left: {box.left}px;">
+      {hfActive === 'header'
+        ? (first ? t().hf.firstPageHeader : t().hf.headerLabel)
+        : (first ? t().hf.firstPageFooter : t().hf.footerLabel)}
+    </div>
     <div class="hf-bar" style="top: {box.top}px; left: {box.left + box.width}px;">
       <span class="hf-bar-label">{t().hf.insert}</span>
       <button class="hf-bar-btn" title={t().hf.pageNumberTitle} onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageNumber')}>{t().hf.pageNumber}</button>
@@ -225,7 +288,9 @@
     display: flex;
     flex-direction: column;
     pointer-events: auto;
-    overflow: hidden;
+    /* Content taller than the margin band spills into the margin (footer up, header
+       down), like Word's auto-growing zones; the anchored edge stays put. */
+    overflow: visible;
     font-family: var(--font-serif);
     font-size: 12pt;
     color: var(--color-page-text);
@@ -255,15 +320,47 @@
     opacity: 0.6;
   }
 
-  .hf-active {
-    outline: 1px dashed var(--color-primary);
-    outline-offset: 2px;
+  /* Word-style affordance: a single dashed line at the edge facing the page body
+     (footer top, header bottom) instead of a rectangle around the content. */
+  .hf-active::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1px dashed var(--color-primary);
+    pointer-events: none;
+  }
+  .hf-active.hf-footer::after {
+    top: 0;
+  }
+  .hf-active.hf-header::after {
+    bottom: 0;
   }
 
-  /* Strip the page margins from the rendered header/footer paragraph. */
+  /* Word-style zone label tab, pinned to the zone's top-left corner. */
+  .hf-tag {
+    position: absolute;
+    transform: translateY(calc(-100% - 2px));
+    z-index: 150;
+    padding: 1px 6px;
+    background: var(--color-primary);
+    color: #fff;
+    font-family: var(--font-sans);
+    font-size: 0.68rem;
+    letter-spacing: 0.02em;
+    border-radius: calc(var(--radius) - 3px) calc(var(--radius) - 3px) 0 0;
+    pointer-events: none;
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  /* Strip the page margins from the rendered header/footer paragraph. pre-wrap keeps
+     runs of spaces (used to push a right-side field over) that HTML would collapse —
+     matching the live editor's ProseMirror rendering. */
   .hf-zone :global(p) {
     margin: 0;
     line-height: 1.15;
+    white-space: pre-wrap;
   }
   /* The live editor's editable root is also a `.tiptap`, so the global
      `.paper .tiptap` rules (96px padding, 1123px min-height, page-background
@@ -277,6 +374,12 @@
     font-size: 12pt;
     line-height: 1.15;
     outline: none;
+    /* Keep the editable root at its content height (min-height:0 would otherwise let
+       the flex column shrink it to the band, hiding lines and misreporting height). */
+    flex-shrink: 0;
+    /* Drop the editor by the trailing-break line so the caret line overflows past the
+       anchored edge while the real content stays put (set per active zone). */
+    margin-bottom: var(--hf-tb-offset, 0px);
   }
   /* The live editor's paragraph also matches `.paper .tiptap p` (margin-bottom
      0.212cm), which the static `<p>` doesn't — with flex-end alignment that gap
@@ -284,6 +387,12 @@
      specificity than `.paper .tiptap p`). */
   .hf-layer .hf-zone :global(.tiptap p) {
     margin: 0;
+  }
+  /* A paragraph ending in an inline atom (a page field) gets a phantom trailing <br> the
+     static <p> lacks; ProseMirror marks that case with a separator <img>, so hide the
+     break only then. A real Enter-made line has no separator and keeps its caret. */
+  .hf-layer .hf-zone :global(.tiptap p:has(img.ProseMirror-separator) > br.ProseMirror-trailingBreak) {
+    display: none;
   }
   .hf-zone :global([data-page-field]) {
     white-space: pre;

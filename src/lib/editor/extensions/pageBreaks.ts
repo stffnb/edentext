@@ -134,8 +134,13 @@ export type VMargins = {
 // are ignored (they affect line wrapping, not pagination). Shared with columnsFlow.ts.
 export function readVerticalMargins(dom: HTMLElement): VMargins {
   const cs = getComputedStyle(dom);
-  const top = parseFloat(cs.getPropertyValue('--user-margin-top'));
-  const bottom = parseFloat(cs.getPropertyValue('--user-margin-bottom'));
+  // Header/footer-aware effective margins (Editor.svelte): equal the raw page margins
+  // unless a header/footer grows past them, in which case the content area shrinks so
+  // body text starts below the header / ends above the footer.
+  const topEff = parseFloat(cs.getPropertyValue('--pb-content-top-rest'));
+  const top = Number.isFinite(topEff) ? topEff : parseFloat(cs.getPropertyValue('--user-margin-top'));
+  const bottomEff = parseFloat(cs.getPropertyValue('--pb-content-bottom-rest'));
+  const bottom = Number.isFinite(bottomEff) ? bottomEff : parseFloat(cs.getPropertyValue('--user-margin-bottom'));
   const ph = parseFloat(cs.getPropertyValue('--user-page-height'));
   const mt = Number.isFinite(top) ? top : DEFAULT_MARGIN_TOP;
   const mb = Number.isFinite(bottom) ? bottom : DEFAULT_MARGIN_BOTTOM;
@@ -756,6 +761,13 @@ export const PageBreaks = Extension.create({
           const pwRaw = parseFloat(csRoot.getPropertyValue('--user-page-width'));
           const marginLeft = Number.isFinite(mlRaw) ? mlRaw : 80;
           const contentWidth = (Number.isFinite(pwRaw) ? pwRaw : 794) - marginLeft - (Number.isFinite(mrRaw) ? mrRaw : 80);
+          // Page 1's own header/footer (different first page) may reach further than the
+          // others, so its content starts lower / ends sooner; each falls back to the
+          // shared effective margin.
+          const ctFirst = parseFloat(csRoot.getPropertyValue('--pb-content-top-first'));
+          const effTopFirst = Number.isFinite(ctFirst) ? ctFirst : vm.top;
+          const cbFirst = parseFloat(csRoot.getPropertyValue('--pb-content-bottom-first'));
+          const effBottomFirst = Number.isFinite(cbFirst) ? cbFirst : vm.bottom;
 
           const scale = getScaleFactor();
           const leaves = collectLeaves(CONTENT_HEIGHT, scale);
@@ -800,8 +812,11 @@ export const PageBreaks = Extension.create({
             const effectiveTop = leaf.naturalTop + cumulativeShift;
             const effectiveBottom = effectiveTop + leaf.naturalHeight;
             const page = getPageForY(effectiveTop, CYCLE_PX);
-            const contentStart = pageContentStart(page, vm.top, CYCLE_PX);
-            const contentEnd = pageContentEnd(page, vm.top, CONTENT_HEIGHT, CYCLE_PX);
+            const contentStart = page === 1 ? effTopFirst : pageContentStart(page, vm.top, CYCLE_PX);
+            const contentEnd =
+              page === 1
+                ? vm.pageHeight - effBottomFirst
+                : pageContentEnd(page, vm.top, CONTENT_HEIGHT, CYCLE_PX);
 
             // A leaf may need several spacers: a splittable block taller than one
             // page crosses multiple boundaries, one break each.
@@ -878,7 +893,10 @@ export const PageBreaks = Extension.create({
                 bandOpenY: target,
                 reason: 'forced-page-break',
               });
-            } else if (effectiveTop < contentStart && i > 0) {
+            } else if (effectiveTop < contentStart && (i > 0 || effectiveTop < contentStart - 1)) {
+              // i === 0 only reaches here when a tall header on page 1 pushes the very
+              // first block down below its content start (a >1px gap); otherwise the
+              // first block already sits at the content start.
               const { docPos, row } = leafSpacer(leaf);
               breaks.push({
                 height: contentStart - effectiveTop,

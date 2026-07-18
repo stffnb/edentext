@@ -21,7 +21,7 @@
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadPageFormat, savePageFormat, type PageFormat } from './lib/storage/pageFormat';
-  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
+  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { spellController } from './lib/spell/controller';
@@ -45,6 +45,10 @@
   // top toolbars target hfEditor instead of the body editor (activeEditor below).
   let headerDoc: HfDoc = $state(loadHfDoc('header'));
   let footerDoc: HfDoc = $state(loadHfDoc('footer'));
+  // First-page header/footer (Word "Different First Page"), shown on page 1 when on.
+  let headerFirstDoc: HfDoc = $state(loadHfDoc('header', 'first'));
+  let footerFirstDoc: HfDoc = $state(loadHfDoc('footer', 'first'));
+  let differentFirstPage: boolean = $state(loadDifferentFirstPage());
   let hfDistances: HfDistances = $state(loadHfDistances());
   let hfEditor: Editor | null = $state(null);
   let hfActive: HfZone | null = $state(null);
@@ -153,6 +157,21 @@
 
   $effect(() => {
     saveHfDoc('footer', footerDoc);
+  });
+
+  $effect(() => {
+    saveHfDoc('header', headerFirstDoc, 'first');
+  });
+
+  $effect(() => {
+    saveHfDoc('footer', footerFirstDoc, 'first');
+  });
+
+  // Persist the flag and end any active header/footer edit when it flips (the live
+  // editor is bound to one variant for its lifetime).
+  $effect(() => {
+    saveDifferentFirstPage(differentFirstPage);
+    hfActive = null;
   });
 
   $effect(() => {
@@ -304,7 +323,9 @@
   // odf-kit export options for the current header/footer + page geometry.
   function hfOpts() {
     return {
-      header: headerDoc, footer: footerDoc, pageCount: numPages,
+      header: headerDoc, footer: footerDoc,
+      headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage,
+      pageCount: numPages,
       headerDistanceCm: hfDistances.header, footerDistanceCm: hfDistances.footer,
     };
   }
@@ -312,7 +333,7 @@
   function isDocNonEmpty(): boolean {
     if (!editor) return false;
     const body = editor.state.doc.textContent.length > 0 || editor.state.doc.childCount > 1;
-    return body || !hfIsEmpty(headerDoc) || !hfIsEmpty(footerDoc);
+    return body || !hfIsEmpty(headerDoc) || !hfIsEmpty(footerDoc) || !hfIsEmpty(headerFirstDoc) || !hfIsEmpty(footerFirstDoc);
   }
 
   function handleNew() {
@@ -323,6 +344,9 @@
     hfActive = null;
     headerDoc = null;
     footerDoc = null;
+    headerFirstDoc = null;
+    footerFirstDoc = null;
+    differentFirstPage = false;
     pageMargins = { ...DEFAULT_MARGINS };
     pageOrientation = 'portrait';
     pageFormat = 'A4';
@@ -381,10 +405,13 @@
       // Adopt the document's spell-check language (the $effect switches the
       // controller + loads its dictionary). null = file declared none; keep ours.
       if (result.language) documentLanguage = result.language;
-      // Adopt header/footer (null clears the zone); end any active edit.
+      // Adopt header/footer + first-page variants (null clears the zone); end any edit.
       hfActive = null;
       headerDoc = result.header;
       footerDoc = result.footer;
+      headerFirstDoc = result.headerFirst;
+      footerFirstDoc = result.footerFirst;
+      differentFirstPage = result.differentFirstPage;
       hfDistances = {
         header: result.headerDistanceCm ?? DEFAULT_HF_DISTANCES.header,
         footer: result.footerDistanceCm ?? DEFAULT_HF_DISTANCES.footer,
@@ -397,6 +424,8 @@
       collectFontFamilies(result.content, fontSet);
       collectFontFamilies(result.header, fontSet);
       collectFontFamilies(result.footer, fontSet);
+      collectFontFamilies(result.headerFirst, fontSet);
+      collectFontFamilies(result.footerFirst, fontSet);
       const missingFonts = await unavailableFonts(fontSet);
 
       const warnings = result.warnings.map(localizeImportMessage);
@@ -550,6 +579,9 @@
         pageFormat,
         headerDoc,
         footerDoc,
+        headerFirstDoc,
+        footerFirstDoc,
+        differentFirstPage,
       });
     } catch (err) {
       console.error('[pdf] Print failed:', err);
@@ -859,6 +891,7 @@
           bind:pageOrientation
           bind:pageFormat
           bind:hfDistances
+          bind:differentFirstPage
           hfActive={hfActive}
           onEditZone={(zone) => (hfActive = zone)}
           onDebugDump={handleDebugDump}
@@ -877,6 +910,9 @@
     bind:numPages
     bind:headerDoc
     bind:footerDoc
+    bind:headerFirstDoc
+    bind:footerFirstDoc
+    {differentFirstPage}
     bind:hfEditor
     bind:hfActive
     bind:hfTick

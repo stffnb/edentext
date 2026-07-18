@@ -758,8 +758,64 @@ describe('Leg 3: header/footer → buildOdt → importOdt', () => {
   });
 });
 
+describe('Leg 3a: different first page header/footer → buildOdt → importOdt', () => {
+  it('round-trips the first-page variants and the flag alongside the defaults', async () => {
+    // Arial 10pt on the runs AND the page-field atoms, so the field digits keep the font.
+    const arial = [{ type: 'textStyle', attrs: { fontFamily: 'Arial', fontSize: '10pt' } }];
+    const header: N = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Default header' }] }] };
+    const footer: N = { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'center' }, content: [
+      { type: 'text', text: 'Seite ', marks: arial }, { type: 'pageNumber', marks: arial }, { type: 'text', text: ' von ', marks: arial }, { type: 'pageCount', marks: arial },
+    ] }] };
+    const headerFirst: N = { type: 'doc', content: [{ type: 'paragraph', content: [
+      { type: 'text', text: 'Cover', marks: [{ type: 'bold' }, ...arial] },
+    ] }] };
+    const footerFirst: N = { type: 'doc', content: [{ type: 'paragraph', content: [
+      { type: 'text', text: 'Stand:   x', marks: arial }, { type: 'text', text: ' ' }, { type: 'pageNumber', marks: arial },
+      { type: 'hardBreak' }, { type: 'hardBreak' },
+    ] }] };
+
+    const bytes = await buildOdt(fixture, margins, 'portrait',
+      { header, footer, headerFirst, footerFirst, differentFirstPage: true, pageCount: 3 });
+    const res = importOdt(bytes);
+
+    check('dfp: no warnings', res.warnings.length === 0, res.warnings);
+    check('dfp: flag round-trips', res.differentFirstPage === true, res.differentFirstPage);
+    check('dfp: default header round-trips', firstDiff(normalize(header), normalize(res.header)) === null, firstDiff(normalize(header), normalize(res.header)));
+    check('dfp: default footer round-trips', firstDiff(normalize(footer), normalize(res.footer)) === null, firstDiff(normalize(footer), normalize(res.footer)));
+    check('dfp: first-page header round-trips (incl. marks)', firstDiff(normalize(headerFirst), normalize(res.headerFirst)) === null, firstDiff(normalize(headerFirst), normalize(res.headerFirst)));
+    check('dfp: first-page footer preserves spacing', res.footerFirst?.content?.[0]?.content?.[0]?.text === 'Stand:   x', res.footerFirst);
+    const ffInline = res.footerFirst?.content?.[0]?.content ?? [];
+    const ffBreaks = ffInline.filter((n: N) => n.type === 'hardBreak').length;
+    check('dfp: first-page footer keeps trailing blank lines', ffBreaks === 2 && ffInline[ffInline.length - 1]?.type === 'hardBreak', ffInline);
+
+    // Every variant must be valid in the header/footer editor schema.
+    const hfSchema = getSchema(hfExtensions());
+    let ok = true;
+    for (const z of [res.header, res.footer, res.headerFirst, res.footerFirst]) {
+      if (!z) continue;
+      try { PMNode.fromJSON(hfSchema, z).check(); } catch { ok = false; }
+    }
+    check('dfp: all variants valid in hf schema', ok);
+
+    // Flag off ⇒ first-page zones aren't exported.
+    const offBytes = await buildOdt(fixture, margins, 'portrait',
+      { header, footer, headerFirst, footerFirst, differentFirstPage: false, pageCount: 3 });
+    const offRes = importOdt(offBytes);
+    check('dfp: first-page zones skipped when flag off', offRes.differentFirstPage === false && offRes.headerFirst === null && offRes.footerFirst === null, offRes);
+
+    // Flag on with an empty first-page footer (default footer present): page 1's footer
+    // is deliberately blank, and the flag still round-trips (element presence = flag).
+    const blankFirst = await buildOdt(fixture, margins, 'portrait',
+      { header: null, footer, headerFirst: null, footerFirst: null, differentFirstPage: true, pageCount: 3 });
+    const blankRes = importOdt(blankFirst);
+    check('dfp: flag survives an empty first-page zone', blankRes.differentFirstPage === true, blankRes.differentFirstPage);
+    check('dfp: empty first-page footer stays blank', blankRes.footerFirst === null, blankRes.footerFirst);
+    check('dfp: default footer still present', firstDiff(normalize(footer), normalize(blankRes.footer)) === null, blankRes.footer);
+  });
+});
+
 describe('Leg 4: foreign header/footer → importOdt', () => {
-  it('parses page-number/count fields, reconstructs body margins, warns on per-page variants', () => {
+  it('parses page-number/count fields, reconstructs body margins, imports the first-page variant', () => {
     const fStyles = `<?xml version="1.0" encoding="UTF-8"?>
 <office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
  <office:styles>
@@ -800,8 +856,10 @@ describe('Leg 4: foreign header/footer → importOdt', () => {
     // Body top margin = page margin (1.5) + header height (0.8) + spacing (0.3) = 2.6.
     check('foreign hf: body top margin reconstructed', Math.abs((fhf.margins?.top ?? 0) - 2.6) < 0.02, fhf.margins);
     check('foreign hf: body bottom margin reconstructed', Math.abs((fhf.margins?.bottom ?? 0) - 2.4) < 0.02, fhf.margins);
-    check('foreign hf: first-page variant warning',
-      fhf.warnings.some(w => /per-page/i.test(w)), fhf.warnings);
+    // header-first is a supported variant (Word "Different First Page" / ODF header-first).
+    check('foreign hf: first-page header parsed', fhf.headerFirst?.content?.[0]?.content?.[0]?.text === 'Cover', fhf.headerFirst);
+    check('foreign hf: different-first-page flag set', fhf.differentFirstPage === true, fhf.differentFirstPage);
+    check('foreign hf: no unsupported-variant warning', !fhf.warnings.some(w => /per-page/i.test(w)), fhf.warnings);
   });
 });
 

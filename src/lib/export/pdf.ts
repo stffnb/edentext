@@ -355,6 +355,10 @@ export interface PrintPdfOptions {
   pageFormat?: PageFormat;
   headerDoc: HfDoc;
   footerDoc: HfDoc;
+  // First-page overrides (Word "Different First Page"); rendered via @page :first.
+  headerFirstDoc?: HfDoc;
+  footerFirstDoc?: HfDoc;
+  differentFirstPage?: boolean;
 }
 
 // First-row column weights from table JSON (honours colspan); mirrors tableView.
@@ -421,14 +425,32 @@ function hfContent(doc: HfDoc): { content: string; align: 'left' | 'center' | 'r
   return { content: parts.join(' '), align };
 }
 
+function boxName(edge: 'top' | 'bottom', align: 'left' | 'center' | 'right'): string {
+  return `@${edge}-${align}`;
+}
+function filledBox(edge: 'top' | 'bottom', hf: { content: string; align: 'left' | 'center' | 'right' }): string {
+  return `${boxName(edge, hf.align)} { content: ${hf.content}; font-family: var(--font-serif); font-size: 11pt; color: #000; }`;
+}
+
 function marginBoxes(headerDoc: HfDoc, footerDoc: HfDoc): string {
   const box = (edge: 'top' | 'bottom', doc: HfDoc): string => {
     const hf = hfContent(doc);
-    if (!hf) return '';
-    const name = `@${edge}-${hf.align === 'left' ? 'left' : hf.align === 'right' ? 'right' : 'center'}`;
-    return `${name} { content: ${hf.content}; font-family: var(--font-serif); font-size: 11pt; color: #000; }`;
+    return hf ? filledBox(edge, hf) : '';
   };
   return box('top', headerDoc) + '\n' + box('bottom', footerDoc);
+}
+
+// First-page @page :first boxes: set the first-page zone's box and clear the other
+// alignment boxes on that edge, so page 1 fully overrides the default @page boxes
+// (an empty first-page zone leaves the first page blank there).
+function marginBoxesFirst(headerDoc: HfDoc, footerDoc: HfDoc): string {
+  const edge = (e: 'top' | 'bottom', doc: HfDoc): string => {
+    const hf = hfContent(doc);
+    return (['left', 'center', 'right'] as const)
+      .map((al) => (hf && hf.align === al ? filledBox(e, hf) : `${boxName(e, al)} { content: normal; }`))
+      .join('\n');
+  };
+  return edge('top', headerDoc) + '\n' + edge('bottom', footerDoc);
 }
 
 function printCss(o: PrintPdfOptions): string {
@@ -443,6 +465,7 @@ function printCss(o: PrintPdfOptions): string {
   margin: ${m.top}cm ${m.right}cm ${m.bottom}cm ${m.left}cm;
   ${marginBoxes(o.headerDoc, o.footerDoc)}
 }
+${o.differentFirstPage ? `@page :first {\n  ${marginBoxesFirst(o.headerFirstDoc ?? null, o.footerFirstDoc ?? null)}\n}` : ''}
 html, body { margin: 0; padding: 0; background: #fff; }
 .paper { width: auto !important; transform: none !important; box-shadow: none !important; background: none !important; }
 .paper .tiptap { padding: 0 !important; min-height: 0 !important; background: #fff !important; box-shadow: none !important; color: #000 !important; }
@@ -468,6 +491,9 @@ export function printPdf(opts: PrintPdfOptions): void {
     pageFormat: opts.pageFormat ?? 'A4',
     headerDoc: opts.headerDoc ?? null,
     footerDoc: opts.footerDoc ?? null,
+    headerFirstDoc: opts.headerFirstDoc ?? null,
+    footerFirstDoc: opts.footerFirstDoc ?? null,
+    differentFirstPage: opts.differentFirstPage ?? false,
   };
   const title = (o.fileName ?? deriveFilename(o.json)).replace(/\.(odt|pdf)$/i, '');
   const body = buildBodyHtml(o.json);

@@ -2035,6 +2035,11 @@ function applyToc(odtBytes: Uint8Array, tocs: TocExport[], contentWidthCm: numbe
 export type HfExport = {
   header: HfDoc;
   footer: HfDoc;
+  // First-page overrides (Word titlePg / ODF header-first); only used when
+  // differentFirstPage is set. null = the first page's zone is blank.
+  headerFirst?: HfDoc;
+  footerFirst?: HfDoc;
+  differentFirstPage?: boolean;
   pageCount: number;
   headerDistanceCm?: number;
   footerDistanceCm?: number;
@@ -2053,8 +2058,19 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const columns: ColumnsExport[] = [];
   const dateFields: DateTimeFieldExport[] = [];
   const raw = replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns))), images), dateFields);
-  const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
-  const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
+  let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
+  let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
+  // Different first page (ODF header-first): page 1 gets its own zone content.
+  const differentFirstPage = !!hf?.differentFirstPage;
+  let firstHeaderPara = differentFirstPage && hf && !hfIsEmpty(hf.headerFirst ?? null) ? (hf.headerFirst!.content![0] as TiptapNode) : null;
+  let firstFooterPara = differentFirstPage && hf && !hfIsEmpty(hf.footerFirst ?? null) ? (hf.footerFirst!.content![0] as TiptapNode) : null;
+  // With the flag on, page 1 is independent: whenever a side has a zone on either
+  // variant, emit both (an empty one blanks its side, matching the editor and Word).
+  if (differentFirstPage) {
+    const empty = (): TiptapNode => ({ type: 'paragraph', content: [] });
+    if (headerPara || firstHeaderPara) { headerPara ??= empty(); firstHeaderPara ??= empty(); }
+    if (footerPara || firstFooterPara) { footerPara ??= empty(); firstFooterPara ??= empty(); }
+  }
   // Distance from the page edge to the header (top) / footer (bottom). Becomes the
   // ODF page margin; clamped below the body margin so the body still starts at it.
   const headerDist = Math.min(hf?.headerDistanceCm ?? HF_DISTANCE_CM, margins.top);
@@ -2187,7 +2203,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withStyles = rewriteStylesXml(withEmptyFontSizes, language ?? null, pageFormat, orientation);
-  return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist);
+  return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1);
 }
 
 function hfAlign(para: TiptapNode): AlignValue | null {
@@ -2198,7 +2214,7 @@ function hfAlign(para: TiptapNode): AlignValue | null {
 // Header/footer post-processing on styles.xml: resolve LBR/PGC sentinels, apply the
 // paragraph alignment to the Header/Footer styles, and rewrite the geometry to the
 // Word-style mapping (page margin = HF distance, min-height fills up to the body margin).
-function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPara: TiptapNode | null, footerPara: TiptapNode | null, headerDist: number, footerDist: number): Uint8Array {
+function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPara: TiptapNode | null, footerPara: TiptapNode | null, headerDist: number, footerDist: number, firstHeaderPara: TiptapNode | null = null, firstFooterPara: TiptapNode | null = null, pageCount = 1): Uint8Array {
   if (!headerPara && !footerPara) return odtBytes;
 
   const files = unzipSync(odtBytes);
@@ -2235,8 +2251,107 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
   if (headerPara) zone('header', headerPara, margins.top, headerDist);
   if (footerPara) zone('footer', footerPara, margins.bottom, footerDist);
 
+  // Different first page: inject <style:header-first>/<style:footer-first> content into
+  // the master page (ODF 1.3; LibreOffice reads them). The page-layout header/footer
+  // geometry above is shared across variants, so only the content differs here.
+  if (firstHeaderPara || firstFooterPara) {
+    const mintedStyles: string[] = [];
+    const mint = (n: string) => { mintedStyles.push(n); };
+    const injectVariant = (kind: 'header' | 'footer', para: TiptapNode | null) => {
+      if (!para) return;
+      const xml = hfFirstZoneXml(kind, para, pageCount, mint);
+      // Order inside master-page: header, header-first, footer, footer-first. Insert
+      // after the matching default zone if present, else at the master-page bounds.
+      const closeTag = `</style:${kind}>`;
+      if (styles.includes(closeTag)) styles = styles.replace(closeTag, `${closeTag}${xml}`);
+      else if (kind === 'header') styles = styles.replace(/(<style:master-page\b[^>]*>)/, `$1${xml}`);
+      else styles = styles.replace('</style:master-page>', `${xml}</style:master-page>`);
+    };
+    injectVariant('header', firstHeaderPara);
+    injectVariant('footer', firstFooterPara);
+    if (mintedStyles.length) {
+      const defs = mintedStyles.join('');
+      if (styles.includes('</office:automatic-styles>')) styles = styles.replace('</office:automatic-styles>', `${defs}</office:automatic-styles>`);
+      else styles = styles.replace('<office:automatic-styles/>', `<office:automatic-styles>${defs}</office:automatic-styles>`);
+    }
+  }
+
   files['styles.xml'] = strToU8(styles);
   return rezipOdt(files);
+}
+
+// Serialize a first-page header/footer paragraph to <style:header-first>/<style:footer-first>
+// XML. Runs and page fields become <text:span> referencing minted automatic text styles
+// (pushed via `mint`), so both keep the run's font; hardBreak → line-break.
+function hfFirstZoneXml(kind: 'header' | 'footer', para: TiptapNode, pageCount: number, mint: (styleXml: string) => void): string {
+  let styleSeq = 0;
+  // Wrap inline XML in a minted text style span when the run carries formatting.
+  const styled = (innerXml: string, marks: TiptapNode['marks']): string => {
+    const props = odfTextPropsFromMarks(marks);
+    if (!props) return innerXml;
+    const name = `HFF${kind[0].toUpperCase()}T${++styleSeq}`;
+    mint(`<style:style style:name="${name}" style:family="text"><style:text-properties ${props}/></style:style>`);
+    return `<text:span text:style-name="${name}">${innerXml}</text:span>`;
+  };
+
+  let inner = '';
+  for (const node of para.content ?? []) {
+    if (node.type === 'text' && node.text) inner += styled(odfEncodeInline(node.text), node.marks);
+    else if (node.type === 'hardBreak') inner += '<text:line-break/>';
+    else if (node.type === 'pageNumber') inner += styled('<text:page-number text:select-page="current">1</text:page-number>', node.marks);
+    else if (node.type === 'pageCount') inner += styled(`<text:page-count>${pageCount}</text:page-count>`, node.marks);
+  }
+
+  const parent = kind === 'header' ? 'Header' : 'Footer';
+  const align = hfAlign(para);
+  let paraStyle = parent;
+  if (align) {
+    paraStyle = `HFF${kind[0].toUpperCase()}P`;
+    mint(`<style:style style:name="${paraStyle}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties fo:text-align="${align}"/></style:style>`);
+  }
+  return `<style:${kind}-first><text:p text:style-name="${paraStyle}">${inner}</text:p></style:${kind}-first>`;
+}
+
+// A text run's ODF <style:text-properties> attribute string from TipTap marks (mirrors
+// formattingFromMarks). Empty string → no styling needed (returned as null).
+function odfTextPropsFromMarks(marks: TiptapNode['marks']): string | null {
+  const fmt = formattingFromMarks(marks);
+  const a: string[] = [];
+  if (fmt.fontWeight != null) a.push(`fo:font-weight="${fmt.fontWeight}"`);
+  else if (fmt.bold) a.push('fo:font-weight="bold"');
+  if (fmt.italic) a.push('fo:font-style="italic"');
+  if (fmt.underline) a.push('style:text-underline-style="solid" style:text-underline-width="auto" style:text-underline-color="font-color"');
+  if (fmt.strikethrough) a.push('style:text-line-through-style="solid"');
+  if (fmt.superscript) a.push('style:text-position="super 58%"');
+  else if (fmt.subscript) a.push('style:text-position="sub 58%"');
+  if (fmt.fontFamily) {
+    const q = /\s/.test(fmt.fontFamily) ? `'${fmt.fontFamily}'` : fmt.fontFamily;
+    a.push(`style:font-name="${fmt.fontFamily}" fo:font-family="${q}"`);
+  }
+  if (fmt.fontSize) a.push(`fo:font-size="${fmt.fontSize}"`);
+  if (fmt.color) a.push(`fo:color="${fmt.color}"`);
+  if (fmt.highlightColor) a.push(`fo:background-color="${fmt.highlightColor}"`);
+  return a.length ? a.join(' ') : null;
+}
+
+// Encode inline text as ODF: runs of ≥2 spaces → <text:s text:c>, tabs → <text:tab/>,
+// the rest XML-escaped (so LibreOffice preserves significant whitespace).
+function odfEncodeInline(s: string): string {
+  let out = '';
+  for (let i = 0; i < s.length; ) {
+    const ch = s[i];
+    if (ch === '\t') { out += '<text:tab/>'; i++; continue; }
+    if (ch === ' ') {
+      let n = 1;
+      while (s[i + n] === ' ') n++;
+      out += n === 1 ? ' ' : `<text:s text:c="${n}"/>`;
+      i += n;
+      continue;
+    }
+    out += ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch;
+    i++;
+  }
+  return out;
 }
 
 // Document filename derived from the first non-empty heading (sanitized, max 50
