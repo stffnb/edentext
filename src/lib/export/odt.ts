@@ -2078,6 +2078,11 @@ export type HfExport = {
   headerFirst?: HfDoc;
   footerFirst?: HfDoc;
   differentFirstPage?: boolean;
+  // Even-page overrides (Word evenAndOddHeaders / ODF header-left); only used when
+  // differentOddEven is set. null = the even pages' zone is blank.
+  headerEven?: HfDoc;
+  footerEven?: HfDoc;
+  differentOddEven?: boolean;
   pageCount: number;
   headerDistanceCm?: number;
   footerDistanceCm?: number;
@@ -2102,6 +2107,10 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const differentFirstPage = !!hf?.differentFirstPage;
   let firstHeaderPara = differentFirstPage && hf && !hfIsEmpty(hf.headerFirst ?? null) ? (hf.headerFirst!.content![0] as TiptapNode) : null;
   let firstFooterPara = differentFirstPage && hf && !hfIsEmpty(hf.footerFirst ?? null) ? (hf.footerFirst!.content![0] as TiptapNode) : null;
+  // Different odd & even pages (ODF header-left): even pages get their own zone.
+  const differentOddEven = !!hf?.differentOddEven;
+  let evenHeaderPara = differentOddEven && hf && !hfIsEmpty(hf.headerEven ?? null) ? (hf.headerEven!.content![0] as TiptapNode) : null;
+  let evenFooterPara = differentOddEven && hf && !hfIsEmpty(hf.footerEven ?? null) ? (hf.footerEven!.content![0] as TiptapNode) : null;
   // Hoist header/footer inline images out to HFIMG sentinels before odf-kit serializes
   // the zones; applyHfPostProcess rewrites them to <draw:frame> in styles.xml.
   const hfImages: ImageExport[] = [];
@@ -2109,12 +2118,20 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   footerPara = replaceHfImages(footerPara, hfImages);
   firstHeaderPara = replaceHfImages(firstHeaderPara, hfImages);
   firstFooterPara = replaceHfImages(firstFooterPara, hfImages);
+  evenHeaderPara = replaceHfImages(evenHeaderPara, hfImages);
+  evenFooterPara = replaceHfImages(evenFooterPara, hfImages);
   // With the flag on, page 1 is independent: whenever a side has a zone on either
   // variant, emit both (an empty one blanks its side, matching the editor and Word).
   if (differentFirstPage) {
     const empty = (): TiptapNode => ({ type: 'paragraph', content: [] });
     if (headerPara || firstHeaderPara) { headerPara ??= empty(); firstHeaderPara ??= empty(); }
     if (footerPara || firstFooterPara) { footerPara ??= empty(); firstFooterPara ??= empty(); }
+  }
+  // Same for even pages: an empty even zone blanks it while the default fills odd pages.
+  if (differentOddEven) {
+    const empty = (): TiptapNode => ({ type: 'paragraph', content: [] });
+    if (headerPara || evenHeaderPara) { headerPara ??= empty(); evenHeaderPara ??= empty(); }
+    if (footerPara || evenFooterPara) { footerPara ??= empty(); evenFooterPara ??= empty(); }
   }
   // Distance from the page edge to the header (top) / footer (bottom). Becomes the
   // ODF page margin; clamped below the body margin so the body still starts at it.
@@ -2248,7 +2265,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withStyles = rewriteStylesXml(withEmptyFontSizes, language ?? null, pageFormat, orientation);
-  return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages);
+  return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
 }
 
 function hfAlign(para: TiptapNode): AlignValue | null {
@@ -2259,8 +2276,8 @@ function hfAlign(para: TiptapNode): AlignValue | null {
 // Header/footer post-processing on styles.xml: resolve LBR/PGC sentinels, apply the
 // paragraph alignment to the Header/Footer styles, and rewrite the geometry to the
 // Word-style mapping (page margin = HF distance, min-height fills up to the body margin).
-function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPara: TiptapNode | null, footerPara: TiptapNode | null, headerDist: number, footerDist: number, firstHeaderPara: TiptapNode | null = null, firstFooterPara: TiptapNode | null = null, pageCount = 1, hfImages: ImageExport[] = []): Uint8Array {
-  if (!headerPara && !footerPara && !firstHeaderPara && !firstFooterPara) return odtBytes;
+function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPara: TiptapNode | null, footerPara: TiptapNode | null, headerDist: number, footerDist: number, firstHeaderPara: TiptapNode | null = null, firstFooterPara: TiptapNode | null = null, pageCount = 1, hfImages: ImageExport[] = [], evenHeaderPara: TiptapNode | null = null, evenFooterPara: TiptapNode | null = null): Uint8Array {
+  if (!headerPara && !footerPara && !firstHeaderPara && !firstFooterPara && !evenHeaderPara && !evenFooterPara) return odtBytes;
 
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
@@ -2296,24 +2313,26 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
   if (headerPara) zone('header', headerPara, margins.top, headerDist);
   if (footerPara) zone('footer', footerPara, margins.bottom, footerDist);
 
-  // Different first page: inject <style:header-first>/<style:footer-first> content into
-  // the master page (ODF 1.3; LibreOffice reads them). The page-layout header/footer
+  // Different first page / odd-even: inject <style:{header,footer}-{first,left}> content
+  // into the master page (ODF 1.3; LibreOffice reads them). The page-layout header/footer
   // geometry above is shared across variants, so only the content differs here.
-  if (firstHeaderPara || firstFooterPara) {
+  if (firstHeaderPara || firstFooterPara || evenHeaderPara || evenFooterPara) {
     const mintedStyles: string[] = [];
     const mint = (n: string) => { mintedStyles.push(n); };
-    const injectVariant = (kind: 'header' | 'footer', para: TiptapNode | null) => {
+    const injectVariant = (kind: 'header' | 'footer', suffix: 'first' | 'left', para: TiptapNode | null) => {
       if (!para) return;
-      const xml = hfFirstZoneXml(kind, para, pageCount, mint);
-      // Order inside master-page: header, header-first, footer, footer-first. Insert
-      // after the matching default zone if present, else at the master-page bounds.
+      const xml = hfVariantZoneXml(kind, suffix, para, pageCount, mint);
+      // Insert after the matching default zone (always present when a variant exists,
+      // since buildOdt emits an empty default alongside it), else at the master-page bounds.
       const closeTag = `</style:${kind}>`;
       if (styles.includes(closeTag)) styles = styles.replace(closeTag, `${closeTag}${xml}`);
       else if (kind === 'header') styles = styles.replace(/(<style:master-page\b[^>]*>)/, `$1${xml}`);
       else styles = styles.replace('</style:master-page>', `${xml}</style:master-page>`);
     };
-    injectVariant('header', firstHeaderPara);
-    injectVariant('footer', firstFooterPara);
+    injectVariant('header', 'first', firstHeaderPara);
+    injectVariant('header', 'left', evenHeaderPara);
+    injectVariant('footer', 'first', firstFooterPara);
+    injectVariant('footer', 'left', evenFooterPara);
     if (mintedStyles.length) {
       const defs = mintedStyles.join('');
       if (styles.includes('</office:automatic-styles>')) styles = styles.replace('</office:automatic-styles>', `${defs}</office:automatic-styles>`);
@@ -2355,16 +2374,18 @@ function ensureDrawNamespaces(styles: string): string {
   return missing.length ? styles.replace(/<office:document-styles\b/, `<office:document-styles ${missing.join(' ')}`) : styles;
 }
 
-// Serialize a first-page header/footer paragraph to <style:header-first>/<style:footer-first>
-// XML. Runs and page fields become <text:span> referencing minted automatic text styles
-// (pushed via `mint`), so both keep the run's font; hardBreak → line-break.
-function hfFirstZoneXml(kind: 'header' | 'footer', para: TiptapNode, pageCount: number, mint: (styleXml: string) => void): string {
+// Serialize a variant header/footer paragraph to <style:{header,footer}-{first,left}>
+// XML (first = page 1, left = even pages). Runs and page fields become <text:span>
+// referencing minted automatic text styles (pushed via `mint`); hardBreak → line-break.
+function hfVariantZoneXml(kind: 'header' | 'footer', suffix: 'first' | 'left', para: TiptapNode, pageCount: number, mint: (styleXml: string) => void): string {
   let styleSeq = 0;
+  // Distinct minted-style prefix per variant so first + even styles never collide.
+  const pfx = `HF${suffix === 'first' ? 'F' : 'L'}${kind[0].toUpperCase()}`;
   // Wrap inline XML in a minted text style span when the run carries formatting.
   const styled = (innerXml: string, marks: TiptapNode['marks']): string => {
     const props = odfTextPropsFromMarks(marks);
     if (!props) return innerXml;
-    const name = `HFF${kind[0].toUpperCase()}T${++styleSeq}`;
+    const name = `${pfx}T${++styleSeq}`;
     mint(`<style:style style:name="${name}" style:family="text"><style:text-properties ${props}/></style:style>`);
     return `<text:span text:style-name="${name}">${innerXml}</text:span>`;
   };
@@ -2381,10 +2402,10 @@ function hfFirstZoneXml(kind: 'header' | 'footer', para: TiptapNode, pageCount: 
   const align = hfAlign(para);
   let paraStyle = parent;
   if (align) {
-    paraStyle = `HFF${kind[0].toUpperCase()}P`;
+    paraStyle = `${pfx}P`;
     mint(`<style:style style:name="${paraStyle}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties fo:text-align="${align}"/></style:style>`);
   }
-  return `<style:${kind}-first><text:p text:style-name="${paraStyle}">${inner}</text:p></style:${kind}-first>`;
+  return `<style:${kind}-${suffix}><text:p text:style-name="${paraStyle}">${inner}</text:p></style:${kind}-${suffix}>`;
 }
 
 // A text run's ODF <style:text-properties> attribute string from TipTap marks (mirrors

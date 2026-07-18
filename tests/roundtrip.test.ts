@@ -841,6 +841,32 @@ describe('Leg 3b: inline images in header/footer → buildOdt → importOdt', ()
   });
 });
 
+describe('Leg 3c: odd/even page header/footer → buildOdt → importOdt', () => {
+  it('round-trips the even-page variants and the flag alongside default + first', async () => {
+    const header: N = { type: 'doc', content: [P(null, T('Default header'))] };
+    const footer: N = { type: 'doc', content: [P(null, T('Default footer'))] };
+    const headerEven: N = { type: 'doc', content: [P({ textAlign: 'right' }, T('Even header'))] };
+    const footerEven: N = { type: 'doc', content: [P({ textAlign: 'center' }, T('Even footer'))] };
+    const headerFirst: N = { type: 'doc', content: [P(null, T('First header'))] };
+    const bytes = await buildOdt(fixture, margins, 'portrait',
+      { header, footer, headerEven, footerEven, differentOddEven: true, headerFirst, footerFirst: null, differentFirstPage: true, pageCount: 4 });
+    check('odd/even: styles.xml has <style:header-left>', strFromU8(unzipSync(bytes)['styles.xml']).includes('<style:header-left>'));
+
+    const res = importOdt(bytes);
+    check('odd/even: no warnings', res.warnings.length === 0, res.warnings);
+    check('odd/even: flag round-trips', res.differentOddEven === true, res.differentOddEven);
+    check('odd/even: even header round-trips', firstDiff(normalize(headerEven), normalize(res.headerEven)) === null, res.headerEven);
+    check('odd/even: even footer round-trips', firstDiff(normalize(footerEven), normalize(res.footerEven)) === null, res.footerEven);
+    check('odd/even: default + first still round-trip',
+      firstDiff(normalize(header), normalize(res.header)) === null && firstDiff(normalize(headerFirst), normalize(res.headerFirst)) === null, res.header);
+
+    const hfSchema = getSchema(hfExtensions());
+    let ok = true;
+    for (const z of [res.headerEven, res.footerEven]) { if (!z) continue; try { PMNode.fromJSON(hfSchema, z).check(); } catch { ok = false; } }
+    check('odd/even: even zones valid in hf schema', ok);
+  });
+});
+
 describe('Leg 4: foreign header/footer → importOdt', () => {
   it('parses page-number/count fields, reconstructs body margins, imports the first-page variant', () => {
     const fStyles = `<?xml version="1.0" encoding="UTF-8"?>

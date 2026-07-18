@@ -366,9 +366,10 @@ export class StyleResolver {
     footer: Element | null;
     headerFirst: Element | null;
     footerFirst: Element | null;
+    headerLeft: Element | null;
+    footerLeft: Element | null;
     headerExtraCm: number;
     footerExtraCm: number;
-    hasVariants: boolean;
   } {
     const mp = this.masterPageEl();
     const layout = this.pageLayoutEl();
@@ -411,10 +412,11 @@ export class StyleResolver {
       footer: zone('footer'),
       headerFirst: firstZone('header-first'),
       footerFirst: firstZone('footer-first'),
+      // Even-page variant (Word odd/even). ODF header-left = the left (even) page.
+      headerLeft: firstZone('header-left'),
+      footerLeft: firstZone('footer-left'),
       headerExtraCm: extraCm('header-style', 'margin-bottom'),
       footerExtraCm: extraCm('footer-style', 'margin-top'),
-      // Only the left/right (even) variant stays unsupported; -first is handled below.
-      hasVariants: ['header-left', 'footer-left'].some(l => zone(l) != null),
     };
   }
 

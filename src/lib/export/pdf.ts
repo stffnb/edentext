@@ -359,6 +359,11 @@ export interface PrintPdfOptions {
   headerFirstDoc?: HfDoc;
   footerFirstDoc?: HfDoc;
   differentFirstPage?: boolean;
+  // Even-page overrides (Word "Different Odd & Even Pages"); rendered via @page :left
+  // (in an LTR document left pages are the even ones), which :first still overrides.
+  headerEvenDoc?: HfDoc;
+  footerEvenDoc?: HfDoc;
+  differentOddEven?: boolean;
 }
 
 // First-row column weights from table JSON (honours colspan); mirrors tableView.
@@ -465,6 +470,7 @@ function printCss(o: PrintPdfOptions): string {
   margin: ${m.top}cm ${m.right}cm ${m.bottom}cm ${m.left}cm;
   ${marginBoxes(o.headerDoc, o.footerDoc)}
 }
+${o.differentOddEven ? `@page :left {\n  ${marginBoxesFirst(o.headerEvenDoc ?? null, o.footerEvenDoc ?? null)}\n}` : ''}
 ${o.differentFirstPage ? `@page :first {\n  ${marginBoxesFirst(o.headerFirstDoc ?? null, o.footerFirstDoc ?? null)}\n}` : ''}
 html, body { margin: 0; padding: 0; background: #fff; }
 .paper { width: auto !important; transform: none !important; box-shadow: none !important; background: none !important; }
@@ -494,6 +500,9 @@ export function printPdf(opts: PrintPdfOptions): void {
     headerFirstDoc: opts.headerFirstDoc ?? null,
     footerFirstDoc: opts.footerFirstDoc ?? null,
     differentFirstPage: opts.differentFirstPage ?? false,
+    headerEvenDoc: opts.headerEvenDoc ?? null,
+    footerEvenDoc: opts.footerEvenDoc ?? null,
+    differentOddEven: opts.differentOddEven ?? false,
   };
   const title = (o.fileName ?? deriveFilename(o.json)).replace(/\.(odt|pdf)$/i, '');
   const body = buildBodyHtml(o.json);

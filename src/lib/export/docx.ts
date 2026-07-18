@@ -856,6 +856,10 @@ export async function buildDocx(
   const differentFirstPage = !!hf?.differentFirstPage;
   const firstHeaderPara = differentFirstPage && !hfIsEmpty(hf?.headerFirst ?? null) ? (hf!.headerFirst!.content![0] as TiptapNode) : null;
   const firstFooterPara = differentFirstPage && !hfIsEmpty(hf?.footerFirst ?? null) ? (hf!.footerFirst!.content![0] as TiptapNode) : null;
+  // Different odd & even pages (Word w:evenAndOddHeaders): even pages get their own zone.
+  const differentOddEven = !!hf?.differentOddEven;
+  const evenHeaderPara = differentOddEven && !hfIsEmpty(hf?.headerEven ?? null) ? (hf!.headerEven!.content![0] as TiptapNode) : null;
+  const evenFooterPara = differentOddEven && !hfIsEmpty(hf?.footerEven ?? null) ? (hf!.footerEven!.content![0] as TiptapNode) : null;
   // Word's model: header/footer distance is from the page edge; the body still starts
   // at the body margin. Clamp the distance below the margin (matches odt.ts).
   const headerDist = Math.min(hf?.headerDistanceCm ?? HF_DISTANCE_CM, margins.top);
@@ -875,23 +879,26 @@ export async function buildDocx(
   // Fresh instances per section (Word's per-sectPr references). A first-page variant
   // rides `first:` and is activated by properties.titlePage below.
   const mkHeaders = () => {
-    if (!headerPara && !firstHeaderPara) return undefined;
-    const h: { default?: Header; first?: Header } = {};
+    if (!headerPara && !firstHeaderPara && !evenHeaderPara) return undefined;
+    const h: { default?: Header; first?: Header; even?: Header } = {};
     if (headerPara) h.default = new Header({ children: [paragraphToDocx(headerPara)] });
     if (firstHeaderPara) h.first = new Header({ children: [paragraphToDocx(firstHeaderPara)] });
+    if (evenHeaderPara) h.even = new Header({ children: [paragraphToDocx(evenHeaderPara)] });
     return h;
   };
   const mkFooters = () => {
-    if (!footerPara && !firstFooterPara) return undefined;
-    const f: { default?: Footer; first?: Footer } = {};
+    if (!footerPara && !firstFooterPara && !evenFooterPara) return undefined;
+    const f: { default?: Footer; first?: Footer; even?: Footer } = {};
     if (footerPara) f.default = new Footer({ children: [paragraphToDocx(footerPara)] });
     if (firstFooterPara) f.first = new Footer({ children: [paragraphToDocx(firstFooterPara)] });
+    if (evenFooterPara) f.even = new Footer({ children: [paragraphToDocx(evenFooterPara)] });
     return f;
   };
 
   const doc = new Document({
     creator: 'Web ODF Editor',
     defaultTabStop: cmToTwip(1.25),
+    ...(differentOddEven ? { evenAndOddHeaderAndFooters: true } : {}),
     ...(hasToc ? { features: { updateFields: true } } : {}),
     styles: buildStyles(language),
     numbering: { config: num.config },

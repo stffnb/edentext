@@ -1,18 +1,22 @@
 // Header/footer content: one single-paragraph TipTap doc per zone (hfExtensions
-// schema). The 'default' variant repeats on every page; the 'first' variant (Word
-// "Different First Page" / ODF header-first) overrides page 1. null = empty zone.
+// schema). The 'default' variant repeats on every page (odd pages when odd/even is
+// on); 'first' (Word "Different First Page" / ODF header-first) overrides page 1;
+// 'even' (Word "Different Odd & Even Pages" / ODF header-left) overrides even pages.
+// Precedence: first (page 1) > even (even pages) > default. null = empty zone.
 
 export type HfZone = 'header' | 'footer';
-export type HfVariant = 'default' | 'first';
+export type HfVariant = 'default' | 'first' | 'even';
 export type HfDoc = { type: 'doc'; content?: unknown[] } | null;
 
 const KEYS: Record<HfZone, Record<HfVariant, string>> = {
-  header: { default: 'odf-editor-header', first: 'odf-editor-header-first' },
-  footer: { default: 'odf-editor-footer', first: 'odf-editor-footer-first' },
+  header: { default: 'odf-editor-header', first: 'odf-editor-header-first', even: 'odf-editor-header-even' },
+  footer: { default: 'odf-editor-footer', first: 'odf-editor-footer-first', even: 'odf-editor-footer-even' },
 };
 
 // Whether page 1 uses its own header/footer (Word w:titlePg / ODF header-first).
 const DIFFERENT_FIRST_KEY = 'odf-editor-hf-different-first';
+// Whether even pages use their own header/footer (Word w:evenAndOddHeaders / ODF header-left).
+const DIFFERENT_ODD_EVEN_KEY = 'odf-editor-hf-odd-even';
 
 export function loadDifferentFirstPage(): boolean {
   return localStorage.getItem(DIFFERENT_FIRST_KEY) === 'true';
@@ -21,6 +25,15 @@ export function loadDifferentFirstPage(): boolean {
 export function saveDifferentFirstPage(on: boolean): void {
   if (on) localStorage.setItem(DIFFERENT_FIRST_KEY, 'true');
   else localStorage.removeItem(DIFFERENT_FIRST_KEY);
+}
+
+export function loadDifferentOddEven(): boolean {
+  return localStorage.getItem(DIFFERENT_ODD_EVEN_KEY) === 'true';
+}
+
+export function saveDifferentOddEven(on: boolean): void {
+  if (on) localStorage.setItem(DIFFERENT_ODD_EVEN_KEY, 'true');
+  else localStorage.removeItem(DIFFERENT_ODD_EVEN_KEY);
 }
 
 // Word's default distance from the page edge to the header/footer text. The body

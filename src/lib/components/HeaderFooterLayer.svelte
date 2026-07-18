@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Editor, generateHTML, type Content } from '@tiptap/core';
   import { hfExtensions } from '../editor/extensions/headerFooter';
-  import { hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
+  import { hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfVariant, type HfDistances } from '../storage/headerFooter';
   import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
   import { type Orientation } from '../storage/pageOrientation';
   import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
@@ -13,6 +13,9 @@
     headerFirstDoc = $bindable(),
     footerFirstDoc = $bindable(),
     differentFirstPage = false,
+    headerEvenDoc = $bindable(),
+    footerEvenDoc = $bindable(),
+    differentOddEven = false,
     numPages,
     currentPage,
     pageMargins,
@@ -28,6 +31,9 @@
     headerFirstDoc: HfDoc;
     footerFirstDoc: HfDoc;
     differentFirstPage?: boolean;
+    headerEvenDoc: HfDoc;
+    footerEvenDoc: HfDoc;
+    differentOddEven?: boolean;
     numPages: number;
     currentPage: number;
     pageMargins: PageMargins;
@@ -107,13 +113,21 @@
   let footerHtml = $derived(staticHtml(footerDoc));
   let headerFirstHtml = $derived(staticHtml(headerFirstDoc));
   let footerFirstHtml = $derived(staticHtml(footerFirstDoc));
+  let headerEvenHtml = $derived(staticHtml(headerEvenDoc));
+  let footerEvenHtml = $derived(staticHtml(footerEvenDoc));
 
-  // Page 1 uses the first-page variant when the feature is on. Word: the first page
-  // then always shows its own (possibly empty) zone, never the default.
-  let isFirstVariant = (page: number) => differentFirstPage && page === 1;
+  // Which variant a page shows (Word precedence): page 1 → first (if on), other even
+  // pages → even (if on), everything else → default/odd. Each variant, when on, always
+  // shows its own (possibly empty) zone, never the default.
+  function variantFor(page: number): HfVariant {
+    if (differentFirstPage && page === 1) return 'first';
+    if (differentOddEven && page % 2 === 0) return 'even';
+    return 'default';
+  }
   function zoneHtml(zone: HfZone, page: number): string {
-    if (zone === 'header') return isFirstVariant(page) ? headerFirstHtml : headerHtml;
-    return isFirstVariant(page) ? footerFirstHtml : footerHtml;
+    const v = variantFor(page);
+    if (zone === 'header') return v === 'first' ? headerFirstHtml : v === 'even' ? headerEvenHtml : headerHtml;
+    return v === 'first' ? footerFirstHtml : v === 'even' ? footerEvenHtml : footerHtml;
   }
 
   // Replace the placeholder text in every page-field span with the real value:
@@ -138,9 +152,10 @@
   let pendingPage: number | null = null;
   let liveZone: HfZone | null = null;
 
-  // The doc for a zone + whether page 1's own variant is being edited.
-  function zoneDoc(zone: HfZone, first: boolean): HfDoc {
-    if (first) return zone === 'header' ? headerFirstDoc : footerFirstDoc;
+  // The doc for a zone + which variant is being edited.
+  function zoneDoc(zone: HfZone, variant: HfVariant): HfDoc {
+    if (variant === 'first') return zone === 'header' ? headerFirstDoc : footerFirstDoc;
+    if (variant === 'even') return zone === 'header' ? headerEvenDoc : footerEvenDoc;
     return zone === 'header' ? headerDoc : footerDoc;
   }
   function emptyDoc(): HfDoc {
@@ -174,13 +189,13 @@
     editingPage = pendingPage ?? currentPage;
     pendingPage = null;
     liveZone = zone;
-    // Which variant this edit session targets — fixed for its lifetime (page 1 with the
-    // feature on edits the first-page doc; App ends the edit when the flag toggles).
-    const editingFirst = isFirstVariant(editingPage);
+    // Which variant this edit session targets — fixed for its lifetime (the edited page's
+    // variant; App ends the edit when a flag toggles).
+    const editingVariant = variantFor(editingPage);
     const ed = new Editor({
       element: mount,
       extensions: hfExtensions(zone === 'header' ? t().hf.headerPlaceholder : t().hf.footerPlaceholder),
-      content: (zoneDoc(zone, editingFirst) ?? emptyDoc()) as Content,
+      content: (zoneDoc(zone, editingVariant) ?? emptyDoc()) as Content,
       // No autofocus: its scrollIntoView nudges the page so the just-clicked zone
       // appears to jump. Focus the zone explicitly without scrolling instead.
       onTransaction: () => {
@@ -188,9 +203,12 @@
       },
       onUpdate: ({ editor }) => {
         const json = editor.getJSON() as HfDoc;
-        if (editingFirst) {
+        if (editingVariant === 'first') {
           if (zone === 'header') headerFirstDoc = json;
           else footerFirstDoc = json;
+        } else if (editingVariant === 'even') {
+          if (zone === 'header') headerEvenDoc = json;
+          else footerEvenDoc = json;
         } else if (zone === 'header') headerDoc = json;
         else footerDoc = json;
       },
@@ -256,12 +274,12 @@
 
   {#if hfActive}
     {@const box = activeZoneBox(hfActive, editingPage)}
-    {@const first = isFirstVariant(editingPage)}
+    {@const variant = variantFor(editingPage)}
     <div class="hf-zone hf-{hfActive} hf-active" style={boxStyle(box) + ` --hf-tb-offset: ${-activeTrailingPx}px;`} bind:this={liveMount}></div>
     <div class="hf-tag" style="top: {box.top}px; left: {box.left}px;">
       {hfActive === 'header'
-        ? (first ? t().hf.firstPageHeader : t().hf.headerLabel)
-        : (first ? t().hf.firstPageFooter : t().hf.footerLabel)}
+        ? (variant === 'first' ? t().hf.firstPageHeader : variant === 'even' ? t().hf.evenPageHeader : t().hf.headerLabel)
+        : (variant === 'first' ? t().hf.firstPageFooter : variant === 'even' ? t().hf.evenPageFooter : t().hf.footerLabel)}
     </div>
     <div class="hf-bar" style="top: {box.top}px; left: {box.left + box.width}px;">
       <span class="hf-bar-label">{t().hf.insert}</span>

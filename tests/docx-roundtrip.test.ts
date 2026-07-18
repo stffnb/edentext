@@ -330,6 +330,26 @@ describe('DOCX different first page (w:titlePg)', () => {
     expect(Math.abs(fi[0].attrs.height - 48)).toBeLessThanOrEqual(2);
   });
 
+  it('round-trips odd/even page variants (w:evenAndOddHeaders + even refs)', async () => {
+    const withEven = {
+      ...hf,
+      headerEven: { type: 'doc', content: [para('Even header')] },
+      footerEven: { type: 'doc', content: [para('Even footer')] },
+      differentOddEven: true,
+    } as any;
+    const bytes = await buildDocx(fixture, undefined, 'portrait', withEven, { language: 'de', country: 'DE' });
+    const files = unzipSync(bytes);
+    expect(strFromU8(files['word/settings.xml'])).toContain('evenAndOddHeaders');
+    expect(strFromU8(files['word/document.xml'])).toMatch(/<w:headerReference[^>]*w:type="even"/);
+    const res = importDocx(bytes);
+    expect(res.differentOddEven).toBe(true);
+    expect(walk(res.headerEven, 'text')[0].text).toBe('Even header');
+    expect(walk(res.footerEven, 'text')[0].text).toBe('Even footer');
+    // default + first still intact.
+    expect(walk(res.header, 'text')[0].text).toBe('Default header');
+    expect(walk(res.headerFirst, 'text')[0].text).toBe('Cover header');
+  });
+
   it('omits titlePg and first-page zones when the flag is off', async () => {
     const bytes = await buildDocx(fixture, undefined, 'portrait', { ...hf, differentFirstPage: false }, { language: 'de', country: 'DE' });
     const documentXml = strFromU8(unzipSync(bytes)['word/document.xml']);

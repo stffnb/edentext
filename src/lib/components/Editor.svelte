@@ -35,12 +35,14 @@
     pageFormat = 'A4',
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
+    headerEvenDoc = $bindable(null), footerEvenDoc = $bindable(null), differentOddEven = false,
     hfEditor = $bindable(null), hfActive = $bindable(null), hfTick = $bindable(0),
   }: {
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
     showFormattingMarks?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat;
     headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
     headerFirstDoc?: HfDoc; footerFirstDoc?: HfDoc; differentFirstPage?: boolean;
+    headerEvenDoc?: HfDoc; footerEvenDoc?: HfDoc; differentOddEven?: boolean;
     hfEditor?: Editor | null; hfActive?: HfZone | null; hfTick?: number;
   } = $props();
 
@@ -70,9 +72,13 @@
   // Effective top/bottom margins (px) for other pages vs. page 1's own header/footer
   // (different first page); pageBreaks reads these to start each page's content below
   // its header and end it above its footer.
-  let effTopRest = $derived(Math.max(mTopPx, hfReachPx(headerDoc ?? null, headerDistPx)));
+  // "rest" = every page ≥ 2; fold the even variant in (max) so even pages never overlap
+  // a taller even zone — pageBreaks uses one --pb-content-*-rest for all of them.
+  let evenTopReach = $derived(differentOddEven ? hfReachPx(headerEvenDoc ?? null, headerDistPx) : 0);
+  let evenBottomReach = $derived(differentOddEven ? hfReachPx(footerEvenDoc ?? null, footerDistPx) : 0);
+  let effTopRest = $derived(Math.max(mTopPx, hfReachPx(headerDoc ?? null, headerDistPx), evenTopReach));
   let effTopFirst = $derived(Math.max(mTopPx, hfReachPx((differentFirstPage ? headerFirstDoc : headerDoc) ?? null, headerDistPx)));
-  let effBottomRest = $derived(Math.max(mBottomPx, hfReachPx(footerDoc ?? null, footerDistPx)));
+  let effBottomRest = $derived(Math.max(mBottomPx, hfReachPx(footerDoc ?? null, footerDistPx), evenBottomReach));
   let effBottomFirst = $derived(Math.max(mBottomPx, hfReachPx((differentFirstPage ? footerFirstDoc : footerDoc) ?? null, footerDistPx)));
   $effect(() => {
     const s = document.documentElement.style;
@@ -733,6 +739,9 @@
         bind:headerFirstDoc
         bind:footerFirstDoc
         {differentFirstPage}
+        bind:headerEvenDoc
+        bind:footerEvenDoc
+        {differentOddEven}
         bind:hfEditor
         bind:hfActive
         bind:hfTick

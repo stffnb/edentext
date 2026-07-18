@@ -22,8 +22,8 @@
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
 
-  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), hfActive = null, onEditZone, onDebugDump }:
-    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hfDistances?: HfDistances; differentFirstPage?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void } = $props();
+  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), differentOddEven = $bindable(false), hfActive = null, onEditZone, onDebugDump }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hfDistances?: HfDistances; differentFirstPage?: boolean; differentOddEven?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void } = $props();
 
   const PAGE_FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
 
@@ -1273,6 +1273,10 @@
           <label class="hf-firstpage-row" title={t().toolbarExpanded.differentFirstPageHint}>
             <input type="checkbox" bind:checked={differentFirstPage} />
             <span>{t().toolbarExpanded.differentFirstPage}</span>
+          </label>
+          <label class="hf-firstpage-row" title={t().toolbarExpanded.differentOddEvenHint}>
+            <input type="checkbox" bind:checked={differentOddEven} />
+            <span>{t().toolbarExpanded.differentOddEven}</span>
           </label>
 
           <div class="lh-section-label">{t().toolbarExpanded.position}</div>

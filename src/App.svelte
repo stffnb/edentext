@@ -21,7 +21,7 @@
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadPageFormat, savePageFormat, type PageFormat } from './lib/storage/pageFormat';
-  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
+  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { spellController } from './lib/spell/controller';
@@ -49,6 +49,10 @@
   let headerFirstDoc: HfDoc = $state(loadHfDoc('header', 'first'));
   let footerFirstDoc: HfDoc = $state(loadHfDoc('footer', 'first'));
   let differentFirstPage: boolean = $state(loadDifferentFirstPage());
+  // Even-page header/footer (Word "Different Odd & Even Pages"), shown on even pages when on.
+  let headerEvenDoc: HfDoc = $state(loadHfDoc('header', 'even'));
+  let footerEvenDoc: HfDoc = $state(loadHfDoc('footer', 'even'));
+  let differentOddEven: boolean = $state(loadDifferentOddEven());
   let hfDistances: HfDistances = $state(loadHfDistances());
   let hfEditor: Editor | null = $state(null);
   let hfActive: HfZone | null = $state(null);
@@ -165,6 +169,19 @@
 
   $effect(() => {
     saveHfDoc('footer', footerFirstDoc, 'first');
+  });
+
+  $effect(() => {
+    saveHfDoc('header', headerEvenDoc, 'even');
+  });
+
+  $effect(() => {
+    saveHfDoc('footer', footerEvenDoc, 'even');
+  });
+
+  $effect(() => {
+    saveDifferentOddEven(differentOddEven);
+    hfActive = null;
   });
 
   // Persist the flag and end any active header/footer edit when it flips (the live
@@ -325,6 +342,7 @@
     return {
       header: headerDoc, footer: footerDoc,
       headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage,
+      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven,
       pageCount: numPages,
       headerDistanceCm: hfDistances.header, footerDistanceCm: hfDistances.footer,
     };
@@ -333,7 +351,7 @@
   function isDocNonEmpty(): boolean {
     if (!editor) return false;
     const body = editor.state.doc.textContent.length > 0 || editor.state.doc.childCount > 1;
-    return body || !hfIsEmpty(headerDoc) || !hfIsEmpty(footerDoc) || !hfIsEmpty(headerFirstDoc) || !hfIsEmpty(footerFirstDoc);
+    return body || !hfIsEmpty(headerDoc) || !hfIsEmpty(footerDoc) || !hfIsEmpty(headerFirstDoc) || !hfIsEmpty(footerFirstDoc) || !hfIsEmpty(headerEvenDoc) || !hfIsEmpty(footerEvenDoc);
   }
 
   function handleNew() {
@@ -347,6 +365,9 @@
     headerFirstDoc = null;
     footerFirstDoc = null;
     differentFirstPage = false;
+    headerEvenDoc = null;
+    footerEvenDoc = null;
+    differentOddEven = false;
     pageMargins = { ...DEFAULT_MARGINS };
     pageOrientation = 'portrait';
     pageFormat = 'A4';
@@ -412,6 +433,9 @@
       headerFirstDoc = result.headerFirst;
       footerFirstDoc = result.footerFirst;
       differentFirstPage = result.differentFirstPage;
+      headerEvenDoc = result.headerEven;
+      footerEvenDoc = result.footerEven;
+      differentOddEven = result.differentOddEven;
       hfDistances = {
         header: result.headerDistanceCm ?? DEFAULT_HF_DISTANCES.header,
         footer: result.footerDistanceCm ?? DEFAULT_HF_DISTANCES.footer,
@@ -426,6 +450,8 @@
       collectFontFamilies(result.footer, fontSet);
       collectFontFamilies(result.headerFirst, fontSet);
       collectFontFamilies(result.footerFirst, fontSet);
+      collectFontFamilies(result.headerEven, fontSet);
+      collectFontFamilies(result.footerEven, fontSet);
       const missingFonts = await unavailableFonts(fontSet);
 
       const warnings = result.warnings.map(localizeImportMessage);
@@ -582,6 +608,9 @@
         headerFirstDoc,
         footerFirstDoc,
         differentFirstPage,
+        headerEvenDoc,
+        footerEvenDoc,
+        differentOddEven,
       });
     } catch (err) {
       console.error('[pdf] Print failed:', err);
@@ -892,6 +921,7 @@
           bind:pageFormat
           bind:hfDistances
           bind:differentFirstPage
+          bind:differentOddEven
           hfActive={hfActive}
           onEditZone={(zone) => (hfActive = zone)}
           onDebugDump={handleDebugDump}
@@ -913,6 +943,9 @@
     bind:headerFirstDoc
     bind:footerFirstDoc
     {differentFirstPage}
+    bind:headerEvenDoc
+    bind:footerEvenDoc
+    {differentOddEven}
     bind:hfEditor
     bind:hfActive
     bind:hfTick

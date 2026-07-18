@@ -127,26 +127,29 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   });
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 
-  let sect = parseSectPr(finalSectPr, ctx);
+  // Odd/even pages: a document-level setting (settings.xml), not a section property.
+  const oddEven = docHasEvenOddHeaders(files);
+  let sect = parseSectPr(finalSectPr, ctx, oddEven);
   // Multi-section files may reference headers/footers only on an earlier section (page
   // geometry still comes from the body-final sectPr). Adopt its header/footer + first-
-  // page variants, keeping the different-first-page flag if either section set it.
-  if (!sect.header && !sect.footer && !sect.headerFirst && !sect.footerFirst) {
+  // page/even variants, keeping the different-first-page flag if either section set it.
+  if (!sect.header && !sect.footer && !sect.headerFirst && !sect.footerFirst && !sect.headerEven && !sect.footerEven) {
     const prev = [...midSectPrs].reverse().find((s) => fc(s, 'headerReference') || fc(s, 'footerReference'));
     if (prev) {
-      const prevSect = parseSectPr(prev, ctx);
+      const prevSect = parseSectPr(prev, ctx, oddEven);
       sect = {
         ...sect,
         header: prevSect.header, footer: prevSect.footer,
         headerFirst: prevSect.headerFirst, footerFirst: prevSect.footerFirst,
         differentFirstPage: sect.differentFirstPage || prevSect.differentFirstPage,
+        headerEven: prevSect.headerEven, footerEven: prevSect.footerEven,
         headerDistCm: prevSect.headerDistCm, footerDistCm: prevSect.footerDistCm,
       };
     }
   }
-  // A first-page zone reserves the header/footer band even when its default is empty.
-  const hasHeader = sect.header || (sect.differentFirstPage && sect.headerFirst);
-  const hasFooter = sect.footer || (sect.differentFirstPage && sect.footerFirst);
+  // A first-page/even zone reserves the header/footer band even when its default is empty.
+  const hasHeader = sect.header || (sect.differentFirstPage && sect.headerFirst) || (sect.differentOddEven && sect.headerEven);
+  const hasFooter = sect.footer || (sect.differentFirstPage && sect.footerFirst) || (sect.differentOddEven && sect.footerEven);
 
   return {
     content: { type: 'doc', content: blocks },
@@ -158,6 +161,9 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     headerFirst: sect.differentFirstPage ? sect.headerFirst : null,
     footerFirst: sect.differentFirstPage ? sect.footerFirst : null,
     differentFirstPage: sect.differentFirstPage,
+    headerEven: sect.differentOddEven ? sect.headerEven : null,
+    footerEven: sect.differentOddEven ? sect.footerEven : null,
+    differentOddEven: sect.differentOddEven,
     headerDistanceCm: hasHeader ? sect.headerDistCm : null,
     footerDistanceCm: hasFooter ? sect.footerDistCm : null,
     language: documentLanguage(stylesDoc, warnings),
@@ -1147,12 +1153,24 @@ function pushColumnRuns(inner: Node[], cols: { count: number; gapCm: number }, o
   flush();
 }
 
-function parseSectPr(sect: Element | null, ctx: Ctx): {
+// Word's "Different Odd & Even Pages" toggle lives in settings.xml, not the sectPr.
+function docHasEvenOddHeaders(files: Record<string, Uint8Array>): boolean {
+  const bytes = files['word/settings.xml'];
+  if (!bytes) return false;
+  try {
+    return !!parseXml(strFromU8(bytes)).getElementsByTagNameNS(W, 'evenAndOddHeaders')[0];
+  } catch {
+    return false;
+  }
+}
+
+function parseSectPr(sect: Element | null, ctx: Ctx, oddEven = false): {
   margins: PageMargins | null; orientation: Orientation | null; format: PageFormat | null;
   header: HfDoc; footer: HfDoc; headerFirst: HfDoc; footerFirst: HfDoc; differentFirstPage: boolean;
+  headerEven: HfDoc; footerEven: HfDoc; differentOddEven: boolean;
   headerDistCm: number | null; footerDistCm: number | null;
 } {
-  const empty = { margins: null, orientation: null, format: null, header: null, footer: null, headerFirst: null, footerFirst: null, differentFirstPage: false, headerDistCm: null, footerDistCm: null };
+  const empty = { margins: null, orientation: null, format: null, header: null, footer: null, headerFirst: null, footerFirst: null, differentFirstPage: false, headerEven: null, footerEven: null, differentOddEven: false, headerDistCm: null, footerDistCm: null };
   if (!sect) return empty;
 
   const pgSz = fc(sect, 'pgSz');
@@ -1169,23 +1187,22 @@ function parseSectPr(sect: Element | null, ctx: Ctx): {
 
   // Different first page: w:titlePg turns on the "first"-type refs for page 1.
   const titlePg = !!fc(sect, 'titlePg');
-  const refId = (type: string, variant: 'default' | 'first' = 'default') => {
-    const want = variant === 'first' ? 'first' : 'default';
-    const ref = fcAll(sect, `${type}Reference`).find((r) => (r.getAttributeNS(W, 'type') ?? 'default') === want);
+  const refId = (type: string, variant: 'default' | 'first' | 'even' = 'default') => {
+    const ref = fcAll(sect, `${type}Reference`).find((r) => (r.getAttributeNS(W, 'type') ?? 'default') === variant);
     return ref?.getAttributeNS(R, 'id') ?? null;
   };
-  // The even/left variant stays unsupported (later pages fall back to the default).
-  if (fcAll(sect, 'headerReference').concat(fcAll(sect, 'footerReference')).some((r) => r.getAttributeNS(W, 'type') === 'even')) {
-    ctx.warnings.add('Per-page header/footer variants (first/even pages) are not supported — the default one was used');
-  }
 
   const header = convertHfPart(refId('header'), ctx);
   const footer = convertHfPart(refId('footer'), ctx);
   const headerFirst = titlePg ? convertHfPart(refId('header', 'first'), ctx) : null;
   const footerFirst = titlePg ? convertHfPart(refId('footer', 'first'), ctx) : null;
+  // Odd/even pages: settings.xml w:evenAndOddHeaders turns on the "even"-type refs.
+  const headerEven = oddEven ? convertHfPart(refId('header', 'even'), ctx) : null;
+  const footerEven = oddEven ? convertHfPart(refId('footer', 'even'), ctx) : null;
   return {
     margins, orientation, format, header, footer,
     headerFirst, footerFirst, differentFirstPage: titlePg,
+    headerEven, footerEven, differentOddEven: oddEven,
     headerDistCm: clampCm(intAttr(pgMar, W, 'header')),
     footerDistCm: clampCm(intAttr(pgMar, W, 'footer')),
   };

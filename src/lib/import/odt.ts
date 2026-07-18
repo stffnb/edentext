@@ -39,6 +39,11 @@ export interface OdtImportResult {
   headerFirst: HfDoc;
   footerFirst: HfDoc;
   differentFirstPage: boolean;
+  // Even-page variants (Word "Different Odd & Even Pages" / ODF header-left). null when
+  // the file has no even-page override; only used when differentOddEven is set.
+  headerEven: HfDoc;
+  footerEven: HfDoc;
+  differentOddEven: boolean;
   // Edge→zone distance (cm): header from top, footer from bottom. null = no zone.
   headerDistanceCm: number | null;
   footerDistanceCm: number | null;
@@ -342,9 +347,6 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   }
 
   const hf = resolver.masterPageHF();
-  if (hf.hasVariants) {
-    warnings.add('Per-page header/footer variants (first/even pages) are not supported — the default one was used');
-  }
 
   const geometry = resolver.pageGeometry();
   const edge = resolver.edgeDistancesCm();
@@ -373,9 +375,12 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   // The presence of a first-page element is the flag, even when it's empty (an empty
   // first-page zone deliberately blanks page 1 while the default fills later pages).
   const differentFirstPage = !!(hf.headerFirst || hf.footerFirst);
-  // A first-page zone reserves the band even if its default counterpart is empty.
-  const hasHeader = hf.header || headerFirst;
-  const hasFooter = hf.footer || footerFirst;
+  const headerEven = hf.headerLeft ? convertHfZone(hf.headerLeft, ctx) : null;
+  const footerEven = hf.footerLeft ? convertHfZone(hf.footerLeft, ctx) : null;
+  const differentOddEven = !!(hf.headerLeft || hf.footerLeft);
+  // A first-page/even zone reserves the band even if its default counterpart is empty.
+  const hasHeader = hf.header || headerFirst || headerEven;
+  const hasFooter = hf.footer || footerFirst || footerEven;
 
   return {
     content: { type: 'doc', content: blocks },
@@ -387,6 +392,9 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     headerFirst,
     footerFirst,
     differentFirstPage,
+    headerEven,
+    footerEven,
+    differentOddEven,
     headerDistanceCm: hasHeader ? edge?.top ?? null : null,
     footerDistanceCm: hasFooter ? edge?.bottom ?? null : null,
     language,
