@@ -627,11 +627,15 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
     const skipResult = () => fieldMode === 'result' && (hfFields || !!fieldDateTime);
 
     // Route a drawing/pict result: an image is inline; a text box is a block node
-    // riding ctx.pendingBlocks. The one-paragraph header/footer schema holds neither,
-    // so drawings there are dropped with a warning.
+    // riding ctx.pendingBlocks. The one-paragraph header/footer schema holds inline
+    // images (forced as-character) but not boxes — those are dropped with a warning.
     const pushDrawn = (n: Node | null) => {
       if (!n) return;
-      if (hfFields) { ctx.warnings.add('Drawings were removed'); return; }
+      if (hfFields) {
+        if (n.type === 'image') { out.push({ ...n, attrs: { ...n.attrs, wrap: 'inline' } }); return; }
+        ctx.warnings.add('Drawings were removed');
+        return;
+      }
       if (n.type !== 'textBox') { out.push(n); return; }
       ctx.pendingBlocks.push(n);
     };

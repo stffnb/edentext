@@ -847,12 +847,14 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
         }
       }
       if (e.namespaceURI === NS.draw) {
-        // The one-paragraph header/footer schema can't hold images or boxes.
+        const conv = convertDrawElement(e, ctx);
+        // The one-paragraph header/footer schema holds inline images (forced
+        // as-character) but not boxes — those are dropped with a warning.
         if (hfFields) {
-          ctx.warnings.add('Drawings were removed');
+          if (conv?.inline?.type === 'image') out.push({ ...conv.inline, attrs: { ...conv.inline.attrs, wrap: 'inline' } });
+          else if (conv) ctx.warnings.add('Drawings were removed');
           continue;
         }
-        const conv = convertDrawElement(e, ctx);
         if (conv?.inline) out.push(conv.inline);
         else if (conv?.block) ctx.pendingBlocks.push(conv.block);
         continue;

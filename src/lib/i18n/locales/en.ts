@@ -129,7 +129,6 @@ const en = {
     decrease: (label: string) => `Decrease ${label.toLowerCase()}`,
     formattingMarks: 'Formatting marks',
     insertImage: 'Insert image',
-    imageNotInHf: 'Images are not available in headers/footers',
     insertTextBox: 'Insert text box',
     textBoxNotInHf: 'Text boxes are not available in headers/footers',
     columns: 'Columns',

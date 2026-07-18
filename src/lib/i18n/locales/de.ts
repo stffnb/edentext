@@ -126,7 +126,6 @@ const de: Messages = {
     decrease: (label) => `${label} verkleinern`,
     formattingMarks: 'Formatierungszeichen',
     insertImage: 'Bild einfügen',
-    imageNotInHf: 'Bilder sind in Kopf-/Fußzeilen nicht verfügbar',
     insertTextBox: 'Textfeld einfügen',
     textBoxNotInHf: 'Textfelder sind in Kopf-/Fußzeilen nicht verfügbar',
     columns: 'Spalten',

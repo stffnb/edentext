@@ -16,10 +16,11 @@ import TextAlign from '@tiptap/extension-text-align';
 import { FontWeight } from './fontWeight';
 import { FontColor } from './fontColor';
 import { PageNumber, PageCount } from './pageField';
+import { Image } from './image';
 
 // Schema for the header/footer mini editors: exactly one paragraph of formatted
-// runs, line breaks, and page fields — what odf-kit's HeaderFooterBuilder (and
-// thus the ODT export) can express. Marks mirror the main editor's.
+// runs, line breaks, page fields, and inline (as-character) images. Marks mirror
+// the main editor's; the ODT export emits images via a draw:frame post-process.
 
 const HfDocument = Document.extend({ content: 'paragraph' });
 
@@ -53,6 +54,9 @@ export function hfExtensions(placeholder = '') {
     FontColor,
     Highlight.configure({ multicolor: true }),
     HfHardBreak,
+    // Inline (as-character) images only — the single-paragraph zone has no text flow
+    // for floating/wrapped frames; imports and inserts force wrap:'inline'.
+    Image,
     PageNumber,
     PageCount,
     History,

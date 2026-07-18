@@ -823,7 +823,7 @@
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = ''; // allow re-selecting the same file
-    if (!file || !editor || hfActive) return;
+    if (!file || !editor) return; // editor = activeEditor (body or the active HF zone)
     const reader = new FileReader();
     reader.onload = () => {
       const src = reader.result as string;
@@ -1348,8 +1348,7 @@
       />
       <button
         onclick={() => imageInput?.click()}
-        disabled={!!hfActive}
-        title={hfActive ? t().toolbarExpanded.imageNotInHf : t().toolbarExpanded.insertImage}
+        title={t().toolbarExpanded.insertImage}
         aria-label={t().toolbarExpanded.insertImage}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">

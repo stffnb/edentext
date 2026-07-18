@@ -814,6 +814,33 @@ describe('Leg 3a: different first page header/footer → buildOdt → importOdt'
   });
 });
 
+describe('Leg 3b: inline images in header/footer → buildOdt → importOdt', () => {
+  it('round-trips an as-char image in a default zone and a first-page zone', async () => {
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const img = (w: number, h: number): N => ({ type: 'image', attrs: { src: PNG, alt: 'Logo', width: w, height: h, wrap: 'inline' } });
+    const footer: N = { type: 'doc', content: [P({ textAlign: 'center' }, T('Logo '), img(120, 48))] };
+    const headerFirst: N = { type: 'doc', content: [P(null, img(200, 60))] };
+    const header: N = { type: 'doc', content: [P(null, T('Default header'))] };
+    const res = importOdt(await buildOdt(fixture, margins, 'portrait',
+      { header, footer, headerFirst, footerFirst: null, differentFirstPage: true, pageCount: 3 }));
+    const imgs = (doc: N): N[] => { const o: N[] = []; const w = (n: N) => { if (!n) return; if (n.type === 'image') o.push(n); (n.content ?? []).forEach(w); }; w(doc); return o; };
+
+    check('hf image: no warnings', res.warnings.length === 0, res.warnings);
+    const fi = imgs(res.footer);
+    check('hf image: default footer keeps one image', fi.length === 1, res.footer);
+    check('hf image: src is a data-URI', /^data:image\//.test(fi[0]?.attrs?.src ?? ''), fi[0]?.attrs?.src?.slice(0, 24));
+    check('hf image: size preserved (px→cm→px)', Math.abs(fi[0]?.attrs?.width - 120) <= 2 && Math.abs(fi[0]?.attrs?.height - 48) <= 2, fi[0]?.attrs);
+    check('hf image: stays inline (as-char)', (fi[0]?.attrs?.wrap ?? 'inline') === 'inline', fi[0]?.attrs?.wrap);
+    check('hf image: first-page header keeps its image', imgs(res.headerFirst).length === 1, res.headerFirst);
+
+    // Both zones must remain valid in the header/footer editor schema.
+    const hfSchema = getSchema(hfExtensions());
+    let ok = true;
+    for (const z of [res.footer, res.headerFirst]) { if (!z) continue; try { PMNode.fromJSON(hfSchema, z).check(); } catch { ok = false; } }
+    check('hf image: zones valid in hf schema', ok);
+  });
+});
+
 describe('Leg 4: foreign header/footer → importOdt', () => {
   it('parses page-number/count fields, reconstructs body margins, imports the first-page variant', () => {
     const fStyles = `<?xml version="1.0" encoding="UTF-8"?>

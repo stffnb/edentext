@@ -95,6 +95,11 @@ const COL = '';
 // rewrites it to <text:date>/<text:time> + a minted number style. U+E00A.
 const DTF = '';
 
+// Sentinel wrapping a header/footer image's index (HFIMG{i}HFIMG), emitted as plain
+// run text by replaceHfImages so it rides odf-kit's header/footer path (styles.xml);
+// applyHfPostProcess rewrites it to an as-char <draw:frame>. U+E00B.
+const HFIMG = '';
+
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -225,7 +230,7 @@ function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
 // Decode an `image` node's data-URI src into bytes + geometry. width/height are
 // px @96dpi → cm via round3 (sub-pixel, matches table column widths), so an
 // integer-px image round-trips exactly. Returns null for a non-data/empty src.
-function imageDescriptor(node: TiptapNode, index: number): ImageExport | null {
+function imageDescriptor(node: TiptapNode, index: number, namePrefix = 'image'): ImageExport | null {
   const src = node.attrs?.src;
   if (typeof src !== 'string' || !src.startsWith('data:')) return null;
   const m = /^data:([^;,]+)(;[^,]*)?,([\s\S]*)$/.exec(src);
@@ -246,7 +251,7 @@ function imageDescriptor(node: TiptapNode, index: number): ImageExport | null {
   const wrapAttr = node.attrs?.wrap;
   const wrap: WrapMode = wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' ? wrapAttr : 'inline';
   return {
-    path: `Pictures/image${index + 1}.${EXT_BY_MIME[mimeType] ?? 'png'}`,
+    path: `Pictures/${namePrefix}${index + 1}.${EXT_BY_MIME[mimeType] ?? 'png'}`,
     bytes,
     mimeType,
     widthCm: w > 0 ? pxToCm(w) : 0,
@@ -275,6 +280,26 @@ function replaceImages(node: TiptapNode, images: ImageExport[]): TiptapNode {
     content.push(replaceImages(child, images));
   }
   return { ...node, content };
+}
+
+// A header/footer paragraph's inline images → HFIMG-sentinel text runs (forced
+// as-character), collected into `images` under a distinct Pictures/hfImage* name so
+// applyHfRuns/hfFirstZoneXml carry the sentinel and applyHfPostProcess resolves it.
+function replaceHfImages(para: TiptapNode | null, images: ImageExport[]): TiptapNode | null {
+  if (!para?.content?.length) return para;
+  const content: TiptapNode[] = [];
+  for (const child of para.content) {
+    if (child.type === 'image') {
+      const desc = imageDescriptor(child, images.length, 'hfImage');
+      if (desc) {
+        images.push(desc);
+        content.push({ type: 'text', text: `${HFIMG}${images.length - 1}${HFIMG}` });
+      }
+      continue; // invalid image → dropped
+    }
+    content.push(child);
+  }
+  return { ...para, content };
 }
 
 // One inserted date/time field, collected by replaceDateTimeFields and emitted by
@@ -1717,6 +1742,19 @@ function imageFrameXml(img: ImageExport, index: number): string {
   );
 }
 
+// As-character <draw:frame> for a header/footer image (always inline; no wrap style or
+// rotation). Distinct draw:name so it never collides with a body image's frame.
+function hfImageFrameXml(img: ImageExport, index: number): string {
+  const dims =
+    (img.widthCm ? ` svg:width="${img.widthCm}cm"` : '') +
+    (img.heightCm ? ` svg:height="${img.heightCm}cm"` : '');
+  const title = img.alt ? `<svg:title>${escapeXml(img.alt)}</svg:title>` : '';
+  return (
+    `<draw:frame draw:name="HfImage${index + 1}" text:anchor-type="as-char" draw:z-index="${index}"${dims}>` +
+    `<draw:image xlink:href="${img.path}"/>${title}</draw:frame>`
+  );
+}
+
 // Inject automatic styles, tolerating an empty/self-closed or absent section.
 function injectAutomaticStyles(content: string, styles: string): string {
   if (!styles) return content;
@@ -2064,6 +2102,13 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const differentFirstPage = !!hf?.differentFirstPage;
   let firstHeaderPara = differentFirstPage && hf && !hfIsEmpty(hf.headerFirst ?? null) ? (hf.headerFirst!.content![0] as TiptapNode) : null;
   let firstFooterPara = differentFirstPage && hf && !hfIsEmpty(hf.footerFirst ?? null) ? (hf.footerFirst!.content![0] as TiptapNode) : null;
+  // Hoist header/footer inline images out to HFIMG sentinels before odf-kit serializes
+  // the zones; applyHfPostProcess rewrites them to <draw:frame> in styles.xml.
+  const hfImages: ImageExport[] = [];
+  headerPara = replaceHfImages(headerPara, hfImages);
+  footerPara = replaceHfImages(footerPara, hfImages);
+  firstHeaderPara = replaceHfImages(firstHeaderPara, hfImages);
+  firstFooterPara = replaceHfImages(firstFooterPara, hfImages);
   // With the flag on, page 1 is independent: whenever a side has a zone on either
   // variant, emit both (an empty one blanks its side, matching the editor and Word).
   if (differentFirstPage) {
@@ -2203,7 +2248,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withStyles = rewriteStylesXml(withEmptyFontSizes, language ?? null, pageFormat, orientation);
-  return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1);
+  return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages);
 }
 
 function hfAlign(para: TiptapNode): AlignValue | null {
@@ -2214,8 +2259,8 @@ function hfAlign(para: TiptapNode): AlignValue | null {
 // Header/footer post-processing on styles.xml: resolve LBR/PGC sentinels, apply the
 // paragraph alignment to the Header/Footer styles, and rewrite the geometry to the
 // Word-style mapping (page margin = HF distance, min-height fills up to the body margin).
-function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPara: TiptapNode | null, footerPara: TiptapNode | null, headerDist: number, footerDist: number, firstHeaderPara: TiptapNode | null = null, firstFooterPara: TiptapNode | null = null, pageCount = 1): Uint8Array {
-  if (!headerPara && !footerPara) return odtBytes;
+function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPara: TiptapNode | null, footerPara: TiptapNode | null, headerDist: number, footerDist: number, firstHeaderPara: TiptapNode | null = null, firstFooterPara: TiptapNode | null = null, pageCount = 1, hfImages: ImageExport[] = []): Uint8Array {
+  if (!headerPara && !footerPara && !firstHeaderPara && !firstFooterPara) return odtBytes;
 
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
@@ -2276,8 +2321,38 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
     }
   }
 
+  // Resolve HFIMG sentinels (default + first-page zones) to as-char <draw:frame>s, then
+  // add the picture binaries and their manifest entries (mirrors the body applyImages).
+  if (hfImages.length) {
+    styles = ensureDrawNamespaces(styles);
+    styles = styles.replace(new RegExp(`${HFIMG}(\\d+)${HFIMG}`, 'g'), (_m, idx: string) => {
+      const img = hfImages[Number(idx)];
+      return img ? hfImageFrameXml(img, Number(idx)) : '';
+    });
+    for (const img of hfImages) files[img.path] = img.bytes;
+    const manifestBytes = files['META-INF/manifest.xml'];
+    if (manifestBytes) {
+      const entries = hfImages
+        .map((img) => `<manifest:file-entry manifest:full-path="${img.path}" manifest:media-type="${img.mimeType}"/>`)
+        .join('');
+      files['META-INF/manifest.xml'] = strToU8(strFromU8(manifestBytes).replace('</manifest:manifest>', `${entries}</manifest:manifest>`));
+    }
+  }
+
   files['styles.xml'] = strToU8(styles);
   return rezipOdt(files);
+}
+
+// styles.xml needs draw/svg/xlink namespaces for an image frame; odf-kit may not declare
+// all three (svg is used by page geometry, but draw/xlink can be absent).
+function ensureDrawNamespaces(styles: string): string {
+  const ns: [string, string][] = [
+    ['draw', 'urn:oasis:names:tc:opendocument:xmlns:drawing:1.0'],
+    ['svg', 'urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0'],
+    ['xlink', 'http://www.w3.org/1999/xlink'],
+  ];
+  const missing = ns.filter(([p]) => !styles.includes(`xmlns:${p}=`)).map(([p, uri]) => `xmlns:${p}="${uri}"`);
+  return missing.length ? styles.replace(/<office:document-styles\b/, `<office:document-styles ${missing.join(' ')}`) : styles;
 }
 
 // Serialize a first-page header/footer paragraph to <style:header-first>/<style:footer-first>

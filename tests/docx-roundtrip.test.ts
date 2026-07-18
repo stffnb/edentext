@@ -312,6 +312,24 @@ describe('DOCX different first page (w:titlePg)', () => {
     expect(inline[inline.length - 1].type).toBe('hardBreak');
   });
 
+  it('round-trips an inline image in the default footer and the first-page header', async () => {
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const image = (w: number, h: number): N => ({ type: 'image', attrs: { src: PNG, alt: 'Logo', width: w, height: h, wrap: 'inline' } });
+    const withImgs = {
+      ...hf,
+      footer: { type: 'doc', content: [para([text('Logo '), image(120, 48)])] },
+      headerFirst: { type: 'doc', content: [para([image(200, 60)])] },
+    } as any;
+    const res = importDocx(await buildDocx(fixture, undefined, 'portrait', withImgs, { language: 'de', country: 'DE' }));
+    const fi = walk(res.footer, 'image');
+    const hi = walk(res.headerFirst, 'image');
+    expect(fi.length).toBe(1);
+    expect(hi.length).toBe(1);
+    expect(String(fi[0].attrs.src)).toMatch(/^data:image\//);
+    expect(Math.abs(fi[0].attrs.width - 120)).toBeLessThanOrEqual(2);
+    expect(Math.abs(fi[0].attrs.height - 48)).toBeLessThanOrEqual(2);
+  });
+
   it('omits titlePg and first-page zones when the flag is off', async () => {
     const bytes = await buildDocx(fixture, undefined, 'portrait', { ...hf, differentFirstPage: false }, { language: 'de', country: 'DE' });
     const documentXml = strFromU8(unzipSync(bytes)['word/document.xml']);
