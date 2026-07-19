@@ -1,4 +1,4 @@
-import { Extension } from '@tiptap/core';
+import { Extension, InputRule } from '@tiptap/core';
 import type { CommandProps } from '@tiptap/core';
 import type { EditorState } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
@@ -77,6 +77,8 @@ export const ParagraphBox = Extension.create({
         attributes: {
           backgroundColor: {
             default: null,
+            // Decorative box shouldn't cascade onto the next paragraph on Enter.
+            keepOnSplit: false,
             parseHTML: (element: HTMLElement) => element.getAttribute('data-bg') || null,
             renderHTML: (attributes: Record<string, unknown>) => {
               const c = attributes.backgroundColor as string | null;
@@ -89,6 +91,7 @@ export const ParagraphBox = Extension.create({
               side,
               {
                 default: null,
+                keepOnSplit: false,
                 parseHTML: (element: HTMLElement) => element.getAttribute(SIDE_META[side].data),
                 renderHTML: (attributes: Record<string, unknown>) => {
                   const v = attributes[side] as string | null;
@@ -137,6 +140,27 @@ export const ParagraphBox = Extension.create({
           return true;
         },
     };
+  },
+
+  // Word/LibreOffice "border lines" AutoCorrect: a paragraph whose only text is 3+ of
+  // -, _ or = becomes an empty bottom-rule line (thin / thick / thick — no double style).
+  addInputRules() {
+    const types = this.options.types;
+    const WIDTH_PT: Record<string, number> = { '-': 0.5, _: 1.5, '=': 1.5 };
+    return [
+      new InputRule({
+        find: /^(-{3,}|_{3,}|={3,})$/,
+        handler: ({ state, range, match }) => {
+          const value = `${WIDTH_PT[match[1][0]] ?? 0.5}pt solid #000000`;
+          const $start = state.doc.resolve(range.from);
+          const node = $start.parent;
+          if (!types.includes(node.type.name)) return null;
+          const paraPos = $start.before();
+          state.tr.delete(range.from, range.to);
+          state.tr.setNodeMarkup(paraPos, undefined, { ...node.attrs, borderBottom: value });
+        },
+      }),
+    ];
   },
 });
 

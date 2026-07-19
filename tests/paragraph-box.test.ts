@@ -70,6 +70,22 @@ describe('paragraph background + borders round trip', () => {
     expect(hfIsEmpty({ type: 'doc', content: [{ type: 'paragraph' }] } as any)).toBe(true);
   });
 
+  it('round-trips an empty bottom-rule paragraph (the --- autocorrect output)', async () => {
+    const doc: N = { type: 'doc', content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'above' }] },
+      { type: 'paragraph', attrs: { borderBottom: '0.5pt solid #000000' } },
+      { type: 'paragraph', content: [{ type: 'text', text: 'below' }] },
+    ]};
+    const findRule = (d: any) => d.content.find((n: any) => n.type === 'paragraph' && !n.content?.length && n.attrs?.borderBottom);
+    const odtBack: any = importOdt(await buildOdt(doc as any, DEFAULT_MARGINS, 'portrait'));
+    const docxBack: any = importDocx(await buildDocx(doc as any, DEFAULT_MARGINS, 'portrait'));
+    for (const back of [odtBack.content, docxBack.content]) {
+      const rule = findRule(back);
+      expect(rule, 'empty bottom-rule paragraph survives').toBeTruthy();
+      expect(rule.attrs.borderBottom).toMatch(/pt solid #000000/i);
+    }
+  });
+
   it('drops background/borders that are absent (no accretion)', async () => {
     const plain: N = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x' }] }] };
     const odt = await buildOdt(plain as any, DEFAULT_MARGINS, 'portrait');
