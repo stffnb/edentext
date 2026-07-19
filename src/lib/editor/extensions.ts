@@ -25,6 +25,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { PageBreaks } from './extensions/pageBreaks';
 import { LineHeight } from './extensions/lineHeight';
 import { ParagraphSpacing } from './extensions/paragraphSpacing';
+import { ParagraphBox } from './extensions/paragraphBox';
 import { BlockFontSize } from './extensions/blockFontSize';
 import { PageBreak } from './extensions/pageBreak';
 import { Indent } from './extensions/indent';
@@ -90,6 +91,9 @@ export const extensions = [
   TableOfContents,
   LineHeight,
   ParagraphSpacing,
+  // Paragraph background ("colored field") + borders ("colored rule line"); round-trips
+  // to ODF fo:background-color/fo:border-* and DOCX w:shd/w:pBdr.
+  ParagraphBox,
   // Paragraph-mark font size: sizes empty lines (and text typed into them).
   BlockFontSize,
   PageBreak,

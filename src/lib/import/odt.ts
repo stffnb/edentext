@@ -408,6 +408,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
 function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
   const inline: Node[] = [];
   let textAlign: string | null = null;
+  const boxMaps: Record<string, string>[] = [];
 
   const addPara = (p: Element) => {
     if (inline.length) inline.push({ type: 'hardBreak' });
@@ -417,6 +418,7 @@ function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
       textAlign = ta === 'center' || ta === 'justify' ? ta : ta === 'right' || ta === 'end' ? 'right' : null;
       if (textAlign === null) textAlign = ''; // only the first paragraph decides
     }
+    boxMaps.push(paraBoxAttrs(ctx.resolver.paraProps(styleName)));
     inline.push(...convertInline(p, ctx, ctx.resolver.paraTextProps(styleName), null, true));
   };
 
@@ -430,12 +432,36 @@ function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
     }
   }
   // Empty source paragraphs become blank lines (hardBreaks); an all-empty zone has no
-  // runs and no inter-paragraph break, so inline stays empty and the zone is dropped.
-  if (inline.length === 0) return null;
+  // runs and no inter-paragraph break, so inline stays empty. Keep such a zone only when
+  // it carries a background/rule line (a footer that is just a colored line has no text).
+  const box = mergeHfBox(boxMaps);
+  if (inline.length === 0 && Object.keys(box).length === 0) return null;
 
   const para: Node = { type: 'paragraph', content: inline };
-  if (textAlign) para.attrs = { textAlign };
+  const attrs: Record<string, string> = {};
+  if (textAlign) attrs.textAlign = textAlign;
+  Object.assign(attrs, box);
+  if (Object.keys(attrs).length) para.attrs = attrs;
   return { type: 'doc', content: [para] };
+}
+
+// The zone collapses several source paragraphs into one, so pick the box props that
+// reproduce the visible band+rule: background/side rules from the first that declares
+// them, but the bottom rule from the LAST paragraph (it sits under the whole band).
+function mergeHfBox(maps: Record<string, string>[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  const first = (key: string) => maps.find((m) => m[key] !== undefined)?.[key];
+  const last = (key: string) => [...maps].reverse().find((m) => m[key] !== undefined)?.[key];
+  for (const [key, val] of [
+    ['backgroundColor', first('backgroundColor')],
+    ['borderTop', first('borderTop')],
+    ['borderLeft', first('borderLeft')],
+    ['borderRight', first('borderRight')],
+    ['borderBottom', last('borderBottom')],
+  ] as const) {
+    if (val !== undefined) out[key] = val;
+  }
+  return out;
 }
 
 function parseXml(xml: string): Document {
@@ -670,7 +696,36 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, headingLevel: number
   // breaks, so only "page". Cell/list blocks can't carry it.
   if (kind === 'body' && paraProps['fo:break-before'] === 'page') attrs.breakBefore = 'page';
 
+  // Paragraph background ("colored field") + per-side borders ("rule line").
+  Object.assign(attrs, paraBoxAttrs(paraProps));
+
   return attrs;
+}
+
+// Paragraph background + per-side border attrs (paragraphBox.ts) from resolved paraProps.
+// Each key is omitted when absent so a paragraph with no box props stays clean. Borders:
+// a per-side fo:border-* overrides the all-sides fo:border; 'none' ⇒ no border (undefined).
+export function paraBoxAttrs(paraProps: PropMap): Record<string, string> {
+  const out: Record<string, string> = {};
+  const bg = paraProps['fo:background-color'];
+  if (bg && bg !== 'transparent') {
+    const c = normalizeColor(bg);
+    if (c) out.backgroundColor = c;
+  }
+  const all = paraProps['fo:border'];
+  const sides: [string, string][] = [
+    ['borderTop', 'fo:border-top'],
+    ['borderRight', 'fo:border-right'],
+    ['borderBottom', 'fo:border-bottom'],
+    ['borderLeft', 'fo:border-left'],
+  ];
+  for (const [attr, key] of sides) {
+    const raw = paraProps[key] ?? all;
+    if (raw == null) continue;
+    const v = borderAttrFromOdf(raw, false);
+    if (v && v !== 'none') out[attr] = v;
+  }
+  return out;
 }
 
 // Round to 2 decimals; snap to the integer when within producer rounding noise
@@ -1110,7 +1165,10 @@ function listLevelDef(listStyle: Element | null, depth: number): Element | null 
 // the editor default (0.5pt black, tolerance for producer unit rounding), 'none' for
 // no border, else the canonical '<W>pt solid #RRGGBB'. Non-solid styles are coerced
 // to solid (the editor only renders solid lines).
-export function borderAttrFromOdf(raw: string | null | undefined): string | null {
+// treatDefaultAsNull: table cells collapse the 0.5pt-black default to null (= the table's
+// own default border). Paragraph borders have no such default, so they pass false to keep
+// a declared thin-black rule as an explicit canonical value.
+export function borderAttrFromOdf(raw: string | null | undefined, treatDefaultAsNull = true): string | null {
   if (!raw || raw === 'none' || raw === 'hidden') return 'none';
   let widthPt: number | null = null;
   let color: string | null = null;
@@ -1124,7 +1182,7 @@ export function borderAttrFromOdf(raw: string | null | undefined): string | null
   if (widthPt != null && widthPt <= 0) return 'none';
   const w = Math.round((widthPt ?? 0.5) * 100) / 100;
   const c = (color ?? '#000000').toUpperCase();
-  if (Math.abs(w - 0.5) < 0.11 && c === '#000000') return null;
+  if (treatDefaultAsNull && Math.abs(w - 0.5) < 0.11 && c === '#000000') return null;
   return `${w}pt solid ${c}`;
 }
 

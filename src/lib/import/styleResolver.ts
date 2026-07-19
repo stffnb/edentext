@@ -403,7 +403,12 @@ export class StyleResolver {
       const height = lengthToCm(props.getAttributeNS(NS.svg, 'height'))
         ?? lengthToCm(props.getAttributeNS(NS.fo, 'min-height'))
         ?? 0;
-      const spacing = lengthToCm(props.getAttributeNS(NS.fo, spacingAttr)) ?? 0;
+      // style:dynamic-spacing="true" makes the header↔body gap collapsible (the header
+      // grows into it), so LibreOffice doesn't push the body down by the full spacing —
+      // reserving it as a fixed body margin is what shoves the text down. Only the fixed
+      // (non-dynamic) spacing is added to the body margin.
+      const dynamic = props.getAttributeNS(NS.style, 'dynamic-spacing') === 'true';
+      const spacing = dynamic ? 0 : (lengthToCm(props.getAttributeNS(NS.fo, spacingAttr)) ?? 0);
       return height + spacing;
     };
 

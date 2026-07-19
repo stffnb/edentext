@@ -582,7 +582,38 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
     const pb = fc(ppr, 'pageBreakBefore');
     if (pb && wVal(pb) !== 'false' && wVal(pb) !== '0') attrs.breakBefore = 'page';
   }
+
+  // Paragraph background ("colored field", w:shd) + per-side borders ("rule line", w:pBdr).
+  Object.assign(attrs, readParaBox(ppr));
   return attrs;
+}
+
+// Paragraph background + per-side border attrs (paragraphBox.ts) from direct w:pPr.
+// Shading: w:shd/@w:fill; borders: w:pBdr/w:{top,right,bottom,left} (w:sz in eighths of a
+// point). Sides with w:val none/nil are skipped. Matches the ODF paraBoxAttrs shape.
+function readParaBox(ppr: Element | null): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!ppr) return out;
+  const shd = fc(ppr, 'shd');
+  const fill = shd ? hexColor(shd.getAttributeNS(W, 'fill')) : undefined;
+  if (fill) out.backgroundColor = fill;
+
+  const pBdr = fc(ppr, 'pBdr');
+  if (pBdr) {
+    for (const [wSide, attr] of [
+      ['top', 'borderTop'], ['right', 'borderRight'], ['bottom', 'borderBottom'], ['left', 'borderLeft'],
+    ] as const) {
+      const b = fc(pBdr, wSide);
+      if (!b) continue;
+      const val = b.getAttributeNS(W, 'val');
+      if (!val || val === 'none' || val === 'nil') continue;
+      const sz = intAttr(b, W, 'sz'); // eighths of a point
+      const widthPt = sz != null ? Math.round((sz / 8) * 100) / 100 : 0.5;
+      const color = hexColor(b.getAttributeNS(W, 'color')) ?? '#000000';
+      out[attr] = `${widthPt}pt solid ${color}`;
+    }
+  }
+  return out;
 }
 
 function snapPt(v: number): number {
@@ -634,11 +665,13 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
 
     // Route a drawing/pict result: an image is inline; a text box is a block node
     // riding ctx.pendingBlocks. The one-paragraph header/footer schema holds inline
-    // images (forced as-character) but not boxes — those are dropped with a warning.
-    const pushDrawn = (n: Node | null) => {
+    // (as-character) images but not boxes — those are dropped with a warning. A floating
+    // drawing (page background, watermark, fold marks) can't be placed in the one-paragraph
+    // zone and, sized to the page, would overlay the whole document, so it's dropped there.
+    const pushDrawn = (n: Node | null, floating: boolean) => {
       if (!n) return;
       if (hfFields) {
-        if (n.type === 'image') { out.push({ ...n, attrs: { ...n.attrs, wrap: 'inline' } }); return; }
+        if (n.type === 'image' && !floating) { out.push({ ...n, attrs: { ...n.attrs, wrap: 'inline' } }); return; }
         ctx.warnings.add('Drawings were removed');
         return;
       }
@@ -652,12 +685,12 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
       if (child.namespaceURI === MC && child.localName === 'AlternateContent') {
         const choice = Array.from(child.children).find((c) => c.namespaceURI === MC && c.localName === 'Choice');
         const drawing = choice?.getElementsByTagNameNS(W, 'drawing')[0];
-        if (drawing) pushDrawn(convertDrawing(drawing, ctx));
+        if (drawing) pushDrawn(convertDrawing(drawing, ctx), drawingIsFloating(drawing));
         else {
           const pict = Array.from(child.children)
             .find((c) => c.namespaceURI === MC && c.localName === 'Fallback')
             ?.getElementsByTagNameNS(W, 'pict')[0];
-          if (pict) pushDrawn(convertPict(pict, ctx));
+          if (pict) pushDrawn(convertPict(pict, ctx), drawingIsFloating(pict));
           else ctx.warnings.add('Drawings were removed');
         }
         continue;
@@ -687,8 +720,8 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
         case 'tab': if (!skipResult()) pushText('\t', marks); break;
         case 'br': out.push(child.getAttributeNS(W, 'type') === 'page' ? { type: PB_MARKER } : hardBreakNode(marks)); break;
         case 'cr': out.push(hardBreakNode(marks)); break;
-        case 'drawing': pushDrawn(convertDrawing(child, ctx)); break;
-        case 'pict': pushDrawn(convertPict(child, ctx)); break;
+        case 'drawing': pushDrawn(convertDrawing(child, ctx), drawingIsFloating(child)); break;
+        case 'pict': pushDrawn(convertPict(child, ctx), drawingIsFloating(child)); break;
       }
     }
   };
@@ -815,6 +848,16 @@ function loadImageDataUrl(path: string, ctx: Ctx): string | null {
   if (!url) return null;
   ctx.imageCache.set(path, url);
   return url;
+}
+
+// True when a drawing floats rather than sitting in the text flow: DrawingML `wp:anchor`,
+// or a VML shape with `position:absolute`. Header/footer import drops these (see pushDrawn).
+function drawingIsFloating(el: Element): boolean {
+  if (el.localName === 'drawing') return el.getElementsByTagNameNS(WP, 'anchor').length > 0;
+  const shape = Array.from(el.getElementsByTagNameNS(VML, '*')).find((c) =>
+    ['shape', 'rect', 'oval', 'roundrect'].includes(c.localName),
+  );
+  return /(^|;)\s*position\s*:\s*absolute/i.test(shape?.getAttribute('style') ?? '');
 }
 
 function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
@@ -1225,6 +1268,7 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
 
   const inline: Node[] = [];
   let textAlign: string | null = null;
+  const boxMaps: Record<string, string>[] = [];
   for (const p of fcAll(root, 'p')) {
     if (inline.length) inline.push({ type: 'hardBreak' });
     const ppr = fc(p, 'pPr');
@@ -1232,14 +1276,36 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
       const ta = (fc(ppr, 'jc') ? wVal(fc(ppr, 'jc')!) : null) ?? '';
       textAlign = ta === 'center' || ta === 'both' ? (ta === 'both' ? 'justify' : 'center') : ta === 'right' || ta === 'end' ? 'right' : '';
     }
+    boxMaps.push(readParaBox(ppr));
     const baseRun = hfCtx.styles.paragraphRun(fc(ppr, 'pStyle') ? wVal(fc(ppr, 'pStyle')!) : null);
     inline.push(...convertInline(p, hfCtx, baseRun, null, true, false).filter((n) => n.type !== PB_MARKER));
   }
-  // Empty source paragraphs become blank lines (hardBreaks); an all-empty zone has no
-  // runs and no inter-paragraph break, so inline stays empty and the zone is dropped.
-  if (inline.length === 0) return null;
+  // An all-empty zone is dropped unless it carries a background/rule line (a footer that
+  // is just a colored line has no text). The zone collapses to one paragraph (mergeHfBox).
+  const box = mergeHfBox(boxMaps);
+  if (inline.length === 0 && Object.keys(box).length === 0) return null;
 
   const para: Node = { type: 'paragraph', content: inline };
-  if (textAlign) para.attrs = { textAlign };
+  const attrs: Record<string, string> = {};
+  if (textAlign) attrs.textAlign = textAlign;
+  Object.assign(attrs, box);
+  if (Object.keys(attrs).length) para.attrs = attrs;
   return { type: 'doc', content: [para] };
+}
+
+// Collapse several source paragraphs' box props into one (mirror of odt.ts mergeHfBox).
+function mergeHfBox(maps: Record<string, string>[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  const first = (k: string) => maps.find((m) => m[k] !== undefined)?.[k];
+  const last = (k: string) => [...maps].reverse().find((m) => m[k] !== undefined)?.[k];
+  for (const [k, v] of [
+    ['backgroundColor', first('backgroundColor')],
+    ['borderTop', first('borderTop')],
+    ['borderLeft', first('borderLeft')],
+    ['borderRight', first('borderRight')],
+    ['borderBottom', last('borderBottom')],
+  ] as const) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
 }

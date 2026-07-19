@@ -151,6 +151,16 @@
   margin-bottom: 0;
 }
 
+/* Paragraph "colored field" + rule line (paragraphBox.ts). Background-color and per-side
+   borders are inline styles from renderHTML; a bordered block gets a little padding so the
+   text doesn't touch the rule (matches LibreOffice's fo:padding on such paragraphs). */
+.paper .tiptap [data-pborder-top],
+.paper .tiptap [data-pborder-bottom],
+.paper .tiptap [data-pborder-left],
+.paper .tiptap [data-pborder-right] {
+  padding: 0.04cm 0.08cm;
+}
+
 /* Hyperlinks (link.ts). Ctrl/Cmd+click opens them (Editor.svelte). */
 .paper .tiptap a {
   color: #1a56db;

@@ -90,10 +90,12 @@ export function saveHfDoc(zone: HfZone, doc: HfDoc, variant: HfVariant = 'defaul
   else localStorage.setItem(KEYS[zone][variant], JSON.stringify(doc));
 }
 
-// Empty = null or a single paragraph without inline content. Empty zones render
-// nothing and are skipped on export.
+// Empty = null or a single paragraph without inline content AND without a visible box
+// (a footer that is just a colored rule line has no text but must still render/export).
 export function hfIsEmpty(doc: HfDoc): boolean {
   if (!doc?.content?.length) return true;
-  const para = doc.content[0] as { content?: unknown[] } | undefined;
-  return !para?.content?.length;
+  const para = doc.content[0] as { content?: unknown[]; attrs?: Record<string, unknown> } | undefined;
+  if (para?.content?.length) return false;
+  const a = para?.attrs ?? {};
+  return !a.backgroundColor && !a.borderTop && !a.borderRight && !a.borderBottom && !a.borderLeft;
 }

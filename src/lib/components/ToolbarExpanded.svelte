@@ -2,6 +2,7 @@
   import type { Editor } from '@tiptap/core';
   import { onMount } from 'svelte';
   import ColorPicker from './ColorPicker.svelte';
+  import ParagraphBorderPicker from './ParagraphBorderPicker.svelte';
   import TablePicker from './TablePicker.svelte';
   import SpecialCharPicker from './SpecialCharPicker.svelte';
   import DateTimePicker from './DateTimePicker.svelte';
@@ -271,6 +272,23 @@
   let currentFontColor = $derived(uniformMarkColor('textStyle'));
   let currentHighlightColor = $derived(uniformMarkColor('highlight'));
 
+  // Uniform paragraph background across the selection (paragraphBox.ts). null = none
+  // anywhere; '' = mixed. Feeds the paragraph-shading ColorPicker.
+  let currentParaBackground = $derived.by(() => {
+    if (tick < 0 || !editor) return null;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) return (editor.state.selection.$head.parent.attrs.backgroundColor ?? null) as string | null;
+    let c: string | null | undefined;
+    let mixed = false;
+    editor.state.doc.nodesBetween(from, to, (node) => {
+      if (mixed || !('backgroundColor' in node.attrs)) return;
+      const b = (node.attrs.backgroundColor ?? null) as string | null;
+      if (c === undefined) c = b;
+      else if (c !== b) mixed = true;
+    });
+    return mixed ? '' : (c ?? null);
+  });
+
   // Sub/superscript are mutually exclusive (Word-style): toggling one clears the
   // other. odf-kit maps these marks to text:position (round-trips with LibreOffice
   // and Word). See export/odt.ts applyRuns for the custom-attr-paragraph path.
@@ -289,6 +307,7 @@
   let lineHeightOpen = $state(false);
   let fontColorOpen = $state(false);
   let highlightColorOpen = $state(false);
+  let paraShadeOpen = $state(false);
   let sizeInputFocused = $state(false);
   let sizeInputValue = $state('');
   let savedFrom: number | null = null;
@@ -307,6 +326,7 @@
     lineHeightOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
+    paraShadeOpen = false;
     // Save selection before the picker button steals focus.
     savedFrom = editor.state.selection.from;
     savedTo = editor.state.selection.to;
@@ -354,6 +374,7 @@
     lineHeightOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
+    paraShadeOpen = false;
     savedFrom = editor.state.selection.from;
     savedTo = editor.state.selection.to;
     (e.target as HTMLInputElement).select();
@@ -382,6 +403,7 @@
     lineHeightOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
+    paraShadeOpen = false;
     if (!sizeInputFocused) {
       savedFrom = editor.state.selection.from;
       savedTo = editor.state.selection.to;
@@ -413,6 +435,7 @@
     sizeInputFocused = false;
     fontColorOpen = false;
     highlightColorOpen = false;
+    paraShadeOpen = false;
     lineHeightOpen = !lineHeightOpen;
   }
 
@@ -451,6 +474,7 @@
     sizeInputFocused = false;
     fontColorOpen = false;
     highlightColorOpen = false;
+    paraShadeOpen = false;
     spaceBeforeOpen = false;
     spaceAfterOpen = false;
     if (axis === 'before') spaceBeforeFocused = true; else spaceAfterFocused = true;
@@ -623,6 +647,7 @@
     lineHeightOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
+    paraShadeOpen = false;
     columnsOpen = false;
     layoutOpen = !layoutOpen;
     if (layoutOpen) {
@@ -639,17 +664,18 @@
     return { destroy() { window.removeEventListener('mousedown', handler); } };
   }
 
-  // The color pickers (font + highlight) live in ColorPicker.svelte. When one
-  // opens it asks the parent (via the ColorPicker `onOpen` prop) to close the
-  // sibling toolbar dropdowns and the other color picker.
-  function onColorPickerOpen(which: 'font' | 'highlight') {
+  // The color pickers (font + highlight + paragraph shading) live in ColorPicker.svelte.
+  // When one opens it asks the parent (via the `onOpen` prop) to close the sibling
+  // toolbar dropdowns and the other color pickers.
+  function onColorPickerOpen(which: 'font' | 'highlight' | 'paraShade') {
     fontOpen = false;
     sizeOpen = false;
     sizeInputFocused = false;
     lineHeightOpen = false;
     columnsOpen = false;
-    if (which === 'font') highlightColorOpen = false;
-    else fontColorOpen = false;
+    if (which !== 'font') fontColorOpen = false;
+    if (which !== 'highlight') highlightColorOpen = false;
+    if (which !== 'paraShade') paraShadeOpen = false;
   }
 
   // --- Table insertion (TablePicker.svelte) ---
@@ -663,6 +689,7 @@
     lineHeightOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
+    paraShadeOpen = false;
     layoutOpen = false;
     specialCharOpen = false;
     columnsOpen = false;
@@ -699,6 +726,7 @@
     lineHeightOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
+    paraShadeOpen = false;
     layoutOpen = false;
     tableOpen = false;
     specialCharOpen = false;
@@ -770,6 +798,7 @@
     lineHeightOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
+    paraShadeOpen = false;
     layoutOpen = false;
     tableOpen = false;
     columnsOpen = false;
@@ -793,6 +822,7 @@
     lineHeightOpen = false;
     fontColorOpen = false;
     highlightColorOpen = false;
+    paraShadeOpen = false;
     layoutOpen = false;
     tableOpen = false;
     columnsOpen = false;
@@ -1034,6 +1064,26 @@
           </svg>
         {/snippet}
       </ColorPicker>
+      <ColorPicker
+        {editor}
+        currentColor={currentParaBackground}
+        defaultColor="#FFFF00"
+        title={t().toolbarExpanded.paragraphShading}
+        chevronTitle={t().toolbarExpanded.chooseParagraphShading}
+        clearLabel={t().toolbarExpanded.noColor}
+        bind:open={paraShadeOpen}
+        onOpen={() => onColorPickerOpen('paraShade')}
+        onApply={(c, r) => editor?.chain().focus().setTextSelection(r).setParagraphBackground(c).run()}
+        onClear={(r) => editor?.chain().focus().setTextSelection(r).setParagraphBackground(null).run()}
+      >
+        {#snippet icon()}
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M3 13h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <rect x="3" y="3" width="10" height="7" rx="1" fill="currentColor" opacity="0.3" stroke="currentColor" stroke-width="1.2"/>
+          </svg>
+        {/snippet}
+      </ColorPicker>
+      <ParagraphBorderPicker {editor} {tick} />
     </div>
 
     <div class="toolbar-separator"></div>

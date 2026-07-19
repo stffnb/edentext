@@ -15,6 +15,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import TextAlign from '@tiptap/extension-text-align';
 import { FontWeight } from './fontWeight';
 import { FontColor } from './fontColor';
+import { ParagraphBox } from './paragraphBox';
 import { PageNumber, PageCount } from './pageField';
 import { Image } from './image';
 
@@ -52,6 +53,8 @@ export function hfExtensions(placeholder = '') {
     FontSize,
     FontWeight,
     FontColor,
+    // Paragraph background ("colored field") + rule line, common in letterhead headers.
+    ParagraphBox,
     Highlight.configure({ multicolor: true }),
     HfHardBreak,
     // Inline (as-character) images only — the single-paragraph zone has no text flow

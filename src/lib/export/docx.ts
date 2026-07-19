@@ -579,6 +579,21 @@ const HEADING_LEVEL: Record<number, (typeof HeadingLevel)[keyof typeof HeadingLe
 
 type ParaOpts = { numbering?: { reference: string; level: number }; indentLeftTwip?: number; forceBold?: boolean };
 
+// Paragraph background ("colored field") → w:shd; per-side borders ("rule line") → w:pBdr.
+function paraShadingOf(attrs: TiptapNode['attrs']) {
+  const c = typeof attrs?.backgroundColor === 'string' ? hexColor(attrs.backgroundColor) : undefined;
+  return c ? { type: ShadingType.CLEAR, fill: c, color: 'auto' } : undefined;
+}
+
+function paraBordersOf(attrs: TiptapNode['attrs']) {
+  const out: { top?: IBorderOptions; right?: IBorderOptions; bottom?: IBorderOptions; left?: IBorderOptions } = {};
+  for (const [attr, side] of [['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left']] as const) {
+    const b = parseBorderAttr(attrs?.[attr] as string | null);
+    if (b && b !== 'none') out[side] = { style: BorderStyle.SINGLE, size: Math.max(2, Math.round(b.widthPt * 8)), color: hexColor(b.color) ?? '000000', space: 1 };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
   const attrs = node.attrs ?? {};
   const indent: Writable<IIndentAttributesProperties> = {};
@@ -596,6 +611,8 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     indent: indent.left != null ? indent : undefined,
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,
     numbering: opts.numbering,
+    shading: paraShadingOf(attrs),
+    border: paraBordersOf(attrs),
     run: markSize ? { size: markSize } : undefined,
     children: inlineToRuns(node.content, opts.forceBold),
   });

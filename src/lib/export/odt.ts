@@ -74,6 +74,11 @@ const PGB = '';
 // style fo:font-size (odf-kit has no paragraph font-size option). U+E007.
 const FSZ = '\uE007';
 
+// Sentinel wrapping a top-level paragraph's box spec (PBX<bg|bt|br|bb|bl>PBX), emitted
+// as the paragraph's first run; applyParagraphBoxes mints a paragraph style with
+// fo:background-color/fo:border-* (odf-kit has no such options). U+E00C.
+const PBX = '\uE00C';
+
 // Sentinel wrapping a table-of-contents index (TOC{i}TOC), emitted as a marker
 // paragraph's run text by replaceTableOfContents so it rides odf-kit's paragraph path;
 // applyToc rewrites the whole marker <text:p> to a <text:table-of-content>. U+E006.
@@ -132,6 +137,9 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (attrs.spaceAfter != null) return true;
   if (typeof attrs.fontSize === 'string' && attrs.fontSize) return true;
   if (typeof attrs.indent === 'number' && attrs.indent > 0) return true;
+  if (typeof attrs.backgroundColor === 'string' && attrs.backgroundColor) return true;
+  for (const s of ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'])
+    if (typeof attrs[s] === 'string' && attrs[s] && attrs[s] !== 'none') return true;
   const ta = attrs.textAlign;
   return ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify';
 }
@@ -486,10 +494,19 @@ type ParaStyle = {
   spaceBefore: number | null;
   spaceAfter: number | null;
   lineHeight: number | string | null;
+  // Paragraph background ("colored field") + per-side border ("rule line"). The border
+  // attr value ('<W>pt solid #RRGGBB') is already a valid ODF fo:border value.
+  background: string | null;
+  borderTop: string | null;
+  borderRight: string | null;
+  borderBottom: string | null;
+  borderLeft: string | null;
 };
 
 function paraStyleIsEmpty(s: ParaStyle): boolean {
-  return s.align === null && s.spaceBefore === null && s.spaceAfter === null && s.lineHeight === null;
+  return s.align === null && s.spaceBefore === null && s.spaceAfter === null && s.lineHeight === null
+    && s.background === null && s.borderTop === null && s.borderRight === null
+    && s.borderBottom === null && s.borderLeft === null;
 }
 
 // Extract the overridable paragraph properties from a node's attrs. Left
@@ -504,11 +521,17 @@ function paraStyleFromAttrs(attrs: TiptapNode['attrs']): ParaStyle {
     const lhNum = parseFloat(String(lh));
     lineHeight = isNaN(lhNum) ? String(lh) : lhNum;
   }
+  const border = (v: unknown) => (typeof v === 'string' && v && v !== 'none' ? v : null);
   return {
     align: ta === 'center' || ta === 'right' || ta === 'justify' ? ta : null,
     spaceBefore: typeof sb === 'number' ? sb : null,
     spaceAfter: typeof sa === 'number' ? sa : null,
     lineHeight,
+    background: typeof attrs?.backgroundColor === 'string' && attrs.backgroundColor ? attrs.backgroundColor : null,
+    borderTop: border(attrs?.borderTop),
+    borderRight: border(attrs?.borderRight),
+    borderBottom: border(attrs?.borderBottom),
+    borderLeft: border(attrs?.borderLeft),
   };
 }
 
@@ -519,6 +542,14 @@ function paraStyleProps(style: ParaStyle): string[] {
   if (style.spaceBefore != null) props.push(`fo:margin-top="${style.spaceBefore}pt"`);
   if (style.spaceAfter != null) props.push(`fo:margin-bottom="${style.spaceAfter}pt"`);
   if (style.lineHeight != null) props.push(`fo:line-height="${normalizeLineHeight(style.lineHeight)}"`);
+  if (style.background) props.push(`fo:background-color="${style.background}"`);
+  // The canonical border attr ('<W>pt solid #RRGGBB') is itself a valid fo:border value.
+  for (const [attr, side] of [
+    ['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left'],
+  ] as const) {
+    const v = style[attr];
+    if (v) props.push(`fo:border-${side}="${v}"`);
+  }
   return props;
 }
 
@@ -811,6 +842,97 @@ function applyEmptyLineFontSizes(odtBytes: Uint8Array): Uint8Array {
   );
   // Drop any sentinels not consumed above (defensive — never legitimate text).
   content = content.replace(new RegExp(`${FSZ}[^${FSZ}]*${FSZ}`, 'g'), '');
+
+  if (minted.length) {
+    content = content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`);
+  }
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+// A top-level paragraph's box spec for the PBX sentinel: bg|borderTop|Right|Bottom|Left,
+// each the raw value (canonical border '<W>pt solid #RRGGBB' is a valid fo:border) or ''.
+// '' overall when the paragraph has no background/border.
+function paraBoxSpec(attrs: TiptapNode['attrs']): string {
+  const s = paraStyleFromAttrs(attrs);
+  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft) return '';
+  return [s.background, s.borderTop, s.borderRight, s.borderBottom, s.borderLeft].map((v) => v ?? '').join('|');
+}
+
+function boxSpecToProps(spec: string): string {
+  const [bg, bt, br, bb, bl] = spec.split('|');
+  const props: string[] = [];
+  if (bg) props.push(`fo:background-color="${bg}"`);
+  if (bt) props.push(`fo:border-top="${bt}"`);
+  if (br) props.push(`fo:border-right="${br}"`);
+  if (bb) props.push(`fo:border-bottom="${bb}"`);
+  if (bl) props.push(`fo:border-left="${bl}"`);
+  return props.join(' ');
+}
+
+// Add fo:* into a cloned style's <style:paragraph-properties> (which precedes text-props
+// in ODF). Mirrors cloneStyleWithFontSize but for paragraph-properties.
+function cloneStyleWithParaProps(def: string, newName: string, props: string): string {
+  const s = def.replace(/style:name="[^"]*"/, `style:name="${newName}"`);
+  if (/<style:paragraph-properties\b[^>]*\/>/.test(s))
+    return s.replace(/<style:paragraph-properties\b([^>]*?)\s*\/>/, `<style:paragraph-properties$1 ${props}/>`);
+  if (/<style:paragraph-properties\b/.test(s))
+    return s.replace(/<style:paragraph-properties\b([^>]*)>/, `<style:paragraph-properties$1 ${props}>`);
+  if (/^<style:style\b[^>]*\/>\s*$/.test(s))
+    return s.replace(/\s*\/>\s*$/, `><style:paragraph-properties ${props}/></style:style>`);
+  if (/<style:text-properties\b/.test(s))
+    return s.replace(/<style:text-properties\b/, `<style:paragraph-properties ${props}/><style:text-properties`);
+  return s.replace('</style:style>', `<style:paragraph-properties ${props}/></style:style>`);
+}
+
+// Resolve PBX sentinels: per (source style, box spec) mint a paragraph style cloning the
+// source plus fo:background-color/fo:border-*, reassign the block, and strip the sentinel.
+// Mirrors applyEmptyLineFontSizes; runs after it so an empty line's FSZ is already resolved.
+function applyParagraphBoxes(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  if (!content.includes(PBX)) return odtBytes;
+
+  const minted: string[] = [];
+  const nameByKey = new Map<string, string>();
+  let counter = 0;
+
+  const boxStyleFor = (source: string, spec: string): string => {
+    const key = `${source}|${spec}`;
+    const existing = nameByKey.get(key);
+    if (existing) return existing;
+    const name = `PB${++counter}`;
+    nameByKey.set(key, name);
+    const props = boxSpecToProps(spec);
+    const def = source ? findAutoStyle(content, source) : null;
+    minted.push(def
+      ? cloneStyleWithParaProps(def, name, props)
+      : `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${source || 'Standard'}"><style:paragraph-properties ${props}/></style:style>`,
+    );
+    return name;
+  };
+
+  const pbxRe = new RegExp(`${PBX}([^${PBX}]*)${PBX}`);
+  content = content.replace(
+    new RegExp(`<text:(p|h)\\b([^>]*)>([\\s\\S]*?)</text:\\1>`, 'g'),
+    (m, tag: string, attrs: string, inner: string) => {
+      const sm = pbxRe.exec(inner);
+      if (!sm) return m;
+      const cleaned = inner.replace(pbxRe, '');
+      const srcM = /text:style-name="([^"]*)"/.exec(attrs);
+      const name = boxStyleFor(srcM ? srcM[1] : '', sm[1]);
+      const newAttrs = srcM
+        ? attrs.replace(/text:style-name="[^"]*"/, `text:style-name="${name}"`)
+        : ` text:style-name="${name}"${attrs}`;
+      return `<text:${tag}${newAttrs}>${cleaned}</text:${tag}>`;
+    },
+  );
+  // Drop any sentinels not consumed above (defensive — never legitimate text).
+  content = content.replace(new RegExp(`${PBX}[^${PBX}]*${PBX}`, 'g'), '');
 
   if (minted.length) {
     content = content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`);
@@ -2201,17 +2323,20 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
       // that applyEmptyLineFontSizes turns into a paragraph-style fo:font-size.
       const emptyFs = content.length === 0 && typeof node.attrs?.fontSize === 'string' && node.attrs.fontSize
         ? `${FSZ}${node.attrs.fontSize}${FSZ}` : '';
+      // Paragraph background/borders ride as a leading PBX sentinel (odf-kit has no such
+      // options); applyParagraphBoxes mints the style. FSZ stays first so its own pass,
+      // which runs earlier, still matches it right after the opening tag.
+      const spec = paraBoxSpec(node.attrs);
+      const pbx = spec ? `${PBX}${spec}${PBX}` : '';
+      const withPbx = (p: ParagraphBuilder) => { if (pbx) p.addText(pbx); applyRuns(p, content); };
 
       if (node.type === CUST_P) {
-        if (content.length === 0) {
-          doc.addParagraph(emptyFs, opts);
-        } else {
-          doc.addParagraph((p: ParagraphBuilder) => applyRuns(p, content), opts);
-        }
+        if (content.length === 0) doc.addParagraph(emptyFs + pbx, opts);
+        else doc.addParagraph(withPbx, opts);
       } else if (node.type === CUST_H) {
         const level = (node.attrs?.level as number) ?? 1;
-        if (content.length === 0) doc.addHeading(emptyFs, level, opts);
-        else doc.addHeading((p: ParagraphBuilder) => applyRuns(p, content), level, opts);
+        if (content.length === 0) doc.addHeading(emptyFs + pbx, level, opts);
+        else doc.addHeading(withPbx, level, opts);
       }
     },
   });
@@ -2264,13 +2389,30 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withToc = applyToc(withColumns, tocs, contentWidthCm);
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
-  const withStyles = rewriteStylesXml(withEmptyFontSizes, language ?? null, pageFormat, orientation);
+  const withParaBoxes = applyParagraphBoxes(withEmptyFontSizes);
+  const withStyles = rewriteStylesXml(withParaBoxes, language ?? null, pageFormat, orientation);
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
 }
 
 function hfAlign(para: TiptapNode): AlignValue | null {
   const ta = para.attrs?.textAlign;
   return ta === 'center' || ta === 'right' || ta === 'justify' ? ta : null;
+}
+
+// fo:* paragraph-properties for a header/footer paragraph: alignment plus the paragraph
+// background ("colored field") and per-side borders ("rule line"). Empty ⇒ no override.
+function hfParaProps(para: TiptapNode): string[] {
+  const props: string[] = [];
+  const align = hfAlign(para);
+  if (align) props.push(`fo:text-align="${align}"`);
+  const s = paraStyleFromAttrs(para.attrs);
+  if (s.background) props.push(`fo:background-color="${s.background}"`);
+  for (const [attr, side] of [
+    ['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left'],
+  ] as const) {
+    if (s[attr]) props.push(`fo:border-${side}="${s[attr]}"`);
+  }
+  return props;
 }
 
 // Header/footer post-processing on styles.xml: resolve LBR/PGC sentinels, apply the
@@ -2301,12 +2443,12 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
       new RegExp(`<style:${kind}-style>[\\s\\S]*?</style:${kind}-style>`),
       `<style:${kind}-style><style:header-footer-properties fo:min-height="${minH}cm" ${spacingAttr}="0cm" style:dynamic-spacing="false"/></style:${kind}-style>`,
     );
-    const align = hfAlign(para);
-    if (align) {
+    const props = hfParaProps(para);
+    if (props.length) {
       const styleName = kind === 'header' ? 'Header' : 'Footer';
       styles = styles.replace(
         new RegExp(`(<style:style style:name="${styleName}"[^>]*?)/>`),
-        `$1><style:paragraph-properties fo:text-align="${align}"/></style:style>`,
+        `$1><style:paragraph-properties ${props.join(' ')}/></style:style>`,
       );
     }
   };
@@ -2399,11 +2541,11 @@ function hfVariantZoneXml(kind: 'header' | 'footer', suffix: 'first' | 'left', p
   }
 
   const parent = kind === 'header' ? 'Header' : 'Footer';
-  const align = hfAlign(para);
+  const props = hfParaProps(para);
   let paraStyle = parent;
-  if (align) {
+  if (props.length) {
     paraStyle = `${pfx}P`;
-    mint(`<style:style style:name="${paraStyle}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties fo:text-align="${align}"/></style:style>`);
+    mint(`<style:style style:name="${paraStyle}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${props.join(' ')}/></style:style>`);
   }
   return `<style:${kind}-${suffix}><text:p text:style-name="${paraStyle}">${inner}</text:p></style:${kind}-${suffix}>`;
 }

@@ -53,7 +53,7 @@ export function parseBorderAttr(
 
 // CSS value for a side. The default 0.5pt renders as 1px (editor.css); custom widths
 // scale the same way (pt → px, min 1px so thin lines stay crisp).
-function cssBorder(value: string): string | null {
+export function cssBorder(value: string): string | null {
   const b = parseBorderAttr(value);
   if (b === null) return null;
   if (b === 'none') return 'none';
