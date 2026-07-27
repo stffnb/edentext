@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { cubicOut } from 'svelte/easing';
   import type { Editor } from '@tiptap/core';
+  import { EditorState } from '@tiptap/pm/state';
   import EditorComponent from './lib/components/Editor.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
   import ToolbarExpanded from './lib/components/ToolbarExpanded.svelte';
@@ -16,6 +17,7 @@
   import { getColumnsFlowDebug } from './lib/editor/extensions/columnsFlow';
   import { getTextBoxDebug } from './lib/editor/extensions/textBox';
   import { getColorDebug } from './lib/utils/colorDebug';
+  import { resetHistoryLog } from './lib/utils/historyLog.svelte';
   import { countText, type TextStats } from './lib/utils/wordCount';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
@@ -354,10 +356,24 @@
     return body || !hfIsEmpty(headerDoc) || !hfIsEmpty(footerDoc) || !hfIsEmpty(headerFirstDoc) || !hfIsEmpty(footerFirstDoc) || !hfIsEmpty(headerEvenDoc) || !hfIsEmpty(footerEvenDoc);
   }
 
+  // Drop the undo/redo stack after loading a document, so it can't be undone back
+  // into the previous one. prosemirror-history has no clear command, so re-create
+  // the state with a fresh history plugin on the same doc.
+  function resetHistory() {
+    if (!editor) return;
+    const { state, view } = editor;
+    view.updateState(EditorState.create({
+      doc: state.doc, selection: state.selection, plugins: state.plugins,
+    }));
+    resetHistoryLog();
+    tick++;
+  }
+
   function handleNew() {
     if (!editor) return;
     if (isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
     editor.commands.setContent('<p></p>'); // onUpdate fires → autosave
+    resetHistory();
     // Reset everything to defaults; the $effects persist these.
     hfActive = null;
     headerDoc = null;
@@ -416,6 +432,7 @@
       void saveEmbeddedFonts(result.fonts);
 
       editor.commands.setContent(result.content); // onUpdate fires → autosave
+      resetHistory();
       // Adopt the opened file's name as the document name (drives the save filename).
       if (sourceName) documentName = stripOdtExtension(sourceName).replace(/\.docx$/i, '');
       // Adopt the document's page geometry; the $effects persist it and
