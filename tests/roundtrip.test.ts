@@ -1212,7 +1212,7 @@ describe('Leg 5: table of contents (text:table-of-content)', () => {
     const bytes = await buildOdt(tocDoc, margins, 'portrait');
     const content = strFromU8(unzipSync(bytes)['content.xml']);
     check('emits <text:table-of-content>', content.includes('<text:table-of-content '), content.slice(0, 200));
-    check('source spans outline-level 3', content.includes('text:outline-level="3"'));
+    check('source spans all heading levels', content.includes('<text:table-of-content-source text:outline-level="5"'));
     check('mints Contents_20_1 style', content.includes('style:name="Contents_20_1"'));
     check('cached entry carries a tab + page', /Contents_20_1">Introduction<text:tab\/>1<\/text:p>/.test(content));
     check('ampersand in entry text is escaped', content.includes('Background &amp; Aims'));
@@ -1276,5 +1276,32 @@ describe('Leg 10: date/time fields (text:date / text:time)', () => {
     check('auto date format round-trips', autoDate?.attrs.format === 'weekday_mdy', autoDate?.attrs);
     check('surrounding text preserved',
       (res.content.content ?? [])[0]?.content?.[0]?.text === 'Signed on ');
+  });
+});
+
+describe('Leg 11: heading levels 4 and 5', () => {
+  const doc: N = {
+    type: 'doc',
+    content: [H({ level: 4 }, T('Fourth')), H({ level: 5 }, T('Fifth'))],
+  };
+
+  it('exports Heading_20_4/5 at the editor sizes and re-imports the levels', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const files = unzipSync(bytes);
+    const content = strFromU8(files['content.xml']);
+    const styles = strFromU8(files['styles.xml']);
+    check('h4 outline level', content.includes('text:outline-level="4"'), content.slice(0, 400));
+    check('h5 outline level', content.includes('text:outline-level="5"'));
+    check('Heading_20_4 sized 12pt',
+      /style:name="Heading_20_4"[\s\S]*?fo:font-size="12pt"/.test(styles));
+    check('Heading_20_5 sized 11pt',
+      /style:name="Heading_20_5"[\s\S]*?fo:font-size="11pt"/.test(styles));
+
+    const blocks = importOdt(bytes).content.content ?? [];
+    check('h4 round-trips', blocks[0]?.type === 'heading' && blocks[0]?.attrs?.level === 4, blocks[0]);
+    check('h5 round-trips', blocks[1]?.type === 'heading' && blocks[1]?.attrs?.level === 5, blocks[1]);
+    // Sizes equal to the level defaults must not land as explicit fontSize marks.
+    check('no explicit size mark on h4', !(blocks[0]?.content?.[0]?.marks ?? []).length, blocks[0]?.content);
+    check('no explicit size mark on h5', !(blocks[1]?.content?.[0]?.marks ?? []).length, blocks[1]?.content);
   });
 });

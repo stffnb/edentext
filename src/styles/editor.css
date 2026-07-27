@@ -204,6 +204,8 @@
 }
 .paper .tiptap .toc-level-2 { padding-left: 0.6cm; }
 .paper .tiptap .toc-level-3 { padding-left: 1.2cm; }
+.paper .tiptap .toc-level-4 { padding-left: 1.8cm; }
+.paper .tiptap .toc-level-5 { padding-left: 2.4cm; }
 .paper .tiptap .toc-text {
   white-space: nowrap;
   overflow: hidden;
@@ -379,7 +381,9 @@
 
 .paper .tiptap h1,
 .paper .tiptap h2,
-.paper .tiptap h3 {
+.paper .tiptap h3,
+.paper .tiptap h4,
+.paper .tiptap h5 {
   font-weight: 700;
   line-height: 1.15;
   margin-top: 1.5em;
@@ -397,6 +401,14 @@
 
 .paper .tiptap h3 {
   font-size: 14pt;
+}
+
+.paper .tiptap h4 {
+  font-size: 12pt;
+}
+
+.paper .tiptap h5 {
+  font-size: 11pt;
 }
 
 .paper .tiptap ul,
@@ -579,7 +591,9 @@
 .paper .tiptap p::after,
 .paper .tiptap h1::after,
 .paper .tiptap h2::after,
-.paper .tiptap h3::after {
+.paper .tiptap h3::after,
+.paper .tiptap h4::after,
+.paper .tiptap h5::after {
   content: '\00A0¶';
   display: inline-block;
   width: 0;
@@ -598,7 +612,9 @@
 .paper.show-formatting-marks .tiptap p::after,
 .paper.show-formatting-marks .tiptap h1::after,
 .paper.show-formatting-marks .tiptap h2::after,
-.paper.show-formatting-marks .tiptap h3::after {
+.paper.show-formatting-marks .tiptap h3::after,
+.paper.show-formatting-marks .tiptap h4::after,
+.paper.show-formatting-marks .tiptap h5::after {
   color: var(--color-primary);
 }
 
@@ -609,6 +625,8 @@
 .paper .tiptap h1:has(> br.ProseMirror-trailingBreak:only-child),
 .paper .tiptap h2:has(> br.ProseMirror-trailingBreak:only-child),
 .paper .tiptap h3:has(> br.ProseMirror-trailingBreak:only-child),
+.paper .tiptap h4:has(> br.ProseMirror-trailingBreak:only-child),
+.paper .tiptap h5:has(> br.ProseMirror-trailingBreak:only-child),
 .paper .tiptap li > p:has(> br.ProseMirror-trailingBreak:only-child) {
   position: relative;
 }
@@ -617,6 +635,8 @@
 .paper .tiptap h1:has(> br.ProseMirror-trailingBreak:only-child)::after,
 .paper .tiptap h2:has(> br.ProseMirror-trailingBreak:only-child)::after,
 .paper .tiptap h3:has(> br.ProseMirror-trailingBreak:only-child)::after,
+.paper .tiptap h4:has(> br.ProseMirror-trailingBreak:only-child)::after,
+.paper .tiptap h5:has(> br.ProseMirror-trailingBreak:only-child)::after,
 .paper .tiptap li > p:has(> br.ProseMirror-trailingBreak:only-child)::after {
   position: absolute;
   top: 0;
@@ -722,7 +742,9 @@
   .paper.show-formatting-marks .tiptap p::after,
   .paper.show-formatting-marks .tiptap h1::after,
   .paper.show-formatting-marks .tiptap h2::after,
-  .paper.show-formatting-marks .tiptap h3::after {
+  .paper.show-formatting-marks .tiptap h3::after,
+  .paper.show-formatting-marks .tiptap h4::after,
+  .paper.show-formatting-marks .tiptap h5::after {
     color: transparent;
   }
 }

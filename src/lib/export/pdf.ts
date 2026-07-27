@@ -189,7 +189,7 @@ function materializeListMarkers(root: HTMLElement): void {
     const glyph = listMarkerGlyph(li, root);
     if (!glyph) continue;
     li.style.listStyleType = 'none';
-    const target = li.querySelector(':scope > p, :scope > h1, :scope > h2, :scope > h3') ?? li;
+    const target = li.querySelector(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5') ?? li;
     const slot = document.createElement('span');
     slot.style.cssText = 'display:inline-block;width:0;overflow:visible;vertical-align:baseline';
     const label = document.createElement('span');
@@ -402,7 +402,7 @@ function buildBodyHtml(json: Json): string {
   });
   // generateHTML omits ProseMirror's trailing <br>, so empty textblocks collapse to zero
   // height and blank lines vanish in print. Re-add a break so each keeps a line.
-  host.querySelectorAll('p, h1, h2, h3').forEach((el) => {
+  host.querySelectorAll('p, h1, h2, h3, h4, h5').forEach((el) => {
     if (!el.firstChild) el.appendChild(document.createElement('br'));
   });
   return host.innerHTML;

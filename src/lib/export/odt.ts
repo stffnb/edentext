@@ -128,7 +128,13 @@ export const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTo
   { name: 'Heading_20_1', fontSize: '20pt', marginTop: '1.058cm', marginBottom: '0.353cm' },
   { name: 'Heading_20_2', fontSize: '16pt', marginTop: '0.847cm', marginBottom: '0.282cm' },
   { name: 'Heading_20_3', fontSize: '14pt', marginTop: '0.741cm', marginBottom: '0.247cm' },
+  { name: 'Heading_20_4', fontSize: '12pt', marginTop: '0.635cm', marginBottom: '0.212cm' },
+  { name: 'Heading_20_5', fontSize: '11pt', marginTop: '0.582cm', marginBottom: '0.194cm' },
 ];
+
+// Highest heading level the editor offers (extensions.ts, both importers, TOC).
+export const MAX_HEADING_LEVEL = HEADING_STYLE_OVERRIDES.length;
+export const HEADING_LEVELS = HEADING_STYLE_OVERRIDES.map((_, i) => i + 1);
 
 function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (!attrs) return false;
@@ -464,7 +470,7 @@ function replaceTableOfContents(doc: TiptapNode, tocs: TocExport[]): TiptapNode 
         .filter(e => e && typeof e.text === 'string')
         .map(e => ({
           text: String(e.text),
-          level: Math.min(3, Math.max(1, Number(e.level) || 1)),
+          level: Math.min(MAX_HEADING_LEVEL, Math.max(1, Number(e.level) || 1)),
           page: Math.max(1, Number(e.page) || 1),
         }));
       tocs.push({ entries });
@@ -2129,9 +2135,9 @@ function tocXml(toc: TocExport, index: number): string {
   const title = 'Table of Contents';
   const name = `${title}${index + 1}`;
   const source =
-    `<text:table-of-content-source text:outline-level="3" text:use-index-marks="false" text:use-index-source-styles="false">` +
+    `<text:table-of-content-source text:outline-level="${MAX_HEADING_LEVEL}" text:use-index-marks="false" text:use-index-source-styles="false">` +
     `<text:index-title-template text:style-name="Contents_20_Heading">${escapeXml(title)}</text:index-title-template>` +
-    [1, 2, 3]
+    HEADING_LEVELS
       .map(
         l =>
           `<text:table-of-content-entry-template text:outline-level="${l}" text:style-name="Contents_20_${l}">` +
@@ -2180,9 +2186,7 @@ function applyToc(odtBytes: Uint8Array, tocs: TocExport[], contentWidthCm: numbe
   const tabPosCm = Math.max(1, Math.round(contentWidthCm * 1000) / 1000);
   const styles =
     contentsHeadingStyle() +
-    contentsEntryStyle('Contents_20_1', 1, tabPosCm) +
-    contentsEntryStyle('Contents_20_2', 2, tabPosCm) +
-    contentsEntryStyle('Contents_20_3', 3, tabPosCm);
+    HEADING_LEVELS.map(l => contentsEntryStyle(`Contents_20_${l}`, l, tabPosCm)).join('');
   content = injectAutomaticStyles(content, styles);
 
   files['content.xml'] = strToU8(content);

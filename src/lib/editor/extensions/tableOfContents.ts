@@ -1,8 +1,9 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { MAX_HEADING_LEVEL } from '../../export/odt';
 
-// A generated table of contents: a block atom listing every heading (levels 1–3) with its
+// A generated table of contents: a block atom listing every heading (levels 1–5) with its
 // live page number. The node view regenerates entries from the headings + pagination and
 // caches them in `entries` (persisted like a Word/LO TOC field); round-trips to ODF/DOCX.
 
@@ -104,13 +105,13 @@ class TocView {
     });
   }
 
-  // Every heading (level ≤ 3) with non-empty text, in document order.
+  // Every heading (level ≤ MAX_HEADING_LEVEL) with non-empty text, in document order.
   private headings(): HeadingRef[] {
     const out: HeadingRef[] = [];
     this.editor.state.doc.descendants((node, pos) => {
       if (node.type.name === 'heading') {
         const text = node.textContent.trim();
-        if (text) out.push({ text, level: Math.min(3, (node.attrs.level as number) ?? 1), pos });
+        if (text) out.push({ text, level: Math.min(MAX_HEADING_LEVEL, (node.attrs.level as number) ?? 1), pos });
       }
     });
     return out;

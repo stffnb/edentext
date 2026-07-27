@@ -16,11 +16,80 @@
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 
+  // Word/LibreOffice-style style gallery. We have no named-style model, so a style
+  // is a preset of direct formatting (node type + block attrs + marks).
+  type ParagraphStyle = {
+    key: string;
+    level?: 1 | 2 | 3 | 4 | 5;
+    fontSize?: string;   // block font size (paragraph mark + inherited by its runs)
+    align?: 'center';
+    bold?: boolean;
+    italic?: boolean;
+    indent?: number;     // cm
+    preview: string;     // menu-entry font size
+  };
+
+  const PARAGRAPH_STYLES: ParagraphStyle[] = [
+    { key: 'default',                                                          preview: '0.85rem' },
+    { key: 'title',    fontSize: '28pt', align: 'center', bold: true,          preview: '1.35rem' },
+    { key: 'subtitle', fontSize: '18pt', align: 'center', italic: true,        preview: '1.05rem' },
+    { key: 'h1',       level: 1,                                               preview: '1.25rem' },
+    { key: 'h2',       level: 2,                                               preview: '1.1rem'  },
+    { key: 'h3',       level: 3,                                               preview: '0.95rem' },
+    { key: 'h4',       level: 4,                                               preview: '0.9rem'  },
+    { key: 'h5',       level: 5,                                               preview: '0.85rem' },
+    { key: 'quote',    italic: true, indent: 1.25,                             preview: '0.85rem' },
+  ];
+
+  function styleLabel(key: string): string {
+    const s = t().toolbar.styles;
+    return ({
+      default: s.default, title: s.docTitle, subtitle: s.subtitle, quote: s.quote,
+      h1: t().toolbar.heading1, h2: t().toolbar.heading2, h3: t().toolbar.heading3,
+      h4: t().toolbar.heading4, h5: t().toolbar.heading5,
+    } as Record<string, string>)[key] ?? key;
+  }
+
+  let stylesOpen = $state(false);
+
   // $derived re-evaluates whenever `tick` changes (i.e. on every TipTap transaction)
-  let isH1         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 1 }));
-  let isH2         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 2 }));
-  let isH3         = $derived(tick >= 0 && !!editor?.isActive('heading', { level: 3 }));
-  let isHeading    = $derived(isH1 || isH2 || isH3);
+  let isHeading    = $derived(tick >= 0 && !!editor?.isActive('heading'));
+
+  // The style whose formatting the cursor's block currently carries.
+  let currentStyle = $derived.by<string>(() => {
+    if (tick < 0 || !editor) return 'default';
+    if (editor.isActive('heading')) return `h${editor.getAttributes('heading').level}`;
+    const { fontSize, indent } = editor.getAttributes('paragraph');
+    const sized = PARAGRAPH_STYLES.find((s) => s.fontSize && s.fontSize === fontSize);
+    if (sized) return sized.key;
+    if ((indent ?? 0) >= 1.25 && editor.isActive('italic')) return 'quote';
+    return 'default';
+  });
+
+  // Applies to the whole block (Word applies a style without a selection); the
+  // caret is restored afterwards.
+  function applyStyle(s: ParagraphStyle) {
+    stylesOpen = false;
+    if (!editor) return;
+    // The header/footer schema has no heading node.
+    if (s.level && !editor.schema.nodes.heading) return;
+    const { from, to } = editor.state.selection;
+    const start = editor.state.selection.$from.start();
+    const end   = editor.state.selection.$to.end();
+    const type  = s.level ? 'heading' : 'paragraph';
+    const chain = editor.chain().focus().setTextSelection({ from: start, to: end })
+      // A style replaces conflicting direct formatting, as in Word/LibreOffice.
+      .unsetBold().unsetItalic().unsetFontSize().unsetFontWeight().removeEmptyTextStyle()
+      .setNode(type, s.level ? { level: s.level } : {})
+      .setBlockFontSize(s.fontSize ?? null)
+      .setTextAlign(s.align ?? 'left')
+      .updateAttributes(type, { indent: s.indent ?? 0 });
+    if (s.bold) chain.setBold();
+    if (s.italic) chain.setItalic();
+    // On an empty block the marks are stored marks — restoring the selection would drop them.
+    if (start !== end) chain.setTextSelection({ from, to });
+    chain.run();
+  }
   // Header-row cells render bold by default (CSS), like headings — so the Bold button
   // toggles the fontWeight:'normal' override there too (keeps header bold editable).
   let inHeaderCell = $derived(tick >= 0 && !!editor && isInHeaderCell(editor.state));
@@ -140,27 +209,37 @@
     <div class="toolbar-separator"></div>
 
     <div class="toolbar-group">
-      <button
-        class:active={isH1}
-        onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).unsetFontSize().unsetFontWeight().removeEmptyTextStyle().run()}
-        title={t().toolbar.heading1}
-      >
-        H1
-      </button>
-      <button
-        class:active={isH2}
-        onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).unsetFontSize().unsetFontWeight().removeEmptyTextStyle().run()}
-        title={t().toolbar.heading2}
-      >
-        H2
-      </button>
-      <button
-        class:active={isH3}
-        onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).unsetFontSize().unsetFontWeight().removeEmptyTextStyle().run()}
-        title={t().toolbar.heading3}
-      >
-        H3
-      </button>
+      <div class="ol-picker" use:menuClickOutside={() => (stylesOpen = false)}>
+        <button
+          class="style-button"
+          onclick={() => (stylesOpen = !stylesOpen)}
+          title={t().toolbar.styles.title}
+          aria-haspopup="menu"
+          aria-expanded={stylesOpen}
+        >
+          <span class="style-current">{styleLabel(currentStyle)}</span>
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+            <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        {#if stylesOpen}
+          <div class="ol-dropdown" role="menu">
+            <div class="ol-section-label">{t().toolbar.styles.title}</div>
+            {#each PARAGRAPH_STYLES as s}
+              <button
+                class="ol-option style-option"
+                class:active={currentStyle === s.key}
+                onclick={() => applyStyle(s)}
+                role="menuitemradio"
+                aria-checked={currentStyle === s.key}
+                style="font-size: {s.preview}; font-weight: {s.bold || s.level ? 600 : 400}; font-style: {s.italic ? 'italic' : 'normal'}"
+              >
+                {styleLabel(s.key)}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
     </div>
 
     <div class="toolbar-separator"></div>
@@ -354,6 +433,29 @@
 
   .toolbar-group > button:hover:not(:disabled) {
     border-color: var(--color-primary);
+  }
+
+  /* Style gallery: a combobox-style button showing the block's current style. */
+  .style-button {
+    justify-content: space-between;
+    gap: 0.4rem;
+    min-width: 8.5rem;
+    padding: 0 0.45rem;
+    border: 1px solid var(--color-border);
+  }
+
+  .style-button:hover:not(:disabled) {
+    border-color: var(--color-primary);
+  }
+
+  .style-current {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .style-option {
+    line-height: 1.2;
   }
 
   /* Ordered-list split button: main toggle + chevron that opens the numbering

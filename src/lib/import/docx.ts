@@ -1,7 +1,7 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, wVal, W, R, WP, A, WPS, MC, VML, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { lengthToPt } from './styleResolver';
-import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
+import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
@@ -530,7 +530,7 @@ function emptyLineFontSize(ppr: Element | null, ctx: Ctx, baseRun: RunProps, lev
 // files / English Word), then the style's resolved outline level (locale-independent,
 // catches LibreOffice/localized heading styles), then a direct paragraph outline level.
 function headingLevelOf(ppr: Element | null, ctx: Ctx): number | null {
-  const clamp = (n: number) => Math.min(3, Math.max(1, n));
+  const clamp = (n: number) => Math.min(MAX_HEADING_LEVEL, Math.max(1, n));
   if (!ppr) return null;
   const ps = fc(ppr, 'pStyle');
   const id = ps ? wVal(ps) : null;

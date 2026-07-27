@@ -22,7 +22,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
-import { normalizeColor, HEADING_STYLE_OVERRIDES, mergeJoinedParagraphsJson, type HfExport } from './odt';
+import { normalizeColor, HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, type HfExport } from './odt';
 import { findFormat, renderFormat, docxPicture, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../utils/dateTime';
 
 // BCP-47 tag for rendering a fixed field's cached text; set at buildDocx start from
@@ -407,7 +407,7 @@ function txbxParagraphXml(node: TiptapNode, indentTwip = 0, markerText = ''): st
   const attrs = node.attrs ?? {};
   const pPr: string[] = [];
   if (node.type === 'heading') {
-    const lvl = Math.min(3, Math.max(1, Number(attrs.level) || 1));
+    const lvl = Math.min(MAX_HEADING_LEVEL, Math.max(1, Number(attrs.level) || 1));
     pPr.push(`<w:pStyle w:val="Heading${lvl}"/>`);
   }
   if (indentTwip) pPr.push(`<w:ind w:left="${indentTwip}"/>`);
@@ -575,6 +575,7 @@ function spacingOf(attrs: TiptapNode['attrs']): ISpacingProperties | undefined {
 
 const HEADING_LEVEL: Record<number, (typeof HeadingLevel)[keyof typeof HeadingLevel]> = {
   1: HeadingLevel.HEADING_1, 2: HeadingLevel.HEADING_2, 3: HeadingLevel.HEADING_3,
+  4: HeadingLevel.HEADING_4, 5: HeadingLevel.HEADING_5,
 };
 
 type ParaOpts = { numbering?: { reference: string; level: number }; indentLeftTwip?: number; forceBold?: boolean };
@@ -601,7 +602,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     if (typeof attrs.indent === 'number' && attrs.indent > 0) indent.left = cmToTwip(attrs.indent);
     else if (opts.indentLeftTwip) indent.left = opts.indentLeftTwip;
   }
-  const heading = node.type === 'heading' ? HEADING_LEVEL[Math.min(3, Math.max(1, Number(attrs.level) || 1))] : undefined;
+  const heading = node.type === 'heading' ? HEADING_LEVEL[Math.min(MAX_HEADING_LEVEL, Math.max(1, Number(attrs.level) || 1))] : undefined;
   // Paragraph-mark run props carry an empty line's font size (see import/docx.ts).
   const markSize = typeof attrs.fontSize === 'string' ? fontSizeToHalfPoints(attrs.fontSize) : undefined;
   return new Paragraph({
@@ -768,7 +769,7 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       // + link it on field update (features.updateFields does this on open). Title is a
       // plain bold paragraph so it isn't itself listed; our importer regenerates the node.
       out.push(new Paragraph({ children: [new TextRun({ text: 'Table of Contents', bold: true, size: 32 })], spacing: { after: cmToTwip(0.3) } }));
-      out.push(new TableOfContents('Table of Contents', { hyperlink: true, headingStyleRange: '1-3' }));
+      out.push(new TableOfContents('Table of Contents', { hyperlink: true, headingStyleRange: `1-${MAX_HEADING_LEVEL}` }));
     }
   }
   return out;
@@ -841,6 +842,8 @@ function buildStyles(language?: { language: string; country: string } | null) {
       heading1: headingStyle(HEADING_STYLE_OVERRIDES[0]),
       heading2: headingStyle(HEADING_STYLE_OVERRIDES[1]),
       heading3: headingStyle(HEADING_STYLE_OVERRIDES[2]),
+      heading4: headingStyle(HEADING_STYLE_OVERRIDES[3]),
+      heading5: headingStyle(HEADING_STYLE_OVERRIDES[4]),
     },
   };
 }

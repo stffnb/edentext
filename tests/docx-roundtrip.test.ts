@@ -60,6 +60,8 @@ describe('DOCX export → import round trip', () => {
         { type: 'tableRow', attrs: { rowHeight: 40 }, content: [cell('Widget', { backgroundColor: '#FFFF00', rowspan: 2 }), cell('1', { borderTop: 'none', borderRight: '2.25pt solid #FF0000' })] },
         { type: 'tableRow', content: [cell('2')] },
       ] },
+      heading(4, 'Fourth'),
+      heading(5, 'Fifth'),
     ],
   } as any;
 
@@ -157,6 +159,13 @@ describe('DOCX export → import round trip', () => {
     expect(p.attrs.spaceAfter).toBe(6);
     expect(p.attrs.lineHeight).toBe('1.5');
     expect(p.attrs.indent).toBe(1);
+  });
+
+  it('round-trips heading levels 4 and 5', () => {
+    const heads = walk(doc, 'heading').filter((h) => h.attrs.level >= 4);
+    expect(heads.map((h) => h.attrs.level)).toEqual([4, 5]);
+    // Their style sizes are the level defaults, so no explicit size mark survives.
+    expect(heads.every((h) => !(h.content![0].marks ?? []).length)).toBe(true);
   });
 
   it('round-trips an empty line\'s font size (paragraph-mark size)', () => {

@@ -1,6 +1,6 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
-import { HEADING_STYLE_OVERRIDES, normalizeColor } from '../export/odt';
+import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
@@ -588,7 +588,7 @@ function convertToc(el: Element): Node {
       if (p.namespaceURI !== NS.text || p.localName !== 'p') continue; // skip index-title
       const style = p.getAttributeNS(NS.text, 'style-name') ?? '';
       const m = /Contents_20_(\d+)/.exec(style);
-      const level = m ? Math.min(3, Math.max(1, parseInt(m[1], 10))) : 1;
+      const level = m ? Math.min(MAX_HEADING_LEVEL, Math.max(1, parseInt(m[1], 10))) : 1;
       const { text, page } = tocEntryTextAndPage(p);
       if (text) entries.push({ text, level, page: Math.max(1, parseInt(page, 10) || 1) });
     }
@@ -625,7 +625,7 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   let level = 1;
   if (isHeading) {
     const raw = parseInt(el.getAttributeNS(NS.text, 'outline-level') ?? '1', 10);
-    level = Math.min(3, Math.max(1, Number.isFinite(raw) ? raw : 1));
+    level = Math.min(MAX_HEADING_LEVEL, Math.max(1, Number.isFinite(raw) ? raw : 1));
   }
 
   const attrs = blockAttrs(paraProps, baseTextProps, isHeading ? level : null, kind);

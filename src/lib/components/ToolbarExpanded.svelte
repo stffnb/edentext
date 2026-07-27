@@ -18,6 +18,7 @@
   import type { Orientation } from '../storage/pageOrientation';
   import { pageDimsCm, PAGE_FORMAT_CM, type PageFormat } from '../storage/pageFormat';
   import { DEFAULT_HF_DISTANCES, clampHfDistance, type HfDistances } from '../storage/headerFooter';
+  import { HEADING_STYLE_OVERRIDES } from '../export/odt';
   import { listContext } from '../editor/extensions/indent';
   import { findColumns, DEFAULT_COLUMN_GAP_CM } from '../editor/extensions/columns';
   import { t } from '../i18n/i18n.svelte';
@@ -128,16 +129,27 @@
     return mixed ? '' : (font ?? DEFAULT_EDITOR_FONT);
   });
 
-  // Must match the common document default and editor.css heading sizes (in pt)
+  // Must match the common document default; heading sizes come from the export overrides
+  // (the single source editor.css and both importers agree with).
   const DEFAULT_FONT_SIZE = '12pt';
-  const HEADING_SIZES: Record<number, string> = { 1: '20pt', 2: '16pt', 3: '14pt' };
+  const HEADING_SIZES: Record<number, string> =
+    Object.fromEntries(HEADING_STYLE_OVERRIDES.map((h, i) => [i + 1, h.fontSize]));
   const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72];
 
-  function effectiveSize(node: { isText: boolean; marks: readonly { type: { name: string }; attrs: Record<string, string> }[] }, parent: { type: { name: string }; attrs: Record<string, number> } | null): string {
-    const explicit = node.marks.find(m => m.type.name === 'textStyle')?.attrs.fontSize;
-    if (explicit) return explicit;
-    if (parent?.type.name === 'heading') return HEADING_SIZES[parent.attrs.level] ?? DEFAULT_FONT_SIZE;
+  type SizedBlock = { type: { name: string }; attrs: Record<string, unknown> } | null;
+
+  // What a block renders its unmarked text at: its paragraph-mark size (blockFontSize,
+  // set by the style gallery and by imported sized lines), else the heading/body default.
+  function blockSize(parent: SizedBlock): string {
+    const block = parent?.attrs?.fontSize;
+    if (typeof block === 'string' && block) return block;
+    if (parent?.type.name === 'heading') return HEADING_SIZES[Number(parent.attrs.level)] ?? DEFAULT_FONT_SIZE;
     return DEFAULT_FONT_SIZE;
+  }
+
+  function effectiveSize(node: { isText: boolean; marks: readonly { type: { name: string }; attrs: Record<string, string> }[] }, parent: SizedBlock): string {
+    const explicit = node.marks.find(m => m.type.name === 'textStyle')?.attrs.fontSize;
+    return explicit || blockSize(parent);
   }
 
   let currentFontSize = $derived.by(() => {
@@ -148,9 +160,7 @@
       const marks = editor.state.storedMarks ?? head.marks();
       const explicit = marks.find(m => m.type.name === 'textStyle')?.attrs.fontSize;
       if (explicit) return explicit;
-      const parent = head.parent;
-      if (parent.type.name === 'heading') return HEADING_SIZES[parent.attrs.level] ?? DEFAULT_FONT_SIZE;
-      return DEFAULT_FONT_SIZE;
+      return blockSize(head.parent as SizedBlock);
     }
     let size: string | undefined;
     let mixed = false;
@@ -364,7 +374,16 @@
     const to   = savedTo   ?? editor.state.selection.to;
     savedFrom = null;
     savedTo   = null;
-    editor.chain().focus().setTextSelection({ from, to }).setFontSize(`${size}pt`).run();
+    const chain = editor.chain().focus().setTextSelection({ from, to }).setFontSize(`${size}pt`);
+    // An empty line or a fully covered block also gets its paragraph-mark size, so what
+    // the block renders can't diverge from the shown size (and empty lines keep it).
+    const rFrom = editor.state.doc.resolve(from);
+    const rTo   = editor.state.doc.resolve(to);
+    const wholeBlock = from === to
+      ? rFrom.parent.content.size === 0
+      : rFrom.parentOffset === 0 && rTo.parentOffset === rTo.parent.content.size;
+    if (wholeBlock) chain.setBlockFontSize(`${size}pt`);
+    chain.run();
   }
 
   function onSizeInputFocus(e: FocusEvent) {
