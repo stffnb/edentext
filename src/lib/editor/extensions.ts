@@ -27,6 +27,7 @@ import { LineHeight } from './extensions/lineHeight';
 import { ParagraphSpacing } from './extensions/paragraphSpacing';
 import { ParagraphBox } from './extensions/paragraphBox';
 import { BlockFontSize } from './extensions/blockFontSize';
+import { ParagraphStyle } from './extensions/paragraphStyle';
 import { PageBreak } from './extensions/pageBreak';
 import { Indent } from './extensions/indent';
 import { FormattingMarks } from './extensions/formattingMarks';
@@ -46,6 +47,7 @@ import { TextBox } from './extensions/textBox';
 import { Columns } from './extensions/columns';
 import { ColumnsFlow } from './extensions/columnsFlow';
 import { TableOfContents } from './extensions/tableOfContents';
+import { styleSheet } from '../styles/sheet.svelte';
 
 export const extensions = [
   // textBox and columns have their own groups so only the document (not
@@ -96,6 +98,9 @@ export const extensions = [
   ParagraphBox,
   // Paragraph-mark font size: sizes empty lines (and text typed into them).
   BlockFontSize,
+  // Named paragraph style (LibreOffice style:style / Word w:pStyle); the document
+  // stylesheet in Editor.svelte renders it, direct formatting still wins.
+  ParagraphStyle.configure({ sheet: styleSheet }),
   PageBreak,
   Indent,
   Heading.configure({ levels: [1, 2, 3, 4, 5] }),

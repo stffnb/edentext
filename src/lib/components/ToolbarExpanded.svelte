@@ -1565,17 +1565,8 @@
 
     <div class="toolbar-group">
       <button
-        onclick={() =>
-          editor?.chain().focus()
-            .unsetAllMarks()
-            .clearNodes()
-            .unsetLineHeight()
-            .unsetTextAlign()
-            .setSpaceBefore(null)
-            .setSpaceAfter(null)
-            .unsetIndent()
-            .run()}
-        title={t().toolbarExpanded.clearFormatting}
+        onclick={() => editor?.commands.clearDirectFormatting()}
+        title={`${t().toolbarExpanded.clearFormatting} (${withShortcut('Ctrl+M')})`}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <!-- bold + italic A -->

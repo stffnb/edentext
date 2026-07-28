@@ -384,35 +384,11 @@
 .paper .tiptap h3,
 .paper .tiptap h4,
 .paper .tiptap h5 {
-  /* LibreOffice's Heading style: sans, bold, one margin pair for every level.
-     Keep the sizes below in sync with HEADING_STYLE_OVERRIDES
-     (tests/unit/font-size-display.test.ts checks it). */
-  font-family: var(--font-heading);
-  font-weight: 700;
+  /* Neutral base: font, size and margins come from the named paragraph styles
+     (styles/styleSheet.ts → the #document-styles element Editor.svelte writes). */
+  font: inherit;
+  margin: 0;
   line-height: 1.15;
-  margin-top: 0.423cm;
-  margin-bottom: 0.212cm;
-}
-
-
-.paper .tiptap h1 {
-  font-size: 18pt;
-}
-
-.paper .tiptap h2 {
-  font-size: 16pt;
-}
-
-.paper .tiptap h3 {
-  font-size: 14pt;
-}
-
-.paper .tiptap h4 {
-  font-size: 13pt;
-}
-
-.paper .tiptap h5 {
-  font-size: 12pt;
 }
 
 .paper .tiptap ul,

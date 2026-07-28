@@ -6,7 +6,9 @@
   import { BULLET_TYPES } from '../utils/bulletListTypes';
   import { effectiveOrderedTypeAt } from '../editor/extensions/orderedList';
   import { isInHeaderCell } from '../editor/extensions/tableHeaderRow';
-  import { HEADING_FONT } from '../export/odt';
+  import { blockStyleName } from '../editor/extensions/paragraphStyle';
+  import { DEFAULT_STYLE, resolveStyle, styleOrder } from '../styles/styleSheet';
+  import { styleSheet } from '../styles/sheet.svelte';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
 
@@ -17,42 +19,26 @@
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 
-  // Word/LibreOffice-style style gallery. We have no named-style model, so a style
-  // is a preset of direct formatting (node type + block attrs + marks).
-  type ParagraphStyle = {
-    key: string;
-    level?: 1 | 2 | 3 | 4 | 5;
-    fontSize?: string;   // block font size (paragraph mark + inherited by its runs)
-    fontFamily?: string;
-    align?: 'center';
-    bold?: boolean;
-    italic?: boolean;
-    indent?: number;     // cm
-    spaceAfter?: number; // pt
-    preview: string;     // menu-entry font size
-  };
+  // The document's named paragraph styles (LibreOffice model): the gallery lists the
+  // registry, assigning one only sets the style — hard formatting stays, as in Word/LO.
+  let sheet = $derived(styleSheet());
+  let galleryStyles = $derived(styleOrder(sheet));
 
-  // LibreOffice's values: Title/Subtitle sans off the Heading style, Quotations
-  // indented with space below (LO also indents 1cm on the right — we have no such attr).
-  const PARAGRAPH_STYLES: ParagraphStyle[] = [
-    { key: 'default',                                                                    preview: '0.85rem' },
-    { key: 'title',    fontSize: '28pt', fontFamily: HEADING_FONT, align: 'center', bold: true, preview: '1.35rem' },
-    { key: 'subtitle', fontSize: '18pt', fontFamily: HEADING_FONT, align: 'center',      preview: '1.05rem' },
-    { key: 'h1',       level: 1,                                                         preview: '1.25rem' },
-    { key: 'h2',       level: 2,                                                         preview: '1.1rem'  },
-    { key: 'h3',       level: 3,                                                         preview: '0.95rem' },
-    { key: 'h4',       level: 4,                                                         preview: '0.9rem'  },
-    { key: 'h5',       level: 5,                                                         preview: '0.85rem' },
-    { key: 'quote',    indent: 1, spaceAfter: 14,                                        preview: '0.85rem' },
-  ];
-
-  function styleLabel(key: string): string {
+  // Built-in names are translated; user styles show their own name.
+  function styleLabel(name: string): string {
     const s = t().toolbar.styles;
     return ({
-      default: s.default, title: s.docTitle, subtitle: s.subtitle, quote: s.quote,
-      h1: t().toolbar.heading1, h2: t().toolbar.heading2, h3: t().toolbar.heading3,
-      h4: t().toolbar.heading4, h5: t().toolbar.heading5,
-    } as Record<string, string>)[key] ?? key;
+      Standard: s.default, Title: s.docTitle, Subtitle: s.subtitle, Quotations: s.quote,
+      'Heading 1': t().toolbar.heading1, 'Heading 2': t().toolbar.heading2,
+      'Heading 3': t().toolbar.heading3, 'Heading 4': t().toolbar.heading4,
+      'Heading 5': t().toolbar.heading5,
+    } as Record<string, string>)[name] ?? name;
+  }
+
+  // Menu entries preview their own style, clamped so the list stays compact.
+  function previewSize(name: string): string {
+    const pt = resolveStyle(sheet, name).text.fontSizePt ?? 12;
+    return `${Math.min(1.35, Math.max(0.85, pt / 20))}rem`;
   }
 
   let stylesOpen = $state(false);
@@ -60,42 +46,21 @@
   // $derived re-evaluates whenever `tick` changes (i.e. on every TipTap transaction)
   let isHeading    = $derived(tick >= 0 && !!editor?.isActive('heading'));
 
-  // The style whose formatting the cursor's block currently carries.
+  // The style assigned to the cursor's block (headings without one fall back to their level).
   let currentStyle = $derived.by<string>(() => {
-    if (tick < 0 || !editor) return 'default';
-    if (editor.isActive('heading')) return `h${editor.getAttributes('heading').level}`;
-    const { fontSize, indent } = editor.getAttributes('paragraph');
-    const sized = PARAGRAPH_STYLES.find((s) => s.fontSize && s.fontSize === fontSize);
-    if (sized) return sized.key;
-    if ((indent ?? 0) >= 1) return 'quote';
-    return 'default';
+    if (tick < 0 || !editor) return DEFAULT_STYLE;
+    return blockStyleName(editor.state.selection.$from.parent as never);
   });
 
-  // Applies to the whole block (Word applies a style without a selection); the
-  // caret is restored afterwards.
-  function applyStyle(s: ParagraphStyle) {
+  function applyStyle(name: string) {
     stylesOpen = false;
     if (!editor) return;
+    const level = sheet.paragraph[name]?.outlineLevel;
     // The header/footer schema has no heading node.
-    if (s.level && !editor.schema.nodes.heading) return;
-    const { from, to } = editor.state.selection;
-    const start = editor.state.selection.$from.start();
-    const end   = editor.state.selection.$to.end();
-    const type  = s.level ? 'heading' : 'paragraph';
-    const chain = editor.chain().focus().setTextSelection({ from: start, to: end })
-      // A style replaces conflicting direct formatting, as in Word/LibreOffice.
-      .unsetBold().unsetItalic().unsetFontSize().unsetFontWeight().unsetFontFamily().removeEmptyTextStyle()
-      .setNode(type, s.level ? { level: s.level } : {})
-      .setBlockFontSize(s.fontSize ?? null)
-      .setTextAlign(s.align ?? 'left')
-      .updateAttributes(type, { indent: s.indent ?? 0, spaceAfter: s.spaceAfter ?? null });
-    if (s.fontFamily) chain.setFontFamily(s.fontFamily);
-    if (s.bold) chain.setBold();
-    if (s.italic) chain.setItalic();
-    // On an empty block the marks are stored marks — restoring the selection would drop them.
-    if (start !== end) chain.setTextSelection({ from, to });
-    chain.run();
+    if (level && !editor.schema.nodes.heading) return;
+    editor.commands.setParagraphStyle(name);
   }
+
   // Header-row cells render bold by default (CSS), like headings — so the Bold button
   // toggles the fontWeight:'normal' override there too (keeps header bold editable).
   let inHeaderCell = $derived(tick >= 0 && !!editor && isInHeaderCell(editor.state));
@@ -231,16 +196,17 @@
         {#if stylesOpen}
           <div class="ol-dropdown" role="menu">
             <div class="ol-section-label">{t().toolbar.styles.title}</div>
-            {#each PARAGRAPH_STYLES as s}
+            {#each galleryStyles as s}
+              {@const preview = resolveStyle(sheet, s.name)}
               <button
                 class="ol-option style-option"
-                class:active={currentStyle === s.key}
-                onclick={() => applyStyle(s)}
+                class:active={currentStyle === s.name}
+                onclick={() => applyStyle(s.name)}
                 role="menuitemradio"
-                aria-checked={currentStyle === s.key}
-                style="font-size: {s.preview}; font-weight: {s.bold || s.level ? 600 : 400}; font-style: {s.italic ? 'italic' : 'normal'}"
+                aria-checked={currentStyle === s.name}
+                style="font-size: {previewSize(s.name)}; font-weight: {preview.text.bold ? 600 : 400}; font-style: {preview.text.italic ? 'italic' : 'normal'}"
               >
-                {styleLabel(s.key)}
+                {styleLabel(s.name)}
               </button>
             {/each}
           </div>

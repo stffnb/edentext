@@ -23,6 +23,8 @@
   import { DEFAULT_HF_DISTANCES, hfIsEmpty, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
+  import { styleCss } from '../styles/styleSheet';
+  import { styleSheet } from '../styles/sheet.svelte';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
   import '../../styles/editor.css';
@@ -122,6 +124,28 @@
       ed.view.dispatch(
         ed.state.tr.setMeta('addToHistory', false).setMeta(FORCE_PAGE_RECALC, true),
       );
+    });
+  });
+
+  // The document stylesheet: the named paragraph styles rendered as CSS rules in one
+  // element that is rewritten whenever a style changes. Appended at runtime, so it also
+  // wins over editor.css on equal specificity.
+  let styleEl: HTMLStyleElement | null = null;
+  let styleRecalcRaf = 0;
+  $effect(() => {
+    const css = styleCss(styleSheet());
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'document-styles';
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = css;
+    const ed = editor;
+    if (!ed) return;
+    // Type sizes/margins changed under the layout, so page positions must be re-measured.
+    cancelAnimationFrame(styleRecalcRaf);
+    styleRecalcRaf = requestAnimationFrame(() => {
+      ed.view.dispatch(ed.state.tr.setMeta('addToHistory', false).setMeta(FORCE_PAGE_RECALC, true));
     });
   });
 
