@@ -22,7 +22,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
-import { normalizeColor, HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, type HfExport } from './odt';
+import { normalizeColor, HEADING_STYLE_OVERRIDES, HEADING_FONT, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, type HfExport } from './odt';
 import { findFormat, renderFormat, docxPicture, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../utils/dateTime';
 
 // BCP-47 tag for rendering a fixed field's cached text; set at buildDocx start from
@@ -828,7 +828,7 @@ function bodyGroups(content: TiptapNode[], num: Numbering, contentWidthCm: numbe
 // ---- document styles -------------------------------------------------------
 function headingStyle(o: { fontSize: string; marginTop: string; marginBottom: string }) {
   return {
-    run: { bold: true, color: '000000', font: DOC_FONT, size: Math.round(parseFloat(o.fontSize) * 2) },
+    run: { bold: true, color: '000000', font: HEADING_FONT, size: Math.round(parseFloat(o.fontSize) * 2) },
     paragraph: { spacing: { before: cmToTwip(parseFloat(o.marginTop)), after: cmToTwip(parseFloat(o.marginBottom)), line: 240, lineRule: LineRuleType.AUTO }, keepNext: true },
   };
 }

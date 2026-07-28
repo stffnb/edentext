@@ -386,7 +386,9 @@
   function onSizeInputKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      const num = parseInt(sizeInputValue, 10);
+      // Imported documents carry fractional sizes (producer rounding, relative style
+      // sizes), so keep one decimal instead of snapping the shown value to a whole point.
+      const num = Math.round(parseFloat(sizeInputValue.replace(',', '.')) * 10) / 10;
       if (!isNaN(num) && num >= 1 && num <= 400) applyFontSize(num);
       sizeInputFocused = false;
       (e.target as HTMLInputElement).blur();

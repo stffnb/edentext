@@ -1292,10 +1292,10 @@ describe('Leg 11: heading levels 4 and 5', () => {
     const styles = strFromU8(files['styles.xml']);
     check('h4 outline level', content.includes('text:outline-level="4"'), content.slice(0, 400));
     check('h5 outline level', content.includes('text:outline-level="5"'));
-    check('Heading_20_4 sized 12pt',
-      /style:name="Heading_20_4"[\s\S]*?fo:font-size="12pt"/.test(styles));
-    check('Heading_20_5 sized 11pt',
-      /style:name="Heading_20_5"[\s\S]*?fo:font-size="11pt"/.test(styles));
+    check('Heading_20_4 sized 13pt',
+      /style:name="Heading_20_4"[\s\S]*?fo:font-size="13pt"/.test(styles));
+    check('Heading_20_5 sized 12pt',
+      /style:name="Heading_20_5"[\s\S]*?fo:font-size="12pt"/.test(styles));
 
     const blocks = importOdt(bytes).content.content ?? [];
     check('h4 round-trips', blocks[0]?.type === 'heading' && blocks[0]?.attrs?.level === 4, blocks[0]);

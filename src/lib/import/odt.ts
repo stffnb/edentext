@@ -302,8 +302,10 @@ const HEADING_DEFAULTS = HEADING_STYLE_OVERRIDES.map(h => ({
 }));
 
 // The editor's on-screen default (Liberation Serif) and what the export declares
-// in its place (Times New Roman) — both mean "default font", so no mark.
+// in its place (Times New Roman) — both mean "default font", so no mark. Headings
+// render sans (HEADING_FONT), so their default pair is the metric-identical one.
 const DEFAULT_FONTS = new Set(['times new roman', 'liberation serif']);
+const DEFAULT_HEADING_FONTS = new Set(['arial', 'liberation sans']);
 
 // ODF line spacing multiplies the font's natural line height; see lineHeight.ts.
 const LINE_HEIGHT_RATIO = 1.15;
@@ -998,7 +1000,8 @@ function marksFor(props: PropMap, resolver: StyleResolver, headingLevel: number 
   if (sizePt != null && Math.abs(sizePt - defSize) > 0.05) textStyle.fontSize = formatPt(sizePt);
 
   const family = resolver.fontFamilyOf(props);
-  if (family && !DEFAULT_FONTS.has(family.toLowerCase())) textStyle.fontFamily = family;
+  const defaultFonts = headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS;
+  if (family && !defaultFonts.has(family.toLowerCase())) textStyle.fontFamily = family;
 
   if (Object.keys(textStyle).length) marks.push({ type: 'textStyle', attrs: textStyle });
   return marks;

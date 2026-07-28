@@ -121,16 +121,22 @@ const EXT_BY_MIME: Record<string, string> = {
 const CELL_LIST_BULLET_STYLE = 'TblListBullet';
 const CELL_LIST_NUMBER_STYLE = 'TblListNumber';
 
-// Heading sizes/margins shown in the editor (editor.css); odf-kit's larger Heading_20_N
-// defaults are rewritten to these on export. Margins are the em values (top 1.5em,
-// bottom 0.5em) in cm; import/odt.ts uses them as defaults to suppress on re-import.
+// LibreOffice's heading defaults, shown in the editor (editor.css) and written over
+// odf-kit's larger Heading_20_N styles on export: its sizes plus the Heading style's
+// margins, which every level inherits. import/odt.ts uses them as the defaults to
+// suppress on re-import.
 export const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTop: string; marginBottom: string }[] = [
-  { name: 'Heading_20_1', fontSize: '20pt', marginTop: '1.058cm', marginBottom: '0.353cm' },
-  { name: 'Heading_20_2', fontSize: '16pt', marginTop: '0.847cm', marginBottom: '0.282cm' },
-  { name: 'Heading_20_3', fontSize: '14pt', marginTop: '0.741cm', marginBottom: '0.247cm' },
-  { name: 'Heading_20_4', fontSize: '12pt', marginTop: '0.635cm', marginBottom: '0.212cm' },
-  { name: 'Heading_20_5', fontSize: '11pt', marginTop: '0.582cm', marginBottom: '0.194cm' },
+  { name: 'Heading_20_1', fontSize: '18pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
+  { name: 'Heading_20_2', fontSize: '16pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
+  { name: 'Heading_20_3', fontSize: '14pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
+  { name: 'Heading_20_4', fontSize: '13pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
+  { name: 'Heading_20_5', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
 ];
+
+// Headings are sans (LibreOffice's Heading style). On screen the bundled 'Arial'
+// @font-face maps to Liberation Sans, so the declared name is metric-identical —
+// the same trick as EXPORT_FONT for the serif body font.
+export const HEADING_FONT = 'Arial';
 
 // Highest heading level the editor offers (extensions.ts, both importers, TOC).
 export const MAX_HEADING_LEVEL = HEADING_STYLE_OVERRIDES.length;
@@ -1521,6 +1527,22 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
   styles = styles.replace(
     /(<style:style style:name="Standard"[\s\S]*?<style:paragraph-properties[^>]*?)fo:margin-bottom="[^"]*"/,
     `$1fo:margin-bottom="0cm"`,
+  );
+
+  // odf-kit's Heading parent carries only weight, so its font would be inherited from
+  // Standard (= the serif body font). Declare the sans heading font on it; every
+  // Heading_20_N inherits it, matching the editor's --font-heading.
+  // ODF requires a font-face declaration for every referenced font name.
+  styles = styles.replace(
+    '</office:font-face-decls>',
+    `<style:font-face style:name="${HEADING_FONT}" svg:font-family="${HEADING_FONT}" style:font-family-generic="swiss" style:font-pitch="variable"/></office:font-face-decls>`,
+  );
+
+  styles = styles.replace(/<style:style style:name="Heading"[\s\S]*?<\/style:style>/, (block) =>
+    block.replace(
+      '<style:text-properties',
+      `<style:text-properties style:font-name="${HEADING_FONT}" style:font-name-asian="${HEADING_FONT}" style:font-name-complex="${HEADING_FONT}"`,
+    ),
   );
 
   // Scope each rewrite to its own <style:style …>…</style:style> block so the

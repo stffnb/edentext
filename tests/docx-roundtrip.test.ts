@@ -417,7 +417,7 @@ describe('DOCX import of a foreign Word document', () => {
   const stylesXml = `<?xml version="1.0"?><w:styles ${W}>
     <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Times New Roman"/><w:sz w:val="24"/></w:rPr></w:rPrDefault></w:docDefaults>
     <w:style w:type="paragraph" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
-    <w:style w:type="paragraph" w:styleId="Heading1"><w:basedOn w:val="Normal"/><w:rPr><w:b/><w:sz w:val="40"/><w:rFonts w:ascii="Arial"/></w:rPr></w:style>
+    <w:style w:type="paragraph" w:styleId="Heading1"><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="480" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="40"/><w:rFonts w:ascii="Arial"/></w:rPr></w:style>
   </w:styles>`;
   const numberingXml = `<?xml version="1.0"?><w:numbering ${W}>
     <w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>
@@ -448,7 +448,12 @@ describe('DOCX import of a foreign Word document', () => {
     expect(h.attrs.level).toBe(1);
     const t = walk(h, 'text')[0];
     expect(hasMark(t, 'bold')).toBe(false); // heading bold is presentational
-    expect(markAttrs(t, 'textStyle')?.fontFamily).toBe('Arial'); // resolved from the style
+    expect(markAttrs(t, 'textStyle')?.fontSize).toBe('20pt'); // resolved from the style
+    // Arial is the heading default (LibreOffice's sans Heading style), so no font mark.
+    expect(markAttrs(t, 'textStyle')?.fontFamily).toBeUndefined();
+    // A heading style's own spacing is the file's, not ours to replace (480/120 twips).
+    expect(h.attrs.spaceBefore).toBe(24);
+    expect(h.attrs.spaceAfter).toBe(6);
   });
 
   it('maps Word symbol-font bullets and suppresses the default cycle', () => {
@@ -566,8 +571,8 @@ describe('DOCX import resolves theme fonts (Word default = Calibri)', () => {
 describe('DOCX import falls back to the theme font when nothing references it', () => {
   const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
   const A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
-  // No w:rFonts anywhere (not even a theme ref): Word still uses the theme minor font as the
-  // implicit body default. A heading must keep the editor default, not the theme major font.
+  // No w:rFonts anywhere (not even a theme ref): Word uses the theme minor font as the
+  // implicit body default and the major one for headings — the file's fonts, not ours.
   const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
     <w:p><w:r><w:t>Body text</w:t></w:r></w:p>
     <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Heading text</w:t></w:r></w:p>
@@ -585,10 +590,10 @@ describe('DOCX import falls back to the theme font when nothing references it', 
     expect(t.text).toBe('Body text');
     expect(markAttrs(t, 'textStyle')?.fontFamily).toBe('Calibri');
   });
-  it('leaves a heading on the editor default (no theme major font)', () => {
+  it('applies the theme major font to a heading with no font of its own', () => {
     const h = doc.content![1];
     expect(h.type).toBe('heading');
-    expect(markAttrs(walk(h, 'text')[0], 'textStyle')?.fontFamily).toBeUndefined();
+    expect(markAttrs(walk(h, 'text')[0], 'textStyle')?.fontFamily).toBe('Calibri Light');
   });
 });
 

@@ -6,6 +6,7 @@
   import { BULLET_TYPES } from '../utils/bulletListTypes';
   import { effectiveOrderedTypeAt } from '../editor/extensions/orderedList';
   import { isInHeaderCell } from '../editor/extensions/tableHeaderRow';
+  import { HEADING_FONT } from '../export/odt';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
 
@@ -22,23 +23,27 @@
     key: string;
     level?: 1 | 2 | 3 | 4 | 5;
     fontSize?: string;   // block font size (paragraph mark + inherited by its runs)
+    fontFamily?: string;
     align?: 'center';
     bold?: boolean;
     italic?: boolean;
     indent?: number;     // cm
+    spaceAfter?: number; // pt
     preview: string;     // menu-entry font size
   };
 
+  // LibreOffice's values: Title/Subtitle sans off the Heading style, Quotations
+  // indented with space below (LO also indents 1cm on the right — we have no such attr).
   const PARAGRAPH_STYLES: ParagraphStyle[] = [
-    { key: 'default',                                                          preview: '0.85rem' },
-    { key: 'title',    fontSize: '28pt', align: 'center', bold: true,          preview: '1.35rem' },
-    { key: 'subtitle', fontSize: '18pt', align: 'center', italic: true,        preview: '1.05rem' },
-    { key: 'h1',       level: 1,                                               preview: '1.25rem' },
-    { key: 'h2',       level: 2,                                               preview: '1.1rem'  },
-    { key: 'h3',       level: 3,                                               preview: '0.95rem' },
-    { key: 'h4',       level: 4,                                               preview: '0.9rem'  },
-    { key: 'h5',       level: 5,                                               preview: '0.85rem' },
-    { key: 'quote',    italic: true, indent: 1.25,                             preview: '0.85rem' },
+    { key: 'default',                                                                    preview: '0.85rem' },
+    { key: 'title',    fontSize: '28pt', fontFamily: HEADING_FONT, align: 'center', bold: true, preview: '1.35rem' },
+    { key: 'subtitle', fontSize: '18pt', fontFamily: HEADING_FONT, align: 'center',      preview: '1.05rem' },
+    { key: 'h1',       level: 1,                                                         preview: '1.25rem' },
+    { key: 'h2',       level: 2,                                                         preview: '1.1rem'  },
+    { key: 'h3',       level: 3,                                                         preview: '0.95rem' },
+    { key: 'h4',       level: 4,                                                         preview: '0.9rem'  },
+    { key: 'h5',       level: 5,                                                         preview: '0.85rem' },
+    { key: 'quote',    indent: 1, spaceAfter: 14,                                        preview: '0.85rem' },
   ];
 
   function styleLabel(key: string): string {
@@ -62,7 +67,7 @@
     const { fontSize, indent } = editor.getAttributes('paragraph');
     const sized = PARAGRAPH_STYLES.find((s) => s.fontSize && s.fontSize === fontSize);
     if (sized) return sized.key;
-    if ((indent ?? 0) >= 1.25 && editor.isActive('italic')) return 'quote';
+    if ((indent ?? 0) >= 1) return 'quote';
     return 'default';
   });
 
@@ -79,11 +84,12 @@
     const type  = s.level ? 'heading' : 'paragraph';
     const chain = editor.chain().focus().setTextSelection({ from: start, to: end })
       // A style replaces conflicting direct formatting, as in Word/LibreOffice.
-      .unsetBold().unsetItalic().unsetFontSize().unsetFontWeight().removeEmptyTextStyle()
+      .unsetBold().unsetItalic().unsetFontSize().unsetFontWeight().unsetFontFamily().removeEmptyTextStyle()
       .setNode(type, s.level ? { level: s.level } : {})
       .setBlockFontSize(s.fontSize ?? null)
       .setTextAlign(s.align ?? 'left')
-      .updateAttributes(type, { indent: s.indent ?? 0 });
+      .updateAttributes(type, { indent: s.indent ?? 0, spaceAfter: s.spaceAfter ?? null });
+    if (s.fontFamily) chain.setFontFamily(s.fontFamily);
     if (s.bold) chain.setBold();
     if (s.italic) chain.setItalic();
     // On an empty block the marks are stored marks — restoring the selection would drop them.

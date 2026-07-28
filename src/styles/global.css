@@ -215,6 +215,9 @@
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-serif: 'Liberation Serif', 'Times New Roman', Georgia, serif;
+    /* Headings are sans, like LibreOffice's Heading style ('Arial' is the bundled
+       Liberation Sans; see HEADING_FONT in export/odt.ts). */
+    --font-heading: 'Arial', 'Liberation Sans', sans-serif;
     /* Brand accents: the primary slate + the logo's warm coral; the gradient is
        the app's signature (island hairline). */
     --accent-warm: #d96b4a;

@@ -49,8 +49,12 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
 const PB_MARKER = '__docxPageBreak__';
 
 const BODY_FONT_SIZE_PT = 12;
-const HEADING_SIZES = HEADING_STYLE_OVERRIDES.map((h) => lengthToPt(h.fontSize)!); // [20,16,14]
+// Rounded to half points: that is all Word can store, so it is what our own export
+// writes and what an imported heading must be compared against.
+const HEADING_SIZES = HEADING_STYLE_OVERRIDES.map((h) => Math.round(lengthToPt(h.fontSize)! * 2) / 2);
 const DEFAULT_FONTS = new Set(['times new roman', 'liberation serif']);
+// Headings render sans (HEADING_FONT); Word writes Arial, LibreOffice Liberation Sans.
+const DEFAULT_HEADING_FONTS = new Set(['arial', 'liberation sans']);
 const LIST_LEFT_STEP_CM = 1.27; // matches export/docx.ts
 const LIST_INDENT_EPS_CM = 0.05;
 const LINK_BLUE = '#0563C1'; // the visual the exporter paints on hyperlink runs
@@ -493,8 +497,8 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   const jcVal = directJc ? wVal(directJc) : ctx.styles.paragraphAlign(pStyle ? wVal(pStyle) : null);
   // Spacing: a paragraph style's own w:spacing (e.g. "No Spacing" after=0) is honored so
   // it isn't lost to the editor default; direct w:pPr wins per attribute (in blockAttrs).
-  // Headings keep their em-based editor defaults (direct-only), so skip style resolution.
-  const styleSpacing = level == null ? ctx.styles.paragraphSpacing(pStyle ? wVal(pStyle) : null) : {};
+  // Headings included — a heading style's spacing is the file's, not ours to override.
+  const styleSpacing = ctx.styles.paragraphSpacing(pStyle ? wVal(pStyle) : null);
   const attrs = blockAttrs(ppr, kind, level, jcVal, styleSpacing);
   const baseRun = ctx.styles.paragraphRun(pStyle ? wVal(pStyle) : null);
   const content = convertInline(el, ctx, baseRun, level, false, boldByDefault);
@@ -645,12 +649,11 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
     const rPr = fc(r, 'rPr');
     const rStyle = fc(rPr, 'rStyle');
     const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
-    // No font resolved anywhere: Word's implicit body default is the theme's minor font, so
-    // fall back to the document's own theme (not the editor default). Headings keep the editor
-    // heading default, so only body text falls back.
+    // No font resolved anywhere: fall back to the document's own theme (not the editor
+    // default) — Word's implicit default is the minor font for body text, the major one
+    // for headings.
     if (!props.font) {
-      const theme = props.fontTheme ?? (headingLevel == null ? 'minor' : null);
-      if (theme) props.font = ctx.styles.themeFont(theme);
+      props.font = ctx.styles.themeFont(props.fontTheme ?? (headingLevel == null ? 'minor' : 'major'));
     }
     const marks = marksFor(props, headingLevel, boldByDefault, !!linkHref);
     if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
@@ -829,7 +832,8 @@ function marksFor(props: RunProps, headingLevel: number | null, boldByDefault: b
   const defSize = headingLevel != null ? HEADING_SIZES[headingLevel - 1] : BODY_FONT_SIZE_PT;
   if (sizePt != null && Math.abs(sizePt - defSize) > 0.05) textStyle.fontSize = `${Math.round(sizePt * 10) / 10}pt`;
 
-  if (props.font && !DEFAULT_FONTS.has(props.font.toLowerCase())) textStyle.fontFamily = props.font;
+  const defaultFonts = headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS;
+  if (props.font && !defaultFonts.has(props.font.toLowerCase())) textStyle.fontFamily = props.font;
 
   if (Object.keys(textStyle).length) marks.push({ type: 'textStyle', attrs: textStyle });
   return marks;

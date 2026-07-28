@@ -78,6 +78,22 @@ export function layerTextProps(base: PropMap, over: PropMap): PropMap {
   return Object.assign(out, over);
 }
 
+// The size a percentage font-size is relative to when nothing is inherited yet
+// (ODF's implied default, matching the editor's body size).
+const BASE_FONT_SIZE_PT = 12;
+
+// LibreOffice defines its heading styles relatively (`fo:font-size="130%"`), so a
+// percentage must be resolved against the inherited size while walking the parent
+// chain — a raw "130%" would be dropped and the file's size lost.
+function resolvePercentSize(text: PropMap, inherited: string | undefined): void {
+  const size = text['fo:font-size'];
+  if (!size || !size.trim().endsWith('%')) return;
+  const pct = parseFloat(size);
+  if (!Number.isFinite(pct)) return;
+  const base = lengthToPt(inherited) ?? BASE_FONT_SIZE_PT;
+  text['fo:font-size'] = `${Math.round(base * pct) / 100}pt`;
+}
+
 // ---- resolver ----------------------------------------------------------------
 
 function collectProps(el: Element, propsLocalName: string, into: PropMap): void {
@@ -206,7 +222,9 @@ export class StyleResolver {
     const result = { text: {} as PropMap, para: {} as PropMap, misc: {} as PropMap };
     // Apply root-first so nearer definitions overwrite.
     for (const entry of chain.reverse()) {
+      const inherited = result.text['fo:font-size'];
       result.text = layerTextProps(result.text, entry.text);
+      resolvePercentSize(result.text, inherited);
       Object.assign(result.para, entry.para);
       Object.assign(result.misc, entry.misc);
     }
