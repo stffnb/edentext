@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { zipSync, strToU8, unzipSync, strFromU8 } from 'fflate';
 import { buildDocx } from '../src/lib/export/docx';
 import { importDocx } from '../src/lib/import/docx';
+import { builtinStyleSheet } from '../src/lib/styles/styleSheet';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
 
 type N = { type: string; attrs?: any; content?: N[]; marks?: any[]; text?: string };
@@ -448,12 +449,13 @@ describe('DOCX import of a foreign Word document', () => {
     expect(h.attrs.level).toBe(1);
     const t = walk(h, 'text')[0];
     expect(hasMark(t, 'bold')).toBe(false); // heading bold is presentational
-    expect(markAttrs(t, 'textStyle')?.fontSize).toBe('20pt'); // resolved from the style
-    // Arial is the heading default (LibreOffice's sans Heading style), so no font mark.
-    expect(markAttrs(t, 'textStyle')?.fontFamily).toBeUndefined();
-    // A heading style's own spacing is the file's, not ours to replace (480/120 twips).
-    expect(h.attrs.spaceBefore).toBe(24);
-    expect(h.attrs.spaceAfter).toBe(6);
+    // The style's own formatting stays in the style registry, not on the block.
+    expect(t.marks ?? []).toEqual([]);
+    expect(h.attrs.spaceBefore).toBeUndefined();
+    const style = result.styles.paragraph['Heading 1'];
+    expect(style.text.fontSizePt).toBe(20);   // w:sz 40
+    expect(style.para.spaceBefore).toBe(24);  // 480 twips
+    expect(style.para.spaceAfter).toBe(6);    // 120 twips
   });
 
   it('maps Word symbol-font bullets and suppresses the default cycle', () => {
@@ -525,17 +527,21 @@ describe('DOCX import: alignment inherited from a paragraph style', () => {
     <w:style w:type="paragraph" w:styleId="Heading1"><w:basedOn w:val="Standard"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:style>
   </w:styles>`;
   const bytes = zipSync({ 'word/document.xml': strToU8(documentXml), 'word/styles.xml': strToU8(stylesXml) });
-  const doc = importDocx(bytes).content as N;
+  const res = importDocx(bytes);
+  const doc = res.content as N;
 
-  it('inherits justify onto a body paragraph with no direct alignment', () => {
-    expect(doc.content![0].attrs.textAlign).toBe('justify');
+  it('keeps the default style\'s justify in the style, not on the block', () => {
+    expect(doc.content![0].attrs?.textAlign).toBeUndefined();
+    expect(res.styles.paragraph['Standard'].para.textAlign).toBe('justify');
   });
   it('lets a direct w:jc override the style', () => {
     expect(doc.content![1].attrs.textAlign).toBe('center');
   });
-  it('inherits justify onto a heading based on the default style', () => {
+  it('leaves a heading based on the default style free of direct alignment', () => {
     expect(doc.content![2].type).toBe('heading');
-    expect(doc.content![2].attrs.textAlign).toBe('justify');
+    expect(doc.content![2].attrs.textAlign).toBeUndefined();
+    // It inherits justify through Heading 1 → Standard in the registry instead.
+    expect(res.styles.paragraph['Heading 1'].parent).toBe('Standard');
   });
 });
 
@@ -913,5 +919,49 @@ describe('DOCX import: a mid-body section break starts a new page', () => {
     const round = importDocx(await buildDocx(build(null) as never)).content as N;
     const two = round.content!.find((n) => walk(n, 'text').some((t) => t.text === 'section two'))!;
     expect(two.attrs?.breakBefore).toBe('page');
+  });
+});
+
+describe('DOCX named paragraph styles', () => {
+  const sheet = builtinStyleSheet();
+  sheet.paragraph['Merksatz'] = {
+    name: 'Merksatz', parent: 'Quotations', next: 'Standard',
+    para: { spaceBefore: 8 }, text: { bold: true, color: '#0000AA' },
+  };
+
+  const fixture = {
+    type: 'doc',
+    content: [
+      heading(1, 'Kapitel'),
+      { type: 'paragraph', attrs: { styleName: 'Merksatz' }, content: [text('gemerkt')] },
+      { type: 'paragraph', attrs: { styleName: 'Merksatz', spaceAfter: 20 }, content: [text('mit Abstand')] },
+      { type: 'paragraph', content: [text('normal')] },
+    ],
+  } as any;
+
+  it('writes real Word styles and round-trips the assignment', async () => {
+    const bytes = await buildDocx(fixture, undefined, undefined, undefined, undefined, undefined, sheet);
+    const files = unzipSync(bytes);
+    const stylesXml = strFromU8(files['word/styles.xml']);
+    const documentXml = strFromU8(files['word/document.xml']);
+
+    const merk = stylesXml.match(/<w:style [^>]*w:styleId="Merksatz"[\s\S]*?<\/w:style>/)?.[0] ?? '';
+    expect(merk).toContain('<w:basedOn w:val="Quotations"/>');
+    expect(merk).toContain('<w:color w:val="0000AA"/>');
+    expect(documentXml).toContain('<w:pStyle w:val="Merksatz"/>');
+    expect(documentXml).toContain('<w:pStyle w:val="Heading1"/>');
+
+    const res = importDocx(bytes);
+    const blocks = (res.content as N).content!;
+    expect(blocks[1].attrs.styleName).toBe('Merksatz');
+    expect(blocks[1].content![0].marks ?? []).toEqual([]); // style formatting stays in the style
+    expect(blocks[2].attrs.spaceAfter).toBe(20);          // hard formatting stays direct
+    expect(blocks[0].type).toBe('heading');
+
+    const style = res.styles.paragraph['Merksatz'];
+    expect(style.parent).toBe('Quotations');
+    expect(style.text.bold).toBe(true);
+    expect(style.text.color).toBe('#0000AA');
+    expect(style.para.spaceBefore).toBe(8);
   });
 });

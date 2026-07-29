@@ -2,7 +2,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, wVal, W, R, WP, A, WPS, MC, VML, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { lengthToPt } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
-import { builtinStyleSheet } from '../styles/styleSheet';
+import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
@@ -29,6 +29,9 @@ type RelInfo = { target: string; external: boolean };
 // flushes after the anchor paragraph (mirrors import/odt.ts).
 type Ctx = {
   styles: DocxStyles;
+  // Word styleId → registry name, and the ids blocks actually reference.
+  styleNames: Map<string, string>;
+  usedStyles: Set<string>;
   warnings: Set<string>;
   files: Record<string, Uint8Array>;
   rels: Map<string, RelInfo>;
@@ -106,7 +109,10 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const styles = new DocxStyles(stylesDoc, numberingDoc, themeDoc);
   const warnings = new Set<string>();
 
-  const ctx: Ctx = { styles, warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map() };
+  const styleNames = new Map<string, string>();
+  const defaultStyleId = styles.defaultParagraphStyle();
+  for (const [id, def] of styles.namedParagraphStyles()) styleNames.set(id, registryName(id, def.name, id === defaultStyleId));
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map() };
 
   const body = docDoc.getElementsByTagNameNS(W, 'body')[0];
   if (!body) throw new Error('Not a Word document (no w:body).');
@@ -158,9 +164,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
 
   return {
     content: { type: 'doc', content: blocks },
-    // DOCX styles still import as direct formatting (the ODF path leads); the document
-    // keeps the editor's built-in registry.
-    styles: builtinStyleSheet(),
+    styles: collectStyleSheet(ctx),
     margins: sect.margins,
     orientation: sect.orientation,
     format: sect.format,
@@ -491,6 +495,146 @@ function splitParaAtPageBreaks(para: Node, kind: BlockKind): { blocks: Node[]; t
   return { blocks, trailingBreak };
 }
 
+// What a block's named style already provides — the yardstick for "is this direct
+// formatting?" (mirrors import/odt.ts blockDefaults).
+type BlockDefaults = {
+  fontSizePt: number;
+  boldByDefault: boolean;
+  fonts: Set<string>;
+  color: string;
+  italic: boolean;
+  underline: boolean;
+  strike: boolean;
+};
+
+const FONT_TWINS: Record<string, string[]> = {
+  'times new roman': ['liberation serif'],
+  'liberation serif': ['times new roman'],
+  arial: ['liberation sans'],
+  'liberation sans': ['arial'],
+};
+
+// baseRun = docDefaults ← the paragraph style's basedOn chain, i.e. exactly what the
+// style gives its runs.
+function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDefault: boolean): BlockDefaults {
+  const fonts = new Set(headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS);
+  const family = baseRun.font?.toLowerCase();
+  if (family) {
+    fonts.add(family);
+    for (const twin of FONT_TWINS[family] ?? []) fonts.add(twin);
+  }
+  return {
+    fontSizePt: baseRun.sizeHalfPt != null ? baseRun.sizeHalfPt / 2
+      : headingLevel != null ? HEADING_SIZES[headingLevel - 1] : BODY_FONT_SIZE_PT,
+    boldByDefault: baseRun.bold ?? (headingLevel != null || boldByDefault),
+    fonts,
+    color: hexColor(baseRun.color) ?? '#000000',
+    italic: !!baseRun.italic,
+    underline: !!baseRun.underline,
+    strike: !!baseRun.strike,
+  };
+}
+
+// The style a paragraph names, else Word's default paragraph style.
+function styleIdOf(ppr: Element | null, ctx: Ctx): string | null {
+  const ps = fc(ppr, 'pStyle');
+  return (ps ? wVal(ps) : null) ?? ctx.styles.defaultParagraphStyle();
+}
+
+// Word's own names for the standard styles map onto the editor's registry names.
+// `isDefault` marks the document's default paragraph style (Word calls it Normal,
+// LibreOffice writes styleId "Standard" with the name "Normal").
+function registryName(id: string, wordName: string, isDefault: boolean): string {
+  if (isDefault || id === 'Normal' || /^normal$/i.test(wordName)) return DEFAULT_STYLE;
+  const heading = /^Heading\s?([1-9])$/i.exec(id) ?? /^heading\s?([1-9])$/i.exec(wordName);
+  if (heading) return `Heading ${heading[1]}`;
+  if (/^Title$/i.test(id)) return 'Title';
+  if (/^Subtitle$/i.test(id)) return 'Subtitle';
+  if (/^Quote$/i.test(id) || /^Quotations?$/i.test(id)) return 'Quotations';
+  return wordName || id;
+}
+
+// What a style declares itself: its resolved props minus the parent's.
+function ownProps<T extends object>(resolved: T, parent: T): T {
+  const out = {} as T;
+  for (const key of Object.keys(resolved) as (keyof T)[]) {
+    if (resolved[key] !== undefined && resolved[key] !== parent[key]) out[key] = resolved[key];
+  }
+  return out;
+}
+
+function stylePara(ctx: Ctx, id: string | null): ParaProps {
+  if (!id) return {};
+  const out: ParaProps = {};
+  const sp = ctx.styles.paragraphSpacing(id);
+  if (sp.before != null) out.spaceBefore = snapPt(twipToPt(sp.before));
+  if (sp.after != null) out.spaceAfter = snapPt(twipToPt(sp.after));
+  if (sp.line != null && (!sp.lineRule || sp.lineRule === 'auto')) {
+    const mult = round2(sp.line / 240);
+    if (Math.abs(mult - 1) > 0.01) out.lineHeight = String(mult);
+  }
+  const jc = ctx.styles.paragraphAlign(id);
+  if (jc === 'center') out.textAlign = 'center';
+  else if (jc === 'both' || jc === 'distribute') out.textAlign = 'justify';
+  else if (jc === 'right' || jc === 'end') out.textAlign = 'right';
+  else if (jc === 'left' || jc === 'start') out.textAlign = 'left';
+  const ind = ctx.styles.styleIndentTwip(id);
+  if (ind != null) out.indent = round2(twipToCm(ind));
+  return out;
+}
+
+function styleText(ctx: Ctx, id: string | null): TextProps {
+  if (!id) return {};
+  const run = ctx.styles.paragraphRun(id);
+  const out: TextProps = {};
+  // Our own export declares the metric twin; keep the registry on the on-screen name.
+  if (run.font) out.fontFamily = run.font === 'Times New Roman' ? 'Liberation Serif' : run.font;
+  if (run.sizeHalfPt != null) out.fontSizePt = Math.round((run.sizeHalfPt / 2) * 10) / 10;
+  if (run.bold != null) out.bold = run.bold;
+  if (run.italic != null) out.italic = run.italic;
+  if (run.underline != null) out.underline = run.underline;
+  if (run.strike != null) out.strike = run.strike;
+  const color = hexColor(run.color);
+  if (color) out.color = color;
+  return out;
+}
+
+// The document's style registry: the built-ins with the file's own definitions merged
+// over them — only the styles blocks reference, plus their parent chains.
+function collectStyleSheet(ctx: Ctx): StyleSheet {
+  const defs = ctx.styles.namedParagraphStyles();
+  const sheet = builtinStyleSheet();
+  const keep = new Set<string>();
+  for (const id of ctx.usedStyles) {
+    let cur: string | null = id;
+    const seen = new Set<string>();
+    while (cur && defs.has(cur) && !seen.has(cur)) {
+      seen.add(cur);
+      keep.add(cur);
+      cur = defs.get(cur)!.basedOn;
+    }
+  }
+  for (const id of keep) {
+    const def = defs.get(id)!;
+    const name = ctx.styleNames.get(id) ?? def.name;
+    const parentId = def.basedOn;
+    const parent = parentId ? ctx.styleNames.get(parentId) ?? parentId : null;
+    const builtin = sheet.paragraph[name];
+    const style: Style = {
+      name,
+      parent: parent && parent !== name ? parent : builtin?.parent ?? null,
+      next: builtin?.next ?? null,
+      builtin: builtin?.builtin,
+      para: ownProps(stylePara(ctx, id), stylePara(ctx, parentId)),
+      text: ownProps(styleText(ctx, id), styleText(ctx, parentId)),
+    };
+    const level = /^Heading (\d)$/.exec(name);
+    if (level) style.outlineLevel = Number(level[1]);
+    sheet.paragraph[name] = style;
+  }
+  return sheet;
+}
+
 function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault: boolean): Node {
   const ppr = fc(el, 'pPr');
   const pStyle = fc(ppr, 'pStyle');
@@ -499,13 +643,21 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // paragraph style commonly carries justify), so style-level alignment isn't lost.
   const directJc = fc(ppr, 'jc');
   const jcVal = directJc ? wVal(directJc) : ctx.styles.paragraphAlign(pStyle ? wVal(pStyle) : null);
-  // Spacing: a paragraph style's own w:spacing (e.g. "No Spacing" after=0) is honored so
-  // it isn't lost to the editor default; direct w:pPr wins per attribute (in blockAttrs).
-  // Headings included — a heading style's spacing is the file's, not ours to override.
-  const styleSpacing = ctx.styles.paragraphSpacing(pStyle ? wVal(pStyle) : null);
-  const attrs = blockAttrs(ppr, kind, level, jcVal, styleSpacing);
-  const baseRun = ctx.styles.paragraphRun(pStyle ? wVal(pStyle) : null);
-  const content = convertInline(el, ctx, baseRun, level, false, boldByDefault);
+  // Spacing/alignment from the style now live in the style registry, so only DIRECT
+  // w:pPr counts as formatting on the block.
+  const attrs = blockAttrs(ppr, kind, level, directJc ? jcVal : null, {});
+  const styleId = styleIdOf(ppr, ctx);
+  const baseRun = ctx.styles.paragraphRun(styleId);
+  const defaults = blockDefaults(baseRun, level, boldByDefault);
+  const content = convertInline(el, ctx, baseRun, defaults, false);
+
+  if (styleId && kind === 'body') {
+    const name = ctx.styleNames.get(styleId);
+    if (name) {
+      ctx.usedStyles.add(styleId);
+      if (name !== (level ? `Heading ${level}` : DEFAULT_STYLE)) attrs.styleName = name;
+    }
+  }
 
   // An empty line's height comes from the paragraph mark's own run props (w:pPr/w:rPr),
   // which convertInline never sees (there are no runs). Carry its font size as a block
@@ -631,7 +783,7 @@ function snapPt(v: number): number {
 }
 
 // ---- inline conversion (runs, marks, fields, images) -----------------------
-function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: number | null, hfFields: boolean, boldByDefault: boolean): Node[] {
+function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockDefaults, hfFields: boolean): Node[] {
   const out: Node[] = [];
   let fieldMode: 'none' | 'instr' | 'result' = 'none';
   let fieldInstr = '';
@@ -657,9 +809,9 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, headingLevel: nu
     // default) — Word's implicit default is the minor font for body text, the major one
     // for headings.
     if (!props.font) {
-      props.font = ctx.styles.themeFont(props.fontTheme ?? (headingLevel == null ? 'minor' : 'major'));
+      props.font = ctx.styles.themeFont(props.fontTheme ?? (defaults.boldByDefault ? 'major' : 'minor'));
     }
-    const marks = marksFor(props, headingLevel, boldByDefault, !!linkHref);
+    const marks = marksFor(props, defaults, !!linkHref);
     if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
     return marks;
   };
@@ -809,20 +961,21 @@ function hardBreakNode(marks: Mark[]): Node {
   return n;
 }
 
-function marksFor(props: RunProps, headingLevel: number | null, boldByDefault: boolean, inLink: boolean): Mark[] {
+function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Mark[] {
   const marks: Mark[] = [];
   const textStyle: Record<string, unknown> = {};
 
   // Headings and header-row cells render bold via CSS: only a non-bold run needs a mark.
-  if (headingLevel != null || boldByDefault) {
+  if (defaults.boldByDefault) {
     if (props.bold === false) textStyle.fontWeight = 'normal';
   } else if (props.bold === true) {
     marks.push({ type: 'bold' });
   }
 
-  if (props.italic) marks.push({ type: 'italic' });
-  if (props.underline && !inLink) marks.push({ type: 'underline' }); // link underline is the CSS default
-  if (props.strike) marks.push({ type: 'strike' });
+  // Marks the block's named style already renders need no mark of their own.
+  if (props.italic && !defaults.italic) marks.push({ type: 'italic' });
+  if (props.underline && !inLink && !defaults.underline) marks.push({ type: 'underline' }); // link underline is the CSS default
+  if (props.strike && !defaults.strike) marks.push({ type: 'strike' });
   if (props.vertAlign === 'superscript') marks.push({ type: 'superscript' });
   else if (props.vertAlign === 'subscript') marks.push({ type: 'subscript' });
 
@@ -830,14 +983,12 @@ function marksFor(props: RunProps, headingLevel: number | null, boldByDefault: b
 
   let color = hexColor(props.color);
   if (inLink && color === LINK_BLUE) color = undefined; // strip the exporter's link visual
-  if (color && color !== '#000000') textStyle.color = color;
+  if (color && color !== defaults.color) textStyle.color = color;
 
   const sizePt = props.sizeHalfPt != null ? props.sizeHalfPt / 2 : null;
-  const defSize = headingLevel != null ? HEADING_SIZES[headingLevel - 1] : BODY_FONT_SIZE_PT;
-  if (sizePt != null && Math.abs(sizePt - defSize) > 0.05) textStyle.fontSize = `${Math.round(sizePt * 10) / 10}pt`;
+  if (sizePt != null && Math.abs(sizePt - defaults.fontSizePt) > 0.05) textStyle.fontSize = `${Math.round(sizePt * 10) / 10}pt`;
 
-  const defaultFonts = headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS;
-  if (props.font && !defaultFonts.has(props.font.toLowerCase())) textStyle.fontFamily = props.font;
+  if (props.font && !defaults.fonts.has(props.font.toLowerCase())) textStyle.fontFamily = props.font;
 
   if (Object.keys(textStyle).length) marks.push({ type: 'textStyle', attrs: textStyle });
   return marks;
@@ -1286,7 +1437,7 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
     }
     boxMaps.push(readParaBox(ppr));
     const baseRun = hfCtx.styles.paragraphRun(fc(ppr, 'pStyle') ? wVal(fc(ppr, 'pStyle')!) : null);
-    inline.push(...convertInline(p, hfCtx, baseRun, null, true, false).filter((n) => n.type !== PB_MARKER));
+    inline.push(...convertInline(p, hfCtx, baseRun, blockDefaults(baseRun, null, false), true).filter((n) => n.type !== PB_MARKER));
   }
   // An all-empty zone is dropped unless it carries a background/rule line (a footer that
   // is just a colored line has no text). The zone collapses to one paragraph (mergeHfBox).

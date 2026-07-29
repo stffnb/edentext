@@ -550,7 +550,7 @@
     try {
       const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       const { buildDocx } = await import('./lib/export/docx');
-      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat);
+      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet());
       await saveAsDocx(bytes, suggestedFilenameDocx(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;

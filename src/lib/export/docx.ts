@@ -2,7 +2,7 @@ import {
   Document, Packer, Paragraph, TextRun, ImageRun, ExternalHyperlink, Tab,
   TableOfContents,
   Table, TableRow, TableCell, Header, Footer, PageNumber, SimpleField,
-  AlignmentType, HeadingLevel, LevelFormat, UnderlineType, BorderStyle, ShadingType,
+  AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
   WidthType, HeightRule, PageOrientation, LineRuleType, TableLayoutType, SectionType,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
   TextWrappingType, TextWrappingSide,
@@ -10,7 +10,7 @@ import {
 import type { TiptapNode } from 'odf-kit';
 import type {
   IRunStylePropertiesOptions, ISpacingProperties, IIndentAttributesProperties,
-  ILevelsOptions, IFloating, IBorderOptions,
+  ILevelsOptions, IFloating, IBorderOptions, IParagraphStyleOptions,
 } from 'docx';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -22,7 +22,8 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
-import { normalizeColor, HEADING_STYLE_OVERRIDES, HEADING_FONT, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, type HfExport } from './odt';
+import { normalizeColor, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, type HfExport } from './odt';
+import { builtinStyleSheet, DEFAULT_STYLE, type Style, type StyleSheet } from '../styles/styleSheet';
 import { findFormat, renderFormat, docxPicture, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../utils/dateTime';
 
 // BCP-47 tag for rendering a fixed field's cached text; set at buildDocx start from
@@ -573,10 +574,6 @@ function spacingOf(attrs: TiptapNode['attrs']): ISpacingProperties | undefined {
   return Object.keys(s).length ? s : undefined;
 }
 
-const HEADING_LEVEL: Record<number, (typeof HeadingLevel)[keyof typeof HeadingLevel]> = {
-  1: HeadingLevel.HEADING_1, 2: HeadingLevel.HEADING_2, 3: HeadingLevel.HEADING_3,
-  4: HeadingLevel.HEADING_4, 5: HeadingLevel.HEADING_5,
-};
 
 type ParaOpts = { numbering?: { reference: string; level: number }; indentLeftTwip?: number; forceBold?: boolean };
 
@@ -602,11 +599,12 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     if (typeof attrs.indent === 'number' && attrs.indent > 0) indent.left = cmToTwip(attrs.indent);
     else if (opts.indentLeftTwip) indent.left = opts.indentLeftTwip;
   }
-  const heading = node.type === 'heading' ? HEADING_LEVEL[Math.min(MAX_HEADING_LEVEL, Math.max(1, Number(attrs.level) || 1))] : undefined;
+  // The block's named style (a heading style id is what HeadingLevel references anyway).
+  const style = docxStyleId(styleOf(node));
   // Paragraph-mark run props carry an empty line's font size (see import/docx.ts).
   const markSize = typeof attrs.fontSize === 'string' ? fontSizeToHalfPoints(attrs.fontSize) : undefined;
   return new Paragraph({
-    heading,
+    style,
     alignment: alignOf(attrs),
     spacing: spacingOf(attrs),
     indent: indent.left != null ? indent : undefined,
@@ -825,26 +823,81 @@ function bodyGroups(content: TiptapNode[], num: Numbering, contentWidthCm: numbe
   return groups;
 }
 
+// The style name a block carries: its own, else the node type's default.
+function styleOf(node: TiptapNode): string {
+  const own = node.attrs?.styleName;
+  if (typeof own === 'string' && own) return own;
+  return node.type === 'heading' ? `Heading ${(node.attrs?.level as number) ?? 1}` : DEFAULT_STYLE;
+}
+
+// Styles to define in the file: the built-ins (Word defines its standard styles too)
+// plus the user styles the document references, each with its parent chain.
+function usedStyleNames(doc: TiptapNode, sheet: StyleSheet): Set<string> {
+  const used = new Set<string>();
+  const addChain = (name: string) => {
+    let cur: string | null | undefined = name;
+    while (cur && sheet.paragraph[cur] && !used.has(cur)) {
+      used.add(cur);
+      cur = sheet.paragraph[cur].parent;
+    }
+  };
+  for (const style of Object.values(sheet.paragraph)) if (style.builtin) addChain(style.name);
+  const walk = (node: TiptapNode) => {
+    if (node.type === 'paragraph' || node.type === 'heading') addChain(styleOf(node));
+    node.content?.forEach(walk);
+  };
+  walk(doc);
+  return used;
+}
+
 // ---- document styles -------------------------------------------------------
-function headingStyle(o: { fontSize: string; marginTop: string; marginBottom: string }) {
+// Word style ids are XML names; "Heading 1" → "Heading1" (which is also what
+// HeadingLevel.HEADING_1 references), "Standard" → Word's own default style "Normal".
+export function docxStyleId(name: string): string {
+  return name === DEFAULT_STYLE ? 'Normal' : name.replace(/[^A-Za-z0-9]/g, '');
+}
+
+// One registry style → a Word paragraph style with its parent chain.
+function paragraphStyleOf(style: Style): IParagraphStyleOptions {
+  const p = style.para;
+  const t = style.text;
+  const run: Writable<IRunStylePropertiesOptions> = {};
+  // Liberation Serif is the on-screen name; the file declares its metric twin.
+  if (t.fontFamily) run.font = t.fontFamily === 'Liberation Serif' ? DOC_FONT : t.fontFamily;
+  if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
+  if (t.bold != null) run.bold = t.bold;
+  if (t.italic != null) run.italics = t.italic;
+  if (t.underline) run.underline = {};
+  if (t.strike) run.strike = t.strike;
+  if (t.color) run.color = t.color.replace('#', '');
+  const spacing: Record<string, number> = {};
+  if (p.spaceBefore != null) spacing.before = ptToTwip(p.spaceBefore);
+  if (p.spaceAfter != null) spacing.after = ptToTwip(p.spaceAfter);
+  const paragraph: Record<string, unknown> = {};
+  if (Object.keys(spacing).length) paragraph.spacing = { ...spacing, line: 240, lineRule: LineRuleType.AUTO };
+  if (p.textAlign) paragraph.alignment = alignOf({ textAlign: p.textAlign });
+  if (p.indent != null) paragraph.indent = { left: cmToTwip(p.indent) };
+  if (style.outlineLevel) paragraph.keepNext = true;
   return {
-    run: { bold: true, color: '000000', font: HEADING_FONT, size: Math.round(parseFloat(o.fontSize) * 2) },
-    paragraph: { spacing: { before: cmToTwip(parseFloat(o.marginTop)), after: cmToTwip(parseFloat(o.marginBottom)), line: 240, lineRule: LineRuleType.AUTO }, keepNext: true },
+    id: docxStyleId(style.name),
+    name: style.name,
+    basedOn: style.parent ? docxStyleId(style.parent) : undefined,
+    next: style.next ? docxStyleId(style.next) : undefined,
+    quickFormat: true,
+    run: Object.keys(run).length ? run : undefined,
+    paragraph: Object.keys(paragraph).length ? paragraph : undefined,
   };
 }
 
-function buildStyles(language?: { language: string; country: string } | null) {
+function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language: string; country: string } | null) {
   const run: Writable<IRunStylePropertiesOptions> = { font: DOC_FONT, size: 24 };
   if (language) run.language = { value: `${language.language}-${language.country}` };
   return {
     default: {
       document: { run, paragraph: { spacing: { after: 0, line: 240, lineRule: LineRuleType.AUTO } } },
-      heading1: headingStyle(HEADING_STYLE_OVERRIDES[0]),
-      heading2: headingStyle(HEADING_STYLE_OVERRIDES[1]),
-      heading3: headingStyle(HEADING_STYLE_OVERRIDES[2]),
-      heading4: headingStyle(HEADING_STYLE_OVERRIDES[3]),
-      heading5: headingStyle(HEADING_STYLE_OVERRIDES[4]),
     },
+    // The document's named styles, chain intact — Word shows them in its style list.
+    paragraphStyles: Object.values(sheet.paragraph).filter(st => used.has(st.name)).map(paragraphStyleOf),
   };
 }
 
@@ -856,6 +909,7 @@ export async function buildDocx(
   hf?: HfExport,
   language?: { language: string; country: string } | null,
   pageFormat: PageFormat = 'A4',
+  styles: StyleSheet = builtinStyleSheet(),
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   const num = new Numbering();
@@ -920,7 +974,7 @@ export async function buildDocx(
     defaultTabStop: cmToTwip(1.25),
     ...(differentOddEven ? { evenAndOddHeaderAndFooters: true } : {}),
     ...(hasToc ? { features: { updateFields: true } } : {}),
-    styles: buildStyles(language),
+    styles: buildStyles(styles, usedStyleNames(docJson, styles), language),
     numbering: { config: num.config },
     // A columns group is its own section; w:type=continuous describes the break
     // BEFORE a section, so it goes on every section but the first.

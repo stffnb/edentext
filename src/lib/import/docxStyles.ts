@@ -97,6 +97,8 @@ export class DocxStyles {
   private ownOutline = new Map<string, number>(); // style's own w:outlineLvl (heading marker)
   private ownAlign = new Map<string, string>(); // style's own w:pPr/w:jc
   private ownSpacing = new Map<string, ParaSpacing>(); // style's own w:pPr/w:spacing
+  private ownIndentTwip = new Map<string, number>(); // style's own w:pPr/w:ind left
+  private paraStyleNames = new Map<string, string>(); // paragraph styleId → w:name
   private defaultParaStyle: string | null = null; // the w:default="1" paragraph style
   private defaultsAlign: string | null = null; // docDefaults w:pPrDefault/w:jc
   private defaultsSpacing: ParaSpacing = {}; // docDefaults w:pPrDefault/w:spacing
@@ -156,7 +158,37 @@ export class DocxStyles {
       if (jc) { const v = wVal(jc); if (v) this.ownAlign.set(id, v); }
       const sp = ppr && firstChild(ppr, 'spacing');
       if (sp) this.ownSpacing.set(id, readSpacing(sp));
+      const ind = ppr && firstChild(ppr, 'ind');
+      if (ind) {
+        const left = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10);
+        if (Number.isFinite(left)) this.ownIndentTwip.set(id, left);
+      }
+      if (style.getAttributeNS(W, 'type') === 'paragraph') {
+        const nameEl = firstChild(style, 'name');
+        this.paraStyleNames.set(id, (nameEl && wVal(nameEl)) || id);
+      }
     }
+  }
+
+  // Paragraph styles defined in the file: display name and parent, for the style registry.
+  namedParagraphStyles(): Map<string, { name: string; basedOn: string | null }> {
+    const out = new Map<string, { name: string; basedOn: string | null }>();
+    for (const [id, name] of this.paraStyleNames) out.set(id, { name, basedOn: this.basedOn.get(id) ?? null });
+    return out;
+  }
+
+  // The style's effective left indent (twips) along the basedOn chain.
+  styleIndentTwip(styleId: string | null | undefined, seen = new Set<string>()): number | null {
+    if (!styleId || seen.has(styleId)) return null;
+    seen.add(styleId);
+    const own = this.ownIndentTwip.get(styleId);
+    if (own != null) return own;
+    return this.styleIndentTwip(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // The style Word applies when a paragraph names none.
+  defaultParagraphStyle(): string | null {
+    return this.defaultParaStyle;
   }
 
   private parseNumbering(doc: Document): void {
