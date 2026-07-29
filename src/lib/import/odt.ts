@@ -1,6 +1,7 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
+import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
@@ -52,6 +53,9 @@ export interface OdtImportResult {
   language: DocumentLanguage | null;
   // Fonts embedded in the package, to register via FontFace so they render.
   fonts: EmbeddedFont[];
+  // The document's named paragraph styles: the file's own (only those it uses, plus
+  // their parent chains) merged over the editor's built-ins.
+  styles: StyleSheet;
   warnings: string[];
 }
 
@@ -65,6 +69,10 @@ type BlockKind = 'body' | 'list' | 'cell';
 // they are block nodes, so convertBlocks flushes them after the anchor paragraph.
 type Ctx = {
   resolver: StyleResolver;
+  // ODF style name → display name, and the names blocks actually reference: the
+  // document's style registry is built from these (only used styles are kept).
+  styleNames: Map<string, string>;
+  usedStyles: Set<string>;
   warnings: Set<string>;
   files: Record<string, Uint8Array>;
   imageCache: Map<string, string>;
@@ -335,7 +343,9 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const body = contentDoc.getElementsByTagNameNS(NS.office, 'text')[0];
   if (!body) throw new Error('Not a text document (no office:text body).');
 
-  const ctx: Ctx = { resolver, warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [] };
+  const styleNames = new Map<string, string>();
+  for (const [name, def] of resolver.namedParagraphStyles()) styleNames.set(name, displayStyleName(name, def.display));
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [] };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 
@@ -401,6 +411,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     footerDistanceCm: hasFooter ? edge?.bottom ?? null : null,
     language,
     fonts,
+    styles: collectStyleSheet(resolver, ctx),
     warnings: [...warnings],
   };
 }
@@ -421,7 +432,7 @@ function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
       if (textAlign === null) textAlign = ''; // only the first paragraph decides
     }
     boxMaps.push(paraBoxAttrs(ctx.resolver.paraProps(styleName)));
-    inline.push(...convertInline(p, ctx, ctx.resolver.paraTextProps(styleName), null, true));
+    inline.push(...convertInline(p, ctx, ctx.resolver.paraTextProps(styleName), blockDefaults(ctx.resolver, null, null, false), true));
   };
 
   for (const child of Array.from(zoneEl.children)) {
@@ -617,6 +628,170 @@ function tocEntryTextAndPage(p: Element): { text: string; page: string } {
   return { text: before.trim(), page: after.trim() };
 }
 
+// What a block's named style already gives it — the yardstick for "is this direct
+// formatting?". Without a style in the file, the editor's own defaults stand in.
+type BlockDefaults = {
+  fontSizePt: number;
+  marginTopPt: number;
+  marginBottomPt: number;
+  indentPt: number;
+  boldByDefault: boolean;
+  fonts: Set<string>;
+  color: string;
+  // Marks the style already provides. A run that opts *out* of one can't be expressed
+  // (only bold has fontWeight:'normal'), so it keeps the style's rendering.
+  // ponytail: per-mark "off" overrides need mark attrs like fontWeight's; add if files need it.
+  italic: boolean;
+  underline: boolean;
+  strike: boolean;
+};
+
+// Metric twins: the on-screen font and the name we declare in files mean the same thing.
+const FONT_TWINS: Record<string, string[]> = {
+  'times new roman': ['liberation serif'],
+  'liberation serif': ['times new roman'],
+  arial: ['liberation sans'],
+  'liberation sans': ['arial'],
+};
+
+function blockDefaults(resolver: StyleResolver, named: string | null, headingLevel: number | null, boldByDefault: boolean): BlockDefaults {
+  const hdef = headingLevel != null ? HEADING_DEFAULTS[headingLevel - 1] : null;
+  const fallback: BlockDefaults = {
+    fontSizePt: hdef ? hdef.fontSizePt : BODY_FONT_SIZE_PT,
+    marginTopPt: hdef ? hdef.marginTopPt : 0,
+    marginBottomPt: hdef ? hdef.marginBottomPt : 0,
+    indentPt: 0,
+    boldByDefault: headingLevel != null || boldByDefault,
+    fonts: new Set(headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS),
+    color: '#000000',
+    italic: false,
+    underline: false,
+    strike: false,
+  };
+  if (!named) return fallback;
+  const para = resolver.paraProps(named);
+  const text = resolver.paraTextProps(named);
+  const family = resolver.fontFamilyOf(text)?.toLowerCase();
+  const fonts = new Set(fallback.fonts);
+  if (family) {
+    fonts.add(family);
+    for (const twin of FONT_TWINS[family] ?? []) fonts.add(twin);
+  }
+  const weight = text['fo:font-weight'];
+  const fontStyle = text['fo:font-style'];
+  return {
+    fontSizePt: lengthToPt(text['fo:font-size']) ?? fallback.fontSizePt,
+    marginTopPt: lengthToPt(para['fo:margin-top']) ?? 0,
+    marginBottomPt: lengthToPt(para['fo:margin-bottom']) ?? 0,
+    indentPt: lengthToPt(para['fo:margin-left']) ?? 0,
+    boldByDefault: weight ? weight === 'bold' || parseInt(weight, 10) >= 600 : fallback.boldByDefault,
+    fonts,
+    color: (text['fo:color'] && normalizeColor(text['fo:color'])) || fallback.color,
+    italic: fontStyle === 'italic' || fontStyle === 'oblique',
+    underline: !!text['style:text-underline-style'] && text['style:text-underline-style'] !== 'none',
+    strike: !!text['style:text-line-through-style'] && text['style:text-line-through-style'] !== 'none',
+  };
+}
+
+// ODF encodes spaces as _20_; a style:display-name (when present) is authoritative.
+function displayStyleName(odfName: string, display?: string): string {
+  return display || odfName.replace(/_20_/g, ' ');
+}
+
+function paraPropsFromOdf(props: PropMap): ParaProps {
+  const out: ParaProps = {};
+  const ta = props['fo:text-align'];
+  if (ta === 'center' || ta === 'justify') out.textAlign = ta;
+  else if (ta === 'right' || ta === 'end') out.textAlign = 'right';
+  else if (ta === 'left' || ta === 'start') out.textAlign = 'left';
+  const mt = lengthToPt(props['fo:margin-top']);
+  const mb = lengthToPt(props['fo:margin-bottom']);
+  const ml = lengthToCm(props['fo:margin-left']);
+  if (mt != null) out.spaceBefore = snapPt(mt);
+  if (mb != null) out.spaceAfter = snapPt(mb);
+  if (ml != null) out.indent = Math.round(ml * 100) / 100;
+  const lh = props['fo:line-height'];
+  if (lh && lh.endsWith('%')) {
+    const mult = parseFloat(lh) / 100 / LINE_HEIGHT_RATIO;
+    if (Number.isFinite(mult)) out.lineHeight = String(Math.round(mult * 100) / 100);
+  }
+  const bg = props['fo:background-color'];
+  if (bg && bg !== 'transparent') out.backgroundColor = normalizeColor(bg) ?? undefined;
+  for (const [key, side] of [['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left']] as const) {
+    const v = props[`fo:border-${side}`] ?? props['fo:border'];
+    if (v && v !== 'none') out[key] = borderAttrFromOdf(v) ?? undefined;
+  }
+  return out;
+}
+
+function textPropsFromOdf(props: PropMap, resolver: StyleResolver): TextProps {
+  const out: TextProps = {};
+  const family = resolver.fontFamilyOf(props);
+  // Our own export declares the metric twin; keep the registry on the on-screen name
+  // so an export→import loop doesn't drift.
+  if (family) out.fontFamily = family === 'Times New Roman' ? 'Liberation Serif' : family;
+  const size = lengthToPt(props['fo:font-size']);
+  if (size != null) out.fontSizePt = Math.round(size * 10) / 10;
+  const weight = props['fo:font-weight'];
+  if (weight) out.bold = weight === 'bold' || parseInt(weight, 10) >= 600;
+  const style = props['fo:font-style'];
+  if (style) out.italic = style === 'italic' || style === 'oblique';
+  const ul = props['style:text-underline-style'];
+  if (ul) out.underline = ul !== 'none';
+  const lt = props['style:text-line-through-style'];
+  if (lt) out.strike = lt !== 'none';
+  const color = props['fo:color'] ? normalizeColor(props['fo:color']) : undefined;
+  if (color) out.color = color;
+  return out;
+}
+
+// What a style declares itself: its resolved props minus the parent's.
+function ownProps<T extends object>(resolved: T, parent: T): T {
+  const out = {} as T;
+  for (const key of Object.keys(resolved) as (keyof T)[]) {
+    if (resolved[key] !== undefined && resolved[key] !== parent[key]) out[key] = resolved[key];
+  }
+  return out;
+}
+
+// The document's style registry: the editor's built-ins, with the file's own definitions
+// merged over them — only the styles blocks actually reference, plus their parent chains.
+function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
+  const defs = resolver.namedParagraphStyles();
+  const sheet = builtinStyleSheet();
+  const keep = new Set<string>();
+  for (const name of ctx.usedStyles) {
+    let cur: string | null = name;
+    const seen = new Set<string>();
+    while (cur && defs.has(cur) && !seen.has(cur)) {
+      seen.add(cur);
+      keep.add(cur);
+      cur = defs.get(cur)!.parent;
+    }
+  }
+  for (const odfName of keep) {
+    const def = defs.get(odfName)!;
+    const name = displayStyleName(odfName, def.display);
+    const parent = def.parent ? displayStyleName(def.parent, defs.get(def.parent)?.display) : null;
+    const builtin = sheet.paragraph[name];
+    // Own props = resolved minus the parent's resolved values. Going through the
+    // resolver keeps relative sizes ("130%") and values a file repeats from its parent
+    // from landing here raw.
+    const style: Style = {
+      name,
+      parent: parent && parent !== name ? parent : builtin?.parent ?? null,
+      next: builtin?.next ?? null,
+      builtin: builtin?.builtin,
+      para: ownProps(paraPropsFromOdf(resolver.paraProps(odfName)), paraPropsFromOdf(def.parent ? resolver.paraProps(def.parent) : {})),
+      text: ownProps(textPropsFromOdf(resolver.paraTextProps(odfName), resolver), textPropsFromOdf(def.parent ? resolver.paraTextProps(def.parent) : {}, resolver)),
+    };
+    const level = /^Heading (\d)$/.exec(name);
+    if (level) style.outlineLevel = Number(level[1]);
+    sheet.paragraph[name] = style;
+  }
+  return sheet;
+}
+
 function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault = false): Node {
   const { resolver } = ctx;
   const styleName = el.getAttributeNS(NS.text, 'style-name');
@@ -630,19 +805,30 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
     level = Math.min(MAX_HEADING_LEVEL, Math.max(1, Number.isFinite(raw) ? raw : 1));
   }
 
-  const attrs = blockAttrs(paraProps, baseTextProps, isHeading ? level : null, kind);
-  const content = convertInline(el, ctx, baseTextProps, isHeading ? level : null, false, boldByDefault);
+  // The file's own named style for this block (an automatic style is direct formatting
+  // layered on top of it); everything it already provides is not direct formatting.
+  const named = resolver.namedAncestor(styleName);
+  const defaults = blockDefaults(resolver, named, isHeading ? level : null, boldByDefault);
+
+  const attrs = blockAttrs(paraProps, baseTextProps, defaults, kind);
+  const content = convertInline(el, ctx, baseTextProps, defaults, false);
 
   // An empty line has no runs, so its height comes from the paragraph style's own
   // font size; carry it as a block attr (mirrors the docx paragraph-mark size).
   if (content.length === 0) {
     const sizePt = lengthToPt(baseTextProps['fo:font-size']);
-    const defSize = isHeading ? HEADING_DEFAULTS[level - 1].fontSizePt : BODY_FONT_SIZE_PT;
-    if (sizePt != null && Math.abs(sizePt - defSize) > 0.05) attrs.fontSize = formatPt(sizePt);
+    if (sizePt != null && Math.abs(sizePt - defaults.fontSizePt) > 0.05) attrs.fontSize = formatPt(sizePt);
   }
 
   const node: Node = { type: isHeading ? 'heading' : 'paragraph' };
   if (isHeading) attrs.level = level;
+  // Only top-level blocks carry a style: list items and cells reference the producer's
+  // own plumbing styles (List_20_Bullet, Table_20_Contents), which are not user styles.
+  if (named && kind === 'body') {
+    const display = ctx.styleNames.get(named) ?? named;
+    ctx.usedStyles.add(named);
+    if (display !== (isHeading ? `Heading ${level}` : DEFAULT_STYLE)) attrs.styleName = display;
+  }
   if (Object.keys(attrs).length) node.attrs = attrs;
   if (content.length) node.content = content;
   return node;
@@ -650,9 +836,8 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
 
 // textAlign / lineHeight / spaceBefore / spaceAfter from resolved paragraph
 // props, suppressing values that match the editor's defaults for this context.
-function blockAttrs(paraProps: PropMap, textProps: PropMap, headingLevel: number | null, kind: BlockKind): Record<string, unknown> {
+function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefaults, kind: BlockKind): Record<string, unknown> {
   const attrs: Record<string, unknown> = {};
-  const hdef = headingLevel != null ? HEADING_DEFAULTS[headingLevel - 1] : null;
 
   const ta = paraProps['fo:text-align'];
   if (ta === 'center' || ta === 'justify') attrs.textAlign = ta;
@@ -667,7 +852,7 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, headingLevel: number
     } else {
       // Fixed line height: best-effort multiplier against the resolved font size.
       const pt = lengthToPt(lh);
-      const fontPt = lengthToPt(textProps['fo:font-size']) ?? hdef?.fontSizePt ?? BODY_FONT_SIZE_PT;
+      const fontPt = lengthToPt(textProps['fo:font-size']) ?? defaults.fontSizePt;
       if (pt != null && fontPt > 0) mult = pt / (fontPt * LINE_HEIGHT_RATIO);
     }
     if (mult != null) {
@@ -676,8 +861,8 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, headingLevel: number
     }
   }
 
-  const defTop = hdef ? hdef.marginTopPt : 0;
-  const defBottom = hdef ? hdef.marginBottomPt : 0;
+  const defTop = defaults.marginTopPt;
+  const defBottom = defaults.marginBottomPt;
   // An unspecified fo:margin is ODF's default of 0, which is also the editor's
   // paragraph default — so it is suppressed, and a file that does declare spacing
   // (e.g. LO's 0.212cm Text Body) keeps it as an explicit value.
@@ -687,10 +872,11 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, headingLevel: number
   if (Math.abs(mb - defBottom) > EPS_PT) attrs.spaceAfter = snapPt(mb);
 
   // Left indent → fo:margin-left (cm). Skip lists: their indent lives in the
-  // list-style level properties, not paraProps. Default 0 is suppressed.
+  // list-style level properties, not paraProps. What the style already indents is not
+  // direct formatting.
   if (kind !== 'list') {
-    const ml = lengthToPt(paraProps['fo:margin-left']);
-    if (ml != null && ml > EPS_PT) attrs.indent = Math.round((ml / 72) * 2.54 * 100) / 100;
+    const ml = lengthToPt(paraProps['fo:margin-left']) ?? 0;
+    if (Math.abs(ml - defaults.indentPt) > EPS_PT) attrs.indent = Math.round((ml / 72) * 2.54 * 100) / 100;
   }
 
   // Manual page break (fo:break-before). Honored for top-level blocks only
@@ -811,7 +997,7 @@ function numberStyleKind(tokens: Token[]): 'date' | 'time' | null {
 
 // ---- inline conversion --------------------------------------------------------
 
-function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel: number | null, hfFields = false, boldByDefault = false): Node[] {
+function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: BlockDefaults, hfFields = false): Node[] {
   const out: Node[] = [];
 
   const pushText = (text: string, props: PropMap, linkHref?: string) => {
@@ -824,7 +1010,7 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
       clean = clean.replace(/[ \t]*\n[ \t]*/g, ' ');
     }
     if (!clean) return;
-    const marks = marksFor(props, ctx.resolver, headingLevel, boldByDefault);
+    const marks = marksFor(props, ctx.resolver, defaults);
     if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
     const node: Node = { type: 'text', text: clean };
     if (marks.length) node.marks = marks;
@@ -855,7 +1041,7 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
             continue;
           case 'line-break': {
             // Carry the run's marks so an empty line between two breaks keeps its font size.
-            const marks = marksFor(props, ctx.resolver, headingLevel, boldByDefault);
+            const marks = marksFor(props, ctx.resolver, defaults);
             const br: Node = { type: 'hardBreak' };
             if (marks.length) br.marks = marks;
             out.push(br);
@@ -884,7 +1070,7 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
             // carries the run's marks so its digits render in the run's font/size.
             if (hfFields && (e.localName === 'page-number' || e.localName === 'page-count')) {
               const field: Node = { type: e.localName === 'page-count' ? 'pageCount' : 'pageNumber' };
-              const marks = marksFor(props, ctx.resolver, headingLevel, boldByDefault);
+              const marks = marksFor(props, ctx.resolver, defaults);
               if (marks.length) field.marks = marks;
               out.push(field);
               continue;
@@ -898,7 +1084,7 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, headingLevel
                 // The field is an atom without inline children, so it can't inherit
                 // the surrounding run's font from a sibling span — carry the run's
                 // marks on the node so it renders in the same font/size/etc.
-                const marks = marksFor(props, ctx.resolver, headingLevel, boldByDefault);
+                const marks = marksFor(props, ctx.resolver, defaults);
                 if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
                 if (marks.length) field.marks = marks;
                 out.push(field);
@@ -952,7 +1138,7 @@ function mergeAdjacentText(nodes: Node[]): Node[] {
   return out;
 }
 
-function marksFor(props: PropMap, resolver: StyleResolver, headingLevel: number | null, boldByDefault = false): Mark[] {
+function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaults): Mark[] {
   const marks: Mark[] = [];
   const textStyle: Record<string, unknown> = {};
 
@@ -960,18 +1146,19 @@ function marksFor(props: PropMap, resolver: StyleResolver, headingLevel: number 
   const bold = weight ? weight === 'bold' || parseInt(weight, 10) >= 600 : null;
   // Headings and header-row cells render bold by default (CSS): only a *non*-bold run
   // needs a mark (fontWeight:normal), and a bold run needs none.
-  if (headingLevel != null || boldByDefault) {
+  if (defaults.boldByDefault) {
     if (bold === false) textStyle.fontWeight = 'normal';
   } else if (bold === true) {
     marks.push({ type: 'bold' });
   }
 
+  // Marks the block's named style already renders need no mark of their own.
   const fs = props['fo:font-style'];
-  if (fs === 'italic' || fs === 'oblique') marks.push({ type: 'italic' });
+  if ((fs === 'italic' || fs === 'oblique') && !defaults.italic) marks.push({ type: 'italic' });
   const ul = props['style:text-underline-style'];
-  if (ul && ul !== 'none') marks.push({ type: 'underline' });
+  if (ul && ul !== 'none' && !defaults.underline) marks.push({ type: 'underline' });
   const lt = props['style:text-line-through-style'];
-  if (lt && lt !== 'none') marks.push({ type: 'strike' });
+  if (lt && lt !== 'none' && !defaults.strike) marks.push({ type: 'strike' });
 
   // "super 58%" / "sub" / bare percentage (positive = raised, negative = lowered).
   const pos = props['style:text-position'];
@@ -992,16 +1179,14 @@ function marksFor(props: PropMap, resolver: StyleResolver, headingLevel: number 
   }
 
   const color = props['fo:color'] ? normalizeColor(props['fo:color']) : undefined;
-  // Pure black is the theme default; an explicit mark would fight dark/allBlack.
-  if (color && color !== '#000000') textStyle.color = color;
+  // The style's own color (black by default; an explicit black mark would fight dark/allBlack).
+  if (color && color !== defaults.color) textStyle.color = color;
 
   const sizePt = lengthToPt(props['fo:font-size']);
-  const defSize = headingLevel != null ? HEADING_DEFAULTS[headingLevel - 1].fontSizePt : BODY_FONT_SIZE_PT;
-  if (sizePt != null && Math.abs(sizePt - defSize) > 0.05) textStyle.fontSize = formatPt(sizePt);
+  if (sizePt != null && Math.abs(sizePt - defaults.fontSizePt) > 0.05) textStyle.fontSize = formatPt(sizePt);
 
   const family = resolver.fontFamilyOf(props);
-  const defaultFonts = headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS;
-  if (family && !defaultFonts.has(family.toLowerCase())) textStyle.fontFamily = family;
+  if (family && !defaults.fonts.has(family.toLowerCase())) textStyle.fontFamily = family;
 
   if (Object.keys(textStyle).length) marks.push({ type: 'textStyle', attrs: textStyle });
   return marks;

@@ -9,6 +9,7 @@ import { buildOdt } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
 import { hfExtensions } from '../src/lib/editor/extensions/headerFooter';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
+import { builtinStyleSheet } from '../src/lib/styles/styleSheet';
 
 type N = any;
 
@@ -592,8 +593,14 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: text:a → link mark (href preserved)',
       p2.content!.some((n: N) => n.text === 'a link' && n.marks?.some((m: N) => m.type === 'link' && m.attrs?.href === 'https://x.example')), p2.content);
 
+    // A named style's formatting lands in the style registry, not on the block: the
+    // paragraph just references "Mono" (font-face resolved to the real family).
     const mono = c[3];
-    check('foreign: font-face resolves Courier New', mono.content![0].marks?.some((m: N) => m.type === 'textStyle' && m.attrs?.fontFamily === 'Courier New' && m.attrs?.fontSize === '10pt'), mono.content![0]);
+    check('foreign: paragraph references its named style', mono.attrs?.styleName === 'Mono', mono.attrs);
+    const monoStyle = f.styles.paragraph['Mono'];
+    check('foreign: Mono style resolves the font face', monoStyle?.text.fontFamily === 'Courier New', monoStyle);
+    check('foreign: Mono style keeps its size', monoStyle?.text.fontSizePt === 10, monoStyle);
+    check('foreign: no direct formatting on the block', !mono.content![0].marks, mono.content![0]);
 
     check('foreign: image imported, footnote dropped, text kept',
       c[4].content!.length === 2 && c[4].content![0].text === 'img:' &&
@@ -1303,5 +1310,52 @@ describe('Leg 11: heading levels 4 and 5', () => {
     // Sizes equal to the level defaults must not land as explicit fontSize marks.
     check('no explicit size mark on h4', !(blocks[0]?.content?.[0]?.marks ?? []).length, blocks[0]?.content);
     check('no explicit size mark on h5', !(blocks[1]?.content?.[0]?.marks ?? []).length, blocks[1]?.content);
+  });
+});
+
+describe('Leg 12: named paragraph styles (ODF)', () => {
+  const sheet = builtinStyleSheet();
+  sheet.paragraph['Merksatz'] = {
+    name: 'Merksatz', parent: 'Standard', next: 'Standard',
+    para: { indent: 2, spaceBefore: 6 }, text: { bold: true, color: '#0000AA' },
+  };
+
+  const doc: N = {
+    type: 'doc',
+    content: [
+      H({ level: 1 }, T('Kapitel')),
+      P({ styleName: 'Merksatz' }, T('gemerkt')),
+      // Hard formatting on top of the style must stay direct formatting.
+      P({ styleName: 'Merksatz', spaceAfter: 20 }, T('mit Abstand')),
+      P({ styleName: 'Quotations' }, T('zitiert')),
+    ],
+  };
+
+  it('writes real named styles and round-trips the assignment', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', sheet);
+    const files = unzipSync(bytes);
+    const styles = strFromU8(files['styles.xml']);
+    const content = strFromU8(files['content.xml']);
+
+    const merk = styles.match(/<style:style style:name="Merksatz"[\s\S]*?<\/style:style>/)?.[0] ?? '';
+    check('mints the user style with its parent', merk.includes('style:parent-style-name="Standard"'), merk);
+    check('user style carries its own props', merk.includes('fo:margin-left="2cm"') && merk.includes('fo:color="#0000AA"'), merk);
+    check('heading styles inherit from Heading', /style:name="Heading_20_1"[\s\S]*?style:parent-style-name="Heading"/.test(styles));
+    check('the Heading parent holds the sans font', /style:name="Heading"[\s\S]*?style:font-name="Arial"/.test(styles));
+    check('no leftover sentinel', !content.includes('\uE00D'));
+
+    const res = importOdt(bytes);
+    const blocks = res.content.content ?? [];
+    check('block references its style', blocks[1]?.attrs?.styleName === 'Merksatz', blocks[1]?.attrs);
+    check('built-in style assignment round-trips', blocks[3]?.attrs?.styleName === 'Quotations', blocks[3]?.attrs);
+    check('hard formatting stays direct', blocks[2]?.attrs?.spaceAfter === 20, blocks[2]?.attrs);
+    check('style formatting is NOT copied onto the block', !blocks[1]?.content?.[0]?.marks, blocks[1]?.content?.[0]);
+
+    const imported = res.styles.paragraph['Merksatz'];
+    check('the style itself round-trips', imported?.parent === 'Standard', imported);
+    check('with its own properties', imported?.text.bold === true && imported?.text.color === '#0000AA'
+      && imported?.para.indent === 2 && imported?.para.spaceBefore === 6, imported);
+    // A heading keeps rendering from the registry, not from copied attrs.
+    check('heading needs no direct formatting', !blocks[0]?.content?.[0]?.marks, blocks[0]);
   });
 });

@@ -28,24 +28,30 @@ function odtWithHeading(base: string, size: string): Uint8Array {
   return zipSync({ 'content.xml': strToU8(content), 'styles.xml': strToU8(styles) });
 }
 
-const sizeOf = (base: string, size: string) => {
+// The size a heading renders at: from the imported style registry, since a named
+// style's formatting is no longer copied onto the block.
+const styleSizeOf = (base: string, size: string) =>
+  importOdt(odtWithHeading(base, size)).styles.paragraph['Heading 1']?.text.fontSizePt;
+
+const markSizeOf = (base: string, size: string) => {
   const marks = (importOdt(odtWithHeading(base, size)).content.content?.[0] as any).content[0].marks ?? [];
   return marks.find((m: any) => m.type === 'textStyle')?.attrs?.fontSize;
 };
 
 describe('percentage font sizes in the ODF style chain', () => {
-  it('resolves a percentage that lands on the editor default (no explicit mark)', () => {
-    // 12pt × 150% = 18pt = HEADING_STYLE_OVERRIDES[0] → suppressed like any default.
-    expect(sizeOf('12pt', '150%')).toBeUndefined();
-  });
-
-  it("keeps the file's own size when the percentage differs from the default", () => {
-    expect(sizeOf('16pt', '125%')).toBe('20pt');
-    expect(sizeOf('12pt', '200%')).toBe('24pt');
+  it('resolves a percentage against the parent style', () => {
+    expect(styleSizeOf('12pt', '150%')).toBe(18);
+    expect(styleSizeOf('16pt', '125%')).toBe(20);
+    expect(styleSizeOf('14pt', '130%')).toBe(18.2);
   });
 
   it('still reads absolute sizes', () => {
-    expect(sizeOf('14pt', '24pt')).toBe('24pt');
+    expect(styleSizeOf('14pt', '24pt')).toBe(24);
+  });
+
+  it('leaves the block free of direct formatting either way', () => {
+    expect(markSizeOf('12pt', '150%')).toBeUndefined();
+    expect(markSizeOf('16pt', '125%')).toBeUndefined();
   });
 });
 

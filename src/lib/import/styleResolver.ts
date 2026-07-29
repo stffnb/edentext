@@ -136,6 +136,8 @@ export class StyleResolver {
   private sectionStyleEls = new Map<string, Element>();
   private mergedCache = new Map<string, { text: PropMap; para: PropMap; misc: PropMap }>();
   private stylesDoc: Document | null;
+  private namedParagraphNames = new Set<string>();
+  private displayNames = new Map<string, string>();
 
   constructor(contentDoc: Document, stylesDoc: Document | null) {
     this.stylesDoc = stylesDoc;
@@ -151,7 +153,32 @@ export class StyleResolver {
       const fontDecls = doc.getElementsByTagNameNS(NS.office, 'font-face-decls')[0];
       if (fontDecls) this.scanFontFaces(fontDecls);
     }
-    for (const c of containers) this.scanContainer(c);
+    for (const c of containers) this.scanContainer(c, c.localName === 'styles');
+  }
+
+  // Paragraph styles from <office:styles> — the file's named styles (as opposed to the
+  // automatic styles, which are direct formatting). Own props only; the chain stays a chain.
+  namedParagraphStyles(): Map<string, { parent: string | null; display?: string; text: PropMap; para: PropMap }> {
+    const out = new Map<string, { parent: string | null; display?: string; text: PropMap; para: PropMap }>();
+    for (const name of this.namedParagraphNames) {
+      const entry = this.styles.get(`paragraph\0${name}`);
+      // display: only the file's own style:display-name — the caller decodes _20_ itself.
+      if (entry) out.set(name, { parent: entry.parent, display: this.displayNames.get(name), text: entry.text, para: entry.para });
+    }
+    return out;
+  }
+
+  // The nearest named style in a style's parent chain (an automatic style is direct
+  // formatting layered on top of it); null when the chain reaches none.
+  namedAncestor(styleName: string | null | undefined): string | null {
+    let cur = styleName ?? null;
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      if (this.namedParagraphNames.has(cur)) return cur;
+      cur = this.styles.get(`paragraph\0${cur}`)?.parent ?? null;
+    }
+    return null;
   }
 
   private scanFontFaces(container: Element): void {
@@ -179,12 +206,17 @@ export class StyleResolver {
     return this.fontSources;
   }
 
-  private scanContainer(container: Element): void {
+  private scanContainer(container: Element, named: boolean): void {
     for (const el of Array.from(container.children)) {
       if (el.namespaceURI === NS.style && el.localName === 'style') {
         const name = el.getAttributeNS(NS.style, 'name');
         const family = el.getAttributeNS(NS.style, 'family');
         if (name && family) this.styles.set(`${family}\0${name}`, entryFromStyleElement(el));
+        if (name && family === 'paragraph' && named) {
+          this.namedParagraphNames.add(name);
+          const display = el.getAttributeNS(NS.style, 'display-name');
+          if (display) this.displayNames.set(name, display);
+        }
         if (name && family === 'section') this.sectionStyleEls.set(name, el);
       } else if (el.namespaceURI === NS.style && el.localName === 'default-style') {
         const family = el.getAttributeNS(NS.style, 'family');

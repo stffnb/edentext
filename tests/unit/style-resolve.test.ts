@@ -16,7 +16,7 @@ describe('named paragraph styles', () => {
     expect(h1.para.spaceBefore).toBe(12);         // from Heading
     const standard = resolveStyle(sheet, DEFAULT_STYLE);
     expect(standard.text.fontFamily).toBe('Liberation Serif');
-    expect(standard.para.spaceBefore).toBeUndefined();
+    expect(standard.para.spaceBefore).toBe(0);
   });
 
   it('falls back to Standard for unknown names and survives a parent cycle', () => {

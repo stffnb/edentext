@@ -2,6 +2,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, wVal, W, R, WP, A, WPS, MC, VML, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { lengthToPt } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
+import { builtinStyleSheet } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
@@ -157,6 +158,9 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
 
   return {
     content: { type: 'doc', content: blocks },
+    // DOCX styles still import as direct formatting (the ODF path leads); the document
+    // keeps the editor's built-in registry.
+    styles: builtinStyleSheet(),
     margins: sect.margins,
     orientation: sect.orientation,
     format: sect.format,

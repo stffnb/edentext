@@ -4,6 +4,7 @@ import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
+import { builtinStyleSheet, DEFAULT_STYLE, type StyleSheet } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -105,6 +106,11 @@ const DTF = '';
 // applyHfPostProcess rewrites it to an as-char <draw:frame>. U+E00B.
 const HFIMG = '';
 
+// Sentinel wrapping the named paragraph style of a block whose style isn't the ODF
+// default for its node type (STY<name>STY), emitted as plain run text so it rides the
+// odf-kit path; applyParagraphStyles points the block at that style. U+E00D.
+const STY = '';
+
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -142,8 +148,55 @@ export const HEADING_FONT = 'Arial';
 export const MAX_HEADING_LEVEL = HEADING_STYLE_OVERRIDES.length;
 export const HEADING_LEVELS = HEADING_STYLE_OVERRIDES.map((_, i) => i + 1);
 
+// ODF encodes spaces in style names as _20_ ("Heading 1" → "Heading_20_1").
+export function odfStyleName(name: string): string {
+  return name.replace(/ /g, '_20_');
+}
+
+// The style name a block carries: its own, else the node type's default. Mirrors
+// blockStyleName in editor/extensions/paragraphStyle.ts (kept local: this module is
+// framework-free).
+function styleOf(node: TiptapNode): string {
+  const own = node.attrs?.styleName;
+  if (typeof own === 'string' && own) return own;
+  return isHeadingNode(node) ? `Heading ${(node.attrs?.level as number) ?? 1}` : DEFAULT_STYLE;
+}
+
+// Headings reach the handler renamed to CUST_H (injectCustomTypes).
+function isHeadingNode(node: TiptapNode): boolean {
+  return node.type === 'heading' || node.type === CUST_H;
+}
+
+// Styles to define in the file: every built-in (Word/LibreOffice always define their
+// standard styles) plus the user styles the document actually references, with their
+// parent chains.
+function usedStyleNames(doc: TiptapNode, sheet: StyleSheet): Set<string> {
+  const used = new Set<string>();
+  const addChain = (name: string) => {
+    let cur: string | null | undefined = name;
+    while (cur && sheet.paragraph[cur] && !used.has(cur)) {
+      used.add(cur);
+      cur = sheet.paragraph[cur].parent;
+    }
+  };
+  for (const style of Object.values(sheet.paragraph)) if (style.builtin) addChain(style.name);
+  const walk = (node: TiptapNode) => {
+    if (node.type === 'paragraph' || node.type === 'heading') addChain(styleOf(node));
+    node.content?.forEach(walk);
+  };
+  walk(doc);
+  return used;
+}
+
+// What odf-kit itself puts on the block, so only a differing style needs a sentinel.
+function odfDefaultStyleOf(node: TiptapNode): string {
+  return isHeadingNode(node) ? `Heading ${(node.attrs?.level as number) ?? 1}` : DEFAULT_STYLE;
+}
+
 function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (!attrs) return false;
+  // A named style is emitted via the STY sentinel, which needs the applyRuns path.
+  if (typeof attrs.styleName === 'string' && attrs.styleName) return true;
   if (attrs.lineHeight) return true;
   if (attrs.spaceBefore != null) return true;
   if (attrs.spaceAfter != null) return true;
@@ -898,6 +951,181 @@ function cloneStyleWithParaProps(def: string, newName: string, props: string): s
   return s.replace('</style:style>', `<style:paragraph-properties ${props}/></style:style>`);
 }
 
+// ---- named paragraph styles (styles/styleSheet.ts) --------------------------------
+
+// Set or replace attributes on an element's opening tag.
+function setTagAttrs(tag: string, attrs: Record<string, string>): string {
+  let out = tag;
+  for (const [name, value] of Object.entries(attrs)) {
+    const re = new RegExp(`\\s${name}="[^"]*"`);
+    out = re.test(out)
+      ? out.replace(re, ` ${name}="${value}"`)
+      : out.replace(/(\/?>)$/, ` ${name}="${value}"$1`);
+  }
+  return out;
+}
+
+// Merge attributes into a style's <style:paragraph-properties>/<style:text-properties>,
+// keeping whatever the producer already put there (language, keep-with-next, …).
+function upsertProps(block: string, kind: 'paragraph' | 'text', attrs: Record<string, string>): string {
+  if (!Object.keys(attrs).length) return block;
+  const el = `style:${kind}-properties`;
+  const open = new RegExp(`<${el}\\b[^>]*>`);
+  const m = open.exec(block);
+  if (m) return block.replace(open, setTagAttrs(m[0], attrs));
+  const props = setTagAttrs(`<${el}/>`, attrs);
+  // paragraph-properties precedes text-properties in ODF.
+  if (kind === 'paragraph' && block.includes('<style:text-properties'))
+    return block.replace('<style:text-properties', `${props}<style:text-properties`);
+  if (/^<style:style\b[^>]*\/>$/.test(block.trim()))
+    return block.trim().replace(/\/>$/, `>${props}</style:style>`);
+  return block.replace('</style:style>', `${props}</style:style>`);
+}
+
+// A style's OWN properties as ODF attributes — the chain stays a chain in the file,
+// so only what the style itself declares is written.
+function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<string, unknown> }) {
+  const p = style.para as Record<string, string | number | undefined>;
+  const t = style.text as Record<string, string | number | boolean | undefined>;
+  const para: Record<string, string> = {};
+  if (p.textAlign) para['fo:text-align'] = String(p.textAlign);
+  if (p.lineHeight != null) para['fo:line-height'] = normalizeLineHeight(p.lineHeight as string | number);
+  if (p.spaceBefore != null) para['fo:margin-top'] = `${p.spaceBefore}pt`;
+  if (p.spaceAfter != null) para['fo:margin-bottom'] = `${p.spaceAfter}pt`;
+  if (p.indent != null) para['fo:margin-left'] = `${p.indent}cm`;
+  if (p.backgroundColor) para['fo:background-color'] = String(p.backgroundColor);
+  for (const [key, side] of [['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left']] as const) {
+    const v = p[key];
+    if (v && v !== 'none') para[`fo:border-${side}`] = String(v);
+  }
+  const text: Record<string, string> = {};
+  if (t.fontFamily) {
+    // Liberation Serif is the on-screen name; the file declares its metric twin.
+    const font = t.fontFamily === ODFKIT_DEFAULT_FONT ? EXPORT_FONT : String(t.fontFamily);
+    text['style:font-name'] = font;
+    text['style:font-name-asian'] = font;
+    text['style:font-name-complex'] = font;
+  }
+  if (t.fontSizePt != null) {
+    const size = `${t.fontSizePt}pt`;
+    text['fo:font-size'] = size;
+    text['style:font-size-asian'] = size;
+    text['style:font-size-complex'] = size;
+  }
+  if (t.bold != null) text['fo:font-weight'] = t.bold ? 'bold' : 'normal';
+  if (t.italic != null) text['fo:font-style'] = t.italic ? 'italic' : 'normal';
+  if (t.underline) text['style:text-underline-style'] = 'solid';
+  if (t.strike) text['style:text-line-through-style'] = 'solid';
+  if (t.color) text['fo:color'] = String(t.color);
+  return { para, text };
+}
+
+// Attributes the style model owns: dropped from a producer's block before the style's
+// own values go in, so anything the style leaves open really comes from its parent.
+const MANAGED_STYLE_ATTRS = [
+  'fo:margin-top', 'fo:margin-bottom', 'fo:margin-left', 'fo:text-align', 'fo:line-height',
+  'fo:background-color', 'fo:border-top', 'fo:border-right', 'fo:border-bottom', 'fo:border-left',
+  'fo:font-size', 'style:font-size-asian', 'style:font-size-complex',
+  'fo:font-weight', 'style:font-weight-asian', 'style:font-weight-complex',
+  'fo:font-style', 'style:font-style-asian', 'style:font-style-complex',
+  'style:text-underline-style', 'style:text-line-through-style', 'fo:color',
+  'style:font-name', 'style:font-name-asian', 'style:font-name-complex',
+];
+
+function stripManagedProps(block: string): string {
+  let out = block;
+  for (const attr of MANAGED_STYLE_ATTRS) out = out.replace(new RegExp(`\\s${attr}="[^"]*"`, 'g'), '');
+  return out;
+}
+
+// Write the document's named paragraph styles into styles.xml: merge into the blocks
+// odf-kit already emits (Standard, Heading, Heading_20_N), append the rest. The parent
+// chain is preserved, so LibreOffice/Word show them as real, inheriting styles.
+function applyNamedStyles(styles: string, sheet: StyleSheet, used: Set<string>): string {
+  const added: string[] = [];
+  for (const style of Object.values(sheet.paragraph)) {
+    if (!used.has(style.name)) continue;
+    const odfName = odfStyleName(style.name);
+    const { para, text } = ownStyleAttrs(style);
+    const existing = findAutoStyle(styles, odfName);
+    if (existing) {
+      let block = stripManagedProps(existing);
+      if (style.parent) block = block.replace(/^<style:style\b[^>]*?(\/?)>/, (tag) =>
+        setTagAttrs(tag, { 'style:parent-style-name': odfStyleName(style.parent!) }));
+      block = upsertProps(upsertProps(block, 'paragraph', para), 'text', text);
+      styles = styles.replace(existing, block);
+      continue;
+    }
+    const attrs: Record<string, string> = {
+      'style:name': odfName, 'style:family': 'paragraph', 'style:display-name': style.name,
+    };
+    if (style.parent) attrs['style:parent-style-name'] = odfStyleName(style.parent);
+    if (style.next) attrs['style:next-style-name'] = odfStyleName(style.next);
+    let block = `${setTagAttrs('<style:style/>', attrs).replace('/>', '>')}</style:style>`;
+    block = upsertProps(upsertProps(block, 'paragraph', para), 'text', text);
+    added.push(block);
+  }
+  return added.length ? styles.replace('</office:styles>', `${added.join('')}</office:styles>`) : styles;
+}
+
+// Resolve STY sentinels: point each marked block at its named style — directly when it
+// carries no direct formatting, else via a clone of its automatic style whose parent
+// becomes the named one (so hard formatting keeps overriding the style, as in LO).
+function applyParagraphStyles(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  if (!content.includes(STY)) return odtBytes;
+
+  const minted: string[] = [];
+  const nameByKey = new Map<string, string>();
+  let counter = 0;
+
+  const styleFor = (source: string, styleName: string): string => {
+    const odfName = odfStyleName(styleName);
+    const auto = source ? findAutoStyle(content, source) : null;
+    if (!auto) return odfName; // no direct formatting: reference the style itself
+    const key = `${source}|${odfName}`;
+    const existing = nameByKey.get(key);
+    if (existing) return existing;
+    const name = `PS${++counter}`;
+    nameByKey.set(key, name);
+    minted.push(
+      auto
+        .replace(/style:name="[^"]*"/, `style:name="${name}"`)
+        .replace(/^<style:style\b[^>]*?(\/?)>/, (tag) =>
+          setTagAttrs(tag, { 'style:parent-style-name': odfName })),
+    );
+    return name;
+  };
+
+  const styRe = new RegExp(`${STY}([^${STY}]*)${STY}`);
+  content = content.replace(
+    new RegExp(`<text:(p|h)\\b([^>]*)>([\\s\\S]*?)</text:\\1>`, 'g'),
+    (m, tag: string, attrs: string, inner: string) => {
+      const sm = styRe.exec(inner);
+      if (!sm) return m;
+      const cleaned = inner.replace(styRe, '');
+      const srcM = /text:style-name="([^"]*)"/.exec(attrs);
+      const name = styleFor(srcM ? srcM[1] : '', sm[1]);
+      const newAttrs = srcM
+        ? attrs.replace(/text:style-name="[^"]*"/, `text:style-name="${name}"`)
+        : ` text:style-name="${name}"${attrs}`;
+      return `<text:${tag}${newAttrs}>${cleaned}</text:${tag}>`;
+    },
+  );
+  content = content.replace(new RegExp(`${STY}[^${STY}]*${STY}`, 'g'), '');
+
+  if (minted.length) {
+    content = content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`);
+  }
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 // Resolve PBX sentinels: per (source style, box spec) mint a paragraph style cloning the
 // source plus fo:background-color/fo:border-*, reassign the block, and strip the sentinel.
 // Mirrors applyEmptyLineFontSizes; runs after it so an empty line's FSZ is already resolved.
@@ -1487,7 +1715,7 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
 // Rewrite styles.xml to match the editor's preview: default font Liberation Serif →
 // Times New Roman (metric-identical; see EXPORT_FONT), and Heading_20_1/2/3 sizes &
 // margins → the editor's values (odf-kit's defaults are larger; HEADING_STYLE_OVERRIDES).
-function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation): Uint8Array {
+function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
   if (!stylesBytes) return odtBytes;
@@ -1529,35 +1757,15 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
     `$1fo:margin-bottom="0cm"`,
   );
 
-  // odf-kit's Heading parent carries only weight, so its font would be inherited from
-  // Standard (= the serif body font). Declare the sans heading font on it; every
-  // Heading_20_N inherits it, matching the editor's --font-heading.
   // ODF requires a font-face declaration for every referenced font name.
   styles = styles.replace(
     '</office:font-face-decls>',
     `<style:font-face style:name="${HEADING_FONT}" svg:font-family="${HEADING_FONT}" style:font-family-generic="swiss" style:font-pitch="variable"/></office:font-face-decls>`,
   );
 
-  styles = styles.replace(/<style:style style:name="Heading"[\s\S]*?<\/style:style>/, (block) =>
-    block.replace(
-      '<style:text-properties',
-      `<style:text-properties style:font-name="${HEADING_FONT}" style:font-name-asian="${HEADING_FONT}" style:font-name-complex="${HEADING_FONT}"`,
-    ),
-  );
-
-  // Scope each rewrite to its own <style:style …>…</style:style> block so the
-  // font-size/margin replacements never bleed across heading levels.
-  for (const { name, fontSize, marginTop, marginBottom } of HEADING_STYLE_OVERRIDES) {
-    const re = new RegExp(`<style:style style:name="${name}"[\\s\\S]*?</style:style>`);
-    styles = styles.replace(re, (block) =>
-      block
-        .replace(/fo:font-size="[^"]*"/g, `fo:font-size="${fontSize}"`)
-        .replace(/style:font-size-asian="[^"]*"/g, `style:font-size-asian="${fontSize}"`)
-        .replace(/style:font-size-complex="[^"]*"/g, `style:font-size-complex="${fontSize}"`)
-        .replace(/fo:margin-top="[^"]*"/g, `fo:margin-top="${marginTop}"`)
-        .replace(/fo:margin-bottom="[^"]*"/g, `fo:margin-bottom="${marginBottom}"`),
-    );
-  }
+  // The document's named paragraph styles (Standard, Heading, Heading_20_N, Title, …)
+  // with their parent chain: merged into odf-kit's own blocks, appended when new.
+  styles = applyNamedStyles(styles, sheet, used);
 
   files['styles.xml'] = strToU8(styles);
   return rezipOdt(files);
@@ -2237,7 +2445,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4'): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet()): Promise<Uint8Array> {
   // Collect embedded images and swap them for IMG sentinels before serialization;
   // applyImages resolves the sentinels and writes the Pictures/ + manifest entries.
   // Text boxes and columns sections are hoisted after replacePageBreaks (so PGB never
@@ -2354,14 +2562,18 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
       // which runs earlier, still matches it right after the opening tag.
       const spec = paraBoxSpec(node.attrs);
       const pbx = spec ? `${PBX}${spec}${PBX}` : '';
-      const withPbx = (p: ParagraphBuilder) => { if (pbx) p.addText(pbx); applyRuns(p, content); };
+      // Named style, unless it is the one odf-kit puts on this node type anyway.
+      const styleName = styleOf(node);
+      const sty = styleName !== odfDefaultStyleOf(node) ? `${STY}${styleName}${STY}` : '';
+      const marks = sty + pbx;
+      const withPbx = (p: ParagraphBuilder) => { if (marks) p.addText(marks); applyRuns(p, content); };
 
       if (node.type === CUST_P) {
-        if (content.length === 0) doc.addParagraph(emptyFs + pbx, opts);
+        if (content.length === 0) doc.addParagraph(emptyFs + marks, opts);
         else doc.addParagraph(withPbx, opts);
       } else if (node.type === CUST_H) {
         const level = (node.attrs?.level as number) ?? 1;
-        if (content.length === 0) doc.addHeading(emptyFs + pbx, level, opts);
+        if (content.length === 0) doc.addHeading(emptyFs + marks, level, opts);
         else doc.addHeading(withPbx, level, opts);
       }
     },
@@ -2416,7 +2628,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withParaBoxes = applyParagraphBoxes(withEmptyFontSizes);
-  const withStyles = rewriteStylesXml(withParaBoxes, language ?? null, pageFormat, orientation);
+  const withNamedStyles = applyParagraphStyles(withParaBoxes);
+  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles));
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
 }
 

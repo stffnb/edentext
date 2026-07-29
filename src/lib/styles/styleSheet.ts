@@ -49,7 +49,7 @@ export const HEADING_PARENT = 'Heading';
 // asserts the two agree).
 const BUILTINS: Style[] = [
   { name: DEFAULT_STYLE, parent: null, next: null, builtin: true,
-    para: {}, text: { fontFamily: 'Liberation Serif', fontSizePt: 12 } },
+    para: { spaceBefore: 0, spaceAfter: 0 }, text: { fontFamily: 'Liberation Serif', fontSizePt: 12 } },
   { name: HEADING_PARENT, parent: DEFAULT_STYLE, next: DEFAULT_STYLE, builtin: true,
     para: { spaceBefore: 12, spaceAfter: 6 }, text: { fontFamily: 'Arial', bold: true } },
   ...[18, 16, 14, 13, 12].map((size, i) => ({

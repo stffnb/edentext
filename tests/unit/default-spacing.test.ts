@@ -22,7 +22,8 @@ describe('exported Standard style', () => {
     const styles = strFromU8(unzipSync(bytes)['styles.xml']);
 
     const standard = styles.match(/<style:style style:name="Standard"[\s\S]*?<\/style:style>/)![0];
-    expect(standard).toContain('fo:margin-bottom="0cm"');
+    // The Standard style declares its zero spacing (LibreOffice's Default Paragraph Style).
+    expect(standard).toMatch(/fo:margin-bottom="0(pt|cm)"/);
     expect(standard).not.toContain('0.212cm');
   });
 });
