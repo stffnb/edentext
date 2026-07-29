@@ -51,7 +51,7 @@ const BUILTINS: Style[] = [
   { name: DEFAULT_STYLE, parent: null, next: null, builtin: true,
     para: { spaceBefore: 0, spaceAfter: 0 }, text: { fontFamily: 'Liberation Serif', fontSizePt: 12 } },
   { name: HEADING_PARENT, parent: DEFAULT_STYLE, next: DEFAULT_STYLE, builtin: true,
-    para: { spaceBefore: 12, spaceAfter: 6 }, text: { fontFamily: 'Arial', bold: true } },
+    para: { spaceBefore: 12, spaceAfter: 6 }, text: { fontFamily: 'Liberation Sans', bold: true } },
   ...[18, 16, 14, 13, 12].map((size, i) => ({
     name: `Heading ${i + 1}`, parent: HEADING_PARENT, next: DEFAULT_STYLE,
     outlineLevel: i + 1, builtin: true,
@@ -65,18 +65,45 @@ const BUILTINS: Style[] = [
     para: { indent: 1, spaceAfter: 14 }, text: {} },
 ];
 
+// Bumped whenever the built-in definitions change: a stored sheet from an older version
+// keeps its user styles but takes the new factory built-ins (see mergeStoredSheet).
+export const STYLE_SHEET_VERSION = 2;
+
+// A persisted sheet merged onto the current built-ins. Same version: stored entries win
+// (a document's own styles, and edits to built-ins). Older: only user styles survive.
+export function mergeStoredSheet(stored: unknown): StyleSheet {
+  const sheet = builtinStyleSheet();
+  const data = stored as { v?: number; paragraph?: Record<string, Style> } | null;
+  if (!data?.paragraph || typeof data.paragraph !== 'object') return sheet;
+  const current = data.v === STYLE_SHEET_VERSION;
+  for (const [name, style] of Object.entries(data.paragraph)) {
+    if (!style || typeof style !== 'object') continue;
+    if (!current && style.builtin) continue;
+    sheet.paragraph[name] = style;
+  }
+  return sheet;
+}
+
 export function builtinStyleSheet(): StyleSheet {
   const paragraph: Record<string, Style> = {};
   for (const s of BUILTINS) paragraph[s.name] = structuredClone(s);
   return { paragraph };
 }
 
-// The gallery/manager order: built-ins as listed above, user styles after them.
-export function styleOrder(sheet: StyleSheet): Style[] {
+// The gallery order: built-ins as listed above, user styles after them. `Heading` is an
+// abstract parent (LibreOffice's, holding what all levels share) — never assignable, so
+// the gallery hides it; the style manager passes withAbstract to edit it.
+export function styleOrder(sheet: StyleSheet, withAbstract = false): Style[] {
   const names = Object.keys(sheet.paragraph);
-  const builtinOrder = BUILTINS.map(b => b.name).filter(n => names.includes(n) && n !== HEADING_PARENT);
-  const rest = names.filter(n => !builtinOrder.includes(n) && n !== HEADING_PARENT).sort();
+  const hidden = (n: string) => !withAbstract && n === HEADING_PARENT;
+  const builtinOrder = BUILTINS.map(b => b.name).filter(n => names.includes(n) && !hidden(n));
+  const rest = names.filter(n => !builtinOrder.includes(n) && !hidden(n)).sort();
   return [...builtinOrder, ...rest].map(n => sheet.paragraph[n]);
+}
+
+// Styles that exist only to be inherited from.
+export function isAbstractStyle(name: string): boolean {
+  return name === HEADING_PARENT;
 }
 
 export function headingStyleName(level: number): string {
@@ -99,9 +126,16 @@ export function resolveStyle(sheet: StyleSheet, name: string | null | undefined)
     cur = style.parent ?? '';
   }
   const out: ResolvedStyle = { para: {}, text: {} };
+  // Only defined values layer: a key present as undefined means "not set here", so it
+  // must not wipe what the parent provides.
+  const layer = <T extends object>(target: T, source: T) => {
+    for (const key of Object.keys(source) as (keyof T)[]) {
+      if (source[key] !== undefined) target[key] = source[key];
+    }
+  };
   for (const style of chain.reverse()) {
-    Object.assign(out.para, style.para);
-    Object.assign(out.text, style.text);
+    layer(out.para, style.para);
+    layer(out.text, style.text);
   }
   return out;
 }
@@ -109,7 +143,7 @@ export function resolveStyle(sheet: StyleSheet, name: string | null | undefined)
 // The bundled fonts are exposed as CSS variables; anything else renders by name.
 function cssFontFamily(name: string): string {
   if (name === 'Liberation Serif') return 'var(--font-serif)';
-  if (name === 'Arial') return 'var(--font-heading)';
+  if (name === 'Liberation Sans' || name === 'Arial') return 'var(--font-heading)';
   return `'${name.replace(/'/g, "\\'")}', var(--font-serif)`;
 }
 
@@ -152,4 +186,68 @@ export function styleCss(sheet: StyleSheet): string {
     rules.push(`${selectors.join(',\n')} {\n  ${decls.join(';\n  ')};\n}`);
   }
   return rules.join('\n\n');
+}
+
+// ---- block ⇄ style ------------------------------------------------------------------
+
+type BlockNode = { type?: { name: string }; attrs?: Record<string, unknown> };
+type BlockMark = { type: { name: string } | string; attrs?: Record<string, unknown> };
+
+// The formatting a block currently shows, read off its attrs and the marks of its text —
+// the raw material for "new style from selection".
+export function propsFromBlock(node: BlockNode, marks: BlockMark[] = []): ResolvedStyle {
+  const a = node.attrs ?? {};
+  const para: ParaProps = {};
+  // Every block carries textAlign:'left' (the TextAlign extension's default), so only a
+  // real choice counts as the block's own alignment.
+  const ta = a.textAlign;
+  if (ta === 'center' || ta === 'right' || ta === 'justify') para.textAlign = ta;
+  if (typeof a.lineHeight === 'string' && a.lineHeight) para.lineHeight = a.lineHeight;
+  if (typeof a.spaceBefore === 'number') para.spaceBefore = a.spaceBefore;
+  if (typeof a.spaceAfter === 'number') para.spaceAfter = a.spaceAfter;
+  if (typeof a.indent === 'number' && a.indent > 0) para.indent = a.indent;
+  if (typeof a.backgroundColor === 'string' && a.backgroundColor) para.backgroundColor = a.backgroundColor;
+  for (const side of ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'] as const) {
+    const v = a[side];
+    if (typeof v === 'string' && v && v !== 'none') para[side] = v;
+  }
+
+  const text: TextProps = {};
+  // The paragraph-mark size sizes the block itself; a run's own size wins below.
+  if (typeof a.fontSize === 'string' && a.fontSize) text.fontSizePt = parseFloat(a.fontSize);
+  const nameOf = (m: BlockMark) => (typeof m.type === 'string' ? m.type : m.type.name);
+  for (const mark of marks) {
+    const name = nameOf(mark);
+    if (name === 'bold') text.bold = true;
+    else if (name === 'italic') text.italic = true;
+    else if (name === 'underline') text.underline = true;
+    else if (name === 'strike') text.strike = true;
+    else if (name === 'textStyle') {
+      const attrs = mark.attrs ?? {};
+      if (typeof attrs.fontFamily === 'string' && attrs.fontFamily) text.fontFamily = attrs.fontFamily;
+      if (typeof attrs.fontSize === 'string' && attrs.fontSize) text.fontSizePt = parseFloat(attrs.fontSize);
+      if (typeof attrs.color === 'string' && attrs.color) text.color = attrs.color;
+      if (attrs.fontWeight === 'normal') text.bold = false;
+    }
+  }
+  return { para, text };
+}
+
+// What `shown` declares beyond `base` — a style's own properties (LibreOffice's
+// "new style from selection" stores exactly this against the parent).
+export function styleDelta(shown: ResolvedStyle, base: ResolvedStyle): ResolvedStyle {
+  const pick = <T extends object>(a: T, b: T): T => {
+    const out = {} as T;
+    for (const key of Object.keys(a) as (keyof T)[]) {
+      if (a[key] !== undefined && a[key] !== b[key]) out[key] = a[key];
+    }
+    return out;
+  };
+  return { para: pick(shown.para, base.para), text: pick(shown.text, base.text) };
+}
+
+// A name that isn't taken yet ("Style", "Style 2", …).
+export function uniqueStyleName(sheet: StyleSheet, base: string): string {
+  if (!sheet.paragraph[base]) return base;
+  for (let i = 2; ; i++) if (!sheet.paragraph[`${base} ${i}`]) return `${base} ${i}`;
 }

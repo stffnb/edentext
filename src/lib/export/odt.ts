@@ -148,6 +148,14 @@ export const HEADING_FONT = 'Arial';
 export const MAX_HEADING_LEVEL = HEADING_STYLE_OVERRIDES.length;
 export const HEADING_LEVELS = HEADING_STYLE_OVERRIDES.map((_, i) => i + 1);
 
+// The bundled screen font → the metric-identical name declared in files, so
+// LibreOffice and Word render with the editor's metrics.
+export function twinFontName(family: string): string {
+  if (family === ODFKIT_DEFAULT_FONT) return EXPORT_FONT;
+  if (family === 'Liberation Sans') return HEADING_FONT;
+  return family;
+}
+
 // ODF encodes spaces in style names as _20_ ("Heading 1" → "Heading_20_1").
 export function odfStyleName(name: string): string {
   return name.replace(/ /g, '_20_');
@@ -1000,8 +1008,8 @@ function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<stri
   }
   const text: Record<string, string> = {};
   if (t.fontFamily) {
-    // Liberation Serif is the on-screen name; the file declares its metric twin.
-    const font = t.fontFamily === ODFKIT_DEFAULT_FONT ? EXPORT_FONT : String(t.fontFamily);
+    // The registry holds the on-screen family; the file declares its metric twin.
+    const font = twinFontName(String(t.fontFamily));
     text['style:font-name'] = font;
     text['style:font-name-asian'] = font;
     text['style:font-name-complex'] = font;

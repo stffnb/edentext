@@ -129,10 +129,12 @@ export const extensions = [
   TrailingNode,
   History,
   Placeholder.configure({ placeholder: 'Start typing…' }),
+  // No defaultAlignment: it would put textAlign:'left' on every block, and that inline
+  // style beats the paragraph style's alignment. Unset = follow the style; an explicit
+  // 'left' stays direct formatting that overrides it, as in Word/LibreOffice.
   TextAlign.configure({
     types: ['paragraph', 'heading'],
     alignments: ['left', 'center', 'right', 'justify'],
-    defaultAlignment: 'left',
   }),
   PageBreaks,
   FormattingMarks,

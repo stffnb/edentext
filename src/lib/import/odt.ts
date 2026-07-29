@@ -693,6 +693,14 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
   };
 }
 
+// The inverse of export/odt.ts twinFontName: a declared metric twin reads back as the
+// bundled family the editor renders.
+function screenFontName(family: string): string {
+  if (family === 'Times New Roman') return 'Liberation Serif';
+  if (family === 'Arial') return 'Liberation Sans';
+  return family;
+}
+
 // ODF encodes spaces as _20_; a style:display-name (when present) is authoritative.
 function displayStyleName(odfName: string, display?: string): string {
   return display || odfName.replace(/_20_/g, ' ');
@@ -729,7 +737,7 @@ function textPropsFromOdf(props: PropMap, resolver: StyleResolver): TextProps {
   const family = resolver.fontFamilyOf(props);
   // Our own export declares the metric twin; keep the registry on the on-screen name
   // so an export→import loop doesn't drift.
-  if (family) out.fontFamily = family === 'Times New Roman' ? 'Liberation Serif' : family;
+  if (family) out.fontFamily = screenFontName(family);
   const size = lengthToPt(props['fo:font-size']);
   if (size != null) out.fontSizePt = Math.round(size * 10) / 10;
   const weight = props['fo:font-weight'];

@@ -22,7 +22,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
-import { normalizeColor, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, type HfExport } from './odt';
+import { normalizeColor, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type Style, type StyleSheet } from '../styles/styleSheet';
 import { findFormat, renderFormat, docxPicture, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../utils/dateTime';
 
@@ -862,8 +862,8 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   const p = style.para;
   const t = style.text;
   const run: Writable<IRunStylePropertiesOptions> = {};
-  // Liberation Serif is the on-screen name; the file declares its metric twin.
-  if (t.fontFamily) run.font = t.fontFamily === 'Liberation Serif' ? DOC_FONT : t.fontFamily;
+  // The registry holds the on-screen family; the file declares its metric twin.
+  if (t.fontFamily) run.font = twinFontName(t.fontFamily);
   if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
   if (t.bold != null) run.bold = t.bold;
   if (t.italic != null) run.italics = t.italic;

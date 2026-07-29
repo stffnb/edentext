@@ -9,6 +9,7 @@
   import { blockStyleName } from '../editor/extensions/paragraphStyle';
   import { DEFAULT_STYLE, resolveStyle, styleOrder } from '../styles/styleSheet';
   import { styleSheet } from '../styles/sheet.svelte';
+  import StyleManagerDialog from './StyleManagerDialog.svelte';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
 
@@ -42,6 +43,7 @@
   }
 
   let stylesOpen = $state(false);
+  let managerOpen = $state(false);
 
   // $derived re-evaluates whenever `tick` changes (i.e. on every TipTap transaction)
   let isHeading    = $derived(tick >= 0 && !!editor?.isActive('heading'));
@@ -209,6 +211,9 @@
                 {styleLabel(s.name)}
               </button>
             {/each}
+            <button class="ol-option manage" onclick={() => { stylesOpen = false; managerOpen = true; }}>
+              {t().styles.manage}
+            </button>
           </div>
         {/if}
       </div>
@@ -341,6 +346,8 @@
   {/if}
 </div>
 
+<StyleManagerDialog bind:open={managerOpen} {editor} />
+
 <style>
   /* Sits inside the header island (which paints the frosted background). Not a
      stacking context: its dropdowns (z:200) must join the header's context so they
@@ -428,6 +435,14 @@
 
   .style-option {
     line-height: 1.2;
+  }
+
+  .manage {
+    margin-top: 2px;
+    border-top: 1px solid var(--color-border);
+    border-radius: 0;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
   }
 
   /* Ordered-list split button: main toggle + chevron that opens the numbering
