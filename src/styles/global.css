@@ -239,6 +239,16 @@
   animation: menu-in 0.14s ease;
 }
 
+/* Scrolling body of a popup menu. Only this inner box scrolls; the panel keeps
+   the background and frame, so the elastic overscroll bounce can't drag the
+   background off the border and show the page through the gap. */
+.menu-scroll {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .toolbar-region button:active:not(:disabled) { transform: none; }
   .theme-dropdown, .ol-dropdown, .align-dropdown, .font-dropdown, .size-dropdown,

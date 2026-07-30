@@ -955,9 +955,21 @@
       </button>
       {#if fontOpen}
         <div class="font-dropdown">
-          {#if recentFonts.length > 0}
-            <div class="font-section-label">{t().toolbarExpanded.recent}</div>
-            {#each recentFonts as font}
+          <div class="menu-scroll">
+            {#if recentFonts.length > 0}
+              <div class="font-section-label">{t().toolbarExpanded.recent}</div>
+              {#each recentFonts as font}
+                <button
+                  class="font-option"
+                  class:active={currentFont === font}
+                  style="font-family: {font}"
+                  onclick={() => pickFont(font)}
+                >{font}</button>
+              {/each}
+            {/if}
+
+            <div class="font-section-label">{t().toolbarExpanded.webSafe}</div>
+            {#each WEB_SAFE_FONTS as font}
               <button
                 class="font-option"
                 class:active={currentFont === font}
@@ -965,35 +977,25 @@
                 onclick={() => pickFont(font)}
               >{font}</button>
             {/each}
-          {/if}
 
-          <div class="font-section-label">{t().toolbarExpanded.webSafe}</div>
-          {#each WEB_SAFE_FONTS as font}
-            <button
-              class="font-option"
-              class:active={currentFont === font}
-              style="font-family: {font}"
-              onclick={() => pickFont(font)}
-            >{font}</button>
-          {/each}
+            {#if extraFontsList.length > 0}
+              <div class="font-section-label">{t().toolbarExpanded.allFonts}</div>
+              {#each extraFontsList as font}
+                <button
+                  class="font-option"
+                  class:active={currentFont === font}
+                  style="font-family: {font}"
+                  onclick={() => pickFont(font)}
+                >{font}</button>
+              {/each}
+            {/if}
 
-          {#if extraFontsList.length > 0}
-            <div class="font-section-label">{t().toolbarExpanded.allFonts}</div>
-            {#each extraFontsList as font}
-              <button
-                class="font-option"
-                class:active={currentFont === font}
-                style="font-family: {font}"
-                onclick={() => pickFont(font)}
-              >{font}</button>
-            {/each}
-          {/if}
-
-          {#if localFontAccessSupported && !allInstalledFonts}
-            <button class="font-show-all" onclick={showAllInstalledFonts}>
-              {t().toolbarExpanded.loadAllFonts}
-            </button>
-          {/if}
+            {#if localFontAccessSupported && !allInstalledFonts}
+              <button class="font-show-all" onclick={showAllInstalledFonts}>
+                {t().toolbarExpanded.loadAllFonts}
+              </button>
+            {/if}
+          </div>
         </div>
       {/if}
     </div>
@@ -1018,14 +1020,16 @@
       </div>
       {#if sizeOpen}
         <div class="size-dropdown">
-          <div class="lh-section-label">{t().toolbarExpanded.fontSize}</div>
-          {#each FONT_SIZES as size}
-            <button
-              class="size-option"
-              class:active={currentFontSize === `${size}pt`}
-              onclick={() => pickSize(size)}
-            >{size}</button>
-          {/each}
+          <div class="menu-scroll">
+            <div class="lh-section-label">{t().toolbarExpanded.fontSize}</div>
+            {#each FONT_SIZES as size}
+              <button
+                class="size-option"
+                class:active={currentFontSize === `${size}pt`}
+                onclick={() => pickSize(size)}
+              >{size}</button>
+            {/each}
+          </div>
         </div>
       {/if}
     </div>
@@ -1187,13 +1191,15 @@
             </div>
             {#if spaceBeforeOpen}
               <div class="sp-dropdown">
-                {#each SPACING_PRESETS as v}
-                  <button
-                    class="sp-option"
-                    class:active={currentSpaceBefore === v}
-                    onclick={() => pickSpacePreset('before', v)}
-                  >{spacingLabel(v)}</button>
-                {/each}
+                <div class="menu-scroll">
+                  {#each SPACING_PRESETS as v}
+                    <button
+                      class="sp-option"
+                      class:active={currentSpaceBefore === v}
+                      onclick={() => pickSpacePreset('before', v)}
+                    >{spacingLabel(v)}</button>
+                  {/each}
+                </div>
               </div>
             {/if}
           </div>
@@ -1220,13 +1226,15 @@
             </div>
             {#if spaceAfterOpen}
               <div class="sp-dropdown">
-                {#each SPACING_PRESETS as v}
-                  <button
-                    class="sp-option"
-                    class:active={currentSpaceAfter === v}
-                    onclick={() => pickSpacePreset('after', v)}
-                  >{spacingLabel(v)}</button>
-                {/each}
+                <div class="menu-scroll">
+                  {#each SPACING_PRESETS as v}
+                    <button
+                      class="sp-option"
+                      class:active={currentSpaceAfter === v}
+                      onclick={() => pickSpacePreset('after', v)}
+                    >{spacingLabel(v)}</button>
+                  {/each}
+                </div>
               </div>
             {/if}
           </div>
@@ -1719,7 +1727,7 @@
     left: 0;
     min-width: 100%;
     max-height: 360px;
-    overflow-y: auto;
+    overflow: hidden;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -1863,7 +1871,7 @@
     display: flex;
     flex-direction: column;
     max-height: 260px;
-    overflow-y: auto;
+    overflow: hidden;
   }
 
   .size-option {
@@ -2259,7 +2267,7 @@
     display: flex;
     flex-direction: column;
     max-height: 220px;
-    overflow-y: auto;
+    overflow: hidden;
   }
 
   .sp-option {

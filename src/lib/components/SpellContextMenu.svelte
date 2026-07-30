@@ -45,16 +45,18 @@
   tabindex="-1"
   aria-label={t().spell.suggestions}
 >
-  {#if suggestions.length}
-    {#each suggestions as s}
-      <button class="sm-item sm-suggest" role="menuitem" onclick={() => onReplace(s)}>{s}</button>
-    {/each}
-  {:else}
-    <span class="sm-empty">{t().spell.noSuggestions}</span>
-  {/if}
-  <span class="sm-sep"></span>
-  <button class="sm-item" role="menuitem" onclick={onAdd}>{t().spell.addToDictionary}</button>
-  <button class="sm-item" role="menuitem" onclick={onIgnore}>{t().spell.ignoreAll}</button>
+  <div class="menu-scroll">
+    {#if suggestions.length}
+      {#each suggestions as s}
+        <button class="sm-item sm-suggest" role="menuitem" onclick={() => onReplace(s)}>{s}</button>
+      {/each}
+    {:else}
+      <span class="sm-empty">{t().spell.noSuggestions}</span>
+    {/if}
+    <span class="sm-sep"></span>
+    <button class="sm-item" role="menuitem" onclick={onAdd}>{t().spell.addToDictionary}</button>
+    <button class="sm-item" role="menuitem" onclick={onIgnore}>{t().spell.ignoreAll}</button>
+  </div>
 </div>
 
 <style>
@@ -63,7 +65,7 @@
     z-index: 200;
     min-width: 11rem;
     max-height: 18rem;
-    overflow-y: auto;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     padding: 4px;

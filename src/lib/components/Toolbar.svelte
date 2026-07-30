@@ -212,36 +212,38 @@
         </button>
         {#if stylesOpen}
           <div class="ol-dropdown style-dropdown" role="menu">
-            <div class="ol-section-label">{t().toolbar.styles.title}</div>
-            {#each galleryStyles as s}
-              {@const preview = resolveStyle(sheet, s.name)}
-              <button
-                class="ol-option style-option"
-                class:active={currentStyle === s.name}
-                onclick={() => applyStyle(s.name)}
-                role="menuitemradio"
-                aria-checked={currentStyle === s.name}
-                style="font-size: {previewSize(s.name)}; font-weight: {preview.text.bold ? 600 : 400}; font-style: {preview.text.italic ? 'italic' : 'normal'}"
-              >
-                {styleLabel(s.name)}
-              </button>
-            {/each}
-            {#if charStyles.length}
-              <div class="ol-section-label char-label">{t().styles.characterStyles}</div>
-              {#each charStyles as c}
-                {@const preview = resolveStyle(sheet, c.name, 'character')}
+            <div class="menu-scroll">
+              <div class="ol-section-label">{t().toolbar.styles.title}</div>
+              {#each galleryStyles as s}
+                {@const preview = resolveStyle(sheet, s.name)}
                 <button
                   class="ol-option style-option"
-                  class:active={currentCharStyle === c.name}
-                  onclick={() => applyCharStyle(c.name)}
+                  class:active={currentStyle === s.name}
+                  onclick={() => applyStyle(s.name)}
                   role="menuitemradio"
-                  aria-checked={currentCharStyle === c.name}
-                  style="font-weight: {preview.text.bold ? 600 : 400}; font-style: {preview.text.italic ? 'italic' : 'normal'}; font-family: {preview.text.fontFamily ?? 'inherit'}"
+                  aria-checked={currentStyle === s.name}
+                  style="font-size: {previewSize(s.name)}; font-weight: {preview.text.bold ? 600 : 400}; font-style: {preview.text.italic ? 'italic' : 'normal'}"
                 >
-                  {c.name}
+                  {styleLabel(s.name)}
                 </button>
               {/each}
-            {/if}
+              {#if charStyles.length}
+                <div class="ol-section-label char-label">{t().styles.characterStyles}</div>
+                {#each charStyles as c}
+                  {@const preview = resolveStyle(sheet, c.name, 'character')}
+                  <button
+                    class="ol-option style-option"
+                    class:active={currentCharStyle === c.name}
+                    onclick={() => applyCharStyle(c.name)}
+                    role="menuitemradio"
+                    aria-checked={currentCharStyle === c.name}
+                    style="font-weight: {preview.text.bold ? 600 : 400}; font-style: {preview.text.italic ? 'italic' : 'normal'}; font-family: {preview.text.fontFamily ?? 'inherit'}"
+                  >
+                    {c.name}
+                  </button>
+                {/each}
+              {/if}
+            </div>
             <button class="ol-option manage" onclick={() => { stylesOpen = false; managerOpen = true; }}>
               <!-- Sliders, as on the Tools button: this opens a settings surface -->
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -475,10 +477,11 @@
   }
 
   /* The gallery lists every registered style, so it scrolls inside itself like the
-     font picker instead of growing past the viewport. */
+     font picker instead of growing past the viewport. The panel itself never
+     scrolls, so an overscroll bounce can't drag its background off the frame. */
   .style-dropdown {
     max-height: 360px;
-    overflow-y: auto;
+    overflow: hidden;
   }
 
   .char-label {
@@ -486,13 +489,12 @@
     border-top: 1px solid var(--color-border);
   }
 
-  /* Pinned to the scrolling gallery's bottom edge (bottom cancels the dropdown's
-     padding) so it is reachable without scrolling to the last style. */
+  /* Sits below the scrolling gallery (margins cancel the dropdown's padding) so it
+     is reachable without scrolling to the last style. */
   .manage {
-    position: sticky;
-    bottom: -2px;
-    margin-top: 2px;
-    padding: 0.45rem 0.6rem calc(0.45rem + 2px);
+    flex-shrink: 0;
+    margin: 2px -2px -2px;
+    padding: 0.45rem 0.6rem;
     gap: 0.45rem;
     background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
     border-top: 1px solid var(--color-border);
