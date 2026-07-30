@@ -271,7 +271,8 @@ export function styleDelta(shown: ResolvedStyle, base: ResolvedStyle): ResolvedS
 }
 
 // A name that isn't taken yet ("Style", "Style 2", …).
-export function uniqueStyleName(sheet: StyleSheet, base: string): string {
-  if (!sheet.paragraph[base]) return base;
-  for (let i = 2; ; i++) if (!sheet.paragraph[`${base} ${i}`]) return `${base} ${i}`;
+export function uniqueStyleName(sheet: StyleSheet, base: string, family: StyleFamily = 'paragraph'): string {
+  const styles = family === 'character' ? sheet.character : sheet.paragraph;
+  if (!styles[base]) return base;
+  for (let i = 2; ; i++) if (!styles[`${base} ${i}`]) return `${base} ${i}`;
 }

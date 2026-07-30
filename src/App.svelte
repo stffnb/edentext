@@ -24,6 +24,7 @@
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadPageFormat, savePageFormat, type PageFormat } from './lib/storage/pageFormat';
   import { setStyleSheet, styleSheet } from './lib/styles/sheet.svelte';
+  import { builtinStyleSheet } from './lib/styles/styleSheet';
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
@@ -391,6 +392,8 @@
     hfDistances = { ...DEFAULT_HF_DISTANCES };
     documentName = '';
     fileHandle = null;
+    // Styles live in the document, so a new one starts from the built-ins
+    setStyleSheet(builtinStyleSheet());
     clearEmbeddedFonts();
     void clearEmbeddedFontStore();
     editor.commands.focus();

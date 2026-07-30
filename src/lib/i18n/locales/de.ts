@@ -69,9 +69,11 @@ const de: Messages = {
     },
   },
   styles: {
-    title: 'Absatzvorlagen',
+    title: 'Formatvorlagen',
     manage: 'Vorlagen verwalten…',
     characterStyles: 'Zeichenvorlagen',
+    paragraphStyles: 'Absatzvorlagen',
+    newStyle: 'Neu',
     custom: 'eigen',
     inherited: 'geerbt',
     abstract: 'nur Elternstil',

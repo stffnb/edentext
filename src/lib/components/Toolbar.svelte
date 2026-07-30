@@ -211,7 +211,7 @@
           </svg>
         </button>
         {#if stylesOpen}
-          <div class="ol-dropdown" role="menu">
+          <div class="ol-dropdown style-dropdown" role="menu">
             <div class="ol-section-label">{t().toolbar.styles.title}</div>
             {#each galleryStyles as s}
               {@const preview = resolveStyle(sheet, s.name)}
@@ -243,6 +243,12 @@
               {/each}
             {/if}
             <button class="ol-option manage" onclick={() => { stylesOpen = false; managerOpen = true; }}>
+              <!-- Sliders, as on the Tools button: this opens a settings surface -->
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M2 4.5h8M13 4.5h1M2 11.5h1M6 11.5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                <circle cx="11.5" cy="4.5" r="1.6" stroke="currentColor" stroke-width="1.4"/>
+                <circle cx="4.5" cy="11.5" r="1.6" stroke="currentColor" stroke-width="1.4"/>
+              </svg>
               {t().styles.manage}
             </button>
           </div>
@@ -468,17 +474,41 @@
     line-height: 1.2;
   }
 
+  /* The gallery lists every registered style, so it scrolls inside itself like the
+     font picker instead of growing past the viewport. */
+  .style-dropdown {
+    max-height: 360px;
+    overflow-y: auto;
+  }
+
   .char-label {
     margin-top: 2px;
     border-top: 1px solid var(--color-border);
   }
 
+  /* Pinned to the scrolling gallery's bottom edge (bottom cancels the dropdown's
+     padding) so it is reachable without scrolling to the last style. */
   .manage {
+    position: sticky;
+    bottom: -2px;
     margin-top: 2px;
+    padding: 0.45rem 0.6rem calc(0.45rem + 2px);
+    gap: 0.45rem;
+    background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
     border-top: 1px solid var(--color-border);
     border-radius: 0;
-    font-size: 0.8rem;
-    color: var(--color-text-muted);
+    font-weight: 600;
+    white-space: nowrap;
+    /* Mixed toward the text color so it stays legible on the dark surfaces too. */
+    color: color-mix(in srgb, var(--color-primary) 55%, var(--color-text));
+  }
+
+  .manage svg {
+    flex-shrink: 0;
+  }
+
+  .manage:hover {
+    background: color-mix(in srgb, var(--color-primary) 16%, var(--color-surface));
   }
 
   /* Ordered-list split button: main toggle + chevron that opens the numbering

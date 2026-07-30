@@ -27,7 +27,15 @@
 - Font family picker (lists only fonts installed on the machine; remembers recently used fonts)
 - Font size
 - Font color and highlight color (color picker with custom colors)
-- Headings H1–H3, including un-bolding a heading
+- Headings H1–H5, including un-bolding a heading
+
+**Styles**
+- Named paragraph styles with LibreOffice's inheritance model: a style has a parent, a follow-on style and its own properties; changing a style updates every paragraph using it. Built-ins Default text → Heading → Heading 1–5 / Title / Subtitle / Quote, with LibreOffice's values (18/16/14/13/12 pt headings)
+- Named character styles (Emphasis / Strong Emphasis / Source Text + own ones) as a mark on a text run
+- Style gallery in the toolbar lists both families; assigning a style keeps hard formatting (Word/LibreOffice behavior), Ctrl+M clears direct formatting but keeps the style
+- Style manager ("Manage styles…"): inheritance tree, live property editing (empty field = inherit again), new / update from selection, rename, delete, reset a built-in — for paragraph and character styles alike
+- Round-trips as real styles, not baked formatting: ODF `style:style` (`style:family="paragraph"`/`"text"`, `style:parent-style-name`, `style:next-style-name`) and DOCX `w:pStyle`/`w:rStyle` with `w:basedOn`/`w:next`; import adopts the file's used styles plus their parent chains, so only formatting beyond the style stays direct
+- A new document starts from the built-in styles, like Word's/LibreOffice's default template
 
 **Paragraphs & lists**
 - Text alignment: left, center, right, justify
@@ -45,7 +53,7 @@
 - Images: inline or floating with text wrap (left / right / top-bottom), resize handles, rotation, live size badge; insert via toolbar, drag-and-drop, or paste
 - Special characters picker
 - Date and time fields: picker with 7 date and 4 time formats (live samples) and an "update automatically" toggle — fixed fields keep the inserted moment, auto fields refresh on open. Round-trips to ODF `text:date`/`text:time` (minted `number:date/time-style`) and DOCX `DATE`/`TIME` fields; the field carries the surrounding font
-- Table of contents: generated from headings (H1–H3) with live page numbers and dot leaders, click an entry to jump to its heading; round-trips to ODF `text:table-of-content` and a Word TOC field
+- Table of contents: generated from headings (H1–H5) with live page numbers and dot leaders, click an entry to jump to its heading; round-trips to ODF `text:table-of-content` and a Word TOC field
 - Hyperlinks: create / edit / remove (toolbar + Ctrl+K), Ctrl/Cmd+click to open, hover hint showing the URL; ODF `text:a` round-trip
 - Manual page break (Ctrl+Enter); round-trips to ODF `fo:break-before`
 - Text boxes and basic shapes (rectangle / rounded rectangle / ellipse): editable block content, fill and border colors, border width, resize/rotate handles, text wrap (inline / left / right / top-bottom) like images; floating toolbar for wrap, shape kind and colors. Round-trips to ODF `draw:frame`/`draw:text-box` + `draw:custom-shape` and DOCX DrawingML `wps:wsp`/`wps:txbx` (imports Word's `mc:AlternateContent` and legacy VML text boxes too)
@@ -85,17 +93,15 @@
 
 Planned word-processor features (to match Word/LibreOffice):
 - Footnotes / endnotes (currently dropped on import)
-- Clear formatting (remove all marks)
 - Comments / annotations (currently dropped on import)
 - Horizontal rule
 - Page numbering options (start value / format) + different first-page header
-- Heading levels H4–H6 (currently clamped to H3)
+- Heading level H6 (currently clamped to H5)
 - Paragraph borders / shading
 - Track changes (revisions)
 - Lines / arrows / connectors / freeform and other shape presets (currently dropped on import with a warning; text boxes + rect/round-rect/ellipse are supported)
 - Equations / formulas
 - Cross-references / bookmarks
-- Named paragraph / character styles (style gallery)
 
 Other:
 - Custom right-click context menu (formatting, cut/copy)

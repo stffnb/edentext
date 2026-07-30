@@ -73,9 +73,11 @@ const en = {
     },
   },
   styles: {
-    title: 'Paragraph styles',
+    title: 'Styles',
     manage: 'Manage styles…',
     characterStyles: 'Character styles',
+    paragraphStyles: 'Paragraph styles',
+    newStyle: 'New',
     custom: 'own',
     inherited: 'inherited',
     abstract: 'parent only',

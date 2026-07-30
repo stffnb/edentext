@@ -35,7 +35,8 @@ export function putStyle(style: Style, family: StyleFamily = 'paragraph'): void 
 
 // Rename a style and re-point everything that referenced it (children, next-styles).
 // Blocks keep their own `styleName`; the caller retags them.
-export function renameStyle(from: string, to: string): void {
+export function renameStyle(from: string, to: string, family: StyleFamily = 'paragraph'): void {
+  if (family === 'character') return renameCharacterStyle(from, to);
   const style = current.paragraph[from];
   if (!style || from === to || current.paragraph[to]) return;
   const paragraph: Record<string, Style> = {};
@@ -75,5 +76,17 @@ export function deleteCharacterStyle(name: string): void {
   if (current.character[name]?.builtin) return;
   const character = { ...current.character };
   delete character[name];
+  setStyleSheet({ ...current, character });
+}
+
+function renameCharacterStyle(from: string, to: string): void {
+  const style = current.character[from];
+  if (!style || from === to || current.character[to]) return;
+  const character: Record<string, Style> = {};
+  for (const [name, s] of Object.entries(current.character)) {
+    if (name === from) continue;
+    character[name] = { ...s, parent: s.parent === from ? to : s.parent };
+  }
+  character[to] = { ...style, name: to, builtin: undefined };
   setStyleSheet({ ...current, character });
 }
