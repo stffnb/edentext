@@ -965,3 +965,37 @@ describe('DOCX named paragraph styles', () => {
     expect(style.para.spaceBefore).toBe(8);
   });
 });
+
+describe('DOCX named character styles', () => {
+  const sheet = builtinStyleSheet();
+  sheet.character['Signal'] = {
+    name: 'Signal', parent: null, next: null, para: {}, text: { bold: true, color: '#CC0000' },
+  };
+  const CS = (t: string, name: string, ...extra: any[]) =>
+    ({ type: 'text', text: t, marks: [{ type: 'charStyle', attrs: { name } }, ...extra] });
+
+  it('writes w:rStyle runs and round-trips them', async () => {
+    const fixture = { type: 'doc', content: [{ type: 'paragraph', content: [
+      text('plain '), CS('emphasised', 'Emphasis'), text(' and '), CS('signal', 'Signal', { type: 'italic' }),
+    ] }] } as any;
+    const bytes = await buildDocx(fixture, undefined, undefined, undefined, undefined, undefined, sheet);
+    const files = unzipSync(bytes);
+    const stylesXml = strFromU8(files['word/styles.xml']);
+    const documentXml = strFromU8(files['word/document.xml']);
+
+    expect(stylesXml).toMatch(/<w:style w:type="character" [^>]*w:styleId="Signal"/);
+    expect(stylesXml).toMatch(/w:styleId="Signal"[\s\S]*?<w:color w:val="CC0000"\/>/);
+    expect(documentXml).toContain('<w:rStyle w:val="Emphasis"/>');
+    expect(documentXml).toContain('<w:rStyle w:val="Signal"/>');
+
+    const res = importDocx(bytes);
+    const runs = (res.content as N).content![0].content!;
+    const charOf = (r: N) => (r.marks ?? []).find((m: N) => m.type === 'charStyle')?.attrs?.name;
+    expect(runs[0].marks).toBeUndefined();
+    expect(charOf(runs[1])).toBe('Emphasis');
+    expect((runs[1].marks ?? []).every((m: N) => m.type === 'charStyle')).toBe(true);
+    const signal = runs.find((r: N) => charOf(r) === 'Signal')!;
+    expect((signal.marks ?? []).some((m: N) => m.type === 'italic')).toBe(true);
+    expect(res.styles.character['Signal'].text).toEqual({ bold: true, color: '#CC0000' });
+  });
+});

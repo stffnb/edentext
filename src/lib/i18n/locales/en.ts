@@ -75,6 +75,7 @@ const en = {
   styles: {
     title: 'Paragraph styles',
     manage: 'Manage styles…',
+    characterStyles: 'Character styles',
     custom: 'own',
     inherited: 'inherited',
     abstract: 'parent only',

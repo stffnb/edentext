@@ -137,6 +137,7 @@ export class StyleResolver {
   private mergedCache = new Map<string, { text: PropMap; para: PropMap; misc: PropMap }>();
   private stylesDoc: Document | null;
   private namedParagraphNames = new Set<string>();
+  private namedTextNames = new Set<string>();
   private displayNames = new Map<string, string>();
 
   constructor(contentDoc: Document, stylesDoc: Document | null) {
@@ -170,15 +171,26 @@ export class StyleResolver {
 
   // The nearest named style in a style's parent chain (an automatic style is direct
   // formatting layered on top of it); null when the chain reaches none.
-  namedAncestor(styleName: string | null | undefined): string | null {
+  namedAncestor(styleName: string | null | undefined, family: 'paragraph' | 'text' = 'paragraph'): string | null {
+    const named = family === 'text' ? this.namedTextNames : this.namedParagraphNames;
     let cur = styleName ?? null;
     const seen = new Set<string>();
     while (cur && !seen.has(cur)) {
       seen.add(cur);
-      if (this.namedParagraphNames.has(cur)) return cur;
-      cur = this.styles.get(`paragraph\0${cur}`)?.parent ?? null;
+      if (named.has(cur)) return cur;
+      cur = this.styles.get(`${family}\0${cur}`)?.parent ?? null;
     }
     return null;
+  }
+
+  // Named text (character) styles from <office:styles>, own props only.
+  namedTextStyles(): Map<string, { display?: string; text: PropMap }> {
+    const out = new Map<string, { display?: string; text: PropMap }>();
+    for (const name of this.namedTextNames) {
+      const entry = this.styles.get(`text\0${name}`);
+      if (entry) out.set(name, { display: this.displayNames.get(name), text: entry.text });
+    }
+    return out;
   }
 
   private scanFontFaces(container: Element): void {
@@ -212,8 +224,9 @@ export class StyleResolver {
         const name = el.getAttributeNS(NS.style, 'name');
         const family = el.getAttributeNS(NS.style, 'family');
         if (name && family) this.styles.set(`${family}\0${name}`, entryFromStyleElement(el));
-        if (name && family === 'paragraph' && named) {
-          this.namedParagraphNames.add(name);
+        if (name && named && (family === 'paragraph' || family === 'text')) {
+          if (family === 'paragraph') this.namedParagraphNames.add(name);
+          else this.namedTextNames.add(name);
           const display = el.getAttributeNS(NS.style, 'display-name');
           if (display) this.displayNames.set(name, display);
         }

@@ -7,6 +7,7 @@
   import { effectiveOrderedTypeAt } from '../editor/extensions/orderedList';
   import { isInHeaderCell } from '../editor/extensions/tableHeaderRow';
   import { blockStyleName } from '../editor/extensions/paragraphStyle';
+  import { activeCharacterStyle } from '../editor/extensions/characterStyle';
   import { DEFAULT_STYLE, resolveStyle, styleOrder } from '../styles/styleSheet';
   import { styleSheet } from '../styles/sheet.svelte';
   import StyleManagerDialog from './StyleManagerDialog.svelte';
@@ -24,6 +25,20 @@
   // registry, assigning one only sets the style — hard formatting stays, as in Word/LO.
   let sheet = $derived(styleSheet());
   let galleryStyles = $derived(styleOrder(sheet));
+  // Character styles apply to the selected run, not the block (LibreOffice's second family).
+  let charStyles = $derived(Object.values(sheet.character ?? {}));
+  let currentCharStyle = $derived.by<string | null>(() => {
+    if (tick < 0 || !editor) return null;
+    return activeCharacterStyle(editor.state as never);
+  });
+
+  function applyCharStyle(name: string) {
+    stylesOpen = false;
+    if (!editor) return;
+    // Clicking the active one removes it, like a toggle.
+    if (currentCharStyle === name) editor.chain().focus().unsetCharacterStyle().run();
+    else editor.chain().focus().setCharacterStyle(name).run();
+  }
 
   // Built-in names are translated; user styles show their own name.
   function styleLabel(name: string): string {
@@ -211,6 +226,22 @@
                 {styleLabel(s.name)}
               </button>
             {/each}
+            {#if charStyles.length}
+              <div class="ol-section-label char-label">{t().styles.characterStyles}</div>
+              {#each charStyles as c}
+                {@const preview = resolveStyle(sheet, c.name, 'character')}
+                <button
+                  class="ol-option style-option"
+                  class:active={currentCharStyle === c.name}
+                  onclick={() => applyCharStyle(c.name)}
+                  role="menuitemradio"
+                  aria-checked={currentCharStyle === c.name}
+                  style="font-weight: {preview.text.bold ? 600 : 400}; font-style: {preview.text.italic ? 'italic' : 'normal'}; font-family: {preview.text.fontFamily ?? 'inherit'}"
+                >
+                  {c.name}
+                </button>
+              {/each}
+            {/if}
             <button class="ol-option manage" onclick={() => { stylesOpen = false; managerOpen = true; }}>
               {t().styles.manage}
             </button>
@@ -435,6 +466,11 @@
 
   .style-option {
     line-height: 1.2;
+  }
+
+  .char-label {
+    margin-top: 2px;
+    border-top: 1px solid var(--color-border);
   }
 
   .manage {

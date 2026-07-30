@@ -1359,3 +1359,46 @@ describe('Leg 12: named paragraph styles (ODF)', () => {
     check('heading needs no direct formatting', !blocks[0]?.content?.[0]?.marks, blocks[0]);
   });
 });
+
+describe('Leg 13: named character styles (ODF)', () => {
+  const sheet = builtinStyleSheet();
+  sheet.character['Signal'] = {
+    name: 'Signal', parent: null, next: null, para: {}, text: { bold: true, color: '#CC0000' },
+  };
+  const CS = (text: string, name: string, ...extra: N[]): N =>
+    ({ type: 'text', text, marks: [{ type: 'charStyle', attrs: { name } }, ...extra] });
+
+  const doc: N = {
+    type: 'doc',
+    content: [P(null, T('plain '), CS('emphasised', 'Emphasis'), T(' and '), CS('signal', 'Signal', { type: 'italic' }))],
+  };
+
+  it('writes style:family="text" styles and round-trips the run assignment', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', sheet);
+    const files = unzipSync(bytes);
+    const styles = strFromU8(files['styles.xml']);
+    const content = strFromU8(files['content.xml']);
+
+    check('mints the built-in Emphasis as a text style',
+      /<style:style style:name="Emphasis" style:family="text"[\s\S]*?fo:font-style="italic"/.test(styles), styles.slice(0, 200));
+    check('mints the user character style', /style:name="Signal" style:family="text"/.test(styles));
+    // The run's span points at the style; its own formatting is baked alongside.
+    check('run references the style via its automatic style',
+      /<style:style style:name="TS\d+"[^>]*style:parent-style-name="Signal"/.test(content), content.slice(0, 400));
+    check('no leftover sentinel', !content.includes('\uE00E'));
+
+    const runs = (importOdt(bytes).content.content?.[0] as N).content as N[];
+    const charOf = (r: N) => (r.marks ?? []).find((m: N) => m.type === 'charStyle')?.attrs?.name;
+    check('plain run stays plain', !runs[0].marks, runs[0]);
+    check('built-in style round-trips', charOf(runs[1]) === 'Emphasis', runs[1]);
+    check('style formatting is not copied onto the run',
+      (runs[1].marks ?? []).every((m: N) => m.type === 'charStyle'), runs[1]);
+    const signal = runs.find((r: N) => charOf(r) === 'Signal');
+    check('user style round-trips', !!signal, runs);
+    check('direct formatting on top survives',
+      (signal?.marks ?? []).some((m: N) => m.type === 'italic'), signal);
+    const imported = importOdt(bytes).styles.character['Signal'];
+    check('the character style itself round-trips',
+      imported?.text.bold === true && imported?.text.color === '#CC0000', imported);
+  });
+});

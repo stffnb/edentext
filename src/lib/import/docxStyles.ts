@@ -99,6 +99,7 @@ export class DocxStyles {
   private ownSpacing = new Map<string, ParaSpacing>(); // style's own w:pPr/w:spacing
   private ownIndentTwip = new Map<string, number>(); // style's own w:pPr/w:ind left
   private paraStyleNames = new Map<string, string>(); // paragraph styleId → w:name
+  private charStyleNames = new Map<string, string>(); // character styleId → w:name
   private defaultParaStyle: string | null = null; // the w:default="1" paragraph style
   private defaultsAlign: string | null = null; // docDefaults w:pPrDefault/w:jc
   private defaultsSpacing: ParaSpacing = {}; // docDefaults w:pPrDefault/w:spacing
@@ -163,9 +164,12 @@ export class DocxStyles {
         const left = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10);
         if (Number.isFinite(left)) this.ownIndentTwip.set(id, left);
       }
-      if (style.getAttributeNS(W, 'type') === 'paragraph') {
+      const kind = style.getAttributeNS(W, 'type');
+      if (kind === 'paragraph' || kind === 'character') {
         const nameEl = firstChild(style, 'name');
-        this.paraStyleNames.set(id, (nameEl && wVal(nameEl)) || id);
+        const name = (nameEl && wVal(nameEl)) || id;
+        if (kind === 'paragraph') this.paraStyleNames.set(id, name);
+        else this.charStyleNames.set(id, name);
       }
     }
   }
@@ -175,6 +179,11 @@ export class DocxStyles {
     const out = new Map<string, { name: string; basedOn: string | null }>();
     for (const [id, name] of this.paraStyleNames) out.set(id, { name, basedOn: this.basedOn.get(id) ?? null });
     return out;
+  }
+
+  // Character styles defined in the file (w:type="character"), for the style registry.
+  namedCharacterStyles(): Map<string, string> {
+    return new Map(this.charStyleNames);
   }
 
   // The style's effective left indent (twips) along the basedOn chain.

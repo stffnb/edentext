@@ -2,7 +2,7 @@
 // components read styleSheet() in a template or $derived and re-render when it is
 // replaced. Persisted to localStorage like the other document side-cars.
 
-import { builtinStyleSheet, DEFAULT_STYLE, mergeStoredSheet, STYLE_SHEET_VERSION, type Style, type StyleSheet } from './styleSheet';
+import { builtinStyleSheet, DEFAULT_STYLE, mergeStoredSheet, STYLE_SHEET_VERSION, type Style, type StyleFamily, type StyleSheet } from './styleSheet';
 
 const STORAGE_KEY = 'odf-editor-styles';
 
@@ -27,9 +27,10 @@ export function setStyleSheet(next: StyleSheet): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: STYLE_SHEET_VERSION, ...next }));
 }
 
-// Replace one style (add or edit) — every block using it re-renders via styleCss.
-export function putStyle(style: Style): void {
-  setStyleSheet({ paragraph: { ...current.paragraph, [style.name]: style } });
+// Replace one style (add or edit) — everything using it re-renders via styleCss.
+export function putStyle(style: Style, family: StyleFamily = 'paragraph'): void {
+  const key = family === 'character' ? 'character' : 'paragraph';
+  setStyleSheet({ ...current, [key]: { ...current[key], [style.name]: style } });
 }
 
 // Rename a style and re-point everything that referenced it (children, next-styles).
@@ -43,7 +44,7 @@ export function renameStyle(from: string, to: string): void {
     paragraph[name] = { ...s, parent: s.parent === from ? to : s.parent, next: s.next === from ? to : s.next };
   }
   paragraph[to] = { ...style, name: to, builtin: undefined };
-  setStyleSheet({ paragraph });
+  setStyleSheet({ ...current, paragraph });
 }
 
 // Delete a style; its children re-parent to its own parent, as in LibreOffice.
@@ -59,11 +60,20 @@ export function deleteStyle(name: string): void {
       next: s.next === name ? style.next ?? DEFAULT_STYLE : s.next,
     };
   }
-  setStyleSheet({ paragraph });
+  setStyleSheet({ ...current, paragraph });
 }
 
 // Restore a built-in to its factory definition.
-export function resetStyle(name: string): void {
-  const factory = builtinStyleSheet().paragraph[name];
-  if (factory) putStyle(factory);
+export function resetStyle(name: string, family: StyleFamily = 'paragraph'): void {
+  const base = builtinStyleSheet();
+  const factory = (family === 'character' ? base.character : base.paragraph)[name];
+  if (factory) putStyle(factory, family);
+}
+
+// Character styles have no children to re-parent, so removal is a plain delete.
+export function deleteCharacterStyle(name: string): void {
+  if (current.character[name]?.builtin) return;
+  const character = { ...current.character };
+  delete character[name];
+  setStyleSheet({ ...current, character });
 }

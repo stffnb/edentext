@@ -1,7 +1,6 @@
-// Named paragraph styles with inheritance, modelled on LibreOffice: a style has a
-// name, a parent it inherits from, a follow-on style, and two property groups
-// (paragraph layout + text). Resolution walks the parent chain, nearer wins; direct
-// formatting on the block (attrs/marks) still overrides the result.
+// Named styles with inheritance, modelled on LibreOffice: a name, a parent, a follow-on
+// style and two property groups. Resolution walks the parent chain (nearer wins); direct
+// formatting on the block or run still overrides the result.
 
 export type ParaProps = {
   textAlign?: 'left' | 'center' | 'right' | 'justify';
@@ -39,7 +38,13 @@ export type Style = {
   text: TextProps;
 };
 
-export type StyleSheet = { paragraph: Record<string, Style> };
+// Two families, as in LibreOffice: paragraph styles govern whole blocks, character
+// styles a run of text inside one. Same Style shape; a character style only uses `text`.
+export type StyleFamily = 'paragraph' | 'character';
+export type StyleSheet = {
+  paragraph: Record<string, Style>;
+  character: Record<string, Style>;
+};
 
 export const DEFAULT_STYLE = 'Standard';
 export const HEADING_PARENT = 'Heading';
@@ -65,6 +70,13 @@ const BUILTINS: Style[] = [
     para: { indent: 1, spaceAfter: 14 }, text: {} },
 ];
 
+// LibreOffice's character styles (its "Emphasis"/"Strong Emphasis"/"Source Text").
+const CHAR_BUILTINS: Style[] = [
+  { name: 'Emphasis', parent: null, next: null, builtin: true, para: {}, text: { italic: true } },
+  { name: 'Strong Emphasis', parent: null, next: null, builtin: true, para: {}, text: { bold: true } },
+  { name: 'Source Text', parent: null, next: null, builtin: true, para: {}, text: { fontFamily: 'Courier New' } },
+];
+
 // Bumped whenever the built-in definitions change: a stored sheet from an older version
 // keeps its user styles but takes the new factory built-ins (see mergeStoredSheet).
 export const STYLE_SHEET_VERSION = 2;
@@ -73,13 +85,15 @@ export const STYLE_SHEET_VERSION = 2;
 // (a document's own styles, and edits to built-ins). Older: only user styles survive.
 export function mergeStoredSheet(stored: unknown): StyleSheet {
   const sheet = builtinStyleSheet();
-  const data = stored as { v?: number; paragraph?: Record<string, Style> } | null;
+  const data = stored as { v?: number; paragraph?: Record<string, Style>; character?: Record<string, Style> } | null;
   if (!data?.paragraph || typeof data.paragraph !== 'object') return sheet;
   const current = data.v === STYLE_SHEET_VERSION;
-  for (const [name, style] of Object.entries(data.paragraph)) {
-    if (!style || typeof style !== 'object') continue;
-    if (!current && style.builtin) continue;
-    sheet.paragraph[name] = style;
+  for (const family of ['paragraph', 'character'] as const) {
+    for (const [name, style] of Object.entries(data[family] ?? {})) {
+      if (!style || typeof style !== 'object') continue;
+      if (!current && style.builtin) continue;
+      sheet[family][name] = style;
+    }
   }
   return sheet;
 }
@@ -87,7 +101,9 @@ export function mergeStoredSheet(stored: unknown): StyleSheet {
 export function builtinStyleSheet(): StyleSheet {
   const paragraph: Record<string, Style> = {};
   for (const s of BUILTINS) paragraph[s.name] = structuredClone(s);
-  return { paragraph };
+  const character: Record<string, Style> = {};
+  for (const s of CHAR_BUILTINS) character[s.name] = structuredClone(s);
+  return { paragraph, character };
 }
 
 // The gallery order: built-ins as listed above, user styles after them. `Heading` is an
@@ -114,13 +130,15 @@ export type ResolvedStyle = { para: ParaProps; text: TextProps };
 
 // Flattened props of a style: the parent chain applied root-first, so the nearest
 // definition wins. Cycles and missing parents end the walk.
-export function resolveStyle(sheet: StyleSheet, name: string | null | undefined): ResolvedStyle {
+export function resolveStyle(sheet: StyleSheet, name: string | null | undefined, family: StyleFamily = 'paragraph'): ResolvedStyle {
+  const styles = family === 'character' ? sheet.character : sheet.paragraph;
   const chain: Style[] = [];
   const seen = new Set<string>();
-  let cur = name && sheet.paragraph[name] ? name : DEFAULT_STYLE;
+  // A character style with no definition contributes nothing; a paragraph always has Standard.
+  let cur = name && styles[name] ? name : family === 'character' ? '' : DEFAULT_STYLE;
   while (cur && !seen.has(cur)) {
     seen.add(cur);
-    const style = sheet.paragraph[cur];
+    const style = styles[cur];
     if (!style) break;
     chain.push(style);
     cur = style.parent ?? '';
@@ -176,6 +194,12 @@ function declarations(r: ResolvedStyle): string[] {
 // Specificity beats editor.css's `.paper .tiptap hN`; inline attrs/marks still win.
 export function styleCss(sheet: StyleSheet): string {
   const rules: string[] = [];
+  for (const style of Object.values(sheet.character ?? {})) {
+    const decls = declarations(resolveStyle(sheet, style.name, 'character'));
+    if (!decls.length) continue;
+    const attr = `[data-char-style="${style.name.replace(/"/g, '\\"')}"]`;
+    rules.push(`.paper .tiptap ${attr} {\n  ${decls.join(';\n  ')};\n}`);
+  }
   for (const style of Object.values(sheet.paragraph)) {
     const decls = declarations(resolveStyle(sheet, style.name));
     if (!decls.length) continue;

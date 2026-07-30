@@ -73,6 +73,8 @@ type Ctx = {
   // document's style registry is built from these (only used styles are kept).
   styleNames: Map<string, string>;
   usedStyles: Set<string>;
+  charStyleNames: Map<string, string>;
+  usedCharStyles: Set<string>;
   warnings: Set<string>;
   files: Record<string, Uint8Array>;
   imageCache: Map<string, string>;
@@ -345,7 +347,9 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
 
   const styleNames = new Map<string, string>();
   for (const [name, def] of resolver.namedParagraphStyles()) styleNames.set(name, displayStyleName(name, def.display));
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [] };
+  const charStyleNames = new Map<string, string>();
+  for (const [name, def] of resolver.namedTextStyles()) charStyleNames.set(name, displayStyleName(name, def.display));
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [] };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 
@@ -797,7 +801,38 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
     if (level) style.outlineLevel = Number(level[1]);
     sheet.paragraph[name] = style;
   }
+  for (const odfName of ctx.usedCharStyles) {
+    const name = ctx.charStyleNames.get(odfName) ?? odfName;
+    const builtin = sheet.character[name];
+    sheet.character[name] = {
+      name, parent: null, next: null, builtin: builtin?.builtin,
+      para: {}, text: textPropsFromOdf(resolver.spanTextProps(odfName), resolver),
+    };
+  }
   return sheet;
+}
+
+// The block's yardstick plus what the run's character style provides.
+function charDefaults(ctx: Ctx, base: BlockDefaults, odfName: string): BlockDefaults {
+  const props = ctx.resolver.spanTextProps(odfName);
+  const family = ctx.resolver.fontFamilyOf(props)?.toLowerCase();
+  const fonts = new Set(base.fonts);
+  if (family) {
+    fonts.add(family);
+    for (const twin of FONT_TWINS[family] ?? []) fonts.add(twin);
+  }
+  const weight = props['fo:font-weight'];
+  const fontStyle = props['fo:font-style'];
+  return {
+    ...base,
+    fontSizePt: lengthToPt(props['fo:font-size']) ?? base.fontSizePt,
+    boldByDefault: weight ? weight === 'bold' || parseInt(weight, 10) >= 600 : base.boldByDefault,
+    fonts,
+    color: (props['fo:color'] && normalizeColor(props['fo:color'])) || base.color,
+    italic: fontStyle ? fontStyle === 'italic' || fontStyle === 'oblique' : base.italic,
+    underline: props['style:text-underline-style'] ? props['style:text-underline-style'] !== 'none' : base.underline,
+    strike: props['style:text-line-through-style'] ? props['style:text-line-through-style'] !== 'none' : base.strike,
+  };
 }
 
 function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault = false): Node {
@@ -1008,6 +1043,10 @@ function numberStyleKind(tokens: Token[]): 'date' | 'time' | null {
 function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: BlockDefaults, hfFields = false): Node[] {
   const out: Node[] = [];
 
+  // The named character style of the enclosing span, if any: its formatting belongs to
+  // the style, so the run only keeps what goes beyond it.
+  let charStyle: string | null = null;
+
   const pushText = (text: string, props: PropMap, linkHref?: string) => {
     // Strip our export sentinels (SEG/LBR) defensively — never legitimate text.
     let clean = text.replace(/[-]/g, '');
@@ -1018,7 +1057,12 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
       clean = clean.replace(/[ \t]*\n[ \t]*/g, ' ');
     }
     if (!clean) return;
-    const marks = marksFor(props, ctx.resolver, defaults);
+    const marks = marksFor(props, ctx.resolver, charStyle ? charDefaults(ctx, defaults, charStyle) : defaults);
+    if (charStyle) {
+      const display = ctx.charStyleNames.get(charStyle) ?? charStyle;
+      ctx.usedCharStyles.add(charStyle);
+      marks.push({ type: 'charStyle', attrs: { name: display } });
+    }
     if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
     const node: Node = { type: 'text', text: clean };
     if (marks.length) node.marks = marks;
@@ -1036,9 +1080,14 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
 
       if (e.namespaceURI === NS.text) {
         switch (e.localName) {
-          case 'span':
-            walk(e, layerTextProps(props, ctx.resolver.spanTextProps(e.getAttributeNS(NS.text, 'style-name'))), linkHref);
+          case 'span': {
+            const spanStyle = e.getAttributeNS(NS.text, 'style-name');
+            const outer = charStyle;
+            charStyle = ctx.resolver.namedAncestor(spanStyle, 'text') ?? outer;
+            walk(e, layerTextProps(props, ctx.resolver.spanTextProps(spanStyle)), linkHref);
+            charStyle = outer;
             continue;
+          }
           case 's': {
             const c = parseInt(e.getAttributeNS(NS.text, 'c') ?? '1', 10);
             pushText(' '.repeat(Number.isFinite(c) && c > 0 ? c : 1), props, linkHref);

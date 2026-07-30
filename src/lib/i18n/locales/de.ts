@@ -71,6 +71,7 @@ const de: Messages = {
   styles: {
     title: 'Absatzvorlagen',
     manage: 'Vorlagen verwalten…',
+    characterStyles: 'Zeichenvorlagen',
     custom: 'eigen',
     inherited: 'geerbt',
     abstract: 'nur Elternstil',

@@ -4,7 +4,7 @@ import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
-import { builtinStyleSheet, DEFAULT_STYLE, type StyleSheet } from '../styles/styleSheet';
+import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -111,6 +111,10 @@ const HFIMG = '';
 // odf-kit path; applyParagraphStyles points the block at that style. U+E00D.
 const STY = '';
 
+// Sentinel prefixed to a run that carries a named character style (CST<name>CST);
+// applyCharacterStyles points the run's span at that style. U+E00E.
+const CST = '\uE00E';
+
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -128,9 +132,8 @@ const CELL_LIST_BULLET_STYLE = 'TblListBullet';
 const CELL_LIST_NUMBER_STYLE = 'TblListNumber';
 
 // LibreOffice's heading defaults, shown in the editor (editor.css) and written over
-// odf-kit's larger Heading_20_N styles on export: its sizes plus the Heading style's
-// margins, which every level inherits. import/odt.ts uses them as the defaults to
-// suppress on re-import.
+// odf-kit's Heading_20_N styles on export: its sizes plus the Heading style's margins.
+// The importers use them as the fallback yardstick when a file declares no style.
 export const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTop: string; marginBottom: string }[] = [
   { name: 'Heading_20_1', fontSize: '18pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
   { name: 'Heading_20_2', fontSize: '16pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
@@ -225,6 +228,11 @@ function hasFontWeightRun(content: TiptapNode['content']): boolean {
   );
 }
 
+// Same for a named character style: only applyRuns emits its CST sentinel.
+function hasCharStyleRun(content: TiptapNode['content']): boolean {
+  return !!content?.some(c => c.type === 'text' && !!charStyleOf(c.marks));
+}
+
 function injectCustomTypes(node: TiptapNode, inContainer = false): TiptapNode {
   // Rename tables so odf-kit routes them to our unknownNodeHandler (see
   // CUST_TABLE). Recurse with inContainer=true so the cell paragraphs are NOT
@@ -239,7 +247,7 @@ function injectCustomTypes(node: TiptapNode, inContainer = false): TiptapNode {
   // Don't rename paragraphs inside list items or table cells — tiptapToOdt's list
   // builder (and our table handler) walk them by type === "paragraph"; renaming
   // breaks that.
-  if (!inContainer && (hasCustomAttrs(node.attrs) || hasFontWeightRun(node.content))) {
+  if (!inContainer && (hasCustomAttrs(node.attrs) || hasFontWeightRun(node.content) || hasCharStyleRun(node.content))) {
     if (node.type === 'paragraph') return { ...node, type: CUST_P };
     if (node.type === 'heading')   return { ...node, type: CUST_H };
   }
@@ -1051,6 +1059,17 @@ function stripManagedProps(block: string): string {
 // chain is preserved, so LibreOffice/Word show them as real, inheriting styles.
 function applyNamedStyles(styles: string, sheet: StyleSheet, used: Set<string>): string {
   const added: string[] = [];
+  // Character styles are the same shape, family "text" and text props only.
+  for (const style of Object.values(sheet.character ?? {})) {
+    const { text } = ownStyleAttrs(style);
+    if (!Object.keys(text).length) continue;
+    const odfName = odfStyleName(style.name);
+    if (findAutoStyle(styles, odfName)) continue;
+    const attrs: Record<string, string> = {
+      'style:name': odfName, 'style:family': 'text', 'style:display-name': style.name,
+    };
+    added.push(upsertProps(`${setTagAttrs('<style:style/>', attrs).replace('/>', '>')}</style:style>`, 'text', text));
+  }
   for (const style of Object.values(sheet.paragraph)) {
     if (!used.has(style.name)) continue;
     const odfName = odfStyleName(style.name);
@@ -1859,17 +1878,107 @@ function linkHrefOf(marks: TiptapNode['marks'] = []): string | undefined {
 // Emit each text node as an odf-kit run; link-marked runs become <text:a> via addLink.
 // forceBold bakes bold onto every run regardless of marks — used for header-row cells,
 // whose bold is presentational (CSS) in the editor and so isn't stored as a mark.
+// The sheet of the export in flight, so the run emitters can resolve character styles
+// without threading it through every cell/list helper (mirrors docLangTag in docx.ts).
+let exportSheet: StyleSheet = builtinStyleSheet();
+
 function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = [], forceBold = false) {
   for (const node of content) {
     if (node.type !== 'text' || !node.text) continue;
     const fmt = formattingFromMarks(node.marks);
     // Bake header bold, but respect an explicit un-bold (fontWeight:normal) override.
     if (forceBold && fmt.fontWeight !== 'normal') fmt.bold = true;
+    // A named character style: bake its resolved formatting (so odf-kit always mints a
+    // span) and mark the run, so applyCharacterStyles can re-point that span at the style.
+    const charStyle = charStyleOf(node.marks);
+    let prefix = '';
+    if (charStyle) {
+      // The style is the base, the run's own marks stay on top.
+      const direct = { ...fmt };
+      Object.assign(fmt, charFormatting(exportSheet, charStyle), direct);
+      prefix = `${CST}${charStyle}${CST}`;
+    }
     const f = Object.keys(fmt).length ? fmt : undefined;
     const href = linkHrefOf(node.marks);
-    if (href) p.addLink(node.text, href, f);
-    else p.addText(node.text, f);
+    if (href) p.addLink(prefix + node.text, href, f);
+    else p.addText(prefix + node.text, f);
   }
+}
+
+function charStyleOf(marks: TiptapNode['marks']): string | null {
+  const name = marks?.find(m => m.type === 'charStyle')?.attrs?.name;
+  return typeof name === 'string' && name ? name : null;
+}
+
+// A character style's resolved props as odf-kit run formatting (baked so the file still
+// looks right for readers that ignore the style reference).
+function charFormatting(sheet: StyleSheet, name: string): Record<string, unknown> {
+  const t = resolveStyle(sheet, name, 'character').text;
+  const fmt: Record<string, unknown> = {};
+  if (t.bold != null) fmt.bold = t.bold;
+  if (t.italic != null) fmt.italic = t.italic;
+  if (t.underline) fmt.underline = true;
+  if (t.strike) fmt.strikethrough = true;
+  if (t.fontFamily) fmt.fontFamily = t.fontFamily === ODFKIT_DEFAULT_FONT ? EXPORT_FONT : t.fontFamily;
+  if (t.fontSizePt != null) fmt.fontSize = `${t.fontSizePt}pt`;
+  if (t.color) fmt.color = t.color;
+  return fmt;
+}
+
+// Resolve CST sentinels: point each marked run's span at its named character style
+// (a clone of the automatic style whose parent becomes the named one), then strip it.
+function applyCharacterStyles(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  if (!content.includes(CST)) return odtBytes;
+
+  const minted: string[] = [];
+  const nameByKey = new Map<string, string>();
+  let counter = 0;
+
+  const styleFor = (source: string, styleName: string): string => {
+    const odfName = odfStyleName(styleName);
+    const auto = source ? findAutoStyle(content, source) : null;
+    if (!auto) return odfName;
+    const key = `${source}|${odfName}`;
+    const existing = nameByKey.get(key);
+    if (existing) return existing;
+    const name = `TS${++counter}`;
+    nameByKey.set(key, name);
+    minted.push(
+      auto
+        .replace(/style:name="[^"]*"/, `style:name="${name}"`)
+        .replace(/^<style:style\b[^>]*?(\/?)>/, (tag) => setTagAttrs(tag, { 'style:parent-style-name': odfName })),
+    );
+    return name;
+  };
+
+  const cstRe = new RegExp(`${CST}([^${CST}]*)${CST}`);
+  content = content.replace(
+    new RegExp(`<text:span\\b([^>]*)>([\\s\\S]*?)</text:span>`, 'g'),
+    (m, attrs: string, inner: string) => {
+      const sm = cstRe.exec(inner);
+      if (!sm) return m;
+      const cleaned = inner.replace(cstRe, '');
+      const srcM = /text:style-name="([^"]*)"/.exec(attrs);
+      const name = styleFor(srcM ? srcM[1] : '', sm[1]);
+      const newAttrs = srcM
+        ? attrs.replace(/text:style-name="[^"]*"/, `text:style-name="${name}"`)
+        : ` text:style-name="${name}"${attrs}`;
+      return `<text:span${newAttrs}>${cleaned}</text:span>`;
+    },
+  );
+  content = content.replace(new RegExp(`${CST}[^${CST}]*${CST}`, 'g'), '');
+
+  if (minted.length) {
+    content = content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`);
+  }
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
 }
 
 // Emit the header/footer paragraph into odf-kit's HeaderFooterBuilder. hardBreak
@@ -2459,6 +2568,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Text boxes and columns sections are hoisted after replacePageBreaks (so PGB never
   // lands on their blocks) and before the inline passes (which then cover the hoisted
   // blocks too).
+  exportSheet = styles;
   const images: ImageExport[] = [];
   const tocs: TocExport[] = [];
   const textBoxes: TextBoxExport[] = [];
@@ -2636,7 +2746,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withParaBoxes = applyParagraphBoxes(withEmptyFontSizes);
-  const withNamedStyles = applyParagraphStyles(withParaBoxes);
+  const withNamedStyles = applyCharacterStyles(applyParagraphStyles(withParaBoxes));
   const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles));
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
 }

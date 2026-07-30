@@ -32,6 +32,8 @@ type Ctx = {
   // Word styleId → registry name, and the ids blocks actually reference.
   styleNames: Map<string, string>;
   usedStyles: Set<string>;
+  charStyleNames: Map<string, string>;
+  usedCharStyles: Set<string>;
   warnings: Set<string>;
   files: Record<string, Uint8Array>;
   rels: Map<string, RelInfo>;
@@ -112,7 +114,8 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const styleNames = new Map<string, string>();
   const defaultStyleId = styles.defaultParagraphStyle();
   for (const [id, def] of styles.namedParagraphStyles()) styleNames.set(id, registryName(id, def.name, id === defaultStyleId));
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map() };
+  const charStyleNames = styles.namedCharacterStyles();
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map() };
 
   const body = docDoc.getElementsByTagNameNS(W, 'body')[0];
   if (!body) throw new Error('Not a Word document (no w:body).');
@@ -583,9 +586,11 @@ function stylePara(ctx: Ctx, id: string | null): ParaProps {
   return out;
 }
 
-function styleText(ctx: Ctx, id: string | null): TextProps {
+// `own` reads the style's own chain without docDefaults — a character style adds to the
+// paragraph's formatting, so the document defaults are not its properties.
+function styleText(ctx: Ctx, id: string | null, own = false): TextProps {
   if (!id) return {};
-  const run = ctx.styles.paragraphRun(id);
+  const run = own ? ctx.styles.styleOwn(id) : ctx.styles.paragraphRun(id);
   const out: TextProps = {};
   // Our own export declares the metric twin; keep the registry on the on-screen name.
   if (run.font) out.fontFamily = run.font === 'Times New Roman' ? 'Liberation Serif'
@@ -632,6 +637,14 @@ function collectStyleSheet(ctx: Ctx): StyleSheet {
     const level = /^Heading (\d)$/.exec(name);
     if (level) style.outlineLevel = Number(level[1]);
     sheet.paragraph[name] = style;
+  }
+  for (const id of ctx.usedCharStyles) {
+    const name = ctx.charStyleNames.get(id) ?? id;
+    const builtin = sheet.character[name];
+    sheet.character[name] = {
+      name, parent: null, next: null, builtin: builtin?.builtin,
+      para: {}, text: styleText(ctx, id, true),
+    };
   }
   return sheet;
 }
@@ -805,14 +818,24 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
   const runMarks = (r: Element, linkHref?: string): Mark[] => {
     const rPr = fc(r, 'rPr');
     const rStyle = fc(rPr, 'rStyle');
-    const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
+    const charId = rStyle ? wVal(rStyle) : null;
+    const charName = charId ? ctx.charStyleNames.get(charId) : undefined;
+    // A named character style: its formatting belongs to the style, so it joins the
+    // yardstick and the run only keeps what goes beyond it.
+    const styleRun = ctx.styles.styleOwn(charId);
+    const runDefaults = charName ? blockDefaults(mergeRunProps(baseRun, styleRun), null, defaults.boldByDefault) : defaults;
+    const props = mergeRunProps(mergeRunProps(baseRun, styleRun), parseRunProps(rPr));
     // No font resolved anywhere: fall back to the document's own theme (not the editor
     // default) — Word's implicit default is the minor font for body text, the major one
     // for headings.
     if (!props.font) {
-      props.font = ctx.styles.themeFont(props.fontTheme ?? (defaults.boldByDefault ? 'major' : 'minor'));
+      props.font = ctx.styles.themeFont(props.fontTheme ?? (runDefaults.boldByDefault ? 'major' : 'minor'));
     }
-    const marks = marksFor(props, defaults, !!linkHref);
+    const marks = marksFor(props, runDefaults, !!linkHref);
+    if (charName) {
+      ctx.usedCharStyles.add(charId!);
+      marks.push({ type: 'charStyle', attrs: { name: charName } });
+    }
     if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
     return marks;
   };

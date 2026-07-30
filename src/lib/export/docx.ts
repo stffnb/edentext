@@ -10,7 +10,7 @@ import {
 import type { TiptapNode } from 'odf-kit';
 import type {
   IRunStylePropertiesOptions, ISpacingProperties, IIndentAttributesProperties,
-  ILevelsOptions, IFloating, IBorderOptions, IParagraphStyleOptions,
+  ILevelsOptions, IFloating, IBorderOptions, IParagraphStyleOptions, ICharacterStyleOptions,
 } from 'docx';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -158,7 +158,11 @@ function markPresent(marks: TiptapNode['marks'], type: string): boolean {
 // every run (header-row cells), respecting an explicit fontWeight:normal un-bold.
 function runPropsFromMarks(marks: TiptapNode['marks'] = [], forceBold = false): Writable<IRunStylePropertiesOptions> {
   const ts = marks.find((m) => m.type === 'textStyle');
-  const props: Writable<IRunStylePropertiesOptions> = {};
+  const props: Writable<IRunStylePropertiesOptions> & { style?: string } = {};
+
+  // A named character style (w:rStyle); the run's own marks below still win.
+  const charStyle = marks.find((m) => m.type === 'charStyle')?.attrs?.name;
+  if (typeof charStyle === 'string' && charStyle) props.style = docxStyleId(charStyle);
 
   let bold: boolean | undefined = markPresent(marks, 'bold') || undefined;
   const fw = ts?.attrs?.fontWeight;
@@ -889,6 +893,20 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   };
 }
 
+// One registry character style → a Word character style (w:type="character").
+function characterStyleOf(style: Style): ICharacterStyleOptions {
+  const t = style.text;
+  const run: Writable<IRunStylePropertiesOptions> = {};
+  if (t.fontFamily) run.font = t.fontFamily === 'Liberation Serif' ? DOC_FONT : t.fontFamily;
+  if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
+  if (t.bold != null) run.bold = t.bold;
+  if (t.italic != null) run.italics = t.italic;
+  if (t.underline) run.underline = {};
+  if (t.strike) run.strike = t.strike;
+  if (t.color) run.color = t.color.replace('#', '');
+  return { id: docxStyleId(style.name), name: style.name, quickFormat: true, run };
+}
+
 function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language: string; country: string } | null) {
   const run: Writable<IRunStylePropertiesOptions> = { font: DOC_FONT, size: 24 };
   if (language) run.language = { value: `${language.language}-${language.country}` };
@@ -898,6 +916,7 @@ function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language
     },
     // The document's named styles, chain intact — Word shows them in its style list.
     paragraphStyles: Object.values(sheet.paragraph).filter(st => used.has(st.name)).map(paragraphStyleOf),
+    characterStyles: Object.values(sheet.character ?? {}).map(characterStyleOf),
   };
 }
 

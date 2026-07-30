@@ -28,6 +28,7 @@ import { ParagraphSpacing } from './extensions/paragraphSpacing';
 import { ParagraphBox } from './extensions/paragraphBox';
 import { BlockFontSize } from './extensions/blockFontSize';
 import { ParagraphStyle } from './extensions/paragraphStyle';
+import { CharacterStyle } from './extensions/characterStyle';
 import { PageBreak } from './extensions/pageBreak';
 import { Indent } from './extensions/indent';
 import { FormattingMarks } from './extensions/formattingMarks';
@@ -101,6 +102,8 @@ export const extensions = [
   // Named paragraph style (LibreOffice style:style / Word w:pStyle); the document
   // stylesheet in Editor.svelte renders it, direct formatting still wins.
   ParagraphStyle.configure({ sheet: styleSheet }),
+  // Named character style on a run (LibreOffice style:family="text" / Word w:rStyle).
+  CharacterStyle,
   PageBreak,
   Indent,
   Heading.configure({ levels: [1, 2, 3, 4, 5] }),
