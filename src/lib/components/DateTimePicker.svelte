@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import {
-    DATE_FORMATS, TIME_FORMATS, renderFormat, localeTag, type DtFormat,
+    DATE_FORMATS, TIME_FORMATS, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT,
+    renderFormat, localeTag, type DtFormat,
   } from '../utils/dateTime';
+  import { shortcutHint } from '../editor/shortcuts';
   import { t, locale } from '../i18n/i18n.svelte';
 
   let {
@@ -91,13 +93,13 @@
         <div class="dt-col">
           <div class="dt-section-label">{t().dateTime.dateHeading}</div>
           {#each DATE_FORMATS as fmt (fmt.key)}
-            <button class="dt-cell" onclick={() => pick(fmt)}>{sample(fmt)}</button>
+            <button class="dt-cell" onclick={() => pick(fmt)} title={fmt.key === DEFAULT_DATE_FORMAT ? shortcutHint('dateField') : undefined}>{sample(fmt)}</button>
           {/each}
         </div>
         <div class="dt-col">
           <div class="dt-section-label">{t().dateTime.timeHeading}</div>
           {#each TIME_FORMATS as fmt (fmt.key)}
-            <button class="dt-cell" onclick={() => pick(fmt)}>{sample(fmt)}</button>
+            <button class="dt-cell" onclick={() => pick(fmt)} title={fmt.key === DEFAULT_TIME_FORMAT ? shortcutHint('timeField') : undefined}>{sample(fmt)}</button>
           {/each}
         </div>
       </div>

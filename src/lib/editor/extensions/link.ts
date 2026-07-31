@@ -1,4 +1,5 @@
 import LinkBase from '@tiptap/extension-link';
+import { DEFAULT_SHORTCUTS } from '../shortcuts';
 
 // Event the toolbar listens for to open the link dialog (Ctrl/Cmd+K). The extension
 // can't reach Svelte state directly, so it dispatches this on window instead.
@@ -16,7 +17,7 @@ export const Link = LinkBase.configure({
 }).extend({
   addKeyboardShortcuts() {
     return {
-      'Mod-k': () => {
+      [DEFAULT_SHORTCUTS.link]: () => {
         window.dispatchEvent(new CustomEvent(OPEN_LINK_DIALOG_EVENT));
         return true;
       },

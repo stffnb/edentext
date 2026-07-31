@@ -2,12 +2,17 @@
   import type { Editor } from '@tiptap/core';
   import { t } from '../i18n/i18n.svelte';
   import AlignIcon from './AlignIcon.svelte';
+  import { shortcutHint, type ShortcutId } from '../editor/shortcuts';
 
   import type { AlignValue } from './AlignIcon.svelte';
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 
   const ALIGNMENTS: AlignValue[] = ['left', 'center', 'right', 'justify'];
+
+  const ALIGN_SHORTCUTS: Record<AlignValue, ShortcutId> = {
+    left: 'alignLeft', center: 'alignCenter', right: 'alignRight', justify: 'alignJustify',
+  };
 
   // Empty string when the selection spans paragraphs/headings with different alignments.
   let currentAlign = $derived.by<AlignValue | ''>(() => {
@@ -65,7 +70,7 @@
           class="align-option"
           class:active={currentAlign === a}
           onclick={() => pickAlign(a)}
-          title={t().align.alignTo(t().align[a])}
+          title={`${t().align.alignTo(t().align[a])} (${shortcutHint(ALIGN_SHORTCUTS[a])})`}
         >
           <AlignIcon value={a} />
           <span>{t().align[a]}</span>

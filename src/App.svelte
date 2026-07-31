@@ -35,6 +35,7 @@
   import AboutDialog from './lib/components/AboutDialog.svelte';
   import { t } from './lib/i18n/i18n.svelte';
   import { withShortcut } from './lib/i18n/shortcut';
+  import { DEFAULT_SHORTCUTS, matchesEvent, shortcutHint } from './lib/editor/shortcuts';
   import { localizeImportMessage } from './lib/i18n/importMessages';
   import { unavailableFonts } from './lib/utils/fontDetect';
   import { registerEmbeddedFonts, clearEmbeddedFonts } from './lib/fonts/embeddedFonts';
@@ -670,38 +671,30 @@
     // FontFace load fires 'loadingdone', which Editor.svelte re-paginates on.
     void loadEmbeddedFonts().then(registerEmbeddedFonts);
 
+    // Shortcuts that must work regardless of focus and that suppress the browser's
+    // own binding (save page, find, open, zoom). Everything editor-scoped lives in
+    // the Shortcuts extension instead.
+    const appActions: [string, () => void][] = [
+      [DEFAULT_SHORTCUTS.save, handleSave],
+      [DEFAULT_SHORTCUTS.open, handleOpen],
+      [DEFAULT_SHORTCUTS.print, handlePrint],
+      [DEFAULT_SHORTCUTS.find, () => openFind('find')],
+      [DEFAULT_SHORTCUTS.replace, () => openFind('replace')],
+      // Closing the bar clears the search, so F3 with no bar starts one.
+      [DEFAULT_SHORTCUTS.findNext, () => (findOpen ? editor?.commands.findNext() : openFind('find'))],
+      [DEFAULT_SHORTCUTS.findPrevious, () => (findOpen ? editor?.commands.findPrevious() : openFind('find'))],
+      [DEFAULT_SHORTCUTS.formattingMarks, () => (showFormattingMarks = !showFormattingMarks)],
+      [DEFAULT_SHORTCUTS.zoomIn, () => setZoom(zoom + 10)],
+      [DEFAULT_SHORTCUTS.zoomOut, () => setZoom(zoom - 10)],
+      [DEFAULT_SHORTCUTS.zoomReset, () => setZoom(100)],
+    ];
+
     function onKeydown(e: KeyboardEvent) {
-      // Ctrl/Cmd+S → Save (suppress the browser's save-page dialog).
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 's' || e.key === 'S')) {
+      for (const [combo, run] of appActions) {
+        if (!matchesEvent(e, combo)) continue;
         e.preventDefault();
-        handleSave();
-      }
-      // Ctrl/Cmd+P → Print the paginated document (not the whole app UI).
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
-        e.preventDefault();
-        handlePrint();
-      }
-      // Ctrl/Cmd+F → Find, Ctrl/Cmd+H → Find & Replace (suppress the browser's own find).
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'f' || e.key === 'F')) {
-        e.preventDefault();
-        openFind('find');
-      }
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'h' || e.key === 'H')) {
-        e.preventDefault();
-        openFind('replace');
-      }
-      // Ctrl/Cmd +/−/0 → zoom the document, not the browser window.
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-        if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
-          e.preventDefault();
-          setZoom(zoom + 10);
-        } else if (e.key === '-' || e.code === 'NumpadSubtract') {
-          e.preventDefault();
-          setZoom(zoom - 10);
-        } else if (e.key === '0' || e.code === 'Numpad0') {
-          e.preventDefault();
-          setZoom(100);
-        }
+        run();
+        return;
       }
       // Escape closes the bar (when it isn't handled inside an input).
       if (e.key === 'Escape' && findOpen) closeFind();
@@ -808,7 +801,7 @@
             <path d="M8 8v3.5M6.25 9.75h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
         </button>
-        <button class="file-action-btn" onclick={handleOpen} disabled={!editor} title={t().app.openOdt}>
+        <button class="file-action-btn" onclick={handleOpen} disabled={!editor} title={`${t().app.openOdt} (${shortcutHint('open')})`}>
           <!-- Folder -->
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M1.75 12.5V4a1 1 0 0 1 1-1h3.2a1 1 0 0 1 .8.4l.7.95a1 1 0 0 0 .8.4h4.2a1 1 0 0 1 1 1v6.75a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>

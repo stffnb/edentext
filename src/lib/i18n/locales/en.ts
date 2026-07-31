@@ -24,6 +24,7 @@ const en = {
   shortcut: {
     ctrl: 'Ctrl',
     shift: 'Shift',
+    alt: 'Alt',
   },
   align: {
     title: 'Text alignment',

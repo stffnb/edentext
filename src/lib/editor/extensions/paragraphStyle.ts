@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { headingStyleName, type StyleSheet } from '../../styles/styleSheet';
+import { DEFAULT_SHORTCUTS } from '../shortcuts';
 
 // The named paragraph style a block uses (LibreOffice's style:style / Word's w:pStyle).
 // Rendered as data-style so the generated document stylesheet (styleCss) can target it;
@@ -75,7 +76,7 @@ export const ParagraphStyle = Extension.create<{ types: string[]; sheet: () => S
   },
 
   addKeyboardShortcuts() {
-    return { 'Mod-m': () => this.editor.commands.clearDirectFormatting() };
+    return { [DEFAULT_SHORTCUTS.clearFormatting]: () => this.editor.commands.clearDirectFormatting() };
   },
 });
 

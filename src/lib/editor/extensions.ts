@@ -48,6 +48,7 @@ import { TextBox } from './extensions/textBox';
 import { Columns } from './extensions/columns';
 import { ColumnsFlow } from './extensions/columnsFlow';
 import { TableOfContents } from './extensions/tableOfContents';
+import { Shortcuts } from './extensions/shortcuts';
 import { styleSheet } from '../styles/sheet.svelte';
 
 export const extensions = [
@@ -143,4 +144,7 @@ export const extensions = [
   FormattingMarks,
   SpellCheck,
   SearchReplace,
+  // Word/LibreOffice key bindings that aren't TipTap defaults; body:true adds the
+  // ones the header/footer schema has no commands for (headings, line spacing, fields).
+  Shortcuts.configure({ body: true }),
 ];

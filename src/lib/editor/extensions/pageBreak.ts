@@ -1,4 +1,5 @@
 import { Extension } from '@tiptap/core';
+import { DEFAULT_SHORTCUTS } from '../shortcuts';
 
 // Manual page break before a paragraph/heading, stored as breakBefore: 'page' | null and
 // rendered as data-page-break-before. Round-trips to ODF fo:break-before="page" (import
@@ -77,7 +78,7 @@ export const PageBreak = Extension.create({
 
   addKeyboardShortcuts() {
     return {
-      'Mod-Enter': () => this.editor.commands.insertPageBreak(),
+      [DEFAULT_SHORTCUTS.pageBreak]: () => this.editor.commands.insertPageBreak(),
     };
   },
 });

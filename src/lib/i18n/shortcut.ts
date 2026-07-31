@@ -10,5 +10,6 @@ const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 export function withShortcut(combo: string): string {
   const mod = IS_MAC ? '⌘' : t().shortcut.ctrl;
   const shift = IS_MAC ? '⇧' : t().shortcut.shift;
-  return combo.replace('Ctrl', mod).replace('Shift', shift);
+  const alt = IS_MAC ? '⌥' : t().shortcut.alt;
+  return combo.replace('Ctrl', mod).replace('Shift', shift).replace('Alt', alt);
 }

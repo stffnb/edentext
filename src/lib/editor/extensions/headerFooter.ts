@@ -19,6 +19,7 @@ import { ParagraphBox } from './paragraphBox';
 import { CharacterStyle } from './characterStyle';
 import { PageNumber, PageCount } from './pageField';
 import { Image } from './image';
+import { Shortcuts } from './shortcuts';
 
 // Schema for the header/footer mini editors: exactly one paragraph of formatted
 // runs, line breaks, page fields, and inline (as-character) images. Marks mirror
@@ -71,5 +72,7 @@ export function hfExtensions(placeholder = '') {
       alignments: ['left', 'center', 'right', 'justify'],
       defaultAlignment: 'left',
     }),
+    // Only the shared bindings: this schema has no headings, line spacing or fields.
+    Shortcuts,
   ];
 }

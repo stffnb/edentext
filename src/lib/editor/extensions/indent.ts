@@ -1,6 +1,7 @@
 import { Extension, type CommandProps } from '@tiptap/core';
 import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
+import { DEFAULT_SHORTCUTS } from '../shortcuts';
 
 // Left indent in cm: maps to fo:margin-left on paragraphs/headings; on lists it shifts
 // the whole list block (list items nest instead via sinkListItem/liftListItem).
@@ -219,7 +220,7 @@ export const Indent = Extension.create({
   addKeyboardShortcuts() {
     const inCell = () => this.editor.isActive('tableCell') || this.editor.isActive('tableHeader');
     return {
-      Tab: () => {
+      [DEFAULT_SHORTCUTS.indentMore]: () => {
         if (inCell()) return false;
         if (listContext(this.editor.state).inList) {
           this.editor.commands.indentListForward();
@@ -228,7 +229,7 @@ export const Indent = Extension.create({
         this.editor.commands.insertContent('\t');
         return true;
       },
-      'Shift-Tab': () => {
+      [DEFAULT_SHORTCUTS.indentLess]: () => {
         if (inCell()) return false;
         if (listContext(this.editor.state).inList) {
           this.editor.commands.indentListBackward();

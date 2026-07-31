@@ -8,11 +8,12 @@
   import { isInHeaderCell } from '../editor/extensions/tableHeaderRow';
   import { blockStyleName } from '../editor/extensions/paragraphStyle';
   import { activeCharacterStyle } from '../editor/extensions/characterStyle';
-  import { DEFAULT_STYLE, resolveStyle, styleOrder } from '../styles/styleSheet';
+  import { DEFAULT_STYLE, headingStyleName, resolveStyle, styleOrder } from '../styles/styleSheet';
   import { styleSheet } from '../styles/sheet.svelte';
   import StyleManagerDialog from './StyleManagerDialog.svelte';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
+  import { shortcutHint, type ShortcutId } from '../editor/shortcuts';
 
   // Bullet-marker tooltip by char, with the char itself as fallback.
   function bulletName(char: string): string {
@@ -68,6 +69,15 @@
     if (tick < 0 || !editor) return DEFAULT_STYLE;
     return blockStyleName(editor.state.selection.$from.parent as never);
   });
+
+  // Only the styles the Shortcuts extension binds carry a hint.
+  function styleShortcut(name: string): string | undefined {
+    if (name === DEFAULT_STYLE) return shortcutHint('styleStandard');
+    const level = sheet.paragraph[name]?.outlineLevel;
+    // The keys apply the built-in heading styles, not any style at that level.
+    if (!level || level > 5 || name !== headingStyleName(level)) return undefined;
+    return shortcutHint(`heading${level}` as ShortcutId);
+  }
 
   function applyStyle(name: string) {
     stylesOpen = false;
@@ -222,6 +232,7 @@
                   onclick={() => applyStyle(s.name)}
                   role="menuitemradio"
                   aria-checked={currentStyle === s.name}
+                  title={styleShortcut(s.name)}
                   style="font-size: {previewSize(s.name)}; font-weight: {preview.text.bold ? 600 : 400}; font-style: {preview.text.italic ? 'italic' : 'normal'}"
                 >
                   {styleLabel(s.name)}

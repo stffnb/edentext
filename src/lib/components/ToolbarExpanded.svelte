@@ -18,11 +18,11 @@
   import type { Orientation } from '../storage/pageOrientation';
   import { pageDimsCm, PAGE_FORMAT_CM, type PageFormat } from '../storage/pageFormat';
   import { DEFAULT_HF_DISTANCES, clampHfDistance, type HfDistances } from '../storage/headerFooter';
-  import { blockFontSize, DEFAULT_FONT_SIZE, type SizedBlock } from '../utils/fontSize';
+  import { blockFontSize, coversWholeBlock, DEFAULT_FONT_SIZE, FONT_SIZES, type SizedBlock } from '../utils/fontSize';
   import { listContext } from '../editor/extensions/indent';
   import { findColumns, DEFAULT_COLUMN_GAP_CM } from '../editor/extensions/columns';
   import { t } from '../i18n/i18n.svelte';
-  import { withShortcut } from '../i18n/shortcut';
+  import { shortcutHint, type ShortcutId } from '../editor/shortcuts';
 
   let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), differentOddEven = $bindable(false), hfActive = null, onEditZone, onDebugDump }:
     { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hfDistances?: HfDistances; differentFirstPage?: boolean; differentOddEven?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void } = $props();
@@ -129,8 +129,6 @@
     return mixed ? '' : (font ?? DEFAULT_EDITOR_FONT);
   });
 
-  const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72];
-
   function effectiveSize(node: { isText: boolean; marks: readonly { type: { name: string }; attrs: Record<string, string> }[] }, parent: SizedBlock): string {
     const explicit = node.marks.find(m => m.type.name === 'textStyle')?.attrs.fontSize;
     return explicit || blockFontSize(parent);
@@ -160,6 +158,11 @@
   // Must match line-height in editor.css (.paper .tiptap)
   const DEFAULT_LINE_HEIGHT = '1';
   const LINE_HEIGHTS = ['1', '1.15', '1.5', '2'];
+
+  // Word binds only these three; 1.15 has no key.
+  const LH_SHORTCUTS: Record<string, ShortcutId | undefined> = {
+    '1': 'lineHeight1', '1.5': 'lineHeight15', '2': 'lineHeight2',
+  };
 
   // Numeric values show verbatim; the single/double presets are localized.
   function lineHeightLabel(value: string): string {
@@ -403,14 +406,7 @@
     savedFrom = null;
     savedTo   = null;
     const chain = editor.chain().focus().setTextSelection({ from, to }).setFontSize(`${size}pt`);
-    // An empty line or a fully covered block also gets its paragraph-mark size, so what
-    // the block renders can't diverge from the shown size (and empty lines keep it).
-    const rFrom = editor.state.doc.resolve(from);
-    const rTo   = editor.state.doc.resolve(to);
-    const wholeBlock = from === to
-      ? rFrom.parent.content.size === 0
-      : rFrom.parentOffset === 0 && rTo.parentOffset === rTo.parent.content.size;
-    if (wholeBlock) chain.setBlockFontSize(`${size}pt`);
+    if (coversWholeBlock(editor.state.doc, from, to)) chain.setBlockFontSize(`${size}pt`);
     chain.run();
   }
 
@@ -1160,7 +1156,7 @@
       <button
         class:active={isSuperscript}
         onclick={toggleSuperscript}
-        title={`${t().toolbarExpanded.superscript} (${withShortcut('Ctrl+.')})`}
+        title={`${t().toolbarExpanded.superscript} (${shortcutHint('superscript')})`}
         aria-pressed={isSuperscript}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1171,7 +1167,7 @@
       <button
         class:active={isSubscript}
         onclick={toggleSubscript}
-        title={`${t().toolbarExpanded.subscript} (${withShortcut('Ctrl+,')})`}
+        title={`${t().toolbarExpanded.subscript} (${shortcutHint('subscript')})`}
         aria-pressed={isSubscript}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1225,6 +1221,7 @@
               class="lh-option"
               class:active={currentLineHeight === lh}
               onclick={() => pickLineHeight(lh)}
+              title={LH_SHORTCUTS[lh] ? shortcutHint(LH_SHORTCUTS[lh]) : undefined}
             >{lineHeightLabel(lh)}</button>
           {/each}
 
@@ -1442,7 +1439,7 @@
       <button
         class:active={showFormattingMarks}
         onclick={() => (showFormattingMarks = !showFormattingMarks)}
-        title={t().toolbarExpanded.formattingMarks}
+        title={`${t().toolbarExpanded.formattingMarks} (${shortcutHint('formattingMarks')})`}
         aria-pressed={showFormattingMarks}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1606,7 +1603,7 @@
           class:active={isLink}
           onclick={openLinkDialog}
           disabled={!!hfActive}
-          title={hfActive ? t().toolbarExpanded.linkNotInHf : `${t().toolbarExpanded.insertLink} (${withShortcut('Ctrl+K')})`}
+          title={hfActive ? t().toolbarExpanded.linkNotInHf : `${t().toolbarExpanded.insertLink} (${shortcutHint('link')})`}
           aria-label={t().toolbarExpanded.insertLink}
           aria-haspopup="dialog"
           aria-expanded={linkDialogOpen}
@@ -1633,7 +1630,7 @@
     <div class="toolbar-group">
       <button
         onclick={() => editor?.commands.clearDirectFormatting()}
-        title={`${t().toolbarExpanded.clearFormatting} (${withShortcut('Ctrl+M')})`}
+        title={`${t().toolbarExpanded.clearFormatting} (${shortcutHint('clearFormatting')})`}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <!-- bold + italic A -->

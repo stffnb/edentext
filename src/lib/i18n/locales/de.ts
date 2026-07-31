@@ -23,6 +23,7 @@ const de: Messages = {
   shortcut: {
     ctrl: 'Strg',
     shift: 'Umschalt',
+    alt: 'Alt',
   },
   align: {
     title: 'Textausrichtung',
