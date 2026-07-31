@@ -297,6 +297,8 @@
   }
 
   let fontOpen = $state(false);
+  let fontInputFocused = $state(false);
+  let fontInputValue = $state('');
   let sizeOpen = $state(false);
   let lineHeightOpen = $state(false);
   let fontColorOpen = $state(false);
@@ -312,6 +314,21 @@
       sizeInputValue = currentFontSize ? currentFontSize.replace('pt', '') : '';
     }
   });
+
+  // The typed text survives the input's blur while the dropdown is open: clicking an
+  // option blurs first, and re-expanding the list there would move the click target away.
+  $effect(() => {
+    if (!fontInputFocused && !fontOpen) fontInputValue = currentFont;
+  });
+
+  // While the user types, the dropdown narrows to the matching fonts.
+  let fontFilter = $derived(
+    fontOpen && fontInputValue !== currentFont ? fontInputValue.trim().toLowerCase() : ''
+  );
+  const matchesFilter = (f: string) => !fontFilter || f.toLowerCase().includes(fontFilter);
+  let recentShown = $derived(recentFonts.filter(matchesFilter));
+  let webSafeShown = $derived(WEB_SAFE_FONTS.filter(matchesFilter));
+  let extraShown = $derived(extraFontsList.filter(matchesFilter));
 
   function openFontPicker() {
     if (!editor) return;
@@ -330,9 +347,36 @@
     fontOpen = !fontOpen;
   }
 
+  function onFontInputFocus(e: FocusEvent) {
+    fontInputFocused = true;
+    if (!fontOpen) openFontPicker();
+    (e.target as HTMLInputElement).select();
+  }
+
+  function onFontInputKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const typed = fontInputValue.trim();
+      const known = [...recentFonts, ...WEB_SAFE_FONTS, ...extraFontsList];
+      // Exact name wins; otherwise the first prefix match, like LibreOffice's
+      // autocomplete. An unknown name is applied as typed (the font may exist).
+      const hit = known.find(f => f.toLowerCase() === typed.toLowerCase())
+        ?? known.find(f => f.toLowerCase().startsWith(typed.toLowerCase()));
+      if (typed) pickFont(hit ?? typed);
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      fontOpen = false;
+      fontInputFocused = false;
+      (e.target as HTMLInputElement).blur();
+      editor?.commands.focus();
+    }
+  }
+
   function pickFont(value: string) {
     if (!editor) return;
     fontOpen = false;
+    fontInputFocused = false;
     const from = savedFrom ?? editor.state.selection.from;
     const to   = savedTo   ?? editor.state.selection.to;
     savedFrom = null;
@@ -947,18 +991,31 @@
 <div class="toolbar-expanded">
   {#if editor}
     <div class="font-picker" use:fontPickerClickOutside>
-      <button class="font-trigger" onclick={openFontPicker} title={t().toolbarExpanded.fontName}>
-        <span class="font-trigger-label" style={currentFont ? `font-family: ${currentFont}` : ''}>{currentFont}</span>
-        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
-          <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
+      <div class="font-trigger-wrap">
+        <input
+          type="text"
+          class="font-input"
+          style={currentFont ? `font-family: ${currentFont}` : ''}
+          bind:value={fontInputValue}
+          onfocus={onFontInputFocus}
+          onkeydown={onFontInputKeydown}
+          onblur={() => (fontInputFocused = false)}
+          spellcheck="false"
+          autocomplete="off"
+          title={t().toolbarExpanded.fontName}
+        />
+        <button class="font-chevron" onclick={openFontPicker} tabindex="-1" title={t().toolbarExpanded.fontName}>
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+            <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
       {#if fontOpen}
         <div class="font-dropdown">
           <div class="menu-scroll">
-            {#if recentFonts.length > 0}
+            {#if recentShown.length > 0}
               <div class="font-section-label">{t().toolbarExpanded.recent}</div>
-              {#each recentFonts as font}
+              {#each recentShown as font}
                 <button
                   class="font-option"
                   class:active={currentFont === font}
@@ -968,8 +1025,10 @@
               {/each}
             {/if}
 
-            <div class="font-section-label">{t().toolbarExpanded.webSafe}</div>
-            {#each WEB_SAFE_FONTS as font}
+            {#if webSafeShown.length > 0}
+              <div class="font-section-label">{t().toolbarExpanded.webSafe}</div>
+            {/if}
+            {#each webSafeShown as font}
               <button
                 class="font-option"
                 class:active={currentFont === font}
@@ -978,9 +1037,9 @@
               >{font}</button>
             {/each}
 
-            {#if extraFontsList.length > 0}
+            {#if extraShown.length > 0}
               <div class="font-section-label">{t().toolbarExpanded.allFonts}</div>
-              {#each extraFontsList as font}
+              {#each extraShown as font}
                 <button
                   class="font-option"
                   class:active={currentFont === font}
@@ -1691,34 +1750,8 @@
     position: relative;
   }
 
-  .font-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    height: var(--toolbar-btn-size);
-    padding: 0 0.4rem 0 0.6rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    background: var(--color-surface);
-    color: var(--color-text);
-    font-size: 0.8rem;
-    font-family: var(--font-sans);
-    cursor: pointer;
-    width: 145px;
-    transition: border-color 0.15s;
-  }
-
-  .font-trigger:hover {
-    border-color: var(--color-primary);
-  }
-
-  .font-trigger-label {
-    flex: 1;
-    overflow: hidden;
+  .font-input {
     text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: left;
-    font-size: 0.8rem;
   }
 
   .font-dropdown {
@@ -1807,7 +1840,8 @@
     position: relative;
   }
 
-  .size-trigger-wrap {
+  .size-trigger-wrap,
+  .font-trigger-wrap {
     display: inline-flex;
     align-items: center;
     height: var(--toolbar-btn-size);
@@ -1819,12 +1853,20 @@
     overflow: hidden;
   }
 
+  /* Same combo-box as the size field, only wider. */
+  .font-trigger-wrap {
+    width: 145px;
+  }
+
   .size-trigger-wrap:hover,
-  .size-trigger-wrap:focus-within {
+  .size-trigger-wrap:focus-within,
+  .font-trigger-wrap:hover,
+  .font-trigger-wrap:focus-within {
     border-color: var(--color-primary);
   }
 
-  .size-input {
+  .size-input,
+  .font-input {
     flex: 1;
     min-width: 0;
     height: 100%;
@@ -1837,7 +1879,8 @@
     outline: none;
   }
 
-  .size-chevron {
+  .size-chevron,
+  .font-chevron {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1853,7 +1896,8 @@
     cursor: pointer;
   }
 
-  .size-chevron:hover {
+  .size-chevron:hover,
+  .font-chevron:hover {
     background: var(--color-btn-hover);
   }
 
