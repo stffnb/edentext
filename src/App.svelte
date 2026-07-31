@@ -19,6 +19,7 @@
   import { getColorDebug } from './lib/utils/colorDebug';
   import { resetHistoryLog } from './lib/utils/historyLog.svelte';
   import { countText, type TextStats } from './lib/utils/wordCount';
+  import { clampZoom, wheelZoomFactor, MIN_ZOOM, MAX_ZOOM } from './lib/utils/zoom';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
@@ -102,7 +103,7 @@
   let themeOpen = $state(false);
   let toolbarExpanded = $state(loadToolbarExpanded());
   let showFormattingMarks = $state(loadFormattingMarks());
-  let zoom = $state(Math.max(20, Math.min(300, parseInt(localStorage.getItem('odf-editor-zoom') ?? '100', 10))));
+  let zoom = $state(clampZoom(parseInt(localStorage.getItem('odf-editor-zoom') ?? '100', 10)));
   let pageMargins: PageMargins = $state(loadPageMargins());
   let pageOrientation: Orientation = $state(loadOrientation());
   let pageFormat: PageFormat = $state(loadPageFormat());
@@ -204,7 +205,7 @@
   });
 
   function setZoom(value: number) {
-    zoom = Math.max(20, Math.min(300, value));
+    zoom = clampZoom(value);
     localStorage.setItem('odf-editor-zoom', String(zoom));
   }
 
@@ -265,6 +266,13 @@
   // Wheel over the toolbar scrolls it horizontally (it has no vertical scroll), so a
   // trackpad/mouse can pan to the hidden buttons without grabbing the scrollbar.
   function onToolbarWheel(e: WheelEvent) {
+    // A zoom gesture, not a pan: zoom the document rather than let the browser scale
+    // the whole app. No pointer anchor here — the document isn't under the cursor.
+    if (e.ctrlKey) {
+      e.preventDefault();
+      setZoom(zoom * wheelZoomFactor(e.deltaY, e.deltaMode));
+      return;
+    }
     if (tbOverflow <= 0) return;
     const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (delta === 0) return;
@@ -682,6 +690,19 @@
         e.preventDefault();
         openFind('replace');
       }
+      // Ctrl/Cmd +/−/0 → zoom the document, not the browser window.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+        if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
+          e.preventDefault();
+          setZoom(zoom + 10);
+        } else if (e.key === '-' || e.code === 'NumpadSubtract') {
+          e.preventDefault();
+          setZoom(zoom - 10);
+        } else if (e.key === '0' || e.code === 'Numpad0') {
+          e.preventDefault();
+          setZoom(100);
+        }
+      }
       // Escape closes the bar (when it isn't handled inside an input).
       if (e.key === 'Escape' && findOpen) closeFind();
     }
@@ -974,6 +995,7 @@
     bind:hfTick
     {hfDistances}
     {zoom}
+    onZoom={setZoom}
     {showFormattingMarks}
     {pageMargins}
     orientation={pageOrientation}
@@ -1026,18 +1048,18 @@
     </div>
     <div class="sb-right">
     <div class="zoom-controls">
-      <button class="zoom-btn" onclick={() => setZoom(zoom - 10)} disabled={zoom <= 20} title={t().status.zoomOut}>−</button>
+      <button class="zoom-btn" onclick={() => setZoom(zoom - 10)} disabled={zoom <= MIN_ZOOM} title={t().status.zoomOut}>−</button>
       <input
         type="range"
         class="zoom-slider"
-        min="20"
-        max="300"
+        min={MIN_ZOOM}
+        max={MAX_ZOOM}
         step="1"
         value={zoom}
         oninput={(e) => setZoom(parseInt((e.target as HTMLInputElement).value, 10))}
         title={t().status.zoom}
       />
-      <button class="zoom-btn" onclick={() => setZoom(zoom + 10)} disabled={zoom >= 300} title={t().status.zoomIn}>+</button>
+      <button class="zoom-btn" onclick={() => setZoom(zoom + 10)} disabled={zoom >= MAX_ZOOM} title={t().status.zoomIn}>+</button>
       <button class="zoom-pct" onclick={() => setZoom(100)} title={t().status.resetZoom}>{zoom}%</button>
     </div>
     </div>

@@ -23,6 +23,7 @@
   import { DEFAULT_HF_DISTANCES, hfIsEmpty, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
+  import { wheelZoomFactor } from '../utils/zoom';
   import { styleCss } from '../styles/styleSheet';
   import { styleSheet } from '../styles/sheet.svelte';
   import { t } from '../i18n/i18n.svelte';
@@ -33,7 +34,7 @@
 
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
-    zoom = 100, showFormattingMarks = false, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
+    zoom = 100, onZoom, showFormattingMarks = false, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
     pageFormat = 'A4',
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
@@ -41,6 +42,7 @@
     hfEditor = $bindable(null), hfActive = $bindable(null), hfTick = $bindable(0),
   }: {
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
+    onZoom?: (zoom: number) => void;
     showFormattingMarks?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat;
     headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
     headerFirstDoc?: HfDoc; footerFirstDoc?: HfDoc; differentFirstPage?: boolean;
@@ -480,35 +482,60 @@
     });
   });
 
-  // Preserve the top-of-viewport anchor across zoom changes.
+  // Ctrl+wheel — a touchpad two-finger zoom fires exactly this — zooms the document
+  // instead of the browser. `wheel` on a plain element is non-passive, so the
+  // preventDefault sticks. The pointer is the zoom anchor.
+  function onWheel(e: WheelEvent) {
+    if (!e.ctrlKey || !onZoom) return;
+    e.preventDefault();
+    pendingAnchor = { x: e.clientX, y: e.clientY };
+    onZoom(zoom * wheelZoomFactor(e.deltaY, e.deltaMode));
+  }
+
+  // The point held fixed across a zoom change: the pointer for a wheel zoom, else
+  // (slider, buttons, keyboard) the top of the viewport.
   let prevZoom = -1;
-  let pendingAnchorDocY: number | null = null;
+  let pendingAnchor: { x: number; y: number } | null = null;
+  let pendingAnchorDoc: { x: number; y: number; screenX: number; screenY: number } | null = null;
 
   $effect.pre(() => {
     const z = appliedZoom;
-    if (prevZoom < 0 || !editorContainer || !element || z === prevZoom) {
+    // The scaled footprint drives the horizontal centering, so it has to reach the DOM
+    // in the same flush as the transform — the post-effect measures against it.
+    // Untracked so only a zoom change runs the anchor logic (onPageCount recomputes too).
+    untrack(recomputeScaledSize);
+    if (prevZoom < 0 || !editorContainer || !paperEl || z === prevZoom) {
       prevZoom = z;
+      pendingAnchor = null;
       return;
     }
     const editorRect = editorContainer.getBoundingClientRect();
-    const paperRect = element.getBoundingClientRect();
-    pendingAnchorDocY = (editorRect.top - paperRect.top) / (prevZoom / 100);
+    const paperRect = paperEl.getBoundingClientRect();
+    const screenX = pendingAnchor ? pendingAnchor.x : paperRect.left;
+    const screenY = pendingAnchor ? pendingAnchor.y : editorRect.top;
+    const s = prevZoom / 100;
+    pendingAnchorDoc = {
+      x: (screenX - paperRect.left) / s,
+      y: (screenY - paperRect.top) / s,
+      screenX, screenY,
+    };
+    pendingAnchor = null;
     prevZoom = z;
   });
 
   $effect(() => {
     appliedZoom; // track to fire after the pre-effect / DOM update
-    // Re-reserve the scaled scroll footprint for the new zoom (layout itself is frozen).
-    recomputeScaledSize();
     // Zoom changes the table's rendered position — re-place the floating toolbar.
     scheduleTableUi();
-    if (pendingAnchorDocY === null || !editorContainer || !element) return;
-    const docY = pendingAnchorDocY;
-    pendingAnchorDocY = null;
-    const editorRect = editorContainer.getBoundingClientRect();
-    const paperRect = element.getBoundingClientRect();
-    const targetScreenY = paperRect.top + docY * (appliedZoom / 100);
-    editorContainer.scrollTop += targetScreenY - editorRect.top;
+    if (pendingAnchorDoc === null || !editorContainer || !paperEl) return;
+    const anchor = pendingAnchorDoc;
+    pendingAnchorDoc = null;
+    const paperRect = paperEl.getBoundingClientRect();
+    const s = appliedZoom / 100;
+    // Without horizontal overflow .paper-scaler stays centred and the scrollLeft write
+    // is a no-op — the whole page is visible, so there is nothing to keep in view.
+    editorContainer.scrollLeft += paperRect.left + anchor.x * s - anchor.screenX;
+    editorContainer.scrollTop += paperRect.top + anchor.y * s - anchor.screenY;
   });
 
   function updateCurrentPage() {
@@ -733,7 +760,7 @@
   });
 </script>
 
-<div class="editor" bind:this={editorContainer}>
+<div class="editor" bind:this={editorContainer} onwheel={onWheel}>
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
   <div class="paper-scaler" style={scaledWidth ? `width: ${scaledWidth}px; height: ${scaledHeight}px;` : ''}>
