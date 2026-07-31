@@ -999,3 +999,29 @@ describe('DOCX named character styles', () => {
     expect(res.styles.character['Signal'].text).toEqual({ bold: true, color: '#CC0000' });
   });
 });
+
+describe('DOCX table margins (dragged outer edges)', () => {
+  // Default Word geometry here: 21 - 2.12 - 2.12 = 16.76cm of text width, so the
+  // table is 16.76 - 2 - 3 = 11.76cm wide and indented 2cm.
+  const fixture = {
+    type: 'doc',
+    content: [
+      { type: 'table', attrs: { marginLeft: 2, marginRight: 3 }, content: [
+        { type: 'tableRow', content: [cell('A', { colwidth: [200] }), cell('B', { colwidth: [100] })] },
+      ] },
+    ],
+  } as any;
+
+  it('writes w:tblInd + the narrower grid and round-trips the margins', async () => {
+    const bytes = await buildDocx(fixture, { top: 2.54, bottom: 2.54, left: 2.12, right: 2.12 }, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    expect(xml).toContain(`<w:tblInd w:type="dxa" w:w="${Math.round((2 / 2.54) * 1440)}"/>`);
+
+    const res = await importDocx(bytes);
+    const table = walk(res.content as N, 'table')[0];
+    expect(table.attrs.marginLeft).toBeCloseTo(2, 1);
+    expect(table.attrs.marginRight).toBeCloseTo(3, 1);
+    const weights = (table.content?.[0].content ?? []).map((c: N) => c.attrs.colwidth[0]);
+    expect(weights[0] / weights[1]).toBeCloseTo(2, 2);
+  });
+});

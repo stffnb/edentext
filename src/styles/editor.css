@@ -459,7 +459,8 @@
      • padding → export emits fo:padding 0.1cm per cell (CELL_PADDING).
    Tables are wrapped in <div class="tableWrapper"> by TipTap's node view. */
 .paper .tiptap .tableWrapper {
-  /* The exported table style carries no margin (nor do Word/LO tables). */
+  /* Default is flush with the text area; a dragged outer edge sets an inline
+     margin-left/-right here (tableView.ts), which is what the export writes. */
   margin: 0;
   overflow-x: auto;
 }
@@ -531,6 +532,12 @@
   z-index: 20;
   background: var(--color-primary);
   pointer-events: none;
+}
+
+/* The table's outer left edge: same handle, mirrored to the cell's left side. */
+.paper .tiptap .column-resize-handle.left {
+  left: -2px;
+  right: auto;
 }
 
 .paper .tiptap .column-resize-dragging {

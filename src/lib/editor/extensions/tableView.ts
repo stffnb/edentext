@@ -36,6 +36,15 @@ export function columnPercents(weights: (number | null)[]): number[] {
   return filled.map((w) => (w / total) * 100);
 }
 
+// The table's own margins (cm) go on the wrapper; the table stays 100% of it, so a
+// dragged outer edge (tableColumnResize.ts) narrows the table without touching layout.
+function applyMargins(node: PMNode, wrapper: HTMLElement): void {
+  const ml = (node.attrs.marginLeft as number) || 0;
+  const mr = (node.attrs.marginRight as number) || 0;
+  wrapper.style.marginLeft = ml ? `${ml}cm` : '';
+  wrapper.style.marginRight = mr ? `${mr}cm` : '';
+}
+
 function buildColgroup(node: PMNode, colgroup: HTMLElement): void {
   while (colgroup.firstChild) colgroup.removeChild(colgroup.firstChild);
   const percents = columnPercents(columnWeightsFromRow(node.firstChild));
@@ -59,6 +68,7 @@ export class TableView {
     this.cellMinWidth = cellMinWidth;
     this.dom = document.createElement('div');
     this.dom.className = 'tableWrapper';
+    applyMargins(node, this.dom);
     this.table = this.dom.appendChild(document.createElement('table'));
     // Percentage columns are authoritative only under fixed layout; the actual
     // table-layout/border-collapse come from editor.css. width:100% keeps the
@@ -72,6 +82,7 @@ export class TableView {
   update(node: PMNode): boolean {
     if (node.type !== this.node.type) return false;
     this.node = node;
+    applyMargins(node, this.dom);
     buildColgroup(node, this.colgroup);
     return true;
   }

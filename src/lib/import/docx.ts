@@ -41,6 +41,8 @@ type Ctx = {
   convertedImages: ConvertedImages;
   pendingBlocks: Node[];
   listCounters: Map<number, Map<number, number>>; // numId → ilvl → last number used
+  // Text width (cm) of the file's page setup; a table's margins are relative to it.
+  contentWidthCm: number;
 };
 
 // ---- units & editor defaults to suppress -----------------------------------
@@ -115,10 +117,11 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const defaultStyleId = styles.defaultParagraphStyle();
   for (const [id, def] of styles.namedParagraphStyles()) styleNames.set(id, registryName(id, def.name, id === defaultStyleId));
   const charStyleNames = styles.namedCharacterStyles();
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map() };
-
   const body = docDoc.getElementsByTagNameNS(W, 'body')[0];
   if (!body) throw new Error('Not a Word document (no w:body).');
+
+  const contentWidthCm = sectionContentWidthCm(fc(body, 'sectPr'));
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm };
 
   // Mid-body sectPr paragraphs delimit sections; a section whose w:cols declares
   // more than one column becomes a columns node (the trailing group is described
@@ -1296,7 +1299,28 @@ function convertTable(tbl: Element, ctx: Ctx): Node | null {
     if (h && h > 0) row.attrs = { rowHeight: Math.round(twipToPx(h)) };
     rows.push(row);
   }
-  return rows.length ? { type: 'table', content: rows } : null;
+  if (rows.length === 0) return null;
+  const margins = tableMargins(tbl, useWeights, ctx);
+  return margins ? { type: 'table', attrs: margins, content: rows } : { type: 'table', content: rows };
+}
+
+// A table narrower than the text width: w:tblInd is its left indent, the grid (or
+// w:tblW) its width — the rest becomes the editor's right margin.
+function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx): { marginLeft: number; marginRight: number } | null {
+  const tblPr = fc(tbl, 'tblPr');
+  const content = ctx.contentWidthCm;
+  const dxa = (el: Element | null) => (el?.getAttributeNS(W, 'type') ?? 'dxa') === 'dxa' ? intAttr(el, W, 'w') : null;
+  const left = Math.max(0, twipToCm(dxa(fc(tblPr, 'tblInd')) ?? 0));
+  const declared = dxa(fc(tblPr, 'tblW'));
+  const width = declared && declared > 0
+    ? twipToCm(declared)
+    : weights ? twipToCm(weights.reduce((a, b) => a + b, 0)) : null;
+  const right = width != null ? Math.max(0, content - left - width) : 0;
+
+  if (left < 0.05 && right < 0.05) return null;
+  if (left + right > content - 1) return null;
+  const round2 = (v: number) => Math.round(v * 100) / 100;
+  return { marginLeft: round2(left), marginRight: round2(right) };
 }
 
 function flattenTable(tbl: Element, ctx: Ctx): Node[] {
@@ -1306,6 +1330,15 @@ function flattenTable(tbl: Element, ctx: Ctx): Node[] {
 }
 
 // ---- section: page geometry + headers/footers ------------------------------
+// Text width of a section (A4 with Word's 2.54cm margins when it declares none).
+function sectionContentWidthCm(sect: Element | null): number {
+  const w = intAttr(fc(sect, 'pgSz'), W, 'w') ?? 11906;
+  const pgMar = fc(sect, 'pgMar');
+  const left = intAttr(pgMar, W, 'left') ?? 1440;
+  const right = intAttr(pgMar, W, 'right') ?? 1440;
+  return Math.max(1, twipToCm(w - left - right));
+}
+
 // Split body children into sections: a <w:p> whose pPr carries a sectPr ends the
 // group before it (dropped unless it has run content). The trailing group has
 // sectPr null — the caller pairs it with the body-final <w:sectPr>.

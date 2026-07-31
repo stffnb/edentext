@@ -115,6 +115,7 @@ function entryFromStyleElement(el: Element): StyleEntry {
   };
   collectProps(el, 'text-properties', entry.text);
   collectProps(el, 'paragraph-properties', entry.para);
+  collectProps(el, 'table-properties', entry.misc);
   collectProps(el, 'table-column-properties', entry.misc);
   collectProps(el, 'table-row-properties', entry.misc);
   collectProps(el, 'table-cell-properties', entry.misc);
@@ -316,6 +317,11 @@ export class StyleResolver {
     const name = props['style:font-name'];
     if (name) return this.fontFaces.get(name) ?? name;
     return null;
+  }
+
+  // A table style's raw <style:table-properties> (style:width, fo:margin-*, table:align).
+  tableProps(styleName: string | null): PropMap {
+    return styleName ? this.merged('table', styleName).misc : {};
   }
 
   columnWidthCm(styleName: string | null): number | null {

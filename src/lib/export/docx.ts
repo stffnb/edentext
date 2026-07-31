@@ -700,9 +700,13 @@ function cellBlocksToDocx(content: TiptapNode[] = [], headerBold: boolean, num: 
 
 function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): Table {
   const rows = (node.content ?? []).filter((r) => r.type === 'tableRow');
-  const colsCm = columnWidthsCm(node, contentWidthCm);
+  // A dragged table edge (tableColumnResize.ts) → w:tblInd + the narrower grid.
+  let ml = Math.max(0, Number(node.attrs?.marginLeft) || 0);
+  let mr = Math.max(0, Number(node.attrs?.marginRight) || 0);
+  if (ml + mr > contentWidthCm - 1) { ml = 0; mr = 0; }
+  const colsCm = columnWidthsCm(node, contentWidthCm - ml - mr);
   const colsTwip = colsCm?.map(cmToTwip);
-  const totalTwip = colsTwip ? colsTwip.reduce((a, b) => a + b, 0) : cmToTwip(contentWidthCm);
+  const totalTwip = colsTwip ? colsTwip.reduce((a, b) => a + b, 0) : cmToTwip(contentWidthCm - ml - mr);
 
   const tableRows = rows.map((row) => {
     const rh = row.attrs?.rowHeight;
@@ -740,6 +744,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
     rows: tableRows,
     columnWidths: colsTwip,
     width: { size: totalTwip, type: WidthType.DXA },
+    indent: ml ? { size: cmToTwip(ml), type: WidthType.DXA } : undefined,
     layout: TableLayoutType.FIXED,
     margins: { marginUnitType: WidthType.DXA, top: cmToTwip(0.05), bottom: cmToTwip(0.05), left: cmToTwip(0.1), right: cmToTwip(0.1) },
     borders: {

@@ -484,6 +484,43 @@ describe('Leg 1d: table cell borders (per-side, fo:border-*)', () => {
   });
 });
 
+describe('Leg 1e: table margins (dragged outer edges)', () => {
+  // Text width here is 21 - 2.5 - 1.5 = 17cm, so the table is 17 - 2 - 3 = 12cm wide.
+  const doc: N = { type: 'doc', content: [
+    { type: 'table', attrs: { marginLeft: 2, marginRight: 3 }, content: [
+      ROW(CELL([200], P(null, T('A'))), CELL([100], P(null, T('B')))),
+    ] },
+  ] };
+
+  it('exports fo:margin-* + style:width and re-imports the attrs', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    const tableStyle = xml.match(/<style:style[^>]*style:family="table"[^>]*>\s*<style:table-properties[^>]*>/)?.[0] ?? '';
+    check('export emits the left margin', tableStyle.includes('fo:margin-left="2cm"'), tableStyle);
+    check('export emits the right margin', tableStyle.includes('fo:margin-right="3cm"'), tableStyle);
+    check('export emits the remaining width', tableStyle.includes('style:width="12cm"'), tableStyle);
+    // Columns keep their 2:1 ratio inside the narrowed table.
+    check('columns fill the narrowed table', xml.includes('style:column-width="8cm"') && xml.includes('style:column-width="4cm"'), xml.match(/style:column-width="[^"]*"/g));
+
+    const res = importOdt(bytes);
+    check('no warnings on own export', res.warnings.length === 0, res.warnings);
+    const table = (res.content.content ?? []).find((n: N) => n.type === 'table');
+    check('left margin round-trips', table?.attrs?.marginLeft === 2, table?.attrs);
+    check('right margin round-trips', table?.attrs?.marginRight === 3, table?.attrs);
+    const weights = (table?.content?.[0]?.content ?? []).map((c: N) => c.attrs?.colwidth?.[0]);
+    check('column ratio survives', weights[0] === 2 * weights[1], weights);
+  });
+
+  it('leaves a full-width table without margin attrs', async () => {
+    const plain: N = { type: 'doc', content: [
+      { type: 'table', content: [ROW(CELL([100], P(null, T('A'))), CELL([100], P(null, T('B'))))] },
+    ] };
+    const res = importOdt(await buildOdt(plain, margins, 'portrait'));
+    const table = (res.content.content ?? []).find((n: N) => n.type === 'table');
+    check('no margins on a full-width table', !table?.attrs?.marginLeft && !table?.attrs?.marginRight, table?.attrs);
+  });
+});
+
 describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
   it('resolves named/automatic styles, repeated cells, lists, and reports degradations', () => {
     const stylesXml = `<?xml version="1.0" encoding="UTF-8"?>

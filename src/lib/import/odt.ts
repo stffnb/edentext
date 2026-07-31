@@ -9,7 +9,7 @@ import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
 import { imageDataUrl, type ConvertedImages } from './imageFormats';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
-import type { PageFormat } from '../storage/pageFormat';
+import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import type { HfDoc } from '../storage/headerFooter';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
@@ -80,6 +80,8 @@ type Ctx = {
   imageCache: Map<string, string>;
   convertedImages: ConvertedImages;
   pendingBlocks: Node[];
+  // Text width (cm) of the file's page setup; a table's margins are relative to it.
+  contentWidthCm: number;
 };
 
 // Read a Pictures/ entry into a base64 data-URI; null when it's missing or in a format
@@ -349,7 +351,13 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   for (const [name, def] of resolver.namedParagraphStyles()) styleNames.set(name, displayStyleName(name, def.display));
   const charStyleNames = new Map<string, string>();
   for (const [name, def] of resolver.namedTextStyles()) charStyleNames.set(name, displayStyleName(name, def.display));
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [] };
+  // Text width of the file's own page setup — the reference a table's margins are
+  // measured against (falls back to A4 with the ODF default margins).
+  const geo = resolver.pageGeometry();
+  const contentWidthCm = geo
+    ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
+    : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 
@@ -364,7 +372,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
 
   const hf = resolver.masterPageHF();
 
-  const geometry = resolver.pageGeometry();
+  const geometry = geo;
   const edge = resolver.edgeDistancesCm();
 
   const fonts: EmbeddedFont[] = [];
@@ -1496,7 +1504,35 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
     }
   }
 
-  return rows.length ? { type: 'table', content: rows } : null;
+  if (rows.length === 0) return null;
+  const margins = tableMargins(el, ctx);
+  return margins ? { type: 'table', attrs: margins, content: rows } : { type: 'table', content: rows };
+}
+
+// A table narrower than the text width → the editor's marginLeft/marginRight attrs.
+// LibreOffice states the width plus one margin (per table:align), the other follows.
+function tableMargins(el: Element, ctx: Ctx): { marginLeft: number; marginRight: number } | null {
+  const props = ctx.resolver.tableProps(el.getAttributeNS(NS.table, 'style-name'));
+  const content = ctx.contentWidthCm;
+  const rel = parseFloat(props['style:rel-width'] ?? '');
+  const width = lengthToCm(props['style:width'])
+    ?? (Number.isFinite(rel) && rel > 0 ? (Math.min(rel, 100) / 100) * content : null);
+
+  let left = lengthToCm(props['fo:margin-left']);
+  let right = lengthToCm(props['fo:margin-right']);
+  if (left == null && width != null) {
+    const align = props['table:align'];
+    left = align === 'center' ? (content - width) / 2 : align === 'right' ? content - width : 0;
+  }
+  left = Math.max(0, left ?? 0);
+  if (right == null) right = width != null ? content - left - width : 0;
+  right = Math.max(0, right);
+
+  // Rounding noise from the producer, or a table that would be left with no room.
+  if (left < 0.05 && right < 0.05) return null;
+  if (left + right > content - 1) return null;
+  const round2 = (v: number) => Math.round(v * 100) / 100;
+  return { marginLeft: round2(left), marginRight: round2(right) };
 }
 
 // Per-column proportional weights for the colwidth cell attr (tableView.ts uses
