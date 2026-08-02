@@ -3,8 +3,8 @@
   import { Editor } from '@tiptap/core';
   import { Slice, Fragment } from 'prosemirror-model';
   import type { Node as PmNode, MarkType } from 'prosemirror-model';
-  import type { EditorView } from '@tiptap/pm/view';
   import { extensions } from '../editor/extensions';
+  import { buildContextMenu, type MenuEntry, type SpellSection } from '../editor/contextMenuItems';
   import { spellErrorAt } from '../editor/extensions/spellCheck';
   import { spellController } from '../spell/controller';
   import TableToolbar from './TableToolbar.svelte';
@@ -13,8 +13,8 @@
   import TextBoxToolbar from './TextBoxToolbar.svelte';
   import type { WrapMode } from '../editor/extensions/image';
   import { findTextBox, type ShapeKind } from '../editor/extensions/textBox';
-  import { NodeSelection } from '@tiptap/pm/state';
-  import SpellContextMenu from './SpellContextMenu.svelte';
+  import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+  import ContextMenu from './ContextMenu.svelte';
   import HeaderFooterLayer from './HeaderFooterLayer.svelte';
   import { saveDocument, loadDocument } from '../storage/autosave';
   import { applyMarginVars, cmToPx, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
@@ -189,56 +189,70 @@
     return (Number.isFinite(ph) ? ph : 1123) + 20;
   }
 
-  // --- Spelling suggestion menu (right-click on a red-squiggled word) ---
-  let spellMenu = $state<{
-    visible: boolean; top: number; left: number;
-    from: number; to: number; word: string; suggestions: string[];
-  }>({ visible: false, top: 0, left: 0, from: 0, to: 0, word: '', suggestions: [] });
+  // --- Right-click context menu (Word's text menu, spelling suggestions merged in) ---
+  let ctxMenu = $state<{ top: number; left: number; items: MenuEntry[] } | null>(null);
+  // The misspelled range the open menu's suggestions belong to.
+  let spellTarget: { from: number; to: number; word: string } | null = null;
 
-  function openSpellMenu(view: EditorView, event: MouseEvent): boolean {
-    if (!spellController.isEnabled() || !editorContainer) return false;
-    const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
-    if (!coords) return false;
-    const range = spellErrorAt(view.state, coords.pos);
-    if (!range) return false; // not on a misspelling → let the browser menu show
+  function openContextMenu(event: MouseEvent) {
+    const ed = editor;
+    // Shift+right-click yields to the browser menu, whose Paste needs no clipboard
+    // permission (Firefox does this for page handlers by itself). Header/footer keeps
+    // the browser menu too — the schema has none of the entries below.
+    if (!ed || event.shiftKey || hfActive || !editorContainer) return;
+    const target = event.target as HTMLElement | null;
+    if (!target || !ed.view.dom.contains(target)) return;
+    if (target.closest('.image-node, .textbox-node')) return; // own floating toolbars
     event.preventDefault();
-    const word = view.state.doc.textBetween(range.from, range.to);
+
+    const view = ed.view;
+    const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+    const sel = view.state.selection;
+    // Word keeps a selection the click lands inside, otherwise it moves the caret.
+    if (coords && (sel.empty || coords.pos < sel.from || coords.pos > sel.to)) {
+      view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(coords.pos))));
+    }
+
+    spellTarget = null;
+    let spell: SpellSection | undefined;
+    const range = coords && spellController.isEnabled() ? spellErrorAt(view.state, coords.pos) : null;
+    if (range) {
+      const word = view.state.doc.textBetween(range.from, range.to);
+      spellTarget = { ...range, word };
+      spell = {
+        suggestions: spellController.suggest(word).slice(0, 6),
+        onReplace: replaceSpellWord,
+        onAdd: addSpellWord,
+        onIgnore: ignoreSpellWord,
+      };
+    }
+
     const cRect = editorContainer.getBoundingClientRect();
-    spellMenu = {
-      visible: true,
+    ctxMenu = {
       top: event.clientY - cRect.top + editorContainer.scrollTop,
       left: event.clientX - cRect.left + editorContainer.scrollLeft,
-      from: range.from, to: range.to, word,
-      suggestions: spellController.suggest(word).slice(0, 6),
+      items: buildContextMenu(ed, { spell }),
     };
-    return true;
-  }
-
-  function closeSpellMenu() {
-    if (spellMenu.visible) spellMenu = { ...spellMenu, visible: false };
   }
 
   // Replace the misspelled range, preserving the word's marks (font/bold/etc.).
   function replaceSpellWord(replacement: string) {
     const ed = editor;
-    if (!ed || !spellMenu.visible) return;
-    const { from, to } = spellMenu;
+    if (!ed || !spellTarget) return;
+    const { from, to } = spellTarget;
     const { state } = ed.view;
     const marks = state.doc.resolve(from).marksAcross(state.doc.resolve(to)) ?? state.doc.resolve(from).marks();
     ed.view.dispatch(state.tr.replaceWith(from, to, state.schema.text(replacement, marks)).scrollIntoView());
     ed.view.focus();
-    closeSpellMenu();
   }
 
   function addSpellWord() {
-    if (spellMenu.visible) spellController.addWord(spellMenu.word);
-    closeSpellMenu();
+    if (spellTarget) spellController.addWord(spellTarget.word);
     editor?.view.focus();
   }
 
   function ignoreSpellWord() {
-    if (spellMenu.visible) spellController.ignoreWord(spellMenu.word);
-    closeSpellMenu();
+    if (spellTarget) spellController.ignoreWord(spellTarget.word);
     editor?.view.focus();
   }
 
@@ -667,7 +681,6 @@
           return true;
         },
         handleDOMEvents: {
-          contextmenu: (view, event) => openSpellMenu(view, event),
           drop: (view, event) => {
             const e = event as DragEvent;
             const files = imageFilesFrom(e.dataTransfer);
@@ -760,7 +773,7 @@
   });
 </script>
 
-<div class="editor" bind:this={editorContainer} onwheel={onWheel}>
+<div class="editor" bind:this={editorContainer} onwheel={onWheel} oncontextmenu={openContextMenu} role="none">
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
   <div class="paper-scaler" style={scaledWidth ? `width: ${scaledWidth}px; height: ${scaledHeight}px;` : ''}>
@@ -841,15 +854,12 @@
       strokeWidthPt={textBoxUi.strokeWidthPt}
     />
   {/if}
-  {#if spellMenu.visible}
-    <SpellContextMenu
-      top={spellMenu.top}
-      left={spellMenu.left}
-      suggestions={spellMenu.suggestions}
-      onReplace={replaceSpellWord}
-      onAdd={addSpellWord}
-      onIgnore={ignoreSpellWord}
-      onClose={closeSpellMenu}
+  {#if ctxMenu}
+    <ContextMenu
+      top={ctxMenu.top}
+      left={ctxMenu.left}
+      items={ctxMenu.items}
+      onClose={() => (ctxMenu = null)}
     />
   {/if}
   {#if linkTip}

@@ -275,6 +275,17 @@ const de: Messages = {
     addToDictionary: 'Zum Wörterbuch hinzufügen',
     ignoreAll: 'Alle ignorieren',
   },
+  contextMenu: {
+    cut: 'Ausschneiden',
+    copy: 'Kopieren',
+    paste: 'Einfügen',
+    pasteWithoutFormatting: 'Ohne Formatierung einfügen',
+    pasteBlocked: 'Dieser Browser erlaubt das Einfügen nur über die Tastatur. Drücke Strg+V oder halte beim Rechtsklick die Umschalttaste, um das Browser-Menü zu nutzen.',
+    insertLink: 'Link…',
+    editLink: 'Link bearbeiten…',
+    removeLink: 'Link entfernen',
+    clearFormatting: 'Direkte Formatierung löschen',
+  },
   about: {
     label: 'Über EdenText',
     tagline: 'Ein privater Editor für OpenDocument-Dateien — läuft vollständig im Browser.',

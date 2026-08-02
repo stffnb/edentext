@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick as domUpdated } from 'svelte';
   import { cubicOut } from 'svelte/easing';
   import type { Editor } from '@tiptap/core';
   import { EditorState } from '@tiptap/pm/state';
@@ -36,6 +36,7 @@
   import { t } from './lib/i18n/i18n.svelte';
   import { withShortcut } from './lib/i18n/shortcut';
   import { DEFAULT_SHORTCUTS, matchesEvent, shortcutHint } from './lib/editor/shortcuts';
+  import { OPEN_LINK_DIALOG_EVENT } from './lib/editor/extensions/link';
   import { localizeImportMessage } from './lib/i18n/importMessages';
   import { unavailableFonts } from './lib/utils/fontDetect';
   import { registerEmbeddedFonts, clearEmbeddedFonts } from './lib/fonts/embeddedFonts';
@@ -221,6 +222,19 @@
     toolbarExpanded = !toolbarExpanded;
     saveToolbarExpanded(toolbarExpanded);
   }
+
+  // The link dialog lives in ToolbarExpanded, which isn't mounted while the secondary
+  // toolbar is collapsed — Ctrl+K and the context menu's link entry would go nowhere.
+  // Expand it (not persisted) and re-fire once the dialog's own listener exists.
+  $effect(() => {
+    const open = () => {
+      if (toolbarExpanded) return;
+      toolbarExpanded = true;
+      domUpdated().then(() => window.dispatchEvent(new CustomEvent(OPEN_LINK_DIALOG_EVENT)));
+    };
+    window.addEventListener(OPEN_LINK_DIALOG_EVENT, open);
+    return () => window.removeEventListener(OPEN_LINK_DIALOG_EVENT, open);
+  });
 
   // Horizontal toolbar scrolling: when too narrow for all buttons, the toolbar stack
   // is translated left via a custom scrollbar (a native one auto-hides on macOS), so

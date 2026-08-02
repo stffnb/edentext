@@ -70,7 +70,8 @@
 - Word/LibreOffice keyboard shortcuts throughout: Ctrl+L/E/R/J alignment, Ctrl+Alt+1–5 headings and Ctrl+Shift+N default style, Ctrl+1/2/5 line spacing, Ctrl+Shift+P / Ctrl+Shift+B super/subscript, Ctrl+Shift+. / Ctrl+Shift+, grow/shrink font, Ctrl+Space clear formatting, Ctrl+Shift+Space non-breaking space, Ctrl+Shift+- soft hyphen, Alt+Shift+D / Alt+Shift+T date & time field, Ctrl+O open, F3 / Shift+F3 find next/previous, Ctrl+F10 formatting marks — alongside the existing Ctrl+B/I/U, Ctrl+M, Ctrl+K, Ctrl+Enter, Ctrl+F/H, Ctrl+S/P and Tab/Shift+Tab. All bindings live in one table, so tooltips stay in sync and they can be remapped later
 - Undo / Redo with a labelled history dropdown
 - Search & Replace (Ctrl+F / Ctrl+H): live match highlighting, match count, next / previous, match-case and whole-word options, replace current / replace all
-- Spell check in English and German with squiggles and a suggestions context menu (add / ignore word); selectable document language. Powered by Hunspell (WASM), so German compound words (Fußgänger, Krankenversicherung …) are recognised; dictionaries are lazy-loaded per language on demand
+- Right-click context menu for text (Word-style): cut / copy / paste / paste without formatting, link insert-edit-remove, clear formatting — with the spelling suggestions merged in on top. Shift+right-click keeps the browser's own menu; images, text boxes and header/footer stay with their existing UI
+- Spell check in English and German with squiggles and suggestions in the context menu (add / ignore word); selectable document language. Powered by Hunspell (WASM), so German compound words (Fußgänger, Krankenversicherung …) are recognised; dictionaries are lazy-loaded per language on demand
 - Word / character count statistics (whole document and selection)
 
 **UI & theming**

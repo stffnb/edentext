@@ -279,6 +279,17 @@ const en = {
     addToDictionary: 'Add to Dictionary',
     ignoreAll: 'Ignore All',
   },
+  contextMenu: {
+    cut: 'Cut',
+    copy: 'Copy',
+    paste: 'Paste',
+    pasteWithoutFormatting: 'Paste without formatting',
+    pasteBlocked: 'This browser only allows pasting from the keyboard. Press Ctrl+V, or hold Shift while right-clicking to use the browser menu.',
+    insertLink: 'Link…',
+    editLink: 'Edit Link…',
+    removeLink: 'Remove Link',
+    clearFormatting: 'Clear Formatting',
+  },
   about: {
     label: 'About EdenText',
     tagline: 'A private editor for OpenDocument files — runs entirely in your browser.',
