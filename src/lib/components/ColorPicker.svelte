@@ -72,6 +72,9 @@
   let pickerS = $state<number>(1);
   let pickerV = $state<number>(0.75);
   let stagedColor = $derived(hsvToHex(pickerH, pickerS, pickerV));
+  // Notation of the readout field only — the applied value stays #RRGGBB (ODF).
+  let notation = $state<'hex' | 'rgb' | 'hsl'>('hex');
+  let stagedText = $derived(formatColor(pickerH, pickerS, pickerV, notation));
   let savedFrom: number | null = null;
   let savedTo: number | null = null;
 
@@ -114,6 +117,40 @@
     }
     const s = max === 0 ? 0 : d / max;
     return { h, s, v: max };
+  }
+
+  function formatColor(h: number, s: number, v: number, f: typeof notation): string {
+    const hex = hsvToHex(h, s, v);
+    if (f === 'hex') return hex;
+    if (f === 'rgb') {
+      const n = (i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+      return `${n(0)}, ${n(1)}, ${n(2)}`;
+    }
+    // ponytail: integer hsl like CSS — retyping the shown value can shift a channel
+    // by up to 4/255; use decimals if that ever matters.
+    const l = v * (1 - s / 2);
+    const sl = l === 0 || l === 1 ? 0 : (v - l) / Math.min(l, 1 - l);
+    return `${Math.round(h)}, ${Math.round(sl * 100)}, ${Math.round(l * 100)}`;
+  }
+
+  // Bare values in the shown notation ("192, 0, 0"); any separator, and a pasted
+  // "rgb(192, 0, 0)" or "#" work too, since only the numbers are read.
+  function parseColor(text: string, f: typeof notation): { h: number; s: number; v: number } | null {
+    if (f === 'hex') {
+      const hex = text.trim().replace(/^#?/, '#');
+      return hexToHsv(hex);
+    }
+    const n = text.match(/[\d.]+/g)?.map(Number);
+    if (!n || n.length < 3 || n.some(isNaN)) return null;
+    if (f === 'rgb') {
+      const byte = (x: number) =>
+        Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0');
+      return hexToHsv(`#${byte(n[0])}${byte(n[1])}${byte(n[2])}`);
+    }
+    const l = clamp01(n[2] / 100);
+    const sl = clamp01(n[1] / 100);
+    const v = l + sl * Math.min(l, 1 - l);
+    return { h: n[0], s: v === 0 ? 0 : 2 * (1 - l / v), v };
   }
 
   function openPicker() {
@@ -339,8 +376,7 @@
   }
 
   function onHexInput(e: Event) {
-    const value = (e.target as HTMLInputElement).value;
-    const hsv = hexToHsv(value);
+    const hsv = parseColor((e.target as HTMLInputElement).value, notation);
     if (!hsv) return;
     pickerH = hsv.h;
     pickerS = hsv.s;
@@ -435,7 +471,12 @@
       </div>
       <div class="color-window-readout">
         <span class="color-window-swatch" style="background: {stagedColor}"></span>
-        <input class="color-window-hex" type="text" value={stagedColor} oninput={onHexInput} maxlength="7" />
+        <select class="color-window-notation" bind:value={notation} aria-label="Format">
+          <option value="hex">HEX</option>
+          <option value="rgb">RGB</option>
+          <option value="hsl">HSL</option>
+        </select>
+        <input class="color-window-hex" type="text" value={stagedText} oninput={onHexInput} />
       </div>
       <div class="color-more-actions">
         <button class="color-cancel" onclick={cancelMoreColors}>{t().common.cancel}</button>
@@ -746,6 +787,19 @@
 
   .color-window-hex:focus {
     border-color: var(--color-primary);
+  }
+
+  .color-window-notation {
+    height: 24px;
+    padding: 0 0.1rem;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 0.7rem;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    flex-shrink: 0;
   }
 
   .color-more-actions {
