@@ -10,6 +10,7 @@
   import { activeCharacterStyle } from '../editor/extensions/characterStyle';
   import { CANDIDATE_FONTS, detectAvailableFonts } from '../utils/fontDetect';
   import AlignIcon, { type AlignValue } from './AlignIcon.svelte';
+  import ColorPicker from './ColorPicker.svelte';
 
   // LibreOffice's style manager: pick a style, edit its properties, or make a new one
   // from the cursor's formatting. Edits apply live — every block using the style follows.
@@ -318,10 +319,28 @@
               placeholder={inherited(resolved.text.fontSizePt)}
               onchange={(e) => edit({ text: { fontSizePt: num(e.currentTarget.value) } })} />
           </label>
-          <label>{t().styles.color}
-            <input type="color" value={style.text.color ?? resolved.text.color ?? '#000000'}
-              onchange={(e) => edit({ text: { color: e.currentTarget.value.toUpperCase() } })} />
-          </label>
+          <div class="field">
+            <span class="field-label">{t().styles.color}</span>
+            <!-- No editor: the picker sets a style property, not a document range. -->
+            {#key style.name}
+              <ColorPicker
+                editor={null}
+                currentColor={style.text.color ?? null}
+                defaultColor={style.text.color ?? resolved.text.color ?? '#000000'}
+                title={t().styles.color}
+                chevronTitle={t().styles.color}
+                clearLabel={inherited(resolved.text.color) || '—'}
+                onApply={(c) => edit({ text: { color: c } })}
+                onClear={() => edit({ text: { color: undefined } })}
+              >
+                {#snippet icon()}
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <text x="8" y="14" text-anchor="middle" font-size="15" font-family="sans-serif" fill="currentColor">A</text>
+                  </svg>
+                {/snippet}
+              </ColorPicker>
+            {/key}
+          </div>
         </div>
 
         <div class="row toggles">
@@ -557,7 +576,6 @@
     background: var(--color-surface);
     color: var(--color-text);
   }
-  input[type='color'] { padding: 0.1rem; height: 1.9rem; }
 
   footer {
     display: flex;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import type { Snippet } from 'svelte';
-  import { onDestroy, untrack } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
   import { t } from '../i18n/i18n.svelte';
 
   let {
@@ -77,6 +77,23 @@
   let stagedText = $derived(formatColor(pickerH, pickerS, pickerV, notation));
   let savedFrom: number | null = null;
   let savedTo: number | null = null;
+  // The panels are `fixed` and placed from the button's rect, so a scrolling
+  // ancestor (the style manager's field column) can't clip them.
+  let split = $state<HTMLElement>();
+  let panel = $state<HTMLElement>();
+  let pos = $state({ top: 0, left: 0 });
+
+  async function placePanel() {
+    const anchor = split?.getBoundingClientRect();
+    if (!anchor) return;
+    pos = { top: anchor.bottom + 3, left: anchor.left };
+    await tick();
+    const box = panel?.getBoundingClientRect();
+    if (!box) return;
+    const dx = Math.max(0, box.right + 8 - window.innerWidth);
+    const dy = Math.max(0, box.bottom + 8 - window.innerHeight);
+    if (dx || dy) pos = { top: Math.max(8, pos.top - dy), left: Math.max(8, pos.left - dx) };
+  }
 
   function clamp01(n: number): number {
     return n < 0 ? 0 : n > 1 ? 1 : n;
@@ -153,35 +170,38 @@
     return { h: n[0], s: v === 0 ? 0 : 2 * (1 - l / v), v };
   }
 
+  // The range to restore when applying. No editor (style manager) = no range.
+  function takeRange(): { from: number; to: number } {
+    const from = savedFrom ?? editor?.state.selection.from ?? 0;
+    const to   = savedTo   ?? editor?.state.selection.to   ?? 0;
+    savedFrom = null;
+    savedTo   = null;
+    return { from, to };
+  }
+
   function openPicker() {
-    if (!editor) return;
     onOpen?.();
-    savedFrom = editor.state.selection.from;
-    savedTo = editor.state.selection.to;
+    savedFrom = editor?.state.selection.from ?? null;
+    savedTo = editor?.state.selection.to ?? null;
     if (open) {
       open = false;
     } else {
       view = 'palette';
       open = true;
+      placePanel();
     }
   }
 
   function applyColor(color: string) {
-    if (!editor) return;
     open = false;
     view = 'palette';
     lastColor = color;
-    const from = savedFrom ?? editor.state.selection.from;
-    const to   = savedTo   ?? editor.state.selection.to;
-    savedFrom = null;
-    savedTo   = null;
-    onApply(color, { from, to });
+    onApply(color, takeRange());
   }
 
   function quickApplyColor() {
-    if (!editor) return;
     // Save selection here too because the main button doesn't go through openPicker.
-    if (savedFrom === null) {
+    if (savedFrom === null && editor) {
       savedFrom = editor.state.selection.from;
       savedTo = editor.state.selection.to;
     }
@@ -189,14 +209,9 @@
   }
 
   function clearColor() {
-    if (!editor) return;
     open = false;
     view = 'palette';
-    const from = savedFrom ?? editor.state.selection.from;
-    const to   = savedTo   ?? editor.state.selection.to;
-    savedFrom = null;
-    savedTo   = null;
-    onClear({ from, to });
+    onClear(takeRange());
   }
 
   function openMoreColors() {
@@ -206,6 +221,7 @@
     pickerS = hsv.s;
     pickerV = hsv.v;
     view = 'custom';
+    placePanel();
   }
 
   function confirmMoreColors() {
@@ -396,7 +412,7 @@
 </script>
 
 <div class="color-picker" use:colorPickerClickOutside>
-  <div class="color-split">
+  <div class="color-split" bind:this={split}>
     <button class="color-main" onclick={quickApplyColor} {title}>
       {@render icon()}
       <span class="color-bar" style="background: {lastColor}"></span>
@@ -408,7 +424,7 @@
     </button>
   </div>
   {#if open && view === 'palette'}
-    <div class="color-dropdown">
+    <div class="color-dropdown" bind:this={panel} style="top: {pos.top}px; left: {pos.left}px">
       <div class="color-title">{title}</div>
       <button
         class="color-automatic"
@@ -433,6 +449,7 @@
       </div>
       <div class="color-extras">
         <button class="color-more-trigger" onclick={openMoreColors}>{t().color.moreColors}</button>
+        {#if editor || eyeDropperSupported}
         <button
           class="color-pipette-trigger"
           onclick={pickFromPage}
@@ -447,11 +464,13 @@
             </g>
           </svg>
         </button>
+        {/if}
       </div>
     </div>
   {/if}
   {#if open && view === 'custom'}
-    <div class="color-window" role="dialog" aria-label={t().color.chooseColor}>
+    <div class="color-window" role="dialog" aria-label={t().color.chooseColor}
+      bind:this={panel} style="top: {pos.top}px; left: {pos.left}px">
       <div class="color-window-body">
         <div
           class="sv-square"
@@ -554,9 +573,7 @@
   }
 
   .color-dropdown {
-    position: absolute;
-    top: calc(100% + 3px);
-    left: 0;
+    position: fixed;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -689,9 +706,7 @@
   }
 
   .color-window {
-    position: absolute;
-    top: calc(100% + 3px);
-    left: 0;
+    position: fixed;
     width: 210px;
     padding: 8px;
     display: flex;
