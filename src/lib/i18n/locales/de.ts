@@ -112,6 +112,8 @@ const de: Messages = {
     loadAllFonts: 'Alle installierten Schriften laden',
     fontSize: 'Schriftgröße',
     fontSizeList: 'Schriftgrößenliste',
+    growFont: 'Schrift vergrößern',
+    shrinkFont: 'Schrift verkleinern',
     fontColor: 'Schriftfarbe',
     chooseFontColor: 'Schriftfarbe wählen',
     highlightColor: 'Hervorhebungsfarbe',

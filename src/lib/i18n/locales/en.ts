@@ -116,6 +116,8 @@ const en = {
     loadAllFonts: 'Load all installed fonts',
     fontSize: 'Font size',
     fontSizeList: 'Font size list',
+    growFont: 'Increase font size',
+    shrinkFont: 'Decrease font size',
     fontColor: 'Font color',
     chooseFontColor: 'Choose font color',
     highlightColor: 'Highlight color',

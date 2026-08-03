@@ -33,7 +33,8 @@ function currentSizePt(editor: Editor): number {
 }
 
 // Word's Ctrl+Shift+> / <: jump to the next size on the toolbar's ladder.
-function stepFontSize(editor: Editor, dir: 1 | -1): boolean {
+// Also the grow/shrink toolbar buttons.
+export function stepFontSize(editor: Editor, dir: 1 | -1): boolean {
   const cur = currentSizePt(editor);
   const ladder = dir > 0 ? FONT_SIZES : [...FONT_SIZES].reverse();
   const next = ladder.find((s) => (dir > 0 ? s > cur : s < cur));

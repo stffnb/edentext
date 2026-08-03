@@ -20,6 +20,7 @@
   import { DEFAULT_HF_DISTANCES, clampHfDistance, type HfDistances } from '../storage/headerFooter';
   import { blockFontSize, coversWholeBlock, DEFAULT_FONT_SIZE, FONT_SIZES, type SizedBlock } from '../utils/fontSize';
   import { listContext } from '../editor/extensions/indent';
+  import { stepFontSize } from '../editor/extensions/shortcuts';
   import { findColumns, DEFAULT_COLUMN_GAP_CM } from '../editor/extensions/columns';
   import { t } from '../i18n/i18n.svelte';
   import { shortcutHint, type ShortcutId } from '../editor/shortcuts';
@@ -1087,6 +1088,27 @@
           </div>
         </div>
       {/if}
+    </div>
+
+    <div class="toolbar-group">
+      <button
+        onclick={() => editor && stepFontSize(editor, 1)}
+        title={`${t().toolbarExpanded.growFont} (${shortcutHint('fontGrow')})`}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <text x="5" y="14" text-anchor="middle" font-size="15" font-family="sans-serif" fill="currentColor">A</text>
+          <path d="M12.5 12V5m0 0L10.5 7m2-2l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button
+        onclick={() => editor && stepFontSize(editor, -1)}
+        title={`${t().toolbarExpanded.shrinkFont} (${shortcutHint('fontShrink')})`}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <text x="5" y="14" text-anchor="middle" font-size="11" font-family="sans-serif" fill="currentColor">A</text>
+          <path d="M12.5 5v7m0 0l-2-2m2 2l2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
 
     <div class="toolbar-separator"></div>
