@@ -135,6 +135,23 @@ export async function unavailableFonts(families: Iterable<string>): Promise<stri
   return missing;
 }
 
+// One canvas measurement per candidate adds up to a frame-eating task, and the font
+// picker remounts on every toolbar expand — so detect once per page load. The bundled
+// @font-face twins only load on first use; force them so they measure as available.
+let detection: Promise<string[]> | null = null;
+
+export function detectInstalledFonts(): Promise<string[]> {
+  detection ??= (async () => {
+    if (typeof document !== 'undefined' && document.fonts) {
+      try {
+        await Promise.all(BUNDLED_FONTS.map((f) => document.fonts.load(`12px "${f}"`)));
+      } catch { /* detect with whatever loaded */ }
+    }
+    return detectAvailableFonts(CANDIDATE_FONTS);
+  })();
+  return detection;
+}
+
 interface LocalFontData { family: string }
 interface QueryLocalFontsWindow {
   queryLocalFonts?: () => Promise<LocalFontData[]>;

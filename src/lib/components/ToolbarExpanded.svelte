@@ -9,8 +9,7 @@
   import LinkDialog from './LinkDialog.svelte';
   import { OPEN_LINK_DIALOG_EVENT } from '../editor/extensions/link';
   import {
-    CANDIDATE_FONTS,
-    detectAvailableFonts,
+    detectInstalledFonts,
     queryLocalFontsIfAllowed,
     supportsLocalFontAccess,
   } from '../utils/fontDetect';
@@ -46,7 +45,6 @@
   let recentFonts = $state<string[]>([]);
   let detectedFonts = $state<string[]>([]);
   let allInstalledFonts = $state<string[] | null>(null);
-  let detectionRan = false;
   const localFontAccessSupported =
     typeof window !== 'undefined' && supportsLocalFontAccess();
 
@@ -64,19 +62,8 @@
     try { localStorage.setItem(RECENT_FONTS_KEY, JSON.stringify(fonts)); } catch { /* quota or disabled */ }
   }
 
-  // The bundled metric-twin @font-faces (Calibri/Arial/Cambria/Courier New) only
-  // load on first use; force them so canvas measurement can see them as available.
-  const BUNDLED_TWINS = ['Calibri', 'Arial', 'Cambria', 'Courier New'];
-
   async function ensureDetectionRan() {
-    if (detectionRan) return;
-    detectionRan = true;
-    if (typeof document !== 'undefined' && document.fonts) {
-      try {
-        await Promise.all(BUNDLED_TWINS.map((f) => document.fonts.load(`12px "${f}"`)));
-      } catch { /* detect with whatever loaded */ }
-    }
-    detectedFonts = detectAvailableFonts(CANDIDATE_FONTS);
+    detectedFonts = await detectInstalledFonts();
   }
 
   onMount(() => {

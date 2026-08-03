@@ -502,8 +502,13 @@
 
   /* Sits below the scrolling gallery (margins cancel the dropdown's padding) so it
      is reachable without scrolling to the last style. */
-  .manage {
+  /* Qualified with .ol-option: that rule sits further down the sheet, so at equal
+     specificity its width/padding/hover would win over this one's. */
+  .ol-option.manage {
     flex-shrink: 0;
+    /* auto, so the negative margins bleed the row to both panel edges instead of
+       pushing a 100%-wide box 4px past the right one. */
+    width: auto;
     margin: 2px -2px -2px;
     padding: 0.45rem 0.6rem;
     gap: 0.45rem;
@@ -520,7 +525,7 @@
     flex-shrink: 0;
   }
 
-  .manage:hover {
+  .ol-option.manage:hover {
     background: color-mix(in srgb, var(--color-primary) 16%, var(--color-surface));
   }
 
