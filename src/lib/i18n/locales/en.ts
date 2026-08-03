@@ -98,7 +98,6 @@ const en = {
     updateFromSelection: 'Update from selection',
     rename: 'Rename…',
     reset: 'Reset to default',
-    renamePrompt: 'New style name:',
     newName: 'Style',
   },
   history: {

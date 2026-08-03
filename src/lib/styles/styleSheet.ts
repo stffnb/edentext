@@ -106,15 +106,35 @@ export function builtinStyleSheet(): StyleSheet {
   return { paragraph, character };
 }
 
-// The gallery order: built-ins as listed above, user styles after them. `Heading` is an
-// abstract parent (LibreOffice's, holding what all levels share) — never assignable, so
-// the gallery hides it; the style manager passes withAbstract to edit it.
-export function styleOrder(sheet: StyleSheet, withAbstract = false): Style[] {
-  const names = Object.keys(sheet.paragraph);
-  const hidden = (n: string) => !withAbstract && n === HEADING_PARENT;
-  const builtinOrder = BUILTINS.map(b => b.name).filter(n => names.includes(n) && !hidden(n));
-  const rest = names.filter(n => !builtinOrder.includes(n) && !hidden(n)).sort();
-  return [...builtinOrder, ...rest].map(n => sheet.paragraph[n]);
+// Inheritance order: every style directly followed by its own children, so the manager's
+// indent matches the tree. Siblings sort built-ins first (as listed above), then by name.
+// `Heading` is an abstract parent (LibreOffice's, holding what all levels share) — never
+// assignable, so the gallery hides it (its children stay); the manager passes withAbstract.
+export function styleOrder(sheet: StyleSheet, withAbstract = false, family: StyleFamily = 'paragraph'): Style[] {
+  const styles = family === 'character' ? sheet.character : sheet.paragraph;
+  const rank = new Map((family === 'character' ? CHAR_BUILTINS : BUILTINS).map((b, i) => [b.name, i]));
+  const order = (a: string, b: string) => (rank.get(a) ?? 1e9) - (rank.get(b) ?? 1e9) || a.localeCompare(b);
+  // A style whose parent is missing from the sheet hangs at the root.
+  const parentOf = (n: string) => (styles[n].parent && styles[styles[n].parent!] ? styles[n].parent : null);
+  const out: Style[] = [];
+  const seen = new Set<string>();
+  const emit = (parent: string | null) => {
+    for (const name of Object.keys(styles).filter(n => parentOf(n) === parent).sort(order)) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      if (withAbstract || name !== HEADING_PARENT) out.push(styles[name]);
+      emit(name);
+    }
+  };
+  emit(null);
+  // A parent cycle reaches no root; list its members anyway.
+  for (const name of Object.keys(styles).sort(order)) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    out.push(styles[name]);
+    emit(name);
+  }
+  return out;
 }
 
 // Styles that exist only to be inherited from.

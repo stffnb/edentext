@@ -67,6 +67,18 @@ describe('named paragraph styles', () => {
     expect(names).toContain('Heading 5');
     expect(names).toContain('Quotations');
   });
+
+  it('lists every style directly after its parent', () => {
+    const sheet = builtinStyleSheet();
+    for (const [name, parent] of [['warum', DEFAULT_STYLE], ['hallo', DEFAULT_STYLE], ['ordnung', 'warum']]) {
+      sheet.paragraph[name] = { name, parent, next: null, para: {}, text: {} };
+    }
+    const names = styleOrder(sheet, true).map((s) => s.name);
+    expect(names.indexOf('ordnung')).toBe(names.indexOf('warum') + 1);
+    expect(names.indexOf('hallo')).toBeLessThan(names.indexOf('warum'));
+    // Built-ins keep their listed order ahead of the user styles.
+    expect(names.slice(0, 3)).toEqual([DEFAULT_STYLE, 'Heading', 'Heading 1']);
+  });
 });
 
 // The sheet lives in localStorage, so a released change to the built-ins has to reach

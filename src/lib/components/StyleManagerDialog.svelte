@@ -17,6 +17,10 @@
   let { open = $bindable(false), editor }: { open?: boolean; editor: Editor | null } = $props();
 
   const ALIGNMENTS: AlignValue[] = ['left', 'center', 'right', 'justify'];
+  // Beyond this the indent would push the name out of the 14rem pane, so deeper
+  // chains keep stacking at the last level.
+  const MAX_INDENT_DEPTH = 6;
+  const indentRem = (depth: number) => 0.6 + Math.min(depth, MAX_INDENT_DEPTH) * 0.8;
 
   let dialogEl: HTMLDialogElement | null = $state(null);
   let family = $state<StyleFamily>('paragraph');
@@ -30,11 +34,7 @@
   let isChar = $derived(family === 'character');
   let styles = $derived(isChar ? sheet.character : sheet.paragraph);
   // Indented by inheritance depth, so the chain is visible.
-  let rows = $derived(
-    isChar
-      ? Object.values(sheet.character).map((s) => ({ style: s, depth: depthOf(s) }))
-      : styleOrder(sheet, true).map((s) => ({ style: s, depth: depthOf(s) })),
-  );
+  let rows = $derived(styleOrder(sheet, true, family).map((s) => ({ style: s, depth: depthOf(s) })));
   let current = $derived(isChar ? selectedChar : selected);
   let style = $derived(styles[current] ?? Object.values(styles)[0]);
   let resolved = $derived(resolveStyle(sheet, style?.name, family));
@@ -196,14 +196,22 @@
     selectedChar = name;
   }
 
-  function rename() {
-    const next = prompt(t().styles.renamePrompt, style.name)?.trim();
-    if (!next || next === style.name || styles[next]) return;
-    const from = style.name;
+  // Renaming happens in place in the list — via double-click or the Rename button.
+  let editingName = $state<string | null>(null);
+
+  function commitRename(from: string, next: string) {
+    editingName = null;
+    next = next.trim();
+    if (!next || next === from || styles[next]) return;
     renameStyle(from, next, family);
     // Retag every block that referenced the old name.
     retag(from, next);
     select(next);
+  }
+
+  function focusSelect(el: HTMLInputElement) {
+    el.focus();
+    el.select();
   }
 
   // Re-point every block (or run) that referenced `from`; null drops the reference.
@@ -265,16 +273,33 @@
       <ul class="list">
         {#each rows as { style: s, depth } (s.name)}
           <li>
-            <button
-              class="entry"
-              class:active={current === s.name}
-              style="padding-left: {0.6 + depth * 0.8}rem"
-              onclick={() => select(s.name)}
-            >
-              {s.name}
-              {#if isAbstractStyle(s.name)}<span class="badge">{t().styles.abstract}</span>
-              {:else if !s.builtin}<span class="badge">{t().styles.custom}</span>{/if}
-            </button>
+            {#if editingName === s.name}
+              <input
+                class="entry rename"
+                style="padding-left: {indentRem(depth)}rem"
+                value={s.name}
+                use:focusSelect
+                onblur={(e) => editingName === s.name && commitRename(s.name, e.currentTarget.value)}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                  // Escape would otherwise close the whole dialog.
+                  else if (e.key === 'Escape') { e.preventDefault(); editingName = null; }
+                }}
+              />
+            {:else}
+              <button
+                class="entry"
+                class:active={current === s.name}
+                style="padding-left: {indentRem(depth)}rem"
+                title={s.name}
+                onclick={() => select(s.name)}
+                ondblclick={() => { if (!s.builtin) editingName = s.name; }}
+              >
+                <span class="name">{s.name}</span>
+                {#if isAbstractStyle(s.name)}<span class="badge">{t().styles.abstract}</span>
+                {:else if !s.builtin}<span class="badge">{t().styles.custom}</span>{/if}
+              </button>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -402,7 +427,7 @@
       {#if style.builtin}
         <button onclick={() => resetStyle(style.name, family)}>{t().styles.reset}</button>
       {:else}
-        <button onclick={rename}>{t().styles.rename}</button>
+        <button onclick={() => (editingName = style.name)}>{t().styles.rename}</button>
         <button class="danger" onclick={remove} disabled={style.name === HEADING_PARENT}>{t().common.remove}</button>
       {/if}
     </footer>
@@ -504,8 +529,12 @@
     cursor: pointer;
   }
   .entry:hover { background: var(--color-btn-hover); }
+  .rename { padding-right: 0.6rem; outline: 1px solid var(--color-primary); outline-offset: -1px; }
   .entry.active { background: var(--color-primary); color: white; }
+  /* A long name is clipped instead of overflowing the pane (the title shows it in full). */
+  .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .badge {
+    flex: none;
     font-size: 0.6rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;

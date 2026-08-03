@@ -94,7 +94,6 @@ const de: Messages = {
     updateFromSelection: 'Aus Auswahl aktualisieren',
     rename: 'Umbenennen…',
     reset: 'Auf Standard zurücksetzen',
-    renamePrompt: 'Neuer Name der Vorlage:',
     newName: 'Vorlage',
   },
   history: {
