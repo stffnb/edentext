@@ -13,8 +13,9 @@ import { ResizableTableRow } from '../../src/lib/editor/extensions/tableRow';
 import { TableCellBackground } from '../../src/lib/editor/extensions/tableCellBackground';
 import {
   HEADER_SHADE,
-  isHeaderRowStyled,
-  toggleHeaderRowStyle,
+  isHeaderStyled,
+  toggleHeaderStyle,
+  type HeaderAxis,
 } from '../../src/lib/editor/extensions/tableHeaderRow';
 
 type N = any;
@@ -43,11 +44,13 @@ function makeState(): EditorState {
 }
 
 // Apply the command factory to a state, returning the next state.
-function run(state: EditorState): EditorState {
+function run(state: EditorState, axis: HeaderAxis = 'row'): EditorState {
   let next: EditorState | null = null;
-  toggleHeaderRowStyle()({ state, tr: state.tr, dispatch: (tr: any) => { next = state.apply(tr); } } as any);
+  toggleHeaderStyle(axis)({ state, tr: state.tr, dispatch: (tr: any) => { next = state.apply(tr); } } as any);
   return next ?? state;
 }
+
+const isHeaderRowStyled = (s: EditorState) => isHeaderStyled(s, 'row');
 
 const firstRow = (state: EditorState): N => state.doc.toJSON().content[0].content[0];
 const boldMarks = (c: N): boolean => (c.content[0].content[0]?.marks ?? []).some((m: N) => m.type === 'bold');
@@ -97,5 +100,26 @@ describe('toggleHeaderRowStyle', () => {
     const c = firstRow(state).content[0];
     expect(c.attrs.backgroundColor == null).toBe(true);
     expect(boldMarks(c)).toBe(false); // baked bold removed
+  });
+
+  it('toggles the first column, and the shared corner survives turning one off', () => {
+    let state = makeState();
+    state = run(state, 'column');
+    expect(isHeaderStyled(state, 'column')).toBe(true);
+    const col = (s: EditorState) => s.doc.toJSON().content[0].content.map((r: N) => r.content[0]);
+    for (const c of col(state)) expect(c.attrs.backgroundColor).toBe(HEADER_SHADE);
+    // Cell (0,1) untouched.
+    expect(state.doc.toJSON().content[0].content[0].content[1].attrs.backgroundColor == null).toBe(true);
+
+    // Both headers on: turning the row off keeps the corner (still the column header).
+    state = run(state, 'row');
+    expect(isHeaderStyled(state, 'row')).toBe(true);
+    state = run(state, 'row');
+    expect(isHeaderStyled(state, 'row')).toBe(false);
+    expect(isHeaderStyled(state, 'column')).toBe(true);
+
+    state = run(state, 'column');
+    expect(isHeaderStyled(state, 'column')).toBe(false);
+    for (const c of col(state)) expect(c.attrs.backgroundColor == null).toBe(true);
   });
 });

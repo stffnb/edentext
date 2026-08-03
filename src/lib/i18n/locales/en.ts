@@ -244,6 +244,8 @@ const en = {
     noFill: 'No fill',
     headerRow: 'Header row (bold + shading)',
     headerRowAria: 'Header row',
+    headerColumn: 'Header column (bold + shading)',
+    headerColumnAria: 'Header column',
     insertTable: 'Insert table',
     selectSize: 'Select table size',
     dimensions: (cols: number, rows: number) => `${cols} × ${rows}`,

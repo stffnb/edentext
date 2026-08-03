@@ -240,6 +240,8 @@ const de: Messages = {
     noFill: 'Keine Füllung',
     headerRow: 'Kopfzeile (fett + Schattierung)',
     headerRowAria: 'Kopfzeile',
+    headerColumn: 'Kopfspalte (fett + Schattierung)',
+    headerColumnAria: 'Kopfspalte',
     insertTable: 'Tabelle einfügen',
     selectSize: 'Tabellengröße wählen',
     dimensions: (cols, rows) => `${cols} × ${rows}`,

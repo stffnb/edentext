@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Editor, ChainedCommands } from '@tiptap/core';
   import { CellSelection } from '@tiptap/pm/tables';
-  import { isHeaderRowStyled } from '../editor/extensions/tableHeaderRow';
+  import { isHeaderStyled } from '../editor/extensions/tableHeaderRow';
   import ColorPicker from './ColorPicker.svelte';
   import TableBorderPicker from './TableBorderPicker.svelte';
   import { t } from '../i18n/i18n.svelte';
@@ -31,8 +31,9 @@
   // Merge needs a multi-cell selection; re-evaluated per transaction via `tick`.
   const canMerge = $derived(tick >= 0 && !!editor && editor.can().mergeCells());
 
-  // Whether the first row is styled as a header (bold + light shading).
-  const isHeaderRow = $derived(tick >= 0 && !!editor && isHeaderRowStyled(editor.state));
+  // Whether the first row / first column is styled as a header (bold + light shading).
+  const isHeaderRow = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'row'));
+  const isHeaderCol = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'column'));
 
   // Background colour of the selected cell(s): the uniform value, '' if mixed, null if
   // none. Drives the ColorPicker's "current" swatch (re-evaluated per `tick`).
@@ -233,6 +234,23 @@
       <line x1="1.5" y1="6.5" x2="16.5" y2="6.5" stroke="currentColor" stroke-width="1.1"/>
       <line x1="1.5" y1="11.5" x2="16.5" y2="11.5" stroke="currentColor" stroke-width="1.1"/>
       <line x1="9" y1="6.5" x2="9" y2="16.5" stroke="currentColor" stroke-width="1.1"/>
+    </svg>
+  </button>
+
+  <button
+    class="tt-btn"
+    class:active={isHeaderCol}
+    title={t().table.headerColumn}
+    aria-label={t().table.headerColumnAria}
+    aria-pressed={isHeaderCol}
+    onclick={() => run((c) => c.toggleHeaderColumnStyle())}
+  >
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="15" height="15" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <rect x="1.5" y="1.5" width="5" height="15" fill="currentColor" opacity="0.85"/>
+      <line x1="6.5" y1="1.5" x2="6.5" y2="16.5" stroke="currentColor" stroke-width="1.1"/>
+      <line x1="11.5" y1="1.5" x2="11.5" y2="16.5" stroke="currentColor" stroke-width="1.1"/>
+      <line x1="6.5" y1="9" x2="16.5" y2="9" stroke="currentColor" stroke-width="1.1"/>
     </svg>
   </button>
 </div>
