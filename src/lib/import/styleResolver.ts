@@ -139,6 +139,7 @@ export class StyleResolver {
   private stylesDoc: Document | null;
   private namedParagraphNames = new Set<string>();
   private namedTextNames = new Set<string>();
+  private namedTableNames = new Set<string>();
   private displayNames = new Map<string, string>();
 
   constructor(contentDoc: Document, stylesDoc: Document | null) {
@@ -172,8 +173,8 @@ export class StyleResolver {
 
   // The nearest named style in a style's parent chain (an automatic style is direct
   // formatting layered on top of it); null when the chain reaches none.
-  namedAncestor(styleName: string | null | undefined, family: 'paragraph' | 'text' = 'paragraph'): string | null {
-    const named = family === 'text' ? this.namedTextNames : this.namedParagraphNames;
+  namedAncestor(styleName: string | null | undefined, family: 'paragraph' | 'text' | 'table' = 'paragraph'): string | null {
+    const named = family === 'text' ? this.namedTextNames : family === 'table' ? this.namedTableNames : this.namedParagraphNames;
     let cur = styleName ?? null;
     const seen = new Set<string>();
     while (cur && !seen.has(cur)) {
@@ -225,8 +226,9 @@ export class StyleResolver {
         const name = el.getAttributeNS(NS.style, 'name');
         const family = el.getAttributeNS(NS.style, 'family');
         if (name && family) this.styles.set(`${family}\0${name}`, entryFromStyleElement(el));
-        if (name && named && (family === 'paragraph' || family === 'text')) {
+        if (name && named && (family === 'paragraph' || family === 'text' || family === 'table')) {
           if (family === 'paragraph') this.namedParagraphNames.add(name);
+          else if (family === 'table') this.namedTableNames.add(name);
           else this.namedTextNames.add(name);
           const display = el.getAttributeNS(NS.style, 'display-name');
           if (display) this.displayNames.set(name, display);

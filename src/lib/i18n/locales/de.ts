@@ -95,6 +95,25 @@ const de: Messages = {
     rename: 'Umbenennen…',
     reset: 'Auf Standard zurücksetzen',
     newName: 'Vorlage',
+    // Short forms for the manager's tab strip; the long names above still label
+    // the gallery sections.
+    tabs: { paragraph: 'Absatz', character: 'Zeichen', table: 'Tabelle' },
+    tableStyles: 'Tabellenvorlagen',
+    region: 'Bereich',
+    fill: 'Füllung',
+    outerBorder: 'Außenrahmen',
+    rowLines: 'Zeilenlinien',
+    columnLines: 'Spaltenlinien',
+    noBorder: 'Keiner',
+    regions: {
+      wholeTable: 'Ganze Tabelle',
+      headerRow: 'Kopfzeile',
+      lastRow: 'Letzte Zeile',
+      firstColumn: 'Erste Spalte',
+      lastColumn: 'Letzte Spalte',
+      bandedRow: 'Streifenzeilen',
+      bandedColumn: 'Streifenspalten',
+    } as Record<string, string>,
   },
   history: {
     undo: 'Rückgängig',
@@ -255,6 +274,26 @@ const de: Messages = {
     columns: 'Spalten',
     rowsField: 'Zeilen',
     split: 'Teilen',
+    // No trailing ellipsis here (unlike the other dialog-opening entries): the
+    // row truncates, so CSS adds the dots only when the label doesn't fit.
+    manageStyles: 'Tabellenvorlagen verwalten',
+    tableStyle: 'Tabellenvorlage',
+    noTableStyle: 'Keine',
+    styleNames: {
+      'Simple Grid': 'Einfaches Gitter',
+      'Simple Grid Rows': 'Gitter nur Zeilen',
+      'Simple Grid Columns': 'Gitter nur Spalten',
+      'Simple List Shaded': 'Einfache Liste schattiert',
+      'Simple List Columns': 'Einfache Liste Spalten',
+      'Box List Blue': 'Kastenliste blau',
+      'Box List Green': 'Kastenliste grün',
+      'Box List Red': 'Kastenliste rot',
+      'Box List Yellow': 'Kastenliste gelb',
+      'Grid Table Accent': 'Gittertabelle Akzent',
+      'List Table Accent': 'Listentabelle Akzent',
+      Academic: 'Akademisch',
+      Financial: 'Finanzen',
+    } as Record<string, string>,
   },
   borders: {
     title: 'Rahmen',

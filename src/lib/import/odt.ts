@@ -1505,8 +1505,13 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   }
 
   if (rows.length === 0) return null;
-  const margins = tableMargins(el, ctx);
-  return margins ? { type: 'table', attrs: margins, content: rows } : { type: 'table', content: rows };
+  // The named table style behind the automatic one. ODF stores no banding, so only the
+  // name comes back — the look rides on the cell attrs above, and the editor re-derives
+  // the regions from the registry (refreshTableStyles).
+  const named = ctx.resolver.namedAncestor(el.getAttributeNS(NS.table, 'style-name'), 'table');
+  const attrs: Record<string, unknown> = { ...(tableMargins(el, ctx) ?? {}) };
+  if (named) attrs.tableStyle = displayStyleName(named);
+  return Object.keys(attrs).length ? { type: 'table', attrs, content: rows } : { type: 'table', content: rows };
 }
 
 // A table narrower than the text width → the editor's marginLeft/marginRight attrs.

@@ -3,6 +3,7 @@
 // replaced. Persisted to localStorage like the other document side-cars.
 
 import { builtinStyleSheet, DEFAULT_STYLE, mergeStoredSheet, STYLE_SHEET_VERSION, type Style, type StyleFamily, type StyleSheet } from './styleSheet';
+import type { TableStyle } from './tableStyles';
 
 const STORAGE_KEY = 'odf-editor-styles';
 
@@ -29,13 +30,35 @@ export function setStyleSheet(next: StyleSheet): void {
 
 // Replace one style (add or edit) — everything using it re-renders via styleCss.
 export function putStyle(style: Style, family: StyleFamily = 'paragraph'): void {
-  const key = family === 'character' ? 'character' : 'paragraph';
+  const key = family === 'table' ? 'paragraph' : family;
   setStyleSheet({ ...current, [key]: { ...current[key], [style.name]: style } });
+}
+
+// Table styles have their own shape and no inheritance, so they get their own pair.
+export function putTableStyle(style: TableStyle): void {
+  setStyleSheet({ ...current, table: { ...current.table, [style.name]: style } });
+}
+
+export function deleteTableStyle(name: string): void {
+  if (current.table[name]?.builtin) return;
+  const table = { ...current.table };
+  delete table[name];
+  setStyleSheet({ ...current, table });
+}
+
+export function renameTableStyle(from: string, to: string): void {
+  const style = current.table[from];
+  if (!style || from === to || current.table[to]) return;
+  const table = { ...current.table };
+  delete table[from];
+  table[to] = { ...style, name: to, builtin: undefined };
+  setStyleSheet({ ...current, table });
 }
 
 // Rename a style and re-point everything that referenced it (children, next-styles).
 // Blocks keep their own `styleName`; the caller retags them.
 export function renameStyle(from: string, to: string, family: StyleFamily = 'paragraph'): void {
+  if (family === 'table') return renameTableStyle(from, to);
   if (family === 'character') return renameCharacterStyle(from, to);
   const style = current.paragraph[from];
   if (!style || from === to || current.paragraph[to]) return;
@@ -67,6 +90,11 @@ export function deleteStyle(name: string): void {
 // Restore a built-in to its factory definition.
 export function resetStyle(name: string, family: StyleFamily = 'paragraph'): void {
   const base = builtinStyleSheet();
+  if (family === 'table') {
+    const factory = base.table[name];
+    if (factory) putTableStyle(factory);
+    return;
+  }
   const factory = (family === 'character' ? base.character : base.paragraph)[name];
   if (factory) putStyle(factory, family);
 }

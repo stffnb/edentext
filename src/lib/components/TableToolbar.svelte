@@ -4,6 +4,7 @@
   import { isHeaderStyled } from '../editor/extensions/tableHeaderRow';
   import ColorPicker from './ColorPicker.svelte';
   import TableBorderPicker from './TableBorderPicker.svelte';
+  import TableStylePicker from './TableStylePicker.svelte';
   import { t } from '../i18n/i18n.svelte';
 
   let {
@@ -217,6 +218,8 @@
   </ColorPicker>
 
   <TableBorderPicker {editor} {tick} />
+
+  <TableStylePicker {editor} {tick} />
 
   <span class="tt-sep"></span>
 

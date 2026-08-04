@@ -41,6 +41,7 @@ import { TableSplit } from './extensions/tableSplit';
 import { TableCellBackground } from './extensions/tableCellBackground';
 import { TableCellBorders } from './extensions/tableCellBorders';
 import { TableHeaderRow } from './extensions/tableHeaderRow';
+import { TableStyle } from './extensions/tableStyle';
 import { TrailingNode } from './extensions/trailingNode';
 import { Image } from './extensions/image';
 import { DateTimeField } from './extensions/dateTimeField';
@@ -128,6 +129,9 @@ export const extensions = [
   TableCellBorders,
   // "Header row" styling preset: bold + light shading on the first row (toggle).
   TableHeaderRow,
+  // Named table style (Word table style / LibreOffice AutoFormat): paints the table's
+  // conditional regions into cell attrs and re-bands on structural changes.
+  TableStyle.configure({ styles: () => styleSheet().table }),
   // Guarantees a paragraph after a trailing table so the cursor isn't trapped
   // and the user can keep writing below a table at the document's end.
   TrailingNode,

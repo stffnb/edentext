@@ -5,7 +5,7 @@ import {
   AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
   WidthType, HeightRule, PageOrientation, LineRuleType, TableLayoutType, SectionType,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
-  TextWrappingType, TextWrappingSide,
+  TextWrappingType, TextWrappingSide, ImportedXmlComponent,
 } from 'docx';
 import type { TiptapNode } from 'odf-kit';
 import type {
@@ -23,12 +23,16 @@ import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCell
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
-import { builtinStyleSheet, DEFAULT_STYLE, type Style, type StyleSheet } from '../styles/styleSheet';
+import { builtinStyleSheet, DEFAULT_STYLE, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
+import { regionText, type TableStyle } from '../styles/tableStyles';
 import { findFormat, renderFormat, docxPicture, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../utils/dateTime';
 
 // BCP-47 tag for rendering a fixed field's cached text; set at buildDocx start from
 // the document language (Word recomputes an auto field on open using its own locale).
 let docLangTag = 'en-US';
+// The sheet of the export in flight, so the table/cell emitters can resolve a named
+// table style without threading it through every helper (mirrors odt.ts).
+let exportSheet: StyleSheet = builtinStyleSheet();
 
 // DOCX export. Mirrors export/odt.ts feature-for-feature, but builds OOXML via the
 // `docx` library instead of odf-kit. Lazy-loaded from App.svelte so neither this
@@ -154,9 +158,10 @@ function markPresent(marks: TiptapNode['marks'], type: string): boolean {
   return !!marks?.some((m) => m.type === type);
 }
 
-// TipTap marks + textStyle attrs → Word run properties. forceBold bakes bold onto
-// every run (header-row cells), respecting an explicit fontWeight:normal un-bold.
-function runPropsFromMarks(marks: TiptapNode['marks'] = [], forceBold = false): Writable<IRunStylePropertiesOptions> {
+// TipTap marks + textStyle attrs → Word run properties. `force` bakes a cell's
+// presentational formatting (header row, table-style region) onto every run,
+// respecting an explicit fontWeight:normal un-bold.
+function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {}): Writable<IRunStylePropertiesOptions> {
   const ts = marks.find((m) => m.type === 'textStyle');
   const props: Writable<IRunStylePropertiesOptions> & { style?: string } = {};
 
@@ -171,23 +176,23 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], forceBold = false): 
     if (s === 'normal' || s === '400') bold = false;
     else if (s === 'bold' || /^[5-9]\d\d$/.test(s)) bold = true;
   }
-  if (forceBold && bold !== false) bold = true;
+  if (force.bold && bold !== false) bold = true;
   if (bold !== undefined) props.bold = bold;
 
-  if (markPresent(marks, 'italic')) props.italics = true;
+  if (markPresent(marks, 'italic') || force.italic) props.italics = true;
   if (markPresent(marks, 'underline')) props.underline = { type: UnderlineType.SINGLE };
   if (markPresent(marks, 'strike')) props.strike = true;
   if (markPresent(marks, 'superscript')) props.superScript = true;
   else if (markPresent(marks, 'subscript')) props.subScript = true;
 
-  const ff = ts?.attrs?.fontFamily;
+  const ff = ts?.attrs?.fontFamily ?? force.fontFamily;
   if (ff) props.font = String(ff) === SCREEN_FONT ? DOC_FONT : String(ff);
-  const fs = ts?.attrs?.fontSize;
+  const fs = ts?.attrs?.fontSize ?? (force.fontSizePt != null ? `${force.fontSizePt}pt` : null);
   if (fs) {
     const hp = fontSizeToHalfPoints(String(fs));
     if (hp) props.size = hp;
   }
-  const col = ts?.attrs?.color;
+  const col = ts?.attrs?.color ?? force.color;
   if (col) {
     const h = hexColor(String(col));
     if (h) props.color = h;
@@ -207,9 +212,9 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], forceBold = false): 
 
 // A text node → one run; tab chars become <w:tab/> via mixed children (a literal \t
 // would otherwise be dropped). Returned as an array so a link wrapper can adopt it.
-function textNodeToRuns(node: TiptapNode, forceBold: boolean): TextRun[] {
+function textNodeToRuns(node: TiptapNode, force: TextProps): TextRun[] {
   const text = node.text ?? '';
-  const props = runPropsFromMarks(node.marks, forceBold);
+  const props = runPropsFromMarks(node.marks, force);
   if (!text.includes('\t')) return [new TextRun({ text, ...props })];
   const parts = text.split('\t');
   const children: (string | Tab)[] = [];
@@ -238,11 +243,11 @@ function dateTimeRun(node: TiptapNode): Inline {
   return new SimpleField(`${kind === 'time' ? 'TIME' : 'DATE'} \\@ "${docxPicture(fmt)}"`, text);
 }
 
-function inlineToRuns(content: TiptapNode[] = [], forceBold = false): Inline[] {
+function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline[] {
   const out: Inline[] = [];
   for (const node of content) {
     if (node.type === 'text' && node.text) {
-      const runs = textNodeToRuns(node, forceBold);
+      const runs = textNodeToRuns(node, force);
       const href = node.marks?.find((m) => m.type === 'link')?.attrs?.href;
       if (href) out.push(new ExternalHyperlink({ link: String(href), children: runs }));
       else out.push(...runs);
@@ -579,7 +584,7 @@ function spacingOf(attrs: TiptapNode['attrs']): ISpacingProperties | undefined {
 }
 
 
-type ParaOpts = { numbering?: { reference: string; level: number }; indentLeftTwip?: number; forceBold?: boolean };
+type ParaOpts = { numbering?: { reference: string; level: number }; indentLeftTwip?: number; force?: TextProps };
 
 // Paragraph background ("colored field") → w:shd; per-side borders ("rule line") → w:pBdr.
 function paraShadingOf(attrs: TiptapNode['attrs']) {
@@ -617,7 +622,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     shading: paraShadingOf(attrs),
     border: paraBordersOf(attrs),
     run: markSize ? { size: markSize } : undefined,
-    children: inlineToRuns(node.content, opts.forceBold),
+    children: inlineToRuns(node.content, opts.force),
   });
 }
 
@@ -676,6 +681,14 @@ function columnWidthsCm(node: TiptapNode, contentWidthCm: number): number[] | un
 const cellBorder: IBorderOptions = { style: BorderStyle.SINGLE, size: 4, color: '000000' }; // 0.5pt
 
 // A cell's per-side border attr → w:tcBorders options (size in eighth-points).
+// Header cells and a table style's regions render bold/font via CSS in the editor, so
+// bake that onto the cell's runs for Word.
+function cellForce(style: TableStyle | undefined, cell: TiptapNode, bg: unknown): TextProps {
+  const force = regionText(style, cell.attrs?.region);
+  if (bg === HEADER_SHADE) force.bold = true;
+  return force;
+}
+
 function docxCellBorder(attrs: Record<string, unknown> | undefined, side: BorderSide): IBorderOptions {
   const b = parseBorderAttr(attrs?.[side] as string | null);
   if (b === 'none') return { style: BorderStyle.NONE, size: 0, color: 'auto' };
@@ -683,7 +696,7 @@ function docxCellBorder(attrs: Record<string, unknown> | undefined, side: Border
   return cellBorder;
 }
 
-function cellBlocksToDocx(content: TiptapNode[] = [], headerBold: boolean, num: Numbering, contentWidthCm: number): (Paragraph | Table)[] {
+function cellBlocksToDocx(content: TiptapNode[] = [], force: TextProps, num: Numbering, contentWidthCm: number): (Paragraph | Table)[] {
   const out: (Paragraph | Table)[] = [];
   for (const child of content) {
     if (child.type === 'bulletList' || child.type === 'orderedList') {
@@ -691,7 +704,7 @@ function cellBlocksToDocx(content: TiptapNode[] = [], headerBold: boolean, num: 
     } else if (child.type === 'table') {
       out.push(tableToDocx(child, contentWidthCm, num));
     } else if (child.type === 'paragraph' || child.type === 'heading') {
-      out.push(paragraphToDocx(child, { forceBold: headerBold }));
+      out.push(paragraphToDocx(child, { force }));
     }
   }
   if (out.length === 0) out.push(new Paragraph({}));
@@ -700,6 +713,10 @@ function cellBlocksToDocx(content: TiptapNode[] = [], headerBold: boolean, num: 
 
 function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): Table {
   const rows = (node.content ?? []).filter((r) => r.type === 'tableRow');
+  // The named table style, if the registry still knows it: Word gets the reference
+  // (w:tblStyle) plus the baked cell formatting, since w:tblStylePr isn't emitted.
+  const styleName = typeof node.attrs?.tableStyle === 'string' ? node.attrs.tableStyle : null;
+  const tableStyle = styleName ? exportSheet.table?.[styleName] : undefined;
   // A dragged table edge (tableColumnResize.ts) → w:tblInd + the narrower grid.
   let ml = Math.max(0, Number(node.attrs?.marginLeft) || 0);
   let mr = Math.max(0, Number(node.attrs?.marginRight) || 0);
@@ -731,7 +748,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
           left: docxCellBorder(cell.attrs, 'borderLeft'),
           right: docxCellBorder(cell.attrs, 'borderRight'),
         },
-        children: cellBlocksToDocx(cell.content, bg === HEADER_SHADE, num, contentWidthCm),
+        children: cellBlocksToDocx(cell.content, cellForce(tableStyle, cell, bg), num, contentWidthCm),
       }));
     }
     return new TableRow({
@@ -741,6 +758,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
   });
 
   return new Table({
+    ...(tableStyle ? { style: docxStyleId(tableStyle.name) } : {}),
     rows: tableRows,
     columnWidths: colsTwip,
     width: { size: totalTwip, type: WidthType.DXA },
@@ -912,7 +930,29 @@ function characterStyleOf(style: Style): ICharacterStyleOptions {
   return { id: docxStyleId(style.name), name: style.name, quickFormat: true, run };
 }
 
-function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language: string; country: string } | null) {
+// Word needs a referenced table style to exist. ODF/our model hold the banding, and the
+// look is baked into the cells, so a name-only definition is enough (no w:tblStylePr).
+function tableStyleXml(name: string): ImportedXmlComponent {
+  return ImportedXmlComponent.fromXmlString(
+    `<w:style w:type="table" w:styleId="${docxStyleId(name)}">`
+    + `<w:name w:val="${escapeXml(name)}"/><w:basedOn w:val="TableNormal"/><w:uiPriority w:val="59"/>`
+    + '</w:style>',
+  );
+}
+
+// The table styles the document actually references, and the registry still defines.
+function usedTableStyles(doc: TiptapNode, sheet: StyleSheet): string[] {
+  const names = new Set<string>();
+  const walk = (node: TiptapNode) => {
+    const name = node.type === 'table' ? node.attrs?.tableStyle : null;
+    if (typeof name === 'string' && sheet.table?.[name]) names.add(name);
+    node.content?.forEach(walk);
+  };
+  walk(doc);
+  return [...names];
+}
+
+function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language: string; country: string } | null, usedTables: string[] = []) {
   const run: Writable<IRunStylePropertiesOptions> = { font: DOC_FONT, size: 24 };
   if (language) run.language = { value: `${language.language}-${language.country}` };
   return {
@@ -922,6 +962,7 @@ function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language
     // The document's named styles, chain intact — Word shows them in its style list.
     paragraphStyles: Object.values(sheet.paragraph).filter(st => used.has(st.name)).map(paragraphStyleOf),
     characterStyles: Object.values(sheet.character ?? {}).map(characterStyleOf),
+    ...(usedTables.length ? { importedStyles: usedTables.map(tableStyleXml) } : {}),
   };
 }
 
@@ -936,6 +977,7 @@ export async function buildDocx(
   styles: StyleSheet = builtinStyleSheet(),
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
+  exportSheet = styles;
   const num = new Numbering();
   const landscape = orientation === 'landscape';
   const { w: pageWidthCm, h: pageHeightCm } = pageDimsCm(pageFormat, orientation);
@@ -998,7 +1040,7 @@ export async function buildDocx(
     defaultTabStop: cmToTwip(1.25),
     ...(differentOddEven ? { evenAndOddHeaderAndFooters: true } : {}),
     ...(hasToc ? { features: { updateFields: true } } : {}),
-    styles: buildStyles(styles, usedStyleNames(docJson, styles), language),
+    styles: buildStyles(styles, usedStyleNames(docJson, styles), language, usedTableStyles(docJson, styles)),
     numbering: { config: num.config },
     // A columns group is its own section; w:type=continuous describes the break
     // BEFORE a section, so it goes on every section but the first.

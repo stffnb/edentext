@@ -2,6 +2,8 @@
 // style and two property groups. Resolution walks the parent chain (nearer wins); direct
 // formatting on the block or run still overrides the result.
 
+import { builtinTableStyles, tableStyleCss, type TableStyle } from './tableStyles';
+
 export type ParaProps = {
   textAlign?: 'left' | 'center' | 'right' | 'justify';
   lineHeight?: string;
@@ -38,12 +40,14 @@ export type Style = {
   text: TextProps;
 };
 
-// Two families, as in LibreOffice: paragraph styles govern whole blocks, character
-// styles a run of text inside one. Same Style shape; a character style only uses `text`.
-export type StyleFamily = 'paragraph' | 'character';
+// Three families, as in LibreOffice/Word: paragraph styles govern whole blocks, character
+// styles a run of text inside one (same Style shape; a character style only uses `text`),
+// table styles a whole table (their own shape, no inheritance — see tableStyles.ts).
+export type StyleFamily = 'paragraph' | 'character' | 'table';
 export type StyleSheet = {
   paragraph: Record<string, Style>;
   character: Record<string, Style>;
+  table: Record<string, TableStyle>;
 };
 
 export const DEFAULT_STYLE = 'Standard';
@@ -79,13 +83,15 @@ const CHAR_BUILTINS: Style[] = [
 
 // Bumped whenever the built-in definitions change: a stored sheet from an older version
 // keeps its user styles but takes the new factory built-ins (see mergeStoredSheet).
-export const STYLE_SHEET_VERSION = 2;
+export const STYLE_SHEET_VERSION = 4;
 
 // A persisted sheet merged onto the current built-ins. Same version: stored entries win
 // (a document's own styles, and edits to built-ins). Older: only user styles survive.
 export function mergeStoredSheet(stored: unknown): StyleSheet {
   const sheet = builtinStyleSheet();
-  const data = stored as { v?: number; paragraph?: Record<string, Style>; character?: Record<string, Style> } | null;
+  const data = stored as
+    | { v?: number; paragraph?: Record<string, Style>; character?: Record<string, Style>; table?: Record<string, TableStyle> }
+    | null;
   if (!data?.paragraph || typeof data.paragraph !== 'object') return sheet;
   const current = data.v === STYLE_SHEET_VERSION;
   for (const family of ['paragraph', 'character'] as const) {
@@ -95,6 +101,12 @@ export function mergeStoredSheet(stored: unknown): StyleSheet {
       sheet[family][name] = style;
     }
   }
+  // Table styles have their own shape, so they merge separately.
+  for (const [name, style] of Object.entries(data.table ?? {})) {
+    if (!style || typeof style !== 'object') continue;
+    if (!current && style.builtin) continue;
+    sheet.table[name] = style;
+  }
   return sheet;
 }
 
@@ -103,7 +115,7 @@ export function builtinStyleSheet(): StyleSheet {
   for (const s of BUILTINS) paragraph[s.name] = structuredClone(s);
   const character: Record<string, Style> = {};
   for (const s of CHAR_BUILTINS) character[s.name] = structuredClone(s);
-  return { paragraph, character };
+  return { paragraph, character, table: builtinTableStyles() };
 }
 
 // Inheritance order: every style directly followed by its own children, so the manager's
@@ -111,6 +123,7 @@ export function builtinStyleSheet(): StyleSheet {
 // `Heading` is an abstract parent (LibreOffice's, holding what all levels share) — never
 // assignable, so the gallery hides it (its children stay); the manager passes withAbstract.
 export function styleOrder(sheet: StyleSheet, withAbstract = false, family: StyleFamily = 'paragraph'): Style[] {
+  if (family === 'table') return []; // table styles have no inheritance — listed flat
   const styles = family === 'character' ? sheet.character : sheet.paragraph;
   const rank = new Map((family === 'character' ? CHAR_BUILTINS : BUILTINS).map((b, i) => [b.name, i]));
   const order = (a: string, b: string) => (rank.get(a) ?? 1e9) - (rank.get(b) ?? 1e9) || a.localeCompare(b);
@@ -185,9 +198,9 @@ function cssFontFamily(name: string): string {
   return `'${name.replace(/'/g, "\\'")}', var(--font-serif)`;
 }
 
-function declarations(r: ResolvedStyle): string[] {
+// The text half of a rule, shared with the table-style family (tableStyles.ts).
+export function textDeclarations(t: TextProps): string[] {
   const out: string[] = [];
-  const { para: p, text: t } = r;
   if (t.fontFamily) out.push(`font-family: ${cssFontFamily(t.fontFamily)}`);
   if (t.fontSizePt != null) out.push(`font-size: ${t.fontSizePt}pt`);
   if (t.bold != null) out.push(`font-weight: ${t.bold ? 700 : 400}`);
@@ -196,6 +209,12 @@ function declarations(r: ResolvedStyle): string[] {
     out.push(`text-decoration: ${[t.underline && 'underline', t.strike && 'line-through'].filter(Boolean).join(' ')}`);
   }
   if (t.color) out.push(`color: ${t.color}`);
+  return out;
+}
+
+function declarations(r: ResolvedStyle): string[] {
+  const { para: p } = r;
+  const out = textDeclarations(r.text);
   if (p.textAlign) out.push(`text-align: ${p.textAlign}`);
   if (p.lineHeight) out.push(`line-height: ${p.lineHeight}`);
   if (p.spaceBefore != null) out.push(`margin-top: ${p.spaceBefore}pt`);
@@ -229,6 +248,9 @@ export function styleCss(sheet: StyleSheet): string {
     if (style.name === DEFAULT_STYLE) selectors.push('.paper .tiptap p:not([data-style])');
     rules.push(`${selectors.join(',\n')} {\n  ${decls.join(';\n  ')};\n}`);
   }
+  // Table styles last: their cell selectors must outrank the paragraph rules above.
+  const table = tableStyleCss(sheet.table ?? {});
+  if (table) rules.push(table);
   return rules.join('\n\n');
 }
 
@@ -292,7 +314,7 @@ export function styleDelta(shown: ResolvedStyle, base: ResolvedStyle): ResolvedS
 
 // A name that isn't taken yet ("Style", "Style 2", …).
 export function uniqueStyleName(sheet: StyleSheet, base: string, family: StyleFamily = 'paragraph'): string {
-  const styles = family === 'character' ? sheet.character : sheet.paragraph;
+  const styles: Record<string, unknown> = sheet[family] ?? sheet.paragraph;
   if (!styles[base]) return base;
   for (let i = 2; ; i++) if (!styles[`${base} ${i}`]) return `${base} ${i}`;
 }

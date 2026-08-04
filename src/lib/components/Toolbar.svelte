@@ -6,11 +6,11 @@
   import { BULLET_TYPES } from '../utils/bulletListTypes';
   import { effectiveOrderedTypeAt } from '../editor/extensions/orderedList';
   import { isInHeaderCell } from '../editor/extensions/tableHeaderRow';
+  import { cellRegionText } from '../editor/extensions/tableStyle';
   import { blockStyleName } from '../editor/extensions/paragraphStyle';
   import { activeCharacterStyle } from '../editor/extensions/characterStyle';
-  import { DEFAULT_STYLE, headingStyleName, resolveStyle, styleOrder } from '../styles/styleSheet';
+  import { DEFAULT_STYLE, headingStyleName, resolveStyle, styleOrder, type StyleFamily } from '../styles/styleSheet';
   import { styleSheet } from '../styles/sheet.svelte';
-  import StyleManagerDialog from './StyleManagerDialog.svelte';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
   import { shortcutHint, type ShortcutId } from '../editor/shortcuts';
@@ -20,7 +20,12 @@
     return (t().toolbar.bullets as Record<string, string>)[char] ?? char;
   }
 
-  let { editor, tick }: { editor: Editor | null; tick: number } = $props();
+  // The style manager is mounted once in App.svelte; the gallery only asks for it.
+  let { editor, tick, onManageStyles }: {
+    editor: Editor | null;
+    tick: number;
+    onManageStyles?: (family: StyleFamily) => void;
+  } = $props();
 
   // The document's named paragraph styles (LibreOffice model): the gallery lists the
   // registry, assigning one only sets the style — hard formatting stays, as in Word/LO.
@@ -59,7 +64,6 @@
   }
 
   let stylesOpen = $state(false);
-  let managerOpen = $state(false);
 
   // $derived re-evaluates whenever `tick` changes (i.e. on every TipTap transaction)
   let isHeading    = $derived(tick >= 0 && !!editor?.isActive('heading'));
@@ -90,7 +94,11 @@
 
   // Header-row cells render bold by default (CSS), like headings — so the Bold button
   // toggles the fontWeight:'normal' override there too (keeps header bold editable).
-  let inHeaderCell = $derived(tick >= 0 && !!editor && isInHeaderCell(editor.state));
+  // A table style's regions render the same way, so they count as well.
+  let inHeaderCell = $derived(
+    tick >= 0 && !!editor
+      && (isInHeaderCell(editor.state) || cellRegionText(editor.state, sheet.table).bold === true),
+  );
   let boldByDefault = $derived(isHeading || inHeaderCell);
   // fontWeight:'normal' is set explicitly to override the default boldness
   let hasNormalWeight = $derived(tick >= 0 && !!editor?.isActive('textStyle', { fontWeight: 'normal' }));
@@ -255,7 +263,7 @@
                 {/each}
               {/if}
             </div>
-            <button class="ol-option manage" onclick={() => { stylesOpen = false; managerOpen = true; }}>
+            <button class="ol-option manage" onclick={() => { stylesOpen = false; onManageStyles?.('paragraph'); }}>
               <!-- Sliders, as on the Tools button: this opens a settings surface -->
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <path d="M2 4.5h8M13 4.5h1M2 11.5h1M6 11.5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
@@ -396,7 +404,6 @@
   {/if}
 </div>
 
-<StyleManagerDialog bind:open={managerOpen} {editor} />
 
 <style>
   /* Sits inside the header island (which paints the frosted background). Not a

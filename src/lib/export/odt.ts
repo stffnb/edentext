@@ -4,7 +4,8 @@ import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
-import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet } from '../styles/styleSheet';
+import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps } from '../styles/styleSheet';
+import { regionText } from '../styles/tableStyles';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -756,6 +757,29 @@ function applyTableMargins(odtBytes: Uint8Array, margins: (TableMargins | null)[
   return rezipOdt(files);
 }
 
+// A table's named style: odf-kit's automatic Table{n} style gets it as its parent, and
+// applyNamedStyles defines it in styles.xml. ODF has no banding, so only the name
+// travels — the look rides on the cell attrs the style painted.
+function applyTableStyleNames(odtBytes: Uint8Array, names: (string | null)[]): Uint8Array {
+  if (names.every(n => n === null)) return odtBytes;
+
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  names.forEach((name, i) => {
+    if (!name) return;
+    content = content.replace(
+      new RegExp(`(<style:style[^>]*style:name="Table${i + 1}")`),
+      `$1 style:parent-style-name="${odfStyleName(name)}"`,
+    );
+  });
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 // odf-kit's ListBuilder has no per-item paragraph options, so list-item paragraphs all
 // emit as List_20_Bullet/Number. Rewrite content.xml to point those at automatic styles
 // that inherit the list style and add fo:text-align / fo:margin-top / fo:margin-bottom.
@@ -1083,8 +1107,17 @@ function stripManagedProps(block: string): string {
 // Write the document's named paragraph styles into styles.xml: merge into the blocks
 // odf-kit already emits (Standard, Heading, Heading_20_N), append the rest. The parent
 // chain is preserved, so LibreOffice/Word show them as real, inheriting styles.
-function applyNamedStyles(styles: string, sheet: StyleSheet, used: Set<string>): string {
+function applyNamedStyles(styles: string, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set()): string {
   const added: string[] = [];
+  // Table styles: ODF's table family carries no banding, so the name is all that travels
+  // (the look is baked into the cells). An empty style block is enough to make it real.
+  for (const name of usedTables) {
+    const odfName = odfStyleName(name);
+    if (findAutoStyle(styles, odfName)) continue;
+    added.push(setTagAttrs('<style:style/>', {
+      'style:name': odfName, 'style:family': 'table', 'style:display-name': name,
+    }));
+  }
   // Character styles are the same shape, family "text" and text props only.
   for (const style of Object.values(sheet.character ?? {})) {
     const { text } = ownStyleAttrs(style);
@@ -1768,7 +1801,7 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
 // Rewrite styles.xml to match the editor's preview: default font Liberation Serif →
 // Times New Roman (metric-identical; see EXPORT_FONT), and Heading_20_1/2/3 sizes &
 // margins → the editor's values (odf-kit's defaults are larger; HEADING_STYLE_OVERRIDES).
-function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>): Uint8Array {
+function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set()): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
   if (!stylesBytes) return odtBytes;
@@ -1818,7 +1851,7 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
 
   // The document's named paragraph styles (Standard, Heading, Heading_20_N, Title, …)
   // with their parent chain: merged into odf-kit's own blocks, appended when new.
-  styles = applyNamedStyles(styles, sheet, used);
+  styles = applyNamedStyles(styles, sheet, used, usedTables);
 
   files['styles.xml'] = strToU8(styles);
   return rezipOdt(files);
@@ -1908,12 +1941,18 @@ function linkHrefOf(marks: TiptapNode['marks'] = []): string | undefined {
 // without threading it through every cell/list helper (mirrors docLangTag in docx.ts).
 let exportSheet: StyleSheet = builtinStyleSheet();
 
-function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = [], forceBold = false) {
+function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = [], force: TextProps = {}) {
+  const forced = Object.keys(force).length ? textFormatting(force) : null;
   for (const node of content) {
     if (node.type !== 'text' || !node.text) continue;
     const fmt = formattingFromMarks(node.marks);
-    // Bake header bold, but respect an explicit un-bold (fontWeight:normal) override.
-    if (forceBold && fmt.fontWeight !== 'normal') fmt.bold = true;
+    // A cell's header/region formatting is presentational (CSS) in the editor, so bake it
+    // under the run's own marks; an explicit un-bold (fontWeight:normal) still wins.
+    if (forced) {
+      const direct = { ...fmt };
+      Object.assign(fmt, forced, direct);
+      if (!direct.bold && fmt.fontWeight === 'normal') delete fmt.bold;
+    }
     // A named character style: bake its resolved formatting (so odf-kit always mints a
     // span) and mark the run, so applyCharacterStyles can re-point that span at the style.
     const charStyle = charStyleOf(node.marks);
@@ -1939,7 +1978,11 @@ function charStyleOf(marks: TiptapNode['marks']): string | null {
 // A character style's resolved props as odf-kit run formatting (baked so the file still
 // looks right for readers that ignore the style reference).
 function charFormatting(sheet: StyleSheet, name: string): Record<string, unknown> {
-  const t = resolveStyle(sheet, name, 'character').text;
+  return textFormatting(resolveStyle(sheet, name, 'character').text);
+}
+
+// TextProps as odf-kit run formatting.
+function textFormatting(t: TextProps): Record<string, unknown> {
   const fmt: Record<string, unknown> = {};
   if (t.bold != null) fmt.bold = t.bold;
   if (t.italic != null) fmt.italic = t.italic;
@@ -2027,14 +2070,14 @@ function applyHfRuns(b: HeaderFooterBuilder, para: TiptapNode, pageCount: number
 
 // A segment is one paragraph, heading, or list item's paragraph; exactly one SEG
 // between consecutive segments, so splitting yields one piece per segment in DFS order.
-function buildCellContent(cell: TiptapNode, c: CellBuilder, forceBold = false): CellBlock[] {
+function buildCellContent(cell: TiptapNode, c: CellBuilder, force: TextProps = {}): CellBlock[] {
   const blocks: CellBlock[] = [];
   const state = { emitted: false }; // whether any segment has been emitted yet
 
   const emitSegment = (content: TiptapNode[] | undefined) => {
     if (state.emitted) c.addText(SEG);
     state.emitted = true;
-    applyRuns(c, content ?? [], forceBold);
+    applyRuns(c, content ?? [], force);
   };
 
   const walkList = (listNode: TiptapNode): CellListBlock => {
@@ -2118,11 +2161,16 @@ function tableMarginsCm(node: TiptapNode, contentWidthCm: number): TableMargins 
 // Build an ODF table from a CUST_TABLE node, bypassing odf-kit's native walkTable to
 // pass an explicit cell border (the native path emits none → invisible). Column widths
 // come from tableColumnWidthsCm; when absent odf-kit distributes columns evenly.
-function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number, cellBlocks: CellBlock[][], tableMargins: (TableMargins | null)[]): void {
+function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number, cellBlocks: CellBlock[][], tableMargins: (TableMargins | null)[], tableStyleNames: (string | null)[]): void {
   const rows = (node.content ?? []).filter(r => r.type === 'tableRow');
   if (rows.length === 0) return;
   const margins = tableMarginsCm(node, contentWidthCm);
   tableMargins.push(margins);
+  // The named table style, if the registry still knows it: its name goes on the table's
+  // automatic style (applyTableStyleNames), its text formatting is baked per cell.
+  const styleName = typeof node.attrs?.tableStyle === 'string' ? node.attrs.tableStyle : null;
+  const tableStyle = styleName ? exportSheet.table?.[styleName] : undefined;
+  tableStyleNames.push(tableStyle ? styleName : null);
   const columnWidths = tableColumnWidthsCm(node, contentWidthCm - (margins ? margins.ml + margins.mr : 0));
   doc.addTable((t: TableBuilder) => {
     for (const row of rows) {
@@ -2152,11 +2200,12 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
             if (b === 'none') opts[side] = 'none';
             else if (b) opts[side] = `${b.widthPt}pt solid ${normalizeColor(b.color) ?? b.color}`;
           }
-          // Header-row cells render bold via CSS (presentational), so bake bold into the
-          // runs on export to keep Word/LibreOffice consistent (incl. freshly-typed text).
-          const headerBold = bg === HEADER_SHADE;
+          // Header cells and a table style's regions render bold/font via CSS
+          // (presentational), so bake that onto the runs for Word/LibreOffice.
+          const force = regionText(tableStyle, cell.attrs?.region);
+          if (bg === HEADER_SHADE) force.bold = true;
           r.addCell((c: CellBuilder) => {
-            cellBlocks.push(buildCellContent(cell, c, headerBold));
+            cellBlocks.push(buildCellContent(cell, c, force));
           }, opts);
         }
       });
@@ -2665,6 +2714,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const cellBlocks: CellBlock[][] = [];
   // One entry per table, same order — consumed by applyTableMargins.
   const tableMargins: (TableMargins | null)[] = [];
+  // The named table style per table, same order — consumed by applyTableStyleNames.
+  const tableStyleNames: (string | null)[] = [];
 
   const odt = await tiptapToOdt(json, {
     // Orientation sets style:print-orientation; rewriteStylesXml overrides the exact
@@ -2684,7 +2735,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
         return;
       }
       if (node.type === CUST_TABLE) {
-        exportTable(node, doc, contentWidthCm, cellBlocks, tableMargins);
+        exportTable(node, doc, contentWidthCm, cellBlocks, tableMargins, tableStyleNames);
         return;
       }
       const opts: {
@@ -2776,7 +2827,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const rowHeights: (string | null)[] = [];
   collectTableRowHeights(raw, rowHeights);
   const styledRows = applyTableRowHeights(styledCells, rowHeights);
-  const withTableMargins = applyTableMargins(styledRows, tableMargins, contentWidthCm);
+  const withTableMargins = applyTableStyleNames(
+    applyTableMargins(styledRows, tableMargins, contentWidthCm), tableStyleNames);
 
   const cleaned = collapseRunWhitespace(withTableMargins);
   const withBreaks = applyInlineSentinels(cleaned);
@@ -2789,7 +2841,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withParaBoxes = applyParagraphBoxes(withEmptyFontSizes);
   const withNamedStyles = applyCharacterStyles(applyParagraphStyles(withParaBoxes));
-  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles));
+  const usedTables = new Set(tableStyleNames.filter((n): n is string => !!n));
+  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables);
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
 }
 

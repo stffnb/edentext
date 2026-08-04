@@ -147,6 +147,9 @@
     // Type sizes/margins changed under the layout, so page positions must be re-measured.
     cancelAnimationFrame(styleRecalcRaf);
     styleRecalcRaf = requestAnimationFrame(() => {
+      // A table style's fill/borders live in cell attrs, so an edited registry has to be
+      // painted into the document — this effect is the choke point every change passes.
+      ed.commands.refreshTableStyles();
       ed.view.dispatch(ed.state.tr.setMeta('addToHistory', false).setMeta(FORCE_PAGE_RECALC, true));
     });
   });

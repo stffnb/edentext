@@ -99,6 +99,25 @@ const en = {
     rename: 'Rename…',
     reset: 'Reset to default',
     newName: 'Style',
+    // Short forms for the manager's tab strip; the long names above still label
+    // the gallery sections.
+    tabs: { paragraph: 'Paragraph', character: 'Character', table: 'Table' },
+    tableStyles: 'Table styles',
+    region: 'Area',
+    fill: 'Fill',
+    outerBorder: 'Outer border',
+    rowLines: 'Row lines',
+    columnLines: 'Column lines',
+    noBorder: 'None',
+    regions: {
+      wholeTable: 'Whole table',
+      headerRow: 'Header row',
+      lastRow: 'Last row',
+      firstColumn: 'First column',
+      lastColumn: 'Last column',
+      bandedRow: 'Banded rows',
+      bandedColumn: 'Banded columns',
+    } as Record<string, string>,
   },
   history: {
     undo: 'Undo',
@@ -259,6 +278,26 @@ const en = {
     columns: 'Columns',
     rowsField: 'Rows',
     split: 'Split',
+    // No trailing ellipsis here (unlike the other dialog-opening entries): the
+    // row truncates, so CSS adds the dots only when the label doesn't fit.
+    manageStyles: 'Manage table styles',
+    tableStyle: 'Table style',
+    noTableStyle: 'None',
+    styleNames: {
+      'Simple Grid': 'Simple Grid',
+      'Simple Grid Rows': 'Simple Grid Rows',
+      'Simple Grid Columns': 'Simple Grid Columns',
+      'Simple List Shaded': 'Simple List Shaded',
+      'Simple List Columns': 'Simple List Columns',
+      'Box List Blue': 'Box List Blue',
+      'Box List Green': 'Box List Green',
+      'Box List Red': 'Box List Red',
+      'Box List Yellow': 'Box List Yellow',
+      'Grid Table Accent': 'Grid Table Accent',
+      'List Table Accent': 'List Table Accent',
+      Academic: 'Academic',
+      Financial: 'Financial',
+    } as Record<string, string>,
   },
   borders: {
     title: 'Borders',

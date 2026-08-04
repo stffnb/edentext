@@ -372,6 +372,52 @@ describe('Leg 1a3: continued ordered-list start value', () => {
   });
 });
 
+describe('Leg 1a4: named table style', () => {
+  // The style itself lives in the app registry (ODF has no banding), so only its name
+  // travels — the look rides on the cell attrs the style painted.
+  const styled: N = {
+    type: 'doc',
+    content: [{
+      type: 'table',
+      attrs: { tableStyle: 'Simple List Shaded' },
+      content: [
+        ROW(CELLM(1, 1, null, 'Name', '#F2F2F2'), CELLM(1, 1, null, 'Menge', '#F2F2F2')),
+        ROW(CELL(null, P(null, T('Apfel'))), CELL(null, P(null, T('3')))),
+        ROW(CELLM(1, 1, null, 'Birne', '#F7F7F7'), CELLM(1, 1, null, '5', '#F7F7F7')),
+      ],
+    }],
+  };
+
+  it('round-trips the style name and the painted cells', async () => {
+    const bytes = await buildOdt(styled, margins, 'portrait', undefined, null, 'A4', builtinStyleSheet());
+    const files = unzipSync(bytes);
+    const stylesXml = strFromU8(files['styles.xml']);
+    const contentXml = strFromU8(files['content.xml']);
+    check('styles.xml defines the table style', stylesXml.includes('style:family="table"')
+      && stylesXml.includes('style:name="Simple_20_List_20_Shaded"'),
+      stylesXml.match(/<style:style[^>]*family="table"[^>]*>/g));
+    check('the table points at it', /style:name="Table1"[^>]*style:parent-style-name="Simple_20_List_20_Shaded"/.test(contentXml),
+      contentXml.match(/<style:style[^>]*style:name="Table1"[^>]*>/g));
+
+    const res = importOdt(bytes);
+    const table = res.content.content!.find((n: N) => n.type === 'table') as N;
+    check('the name comes back on the table', table?.attrs?.tableStyle === 'Simple List Shaded', table?.attrs);
+    const fills = table.content.map((r: N) => r.content[0].attrs.backgroundColor ?? null);
+    check('the painted fills survive', JSON.stringify(fills) === JSON.stringify(['#F2F2F2', null, '#F7F7F7']), fills);
+  });
+
+  it('bakes a region font onto the runs so Word/LibreOffice match', async () => {
+    // Box List Blue writes white bold on the header row; the editor renders that from CSS.
+    const blue: N = { ...styled, content: [{ ...styled.content![0], attrs: { tableStyle: 'Box List Blue' },
+      content: [ROW(CELLM(1, 1, null, 'Kopf', '#4A7EBB'))] }] };
+    blue.content[0].content[0].content[0].attrs.region = 'headerRow';
+    const bytes = await buildOdt(blue, margins, 'portrait', undefined, null, 'A4', builtinStyleSheet());
+    const contentXml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('a bold white run style is minted', /fo:font-weight="bold"/.test(contentXml) && /fo:color="#FFFFFF"/i.test(contentXml),
+      contentXml.match(/<style:text-properties[^>]*>/g));
+  });
+});
+
 describe('Leg 1b: merged table cells (colspan/rowspan)', () => {
   // 3×3 grid: A spans 2 cols (row 0); C spans 2 rows (col 0, rows 1–2).
   //   row0: [A A][B]    row1: [C][D][E]    row2: [C][F][G]

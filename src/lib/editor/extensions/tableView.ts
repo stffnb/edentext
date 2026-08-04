@@ -45,6 +45,14 @@ function applyMargins(node: PMNode, wrapper: HTMLElement): void {
   wrapper.style.marginRight = mr ? `${mr}cm` : '';
 }
 
+// The node view never calls the node's renderHTML, so the table-style hook the generated
+// CSS keys on has to be set here too (the static path emits it in tableStyle.ts).
+function applyTableStyleAttr(node: PMNode, table: HTMLElement): void {
+  const name = node.attrs.tableStyle as string | null;
+  if (name) table.dataset.tableStyle = name;
+  else delete table.dataset.tableStyle;
+}
+
 function buildColgroup(node: PMNode, colgroup: HTMLElement): void {
   while (colgroup.firstChild) colgroup.removeChild(colgroup.firstChild);
   const percents = columnPercents(columnWeightsFromRow(node.firstChild));
@@ -74,6 +82,7 @@ export class TableView {
     // table-layout/border-collapse come from editor.css. width:100% keeps the
     // table the full text width regardless of the stored weights.
     this.table.style.width = '100%';
+    applyTableStyleAttr(node, this.table);
     this.colgroup = this.table.appendChild(document.createElement('colgroup'));
     buildColgroup(node, this.colgroup);
     this.contentDOM = this.table.appendChild(document.createElement('tbody'));
@@ -83,6 +92,7 @@ export class TableView {
     if (node.type !== this.node.type) return false;
     this.node = node;
     applyMargins(node, this.dom);
+    applyTableStyleAttr(node, this.table);
     buildColgroup(node, this.colgroup);
     return true;
   }

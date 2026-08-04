@@ -25,7 +25,7 @@ export const ParagraphStyle = Extension.create<{ types: string[]; sheet: () => S
   name: 'paragraphStyle',
 
   addOptions() {
-    return { types: ['paragraph', 'heading'], sheet: () => ({ paragraph: {}, character: {} }) };
+    return { types: ['paragraph', 'heading'], sheet: () => ({ paragraph: {}, character: {}, table: {} }) };
   },
 
   addGlobalAttributes() {

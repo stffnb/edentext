@@ -119,6 +119,38 @@ describe('DOCX export → import round trip', () => {
     expect(cols[1].attrs.count).toBe(3);
   });
 
+  it('round-trips a named table style (w:tblStyle + a name-only definition)', async () => {
+    const cell = (t: string, bg?: string, region?: string): N => ({
+      type: 'tableCell',
+      attrs: { colspan: 1, rowspan: 1, colwidth: null, ...(bg ? { backgroundColor: bg } : {}), ...(region ? { region } : {}) },
+      content: [para(t)],
+    });
+    const doc = {
+      type: 'doc',
+      content: [{
+        type: 'table',
+        attrs: { tableStyle: 'Box List Blue' },
+        content: [
+          { type: 'tableRow', content: [cell('Kopf', '#4A7EBB', 'headerRow')] },
+          { type: 'tableRow', content: [cell('Zeile')] },
+        ],
+      }],
+    } as any;
+    const bytes = await buildDocx(doc);
+    const files = unzipSync(bytes);
+    const xml = strFromU8(files['word/document.xml']);
+    const stylesXml = strFromU8(files['word/styles.xml']);
+    expect(xml).toContain('<w:tblStyle w:val="BoxListBlue"');
+    expect(stylesXml).toContain('w:type="table"');
+    // The header region's white bold is presentational in the editor, baked here.
+    expect(xml).toContain('<w:color w:val="FFFFFF"');
+
+    const res = importDocx(bytes).content as N;
+    const table = walk(res, 'table')[0];
+    expect(table.attrs.tableStyle).toBe('Box List Blue');
+    expect(table.content![0].content![0].attrs.backgroundColor).toBe('#4A7EBB');
+  });
+
   it('re-merges a page-boundary line-split paragraph (joinPrev) on export', async () => {
     const split = {
       type: 'doc',

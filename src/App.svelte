@@ -25,7 +25,7 @@
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadPageFormat, savePageFormat, type PageFormat } from './lib/storage/pageFormat';
   import { setStyleSheet, styleSheet } from './lib/styles/sheet.svelte';
-  import { builtinStyleSheet } from './lib/styles/styleSheet';
+  import { builtinStyleSheet, type StyleFamily } from './lib/styles/styleSheet';
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
@@ -33,6 +33,7 @@
   import LanguagePicker from './lib/components/LanguagePicker.svelte';
   import UiLanguagePicker from './lib/components/UiLanguagePicker.svelte';
   import AboutDialog from './lib/components/AboutDialog.svelte';
+  import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import { t } from './lib/i18n/i18n.svelte';
   import { withShortcut } from './lib/i18n/shortcut';
   import { DEFAULT_SHORTCUTS, matchesEvent, shortcutHint } from './lib/editor/shortcuts';
@@ -47,6 +48,13 @@
   let currentPage: number = $state(1);
   let numPages: number = $state(1);
   let aboutOpen = $state(false);
+  let styleManagerOpen = $state(false);
+  let styleManagerFamily = $state<StyleFamily>('paragraph');
+
+  function openStyleManager(family: StyleFamily) {
+    styleManagerFamily = family;
+    styleManagerOpen = true;
+  }
 
   // Header/footer content + live-edit state. While a zone is being edited, the
   // top toolbars target hfEditor instead of the body editor (activeEditor below).
@@ -470,8 +478,10 @@
       // Adopt the document's spell-check language (the $effect switches the
       // controller + loads its dictionary). null = file declared none; keep ours.
       if (result.language) documentLanguage = result.language;
-      // Adopt the document's named paragraph styles (built-ins + the file's own).
-      setStyleSheet(result.styles);
+      // Adopt the document's named paragraph styles (built-ins + the file's own). Table
+      // styles are not stored in the file (ODF has no banding), so the registry survives —
+      // an imported table finds its style again by name.
+      setStyleSheet({ ...result.styles, table: styleSheet().table });
       // Adopt header/footer + first-page variants (null clears the zone); end any edit.
       hfActive = null;
       headerDoc = result.header;
@@ -772,7 +782,7 @@
     <button class="logo-btn" onclick={() => (aboutOpen = true)} aria-label={t().about.label} title={t().about.label}>
       <img src="/EdenText.png" alt="EdenText" class="app-logo" />
     </button>
-    <Toolbar editor={activeEditor} tick={activeTick} />
+    <Toolbar editor={activeEditor} tick={activeTick} onManageStyles={openStyleManager} />
     <div class="header-actions">
       {#snippet saveIcon()}
         <!-- Floppy disk -->
@@ -976,6 +986,7 @@
           hfActive={hfActive}
           onEditZone={(zone) => (hfActive = zone)}
           onDebugDump={handleDebugDump}
+          onManageTableStyles={() => openStyleManager('table')}
         />
       </div>
       {@render toolbarScrollbar()}
@@ -1073,6 +1084,9 @@
   </footer>
 
   <AboutDialog bind:open={aboutOpen} />
+  <!-- One instance for every entry point (styles gallery, insert-table menu): the
+       callers only say which family to land on. -->
+  <StyleManagerDialog bind:open={styleManagerOpen} family={styleManagerFamily} editor={activeEditor} />
 </main>
 
 <style>

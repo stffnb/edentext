@@ -1300,8 +1300,13 @@ function convertTable(tbl: Element, ctx: Ctx): Node | null {
     rows.push(row);
   }
   if (rows.length === 0) return null;
-  const margins = tableMargins(tbl, useWeights, ctx);
-  return margins ? { type: 'table', attrs: margins, content: rows } : { type: 'table', content: rows };
+  // Word's w:tblStyle: only the name comes back — the look rides on the cell attrs, and
+  // the editor re-derives the regions from its own registry (refreshTableStyles).
+  const styleEl = fc(fc(tbl, 'tblPr'), 'tblStyle');
+  const named = ctx.styles.tableStyleName(styleEl ? wVal(styleEl) : null);
+  const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx) ?? {}) };
+  if (named) attrs.tableStyle = named;
+  return Object.keys(attrs).length ? { type: 'table', attrs, content: rows } : { type: 'table', content: rows };
 }
 
 // A table narrower than the text width: w:tblInd is its left indent, the grid (or
