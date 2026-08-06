@@ -397,7 +397,9 @@
 
 .paper .tiptap ul,
 .paper .tiptap ol {
-  padding-left: 1.5rem;
+  /* One level = LIST_LEFT_STEP_CM (export/docx.ts, and the 1.27cm base the ODT list
+     styles use), so the on-screen item text sits where both exports place it. */
+  padding-left: 1.27cm;
   margin-top: 0;
   /* Matches the exported List_20_* styles, which inherit Standard's zeroed margin. */
   margin-bottom: 0;
