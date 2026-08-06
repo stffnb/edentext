@@ -3,6 +3,7 @@ import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
+import { formatTabStops } from '../editor/extensions/tabStops';
 import { TABLE_REGIONS, tableLookAttr, type TableLook, type TableRegion } from '../styles/tableStyles';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
@@ -863,6 +864,10 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   const defaults = blockDefaults(resolver, named, isHeading ? level : null, boldByDefault);
 
   const attrs = blockAttrs(paraProps, baseTextProps, defaults, kind);
+  // Tab stops live in a child element of the paragraph properties, so they come from
+  // the resolver's own walk rather than the flattened paraProps.
+  const stops = formatTabStops(resolver.tabStops(styleName));
+  if (stops) attrs.tabStops = stops;
   const content = convertInline(el, ctx, baseTextProps, defaults, false);
 
   // An empty line has no runs, so its height comes from the paragraph style's own

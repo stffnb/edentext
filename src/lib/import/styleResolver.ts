@@ -1,6 +1,7 @@
 import type { PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
+import type { TabAlign } from '../editor/extensions/tabStops';
 
 // Resolves ODF style indirection for the importer: producers (our export, LibreOffice,
 // Word) spread formatting across named/automatic styles and parent-style-name chains.
@@ -135,6 +136,8 @@ export class StyleResolver {
   // Section styles kept as raw elements: <style:columns> is a child element of
   // <style:section-properties>, which the attribute-only StyleEntry drops.
   private sectionStyleEls = new Map<string, Element>();
+  // Paragraph styles likewise, for the child element <style:tab-stops>.
+  private paraStyleEls = new Map<string, Element>();
   private mergedCache = new Map<string, { text: PropMap; para: PropMap; misc: PropMap }>();
   private stylesDoc: Document | null;
   private namedParagraphNames = new Set<string>();
@@ -234,6 +237,7 @@ export class StyleResolver {
           if (display) this.displayNames.set(name, display);
         }
         if (name && family === 'section') this.sectionStyleEls.set(name, el);
+        if (name && family === 'paragraph') this.paraStyleEls.set(name, el);
       } else if (el.namespaceURI === NS.style && el.localName === 'default-style') {
         const family = el.getAttributeNS(NS.style, 'family');
         if (family) this.defaults.set(family, entryFromStyleElement(el));
@@ -374,6 +378,33 @@ export class StyleResolver {
   // The <number:date-style>/<number:time-style> element a date/time field references.
   numberStyle(name: string | null): Element | null {
     return name ? this.numberStyles.get(name) ?? null : null;
+  }
+
+  // Tab stops of a paragraph style, in cm from the left text margin (the origin Word
+  // and ODF share). ODF replaces the list rather than merging it, so the nearest
+  // declaration in the parent chain wins outright.
+  tabStops(styleName: string | null): { pos: number; align: TabAlign }[] {
+    const seen = new Set<string>();
+    let cur = styleName;
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const el = this.paraStyleEls.get(cur);
+      const list = el?.getElementsByTagNameNS(NS.style, 'tab-stops')[0];
+      if (list) {
+        const out: { pos: number; align: TabAlign }[] = [];
+        for (const stop of Array.from(list.getElementsByTagNameNS(NS.style, 'tab-stop'))) {
+          const pos = lengthToCm(stop.getAttributeNS(NS.style, 'position'));
+          if (pos == null) continue;
+          const type = stop.getAttributeNS(NS.style, 'type');
+          const align: TabAlign = type === 'char' ? 'decimal'
+            : type === 'center' || type === 'right' ? type : 'left';
+          out.push({ pos, align });
+        }
+        return out;
+      }
+      cur = this.styles.get(`paragraph\0${cur}`)?.parent ?? null;
+    }
+    return [];
   }
 
   // A section style's column layout: { count, gapCm } when it declares more than one

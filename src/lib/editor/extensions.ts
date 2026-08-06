@@ -31,6 +31,7 @@ import { ParagraphStyle } from './extensions/paragraphStyle';
 import { CharacterStyle } from './extensions/characterStyle';
 import { PageBreak } from './extensions/pageBreak';
 import { Indent } from './extensions/indent';
+import { TabStops } from './extensions/tabStops';
 import { FormattingMarks } from './extensions/formattingMarks';
 import { SpellCheck } from './extensions/spellCheck';
 import { SearchReplace } from './extensions/searchReplace';
@@ -108,6 +109,7 @@ export const extensions = [
   CharacterStyle,
   PageBreak,
   Indent,
+  TabStops,
   Heading.configure({ levels: [1, 2, 3, 4, 5] }),
   BulletList,
   OrderedList,

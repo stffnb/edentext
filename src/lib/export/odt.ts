@@ -15,6 +15,7 @@ type TableStyleRef = { name: string; look: TableLook };
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
+import { parseTabStops } from '../editor/extensions/tabStops';
 import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, toTimeValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
@@ -224,6 +225,7 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (typeof attrs.fontSize === 'string' && attrs.fontSize) return true;
   if (typeof attrs.indent === 'number' && attrs.indent > 0) return true;
   if (typeof attrs.indentFirst === 'number' && attrs.indentFirst !== 0) return true;
+  if (typeof attrs.tabStops === 'string' && attrs.tabStops) return true;
   if (typeof attrs.backgroundColor === 'string' && attrs.backgroundColor) return true;
   if (attrs.widowControl === false) return true;
   for (const s of ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'])
@@ -2292,15 +2294,19 @@ function collapseRunWhitespace(odtBytes: Uint8Array): Uint8Array {
 // Rewrite the inline sentinels planted before serialization into real ODF elements:
 // LBR (from replaceHardBreaks) → <text:line-break/>, TAB (from replaceTabs) →
 // <text:tab/>. Both are valid as bare paragraph text and inside <text:span>.
+// Also completes a decimal tab stop, which odf-kit can only write half of.
+const CHAR_TAB_STOP = 'style:type="char"';
+
 function applyInlineSentinels(odtBytes: Uint8Array): Uint8Array {
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
   if (!contentBytes) return odtBytes;
 
   let content = strFromU8(contentBytes);
-  if (!content.includes(LBR) && !content.includes(TAB)) return odtBytes;
+  if (!content.includes(LBR) && !content.includes(TAB) && !content.includes(CHAR_TAB_STOP)) return odtBytes;
 
   content = content.split(LBR).join('<text:line-break/>').split(TAB).join('<text:tab/>');
+  content = content.split(CHAR_TAB_STOP).join(`${CHAR_TAB_STOP} style:char="."`);
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
 }
@@ -2803,6 +2809,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
         spaceAfter?: string;
         indentLeft?: string;
         indentFirst?: string;
+        tabStops?: { position: string; type: 'left' | 'center' | 'right' }[];
       } = {};
       if (node.attrs?.lineHeight != null) {
         const lhRaw = String(node.attrs.lineHeight);
@@ -2824,6 +2831,16 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
       // First-line indent → fo:text-indent; negative is a hanging indent.
       if (typeof node.attrs?.indentFirst === 'number' && node.attrs.indentFirst !== 0) {
         opts.indentFirst = `${node.attrs.indentFirst}cm`;
+      }
+      // Tab stops → <style:tab-stops>. odf-kit's type has no decimal stop, so it goes
+      // out as 'char' and applyInlineSentinels adds the style:char ODF requires.
+      const stops = parseTabStops(node.attrs?.tabStops);
+      if (stops.length) {
+        opts.tabStops = stops.map((s) => ({
+          position: `${s.pos}cm`,
+          // odf-kit writes style:type verbatim but types it without ODF's 'char'.
+          type: (s.align === 'decimal' ? 'char' : s.align) as 'left' | 'center' | 'right',
+        }));
       }
       const content = node.content ?? [];
       // An empty line's font size (its paragraph-mark size) rides as an FSZ sentinel

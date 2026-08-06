@@ -1,3 +1,5 @@
+import type { TabAlign, TabStop } from '../editor/extensions/tabStops';
+
 // Resolves OOXML style indirection for the DOCX importer: Word/LibreOffice spread run
 // formatting across w:docDefaults and named styles linked by w:basedOn, and store list
 // numbering in numbering.xml. This flattens both so import/docx.ts reads effective values.
@@ -37,6 +39,23 @@ export type ParaSpacing = { before?: number; after?: number; line?: number; line
 
 export function wVal(el: Element): string | null {
   return el.getAttributeNS(W, 'val');
+}
+
+// <w:tabs> → stops in cm from the left text margin, w:pos's origin (which the editor's
+// attr shares). 'clear' removes an inherited stop and 'bar' is a rule, not a stop.
+export function readTabStops(tabs: Element): TabStop[] {
+  const out: TabStop[] = [];
+  for (const tab of Array.from(tabs.getElementsByTagNameNS(W, 'tab'))) {
+    const val = wVal(tab);
+    if (val === 'clear' || val === 'bar') continue;
+    const pos = parseInt(tab.getAttributeNS(W, 'pos') ?? '', 10);
+    if (!Number.isFinite(pos)) continue;
+    const align: TabAlign = val === 'center' ? 'center'
+      : val === 'right' || val === 'end' ? 'right'
+      : val === 'decimal' ? 'decimal' : 'left';
+    out.push({ pos: Math.round((pos / 1440) * 2.54 * 100) / 100, align });
+  }
+  return out;
 }
 
 // A toggle property (w:b, w:i, …): present with no/true val = on; val false/0/off = off.
@@ -105,6 +124,7 @@ export class DocxStyles {
   private defaultsAlign: string | null = null; // docDefaults w:pPrDefault/w:jc
   private defaultsSpacing: ParaSpacing = {}; // docDefaults w:pPrDefault/w:spacing
   private ownWidow = new Map<string, boolean>(); // style's own w:pPr/w:widowControl
+  private ownTabs = new Map<string, TabStop[]>(); // style's own w:pPr/w:tabs
   private defaultsWidow: boolean | null = null; // docDefaults w:pPrDefault/w:widowControl
   private numToAbstract = new Map<string, string>();
   private abstractLevels = new Map<string, Map<number, LevelDef>>();
@@ -166,6 +186,8 @@ export class DocxStyles {
       if (sp) this.ownSpacing.set(id, readSpacing(sp));
       const wc = ppr && firstChild(ppr, 'widowControl');
       if (wc) this.ownWidow.set(id, toggle(wc));
+      const tabs = ppr && firstChild(ppr, 'tabs');
+      if (tabs) this.ownTabs.set(id, readTabStops(tabs));
       const ind = ppr && firstChild(ppr, 'ind');
       if (ind) {
         const left = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10);
@@ -297,6 +319,17 @@ export class DocxStyles {
       if (def != null) return def;
     }
     return this.defaultsWidow ?? true;
+  }
+
+  // w:tabs along the w:basedOn chain (direct w:pPr/w:tabs is read and wins in the
+  // caller). The nearest declaration is taken whole — Word merges a style's stops with
+  // the paragraph's, which no document here has needed.
+  paragraphTabs(styleId: string | null | undefined, seen = new Set<string>()): TabStop[] {
+    if (!styleId || seen.has(styleId)) return [];
+    seen.add(styleId);
+    const own = this.ownTabs.get(styleId);
+    if (own) return own;
+    return this.paragraphTabs(this.basedOn.get(styleId) ?? null, seen);
   }
 
   private styleWidow(styleId: string | null | undefined, seen = new Set<string>()): boolean | null {

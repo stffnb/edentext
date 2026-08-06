@@ -5,7 +5,7 @@ import {
   AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
   WidthType, HeightRule, PageOrientation, LineRuleType, TableLayoutType, SectionType,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
-  TextWrappingType, TextWrappingSide, ImportedXmlComponent,
+  TextWrappingType, TextWrappingSide, ImportedXmlComponent, TabStopType,
 } from 'docx';
 import type { TiptapNode } from 'odf-kit';
 import type {
@@ -20,6 +20,7 @@ import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { HF_DISTANCE_CM, hfIsEmpty } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
+import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
@@ -69,6 +70,11 @@ const TWIPS_PER_CM = 1440 / 2.54; // 566.929
 const cmToTwip = (cm: number) => Math.round(cm * TWIPS_PER_CM);
 const ptToTwip = (pt: number) => Math.round(pt * 20);
 const pxToTwip = (px: number) => Math.round((px * 1440) / 96); // px @96dpi → twips
+
+const DOCX_TAB_TYPE: Record<TabAlign, (typeof TabStopType)[keyof typeof TabStopType]> = {
+  left: TabStopType.LEFT, center: TabStopType.CENTER,
+  right: TabStopType.RIGHT, decimal: TabStopType.DECIMAL,
+};
 const EMU_PER_PX = 9525;
 const EMU_PER_PT = 12700;
 const EMU_PER_CM = 360000;
@@ -615,6 +621,9 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
   }
   // The block's named style (a heading style id is what HeadingLevel references anyway).
   const style = docxStyleId(styleOf(node));
+  // w:tabs. Word measures w:pos from the left text margin, the same origin the attr
+  // uses, so the position goes out unshifted by the paragraph's own indent.
+  const stops = parseTabStops(attrs.tabStops);
   // Paragraph-mark run props carry an empty line's font size (see import/docx.ts).
   const markSize = typeof attrs.fontSize === 'string' ? fontSizeToHalfPoints(attrs.fontSize) : undefined;
   return new Paragraph({
@@ -624,6 +633,9 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     indent: indent.left != null || indent.hanging != null || indent.firstLine != null ? indent : undefined,
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,
     widowControl: attrs.widowControl === false ? false : undefined,
+    tabStops: stops.length
+      ? stops.map((s) => ({ type: DOCX_TAB_TYPE[s.align], position: cmToTwip(s.pos) }))
+      : undefined,
     numbering: opts.numbering,
     shading: paraShadingOf(attrs),
     border: paraBordersOf(attrs),

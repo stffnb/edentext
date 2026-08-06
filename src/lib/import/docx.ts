@@ -1,9 +1,10 @@
 import { unzipSync, strFromU8 } from 'fflate';
-import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, toggle as onOff, wVal, W, R, WP, A, WPS, MC, VML, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
+import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, toggle as onOff, wVal, W, R, WP, A, WPS, MC, VML, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { lengthToPt } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
+import { formatTabStops } from '../editor/extensions/tabStops';
 import { tableLookAttr } from '../styles/tableStyles';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
@@ -683,6 +684,10 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   if (!(directWc ? onOff(directWc) : ctx.styles.paragraphWidowControl(styleId))) {
     attrs.widowControl = false;
   }
+  // Tab stops: a direct w:tabs replaces the style's, which the resolver walks for.
+  const directTabs = fc(ppr, 'tabs');
+  const stops = formatTabStops(directTabs ? readTabStops(directTabs) : ctx.styles.paragraphTabs(styleId));
+  if (stops) attrs.tabStops = stops;
   const baseRun = ctx.styles.paragraphRun(styleId);
   const defaults = blockDefaults(baseRun, level, boldByDefault);
   const content = convertInline(el, ctx, baseRun, defaults, false);
