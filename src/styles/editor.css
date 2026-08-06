@@ -377,6 +377,10 @@
 /* Tab stops every 1.25cm, matching ODF's default tab interval. */
 .paper .tiptap {
   tab-size: 1.25cm;
+  /* prosemirror-view sets `break-spaces`, which forbids a line-end space from
+     hanging into the margin, so lines break one word earlier than in
+     Word/LibreOffice. `pre-wrap` lets it hang, as they do. */
+  white-space: pre-wrap;
 }
 
 .paper .tiptap h1,
