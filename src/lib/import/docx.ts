@@ -594,7 +594,10 @@ function stylePara(ctx: Ctx, id: string | null): ParaProps {
 // paragraph's formatting, so the document defaults are not its properties.
 function styleText(ctx: Ctx, id: string | null, own = false): TextProps {
   if (!id) return {};
-  const run = own ? ctx.styles.styleOwn(id) : ctx.styles.paragraphRun(id);
+  return runTextProps(own ? ctx.styles.styleOwn(id) : ctx.styles.paragraphRun(id));
+}
+
+function runTextProps(run: RunProps): TextProps {
   const out: TextProps = {};
   // Our own export declares the metric twin; keep the registry on the on-screen name.
   if (run.font) out.fontFamily = run.font === 'Times New Roman' ? 'Liberation Serif'
@@ -615,7 +618,13 @@ function collectStyleSheet(ctx: Ctx): StyleSheet {
   const defs = ctx.styles.namedParagraphStyles();
   const sheet = builtinStyleSheet();
   const keep = new Set<string>();
-  for (const id of ctx.usedStyles) {
+  // Body paragraphs carry no w:pStyle, so the default style never reaches usedStyles —
+  // yet run suppression resolves against it, so Standard has to carry it or the file's
+  // body font is dropped without any run mark taking its place.
+  const roots = new Set(ctx.usedStyles);
+  const defaultId = ctx.styles.defaultParagraphStyle();
+  if (defaultId) roots.add(defaultId);
+  for (const id of roots) {
     let cur: string | null = id;
     const seen = new Set<string>();
     while (cur && defs.has(cur) && !seen.has(cur)) {
@@ -642,6 +651,10 @@ function collectStyleSheet(ctx: Ctx): StyleSheet {
     if (level) style.outlineLevel = Number(level[1]);
     sheet.paragraph[name] = style;
   }
+  // w:docDefaults alone can carry the body font (a file need not declare a default
+  // style), and it is what run suppression compares against — so Standard tracks it.
+  const standard = sheet.paragraph[DEFAULT_STYLE];
+  if (standard) standard.text = { ...standard.text, ...runTextProps(ctx.styles.paragraphRun(null)) };
   for (const id of ctx.usedCharStyles) {
     const name = ctx.charStyleNames.get(id) ?? id;
     const builtin = sheet.character[name];
