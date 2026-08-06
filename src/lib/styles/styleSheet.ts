@@ -198,10 +198,25 @@ function cssFontFamily(name: string): string {
   return `'${name.replace(/'/g, "\\'")}', var(--font-serif)`;
 }
 
+// Single spacing is the font's *natural* line height, so it differs per family.
+// editor.css covers Liberation Serif's 1.15; only the bundled families that deviate
+// are listed, measured against LibreOffice at 12pt.
+const SINGLE_LINE_HEIGHT: Record<string, number> = {
+  Calibri: 1.2208,
+  Carlito: 1.2208,
+  'Courier New': 1.1333,
+  'Liberation Mono': 1.1333,
+};
+
 // The text half of a rule, shared with the table-style family (tableStyles.ts).
 export function textDeclarations(t: TextProps): string[] {
   const out: string[] = [];
-  if (t.fontFamily) out.push(`font-family: ${cssFontFamily(t.fontFamily)}`);
+  if (t.fontFamily) {
+    out.push(`font-family: ${cssFontFamily(t.fontFamily)}`);
+    const lh = SINGLE_LINE_HEIGHT[t.fontFamily];
+    // An explicit line spacing is emitted after this and wins.
+    if (lh) out.push(`line-height: ${lh}`);
+  }
   if (t.fontSizePt != null) out.push(`font-size: ${t.fontSizePt}pt`);
   if (t.bold != null) out.push(`font-weight: ${t.bold ? 700 : 400}`);
   if (t.italic != null) out.push(`font-style: ${t.italic ? 'italic' : 'normal'}`);
