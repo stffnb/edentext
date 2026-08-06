@@ -35,6 +35,10 @@
 - Style gallery in the toolbar lists both families; assigning a style keeps hard formatting (Word/LibreOffice behavior), Ctrl+M clears direct formatting but keeps the style
 - Style manager ("Manage styles…"): inheritance tree, live property editing (empty field = inherit again), new / update from selection, rename, delete, reset a built-in — for paragraph and character styles alike
 - Round-trips as real styles, not baked formatting: ODF `style:style` (`style:family="paragraph"`/`"text"`, `style:parent-style-name`, `style:next-style-name`) and DOCX `w:pStyle`/`w:rStyle` with `w:basedOn`/`w:next`; import adopts the file's used styles plus their parent chains, so only formatting beyond the style stays direct
+- Named table styles as the third family (Word's table styles / LibreOffice's AutoFormats): 14 built-ins — Grid (+ rows / columns only), List shaded / columns, Plain, four colored box lists, Grid & List Accent, Academic, Financial. Picking one from the gallery in the table toolbar paints header row, banded rows/columns, first/last column and total row, and a styled table re-bands itself when rows or columns are added
+- Word's Table Style Options as six checkboxes beside the gallery (header row, total row, first/last column, banded rows/columns): an area is painted only when the style defines it *and* the table opts in, and turning the header row off shifts the banding by one row. The toolbar's header row / first column buttons drive the same flags, so both surfaces always agree
+- Table styles are edited in the same style manager (third tab: area picker for fill and font, outer / row line / column line controls, new / rename / remove), also reachable from the insert-table dropdown
+- Round-trip: the style name travels as an ODF `style:family="table"` (`style:parent-style-name`) and DOCX `w:tblStyle`, the options as ODF's `table:use-*-styles` and Word's `w:tblLook`. Fills and borders are materialized into the cells and the region's font is baked onto the runs, so the table looks right in Word/LibreOffice even though ODF has no banding concept — the style definitions themselves live in the app, as LibreOffice's AutoFormats do
 - A new document starts from the built-in styles, like Word's/LibreOffice's default template
 
 **Paragraphs & lists**
@@ -48,7 +52,7 @@
 - Tab stops (real tab character) and manual line breaks (Shift+Enter)
 
 **Insert**
-- Tables: insert via size picker, Word-style row/column drag-resize, add / delete rows & columns, delete table, cell borders, merge cells and split cells (N×M, Word/LibreOffice-style), cell background shading, header-row toggle (bold + shading); a table splits cleanly across page boundaries
+- Tables: insert via size picker, Word-style row/column drag-resize, add / delete rows & columns, delete table, cell borders, merge cells and split cells (N×M, Word/LibreOffice-style), cell background shading, header row / first column toggles, named table styles (see Styles); a table splits cleanly across page boundaries
 - Table border control (Word/LibreOffice-style): per-side cell borders with presets (all / outside / inside / single edges / none), line width and color; buttons show active states matching the current pen and toggle borders off; round-trips to ODF `fo:border-*` and DOCX `w:tcBorders`
 - Images: inline or floating with text wrap (left / right / top-bottom), resize handles, rotation, live size badge; insert via toolbar, drag-and-drop, or paste
 - Special characters picker

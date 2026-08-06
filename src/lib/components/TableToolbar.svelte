@@ -32,7 +32,9 @@
   // Merge needs a multi-cell selection; re-evaluated per transaction via `tick`.
   const canMerge = $derived(tick >= 0 && !!editor && editor.can().mergeCells());
 
-  // Whether the first row / first column is styled as a header (bold + light shading).
+  // Whether the header row / first column area is on. With a table style that is its
+  // Table Style Option (the same flag the gallery's checkbox shows), else the manual
+  // header shading — so the two surfaces share one state, and one label.
   const isHeaderRow = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'row'));
   const isHeaderCol = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'column'));
 
@@ -226,8 +228,8 @@
   <button
     class="tt-btn"
     class:active={isHeaderRow}
-    title={t().table.headerRow}
-    aria-label={t().table.headerRowAria}
+    title={t().styles.regions.headerRow}
+    aria-label={t().styles.regions.headerRow}
     aria-pressed={isHeaderRow}
     onclick={() => run((c) => c.toggleHeaderRowStyle())}
   >
@@ -243,8 +245,8 @@
   <button
     class="tt-btn"
     class:active={isHeaderCol}
-    title={t().table.headerColumn}
-    aria-label={t().table.headerColumnAria}
+    title={t().styles.regions.firstColumn}
+    aria-label={t().styles.regions.firstColumn}
     aria-pressed={isHeaderCol}
     onclick={() => run((c) => c.toggleHeaderColumnStyle())}
   >

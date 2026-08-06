@@ -406,6 +406,36 @@ describe('Leg 1a4: named table style', () => {
     check('the painted fills survive', JSON.stringify(fills) === JSON.stringify(['#F2F2F2', null, '#F7F7F7']), fills);
   });
 
+  it('round-trips the table style options (Word\'s tblLook)', async () => {
+    // Header row + banded rows on, everything else off.
+    const opts: N = { ...styled, content: [{ ...styled.content![0],
+      attrs: { tableStyle: 'Simple List Shaded', tableLook: 'bandedRow headerRow' } }] };
+    const bytes = await buildOdt(opts, margins, 'portrait', undefined, null, 'A4', builtinStyleSheet());
+    const contentXml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('the options ride on table:use-*-styles',
+      contentXml.includes('table:use-first-row-styles="true"')
+      && contentXml.includes('table:use-banding-rows-styles="true"')
+      && contentXml.includes('table:use-first-column-styles="false"'),
+      contentXml.match(/table:use-[a-z-]*="[a-z]*"/g));
+
+    const table = importOdt(bytes).content.content!.find((n: N) => n.type === 'table') as N;
+    check('they come back on the table', table?.attrs?.tableLook === 'bandedRow headerRow', table?.attrs);
+  });
+
+  it('keeps two styled tables apart (the pass walks table elements, not cells)', async () => {
+    const one = { ...styled.content![0], attrs: { tableStyle: 'Simple Grid', tableLook: 'headerRow' } };
+    const two = { ...styled.content![0], attrs: { tableStyle: 'Academic', tableLook: 'headerRow lastRow' } };
+    const bytes = await buildOdt({ type: 'doc', content: [one, P(null, T('between')), two] } as N,
+      margins, 'portrait', undefined, null, 'A4', builtinStyleSheet());
+    const tables = importOdt(bytes).content.content!.filter((n: N) => n.type === 'table');
+    check('both names survive',
+      tables.map((t: N) => t.attrs?.tableStyle).join('|') === 'Simple Grid|Academic',
+      tables.map((t: N) => t.attrs));
+    check('each keeps its own options',
+      tables.map((t: N) => t.attrs?.tableLook).join('|') === 'headerRow|lastRow headerRow',
+      tables.map((t: N) => t.attrs?.tableLook));
+  });
+
   it('bakes a region font onto the runs so Word/LibreOffice match', async () => {
     // Box List Blue writes white bold on the header row; the editor renders that from CSS.
     const blue: N = { ...styled, content: [{ ...styled.content![0], attrs: { tableStyle: 'Box List Blue' },

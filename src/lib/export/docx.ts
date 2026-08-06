@@ -24,7 +24,7 @@ import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, t
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
-import { regionText, type TableStyle } from '../styles/tableStyles';
+import { parseTableLook, regionText, type TableStyle } from '../styles/tableStyles';
 import { findFormat, renderFormat, docxPicture, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../utils/dateTime';
 
 // BCP-47 tag for rendering a fixed field's cached text; set at buildDocx start from
@@ -717,6 +717,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
   // (w:tblStyle) plus the baked cell formatting, since w:tblStylePr isn't emitted.
   const styleName = typeof node.attrs?.tableStyle === 'string' ? node.attrs.tableStyle : null;
   const tableStyle = styleName ? exportSheet.table?.[styleName] : undefined;
+  const look = parseTableLook(node.attrs?.tableLook);
   // A dragged table edge (tableColumnResize.ts) → w:tblInd + the narrower grid.
   let ml = Math.max(0, Number(node.attrs?.marginLeft) || 0);
   let mr = Math.max(0, Number(node.attrs?.marginRight) || 0);
@@ -758,7 +759,15 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
   });
 
   return new Table({
-    ...(tableStyle ? { style: docxStyleId(tableStyle.name) } : {}),
+    ...(tableStyle ? {
+      style: docxStyleId(tableStyle.name),
+      // Word's Table Style Options are w:tblLook (its band flags are inverted).
+      tableLook: {
+        firstRow: look.headerRow, lastRow: look.lastRow,
+        firstColumn: look.firstColumn, lastColumn: look.lastColumn,
+        noHBand: !look.bandedRow, noVBand: !look.bandedColumn,
+      },
+    } : {}),
     rows: tableRows,
     columnWidths: colsTwip,
     width: { size: totalTwip, type: WidthType.DXA },

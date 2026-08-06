@@ -11,7 +11,12 @@ import { ResizableTableRow } from '../../src/lib/editor/extensions/tableRow';
 import { TableCellBackground } from '../../src/lib/editor/extensions/tableCellBackground';
 import { TableCellBorders } from '../../src/lib/editor/extensions/tableCellBorders';
 import { TableStyle } from '../../src/lib/editor/extensions/tableStyle';
-import { resolveTableCell, type TableStyle as TableStyleDef } from '../../src/lib/styles/tableStyles';
+import { HEADER_SHADE, TableHeaderRow, isHeaderStyled } from '../../src/lib/editor/extensions/tableHeaderRow';
+import {
+  DEFAULT_TABLE_LOOK, TABLE_REGIONS, builtinTableStyles, parseTableLook, previewCellCss,
+  previewTextCss, resolveTableCell, styleLook, tableLookAttr,
+  type TableLook, type TableRegion, type TableStyle as TableStyleDef,
+} from '../../src/lib/styles/tableStyles';
 
 type N = any;
 
@@ -29,8 +34,13 @@ const banded: TableStyleDef = {
 };
 const styles = { [banded.name]: banded };
 
-const at = (style: TableStyleDef, row: number, col: number, rows = 4, cols = 2) =>
-  resolveTableCell(style, { row, col, rows, cols });
+const ALL_ON: TableLook = {
+  headerRow: true, lastRow: true, firstColumn: true,
+  lastColumn: true, bandedRow: true, bandedColumn: true,
+};
+
+const at = (style: TableStyleDef, row: number, col: number, rows = 4, cols = 2, look = ALL_ON) =>
+  resolveTableCell(style, { row, col, rows, cols }, look);
 
 describe('resolveTableCell', () => {
   it('layers overlapping regions in Word precedence order', () => {
@@ -80,7 +90,7 @@ function makeEditor(rows = 3) {
     extensions: [
       Document, Paragraph, Text, Bold,
       Table.configure({ resizable: false }), ResizableTableRow, TableHeader, TableCell,
-      TableCellBackground, TableCellBorders,
+      TableCellBackground, TableCellBorders, TableHeaderRow,
       TableStyle.configure({ styles: () => styles }),
     ],
     content: { type: 'doc', content: [{ type: 'table', content }] },
@@ -90,6 +100,152 @@ function makeEditor(rows = 3) {
 const table = (editor: Editor): N => editor.getJSON().content![0];
 const fills = (editor: Editor): (string | null)[] =>
   table(editor).content.map((r: N) => r.content[0].attrs.backgroundColor ?? null);
+
+describe('table style options (Word\'s tblLook)', () => {
+  it('only paints a region the table opts into', () => {
+    const off: TableLook = { ...ALL_ON, headerRow: false };
+    expect(at(banded, 0, 1).fill).toBe('#EEEEEE');
+    expect(at(banded, 0, 1, 4, 2, off).fill).toBe(null);
+    // The header's rule goes with it, from both sides of that grid line.
+    expect(at(banded, 0, 0, 4, 2, off).borders.borderBottom).toBe('none');
+    expect(at(banded, 1, 0, 4, 2, off).borders.borderTop).toBe('none');
+  });
+
+  it('shifts the banding when the header row is switched off', () => {
+    const off: TableLook = { ...ALL_ON, headerRow: false };
+    // Header on: row 0 is the header, so the first stripe is row 2.
+    expect([0, 1, 2, 3].map(r => at(banded, r, 1).fill)).toEqual([
+      '#EEEEEE', null, '#FAFAFA', null,
+    ]);
+    // Header off: the body starts at row 0, so the stripes move up one row.
+    expect([0, 1, 2, 3].map(r => at(banded, r, 1, 4, 2, off).fill)).toEqual([
+      null, '#FAFAFA', null, '#FAFAFA',
+    ]);
+  });
+
+  it('drops the banding entirely when switched off', () => {
+    const off: TableLook = { ...ALL_ON, bandedRow: false };
+    expect([1, 2, 3].map(r => at(banded, r, 1, 4, 2, off).fill)).toEqual([null, null, null]);
+    // The header still counts for the (now unused) body offset, and still paints.
+    expect(at(banded, 0, 1, 4, 2, off).fill).toBe('#EEEEEE');
+  });
+
+  it('round-trips the look attr, defaulting to Word\'s', () => {
+    expect(parseTableLook(null)).toEqual(DEFAULT_TABLE_LOOK);
+    expect(parseTableLook('')).toEqual({
+      headerRow: false, lastRow: false, firstColumn: false,
+      lastColumn: false, bandedRow: false, bandedColumn: false,
+    });
+    const look = parseTableLook('headerRow bandedRow');
+    expect(look.headerRow && look.bandedRow).toBe(true);
+    expect(look.firstColumn || look.lastRow).toBe(false);
+    expect(parseTableLook(tableLookAttr(ALL_ON))).toEqual(ALL_ON);
+  });
+});
+
+describe('built-in styles', () => {
+  it('has families that shade the emphasis areas, not only embolden them', () => {
+    const sheet = builtinTableStyles();
+    const shaded = Object.values(sheet).filter(
+      st => ['firstColumn', 'lastColumn', 'lastRow'].every(r => st.regions[r as TableRegion]?.fill),
+    );
+    // The colourful families (box lists + the two accent tables) fill those areas, so
+    // switching one on is as visible as the header row.
+    expect(shaded.map(st => st.name)).toContain('Box List Blue');
+    expect(shaded.length).toBeGreaterThanOrEqual(6);
+    // …and the plain/rule-based ones deliberately stay text-only.
+    expect(sheet['Academic'].regions.firstColumn?.fill).toBeUndefined();
+    expect(sheet['Academic'].regions.firstColumn?.text?.bold).toBe(true);
+  });
+
+  it('renders no two built-ins identically', () => {
+    // Each style is previewed the way it is applied: its own options over the default.
+    // Giving every style all six areas once made the two list styles indistinguishable.
+    const signature = (style: TableStyleDef) => {
+      const look = styleLook(style, DEFAULT_TABLE_LOOK);
+      const cells: string[] = [];
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 4; c++) {
+          cells.push(previewCellCss(style, r, c, 5, 4, look) + previewTextCss(style, r, c, 5, 4, look));
+        }
+      }
+      return cells.join('|');
+    };
+    const seen = new Map<string, string>();
+    for (const style of Object.values(builtinTableStyles())) {
+      const sig = signature(style);
+      expect(seen.get(sig), `${style.name} looks exactly like ${seen.get(sig)}`).toBeUndefined();
+      seen.set(sig, style.name);
+    }
+  });
+
+  it('gives every built-in all six areas, so no toggle is a no-op', () => {
+    for (const style of Object.values(builtinTableStyles())) {
+      for (const region of TABLE_REGIONS) {
+        expect(style.regions[region], `${style.name} / ${region}`).toBeDefined();
+      }
+    }
+  });
+});
+
+describe('preview tiles', () => {
+  it('shows a bold-only region, which the fills alone cannot', () => {
+    const bar = (r: number, c: number, look = ALL_ON) =>
+      previewTextCss(banded, r, c, 4, 2, look);
+    // The first column is emphasis-only: no fill, so the tile can only show it via
+    // the text line's weight.
+    const fill = (r: number, c: number) => /^background: [^;]*/.exec(previewCellCss(banded, r, c, 4, 2, ALL_ON))![0];
+    expect(fill(1, 0)).toBe(fill(1, 1)); // identical cell background
+    // The fixture's first column is italic-only, the header bold — both must show.
+    expect(bar(1, 0)).toContain('skewX'); // first column: italic
+    expect(bar(1, 1)).toContain('none');  // body: upright
+    expect(bar(0, 1)).toContain('height: 2px'); // header row: bold
+    expect(bar(1, 1)).toContain('height: 1px');
+
+    // Switching the area off levels them out again.
+    const off: TableLook = { ...ALL_ON, firstColumn: false };
+    expect(bar(1, 0, off)).toBe(bar(1, 1, off));
+  });
+});
+
+describe('header toggles and style options are one state', () => {
+  it('drives the look on a styled table, the shading otherwise', () => {
+    const editor = makeEditor(3);
+    editor.commands.focus('start');
+
+    // No style: the toolbar toggle paints the header fill, as before.
+    editor.commands.toggleHeaderRowStyle();
+    expect(isHeaderStyled(editor.state, 'row')).toBe(true);
+    expect(table(editor).content[0].content[0].attrs.backgroundColor).toBe(HEADER_SHADE);
+    editor.commands.toggleHeaderRowStyle();
+    expect(isHeaderStyled(editor.state, 'row')).toBe(false);
+
+    // With a style the same button flips the Table Style Option instead — so the
+    // toolbar button and the gallery checkbox can never disagree.
+    editor.commands.setTableStyle('Test Bands');
+    expect(isHeaderStyled(editor.state, 'row')).toBe(true);
+    editor.commands.toggleHeaderRowStyle();
+    expect(parseTableLook(table(editor).attrs.tableLook).headerRow).toBe(false);
+    expect(isHeaderStyled(editor.state, 'row')).toBe(false);
+    expect(table(editor).content[0].content[0].attrs.backgroundColor).toBe(null);
+
+    // And the other way round: setting the option updates the button's state.
+    editor.commands.setTableLook('headerRow', true);
+    expect(isHeaderStyled(editor.state, 'row')).toBe(true);
+    editor.destroy();
+  });
+
+  it('maps the header-column button onto the first-column option', () => {
+    const editor = makeEditor(3);
+    editor.commands.focus('start');
+    editor.commands.setTableStyle('Test Bands');
+    expect(isHeaderStyled(editor.state, 'column')).toBe(true);
+    editor.commands.toggleHeaderColumnStyle();
+    expect(parseTableLook(table(editor).attrs.tableLook).firstColumn).toBe(false);
+    expect(isHeaderStyled(editor.state, 'column')).toBe(false);
+    editor.destroy();
+  });
+});
 
 describe('setTableStyle', () => {
   it('materializes fill, borders and regions, and is idempotent', () => {
@@ -188,6 +344,23 @@ describe('setTableStyle', () => {
     expect(t.content[1].content[0].attrs.region).toBe('firstColumn');
     // Its bottom is the boundary to the banded row below, its right the table edge.
     expect(t.content[1].content[0].attrs.borderRight).toBe(null);
+    editor.destroy();
+  });
+
+  it('repaints when an option is toggled', () => {
+    const editor = makeEditor(4);
+    editor.commands.focus('start');
+    editor.commands.setTableStyle('Test Bands');
+    expect(fills(editor)).toEqual(['#EEEEEE', null, '#FAFAFA', null]);
+
+    // Header row off: it loses its fill and the stripes move up a row.
+    editor.commands.setTableLook('headerRow', false);
+    expect(fills(editor)).toEqual([null, '#FAFAFA', null, '#FAFAFA']);
+    expect(table(editor).content[0].content[0].attrs.region).toBe('firstColumn');
+
+    // And back again.
+    editor.commands.setTableLook('headerRow', true);
+    expect(fills(editor)).toEqual(['#EEEEEE', null, '#FAFAFA', null]);
     editor.destroy();
   });
 

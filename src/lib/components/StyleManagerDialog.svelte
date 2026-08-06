@@ -10,8 +10,8 @@
     renameStyle, resetStyle, styleSheet,
   } from '../styles/sheet.svelte';
   import {
-    TABLE_REGIONS, previewCellCss,
-    type TableRegion, type TableRegionProps, type TableStyle,
+    TABLE_REGIONS, previewCellCss, previewTextCss,
+    type TableLook, type TableRegion, type TableRegionProps, type TableStyle,
   } from '../styles/tableStyles';
   import { borderAttrValue, parseBorderAttr } from '../editor/extensions/tableCellBorders';
   import { blockStyleName } from '../editor/extensions/paragraphStyle';
@@ -103,6 +103,8 @@
     tStyle?.[key] !== undefined ? tStyle[key] : key === 'border' ? undefined : tStyle?.innerBorder;
   const PREVIEW_ROWS = 5;
   const PREVIEW_COLS = 4;
+  // The manager edits the definition, not one table's options, so it shows every area.
+  const ALL_AREAS = Object.fromEntries(TABLE_REGIONS.map(r => [r, true])) as TableLook;
 
   // The border select and its color picker split one canonical '<W>pt solid #RRGGBB'.
   function borderParts(value: string | null | undefined) {
@@ -438,7 +440,9 @@
                 {#each Array(PREVIEW_ROWS) as _, r}
                   <tr>
                     {#each Array(PREVIEW_COLS) as _, c}
-                      <td style={previewCellCss(tStyle, r, c, PREVIEW_ROWS, PREVIEW_COLS)}></td>
+                      <td style={previewCellCss(tStyle, r, c, PREVIEW_ROWS, PREVIEW_COLS, ALL_AREAS)}>
+                        <i class="tp-text" style={previewTextCss(tStyle, r, c, PREVIEW_ROWS, PREVIEW_COLS, ALL_AREAS)}></i>
+                      </td>
                     {/each}
                   </tr>
                 {/each}
@@ -664,7 +668,8 @@
     background: var(--color-page-bg);
     color: var(--color-page-text);
   }
-  .table-preview td { height: 1rem; padding: 0; }
+  .table-preview td { height: 1rem; padding: 0 3px; }
+  .tp-text { display: block; width: 100%; }
 
   .border-row { display: flex; align-items: center; gap: 0.3rem; }
   .border-row select { flex: 1; min-width: 0; }

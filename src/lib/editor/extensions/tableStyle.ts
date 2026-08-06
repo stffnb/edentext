@@ -3,7 +3,11 @@ import type { CommandProps } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { TableMap, isInTable, selectedRect } from '@tiptap/pm/tables';
-import { regionText, resolveTableCell, type TableStyle as TableStyleDef } from '../../styles/tableStyles';
+import {
+  DEFAULT_TABLE_LOOK, TABLE_REGIONS, parseTableLook, regionText, resolveTableCell, styleLook,
+  tableLookAttr,
+  type TableLook, type TableRegion, type TableStyle as TableStyleDef,
+} from '../../styles/tableStyles';
 import type { TextProps } from '../../styles/styleSheet';
 
 // Word/LibreOffice table styles: the link lives on the table (`tableStyle`), fill and
@@ -14,6 +18,7 @@ declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     tableStyle: {
       setTableStyle: (name: string | null) => ReturnType;
+      setTableLook: (region: TableRegion, on: boolean) => ReturnType;
       reapplyTableStyle: () => ReturnType;
       refreshTableStyles: () => ReturnType;
     };
@@ -33,6 +38,7 @@ const CLEARED = {
 function paintTable(tr: Transaction, tablePos: number, style: TableStyleDef | null): boolean {
   const table = tr.doc.nodeAt(tablePos);
   if (!table) return false;
+  const look = parseTableLook(table.attrs.tableLook);
   const map = TableMap.get(table);
   const start = tablePos + 1;
   let changed = false;
@@ -46,7 +52,7 @@ function paintTable(tr: Transaction, tablePos: number, style: TableStyleDef | nu
         row: box.top, col: box.left,
         rowSpan: box.bottom - box.top, colSpan: box.right - box.left,
         rows: map.height, cols: map.width,
-      });
+      }, look);
       next = {
         backgroundColor: paint.fill,
         region: paint.regions.length ? paint.regions.join(' ') : null,
@@ -74,11 +80,23 @@ function styledTables(doc: PMNode): { pos: number; node: PMNode }[] {
   return out;
 }
 
-const shapeOf = (node: PMNode) => `${node.attrs.tableStyle}:${node.childCount}x${TableMap.get(node).width}`;
+const shapeOf = (node: PMNode) =>
+  `${node.attrs.tableStyle}|${node.attrs.tableLook}:${node.childCount}x${TableMap.get(node).width}`;
 
 export function activeTableStyle(state: EditorState): string | null {
   if (!isInTable(state)) return null;
   return (selectedRect(state).table.attrs.tableStyle as string | null) ?? null;
+}
+
+// The cursor's table's options, for the checkbox states (and the gallery previews).
+export function activeTableLook(state: EditorState): TableLook {
+  if (!isInTable(state)) return { ...DEFAULT_TABLE_LOOK };
+  return parseTableLook(selectedRect(state).table.attrs.tableLook);
+}
+
+// Which options the style actually paints — the rest are shown disabled, as in Word.
+export function styleRegions(style: TableStyleDef | undefined): TableRegion[] {
+  return style ? TABLE_REGIONS.filter(r => !!style.regions[r]) : [];
 }
 
 // The text formatting the cursor's cell inherits from its table style — what the CSS
@@ -105,8 +123,15 @@ function applyStyle(styles: () => Record<string, TableStyleDef>, name?: string |
     if (wanted && !style) return false; // unknown style: leave the table alone
     if (!dispatch) return true;
     const tablePos = tableStart - 1;
-    if (table.attrs.tableStyle !== wanted) {
-      tr.setNodeMarkup(tablePos, undefined, { ...table.attrs, tableStyle: wanted });
+    // Assigning a style adopts the options it is about (a column-banded style switches
+    // the bands to columns); a re-apply after a structural change leaves them alone.
+    const attrs: Record<string, unknown> = { ...table.attrs };
+    if (table.attrs.tableStyle !== wanted) attrs.tableStyle = wanted;
+    if (name !== undefined && style?.look) {
+      attrs.tableLook = tableLookAttr(styleLook(style, parseTableLook(table.attrs.tableLook)));
+    }
+    if (attrs.tableStyle !== table.attrs.tableStyle || attrs.tableLook !== table.attrs.tableLook) {
+      tr.setNodeMarkup(tablePos, undefined, attrs);
     }
     paintTable(tr, tablePos, style);
     dispatch(tr);
@@ -132,6 +157,13 @@ export const TableStyle = Extension.create<TableStyleOptions>({
             renderHTML: (attrs: Record<string, unknown>) =>
               attrs.tableStyle ? { 'data-table-style': String(attrs.tableStyle) } : {},
           },
+          // Word's Table Style Options; null = the default look (parseTableLook).
+          tableLook: {
+            default: null as string | null,
+            parseHTML: (el: HTMLElement) => el.getAttribute('data-table-look'),
+            renderHTML: (attrs: Record<string, unknown>) =>
+              attrs.tableLook == null ? {} : { 'data-table-look': String(attrs.tableLook) },
+          },
         },
       },
       {
@@ -152,6 +184,18 @@ export const TableStyle = Extension.create<TableStyleOptions>({
     const styles = () => this.options.styles();
     return {
       setTableStyle: (name: string | null) => applyStyle(styles, name),
+      // Toggle one Table Style Option and repaint the table under the new look.
+      setTableLook: (region: TableRegion, on: boolean) => ({ state, tr, dispatch }: CommandProps) => {
+        if (!isInTable(state)) return false;
+        if (!dispatch) return true;
+        const { table, tableStart } = selectedRect(state);
+        const tablePos = tableStart - 1;
+        const look = { ...parseTableLook(table.attrs.tableLook), [region]: on };
+        tr.setNodeMarkup(tablePos, undefined, { ...table.attrs, tableLook: tableLookAttr(look) });
+        paintTable(tr, tablePos, styles()[table.attrs.tableStyle as string] ?? null);
+        dispatch(tr);
+        return true;
+      },
       reapplyTableStyle: () => applyStyle(styles),
       // Repaint every styled table — the registry changed (edit, rename, reset, import).
       refreshTableStyles: () => ({ tr, dispatch }: CommandProps) => {

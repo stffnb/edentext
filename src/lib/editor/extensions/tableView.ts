@@ -51,6 +51,9 @@ function applyTableStyleAttr(node: PMNode, table: HTMLElement): void {
   const name = node.attrs.tableStyle as string | null;
   if (name) table.dataset.tableStyle = name;
   else delete table.dataset.tableStyle;
+  const look = node.attrs.tableLook as string | null;
+  if (look != null) table.dataset.tableLook = look;
+  else delete table.dataset.tableLook;
 }
 
 function buildColgroup(node: PMNode, colgroup: HTMLElement): void {

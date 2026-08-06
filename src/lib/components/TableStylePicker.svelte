@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import { activeTableStyle } from '../editor/extensions/tableStyle';
+  import { activeTableLook, activeTableStyle, styleRegions } from '../editor/extensions/tableStyle';
+  import { DEFAULT_TABLE_LOOK } from '../styles/tableStyles';
   import { styleSheet } from '../styles/sheet.svelte';
-  import { previewCellCss } from '../styles/tableStyles';
+  import { previewCellCss, previewTextCss, styleLook, type TableRegion } from '../styles/tableStyles';
   import { t } from '../i18n/i18n.svelte';
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
@@ -11,6 +12,16 @@
   const sheet = $derived(styleSheet());
   const styles = $derived(Object.values(sheet.table ?? {}));
   const current = $derived(tick >= 0 && editor ? activeTableStyle(editor.state) : null);
+  // Word's Table Style Options: the tiles preview the table's own options, and an option
+  // the current style doesn't paint is shown disabled.
+  const look = $derived(tick >= 0 && editor ? activeTableLook(editor.state) : null);
+  const painted = $derived(new Set(styleRegions(current ? sheet.table?.[current] : undefined)));
+  // Word's order in the ribbon, reading down each column.
+  const OPTIONS: TableRegion[] = ['headerRow', 'lastRow', 'firstColumn', 'lastColumn', 'bandedRow', 'bandedColumn'];
+
+  function toggle(region: TableRegion, on: boolean) {
+    editor?.chain().focus().setTableLook(region, on).run();
+  }
 
   // A tile shows the style on a small grid, painted by the same resolver that paints the
   // real table — so a preview can never disagree with what applying it does.
@@ -57,6 +68,7 @@
   {#if open}
     <div class="tsp-dropdown">
       <div class="tsp-title">{t().table.tableStyle}</div>
+      <div class="tsp-body">
       <div class="tsp-grid">
         <button
           class="tsp-tile"
@@ -75,6 +87,7 @@
         </button>
 
         {#each styles as style (style.name)}
+          {@const tileLook = styleLook(style, look ?? DEFAULT_TABLE_LOOK)}
           <button
             class="tsp-tile"
             class:active={current === style.name}
@@ -87,7 +100,9 @@
                 {#each Array(ROWS) as _, r}
                   <tr>
                     {#each Array(COLS) as _, c}
-                      <td style={previewCellCss(style, r, c, ROWS, COLS)}></td>
+                      <td style={previewCellCss(style, r, c, ROWS, COLS, tileLook)}>
+                        <i class="tsp-text" style={previewTextCss(style, r, c, ROWS, COLS, tileLook)}></i>
+                      </td>
                     {/each}
                   </tr>
                 {/each}
@@ -96,6 +111,23 @@
             <span class="tsp-name">{styleLabel(style.name)}</span>
           </button>
         {/each}
+      </div>
+
+      <div class="tsp-options">
+        <div class="tsp-title">{t().table.styleOptions}</div>
+        <!-- Without a style nothing is in effect yet, so the boxes read clear. -->
+        {#each OPTIONS as region}
+          <label class="tsp-option" class:muted={!painted.has(region)}>
+            <input
+              type="checkbox"
+              checked={!!current && !!look?.[region]}
+              disabled={!current}
+              onchange={(e) => toggle(region, e.currentTarget.checked)}
+            />
+            {t().styles.regions[region]}
+          </label>
+        {/each}
+      </div>
       </div>
     </div>
   {/if}
@@ -157,6 +189,13 @@
     user-select: none;
   }
 
+  /* Tiles and options side by side, as in Word's Table Design tab. */
+  .tsp-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
   .tsp-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -164,6 +203,42 @@
     /* The gallery grew past the toolbar's height; keep the panel scrollable. */
     max-height: 21rem;
     overflow-y: auto;
+  }
+
+  .tsp-options {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding-left: 8px;
+    border-left: 1px solid var(--color-border);
+  }
+
+  .tsp-option {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0.1rem;
+    font-family: var(--font-sans);
+    font-size: 0.7rem;
+    color: var(--color-text);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .tsp-option input {
+    margin: 0;
+    cursor: pointer;
+  }
+
+  /* The current style doesn't paint this area, so the toggle has no visible effect. */
+  .tsp-option.muted {
+    color: var(--color-text-muted);
+  }
+
+  .tsp-option:has(input:disabled) {
+    opacity: 0.5;
+    cursor: default;
   }
 
   .tsp-tile {
@@ -200,8 +275,14 @@
   }
 
   .tsp-preview td {
-    height: 7px;
-    padding: 0;
+    height: 8px;
+    padding: 0 1px;
+  }
+
+  /* The schematic text line; its weight is what makes a bold-only region visible. */
+  .tsp-text {
+    display: block;
+    width: 100%;
   }
 
   .tsp-none {

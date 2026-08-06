@@ -5,7 +5,13 @@ import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps } from '../styles/styleSheet';
-import { regionText } from '../styles/tableStyles';
+import {
+  TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
+} from '../styles/tableStyles';
+
+// A table's named style plus the conditional areas it opts into (Word's Table Style
+// Options), collected by exportTable in document order.
+type TableStyleRef = { name: string; look: TableLook };
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -760,24 +766,47 @@ function applyTableMargins(odtBytes: Uint8Array, margins: (TableMargins | null)[
 // A table's named style: odf-kit's automatic Table{n} style gets it as its parent, and
 // applyNamedStyles defines it in styles.xml. ODF has no banding, so only the name
 // travels — the look rides on the cell attrs the style painted.
-function applyTableStyleNames(odtBytes: Uint8Array, names: (string | null)[]): Uint8Array {
-  if (names.every(n => n === null)) return odtBytes;
+function applyTableStyleNames(odtBytes: Uint8Array, tables: (TableStyleRef | null)[]): Uint8Array {
+  if (tables.every(t => t === null)) return odtBytes;
 
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
   if (!contentBytes) return odtBytes;
 
   let content = strFromU8(contentBytes);
-  names.forEach((name, i) => {
-    if (!name) return;
+  let nth = 0;
+  tables.forEach((ref, i) => {
+    if (!ref) return;
     content = content.replace(
       new RegExp(`(<style:style[^>]*style:name="Table${i + 1}")`),
-      `$1 style:parent-style-name="${odfStyleName(name)}"`,
+      `$1 style:parent-style-name="${odfStyleName(ref.name)}"`,
     );
+  });
+  // Which conditional areas the table opts into: ODF's own table:use-*-styles pair with
+  // a table template, so the toggles survive a round trip through our own importer.
+  // Lookahead, not \b: a hyphen is a word boundary, so \b would also match
+  // <table:table-cell/-row/-column and consume the counter.
+  content = content.replace(/<table:table(?=[\s>])[^>]*/g, (tag) => {
+    const ref = tables[nth++];
+    return ref ? `${tag} ${odfLookAttrs(ref.look)}` : tag;
   });
 
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
+}
+
+// ODF names these per conditional area on <table:table> (§ table template attributes).
+export const ODF_LOOK_ATTRS: Record<TableRegion, string> = {
+  headerRow: 'table:use-first-row-styles',
+  lastRow: 'table:use-last-row-styles',
+  firstColumn: 'table:use-first-column-styles',
+  lastColumn: 'table:use-last-column-styles',
+  bandedRow: 'table:use-banding-rows-styles',
+  bandedColumn: 'table:use-banding-columns-styles',
+};
+
+function odfLookAttrs(look: TableLook): string {
+  return TABLE_REGIONS.map(r => `${ODF_LOOK_ATTRS[r]}="${look[r]}"`).join(' ');
 }
 
 // odf-kit's ListBuilder has no per-item paragraph options, so list-item paragraphs all
@@ -2161,7 +2190,7 @@ function tableMarginsCm(node: TiptapNode, contentWidthCm: number): TableMargins 
 // Build an ODF table from a CUST_TABLE node, bypassing odf-kit's native walkTable to
 // pass an explicit cell border (the native path emits none → invisible). Column widths
 // come from tableColumnWidthsCm; when absent odf-kit distributes columns evenly.
-function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number, cellBlocks: CellBlock[][], tableMargins: (TableMargins | null)[], tableStyleNames: (string | null)[]): void {
+function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number, cellBlocks: CellBlock[][], tableMargins: (TableMargins | null)[], tableStyleNames: (TableStyleRef | null)[]): void {
   const rows = (node.content ?? []).filter(r => r.type === 'tableRow');
   if (rows.length === 0) return;
   const margins = tableMarginsCm(node, contentWidthCm);
@@ -2170,7 +2199,8 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
   // automatic style (applyTableStyleNames), its text formatting is baked per cell.
   const styleName = typeof node.attrs?.tableStyle === 'string' ? node.attrs.tableStyle : null;
   const tableStyle = styleName ? exportSheet.table?.[styleName] : undefined;
-  tableStyleNames.push(tableStyle ? styleName : null);
+  const look = parseTableLook(node.attrs?.tableLook);
+  tableStyleNames.push(tableStyle && styleName ? { name: styleName, look } : null);
   const columnWidths = tableColumnWidthsCm(node, contentWidthCm - (margins ? margins.ml + margins.mr : 0));
   doc.addTable((t: TableBuilder) => {
     for (const row of rows) {
@@ -2714,8 +2744,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const cellBlocks: CellBlock[][] = [];
   // One entry per table, same order — consumed by applyTableMargins.
   const tableMargins: (TableMargins | null)[] = [];
-  // The named table style per table, same order — consumed by applyTableStyleNames.
-  const tableStyleNames: (string | null)[] = [];
+  // The named table style + its options per table, same order — applyTableStyleNames.
+  const tableStyleNames: (TableStyleRef | null)[] = [];
 
   const odt = await tiptapToOdt(json, {
     // Orientation sets style:print-orientation; rewriteStylesXml overrides the exact
@@ -2841,7 +2871,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withParaBoxes = applyParagraphBoxes(withEmptyFontSizes);
   const withNamedStyles = applyCharacterStyles(applyParagraphStyles(withParaBoxes));
-  const usedTables = new Set(tableStyleNames.filter((n): n is string => !!n));
+  const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
   const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables);
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
 }

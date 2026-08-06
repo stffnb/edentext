@@ -1,15 +1,30 @@
 import { Extension } from '@tiptap/core';
 import type { CommandProps } from '@tiptap/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 import { selectedRect, isInTable } from '@tiptap/pm/tables';
+import { parseTableLook, type TableRegion } from '../../styles/tableStyles';
 
 // Word/LibreOffice "header row"/"header column" as a styling preset: the first row (or
 // column) gets bold text + a light grey fill, both of which round-trip to ODF/DOCX. The
 // fill doubles as the marker, so no <table:table-header-rows> and no page repetition.
+// A table carrying a *table style* owns these two areas through its Table Style Options
+// instead, so there the toggle reads and writes that flag — one state, two surfaces
+// (this button and the gallery's checkbox), never disagreeing.
 
 export const HEADER_SHADE = '#F2F2F2';
 
 export type HeaderAxis = 'row' | 'column';
+
+// The axis' matching Table Style Option.
+const LOOK_REGION: Record<HeaderAxis, TableRegion> = { row: 'headerRow', column: 'firstColumn' };
+
+// The cursor's table, if it has a named table style (else the manual shading applies).
+function styledTable(state: EditorState): PMNode | null {
+  if (!isInTable(state)) return null;
+  const { table } = selectedRect(state);
+  return table.attrs.tableStyle ? table : null;
+}
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -50,8 +65,11 @@ export function isInHeaderCell(state: EditorState): boolean {
   return false;
 }
 
-// True when every cell of the first row / first column carries the header fill.
+// True when the area is on: the style's option for a styled table, else the header fill
+// on every cell of the first row / first column.
 export function isHeaderStyled(state: EditorState, axis: HeaderAxis): boolean {
+  const styled = styledTable(state);
+  if (styled) return parseTableLook(styled.attrs.tableLook)[LOOK_REGION[axis]];
   const info = headerCellPositions(state, axis);
   if (!info || info.positions.length === 0) return false;
   return info.positions.every(
@@ -60,7 +78,11 @@ export function isHeaderStyled(state: EditorState, axis: HeaderAxis): boolean {
 }
 
 export function toggleHeaderStyle(axis: HeaderAxis) {
-  return ({ state, tr, dispatch }: CommandProps): boolean => {
+  return ({ state, tr, dispatch, commands }: CommandProps): boolean => {
+    // A styled table: flip the Table Style Option the gallery's checkbox shows.
+    if (styledTable(state)) {
+      return commands.setTableLook(LOOK_REGION[axis], !isHeaderStyled(state, axis));
+    }
     const info = headerCellPositions(state, axis);
     if (!info) return false;
     if (!dispatch) return true;

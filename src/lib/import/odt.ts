@@ -1,8 +1,9 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
-import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
+import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
+import { TABLE_REGIONS, tableLookAttr, type TableLook, type TableRegion } from '../styles/tableStyles';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
@@ -1510,8 +1511,32 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   // the regions from the registry (refreshTableStyles).
   const named = ctx.resolver.namedAncestor(el.getAttributeNS(NS.table, 'style-name'), 'table');
   const attrs: Record<string, unknown> = { ...(tableMargins(el, ctx) ?? {}) };
-  if (named) attrs.tableStyle = displayStyleName(named);
+  if (named) {
+    attrs.tableStyle = displayStyleName(named);
+    // Which conditional areas the table opts into (ODF's table template attributes).
+    // Absent ⇒ leave the attr null, so parseTableLook falls back to the default.
+    const look = odfTableLook(el);
+    if (look) attrs.tableLook = look;
+  }
   return Object.keys(attrs).length ? { type: 'table', attrs, content: rows } : { type: 'table', content: rows };
+}
+
+// The six table:use-*-styles attributes → the editor's space-separated tableLook attr.
+// null when the file declares none (a foreign producer), so the default look applies.
+function odfTableLook(el: Element): string | null {
+  const on: TableRegion[] = [];
+  let declared = false;
+  for (const [region, attr] of Object.entries(ODF_LOOK_ATTRS) as [TableRegion, string][]) {
+    // ODF_LOOK_ATTRS holds the qualified names the exporter writes; getAttributeNS
+    // wants the local one.
+    const v = el.getAttributeNS(NS.table, attr.replace('table:', ''));
+    if (v == null) continue;
+    declared = true;
+    if (v === 'true') on.push(region);
+  }
+  return declared ? tableLookAttr(Object.fromEntries(
+    TABLE_REGIONS.map(r => [r, on.includes(r)]),
+  ) as TableLook) : null;
 }
 
 // A table narrower than the text width → the editor's marginLeft/marginRight attrs.

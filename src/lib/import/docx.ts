@@ -4,6 +4,7 @@ import { lengthToPt } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
+import { tableLookAttr } from '../styles/tableStyles';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
@@ -1305,8 +1306,28 @@ function convertTable(tbl: Element, ctx: Ctx): Node | null {
   const styleEl = fc(fc(tbl, 'tblPr'), 'tblStyle');
   const named = ctx.styles.tableStyleName(styleEl ? wVal(styleEl) : null);
   const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx) ?? {}) };
-  if (named) attrs.tableStyle = named;
+  if (named) {
+    attrs.tableStyle = named;
+    const look = docxTableLook(fc(tbl, 'tblPr'));
+    if (look) attrs.tableLook = look;
+  }
   return Object.keys(attrs).length ? { type: 'table', attrs, content: rows } : { type: 'table', content: rows };
+}
+
+// Word's w:tblLook → the editor's tableLook attr (its band flags are inverted).
+// null when the file declares none, so the default look applies.
+function docxTableLook(tblPr: Element | null): string | null {
+  const el = fc(tblPr, 'tblLook');
+  if (!el) return null;
+  const on = (name: string) => {
+    const v = el.getAttributeNS(W, name);
+    return v === '1' || v === 'true';
+  };
+  return tableLookAttr({
+    headerRow: on('firstRow'), lastRow: on('lastRow'),
+    firstColumn: on('firstColumn'), lastColumn: on('lastColumn'),
+    bandedRow: !on('noHBand'), bandedColumn: !on('noVBand'),
+  });
 }
 
 // A table narrower than the text width: w:tblInd is its left indent, the grid (or

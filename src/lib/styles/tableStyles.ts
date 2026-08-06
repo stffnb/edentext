@@ -12,6 +12,31 @@ export const TABLE_REGIONS = [
 ] as const;
 export type TableRegion = (typeof TABLE_REGIONS)[number];
 
+// Word's "Table Style Options": which conditional regions a given table opts into. A
+// region paints only when the style defines it AND the table's look enables it, so the
+// same style reads differently per table (and the gallery previews follow the toggles).
+export type TableLook = Record<TableRegion, boolean>;
+
+// Word's default for a new table (its w:tblLook 04A0): header row, first column, bands.
+export const DEFAULT_TABLE_LOOK: TableLook = {
+  headerRow: true, firstColumn: true, bandedRow: true,
+  lastRow: false, lastColumn: false, bandedColumn: false,
+};
+
+const isRegion = (v: string): v is TableRegion => (TABLE_REGIONS as readonly string[]).includes(v);
+
+// Stored space-separated on the table node, like a cell's `region` list. An absent attr
+// means the Word default, so a table predating the toggles keeps looking the same.
+export function parseTableLook(attr: unknown): TableLook {
+  if (typeof attr !== 'string') return { ...DEFAULT_TABLE_LOOK };
+  const on = new Set(attr.split(' ').filter(isRegion));
+  return Object.fromEntries(TABLE_REGIONS.map(r => [r, on.has(r)])) as TableLook;
+}
+
+export function tableLookAttr(look: TableLook): string {
+  return TABLE_REGIONS.filter(r => look[r]).join(' ');
+}
+
 export type BorderSideKey = 'top' | 'right' | 'bottom' | 'left';
 
 export type TableRegionProps = {
@@ -27,6 +52,10 @@ export type TableRegionProps = {
 export type TableStyle = {
   name: string;
   builtin?: boolean;
+  // The Table Style Options this style is about, applied on assignment over whatever the
+  // table already had. Defining all six areas keeps every toggle meaningful, so without
+  // this a row-banded and a column-banded style would be indistinguishable.
+  look?: Partial<TableLook>;
   border?: string | null;       // the table's outer edges
   innerBorder?: string | null;  // the grid lines inside it
   innerBorderH?: string | null; // horizontal inner lines only (falls back to innerBorder)
@@ -42,56 +71,107 @@ const HEADER_FILL = '#F2F2F2';
 const BAND_FILL = '#F7F7F7';
 const ACCENT = '#4472C4';
 const ACCENT_LIGHT = '#D9E2F3';
+const ACCENT_MID = '#B4C6E7';
 
-const boxList = (name: string, header: string, band: string, text = '#FFFFFF'): TableStyle => ({
+// Every built-in defines all six conditional areas, so each Table-Style-Option toggle
+// visibly does something (as in Word).
+const boxList = (name: string, header: string, band: string, mid: string, text = '#FFFFFF'): TableStyle => ({
   name, builtin: true, border: 'none', innerBorder: 'none',
   regions: {
     headerRow: { fill: header, text: { bold: true, color: text } },
     bandedRow: { fill: band },
+    bandedColumn: { fill: band },
+    // The colourful families shade their emphasis areas as well, so switching one on
+    // is as visible as the header row (Word's Grid Table families do the same).
+    firstColumn: { fill: mid, text: { bold: true } },
+    lastColumn: { fill: mid, text: { bold: true } },
+    lastRow: { fill: mid, text: { bold: true }, borders: { top: `1pt solid ${header}` } },
   },
 });
 
+// The grey and rule-based families keep emphasis text-only, as in Word.
+const emphasis = { text: { bold: true } };
+const greyEdges = {
+  firstColumn: emphasis,
+  lastColumn: emphasis,
+  lastRow: { ...emphasis, borders: { top: '1pt solid #000000' } },
+};
+
 export const TABLE_BUILTINS: TableStyle[] = [
   { name: 'Simple Grid', builtin: true, border: null, innerBorder: null,
-    regions: { headerRow: { fill: HEADER_FILL, text: { bold: true } } } },
+    regions: {
+      headerRow: { fill: HEADER_FILL, text: { bold: true } },
+      bandedRow: { fill: BAND_FILL }, bandedColumn: { fill: BAND_FILL },
+      ...greyEdges,
+    } },
   { name: 'Simple Grid Rows', builtin: true, border: null, innerBorderH: null, innerBorderV: 'none',
-    regions: { headerRow: { fill: HEADER_FILL, text: { bold: true } } } },
+    regions: {
+      headerRow: { fill: HEADER_FILL, text: { bold: true } },
+      bandedRow: { fill: BAND_FILL }, bandedColumn: { fill: BAND_FILL },
+      ...greyEdges,
+    } },
   { name: 'Simple Grid Columns', builtin: true, border: null, innerBorderH: 'none', innerBorderV: null,
-    regions: { headerRow: { fill: HEADER_FILL, text: { bold: true } } } },
+    look: { bandedRow: false, bandedColumn: true },
+    regions: {
+      headerRow: { fill: HEADER_FILL, text: { bold: true } },
+      bandedRow: { fill: BAND_FILL }, bandedColumn: { fill: BAND_FILL },
+      ...greyEdges,
+    } },
   { name: 'Simple List Shaded', builtin: true, border: null, innerBorder: 'none',
     regions: {
       headerRow: { fill: HEADER_FILL, text: { bold: true } },
-      bandedRow: { fill: BAND_FILL },
+      bandedRow: { fill: BAND_FILL }, bandedColumn: { fill: BAND_FILL },
+      ...greyEdges,
     } },
   { name: 'Simple List Columns', builtin: true, border: null, innerBorder: 'none',
+    look: { bandedRow: false, bandedColumn: true },
     regions: {
       headerRow: { fill: HEADER_FILL, text: { bold: true } },
-      bandedColumn: { fill: BAND_FILL },
+      bandedColumn: { fill: BAND_FILL }, bandedRow: { fill: BAND_FILL },
+      ...greyEdges,
     } },
-  boxList('Box List Blue', '#4A7EBB', '#DCE6F1'),
-  boxList('Box List Green', '#77933C', '#EBF1DE'),
-  boxList('Box List Red', '#C0504D', '#F2DCDB'),
-  boxList('Box List Yellow', '#E6B800', '#FFF2CC', '#000000'),
+  // Word's "Plain Table": no lines at all, emphasis by weight only.
+  { name: 'Plain Table', builtin: true, border: 'none', innerBorder: 'none',
+    regions: {
+      headerRow: { text: { bold: true }, borders: { bottom: '0.75pt solid #000000' } },
+      bandedRow: { fill: BAND_FILL }, bandedColumn: { fill: BAND_FILL },
+      ...greyEdges,
+    } },
+  boxList('Box List Blue', '#4A7EBB', '#DCE6F1', '#B8CCE4'),
+  boxList('Box List Green', '#77933C', '#EBF1DE', '#D6E3BC'),
+  boxList('Box List Red', '#C0504D', '#F2DCDB', '#E5B8B7'),
+  boxList('Box List Yellow', '#E6B800', '#FFF2CC', '#FFE699', '#000000'),
   { name: 'Grid Table Accent', builtin: true, border: `0.5pt solid #8EAADB`, innerBorder: '0.5pt solid #8EAADB',
     regions: {
       headerRow: { fill: ACCENT, text: { bold: true, color: '#FFFFFF' } },
-      bandedRow: { fill: ACCENT_LIGHT },
+      bandedRow: { fill: ACCENT_LIGHT }, bandedColumn: { fill: ACCENT_LIGHT },
+      firstColumn: { fill: ACCENT_MID, text: { bold: true } },
+      lastColumn: { fill: ACCENT_MID, text: { bold: true } },
+      lastRow: { fill: ACCENT_MID, text: { bold: true }, borders: { top: `1pt solid ${ACCENT}` } },
     } },
   { name: 'List Table Accent', builtin: true, border: 'none', innerBorderH: null, innerBorderV: 'none',
     regions: {
       headerRow: { text: { bold: true, color: ACCENT }, borders: { bottom: `1pt solid ${ACCENT}` } },
-      bandedRow: { fill: ACCENT_LIGHT },
+      bandedRow: { fill: ACCENT_LIGHT }, bandedColumn: { fill: ACCENT_LIGHT },
+      firstColumn: { fill: ACCENT_MID, text: { bold: true } },
+      lastColumn: { fill: ACCENT_MID, text: { bold: true } },
+      lastRow: { fill: ACCENT_MID, text: { bold: true }, borders: { top: `1pt solid ${ACCENT}` } },
     } },
   { name: 'Academic', builtin: true, border: 'none', innerBorder: 'none',
+    look: { bandedRow: false, bandedColumn: false, firstColumn: false },
     regions: {
       headerRow: { text: { bold: true }, borders: { top: '1pt solid #000000', bottom: '0.75pt solid #000000' } },
       lastRow: { borders: { bottom: '1pt solid #000000' } },
+      bandedRow: { fill: BAND_FILL }, bandedColumn: { fill: BAND_FILL },
+      firstColumn: emphasis, lastColumn: emphasis,
     } },
   { name: 'Financial', builtin: true, border: 'none', innerBorder: 'none',
+    look: { lastRow: true, bandedRow: false, bandedColumn: false },
     regions: {
       headerRow: { text: { bold: true }, borders: { top: '1pt solid #000000', bottom: '0.75pt solid #000000' } },
-      firstColumn: { text: { bold: true } },
-      lastRow: { text: { bold: true }, borders: { top: '0.75pt solid #000000', bottom: '1pt solid #000000' } },
+      firstColumn: emphasis, lastColumn: emphasis,
+      lastRow: { ...emphasis, borders: { top: '0.75pt solid #000000', bottom: '1pt solid #000000' } },
+      bandedRow: { fill: BAND_FILL }, bandedColumn: { fill: BAND_FILL },
     } },
 ];
 
@@ -116,10 +196,15 @@ export type ResolvedTableCell = {
 
 // The conditional regions a grid position belongs to, in ascending precedence. Banding
 // counts body rows only, so a header row doesn't shift the stripes (as in Word).
-function regionsAt(style: TableStyle, row: number, col: number, rows: number, cols: number): TableRegion[] {
-  const r = style.regions;
-  const bodyRow = row - (r.headerRow ? 1 : 0);
-  const bodyCol = col - (r.firstColumn ? 1 : 0);
+function regionsAt(
+  style: TableStyle, look: TableLook,
+  row: number, col: number, rows: number, cols: number,
+): TableRegion[] {
+  // A region counts as present only when the style paints it and the table opts in —
+  // that also decides whether banding skips the header row / first column.
+  const on = (name: TableRegion) => !!style.regions[name] && look[name];
+  const bodyRow = row - (on('headerRow') ? 1 : 0);
+  const bodyCol = col - (on('firstColumn') ? 1 : 0);
   const matches: Record<TableRegion, boolean> = {
     bandedColumn: bodyCol >= 0 && bodyCol % 2 === 1,
     bandedRow: bodyRow >= 0 && bodyRow % 2 === 1,
@@ -128,7 +213,7 @@ function regionsAt(style: TableStyle, row: number, col: number, rows: number, co
     lastRow: row === rows - 1,
     headerRow: row === 0,
   };
-  return TABLE_REGIONS.filter(name => r[name] && matches[name]);
+  return TABLE_REGIONS.filter(name => on(name) && matches[name]);
 }
 
 // The border of one grid line, decided from both sides so the two facing cells always
@@ -160,11 +245,13 @@ function boundary(
 // Everything a table style paints on one cell. Fill and borders are materialized as cell
 // attrs (so export/PDF/clipboard need no extra work); `text` is rendered via CSS keyed on
 // the `region` attr and baked onto the runs on export.
-export function resolveTableCell(style: TableStyle, cell: CellCoords): ResolvedTableCell {
+export function resolveTableCell(
+  style: TableStyle, cell: CellCoords, look: TableLook = DEFAULT_TABLE_LOOK,
+): ResolvedTableCell {
   const { row, col, rows, cols } = cell;
   const rowEnd = row + (cell.rowSpan ?? 1);
   const colEnd = col + (cell.colSpan ?? 1);
-  const at = (r: number, c: number) => regionsAt(style, r, c, rows, cols);
+  const at = (r: number, c: number) => regionsAt(style, look, r, c, rows, cols);
   const regions = at(row, col);
 
   let fill: string | null = style.wholeTable?.fill ?? null;
@@ -205,8 +292,11 @@ export function regionText(style: TableStyle | null | undefined, regionAttr: unk
 // Inline CSS for one cell of a style's preview grid (the toolbar gallery and the style
 // manager show the same tile). Widths collapse to 1–2px so a thick rule stays legible;
 // the table default border rides on currentColor, so the tile has to carry a page color.
-export function previewCellCss(style: TableStyle, row: number, col: number, rows: number, cols: number): string {
-  const paint = resolveTableCell(style, { row, col, rows, cols });
+export function previewCellCss(
+  style: TableStyle, row: number, col: number, rows: number, cols: number,
+  look: TableLook = DEFAULT_TABLE_LOOK,
+): string {
+  const paint = resolveTableCell(style, { row, col, rows, cols }, look);
   const side = (value: string | null): string => {
     if (value === 'none') return 'none';
     if (value === null) return '1px solid currentColor';
@@ -218,6 +308,26 @@ export function previewCellCss(style: TableStyle, row: number, col: number, rows
     .map(s => `border-${s.toLowerCase()}: ${side(paint.borders[`border${s}`])}`)
     .join(';');
   return `background: ${paint.fill ?? 'transparent'};${borders};font-weight: ${paint.text.bold ? 700 : 400}`;
+}
+
+// The options a style is applied with: its own declared ones over the table's current.
+export function styleLook(style: TableStyle | undefined, table: TableLook): TableLook {
+  return { ...table, ...style?.look };
+}
+
+// The text bar inside a preview cell: a schematic line whose weight and colour follow
+// the region, so bold-only areas (first/last column, total row) are visible in a tile —
+// they would otherwise look identical, the tiles carrying no real text.
+export function previewTextCss(
+  style: TableStyle, row: number, col: number, rows: number, cols: number,
+  look: TableLook = DEFAULT_TABLE_LOOK,
+): string {
+  const { text } = resolveTableCell(style, { row, col, rows, cols }, look);
+  const bold = text.bold === true;
+  return `height: ${bold ? 2 : 1}px; background: ${text.color ?? 'currentColor'};`
+    + `opacity: ${bold ? 0.85 : 0.45};`
+    // A slant for italic, so an italic-only region is visible too.
+    + `transform: ${text.italic ? 'skewX(-14deg)' : 'none'}`;
 }
 
 // One rule per style and region, emitted in ascending precedence so an overlap (header

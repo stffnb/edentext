@@ -151,6 +151,32 @@ describe('DOCX export → import round trip', () => {
     expect(table.content![0].content![0].attrs.backgroundColor).toBe('#4A7EBB');
   });
 
+  it('round-trips the table style options as w:tblLook', async () => {
+    const cell = (t: string): N => ({
+      type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: null }, content: [para(t)],
+    });
+    const doc = {
+      type: 'doc',
+      content: [{
+        type: 'table',
+        attrs: { tableStyle: 'Box List Blue', tableLook: 'lastRow headerRow' },
+        content: [
+          { type: 'tableRow', content: [cell('Kopf')] },
+          { type: 'tableRow', content: [cell('Summe')] },
+        ],
+      }],
+    } as any;
+    const bytes = await buildDocx(doc);
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    // Word inverts the band flags, so both are switched off here.
+    expect(xml).toMatch(/<w:tblLook[^>]*w:firstRow="true"/);
+    expect(xml).toMatch(/<w:tblLook[^>]*w:lastRow="true"/);
+    expect(xml).toMatch(/<w:tblLook[^>]*w:noHBand="true"/);
+
+    const table = walk(importDocx(bytes).content as N, 'table')[0];
+    expect(table.attrs.tableLook).toBe('lastRow headerRow');
+  });
+
   it('re-merges a page-boundary line-split paragraph (joinPrev) on export', async () => {
     const split = {
       type: 'doc',
