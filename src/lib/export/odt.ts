@@ -223,6 +223,7 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (attrs.spaceAfter != null) return true;
   if (typeof attrs.fontSize === 'string' && attrs.fontSize) return true;
   if (typeof attrs.indent === 'number' && attrs.indent > 0) return true;
+  if (typeof attrs.indentFirst === 'number' && attrs.indentFirst !== 0) return true;
   if (typeof attrs.backgroundColor === 'string' && attrs.backgroundColor) return true;
   if (attrs.widowControl === false) return true;
   for (const s of ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'])
@@ -2801,6 +2802,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
         spaceBefore?: string;
         spaceAfter?: string;
         indentLeft?: string;
+        indentFirst?: string;
       } = {};
       if (node.attrs?.lineHeight != null) {
         const lhRaw = String(node.attrs.lineHeight);
@@ -2818,6 +2820,10 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
       // Left indent → fo:margin-left (odf-kit emits it natively from indentLeft).
       if (typeof node.attrs?.indent === 'number' && node.attrs.indent > 0) {
         opts.indentLeft = `${node.attrs.indent}cm`;
+      }
+      // First-line indent → fo:text-indent; negative is a hanging indent.
+      if (typeof node.attrs?.indentFirst === 'number' && node.attrs.indentFirst !== 0) {
+        opts.indentFirst = `${node.attrs.indentFirst}cm`;
       }
       const content = node.content ?? [];
       // An empty line's font size (its paragraph-mark size) rides as an FSZ sentinel

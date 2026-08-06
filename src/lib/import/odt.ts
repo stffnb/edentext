@@ -929,6 +929,9 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefau
   if (kind !== 'list') {
     const ml = lengthToPt(paraProps['fo:margin-left']) ?? 0;
     if (Math.abs(ml - defaults.indentPt) > EPS_PT) attrs.indent = Math.round((ml / 72) * 2.54 * 100) / 100;
+    // fo:text-indent is the first line only; negative is a hanging indent.
+    const ti = lengthToCm(paraProps['fo:text-indent']);
+    if (ti != null && Math.abs(ti) > 0.02) attrs.indentFirst = Math.round(ti * 100) / 100;
   }
 
   // Manual page break (fo:break-before). Honored for top-level blocks only

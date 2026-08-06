@@ -772,6 +772,11 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
     const ind = fc(ppr, 'ind');
     const left = ind ? intAttr(ind, W, 'left') ?? intAttr(ind, W, 'start') : null;
     if (left != null) { const cm = round2(twipToCm(left)); if (cm > LIST_INDENT_EPS_CM) attrs.indent = cm; }
+    // w:hanging outdents the first line, w:firstLine indents it; they are exclusive.
+    const hanging = ind ? intAttr(ind, W, 'hanging') : null;
+    const firstLine = ind ? intAttr(ind, W, 'firstLine') : null;
+    const first = hanging != null ? -twipToCm(hanging) : firstLine != null ? twipToCm(firstLine) : null;
+    if (first != null && Math.abs(first) > LIST_INDENT_EPS_CM) attrs.indentFirst = round2(first);
   }
 
   if (kind === 'body') {

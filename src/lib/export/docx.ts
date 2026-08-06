@@ -607,6 +607,11 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
   if (!opts.numbering) {
     if (typeof attrs.indent === 'number' && attrs.indent > 0) indent.left = cmToTwip(attrs.indent);
     else if (opts.indentLeftTwip) indent.left = opts.indentLeftTwip;
+    // Word splits the first-line indent into two exclusive attributes by sign.
+    if (typeof attrs.indentFirst === 'number' && attrs.indentFirst !== 0) {
+      if (attrs.indentFirst < 0) indent.hanging = cmToTwip(-attrs.indentFirst);
+      else indent.firstLine = cmToTwip(attrs.indentFirst);
+    }
   }
   // The block's named style (a heading style id is what HeadingLevel references anyway).
   const style = docxStyleId(styleOf(node));
@@ -616,7 +621,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     style,
     alignment: alignOf(attrs),
     spacing: spacingOf(attrs),
-    indent: indent.left != null ? indent : undefined,
+    indent: indent.left != null || indent.hanging != null || indent.firstLine != null ? indent : undefined,
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,
     widowControl: attrs.widowControl === false ? false : undefined,
     numbering: opts.numbering,

@@ -108,6 +108,13 @@ function parseIndent(value: string | null): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+// A first-line indent may be negative (Word's hanging indent), unlike a left margin.
+function parseSignedIndent(value: string | null): number | null {
+  if (value == null || value === '') return null;
+  const n = parseFloat(value);
+  return Number.isFinite(n) && n !== 0 ? n : null;
+}
+
 export const Indent = Extension.create({
   name: 'indent',
 
@@ -136,6 +143,20 @@ export const Indent = Extension.create({
               return {
                 'data-indent': String(cm),
                 style: `margin-left: ${cm}cm`,
+              };
+            },
+          },
+          // First-line indent in cm; negative is Word's hanging indent. Independent of
+          // `indent`, which is the whole block's left margin.
+          indentFirst: {
+            default: null,
+            parseHTML: (element: HTMLElement) => parseSignedIndent(element.getAttribute('data-indent-first')),
+            renderHTML: (attributes: Record<string, unknown>) => {
+              if (attributes.indentFirst == null) return {};
+              const cm = Number(attributes.indentFirst);
+              return {
+                'data-indent-first': String(cm),
+                style: `text-indent: ${cm}cm`,
               };
             },
           },
