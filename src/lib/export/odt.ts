@@ -38,7 +38,10 @@ const CUST_HF = '__cust_hf__';
 // Table export styling. Values mirror the editor's table CSS (src/styles/editor.css)
 // so the .odt matches the on-screen preview.
 const TABLE_BORDER = '0.5pt solid #000000';
-const CELL_PADDING = '0.1cm'; // must match td/th padding in editor.css
+// Word's/LibreOffice's cell margins, asymmetric. Must match td/th padding in editor.css.
+const CELL_PADDING_X = '0.19cm';
+const CELL_PADDING_Y = '0cm';
+const CELL_PADDING = CELL_PADDING_X;
 
 // odf-kit emits this as the document's default font (Standard style). The editor
 // renders the bundled, metric-identical Liberation Serif on screen.
@@ -734,6 +737,25 @@ function applyTableRowHeights(odtBytes: Uint8Array, heights: (string | null)[]):
   ).join('\n');
 
   content = content.replace('</office:automatic-styles>', `${newStyles}\n</office:automatic-styles>`);
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+// odf-kit only writes the fo:padding shorthand, which ODF defines as one length —
+// LibreOffice drops a two-value form. Cells need Word's asymmetric margins, so the
+// shorthand is expanded per side (scoped to cell properties; paragraphs use it too).
+function expandCellPadding(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  const perSide = `fo:padding-left="${CELL_PADDING_X}" fo:padding-right="${CELL_PADDING_X}"`
+    + ` fo:padding-top="${CELL_PADDING_Y}" fo:padding-bottom="${CELL_PADDING_Y}"`;
+  const content = strFromU8(contentBytes).replace(
+    /(<style:table-cell-properties\b[^>]*?)fo:padding="[^"]*"/g,
+    (_m, head: string) => head + perSide,
+  );
 
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
@@ -2856,7 +2878,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
 
   const rowHeights: (string | null)[] = [];
   collectTableRowHeights(raw, rowHeights);
-  const styledRows = applyTableRowHeights(styledCells, rowHeights);
+  const styledRows = applyTableRowHeights(expandCellPadding(styledCells), rowHeights);
   const withTableMargins = applyTableStyleNames(
     applyTableMargins(styledRows, tableMargins, contentWidthCm), tableStyleNames);
 
