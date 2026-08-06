@@ -776,7 +776,7 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
 
   if (kind === 'body') {
     const pb = fc(ppr, 'pageBreakBefore');
-    if (pb && wVal(pb) !== 'false' && wVal(pb) !== '0') attrs.breakBefore = 'page';
+    if (pb && onOff(pb)) attrs.breakBefore = 'page';
   }
 
   // Paragraph background ("colored field", w:shd) + per-side borders ("rule line", w:pBdr).
@@ -1461,7 +1461,8 @@ function docHasEvenOddHeaders(files: Record<string, Uint8Array>): boolean {
   const bytes = files['word/settings.xml'];
   if (!bytes) return false;
   try {
-    return !!parseXml(strFromU8(bytes)).getElementsByTagNameNS(W, 'evenAndOddHeaders')[0];
+    const el = parseXml(strFromU8(bytes)).getElementsByTagNameNS(W, 'evenAndOddHeaders')[0];
+    return !!el && onOff(el);
   } catch {
     return false;
   }
@@ -1489,7 +1490,8 @@ function parseSectPr(sect: Element | null, ctx: Ctx, oddEven = false): {
     : null;
 
   // Different first page: w:titlePg turns on the "first"-type refs for page 1.
-  const titlePg = !!fc(sect, 'titlePg');
+  const titlePgEl = fc(sect, 'titlePg');
+  const titlePg = !!titlePgEl && onOff(titlePgEl);
   const refId = (type: string, variant: 'default' | 'first' | 'even' = 'default') => {
     const ref = fcAll(sect, `${type}Reference`).find((r) => (r.getAttributeNS(W, 'type') ?? 'default') === variant);
     return ref?.getAttributeNS(R, 'id') ?? null;
