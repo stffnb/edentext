@@ -224,6 +224,7 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (typeof attrs.fontSize === 'string' && attrs.fontSize) return true;
   if (typeof attrs.indent === 'number' && attrs.indent > 0) return true;
   if (typeof attrs.backgroundColor === 'string' && attrs.backgroundColor) return true;
+  if (attrs.widowControl === false) return true;
   for (const s of ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'])
     if (typeof attrs[s] === 'string' && attrs[s] && attrs[s] !== 'none') return true;
   const ta = attrs.textAlign;
@@ -1034,22 +1035,26 @@ function applyEmptyLineFontSizes(odtBytes: Uint8Array): Uint8Array {
 }
 
 // A top-level paragraph's box spec for the PBX sentinel: bg|borderTop|Right|Bottom|Left,
-// each the raw value (canonical border '<W>pt solid #RRGGBB' is a valid fo:border) or ''.
-// '' overall when the paragraph has no background/border.
+// each the raw value (canonical border '<W>pt solid #RRGGBB' is a valid fo:border) or '',
+// plus a widow-control flag. '' overall when the paragraph needs none of them.
 function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   const s = paraStyleFromAttrs(attrs);
-  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft) return '';
-  return [s.background, s.borderTop, s.borderRight, s.borderBottom, s.borderLeft].map((v) => v ?? '').join('|');
+  const noWidow = attrs?.widowControl === false;
+  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow) return '';
+  return [s.background, s.borderTop, s.borderRight, s.borderBottom, s.borderLeft]
+    .map((v) => v ?? '').concat(noWidow ? 'w0' : '').join('|');
 }
 
 function boxSpecToProps(spec: string): string {
-  const [bg, bt, br, bb, bl] = spec.split('|');
+  const [bg, bt, br, bb, bl, widow] = spec.split('|');
   const props: string[] = [];
   if (bg) props.push(`fo:background-color="${bg}"`);
   if (bt) props.push(`fo:border-top="${bt}"`);
   if (br) props.push(`fo:border-right="${br}"`);
   if (bb) props.push(`fo:border-bottom="${bb}"`);
   if (bl) props.push(`fo:border-left="${bl}"`);
+  // LibreOffice writes 0/0 for "off"; absent means the XSL-FO default of 2.
+  if (widow === 'w0') props.push('fo:orphans="0"', 'fo:widows="0"');
   return props.join(' ');
 }
 

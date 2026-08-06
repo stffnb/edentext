@@ -936,6 +936,10 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefau
   // breaks, so only "page". Cell/list blocks can't carry it.
   if (kind === 'body' && paraProps['fo:break-before'] === 'page') attrs.breakBefore = 'page';
 
+  // Widow-orphan control: LibreOffice writes 0 for "off", absent means the XSL-FO
+  // default of 2 (on) — so only an explicit 0 disables it.
+  if (paraProps['fo:widows'] === '0' || paraProps['fo:orphans'] === '0') attrs.widowControl = false;
+
   // Paragraph background ("colored field") + per-side borders ("rule line").
   Object.assign(attrs, paraBoxAttrs(paraProps));
 

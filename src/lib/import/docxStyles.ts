@@ -40,7 +40,7 @@ export function wVal(el: Element): string | null {
 }
 
 // A toggle property (w:b, w:i, …): present with no/true val = on; val false/0/off = off.
-function toggle(el: Element): boolean {
+export function toggle(el: Element): boolean {
   const v = wVal(el);
   return v == null || !(v === 'false' || v === '0' || v === 'off');
 }
@@ -104,6 +104,8 @@ export class DocxStyles {
   private defaultParaStyle: string | null = null; // the w:default="1" paragraph style
   private defaultsAlign: string | null = null; // docDefaults w:pPrDefault/w:jc
   private defaultsSpacing: ParaSpacing = {}; // docDefaults w:pPrDefault/w:spacing
+  private ownWidow = new Map<string, boolean>(); // style's own w:pPr/w:widowControl
+  private defaultsWidow: boolean | null = null; // docDefaults w:pPrDefault/w:widowControl
   private numToAbstract = new Map<string, string>();
   private abstractLevels = new Map<string, Map<number, LevelDef>>();
   private minorFont?: string; // theme1.xml body font (e.g. Calibri)
@@ -139,6 +141,8 @@ export class DocxStyles {
       if (ddJc) this.defaultsAlign = wVal(ddJc);
       const ddSp = pPr ? firstChild(pPr, 'spacing') : null;
       if (ddSp) this.defaultsSpacing = readSpacing(ddSp);
+      const ddWc = pPr ? firstChild(pPr, 'widowControl') : null;
+      if (ddWc) this.defaultsWidow = toggle(ddWc);
     }
     for (const style of Array.from(doc.getElementsByTagNameNS(W, 'style'))) {
       const id = style.getAttributeNS(W, 'styleId');
@@ -160,6 +164,8 @@ export class DocxStyles {
       if (jc) { const v = wVal(jc); if (v) this.ownAlign.set(id, v); }
       const sp = ppr && firstChild(ppr, 'spacing');
       if (sp) this.ownSpacing.set(id, readSpacing(sp));
+      const wc = ppr && firstChild(ppr, 'widowControl');
+      if (wc) this.ownWidow.set(id, toggle(wc));
       const ind = ppr && firstChild(ppr, 'ind');
       if (ind) {
         const left = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10);
@@ -281,6 +287,26 @@ export class DocxStyles {
   // Effective paragraph alignment from styles only (direct w:pPr/w:jc is read and wins in
   // the caller): the pStyle's basedOn chain, else the default paragraph style, else
   // docDefaults. Lets a paragraph inheriting justify from its style keep it. null = unset.
+  // w:widowControl along the w:basedOn chain, then the default style, then docDefaults.
+  // Absent everywhere is OOXML's implied "on".
+  paragraphWidowControl(pStyleId: string | null | undefined): boolean {
+    const own = this.styleWidow(pStyleId);
+    if (own != null) return own;
+    if (this.defaultParaStyle && this.defaultParaStyle !== pStyleId) {
+      const def = this.styleWidow(this.defaultParaStyle);
+      if (def != null) return def;
+    }
+    return this.defaultsWidow ?? true;
+  }
+
+  private styleWidow(styleId: string | null | undefined, seen = new Set<string>()): boolean | null {
+    if (!styleId || seen.has(styleId)) return null;
+    seen.add(styleId);
+    const own = this.ownWidow.get(styleId);
+    if (own != null) return own;
+    return this.styleWidow(this.basedOn.get(styleId) ?? null, seen);
+  }
+
   paragraphAlign(pStyleId: string | null | undefined): string | null {
     const own = this.styleAlign(pStyleId);
     if (own != null) return own;

@@ -1,5 +1,5 @@
 import { unzipSync, strFromU8 } from 'fflate';
-import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, wVal, W, R, WP, A, WPS, MC, VML, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
+import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, toggle as onOff, wVal, W, R, WP, A, WPS, MC, VML, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { lengthToPt } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
@@ -678,6 +678,11 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // w:pPr counts as formatting on the block.
   const attrs = blockAttrs(ppr, kind, level, directJc ? jcVal : null, {});
   const styleId = styleIdOf(ppr, ctx);
+  // Widow-orphan control has no registry home, so the resolved value rides the block.
+  const directWc = fc(ppr, 'widowControl');
+  if (!(directWc ? onOff(directWc) : ctx.styles.paragraphWidowControl(styleId))) {
+    attrs.widowControl = false;
+  }
   const baseRun = ctx.styles.paragraphRun(styleId);
   const defaults = blockDefaults(baseRun, level, boldByDefault);
   const content = convertInline(el, ctx, baseRun, defaults, false);

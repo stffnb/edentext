@@ -961,7 +961,9 @@ export const PageBreaks = Extension.create({
                 let boundaryNatural = contentEnd - effectiveTop;
                 let targetPage = page + 1;
                 let extraShift = 0;
-                const minLines = leaf.naturalHeight <= CONTENT_HEIGHT ? MIN_KEPT_LINES : 1;
+                const guarded = leaf.naturalHeight <= CONTENT_HEIGHT
+                  && leaf.el.getAttribute('data-widow-control') !== 'false';
+                const minLines = guarded ? MIN_KEPT_LINES : 1;
                 while (boundaryNatural < leaf.naturalHeight) {
                   const split = findLineSplit(leaf.el, boundaryNatural, scale, minLines);
                   if (split === null) break;

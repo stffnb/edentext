@@ -618,6 +618,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     spacing: spacingOf(attrs),
     indent: indent.left != null ? indent : undefined,
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,
+    widowControl: attrs.widowControl === false ? false : undefined,
     numbering: opts.numbering,
     shading: paraShadingOf(attrs),
     border: paraBordersOf(attrs),
