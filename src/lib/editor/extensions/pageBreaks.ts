@@ -120,6 +120,10 @@ const PAGE_HEIGHT = 1123;
 const PAGE_GAP = 20;
 const DEFAULT_MARGIN_TOP = 96;
 const DEFAULT_MARGIN_BOTTOM = 96;
+// Word/LibreOffice widow-orphan control: a page break never leaves fewer than this
+// many lines of a paragraph behind, nor carries fewer than this many over. On by
+// default in both (OOXML `w:widowControl`), so it is not configurable here.
+const MIN_KEPT_LINES = 2;
 
 export type VMargins = {
   top: number;
@@ -437,10 +441,13 @@ export const PageBreaks = Extension.create({
           return lines;
         }
 
+        // `minLines` is the widow-orphan minimum, or 1 for a leaf taller than one page
+        // slot — there the rule is unsatisfiable and splitting beats overflowing.
         function findLineSplit(
           el: HTMLElement,
           overflowDistance: number,
           scale: number,
+          minLines: number,
         ): { naturalLineTop: number; docPos: number } | null {
           const lines = getLineRects(el);
           if (lines.length === 0) return null;
@@ -486,6 +493,11 @@ export const PageBreaks = Extension.create({
             }
           }
           if (k <= 0) return null;
+          // Widow: too few lines would carry over, so take one more down with them.
+          if (lines.length - k < minLines) k = lines.length - minLines;
+          // Orphan: too few lines would stay behind — the caller pushes the whole
+          // block to the next page instead, which is what Word/LibreOffice do.
+          if (k < minLines) return null;
 
           const naturalLineTop = toNatural(lines[k].top);
           // Binary search runs in viewport space (coordsAtPos returns scaled
@@ -949,8 +961,9 @@ export const PageBreaks = Extension.create({
                 let boundaryNatural = contentEnd - effectiveTop;
                 let targetPage = page + 1;
                 let extraShift = 0;
+                const minLines = leaf.naturalHeight <= CONTENT_HEIGHT ? MIN_KEPT_LINES : 1;
                 while (boundaryNatural < leaf.naturalHeight) {
-                  const split = findLineSplit(leaf.el, boundaryNatural, scale);
+                  const split = findLineSplit(leaf.el, boundaryNatural, scale, minLines);
                   if (split === null) break;
                   const target = pageContentStart(targetPage, vm.top, CYCLE_PX);
                   const h = target - (effectiveTop + extraShift + split.naturalLineTop);
