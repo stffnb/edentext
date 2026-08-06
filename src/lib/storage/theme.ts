@@ -3,6 +3,7 @@ export type ThemeMode = 'light' | 'dark' | 'allBlack' | 'auto';
 const THEME_KEY = 'odf-editor-theme';
 const TOOLBAR_KEY = 'odf-editor-toolbar-expanded';
 const FORMATTING_MARKS_KEY = 'odf-editor-formatting-marks';
+const RULER_KEY = 'odf-editor-ruler';
 
 export function loadTheme(): ThemeMode {
     const saved = localStorage.getItem(THEME_KEY);
@@ -28,6 +29,15 @@ export function loadFormattingMarks(): boolean {
 
 export function saveFormattingMarks(enabled: boolean): void {
     localStorage.setItem(FORMATTING_MARKS_KEY, String(enabled));
+}
+
+// The ruler is on unless it was switched off.
+export function loadRuler(): boolean {
+    return localStorage.getItem(RULER_KEY) !== 'false';
+}
+
+export function saveRuler(enabled: boolean): void {
+    localStorage.setItem(RULER_KEY, String(enabled));
 }
 
 function resolveMode(mode: ThemeMode): 'light' | 'dark' | 'allBlack' {

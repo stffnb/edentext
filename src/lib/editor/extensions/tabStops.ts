@@ -12,9 +12,6 @@ import { PX_PER_CM } from '../../storage/pageMargins';
 export type TabAlign = 'left' | 'center' | 'right' | 'decimal';
 export type TabStop = { pos: number; align: TabAlign };
 
-// The default grid a tab falls back to (editor.css `tab-size`), also LibreOffice's.
-export const DEFAULT_TAB_CM = 1.25;
-
 const CODE: Record<TabAlign, string> = { left: 'l', center: 'c', right: 'r', decimal: 'd' };
 const ALIGN: Record<string, TabAlign> = { l: 'left', c: 'center', r: 'right', d: 'decimal' };
 
@@ -67,7 +64,7 @@ declare module '@tiptap/core' {
 const tabStopsKey = new PluginKey<DecorationSet>('tabStops');
 
 // A tab's advance is decided per line, so a block only needs measuring when it has
-// stops of its own; a hanging indent implies one at the text position (Word).
+// stops of its own; a hanging indent implies one at the text position.
 function stopsOf(node: PmNode): TabStop[] {
   const stops = parseTabStops(node.attrs.tabStops);
   const first = typeof node.attrs.indentFirst === 'number' ? node.attrs.indentFirst : 0;
@@ -111,10 +108,13 @@ function measure(view: EditorView): TabWidth[] {
 
     for (let t = 0; t < tabs.length; t++) {
       const tabPos = tabs[t];
-      const start = view.coordsAtPos(tabPos, 1);
+      // Side -1 measures at the end of the content BEFORE the tab, outside the tab's
+      // own span — so the margin this pass applies can't contaminate the next one's
+      // reading of where the pen stands.
+      const start = view.coordsAtPos(tabPos, -1);
       const xCm = (start.left - originX) / scale / PX_PER_CM;
-      // Word: custom stops replace the default grid to their left; past the last one
-      // the CSS grid already does the right thing, so that tab stays undecorated.
+      // Custom stops replace the default grid to their left; past the last one the
+      // CSS grid already does the right thing, so that tab stays undecorated.
       const stop = stops.find((s) => s.pos > xCm + 0.01);
       if (!stop) continue;
       let width = (stop.pos - xCm) * PX_PER_CM;
@@ -123,7 +123,7 @@ function measure(view: EditorView): TabWidth[] {
         const segEnd = t + 1 < tabs.length ? tabs[t + 1] : blockEnd;
         const segStart = view.coordsAtPos(tabPos + 1, 1);
         const end = view.coordsAtPos(segEnd, -1);
-        // A segment that wraps can't satisfy the alignment — Word falls back to left.
+        // A segment that wraps can't satisfy the alignment, so it falls back to left.
         if (segEnd > tabPos + 1 && Math.abs(end.top - start.top) < 1) {
           let back = (end.left - segStart.left) / scale;
           if (stop.align === 'center') back /= 2;
@@ -242,7 +242,10 @@ export const TabStops = Extension.create({
             if (next === key) return;
             key = next;
             const decos = widths.map((w) =>
-              Decoration.inline(w.pos, w.pos + 1, { style: `tab-size:0;margin-right:${w.width}px` }),
+              // margin-LEFT: the gap is the tab's own advance, so a caret placed after
+              // the tab has to sit behind it. As margin-right it stayed at the old x
+              // until the next keystroke moved it into the following text node.
+              Decoration.inline(w.pos, w.pos + 1, { style: `tab-size:0;margin-left:${w.width}px` }),
             );
             // The advances change line breaking, so pagination has to re-measure.
             view.dispatch(view.state.tr

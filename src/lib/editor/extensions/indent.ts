@@ -89,6 +89,8 @@ declare module '@tiptap/core' {
     indent: {
       indentMore: () => ReturnType;
       indentLess: () => ReturnType;
+      setIndent: (cm: number) => ReturnType;
+      setIndentFirst: (cm: number) => ReturnType;
       indentListMore: () => ReturnType;
       indentListLess: () => ReturnType;
       indentListForward: () => ReturnType;
@@ -100,6 +102,11 @@ declare module '@tiptap/core' {
 
 function clampIndent(cm: number): number {
   return Math.round(Math.max(0, Math.min(INDENT_MAX_CM, cm)) * 100) / 100;
+}
+
+// A first-line indent is signed (negative = Word's hanging indent).
+function clampFirst(cm: number): number {
+  return Math.round(Math.max(-INDENT_MAX_CM, Math.min(INDENT_MAX_CM, cm)) * 100) / 100;
 }
 
 function parseIndent(value: string | null): number | null {
@@ -169,25 +176,27 @@ export const Indent = Extension.create({
     const types = this.options.types as string[];
     const listTypes = this.options.listTypes as string[];
 
-    // Step every paragraph/heading in the selection by delta cm, clamped to
-    // [0, MAX]. Per-node (relative) change, so a mixed selection keeps each
-    // block's offset; list-item paragraphs are skipped (lists indent by nesting).
-    const step = (delta: number) => ({ state, tr, dispatch }: CommandProps) => {
-      const { from, to } = state.selection;
-      let changed = false;
-      state.doc.nodesBetween(from, to, (node: PMNode, pos: number, parent: PMNode | null) => {
-        if (!types.includes(node.type.name)) return;
-        if (parent?.type.name === 'listItem') return;
-        const current = typeof node.attrs.indent === 'number' ? node.attrs.indent : 0;
-        const next = clampIndent(current + delta);
-        const value = next > 0 ? next : null;
-        if (value === (node.attrs.indent ?? null)) return;
-        tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: value });
-        changed = true;
-      });
-      if (changed && dispatch) dispatch(tr);
-      return changed;
-    };
+    // Rewrite one indent attr on every paragraph/heading in the selection; 0 clears it.
+    // `next` gets the block's own value, so a relative step keeps each block's offset in
+    // a mixed selection. List-item paragraphs are skipped (lists indent by nesting).
+    const write = (attr: 'indent' | 'indentFirst', next: (current: number) => number) =>
+      ({ state, tr, dispatch }: CommandProps) => {
+        const { from, to } = state.selection;
+        let changed = false;
+        state.doc.nodesBetween(from, to, (node: PMNode, pos: number, parent: PMNode | null) => {
+          if (!types.includes(node.type.name)) return;
+          if (parent?.type.name === 'listItem') return;
+          const current = typeof node.attrs[attr] === 'number' ? node.attrs[attr] : 0;
+          const value = next(current) || null;
+          if (value === (node.attrs[attr] ?? null)) return;
+          tr.setNodeMarkup(pos, undefined, { ...node.attrs, [attr]: value });
+          changed = true;
+        });
+        if (changed && dispatch) dispatch(tr);
+        return changed;
+      };
+
+    const step = (delta: number) => write('indent', (current) => clampIndent(current + delta));
 
     // Step the innermost list ancestor's indent (shifts the whole list as a block).
     const stepList = (delta: number) => ({ state, tr, dispatch }: CommandProps) => {
@@ -211,6 +220,9 @@ export const Indent = Extension.create({
     return {
       indentMore: () => step(INDENT_STEP_CM),
       indentLess: () => step(-INDENT_STEP_CM),
+      // Absolute, as the ruler drags them; the buttons above step relatively.
+      setIndent: (cm: number) => write('indent', () => clampIndent(cm)),
+      setIndentFirst: (cm: number) => write('indentFirst', () => clampFirst(cm)),
       indentListMore: () => stepList(INDENT_STEP_CM),
       indentListLess: () => stepList(-INDENT_STEP_CM),
       indentListForward: () => ({ state, chain, commands }) => {

@@ -236,6 +236,17 @@ const de: Messages = {
     label: 'Rechtschreibsprache',
     noSpellCheck: 'Keine Rechtschreibprüfung',
   },
+  ruler: {
+    show: 'Lineal',
+    firstLineIndent: 'Erstzeileneinzug',
+    leftIndent: 'Linker Einzug',
+    tabType: {
+      left: 'Linker Tabstopp',
+      center: 'Zentrierter Tabstopp',
+      right: 'Rechter Tabstopp',
+      decimal: 'Dezimaltabstopp',
+    },
+  },
   color: {
     automatic: 'Automatisch',
     moreColors: 'Weitere Farben…',

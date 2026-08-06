@@ -240,6 +240,17 @@ const en = {
     label: 'Spell-check language',
     noSpellCheck: 'No spell check',
   },
+  ruler: {
+    show: 'Ruler',
+    firstLineIndent: 'First line indent',
+    leftIndent: 'Left indent',
+    tabType: {
+      left: 'Left tab',
+      center: 'Centre tab',
+      right: 'Right tab',
+      decimal: 'Decimal tab',
+    },
+  },
   color: {
     automatic: 'Automatic',
     moreColors: 'More colors…',

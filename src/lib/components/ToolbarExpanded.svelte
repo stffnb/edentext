@@ -24,8 +24,8 @@
   import { t } from '../i18n/i18n.svelte';
   import { shortcutHint, type ShortcutId } from '../editor/shortcuts';
 
-  let { editor, tick, showFormattingMarks = $bindable(), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), differentOddEven = $bindable(false), hfActive = null, onEditZone, onDebugDump, onManageTableStyles }:
-    { editor: Editor | null; tick: number; showFormattingMarks: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hfDistances?: HfDistances; differentFirstPage?: boolean; differentOddEven?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void; onManageTableStyles?: () => void } = $props();
+  let { editor, tick, showFormattingMarks = $bindable(), showRuler = $bindable(true), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), differentOddEven = $bindable(false), hfActive = null, onEditZone, onDebugDump, onManageTableStyles }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; showRuler?: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hfDistances?: HfDistances; differentFirstPage?: boolean; differentOddEven?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void; onManageTableStyles?: () => void } = $props();
 
   const PAGE_FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
 
@@ -1453,6 +1453,17 @@
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M11 2.25v11.5M7.5 2.25v11.5M11 2.25H6.75a2.75 2.75 0 0 0 0 5.5H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button
+        class:active={showRuler}
+        onclick={() => (showRuler = !showRuler)}
+        title={t().ruler.show}
+        aria-pressed={showRuler}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="1.75" y="5.25" width="12.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M4.75 5.25v2M7 5.25v3M9.25 5.25v2M11.5 5.25v3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
         </svg>
       </button>
     </div>

@@ -49,7 +49,8 @@
 - Word-style nesting defaults for ordered lists: an indented level numbers 1. → a. → i. (repeating) instead of restarting at "1." everywhere; explicit styles per level still override. Plus legal/outline numbering (1., 1.1., 1.2.1. …) as a list type — rendered via CSS counters, round-trips to ODF `text:display-levels` and DOCX `%1.%2.` lvlText chains
 - Nested ordered levels advance the cycle relative to the level above and inherit its suffix (a level-1 `a)` gives `i)` then `1)`); the numbering style chosen for a level is reused when you nest into it again
 - Customizable bullet symbols per list level (Word-style picker on the bullet-list split button: • ◦ ▪ ❖ ➢ ⇨ ✓ – >); round-trips to ODF `text:bullet-char` and DOCX `w:lvlText`, and the DOCX/ODT import maps Wingdings/Symbol bullets (arrows, diamonds, checkmarks …) to their Unicode equivalents instead of flattening them to plain dots. Symbols Liberation Serif lacks render from a bundled 2 KB DejaVu Sans subset (`EdenSymbols.woff2`), so markers look compact and identical on every platform instead of a stretched OS fallback
-- Tab stops (real tab character) and manual line breaks (Shift+Enter)
+- Tab stops per paragraph: left, centre, right and decimal, honoured in the rendered text (CSS only has a fixed tab grid, so each tab is measured and placed); a hanging indent implies a stop at the text position. Set them on the ruler; round-trips to ODF `style:tab-stops` and DOCX `w:tabs`
+- Manual line breaks (Shift+Enter)
 
 **Insert**
 - Tables: insert via size picker, Word-style row/column drag-resize, add / delete rows & columns, delete table, cell borders, merge cells and split cells (N×M, Word/LibreOffice-style), cell background shading, header row / first column toggles, named table styles (see Styles); a table splits cleanly across page boundaries
@@ -68,6 +69,7 @@
 - Multi-column (newspaper) layout: 1–3 columns with adjustable gap, applied to the whole document (no selection) or to selected paragraphs, Word-style — text fills column 1 to the page bottom, then column 2, and flows across pages with mid-paragraph line breaks; a section followed by other content balances its columns. Round-trips to ODF `text:section`/`style:columns` and DOCX continuous sections with `w:cols`
 - Headers & footers: page-number / page-count fields, configurable edge distances, and Word-style variants — different first page and different odd & even pages (edit a page's zone directly; blank first/even zones supported). Press Enter to add blank lines that grow a zone into the page while body text reflows so the page break sits above the footer / below the header, never overlapping. Inline images/logos can be inserted in a zone. Round-trips to ODF (`style:header-first`/`-left`, `draw:frame`) and DOCX (`w:titlePg`/`w:evenAndOddHeaders`, `ImageRun`)
 - Zoom (20–300 %)
+- Horizontal ruler above the page: click to place a tab stop of the selected type, drag to move it, drag it off to remove it; two markers set the paragraph's first-line and left indent. Toggle in the extended toolbar
 - Show formatting marks (spaces, tabs, paragraph marks)
 
 **Editing aids**

@@ -16,6 +16,7 @@
   import { NodeSelection, TextSelection } from '@tiptap/pm/state';
   import ContextMenu from './ContextMenu.svelte';
   import HeaderFooterLayer from './HeaderFooterLayer.svelte';
+  import Ruler from './Ruler.svelte';
   import { saveDocument, loadDocument } from '../storage/autosave';
   import { applyMarginVars, cmToPx, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { type Orientation } from '../storage/pageOrientation';
@@ -34,7 +35,7 @@
 
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
-    zoom = 100, onZoom, showFormattingMarks = false, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
+    zoom = 100, onZoom, showFormattingMarks = false, showRuler = true, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
     pageFormat = 'A4',
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
@@ -43,7 +44,7 @@
   }: {
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
     onZoom?: (zoom: number) => void;
-    showFormattingMarks?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat;
+    showFormattingMarks?: boolean; showRuler?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat;
     headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
     headerFirstDoc?: HfDoc; footerFirstDoc?: HfDoc; differentFirstPage?: boolean;
     headerEvenDoc?: HfDoc; footerEvenDoc?: HfDoc; differentOddEven?: boolean;
@@ -777,6 +778,11 @@
 </script>
 
 <div class="editor" bind:this={editorContainer} onwheel={onWheel} oncontextmenu={openContextMenu} role="none">
+  <!-- Hidden while a header/footer zone is active: those have no tab stops, so the
+       ruler would edit the body paragraph behind the user's back. -->
+  {#if showRuler && scaledWidth && !hfActive}
+    <Ruler {editor} {tick} zoom={appliedZoom} width={scaledWidth} margins={pageMargins} />
+  {/if}
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
   <div class="paper-scaler" style={scaledWidth ? `width: ${scaledWidth}px; height: ${scaledHeight}px;` : ''}>

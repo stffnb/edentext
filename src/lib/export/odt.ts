@@ -2292,9 +2292,8 @@ function collapseRunWhitespace(odtBytes: Uint8Array): Uint8Array {
 }
 
 // Rewrite the inline sentinels planted before serialization into real ODF elements:
-// LBR (from replaceHardBreaks) → <text:line-break/>, TAB (from replaceTabs) →
-// <text:tab/>. Both are valid as bare paragraph text and inside <text:span>.
-// Also completes a decimal tab stop, which odf-kit can only write half of.
+// LBR → <text:line-break/>, TAB → <text:tab/> (both valid as bare paragraph text and
+// inside <text:span>), and complete the decimal stop odf-kit only half-writes.
 const CHAR_TAB_STOP = 'style:type="char"';
 
 function applyInlineSentinels(odtBytes: Uint8Array): Uint8Array {

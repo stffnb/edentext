@@ -20,7 +20,7 @@
   import { resetHistoryLog } from './lib/utils/historyLog.svelte';
   import { countText, type TextStats } from './lib/utils/wordCount';
   import { clampZoom, wheelZoomFactor, MIN_ZOOM, MAX_ZOOM } from './lib/utils/zoom';
-  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, type ThemeMode } from './lib/storage/theme';
+  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, loadRuler, saveRuler, type ThemeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadPageFormat, savePageFormat, type PageFormat } from './lib/storage/pageFormat';
@@ -113,6 +113,7 @@
   let themeOpen = $state(false);
   let toolbarExpanded = $state(loadToolbarExpanded());
   let showFormattingMarks = $state(loadFormattingMarks());
+  let showRuler = $state(loadRuler());
   let zoom = $state(clampZoom(parseInt(localStorage.getItem('odf-editor-zoom') ?? '100', 10)));
   let pageMargins: PageMargins = $state(loadPageMargins());
   let pageOrientation: Orientation = $state(loadOrientation());
@@ -151,6 +152,10 @@
 
   $effect(() => {
     saveFormattingMarks(showFormattingMarks);
+  });
+
+  $effect(() => {
+    saveRuler(showRuler);
   });
 
   $effect(() => {
@@ -977,6 +982,7 @@
           editor={activeEditor}
           tick={activeTick}
           bind:showFormattingMarks
+          bind:showRuler
           bind:pageMargins
           bind:pageOrientation
           bind:pageFormat
@@ -1015,6 +1021,7 @@
     {zoom}
     onZoom={setZoom}
     {showFormattingMarks}
+    {showRuler}
     {pageMargins}
     orientation={pageOrientation}
     {pageFormat}

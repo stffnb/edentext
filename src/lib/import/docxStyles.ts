@@ -306,9 +306,6 @@ export class DocxStyles {
     return this.styleAlign(this.basedOn.get(styleId) ?? null, seen);
   }
 
-  // Effective paragraph alignment from styles only (direct w:pPr/w:jc is read and wins in
-  // the caller): the pStyle's basedOn chain, else the default paragraph style, else
-  // docDefaults. Lets a paragraph inheriting justify from its style keep it. null = unset.
   // w:widowControl along the w:basedOn chain, then the default style, then docDefaults.
   // Absent everywhere is OOXML's implied "on".
   paragraphWidowControl(pStyleId: string | null | undefined): boolean {
@@ -340,6 +337,9 @@ export class DocxStyles {
     return this.styleWidow(this.basedOn.get(styleId) ?? null, seen);
   }
 
+  // Effective paragraph alignment from styles only (direct w:pPr/w:jc is read and wins in
+  // the caller): the pStyle's basedOn chain, else the default paragraph style, else
+  // docDefaults. Lets a paragraph inheriting justify from its style keep it. null = unset.
   paragraphAlign(pStyleId: string | null | undefined): string | null {
     const own = this.styleAlign(pStyleId);
     if (own != null) return own;
