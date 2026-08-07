@@ -21,6 +21,7 @@ import { HF_DISTANCE_CM, hfIsEmpty } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
+import { listMarkerFormat } from '../editor/extensions/listMarker';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
@@ -103,6 +104,20 @@ function hexColor(input: string): string | undefined {
   return n.startsWith('#') ? n.slice(1) : n;
 }
 
+// The level's number/bullet formatting (w:lvl/w:rPr) — Word carries it per level, so
+// only a list whose items agree has one (listMarkerFormat).
+function markerRunProps(node: TiptapNode): Writable<IRunStylePropertiesOptions> | undefined {
+  const format = listMarkerFormat(node);
+  if (!format) return undefined;
+  const props: Writable<IRunStylePropertiesOptions> = {};
+  if (format.fontFamily) props.font = format.fontFamily === SCREEN_FONT ? DOC_FONT : format.fontFamily;
+  if (format.fontWeight) props.bold = !/^(normal|400)$/.test(format.fontWeight);
+  if (format.fontStyle === 'italic') props.italics = true;
+  if (format.fontSize) props.size = fontSizeToHalfPoints(format.fontSize);
+  if (format.color) props.color = hexColor(format.color);
+  return props;
+}
+
 // ---- numbering registry ----------------------------------------------------
 // docx needs all numbering definitions up front (passed to the Document). We build
 // the body paragraphs first, allocating one reference per top-level list and filling
@@ -143,7 +158,7 @@ class Numbering {
           : `%${depth + 1}${def.numSuffix}`,
         alignment: AlignmentType.LEFT,
         start: typeof node.attrs?.start === 'number' ? node.attrs.start : 1,
-        style: { paragraph: { indent } },
+        style: { paragraph: { indent }, run: markerRunProps(node) },
       });
     } else {
       levels.push({
@@ -153,7 +168,7 @@ class Numbering {
         // paragraph font (no Wingdings/Symbol rFonts needed).
         text: bulletCharOf(node, depth),
         alignment: AlignmentType.LEFT,
-        style: { paragraph: { indent } },
+        style: { paragraph: { indent }, run: markerRunProps(node) },
       });
     }
   }

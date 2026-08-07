@@ -432,17 +432,22 @@
   content: counters(list-item, ".") ". ";
 }
 
-/* The marker's weight follows the item's first text portion (listMarker.ts tags the
-   <li>); a bold mark sits inside the paragraph and never reaches ::marker. */
-.paper .tiptap li.marker-bold::marker {
-  font-weight: bold;
+/* The marker follows the item's first text portion (listMarker.ts sets the custom
+   properties on the <li>): a mark sits inside the paragraph and never reaches
+   ::marker, which only inherits the item's own font. */
+.paper .tiptap li::marker {
+  font-family: var(--marker-family, inherit);
+  font-weight: var(--marker-weight, inherit);
+  font-style: var(--marker-style, inherit);
+  font-size: var(--marker-size, inherit);
+  color: var(--marker-color, inherit);
 }
 
 /* Bullet markers render through the bundled symbol shim first: it holds only the
    glyphs Liberation Serif lacks (❖ ➢ ⇨ ✓ ▸ ◆), so those come out compact and
    platform-independent while every other char falls through to the text font. */
 .paper .tiptap ul > li::marker {
-  font-family: 'EdenText Symbols', 'Liberation Serif', serif;
+  font-family: 'EdenText Symbols', var(--marker-family, var(--font-serif)), serif;
 }
 
 /* Default bullet markers per nesting depth — the same cycle the ODT/DOCX export

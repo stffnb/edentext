@@ -16,6 +16,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { parseTabStops } from '../editor/extensions/tabStops';
+import { listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
 import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, toTimeValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
@@ -1563,6 +1564,74 @@ function applyListIndents(odtBytes: Uint8Array, indents: number[]): Uint8Array {
   return rezipOdt(files);
 }
 
+// Marker formatting per nesting level of each top-level list, from the first list at
+// that level (null unless its items agree — see listMarkerFormat). Nested lists that
+// odf-kit restyles keep their plain marker.
+function collectListMarkerFormats(doc: TiptapNode, result: (MarkerFormat | null)[][]): void {
+  for (const child of doc.content ?? []) {
+    if (child.type !== 'bulletList' && child.type !== 'orderedList') continue;
+    const levels: (MarkerFormat | null)[] = [];
+    const visit = (list: TiptapNode, depth: number) => {
+      if (levels[depth - 1] === undefined) levels[depth - 1] = listMarkerFormat(list);
+      for (const item of list.content ?? []) {
+        for (const block of item.content ?? []) {
+          if (block.type === 'bulletList' || block.type === 'orderedList') visit(block, depth + 1);
+        }
+      }
+    };
+    visit(child, 1);
+    result.push(levels);
+  }
+}
+
+// text:style-name on the level definition points at a style:family="text" style —
+// how ODF formats a number/bullet (a run inside the paragraph never reaches it).
+function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | null)[][]): Uint8Array {
+  if (!formats.some((levels) => levels.some(Boolean))) return odtBytes;
+
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  const minted: string[] = [];
+  const nameByProps = new Map<string, string>();
+  const styleFor = (format: MarkerFormat): string => {
+    const color = format.color ? normalizeColor(format.color) : undefined;
+    const props = (format.fontFamily ? ` fo:font-family="${twinFontName(format.fontFamily)}"` : '')
+      + (format.fontWeight ? ` fo:font-weight="${format.fontWeight}"` : '')
+      + (format.fontStyle ? ` fo:font-style="${format.fontStyle}"` : '')
+      + (format.fontSize ? ` fo:font-size="${format.fontSize}"` : '')
+      + (color ? ` fo:color="${color}"` : '');
+    let name = nameByProps.get(props);
+    if (!name) {
+      name = `MK${nameByProps.size + 1}`;
+      nameByProps.set(props, name);
+      minted.push(`<style:style style:name="${name}" style:family="text"><style:text-properties${props}/></style:style>`);
+    }
+    return name;
+  };
+
+  formats.forEach((levels, i) => {
+    if (!levels.some(Boolean)) return;
+    const re = new RegExp(`(<text:list-style style:name="L${i + 1}">)([\\s\\S]*?)(</text:list-style>)`);
+    content = content.replace(re, (_m, open: string, body: string, close: string) =>
+      open +
+      body.replace(/<text:list-level-style-(number|bullet) text:level="(\d)"/g, (match, kind: string, level: string) => {
+        const format = levels[Number(level) - 1];
+        return format ? `<text:list-level-style-${kind} text:level="${level}" text:style-name="${styleFor(format)}"` : match;
+      }) +
+      close,
+    );
+  });
+
+  if (minted.length) {
+    content = content.replace('</office:automatic-styles>', `${minted.join('\n')}\n</office:automatic-styles>`);
+  }
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 // odf-kit emits nested lists as bare <text:list> sharing the top-level L# style, so a
 // nested list of a different kind/format/marker loses its look. Mint it its own
 // 6-level list style (same pattern applyCellBlocks uses for cell lists).
@@ -2902,7 +2971,12 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Whole-list indent → added to each L# list-style's level margins.
   const listIndents: number[] = [];
   collectListIndents(raw, listIndents);
-  const indentedLists = applyListIndents(styledLists, listIndents);
+  let indentedLists = applyListIndents(styledLists, listIndents);
+
+  // Marker formatting → a minted character style on each L# level definition.
+  const markerFormats: (MarkerFormat | null)[][] = [];
+  collectListMarkerFormats(raw, markerFormats);
+  indentedLists = applyListMarkerFormats(indentedLists, markerFormats);
 
   // Rebuild real headings/lists/paragraphs inside table cells. Must run after
   // applyListItemStyles (cell lists don't exist yet) and before collapseRunWhitespace.

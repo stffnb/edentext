@@ -192,7 +192,7 @@ export function resolveStyle(sheet: StyleSheet, name: string | null | undefined,
 }
 
 // The bundled fonts are exposed as CSS variables; anything else renders by name.
-function cssFontFamily(name: string): string {
+export function cssFontFamily(name: string): string {
   if (name === 'Liberation Serif') return 'var(--font-serif)';
   if (name === 'Liberation Sans' || name === 'Arial') return 'var(--font-heading)';
   return `'${name.replace(/'/g, "\\'")}', var(--font-serif)`;
@@ -262,6 +262,15 @@ export function styleCss(sheet: StyleSheet): string {
     if (style.outlineLevel) selectors.push(`.paper .tiptap h${style.outlineLevel}:not([data-style])`);
     if (style.name === DEFAULT_STYLE) selectors.push('.paper .tiptap p:not([data-style])');
     rules.push(`${selectors.join(',\n')} {\n  ${decls.join(';\n  ')};\n}`);
+
+    // A list marker inherits the item's own font, never its paragraph's, so the item
+    // carries the style's text half too — else the number renders in the editor
+    // default while the text it labels follows the style.
+    const text = textDeclarations(resolveStyle(sheet, style.name).text);
+    if (!text.length) continue;
+    const items = [`.paper .tiptap li:has(> ${attr})`];
+    if (style.name === DEFAULT_STYLE) items.push('.paper .tiptap li:has(> p:not([data-style]))');
+    rules.push(`${items.join(',\n')} {\n  ${text.join(';\n  ')};\n}`);
   }
   // Table styles last: their cell selectors must outrank the paragraph rules above.
   const table = tableStyleCss(sheet.table ?? {});
