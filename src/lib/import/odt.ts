@@ -3,6 +3,7 @@ import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
+import { fitInlineImage } from '../editor/extensions/image';
 import { formatTabStops } from '../editor/extensions/tabStops';
 import { TABLE_REGIONS, tableLookAttr, type TableLook, type TableRegion } from '../styles/tableStyles';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
@@ -158,6 +159,7 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
   const title = frame.getElementsByTagNameNS(NS.svg, 'title')[0]?.textContent;
   if (title) attrs.alt = title;
   applyFrameRotationAndWrap(frame, attrs, ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name')));
+  if (!attrs.wrap || attrs.wrap === 'inline') fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
   return { type: 'image', attrs };
 }
 

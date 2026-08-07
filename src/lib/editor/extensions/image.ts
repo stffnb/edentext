@@ -44,6 +44,16 @@ export function parsePx(value: string | null): number | null {
 
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+// An as-character image wider than the text column takes a line of its own and leaves an
+// empty one above it. Fitting it to the column is where an image the file sizes to the
+// column lands anyway, once its cm/EMU width is rounded to whole px (importers).
+export function fitInlineImage(attrs: Record<string, unknown>, maxWidthPx: number): void {
+  const w = attrs.width;
+  if (typeof w !== 'number' || w <= maxWidthPx) return;
+  if (typeof attrs.height === 'number') attrs.height = Math.max(1, Math.round((attrs.height * maxWidthPx) / w));
+  attrs.width = maxWidthPx;
+}
+
 // The page text height in px, capping how tall an image can be stretched. Read live
 // from the :root vars the editor maintains (orientation/margins change them).
 export function pageContentHeightPx(): number {

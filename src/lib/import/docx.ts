@@ -4,13 +4,14 @@ import { lengthToPt } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
+import { fitInlineImage } from '../editor/extensions/image';
 import { formatTabStops } from '../editor/extensions/tabStops';
 import { tableLookAttr } from '../styles/tableStyles';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
 import { imageDataUrl, type ConvertedImages } from './imageFormats';
-import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
+import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
@@ -1142,6 +1143,7 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   if (Number.isFinite(rot) && rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
 
   if (anchor) attrs.wrap = anchorWrap(anchor, ctx);
+  else fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
   return { type: 'image', attrs };
 }
 
