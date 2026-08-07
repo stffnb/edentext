@@ -192,6 +192,9 @@ type Leaf = {
   // Manual page break before this block (ODF fo:break-before; pageBreak.ts): force the
   // leaf to the next page's top even when it would otherwise fit on the current page.
   forceBreakBefore?: boolean;
+  // Keep with next (DOCX w:keepNext, ODF fo:keep-with-next; pageBreak.ts): the leaf
+  // moves to the next page when its successor's first line no longer fits below it.
+  keepNext?: boolean;
   // Flow brackets for a too-tall row's cells (each cell is an independent flow from
   // the row top, so placement resets cumulative shift per cell): cellStart = a cell's
   // first leaf, rowStart = the row's first cell, rowEnd = last leaf of the last cell.
@@ -443,6 +446,13 @@ export const PageBreaks = Extension.create({
 
         // `minLines` is the widow-orphan minimum, or 1 for a leaf taller than one page
         // slot — there the rule is unsatisfiable and splitting beats overflowing.
+        // What a keep-with-next block has to fit below itself: the successor's first
+        // line, in unscaled doc px. An empty block falls back to its whole height.
+        function firstLineHeight(el: HTMLElement, scale: number): number {
+          const first = getLineRects(el)[0];
+          return first ? (first.bottom - first.top) / scale : el.offsetHeight;
+        }
+
         function findLineSplit(
           el: HTMLElement,
           overflowDistance: number,
@@ -724,6 +734,10 @@ export const PageBreaks = Extension.create({
                   // A manual page break is honored for top-level blocks only (not in
                   // a table cell, where the table breaks atomically between rows).
                   forceBreakBefore: !inTableCell && child.dataset?.pageBreakBefore === 'page',
+                  // A heading keeps with the next block in both Word and LibreOffice,
+                  // so their styles carry it and the attr only marks the other blocks.
+                  keepNext: !inTableCell
+                    && (child.dataset?.keepNext === 'true' || /^H[1-5]$/.test(child.tagName)),
                 });
                 cumulativeSpacerHeight += intraSpacerHeight;
                 continue;
@@ -995,6 +1009,30 @@ export const PageBreaks = Extension.create({
                     noPushReason = 'splittable-too-tall-no-push';
                   }
                 }
+              }
+            }
+
+            // Keep with next: a heading that fits but whose successor's first line does
+            // not is left stranded at the page foot, so it goes down with it. One level
+            // only — a run of them would need the pass to reconsider earlier leaves.
+            if (
+              breaks.length === 0 && leaf.keepNext && i + 1 < leaves.length
+              && effectiveTop > contentStart + 0.5
+            ) {
+              const next = leaves[i + 1];
+              const needed = next.kind === 'atomic'
+                ? Math.min(next.naturalHeight, CONTENT_HEIGHT)
+                : firstLineHeight(next.el, scale);
+              if (effectiveBottom + needed > contentEnd) {
+                const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+                const { docPos, row } = leafSpacer(leaf);
+                breaks.push({
+                  height: target - effectiveTop,
+                  docPos,
+                  row,
+                  bandOpenY: target,
+                  reason: 'keep-with-next',
+                });
               }
             }
 

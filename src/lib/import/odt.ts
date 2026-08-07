@@ -898,6 +898,9 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // paragraph-mark size), or text smaller than the style keeps the taller strut.
   const markSize = lengthToPt(baseTextProps['fo:font-size']);
   if (markSize != null && Math.abs(markSize - defaults.fontSizePt) > 0.05) attrs.fontSize = formatPt(markSize);
+  // Keep with next: a heading does that anyway (pageBreaks.ts), so only a plain
+  // paragraph carries it — otherwise every heading would accrete the producer's flag.
+  if (!isHeading && paraProps['fo:keep-with-next'] === 'always') attrs.keepNext = true;
   const markFont = resolver.fontFamilyOf(baseTextProps);
   if (markFont && !defaults.fonts.has(markFont.toLowerCase())) attrs.fontFamily = markFont;
   applyUniformRunFont(attrs, content);

@@ -1,9 +1,11 @@
 import { Extension } from '@tiptap/core';
 import { DEFAULT_SHORTCUTS } from '../shortcuts';
 
-// The two text-flow attrs of a paragraph/heading. breakBefore: 'page' round-trips to ODF
+// The text-flow attrs of a paragraph/heading. breakBefore: 'page' round-trips to ODF
 // fo:break-before and DOCX w:pageBreakBefore; widowControl: false turns off the
-// widow-orphan minimum (DOCX w:widowControl, ODF fo:widows/fo:orphans). null = default.
+// widow-orphan minimum (w:widowControl, fo:widows/fo:orphans); keepNext keeps the block
+// on the page its successor starts on (w:keepNext, fo:keep-with-next) — headings do
+// that anyway in both, so the attr only marks the other blocks. null = default.
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -46,6 +48,15 @@ export const PageBreak = Extension.create({
             renderHTML: (attributes: Record<string, unknown>) => {
               if (attributes.widowControl !== false) return {};
               return { 'data-widow-control': 'false' };
+            },
+          },
+          keepNext: {
+            default: null,
+            parseHTML: (element: HTMLElement) =>
+              element.getAttribute('data-keep-next') === 'true' ? true : null,
+            renderHTML: (attributes: Record<string, unknown>) => {
+              if (attributes.keepNext !== true) return {};
+              return { 'data-keep-next': 'true' };
             },
           },
         },

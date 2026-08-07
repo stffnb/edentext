@@ -701,6 +701,8 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   if (!(directWc ? onOff(directWc) : ctx.styles.paragraphWidowControl(styleId))) {
     attrs.widowControl = false;
   }
+  const directKn = fc(ppr, 'keepNext');
+  if (!level && (directKn ? onOff(directKn) : ctx.styles.paragraphKeepNext(styleId))) attrs.keepNext = true;
   // Tab stops: a direct w:tabs replaces the style's, which the resolver walks for.
   const directTabs = fc(ppr, 'tabs');
   const stops = formatTabStops(directTabs ? readTabStops(directTabs) : ctx.styles.paragraphTabs(styleId));

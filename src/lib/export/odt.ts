@@ -230,6 +230,7 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (typeof attrs.tabStops === 'string' && attrs.tabStops) return true;
   if (typeof attrs.backgroundColor === 'string' && attrs.backgroundColor) return true;
   if (attrs.widowControl === false) return true;
+  if (attrs.keepNext === true) return true;
   for (const s of ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'])
     if (typeof attrs[s] === 'string' && attrs[s] && attrs[s] !== 'none') return true;
   const ta = attrs.textAlign;
@@ -1052,19 +1053,20 @@ function applyEmptyLineFontSizes(odtBytes: Uint8Array): Uint8Array {
 
 // A top-level paragraph's box spec for the PBX sentinel: bg|borderTop|Right|Bottom|Left,
 // each the raw value (canonical border '<W>pt solid #RRGGBB' is a valid fo:border) or '',
-// then a widow flag and the right indent. '' overall when the paragraph needs none.
+// then a widow flag, the right indent and a keep-with-next flag. '' when it needs none.
 function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   const s = paraStyleFromAttrs(attrs);
   const noWidow = attrs?.widowControl === false;
+  const keepNext = attrs?.keepNext === true;
   // odf-kit has a paragraph option for the left indent but none for the right one.
   const right = typeof attrs?.indentRight === 'number' && attrs.indentRight > 0 ? attrs.indentRight : 0;
-  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right) return '';
+  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right && !keepNext) return '';
   return [s.background, s.borderTop, s.borderRight, s.borderBottom, s.borderLeft]
-    .map((v) => v ?? '').concat(noWidow ? 'w0' : '', right ? `${right}cm` : '').join('|');
+    .map((v) => v ?? '').concat(noWidow ? 'w0' : '', right ? `${right}cm` : '', keepNext ? 'k1' : '').join('|');
 }
 
 function boxSpecToProps(spec: string): string {
-  const [bg, bt, br, bb, bl, widow, marginRight] = spec.split('|');
+  const [bg, bt, br, bb, bl, widow, marginRight, keepNext] = spec.split('|');
   const props: string[] = [];
   if (bg) props.push(`fo:background-color="${bg}"`);
   if (bt) props.push(`fo:border-top="${bt}"`);
@@ -1074,6 +1076,7 @@ function boxSpecToProps(spec: string): string {
   // LibreOffice writes 0/0 for "off"; absent means the XSL-FO default of 2.
   if (widow === 'w0') props.push('fo:orphans="0"', 'fo:widows="0"');
   if (marginRight) props.push(`fo:margin-right="${marginRight}"`);
+  if (keepNext === 'k1') props.push('fo:keep-with-next="always"');
   return props.join(' ');
 }
 

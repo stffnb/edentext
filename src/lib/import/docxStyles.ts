@@ -127,6 +127,7 @@ export class DocxStyles {
   private defaultsSpacing: ParaSpacing = {}; // docDefaults w:pPrDefault/w:spacing
   private ownWidow = new Map<string, boolean>(); // style's own w:pPr/w:widowControl
   private ownContextual = new Map<string, boolean>(); // style's own w:pPr/w:contextualSpacing
+  private ownKeepNext = new Map<string, boolean>(); // style's own w:pPr/w:keepNext
   private ownTabs = new Map<string, TabStop[]>(); // style's own w:pPr/w:tabs
   private defaultsWidow: boolean | null = null; // docDefaults w:pPrDefault/w:widowControl
   private numToAbstract = new Map<string, string>();
@@ -191,6 +192,8 @@ export class DocxStyles {
       if (wc) this.ownWidow.set(id, toggle(wc));
       const cs = ppr && firstChild(ppr, 'contextualSpacing');
       if (cs) this.ownContextual.set(id, toggle(cs));
+      const kn = ppr && firstChild(ppr, 'keepNext');
+      if (kn) this.ownKeepNext.set(id, toggle(kn));
       const tabs = ppr && firstChild(ppr, 'tabs');
       if (tabs) this.ownTabs.set(id, readTabStops(tabs));
       const ind = ppr && firstChild(ppr, 'ind');
@@ -342,6 +345,15 @@ export class DocxStyles {
     const own = this.ownContextual.get(styleId);
     if (own != null) return own;
     return this.paragraphContextualSpacing(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // w:keepNext along the w:basedOn chain — Word's heading styles all carry it.
+  paragraphKeepNext(styleId: string | null | undefined, seen = new Set<string>()): boolean {
+    if (!styleId || seen.has(styleId)) return false;
+    seen.add(styleId);
+    const own = this.ownKeepNext.get(styleId);
+    if (own != null) return own;
+    return this.paragraphKeepNext(this.basedOn.get(styleId) ?? null, seen);
   }
 
   private styleWidow(styleId: string | null | undefined, seen = new Set<string>()): boolean | null {
