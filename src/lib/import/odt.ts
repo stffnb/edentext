@@ -137,6 +137,28 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   if (x != null && attrs.wrap && attrs.wrap !== 'topBottom') attrs.wrapOffset = Math.round(x * 100) / 100;
 }
 
+// A paragraph mark that declares nothing keeps the style's font, but the runs may all
+// agree on another one — then that is the paragraph's font, strut included. Without it
+// the taller style strut governs every line and the block renders too high.
+export function applyUniformRunFont(attrs: Record<string, unknown>, content: { type: string; marks?: { type: string; attrs?: Record<string, unknown> }[] }[]): void {
+  let family: string | null | undefined;
+  let size: string | null | undefined;
+  let runs = 0;
+  for (const n of content) {
+    if (n.type !== 'text') continue;
+    const ts = (n.marks ?? []).find((m) => m.type === 'textStyle')?.attrs ?? {};
+    const f = (ts.fontFamily as string) ?? null;
+    const s = (ts.fontSize as string) ?? null;
+    if (runs && f !== family) family = undefined;
+    if (runs && s !== size) size = undefined;
+    if (!runs) { family = f; size = s; }
+    runs++;
+  }
+  if (!runs) return;
+  if (attrs.fontFamily == null && family) attrs.fontFamily = family;
+  if (attrs.fontSize == null && size) attrs.fontSize = size;
+}
+
 // A <draw:frame><draw:image> → an image node. Size comes from the frame's svg
 // geometry (cm → px). as-char frames stay inline; paragraph/page-anchored frames
 // with a wrap become floating (wrap mode + svg:x/svg:y position).
@@ -874,6 +896,9 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // paragraph-mark size), or text smaller than the style keeps the taller strut.
   const markSize = lengthToPt(baseTextProps['fo:font-size']);
   if (markSize != null && Math.abs(markSize - defaults.fontSizePt) > 0.05) attrs.fontSize = formatPt(markSize);
+  const markFont = resolver.fontFamilyOf(baseTextProps);
+  if (markFont && !defaults.fonts.has(markFont.toLowerCase())) attrs.fontFamily = markFont;
+  applyUniformRunFont(attrs, content);
 
   const node: Node = { type: isHeading ? 'heading' : 'paragraph' };
   if (isHeading) attrs.level = level;

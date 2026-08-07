@@ -16,7 +16,7 @@ import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import type { HfDoc } from '../storage/headerFooter';
-import type { OdtImportResult } from './odt';
+import { applyUniformRunFont, type OdtImportResult } from './odt';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 
 // .docx → TipTap JSON, inverting export/docx.ts. Editor-expressible OOXML becomes its
@@ -721,6 +721,9 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // would otherwise keep the style's taller strut. Carried as a block attr.
   const fs = paragraphMarkFontSize(ppr, ctx, baseRun, defaults.fontSizePt);
   if (fs) attrs.fontSize = fs;
+  const ff = paragraphMarkFont(ppr, ctx, baseRun, defaults.fonts);
+  if (ff) attrs.fontFamily = ff;
+  applyUniformRunFont(attrs, content);
 
   const node: Node = { type: level ? 'heading' : 'paragraph' };
   if (level) attrs.level = level;
@@ -751,6 +754,16 @@ function paragraphMarkFontSize(ppr: Element | null, ctx: Ctx, baseRun: RunProps,
   if (props.sizeHalfPt == null) return null;
   const sizePt = props.sizeHalfPt / 2;
   return Math.abs(sizePt - defaultPt) > 0.05 ? `${Math.round(sizePt * 10) / 10}pt` : null;
+}
+
+// The paragraph mark's resolved font family (w:pPr/w:rPr/w:rFonts, incl. its rStyle),
+// or null when it is what the block renders at anyway.
+function paragraphMarkFont(ppr: Element | null, ctx: Ctx, baseRun: RunProps, blockFonts: Set<string>): string | null {
+  const rPr = fc(ppr, 'rPr');
+  const rStyle = fc(rPr, 'rStyle');
+  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
+  const font = props.font ?? ctx.styles.themeFont(props.fontTheme ?? 'minor');
+  return !font || blockFonts.has(font.toLowerCase()) ? null : font;
 }
 
 // Heading + clamped level. Detect via the paragraph style id (fast path for our own

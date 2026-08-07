@@ -645,8 +645,9 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
   // w:tabs. Word measures w:pos from the left text margin, the same origin the attr
   // uses, so the position goes out unshifted by the paragraph's own indent.
   const stops = parseTabStops(attrs.tabStops);
-  // Paragraph-mark run props carry an empty line's font size (see import/docx.ts).
+  // Paragraph-mark run props carry the block's own font (see import/docx.ts).
   const markSize = typeof attrs.fontSize === 'string' ? fontSizeToHalfPoints(attrs.fontSize) : undefined;
+  const markFont = typeof attrs.fontFamily === 'string' && attrs.fontFamily ? attrs.fontFamily : undefined;
   return new Paragraph({
     style,
     alignment: alignOf(attrs),
@@ -660,7 +661,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     numbering: opts.numbering,
     shading: paraShadingOf(attrs),
     border: paraBordersOf(attrs),
-    run: markSize ? { size: markSize } : undefined,
+    run: markSize || markFont ? { size: markSize, font: markFont } : undefined,
     children: inlineToRuns(node.content, opts.force),
   });
 }

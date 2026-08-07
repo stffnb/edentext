@@ -223,6 +223,7 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (attrs.spaceBefore != null) return true;
   if (attrs.spaceAfter != null) return true;
   if (typeof attrs.fontSize === 'string' && attrs.fontSize) return true;
+  if (typeof attrs.fontFamily === 'string' && attrs.fontFamily) return true;
   if (typeof attrs.indent === 'number' && attrs.indent > 0) return true;
   if (typeof attrs.indentFirst === 'number' && attrs.indentFirst !== 0) return true;
   if (typeof attrs.indentRight === 'number' && attrs.indentRight > 0) return true;
@@ -965,9 +966,21 @@ function applyPageBreaks(odtBytes: Uint8Array): Uint8Array {
   return rezipOdt(files);
 }
 
-// fo:font-size (+ asian/complex aliases) attribute string for a paragraph style.
-function fontSizeProps(size: string): string {
-  return `fo:font-size="${size}" style:font-size-asian="${size}" style:font-size-complex="${size}"`;
+// The paragraph mark's font as an FSZ payload ("<size>|<family>", either half empty).
+function markFontPayload(attrs: TiptapNode['attrs']): string {
+  const size = typeof attrs?.fontSize === 'string' ? attrs.fontSize : '';
+  const family = typeof attrs?.fontFamily === 'string' ? attrs.fontFamily : '';
+  return size || family ? `${size}|${family}` : '';
+}
+
+// The paragraph style's own text properties for that payload (+ asian/complex aliases).
+function fontSizeProps(payload: string): string {
+  const [size, family] = payload.split('|');
+  const font = family ? twinFontName(family) : '';
+  return [
+    size ? `fo:font-size="${size}" style:font-size-asian="${size}" style:font-size-complex="${size}"` : '',
+    font ? `style:font-name="${font}" style:font-name-asian="${font}" style:font-name-complex="${font}"` : '',
+  ].filter(Boolean).join(' ');
 }
 
 // Clone a <style:style> def under newName, adding fo:font-size to its text-properties.
@@ -2955,8 +2968,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
       // The paragraph-mark font size rides as an FSZ sentinel that
       // applyEmptyLineFontSizes turns into a paragraph-style fo:font-size — it is the
       // block's line-height floor, so it matters on a filled block as much as an empty one.
-      const fsz = typeof node.attrs?.fontSize === 'string' && node.attrs.fontSize
-        ? `${FSZ}${node.attrs.fontSize}${FSZ}` : '';
+      const fszPayload = markFontPayload(node.attrs);
+      const fsz = fszPayload ? `${FSZ}${fszPayload}${FSZ}` : '';
       // Paragraph background/borders ride as a leading PBX sentinel (odf-kit has no such
       // options); applyParagraphBoxes mints the style. FSZ stays first so its own pass,
       // which runs earlier, still matches it right after the opening tag.
