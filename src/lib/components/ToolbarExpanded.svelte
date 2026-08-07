@@ -147,7 +147,7 @@
   const DEFAULT_LINE_HEIGHT = '1';
   const LINE_HEIGHTS = ['1', '1.15', '1.5', '2'];
 
-  // Word binds only these three; 1.15 has no key.
+  // Only these three have a key; 1.15 has none.
   const LH_SHORTCUTS: Record<string, ShortcutId | undefined> = {
     '1': 'lineHeight1', '1.5': 'lineHeight15', '2': 'lineHeight2',
   };

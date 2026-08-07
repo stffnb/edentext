@@ -60,11 +60,11 @@
   // top toolbars target hfEditor instead of the body editor (activeEditor below).
   let headerDoc: HfDoc = $state(loadHfDoc('header'));
   let footerDoc: HfDoc = $state(loadHfDoc('footer'));
-  // First-page header/footer (Word "Different First Page"), shown on page 1 when on.
+  // First-page header/footer, shown on page 1 when the flag is on.
   let headerFirstDoc: HfDoc = $state(loadHfDoc('header', 'first'));
   let footerFirstDoc: HfDoc = $state(loadHfDoc('footer', 'first'));
   let differentFirstPage: boolean = $state(loadDifferentFirstPage());
-  // Even-page header/footer (Word "Different Odd & Even Pages"), shown on even pages when on.
+  // Even-page header/footer, shown on even pages when the flag is on.
   let headerEvenDoc: HfDoc = $state(loadHfDoc('header', 'even'));
   let footerEvenDoc: HfDoc = $state(loadHfDoc('footer', 'even'));
   let differentOddEven: boolean = $state(loadDifferentOddEven());
@@ -1112,11 +1112,9 @@
     z-index: 190;
   }
 
-  /* Toolbar scroll region: an overlay pinned over the editor (which fills the full
-     height), so the document scrolls under the floating island and stays visible in
-     the transparent gaps around it. pointer-events pass through everywhere except
-     the island pieces themselves. The z-index keeps the whole toolbar — incl. its
-     dropdowns, which live inside the translated stack — above the editor overlays. */
+  /* Toolbar scroll region: an overlay pinned over the full-height editor, so the document
+     scrolls under the floating island and stays visible in the gaps around it. Pointer
+     events pass through except on the island; z-index lifts it (and its dropdowns). */
   .toolbar-region {
     position: absolute;
     top: 0;
@@ -1154,10 +1152,9 @@
   /* Custom scrollbar strip under the toolbar (a native one auto-hides on macOS).
      The thumb's width/position track the visible fraction of the stack; only rendered
      when the toolbar overflows. */
-  /* Runs along the inside of the island's bottom edge. Lives inside the island
-     (header / expanded row) and is counter-translated (inline style) so it stays
-     put while the stack scrolls; z:1 paints it above the island surface but below
-     the dropdowns (z ≥ 200 in the same stacking context). */
+  /* Runs along the inside of the island's bottom edge, counter-translated (inline style)
+     so it stays put while the stack scrolls; z:1 paints it above the island surface but
+     below the dropdowns (z ≥ 200 in the same stacking context). */
   .toolbar-scrollbar {
     position: absolute;
     left: 0;
@@ -1269,10 +1266,9 @@
     gap: 2px;
   }
 
-  /* Editable document title: borderless at rest, text auto-sizes to its
-     content (via the hidden .doc-name-sizer mirror), an animated underline
-     grows in on focus, and a pencil hint fades in on hover. Drives the
-     suggested save filename. */
+  /* Editable document title, borderless at rest: the text auto-sizes to its content (via
+     the hidden .doc-name-sizer mirror), an underline grows in on focus, a pencil hint
+     fades in on hover. Drives the suggested save filename. */
   .doc-name {
     position: relative;
     display: inline-flex;

@@ -41,9 +41,8 @@
   });
 
   // Keep the panel inside the window; a right-click near an edge otherwise opens a menu
-  // that runs off-screen. Measured from the layout box (offset*), not
-  // getBoundingClientRect, so the flip transform below can't feed back into the next
-  // measurement.
+  // that runs off-screen. Measured from the layout box (offset*), not getBoundingClientRect,
+  // so the flip transform below can't feed back into the next measurement.
   $effect(() => {
     void [top, left, items];
     if (!menuEl) return;

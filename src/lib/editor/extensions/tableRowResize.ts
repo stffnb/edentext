@@ -7,7 +7,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { cellAround } from '@tiptap/pm/tables';
 import { domCellAround, tableColumnResizeKey } from './tableColumnResize';
 
-// Word-style row-height drag: changes the row above the grid line, min-height
+// Row-height drag: changes the row above the grid line, min-height
 // semantics (stored as `rowHeight` in tableRow.ts). Live preview is a meta-only
 // Decoration.node (no history); yields to column resize at a corner.
 

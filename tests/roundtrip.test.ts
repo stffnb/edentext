@@ -780,7 +780,7 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('shape fill/stroke: explicit none → null stroke', none.attrs.strokeColor === null, none.attrs);
   });
 
-  it('wraps the body in columns when the page layout declares them (Word-style)', () => {
+  it('wraps the body in columns when the page layout declares them', () => {
     const stylesXml = `<?xml version="1.0" encoding="UTF-8"?>
 <office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0">
  <office:automatic-styles>
@@ -828,7 +828,7 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
 });
 
 describe('Leg 3: header/footer → buildOdt → importOdt', () => {
-  it('round-trips header/footer content, fields, and the Word-style geometry mapping', async () => {
+  it('round-trips header/footer content, fields, and the geometry mapping', async () => {
     const header: N = { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'right' }, content: [
       { type: 'text', text: 'Bericht ', marks: [{ type: 'bold' }, { type: 'textStyle', attrs: { color: '#C00000' } }] },
       { type: 'text', text: '2026' },
@@ -851,7 +851,7 @@ describe('Leg 3: header/footer → buildOdt → importOdt', () => {
       firstDiff(normalize(header), normalize(hfRes.header)));
     check('hf: footer round-trips', firstDiff(normalize(footer), normalize(hfRes.footer)) === null,
       firstDiff(normalize(footer), normalize(hfRes.footer)));
-    // The body margins survive the Word-style header/footer geometry mapping.
+    // The body margins survive the header/footer geometry mapping.
     const hm = hfRes.margins!;
     check('hf: body margins preserved through geometry mapping',
       !!hm && Math.abs(hm.top - 3) < 0.05 && Math.abs(hm.bottom - 2) < 0.05 &&

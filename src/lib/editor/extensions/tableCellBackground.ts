@@ -1,11 +1,9 @@
 import { Extension } from '@tiptap/core';
 import { HEADER_SHADE } from './tableHeaderRow';
 
-// Word/LibreOffice cell shading: a `backgroundColor` attr on table cells, rendered
-// as the cell's CSS background and round-tripped to ODF fo:background-color
-// (export/odt.ts exportTable, import/odt.ts convertTable). Set via the built-in
-// setCellAttribute command (TableToolbar's ColorPicker). The default cell renderHTML
-// emits no style, so this global attribute merges in cleanly.
+// Cell shading: a `backgroundColor` attr on table cells, rendered as the cell's CSS
+// background and round-tripped to ODF fo:background-color. Set via the built-in
+// setCellAttribute, so it covers a whole CellSelection or just the cursor's cell.
 
 export const TableCellBackground = Extension.create({
   name: 'tableCellBackground',

@@ -120,8 +120,7 @@ export function builtinStyleSheet(): StyleSheet {
 
 // Inheritance order: every style directly followed by its own children, so the manager's
 // indent matches the tree. Siblings sort built-ins first (as listed above), then by name.
-// `Heading` is an abstract parent (LibreOffice's, holding what all levels share) — never
-// assignable, so the gallery hides it (its children stay); the manager passes withAbstract.
+// `Heading` is abstract (never assignable), so only withAbstract callers see it.
 export function styleOrder(sheet: StyleSheet, withAbstract = false, family: StyleFamily = 'paragraph'): Style[] {
   if (family === 'table') return []; // table styles have no inheritance — listed flat
   const styles = family === 'character' ? sheet.character : sheet.paragraph;

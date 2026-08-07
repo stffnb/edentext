@@ -462,7 +462,7 @@ export class StyleResolver {
 
   // Header/footer of the master page: the content elements, the vertical space the
   // zone occupies below/above the page margin (height + body-side spacing, for the
-  // Word-style body-margin reconstruction), and whether per-page variants exist.
+  // body-margin reconstruction), and whether per-page variants exist.
   masterPageHF(): {
     header: Element | null;
     footer: Element | null;
@@ -506,9 +506,8 @@ export class StyleResolver {
         ?? lengthToCm(props.getAttributeNS(NS.fo, 'min-height'))
         ?? 0;
       // style:dynamic-spacing="true" makes the header↔body gap collapsible (the header
-      // grows into it), so LibreOffice doesn't push the body down by the full spacing —
-      // reserving it as a fixed body margin is what shoves the text down. Only the fixed
-      // (non-dynamic) spacing is added to the body margin.
+      // grows into it), so the body isn't pushed down by it. Only fixed (non-dynamic)
+      // spacing is added to the body margin.
       const dynamic = props.getAttributeNS(NS.style, 'dynamic-spacing') === 'true';
       const spacing = dynamic ? 0 : (lengthToCm(props.getAttributeNS(NS.fo, spacingAttr)) ?? 0);
       return height + spacing;

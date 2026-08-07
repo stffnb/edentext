@@ -1,8 +1,6 @@
-// Header/footer content: one single-paragraph TipTap doc per zone (hfExtensions
-// schema). The 'default' variant repeats on every page (odd pages when odd/even is
-// on); 'first' (Word "Different First Page" / ODF header-first) overrides page 1;
-// 'even' (Word "Different Odd & Even Pages" / ODF header-left) overrides even pages.
-// Precedence: first (page 1) > even (even pages) > default. null = empty zone.
+// Header/footer content: one single-paragraph TipTap doc per zone (hfExtensions schema).
+// 'default' repeats on every page (odd pages when odd/even is on), 'first' overrides
+// page 1, 'even' overrides even pages — also their precedence. null = empty zone.
 
 export type HfZone = 'header' | 'footer';
 export type HfVariant = 'default' | 'first' | 'even';
@@ -36,9 +34,9 @@ export function saveDifferentOddEven(on: boolean): void {
   else localStorage.removeItem(DIFFERENT_ODD_EVEN_KEY);
 }
 
-// Word's default distance from the page edge to the header/footer text. The body
-// margin stays the body margin (Word semantics); export/import convert to ODF's
-// margin-to-header model (see export/odt.ts applyHfPostProcess).
+// Default distance from the page edge to the header/footer text; the body margin stays
+// the body margin. Export/import convert to ODF's margin-to-header model (see
+// export/odt.ts applyHfPostProcess).
 export const HF_DISTANCE_CM = 1.25;
 
 // Per-zone distance from the page edge to the header (from top) / footer (from

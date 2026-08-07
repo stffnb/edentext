@@ -119,9 +119,8 @@ function markerRunProps(node: TiptapNode): Writable<IRunStylePropertiesOptions> 
 }
 
 // ---- numbering registry ----------------------------------------------------
-// docx needs all numbering definitions up front (passed to the Document). We build
-// the body paragraphs first, allocating one reference per top-level list and filling
-// in each nesting level's format the first time we meet a list node at that depth.
+// docx needs every numbering definition up front, so the body is built first: one
+// reference per top-level list, each nesting level's format filled in when first met.
 class Numbering {
   readonly config: { reference: string; levels: ILevelsOptions[] }[] = [];
   private map = new Map<string, ILevelsOptions[]>();

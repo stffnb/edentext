@@ -203,9 +203,8 @@ function materializeListMarkers(root: HTMLElement): void {
 }
 
 // Off-screen raster of the live .paper at scale 1, captured to one tall canvas covering
-// every page (page i occupies [i*cycle, i*cycle+pageH]). Shared by the PDF download and
-// the raster print path; the caller invokes cleanup() once done reading `clone`. `scale`
-// is the oversampling factor @ A4 (2 ≈ 192 dpi, 3 ≈ 288 dpi).
+// every page (page i occupies [i*cycle, i*cycle+pageH]); the caller invokes cleanup() once
+// done reading `clone`. `scale` = oversampling @ A4 (2 ≈ 192 dpi, 3 ≈ 288 dpi).
 export async function renderPaperToCanvas(opts: PdfOptions, scale = 2): Promise<{
   canvas: HTMLCanvasElement; clone: HTMLElement; pages: number;
   pageW: number; pageH: number; cycle: number; scale: number; cleanup: () => void;
@@ -355,11 +354,11 @@ export interface PrintPdfOptions {
   pageFormat?: PageFormat;
   headerDoc: HfDoc;
   footerDoc: HfDoc;
-  // First-page overrides (Word "Different First Page"); rendered via @page :first.
+  // First-page overrides, rendered via @page :first.
   headerFirstDoc?: HfDoc;
   footerFirstDoc?: HfDoc;
   differentFirstPage?: boolean;
-  // Even-page overrides (Word "Different Odd & Even Pages"); rendered via @page :left
+  // Even-page overrides, rendered via @page :left
   // (in an LTR document left pages are the even ones), which :first still overrides.
   headerEvenDoc?: HfDoc;
   footerEvenDoc?: HfDoc;

@@ -82,8 +82,8 @@
     return { top, left, width, height };
   }
   // The active (edited) zone grows to fit its content, keeping the anchored edge fixed
-  // (footer bottom at footerDistPx, header top at headerDistPx) so the Word-style
-  // boundary line sits exactly at the content's edge toward the body.
+  // (footer bottom at footerDistPx, header top at headerDistPx) so the boundary line
+  // sits exactly at the content's edge toward the body.
   function activeZoneBox(zone: HfZone, page: number) {
     const b = zoneBox(zone, page);
     // A visible ProseMirror trailing break (a caret line past the real content) is
@@ -116,7 +116,7 @@
   let headerEvenHtml = $derived(staticHtml(headerEvenDoc));
   let footerEvenHtml = $derived(staticHtml(footerEvenDoc));
 
-  // Which variant a page shows (Word precedence): page 1 → first (if on), other even
+  // Which variant a page shows, in precedence order: page 1 → first (if on), other even
   // pages → even (if on), everything else → default/odd. Each variant, when on, always
   // shows its own (possibly empty) zone, never the default.
   function variantFor(page: number): HfVariant {
@@ -338,7 +338,7 @@
     opacity: 0.6;
   }
 
-  /* Word-style affordance: a single dashed line at the edge facing the page body
+  /* Boundary affordance: a single dashed line at the edge facing the page body
      (footer top, header bottom) instead of a rectangle around the content. */
   .hf-active::after {
     content: '';
@@ -355,7 +355,7 @@
     bottom: 0;
   }
 
-  /* Word-style zone label tab, pinned to the zone's top-left corner. */
+  /* Zone label tab, pinned to the zone's top-left corner. */
   .hf-tag {
     position: absolute;
     transform: translateY(calc(-100% - 2px));
@@ -380,10 +380,9 @@
     line-height: 1.15;
     white-space: pre-wrap;
   }
-  /* The live editor's editable root is also a `.tiptap`, so the global
-     `.paper .tiptap` rules (96px padding, 1123px min-height, page-background
-     gradient) leak in and push the text out of the clipped zone. Reset them —
-     higher specificity than `.paper .tiptap`, plus !important for the gradient. */
+  /* The live editor's editable root is also a `.tiptap`, so the global `.paper .tiptap`
+     rules (96px padding, 1123px min-height, page gradient) leak in and push the text out
+     of the clipped zone. Reset them — higher specificity, plus !important for the gradient. */
   .hf-layer .hf-zone :global(.tiptap) {
     padding: 0;
     min-height: 0;
@@ -399,10 +398,9 @@
        anchored edge while the real content stays put (set per active zone). */
     margin-bottom: var(--hf-tb-offset, 0px);
   }
-  /* The live editor's paragraph also matches `.paper .tiptap p` (margin-bottom
-     0.212cm), which the static `<p>` doesn't — with flex-end alignment that gap
-     shifts the text up on activation. Match the static zero margin (higher
-     specificity than `.paper .tiptap p`). */
+  /* The live editor's paragraph also matches `.paper .tiptap p` (margin-bottom 0.212cm),
+     which the static `<p>` doesn't — with flex-end alignment that gap shifts the text up
+     on activation. Match the static zero margin (higher specificity). */
   .hf-layer .hf-zone :global(.tiptap p) {
     margin: 0;
   }

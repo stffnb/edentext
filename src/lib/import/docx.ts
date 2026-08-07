@@ -246,9 +246,8 @@ function documentLanguage(stylesDoc: Document | null, warnings: Set<string>): Do
 }
 
 // ---- block conversion (paragraphs, lists, tables) --------------------------
-// A Word/LibreOffice TOC is a `TOC` field spanning several paragraphs (begin+instrText
-// first, cached entries between, end last), each entry itself a nested PAGEREF field — so
-// field depth is tracked (across one convertBlocks call) to match the TOC's own end.
+// A TOC is a `TOC` field spanning several paragraphs, each entry a nested PAGEREF field,
+// so field depth is tracked (across one convertBlocks call) to match the TOC's own end.
 type TocFieldState = { fieldDepth: number; tocDepth: number; instr: string[] };
 
 function scanTocField(p: Element, st: TocFieldState): { emit: boolean } {
@@ -880,11 +879,9 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     // date/time field (replaced by its live node).
     const skipResult = () => fieldMode === 'result' && (hfFields || !!fieldDateTime);
 
-    // Route a drawing/pict result: an image is inline; a text box is a block node
-    // riding ctx.pendingBlocks. The one-paragraph header/footer schema holds inline
-    // (as-character) images but not boxes — those are dropped with a warning. A floating
-    // drawing (page background, watermark, fold marks) can't be placed in the one-paragraph
-    // zone and, sized to the page, would overlay the whole document, so it's dropped there.
+    // Route a drawing/pict result: an image is inline, a text box a block node riding
+    // ctx.pendingBlocks. The one-paragraph header/footer zone takes as-char images only —
+    // boxes and floating page-sized drawings (backgrounds, watermarks) are dropped there.
     const pushDrawn = (n: Node | null, floating: boolean) => {
       if (!n) return;
       if (hfFields) {

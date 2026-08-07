@@ -98,9 +98,8 @@ const PBX = '\uE00C';
 const TOC_SENT = '';
 
 // Sentinel bracketing a hoisted text box's blocks (marker paragraphs TBX S{i} TBX …
-// TBX E{i} TBX): replaceTextBoxes hoists the box's blocks to top level so every
-// existing pass serializes them; applyTextBoxes wraps the region back into a
-// <draw:frame>/<draw:text-box> or <draw:custom-shape>. U+E008.
+// TBX E{i} TBX): hoisted to top level, they ride every existing pass; applyTextBoxes
+// wraps the region back into a <draw:frame>/<draw:text-box> or custom shape. U+E008.
 const TBX = '';
 
 // Sentinel bracketing a hoisted multi-column section's blocks, same mechanism as
@@ -465,10 +464,9 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
   };
 }
 
-// Swap each top-level textBox for a pair of marker paragraphs bracketing its child
-// blocks, hoisted to top level. The hoisted blocks then ride every existing export
-// pass unchanged (custom attrs, list styles, inline sentinels, images); applyTextBoxes
-// re-wraps the serialized region into the drawing element. Top-level only by schema.
+// Swap each top-level textBox for a pair of marker paragraphs bracketing its child blocks,
+// hoisted to top level so they ride every existing export pass unchanged (custom attrs,
+// list styles, inline sentinels, images); applyTextBoxes re-wraps the serialized region.
 function replaceTextBoxes(doc: TiptapNode, boxes: TextBoxExport[]): TiptapNode {
   if (!doc.content?.length) return doc;
   const content: TiptapNode[] = [];
@@ -810,10 +808,9 @@ function applyTableStyleNames(odtBytes: Uint8Array, tables: (TableStyleRef | nul
       `$1 style:parent-style-name="${odfStyleName(ref.name)}"`,
     );
   });
-  // Which conditional areas the table opts into: ODF's own table:use-*-styles pair with
-  // a table template, so the toggles survive a round trip through our own importer.
-  // Lookahead, not \b: a hyphen is a word boundary, so \b would also match
-  // <table:table-cell/-row/-column and consume the counter.
+  // Which conditional areas the table opts into (ODF's own table:use-*-styles), so the
+  // toggles survive a round trip. Lookahead, not \b: a hyphen is a word boundary, so \b
+  // would also match <table:table-cell/-row/-column and consume the counter.
   content = content.replace(/<table:table(?=[\s>])[^>]*/g, (tag) => {
     const ref = tables[nth++];
     return ref ? `${tag} ${odfLookAttrs(ref.look)}` : tag;
@@ -2070,13 +2067,13 @@ function linkHrefOf(marks: TiptapNode['marks'] = []): string | undefined {
   return href ? String(href) : undefined;
 }
 
-// Emit each text node as an odf-kit run; link-marked runs become <text:a> via addLink.
-// forceBold bakes bold onto every run regardless of marks — used for header-row cells,
-// whose bold is presentational (CSS) in the editor and so isn't stored as a mark.
 // The sheet of the export in flight, so the run emitters can resolve character styles
 // without threading it through every cell/list helper (mirrors docLangTag in docx.ts).
 let exportSheet: StyleSheet = builtinStyleSheet();
 
+// Emit each text node as an odf-kit run; link-marked runs become <text:a> via addLink.
+// `force` bakes formatting onto every run regardless of marks — for header/region cells,
+// whose formatting is presentational (CSS) in the editor and so isn't stored as marks.
 function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = [], force: TextProps = {}) {
   const forced = Object.keys(force).length ? textFormatting(force) : null;
   for (const node of content) {
@@ -2349,12 +2346,9 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
       t.addRow((r: RowBuilder) => {
         for (const cell of row.content ?? []) {
           if (cell.type !== 'tableCell' && cell.type !== 'tableHeader') continue;
-          // Emit the cell's runs (SEG-separated) and record its block descriptor.
-          // addCell runs synchronously, so the push is in document order — matching
-          // how applyCellBlocks later walks cells in content.xml.
-          // colSpan/rowSpan make odf-kit emit number-columns/rows-spanned and the
-          // <table:covered-table-cell> placeholders; those never match the
-          // applyCellBlocks cell regex, so cellBlocks stays one-per-real-cell aligned.
+          // Emit the cell's runs (SEG-separated) and record its descriptor; addCell is
+          // synchronous, so the push stays in document order, matching applyCellBlocks'
+          // walk. Spans make odf-kit emit covered cells, which its cell regex never matches.
           const opts: CellOptions = { padding: CELL_PADDING };
           const colspan = (cell.attrs?.colspan as number) ?? 1;
           const rowspan = (cell.attrs?.rowspan as number) ?? 1;
@@ -2826,11 +2820,9 @@ export type HfExport = {
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
 export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet()): Promise<Uint8Array> {
-  // Collect embedded images and swap them for IMG sentinels before serialization;
-  // applyImages resolves the sentinels and writes the Pictures/ + manifest entries.
-  // Text boxes and columns sections are hoisted after replacePageBreaks (so PGB never
-  // lands on their blocks) and before the inline passes (which then cover the hoisted
-  // blocks too).
+  // Images become IMG sentinels before serialization; applyImages resolves them and writes
+  // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
+  // (so PGB misses their blocks) and before the inline passes (which then cover them).
   exportSheet = styles;
   const images: ImageExport[] = [];
   const tocs: TocExport[] = [];
@@ -2859,7 +2851,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   evenHeaderPara = replaceHfImages(evenHeaderPara, hfImages);
   evenFooterPara = replaceHfImages(evenFooterPara, hfImages);
   // With the flag on, page 1 is independent: whenever a side has a zone on either
-  // variant, emit both (an empty one blanks its side, matching the editor and Word).
+  // variant, emit both — an empty one blanks its side, as the editor shows it.
   if (differentFirstPage) {
     const empty = (): TiptapNode => ({ type: 'paragraph', content: [] });
     if (headerPara || firstHeaderPara) { headerPara ??= empty(); firstHeaderPara ??= empty(); }
@@ -3067,7 +3059,7 @@ function hfParaProps(para: TiptapNode): string[] {
 
 // Header/footer post-processing on styles.xml: resolve LBR/PGC sentinels, apply the
 // paragraph alignment to the Header/Footer styles, and rewrite the geometry to the
-// Word-style mapping (page margin = HF distance, min-height fills up to the body margin).
+// ODF's own mapping (page margin = HF distance, min-height fills up to the body margin).
 function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPara: TiptapNode | null, footerPara: TiptapNode | null, headerDist: number, footerDist: number, firstHeaderPara: TiptapNode | null = null, firstFooterPara: TiptapNode | null = null, pageCount = 1, hfImages: ImageExport[] = [], evenHeaderPara: TiptapNode | null = null, evenFooterPara: TiptapNode | null = null): Uint8Array {
   if (!headerPara && !footerPara && !firstHeaderPara && !firstFooterPara && !evenHeaderPara && !evenFooterPara) return odtBytes;
 

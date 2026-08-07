@@ -7,10 +7,9 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { HANDLES, MIN_SIZE_PX, clamp, parsePx, pageContentHeightPx, type WrapMode } from './image';
 
-// A text box / basic shape: a block-level frame with editable block content, a fill,
-// a stroke, and the image's wrap model (inline = in-flow; left/right/topBottom float).
-// Round-trips to ODF <draw:frame>/<draw:text-box> or <draw:custom-shape>, and to
-// DOCX DrawingML <wps:wsp>/<wps:txbx>.
+// A text box / basic shape: a block-level frame with editable block content, a fill, a
+// stroke, and the image's wrap model (inline = in-flow; left/right/topBottom float).
+// Round-trips to ODF <draw:frame>/<draw:text-box>/<draw:custom-shape> and DOCX <wps:wsp>.
 
 export type ShapeKind = 'textbox' | 'roundRect' | 'ellipse';
 
@@ -214,10 +213,9 @@ export const TextBox = Node.create({
   },
 });
 
-// Node view: like ImageView, an axis-aligned wrapper reserves the rotated bounding
-// box and a centered rotor carries fill/stroke/rotation plus the resize/rotate
-// handles — but the rotor holds an editable contentDOM and auto-grows with its text,
-// so a ResizeObserver re-fits the wrapper whenever the rotor's size changes.
+// Node view: like ImageView, an axis-aligned wrapper reserves the rotated bounding box and
+// a centered rotor carries fill/stroke/rotation plus the handles — but the rotor holds an
+// editable contentDOM and auto-grows, so a ResizeObserver re-fits the wrapper.
 class TextBoxView {
   dom: HTMLElement;
   contentDOM: HTMLElement;

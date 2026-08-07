@@ -5,12 +5,9 @@ import type { EditorState } from '@tiptap/pm/state';
 import { selectedRect, isInTable } from '@tiptap/pm/tables';
 import { parseTableLook, type TableRegion } from '../../styles/tableStyles';
 
-// Word/LibreOffice "header row"/"header column" as a styling preset: the first row (or
-// column) gets bold text + a light grey fill, both of which round-trip to ODF/DOCX. The
-// fill doubles as the marker, so no <table:table-header-rows> and no page repetition.
-// A table carrying a *table style* owns these two areas through its Table Style Options
-// instead, so there the toggle reads and writes that flag — one state, two surfaces
-// (this button and the gallery's checkbox), never disagreeing.
+// "Header row"/"header column" as a styling preset: the first row (or column) gets bold
+// text + a light grey fill, both round-tripping to ODF/DOCX. The fill doubles as the
+// marker, so no <table:table-header-rows> and no page repetition.
 
 export const HEADER_SHADE = '#F2F2F2';
 

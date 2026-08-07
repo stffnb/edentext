@@ -38,7 +38,7 @@
     { id: 'none', on: [] },
   ];
 
-  // Word-like button states, re-read per transaction (tick) and pen change: a preset
+  // Button states, re-read per transaction (tick) and pen change: a preset
   // is active when its boundaries all render the pen border; 'none' when borderless.
   const active = $derived(
     tick >= 0 && editor ? activeBorderPresets(editor.state, { widthPt, color }) : null,

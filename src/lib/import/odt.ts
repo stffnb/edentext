@@ -65,10 +65,9 @@ export interface OdtImportResult {
 // paragraph's indent lives in the list style rather than its own margin.
 type BlockKind = 'body' | 'list' | 'cell';
 
-// `files` is the full unzipped archive so image converters can read Pictures/
-// binaries; imageCache dedupes repeated hrefs into one data-URI. pendingBlocks is
-// the side channel for text boxes/shapes found while converting inline content —
-// they are block nodes, so convertBlocks flushes them after the anchor paragraph.
+// `files` is the full unzipped archive so image converters can read Pictures/ binaries;
+// imageCache dedupes repeated hrefs into one data-URI. pendingBlocks is the side channel
+// for text boxes found in inline content — convertBlocks flushes them after the anchor.
 type Ctx = {
   resolver: StyleResolver;
   // ODF style name → display name, and the names blocks actually reference: the
@@ -119,11 +118,9 @@ function frameRotationDeg(el: Element): number {
   return ((Math.round((-parseFloat(rot[1]) * 180) / Math.PI) % 360) + 360) % 360;
 }
 
-// Set rotation + wrap attrs shared by images, text boxes and shapes. A non-as-char
-// anchor or an explicit style:wrap makes the element floating (free x/y positions
-// collapse to the nearest side — the editor's anchor-float model). An explicit
-// as-char anchor is always inline: LibreOffice's named Graphics style carries a
-// style:wrap that would otherwise float every inherited as-char frame.
+// Rotation + wrap attrs, shared by images, text boxes and shapes. A non-as-char anchor or
+// an explicit style:wrap floats the element (free x/y collapse to the nearest side). An
+// explicit as-char anchor stays inline: LibreOffice's Graphics style carries a style:wrap.
 function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap): void {
   const deg = frameRotationDeg(el);
   if (deg) attrs.rotation = deg;
@@ -164,11 +161,9 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
   return { type: 'image', attrs };
 }
 
-// A shape's fill color. fo:background-color (LibreOffice's per-shape fill) wins over
-// draw:fill when set. A drawn shape's fill defaults to solid when the keyword is
-// absent — LibreOffice omits draw:fill and only writes "none" to turn it off, taking
-// the color from the (usually inherited) draw:fill-color. defaultSolid is false for
-// plain text frames, whose fill defaults to none.
+// A shape's fill color; fo:background-color (LibreOffice's per-shape fill) beats draw:fill.
+// A drawn shape's fill defaults to solid when the keyword is absent — LibreOffice only
+// writes "none" to turn it off. defaultSolid is false for plain text frames (fill none).
 function shapeFill(gp: PropMap, defaultSolid: boolean): string | null {
   const bg = gp['fo:background-color'];
   if (bg !== undefined) return bg === 'transparent' || bg === 'none' ? null : normalizeColor(bg) ?? null;
@@ -200,10 +195,9 @@ function shapeStroke(gp: PropMap, defaultSolid: boolean): { color: string | null
   return { color, widthPt: color ? lengthToPt(gp['svg:stroke-width']) : null };
 }
 
-// Fill/stroke attrs from a shape's graphic style, suppressing the editor defaults
-// (white fill, 1pt black stroke). Absent/none → explicit null (transparent/no border),
-// since omitting the attr would re-apply the default. defaultSolid marks drawn shapes,
-// whose fill/stroke default to solid (unlike a plain text frame's).
+// Fill/stroke attrs from a shape's graphic style, suppressing the editor defaults (white
+// fill, 1pt black stroke). Absent/none → explicit null, since omitting the attr would
+// re-apply the default. defaultSolid marks drawn shapes, whose fill/stroke default solid.
 function shapeStyleAttrs(gp: PropMap, attrs: Record<string, unknown>, defaultSolid: boolean): void {
   const fillColor = shapeFill(gp, defaultSolid);
   if (fillColor !== '#FFFFFF') attrs.fillColor = fillColor;
@@ -363,7 +357,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 
-  // Whole-document columns declared on the page layout (Word-style) instead of a
+  // Whole-document columns declared on the page layout instead of a
   // text:section: wrap the body's wrappable runs the way a section would be.
   const pageCols = resolver.pageColumns();
   if (pageCols) {
@@ -536,9 +530,8 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
   const out: Node[] = [];
 
   // Emit an anchor block, then any text boxes found inside it (block nodes riding
-  // ctx.pendingBlocks). In the body they follow the anchor at top level — and an
-  // empty anchor (our own export's wrapper paragraph) is dropped; elsewhere (cells,
-  // other boxes) their blocks are unwrapped in place.
+  // ctx.pendingBlocks). In the body they follow the anchor at top level, and an empty
+  // anchor (our export's wrapper) is dropped; in cells/boxes they unwrap in place.
   const pushWithPending = (anchor: Node | null) => {
     const pending = ctx.pendingBlocks.splice(0);
     const anchorIsEmpty = anchor?.type === 'paragraph' && !anchor.content?.length;
@@ -1301,10 +1294,9 @@ function outlineHeadingEls(listEl: Element): Element[] | null {
   return out.length ? out : null;
 }
 
-// `inheritedStyleName`: nested text:list elements usually carry no style-name of
-// their own — the outermost list's style governs, with one level def per depth.
-// `govMultilevel`: this list sits inside a multilevel (display-levels) chain, so an
-// explicit numbering here must never be suppressed to null (null = rejoin the chain).
+// `inheritedStyleName`: a nested text:list usually carries no style-name of its own — the
+// outermost list's style governs, one level def per depth. `govMultilevel`: inside a
+// display-levels chain, so an explicit numbering here is never suppressed (null = rejoin).
 function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, depth: number, govMultilevel = false, baseCycle: OrderedCycle = ROOT_ORDERED_CYCLE): Node | null {
   const styleName = el.getAttributeNS(NS.text, 'style-name') ?? inheritedStyleName;
   const levelDef = listLevelDef(ctx.resolver.listStyle(styleName), depth);
@@ -1430,13 +1422,9 @@ function listLevelDef(listStyle: Element | null, depth: number): Element | null 
 
 // ---- tables ------------------------------------------------------------------------
 
-// ODF border ("0.5pt solid #000000" / "none" / absent) → border attr value: null for
-// the editor default (0.5pt black, tolerance for producer unit rounding), 'none' for
-// no border, else the canonical '<W>pt solid #RRGGBB'. Non-solid styles are coerced
-// to solid (the editor only renders solid lines).
-// treatDefaultAsNull: table cells collapse the 0.5pt-black default to null (= the table's
-// own default border). Paragraph borders have no such default, so they pass false to keep
-// a declared thin-black rule as an explicit canonical value.
+// ODF border ("0.5pt solid #000000" / "none" / absent) → the canonical '<W>pt solid
+// #RRGGBB', 'none', or null; non-solid styles coerce to solid. treatDefaultAsNull folds
+// the 0.5pt-black default to null — cells inherit the table's, paragraph borders don't.
 export function borderAttrFromOdf(raw: string | null | undefined, treatDefaultAsNull = true): string | null {
   if (!raw || raw === 'none' || raw === 'hidden') return 'none';
   let widthPt: number | null = null;

@@ -5,13 +5,9 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { TableMap, selectedRect, isInTable } from '@tiptap/pm/tables';
 import { columnWeightsFromRow } from './tableView';
 
-// Word/LibreOffice "Split Cells…": divide the current cell (or a clean rectangular
-// cell selection) into `cols` × `rows` sub-cells. prosemirror-tables only ships
-// splitCell (un-merge), so this is custom. The table is a strict rectangular grid,
-// so adding sub-columns/rows means inserting grid lines and letting every other
-// cell that crosses a new line grow its span (bridge).
-// Implemented by reading the grid via TableMap, expanding it, partitioning the
-// cell's region, and rebuilding the table node in one step.
+// "Split Cells…": divide the current cell (or a clean rectangular cell selection) into
+// `cols` × `rows` sub-cells; prosemirror-tables only ships splitCell (un-merge). Reads
+// the grid via TableMap, inserts grid lines (crossing cells bridge), rebuilds the table.
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {

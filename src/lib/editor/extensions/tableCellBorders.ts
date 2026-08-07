@@ -3,13 +3,9 @@ import type { CommandProps } from '@tiptap/core';
 import type { EditorState } from '@tiptap/pm/state';
 import { selectedRect, isInTable } from '@tiptap/pm/tables';
 
-// Word/LibreOffice table borders: per-side attrs (`borderTop/Right/Bottom/Left`) on
-// table cells. `null` = the table default (0.5pt solid black), `'none'` = no border,
-// else the canonical `'<W>pt solid #RRGGBB'`. Round-trips to ODF fo:border-* and DOCX
-// w:tcBorders (export/odt.ts exportTable, import/odt.ts convertTable, export/import
-// docx.ts). setTableBorders applies a Word-style preset to the selected cell region,
-// writing BOTH sides of every affected boundary (incl. the facing side of neighbour
-// cells outside the region) so collapsed borders never disagree between two cells.
+// Per-side border attrs (`borderTop/Right/Bottom/Left`) on table cells: `null` = the
+// table default (0.5pt solid black), `'none'` = no border, else the canonical
+// `'<W>pt solid #RRGGBB'`. Round-trips to ODF fo:border-* and DOCX w:tcBorders.
 
 export const DEFAULT_BORDER_WIDTH_PT = 0.5;
 export const DEFAULT_BORDER_COLOR = '#000000';
@@ -68,10 +64,9 @@ const SIDE_META: Record<BorderSide, { data: string; css: string }> = {
   borderLeft: { data: 'data-border-left', css: 'border-left' },
 };
 
-// Walks every boundary a preset targets in the selected rect, reporting the two
-// facing (cellPos, side) pairs of each; a pos is null at the table edge. Boundaries
-// running inside a merged cell are skipped. Shared by the setTableBorders command
-// and the active-preset reader below.
+// Walks every boundary a preset targets in the selected rect, reporting both facing
+// (cellPos, side) pairs — writing both is what keeps collapsed borders from disagreeing.
+// A pos is null at the table edge; boundaries inside a merged cell are skipped.
 function forEachBoundary(
   rect: ReturnType<typeof selectedRect>,
   preset: BorderPreset,
@@ -157,10 +152,9 @@ export const BORDER_PRESETS: BorderPreset[] = [
 // (a border beats 'none', wider beats narrower; attr null = the table default).
 type EffectiveBorder = { widthPt: number; color: string } | 'none';
 
-// Word-like active states for the picker: a preset is active when every boundary it
-// targets renders exactly the pen border (width + color) — so with the default thin
-// pen a fresh table lights up every preset; picking a thicker pen turns them off.
-// 'none' is active when the whole region renders borderless. null outside a table.
+// Active states for the picker: a preset is active when every boundary it targets renders
+// exactly the pen border (width + color), so the default thin pen lights up a fresh table
+// and a thicker pen turns it off. 'none' = borderless region; null outside a table.
 export function activeBorderPresets(
   state: EditorState,
   spec: Exclude<BorderSpec, null>,

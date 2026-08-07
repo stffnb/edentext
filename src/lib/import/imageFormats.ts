@@ -1,9 +1,6 @@
-// Image-format handling shared by the ODF and DOCX importers. An <img> can only
-// render a fixed set of formats; anything else (WMF/EMF/SVM/TIFF/…) is either decoded
-// client-side (see convertUnsupportedImages) or skipped with a warning rather than
-// emitted as a broken image. The format is resolved from the file extension first, then
-// confirmed/recovered from the bytes' magic number so a mislabelled or extensionless
-// entry still works.
+// Image formats, shared by both importers. An <img> renders only a fixed set, so the
+// rest (WMF/EMF/SVM/TIFF/…) is decoded client-side (convertUnsupportedImages) or skipped
+// with a warning. Resolved by extension, then by magic number so mislabels still work.
 import { unzipSync } from 'fflate';
 
 const MIME_BY_EXT: Record<string, string> = {

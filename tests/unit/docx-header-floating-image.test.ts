@@ -17,9 +17,8 @@ function docx(files: Record<string, string | Uint8Array>): Uint8Array {
 }
 
 // Header with a floating full-page VML background ("Falzmarken"-style, position:absolute,
-// A4-sized) followed by a genuine inline (as-character) logo. Word templates place page
-// backgrounds/watermarks in the header this way; our one-paragraph zone can't position
-// them, and at full size they overlay the whole document — so they must be dropped.
+// A4-sized) followed by a genuine inline (as-character) logo. Templates put backgrounds
+// and watermarks there; the one-paragraph zone can't position them, so they're dropped.
 const HEADER_XML = `<?xml version="1.0"?>
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
        xmlns:r="${REL}"

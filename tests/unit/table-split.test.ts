@@ -1,7 +1,6 @@
 // Unit test for the custom splitCellInto command: drives it against a ProseMirror
-// EditorState (no DOM/Editor needed) and inspects the rebuilt table. Covers the
-// two Word/LibreOffice cases: splitting a plain cell (adds grid lines + bridges
-// neighbours) and splitting a merged cell (un-merge).
+// EditorState (no DOM/Editor needed) and inspects the rebuilt table. Covers both cases:
+// a plain cell (adds grid lines + bridges neighbours) and a merged cell (un-merge).
 import { describe, it, expect } from 'vitest';
 import { getSchema } from '@tiptap/core';
 import { EditorState, TextSelection } from '@tiptap/pm/state';

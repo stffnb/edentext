@@ -1,7 +1,6 @@
 // LibreOffice round-trip leg: editor JSON -> buildOdt -> `soffice --convert-to odt`
-// re-save -> importOdt -> compare. Requires LibreOffice (soffice) on PATH; the whole
-// suite is skipped when it is absent (so plain `npm test` / CI stay green).
-// jsdom (vitest `environment`) supplies the global DOMParser.
+// re-save -> importOdt -> compare. Requires soffice on PATH; the whole suite self-skips
+// when it is absent (so plain `npm test` / CI stay green).
 import { describe, it, expect } from 'vitest';
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';

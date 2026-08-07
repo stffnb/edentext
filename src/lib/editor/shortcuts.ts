@@ -1,9 +1,8 @@
 import { withShortcut } from '../i18n/shortcut';
 
-// Every shortcut this app binds itself, in ProseMirror keymap syntax ('Mod' =
-// Ctrl/Cmd). Ids are stable so a later remapping UI only overrides this map.
-// TipTap's own defaults (Mod-b/i/u, Mod-Shift-s/h, Mod-z, Mod-Shift-7/8,
-// Mod-Shift-l/e/r/j, Tab in tables) are not listed — they are not ours to bind.
+// Every shortcut this app binds itself, in ProseMirror keymap syntax ('Mod' = Ctrl/Cmd).
+// Ids are stable so a later remapping UI only overrides this map. TipTap's own defaults
+// (Mod-b/i/u, Mod-Shift-s/h, Mod-z, Mod-Shift-7/8, …) are not ours to bind and not listed.
 
 export const DEFAULT_SHORTCUTS = {
   // Character formatting — LibreOffice's sub/superscript keys; Word's Ctrl+= pair

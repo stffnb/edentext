@@ -119,7 +119,7 @@ export const extensions = [
   // LibreOffice (the sheet resolves a character style on that portion).
   ListMarker.configure({ sheet: styleSheet }),
   // resizable:false keeps TipTap's columnResizing plugin off; TableView, the two
-  // resize plugins, and ResizableTableRow supply Word-style drag instead. Table
+  // resize plugins, and ResizableTableRow supply the drag handling instead. Table
   // (unlike TableKit) doesn't auto-add children, so ResizableTableRow is listed here.
   Table.configure({ resizable: false, View: TableView }),
   ResizableTableRow,

@@ -316,10 +316,9 @@
     opacity: 0.9;
   }
 
-  /* Bleeds to both panel edges below the grid, like the style gallery's manage row.
-     The panel is shrink-to-fit, so its width must come from the grid alone: width:0
-     keeps this row out of that calculation, and min-width then fills the resolved
-     width plus the two negative margins. The label truncates instead (title = full). */
+  /* Bleeds to both panel edges below the grid. The panel is shrink-to-fit, so its width
+     must come from the grid alone: width:0 keeps this row out of that calculation, and
+     min-width then fills the resolved width plus the two negative margins. */
   .table-manage {
     display: flex;
     align-items: center;

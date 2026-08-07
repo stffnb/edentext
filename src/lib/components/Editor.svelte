@@ -74,11 +74,9 @@
   let headerDistPx = $derived(cmToPx((hfDistances ?? DEFAULT_HF_DISTANCES).header));
   let mBottomPx = $derived(cmToPx(pageMargins.bottom));
   let mTopPx = $derived(cmToPx(pageMargins.top));
-  // Effective top/bottom margins (px) for other pages vs. page 1's own header/footer
-  // (different first page); pageBreaks reads these to start each page's content below
-  // its header and end it above its footer.
-  // "rest" = every page ≥ 2; fold the even variant in (max) so even pages never overlap
-  // a taller even zone — pageBreaks uses one --pb-content-*-rest for all of them.
+  // Effective top/bottom margins (px) pageBreaks reads to keep content clear of the
+  // header/footer: "first" = page 1's own zone, "rest" = every page ≥ 2 with the even
+  // variant folded in (max), since one --pb-content-*-rest covers all of them.
   let evenTopReach = $derived(differentOddEven ? hfReachPx(headerEvenDoc ?? null, headerDistPx) : 0);
   let evenBottomReach = $derived(differentOddEven ? hfReachPx(footerEvenDoc ?? null, footerDistPx) : 0);
   let effTopRest = $derived(Math.max(mTopPx, hfReachPx(headerDoc ?? null, headerDistPx), evenTopReach));

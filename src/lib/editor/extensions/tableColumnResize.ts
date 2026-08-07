@@ -7,7 +7,7 @@ import { TableMap, cellAround, pointsAtCell } from '@tiptap/pm/tables';
 import { columnWeightsFromRow, columnPercents } from './tableView';
 import { PX_PER_CM } from '../../storage/pageMargins';
 
-// Word-style column resizing: an inner border trades width between its two columns
+// Column resizing: an inner border trades width between its two columns
 // (table width fixed); an outer edge moves the table's `marginLeft`/`marginRight` (cm)
 // and the adjacent column. Live drag pokes the DOM; release writes the attrs.
 
@@ -111,7 +111,7 @@ function handleMouseMove(view: EditorView, event: MouseEvent): void {
   }
 }
 
-// Outer-edge drag, Word-style: only the adjacent column gives up width, so every
+// Outer-edge drag: only the adjacent column gives up width, so every
 // other gridline stays put. All lengths in unscaled document px; the edge stops at
 // the text margin (margins never go negative) and at the column's minimum width.
 export function edgeResize(

@@ -164,7 +164,7 @@ export const ParagraphBox = Extension.create({
   },
 });
 
-// Word-like active states for the paragraph border picker: a preset is active when every
+// Active states for the paragraph border picker: a preset is active when every
 // covered block renders exactly the pen border on every side the preset targets. `none`
 // is active when every covered block is borderless. null when no block is selected.
 export function activeParagraphBorderPresets(
