@@ -49,9 +49,11 @@
   font-family: var(--font-serif);
   /* 12pt matches odf-kit's Standard style and the toolbar's declared default. */
   font-size: 12pt;
-  /* ODF/LibreOffice "single" spacing = the font's natural line height
-     (Liberation Serif ≈ 1.15× em), NOT 1.0× the font size like CSS unitless 1.
-     Keep this in sync with LINE_HEIGHT_RATIO in lineHeight.ts. */
+  /* "Single" spacing is the font's natural line height (Liberation Serif ≈ 1.15× em),
+     not CSS unitless 1. A paragraph's line spacing multiplies that, so the two ride as
+     separate variables and the block rule below is the one place they meet. */
+  --natural-line: 1.15;
+  --line-factor: 1;
   line-height: 1.15;
   color: var(--color-page-text);
 
@@ -392,7 +394,13 @@
      (styles/styleSheet.ts → the #document-styles element Editor.svelte writes). */
   font: inherit;
   margin: 0;
-  line-height: 1.15;
+}
+
+/* The line box: the paragraph's spacing factor times its font's natural line height.
+   Either half may come from the style rule or, nearer, from the block's own attrs
+   (lineHeight.ts / blockFontSize.ts) — multiplying them here is what keeps both. */
+.paper .tiptap :is(p, h1, h2, h3, h4, h5, li) {
+  line-height: calc(var(--line-factor) * var(--natural-line));
 }
 
 .paper .tiptap ul,

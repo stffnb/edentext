@@ -20,6 +20,7 @@ export type ParaProps = {
 export type TextProps = {
   fontFamily?: string;
   fontSizePt?: number;
+  letterSpacingPt?: number; // character spacing (Word's w:spacing, ODF fo:letter-spacing)
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
@@ -200,7 +201,7 @@ export function cssFontFamily(name: string): string {
 // Single spacing is the font's *natural* line height, so it differs per family.
 // Liberation Serif's 1.15 is the default (editor.css); only the bundled families that
 // deviate are listed, measured against LibreOffice at 12pt.
-export const DEFAULT_SINGLE_LINE_HEIGHT = 1.15;
+const DEFAULT_SINGLE_LINE_HEIGHT = 1.15;
 const SINGLE_LINE_HEIGHT: Record<string, number> = {
   Calibri: 1.2208,
   'Calibri Light': 1.2208,
@@ -215,16 +216,18 @@ export function singleLineHeight(fontFamily?: string): number {
   return (fontFamily && SINGLE_LINE_HEIGHT[fontFamily]) || DEFAULT_SINGLE_LINE_HEIGHT;
 }
 
-// The text half of a rule, shared with the table-style family (tableStyles.ts).
-export function textDeclarations(t: TextProps): string[] {
+// The text half of a rule, shared with the table-style family (tableStyles.ts). A block
+// takes the family's natural line height as the variable editor.css multiplies by the
+// paragraph's spacing factor; a run box sets its line height outright.
+export function textDeclarations(t: TextProps, asBlock = false): string[] {
   const out: string[] = [];
   if (t.fontFamily) {
     out.push(`font-family: ${cssFontFamily(t.fontFamily)}`);
     const lh = SINGLE_LINE_HEIGHT[t.fontFamily];
-    // An explicit line spacing is emitted after this and wins.
-    if (lh) out.push(`line-height: ${lh}`);
+    if (lh) out.push(`${asBlock ? '--natural-line' : 'line-height'}: ${lh}`);
   }
   if (t.fontSizePt != null) out.push(`font-size: ${t.fontSizePt}pt`);
+  if (t.letterSpacingPt) out.push(`letter-spacing: ${t.letterSpacingPt}pt`);
   if (t.bold != null) out.push(`font-weight: ${t.bold ? 700 : 400}`);
   if (t.italic != null) out.push(`font-style: ${t.italic ? 'italic' : 'normal'}`);
   if (t.underline || t.strike) {
@@ -236,13 +239,9 @@ export function textDeclarations(t: TextProps): string[] {
 
 function declarations(r: ResolvedStyle): string[] {
   const { para: p } = r;
-  const out = textDeclarations(r.text);
+  const out = textDeclarations(r.text, true);
   if (p.textAlign) out.push(`text-align: ${p.textAlign}`);
-  if (p.lineHeight) {
-    const n = parseFloat(p.lineHeight);
-    const scaled = Math.round(n * singleLineHeight(r.text.fontFamily) * 1000) / 1000;
-    out.push(`line-height: ${isNaN(n) ? p.lineHeight : scaled}`);
-  }
+  if (p.lineHeight) out.push(`--line-factor: ${p.lineHeight}`);
   if (p.spaceBefore != null) out.push(`margin-top: ${p.spaceBefore}pt`);
   if (p.spaceAfter != null) out.push(`margin-bottom: ${p.spaceAfter}pt`);
   if (p.indent != null) out.push(`margin-left: ${p.indent}cm`);

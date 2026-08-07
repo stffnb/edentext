@@ -941,6 +941,7 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   // The registry holds the on-screen family; the file declares its metric twin.
   if (t.fontFamily) run.font = twinFontName(t.fontFamily);
   if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
+  if (t.letterSpacingPt) run.characterSpacing = Math.round(t.letterSpacingPt * 20);
   if (t.bold != null) run.bold = t.bold;
   if (t.italic != null) run.italics = t.italic;
   if (t.underline) run.underline = {};
@@ -971,6 +972,7 @@ function characterStyleOf(style: Style): ICharacterStyleOptions {
   const run: Writable<IRunStylePropertiesOptions> = {};
   if (t.fontFamily) run.font = t.fontFamily === 'Liberation Serif' ? DOC_FONT : t.fontFamily;
   if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
+  if (t.letterSpacingPt) run.characterSpacing = Math.round(t.letterSpacingPt * 20);
   if (t.bold != null) run.bold = t.bold;
   if (t.italic != null) run.italics = t.italic;
   if (t.underline) run.underline = {};

@@ -24,6 +24,7 @@ export type RunProps = {
   vertAlign?: 'superscript' | 'subscript';
   color?: string; // raw w:val hex (no #) or 'auto'
   sizeHalfPt?: number; // w:sz (half-points)
+  spacingTwip?: number; // w:spacing (character spacing, twentieths of a point)
   font?: string; // explicit w:rFonts w:ascii/hAnsi
   fontTheme?: 'minor' | 'major'; // w:rFonts w:asciiTheme/hAnsiTheme → theme1.xml font
   highlightFill?: string; // run-level w:shd w:fill (text highlight)
@@ -82,6 +83,7 @@ export function parseRunProps(rPr: Element | null | undefined): RunProps {
       }
       case 'color': { const v = wVal(child); if (v) p.color = v; break; }
       case 'sz': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.sizeHalfPt = n; break; }
+      case 'spacing': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.spacingTwip = n; break; }
       case 'rFonts': {
         const f = child.getAttributeNS(W, 'ascii') ?? child.getAttributeNS(W, 'hAnsi');
         if (f) { p.font = f; break; }

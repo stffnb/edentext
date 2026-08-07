@@ -775,6 +775,8 @@ function textPropsFromOdf(props: PropMap, resolver: StyleResolver): TextProps {
   if (family) out.fontFamily = screenFontName(family);
   const size = lengthToPt(props['fo:font-size']);
   if (size != null) out.fontSizePt = Math.round(size * 10) / 10;
+  const spacing = lengthToPt(props['fo:letter-spacing']);
+  if (spacing) out.letterSpacingPt = Math.round(spacing * 100) / 100;
   const weight = props['fo:font-weight'];
   if (weight) out.bold = weight === 'bold' || parseInt(weight, 10) >= 600;
   const style = props['fo:font-style'];

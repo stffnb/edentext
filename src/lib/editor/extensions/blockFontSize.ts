@@ -47,12 +47,11 @@ export const BlockFontSize = Extension.create({
             renderHTML: (attributes: Record<string, unknown>) => {
               if (!attributes.fontFamily) return {};
               const family = String(attributes.fontFamily);
-              // Single spacing is this family's natural line height. An explicit line
-              // spacing already scales by it (lineHeight.ts), so it wins outright.
-              const lh = attributes.lineHeight ? '' : `; line-height: ${singleLineHeight(family)}`;
+              // Single spacing is this family's natural line height; the paragraph's own
+              // spacing factor multiplies it (editor.css).
               return {
                 'data-block-font-family': family,
-                style: `font-family: ${cssFontFamily(family)}${lh}`,
+                style: `font-family: ${cssFontFamily(family)}; --natural-line: ${singleLineHeight(family)}`,
               };
             },
           },

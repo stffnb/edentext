@@ -618,6 +618,7 @@ function runTextProps(run: RunProps): TextProps {
   if (run.font) out.fontFamily = run.font === 'Times New Roman' ? 'Liberation Serif'
     : run.font === 'Arial' ? 'Liberation Sans' : run.font;
   if (run.sizeHalfPt != null) out.fontSizePt = Math.round((run.sizeHalfPt / 2) * 10) / 10;
+  if (run.spacingTwip) out.letterSpacingPt = Math.round((run.spacingTwip / 20) * 100) / 100;
   if (run.bold != null) out.bold = run.bold;
   if (run.italic != null) out.italic = run.italic;
   if (run.underline != null) out.underline = run.underline;
