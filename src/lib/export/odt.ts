@@ -322,7 +322,7 @@ function replacePageBreaks(doc: TiptapNode): TiptapNode {
 // bytes is ArrayBuffer-backed to match fflate's zip entry map. rotationDeg is CW;
 // wrap floats the frame at its anchor paragraph (left/right/top-bottom).
 type WrapMode = 'inline' | 'left' | 'right' | 'topBottom';
-type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number; wrap: WrapMode };
+type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number; wrap: WrapMode; wrapOffsetCm: number | null };
 
 function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
@@ -363,6 +363,7 @@ function imageDescriptor(node: TiptapNode, index: number, namePrefix = 'image'):
     alt: typeof node.attrs?.alt === 'string' ? node.attrs.alt : '',
     rotationDeg: typeof node.attrs?.rotation === 'number' ? node.attrs.rotation : 0,
     wrap,
+    wrapOffsetCm: typeof node.attrs?.wrapOffset === 'number' ? round3(node.attrs.wrapOffset) : null,
   };
 }
 
@@ -2437,9 +2438,11 @@ function imageTransform(img: ImageExport): string {
 
 // ODF style:wrap is the side TEXT flows on (inverse of the image side); horizontal-pos
 // places the frame on that side. topBottom ⇒ no wrap, centred.
-function imageWrapProps(wrap: WrapMode): string {
-  if (wrap === 'left') return 'style:wrap="right" style:horizontal-pos="left"';
-  if (wrap === 'right') return 'style:wrap="left" style:horizontal-pos="right"';
+// An offset frame is placed by coordinate instead (svg:x on the frame).
+function imageWrapProps(wrap: WrapMode, offset: number | null): string {
+  const pos = offset != null && wrap !== 'topBottom' ? 'from-left' : null;
+  if (wrap === 'left') return `style:wrap="right" style:horizontal-pos="${pos ?? 'left'}"`;
+  if (wrap === 'right') return `style:wrap="left" style:horizontal-pos="${pos ?? 'right'}"`;
   return 'style:wrap="none" style:horizontal-pos="center"';
 }
 
@@ -2449,7 +2452,7 @@ function imageGraphicStyle(img: ImageExport, index: number): string {
   if (img.wrap === 'inline') return '';
   return (
     `<style:style style:name="ImgFr${index + 1}" style:family="graphic">` +
-    `<style:graphic-properties ${imageWrapProps(img.wrap)}` +
+    `<style:graphic-properties ${imageWrapProps(img.wrap, img.wrapOffsetCm)}` +
     ` style:number-wrapped-paragraphs="no-limit"` +
     ` style:horizontal-rel="paragraph-content"` +
     ` style:vertical-pos="top" style:vertical-rel="paragraph"/>` +
@@ -2468,8 +2471,10 @@ function imageFrameXml(img: ImageExport, index: number): string {
   const inner = `<draw:image xlink:href="${img.path}"/>${title}`;
   const anchor = img.wrap === 'inline' ? 'as-char' : 'paragraph';
   const styleName = img.wrap === 'inline' ? '' : ` draw:style-name="ImgFr${index + 1}"`;
+  const x = img.wrapOffsetCm != null && img.wrap !== 'inline' && img.wrap !== 'topBottom'
+    ? ` svg:x="${img.wrapOffsetCm}cm"` : '';
   return (
-    `<draw:frame draw:name="Image${index + 1}"${styleName} text:anchor-type="${anchor}" draw:z-index="${index}"${dims}${imageTransform(img)}>` +
+    `<draw:frame draw:name="Image${index + 1}"${styleName} text:anchor-type="${anchor}" draw:z-index="${index}"${dims}${x}${imageTransform(img)}>` +
     `${inner}</draw:frame>`
   );
 }
@@ -2611,7 +2616,7 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
     : 'draw:stroke="none"';
   const wrap = box.wrap === 'inline'
     ? ''
-    : ` ${imageWrapProps(box.wrap)} style:number-wrapped-paragraphs="no-limit"` +
+    : ` ${imageWrapProps(box.wrap, null)} style:number-wrapped-paragraphs="no-limit"` +
       ` style:horizontal-rel="paragraph-content" style:vertical-pos="top" style:vertical-rel="paragraph"`;
   // auto-grow only for plain text boxes; a custom-shape needs both explicitly
   // false, or LibreOffice's shape autofit shrinks it to its text.

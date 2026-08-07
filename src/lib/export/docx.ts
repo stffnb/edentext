@@ -313,7 +313,9 @@ function decodeDataUri(src: string): { bytes: Uint8Array; type: 'png' | 'jpg' | 
   }
 }
 
-function floatingFor(wrap: string): IFloating | undefined {
+// offsetCm places the frame in the text column (Word's posOffset); without one it is
+// flush to its side.
+function floatingFor(wrap: string, offsetCm: number | null): IFloating | undefined {
   if (wrap === 'inline') return undefined;
   const verticalPosition = { relative: VerticalPositionRelativeFrom.PARAGRAPH, offset: 0 };
   if (wrap === 'topBottom') {
@@ -327,8 +329,11 @@ function floatingFor(wrap: string): IFloating | undefined {
   // left: image at left, text on the right; right: mirror.
   const align = wrap === 'right' ? HorizontalPositionAlign.RIGHT : HorizontalPositionAlign.LEFT;
   const side = wrap === 'right' ? TextWrappingSide.LEFT : TextWrappingSide.RIGHT;
+  const horizontalPosition = offsetCm != null
+    ? { relative: HorizontalPositionRelativeFrom.MARGIN, offset: Math.round(offsetCm * 360000) }
+    : { relative: HorizontalPositionRelativeFrom.MARGIN, align };
   return {
-    horizontalPosition: { relative: HorizontalPositionRelativeFrom.MARGIN, align },
+    horizontalPosition,
     verticalPosition,
     wrap: { type: TextWrappingType.SQUARE, side },
     allowOverlap: false,
@@ -344,12 +349,13 @@ function imageRun(node: TiptapNode): ImageRun | null {
   const height = typeof node.attrs?.height === 'number' && node.attrs.height > 0 ? Math.round(node.attrs.height) : 150;
   const rotation = typeof node.attrs?.rotation === 'number' ? node.attrs.rotation : 0;
   const wrap = String(node.attrs?.wrap ?? 'inline');
+  const offsetCm = typeof node.attrs?.wrapOffset === 'number' ? node.attrs.wrapOffset : null;
   return new ImageRun({
     type: decoded.type,
     data: decoded.bytes,
     altText: typeof node.attrs?.alt === 'string' && node.attrs.alt ? { name: node.attrs.alt, title: node.attrs.alt, description: node.attrs.alt } : undefined,
     transformation: { width, height, rotation: rotation || undefined },
-    floating: floatingFor(wrap),
+    floating: floatingFor(wrap, offsetCm),
   });
 }
 

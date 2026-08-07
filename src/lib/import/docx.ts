@@ -1142,29 +1142,38 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   const rot = xfrm ? parseInt(xfrm.getAttribute('rot') ?? '', 10) : NaN;
   if (Number.isFinite(rot) && rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
 
-  if (anchor) attrs.wrap = anchorWrap(anchor, ctx);
-  else fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
+  if (anchor) {
+    const { wrap, offsetCm } = anchorWrap(anchor, ctx);
+    attrs.wrap = wrap;
+    if (offsetCm != null) attrs.wrapOffset = offsetCm;
+  } else {
+    fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
+  }
   return { type: 'image', attrs };
 }
 
-function anchorWrap(anchor: Element, ctx: Ctx): 'left' | 'right' | 'topBottom' {
-  if (anchor.getElementsByTagNameNS(WP, 'wrapTopAndBottom')[0]) return 'topBottom';
+// The wrap mode, plus where the frame sits in the text column (cm from its left edge,
+// null when the file only names a side). Text can only flow on one side of a CSS float,
+// so the side is the half of the column the frame does *not* fill.
+function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom'; offsetCm: number | null } {
+  if (anchor.getElementsByTagNameNS(WP, 'wrapTopAndBottom')[0]) return { wrap: 'topBottom', offsetCm: null };
   const sq = anchor.getElementsByTagNameNS(WP, 'wrapSquare')[0];
   const wt = sq?.getAttribute('wrapText');
-  if (wt === 'right') return 'left'; // text on right ⇒ image on left
-  if (wt === 'left') return 'right';
-  // wrapText="bothSides" says nothing about the side, so the frame's own x decides it:
-  // the editor has no free position, only a side, and the nearer one is that side.
+  if (wt === 'right') return { wrap: 'left', offsetCm: null }; // text on right ⇒ image on left
+  if (wt === 'left') return { wrap: 'right', offsetCm: null };
   const posH = anchor.getElementsByTagNameNS(WP, 'positionH')[0];
   const align = posH?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
-  if (align) return align === 'right' || align === 'outside' ? 'right' : 'left';
+  if (align === 'right' || align === 'outside') return { wrap: 'right', offsetCm: null };
+  if (align) return { wrap: 'left', offsetCm: null };
   const off = parseInt(posH?.getElementsByTagNameNS(WP, 'posOffset')[0]?.textContent ?? '', 10);
-  if (!Number.isFinite(off)) return 'left';
+  if (!Number.isFinite(off)) return { wrap: 'left', offsetCm: null };
   const cx = intAttr(anchor.getElementsByTagNameNS(WP, 'extent')[0], '', 'cx') ?? 0;
   // A page-relative offset counts from the sheet edge, everything else from the text
   // column — shift it there so one comparison serves both.
   const base = posH?.getAttribute('relativeFrom') === 'page' ? -cmToEmu(ctx.leftMarginCm) : 0;
-  return off + base + cx / 2 > cmToEmu(ctx.contentWidthCm) / 2 ? 'right' : 'left';
+  const left = off + base;
+  const wrap = left + cx / 2 > cmToEmu(ctx.contentWidthCm) / 2 ? 'right' : 'left';
+  return { wrap, offsetCm: round2(left / 360000) };
 }
 
 // ---- text boxes / shapes ------------------------------------------------------
@@ -1209,7 +1218,7 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
   if (cy) attrs.height = Math.round(emuToPx(cy));
   const rot = intAttr(nsChild(spPr, A, 'xfrm'), '', 'rot');
   if (rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
-  if (isAnchor) attrs.wrap = anchorWrap(root, ctx);
+  if (isAnchor) attrs.wrap = anchorWrap(root, ctx).wrap;
 
   const fillClr = nsChild(nsChild(spPr, A, 'solidFill'), A, 'srgbClr')?.getAttribute('val');
   const fill = fillClr ? hexColor(fillClr) ?? null : null;

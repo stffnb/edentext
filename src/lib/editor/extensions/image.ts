@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection } from '@tiptap/pm/state';
 import { dropCursor } from '@tiptap/pm/dropcursor';
+import { cmToPx } from '../../storage/pageMargins';
 
 // Inline, as-character image, or a floating text-wrapped frame (wrap = flow mode);
 // width/height are doc px @96dpi, rotation CW degrees. Export → cm + ODF
@@ -42,7 +43,17 @@ export function parsePx(value: string | null): number | null {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
+function parseCm(value: string | null): number | null {
+  if (!value) return null;
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+// The page text width, live from the vars the editor maintains (margins/orientation).
+const COLUMN_WIDTH_CSS =
+  'calc(var(--user-page-width) - var(--user-margin-left) - var(--user-margin-right))';
 
 // An as-character image wider than the text column takes a line of its own and leaves an
 // empty one above it. Fitting it to the column is where an image the file sizes to the
@@ -99,6 +110,13 @@ export const Image = Node.create({
         parseHTML: el => (el as HTMLElement).getAttribute('data-wrap') ?? 'inline',
         renderHTML: () => ({}),
       },
+      // Where a floating frame sits in the text column: cm from the column's left edge
+      // to the frame's left edge (Word's posOffset, ODF svg:x). null = flush to its side.
+      wrapOffset: {
+        default: null,
+        parseHTML: el => parseCm((el as HTMLElement).getAttribute('data-wrap-offset')),
+        renderHTML: () => ({}),
+      },
     };
   },
 
@@ -111,6 +129,7 @@ export const Image = Node.create({
     const h = node.attrs.height as number | null;
     const rot = (node.attrs.rotation as number) || 0;
     const wrap = (node.attrs.wrap as WrapMode) || 'inline';
+    const offset = node.attrs.wrapOffset as number | null;
     const style = [
       w ? `width:${w}px` : '',
       h ? `height:${h}px` : '',
@@ -120,6 +139,7 @@ export const Image = Node.create({
       ...(style ? { style } : {}),
       ...(rot ? { 'data-rotation': String(rot) } : {}),
       ...(wrap !== 'inline' ? { 'data-wrap': wrap } : {}),
+      ...(offset != null ? { 'data-wrap-offset': String(offset) } : {}),
     })];
   },
 
@@ -136,7 +156,8 @@ export const Image = Node.create({
         ({ state, dispatch }) => {
           const sel = state.selection;
           if (!(sel instanceof NodeSelection) || sel.node.type.name !== this.name) return false;
-          if (dispatch) dispatch(state.tr.setNodeMarkup(sel.from, undefined, { ...sel.node.attrs, wrap }));
+          // Picking a side means "put it there", so the imported offset goes with it.
+          if (dispatch) dispatch(state.tr.setNodeMarkup(sel.from, undefined, { ...sel.node.attrs, wrap, wrapOffset: null }));
           return true;
         },
     };
@@ -220,6 +241,8 @@ class ImageView {
   private attrH(): number | null { const h = this.node.attrs.height; return typeof h === 'number' ? h : null; }
   private attrRot(): number { return (this.node.attrs.rotation as number) || 0; }
   private attrWrap(): WrapMode { const w = this.node.attrs.wrap; return w === 'left' || w === 'right' || w === 'topBottom' ? w : 'inline'; }
+  // The wrapper's reserved (rotated) width, which applyLayout has just written.
+  private boxWidth(): number { return parseFloat(this.dom.style.width) || this.attrW() || 0; }
 
   // Size the rotor to w×h, rotate it about its centre, and grow the axis-aligned
   // wrapper to the rotated bounding box so the line reserves the right space.
@@ -242,8 +265,8 @@ class ImageView {
   }
 
   // Float the wrapper per wrap mode so text flows beside it at its anchor paragraph
-  // (left/right) or only above/below it (topBottom). The live re-anchor drag keeps it
-  // floating where the text actually is.
+  // (left/right) or only above/below it (topBottom). wrapOffset moves it inside the
+  // column via the outer margin. The live re-anchor drag keeps it where the text is.
   private applyWrap(): void {
     const d = this.dom;
     const wrap = this.attrWrap();
@@ -251,12 +274,19 @@ class ImageView {
     d.style.display = '';
     d.style.clear = '';
     d.style.margin = '';
+    const offset = this.node.attrs.wrapOffset as number | null;
+    // The offset is the frame's left edge in the text column. A right float is placed
+    // from the other side, so its margin is what the column has left over — measured
+    // against the live column vars, which an indented anchor paragraph cannot skew.
+    const near = offset == null ? '0' : `${Math.round(cmToPx(offset))}px`;
+    const far = offset == null ? '0'
+      : `calc(${COLUMN_WIDTH_CSS} - ${Math.round(cmToPx(offset))}px - ${this.boxWidth()}px)`;
     if (wrap === 'left') {
       d.style.float = 'left';
-      d.style.margin = '0 14px 6px 0';
+      d.style.margin = `0 14px 6px ${near}`;
     } else if (wrap === 'right') {
       d.style.float = 'right';
-      d.style.margin = '0 0 6px 14px';
+      d.style.margin = `0 ${far} 6px 14px`;
     } else if (wrap === 'topBottom') {
       // A full-width float (not display:block — which on an inline atom node view
       // disrupts ProseMirror's view + page-break spacer widgets): text can only flow

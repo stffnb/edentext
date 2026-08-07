@@ -131,6 +131,10 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   if (anchor || wrapVal) {
     attrs.wrap = wrapModeFromOdf(wrapVal, gp['style:horizontal-pos']);
   }
+  // A frame placed by coordinate (style:horizontal-pos="from-left") keeps its x in the
+  // column; the wrap mode alone would snap it to a side.
+  const x = gp['style:horizontal-pos'] === 'from-left' ? lengthToCm(el.getAttributeNS(NS.svg, 'x')) : null;
+  if (x != null && attrs.wrap && attrs.wrap !== 'topBottom') attrs.wrapOffset = Math.round(x * 100) / 100;
 }
 
 // A <draw:frame><draw:image> → an image node. Size comes from the frame's svg
