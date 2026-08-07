@@ -45,6 +45,8 @@ type Ctx = {
   listCounters: Map<number, Map<number, number>>; // numId → ilvl → last number used
   // Text width (cm) of the file's page setup; a table's margins are relative to it.
   contentWidthCm: number;
+  // Left page margin (cm), the origin a page-relative frame offset is measured against.
+  leftMarginCm: number;
   // The enclosing table style's w:pPr/w:spacing, applied to its cells' paragraphs.
   cellSpacing: ParaSpacing;
 };
@@ -54,6 +56,7 @@ const twipToCm = (tw: number) => (tw / 1440) * 2.54;
 const twipToPt = (tw: number) => tw / 20;
 const twipToPx = (tw: number) => (tw / 1440) * 96;
 const emuToPx = (emu: number) => emu / 9525;
+const cmToEmu = (cm: number) => cm * 360000;
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
 // A run-level <w:br w:type="page"/> becomes this sentinel inline node in convertInline;
@@ -124,8 +127,10 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const body = docDoc.getElementsByTagNameNS(W, 'body')[0];
   if (!body) throw new Error('Not a Word document (no w:body).');
 
-  const contentWidthCm = sectionContentWidthCm(fc(body, 'sectPr'));
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, cellSpacing: {} };
+  const sectPr = fc(body, 'sectPr');
+  const contentWidthCm = sectionContentWidthCm(sectPr);
+  const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, cellSpacing: {} };
 
   // Mid-body sectPr paragraphs delimit sections; a section whose w:cols declares
   // more than one column becomes a columns node (the trailing group is described
@@ -1136,18 +1141,28 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   const rot = xfrm ? parseInt(xfrm.getAttribute('rot') ?? '', 10) : NaN;
   if (Number.isFinite(rot) && rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
 
-  if (anchor) attrs.wrap = anchorWrap(anchor);
+  if (anchor) attrs.wrap = anchorWrap(anchor, ctx);
   return { type: 'image', attrs };
 }
 
-function anchorWrap(anchor: Element): 'left' | 'right' | 'topBottom' {
+function anchorWrap(anchor: Element, ctx: Ctx): 'left' | 'right' | 'topBottom' {
   if (anchor.getElementsByTagNameNS(WP, 'wrapTopAndBottom')[0]) return 'topBottom';
   const sq = anchor.getElementsByTagNameNS(WP, 'wrapSquare')[0];
   const wt = sq?.getAttribute('wrapText');
   if (wt === 'right') return 'left'; // text on right ⇒ image on left
   if (wt === 'left') return 'right';
-  const align = anchor.getElementsByTagNameNS(WP, 'align')[0]?.textContent;
-  return align === 'right' ? 'right' : 'left';
+  // wrapText="bothSides" says nothing about the side, so the frame's own x decides it:
+  // the editor has no free position, only a side, and the nearer one is that side.
+  const posH = anchor.getElementsByTagNameNS(WP, 'positionH')[0];
+  const align = posH?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
+  if (align) return align === 'right' || align === 'outside' ? 'right' : 'left';
+  const off = parseInt(posH?.getElementsByTagNameNS(WP, 'posOffset')[0]?.textContent ?? '', 10);
+  if (!Number.isFinite(off)) return 'left';
+  const cx = intAttr(anchor.getElementsByTagNameNS(WP, 'extent')[0], '', 'cx') ?? 0;
+  // A page-relative offset counts from the sheet edge, everything else from the text
+  // column — shift it there so one comparison serves both.
+  const base = posH?.getAttribute('relativeFrom') === 'page' ? -cmToEmu(ctx.leftMarginCm) : 0;
+  return off + base + cx / 2 > cmToEmu(ctx.contentWidthCm) / 2 ? 'right' : 'left';
 }
 
 // ---- text boxes / shapes ------------------------------------------------------
@@ -1192,7 +1207,7 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
   if (cy) attrs.height = Math.round(emuToPx(cy));
   const rot = intAttr(nsChild(spPr, A, 'xfrm'), '', 'rot');
   if (rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
-  if (isAnchor) attrs.wrap = anchorWrap(root);
+  if (isAnchor) attrs.wrap = anchorWrap(root, ctx);
 
   const fillClr = nsChild(nsChild(spPr, A, 'solidFill'), A, 'srgbClr')?.getAttribute('val');
   const fill = fillClr ? hexColor(fillClr) ?? null : null;
