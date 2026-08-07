@@ -1355,8 +1355,10 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
   if (depth === 1) {
     const mlCm = listLevelMarginLeftCm(levelDef);
     if (mlCm != null) {
-      const extra = Math.round((mlCm - LIST_BASE_MARGIN_CM) * 100) / 100;
-      if (extra > LIST_INDENT_EPS_CM) indent = extra;
+      // Signed, floored at the base: a list may sit left of the editor's 1.27cm level
+      // margin, but never left of the text column.
+      const extra = Math.round(Math.max(-LIST_BASE_MARGIN_CM, mlCm - LIST_BASE_MARGIN_CM) * 100) / 100;
+      if (Math.abs(extra) > LIST_INDENT_EPS_CM) indent = extra;
     }
   }
 

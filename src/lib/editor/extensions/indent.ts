@@ -110,14 +110,10 @@ function clampFirst(cm: number): number {
   return Math.round(Math.max(-INDENT_MAX_CM, Math.min(INDENT_MAX_CM, cm)) * 100) / 100;
 }
 
+// Signed: a first-line indent may be negative (a hanging indent), and on a list the
+// value is the offset from the level's 1.27cm base, so a file whose list sits closer
+// to the margin than that imports a negative one.
 function parseIndent(value: string | null): number | null {
-  if (value == null || value === '') return null;
-  const n = parseFloat(value);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-// A first-line indent may be negative (a hanging indent), unlike a left margin.
-function parseSignedIndent(value: string | null): number | null {
   if (value == null || value === '') return null;
   const n = parseFloat(value);
   return Number.isFinite(n) && n !== 0 ? n : null;
@@ -171,7 +167,7 @@ export const Indent = Extension.create({
           // `indent`, which is the whole block's left margin.
           indentFirst: {
             default: null,
-            parseHTML: (element: HTMLElement) => parseSignedIndent(element.getAttribute('data-indent-first')),
+            parseHTML: (element: HTMLElement) => parseIndent(element.getAttribute('data-indent-first')),
             renderHTML: (attributes: Record<string, unknown>) => {
               if (attributes.indentFirst == null) return {};
               const cm = Number(attributes.indentFirst);

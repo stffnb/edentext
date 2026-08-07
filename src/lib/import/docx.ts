@@ -451,8 +451,10 @@ function makeListNode(ctx: Ctx, numId: number, ilvl: number): Node {
     if (def.start != null && def.start > 1) attrs.start = def.start;
   }
   if (ilvl === 0 && def.leftTwip != null) {
-    const extra = round2(twipToCm(def.leftTwip) - LIST_LEFT_STEP_CM);
-    if (extra > LIST_INDENT_EPS_CM) attrs.indent = extra;
+    // Signed: a level's w:ind w:left may sit left of the editor's 1.27cm base
+    // (w:left="360" is a common one). Floored there so the list stays in the text column.
+    const extra = round2(Math.max(-LIST_LEFT_STEP_CM, twipToCm(def.leftTwip) - LIST_LEFT_STEP_CM));
+    if (Math.abs(extra) > LIST_INDENT_EPS_CM) attrs.indent = extra;
   }
   const node: Node = { type: bullet ? 'bulletList' : 'orderedList', content: [] };
   if (Object.keys(attrs).length) node.attrs = attrs;
