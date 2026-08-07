@@ -623,6 +623,13 @@
   color: var(--color-primary);
 }
 
+/* After an inline atom ProseMirror's trailing-break BR adds a line the block has not
+   got, so a paragraph holding an image renders one too tall. Kept after a real BR
+   (it carries the caret onto the empty line) and in an empty block (its only line). */
+.paper .tiptap :not(br) + br.ProseMirror-trailingBreak {
+  display: none;
+}
+
 /* Empty block fix: a paragraph/heading/li-paragraph holding only the ProseMirror
    trailing-break BR would render the inline ¶ on a second line, doubling its height.
    Pull ::after out of flow. Applied always so the reserved ¶ stays zero-height. */
