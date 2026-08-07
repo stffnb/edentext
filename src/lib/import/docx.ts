@@ -596,7 +596,12 @@ function stylePara(ctx: Ctx, id: string | null): ParaProps {
 // paragraph's formatting, so the document defaults are not its properties.
 function styleText(ctx: Ctx, id: string | null, own = false): TextProps {
   if (!id) return {};
-  return runTextProps(own ? ctx.styles.styleOwn(id) : ctx.styles.paragraphRun(id));
+  if (own) return runTextProps(ctx.styles.styleOwn(id));
+  // A paragraph style naming no font uses the document's theme (minorHAnsi for body,
+  // majorHAnsi for headings) — the family single line spacing is measured against.
+  const run = ctx.styles.paragraphRun(id);
+  const font = run.font ?? ctx.styles.themeFont(run.fontTheme ?? 'minor');
+  return runTextProps(font ? { ...run, font } : run);
 }
 
 function runTextProps(run: RunProps): TextProps {
