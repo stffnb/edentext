@@ -124,6 +124,7 @@ export class DocxStyles {
   private defaultsAlign: string | null = null; // docDefaults w:pPrDefault/w:jc
   private defaultsSpacing: ParaSpacing = {}; // docDefaults w:pPrDefault/w:spacing
   private ownWidow = new Map<string, boolean>(); // style's own w:pPr/w:widowControl
+  private ownContextual = new Map<string, boolean>(); // style's own w:pPr/w:contextualSpacing
   private ownTabs = new Map<string, TabStop[]>(); // style's own w:pPr/w:tabs
   private defaultsWidow: boolean | null = null; // docDefaults w:pPrDefault/w:widowControl
   private numToAbstract = new Map<string, string>();
@@ -186,6 +187,8 @@ export class DocxStyles {
       if (sp) this.ownSpacing.set(id, readSpacing(sp));
       const wc = ppr && firstChild(ppr, 'widowControl');
       if (wc) this.ownWidow.set(id, toggle(wc));
+      const cs = ppr && firstChild(ppr, 'contextualSpacing');
+      if (cs) this.ownContextual.set(id, toggle(cs));
       const tabs = ppr && firstChild(ppr, 'tabs');
       if (tabs) this.ownTabs.set(id, readTabStops(tabs));
       const ind = ppr && firstChild(ppr, 'ind');
@@ -327,6 +330,16 @@ export class DocxStyles {
     const own = this.ownTabs.get(styleId);
     if (own) return own;
     return this.paragraphTabs(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // w:contextualSpacing along the w:basedOn chain: the style drops its own spacing
+  // between neighbouring paragraphs that share it (Word's List Paragraph does).
+  paragraphContextualSpacing(styleId: string | null | undefined, seen = new Set<string>()): boolean {
+    if (!styleId || seen.has(styleId)) return false;
+    seen.add(styleId);
+    const own = this.ownContextual.get(styleId);
+    if (own != null) return own;
+    return this.paragraphContextualSpacing(this.basedOn.get(styleId) ?? null, seen);
   }
 
   private styleWidow(styleId: string | null | undefined, seen = new Set<string>()): boolean | null {

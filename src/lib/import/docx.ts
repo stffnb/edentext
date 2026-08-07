@@ -685,6 +685,7 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // w:pPr counts as formatting on the block.
   const attrs = blockAttrs(ppr, kind, level, directJc ? jcVal : null, {});
   const styleId = styleIdOf(ppr, ctx);
+  applyContextualSpacing(el, ppr, ctx, styleId, attrs);
   // Widow-orphan control has no registry home, so the resolved value rides the block.
   const directWc = fc(ppr, 'widowControl');
   if (!(directWc ? onOff(directWc) : ctx.styles.paragraphWidowControl(styleId))) {
@@ -717,6 +718,18 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   if (Object.keys(attrs).length) node.attrs = attrs;
   if (content.length) node.content = content;
   return node;
+}
+
+// w:contextualSpacing drops a paragraph's own spacing towards a neighbour of the same
+// style — Word's List Paragraph carries it, which is why list points sit line-tight. The
+// editor has no such mode, so the suppressed side becomes an explicit 0.
+function applyContextualSpacing(el: Element, ppr: Element | null, ctx: Ctx, styleId: string | null, attrs: Record<string, unknown>): void {
+  const direct = fc(ppr, 'contextualSpacing');
+  if (!(direct ? onOff(direct) : ctx.styles.paragraphContextualSpacing(styleId))) return;
+  const sameStyle = (sib: Element | null) =>
+    !!sib && sib.namespaceURI === W && sib.localName === 'p' && styleIdOf(fc(sib, 'pPr'), ctx) === styleId;
+  if (sameStyle(el.previousElementSibling)) attrs.spaceBefore = 0;
+  if (sameStyle(el.nextElementSibling)) attrs.spaceAfter = 0;
 }
 
 // The paragraph mark's resolved font size (w:pPr/w:rPr, incl. its rStyle), as a CSS
