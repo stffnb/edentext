@@ -123,6 +123,21 @@ describe('list marker formatting', () => {
       expect(lvl).toMatch(/<w:rFonts[^>]*w:ascii="Arial"/);
     });
 
+    // odf-kit's list builder ignores charStyle, so the style is baked into the run's
+    // marks and its name rides the CST sentinel — else the number would be bold and
+    // the text it labels plain.
+    it('carries a character style into a list item, formatting and name', async () => {
+      const styled = { type: 'doc', content: [jsonList(text('x', [{ type: 'charStyle', attrs: { name: 'Strong Emphasis' } }]))] } as never;
+      const xml = strFromU8(unzipSync(await buildOdt(styled))['content.xml']);
+      const span = /<text:list-item>[\s\S]*?<text:span text:style-name="(\w+)"/.exec(xml);
+      expect(span, 'the run must carry formatting').not.toBeNull();
+      const style = new RegExp(`<style:style style:name="${span![1]}"[\\s\\S]*?</style:style>`).exec(xml)?.[0] ?? '';
+      expect(style).toContain('fo:font-weight="bold"');
+      // The CST sentinel is gone and the clone carries the named style as its parent.
+      expect(xml).not.toContain('\ue00e');
+      expect(style).toContain('style:parent-style-name="Strong_20_Emphasis"');
+    });
+
     // The style has to land in styles.xml: LibreOffice ignores the level's reference
     // when it resolves to an automatic style (probed).
     it('points the ODF level definition at a named character style', () => {

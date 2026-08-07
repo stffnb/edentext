@@ -1,4 +1,4 @@
-import { tiptapToOdt, type TiptapNode, type TextFormatting, type OdtDocument, type ParagraphBuilder, type TableBuilder, type RowBuilder, type CellBuilder, type CellOptions, type HeaderFooterBuilder } from 'odf-kit';
+import { tiptapToOdt, type TiptapNode, type TiptapMark, type TextFormatting, type OdtDocument, type ParagraphBuilder, type TableBuilder, type RowBuilder, type CellBuilder, type CellOptions, type HeaderFooterBuilder } from 'odf-kit';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -1584,10 +1584,9 @@ function collectListMarkerFormats(doc: TiptapNode, result: (MarkerFormat | null)
   }
 }
 
-// text:style-name on the level definition points at a style:family="text" style —
-// how ODF formats a number/bullet (a run inside the paragraph never reaches it).
-// The style has to be a **named** one in styles.xml: LibreOffice ignores the
-// reference when it resolves to an automatic style (verified by probe).
+// text:style-name on the level definition points at a style:family="text" style — how
+// ODF formats a number/bullet. It has to be a **named** style in styles.xml:
+// LibreOffice ignores the reference when it resolves to an automatic one (probed).
 function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | null)[][]): Uint8Array {
   if (!formats.some((levels) => levels.some(Boolean))) return odtBytes;
 
@@ -2116,6 +2115,41 @@ function charStyleOf(marks: TiptapNode['marks']): string | null {
 // looks right for readers that ignore the style reference).
 function charFormatting(sheet: StyleSheet, name: string): Record<string, unknown> {
   return textFormatting(resolveStyle(sheet, name, 'character').text);
+}
+
+// odf-kit's list builder reads a run's marks itself and knows nothing about charStyle,
+// and applyRuns never sees a list paragraph — so do its two jobs here: bake the style
+// into direct marks (the run then gets a span) and prefix the CST sentinel for it.
+function bakeListCharStyles(node: TiptapNode, sheet: StyleSheet, inList = false): TiptapNode {
+  if (node.type === 'text') {
+    const name = inList ? charStyleOf(node.marks) : null;
+    if (!name) return node;
+    return {
+      ...node,
+      text: `${CST}${name}${CST}${node.text ?? ''}`,
+      marks: bakeMarks(node.marks ?? [], resolveStyle(sheet, name, 'character').text),
+    };
+  }
+  if (!node.content?.length) return node;
+  const nested = inList || node.type === 'bulletList' || node.type === 'orderedList';
+  return { ...node, content: node.content.map(c => bakeListCharStyles(c, sheet, nested)) };
+}
+
+// The style's props as direct marks, with the run's own marks on top (as in applyRuns).
+function bakeMarks(marks: TiptapMark[], t: TextProps): TiptapMark[] {
+  const out = marks.filter(m => m.type !== 'textStyle');
+  const own = marks.find(m => m.type === 'textStyle')?.attrs ?? {};
+  const attrs: Record<string, unknown> = {};
+  if (t.fontFamily) attrs.fontFamily = t.fontFamily;
+  if (t.fontSizePt != null) attrs.fontSize = `${t.fontSizePt}pt`;
+  if (t.color) attrs.color = t.color;
+  for (const [key, value] of Object.entries(own)) if (value != null) attrs[key] = value;
+  // An explicit weight is the un-bold channel and outranks the style's bold.
+  const flags = [[t.bold && own.fontWeight == null, 'bold'], [t.italic, 'italic'],
+    [t.underline, 'underline'], [t.strike, 'strike']] as const;
+  for (const [on, type] of flags) if (on && !marks.some(m => m.type === type)) out.push({ type });
+  if (Object.keys(attrs).length) out.push({ type: 'textStyle', attrs });
+  return out;
 }
 
 // TextProps as odf-kit run formatting.
@@ -2803,7 +2837,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const textBoxes: TextBoxExport[] = [];
   const columns: ColumnsExport[] = [];
   const dateFields: DateTimeFieldExport[] = [];
-  const raw = replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns))), images), dateFields);
+  const sentinels = replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns))), images), dateFields);
+  const raw = bakeListCharStyles(sentinels, styles);
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Different first page (ODF header-first): page 1 gets its own zone content.

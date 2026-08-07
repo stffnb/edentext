@@ -71,10 +71,9 @@ function sameFormat(a: MarkerFormat, b: MarkerFormat): boolean {
   return KEYS.every((key) => a[key] === b[key]);
 }
 
-// Every item is decorated, resets included: the custom properties inherit, so a
-// nested item would otherwise take its parent item's marker format. The reset is
-// `initial` — on a custom property that is the guaranteed-invalid value, which makes
-// the var() in editor.css fall back; `inherit` would pull the parent's value in.
+// Every item is decorated, resets included: the properties inherit, so a nested item
+// would take its parent's. The reset is `initial` — guaranteed-invalid on a custom
+// property, so editor.css's var() falls back; `inherit` would pull the parent's in.
 function markerStyle(format: MarkerFormat | null): string {
   const family = format?.fontFamily ? cssFontFamily(format.fontFamily) : 'initial';
   return `--marker-family:${family};--marker-weight:${format?.fontWeight ?? 'initial'};`
