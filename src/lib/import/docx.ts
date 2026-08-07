@@ -1552,7 +1552,10 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
     }
     boxMaps.push(readParaBox(ppr));
     const baseRun = hfCtx.styles.paragraphRun(fc(ppr, 'pStyle') ? wVal(fc(ppr, 'pStyle')!) : null);
-    inline.push(...convertInline(p, hfCtx, baseRun, blockDefaults(baseRun, null, false), true).filter((n) => n.type !== PB_MARKER));
+    // The zone carries no styleName and no style CSS reaches it, so the yardstick is the
+    // editor's own defaults — what the Header/Footer style provides has to become marks
+    // (mirrors odt.ts convertHfZone, which passes no style name either).
+    inline.push(...convertInline(p, hfCtx, baseRun, blockDefaults({}, null, false), true).filter((n) => n.type !== PB_MARKER));
   }
   // An all-empty zone is dropped unless it carries a background/rule line (a footer that
   // is just a colored line has no text). The zone collapses to one paragraph (mergeHfBox).
