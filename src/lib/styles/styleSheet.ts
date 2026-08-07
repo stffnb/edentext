@@ -198,14 +198,21 @@ export function cssFontFamily(name: string): string {
 }
 
 // Single spacing is the font's *natural* line height, so it differs per family.
-// editor.css covers Liberation Serif's 1.15; only the bundled families that deviate
-// are listed, measured against LibreOffice at 12pt.
+// Liberation Serif's 1.15 is the default (editor.css); only the bundled families that
+// deviate are listed, measured against LibreOffice at 12pt.
+export const DEFAULT_SINGLE_LINE_HEIGHT = 1.15;
 const SINGLE_LINE_HEIGHT: Record<string, number> = {
   Calibri: 1.2208,
   Carlito: 1.2208,
   'Courier New': 1.1333,
   'Liberation Mono': 1.1333,
 };
+
+// A proportional line spacing multiplies the font's natural line height, while CSS
+// multiplies the font size — so the stored factor is scaled by the family's own.
+export function singleLineHeight(fontFamily?: string): number {
+  return (fontFamily && SINGLE_LINE_HEIGHT[fontFamily]) || DEFAULT_SINGLE_LINE_HEIGHT;
+}
 
 // The text half of a rule, shared with the table-style family (tableStyles.ts).
 export function textDeclarations(t: TextProps): string[] {
@@ -230,7 +237,11 @@ function declarations(r: ResolvedStyle): string[] {
   const { para: p } = r;
   const out = textDeclarations(r.text);
   if (p.textAlign) out.push(`text-align: ${p.textAlign}`);
-  if (p.lineHeight) out.push(`line-height: ${p.lineHeight}`);
+  if (p.lineHeight) {
+    const n = parseFloat(p.lineHeight);
+    const scaled = Math.round(n * singleLineHeight(r.text.fontFamily) * 1000) / 1000;
+    out.push(`line-height: ${isNaN(n) ? p.lineHeight : scaled}`);
+  }
   if (p.spaceBefore != null) out.push(`margin-top: ${p.spaceBefore}pt`);
   if (p.spaceAfter != null) out.push(`margin-bottom: ${p.spaceAfter}pt`);
   if (p.indent != null) out.push(`margin-left: ${p.indent}cm`);
