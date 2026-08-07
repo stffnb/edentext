@@ -274,7 +274,7 @@
     return mixed ? '' : (c ?? null);
   });
 
-  // Sub/superscript are mutually exclusive (Word-style): toggling one clears the
+  // Sub/superscript are mutually exclusive: toggling one clears the
   // other. odf-kit maps these marks to text:position (round-trips with LibreOffice
   // and Word). See export/odt.ts applyRuns for the custom-attr-paragraph path.
   let isSuperscript = $derived(tick >= 0 && !!editor?.isActive('superscript'));

@@ -125,7 +125,7 @@ export function mergeJoinedBlocks(blocks: PMNode[]): PMNode[] {
   return out;
 }
 
-// Word's no-selection behavior: apply columns to the whole document. Wrappable runs
+// With no selection, columns apply to the whole document. Wrappable runs
 // (absorbing existing sections) become one section each; tables/boxes/TOCs stay
 // between them. Replacements run bottom-up so earlier positions stay valid.
 function applyToWholeDoc(state: EditorState, tr: Transaction, attrs: ColumnsAttrs): boolean {
@@ -221,7 +221,7 @@ export const Columns = Node.create({
     return {
       // Inside a section: 1 unwraps the whole chain, 2/3 update its count. Outside:
       // with a selection, 2/3 wrap the covered top-level blocks (fails on tables
-      // etc.); with a bare cursor, the whole document gets columns (Word behavior).
+      // etc.); with a bare cursor, the whole document gets columns.
       setColumns:
         (count: number) =>
         ({ state, dispatch }) => {

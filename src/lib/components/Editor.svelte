@@ -61,8 +61,8 @@
   });
 
   // A header/footer that reaches past the body's margin (its distance from the edge plus
-  // its line count) pushes the body's content area in so text doesn't overlap it — Word
-  // grows the margin to fit the zone. ~18.4px = one 12pt line.
+  // its line count) pushes the body's content area in so text doesn't overlap it: the
+  // margin grows to fit the zone. ~18.4px = one 12pt line.
   const HF_LINE_PX = 16 * 1.15;
   function hfReachPx(doc: HfDoc, distPx: number): number {
     if (!doc || hfIsEmpty(doc)) return 0;
@@ -193,7 +193,7 @@
     return (Number.isFinite(ph) ? ph : 1123) + 20;
   }
 
-  // --- Right-click context menu (Word's text menu, spelling suggestions merged in) ---
+  // --- Right-click context menu (text menu, spelling suggestions merged in) ---
   let ctxMenu = $state<{ top: number; left: number; items: MenuEntry[] } | null>(null);
   // The misspelled range the open menu's suggestions belong to.
   let spellTarget: { from: number; to: number; word: string } | null = null;
@@ -212,7 +212,7 @@
     const view = ed.view;
     const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
     const sel = view.state.selection;
-    // Word keeps a selection the click lands inside, otherwise it moves the caret.
+    // A selection the click lands inside is kept, otherwise the caret moves.
     if (coords && (sel.empty || coords.pos < sel.from || coords.pos > sel.to)) {
       view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(coords.pos))));
     }
@@ -294,7 +294,7 @@
   // Shown when the selection is inside a table; positioned just above that table.
   let tableUi = $state<{ visible: boolean; top: number; left: number }>({ visible: false, top: 0, left: 0 });
   let tableUiRaf = 0;
-  // Word-style "Split Cells…" popover, opened from the table toolbar.
+  // "Split Cells…" popover, opened from the table toolbar.
   let splitDialogOpen = $state(false);
   // Drop the dialog if the selection leaves the table (toolbar hidden).
   $effect(() => {
@@ -738,7 +738,7 @@
         saveDocument(e.getJSON());
       },
       onFocus: () => {
-        // Clicking back into the body ends header/footer editing (Word behaviour).
+        // Clicking back into the body ends header/footer editing.
         hfActive = null;
       },
     });

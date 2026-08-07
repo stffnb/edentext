@@ -6,7 +6,7 @@
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 
   let open = $state(false);
-  // Pen settings (Word-style): presets apply with the currently chosen width/color.
+  // Pen settings: presets apply with the currently chosen width/color.
   let widthPt = $state(0.5);
   let color = $state('#000000');
 
@@ -45,7 +45,7 @@
   );
 
   // Clicking an inactive preset applies the pen; clicking an active one toggles those
-  // borders off (Word behavior). The panel stays open so the states visibly update.
+  // borders off. The panel stays open so the states visibly update.
   function apply(id: BorderPreset | 'none') {
     if (!editor) return;
     if (id === 'none') editor.chain().focus().setTableBorders('all', null).run();

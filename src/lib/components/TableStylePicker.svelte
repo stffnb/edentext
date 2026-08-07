@@ -189,7 +189,7 @@
     user-select: none;
   }
 
-  /* Tiles and options side by side, as in Word's Table Design tab. */
+  /* Tiles and options side by side. */
   .tsp-body {
     display: flex;
     align-items: flex-start;

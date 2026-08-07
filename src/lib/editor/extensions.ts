@@ -123,11 +123,11 @@ export const extensions = [
   TableCell,
   TableColumnResize,
   TableRowResize,
-  // Word-style "Split Cells…" (N×M); merge uses extension-table's built-in mergeCells.
+  // "Split Cells…" (N×M); merge uses extension-table's built-in mergeCells.
   TableSplit,
   // Cell shading: backgroundColor attr on tableCell/tableHeader (→ fo:background-color).
   TableCellBackground,
-  // Word-style border presets: per-side border attrs on cells (→ fo:border-*).
+  // Border presets: per-side border attrs on cells (→ fo:border-*).
   TableCellBorders,
   // "Header row" styling preset: bold + light shading on the first row (toggle).
   TableHeaderRow,

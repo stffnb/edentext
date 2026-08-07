@@ -25,7 +25,7 @@ export interface DtFormat {
   tokens: Token[];
 }
 
-// Word-style catalog. Samples in the picker render the current time, so the exact
+// Format catalog. Samples in the picker render the current time, so the exact
 // ordering/separators are visible when choosing.
 export const DATE_FORMATS: DtFormat[] = [
   { key: 'iso', kind: 'date', tokens: [

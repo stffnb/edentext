@@ -307,7 +307,7 @@
     flex-direction: column;
     pointer-events: auto;
     /* Content taller than the margin band spills into the margin (footer up, header
-       down), like Word's auto-growing zones; the anchored edge stays put. */
+       down) — the zone auto-grows; the anchored edge stays put. */
     overflow: visible;
     font-family: var(--font-serif);
     font-size: 12pt;

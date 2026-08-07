@@ -4,7 +4,7 @@ import { withShortcut } from '../i18n/shortcut';
 import { shortcutHint } from './shortcuts';
 import { OPEN_LINK_DIALOG_EVENT } from './extensions/link';
 
-// The right-click menu's contents, Word's text menu mapped onto this editor. Pure
+// The right-click menu's contents, the usual text menu mapped onto this editor. Pure
 // data + closures — ContextMenu.svelte only renders it.
 export type MenuEntry =
   | { kind: 'sep' }

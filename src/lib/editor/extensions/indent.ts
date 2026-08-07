@@ -46,7 +46,7 @@ function innermostList($from: ResolvedPos): { node: PMNode; depth: number; depth
 }
 
 // The type-defining attr an explicit same-kind list at `depth0` already uses in this
-// tree (DFS-first), so a freshly nested list can reuse it — Word's per-level memory.
+// tree (DFS-first), so a freshly nested list can reuse it — the per-level memory.
 function rememberedListStyle(root: PMNode, kind: string, depth0: number): Record<string, unknown> | null {
   let found: Record<string, unknown> | null = null;
   const walk = (list: PMNode, d: number) => {
@@ -104,7 +104,7 @@ function clampIndent(cm: number): number {
   return Math.round(Math.max(0, Math.min(INDENT_MAX_CM, cm)) * 100) / 100;
 }
 
-// A first-line indent is signed (negative = Word's hanging indent).
+// A first-line indent is signed (negative = a hanging indent).
 function clampFirst(cm: number): number {
   return Math.round(Math.max(-INDENT_MAX_CM, Math.min(INDENT_MAX_CM, cm)) * 100) / 100;
 }
@@ -115,7 +115,7 @@ function parseIndent(value: string | null): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// A first-line indent may be negative (Word's hanging indent), unlike a left margin.
+// A first-line indent may be negative (a hanging indent), unlike a left margin.
 function parseSignedIndent(value: string | null): number | null {
   if (value == null || value === '') return null;
   const n = parseFloat(value);
@@ -153,7 +153,7 @@ export const Indent = Extension.create({
               };
             },
           },
-          // First-line indent in cm; negative is Word's hanging indent. Independent of
+          // First-line indent in cm; negative is a hanging indent. Independent of
           // `indent`, which is the whole block's left margin.
           indentFirst: {
             default: null,

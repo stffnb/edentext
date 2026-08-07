@@ -197,7 +197,7 @@ export const ColumnsFlow = Extension.create({
           return open;
         }
 
-        // Split the paragraph at `blockIndex` at the line consuming `budgetPx` (Word's
+        // Split the paragraph at `blockIndex` at the line consuming `budgetPx` (a
         // mid-paragraph page break); the second part is marked joinPrev so joins/export
         // restore the original. `force` takes at least one line for an over-tall paragraph.
         function splitParagraphInBlock(
@@ -289,7 +289,7 @@ export const ColumnsFlow = Extension.create({
               if (first + COLUMNS_FIT_MARGIN_PX > available) {
                 // First block alone doesn't fit. Mid-page, pageBreaks pushes the
                 // fragment; at a page top pushing can't help — split the paragraph
-                // at a line boundary instead (Word's mid-paragraph page break).
+                // at a line boundary instead (a mid-paragraph page break).
                 if (
                   available >= vm.contentHeight - 1 &&
                   splitParagraphInBlock(frags[i], children, 0, count * (available - SAFETY_PX), scale, true)

@@ -9,7 +9,7 @@ import { columnWeightsFromRow } from './tableView';
 // cell selection) into `cols` × `rows` sub-cells. prosemirror-tables only ships
 // splitCell (un-merge), so this is custom. The table is a strict rectangular grid,
 // so adding sub-columns/rows means inserting grid lines and letting every other
-// cell that crosses a new line grow its span (bridge) — exactly what Word does.
+// cell that crosses a new line grow its span (bridge).
 // Implemented by reading the grid via TableMap, expanding it, partitioning the
 // cell's region, and rebuilding the table node in one step.
 

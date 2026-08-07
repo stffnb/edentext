@@ -28,7 +28,7 @@ import { Shortcuts } from './shortcuts';
 const HfDocument = Document.extend({ content: 'paragraph' });
 
 // The single-paragraph schema can't split, so plain Enter inserts a line break instead
-// (Word: Enter in a footer adds a blank line, growing the zone into the page). Shift-/
+// (Enter in a footer adds a blank line, growing the zone into the page). Shift-/
 // Mod-Enter keep their default break binding.
 const HfHardBreak = HardBreak.extend({
   addKeyboardShortcuts() {

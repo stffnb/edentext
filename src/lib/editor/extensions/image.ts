@@ -23,7 +23,7 @@ declare module '@tiptap/core' {
 
 export const MIN_SIZE_PX = 24;
 
-// Corners keep aspect (Word-style); edges (n/s/e/w) change one dimension only.
+// Corners keep aspect; edges (n/s/e/w) change one dimension only.
 // Shared with textBox.ts, whose node view uses the same handle set.
 export const HANDLES: { k: string; x: -1 | 0 | 1; y: -1 | 0 | 1; aspect: boolean }[] = [
   { k: 'nw', x: -1, y: -1, aspect: true },

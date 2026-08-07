@@ -280,7 +280,7 @@
 .paper .tiptap .image-resize-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
 .paper .tiptap .image-resize-w  { top: 50%; left: -5px; margin-top: -5px; cursor: ew-resize; }
 /* Rotate grip floats above top-centre with a short connector line; the icon is a
-   circular rotation arrow (like Word). */
+   circular rotation arrow. */
 .paper .tiptap .image-rotate-handle {
   display: none;
   position: absolute;
@@ -579,7 +579,7 @@
   height: 0;
 }
 
-/* Paragraph mark (¶). Reserved in the layout at all times (Word's model) so the toggle
+/* Paragraph mark (¶). Reserved in the layout at all times, so the toggle
    only recolors it and text never reflows. Zero-size inline-block, glyph overflows
    visibly: width/height/line-height 0 drop both footprint and line-box strut. */
 .paper .tiptap p::after,

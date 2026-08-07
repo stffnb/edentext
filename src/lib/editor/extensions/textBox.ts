@@ -364,7 +364,7 @@ class TextBoxView {
     );
   }
 
-  // Word-like frame hit test: the border plus a few px of the inner padding ring
+  // Frame hit test: the border plus a few px of the inner padding ring
   // select the box; anywhere further inside is text area. Rotation-aware (the point
   // is un-rotated into the rotor's own axes) and zoom-aware.
   private isFrameHit(e: MouseEvent): boolean {
