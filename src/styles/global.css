@@ -88,6 +88,30 @@
   src: local('Calibri Bold Italic'), local('Carlito Bold Italic'), url('../assets/fonts/Carlito-BoldItalic.ttf') format('truetype');
 }
 
+/* Calibri Light → Carlito. Word's default theme heading font; Carlito has no light
+   cut, so LibreOffice renders it with the regular one too. */
+@font-face {
+  font-family: 'Calibri Light';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Calibri Light'), local('Carlito'), url('../assets/fonts/Carlito-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Calibri Light';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Calibri Light'), local('Carlito Bold'), url('../assets/fonts/Carlito-Bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Calibri Light';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Calibri Light Italic'), local('Carlito Italic'), url('../assets/fonts/Carlito-Italic.ttf') format('truetype');
+}
+
 /* Arial → Liberation Sans */
 @font-face {
   font-family: 'Arial';

@@ -203,6 +203,7 @@ export function cssFontFamily(name: string): string {
 export const DEFAULT_SINGLE_LINE_HEIGHT = 1.15;
 const SINGLE_LINE_HEIGHT: Record<string, number> = {
   Calibri: 1.2208,
+  'Calibri Light': 1.2208,
   Carlito: 1.2208,
   'Courier New': 1.1333,
   'Liberation Mono': 1.1333,
