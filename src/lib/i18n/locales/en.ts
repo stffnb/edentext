@@ -244,6 +244,7 @@ const en = {
     show: 'Ruler',
     firstLineIndent: 'First line indent',
     leftIndent: 'Left indent',
+    rightIndent: 'Right indent',
     tabType: {
       left: 'Left tab',
       center: 'Centre tab',

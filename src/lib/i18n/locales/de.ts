@@ -240,6 +240,7 @@ const de: Messages = {
     show: 'Lineal',
     firstLineIndent: 'Erstzeileneinzug',
     leftIndent: 'Linker Einzug',
+    rightIndent: 'Rechter Einzug',
     tabType: {
       left: 'Linker Tabstopp',
       center: 'Zentrierter Tabstopp',

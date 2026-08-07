@@ -90,6 +90,7 @@ declare module '@tiptap/core' {
       indentMore: () => ReturnType;
       indentLess: () => ReturnType;
       setIndent: (cm: number) => ReturnType;
+      setIndentRight: (cm: number) => ReturnType;
       setIndentFirst: (cm: number) => ReturnType;
       indentListMore: () => ReturnType;
       indentListLess: () => ReturnType;
@@ -153,6 +154,19 @@ export const Indent = Extension.create({
               };
             },
           },
+          // Right indent in cm (fo:margin-right / w:ind w:right), the mirror of `indent`.
+          indentRight: {
+            default: null,
+            parseHTML: (element: HTMLElement) => parseIndent(element.getAttribute('data-indent-right')),
+            renderHTML: (attributes: Record<string, unknown>) => {
+              if (attributes.indentRight == null) return {};
+              const cm = Number(attributes.indentRight);
+              return {
+                'data-indent-right': String(cm),
+                style: `margin-right: ${cm}cm`,
+              };
+            },
+          },
           // First-line indent in cm; negative is a hanging indent. Independent of
           // `indent`, which is the whole block's left margin.
           indentFirst: {
@@ -179,7 +193,7 @@ export const Indent = Extension.create({
     // Rewrite one indent attr on every paragraph/heading in the selection; 0 clears it.
     // `next` gets the block's own value, so a relative step keeps each block's offset in
     // a mixed selection. List-item paragraphs are skipped (lists indent by nesting).
-    const write = (attr: 'indent' | 'indentFirst', next: (current: number) => number) =>
+    const write = (attr: 'indent' | 'indentRight' | 'indentFirst', next: (current: number) => number) =>
       ({ state, tr, dispatch }: CommandProps) => {
         const { from, to } = state.selection;
         let changed = false;
@@ -222,6 +236,7 @@ export const Indent = Extension.create({
       indentLess: () => step(-INDENT_STEP_CM),
       // Absolute, as the ruler drags them; the buttons above step relatively.
       setIndent: (cm: number) => write('indent', () => clampIndent(cm)),
+      setIndentRight: (cm: number) => write('indentRight', () => clampIndent(cm)),
       setIndentFirst: (cm: number) => write('indentFirst', () => clampFirst(cm)),
       indentListMore: () => stepList(INDENT_STEP_CM),
       indentListLess: () => stepList(-INDENT_STEP_CM),

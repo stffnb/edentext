@@ -6,9 +6,12 @@ import { DEFAULT_SHORTCUTS } from '../shortcuts';
 // Rendered as data-style so the generated document stylesheet (styleCss) can target it;
 // direct formatting (attrs/marks) still overrides it, as in Word/LibreOffice.
 
-// Block attrs the styles govern — reset by clearDirectFormatting, kept by setParagraphStyle.
+// Block attrs reset by clearDirectFormatting and kept by setParagraphStyle. Most are
+// style-governed; the first-line and right indents never are, so they are always
+// direct formatting.
 const DIRECT_ATTRS = [
-  'textAlign', 'lineHeight', 'spaceBefore', 'spaceAfter', 'indent', 'fontSize',
+  'textAlign', 'lineHeight', 'spaceBefore', 'spaceAfter', 'fontSize',
+  'indent', 'indentRight', 'indentFirst',
   'backgroundColor', 'borderTop', 'borderRight', 'borderBottom', 'borderLeft',
 ];
 

@@ -47,6 +47,7 @@
   type Drag =
     | { kind: 'stop'; index: number }
     | { kind: 'indent' }
+    | { kind: 'indentRight' }
     | { kind: 'first' };
   let drag = $state<{ target: Drag; cm: number; off: boolean } | null>(null);
 
@@ -80,6 +81,11 @@
     } else if (target.kind === 'indent') {
       // Moves the whole block: the first line keeps its offset from the indent.
       editor?.chain().focus().setIndent(Math.max(0, cm)).run();
+    } else if (target.kind === 'indentRight') {
+      // Measured from the right text edge inwards, mirroring the left indent. Snapped
+      // again: the pointer's own snap doesn't survive the subtraction from textCm.
+      const snapped = Math.round(Math.max(0, textCm - cm) / SNAP_CM) * SNAP_CM;
+      editor?.chain().focus().setIndentRight(snapped).run();
     } else {
       editor?.chain().focus().setIndentFirst(cm - info.indent).run();
     }
@@ -148,18 +154,25 @@
       {/each}
 
       <div
-        class="indent first"
+        class="indent top"
         style="left: {px(at({ kind: 'first' }, info.indent + info.indentFirst))}px"
         onpointerdown={(e) => start(e, { kind: 'first' })}
         role="presentation"
         title={t().ruler.firstLineIndent}
       ></div>
       <div
-        class="indent left"
+        class="indent bottom"
         style="left: {px(at({ kind: 'indent' }, info.indent))}px"
         onpointerdown={(e) => start(e, { kind: 'indent' })}
         role="presentation"
         title={t().ruler.leftIndent}
+      ></div>
+      <div
+        class="indent bottom"
+        style="left: {px(at({ kind: 'indentRight' }, textCm - info.indentRight))}px"
+        onpointerdown={(e) => start(e, { kind: 'indentRight' })}
+        role="presentation"
+        title={t().ruler.rightIndent}
       ></div>
     {/if}
   </div>
@@ -294,12 +307,12 @@
     cursor: ew-resize;
   }
 
-  .indent.first {
+  .indent.top {
     top: 0;
     border-top: 6px solid var(--color-primary);
   }
 
-  .indent.left {
+  .indent.bottom {
     bottom: 0;
     border-bottom: 6px solid var(--color-primary);
   }

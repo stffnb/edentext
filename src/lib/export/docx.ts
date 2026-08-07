@@ -613,6 +613,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
   if (!opts.numbering) {
     if (typeof attrs.indent === 'number' && attrs.indent > 0) indent.left = cmToTwip(attrs.indent);
     else if (opts.indentLeftTwip) indent.left = opts.indentLeftTwip;
+    if (typeof attrs.indentRight === 'number' && attrs.indentRight > 0) indent.right = cmToTwip(attrs.indentRight);
     // Word splits the first-line indent into two exclusive attributes by sign.
     if (typeof attrs.indentFirst === 'number' && attrs.indentFirst !== 0) {
       if (attrs.indentFirst < 0) indent.hanging = cmToTwip(-attrs.indentFirst);
@@ -630,7 +631,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     style,
     alignment: alignOf(attrs),
     spacing: spacingOf(attrs),
-    indent: indent.left != null || indent.hanging != null || indent.firstLine != null ? indent : undefined,
+    indent: Object.keys(indent).length ? indent : undefined,
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,
     widowControl: attrs.widowControl === false ? false : undefined,
     tabStops: stops.length

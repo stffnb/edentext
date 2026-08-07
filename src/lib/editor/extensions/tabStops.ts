@@ -37,17 +37,21 @@ export function formatTabStops(stops: TabStop[]): string | null {
   return out.length ? out.join(';') : null;
 }
 
+export type BlockRuler = { stops: TabStop[]; indent: number; indentRight: number; indentFirst: number };
+
 // The stops of the block holding the cursor, plus the block's own indents (cm) —
 // everything the ruler needs to draw and edit one paragraph.
-export function activeTabStops(state: EditorState): { stops: TabStop[]; indent: number; indentFirst: number } | null {
+export function activeTabStops(state: EditorState): BlockRuler | null {
   const $from = state.selection.$from;
   for (let d = $from.depth; d >= 0; d--) {
     const node = $from.node(d);
     if (!node.isTextblock) continue;
+    const cm = (v: unknown) => (typeof v === 'number' ? v : 0);
     return {
       stops: parseTabStops(node.attrs.tabStops),
-      indent: typeof node.attrs.indent === 'number' ? node.attrs.indent : 0,
-      indentFirst: typeof node.attrs.indentFirst === 'number' ? node.attrs.indentFirst : 0,
+      indent: cm(node.attrs.indent),
+      indentRight: cm(node.attrs.indentRight),
+      indentFirst: cm(node.attrs.indentFirst),
     };
   }
   return null;

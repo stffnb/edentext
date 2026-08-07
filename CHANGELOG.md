@@ -69,7 +69,7 @@
 - Multi-column (newspaper) layout: 1–3 columns with adjustable gap, applied to the whole document (no selection) or to selected paragraphs, Word-style — text fills column 1 to the page bottom, then column 2, and flows across pages with mid-paragraph line breaks; a section followed by other content balances its columns. Round-trips to ODF `text:section`/`style:columns` and DOCX continuous sections with `w:cols`
 - Headers & footers: page-number / page-count fields, configurable edge distances, and variants — different first page and different odd & even pages (edit a page's zone directly; blank first/even zones supported). Press Enter to add blank lines that grow a zone into the page while body text reflows so the page break sits above the footer / below the header, never overlapping. Inline images/logos can be inserted in a zone. Round-trips to ODF (`style:header-first`/`-left`, `draw:frame`) and DOCX (`w:titlePg`/`w:evenAndOddHeaders`, `ImageRun`)
 - Zoom (20–300 %)
-- Horizontal ruler above the page: click to place a tab stop of the selected type, drag to move it, drag it off to remove it; two markers set the paragraph's first-line and left indent. Toggle in the extended toolbar
+- Horizontal ruler above the page: click to place a tab stop of the selected type, drag to move it, drag it off to remove it; three markers set the paragraph's first-line, left and right indent. Toggle in the extended toolbar
 - Show formatting marks (spaces, tabs, paragraph marks)
 
 **Editing aids**
