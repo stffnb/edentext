@@ -21,7 +21,7 @@ import { HF_DISTANCE_CM, hfIsEmpty } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
-import { listMarkerFormat } from '../editor/extensions/listMarker';
+import { charStyleProps, listMarkerFormat } from '../editor/extensions/listMarker';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
@@ -107,7 +107,7 @@ function hexColor(input: string): string | undefined {
 // The level's number/bullet formatting (w:lvl/w:rPr) — Word carries it per level, so
 // only a list whose items agree has one (listMarkerFormat).
 function markerRunProps(node: TiptapNode): Writable<IRunStylePropertiesOptions> | undefined {
-  const format = listMarkerFormat(node);
+  const format = listMarkerFormat(node, charStyleProps(exportSheet));
   if (!format) return undefined;
   const props: Writable<IRunStylePropertiesOptions> = {};
   if (format.fontFamily) props.font = format.fontFamily === SCREEN_FONT ? DOC_FONT : format.fontFamily;

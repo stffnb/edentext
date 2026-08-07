@@ -9,7 +9,7 @@ import Bold from '@tiptap/extension-bold';
 import Italic from '@tiptap/extension-italic';
 import ListItem from '@tiptap/extension-list-item';
 import { OrderedList } from '../../src/lib/editor/extensions/orderedList';
-import { listMarkerDecos, listMarkerFormat } from '../../src/lib/editor/extensions/listMarker';
+import { charStyleProps, listMarkerDecos, listMarkerFormat } from '../../src/lib/editor/extensions/listMarker';
 import { builtinStyleSheet, styleCss } from '../../src/lib/styles/styleSheet';
 import { buildOdt } from '../../src/lib/export/odt';
 import { buildDocx } from '../../src/lib/export/docx';
@@ -81,6 +81,14 @@ describe('list marker formatting', () => {
     expect(listMarkerFormat({ type: 'orderedList', content: [bolded, plain] })).toBeNull();
   });
 
+  // A charStyle mark carries only a name, so the registry has to resolve it — the
+  // caller hands in the lookup (the plugin from its option, the exporters from the sheet).
+  it('resolves a character style on the portion', () => {
+    const list = jsonList(text('x', [{ type: 'charStyle', attrs: { name: 'Strong Emphasis' } }]));
+    expect(listMarkerFormat(list)).toBeNull();
+    expect(listMarkerFormat(list, charStyleProps(builtinStyleSheet()))).toMatchObject({ fontWeight: 'bold' });
+  });
+
   // The marker inherits the item's font, so the style rule has to reach the item and
   // not only its paragraph — else an imported document's numbers keep the editor default.
   it('gives the list item its paragraph style\'s text half', () => {
@@ -97,10 +105,13 @@ describe('list marker formatting', () => {
     } as never;
     let numbering: string;
     let content: string;
+    let styles: string;
 
     beforeAll(async () => {
       numbering = strFromU8(unzipSync(await buildDocx(fixture))['word/numbering.xml']);
-      content = strFromU8(unzipSync(await buildOdt(fixture))['content.xml']);
+      const odt = unzipSync(await buildOdt(fixture));
+      content = strFromU8(odt['content.xml']);
+      styles = strFromU8(odt['styles.xml']);
     });
 
     it('writes the DOCX level run properties (w:lvl/w:rPr)', () => {
@@ -112,11 +123,14 @@ describe('list marker formatting', () => {
       expect(lvl).toMatch(/<w:rFonts[^>]*w:ascii="Arial"/);
     });
 
-    it('points the ODF level definition at a minted character style', () => {
+    // The style has to land in styles.xml: LibreOffice ignores the level's reference
+    // when it resolves to an automatic style (probed).
+    it('points the ODF level definition at a named character style', () => {
       expect(content).toMatch(/<text:list-level-style-number text:level="1" text:style-name="MK1"/);
-      expect(content).toContain('<style:style style:name="MK1" style:family="text">');
-      expect(content).toContain('<style:text-properties fo:font-family="Arial" fo:font-weight="bold"'
+      expect(styles).toContain('<style:style style:name="MK1" style:family="text">');
+      expect(styles).toContain('<style:text-properties fo:font-family="Arial" fo:font-weight="bold"'
         + ' fo:font-style="italic" fo:font-size="18pt" fo:color="#FF0000"/>');
+      expect(content).not.toContain('style:name="MK1"');
     });
   });
 });

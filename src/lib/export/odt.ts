@@ -16,7 +16,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { parseTabStops } from '../editor/extensions/tabStops';
-import { listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
+import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
 import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, toTimeValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
@@ -1572,7 +1572,7 @@ function collectListMarkerFormats(doc: TiptapNode, result: (MarkerFormat | null)
     if (child.type !== 'bulletList' && child.type !== 'orderedList') continue;
     const levels: (MarkerFormat | null)[] = [];
     const visit = (list: TiptapNode, depth: number) => {
-      if (levels[depth - 1] === undefined) levels[depth - 1] = listMarkerFormat(list);
+      if (levels[depth - 1] === undefined) levels[depth - 1] = listMarkerFormat(list, charStyleProps(exportSheet));
       for (const item of list.content ?? []) {
         for (const block of item.content ?? []) {
           if (block.type === 'bulletList' || block.type === 'orderedList') visit(block, depth + 1);
@@ -1586,12 +1586,15 @@ function collectListMarkerFormats(doc: TiptapNode, result: (MarkerFormat | null)
 
 // text:style-name on the level definition points at a style:family="text" style —
 // how ODF formats a number/bullet (a run inside the paragraph never reaches it).
+// The style has to be a **named** one in styles.xml: LibreOffice ignores the
+// reference when it resolves to an automatic style (verified by probe).
 function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | null)[][]): Uint8Array {
   if (!formats.some((levels) => levels.some(Boolean))) return odtBytes;
 
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
-  if (!contentBytes) return odtBytes;
+  const stylesBytes = files['styles.xml'];
+  if (!contentBytes || !stylesBytes) return odtBytes;
 
   let content = strFromU8(contentBytes);
   const minted: string[] = [];
@@ -1626,7 +1629,9 @@ function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | n
   });
 
   if (minted.length) {
-    content = content.replace('</office:automatic-styles>', `${minted.join('\n')}\n</office:automatic-styles>`);
+    files['styles.xml'] = strToU8(
+      strFromU8(stylesBytes).replace('</office:styles>', `${minted.join('\n')}\n</office:styles>`),
+    );
   }
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
