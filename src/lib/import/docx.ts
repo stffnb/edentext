@@ -45,6 +45,8 @@ type Ctx = {
   listCounters: Map<number, Map<number, number>>; // numId → ilvl → last number used
   // Text width (cm) of the file's page setup; a table's margins are relative to it.
   contentWidthCm: number;
+  // The enclosing table style's w:pPr/w:spacing, applied to its cells' paragraphs.
+  cellSpacing: ParaSpacing;
 };
 
 // ---- units & editor defaults to suppress -----------------------------------
@@ -123,7 +125,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   if (!body) throw new Error('Not a Word document (no w:body).');
 
   const contentWidthCm = sectionContentWidthCm(fc(body, 'sectPr'));
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm };
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, cellSpacing: {} };
 
   // Mid-body sectPr paragraphs delimit sections; a section whose w:cols declares
   // more than one column becomes a columns node (the trailing group is described
@@ -682,8 +684,9 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   const directJc = fc(ppr, 'jc');
   const jcVal = directJc ? wVal(directJc) : ctx.styles.paragraphAlign(pStyle ? wVal(pStyle) : null);
   // Spacing/alignment from the style now live in the style registry, so only DIRECT
-  // w:pPr counts as formatting on the block.
-  const attrs = blockAttrs(ppr, kind, level, directJc ? jcVal : null, {});
+  // w:pPr counts as formatting on the block — except in a cell, where the table style's
+  // w:pPr governs and no registry style reaches the cell's paragraphs.
+  const attrs = blockAttrs(ppr, kind, level, directJc ? jcVal : null, kind === 'cell' ? ctx.cellSpacing : {});
   const styleId = styleIdOf(ppr, ctx);
   applyContextualSpacing(el, ppr, ctx, styleId, attrs);
   // Widow-orphan control has no registry home, so the resolved value rides the block.
@@ -783,10 +786,9 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
   // default (editor.css) — so it stays unset rather than accreting an explicit 0.
   if (before != null) attrs.spaceBefore = snapPt(twipToPt(before));
   if (after != null) attrs.spaceAfter = snapPt(twipToPt(after));
-  if (line != null && (!rule || rule === 'auto')) {
-    const mult = round2(line / 240);
-    if (Math.abs(mult - 1) > 0.01) attrs.lineHeight = String(mult);
-  }
+  // Single spacing is written out too: the block's own style may set another one, and
+  // then an unset attr is not the same thing.
+  if (line != null && (!rule || rule === 'auto')) attrs.lineHeight = String(round2(line / 240));
 
   if (!ppr) return attrs;
 
@@ -1282,6 +1284,20 @@ function docxBorderAttr(el: Element | null): string | null | undefined {
 }
 
 function convertTable(tbl: Element, ctx: Ctx): Node | null {
+  // The table style's own w:pPr/w:spacing governs its cells' paragraphs (Word's Table
+  // Grid zeroes the space after and the line spacing). Restored for a nested table.
+  const outerSpacing = ctx.cellSpacing;
+  const tblStyleEl = fc(fc(tbl, 'tblPr'), 'tblStyle');
+  const tblStyleId = tblStyleEl ? wVal(tblStyleEl) : null;
+  if (tblStyleId) ctx.cellSpacing = ctx.styles.paragraphSpacing(tblStyleId);
+  try {
+    return buildTable(tbl, ctx);
+  } finally {
+    ctx.cellSpacing = outerSpacing;
+  }
+}
+
+function buildTable(tbl: Element, ctx: Ctx): Node | null {
   const grid = fc(tbl, 'tblGrid');
   const weights = grid ? fcAll(grid, 'gridCol').map((g) => Math.max(1, intAttr(g, W, 'w') ?? 1)) : null;
   const useWeights = weights && weights.length ? weights : null;
