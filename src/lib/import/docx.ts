@@ -1589,7 +1589,7 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
   const inline: Node[] = [];
   let textAlign: string | null = null;
   const boxMaps: Record<string, string>[] = [];
-  for (const p of fcAll(root, 'p')) {
+  for (const p of hfParagraphs(root)) {
     if (inline.length) inline.push({ type: 'hardBreak' });
     const ppr = fc(p, 'pPr');
     if (textAlign === null) {
@@ -1614,6 +1614,21 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
   Object.assign(attrs, box);
   if (Object.keys(attrs).length) para.attrs = attrs;
   return { type: 'doc', content: [para] };
+}
+
+// A zone's paragraphs in document order, unwrapping the content controls Word puts
+// around an inserted page number — its w:p is not a child of w:hdr/w:ftr.
+function hfParagraphs(el: Element): Element[] {
+  const out: Element[] = [];
+  for (const c of Array.from(el.children)) {
+    if (c.namespaceURI !== W) continue;
+    if (c.localName === 'p') out.push(c);
+    else if (c.localName === 'sdt') {
+      const content = fc(c, 'sdtContent');
+      if (content) out.push(...hfParagraphs(content));
+    }
+  }
+  return out;
 }
 
 // Collapse several source paragraphs' box props into one (mirror of odt.ts mergeHfBox).
