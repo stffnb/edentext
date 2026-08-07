@@ -432,6 +432,12 @@
   content: counters(list-item, ".") ". ";
 }
 
+/* The marker's weight follows the item's first text portion (listMarker.ts tags the
+   <li>); a bold mark sits inside the paragraph and never reaches ::marker. */
+.paper .tiptap li.marker-bold::marker {
+  font-weight: bold;
+}
+
 /* Bullet markers render through the bundled symbol shim first: it holds only the
    glyphs Liberation Serif lacks (❖ ➢ ⇨ ✓ ▸ ◆), so those come out compact and
    platform-independent while every other char falls through to the text font. */

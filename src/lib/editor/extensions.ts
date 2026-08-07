@@ -17,6 +17,7 @@ import Heading from '@tiptap/extension-heading';
 import { BulletList } from './extensions/bulletList';
 import { OrderedList } from './extensions/orderedList';
 import ListItem from '@tiptap/extension-list-item';
+import { ListMarker } from './extensions/listMarker';
 import { Table, TableHeader, TableCell } from '@tiptap/extension-table';
 import { ResizableTableRow } from './extensions/tableRow';
 import History from '@tiptap/extension-history';
@@ -114,6 +115,8 @@ export const extensions = [
   BulletList,
   OrderedList,
   ListItem,
+  // Bullet/number weight: it follows the item's first text portion, as in LibreOffice.
+  ListMarker,
   // resizable:false keeps TipTap's columnResizing plugin off; TableView, the two
   // resize plugins, and ResizableTableRow supply Word-style drag instead. Table
   // (unlike TableKit) doesn't auto-add children, so ResizableTableRow is listed here.
