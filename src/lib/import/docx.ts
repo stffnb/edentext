@@ -702,13 +702,11 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
     }
   }
 
-  // An empty line's height comes from the paragraph mark's own run props (w:pPr/w:rPr),
-  // which convertInline never sees (there are no runs). Carry its font size as a block
-  // attr so the empty line renders at the right height (and typed text inherits it).
-  if (content.length === 0) {
-    const fs = emptyLineFontSize(ppr, ctx, baseRun, level);
-    if (fs) attrs.fontSize = fs;
-  }
+  // The paragraph mark's own run props (w:pPr/w:rPr) set the line-height floor for
+  // every line, not just an empty one — a block whose text is smaller than its style
+  // would otherwise keep the style's taller strut. Carried as a block attr.
+  const fs = paragraphMarkFontSize(ppr, ctx, baseRun, defaults.fontSizePt);
+  if (fs) attrs.fontSize = fs;
 
   const node: Node = { type: level ? 'heading' : 'paragraph' };
   if (level) attrs.level = level;
@@ -718,15 +716,15 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
 }
 
 // The paragraph mark's resolved font size (w:pPr/w:rPr, incl. its rStyle), as a CSS
-// pt string, or null when it matches the block's default (suppressed like run sizes).
-function emptyLineFontSize(ppr: Element | null, ctx: Ctx, baseRun: RunProps, level: number | null): string | null {
+// pt string, or null when it matches what the block renders at anyway (suppressed
+// like run sizes, against the same yardstick).
+function paragraphMarkFontSize(ppr: Element | null, ctx: Ctx, baseRun: RunProps, defaultPt: number): string | null {
   const rPr = fc(ppr, 'rPr');
   const rStyle = fc(rPr, 'rStyle');
   const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
   if (props.sizeHalfPt == null) return null;
   const sizePt = props.sizeHalfPt / 2;
-  const defSize = level != null ? HEADING_SIZES[level - 1] : BODY_FONT_SIZE_PT;
-  return Math.abs(sizePt - defSize) > 0.05 ? `${Math.round(sizePt * 10) / 10}pt` : null;
+  return Math.abs(sizePt - defaultPt) > 0.05 ? `${Math.round(sizePt * 10) / 10}pt` : null;
 }
 
 // Heading + clamped level. Detect via the paragraph style id (fast path for our own

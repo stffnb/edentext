@@ -2846,9 +2846,10 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
         }));
       }
       const content = node.content ?? [];
-      // An empty line's font size (its paragraph-mark size) rides as an FSZ sentinel
-      // that applyEmptyLineFontSizes turns into a paragraph-style fo:font-size.
-      const emptyFs = content.length === 0 && typeof node.attrs?.fontSize === 'string' && node.attrs.fontSize
+      // The paragraph-mark font size rides as an FSZ sentinel that
+      // applyEmptyLineFontSizes turns into a paragraph-style fo:font-size — it is the
+      // block's line-height floor, so it matters on a filled block as much as an empty one.
+      const fsz = typeof node.attrs?.fontSize === 'string' && node.attrs.fontSize
         ? `${FSZ}${node.attrs.fontSize}${FSZ}` : '';
       // Paragraph background/borders ride as a leading PBX sentinel (odf-kit has no such
       // options); applyParagraphBoxes mints the style. FSZ stays first so its own pass,
@@ -2858,15 +2859,15 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
       // Named style, unless it is the one odf-kit puts on this node type anyway.
       const styleName = styleOf(node);
       const sty = styleName !== odfDefaultStyleOf(node) ? `${STY}${styleName}${STY}` : '';
-      const marks = sty + pbx;
+      const marks = fsz + sty + pbx;
       const withPbx = (p: ParagraphBuilder) => { if (marks) p.addText(marks); applyRuns(p, content); };
 
       if (node.type === CUST_P) {
-        if (content.length === 0) doc.addParagraph(emptyFs + marks, opts);
+        if (content.length === 0) doc.addParagraph(marks, opts);
         else doc.addParagraph(withPbx, opts);
       } else if (node.type === CUST_H) {
         const level = (node.attrs?.level as number) ?? 1;
-        if (content.length === 0) doc.addHeading(emptyFs + marks, level, opts);
+        if (content.length === 0) doc.addHeading(marks, level, opts);
         else doc.addHeading(withPbx, level, opts);
       }
     },

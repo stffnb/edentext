@@ -870,12 +870,11 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   if (stops) attrs.tabStops = stops;
   const content = convertInline(el, ctx, baseTextProps, defaults, false);
 
-  // An empty line has no runs, so its height comes from the paragraph style's own
-  // font size; carry it as a block attr (mirrors the docx paragraph-mark size).
-  if (content.length === 0) {
-    const sizePt = lengthToPt(baseTextProps['fo:font-size']);
-    if (sizePt != null && Math.abs(sizePt - defaults.fontSizePt) > 0.05) attrs.fontSize = formatPt(sizePt);
-  }
+  // The paragraph style's own font size is the block's line-height floor on every
+  // line, not only on an empty one; carry it as a block attr (mirrors the docx
+  // paragraph-mark size), or text smaller than the style keeps the taller strut.
+  const markSize = lengthToPt(baseTextProps['fo:font-size']);
+  if (markSize != null && Math.abs(markSize - defaults.fontSizePt) > 0.05) attrs.fontSize = formatPt(markSize);
 
   const node: Node = { type: isHeading ? 'heading' : 'paragraph' };
   if (isHeading) attrs.level = level;
