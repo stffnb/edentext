@@ -87,8 +87,8 @@ editor (`global.css`), so give LibreOffice the same answer:
 What the three real-world fixtures — the contract (an IHK
 contract form), the summary (a student summary: bullets,
 wrapped pictures, one table) and the thesis (a 48-page thesis with charts,
-metafile figures and a German TOC) — still report. The thesis is at 48 pages against
-LibreOffice's 48, with 62 line-level differences, most of them the justification rule above:
+metafile figures and a German TOC) — still report. The thesis matches LibreOffice's 49 pages,
+with 51 line-level differences — most of them the two engine rules below, not layout:
 
 - **A hoisted text box loses the vertical offset it was anchored by.** A frame's own
   offsets are drawn now (`docs/architecture/frames.md`), but a text box anchored inside a
@@ -129,7 +129,12 @@ LibreOffice's 48, with 62 line-level differences, most of them the justification
   (1.909cm) instead. So reading the attribute back naively moves the markers of our own
   exports. Whatever rule that is has to be understood before the value is trusted.
 - Lines whose natural width lands within ~0.2mm of the right margin may take one word
-  more or fewer than LibreOffice. Sub-0.1mm engine rounding, not a layout rule.
+  more or fewer than LibreOffice. Sub-0.1mm engine rounding, not a layout rule — but it
+  **accumulates**: measured on the thesis' page 2, matching word widths (11.86mm for
+  `haben,` on both sides) had drifted 0.45mm apart by the 150th mm of the line, which is
+  what decides whether the next word fits. LibreOffice quantizes each glyph advance where
+  Chromium keeps it fractional, and nothing in CSS exposes that. Most of the thesis'
+  remaining `lineBreak` reports are this.
 
 ## Findings that did not survive measurement
 

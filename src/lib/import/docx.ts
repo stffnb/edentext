@@ -894,6 +894,17 @@ function snapPt(v: number): number {
 }
 
 // ---- inline conversion (runs, marks, fields, images) -----------------------
+// Word wraps a citation, a bibliography entry or any content control in a w:sdt whose
+// content is ordinary inline content — walk through the wrapper, or the runs inside it
+// (a citation's whole visible text) never reach the paragraph.
+function inlineChildren(el: Element): Element[] {
+  return Array.from(el.children).flatMap((c) => {
+    if (c.namespaceURI !== W || c.localName !== 'sdt') return [c];
+    const content = fc(c, 'sdtContent');
+    return content ? inlineChildren(content) : [];
+  });
+}
+
 function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockDefaults, hfFields: boolean): Node[] {
   const out: Node[] = [];
   let fieldMode: 'none' | 'instr' | 'result' = 'none';
@@ -1004,7 +1015,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     }
   };
 
-  for (const el of Array.from(p.children)) {
+  for (const el of inlineChildren(p)) {
     // Math is its own namespace and sits beside the w:r runs, so it has to be picked
     // up before the w:-only guard below drops it.
     if (el.namespaceURI === OMML_NS && (el.localName === 'oMath' || el.localName === 'oMathPara')) {
