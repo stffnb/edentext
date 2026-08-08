@@ -16,6 +16,8 @@ const FALLBACK_PAGE_HEIGHT = 1123;
 // The heading above the entries. An imported TOC keeps the one its file used
 // ("Inhalt", "Sommaire", …); a freshly inserted one takes this.
 const TITLE = 'Table of Contents';
+// Enough leader dots to cross the widest gap a page can offer; the row clips the rest.
+const LEADER_DOTS = 200;
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -183,6 +185,9 @@ class TocView {
       text.textContent = e.text;
       const leader = document.createElement('span');
       leader.className = 'toc-leader';
+      // Real dots, as a word processor fills the gap: they scale with the font and
+      // reach the PDF as text. The row clips whatever the gap has no room for.
+      leader.textContent = '.'.repeat(LEADER_DOTS);
       const page = document.createElement('span');
       page.className = 'toc-page';
       page.textContent = String(e.page);

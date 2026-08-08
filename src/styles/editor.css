@@ -214,13 +214,13 @@
   text-overflow: ellipsis;
   flex: 0 1 auto;
 }
-/* Dotted leader filling the gap; nudged up to sit on the text baseline. */
+/* Leader dots filling the gap: the row grants the span the space that is left and
+   clips the dots that do not fit, so the page number stays put. */
 .paper .tiptap .toc-leader {
-  flex: 1 1 auto;
+  flex: 1 1 0; /* basis 0: the dots are decoration, they must not size the row */
   min-width: 1em;
-  margin: 0 4px;
-  border-bottom: 1px dotted currentColor;
-  transform: translateY(-0.25em);
+  overflow: hidden;
+  white-space: nowrap;
 }
 .paper .tiptap .toc-page {
   flex: 0 0 auto;

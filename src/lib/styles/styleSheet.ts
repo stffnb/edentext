@@ -270,7 +270,10 @@ export function styleCss(sheet: StyleSheet): string {
     const attr = `[data-style="${style.name.replace(/"/g, '\\"')}"]`;
     const selectors = [`.paper .tiptap ${attr}`];
     if (style.outlineLevel) selectors.push(`.paper .tiptap h${style.outlineLevel}:not([data-style])`);
-    if (style.name === DEFAULT_STYLE) selectors.push('.paper .tiptap p:not([data-style])');
+    if (style.outlineLevel === 1) selectors.push('.paper .tiptap .toc-title'); // the index heads its list like any chapter
+    // The generated index carries no style name, and a word processor bases its own
+    // index styles on the default one — so it follows the document's body text.
+    if (style.name === DEFAULT_STYLE) selectors.push('.paper .tiptap p:not([data-style])', '.paper .tiptap .toc');
     rules.push(`${selectors.join(',\n')} {\n  ${decls.join(';\n  ')};\n}`);
 
     // A list marker inherits the item's own font, never its paragraph's, so the item
