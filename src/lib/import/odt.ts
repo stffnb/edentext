@@ -37,8 +37,9 @@ export interface OdtImportResult {
   margins: PageMargins | null;
   orientation: Orientation | null;
   format: PageFormat | null;
-  // The grid every tab past the last custom stop falls on; null = the file declares none.
-  tabIntervalCm: number | null;
+  // The grid every tab past the last custom stop falls on; the format's own fallback
+  // when the file declares none.
+  tabIntervalCm: number;
   // Single-paragraph docs in the hfExtensions schema; null = no zone.
   header: HfDoc;
   footer: HfDoc;

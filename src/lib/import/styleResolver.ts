@@ -1,6 +1,7 @@
 import type { PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
+import { ODF_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { normalizeLeader, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
 
 // Resolves ODF style indirection for the importer: producers (our export, LibreOffice,
@@ -319,9 +320,10 @@ export class StyleResolver {
   }
 
   // The grid every tab past the last custom stop falls on, from the paragraph
-  // default-style (Standard may override it). null when the file declares none.
-  defaultTabInterval(): number | null {
-    return lengthToCm(this.merged('paragraph', 'Standard').para['style:tab-stop-distance']);
+  // default-style (Standard may override it). A file that declares none gets ODF's own
+  // fallback, which is what LibreOffice renders it at.
+  defaultTabInterval(): number {
+    return lengthToCm(this.merged('paragraph', 'Standard').para['style:tab-stop-distance']) ?? ODF_IMPLIED_TAB_CM;
   }
 
   // Resolve a text-props map's font: fo:font-family wins, else style:font-name

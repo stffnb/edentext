@@ -3,7 +3,7 @@
 ## Page layout settings
 
 - **`pageMargins.ts`** — `PageMargins` in **cm** (default `{ top: 2, bottom: 2, left: 2, right: 2 }` — LibreOffice's; clamped 0–10). `applyMarginVars` sets `--user-margin-*` (px) on `:root`; `PX_PER_CM = 96/2.54`.
-- **`tabInterval.ts`** — the document's default tab interval in **cm** (`DEFAULT_TAB_INTERVAL_CM = 1.25`, LibreOffice's; Word's is 1.27; clamped 0.05–10). `applyTabIntervalVar` sets `--tab-interval`, which is `.tiptap`'s `tab-size`.
+- **`tabInterval.ts`** — the document's default tab interval in **cm** (`DEFAULT_TAB_INTERVAL_CM = 1.25`, LibreOffice's for a new document; clamped 0.05–10). `applyTabIntervalVar` sets `--tab-interval`, which is `.tiptap`'s `tab-size`. A file that declares none falls back to its format's own value, neither of them ours: `ODF_IMPLIED_TAB_CM` 2cm (measured against LibreOffice), `DOCX_IMPLIED_TAB_CM` 1.27cm — so both exports always write the value out.
 - **`pageOrientation.ts`** — `'portrait' | 'landscape'`. `applyOrientationVars` sets `--user-page-{width,height}`; landscape swaps the A4 dimensions (matching odf-kit's automatic swap).
 
 Both margins and orientation are passed into the ODT export so the exported document's geometry/line-wrapping matches the on-screen preview.

@@ -7,7 +7,7 @@ import { buildOdt } from '../../src/lib/export/odt';
 import { buildDocx } from '../../src/lib/export/docx';
 import { importOdt } from '../../src/lib/import/odt';
 import { importDocx } from '../../src/lib/import/docx';
-import { parseTabStops, formatTabStops } from '../../src/lib/editor/extensions/tabStops';
+import { parseTabStops, formatTabStops, nextStopCm } from '../../src/lib/editor/extensions/tabStops';
 
 type N = any;
 
@@ -37,6 +37,19 @@ describe('tab stops', () => {
     expect(formatTabStops([{ pos: 12, align: 'right' }, { pos: 1.004, align: 'left' }])).toBe('1l;12r');
     expect(formatTabStops([])).toBe(null);
     expect(parseTabStops(null)).toEqual([]);
+  });
+
+  it('advances to the next stop, else the next grid multiple', () => {
+    // The rule a run of tabs is walked with: LibreOffice carries the run onto the next
+    // line and restarts the grid there, which is what the break widget reproduces.
+    expect(nextStopCm(0, [], 1.25)).toBeCloseTo(1.25, 3);
+    expect(nextStopCm(1.25, [], 1.25)).toBeCloseTo(2.5, 3);
+    expect(nextStopCm(1.65, [], 1.25)).toBeCloseTo(2.5, 3);
+    // A custom stop right of the pen wins over the grid; past the last one the grid
+    // takes over again, on its own absolute multiples rather than from that stop.
+    expect(nextStopCm(1, [6, 12], 1.25)).toBeCloseTo(6, 3);
+    expect(nextStopCm(6, [6, 12], 1.25)).toBeCloseTo(12, 3);
+    expect(nextStopCm(12, [6, 12], 1.25)).toBeCloseTo(12.5, 3);
   });
 
   it('round-trips through ODF', async () => {

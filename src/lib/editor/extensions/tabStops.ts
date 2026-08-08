@@ -102,23 +102,80 @@ function tabPositions(node: PmNode, blockPos: number): number[] {
 }
 
 type TabWidth = { pos: number; width: number; leader: string | null };
+// Doc positions where a run of tabs has to start a new line.
+type TabLayout = { widths: TabWidth[]; breaks: number[] };
 
-function measure(view: EditorView): TabWidth[] {
+// Where the pen lands after a tab standing at x (cm from the line start): the first stop
+// right of it, else the next multiple of the default interval.
+export function nextStopCm(x: number, stops: number[], interval: number): number {
+  const custom = stops.find((s) => s > x + 0.01);
+  if (custom != null) return custom;
+  return Math.floor(x / interval + 1e-9) * interval + interval;
+}
+
+// A run of tabs wider than the line continues on the next one, as LibreOffice lays it
+// out; Chromium instead hangs the leftover tabs and starts the next line at the margin.
+// Walked from the pen BEFORE the run — the one thing a break of ours can't move — so the
+// answer is the same whether or not the break is already in place.
+function runBreaks(view: EditorView, blockEl: HTMLElement, tabs: number[], stops: TabStop[], scale: number, originX: number): number[] {
+  // Only a run of two or more can outgrow a line, and reading the block's geometry
+  // forces a reflow — so the ordinary single tab costs nothing here.
+  const runs: [number, number][] = [];
+  for (let i = 0; i < tabs.length; ) {
+    let end = i + 1;
+    while (end < tabs.length && tabs[end] === tabs[end - 1] + 1) end++;
+    if (end - i > 1) runs.push([i, end]);
+    i = end;
+  }
+  if (!runs.length) return [];
+
+  const cs = getComputedStyle(blockEl);
+  const interval = (parseFloat(cs.tabSize) || PX_PER_CM * 1.25) / PX_PER_CM;
+  const lineCm = (blockEl.clientWidth - parseFloat(cs.paddingLeft || '0') - parseFloat(cs.paddingRight || '0')) / PX_PER_CM;
+  if (!(interval > 0) || !(lineCm > 0)) return [];
+  // Stops are measured from the text margin, the grid from the line start.
+  const offsetCm = (blockEl.getBoundingClientRect().left - originX) / scale / PX_PER_CM
+    + parseFloat(cs.paddingLeft || '0') / PX_PER_CM;
+  const stopCms = stops.map((s) => s.pos - offsetCm);
+  const out: number[] = [];
+
+  for (const [i, end] of runs) {
+    let x = (view.coordsAtPos(tabs[i], -1).left - originX) / scale / PX_PER_CM - offsetCm;
+    for (let j = i; j < end; j++) {
+      let next = nextStopCm(x, stopCms, interval);
+      // Never before the run's own first tab: that pen is what the walk starts from, so
+      // moving it would make the next pass decide differently.
+      if (next > lineCm + 0.01 && j > i) {
+        out.push(tabs[j]);
+        x = 0;
+        next = nextStopCm(0, stopCms, interval);
+      }
+      x = next;
+    }
+  }
+  return out;
+}
+
+function measure(view: EditorView): TabLayout {
   const dom = view.dom as HTMLElement;
   const tipRect = dom.getBoundingClientRect();
   // From the width, not the height: offsetWidth/Height are rounded, and a one-line
   // header/footer zone is short enough for that rounding to be half a percent.
   const scale = dom.offsetWidth ? tipRect.width / dom.offsetWidth : 1;
-  if (!scale) return [];
+  if (!scale) return { widths: [], breaks: [] };
   // x = 0 is the left text margin (.tiptap's padding edge), the origin of a stop.
   const originX = tipRect.left + parseFloat(getComputedStyle(dom).paddingLeft || '0') * scale;
   const out: TabWidth[] = [];
+  const breaks: number[] = [];
 
   view.state.doc.descendants((node, pos) => {
     if (!node.isTextblock) return true;
-    const stops = stopsOf(node);
-    if (!stops.length) return false;
     const tabs = tabPositions(node, pos);
+    if (!tabs.length) return false;
+    const stops = stopsOf(node);
+    const blockEl = view.nodeDOM(pos);
+    if (blockEl instanceof HTMLElement) breaks.push(...runBreaks(view, blockEl, tabs, stops, scale, originX));
+    if (!stops.length) return false;
     const blockEnd = pos + node.nodeSize - 1;
 
     for (let t = 0; t < tabs.length; t++) {
@@ -145,7 +202,7 @@ function measure(view: EditorView): TabWidth[] {
     }
     return false;
   });
-  return out;
+  return { widths: out, breaks };
 }
 
 // Natural width of a doc range: the sum of its client rects, so a segment pushed onto
@@ -326,14 +383,15 @@ export const TabStops = Extension.create({
         view(view) {
           const calculate = () => {
             rafId = null;
-            let widths: TabWidth[] = [];
+            let layout: TabLayout = { widths: [], breaks: [] };
             // coordsAtPos throws on a position the browser hasn't rendered yet; the
             // next change re-runs the pass anyway.
-            try { widths = measure(view); } catch { return; }
-            const next = widths.map((w) => `${w.pos}:${w.width}:${w.leader ?? ''}`).join(',');
+            try { layout = measure(view); } catch { return; }
+            const { widths, breaks } = layout;
+            const next = widths.map((w) => `${w.pos}:${w.width}:${w.leader ?? ''}`).join(',') + `|${breaks.join(',')}`;
             if (next === key) return;
             key = next;
-            const decos = widths.map((w) =>
+            const decos: Decoration[] = widths.map((w) =>
               // margin-LEFT: the gap is the tab's own advance, so a caret placed after
               // the tab has to sit behind it. As margin-right it stayed at the old x
               // until the next keystroke moved it into the following text node.
@@ -343,6 +401,11 @@ export const TabStops = Extension.create({
                 ? { style: `tab-size:0;margin-left:${w.width}px;--leader-w:${w.width}px`, class: 'tab-leader', 'data-leader': w.leader }
                 : { style: `tab-size:0;margin-left:${w.width}px` }),
             );
+            // The tabs the line can't hold move to the next one, where the grid starts
+            // over — which is what CSS does after a <br> anyway.
+            for (const at of breaks) {
+              decos.push(Decoration.widget(at, () => document.createElement('br'), { side: -1, key: 'tab-wrap' }));
+            }
             // The advances change line breaking, so pagination has to re-measure.
             view.dispatch(view.state.tr
               .setMeta(tabStopsKey, DecorationSet.create(view.state.doc, decos))

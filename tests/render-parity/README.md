@@ -108,9 +108,6 @@ LibreOffice's 48, with 62 line-level differences, most of them the justification
   undrawable frame keeps its box and its label but not its picture (`imageFormats.ts`).
   Exporting writes the placeholder back out — the original is gone from the moment it
   is imported.
-- **Tabs that wrap lose their advance.** Six consecutive tabs at a line end stay on that
-  line in Chromium and the continuation starts at the margin; LibreOffice carries the
-  tab positions onto it (91mm apart in the contract).
 - **A list level's own hanging indent is not read**, only the 0.635cm both exports
   write (`LIST_HANGING_CM`). The marker is drawn there and overflows if it is wider,
   where Word moves the text to the next list tab — reading `w:lvl/w:pPr/w:ind w:hanging`

@@ -15,7 +15,7 @@ import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFor
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
-import { clampTabInterval } from '../storage/tabInterval';
+import { clampTabInterval, DOCX_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { applyUniformRunFont, type OdtImportResult } from './odt';
@@ -1670,16 +1670,17 @@ function docHasEvenOddHeaders(files: Record<string, Uint8Array>): boolean {
   }
 }
 
-// The grid every tab past the last custom stop falls on, also from settings.xml.
-function docTabInterval(files: Record<string, Uint8Array>): number | null {
+// The grid every tab past the last custom stop falls on, also from settings.xml. A file
+// that declares none gets Word's own fallback of 720 twips.
+function docTabInterval(files: Record<string, Uint8Array>): number {
   const bytes = files['word/settings.xml'];
-  if (!bytes) return null;
+  if (!bytes) return DOCX_IMPLIED_TAB_CM;
   try {
     const el = parseXml(strFromU8(bytes)).getElementsByTagNameNS(W, 'defaultTabStop')[0];
     const tw = el && intAttr(el, W, 'val');
-    return tw ? clampTabInterval(round2(twipToCm(tw))) : null;
+    return tw ? clampTabInterval(round2(twipToCm(tw))) : DOCX_IMPLIED_TAB_CM;
   } catch {
-    return null;
+    return DOCX_IMPLIED_TAB_CM;
   }
 }
 

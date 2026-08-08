@@ -2033,12 +2033,11 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
     '<style:master-page style:name="Standard"',
   );
 
-  // The document's tab interval, on the paragraph default-style. Written only when it
-  // differs from LibreOffice's own, so a file that never declared one doesn't gain it.
-  if (Math.abs(tabIntervalCm - DEFAULT_TAB_INTERVAL_CM) > 0.001) {
-    styles = styles.replace('<office:styles>', '<office:styles>'
-      + `<style:default-style style:family="paragraph"><style:paragraph-properties style:tab-stop-distance="${round3(tabIntervalCm)}cm"/></style:default-style>`);
-  }
+  // The document's tab interval, on the paragraph default-style. Always written: a file
+  // that declares none falls back to ODF's own 2cm, which is not what the editor shows
+  // (measured — LibreOffice puts a bare A⇥X at 2cm, not at its UI default of 1.25).
+  styles = styles.replace('<office:styles>', '<office:styles>'
+    + `<style:default-style style:family="paragraph"><style:paragraph-properties style:tab-stop-distance="${round3(tabIntervalCm)}cm"/></style:default-style>`);
 
   // odf-kit's Standard style carries fo:margin-bottom="0.212cm", but the editor (like
   // LibreOffice and Word) has no paragraph spacing by default — every paragraph and list
