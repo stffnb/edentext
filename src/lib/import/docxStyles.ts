@@ -27,7 +27,7 @@ export type RunProps = {
   spacingTwip?: number; // w:spacing (character spacing, twentieths of a point)
   font?: string; // explicit w:rFonts w:ascii/hAnsi
   fontTheme?: 'minor' | 'major'; // w:rFonts w:asciiTheme/hAnsiTheme → theme1.xml font
-  highlightFill?: string; // run-level w:shd w:fill (text highlight)
+  highlightFill?: string; // text highlight: w:shd w:fill, or w:highlight's palette colour
 };
 
 // A numbering level definition (numbering.xml w:lvl). bulletFont is the level's
@@ -65,6 +65,15 @@ export function toggle(el: Element): boolean {
   return v == null || !(v === 'false' || v === '0' || v === 'off');
 }
 
+// The highlighter pen's fixed palette (w:highlight names a colour where w:shd gives a
+// hex). 'none' maps to the same sentinel as an empty w:shd, so it cancels an inherited pen.
+const HIGHLIGHT_HEX: Record<string, string> = {
+  black: '000000', blue: '0000FF', cyan: '00FFFF', darkBlue: '000080', darkCyan: '008080',
+  darkGray: '808080', darkGreen: '008000', darkMagenta: '800080', darkRed: '800000',
+  darkYellow: '808000', green: '00FF00', lightGray: 'C0C0C0', magenta: 'FF00FF',
+  red: 'FF0000', white: 'FFFFFF', yellow: 'FFFF00', none: 'auto',
+};
+
 // w:rPr element → RunProps (later layers override earlier; absent keys inherit).
 export function parseRunProps(rPr: Element | null | undefined): RunProps {
   const p: RunProps = {};
@@ -93,6 +102,7 @@ export function parseRunProps(rPr: Element | null | undefined): RunProps {
         break;
       }
       case 'shd': { const f = child.getAttributeNS(W, 'fill'); if (f && f !== 'auto') p.highlightFill = f; break; }
+      case 'highlight': { const c = HIGHLIGHT_HEX[wVal(child) ?? '']; if (c) p.highlightFill = c; break; }
     }
   }
   return p;
