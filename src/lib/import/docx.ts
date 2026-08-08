@@ -464,10 +464,16 @@ function makeListNode(ctx: Ctx, numId: number, ilvl: number): Node {
     }
     if (def.start != null && def.start > 1) attrs.start = def.start;
   }
-  if (ilvl === 0 && def.leftTwip != null) {
-    // Signed: a level's w:ind w:left may sit left of the editor's 1.27cm base
-    // (w:left="360" is a common one). Floored there so the list stays in the text column.
-    const extra = round2(Math.max(-LIST_LEFT_STEP_CM, twipToCm(def.leftTwip) - LIST_LEFT_STEP_CM));
+  if (def.leftTwip != null) {
+    // A level's w:ind w:left is absolute, the editor nests one LIST_LEFT_STEP_CM per
+    // level — so the attr is this level's step past the one above. Signed (w:left="360"
+    // is a common one) and floored there, so the list stays in the text column.
+    const leftCm = (l: number) => {
+      const t = ctx.styles.level(numId, l).leftTwip;
+      return t != null ? twipToCm(t) : (l + 1) * LIST_LEFT_STEP_CM;
+    };
+    const step = leftCm(ilvl) - (ilvl === 0 ? 0 : leftCm(ilvl - 1));
+    const extra = round2(Math.max(-LIST_LEFT_STEP_CM, step - LIST_LEFT_STEP_CM));
     if (Math.abs(extra) > LIST_INDENT_EPS_CM) attrs.indent = extra;
   }
   const node: Node = { type: bullet ? 'bulletList' : 'orderedList', content: [] };

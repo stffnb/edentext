@@ -1587,20 +1587,29 @@ function applyBulletListChars(odtBytes: Uint8Array, chars: (string[] | null)[]):
   return rezipOdt(files);
 }
 
-// Whole-list indent (cm) on a top-level bulletList/orderedList. odf-kit uses
-// label-alignment mode (ignores the paragraph margin), so the shift goes onto the L#
-// list-style's per-level fo:margin-left + text:list-tab-stop-position. One per list (0=none).
-function collectListIndents(node: TiptapNode, result: number[]): void {
+// Per-level indent (cm) of each top-level bulletList/orderedList, from the first list at
+// that level. odf-kit uses label-alignment mode (ignores the paragraph margin), so the
+// shift goes onto the L# list-style's per-level fo:margin-left + list-tab-stop-position.
+function collectListIndents(node: TiptapNode, result: number[][]): void {
   for (const child of node.content ?? []) {
-    if (child.type === 'bulletList' || child.type === 'orderedList') {
-      const ind = child.attrs?.indent;
-      result.push(typeof ind === 'number' && ind > 0 ? ind : 0);
-    }
+    if (child.type !== 'bulletList' && child.type !== 'orderedList') continue;
+    const levels: number[] = [];
+    const visit = (list: TiptapNode, depth: number) => {
+      const ind = list.attrs?.indent;
+      if (levels[depth - 1] === undefined) levels[depth - 1] = typeof ind === 'number' ? ind : 0;
+      for (const item of list.content ?? []) {
+        for (const block of item.content ?? []) {
+          if (block.type === 'bulletList' || block.type === 'orderedList') visit(block, depth + 1);
+        }
+      }
+    };
+    visit(child, 1);
+    result.push(levels);
   }
 }
 
-function applyListIndents(odtBytes: Uint8Array, indents: number[]): Uint8Array {
-  if (indents.every(v => !v)) return odtBytes;
+function applyListIndents(odtBytes: Uint8Array, indents: number[][]): Uint8Array {
+  if (indents.every(levels => levels.every(v => !v))) return odtBytes;
 
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
@@ -1609,17 +1618,22 @@ function applyListIndents(odtBytes: Uint8Array, indents: number[]): Uint8Array {
   let content = strFromU8(contentBytes);
   const bump = (cm: number) => (_m: string, attr: string, v: string) =>
     `${attr}="${(parseFloat(v) + cm).toFixed(3)}cm"`;
+  // The editor nests the levels, so a level's margin grows by every indent above it too.
+  const shiftLevels = (body: string, levels: number[]) =>
+    body.replace(/<text:list-level-style-[a-z]+[\s\S]*?(?=<text:list-level-style-|$)/g, (lvl) => {
+      const n = parseInt(/text:level="(\d+)"/.exec(lvl)?.[1] ?? '', 10);
+      const cm = Number.isFinite(n) ? levels.slice(0, n).reduce((a, b) => a + (b || 0), 0) : 0;
+      return cm
+        ? lvl.replace(/(fo:margin-left)="([\d.]+)cm"/g, bump(cm))
+             .replace(/(text:list-tab-stop-position)="([\d.]+)cm"/g, bump(cm))
+        : lvl;
+    });
 
-  indents.forEach((cm, i) => {
-    if (!cm) return;
+  indents.forEach((levels, i) => {
+    if (levels.every(v => !v)) return;
     const re = new RegExp(`(<text:list-style style:name="L${i + 1}">)([\\s\\S]*?)(</text:list-style>)`);
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
-      open +
-      body
-        .replace(/(fo:margin-left)="([\d.]+)cm"/g, bump(cm))
-        .replace(/(text:list-tab-stop-position)="([\d.]+)cm"/g, bump(cm)) +
-      close,
-    );
+      open + shiftLevels(body, levels) + close);
   });
 
   files['content.xml'] = strToU8(content);
@@ -3222,7 +3236,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const styledLists = applyListItemStyles(numberedOdt, listStyles);
 
   // Whole-list indent → added to each L# list-style's level margins.
-  const listIndents: number[] = [];
+  const listIndents: number[][] = [];
   collectListIndents(raw, listIndents);
   let indentedLists = applyListIndents(styledLists, listIndents);
 

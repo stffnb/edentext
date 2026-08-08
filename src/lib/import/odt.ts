@@ -1473,17 +1473,16 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
   }
   if (items.length === 0) return null;
 
-  // Whole-list indent (top level only): margin beyond the level-1 base. Nested
-  // lists inherit it visually through DOM nesting, so only depth 1 carries it.
+  // A level's margin-left is absolute, the editor nests one LIST_BASE_MARGIN_CM per
+  // level — so the attr is this level's step past the one above, which DOM nesting adds
+  // to. Signed, floored there: a list may sit left of the base, never of the column.
   let indent: number | null = null;
-  if (depth === 1) {
-    const mlCm = listLevelMarginLeftCm(levelDef);
-    if (mlCm != null) {
-      // Signed, floored at the base: a list may sit left of the editor's 1.27cm level
-      // margin, but never left of the text column.
-      const extra = Math.round(Math.max(-LIST_BASE_MARGIN_CM, mlCm - LIST_BASE_MARGIN_CM) * 100) / 100;
-      if (Math.abs(extra) > LIST_INDENT_EPS_CM) indent = extra;
-    }
+  if (listLevelMarginLeftCm(levelDef) != null) {
+    const marginCm = (d: number) =>
+      listLevelMarginLeftCm(listLevelDef(ctx.resolver.listStyle(styleName), d)) ?? d * LIST_BASE_MARGIN_CM;
+    const step = marginCm(depth) - (depth > 1 ? marginCm(depth - 1) : 0);
+    const extra = Math.round(Math.max(-LIST_BASE_MARGIN_CM, step - LIST_BASE_MARGIN_CM) * 100) / 100;
+    if (Math.abs(extra) > LIST_INDENT_EPS_CM) indent = extra;
   }
 
   if (!ordered) {
