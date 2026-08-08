@@ -277,6 +277,124 @@ export function chartDataUrl(xml: string, widthPx: number, heightPx: number, acc
   } catch { return null; }
   if (doc.getElementsByTagName('parsererror').length) return null;
   const chart = parseChart(doc, accents.length ? accents : DEFAULT_ACCENTS);
-  if (!chart) return null;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(chartSvg(chart, w, h))}`;
+  return chart ? svgUrl(chart, w, h) : null;
+}
+
+const svgUrl = (chart: Chart, widthPx: number, heightPx: number) =>
+  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+    chartSvg(chart, Math.max(80, Math.round(widthPx)), Math.max(60, Math.round(heightPx))))}`;
+
+// ---- ODF charts ------------------------------------------------------------
+// An embedded ODF chart document (LibreOffice's "Object N/content.xml"): the same
+// picture, read from <chart:chart> and the local table that holds its numbers.
+
+const NS_CHART = 'urn:oasis:names:tc:opendocument:xmlns:chart:1.0';
+const NS_TABLE = 'urn:oasis:names:tc:opendocument:xmlns:table:1.0';
+const NS_OFFICE = 'urn:oasis:names:tc:opendocument:xmlns:office:1.0';
+const NS_STYLE = 'urn:oasis:names:tc:opendocument:xmlns:style:1.0';
+const NS_DRAW = 'urn:oasis:names:tc:opendocument:xmlns:drawing:1.0';
+
+const ODF_PLOTS: Record<string, Chart['kind']> = {
+  bar: 'bar', line: 'line', circle: 'pie', ring: 'pie', area: 'area', scatter: 'scatter',
+};
+
+// "local-table.$B$2:.$B$24" → the column index and the row span it covers (1-based,
+// as the sheet counts them). Only single-column ranges occur in a chart's own table.
+function cellRange(addr: string | null): { col: number; from: number; to: number } | null {
+  const m = /\.?\$?([A-Z]+)\$?(\d+)(?::\.?\$?[A-Z]+\$?(\d+))?/.exec(addr ?? '');
+  if (!m) return null;
+  const col = [...m[1]].reduce((a, ch) => a * 26 + (ch.charCodeAt(0) - 64), 0);
+  return { col, from: +m[2], to: +(m[3] ?? m[2]) };
+}
+
+// The chart's own <table:table> as rows of cells, repeats expanded. A cell's number is
+// office:value; its label is the text, which is what a category axis shows.
+function localTable(chart: Element): { num: (number | null)[]; text: string[] }[] {
+  const table = chart.getElementsByTagNameNS(NS_TABLE, 'table')[0];
+  const rows: { num: (number | null)[]; text: string[] }[] = [];
+  for (const tr of Array.from(table?.getElementsByTagNameNS(NS_TABLE, 'table-row') ?? [])) {
+    const num: (number | null)[] = [];
+    const text: string[] = [];
+    for (const td of Array.from(tr.children)) {
+      if (td.namespaceURI !== NS_TABLE || !td.localName.startsWith('table-cell')) continue;
+      const repeat = Math.min(64, parseInt(td.getAttributeNS(NS_TABLE, 'number-columns-repeated') ?? '1', 10) || 1);
+      const raw = td.getAttributeNS(NS_OFFICE, 'value');
+      const v = raw != null ? parseFloat(raw) : NaN;
+      for (let i = 0; i < repeat; i++) {
+        num.push(Number.isFinite(v) ? v : null);
+        text.push((td.textContent ?? '').trim());
+      }
+    }
+    rows.push({ num, text });
+  }
+  return rows;
+}
+
+const odfStyleProp = (styles: Map<string, Element>, name: string | null, ns: string, family: string, attr: string) => {
+  const props = styles.get(name ?? '')?.getElementsByTagNameNS(NS_STYLE, family)[0];
+  return props?.getAttributeNS(ns, attr) ?? null;
+};
+
+function parseOdfChart(doc: Document): Chart | null {
+  const chart = doc.getElementsByTagNameNS(NS_CHART, 'chart')[0];
+  const kind = ODF_PLOTS[(chart?.getAttributeNS(NS_CHART, 'class') ?? '').replace(/^chart:/, '')];
+  if (!chart || !kind) return null;
+  const styles = new Map<string, Element>();
+  for (const st of Array.from(doc.getElementsByTagNameNS(NS_STYLE, 'style'))) {
+    const n = st.getAttributeNS(NS_STYLE, 'name');
+    if (n) styles.set(n, st);
+  }
+  const plotArea = chart.getElementsByTagNameNS(NS_CHART, 'plot-area')[0] ?? null;
+  const rows = localTable(chart);
+  const column = (addr: string | null, pick: 'num' | 'text') => {
+    const range = cellRange(addr);
+    if (!range) return [];
+    return rows.slice(range.from - 1, range.to).map((row) => (row?.[pick][range.col - 1] ?? null));
+  };
+
+  const axis = (dim: string) => Array.from(plotArea?.getElementsByTagNameNS(NS_CHART, 'axis') ?? [])
+    .find((a) => a.getAttributeNS(NS_CHART, 'dimension') === dim) ?? null;
+  const titleOf = (el: Element | null) =>
+    (el?.getElementsByTagNameNS(NS_CHART, 'title')[0]?.textContent ?? '').trim();
+  const yStyle = axis('y')?.getAttributeNS(NS_CHART, 'style-name') ?? null;
+  const bound = (attr: string) => {
+    const v = parseFloat(odfStyleProp(styles, yStyle, NS_CHART, 'chart-properties', attr) ?? '');
+    return Number.isFinite(v) ? v : null;
+  };
+
+  const series: Series[] = Array.from(plotArea?.getElementsByTagNameNS(NS_CHART, 'series') ?? []).map((ser, i) => {
+    const fill = odfStyleProp(styles, ser.getAttributeNS(NS_CHART, 'style-name'), NS_DRAW, 'graphic-properties', 'fill-color');
+    const label = column(ser.getAttributeNS(NS_CHART, 'label-cell-address'), 'text')[0];
+    return {
+      name: (typeof label === 'string' && label) || `Series ${i + 1}`,
+      color: fill ?? DEFAULT_ACCENTS[i % DEFAULT_ACCENTS.length],
+      values: column(ser.getAttributeNS(NS_CHART, 'values-cell-range-address'), 'num') as (number | null)[],
+    };
+  });
+  if (!series.length) return null;
+
+  const catAddr = plotArea?.getElementsByTagNameNS(NS_CHART, 'categories')[0]
+    ?.getAttributeNS(NS_TABLE, 'cell-range-address') ?? null;
+  return {
+    kind: kind === 'bar' && odfStyleProp(styles, plotArea?.getAttributeNS(NS_CHART, 'style-name') ?? null,
+      NS_CHART, 'chart-properties', 'vertical') === 'true' ? 'hbar' : kind,
+    stacked: odfStyleProp(styles, plotArea?.getAttributeNS(NS_CHART, 'style-name') ?? null,
+      NS_CHART, 'chart-properties', 'stacked') === 'true',
+    title: titleOf(chart),
+    cats: column(catAddr, 'text').map((v) => (typeof v === 'string' ? v : '')),
+    series,
+    legend: !!chart.getElementsByTagNameNS(NS_CHART, 'legend').length,
+    grid: !!axis('y')?.getElementsByTagNameNS(NS_CHART, 'grid').length,
+    catTitle: titleOf(axis('x')),
+    valTitle: titleOf(axis('y')),
+    axMin: bound('minimum'),
+    axMax: bound('maximum'),
+  };
+}
+
+// An embedded ODF chart document as an SVG data-URI, or null when it holds no plot
+// this can draw — the caller then keeps its placeholder.
+export function odfChartDataUrl(doc: Document, widthPx: number, heightPx: number): string | null {
+  const chart = parseOdfChart(doc);
+  return chart ? svgUrl(chart, widthPx, heightPx) : null;
 }

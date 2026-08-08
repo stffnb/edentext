@@ -4,6 +4,7 @@ import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, ODF_LOOK_ATTRS, normalizeCo
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage } from '../editor/extensions/image';
+import { odfChartDataUrl } from './chart';
 import { formatTabStops } from '../editor/extensions/tabStops';
 import type { CapsMode, LineStyle } from '../editor/extensions/textEffects';
 import { TABLE_REGIONS, tableLookAttr, type TableLook, type TableRegion } from '../styles/tableStyles';
@@ -313,6 +314,25 @@ function convertFormulaFrame(frame: Element, ctx: Ctx): Node | null {
   return { type: 'formula', attrs: { latex, display: aloneInParagraph(frame) } };
 }
 
+// A <draw:frame> holding a chart object → an image node drawing it, at the frame's own
+// size. Read-only, like the DOCX leg: the editor has no chart object, so a re-export
+// carries the picture (see import/chart.ts).
+function convertChartFrame(frame: Element, ctx: Ctx): Node | null {
+  const obj = Array.from(frame.children).find(
+    c => c.namespaceURI === NS.draw && (c.localName === 'object' || c.localName === 'object-ole'),
+  );
+  const wCm = lengthToCm(frame.getAttributeNS(NS.svg, 'width'));
+  const hCm = lengthToCm(frame.getAttributeNS(NS.svg, 'height'));
+  if (!obj || wCm == null || hCm == null) return null;
+  const doc = loadObjectDoc(obj.getAttributeNS(NS.xlink, 'href'), ctx);
+  const src = doc && odfChartDataUrl(doc, cmToPx(wCm), cmToPx(hCm));
+  if (!src) return null;
+  const attrs: Record<string, unknown> = { src, width: Math.round(cmToPx(wCm)), height: Math.round(cmToPx(hCm)), alt: 'Chart' };
+  applyFrameRotationAndWrap(frame, attrs, ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name')));
+  if (!attrs.wrap || attrs.wrap === 'inline') fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
+  return { type: 'image', attrs };
+}
+
 // A display formula is one that owns its line — ODF has no flag for it (LibreOffice
 // writes display="block" on every formula object it re-saves), so it is read off the
 // paragraph: nothing but this frame in it.
@@ -326,16 +346,22 @@ function aloneInParagraph(frame: Element): boolean {
 // The embedded object's content.xml — an ODF formula document's root is the MathML
 // itself. A non-formula object (chart, spreadsheet) has no math root and falls through.
 function loadFormulaObject(href: string | null, ctx: Ctx): Element | null {
+  const doc = loadObjectDoc(href, ctx);
+  const root = doc?.documentElement;
+  if (!root) return null;
+  return root.namespaceURI === NS.math && root.localName === 'math'
+    ? root
+    : doc!.getElementsByTagNameNS(NS.math, 'math')[0] ?? null;
+}
+
+// The sub-document a draw:object points at ("./Object 1" → "Object 1/content.xml").
+function loadObjectDoc(href: string | null, ctx: Ctx): Document | null {
   const dir = (href ?? '').replace(/^\.\//, '').replace(/\/$/, '');
   if (!dir) return null;
   const bytes = ctx.files[`${dir}/content.xml`] ?? ctx.files[dir];
   if (!bytes) return null;
   const doc = new DOMParser().parseFromString(strFromU8(bytes), 'text/xml');
-  const root = doc.documentElement;
-  if (!root || doc.getElementsByTagName('parsererror').length) return null;
-  return root.namespaceURI === NS.math && root.localName === 'math'
-    ? root
-    : doc.getElementsByTagNameNS(NS.math, 'math')[0] ?? null;
+  return doc.documentElement && !doc.getElementsByTagName('parsererror').length ? doc : null;
 }
 
 // draw:rect / draw:ellipse / draw:custom-shape (rect/round-rect/ellipse preset) → a
@@ -378,6 +404,8 @@ function convertDrawElement(e: Element, ctx: Ctx): { inline?: Node; block?: Node
     if (textBoxEl) return { block: convertTextBoxFrame(e, textBoxEl, ctx) };
     const formula = convertFormulaFrame(e, ctx);
     if (formula) return { inline: formula };
+    const chart = convertChartFrame(e, ctx);
+    if (chart) return { inline: chart };
     const hasImage = !!e.getElementsByTagNameNS(NS.draw, 'image')[0];
     const img = convertFrame(e, ctx);
     if (img) return { inline: img };
