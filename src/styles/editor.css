@@ -383,6 +383,10 @@
      hanging into the margin, so lines break one word earlier than in
      Word/LibreOffice. `pre-wrap` lets it hang, as they do. */
   white-space: pre-wrap;
+  /* A word too long for its line (a URL, a German compound) is broken by Word and
+     LibreOffice rather than run past the margin. `break-word`, not `anywhere`, so a
+     table column's min-content width is still the longest word. */
+  overflow-wrap: break-word;
 }
 
 .paper .tiptap h1,
