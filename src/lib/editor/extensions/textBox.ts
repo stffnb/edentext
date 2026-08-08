@@ -359,7 +359,7 @@ class TextBoxView {
     const a = this.attrs();
     d.style.float = '';
     d.style.clear = '';
-    d.style.margin = frameMargins('topBottom', null, 0);
+    d.style.margin = frameMargins('topBottom', a.wrap === 'topBottom' ? a.wrapOffset : null, 0);
     if (a.wrap === 'left' || a.wrap === 'right') {
       d.style.float = a.wrap;
       d.style.margin = frameMargins(a.wrap, a.wrapOffset, parseFloat(d.style.width) || 0);

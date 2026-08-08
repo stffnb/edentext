@@ -2689,10 +2689,10 @@ function imageTransform(img: ImageExport): string {
 // places the frame on that side. topBottom ⇒ no wrap, centred.
 // An offset frame is placed by coordinate instead (svg:x on the frame).
 function imageWrapProps(wrap: WrapMode, offset: number | null): string {
-  const pos = offset != null && wrap !== 'topBottom' ? 'from-left' : null;
+  const pos = offset != null ? 'from-left' : null;
   if (wrap === 'left') return `style:wrap="right" style:horizontal-pos="${pos ?? 'left'}"`;
   if (wrap === 'right') return `style:wrap="left" style:horizontal-pos="${pos ?? 'right'}"`;
-  return 'style:wrap="none" style:horizontal-pos="center"';
+  return `style:wrap="none" style:horizontal-pos="${pos ?? 'center'}"`;
 }
 
 // Graphic style for a floating frame (wrap + side, anchored to the paragraph top).
@@ -2720,8 +2720,7 @@ function imageFrameXml(img: ImageExport, index: number): string {
   const inner = `<draw:image xlink:href="${img.path}"/>${title}`;
   const anchor = img.wrap === 'inline' ? 'as-char' : 'paragraph';
   const styleName = img.wrap === 'inline' ? '' : ` draw:style-name="ImgFr${index + 1}"`;
-  const x = img.wrapOffsetCm != null && img.wrap !== 'inline' && img.wrap !== 'topBottom'
-    ? ` svg:x="${img.wrapOffsetCm}cm"` : '';
+  const x = img.wrapOffsetCm != null && img.wrap !== 'inline' ? ` svg:x="${img.wrapOffsetCm}cm"` : '';
   const y = img.wrapOffsetYCm != null && img.wrap !== 'inline' ? ` svg:y="${img.wrapOffsetYCm}cm"` : '';
   return (
     `<draw:frame draw:name="Image${index + 1}"${styleName} text:anchor-type="${anchor}" draw:z-index="${index}"${dims}${x}${y}${imageTransform(img)}>` +
@@ -2945,7 +2944,7 @@ function textBoxXml(box: TextBoxExport, inner: string, index: number): string {
   const anchor = box.wrap === 'inline' ? 'as-char' : 'paragraph';
   const transform = frameTransform(box.rotationDeg, box.widthCm, box.heightCm);
   const at = box.wrap === 'inline' ? ''
-    : (box.wrapOffsetCm != null && box.wrap !== 'topBottom' ? ` svg:x="${box.wrapOffsetCm}cm"` : '') +
+    : (box.wrapOffsetCm != null ? ` svg:x="${box.wrapOffsetCm}cm"` : '') +
       (box.wrapOffsetYCm != null ? ` svg:y="${box.wrapOffsetYCm}cm"` : '');
   const common =
     ` draw:style-name="TbxFr${n}" text:anchor-type="${anchor}" draw:z-index="${index}"` +

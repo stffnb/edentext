@@ -146,7 +146,7 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   // A frame placed by coordinate (style:horizontal-pos="from-left") keeps its x in the
   // column; the wrap mode alone would snap it to a side.
   const x = gp['style:horizontal-pos'] === 'from-left' ? lengthToCm(el.getAttributeNS(NS.svg, 'x')) : null;
-  if (x != null && attrs.wrap && attrs.wrap !== 'topBottom') attrs.wrapOffset = Math.round(x * 100) / 100;
+  if (x != null && attrs.wrap) attrs.wrapOffset = Math.round(x * 100) / 100;
   // Likewise down the page, but only against the anchor paragraph — a page-relative
   // frame is placed absolutely, which one in the text flow cannot be.
   const rel = gp['style:vertical-rel'];
@@ -175,6 +175,18 @@ export function applyUniformRunFont(attrs: Record<string, unknown>, content: { t
   if (!runs) return;
   if (attrs.fontFamily == null && family) attrs.fontFamily = family;
   if (attrs.fontSize == null && size) attrs.fontSize = size;
+}
+
+// A top-and-bottom frame set below its paragraph's top sinks behind the paragraph's
+// text: a full-width float pushes every following line under itself, so where there is
+// text the offset can only be drawn as the lines standing above the frame.
+export function sinkOffsetFrames(content: { type: string; text?: string; attrs?: Record<string, unknown> }[]): void {
+  const sinks = (n: { type: string; attrs?: Record<string, unknown> }) =>
+    n.type === 'image' && n.attrs?.wrap === 'topBottom' && (n.attrs.wrapOffsetY as number) > 0;
+  if (!content.some(sinks) || !content.some(n => n.type === 'text' && n.text?.trim())) return;
+  const frames = content.filter(sinks);
+  for (const f of frames) content.splice(content.indexOf(f), 1);
+  content.push(...frames);
 }
 
 // A <draw:frame><draw:image> → an image node. Size comes from the frame's svg
@@ -1016,6 +1028,7 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   const markFont = resolver.fontFamilyOf(baseTextProps);
   if (markFont && !defaults.fonts.has(markFont.toLowerCase())) attrs.fontFamily = markFont;
   applyUniformRunFont(attrs, content);
+  sinkOffsetFrames(content);
 
   const node: Node = { type: isHeading ? 'heading' : 'paragraph' };
   if (isHeading) attrs.level = level;

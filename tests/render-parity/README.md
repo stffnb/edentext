@@ -90,11 +90,11 @@ wrapped pictures, one table) and the thesis (a 48-page thesis with charts,
 metafile figures and a German TOC) — still report. The thesis is at 48 pages against
 LibreOffice's 48, with 62 line-level differences, most of them the justification rule above:
 
-- **A frame's vertical anchor offset is kept but not drawn.** Both offsets round-trip
-  now (`wrapOffset`/`wrapOffsetY`, images and text boxes alike), but only the horizontal
-  one is rendered: a line box avoids a float's whole *margin* box, so applying the
-  vertical one as a top margin makes dead space where Word flows text — measured, the
-  thesis' figure page went from 131mm off to 187mm and the document grew a page.
+- **A hoisted text box loses the vertical offset it was anchored by.** A frame's own
+  offsets are drawn now (`docs/architecture/frames.md`), but a text box anchored inside a
+  paragraph is a block node here, so the importer lifts it out and it simply follows that
+  paragraph. On the thesis' figure page that leaves its caption 4.7mm high — LibreOffice
+  places the box by its own 19.52cm, we place it after the picture.
 - **Page geometry is document-wide.** Headers and footers are per section (each is
   editable in place), but margins, orientation and format are not — a file whose sections
   disagree on them keeps the last one's.

@@ -366,7 +366,9 @@ function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | 
   };
   if (wrap === 'topBottom') {
     return {
-      horizontalPosition: { relative: HorizontalPositionRelativeFrom.MARGIN, align: HorizontalPositionAlign.LEFT },
+      horizontalPosition: offsetCm != null
+        ? { relative: HorizontalPositionRelativeFrom.MARGIN, offset: Math.round(offsetCm * 360000) }
+        : { relative: HorizontalPositionRelativeFrom.MARGIN, align: HorizontalPositionAlign.LEFT },
       verticalPosition,
       wrap: { type: TextWrappingType.TOP_AND_BOTTOM },
       allowOverlap: false,

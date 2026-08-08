@@ -18,7 +18,7 @@ import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { clampTabInterval, DOCX_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
-import { applyUniformRunFont, type OdtImportResult } from './odt';
+import { applyUniformRunFont, sinkOffsetFrames, type OdtImportResult } from './odt';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { astToLatex } from '../math/latex';
@@ -747,6 +747,7 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   const ff = paragraphMarkFont(ppr, ctx, baseRun, defaults.fonts);
   if (ff) attrs.fontFamily = ff;
   applyUniformRunFont(attrs, content);
+  sinkOffsetFrames(content);
 
   const node: Node = { type: level ? 'heading' : 'paragraph' };
   if (level) attrs.level = level;
@@ -1293,7 +1294,7 @@ function anchorOffsetX(anchor: Element, ctx: Ctx): number | null {
 function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom'; offsetCm: number | null; offsetYCm: number | null } {
   const offsetYCm = anchorOffsetY(anchor);
   const offsetCm = anchorOffsetX(anchor, ctx);
-  const at = (wrap: 'left' | 'right' | 'topBottom') => ({ wrap, offsetCm: wrap === 'topBottom' ? null : offsetCm, offsetYCm });
+  const at = (wrap: 'left' | 'right' | 'topBottom') => ({ wrap, offsetCm, offsetYCm });
   if (anchor.getElementsByTagNameNS(WP, 'wrapTopAndBottom')[0]) return at('topBottom');
   const wt = anchor.getElementsByTagNameNS(WP, 'wrapSquare')[0]?.getAttribute('wrapText');
   if (wt === 'right') return at('left'); // text on right ⇒ image on left

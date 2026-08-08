@@ -67,10 +67,13 @@ export function fitInlineImage(attrs: Record<string, unknown>, maxWidthPx: numbe
 
 // A floating frame's margins from its wrapOffset: its left edge in the text column,
 // measured against the live column vars an indented anchor cannot skew (a right float
-// is placed from the far side). wrapOffsetY is data only — see the note on the attr.
-export function frameMargins(wrap: WrapMode, offsetCm: unknown, boxWidthPx: number): string {
-  if (wrap === 'topBottom') return '6px 0';
+// is placed from the far side). wrapOffsetY becomes a top margin — see the attr's note.
+export function frameMargins(wrap: WrapMode, offsetCm: unknown, boxWidthPx: number, offsetYCm?: unknown): string {
   const near = typeof offsetCm === 'number' ? `${Math.round(cmToPx(offsetCm))}px` : null;
+  if (wrap === 'topBottom') {
+    const top = typeof offsetYCm === 'number' && offsetYCm > 0 ? `${Math.round(cmToPx(offsetYCm))}px` : '6px';
+    return `${top} 0 6px ${near ?? '0'}`;
+  }
   if (wrap === 'left') return `0 14px 6px ${near ?? '0'}`;
   const far = near == null ? '0' : `calc(${COLUMN_WIDTH_CSS} - ${near} - ${boxWidthPx}px)`;
   return `0 ${far} 6px 14px`;
@@ -129,8 +132,8 @@ export const Image = Node.create({
         renderHTML: () => ({}),
       },
       // How far below its anchor paragraph the frame sits, in cm (Word's positionV
-      // posOffset, ODF svg:y). Kept for the file only: a line box avoids a float's whole
-      // margin box, so rendering it as a top margin makes dead space Word fills with text.
+      // posOffset, ODF svg:y). Drawn as the float's top margin for `topBottom`, where no
+      // text sits beside the frame; a side float would push away lines Word keeps.
       wrapOffsetY: {
         default: null,
         parseHTML: el => parseCm((el as HTMLElement).getAttribute('data-wrap-offset-y')),
@@ -250,6 +253,8 @@ class ImageView {
 
     this.applyLayout(this.attrW(), this.attrH(), this.attrRot());
     this.applyWrap();
+    // The frame is not in the document yet, so a sunk one has nothing to measure against.
+    requestAnimationFrame(() => this.sinkToOffset());
   }
 
   private showBadge(w: number, h: number): void {
@@ -306,8 +311,29 @@ class ImageView {
       d.style.float = 'left';
       d.style.clear = 'both';
       d.style.width = '100%';
-      d.style.margin = frameMargins(wrap, a.wrapOffset, this.boxWidth());
+      d.style.margin = frameMargins(wrap, null, 0, a.wrapOffsetY);
+      this.sinkToOffset();
     }
+    // The wrapper spans the column, so the picture's own x is the rotor's place in it
+    // (the rotor is centred by CSS); every other mode positions the wrapper itself.
+    const x = wrap === 'topBottom' ? a.wrapOffset : null;
+    this.rotor.style.left = typeof x === 'number'
+      ? `${Math.round(cmToPx(x)) + (parseFloat(this.rotor.style.width) || 0) / 2}px` : '';
+  }
+
+  // The offset counts from the anchor paragraph's top. Where text precedes the frame
+  // (the importers sink one behind the text — a full-width float pushes every following
+  // line under itself) the lines already cover part of it, so the rest is measured.
+  private sinkToOffset(): void {
+    const y = this.node.attrs.wrapOffsetY;
+    const p = this.dom.parentElement;
+    if (typeof y !== 'number' || y <= 0 || !p || !this.dom.previousSibling) return;
+    this.dom.style.marginTop = '0px';
+    const box = p.getBoundingClientRect();
+    const scale = box.width / p.offsetWidth || 1;
+    const above = (this.dom.getBoundingClientRect().top - box.top) / scale;
+    const gap = clamp(Math.round(cmToPx(y) - above), 6, pageContentHeightPx());
+    this.dom.style.marginTop = `${gap}px`;
   }
 
   // Drag an image to re-anchor it live to the text position under the cursor (text
