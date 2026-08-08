@@ -22,8 +22,9 @@ export const BulletList = BulletListBase.extend({
         parseHTML: (element) => element.getAttribute('data-bullet') || null,
         renderHTML: (attributes) => {
           const ch = attributes.bulletChar;
-          // The trailing space inside the string marker is the marker-to-text gap.
-          return ch ? { 'data-bullet': ch, style: `list-style-type: "${ch} "` } : {};
+          // The marker is the item block's ::before, whose attr() would read that block,
+          // not the list — so the char travels as an inherited custom property instead.
+          return ch ? { 'data-bullet': ch, style: `--bullet: "${ch}"` } : {};
         },
       },
     };

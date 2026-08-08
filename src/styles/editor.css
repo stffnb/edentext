@@ -417,37 +417,30 @@
   margin-bottom: 0;
 }
 
-/* Ordered-list numbering, keyed by data-eff-list-style — the effective numbering
-   orderedList.ts's plugin resolves per <ol> from its attr + ancestor chain. Dot
-   variants reuse the built-in counter styles; bracket variants override the suffix. */
-@counter-style oledit-decimal-paren     { system: extends decimal;     suffix: ") "; }
-@counter-style oledit-lower-alpha-paren { system: extends lower-alpha; suffix: ") "; }
-@counter-style oledit-upper-alpha-paren { system: extends upper-alpha; suffix: ") "; }
-@counter-style oledit-lower-roman-paren { system: extends lower-roman; suffix: ") "; }
-@counter-style oledit-upper-roman-paren { system: extends upper-roman; suffix: ") "; }
-
-.paper .tiptap ol[data-eff-list-style="decimal"]           { list-style-type: decimal; }
-.paper .tiptap ol[data-eff-list-style="decimal-paren"]     { list-style-type: oledit-decimal-paren; }
-.paper .tiptap ol[data-eff-list-style="lower-alpha"]       { list-style-type: lower-alpha; }
-.paper .tiptap ol[data-eff-list-style="lower-alpha-paren"] { list-style-type: oledit-lower-alpha-paren; }
-.paper .tiptap ol[data-eff-list-style="upper-alpha"]       { list-style-type: upper-alpha; }
-.paper .tiptap ol[data-eff-list-style="upper-alpha-paren"] { list-style-type: oledit-upper-alpha-paren; }
-.paper .tiptap ol[data-eff-list-style="lower-roman"]       { list-style-type: lower-roman; }
-.paper .tiptap ol[data-eff-list-style="lower-roman-paren"] { list-style-type: oledit-lower-roman-paren; }
-.paper .tiptap ol[data-eff-list-style="upper-roman"]       { list-style-type: upper-roman; }
-.paper .tiptap ol[data-eff-list-style="upper-roman-paren"] { list-style-type: oledit-upper-roman-paren; }
-
-/* Legal/outline numbering (1., 1.1., 1.2.1. …): the whole chain rendered via CSS
-   counters. The plugin tags the multilevel list and every attr-less member of its
-   chain with data-eff-list-style="multilevel". */
-.paper .tiptap ol[data-eff-list-style="multilevel"] > li::marker {
-  content: counters(list-item, ".") ". ";
+/* The marker is drawn by the item block's ::before, not by ::marker, because Word and
+   LibreOffice put it at the level's hanging indent (LIST_HANGING_CM 0.635cm, which both
+   exports write) and CSS gives ::marker no position — Chromium sets it flush against the
+   text, ~4mm to the right. `list-style: none` only drops the marker box; the li stays a
+   list-item, so the list-item counter and <ol start> keep working. */
+.paper .tiptap li {
+  list-style: none;
 }
 
-/* The marker follows the item's first text portion (listMarker.ts sets the custom
-   properties on the <li>): a mark sits inside the paragraph and never reaches
-   ::marker, which only inherits the item's own font. */
-.paper .tiptap li::marker {
+/* Out of flow, so the marker cannot touch the line it labels — in flow it grew every
+   list line by a pixel, which cost the thesis fixture a page. `top: 0` seats it on the
+   first line, since the pseudo takes the block's own line-height. */
+.paper .tiptap li > :is(p, h1, h2, h3, h4, h5) {
+  position: relative;
+}
+
+.paper .tiptap li > :is(p, h1, h2, h3, h4, h5)::before {
+  position: absolute;
+  top: 0;
+  left: -0.635cm;
+  white-space: pre;
+  line-height: inherit;
+  /* The marker follows the item's first text portion (listMarker.ts sets the custom
+     properties on the <li>, which the block inherits). */
   font-family: var(--marker-family, inherit);
   font-weight: var(--marker-weight, inherit);
   font-style: var(--marker-style, inherit);
@@ -455,22 +448,52 @@
   color: var(--marker-color, inherit);
 }
 
-/* Bullet markers render through the bundled symbol shim first: it holds only the
-   glyphs Liberation Serif lacks (❖ ➢ ⇨ ✓ ▸ ◆), so those come out compact and
-   platform-independent while every other char falls through to the text font. */
-.paper .tiptap ul > li::marker {
-  font-family: 'EdenText Symbols', var(--marker-family, var(--font-serif)), serif;
+/* Ordered numbering, keyed by data-eff-list-style — the effective numbering
+   orderedList.ts's plugin resolves per <ol> from its attr + ancestor chain. The
+   undecorated <ol> is the plain decimal fallback and must come first. */
+.paper .tiptap ol > li > :is(p, h1, h2, h3, h4, h5)::before                                { content: counter(list-item, decimal) ". "; }
+.paper .tiptap ol[data-eff-list-style="decimal"] > li > :is(p, h1, h2, h3, h4, h5)::before  { content: counter(list-item, decimal) ". "; }
+.paper .tiptap ol[data-eff-list-style="decimal-paren"] > li > :is(p, h1, h2, h3, h4, h5)::before     { content: counter(list-item, decimal) ") "; }
+.paper .tiptap ol[data-eff-list-style="lower-alpha"] > li > :is(p, h1, h2, h3, h4, h5)::before       { content: counter(list-item, lower-alpha) ". "; }
+.paper .tiptap ol[data-eff-list-style="lower-alpha-paren"] > li > :is(p, h1, h2, h3, h4, h5)::before { content: counter(list-item, lower-alpha) ") "; }
+.paper .tiptap ol[data-eff-list-style="upper-alpha"] > li > :is(p, h1, h2, h3, h4, h5)::before       { content: counter(list-item, upper-alpha) ". "; }
+.paper .tiptap ol[data-eff-list-style="upper-alpha-paren"] > li > :is(p, h1, h2, h3, h4, h5)::before { content: counter(list-item, upper-alpha) ") "; }
+.paper .tiptap ol[data-eff-list-style="lower-roman"] > li > :is(p, h1, h2, h3, h4, h5)::before       { content: counter(list-item, lower-roman) ". "; }
+.paper .tiptap ol[data-eff-list-style="lower-roman-paren"] > li > :is(p, h1, h2, h3, h4, h5)::before { content: counter(list-item, lower-roman) ") "; }
+.paper .tiptap ol[data-eff-list-style="upper-roman"] > li > :is(p, h1, h2, h3, h4, h5)::before       { content: counter(list-item, upper-roman) ". "; }
+.paper .tiptap ol[data-eff-list-style="upper-roman-paren"] > li > :is(p, h1, h2, h3, h4, h5)::before { content: counter(list-item, upper-roman) ") "; }
+
+/* Legal/outline numbering (1., 1.1., 1.2.1. …): the plugin tags the multilevel list and
+   every attr-less member of its chain with data-eff-list-style="multilevel". */
+.paper .tiptap ol[data-eff-list-style="multilevel"] > li > :is(p, h1, h2, h3, h4, h5)::before {
+  content: counters(list-item, ".") ". ";
 }
 
-/* Default bullet markers per nesting depth — the same cycle the ODT/DOCX export
-   writes (DEFAULT_BULLET_CYCLE in bulletListTypes.ts). A custom `bulletChar` attr
-   overrides these via an inline list-style-type from bulletList.ts renderHTML. */
-.paper .tiptap ul                { list-style-type: "• "; }
-.paper .tiptap ul ul             { list-style-type: "◦ "; }
-.paper .tiptap ul ul ul          { list-style-type: "▪ "; }
-.paper .tiptap ul ul ul ul       { list-style-type: "▸ "; }
-.paper .tiptap ul ul ul ul ul    { list-style-type: "– "; }
-.paper .tiptap ul ul ul ul ul ul { list-style-type: "· "; }
+/* Default bullet markers per nesting depth — the same cycle the ODT/DOCX export writes
+   (DEFAULT_BULLET_CYCLE in bulletListTypes.ts). The bundled symbol shim comes first: it
+   holds only the glyphs Liberation Serif lacks (❖ ➢ ⇨ ✓ ▸ ◆), so those stay compact and
+   platform-independent while every other char falls through to the text font. */
+.paper .tiptap ul > li > :is(p, h1, h2, h3, h4, h5)::before {
+  content: '• ';
+  font-family: 'EdenText Symbols', var(--marker-family, var(--font-serif)), serif;
+}
+.paper .tiptap ul ul > li > :is(p, h1, h2, h3, h4, h5)::before             { content: '◦ '; }
+.paper .tiptap ul ul ul > li > :is(p, h1, h2, h3, h4, h5)::before          { content: '▪ '; }
+.paper .tiptap ul ul ul ul > li > :is(p, h1, h2, h3, h4, h5)::before       { content: '▸ '; }
+.paper .tiptap ul ul ul ul ul > li > :is(p, h1, h2, h3, h4, h5)::before    { content: '– '; }
+.paper .tiptap ul ul ul ul ul ul > li > :is(p, h1, h2, h3, h4, h5)::before { content: '· '; }
+
+/* A list's own `bulletChar` beats the cycle at any depth — an attribute outranks the
+   descendant chain. A nested list without one keeps its depth's char, which is what both
+   exports write, even though --bullet inherits into it. */
+.paper .tiptap ul[data-bullet] > li > :is(p, h1, h2, h3, h4, h5)::before {
+  content: var(--bullet) ' ';
+}
+
+/* The PDF clone (the .paper itself) replaces every marker with a real span (pdf.ts). */
+.paper.pdf-list-markers li > :is(p, h1, h2, h3, h4, h5)::before {
+  content: none;
+}
 
 .paper .tiptap li {
   margin-top: 0;

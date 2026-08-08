@@ -179,21 +179,20 @@ function listMarkerGlyph(li: HTMLElement, root: HTMLElement): string {
   return defaultBulletChar(depth - 1);
 }
 
-// html2canvas can't paint our markers (string list-style-type, @counter-style paren
-// numbering, counters() chains), so each marker becomes a real span hanging left of the
-// item's first line — also keeping it beside float-pushed lines and in the text layer.
+// html2canvas can't paint our markers (counter() numbering, counters() chains), so each
+// marker becomes a real span at the same hanging indent editor.css gives the ::before —
+// which the class switches off — keeping it beside float-pushed lines and in the text layer.
 function materializeListMarkers(root: HTMLElement): void {
+  root.classList.add('pdf-list-markers');
   for (const li of Array.from(root.querySelectorAll<HTMLLIElement>('li'))) {
     const cs = getComputedStyle(li);
-    if (cs.listStyleType === 'none') continue;
     const glyph = listMarkerGlyph(li, root);
     if (!glyph) continue;
-    li.style.listStyleType = 'none';
     const target = li.querySelector(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5') ?? li;
     const slot = document.createElement('span');
     slot.style.cssText = 'display:inline-block;width:0;overflow:visible;vertical-align:baseline';
     const label = document.createElement('span');
-    label.style.cssText = `display:inline-block;white-space:pre;transform:translateX(-100%);padding-right:0.33em;color:${cs.color}`;
+    label.style.cssText = `display:inline-block;white-space:pre;transform:translateX(-0.635cm);color:${cs.color}`;
     // Same symbol shim the editor's ::marker uses (glyphs Liberation Serif lacks).
     label.style.fontFamily = `'EdenText Symbols', ${cs.fontFamily}`;
     label.textContent = glyph;
