@@ -110,15 +110,11 @@ LibreOffice's 48, with 62 line-level differences, most of them the justification
 - **Tabs that wrap lose their advance.** Six consecutive tabs at a line end stay on that
   line in Chromium and the continuation starts at the margin; LibreOffice carries the
   tab positions onto it (91mm apart in the contract).
-- **A list marker sits where the browser puts it, not at the hanging indent.** The
-  level's `w:ind w:hanging` reaches the text (which lands at Word's 1.27cm) but not
-  the bullet: CSS gives `::marker` no position, and Chromium sets it flush against
-  the text, ~4mm right of where Word and LibreOffice draw it. Only a `::before`
-  marker could place it, which `listMarker.ts` and every ordered format ride on.
-  Both exports already agree on where it belongs (`LIST_HANGING_CM` 0.635cm), so the
-  place is known; the work is the migration — `content: counter(list-item, …)` per
-  numbering style, and `bulletChar` reaching a custom property instead of an inline
-  `list-style-type`.
+- **A list level's own hanging indent is not read**, only the 0.635cm both exports
+  write (`LIST_HANGING_CM`). The marker is drawn there and overflows if it is wider,
+  where Word moves the text to the next list tab — reading `w:lvl/w:pPr/w:ind w:hanging`
+  would settle it. Deliberate for now: in flow, a wide marker pushed the text and cost
+  the thesis fixture a page.
 - **A cell's own margins are not read**, only the table's (`w:tcMar`; ODF puts padding on
   every cell style, and we take the first cell's for the whole table). No producer in
   the corpus writes per-cell margins.
