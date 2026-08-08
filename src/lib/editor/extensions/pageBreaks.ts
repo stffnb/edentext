@@ -170,7 +170,12 @@ function getPageForY(y: number, cycle: number): number {
   return Math.floor(y / cycle) + 1;
 }
 
-const pageBreakKey = new PluginKey<number>('pageBreaks');
+// `recalc` counts forced recomputes, `edit` the document edits. Layout-only writes
+// (addToHistory:false) bump neither, so the convergence brake in `update` can tell an
+// answer to the last pass from a fresh change.
+type PageBreakState = { recalc: number; edit: number };
+
+const pageBreakKey = new PluginKey<PageBreakState>('pageBreaks');
 
 // Transaction meta flag: set it (e.g. when page margins change) to force a
 // pagination recompute even though the document content is unchanged.
@@ -222,21 +227,27 @@ export const PageBreaks = Extension.create({
     let isUpdating = false;
     let rafId: number | null = null;
     let lastPlacementsKey = '';
+    // The layout before the current one. A block below a float's overhang moves further
+    // than the spacer the model accounts for, so two layouts can each imply the other —
+    // seeing the older one come back means a ping-pong, and the current one is kept.
+    let prevPlacementsKey = '';
     // Each pass measures against the spacers left by the previous pass, so a changed
     // result needs one more pass to re-measure and settle (see calculate). Bounded so
     // a hypothetical two-layout ping-pong can't loop forever; reset per external change.
     let convergePasses = 0;
     const MAX_CONVERGE_PASSES = 4;
 
-    const plugin = new Plugin<number>({
+    const plugin = new Plugin<PageBreakState>({
       key: pageBreakKey,
-      // A counter bumped whenever a FORCE_PAGE_RECALC transaction arrives. The
-      // plugin's own decoration dispatches don't carry that meta, so this never
-      // self-triggers. `update` reschedules a layout pass when the counter moves.
+      // Counters `update` watches. The plugin's own decoration dispatches carry neither
+      // FORCE_PAGE_RECALC nor a doc change, so this never self-triggers.
       state: {
-        init: () => 0,
+        init: () => ({ recalc: 0, edit: 0 }),
         apply(tr, value) {
-          return tr.getMeta(FORCE_PAGE_RECALC) ? value + 1 : value;
+          const recalc = value.recalc + (tr.getMeta(FORCE_PAGE_RECALC) ? 1 : 0);
+          const edit = value.edit
+            + (tr.docChanged && tr.getMeta('addToHistory') !== false ? 1 : 0);
+          return recalc === value.recalc && edit === value.edit ? value : { recalc, edit };
         },
       },
       props: {
@@ -394,10 +405,21 @@ export const PageBreaks = Extension.create({
           return { docPos: preLeafDocPos(leaf.el), row: null };
         }
 
-        // Walks text nodes inside `el`, skipping any that live inside a spacer
-        // widget, and returns one rect per visual line (in viewport coords).
+        // Walks text nodes and inline images inside `el`, skipping any that live inside
+        // a spacer widget, and returns one rect per visual line (in viewport coords).
         function getLineRects(el: HTMLElement): { top: number; bottom: number }[] {
           const allRects: DOMRect[] = [];
+          // An as-character image is a line box of its own: without it a paragraph of
+          // images has no lines at all and can only paginate whole.
+          const atomRects = new Set<DOMRect>();
+          for (const img of Array.from(el.querySelectorAll<HTMLElement>('.image-node'))) {
+            if (img.style.float) continue;
+            const rect = img.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              allRects.push(rect);
+              atomRects.add(rect);
+            }
+          }
           const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
             acceptNode(node) {
               let parent = node.parentElement;
@@ -435,13 +457,19 @@ export const PageBreaks = Extension.create({
           const tol = advance > 0 ? advance * 0.6 : 3;
           const lines: { top: number; bottom: number }[] = [];
           let lineTop = -Infinity;
+          // How far down the current line still reaches: an image's own box (text beside
+          // it starts well below the image top), otherwise the tolerance alone.
+          let lineEnd = -Infinity;
           for (const r of allRects) {
-            if (r.top - lineTop > tol) {
+            const isAtom = atomRects.has(r);
+            if (r.top - lineTop > tol && r.top >= lineEnd) {
               lines.push({ top: r.top, bottom: r.bottom });
               lineTop = r.top;
+              lineEnd = isAtom ? r.bottom - 1 : r.top + tol;
             } else {
               const last = lines[lines.length - 1];
               last.bottom = Math.max(last.bottom, r.bottom);
+              if (isAtom) lineEnd = Math.max(lineEnd, r.bottom - 1);
             }
           }
           return lines;
@@ -714,11 +742,13 @@ export const PageBreaks = Extension.create({
                 });
                 continue;
               }
-              // A paragraph holding a floated/block image paginates atomically (pushed
-              // whole, spacer placed before it): a line-split spacer inside it would sit
-              // next to the float, where ProseMirror drops the widget.
+              // A paragraph holding a floated image paginates atomically: a line-split
+              // spacer beside the float is dropped by ProseMirror. As-character images
+              // are ordinary line boxes, so their paragraph breaks between lines.
               const splittableTag = SPLITTABLE_TAGS.has(tag);
-              const hasImage = splittableTag && !!child.querySelector('.image-node');
+              const floats = Array.from(child.querySelectorAll<HTMLElement>('.image-node'))
+                .filter((img) => !!img.style.float);
+              const hasImage = splittableTag && floats.length > 0;
               // Keep lines together (w:keepLines, fo:keep-together): the block moves
               // whole. One taller than a page still splits — as it does in Word.
               const keepLines = child.dataset?.keepLines === 'true' && child.offsetHeight <= contentHeight;
@@ -731,11 +761,22 @@ export const PageBreaks = Extension.create({
                 )) {
                   intraSpacerHeight += sp.offsetHeight;
                 }
+                // A float hangs out of its paragraph's box, so offsetHeight stops above
+                // it and the image would walk off the page bottom. Reach down to the
+                // lowest float instead — that space belongs to this leaf.
+                let floatBottom = 0;
+                if (floats.length) {
+                  const top = child.getBoundingClientRect().top;
+                  for (const img of floats) {
+                    const below = (img.getBoundingClientRect().bottom - top) / scaleFactor;
+                    floatBottom = Math.max(floatBottom, below);
+                  }
+                }
                 leaves.push({
                   el: child,
                   kind: isAtomic ? 'atomic' : 'splittable',
                   naturalTop: topWithin(child) - cumulativeSpacerHeight,
-                  naturalHeight: child.offsetHeight - intraSpacerHeight,
+                  naturalHeight: Math.max(child.offsetHeight, floatBottom) - intraSpacerHeight,
                   inTableCell,
                   // A manual page break is honored for top-level blocks only (not in
                   // a table cell, where the table breaks atomically between rows).
@@ -1157,8 +1198,10 @@ export const PageBreaks = Extension.create({
           const placementsKey =
             placements.map((p) => `${p.docPos}:${p.height}:${p.row ? p.row.columns : 'b'}`).join('|') +
             (collapsedTrailing ? `|c${collapsedTrailing.from}` : '');
-          const placementsChanged = placementsKey !== lastPlacementsKey;
+          const placementsChanged =
+            placementsKey !== lastPlacementsKey && placementsKey !== prevPlacementsKey;
           if (placementsChanged) {
+            prevPlacementsKey = lastPlacementsKey;
             lastPlacementsKey = placementsKey;
             const doc = editorView.state.doc;
             const decoArray: Decoration[] = placements.map((p) => {
@@ -1264,10 +1307,16 @@ export const PageBreaks = Extension.create({
 
         return {
           update(_view, prevState) {
-            const forced =
-              pageBreakKey.getState(prevState) !== pageBreakKey.getState(editorView.state);
+            const before = pageBreakKey.getState(prevState);
+            const after = pageBreakKey.getState(editorView.state);
+            const forced = before?.recalc !== after?.recalc;
+            const isEditTr = before?.edit !== after?.edit;
             if (!isUpdating && (prevState.doc !== editorView.state.doc || forced)) {
               convergePasses = 0; // fresh convergence budget per external change
+              // Layout-only writes — the TOC rewriting its page numbers on every
+              // pm-pagecount — answer the last pass, so forgetting the ping-pong
+              // memory on them would leave the guard with nothing to catch.
+              if (forced || isEditTr) prevPlacementsKey = '';
               schedule();
             }
           },

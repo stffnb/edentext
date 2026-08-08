@@ -15,6 +15,19 @@ A custom ProseMirror plugin that simulates paginated A4 layout entirely in CSS/D
 
 **Widow-orphan control:** `findLineSplit` picks the first line that overflows the page, then applies Word's/LibreOffice's rule (`MIN_KEPT_LINES` = 2, on by default in both via OOXML `w:widowControl`, so not configurable): fewer than two lines carrying over pulls one more down with them, and fewer than two staying behind cancels the split so the caller pushes the whole block. A leaf taller than one page slot passes `minLines: 1` — there the rule can't be satisfied and splitting beats overflowing.
 
+**Images in a paragraph:** an as-character image is a line box like any other (`getLineRects`
+measures `.image-node` alongside the text runs, and text sharing its line groups into it), so a
+paragraph of stacked images breaks between them instead of overflowing the page. Only a *floated*
+image keeps its paragraph atomic — a line-split spacer beside a float is dropped by ProseMirror.
+A float hangs out of its paragraph's box, so the leaf's height reaches down to the lowest float
+instead of stopping at `offsetHeight` — otherwise the paragraph measures as one text line and the
+image walks off the page bottom. Text still wraps beside the float; only the push moves as a unit.
+What the model can't see is how far that overhang moves the blocks *below* it: further than the
+spacer it accounts for, so two layouts can each imply the other. `prevPlacementsKey` catches that
+ping-pong and keeps the current layout; only an edit or a forced recalc forgets it (the TOC
+rewrites its page numbers on every `pm-pagecount`, so resetting on any document change would
+leave nothing to catch).
+
 **Keeping blocks together** (`pageBreak.ts` attrs, both read from the direct property *and* the paragraph style): `keepNext` (`w:keepNext`, `fo:keep-with-next`) moves a block down when its successor's first line no longer fits below it — headings do that in Word and LibreOffice anyway, so the attr only marks the others. `keepLines` (`w:keepLines`, `fo:keep-together`) makes an otherwise splittable block paginate atomically, unless it is taller than the page slot, where Word splits it too.
 
 **Line breaking:** `editor.css` overrides prosemirror-view's `white-space: break-spaces` back to `pre-wrap` on `.paper .tiptap`. Under `break-spaces` a line-end space may not hang into the margin and counts toward the line width, so lines break one word earlier than in Word/LibreOffice whenever a line reaches within a space width of the margin.
