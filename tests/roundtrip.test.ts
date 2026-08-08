@@ -87,7 +87,7 @@ const fixture: N = {
     P(null, T('wrapped left '), IMGN(90, 60, 'Float', 0, 'left', 2.5), T(' text flows beside it')),
     P(null, T('top/bottom '), IMGN(70, 50, 'Banner', 0, 'topBottom')),
     TBX({ width: 288, height: 96 }, P(null, T('box para one')), P(null, T('box '), T('bold', { type: 'bold' }))),
-    TBX({ width: 192, height: 80, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, P(null, T('in ellipse'))),
+    TBX({ width: 192, height: 80, wrap: 'right', wrapOffset: 6, wrapOffsetY: 1.5, shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, P(null, T('in ellipse'))),
     COLS({ count: 2, gapCm: 0.5 }, P(null, T('newspaper column text one')), P(null, T('newspaper column text two'))),
     { type: 'bulletList', content: [
       LI(P(null, T('bullet one'))),

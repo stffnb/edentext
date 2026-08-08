@@ -451,6 +451,8 @@ type TextBoxExport = {
   heightCm: number;
   rotationDeg: number;
   wrap: WrapMode;
+  wrapOffsetCm: number | null;
+  wrapOffsetYCm: number | null;
   shapeKind: ShapeKind;
   fill: string | null;
   stroke: string | null;
@@ -468,6 +470,8 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     heightCm: pxToCm(typeof a.height === 'number' && a.height > 0 ? a.height : 96),
     rotationDeg: typeof a.rotation === 'number' ? a.rotation : 0,
     wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' ? wrapAttr : 'inline',
+    wrapOffsetCm: typeof a.wrapOffset === 'number' ? round3(a.wrapOffset) : null,
+    wrapOffsetYCm: typeof a.wrapOffsetY === 'number' ? round3(a.wrapOffsetY) : null,
     shapeKind: kind === 'roundRect' || kind === 'ellipse' ? kind : 'textbox',
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
@@ -2756,8 +2760,9 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
     : 'draw:stroke="none"';
   const wrap = box.wrap === 'inline'
     ? ''
-    : ` ${imageWrapProps(box.wrap, null)} style:number-wrapped-paragraphs="no-limit"` +
-      ` style:horizontal-rel="paragraph-content" style:vertical-pos="top" style:vertical-rel="paragraph"`;
+    : ` ${imageWrapProps(box.wrap, box.wrapOffsetCm)} style:number-wrapped-paragraphs="no-limit"` +
+      ` style:horizontal-rel="paragraph-content"` +
+      ` style:vertical-pos="${box.wrapOffsetYCm != null ? 'from-top' : 'top'}" style:vertical-rel="paragraph"`;
   // auto-grow only for plain text boxes; a custom-shape needs both explicitly
   // false, or LibreOffice's shape autofit shrinks it to its text.
   const grow = box.shapeKind === 'textbox'
@@ -2778,9 +2783,12 @@ function textBoxXml(box: TextBoxExport, inner: string, index: number): string {
   const n = index + 1;
   const anchor = box.wrap === 'inline' ? 'as-char' : 'paragraph';
   const transform = frameTransform(box.rotationDeg, box.widthCm, box.heightCm);
+  const at = box.wrap === 'inline' ? ''
+    : (box.wrapOffsetCm != null && box.wrap !== 'topBottom' ? ` svg:x="${box.wrapOffsetCm}cm"` : '') +
+      (box.wrapOffsetYCm != null ? ` svg:y="${box.wrapOffsetYCm}cm"` : '');
   const common =
     ` draw:style-name="TbxFr${n}" text:anchor-type="${anchor}" draw:z-index="${index}"` +
-    ` svg:width="${box.widthCm}cm"`;
+    ` svg:width="${box.widthCm}cm"${at}`;
   if (box.shapeKind === 'textbox') {
     // svg:height for consumers without auto-grow; fo:min-height is the real semantic
     // (height = minimum, content grows the box) and wins on our own re-import.

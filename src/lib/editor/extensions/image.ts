@@ -65,6 +65,19 @@ export function fitInlineImage(attrs: Record<string, unknown>, maxWidthPx: numbe
   attrs.width = maxWidthPx;
 }
 
+// A floating frame's margins from its offsets: wrapOffset is its left edge in the text
+// column, measured against the live column vars an indented anchor cannot skew (a right
+// float is placed from the far side), wrapOffsetY how far below its anchor it sits.
+export function frameMargins(wrap: WrapMode, offsetCm: unknown, offsetYCm: unknown, boxWidthPx: number): string {
+  const px = (v: unknown) => (typeof v === 'number' ? `${Math.round(cmToPx(v))}px` : null);
+  const down = px(offsetYCm);
+  if (wrap === 'topBottom') return `${down ?? '6px'} 0 6px`;
+  const near = px(offsetCm);
+  if (wrap === 'left') return `${down ?? '0'} 14px 6px ${near ?? '0'}`;
+  const far = near == null ? '0' : `calc(${COLUMN_WIDTH_CSS} - ${near} - ${boxWidthPx}px)`;
+  return `${down ?? '0'} ${far} 6px 14px`;
+}
+
 // The page text height in px, capping how tall an image can be stretched. Read live
 // from the :root vars the editor maintains (orientation/margins change them).
 export function pageContentHeightPx(): number {
@@ -274,8 +287,8 @@ class ImageView {
   }
 
   // Float the wrapper per wrap mode so text flows beside it at its anchor paragraph
-  // (left/right) or only above/below it (topBottom). wrapOffset moves it inside the
-  // column via the outer margin. The live re-anchor drag keeps it where the text is.
+  // (left/right) or only above/below it (topBottom). The live re-anchor drag keeps it
+  // where the text is.
   private applyWrap(): void {
     const d = this.dom;
     const wrap = this.attrWrap();
@@ -283,23 +296,10 @@ class ImageView {
     d.style.display = '';
     d.style.clear = '';
     d.style.margin = '';
-    const offset = this.node.attrs.wrapOffset as number | null;
-    // The offset is the frame's left edge in the text column. A right float is placed
-    // from the other side, so its margin is what the column has left over — measured
-    // against the live column vars, which an indented anchor paragraph cannot skew.
-    const near = offset == null ? '0' : `${Math.round(cmToPx(offset))}px`;
-    const far = offset == null ? '0'
-      : `calc(${COLUMN_WIDTH_CSS} - ${Math.round(cmToPx(offset))}px - ${this.boxWidth()}px)`;
-    // Down from the anchor paragraph. Lines that fit entirely above the frame's top
-    // edge still flow there, which is what a word processor does with the same offset.
-    const offsetY = this.node.attrs.wrapOffsetY as number | null;
-    const down = offsetY == null ? null : `${Math.round(cmToPx(offsetY))}px`;
-    if (wrap === 'left') {
-      d.style.float = 'left';
-      d.style.margin = `${down ?? '0'} 14px 6px ${near}`;
-    } else if (wrap === 'right') {
-      d.style.float = 'right';
-      d.style.margin = `${down ?? '0'} ${far} 6px 14px`;
+    const a = this.node.attrs;
+    if (wrap === 'left' || wrap === 'right') {
+      d.style.float = wrap;
+      d.style.margin = frameMargins(wrap, a.wrapOffset, a.wrapOffsetY, this.boxWidth());
     } else if (wrap === 'topBottom') {
       // A full-width float (not display:block — which on an inline atom node view
       // disrupts ProseMirror's view + page-break spacer widgets): text can only flow
@@ -307,7 +307,7 @@ class ImageView {
       d.style.float = 'left';
       d.style.clear = 'both';
       d.style.width = '100%';
-      d.style.margin = `${down ?? '6px'} 0 6px`;
+      d.style.margin = frameMargins(wrap, a.wrapOffset, a.wrapOffsetY, this.boxWidth());
     }
   }
 

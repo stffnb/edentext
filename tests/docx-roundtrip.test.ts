@@ -62,7 +62,7 @@ describe('DOCX export → import round trip', () => {
         para('box text'),
         para([text('bold in box', [{ type: 'bold' }])]),
       ] },
-      { type: 'textBox', attrs: { width: 192, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, content: [para('ellipse text')] },
+      { type: 'textBox', attrs: { width: 192, height: 96, wrap: 'right', wrapOffset: 6, wrapOffsetY: 1.5, shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, content: [para('ellipse text')] },
       { type: 'columns', attrs: { count: 2, gapCm: 0.8 }, content: [para('newspaper one'), para('newspaper two')] },
       { type: 'table', content: [
         { type: 'tableRow', content: [headerCell('Name', { colwidth: [6] }), headerCell('Qty', { colwidth: [3] })] },
@@ -317,6 +317,8 @@ describe('DOCX export → import round trip', () => {
     expect(hasMark(walk(plain, 'text')[1], 'bold')).toBe(true);
     expect(ellipse.attrs.shapeKind).toBe('ellipse');
     expect(ellipse.attrs.wrap).toBe('right');
+    expect(ellipse.attrs.wrapOffset).toBeCloseTo(6, 1);
+    expect(ellipse.attrs.wrapOffsetY).toBeCloseTo(1.5, 1);
     expect(ellipse.attrs.rotation).toBe(30);
     expect(ellipse.attrs.fillColor).toBe('#FFEE00');
     expect(ellipse.attrs.strokeColor).toBe('#FF0000');

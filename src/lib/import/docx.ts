@@ -1228,9 +1228,6 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   return { type: 'image', attrs };
 }
 
-// The wrap mode, plus where the frame sits in the text column (cm from its left edge,
-// null when the file only names a side). Text can only flow on one side of a CSS float,
-// so the side is the half of the column the frame does *not* fill.
 // An undrawable frame as an image node of the same size, wrapped like the real one.
 function placeholderNode(box: { w: number; h: number }, label: string, anchor: Element | undefined, ctx: Ctx): Node {
   const attrs: Record<string, unknown> = { src: placeholderImage(label, box.w, box.h), width: box.w, height: box.h, alt: label };
@@ -1256,27 +1253,36 @@ function anchorOffsetY(anchor: Element): number | null {
   return Number.isFinite(off) && off > 0 ? round2(off / 360000) : null;
 }
 
+// The frame's own x in the text column, cm from its left edge. null where the file
+// names an alignment instead of a coordinate. A page-relative offset counts from the
+// sheet edge — shift it to the column so one number serves both.
+function anchorOffsetX(anchor: Element, ctx: Ctx): number | null {
+  const posH = anchor.getElementsByTagNameNS(WP, 'positionH')[0];
+  if (posH?.getElementsByTagNameNS(WP, 'align')[0]) return null;
+  const off = parseInt(posH?.getElementsByTagNameNS(WP, 'posOffset')[0]?.textContent ?? '', 10);
+  if (!Number.isFinite(off)) return null;
+  const base = posH?.getAttribute('relativeFrom') === 'page' ? -cmToEmu(ctx.leftMarginCm) : 0;
+  return round2((off + base) / 360000);
+}
+
+// Wrap mode and place are independent: the mode is what the file's wrap element says,
+// the place its position offsets. Only where neither names a side does the frame's own
+// x decide which half of the column it fills (text flows on one side of a CSS float).
 function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom'; offsetCm: number | null; offsetYCm: number | null } {
   const offsetYCm = anchorOffsetY(anchor);
-  const at = (wrap: 'left' | 'right' | 'topBottom', offsetCm: number | null = null) => ({ wrap, offsetCm, offsetYCm });
+  const offsetCm = anchorOffsetX(anchor, ctx);
+  const at = (wrap: 'left' | 'right' | 'topBottom') => ({ wrap, offsetCm: wrap === 'topBottom' ? null : offsetCm, offsetYCm });
   if (anchor.getElementsByTagNameNS(WP, 'wrapTopAndBottom')[0]) return at('topBottom');
-  const sq = anchor.getElementsByTagNameNS(WP, 'wrapSquare')[0];
-  const wt = sq?.getAttribute('wrapText');
+  const wt = anchor.getElementsByTagNameNS(WP, 'wrapSquare')[0]?.getAttribute('wrapText');
   if (wt === 'right') return at('left'); // text on right ⇒ image on left
   if (wt === 'left') return at('right');
-  const posH = anchor.getElementsByTagNameNS(WP, 'positionH')[0];
-  const align = posH?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
+  const align = anchor.getElementsByTagNameNS(WP, 'positionH')[0]
+    ?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
   if (align === 'right' || align === 'outside') return at('right');
   if (align) return at('left');
-  const off = parseInt(posH?.getElementsByTagNameNS(WP, 'posOffset')[0]?.textContent ?? '', 10);
-  if (!Number.isFinite(off)) return at('left');
+  if (offsetCm == null) return at('left');
   const cx = intAttr(anchor.getElementsByTagNameNS(WP, 'extent')[0], '', 'cx') ?? 0;
-  // A page-relative offset counts from the sheet edge, everything else from the text
-  // column — shift it there so one comparison serves both.
-  const base = posH?.getAttribute('relativeFrom') === 'page' ? -cmToEmu(ctx.leftMarginCm) : 0;
-  const left = off + base;
-  const wrap = left + cx / 2 > cmToEmu(ctx.contentWidthCm) / 2 ? 'right' : 'left';
-  return at(wrap, round2(left / 360000));
+  return at(cmToEmu(offsetCm) + cx / 2 > cmToEmu(ctx.contentWidthCm) / 2 ? 'right' : 'left');
 }
 
 // ---- text boxes / shapes ------------------------------------------------------
@@ -1321,7 +1327,12 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
   if (cy) attrs.height = Math.round(emuToPx(cy));
   const rot = intAttr(nsChild(spPr, A, 'xfrm'), '', 'rot');
   if (rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
-  if (isAnchor) attrs.wrap = anchorWrap(root, ctx).wrap;
+  if (isAnchor) {
+    const { wrap, offsetCm, offsetYCm } = anchorWrap(root, ctx);
+    attrs.wrap = wrap;
+    if (offsetCm != null) attrs.wrapOffset = offsetCm;
+    if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
+  }
 
   const fillClr = nsChild(nsChild(spPr, A, 'solidFill'), A, 'srgbClr')?.getAttribute('val');
   const fill = fillClr ? hexColor(fillClr) ?? null : null;

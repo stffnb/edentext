@@ -390,6 +390,8 @@ type TextBoxDocx = {
   heightPx: number;
   rotationDeg: number;
   wrap: 'inline' | 'left' | 'right' | 'topBottom';
+  offsetCm: number | null;
+  offsetYCm: number | null;
   shapeKind: 'textbox' | 'roundRect' | 'ellipse';
   fill: string | null;
   stroke: string | null;
@@ -406,6 +408,8 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     heightPx: typeof a.height === 'number' && a.height > 0 ? Math.round(a.height) : 96,
     rotationDeg: typeof a.rotation === 'number' ? a.rotation : 0,
     wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' ? wrapAttr : 'inline',
+    offsetCm: typeof a.wrapOffset === 'number' ? a.wrapOffset : null,
+    offsetYCm: typeof a.wrapOffsetY === 'number' ? a.wrapOffsetY : null,
     shapeKind: kind === 'roundRect' || kind === 'ellipse' ? kind : 'textbox',
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
@@ -582,12 +586,16 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number): string {
     ? '<wp:wrapTopAndBottom/>'
     : `<wp:wrapSquare wrapText="${box.wrap === 'right' ? 'left' : 'right'}"/>`;
   const align = box.wrap === 'right' ? 'right' : 'left';
+  const emu = (cm: number) => Math.round(cm * 360000);
+  const posH = box.offsetCm != null && box.wrap !== 'topBottom'
+    ? `<wp:posOffset>${emu(box.offsetCm)}</wp:posOffset>`
+    : `<wp:align>${align}</wp:align>`;
   return (
     `<w:drawing><wp:anchor ${wpNs} distT="0" distB="0" distL="114300" distR="114300"` +
     ` simplePos="0" relativeHeight="${251658240 + index}" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="0">` +
     `<wp:simplePos x="0" y="0"/>` +
-    `<wp:positionH relativeFrom="margin"><wp:align>${align}</wp:align></wp:positionH>` +
-    `<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>` +
+    `<wp:positionH relativeFrom="margin">${posH}</wp:positionH>` +
+    `<wp:positionV relativeFrom="paragraph"><wp:posOffset>${emu(box.offsetYCm ?? 0)}</wp:posOffset></wp:positionV>` +
     `${extent}${wrapEl}${docPr}${graphic}</wp:anchor></w:drawing>`
   );
 }

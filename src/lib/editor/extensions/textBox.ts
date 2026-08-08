@@ -5,7 +5,13 @@ import { NodeSelection, TextSelection, Plugin } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
-import { HANDLES, MIN_SIZE_PX, clamp, parsePx, pageContentHeightPx, type WrapMode } from './image';
+import { HANDLES, MIN_SIZE_PX, clamp, parsePx, frameMargins, pageContentHeightPx, type WrapMode } from './image';
+
+// cm attribute value → number, for the frame offsets (px ones use parsePx).
+const parseCmAttr = (v: string | null): number | null => {
+  const n = v == null ? NaN : parseFloat(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 // A text box / basic shape: a block-level frame with editable block content, a fill, a
 // stroke, and the image's wrap model (inline = in-flow; left/right/topBottom float).
@@ -30,6 +36,8 @@ export interface TextBoxAttrs {
   height: number | null;
   rotation: number;
   wrap: WrapMode;
+  wrapOffset: number | null;  // cm from the text column's left edge
+  wrapOffsetY: number | null; // cm below the anchor paragraph
   shapeKind: ShapeKind;
   fillColor: string | null;
   strokeColor: string | null;
@@ -96,6 +104,17 @@ export const TextBox = Node.create({
       wrap: {
         default: 'inline',
         parseHTML: el => (el as HTMLElement).getAttribute('data-wrap') ?? 'inline',
+        renderHTML: () => ({}),
+      },
+      // Where the frame sits relative to its anchor, in cm — as on an image.
+      wrapOffset: {
+        default: null,
+        parseHTML: el => parseCmAttr((el as HTMLElement).getAttribute('data-wrap-offset')),
+        renderHTML: () => ({}),
+      },
+      wrapOffsetY: {
+        default: null,
+        parseHTML: el => parseCmAttr((el as HTMLElement).getAttribute('data-wrap-offset-y')),
         renderHTML: () => ({}),
       },
       shapeKind: {
@@ -337,17 +356,14 @@ class TextBoxView {
   // both render in-flow for a block-level box (they differ only in export anchoring).
   private applyWrap(): void {
     const d = this.dom;
+    const a = this.attrs();
     d.style.float = '';
     d.style.clear = '';
-    d.style.margin = '6px 0';
-    const wrap = this.attrs().wrap;
-    if (wrap === 'left') {
-      d.style.float = 'left';
-      d.style.margin = '0 14px 6px 0';
-    } else if (wrap === 'right') {
-      d.style.float = 'right';
-      d.style.margin = '0 0 6px 14px';
-    } else if (wrap === 'topBottom') {
+    d.style.margin = frameMargins('topBottom', null, a.wrapOffsetY, 0);
+    if (a.wrap === 'left' || a.wrap === 'right') {
+      d.style.float = a.wrap;
+      d.style.margin = frameMargins(a.wrap, a.wrapOffset, a.wrapOffsetY, parseFloat(d.style.width) || 0);
+    } else if (a.wrap === 'topBottom') {
       d.style.clear = 'both';
     }
   }
