@@ -120,6 +120,11 @@ metafile figures and a German TOC) — still report:
   tab positions onto it (91mm apart in the contract).
 - **A run of dots is one unbreakable word** to Chromium, while LibreOffice breaks inside
   it — a dotted fill-in line wraps at a different place.
+- **A list marker sits where the browser puts it, not at the hanging indent.** The
+  level's `w:ind w:hanging` reaches the text (which lands at Word's 1.27cm) but not
+  the bullet: CSS gives `::marker` no position, and Chromium sets it flush against
+  the text, ~4mm right of where Word and LibreOffice draw it. Only a `::before`
+  marker could place it, which `listMarker.ts` and every ordered format ride on.
 - **A trailing space counts toward a right-aligned line** under `white-space: pre-wrap`,
   pushing the text ~1.2mm left of where LibreOffice puts it.
 - Lines whose natural width lands within ~0.2mm of the right margin may take one word
@@ -139,6 +144,13 @@ What tab stops (`tabStops.ts`) deliberately left out, none of it exercised by a 
 
 - Lines are grouped by vertical band, so **multi-column** text on one page merges
   columns into single lines. Columns fixtures need per-block grouping first.
-- Only text is compared — no images, rules, fills or borders.
+- **Only where text sits is compared** — not what it looks like. A dropped colour,
+  highlight, fill, border or image changes nothing this harness can see, so a green
+  run does not mean the page matches. Word's highlighter pen went unread through
+  several rounds of green reports. Check that by eye: `pdftoppm -r 96 -png` the
+  LibreOffice PDF beside a Playwright screenshot of the same page. Two traps there —
+  the app's toolbar and ruler cover the top ~85px of a page in the viewport, and
+  LibreOffice caches font matching per user profile, so a reused profile keeps
+  substituting the font it resolved before `30-calibri-light.conf` existed.
 - LibreOffice is the reference, not Word. They agree on the layout rules exercised
   here, but not on everything (e.g. Word's own line-height rounding).
