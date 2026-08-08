@@ -57,6 +57,15 @@ const fixture: N = {
       T(' sup', { type: 'superscript' }),
       T(' sub', { type: 'subscript' }),
     ),
+    // Character effects: letter case, line shapes, a freely raised run.
+    P(null,
+      T('caps ', { type: 'textStyle', attrs: { caps: 'uppercase' } }),
+      T('petite ', { type: 'textStyle', attrs: { caps: 'smallCaps' } }),
+      T('dotted ', { type: 'underline', attrs: { lineStyle: 'dotted', lineColor: '#FF0000' } }),
+      T('twice ', { type: 'underline', attrs: { lineStyle: 'double' } }),
+      T('crossed ', { type: 'strike', attrs: { lineStyle: 'double' } }),
+      T('raised', { type: 'textStyle', attrs: { fontSize: '14pt', textPosition: 3 } }),
+    ),
     P(null,
       T('arial 14 ', { type: 'textStyle', attrs: { fontFamily: 'Arial', fontSize: '14pt' } }),
       T('red', { type: 'textStyle', attrs: { color: '#C00000' } }),
@@ -862,7 +871,8 @@ describe('Leg 3: header/footer → buildOdt → importOdt', () => {
     check('hf: header distance round-trips (0.8cm)', Math.abs((hfRes.headerDistanceCm ?? 0) - 0.8) < 0.02, hfRes.headerDistanceCm);
     check('hf: footer distance round-trips (1.6cm)', Math.abs((hfRes.footerDistanceCm ?? 0) - 1.6) < 0.02, hfRes.footerDistanceCm);
     check('hf: body still round-trips alongside header/footer',
-      firstDiff(normalize(fixture), normalize(hfRes.content)) === null);
+      firstDiff(normalize(fixture), normalize(hfRes.content)) === null,
+      firstDiff(normalize(fixture), normalize(hfRes.content)));
 
     // Imported header/footer must be valid in the header/footer editor schema.
     const hfSchema = getSchema(hfExtensions());

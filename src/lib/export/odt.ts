@@ -52,6 +52,8 @@ const ODFKIT_DEFAULT_FONT = 'Liberation Serif';
 // Liberation Serif, so LibreOffice (substitutes TNR→Liberation Serif) and Word
 // (has the real TNR) both render with the same metrics as the editor.
 const EXPORT_FONT = 'Times New Roman';
+// The body size a run without one of its own renders at (LibreOffice's default).
+const DEFAULT_FONT_SIZE_PT = 12;
 const DEFAULT_LINE_HEIGHT = 1;  // must match line-height multiplier default in ToolbarExpanded.svelte
 
 // Sentinel between a cell's blocks (and list items) so the single <text:p> odf-kit
@@ -125,6 +127,11 @@ const STY = '';
 // Sentinel prefixed to a run that carries a named character style (CST<name>CST);
 // applyCharacterStyles points the run's span at that style. U+E00E.
 const CST = '\uE00E';
+
+// Sentinel prefixed to a run carrying character effects odf-kit's run formatting has no
+// field for (TEF<odf attrs>TEF); applyTextEffects folds them into the run's own
+// automatic text style. U+E00F.
+const TEF = '\uE00F';
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
@@ -1164,6 +1171,8 @@ function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<stri
   if (t.underline) text['style:text-underline-style'] = 'solid';
   if (t.strike) text['style:text-line-through-style'] = 'solid';
   if (t.color) text['fo:color'] = String(t.color);
+  if (t.caps === 'smallCaps') text['fo:font-variant'] = 'small-caps';
+  else if (t.caps) text['fo:text-transform'] = String(t.caps);
   return { para, text };
 }
 
@@ -2123,6 +2132,43 @@ function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []
   }
 }
 
+// CSS line styles → ODF's own names for the same shapes.
+const ODF_LINE_STYLE: Record<string, string> = { dotted: 'dotted', dashed: 'dash', wavy: 'wave' };
+
+// The effects ODF carries but odf-kit's run formatting has no field for. Returned as
+// the <style:text-properties> attributes applyTextEffects folds into the run's style.
+export function odfExtraTextProps(marks: TiptapNode['marks'] = []): string {
+  const a: string[] = [];
+  const caps = marks.find(m => m.type === 'textStyle')?.attrs?.caps;
+  if (caps === 'smallCaps') a.push('fo:font-variant="small-caps"');
+  else if (caps === 'uppercase' || caps === 'lowercase' || caps === 'capitalize') a.push(`fo:text-transform="${caps}"`);
+  const u = marks.find(m => m.type === 'underline')?.attrs;
+  if (u?.lineStyle === 'double') a.push('style:text-underline-type="double"');
+  else if (typeof u?.lineStyle === 'string' && ODF_LINE_STYLE[u.lineStyle]) {
+    a.push(`style:text-underline-style="${ODF_LINE_STYLE[u.lineStyle]}"`);
+  }
+  if (u?.lineColor) {
+    const c = normalizeColor(String(u.lineColor));
+    if (c) a.push(`style:text-underline-color="${c}"`);
+  }
+  if (marks.find(m => m.type === 'strike')?.attrs?.lineStyle === 'double') {
+    a.push('style:text-line-through-type="double"');
+  }
+  // ODF places a raised run in percent of its font size, Word and the editor in pt.
+  const pos = marks.find(m => m.type === 'textStyle')?.attrs?.textPosition;
+  if (typeof pos === 'number' && pos) {
+    a.push(`style:text-position="${Math.round((pos / runSizePt(marks)) * 10000) / 100}% 100%"`);
+  }
+  return a.join(' ');
+}
+
+// The run's own size where it declares one — the reference for the percentage above.
+function runSizePt(marks: TiptapNode['marks']): number {
+  const size = marks?.find(m => m.type === 'textStyle')?.attrs?.fontSize;
+  const pt = size ? parseFloat(String(size)) : NaN;
+  return Number.isFinite(pt) && pt > 0 ? pt : DEFAULT_FONT_SIZE_PT;
+}
+
 function charStyleOf(marks: TiptapNode['marks']): string | null {
   const name = marks?.find(m => m.type === 'charStyle')?.attrs?.name;
   return typeof name === 'string' && name ? name : null;
@@ -2132,6 +2178,17 @@ function charStyleOf(marks: TiptapNode['marks']): string | null {
 // looks right for readers that ignore the style reference).
 function charFormatting(sheet: StyleSheet, name: string): Record<string, unknown> {
   return textFormatting(resolveStyle(sheet, name, 'character').text);
+}
+
+// Prefix the sentinel on every run carrying such an effect, wherever it sits — odf-kit
+// reads marks itself on its native paths, so the pre-pass is what reaches all of them.
+function markTextEffects(node: TiptapNode): TiptapNode {
+  if (node.type === 'text') {
+    const extra = odfExtraTextProps(node.marks);
+    return extra ? { ...node, text: `${TEF}${extra}${TEF}${node.text ?? ''}` } : node;
+  }
+  if (!node.content?.length) return node;
+  return { ...node, content: node.content.map(markTextEffects) };
 }
 
 // odf-kit's list builder reads a run's marks itself and knows nothing about charStyle,
@@ -2235,6 +2292,69 @@ function applyCharacterStyles(odtBytes: Uint8Array): Uint8Array {
   }
 
   files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+// Merge each TEF sentinel's effects into that run's own automatic text style (cloned,
+// since the style is shared) and wrap a run that got no span in one. Shared by
+// content.xml (body) and styles.xml (header/footer), which mint their styles separately.
+function resolveTextEffects(xml: string, mint: (styleXml: string) => void, prefix: string): string {
+  if (!xml.includes(TEF)) return xml;
+  const nameByKey = new Map<string, string>();
+  const styleFor = (source: string, extra: string): string => {
+    const key = `${source}|${extra}`;
+    const existing = nameByKey.get(key);
+    if (existing) return existing;
+    const name = `${prefix}${nameByKey.size + 1}`;
+    nameByKey.set(key, name);
+    const auto = source ? findAutoStyle(xml, source) : null;
+    const names = [...extra.matchAll(/([\w:.-]+)=/g)].map(m => m[1]);
+    mint(auto
+      ? auto.replace(/style:name="[^"]*"/, `style:name="${name}"`)
+          .replace(/<style:text-properties\b([^>]*?)(\/?)>/, (_m, attrs: string, slash: string) => {
+            const kept = names.reduce((acc, n) => acc.replace(new RegExp(`\\s${n}="[^"]*"`, 'g'), ''), attrs);
+            return `<style:text-properties${kept} ${extra}${slash}>`;
+          })
+      : `<style:style style:name="${name}" style:family="text"><style:text-properties ${extra}/></style:style>`);
+    return name;
+  };
+
+  const tefRe = new RegExp(`${TEF}([^${TEF}]*)${TEF}`);
+  let out = xml.replace(
+    new RegExp(`<text:span\\b([^>]*)>([\\s\\S]*?)</text:span>`, 'g'),
+    (m, attrs: string, inner: string) => {
+      const sm = tefRe.exec(inner);
+      if (!sm) return m;
+      const srcM = /text:style-name="([^"]*)"/.exec(attrs);
+      const name = styleFor(srcM ? srcM[1] : '', sm[1]);
+      const newAttrs = srcM
+        ? attrs.replace(/text:style-name="[^"]*"/, `text:style-name="${name}"`)
+        : ` text:style-name="${name}"${attrs}`;
+      return `<text:span${newAttrs}>${inner.replace(new RegExp(tefRe.source, 'g'), '')}</text:span>`;
+    },
+  );
+  // A run whose only formatting is such an effect never got a span: give it one, up to
+  // the next element (a tab or line break carries no visible effect anyway).
+  out = out.replace(
+    new RegExp(`${TEF}([^${TEF}]*)${TEF}([^<${TEF}]*)`, 'g'),
+    (_m, extra: string, text: string) => `<text:span text:style-name="${styleFor('', extra)}">${text}</text:span>`,
+  );
+  return out;
+}
+
+function applyTextEffects(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  const before = strFromU8(contentBytes);
+  const minted: string[] = [];
+  const content = resolveTextEffects(before, (s) => minted.push(s), 'TE');
+  if (content === before) return odtBytes;
+
+  files['content.xml'] = strToU8(
+    minted.length ? content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`) : content,
+  );
   return rezipOdt(files);
 }
 
@@ -2855,7 +2975,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const columns: ColumnsExport[] = [];
   const dateFields: DateTimeFieldExport[] = [];
   const sentinels = replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns))), images), dateFields);
-  const raw = bakeListCharStyles(sentinels, styles);
+  const raw = markTextEffects(bakeListCharStyles(sentinels, styles));
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Different first page (ODF header-first): page 1 gets its own zone content.
@@ -2869,6 +2989,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Hoist header/footer inline images out to HFIMG sentinels before odf-kit serializes
   // the zones; applyHfPostProcess rewrites them to <draw:frame> in styles.xml.
   const hfImages: ImageExport[] = [];
+  headerPara = headerPara && markTextEffects(headerPara);
+  footerPara = footerPara && markTextEffects(footerPara);
   headerPara = replaceHfImages(headerPara, hfImages);
   footerPara = replaceHfImages(footerPara, hfImages);
   firstHeaderPara = replaceHfImages(firstHeaderPara, hfImages);
@@ -3055,7 +3177,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withParaBoxes = applyParagraphBoxes(withEmptyFontSizes);
-  const withNamedStyles = applyCharacterStyles(applyParagraphStyles(withParaBoxes));
+  // Effects first: applyCharacterStyles then clones the style that already carries them.
+  const withNamedStyles = applyCharacterStyles(applyTextEffects(applyParagraphStyles(withParaBoxes)));
   const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
   const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables);
   return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
@@ -3099,6 +3222,10 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
   styles = styles.split(LBR).join('<text:line-break/>');
   styles = styles.replace(new RegExp(`${PGC}(\\d*)${PGC}`, 'g'), '<text:page-count>$1</text:page-count>');
 
+  const mintedStyles: string[] = [];
+  const mint = (n: string) => { mintedStyles.push(n); };
+  styles = resolveTextEffects(styles, mint, 'HFTE');
+
   const round3 = (v: number) => Math.round(v * 1000) / 1000;
   const zone = (kind: 'header' | 'footer', para: TiptapNode, bodyMarginCm: number, distCm: number) => {
     // min-height fills the gap between the edge→zone distance and the body margin,
@@ -3126,8 +3253,6 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
   // into the master page (ODF 1.3; LibreOffice reads them). The page-layout header/footer
   // geometry above is shared across variants, so only the content differs here.
   if (firstHeaderPara || firstFooterPara || evenHeaderPara || evenFooterPara) {
-    const mintedStyles: string[] = [];
-    const mint = (n: string) => { mintedStyles.push(n); };
     const injectVariant = (kind: 'header' | 'footer', suffix: 'first' | 'left', para: TiptapNode | null) => {
       if (!para) return;
       const xml = hfVariantZoneXml(kind, suffix, para, pageCount, mint);
@@ -3142,11 +3267,11 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
     injectVariant('header', 'left', evenHeaderPara);
     injectVariant('footer', 'first', firstFooterPara);
     injectVariant('footer', 'left', evenFooterPara);
-    if (mintedStyles.length) {
-      const defs = mintedStyles.join('');
-      if (styles.includes('</office:automatic-styles>')) styles = styles.replace('</office:automatic-styles>', `${defs}</office:automatic-styles>`);
-      else styles = styles.replace('<office:automatic-styles/>', `<office:automatic-styles>${defs}</office:automatic-styles>`);
-    }
+  }
+  if (mintedStyles.length) {
+    const defs = mintedStyles.join('');
+    if (styles.includes('</office:automatic-styles>')) styles = styles.replace('</office:automatic-styles>', `${defs}</office:automatic-styles>`);
+    else styles = styles.replace('<office:automatic-styles/>', `<office:automatic-styles>${defs}</office:automatic-styles>`);
   }
 
   // Resolve HFIMG sentinels (default + first-page zones) to as-char <draw:frame>s, then
@@ -3222,11 +3347,18 @@ function hfVariantZoneXml(kind: 'header' | 'footer', suffix: 'first' | 'left', p
 function odfTextPropsFromMarks(marks: TiptapNode['marks']): string | null {
   const fmt = formattingFromMarks(marks);
   const a: string[] = [];
+  // The effects below name the underline's own shape and colour where the run has them.
+  const extra = odfExtraTextProps(marks);
   if (fmt.fontWeight != null) a.push(`fo:font-weight="${fmt.fontWeight}"`);
   else if (fmt.bold) a.push('fo:font-weight="bold"');
   if (fmt.italic) a.push('fo:font-style="italic"');
-  if (fmt.underline) a.push('style:text-underline-style="solid" style:text-underline-width="auto" style:text-underline-color="font-color"');
+  if (fmt.underline) {
+    a.push('style:text-underline-width="auto"');
+    if (!/style:text-underline-style=/.test(extra)) a.push('style:text-underline-style="solid"');
+    if (!/style:text-underline-color=/.test(extra)) a.push('style:text-underline-color="font-color"');
+  }
   if (fmt.strikethrough) a.push('style:text-line-through-style="solid"');
+  if (extra) a.push(extra);
   if (fmt.superscript) a.push('style:text-position="super 58%"');
   else if (fmt.subscript) a.push('style:text-position="sub 58%"');
   if (fmt.fontFamily) {

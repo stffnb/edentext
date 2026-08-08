@@ -178,6 +178,17 @@ function markPresent(marks: TiptapNode['marks'], type: string): boolean {
   return !!marks?.some((m) => m.type === type);
 }
 
+// The underline mark's CSS line style → Word's name for the same shape, plus its colour.
+function wordUnderline(attrs: Record<string, unknown> | undefined): { type: (typeof UnderlineType)[keyof typeof UnderlineType]; color?: string } {
+  const byStyle: Record<string, (typeof UnderlineType)[keyof typeof UnderlineType]> = {
+    double: UnderlineType.DOUBLE, dotted: UnderlineType.DOTTED,
+    dashed: UnderlineType.DASH, wavy: UnderlineType.WAVE,
+  };
+  const type = byStyle[String(attrs?.lineStyle ?? '')] ?? UnderlineType.SINGLE;
+  const color = attrs?.lineColor ? hexColor(String(attrs.lineColor)) : undefined;
+  return color ? { type, color } : { type };
+}
+
 // TipTap marks + textStyle attrs → Word run properties. `force` bakes a cell's
 // presentational formatting (header row, table-style region) onto every run,
 // respecting an explicit fontWeight:normal un-bold.
@@ -200,10 +211,18 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
   if (bold !== undefined) props.bold = bold;
 
   if (markPresent(marks, 'italic') || force.italic) props.italics = true;
-  if (markPresent(marks, 'underline')) props.underline = { type: UnderlineType.SINGLE };
-  if (markPresent(marks, 'strike')) props.strike = true;
+  const u = marks.find((m) => m.type === 'underline');
+  if (u) props.underline = wordUnderline(u.attrs);
+  const st = marks.find((m) => m.type === 'strike');
+  if (st) { if (st.attrs?.lineStyle === 'double') props.doubleStrike = true; else props.strike = true; }
   if (markPresent(marks, 'superscript')) props.superScript = true;
   else if (markPresent(marks, 'subscript')) props.subScript = true;
+
+  const caps = ts?.attrs?.caps;
+  if (caps === 'smallCaps') props.smallCaps = true;
+  else if (caps === 'uppercase') props.allCaps = true;
+  const pos = ts?.attrs?.textPosition;
+  if (typeof pos === 'number' && pos) props.position = `${pos}pt`;
 
   const ff = ts?.attrs?.fontFamily ?? force.fontFamily;
   if (ff) props.font = String(ff) === SCREEN_FONT ? DOC_FONT : String(ff);
@@ -418,7 +437,13 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = []): string {
   }
   if (bold) parts.push('<w:b/>');
   if (markPresent(marks, 'italic')) parts.push('<w:i/>');
-  if (markPresent(marks, 'strike')) parts.push('<w:strike/>');
+  const st = marks.find((m) => m.type === 'strike');
+  if (st) parts.push(st.attrs?.lineStyle === 'double' ? '<w:dstrike/>' : '<w:strike/>');
+  const caps = ts?.attrs?.caps;
+  if (caps === 'smallCaps') parts.push('<w:smallCaps/>');
+  else if (caps === 'uppercase') parts.push('<w:caps/>');
+  const pos = ts?.attrs?.textPosition;
+  if (typeof pos === 'number' && pos) parts.push(`<w:position w:val="${Math.round(pos * 2)}"/>`);
   const col = ts?.attrs?.color;
   if (col) {
     const h = hexColor(String(col));
@@ -429,7 +454,11 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = []): string {
     const hp = fontSizeToHalfPoints(String(fs));
     if (hp) parts.push(`<w:sz w:val="${hp}"/><w:szCs w:val="${hp}"/>`);
   }
-  if (markPresent(marks, 'underline')) parts.push('<w:u w:val="single"/>');
+  const u = marks.find((m) => m.type === 'underline');
+  if (u) {
+    const line = wordUnderline(u.attrs);
+    parts.push(`<w:u w:val="${line.type}"${line.color ? ` w:color="${line.color}"` : ''}/>`);
+  }
   const hl = marks.find((m) => m.type === 'highlight');
   if (hl?.attrs?.color) {
     const h = hexColor(String(hl.attrs.color));
@@ -953,6 +982,8 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   if (t.underline) run.underline = {};
   if (t.strike) run.strike = t.strike;
   if (t.color) run.color = t.color.replace('#', '');
+  if (t.caps === 'smallCaps') run.smallCaps = true;
+  else if (t.caps === 'uppercase') run.allCaps = true;
   const spacing: Record<string, number> = {};
   if (p.spaceBefore != null) spacing.before = ptToTwip(p.spaceBefore);
   if (p.spaceAfter != null) spacing.after = ptToTwip(p.spaceAfter);

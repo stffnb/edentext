@@ -5,6 +5,7 @@ import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type Styl
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage } from '../editor/extensions/image';
 import { formatTabStops } from '../editor/extensions/tabStops';
+import type { CapsMode, LineStyle } from '../editor/extensions/textEffects';
 import { TABLE_REGIONS, tableLookAttr, type TableLook, type TableRegion } from '../styles/tableStyles';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
@@ -691,6 +692,7 @@ type BlockDefaults = {
   italic: boolean;
   underline: boolean;
   strike: boolean;
+  caps: CapsMode | null;
 };
 
 // Metric twins: the on-screen font and the name we declare in files mean the same thing.
@@ -714,6 +716,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     italic: false,
     underline: false,
     strike: false,
+    caps: null,
   };
   if (!named) return fallback;
   const para = resolver.paraProps(named);
@@ -737,6 +740,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     italic: fontStyle === 'italic' || fontStyle === 'oblique',
     underline: !!text['style:text-underline-style'] && text['style:text-underline-style'] !== 'none',
     strike: !!text['style:text-line-through-style'] && text['style:text-line-through-style'] !== 'none',
+    caps: capsFromOdf(text),
   };
 }
 
@@ -799,6 +803,8 @@ function textPropsFromOdf(props: PropMap, resolver: StyleResolver): TextProps {
   if (lt) out.strike = lt !== 'none';
   const color = props['fo:color'] ? normalizeColor(props['fo:color']) : undefined;
   if (color) out.color = color;
+  const caps = capsFromOdf(props);
+  if (caps) out.caps = caps;
   return out;
 }
 
@@ -877,6 +883,7 @@ function charDefaults(ctx: Ctx, base: BlockDefaults, odfName: string): BlockDefa
     italic: fontStyle ? fontStyle === 'italic' || fontStyle === 'oblique' : base.italic,
     underline: props['style:text-underline-style'] ? props['style:text-underline-style'] !== 'none' : base.underline,
     strike: props['style:text-line-through-style'] ? props['style:text-line-through-style'] !== 'none' : base.strike,
+    caps: capsFromOdf(props) ?? base.caps,
   };
 }
 
@@ -1258,6 +1265,29 @@ function mergeAdjacentText(nodes: Node[]): Node[] {
   return out;
 }
 
+// ODF names the line's shape and how many lines it draws; CSS has one property for
+// both, and a double line wins over the shape (it is what the reader sees).
+const LINE_SHAPE: Record<string, LineStyle> = {
+  dotted: 'dotted', 'dot-dash': 'dotted', 'dot-dot-dash': 'dotted',
+  dash: 'dashed', 'long-dash': 'dashed',
+  wave: 'wavy',
+};
+
+function lineAttrs(style: string, type: string | undefined, color: string | undefined): Record<string, unknown> | undefined {
+  const attrs: Record<string, unknown> = {};
+  const shape = type === 'double' ? 'double' : LINE_SHAPE[style];
+  if (shape) attrs.lineStyle = shape;
+  const c = color && color !== 'font-color' ? normalizeColor(color) : undefined;
+  if (c) attrs.lineColor = c;
+  return Object.keys(attrs).length ? attrs : undefined;
+}
+
+function capsFromOdf(props: PropMap): CapsMode | null {
+  if (props['fo:font-variant'] === 'small-caps') return 'smallCaps';
+  const t = props['fo:text-transform'];
+  return t === 'uppercase' || t === 'lowercase' || t === 'capitalize' ? t : null;
+}
+
 function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaults): Mark[] {
   const marks: Mark[] = [];
   const textStyle: Record<string, unknown> = {};
@@ -1276,21 +1306,31 @@ function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaul
   const fs = props['fo:font-style'];
   if ((fs === 'italic' || fs === 'oblique') && !defaults.italic) marks.push({ type: 'italic' });
   const ul = props['style:text-underline-style'];
-  if (ul && ul !== 'none' && !defaults.underline) marks.push({ type: 'underline' });
+  if (ul && ul !== 'none' && !defaults.underline) {
+    const line = lineAttrs(ul, props['style:text-underline-type'], props['style:text-underline-color']);
+    marks.push(line ? { type: 'underline', attrs: line } : { type: 'underline' });
+  }
   const lt = props['style:text-line-through-style'];
-  if (lt && lt !== 'none' && !defaults.strike) marks.push({ type: 'strike' });
+  if (lt && lt !== 'none' && !defaults.strike) {
+    const line = lineAttrs(lt, props['style:text-line-through-type'], undefined);
+    marks.push(line ? { type: 'strike', attrs: line } : { type: 'strike' });
+  }
 
-  // "super 58%" / "sub" / bare percentage (positive = raised, negative = lowered).
+  // "super 58%" / "sub" / bare percentage (positive = raised, negative = lowered). A
+  // percentage that is not one of the two presets is a freely raised run, kept in pt.
   const pos = props['style:text-position'];
   if (pos) {
+    const pct = parseFloat(pos);
     if (pos.startsWith('super')) marks.push({ type: 'superscript' });
     else if (pos.startsWith('sub')) marks.push({ type: 'subscript' });
-    else {
-      const p = parseFloat(pos);
-      if (p > 0) marks.push({ type: 'superscript' });
-      else if (p < 0) marks.push({ type: 'subscript' });
+    else if (Number.isFinite(pct) && pct) {
+      const size = lengthToPt(props['fo:font-size']) ?? defaults.fontSizePt;
+      textStyle.textPosition = Math.round((pct / 100) * size * 10) / 10;
     }
   }
+
+  const caps = capsFromOdf(props);
+  if (caps && caps !== defaults.caps) textStyle.caps = caps;
 
   const bg = props['fo:background-color'];
   if (bg && bg !== 'transparent') {

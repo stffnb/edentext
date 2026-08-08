@@ -6,6 +6,7 @@ import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type Styl
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage } from '../editor/extensions/image';
 import { formatTabStops } from '../editor/extensions/tabStops';
+import type { CapsMode, LineStyle } from '../editor/extensions/textEffects';
 import { tableLookAttr } from '../styles/tableStyles';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
@@ -534,6 +535,7 @@ type BlockDefaults = {
   italic: boolean;
   underline: boolean;
   strike: boolean;
+  caps: CapsMode | null;
 };
 
 const FONT_TWINS: Record<string, string[]> = {
@@ -561,6 +563,7 @@ function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDef
     italic: !!baseRun.italic,
     underline: !!baseRun.underline,
     strike: !!baseRun.strike,
+    caps: baseRun.caps || null,
   };
 }
 
@@ -637,6 +640,7 @@ function runTextProps(run: RunProps): TextProps {
   if (run.strike != null) out.strike = run.strike;
   const color = hexColor(run.color);
   if (color) out.color = color;
+  if (run.caps) out.caps = run.caps;
   return out;
 }
 
@@ -1083,8 +1087,13 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
 
   // Marks the block's named style already renders need no mark of their own.
   if (props.italic && !defaults.italic) marks.push({ type: 'italic' });
-  if (props.underline && !inLink && !defaults.underline) marks.push({ type: 'underline' }); // link underline is the CSS default
-  if (props.strike && !defaults.strike) marks.push({ type: 'strike' });
+  if (props.underline && !inLink && !defaults.underline) { // link underline is the CSS default
+    const line = underlineAttrs(props);
+    marks.push(line ? { type: 'underline', attrs: line } : { type: 'underline' });
+  }
+  if (props.strike && !defaults.strike) {
+    marks.push({ type: 'strike', ...(props.doubleStrike ? { attrs: { lineStyle: 'double' } } : {}) });
+  }
   if (props.vertAlign === 'superscript') marks.push({ type: 'superscript' });
   else if (props.vertAlign === 'subscript') marks.push({ type: 'subscript' });
 
@@ -1099,8 +1108,30 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
 
   if (props.font && !defaults.fonts.has(props.font.toLowerCase())) textStyle.fontFamily = props.font;
 
+  if (props.caps && props.caps !== defaults.caps) textStyle.caps = props.caps;
+  if (props.positionPt) textStyle.textPosition = props.positionPt;
+
   if (Object.keys(textStyle).length) marks.push({ type: 'textStyle', attrs: textStyle });
   return marks;
+}
+
+// Word names a dozen underline styles; CSS draws four shapes, so each name maps to the
+// one it looks like. 'single' is the default and needs no attr.
+const UNDERLINE_STYLE: Record<string, LineStyle> = {
+  double: 'double', wavyDouble: 'double',
+  dotted: 'dotted', dottedHeavy: 'dotted', dotDash: 'dotted', dotDotDash: 'dotted',
+  dash: 'dashed', dashedHeavy: 'dashed', dashLong: 'dashed', dashLongHeavy: 'dashed',
+  dashDotHeavy: 'dashed', dashDotDotHeavy: 'dashed',
+  wave: 'wavy', wavyHeavy: 'wavy',
+};
+
+function underlineAttrs(props: RunProps): Record<string, unknown> | undefined {
+  const attrs: Record<string, unknown> = {};
+  const style = props.underlineVal ? UNDERLINE_STYLE[props.underlineVal] : undefined;
+  if (style) attrs.lineStyle = style;
+  const color = hexColor(props.underlineColor);
+  if (color) attrs.lineColor = color;
+  return Object.keys(attrs).length ? attrs : undefined;
 }
 
 // ---- images -----------------------------------------------------------------

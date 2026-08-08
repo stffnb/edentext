@@ -39,6 +39,14 @@ describe('DOCX export → import round trip', () => {
         text(' '),
         text('site', [{ type: 'link', attrs: { href: 'https://example.com' } }]),
       ], { spaceBefore: 6, spaceAfter: 6, lineHeight: '1.5', indent: 1 }),
+      // Character effects: letter case, line shapes, a freely raised run.
+      para([
+        text('caps ', [{ type: 'textStyle', attrs: { caps: 'uppercase' } }]),
+        text('petite ', [{ type: 'textStyle', attrs: { caps: 'smallCaps' } }]),
+        text('dotted ', [{ type: 'underline', attrs: { lineStyle: 'dotted', lineColor: '#FF0000' } }]),
+        text('crossed ', [{ type: 'strike', attrs: { lineStyle: 'double' } }]),
+        text('raised', [{ type: 'textStyle', attrs: { fontSize: '14pt', textPosition: 3 } }]),
+      ]),
       { type: 'paragraph', attrs: { fontSize: '22pt', textAlign: 'center' } }, // empty sized line
       para([text('a\tb')]),
       para([text('line1'), { type: 'hardBreak' }, text('line2')]),
@@ -273,6 +281,17 @@ describe('DOCX export → import round trip', () => {
     expect(mlTop.attrs?.listStyleType).toBe('multilevel');
     const mlSub = walk(mlTop, 'orderedList').find((o) => o !== mlTop)!;
     expect(mlSub.attrs?.listStyleType ?? null).toBe(null);
+  });
+
+  it('round-trips the character effects (case, line shapes, raised run)', () => {
+    const runs = walk(doc, 'text');
+    const of = (t: string) => runs.find((r: N) => r.text === t)!.marks!;
+    const attrs = (t: string, type: string) => of(t).find((m: N) => m.type === type)!.attrs!;
+    expect(attrs('caps ', 'textStyle').caps).toBe('uppercase');
+    expect(attrs('petite ', 'textStyle').caps).toBe('smallCaps');
+    expect(attrs('dotted ', 'underline')).toMatchObject({ lineStyle: 'dotted', lineColor: '#FF0000' });
+    expect(attrs('crossed ', 'strike').lineStyle).toBe('double');
+    expect(attrs('raised', 'textStyle').textPosition).toBe(3);
   });
 
   it('round-trips the image (size + floating wrap)', () => {

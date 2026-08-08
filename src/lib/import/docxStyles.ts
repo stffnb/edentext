@@ -1,4 +1,6 @@
 import type { TabAlign, TabStop } from '../editor/extensions/tabStops';
+import type { CapsMode } from '../editor/extensions/textEffects';
+import { lengthToPt } from './styleResolver';
 
 // Resolves OOXML style indirection for the DOCX importer: Word/LibreOffice spread run
 // formatting across w:docDefaults and named styles linked by w:basedOn, and store list
@@ -28,6 +30,11 @@ export type RunProps = {
   font?: string; // explicit w:rFonts w:ascii/hAnsi
   fontTheme?: 'minor' | 'major'; // w:rFonts w:asciiTheme/hAnsiTheme → theme1.xml font
   highlightFill?: string; // text highlight: w:shd w:fill, or w:highlight's palette colour
+  caps?: CapsMode | false; // w:caps / w:smallCaps; false = a run switching the style's off
+  underlineVal?: string;   // w:u w:val, the line's style ('single' | 'double' | 'wave' | …)
+  underlineColor?: string; // w:u w:color (raw hex)
+  doubleStrike?: boolean;  // w:dstrike
+  positionPt?: number;     // w:position: pt above the baseline (negative = below)
 };
 
 // A numbering level definition (numbering.xml w:lvl). bulletFont is the level's
@@ -65,6 +72,21 @@ export function toggle(el: Element): boolean {
   return v == null || !(v === 'false' || v === '0' || v === 'off');
 }
 
+// ST_SignedHpsMeasure: a bare number counts half-points, anything else carries its unit.
+function signedHalfPointsPt(v: string | null): number | null {
+  if (!v) return null;
+  if (/^-?[\d.]+$/.test(v)) { const n = parseFloat(v); return Number.isFinite(n) ? n / 2 : null; }
+  return lengthToPt(v) ?? null;
+}
+
+// Word writes the two case toggles separately; small caps wins where both are on.
+function readCaps(p: RunProps, child: Element): void {
+  const on = toggle(child);
+  if (child.localName === 'smallCaps') p.caps = on ? 'smallCaps' : false;
+  else if (on) { if (p.caps !== 'smallCaps') p.caps = 'uppercase'; }
+  else if (p.caps === 'uppercase') p.caps = false;
+}
+
 // The highlighter pen's fixed palette (w:highlight names a colour where w:shd gives a
 // hex). 'none' maps to the same sentinel as an empty w:shd, so it cancels an inherited pen.
 const HIGHLIGHT_HEX: Record<string, string> = {
@@ -84,7 +106,17 @@ export function parseRunProps(rPr: Element | null | undefined): RunProps {
       case 'b': p.bold = toggle(child); break;
       case 'i': p.italic = toggle(child); break;
       case 'strike': p.strike = toggle(child); break;
-      case 'u': p.underline = wVal(child) !== 'none'; break;
+      case 'u': {
+        const v = wVal(child);
+        p.underline = v !== 'none';
+        if (v) p.underlineVal = v;
+        const c = child.getAttributeNS(W, 'color');
+        if (c && c !== 'auto') p.underlineColor = c;
+        break;
+      }
+      case 'dstrike': { const on = toggle(child); p.doubleStrike = on; if (on) p.strike = true; break; }
+      case 'caps': case 'smallCaps': readCaps(p, child); break;
+      case 'position': { const pt = signedHalfPointsPt(wVal(child)); if (pt != null) p.positionPt = pt; break; }
       case 'vertAlign': {
         const v = wVal(child);
         if (v === 'superscript' || v === 'subscript') p.vertAlign = v;

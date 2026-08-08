@@ -3,8 +3,7 @@ import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import Bold from '@tiptap/extension-bold';
 import Italic from '@tiptap/extension-italic';
-import Underline from '@tiptap/extension-underline';
-import Strike from '@tiptap/extension-strike';
+import { TextEffects, UnderlineStyled, StrikeStyled } from './extensions/textEffects';
 import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import Highlight from '@tiptap/extension-highlight';
@@ -62,8 +61,8 @@ export const extensions = [
   Text,
   Bold,
   Italic,
-  Underline,
-  Strike,
+  UnderlineStyled,
+  StrikeStyled,
   Link,
   Subscript,
   Superscript,
@@ -72,6 +71,8 @@ export const extensions = [
   FontSize,
   FontWeight,
   FontColor,
+  // Letter case, raised/lowered runs and the line styles of underline/strikethrough.
+  TextEffects,
   // multicolor stores the chosen color on the `highlight` mark's `color` attr;
   // odf-kit exports that natively to fo:background-color. See export/odt.ts
   // applyRuns for the custom-attr-paragraph export path.

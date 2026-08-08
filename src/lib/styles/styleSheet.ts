@@ -3,6 +3,7 @@
 // formatting on the block or run still overrides the result.
 
 import { builtinTableStyles, tableStyleCss, type TableStyle } from './tableStyles';
+import type { CapsMode } from '../editor/extensions/textEffects';
 
 export type ParaProps = {
   textAlign?: 'left' | 'center' | 'right' | 'justify';
@@ -26,6 +27,7 @@ export type TextProps = {
   underline?: boolean;
   strike?: boolean;
   color?: string;
+  caps?: CapsMode; // all caps / small caps (Word w:caps + w:smallCaps, ODF fo:text-transform)
 };
 
 export type Style = {
@@ -234,6 +236,7 @@ export function textDeclarations(t: TextProps, asBlock = false): string[] {
     out.push(`text-decoration: ${[t.underline && 'underline', t.strike && 'line-through'].filter(Boolean).join(' ')}`);
   }
   if (t.color) out.push(`color: ${t.color}`);
+  if (t.caps) out.push(t.caps === 'smallCaps' ? 'font-variant-caps: small-caps' : `text-transform: ${t.caps}`);
   return out;
 }
 
