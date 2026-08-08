@@ -50,6 +50,7 @@
 - Nested ordered levels advance the cycle relative to the level above and inherit its suffix (a level-1 `a)` gives `i)` then `1)`); the numbering style chosen for a level is reused when you nest into it again
 - Customizable bullet symbols per list level (picker on the bullet-list split button: • ◦ ▪ ❖ ➢ ⇨ ✓ – >); round-trips to ODF `text:bullet-char` and DOCX `w:lvlText`, and the DOCX/ODT import maps Wingdings/Symbol bullets (arrows, diamonds, checkmarks …) to their Unicode equivalents instead of flattening them to plain dots. Symbols Liberation Serif lacks render from a bundled 2 KB DejaVu Sans subset (`EdenSymbols.woff2`), so markers look compact and identical on every platform instead of a stretched OS fallback
 - Tab stops per paragraph: left, centre, right and decimal, honoured in the rendered text (CSS only has a fixed tab grid, so each tab is measured and placed); a hanging indent implies a stop at the text position. Set them on the ruler; round-trips to ODF `style:tab-stops` and DOCX `w:tabs`
+- Paragraph borders and shading: per-side borders with presets (all / single edges / none), width and color, plus a background fill, on paragraphs and headings; typing `---`, `___` or `===` on a line of its own turns it into a rule line (Word/LibreOffice AutoCorrect). Round-trips to ODF `fo:border-*`/`fo:background-color` and DOCX `w:pBdr`/`w:shd`
 - Manual line breaks (Shift+Enter)
 
 **Insert**
@@ -59,6 +60,7 @@
 - Special characters picker
 - Date and time fields: picker with 7 date and 4 time formats (live samples) and an "update automatically" toggle — fixed fields keep the inserted moment, auto fields refresh on open. Round-trips to ODF `text:date`/`text:time` (minted `number:date/time-style`) and DOCX `DATE`/`TIME` fields; the field carries the surrounding font
 - Table of contents: generated from headings (H1–H5) with live page numbers and dot leaders, click an entry to jump to its heading; round-trips to ODF `text:table-of-content` and a Word TOC field
+- Formulas: dialog with a LaTeX field and live preview; only the LaTeX is stored, the MathML the browser typesets, the ODF formula object and the OMML are derived from it. Inline or as a centered display line, double-click to edit. Round-trips as a real embedded ODF formula object (`draw:object` + `Formula{n}/content.xml`, our LaTeX kept in the MathML `annotation`) and as Word's `m:oMath`. STIX Two Math is bundled, so stretched brackets and ∑/∫ look the same on every platform
 - Hyperlinks: create / edit / remove (toolbar + Ctrl+K), Ctrl/Cmd+click to open, hover hint showing the URL; ODF `text:a` round-trip
 - Manual page break (Ctrl+Enter); round-trips to ODF `fo:break-before`
 - Text boxes and basic shapes (rectangle / rounded rectangle / ellipse): editable block content, fill and border colors, border width, resize/rotate handles, text wrap (inline / left / right / top-bottom) like images; floating toolbar for wrap, shape kind and colors. Round-trips to ODF `draw:frame`/`draw:text-box` + `draw:custom-shape` and DOCX DrawingML `wps:wsp`/`wps:txbx` (imports Word's `mc:AlternateContent` and legacy VML text boxes too)
@@ -99,25 +101,51 @@
 
 ### Not yet implemented
 
-Planned word-processor features (to match Word/LibreOffice):
-- Footnotes / endnotes (currently dropped on import)
-- Comments / annotations (currently dropped on import)
-- Horizontal rule
-- Page numbering options (start value / format) + different first-page header
-- Heading level H6 (currently clamped to H5)
-- Paragraph borders / shading
-- Track changes (revisions)
-- Lines / arrows / connectors / freeform and other shape presets (currently dropped on import with a warning; text boxes + rect/round-rect/ellipse are supported)
-- Equations / formulas
-- Cross-references / bookmarks
+The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 
-Other:
-- Custom right-click context menu (formatting, cut/copy)
-- Multi-document management
+**Content an imported document loses**
+- Footnotes / endnotes: dropped on import with a warning (`text:note`, `w:footnotes`), and there is no way to add one
+- Comments / annotations: dropped on import (`office:annotation`, `w:comment`)
+- Track changes / revisions: no recording, no accept/reject, no author colors (`text:tracked-changes`, `w:ins`/`w:del`); imported revisions are flattened to their current state
+- Bookmarks and cross-references: no anchor, no reference field ("see chapter 3 on page 7"), none survive an import — this also blocks internal hyperlinks
+- Charts and OLE objects: an undrawable frame keeps its box and its label but not its picture, and the original is gone from the moment it is imported — export writes the placeholder back out (`import/imageFormats.ts`). The same holds for WMF/EMF metafiles
+- Shapes beyond rect / round-rect / ellipse: lines, arrows, connectors, polygons, freeform, and rotated shape text (dropped on import with a warning)
+- Text boxes in the DOCX export: lists inside a box are flattened to literal-marker paragraphs (`•` / `1.`) and images inside a box are dropped — the box XML is injected by a post-pack string pass (`export/docx.ts` `applyTextBoxesDocx`) that mints no numbering.xml or media/rels entries. The ODT export has neither limitation
+
+**Missing while writing**
+- AutoCorrect while typing: only the `---` rule line exists. Missing are typographic quotes (`"…"` / `„…“` per document language), en/em dash, `--> → →`, capitalize the first letter, auto-URL, auto-list
+- Automatic hyphenation: `fo:hyphenate` / `w:hyphenationZone` are ignored and the editor sets no `hyphens`, so a justified paragraph breaks its lines differently than LibreOffice — a systematic source of page-count drift in render parity
+- Captions with numbered figures/tables ("Abbildung 1: …") and the lists built from them (list of figures / tables). The TOC machinery exists, the other index families do not
+- Page numbering options: the page field is decimal-only — no start value, no roman/alpha format, no restart per section
+- Document properties: title, author, subject, keywords. No `meta.xml` is written and the DOCX creator is hard-coded, so an exported file carries no authorship
+- Heading level H6 (clamped to H5; Word and LibreOffice go to 10)
+- Alphabetical index and bibliography
+- Line numbering (LibreOffice Tools ▸ Line numbering / Word Layout ▸ Line numbers)
+- Section-level page setup: a section with its own page size, orientation or margins. Page geometry is one document-wide setting, so a file whose sections disagree keeps the last one's (per-section headers/footers already work)
+- Table extras: repeat the header row on every page, keep a row from splitting across pages, sort, sum/formula in a cell, number recognition
+- A list level's own hanging indent: the marker sits at the 0.635 cm both exports write (`LIST_HANGING_CM`), so a wider marker overflows where Word moves the text to the next list tab. Reading the value back naively also moves the markers of our own ODT exports — LibreOffice draws its own flat hanging at exactly the value odf-kit writes for level 2; see `tests/render-parity/README.md` before building on it
+- Images live as data-URIs in the autosaved JSON, so an image-heavy document can exceed the ~5 MB localStorage quota; `storage/autosave.ts` warns once and a reload restores the last version that still fit. IndexedDB (as `embeddedFontStore.ts` already uses) would lift the ceiling
+- Linked / chained text frames
+- Find & Replace by regular expression or by formatting/style
+- Save as template (`.ott` / `.dotx`), multi-document management, recent-files list
+- Watermark; page background and page border
+- Thesaurus, grammar check, word completion, AutoText / building blocks
+- Right-to-left and vertical text, Asian typography (ruby)
+- Password-protected ODT/DOCX; digital signatures
+- Navigator / outline view, split view
 - PWA / offline support
-- ...
 
-### Known issues / deferred
+**Out of scope for now**
+- Mail merge, data sources, form fields
+- Master documents
+- Real-time collaboration (there is no backend by design)
+- Macros / scripting
+
+### Known limitations
+
+Deviations from Word/LibreOffice the browser does not let us remove. Anything
+merely unimplemented belongs in the list above, not here.
+
 - Zoom 100% does not visually match Word/LibreOffice at 100% on the same
   screen. Root cause: the editor uses the browser's fixed 96 CSS DPI
   (794×1123 px for A4 — see `editor.css`, `pageBreaks.ts`), while Word and
@@ -125,19 +153,25 @@ Other:
   1 cm on paper ≈ 1 cm on screen. Possible future fix: add a user-side
   calibration (DPI value or visual ruler) that scales the `zoom` factor.
   Decided 2026-05-26 not worth the effort for now.
-- Lists and headings inside a table cell are exported as plain text, not as
-  real ODF structures. odf-kit's `CellBuilder` is run-based (text runs only),
-  so a cell cannot hold a true `<text:list>` or `<text:h>`. On export
-  (`export/odt.ts`): headings render as bold runs at the heading font size,
-  and list items render as separate lines with literal markers (`•`, `1.`,
-  `2.`…), nested lists indented. Content is preserved and readable, but loses
-  list/heading semantics (no auto-numbering, not recognised as a heading).
-  Noted 2026-06-06.
-- Text boxes in the DOCX export: lists inside a box are flattened to
-  literal-marker paragraphs (`•` / `1.`), and images inside a box are dropped —
-  the box XML is injected by a post-pack string pass (`export/docx.ts`
-  `applyTextBoxesDocx`) that cannot mint numbering.xml or media/rels entries.
-  ODT export has neither limitation. Noted 2026-07-03.
+- An image or text box cannot be dropped at a free point on the page. It is
+  anchored to a text position: inline, or floating left / right / top-bottom,
+  and dragging it re-anchors it to the paragraph under the cursor rather than
+  placing it. Root cause: `float` is the only way to make browser text wrap
+  around a box. CSS Exclusions, which would wrap around a freely placed one,
+  are unimplemented in every engine, and `position: absolute` takes the frame
+  out of flow so text runs underneath it.
+  A file's own offsets are a separate matter: both round-trip
+  (`wrapOffset`/`wrapOffsetY` = `svg:x`/`svg:y`, `positionH`/`positionV`), but
+  only the horizontal one is rendered, as the float's near-side margin. A line
+  box avoids a float's whole *margin* box, so applying the vertical one as a top
+  margin makes dead space where a word processor flows text — measured, the
+  thesis fixture went from 131 mm off to 187 mm and grew a page. Noted 2026-08-08.
+- Line height follows the paragraph, not the line: the block's CSS strut applies
+  to every line, where a word processor takes each line's own runs. A paragraph
+  whose runs all agree takes theirs, so only a paragraph of *mixed* sizes struts
+  too low. A fix (`line-height: 0` + inline decoration) measured right on a
+  purpose-built fixture but cost the contract fixture 22 issues; reverted. Detail
+  in `tests/render-parity/README.md`. Noted 2026-08-08.
 - A plain text box's height is a *minimum* (content grows the box, like the
   editor). LibreOffice recomputes auto-grow heights on open, so a re-saved box
   keeps its content but sheds excess empty height. Shapes (rect/ellipse) export
