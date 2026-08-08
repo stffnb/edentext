@@ -89,16 +89,14 @@ contract form), the summary (a student summary: bullets,
 wrapped pictures, one table) and the thesis (a 48-page thesis with charts,
 metafile figures and a German TOC) — still report:
 
-- **A frame's vertical anchor offset is ignored.** A `wp:anchor` carries a y offset from
-  its paragraph; the editor floats it at the anchor itself, so a top-and-bottom wrapped
-  figure sits where its caption paragraph is instead of where Word puts it (the thesis'
-  page 15, 131mm out). The horizontal offset round-trips (`wrapOffset`); the vertical one
-  has no CSS equivalent while the frame stays in flow.
+- **A frame's vertical anchor offset is kept but not drawn.** Both offsets round-trip
+  now (`wrapOffset`/`wrapOffsetY`, images and text boxes alike), but only the horizontal
+  one is rendered: a line box avoids a float's whole *margin* box, so applying the
+  vertical one as a top margin makes dead space where Word flows text — measured, the
+  thesis' figure page went from 131mm off to 187mm and the document grew a page.
 - **One header/footer set for the whole document.** Word gives every *section* its own,
   including its own first page; the contract's second section repeats the letterhead on
   page 10 and the body starts 25mm lower there than here.
-- **Dot leaders.** LibreOffice fills a TOC entry to its page number with dots; the
-  editor's index lays the number out with flex and leaves the gap empty.
 - **A block ending in a hard break renders one line too many.** ProseMirror appends a
   trailing-break `<br>` so the empty last line stays caret-reachable, but under
   `white-space: pre-wrap` that line already exists. Hiding the hack node fixes the height
@@ -132,8 +130,9 @@ metafile figures and a German TOC) — still report:
 
 What tab stops (`tabStops.ts`) deliberately left out, none of it exercised by a fixture:
 
-- **Leader characters** (`w:tab w:leader`, `style:leader-text`) are dropped — the dotted
-  run before a TOC page number. odf-kit can't emit them either.
+- **Leader characters** (`w:tab w:leader`, `style:leader-text`) are dropped: a tab can't
+  fill its gap with dots. odf-kit can't emit them either. The generated index draws its
+  own leader (`tableOfContents.ts`), so only a leader on a *tab stop* is missing.
 - **The default tab interval is fixed at 1.25cm**, so a file's own `w:defaultTabStop` /
   `style:tab-stop-distance` is ignored. It is the CSS `tab-size`, which the measuring
   pass leaves to handle every tab past the last custom stop.
