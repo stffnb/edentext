@@ -1187,9 +1187,10 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   if (Number.isFinite(rot) && rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
 
   if (anchor) {
-    const { wrap, offsetCm } = anchorWrap(anchor, ctx);
+    const { wrap, offsetCm, offsetYCm } = anchorWrap(anchor, ctx);
     attrs.wrap = wrap;
     if (offsetCm != null) attrs.wrapOffset = offsetCm;
+    if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
   } else {
     fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
   }
@@ -1203,34 +1204,48 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
 function placeholderNode(box: { w: number; h: number }, label: string, anchor: Element | undefined, ctx: Ctx): Node {
   const attrs: Record<string, unknown> = { src: placeholderImage(label, box.w, box.h), width: box.w, height: box.h, alt: label };
   if (anchor) {
-    const { wrap, offsetCm } = anchorWrap(anchor, ctx);
+    const { wrap, offsetCm, offsetYCm } = anchorWrap(anchor, ctx);
     attrs.wrap = wrap;
     if (offsetCm != null) attrs.wrapOffset = offsetCm;
+    if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
   } else {
     fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
   }
   return { type: 'image', attrs };
 }
 
-function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom'; offsetCm: number | null } {
-  if (anchor.getElementsByTagNameNS(WP, 'wrapTopAndBottom')[0]) return { wrap: 'topBottom', offsetCm: null };
+// How far below its anchor paragraph the frame sits. Only the paragraph- and
+// line-relative forms have a CSS equivalent (the float's top margin); page- or
+// margin-relative ones are absolute on the sheet, which a frame in flow cannot be.
+function anchorOffsetY(anchor: Element): number | null {
+  const posV = anchor.getElementsByTagNameNS(WP, 'positionV')[0];
+  const from = posV?.getAttribute('relativeFrom');
+  if (from !== 'paragraph' && from !== 'line') return null;
+  const off = parseInt(posV?.getElementsByTagNameNS(WP, 'posOffset')[0]?.textContent ?? '', 10);
+  return Number.isFinite(off) && off > 0 ? round2(off / 360000) : null;
+}
+
+function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom'; offsetCm: number | null; offsetYCm: number | null } {
+  const offsetYCm = anchorOffsetY(anchor);
+  const at = (wrap: 'left' | 'right' | 'topBottom', offsetCm: number | null = null) => ({ wrap, offsetCm, offsetYCm });
+  if (anchor.getElementsByTagNameNS(WP, 'wrapTopAndBottom')[0]) return at('topBottom');
   const sq = anchor.getElementsByTagNameNS(WP, 'wrapSquare')[0];
   const wt = sq?.getAttribute('wrapText');
-  if (wt === 'right') return { wrap: 'left', offsetCm: null }; // text on right ⇒ image on left
-  if (wt === 'left') return { wrap: 'right', offsetCm: null };
+  if (wt === 'right') return at('left'); // text on right ⇒ image on left
+  if (wt === 'left') return at('right');
   const posH = anchor.getElementsByTagNameNS(WP, 'positionH')[0];
   const align = posH?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
-  if (align === 'right' || align === 'outside') return { wrap: 'right', offsetCm: null };
-  if (align) return { wrap: 'left', offsetCm: null };
+  if (align === 'right' || align === 'outside') return at('right');
+  if (align) return at('left');
   const off = parseInt(posH?.getElementsByTagNameNS(WP, 'posOffset')[0]?.textContent ?? '', 10);
-  if (!Number.isFinite(off)) return { wrap: 'left', offsetCm: null };
+  if (!Number.isFinite(off)) return at('left');
   const cx = intAttr(anchor.getElementsByTagNameNS(WP, 'extent')[0], '', 'cx') ?? 0;
   // A page-relative offset counts from the sheet edge, everything else from the text
   // column — shift it there so one comparison serves both.
   const base = posH?.getAttribute('relativeFrom') === 'page' ? -cmToEmu(ctx.leftMarginCm) : 0;
   const left = off + base;
   const wrap = left + cx / 2 > cmToEmu(ctx.contentWidthCm) / 2 ? 'right' : 'left';
-  return { wrap, offsetCm: round2(left / 360000) };
+  return at(wrap, round2(left / 360000));
 }
 
 // ---- text boxes / shapes ------------------------------------------------------

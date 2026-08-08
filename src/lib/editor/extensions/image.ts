@@ -117,6 +117,13 @@ export const Image = Node.create({
         parseHTML: el => parseCm((el as HTMLElement).getAttribute('data-wrap-offset')),
         renderHTML: () => ({}),
       },
+      // How far below its anchor paragraph the frame sits, in cm (Word's positionV
+      // posOffset, ODF svg:y). null = at the anchor.
+      wrapOffsetY: {
+        default: null,
+        parseHTML: el => parseCm((el as HTMLElement).getAttribute('data-wrap-offset-y')),
+        renderHTML: () => ({}),
+      },
     };
   },
 
@@ -130,6 +137,7 @@ export const Image = Node.create({
     const rot = (node.attrs.rotation as number) || 0;
     const wrap = (node.attrs.wrap as WrapMode) || 'inline';
     const offset = node.attrs.wrapOffset as number | null;
+    const offsetY = node.attrs.wrapOffsetY as number | null;
     const style = [
       w ? `width:${w}px` : '',
       h ? `height:${h}px` : '',
@@ -140,6 +148,7 @@ export const Image = Node.create({
       ...(rot ? { 'data-rotation': String(rot) } : {}),
       ...(wrap !== 'inline' ? { 'data-wrap': wrap } : {}),
       ...(offset != null ? { 'data-wrap-offset': String(offset) } : {}),
+      ...(offsetY != null ? { 'data-wrap-offset-y': String(offsetY) } : {}),
     })];
   },
 
@@ -157,7 +166,7 @@ export const Image = Node.create({
           const sel = state.selection;
           if (!(sel instanceof NodeSelection) || sel.node.type.name !== this.name) return false;
           // Picking a side means "put it there", so the imported offset goes with it.
-          if (dispatch) dispatch(state.tr.setNodeMarkup(sel.from, undefined, { ...sel.node.attrs, wrap, wrapOffset: null }));
+          if (dispatch) dispatch(state.tr.setNodeMarkup(sel.from, undefined, { ...sel.node.attrs, wrap, wrapOffset: null, wrapOffsetY: null }));
           return true;
         },
     };
@@ -281,12 +290,16 @@ class ImageView {
     const near = offset == null ? '0' : `${Math.round(cmToPx(offset))}px`;
     const far = offset == null ? '0'
       : `calc(${COLUMN_WIDTH_CSS} - ${Math.round(cmToPx(offset))}px - ${this.boxWidth()}px)`;
+    // Down from the anchor paragraph. Lines that fit entirely above the frame's top
+    // edge still flow there, which is what a word processor does with the same offset.
+    const offsetY = this.node.attrs.wrapOffsetY as number | null;
+    const down = offsetY == null ? null : `${Math.round(cmToPx(offsetY))}px`;
     if (wrap === 'left') {
       d.style.float = 'left';
-      d.style.margin = `0 14px 6px ${near}`;
+      d.style.margin = `${down ?? '0'} 14px 6px ${near}`;
     } else if (wrap === 'right') {
       d.style.float = 'right';
-      d.style.margin = `0 ${far} 6px 14px`;
+      d.style.margin = `${down ?? '0'} ${far} 6px 14px`;
     } else if (wrap === 'topBottom') {
       // A full-width float (not display:block — which on an inline atom node view
       // disrupts ProseMirror's view + page-break spacer widgets): text can only flow
@@ -294,7 +307,7 @@ class ImageView {
       d.style.float = 'left';
       d.style.clear = 'both';
       d.style.width = '100%';
-      d.style.margin = '6px 0';
+      d.style.margin = `${down ?? '6px'} 0 6px`;
     }
   }
 

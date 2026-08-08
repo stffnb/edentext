@@ -49,7 +49,7 @@ describe('DOCX export → import round trip', () => {
         li(para('ml one'), { type: 'orderedList', content: [li(para('ml one-one'))] }),
         li(para('ml two')),
       ] },
-      para([{ type: 'image', attrs: { src: PNG, width: 100, height: 80, wrap: 'left', alt: 'pic' } }]),
+      para([{ type: 'image', attrs: { src: PNG, width: 100, height: 80, wrap: 'left', wrapOffsetY: 2.5, alt: 'pic' } }]),
       { type: 'textBox', attrs: { width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 }, content: [
         para('box text'),
         para([text('bold in box', [{ type: 'bold' }])]),
@@ -280,6 +280,7 @@ describe('DOCX export → import round trip', () => {
     expect(img.attrs.width).toBe(100);
     expect(img.attrs.height).toBe(80);
     expect(img.attrs.wrap).toBe('left');
+    expect(img.attrs.wrapOffsetY).toBe(2.5); // positionV posOffset, paragraph-relative
     expect(img.attrs.src.startsWith('data:image/png')).toBe(true);
   });
 

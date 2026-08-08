@@ -31,10 +31,11 @@ const ROW = (...cells: N[]): N => ({ type: 'tableRow', content: cells });
 
 // A tiny valid PNG; only its bytes matter for the round-trip (no image decoding).
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-const IMGN = (width: number, height: number, alt?: string, rotation?: number, wrap?: string): N =>
+const IMGN = (width: number, height: number, alt?: string, rotation?: number, wrap?: string, wrapOffsetY?: number): N =>
   ({ type: 'image', attrs: {
     src: PNG, width, height,
     ...(alt ? { alt } : {}), ...(rotation ? { rotation } : {}), ...(wrap ? { wrap } : {}),
+    ...(wrapOffsetY ? { wrapOffsetY } : {}),
   } });
 const TBX = (attrs: N, ...content: N[]): N => ({ type: 'textBox', attrs, content });
 const COLS = (attrs: N, ...content: N[]): N => ({ type: 'columns', attrs, content });
@@ -74,7 +75,7 @@ const fixture: N = {
     P(null, T('before\ttab\tafter')),
     P(null, T('logo: '), IMGN(100, 50, 'Logo')),
     P(null, T('rotated: '), IMGN(120, 80, 'Rotated', 30)),
-    P(null, T('wrapped left '), IMGN(90, 60, 'Float', 0, 'left'), T(' text flows beside it')),
+    P(null, T('wrapped left '), IMGN(90, 60, 'Float', 0, 'left', 2.5), T(' text flows beside it')),
     P(null, T('top/bottom '), IMGN(70, 50, 'Banner', 0, 'topBottom')),
     TBX({ width: 288, height: 96 }, P(null, T('box para one')), P(null, T('box '), T('bold', { type: 'bold' }))),
     TBX({ width: 192, height: 80, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, P(null, T('in ellipse'))),
@@ -269,6 +270,7 @@ describe('Leg 1: editor → buildOdt → importOdt', () => {
     check('image rotation round-trips (30°, 120×80)', rotImg?.attrs?.rotation === 30 && rotImg?.attrs?.width === 120 && rotImg?.attrs?.height === 80, rotImg?.attrs);
     const wrapImg = collectImages(res.content).find((i: N) => i.attrs?.wrap === 'left');
     check('image wrap=left round-trips', wrapImg?.attrs?.width === 90 && wrapImg?.attrs?.height === 60, wrapImg?.attrs);
+    check('image vertical anchor offset round-trips (svg:y)', wrapImg?.attrs?.wrapOffsetY === 2.5, wrapImg?.attrs);
     const tbImg = collectImages(res.content).find((i: N) => i.attrs?.wrap === 'topBottom');
     check('image wrap=topBottom round-trips', !!tbImg, tbImg?.attrs);
 

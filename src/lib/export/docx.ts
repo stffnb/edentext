@@ -314,10 +314,13 @@ function decodeDataUri(src: string): { bytes: Uint8Array; type: 'png' | 'jpg' | 
 }
 
 // offsetCm places the frame in the text column (Word's posOffset); without one it is
-// flush to its side.
-function floatingFor(wrap: string, offsetCm: number | null): IFloating | undefined {
+// flush to its side. offsetYCm is how far below the anchor paragraph it sits.
+function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | null): IFloating | undefined {
   if (wrap === 'inline') return undefined;
-  const verticalPosition = { relative: VerticalPositionRelativeFrom.PARAGRAPH, offset: 0 };
+  const verticalPosition = {
+    relative: VerticalPositionRelativeFrom.PARAGRAPH,
+    offset: offsetYCm != null ? Math.round(offsetYCm * 360000) : 0,
+  };
   if (wrap === 'topBottom') {
     return {
       horizontalPosition: { relative: HorizontalPositionRelativeFrom.MARGIN, align: HorizontalPositionAlign.LEFT },
@@ -350,12 +353,13 @@ function imageRun(node: TiptapNode): ImageRun | null {
   const rotation = typeof node.attrs?.rotation === 'number' ? node.attrs.rotation : 0;
   const wrap = String(node.attrs?.wrap ?? 'inline');
   const offsetCm = typeof node.attrs?.wrapOffset === 'number' ? node.attrs.wrapOffset : null;
+  const offsetYCm = typeof node.attrs?.wrapOffsetY === 'number' ? node.attrs.wrapOffsetY : null;
   return new ImageRun({
     type: decoded.type,
     data: decoded.bytes,
     altText: typeof node.attrs?.alt === 'string' && node.attrs.alt ? { name: node.attrs.alt, title: node.attrs.alt, description: node.attrs.alt } : undefined,
     transformation: { width, height, rotation: rotation || undefined },
-    floating: floatingFor(wrap, offsetCm),
+    floating: floatingFor(wrap, offsetCm, offsetYCm),
   });
 }
 

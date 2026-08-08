@@ -135,6 +135,12 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   // column; the wrap mode alone would snap it to a side.
   const x = gp['style:horizontal-pos'] === 'from-left' ? lengthToCm(el.getAttributeNS(NS.svg, 'x')) : null;
   if (x != null && attrs.wrap && attrs.wrap !== 'topBottom') attrs.wrapOffset = Math.round(x * 100) / 100;
+  // Likewise down the page, but only against the anchor paragraph — a page-relative
+  // frame is placed absolutely, which one in the text flow cannot be.
+  const rel = gp['style:vertical-rel'];
+  const y = gp['style:vertical-pos'] === 'from-top' && (!rel || rel.startsWith('paragraph') || rel === 'line')
+    ? lengthToCm(el.getAttributeNS(NS.svg, 'y')) : null;
+  if (y != null && y > 0 && attrs.wrap) attrs.wrapOffsetY = Math.round(y * 100) / 100;
 }
 
 // A paragraph mark that declares nothing keeps the style's font, but the runs may all
