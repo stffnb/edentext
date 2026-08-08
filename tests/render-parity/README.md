@@ -87,7 +87,8 @@ editor (`global.css`), so give LibreOffice the same answer:
 What the three real-world fixtures — the contract (an IHK
 contract form), the summary (a student summary: bullets,
 wrapped pictures, one table) and the thesis (a 48-page thesis with charts,
-metafile figures and a German TOC) — still report:
+metafile figures and a German TOC) — still report. The thesis is at 48 pages against
+LibreOffice's 48, with 62 line-level differences, most of them the justification rule above:
 
 - **A frame's vertical anchor offset is kept but not drawn.** Both offsets round-trip
   now (`wrapOffset`/`wrapOffsetY`, images and text boxes alike), but only the horizontal
@@ -97,13 +98,6 @@ metafile figures and a German TOC) — still report:
 - **One header/footer set for the whole document.** Word gives every *section* its own,
   including its own first page; the contract's second section repeats the letterhead on
   page 10 and the body starts 25mm lower there than here.
-- **A block ending in a hard break renders one line too many.** ProseMirror appends a
-  trailing-break `<br>` so the empty last line stays caret-reachable, but under
-  `white-space: pre-wrap` that line already exists. Hiding the hack node fixes the height
-  and costs the caret that line, so it is hidden only after an inline atom, where there
-  is no such line (`editor.css`). Reproduces natively with Shift+Enter, no import needed.
-- **Chromium does not break after a slash**, LibreOffice does — "Sensor/Messinstrument"
-  stays one word in a narrow table cell and wraps a line later.
 - **Line height follows the paragraph, not the line.** The block's CSS strut applies to
   every line; a word processor takes each line's own runs and the paragraph mark only on
   the last. The mark's font rides the block (`blockFontSize.ts`), and a paragraph whose
@@ -116,17 +110,37 @@ metafile figures and a German TOC) — still report:
 - **Tabs that wrap lose their advance.** Six consecutive tabs at a line end stay on that
   line in Chromium and the continuation starts at the margin; LibreOffice carries the
   tab positions onto it (91mm apart in the contract).
-- **A run of dots is one unbreakable word** to Chromium, while LibreOffice breaks inside
-  it — a dotted fill-in line wraps at a different place.
 - **A list marker sits where the browser puts it, not at the hanging indent.** The
   level's `w:ind w:hanging` reaches the text (which lands at Word's 1.27cm) but not
   the bullet: CSS gives `::marker` no position, and Chromium sets it flush against
   the text, ~4mm right of where Word and LibreOffice draw it. Only a `::before`
   marker could place it, which `listMarker.ts` and every ordered format ride on.
-- **A trailing space counts toward a right-aligned line** under `white-space: pre-wrap`,
-  pushing the text ~1.2mm left of where LibreOffice puts it.
+  Both exports already agree on where it belongs (`LIST_HANGING_CM` 0.635cm), so the
+  place is known; the work is the migration — `content: counter(list-item, …)` per
+  numbering style, and `bulletChar` reaching a custom property instead of an inline
+  `list-style-type`.
+- **A cell's own margins are not read**, only the table's (`w:tcMar`; ODF puts padding on
+  every cell style, and we take the first cell's for the whole table). No producer in
+  the corpus writes per-cell margins.
 - Lines whose natural width lands within ~0.2mm of the right margin may take one word
   more or fewer than LibreOffice. Sub-0.1mm engine rounding, not a layout rule.
+
+## Findings that did not survive measurement
+
+Kept here so they are not re-derived. Each was checked against `soffice` on a purpose-built
+one-page fixture.
+
+- **A trailing space on a right-aligned line.** LibreOffice counts it exactly as we do
+  (its last glyph lands at 189.0mm, ours at 188.9mm). Hanging it — which is what Word
+  does — moved us 1.0mm *away* from the reference, so it was reverted.
+- **Breaking after a slash, and inside a run of dots.** Neither engine does either:
+  `Sensor/Messinstrument` and a 50-dot leader stay one word in both. What LibreOffice
+  really does that we did not is break a word *wider than its line*; that is fixed
+  (`overflow-wrap: break-word`).
+- **A block ending in a hard break.** Real — the next paragraph sat 4.7mm too low — but
+  the cause was not the trailing-break `<br>`: under `pre-wrap` that adds no line. It was
+  the always-reserved paragraph mark, which is inline content *past* the break and so
+  opened a line of its own. Fixed in `editor.css`.
 
 What tab stops (`tabStops.ts`) deliberately left out, none of it exercised by a fixture:
 
