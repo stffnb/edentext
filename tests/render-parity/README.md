@@ -111,10 +111,11 @@ with 51 line-level differences — most of them the two engine rules below, not 
   paragraph mark is an `::after` on the block, so the same rule takes the *last* line's
   height away with it. An empty widget span at the block's end gets that line back but not
   to the same value. Whatever replaces the strut has to carry both.
-- **Charts and metafiles are placeholders.** No renderer exists for either, so an
-  undrawable frame keeps its box and its label but not its picture (`imageFormats.ts`).
-  Exporting writes the placeholder back out — the original is gone from the moment it
-  is imported.
+- **Metafiles are placeholders, and a re-export keeps the placeholder.** EMF/WMF/SVM have
+  no JS decoder, so such a frame keeps its box and its label but not its picture
+  (`imageFormats.ts`) — and what is exported is that placeholder. **Charts** are drawn
+  now (`import/chart.ts`), but as a *picture*: a re-export carries the drawing, not a
+  chart object, since the editor has none.
 - **A list level's own hanging indent is not read**, only the 0.635cm both exports
   write (`LIST_HANGING_CM`). A **left**-set label wider than that overflows into the text,
   where Word moves the text to the next list tab — reading `w:lvl/w:pPr/w:ind w:hanging`

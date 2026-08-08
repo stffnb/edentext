@@ -19,6 +19,7 @@ import { clampTabInterval, DOCX_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { applyUniformRunFont, sinkOffsetFrames, type OdtImportResult } from './odt';
+import { chartDataUrl } from './chart';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { astToLatex } from '../math/latex';
@@ -55,6 +56,8 @@ type Ctx = {
   leftMarginCm: number;
   // The enclosing table style's w:pPr/w:spacing, applied to its cells' paragraphs.
   cellSpacing: ParaSpacing;
+  // theme1.xml's accent1..6, the colours a chart series names instead of an sRGB.
+  accents: string[];
 };
 
 // ---- units & editor defaults to suppress -----------------------------------
@@ -136,7 +139,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const sectPr = fc(body, 'sectPr');
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, cellSpacing: {} };
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, cellSpacing: {}, accents: themeAccents(themeDoc) };
 
   // Mid-body sectPr paragraphs delimit sections; a section whose w:cols declares
   // more than one column becomes a columns node (the trailing group is described
@@ -1209,11 +1212,13 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   };
   const blip = drawing.getElementsByTagNameNS(A, 'blip')[0];
   if (!blip) {
-    // A chart (or any other graphic the editor cannot draw) still occupies its box, so
-    // it comes in as a placeholder of that size rather than collapsing the layout.
     if (boxPx.w > 0 && boxPx.h > 0) {
+      // A chart is drawn from its own part as a picture; anything else the editor
+      // cannot draw still occupies its box, as a placeholder of that size.
+      const drawn = chartImage(drawing, boxPx, ctx);
+      if (drawn) return frameNode(drawn, boxPx, 'Chart', anchor, ctx);
       ctx.warnings.add('Charts and other drawings were replaced by a placeholder');
-      return placeholderNode(boxPx, 'Chart', anchor, ctx);
+      return frameNode(placeholderImage('Chart', boxPx.w, boxPx.h), boxPx, 'Chart', anchor, ctx);
     }
     ctx.warnings.add('Drawings were removed');
     return null;
@@ -1234,7 +1239,7 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   if (!src) {
     if (boxPx.w > 0 && boxPx.h > 0) {
       ctx.warnings.add('Images in a format the browser can’t display (e.g. WMF, EMF) were replaced by a placeholder');
-      return placeholderNode(boxPx, 'Image', anchor, ctx);
+      return frameNode(placeholderImage('Image', boxPx.w, boxPx.h), boxPx, 'Image', anchor, ctx);
     }
     ctx.warnings.add('Some images could not be read and were skipped');
     return null;
@@ -1264,9 +1269,29 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   return { type: 'image', attrs };
 }
 
-// An undrawable frame as an image node of the same size, wrapped like the real one.
-function placeholderNode(box: { w: number; h: number }, label: string, anchor: Element | undefined, ctx: Ctx): Node {
-  const attrs: Record<string, unknown> = { src: placeholderImage(label, box.w, box.h), width: box.w, height: box.h, alt: label };
+// theme1.xml's accent1..6 as #RRGGBB, in order — a chart series names them by role.
+function themeAccents(theme: Document | null): string[] {
+  const scheme = theme?.getElementsByTagNameNS(A, 'clrScheme')[0];
+  return [1, 2, 3, 4, 5, 6].map((n) => {
+    const el = scheme ? Array.from(scheme.children).find((c) => c.localName === `accent${n}`) : null;
+    const srgb = el ? el.getElementsByTagNameNS(A, 'srgbClr')[0]?.getAttribute('val') : null;
+    return srgb ? `#${srgb}` : '';
+  }).filter(Boolean);
+}
+
+// <c:chart r:id> → the chart part, drawn as a picture of the frame's own size.
+function chartImage(drawing: Element, box: { w: number; h: number }, ctx: Ctx): string | null {
+  const ref = Array.from(drawing.getElementsByTagName('*')).find((e) => e.localName === 'chart' && e.getAttributeNS(R, 'id'));
+  const rel = ref ? ctx.rels.get(ref.getAttributeNS(R, 'id')!) : undefined;
+  if (!rel || rel.external) return null;
+  const bytes = ctx.files[`word/${rel.target.replace(/^\/+/, '')}`];
+  return bytes ? chartDataUrl(strFromU8(bytes), box.w, box.h, ctx.accents) : null;
+}
+
+// A frame the editor draws itself (a chart) or cannot draw at all, as an image node of
+// the same size, wrapped like the real one.
+function frameNode(src: string, box: { w: number; h: number }, label: string, anchor: Element | undefined, ctx: Ctx): Node {
+  const attrs: Record<string, unknown> = { src, width: box.w, height: box.h, alt: label };
   if (anchor) {
     const { wrap, offsetCm, offsetYCm } = anchorWrap(anchor, ctx);
     attrs.wrap = wrap;
