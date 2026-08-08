@@ -11,6 +11,8 @@ import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCL
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
 import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
+import { astToLatex } from '../math/latex';
+import { parseMathml } from '../math/mathml';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
@@ -280,6 +282,50 @@ function convertTextBoxFrame(frame: Element, textBoxEl: Element, ctx: Ctx): Node
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(textBoxEl.children), ctx) };
 }
 
+// A <draw:frame> holding a formula object → a formula node. The MathML lives either
+// in the referenced sub-document (LibreOffice, and our own export) or inline in the
+// <draw:object>; parseMathml prefers our LaTeX annotation when the file carries one.
+function convertFormulaFrame(frame: Element, ctx: Ctx): Node | null {
+  const obj = Array.from(frame.children).find(
+    c => c.namespaceURI === NS.draw && (c.localName === 'object' || c.localName === 'object-ole'),
+  );
+  if (!obj) return null;
+  const inline = obj.getElementsByTagNameNS(NS.math, 'math')[0];
+  const mathEl = inline ?? loadFormulaObject(obj.getAttributeNS(NS.xlink, 'href'), ctx);
+  if (!mathEl) return null;
+  const got = parseMathml(mathEl);
+  const latex = got.latex ?? astToLatex(got.ast);
+  if (!latex.trim()) return null;
+  // The frame's svg geometry is ignored: a formula is laid out from its own markup,
+  // so a stored box would only fight the renderer.
+  return { type: 'formula', attrs: { latex, display: aloneInParagraph(frame) } };
+}
+
+// A display formula is one that owns its line — ODF has no flag for it (LibreOffice
+// writes display="block" on every formula object it re-saves), so it is read off the
+// paragraph: nothing but this frame in it.
+function aloneInParagraph(frame: Element): boolean {
+  const p = frame.parentElement;
+  if (!p || p.namespaceURI !== NS.text || (p.localName !== 'p' && p.localName !== 'h')) return false;
+  if ((p.textContent ?? '').trim()) return false;
+  return Array.from(p.children).filter(c => c.namespaceURI === NS.draw).length === 1;
+}
+
+// The embedded object's content.xml — an ODF formula document's root is the MathML
+// itself. A non-formula object (chart, spreadsheet) has no math root and falls through.
+function loadFormulaObject(href: string | null, ctx: Ctx): Element | null {
+  const dir = (href ?? '').replace(/^\.\//, '').replace(/\/$/, '');
+  if (!dir) return null;
+  const bytes = ctx.files[`${dir}/content.xml`] ?? ctx.files[dir];
+  if (!bytes) return null;
+  const doc = new DOMParser().parseFromString(strFromU8(bytes), 'text/xml');
+  const root = doc.documentElement;
+  if (!root || doc.getElementsByTagName('parsererror').length) return null;
+  return root.namespaceURI === NS.math && root.localName === 'math'
+    ? root
+    : doc.getElementsByTagNameNS(NS.math, 'math')[0] ?? null;
+}
+
 // draw:rect / draw:ellipse / draw:custom-shape (rect/round-rect/ellipse preset) → a
 // textBox with the matching shapeKind; the shape's text is its content. Other
 // custom-shape presets (stars, arrows, …) are dropped with a warning.
@@ -318,6 +364,8 @@ function convertDrawElement(e: Element, ctx: Ctx): { inline?: Node; block?: Node
       c => c.namespaceURI === NS.draw && c.localName === 'text-box',
     );
     if (textBoxEl) return { block: convertTextBoxFrame(e, textBoxEl, ctx) };
+    const formula = convertFormulaFrame(e, ctx);
+    if (formula) return { inline: formula };
     const hasImage = !!e.getElementsByTagNameNS(NS.draw, 'image')[0];
     const img = convertFrame(e, ctx);
     if (img) return { inline: img };

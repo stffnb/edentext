@@ -7,7 +7,9 @@
   import SpecialCharPicker from './SpecialCharPicker.svelte';
   import DateTimePicker from './DateTimePicker.svelte';
   import LinkDialog from './LinkDialog.svelte';
+  import FormulaDialog from './FormulaDialog.svelte';
   import { OPEN_LINK_DIALOG_EVENT } from '../editor/extensions/link';
+  import { EDIT_FORMULA_EVENT } from '../editor/extensions/formula';
   import {
     detectInstalledFonts,
     queryLocalFontsIfAllowed,
@@ -958,6 +960,40 @@
     return () => window.removeEventListener(OPEN_LINK_DIALOG_EVENT, open);
   });
 
+  // --- Formula (formula.ts / FormulaDialog.svelte) ---
+  let formulaOpen = $state(false);
+  let formulaLatex = $state('');
+  let formulaDisplay = $state(false);
+  // Set while editing an existing formula; null means the dialog will insert a new one.
+  let formulaPos = $state<number | null>(null);
+
+  function openFormulaDialog() {
+    formulaPos = null;
+    formulaLatex = '';
+    formulaDisplay = false;
+    formulaOpen = true;
+  }
+
+  function applyFormula(latex: string, display: boolean) {
+    if (!editor) return;
+    if (formulaPos != null) editor.chain().focus().updateFormula(formulaPos, { latex, display }).run();
+    else editor.chain().focus().insertFormula({ latex, display }).run();
+    formulaPos = null;
+  }
+
+  // Double-clicking a formula (its node view) reopens the dialog on that formula.
+  $effect(() => {
+    const open = (e: Event) => {
+      const d = (e as CustomEvent<{ pos: number; latex: string; display: boolean }>).detail;
+      formulaPos = d.pos;
+      formulaLatex = d.latex;
+      formulaDisplay = d.display;
+      formulaOpen = true;
+    };
+    window.addEventListener(EDIT_FORMULA_EVENT, open);
+    return () => window.removeEventListener(EDIT_FORMULA_EVENT, open);
+  });
+
   // --- Indent (Einzug) ---
   // In a list, step the list point one level (indentListForward/Backward — the Tab
   // keymap's commands, see indent.ts); outside a list, step the paragraph's left indent.
@@ -1491,6 +1527,15 @@
         onInsert={insertDateTime}
       />
       <button
+        onclick={openFormulaDialog}
+        title={t().formula.insert}
+        aria-label={t().formula.insert}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M4 3h7M4 3l4 5-4 5M4 13h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button
         onclick={() => imageInput?.click()}
         title={t().toolbarExpanded.insertImage}
         aria-label={t().toolbarExpanded.insertImage}
@@ -1682,6 +1727,13 @@
     {/if}
   {/if}
 </div>
+
+<FormulaDialog
+  bind:open={formulaOpen}
+  initialLatex={formulaLatex}
+  initialDisplay={formulaDisplay}
+  onApply={applyFormula}
+/>
 
 <style>
   /* Inner content of the second toolbar row; the surrounding .toolbar-secondary

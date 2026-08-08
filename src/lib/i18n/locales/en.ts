@@ -390,6 +390,18 @@ const en = {
     updateAutomatically: 'Update automatically',
     updateHint: 'Refresh to the current date/time each time the document is opened',
   },
+  formula: {
+    insert: 'Insert formula',
+    title: 'Formula',
+    source: 'Formula (LaTeX)',
+    displayFormula: 'Display formula (own centered line)',
+    groups: {
+      structures: 'Structures',
+      operators: 'Operators',
+      relations: 'Symbols',
+      greek: 'Greek',
+    },
+  },
   hf: {
     addHeaderHint: 'Double-click to add a header',
     addFooterHint: 'Double-click to add a footer',

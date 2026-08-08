@@ -386,6 +386,18 @@ const de: Messages = {
     updateAutomatically: 'Automatisch aktualisieren',
     updateHint: 'Beim Öffnen des Dokuments auf das aktuelle Datum/die Uhrzeit aktualisieren',
   },
+  formula: {
+    insert: 'Formel einfügen',
+    title: 'Formel',
+    source: 'Formel (LaTeX)',
+    displayFormula: 'Abgesetzte Formel (eigene zentrierte Zeile)',
+    groups: {
+      structures: 'Strukturen',
+      operators: 'Operatoren',
+      relations: 'Zeichen',
+      greek: 'Griechisch',
+    },
+  },
   hf: {
     addHeaderHint: 'Zum Hinzufügen einer Kopfzeile doppelklicken',
     addFooterHint: 'Zum Hinzufügen einer Fußzeile doppelklicken',

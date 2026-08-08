@@ -30,6 +30,8 @@ import { normalizeColor, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontN
 import { builtinStyleSheet, DEFAULT_STYLE, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { parseTableLook, regionText, type TableStyle } from '../styles/tableStyles';
 import { findFormat, renderFormat, docxPicture, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../utils/dateTime';
+import { parseLatex } from '../math/latex';
+import { ommlDocument, OMML_NS } from '../math/omml';
 
 // BCP-47 tag for rendering a fixed field's cached text; set at buildDocx start from
 // the document language (Word recomputes an auto field on open using its own locale).
@@ -85,6 +87,16 @@ const DOCX_LEADER: Record<string, (typeof LeaderType)[keyof typeof LeaderType] |
 const EMU_PER_PX = 9525;
 const EMU_PER_PT = 12700;
 const EMU_PER_CM = 360000;
+
+// Sentinel wrapping a formula's index inside its own run; the library has no OMML, so
+// applyFormulasDocx swaps that run for <m:oMath> in the same post-pack pass. U+E012,
+// matching export/odt.ts's MTH.
+const MTH = '';
+
+// Formulas collected while serializing, in document order (module-level like
+// docLangTag: inlineToRuns is reached from every block path without a collector).
+type FormulaDocx = { latex: string; display: boolean };
+let docFormulas: FormulaDocx[] = [];
 
 // Sentinel wrapping a text box's index in a marker paragraph (same trick as
 // export/odt.ts): the docx library can't emit DrawingML shapes, so buildDocx swaps
@@ -308,6 +320,12 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       out.push(new TextRun({ children: [PageNumber.TOTAL_PAGES], ...runPropsFromMarks(node.marks) }));
     } else if (node.type === 'dateTimeField') {
       out.push(dateTimeRun(node));
+    } else if (node.type === 'formula') {
+      const latex = typeof node.attrs?.latex === 'string' ? node.attrs.latex : '';
+      if (latex) {
+        docFormulas.push({ latex, display: node.attrs?.display === true });
+        out.push(new TextRun({ text: `${MTH}${docFormulas.length - 1}${MTH}` }));
+      }
     }
   }
   return out;
@@ -619,6 +637,31 @@ function applyTextBoxesDocx(bytes: Uint8Array, boxes: TextBoxDocx[]): Uint8Array
     (_m, idx: string) => {
       const box = boxes[Number(idx)];
       return box ? `<w:p><w:r>${textBoxDrawingXml(box, Number(idx))}</w:r></w:p>` : '';
+    },
+  );
+  files['word/document.xml'] = strToU8(xml);
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
+// Post-pack pass: swap each sentinel run in word/document.xml for its <m:oMath>. A
+// display formula additionally wraps its paragraph's content in <m:oMathPara>, which
+// is how Word centers a formula on its own line.
+function applyFormulasDocx(bytes: Uint8Array, formulas: FormulaDocx[]): Uint8Array {
+  if (!formulas.length) return bytes;
+  const files = unzipSync(bytes);
+  const docBytes = files['word/document.xml'];
+  if (!docBytes) return bytes;
+  let xml = strFromU8(docBytes);
+  // Tempered pattern: the match stays inside the one run that holds the sentinel.
+  xml = xml.replace(
+    new RegExp(`<w:r\\b[^>]*?>(?:(?!</w:r>)[\\s\\S])*?${MTH}(\\d+)${MTH}(?:(?!</w:r>)[\\s\\S])*?</w:r>`, 'g'),
+    (_m, idx: string) => {
+      const f = formulas[Number(idx)];
+      if (!f) return '';
+      const omath = ommlDocument(parseLatex(f.latex));
+      return f.display ? `<m:oMathPara xmlns:m="${OMML_NS}">${omath}</m:oMathPara>` : omath;
     },
   );
   files['word/document.xml'] = strToU8(xml);
@@ -1104,6 +1147,7 @@ export async function buildDocx(
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
+  docFormulas = [];
   const num = new Numbering();
   const landscape = orientation === 'landscape';
   const { w: pageWidthCm, h: pageHeightCm } = pageDimsCm(pageFormat, orientation);
@@ -1194,5 +1238,5 @@ export async function buildDocx(
   });
 
   const blob = await Packer.toBlob(doc);
-  return applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes);
+  return applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
 }

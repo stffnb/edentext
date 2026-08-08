@@ -74,6 +74,7 @@ src/
       extensions/           – the custom TipTap/ProseMirror extensions, one file per feature
     utils/                  – framework-free helpers (fontDetect, specialChars, wordCount,
                               orderedListTypes, historyLog, colorDebug)
+    math/                   – formula AST: LaTeX parser/serializer, MathML, OMML
     export/ import/ spell/ storage/ styles/  – ODF+DOCX I/O, spell-check, persistence, named styles
   styles/                   – global.css + editor.css
 ```
@@ -95,4 +96,5 @@ Directory-level `CLAUDE.md` files load automatically when you touch that directo
 | Images, text boxes, wrap modes | `docs/architecture/frames.md` |
 | Table extensions + table styles | `docs/architecture/tables.md` |
 | Text effects, indents, tab stops, list markers, date fields | `docs/architecture/formatting.md` |
+| Formulas (LaTeX model, MathML, OMML, the math font) | `docs/architecture/formulas.md` |
 | Headless browser + PDF-export debugging | `docs/headless-testing.md` |

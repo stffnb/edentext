@@ -13,6 +13,7 @@ Five topics are large enough to have their own deep-dive — read the file befor
 | `image.ts`, `textBox.ts` | `docs/architecture/frames.md` |
 | `table*.ts`, `tableStyle.ts` | `docs/architecture/tables.md` |
 | `textEffects.ts`, `indent.ts`, `tabStops.ts`, `listMarker.ts`, `paragraphBox.ts`, `dateTimeField.ts` | `docs/architecture/formatting.md` |
+| `formula.ts` | `docs/architecture/formulas.md` |
 | `paragraphStyle.ts`, `characterStyle.ts` | `src/lib/styles/CLAUDE.md` |
 
 ## The rest, one line each

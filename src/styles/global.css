@@ -52,6 +52,18 @@
   src: url('../assets/fonts/EdenSymbols.woff2') format('woff2');
 }
 
+/* STIX Two Math — a font with an OpenType MATH table is what makes MathML typeset:
+   without one Chromium drops ∑ and ϕ entirely and leaves brackets glyph-height next
+   to a fraction. Word uses Cambria Math for the same job. (OFL — see
+   src/assets/fonts/LICENSE-STIX.txt.) */
+@font-face {
+  font-family: 'STIX Two Math';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('STIX Two Math'), url('../assets/fonts/STIXTwoMath-Regular.woff2') format('woff2');
+}
+
 /* Metric-compatible substitutes for the common MS-Office fonts that imported
    .odt files reference. Each face is keyed to the MS name but prefers a real
    local copy, then a system twin, then the bundled open-source twin — so text

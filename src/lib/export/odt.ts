@@ -22,6 +22,8 @@ import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/e
 import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, toTimeValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
+import { parseLatex } from '../math/latex';
+import { mathmlDocument } from '../math/mathml';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
@@ -139,6 +141,11 @@ const SEC = '\uE010';
 // Separates a tab stop's alignment from its leader character inside style:type,
 // which odf-kit writes verbatim. U+E011.
 const LEAD = '\uE011';
+
+// Sentinel wrapping a formula's index (MTH{i}MTH), emitted as plain run text by
+// replaceFormulas so it rides every odf-kit path; applyFormulas rewrites it to a
+// <draw:frame>/<draw:object> and writes the embedded formula object. U+E012.
+const MTH = '\uE012';
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
@@ -441,6 +448,30 @@ function replaceHfImages(para: TiptapNode | null, images: ImageExport[]): Tiptap
     content.push(child);
   }
   return { ...para, content };
+}
+
+// One formula, collected by replaceFormulas and emitted by applyFormulas as an
+// embedded ODF formula object (Formula{n}/content.xml) plus the frame referencing it.
+type FormulaExport = { latex: string; display: boolean };
+
+// Replace every inline `formula` node with an MTH-sentinel text run (carrying the
+// node's marks) and collect its source; mirrors replaceImages so the sentinel rides
+// every odf-kit path. applyFormulas resolves it after serialization.
+function replaceFormulas(node: TiptapNode, formulas: FormulaExport[]): TiptapNode {
+  if (!node.content?.length) return node;
+  const content: TiptapNode[] = [];
+  for (const child of node.content) {
+    if (child.type === 'formula') {
+      const a = child.attrs ?? {};
+      const latex = typeof a.latex === 'string' ? a.latex : '';
+      if (!latex) continue;
+      formulas.push({ latex, display: a.display === true });
+      content.push({ type: 'text', text: `${MTH}${formulas.length - 1}${MTH}`, marks: child.marks });
+      continue;
+    }
+    content.push(replaceFormulas(child, formulas));
+  }
+  return { ...node, content };
 }
 
 // One inserted date/time field, collected by replaceDateTimeFields and emitted by
@@ -2756,6 +2787,61 @@ function applyImages(odtBytes: Uint8Array, images: ImageExport[]): Uint8Array {
   return rezipOdt(files);
 }
 
+// The formula sub-document: an ODF formula document's content.xml is the MathML root
+// itself. The LaTeX rides in an annotation so our own files re-import exactly; other
+// readers ignore it and typeset the presentation markup.
+function formulaObjectXml(f: FormulaExport): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>${mathmlDocument(parseLatex(f.latex), f.display, f.latex)}`;
+}
+
+// Resolve formula sentinels: swap each MTH{i}MTH for a <draw:frame> pointing at an
+// embedded formula object, write that object's content.xml, and register both it and
+// its directory in META-INF/manifest.xml — the same shape as applyImages.
+function applyFormulas(odtBytes: Uint8Array, formulas: FormulaExport[]): Uint8Array {
+  if (!formulas.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  content = content.replace(new RegExp(`${MTH}(\\d+)${MTH}`, 'g'), (_m, idx: string) => {
+    const i = Number(idx);
+    const f = formulas[i];
+    if (!f) return '';
+    // No svg:width/height on purpose: with a size the consumer scales the object to
+    // fit it (LibreOffice magnifies a too-wide frame); without one it typesets the
+    // formula at its natural size, matched to the surrounding text.
+    return (
+      `<draw:frame draw:name="Formula${i + 1}" draw:style-name="MthFr" text:anchor-type="as-char" draw:z-index="${i}">` +
+      `<draw:object xlink:href="./Formula${i + 1}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>`
+    );
+  });
+  // One shared graphic style: an as-char formula sits on the text baseline, which is
+  // what LibreOffice writes for its own formula frames.
+  content = injectAutomaticStyles(content,
+    '<style:style style:name="MthFr" style:family="graphic">' +
+    '<style:graphic-properties style:vertical-pos="middle" style:vertical-rel="text"' +
+    ' fo:padding="0cm" fo:border="none"/></style:style>');
+  files['content.xml'] = strToU8(content);
+
+  for (const [i, f] of formulas.entries()) {
+    files[`Formula${i + 1}/content.xml`] = strToU8(formulaObjectXml(f));
+  }
+
+  const manifestBytes = files['META-INF/manifest.xml'];
+  if (manifestBytes) {
+    const entries = formulas
+      .map((_f, i) =>
+        `<manifest:file-entry manifest:full-path="Formula${i + 1}/" manifest:media-type="application/vnd.oasis.opendocument.formula"/>` +
+        `<manifest:file-entry manifest:full-path="Formula${i + 1}/content.xml" manifest:media-type="text/xml"/>`)
+      .join('');
+    files['META-INF/manifest.xml'] = strToU8(
+      strFromU8(manifestBytes).replace('</manifest:manifest>', `${entries}</manifest:manifest>`));
+  }
+
+  return rezipOdt(files);
+}
+
 // Ensure content.xml declares the number namespace (odf-kit may omit it); the minted
 // <number:date-style>/<number:time-style> and their references need the prefix.
 function ensureNumberNamespace(content: string): string {
@@ -3060,7 +3146,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const textBoxes: TextBoxExport[] = [];
   const columns: ColumnsExport[] = [];
   const dateFields: DateTimeFieldExport[] = [];
-  const sentinels = replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns)))), images), dateFields);
+  const formulas: FormulaExport[] = [];
+  const sentinels = replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns)))), images), dateFields), formulas);
   const raw = markTextEffects(bakeListCharStyles(sentinels, styles));
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
@@ -3260,7 +3347,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withBreaks = applyInlineSentinels(applyTabLeaders(cleaned));
   const withImages = applyImages(withBreaks, images);
   const withDateFields = applyDateTimeFields(withImages, dateFields, language ?? null);
-  const withTextBoxes = applyTextBoxes(withDateFields, textBoxes);
+  const withFormulas = applyFormulas(withDateFields, formulas);
+  const withTextBoxes = applyTextBoxes(withFormulas, textBoxes);
   const withColumns = applyColumns(withTextBoxes, columns);
   const withToc = applyToc(withColumns, tocs, contentWidthCm);
   const withPageBreaks = applyPageBreaks(withToc);

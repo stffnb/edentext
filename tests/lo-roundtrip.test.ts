@@ -259,4 +259,37 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     const stops = (res.content.content ?? [])[0]?.attrs?.tabStops;
     check('LO tab: stops + leaders survive', stops === '6l.;12r_', stops);
   });
+
+  // Needs the libreoffice-math package: without it LibreOffice silently drops every
+  // formula object on load, so this leg reports zero formulas instead of failing loudly.
+  it('survives a `soffice` re-save of embedded formula objects', { timeout: 180000 }, async () => {
+    const F = (latex: string, display: boolean): N => ({ type: 'formula', attrs: { latex, display } });
+    const inline = '\\phi _{ref}=\\frac{a+1}{2\\pi }';
+    const block = '\\sum_{i=1}^{n} \\sqrt{x_{i}^{2}+1}=\\left(\\frac{\\alpha }{\\beta }\\right)';
+    const doc: N = { type: 'doc', content: [
+      P(null, T('Inline: '), F(inline, false), T(' im Text.')),
+      P(null, F(block, true)),
+    ] };
+    mkdirSync('/tmp/lo-rt', { recursive: true });
+    writeFileSync('/tmp/lo-rt/math.odt', await buildOdt(doc, margins, 'portrait'));
+    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/mathout /tmp/lo-rt/math.odt', { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/mathout/math.odt'));
+
+    // LibreOffice keeps them as real formula sub-documents (it adds its own settings.xml).
+    const names = Object.keys(unzipSync(resaved)).filter((p) => /content\.xml$/.test(p) && p !== 'content.xml');
+    check('LO math: both objects survive as sub-documents', names.length === 2, names);
+
+    const res = importOdt(resaved);
+    check('LO math: no warnings', res.warnings.length === 0, res.warnings);
+    const found: N[] = [];
+    (function walk(n: N) { if (n.type === 'formula') found.push(n); for (const c of n.content ?? []) walk(c); })(res.content);
+    check('LO math: both formulas come back', found.length === 2, found.length);
+    check('LO math: inline source survives', found[0]?.attrs?.latex === inline, found[0]?.attrs?.latex);
+    check('LO math: display source survives', found[1]?.attrs?.latex === block, found[1]?.attrs?.latex);
+    // LibreOffice writes display="block" on every formula it re-saves, so the flag is
+    // read off the paragraph instead — an inline formula must not come back displayed.
+    check('LO math: inline stays inline, display stays display',
+      found[0]?.attrs?.display === false && found[1]?.attrs?.display === true,
+      found.map((f) => f.attrs?.display));
+  });
 });

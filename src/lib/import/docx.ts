@@ -21,6 +21,8 @@ import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { applyUniformRunFont, type OdtImportResult } from './odt';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { astToLatex } from '../math/latex';
+import { parseOmml, OMML_NS } from '../math/omml';
 
 // .docx → TipTap JSON, inverting export/docx.ts. Editor-expressible OOXML becomes its
 // native node/mark/attr; values matching the editor's defaults are suppressed so round
@@ -1001,6 +1003,13 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
   };
 
   for (const el of Array.from(p.children)) {
+    // Math is its own namespace and sits beside the w:r runs, so it has to be picked
+    // up before the w:-only guard below drops it.
+    if (el.namespaceURI === OMML_NS && (el.localName === 'oMath' || el.localName === 'oMathPara')) {
+      const formula = formulaNode(el, ctx);
+      if (formula) out.push(formula);
+      continue;
+    }
     if (el.namespaceURI !== W) continue;
     switch (el.localName) {
       case 'r': handleRun(el); break;
@@ -1033,6 +1042,17 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     }
   }
   return mergeAdjacentText(out);
+}
+
+// <m:oMath> / <m:oMathPara> → a formula node. Word stores no size for a formula, so
+// the node view measures it once on screen and writes the ODF frame geometry back.
+function formulaNode(el: Element, ctx: Ctx): Node | null {
+  const { ast, display } = parseOmml(el);
+  // Stored verbatim, not trimmed: a macro's own trailing space is what makes the
+  // source re-serialize to itself, so trimming it would rewrite the formula on edit.
+  const latex = astToLatex(ast);
+  if (!latex.trim()) { ctx.warnings.add('Some formulas could not be read and were skipped'); return null; }
+  return { type: 'formula', attrs: { latex, display } };
 }
 
 function emitField(out: Node[], instr: string, hfFields: boolean, marks: Mark[] = []): void {

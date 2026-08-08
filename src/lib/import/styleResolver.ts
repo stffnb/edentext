@@ -19,6 +19,7 @@ export const NS = {
   xlink: 'http://www.w3.org/1999/xlink',
   number: 'urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0',
   loext: 'urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0',
+  math: 'http://www.w3.org/1998/Math/MathML',
 } as const;
 
 // One embedded-font binary referenced from a <style:font-face>: the CSS family runs use,

@@ -227,6 +227,32 @@
   white-space: nowrap;
 }
 
+/* Formulas (formula.ts). MathML needs a font with an OpenType MATH table or Chromium
+   drops ∑/ϕ and won't stretch brackets — STIX Two Math is bundled for that. */
+/* The family must be set on <math> itself: the UA stylesheet declares
+   `math { font-family: math }` on the element, and an inherited value never beats it. */
+.paper .tiptap .formula math {
+  font-family: 'STIX Two Math', math, serif;
+  font-style: normal;
+}
+/* Baseline, not middle: an inline formula sits on the text baseline in LibreOffice and
+   Word, and MathML already carries the right baseline for its own box. */
+.paper .tiptap span.formula {
+  display: inline-block;
+  vertical-align: baseline;
+  cursor: pointer;
+}
+/* A display formula owns its line, centered, as in LibreOffice and Word. */
+.paper .tiptap span.formula[data-display='true'] {
+  display: block;
+  text-align: center;
+}
+.paper .tiptap span.formula.selected {
+  outline: 2px solid var(--color-primary, #52748b);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
 /* Inline, as-character images (image.ts). The wrapper reserves the rotated bounding
    box; the rotor holds the <img>, resize handles and rotate grip, rotating together. */
 .paper .tiptap .image-node {

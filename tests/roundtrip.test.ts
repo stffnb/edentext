@@ -364,6 +364,40 @@ describe('Leg 1a2: hardBreak font size (empty-line height)', () => {
   });
 });
 
+describe('Leg 1a2b: formulas (embedded ODF formula objects)', () => {
+  it('exports an inline and a display formula and re-imports both LaTeX sources', async () => {
+    const F = (latex: string, display: boolean): N => ({ type: 'formula', attrs: { latex, display } });
+    const inline = '\\phi _{ref}=\\frac{a+1}{2\\pi }';
+    const block = '\\sum_{i=1}^{n} \\sqrt{x_{i}}';
+    const doc: N = { type: 'doc', content: [
+      P(null, T('Die Formel '), F(inline, false), T(' im Text.')),
+      P(null, F(block, true)),
+    ] };
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const files = unzipSync(bytes);
+    const content = strFromU8(files['content.xml']);
+    check('content.xml anchors both frames as-char', (content.match(/<draw:object xlink:href="\.\/Formula\d"/g) ?? []).length === 2, content.match(/<draw:frame[^>]*Formula[^>]*>/g));
+    // A sized frame makes LibreOffice scale the object to fit instead of typesetting
+    // it at its natural size.
+    check('the frames carry no svg geometry', !/<draw:frame[^>]*Formula[^>]*svg:width/.test(content), content.match(/<draw:frame[^>]*Formula[^>]*>/g));
+    // The formula object is its own ODF sub-document; without the manifest entries
+    // LibreOffice ignores it.
+    const manifest = strFromU8(files['META-INF/manifest.xml']);
+    check('manifest declares both formula objects', /Formula1\/" manifest:media-type="application\/vnd\.oasis\.opendocument\.formula"/.test(manifest) && /Formula2\/content\.xml/.test(manifest), manifest.match(/Formula\d\/[^"]*/g));
+    const obj = strFromU8(files['Formula1/content.xml']);
+    check('the object holds MathML, not just the source', /<mfrac>/.test(obj) && /<msub>/.test(obj), obj.slice(0, 200));
+
+    const res = importOdt(bytes);
+    const found: N[] = [];
+    (function walk(n: N) { if (n.type === 'formula') found.push(n); for (const c of n.content ?? []) walk(c); })(res.content);
+    check('both formulas come back', found.length === 2, found.length);
+    check('inline source is unchanged', found[0]?.attrs?.latex === inline, found[0]?.attrs?.latex);
+    check('display source is unchanged', found[1]?.attrs?.latex === block, found[1]?.attrs?.latex);
+    check('the display flag survives', found[0]?.attrs?.display === false && found[1]?.attrs?.display === true, found.map((f) => f.attrs?.display));
+    check('surrounding text is untouched', JSON.stringify(res.content).includes('Die Formel '), null);
+  });
+});
+
 describe('Leg 1a3: continued ordered-list start value', () => {
   it('round-trips a start > 1 (odf-kit drops it) via text:start-value', async () => {
     const olist = (start: number | null, t: string): N => ({

@@ -47,6 +47,7 @@ import { TableStyle } from './extensions/tableStyle';
 import { TrailingNode } from './extensions/trailingNode';
 import { Image } from './extensions/image';
 import { DateTimeField } from './extensions/dateTimeField';
+import { Formula } from './extensions/formula';
 import { TextBox } from './extensions/textBox';
 import { Columns } from './extensions/columns';
 import { ColumnsFlow } from './extensions/columnsFlow';
@@ -87,6 +88,9 @@ export const extensions = [
   // Inline date/time field (fixed or auto-updating); round-trips to ODF
   // <text:date>/<text:time> and DOCX DATE/TIME fields.
   DateTimeField,
+  // Mathematical formula; stores LaTeX, renders native MathML, round-trips to an ODF
+  // embedded formula object and DOCX OMML. See docs/architecture/formulas.md.
+  Formula,
   // Block-level text box / basic shape with editable content; round-trips to ODF
   // draw:frame/draw:text-box + draw:custom-shape and DOCX wps:wsp/wps:txbx.
   TextBox,
