@@ -478,6 +478,7 @@ function makeListNode(ctx: Ctx, numId: number, ilvl: number): Node {
     const extra = round2(Math.max(-LIST_LEFT_STEP_CM, step - LIST_LEFT_STEP_CM));
     if (Math.abs(extra) > LIST_INDENT_EPS_CM) attrs.indent = extra;
   }
+  if (def.rightAligned) attrs.markerAlign = 'right';
   const node: Node = { type: bullet ? 'bulletList' : 'orderedList', content: [] };
   if (Object.keys(attrs).length) node.attrs = attrs;
   return node;

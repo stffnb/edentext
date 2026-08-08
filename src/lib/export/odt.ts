@@ -1618,16 +1618,20 @@ function applyBulletListChars(odtBytes: Uint8Array, chars: (string[] | null)[]):
   return rezipOdt(files);
 }
 
-// Per-level indent (cm) of each top-level bulletList/orderedList, from the first list at
-// that level. odf-kit uses label-alignment mode (ignores the paragraph margin), so the
-// shift goes onto the L# list-style's per-level fo:margin-left + list-tab-stop-position.
-function collectListIndents(node: TiptapNode, result: number[][]): void {
+// Per-level indent (cm) and label alignment of each top-level list, from the first list
+// at that level. odf-kit uses label-alignment mode (which ignores the paragraph margin),
+// so both go onto the L# list-style's own level definitions.
+type ListLevelProps = { indent: number; right: boolean };
+
+function collectListLevelProps(node: TiptapNode, result: ListLevelProps[][]): void {
   for (const child of node.content ?? []) {
     if (child.type !== 'bulletList' && child.type !== 'orderedList') continue;
-    const levels: number[] = [];
+    const levels: ListLevelProps[] = [];
     const visit = (list: TiptapNode, depth: number) => {
       const ind = list.attrs?.indent;
-      if (levels[depth - 1] === undefined) levels[depth - 1] = typeof ind === 'number' ? ind : 0;
+      if (levels[depth - 1] === undefined) {
+        levels[depth - 1] = { indent: typeof ind === 'number' ? ind : 0, right: list.attrs?.markerAlign === 'right' };
+      }
       for (const item of list.content ?? []) {
         for (const block of item.content ?? []) {
           if (block.type === 'bulletList' || block.type === 'orderedList') visit(block, depth + 1);
@@ -1639,8 +1643,9 @@ function collectListIndents(node: TiptapNode, result: number[][]): void {
   }
 }
 
-function applyListIndents(odtBytes: Uint8Array, indents: number[][]): Uint8Array {
-  if (indents.every(levels => levels.every(v => !v))) return odtBytes;
+function applyListLevelProps(odtBytes: Uint8Array, props: ListLevelProps[][]): Uint8Array {
+  const plain = (l: ListLevelProps) => !l?.indent && !l?.right;
+  if (props.every(levels => levels.every(plain))) return odtBytes;
 
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
@@ -1650,21 +1655,25 @@ function applyListIndents(odtBytes: Uint8Array, indents: number[][]): Uint8Array
   const bump = (cm: number) => (_m: string, attr: string, v: string) =>
     `${attr}="${(parseFloat(v) + cm).toFixed(3)}cm"`;
   // The editor nests the levels, so a level's margin grows by every indent above it too.
-  const shiftLevels = (body: string, levels: number[]) =>
+  const rewriteLevels = (body: string, levels: ListLevelProps[]) =>
     body.replace(/<text:list-level-style-[a-z]+[\s\S]*?(?=<text:list-level-style-|$)/g, (lvl) => {
       const n = parseInt(/text:level="(\d+)"/.exec(lvl)?.[1] ?? '', 10);
-      const cm = Number.isFinite(n) ? levels.slice(0, n).reduce((a, b) => a + (b || 0), 0) : 0;
-      return cm
+      if (!Number.isFinite(n)) return lvl;
+      const cm = levels.slice(0, n).reduce((a, b) => a + (b?.indent || 0), 0);
+      const shifted = cm
         ? lvl.replace(/(fo:margin-left)="([\d.]+)cm"/g, bump(cm))
              .replace(/(text:list-tab-stop-position)="([\d.]+)cm"/g, bump(cm))
         : lvl;
+      return levels[n - 1]?.right
+        ? shifted.replace('<style:list-level-properties ', '<style:list-level-properties fo:text-align="end" ')
+        : shifted;
     });
 
-  indents.forEach((levels, i) => {
-    if (levels.every(v => !v)) return;
+  props.forEach((levels, i) => {
+    if (levels.every(plain)) return;
     const re = new RegExp(`(<text:list-style style:name="L${i + 1}">)([\\s\\S]*?)(</text:list-style>)`);
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
-      open + shiftLevels(body, levels) + close);
+      open + rewriteLevels(body, levels) + close);
   });
 
   files['content.xml'] = strToU8(content);
@@ -3322,9 +3331,9 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const styledLists = applyListItemStyles(numberedOdt, listStyles);
 
   // Whole-list indent → added to each L# list-style's level margins.
-  const listIndents: number[][] = [];
-  collectListIndents(raw, listIndents);
-  let indentedLists = applyListIndents(styledLists, listIndents);
+  const listLevels: ListLevelProps[][] = [];
+  collectListLevelProps(raw, listLevels);
+  let indentedLists = applyListLevelProps(styledLists, listLevels);
 
   // Marker formatting → a minted character style on each L# level definition.
   const markerFormats: (MarkerFormat | null)[][] = [];

@@ -39,7 +39,7 @@ export type RunProps = {
 
 // A numbering level definition (numbering.xml w:lvl). bulletFont is the level's
 // w:rPr/w:rFonts (Wingdings/Symbol give the bullet glyph its meaning).
-export type LevelDef = { numFmt?: string; lvlText?: string; leftTwip?: number; start?: number; bulletFont?: string };
+export type LevelDef = { numFmt?: string; lvlText?: string; leftTwip?: number; start?: number; bulletFont?: string; rightAligned?: boolean };
 
 // Paragraph spacing from a w:pPr/w:spacing (only the attributes actually present, so
 // omitted ones inherit up the style chain). before/after in twips, line per w:line.
@@ -312,6 +312,8 @@ export class DocxStyles {
         const start = firstChild(lvl, 'start'); if (start) { const n = parseInt(wVal(start) ?? '', 10); if (Number.isFinite(n)) def.start = n; }
         const ind = firstChild(lvl, 'pPr') && firstChild(firstChild(lvl, 'pPr')!, 'ind');
         if (ind) { const l = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10); if (Number.isFinite(l)) def.leftTwip = l; }
+        const jc = firstChild(lvl, 'lvlJc');
+        if (jc && (wVal(jc) === 'right' || wVal(jc) === 'end')) def.rightAligned = true;
         const rf = firstChild(lvl, 'rPr') && firstChild(firstChild(lvl, 'rPr')!, 'rFonts');
         if (rf) { const f = rf.getAttributeNS(W, 'ascii') ?? rf.getAttributeNS(W, 'hAnsi'); if (f) def.bulletFont = f; }
         levels.set(ilvl, def);

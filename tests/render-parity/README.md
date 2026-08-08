@@ -116,10 +116,12 @@ LibreOffice's 48, with 62 line-level differences, most of them the justification
   Exporting writes the placeholder back out — the original is gone from the moment it
   is imported.
 - **A list level's own hanging indent is not read**, only the 0.635cm both exports
-  write (`LIST_HANGING_CM`). The marker is drawn there and overflows if it is wider,
+  write (`LIST_HANGING_CM`). A **left**-set label wider than that overflows into the text,
   where Word moves the text to the next list tab — reading `w:lvl/w:pPr/w:ind w:hanging`
   would settle it. Deliberate for now: in flow, a wide marker pushed the text and cost
-  the thesis fixture a page. (The level's *left* indent is read, at every depth.)
+  the thesis fixture a page. (The level's *left* indent is read at every depth, and a
+  **right**-set label — `markerAlign`, which is what the built-in Roman numberings use —
+  grows into the margin, so the case that actually collided is gone.)
   What a probe of the ODF side turned up, before anything is built on it: LibreOffice
   honours a nested level's `fo:text-indent` linearly (−0.300 → label at 2.243cm, −1.000
   → 1.543, −1.200 → 1.344, against `fo:margin-left="2.540cm"`) — **except** at −1.270,

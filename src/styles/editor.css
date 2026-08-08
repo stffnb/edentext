@@ -510,6 +510,13 @@
   color: var(--marker-color, inherit);
 }
 
+/* A label set against the far end of the hanging indent grows into the margin instead
+   of into the text — what keeps Word's Roman numerals off the words they label. */
+.paper .tiptap :is(ol, ul)[data-marker-align="right"] > li > :is(p, h1, h2, h3, h4, h5)::before {
+  left: auto;
+  right: calc(100% + 0.635cm);
+}
+
 /* Ordered numbering, keyed by data-eff-list-style — the effective numbering
    orderedList.ts's plugin resolves per <ol> from its attr + ancestor chain. The
    undecorated <ol> is the plain decimal fallback and must come first. */

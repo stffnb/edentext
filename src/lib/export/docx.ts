@@ -163,6 +163,8 @@ class Numbering {
       left: cmToTwip((depth + 1) * LIST_LEFT_STEP_CM + extraIndentCm),
       hanging: cmToTwip(LIST_HANGING_CM),
     };
+    // w:lvlJc: which end of the hanging indent the label is set against.
+    const alignment = node.attrs?.markerAlign === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT;
     if (node.type === 'orderedList') {
       const attr = node.attrs?.listStyleType as string | null | undefined;
       const chained = this.mlRefs.has(reference) && (depth === 0 || !attr);
@@ -173,7 +175,7 @@ class Numbering {
         text: chained
           ? Array.from({ length: depth + 1 }, (_, i) => `%${i + 1}.`).join('')
           : `%${depth + 1}${def.numSuffix}`,
-        alignment: AlignmentType.LEFT,
+        alignment,
         start: typeof node.attrs?.start === 'number' ? node.attrs.start : 1,
         style: { paragraph: { indent }, run: markerRunProps(node) },
       });
@@ -184,7 +186,7 @@ class Numbering {
         // The Unicode char goes into w:lvlText literally; Word renders it in the
         // paragraph font (no Wingdings/Symbol rFonts needed).
         text: bulletCharOf(node, depth),
-        alignment: AlignmentType.LEFT,
+        alignment,
         style: { paragraph: { indent }, run: markerRunProps(node) },
       });
     }

@@ -106,6 +106,25 @@ export const ListMarker = Extension.create<{ sheet: () => StyleSheet }>({
     return { sheet: () => ({ paragraph: {}, character: {}, table: {} }) };
   },
 
+  // Which end of the hanging indent the label is set against (Word's w:lvlJc, ODF's
+  // fo:text-align on the level properties). `right` keeps a wide number — Roman
+  // numerals — out of the text, which is what the built-in numberings use it for.
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['bulletList', 'orderedList'],
+        attributes: {
+          markerAlign: {
+            default: null,
+            parseHTML: (el: HTMLElement) => (el.getAttribute('data-marker-align') === 'right' ? 'right' : null),
+            renderHTML: (attrs: Record<string, unknown>) =>
+              attrs.markerAlign === 'right' ? { 'data-marker-align': 'right' } : {},
+          },
+        },
+      },
+    ];
+  },
+
   addProseMirrorPlugins() {
     const props = () => charStyleProps(this.options.sheet());
     return [

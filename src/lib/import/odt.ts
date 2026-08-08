@@ -1552,6 +1552,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     const attrs: Record<string, unknown> = {};
     if (bulletChar) attrs.bulletChar = bulletChar;
     if (indent != null) attrs.indent = indent;
+    if (listLevelRightAligned(levelDef)) attrs.markerAlign = 'right';
     const node: Node = { type: 'bulletList', content: items };
     if (Object.keys(attrs).length) node.attrs = attrs;
     return node;
@@ -1572,9 +1573,21 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
   if (start != null) attrs.start = start;
   if (listStyleType) attrs.listStyleType = listStyleType;
   if (indent != null) attrs.indent = indent;
+  if (listLevelRightAligned(levelDef)) attrs.markerAlign = 'right';
   const node: Node = { type: 'orderedList', content: items };
   if (Object.keys(attrs).length) node.attrs = attrs;
   return node;
+}
+
+// fo:text-align="end" on the level properties: the label is set against the far end of
+// its hanging indent (Word's w:lvlJc="right"), so a wide number grows into the margin.
+function listLevelRightAligned(levelDef: Element | null): boolean {
+  for (const props of Array.from(levelDef?.children ?? [])) {
+    if (props.namespaceURI !== NS.style || props.localName !== 'list-level-properties') continue;
+    const align = props.getAttributeNS(NS.fo, 'text-align');
+    return align === 'end' || align === 'right';
+  }
+  return false;
 }
 
 // Level's fo:margin-left (cm) from its <style:list-level-label-alignment> (the
