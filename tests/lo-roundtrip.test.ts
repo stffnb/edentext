@@ -45,6 +45,17 @@ const fixture: N = {
       T(' marked', { type: 'highlight', attrs: { color: '#FFFF00' } }),
       T(' arial14', { type: 'textStyle', attrs: { fontFamily: 'Arial', fontSize: '14pt' } }),
     ),
+    // Character effects: LibreOffice must read back what we write for each of them.
+    P(null,
+      T('caps ', { type: 'textStyle', attrs: { caps: 'uppercase' } }),
+      T('petite ', { type: 'textStyle', attrs: { caps: 'smallCaps' } }),
+      T('dotted ', { type: 'underline', attrs: { lineStyle: 'dotted', lineColor: '#FF0000' } }),
+      T('twice ', { type: 'underline', attrs: { lineStyle: 'double' } }),
+      T('crossed ', { type: 'strike', attrs: { lineStyle: 'double' } }),
+      // 4pt at 16pt is a whole 25%, the unit ODF stores it in — LibreOffice rounds
+      // the percentage when it re-saves, so a fractional one comes back a notch off.
+      T('raised', { type: 'textStyle', attrs: { fontSize: '16pt', textPosition: 4 } }),
+    ),
     P({ textAlign: 'justify', lineHeight: '1.5', spaceBefore: 12, spaceAfter: 18 }, T('spaced')),
     P({ indent: 2.5 }, T('indented')),
     P(null, T('line one'), { type: 'hardBreak' }, T('line two')),
