@@ -13,6 +13,8 @@ export type TocEntry = { text: string; level: number; page: number };
 // heading is its offsetTop within .tiptap (spacers included) divided by the cycle.
 const PAGE_GAP = 20;
 const FALLBACK_PAGE_HEIGHT = 1123;
+// The heading above the entries. An imported TOC keeps the one its file used
+// ("Inhalt", "Sommaire", …); a freshly inserted one takes this.
 const TITLE = 'Table of Contents';
 
 declare module '@tiptap/core' {
@@ -32,6 +34,11 @@ export const TableOfContents = Node.create({
 
   addAttributes() {
     return {
+      title: {
+        default: null as string | null,
+        parseHTML: el => (el as HTMLElement).getAttribute('data-toc-title') || null,
+        renderHTML: attrs => (attrs.title ? { 'data-toc-title': String(attrs.title) } : {}),
+      },
       entries: {
         default: [] as TocEntry[],
         parseHTML: el => {
@@ -47,8 +54,8 @@ export const TableOfContents = Node.create({
     return [{ tag: 'div[data-toc]' }];
   },
 
-  renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-toc': 'true' }), TITLE];
+  renderHTML({ HTMLAttributes, node }) {
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-toc': 'true' }), tocTitle(node.attrs.title)];
   },
 
   addCommands() {
@@ -64,6 +71,8 @@ export const TableOfContents = Node.create({
     return ({ editor, getPos }) => new TocView(editor, getPos as () => number);
   },
 });
+
+const tocTitle = (title: unknown): string => (typeof title === 'string' && title ? title : TITLE);
 
 type HeadingRef = { text: string; level: number; pos: number };
 
@@ -155,7 +164,7 @@ class TocView {
     this.dom.textContent = '';
     const title = document.createElement('div');
     title.className = 'toc-title';
-    title.textContent = TITLE;
+    title.textContent = tocTitle(this.node()?.attrs?.title);
     this.dom.appendChild(title);
 
     if (entries.length === 0) {
@@ -195,6 +204,11 @@ class TocView {
     const dom = this.editor.view.nodeDOM(pos) as HTMLElement | null;
     dom?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     this.editor.chain().focus().setTextSelection(pos + 1).run();
+  }
+
+  private node(): PMNode | null {
+    const pos = this.getPos();
+    return typeof pos === 'number' ? this.editor.state.doc.nodeAt(pos) : null;
   }
 
   private syncAttr(entries: TocEntry[]): void {

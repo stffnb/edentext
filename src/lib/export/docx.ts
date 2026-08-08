@@ -843,8 +843,9 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       // A real, recognized TOC field (levels 1–3, hyperlinked); Word/LibreOffice populate
       // + link it on field update (features.updateFields does this on open). Title is a
       // plain bold paragraph so it isn't itself listed; our importer regenerates the node.
-      out.push(new Paragraph({ children: [new TextRun({ text: 'Table of Contents', bold: true, size: 32 })], spacing: { after: cmToTwip(0.3) } }));
-      out.push(new TableOfContents('Table of Contents', { hyperlink: true, headingStyleRange: `1-${MAX_HEADING_LEVEL}` }));
+      const tocTitle = typeof node.attrs?.title === 'string' && node.attrs.title ? node.attrs.title : 'Table of Contents';
+      out.push(new Paragraph({ children: [new TextRun({ text: tocTitle, bold: true, size: 32 })], spacing: { after: cmToTwip(0.3) } }));
+      out.push(new TableOfContents(tocTitle, { hyperlink: true, headingStyleRange: `1-${MAX_HEADING_LEVEL}` }));
     }
   }
   return out;

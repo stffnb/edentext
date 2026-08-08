@@ -293,6 +293,15 @@ function sdtIsToc(sdt: Element): boolean {
   return Array.from(content.getElementsByTagNameNS(W, 'instrText')).some(i => /\bTOC\b/.test(i.textContent ?? ''));
 }
 
+// The heading Word caches above a TOC's entries ("Inhalt", "Sommaire", …): the control's
+// first paragraph, when it is plain text rather than part of the field itself.
+function tocHeading(content: Element | null): string | null {
+  const first = content ? fcAll(content, 'p')[0] : null;
+  if (!first || first.getElementsByTagNameNS(W, 'fldChar').length || first.getElementsByTagNameNS(W, 'instrText').length) return null;
+  const text = (first.textContent ?? '').trim();
+  return text && text.length <= 60 ? text : null;
+}
+
 function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDefault = false): Node[] {
   const out: Node[] = [];
   const stack: { ilvl: number; numId: number; list: Node }[] = [];
@@ -387,7 +396,10 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
       flush();
       if (sdtIsToc(el)) {
         // A content-control-wrapped TOC → one node (regenerated live); skip its content.
-        if (kind === 'body') out.push({ type: 'tableOfContents', attrs: { entries: [] } });
+        if (kind === 'body') {
+          const title = tocHeading(fc(el, 'sdtContent'));
+          out.push({ type: 'tableOfContents', attrs: { entries: [], ...(title ? { title } : {}) } });
+        }
       } else {
         const content = fc(el, 'sdtContent');
         if (content) out.push(...convertBlocks(Array.from(content.children), ctx, kind, boldByDefault));

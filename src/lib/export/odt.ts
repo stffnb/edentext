@@ -547,7 +547,7 @@ function replaceColumns(doc: TiptapNode, cols: ColumnsExport[]): TiptapNode {
 // One generated table of contents, collected by replaceTableOfContents and emitted by
 // applyToc. Entries are the cached heading→page rows (the node view keeps them current).
 type TocEntry = { text: string; level: number; page: number };
-type TocExport = { entries: TocEntry[] };
+type TocExport = { entries: TocEntry[]; title: string | null };
 
 // Swap each top-level tableOfContents node for a marker paragraph carrying the TOC
 // sentinel and collect its cached entries. Top-level only (like replacePageBreaks): a
@@ -565,7 +565,8 @@ function replaceTableOfContents(doc: TiptapNode, tocs: TocExport[]): TiptapNode 
           level: Math.min(MAX_HEADING_LEVEL, Math.max(1, Number(e.level) || 1)),
           page: Math.max(1, Number(e.page) || 1),
         }));
-      tocs.push({ entries });
+      const rawTitle = child.attrs?.title;
+      tocs.push({ entries, title: typeof rawTitle === 'string' && rawTitle ? rawTitle : null });
       content.push({ type: 'paragraph', content: [{ type: 'text', text: `${TOC_SENT}${tocs.length - 1}${TOC_SENT}` }] });
       continue;
     }
@@ -2758,8 +2759,8 @@ function contentsHeadingStyle(): string {
 // carry a right tab stop, page number, and link markers so LibreOffice rebuilds it as a
 // linking TOC) plus a cached index-body (title + one entry paragraph per heading).
 function tocXml(toc: TocExport, index: number): string {
-  const title = 'Table of Contents';
-  const name = `${title}${index + 1}`;
+  const title = toc.title ?? 'Table of Contents';
+  const name = `Table of Contents${index + 1}`;
   const source =
     `<text:table-of-content-source text:outline-level="${MAX_HEADING_LEVEL}" text:use-index-marks="false" text:use-index-source-styles="false">` +
     `<text:index-title-template text:style-name="Contents_20_Heading">${escapeXml(title)}</text:index-title-template>` +

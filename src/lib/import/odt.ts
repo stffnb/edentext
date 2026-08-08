@@ -9,7 +9,7 @@ import { TABLE_REGIONS, tableLookAttr, type TableLook, type TableRegion } from '
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
-import { imageDataUrl, type ConvertedImages } from './imageFormats';
+import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
@@ -170,16 +170,20 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
     .filter(Boolean);
   if (!hrefs.length) return null;
   const href = hrefs.find(h => loadImageDataUrl(h, ctx)) ?? hrefs[0];
-  const src = loadImageDataUrl(href, ctx);
-  if (!src) {
-    ctx.warnings.add(ctx.files[href]
-      ? 'Images in a format the browser can’t display (e.g. WMF, EMF, SVM, TIFF) were removed'
-      : 'Some images could not be read and were skipped');
-    return null;
-  }
-  const attrs: Record<string, unknown> = { src };
+  let src = loadImageDataUrl(href, ctx);
   const wCm = lengthToCm(frame.getAttributeNS(NS.svg, 'width'));
   const hCm = lengthToCm(frame.getAttributeNS(NS.svg, 'height'));
+  if (!src) {
+    // The frame still occupies its box, so an undrawable picture comes in as a
+    // placeholder of that size rather than collapsing the layout around it.
+    if (wCm == null || hCm == null) {
+      ctx.warnings.add('Some images could not be read and were skipped');
+      return null;
+    }
+    ctx.warnings.add('Images in a format the browser can’t display (e.g. WMF, EMF, SVM) were replaced by a placeholder');
+    src = placeholderImage('Image', cmToPx(wCm), cmToPx(hCm));
+  }
+  const attrs: Record<string, unknown> = { src };
   if (wCm != null) attrs.width = Math.round(cmToPx(wCm));
   if (hCm != null) attrs.height = Math.round(cmToPx(hCm));
   const title = frame.getElementsByTagNameNS(NS.svg, 'title')[0]?.textContent;
@@ -641,7 +645,9 @@ function convertToc(el: Element): Node {
       if (text) entries.push({ text, level, page: Math.max(1, parseInt(page, 10) || 1) });
     }
   }
-  return { type: 'tableOfContents', attrs: { entries } };
+  // The file's own heading ("Inhalt", "Sommaire", …), so a reopened index keeps its name.
+  const title = el.getElementsByTagNameNS(NS.text, 'index-title')[0]?.textContent?.trim();
+  return { type: 'tableOfContents', attrs: { entries, ...(title ? { title } : {}) } };
 }
 
 // Split a TOC entry paragraph around its last <text:tab/>: the text before it is the
