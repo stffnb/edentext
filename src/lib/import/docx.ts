@@ -16,7 +16,7 @@ import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
-import type { HfDoc } from '../storage/headerFooter';
+import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { applyUniformRunFont, type OdtImportResult } from './odt';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, type CellPadding } from '../editor/extensions/tableCellPadding';
@@ -145,10 +145,12 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     const inner = convertBlocks(g.els, ctx, 'body');
     // A section's own w:type says how it begins: a page-starting break (nextPage/odd/even,
     // or the default) puts its first block on a new page; continuous/nextColumn flow on.
-    if (gi > 0 && inner.length && sectionStartsNewPage(g.sectPr ?? finalSectPr)) {
+    if (gi > 0 && inner.length) {
       const first = inner[0];
-      if (first.type === 'paragraph' || first.type === 'heading')
-        first.attrs = { ...(first.attrs ?? {}), breakBefore: 'page' };
+      if (first.type === 'paragraph' || first.type === 'heading') {
+        first.attrs = { ...(first.attrs ?? {}), sectionBreak: true };
+        if (sectionStartsNewPage(g.sectPr ?? finalSectPr)) first.attrs.breakBefore = 'page';
+      }
     }
     const cols = sectPrColumns(g.sectPr ?? finalSectPr, ctx);
     if (cols) pushColumnRuns(inner, cols, blocks, ctx);
@@ -158,27 +160,15 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
 
   // Odd/even pages: a document-level setting (settings.xml), not a section property.
   const oddEven = docHasEvenOddHeaders(files);
-  let sect = parseSectPr(finalSectPr, ctx, oddEven);
-  // Multi-section files may reference headers/footers only on an earlier section (page
-  // geometry still comes from the body-final sectPr). Adopt its header/footer + first-
-  // page/even variants, keeping the different-first-page flag if either section set it.
-  if (!sect.header && !sect.footer && !sect.headerFirst && !sect.footerFirst && !sect.headerEven && !sect.footerEven) {
-    const prev = [...midSectPrs].reverse().find((s) => fc(s, 'headerReference') || fc(s, 'footerReference'));
-    if (prev) {
-      const prevSect = parseSectPr(prev, ctx, oddEven);
-      sect = {
-        ...sect,
-        header: prevSect.header, footer: prevSect.footer,
-        headerFirst: prevSect.headerFirst, footerFirst: prevSect.footerFirst,
-        differentFirstPage: sect.differentFirstPage || prevSect.differentFirstPage,
-        headerEven: prevSect.headerEven, footerEven: prevSect.footerEven,
-        headerDistCm: prevSect.headerDistCm, footerDistCm: prevSect.footerDistCm,
-      };
-    }
-  }
-  // A first-page/even zone reserves the header/footer band even when its default is empty.
-  const hasHeader = sect.header || (sect.differentFirstPage && sect.headerFirst) || (sect.differentOddEven && sect.headerEven);
-  const hasFooter = sect.footer || (sect.differentFirstPage && sect.footerFirst) || (sect.differentOddEven && sect.footerEven);
+  // Page geometry stays document-wide, from the body-final sectPr; only the zones are
+  // per section. A file whose sections disagree on geometry keeps the last one's.
+  const sect = parseSectPr(finalSectPr, ctx, oddEven);
+  const hfSections = sectionHfSets(groups.map((g) => g.sectPr ?? finalSectPr), ctx, oddEven);
+  const first = hfSections[0];
+  // A first-page/even zone reserves the header/footer band even when its default is empty;
+  // the distance is document-wide, so any section having one is enough.
+  const hasHeader = hfSections.some((s) => s.header || (s.differentFirstPage && s.headerFirst) || (s.differentOddEven && s.headerEven));
+  const hasFooter = hfSections.some((s) => s.footer || (s.differentFirstPage && s.footerFirst) || (s.differentOddEven && s.footerEven));
 
   return {
     content: { type: 'doc', content: blocks },
@@ -186,14 +176,15 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     margins: sect.margins,
     orientation: sect.orientation,
     format: sect.format,
-    header: sect.header,
-    footer: sect.footer,
-    headerFirst: sect.differentFirstPage ? sect.headerFirst : null,
-    footerFirst: sect.differentFirstPage ? sect.footerFirst : null,
-    differentFirstPage: sect.differentFirstPage,
-    headerEven: sect.differentOddEven ? sect.headerEven : null,
-    footerEven: sect.differentOddEven ? sect.footerEven : null,
-    differentOddEven: sect.differentOddEven,
+    header: first.header,
+    footer: first.footer,
+    headerFirst: first.differentFirstPage ? first.headerFirst : null,
+    footerFirst: first.differentFirstPage ? first.footerFirst : null,
+    differentFirstPage: first.differentFirstPage,
+    headerEven: first.differentOddEven ? first.headerEven : null,
+    footerEven: first.differentOddEven ? first.footerEven : null,
+    differentOddEven: first.differentOddEven,
+    hfSections,
     headerDistanceCm: hasHeader ? sect.headerDistCm : null,
     footerDistanceCm: hasFooter ? sect.footerDistCm : null,
     language: documentLanguage(stylesDoc, warnings),
@@ -1720,6 +1711,35 @@ function parseSectPr(sect: Element | null, ctx: Ctx, oddEven = false): {
     headerDistCm: clampCm(intAttr(pgMar, W, 'header')),
     footerDistCm: clampCm(intAttr(pgMar, W, 'footer')),
   };
+}
+
+// One HfSet per section, in body order, resolving Word's "Link to Previous": a section
+// that declares no reference of a type keeps the previous section's. w:titlePg is per
+// section, odd/even is document-wide (settings.xml).
+function sectionHfSets(sectPrs: (Element | null)[], ctx: Ctx, oddEven: boolean): HfSet[] {
+  const out: HfSet[] = [];
+  for (const sect of sectPrs) {
+    const prev = out[out.length - 1] ?? EMPTY_HF_SET;
+    const titlePgEl = sect ? fc(sect, 'titlePg') : null;
+    const titlePg = !!titlePgEl && onOff(titlePgEl);
+    const zone = (type: 'header' | 'footer', variant: string, inherited: HfDoc): HfDoc => {
+      const ref = sect
+        ? fcAll(sect, `${type}Reference`).find((r) => (r.getAttributeNS(W, 'type') ?? 'default') === variant)
+        : null;
+      return ref ? convertHfPart(ref.getAttributeNS(R, 'id'), ctx) : inherited;
+    };
+    out.push({
+      header: zone('header', 'default', prev.header),
+      footer: zone('footer', 'default', prev.footer),
+      headerFirst: titlePg ? zone('header', 'first', prev.headerFirst) : null,
+      footerFirst: titlePg ? zone('footer', 'first', prev.footerFirst) : null,
+      differentFirstPage: titlePg,
+      headerEven: oddEven ? zone('header', 'even', prev.headerEven) : null,
+      footerEven: oddEven ? zone('footer', 'even', prev.footerEven) : null,
+      differentOddEven: oddEven,
+    });
+  }
+  return out.length ? out : [{ ...EMPTY_HF_SET }];
 }
 
 function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {

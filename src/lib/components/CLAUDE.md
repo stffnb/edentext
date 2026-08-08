@@ -52,3 +52,16 @@ One header and one footer (`HfDoc` = a single-paragraph TipTap doc per zone, per
 ## Debug tooling (dev only)
 
 In dev builds a **Debug** button (`App.svelte`) downloads a JSON snapshot combining `getPageBreakDebug(view)` (leaves, placements, rendered spacers, table-break bands, live overlay geometry) and `getColorDebug(editor)` (selection marks, text runs, document colors, DOM spans) — used to diagnose pagination and color round-trip issues.
+
+## Per-section header/footer
+
+A body block carrying `sectionBreak` (pageBreak.ts) opens a section; `HeaderFooterLayer`
+picks that section's `HfSet` per page from `sectionStartPages`, which `pageBreaks.ts`
+reports on `pm-pagecount`. Section 1 is the app's own editable state, the rest ride along
+from the file (`extraHfSections`, persisted whole) and are read-only.
+
+Word's "different first page" is per section, so a later section's first page shows its
+own variant. `Editor.svelte` publishes each section's zone reaches as `--pb-section-reach`
+("topFirst|topRest|bottomFirst|bottomRest" per section, comma-separated) and pageBreaks
+resolves the content area per page from it — without it a tall letterhead on a later
+section's first page would sit on top of the body (measured: 24.9mm).

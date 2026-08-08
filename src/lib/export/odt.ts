@@ -3,7 +3,7 @@ import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
-import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc } from '../storage/headerFooter';
+import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
@@ -129,6 +129,11 @@ const CST = '\uE00E';
 // field for (TEF<odf attrs>TEF); applyTextEffects folds them into the run's own
 // automatic text style. U+E00F.
 const TEF = '\uE00F';
+
+// Sentinel wrapping the index of the section a block opens (SEC{i}SEC), emitted as the
+// block's first run; applySectionMasterPages points it at that section's master page,
+// which is what carries the section's own header/footer. U+E010.
+const SEC = '\uE010';
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
@@ -321,6 +326,24 @@ function replacePageBreaks(doc: TiptapNode): TiptapNode {
         return { ...child, content: [{ type: 'text', text: PGB }, ...(child.content ?? [])] };
       }
       return child;
+    }),
+  };
+}
+
+// Mark the first block of each section after the first, so applySectionMasterPages can
+// point it at that section's master page. Runs after the column hoist, so a section
+// starting inside one is top-level by now; the PGB marker keeps its place at the front.
+function replaceSectionBreaks(doc: TiptapNode): TiptapNode {
+  if (!doc.content?.length) return doc;
+  let index = 0;
+  return {
+    ...doc,
+    content: doc.content.map(child => {
+      if (!(child.type === 'paragraph' || child.type === 'heading') || child.attrs?.sectionBreak !== true) return child;
+      const inner = child.content ?? [];
+      const at = inner[0]?.type === 'text' && inner[0].text === PGB ? 1 : 0;
+      const mark: TiptapNode = { type: 'text', text: `${SEC}${++index}${SEC}` };
+      return { ...child, content: [...inner.slice(0, at), mark, ...inner.slice(at)] };
     }),
   };
 }
@@ -2973,6 +2996,9 @@ export type HfExport = {
   headerEven?: HfDoc;
   footerEven?: HfDoc;
   differentOddEven?: boolean;
+  // One set per section, in body order; [0] repeats the fields above. Absent = the
+  // document has a single section.
+  sections?: HfSet[];
   pageCount: number;
   headerDistanceCm?: number;
   footerDistanceCm?: number;
@@ -2989,7 +3015,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const textBoxes: TextBoxExport[] = [];
   const columns: ColumnsExport[] = [];
   const dateFields: DateTimeFieldExport[] = [];
-  const sentinels = replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns))), images), dateFields);
+  const sentinels = replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns)))), images), dateFields);
   const raw = markTextEffects(bakeListCharStyles(sentinels, styles));
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
@@ -3196,7 +3222,10 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withNamedStyles = applyCharacterStyles(applyTextEffects(applyParagraphStyles(withParaBoxes)));
   const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
   const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables);
-  return applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
+  const withHf = applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
+  // Sections past the first get their own master page, which is where ODF keeps a
+  // section's header/footer; the SEC-marked block points at it.
+  return applySectionMasterPages(withHf, hf?.sections ?? [], hf?.pageCount ?? 1);
 }
 
 function hfAlign(para: TiptapNode): AlignValue | null {
@@ -3326,10 +3355,12 @@ function ensureDrawNamespaces(styles: string): string {
 // Serialize a variant header/footer paragraph to <style:{header,footer}-{first,left}>
 // XML (first = page 1, left = even pages). Runs and page fields become <text:span>
 // referencing minted automatic text styles (pushed via `mint`); hardBreak → line-break.
-function hfVariantZoneXml(kind: 'header' | 'footer', suffix: 'first' | 'left', para: TiptapNode, pageCount: number, mint: (styleXml: string) => void): string {
+// suffix null = the section's own <style:header>/<style:footer>; 'first'/'left' are the
+// per-page variants ODF hangs beside it.
+function hfVariantZoneXml(kind: 'header' | 'footer', suffix: 'first' | 'left' | null, para: TiptapNode, pageCount: number, mint: (styleXml: string) => void, prefix = ''): string {
   let styleSeq = 0;
   // Distinct minted-style prefix per variant so first + even styles never collide.
-  const pfx = `HF${suffix === 'first' ? 'F' : 'L'}${kind[0].toUpperCase()}`;
+  const pfx = `${prefix}HF${suffix === 'first' ? 'F' : suffix === 'left' ? 'L' : 'D'}${kind[0].toUpperCase()}`;
   // Wrap inline XML in a minted text style span when the run carries formatting.
   const styled = (innerXml: string, marks: TiptapNode['marks']): string => {
     const props = odfTextPropsFromMarks(marks);
@@ -3354,7 +3385,88 @@ function hfVariantZoneXml(kind: 'header' | 'footer', suffix: 'first' | 'left', p
     paraStyle = `${pfx}P`;
     mint(`<style:style style:name="${paraStyle}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${props.join(' ')}/></style:style>`);
   }
-  return `<style:${kind}-${suffix}><text:p text:style-name="${paraStyle}">${inner}</text:p></style:${kind}-${suffix}>`;
+  const tag = suffix ? `${kind}-${suffix}` : kind;
+  return `<style:${tag}><text:p text:style-name="${paraStyle}">${inner}</text:p></style:${tag}>`;
+}
+
+// A section's own master page: the Standard one cloned under its own name, carrying that
+// section's zones. ODF has no per-section header/footer other than this.
+function masterPageXml(name: string, layoutName: string, set: HfSet, pageCount: number, mint: (styleXml: string) => void, pfx: string): string {
+  const zone = (kind: 'header' | 'footer', suffix: 'first' | 'left' | null, doc: HfDoc): string => {
+    if (hfIsEmpty(doc)) return '';
+    return hfVariantZoneXml(kind, suffix, doc!.content![0] as TiptapNode, pageCount, mint, pfx);
+  };
+  // An empty default beside a variant blanks its side, as the editor renders it.
+  const need = (a: HfDoc, b: HfDoc) => (hfIsEmpty(a) && !hfIsEmpty(b) ? { type: 'doc', content: [{ type: 'paragraph', content: [] }] } as HfDoc : a);
+  const hFirst = set.differentFirstPage ? set.headerFirst : null;
+  const fFirst = set.differentFirstPage ? set.footerFirst : null;
+  const hEven = set.differentOddEven ? set.headerEven : null;
+  const fEven = set.differentOddEven ? set.footerEven : null;
+  const body = zone('header', null, need(need(set.header, hFirst), hEven))
+    + zone('header', 'first', hFirst) + zone('header', 'left', hEven)
+    + zone('footer', null, need(need(set.footer, fFirst), fEven))
+    + zone('footer', 'first', fFirst) + zone('footer', 'left', fEven);
+  return `<style:master-page style:name="${name}" style:page-layout-name="${layoutName}">${body}</style:master-page>`;
+}
+
+// Point each SEC-marked block at its section's master page (ODF's only per-section
+// header/footer), minting the master pages beside the Standard one odf-kit wrote.
+function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount: number): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  const stylesBytes = files['styles.xml'];
+  if (!contentBytes || !stylesBytes) return odtBytes;
+  let content = strFromU8(contentBytes);
+  if (!content.includes(SEC)) return odtBytes;
+  let styles = strFromU8(stylesBytes);
+
+  const minted: string[] = [];
+  const used = new Set<number>();
+  let counter = 0;
+  content = content.replace(
+    new RegExp(`<text:(p|h)\\b([^>]*)>${SEC}(\\d+)${SEC}`, 'g'),
+    (_m, tag: string, attrs: string, idx: string) => {
+      const index = Number(idx);
+      used.add(index);
+      const sm = /text:style-name="([^"]*)"/.exec(attrs);
+      const source = sm?.[1] ?? '';
+      const def = source ? findAutoStyle(content, source) : null;
+      const name = `MP${++counter}`;
+      const master = ` style:master-page-name="Section${index + 1}"`;
+      minted.push(def
+        ? def.replace(/style:name="[^"]*"/, `style:name="${name}"`).replace(/(<style:style\b[^>]*?)(\/?>)/, `$1${master}$2`)
+        : `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${source || 'Standard'}"${master}/>`);
+      const rest = attrs.replace(/\s*text:style-name="[^"]*"/, '');
+      return `<text:${tag}${rest} text:style-name="${name}">`;
+    },
+  );
+  if (minted.length) {
+    content = content.includes('</office:automatic-styles>')
+      ? content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`)
+      : content.replace('<office:automatic-styles/>', `<office:automatic-styles>${minted.join('')}</office:automatic-styles>`);
+  }
+
+  // Reuse the page layout odf-kit gave the Standard master page: the geometry is
+  // document-wide, only the zones differ per section.
+  const layout = /<style:master-page\b[^>]*style:page-layout-name="([^"]*)"/.exec(styles)?.[1] ?? 'pm1';
+  const hfStyles: string[] = [];
+  const pages: string[] = [];
+  for (const index of [...used].sort((a, b) => a - b)) {
+    const set = sets[index];
+    if (!set) continue;
+    pages.push(masterPageXml(`Section${index + 1}`, layout, set, pageCount, (x) => hfStyles.push(x), `MS${index}`));
+  }
+  if (pages.length) styles = styles.replace('</office:master-styles>', `${pages.join('')}</office:master-styles>`);
+  if (hfStyles.length) {
+    const defs = hfStyles.join('');
+    styles = styles.includes('</office:automatic-styles>')
+      ? styles.replace('</office:automatic-styles>', `${defs}</office:automatic-styles>`)
+      : styles.replace('<office:automatic-styles/>', `<office:automatic-styles>${defs}</office:automatic-styles>`);
+  }
+
+  files['content.xml'] = strToU8(content);
+  files['styles.xml'] = strToU8(styles);
+  return rezipOdt(files);
 }
 
 // A text run's ODF <style:text-properties> attribute string from TipTap marks (mirrors

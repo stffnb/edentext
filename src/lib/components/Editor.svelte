@@ -21,7 +21,7 @@
   import { applyMarginVars, cmToPx, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { type Orientation } from '../storage/pageOrientation';
   import { applyPageSizeVars, type PageFormat } from '../storage/pageFormat';
-  import { DEFAULT_HF_DISTANCES, hfIsEmpty, type HfDoc, type HfZone, type HfDistances } from '../storage/headerFooter';
+  import { DEFAULT_HF_DISTANCES, hfIsEmpty, type HfDoc, type HfZone, type HfDistances, type HfSet } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
   import { wheelZoomFactor } from '../utils/zoom';
@@ -41,6 +41,7 @@
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
     headerEvenDoc = $bindable(null), footerEvenDoc = $bindable(null), differentOddEven = false,
     hfEditor = $bindable(null), hfActive = $bindable(null), hfTick = $bindable(0),
+    extraHfSections = [],
   }: {
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
     onZoom?: (zoom: number) => void;
@@ -49,7 +50,12 @@
     headerFirstDoc?: HfDoc; footerFirstDoc?: HfDoc; differentFirstPage?: boolean;
     headerEvenDoc?: HfDoc; footerEvenDoc?: HfDoc; differentOddEven?: boolean;
     hfEditor?: Editor | null; hfActive?: HfZone | null; hfTick?: number;
+    extraHfSections?: HfSet[];
   } = $props();
+
+  // Page each section after the first starts on (pageBreaks reports it); the layer
+  // turns it into a per-page set.
+  let sectionStartPages = $state<number[]>([]);
 
   // Apply the page margins + orientation to the :root CSS vars (visual padding,
   // page dimensions, and pagination all read these). DOM-only, safe in effects.
@@ -90,12 +96,25 @@
   let effTopFirst = $derived(Math.max(mTopPx, hfReachPx((differentFirstPage ? headerFirstDoc : headerDoc) ?? null, headerDistPx)));
   let effBottomRest = $derived(Math.max(mBottomPx, hfReachPx(footerDoc ?? null, footerDistPx), evenBottomReach));
   let effBottomFirst = $derived(Math.max(mBottomPx, hfReachPx((differentFirstPage ? footerFirstDoc : footerDoc) ?? null, footerDistPx)));
+  // Per-section reaches for pageBreaks: "topFirst|topRest|bottomFirst|bottomRest" in px,
+  // one group per section, comma-separated. Section 1 repeats the four vars below.
+  let sectionReach = $derived([
+    [effTopFirst, effTopRest, effBottomFirst, effBottomRest],
+    ...extraHfSections.map((s) => [
+      Math.max(mTopPx, hfReachPx((s.differentFirstPage ? s.headerFirst : s.header) ?? null, headerDistPx)),
+      Math.max(mTopPx, hfReachPx(s.header ?? null, headerDistPx), s.differentOddEven ? hfReachPx(s.headerEven ?? null, headerDistPx) : 0),
+      Math.max(mBottomPx, hfReachPx((s.differentFirstPage ? s.footerFirst : s.footer) ?? null, footerDistPx)),
+      Math.max(mBottomPx, hfReachPx(s.footer ?? null, footerDistPx), s.differentOddEven ? hfReachPx(s.footerEven ?? null, footerDistPx) : 0),
+    ]),
+  ].map((g) => g.map((n) => Math.round(n)).join('|')).join(','));
+
   $effect(() => {
     const s = document.documentElement.style;
     s.setProperty('--pb-content-top-rest', `${effTopRest}px`);
     s.setProperty('--pb-content-top-first', `${effTopFirst}px`);
     s.setProperty('--pb-content-bottom-rest', `${effBottomRest}px`);
     s.setProperty('--pb-content-bottom-first', `${effBottomFirst}px`);
+    s.setProperty('--pb-section-reach', sectionReach);
   });
 
   // Nudge the pageBreaks plugin to recompute with the new content area. The dispatch
@@ -109,6 +128,7 @@
     void pageFormat;
     // …and the header/footer-driven effective margins, so growing a zone re-paginates.
     void (effTopRest + effTopFirst + effBottomRest + effBottomFirst);
+    void sectionReach;
     const ed = editor;
     if (!ed) return;
     cancelAnimationFrame(marginRecalcRaf);
@@ -591,10 +611,11 @@
   }
 
   function onPageCount(e: Event) {
-    const detail = (e as CustomEvent<{ numPages: number; docHeight?: number; tableBreakBands?: TableBreakBand[] }>).detail;
+    const detail = (e as CustomEvent<{ numPages: number; docHeight?: number; tableBreakBands?: TableBreakBand[]; sectionStartPages?: number[] }>).detail;
     numPages = detail.numPages;
     if (typeof detail.docHeight === 'number') docHeightDoc = detail.docHeight;
     tableBandsDoc = detail.tableBreakBands ?? [];
+    sectionStartPages = detail.sectionStartPages ?? [];
     // The document height changed → resize the scaled scroll footprint.
     recomputeScaledSize();
     updateCurrentPage();
@@ -829,6 +850,8 @@
         {orientation}
         {pageFormat}
         {hfDistances}
+        {extraHfSections}
+        {sectionStartPages}
       />
     </div>
   </div>

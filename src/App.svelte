@@ -26,7 +26,7 @@
   import { loadPageFormat, savePageFormat, type PageFormat } from './lib/storage/pageFormat';
   import { setStyleSheet, styleSheet } from './lib/styles/sheet.svelte';
   import { builtinStyleSheet, type StyleFamily } from './lib/styles/styleSheet';
-  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfDistances } from './lib/storage/headerFooter';
+  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, loadExtraHfSections, saveExtraHfSections, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { spellController } from './lib/spell/controller';
@@ -69,6 +69,8 @@
   let footerEvenDoc: HfDoc = $state(loadHfDoc('footer', 'even'));
   let differentOddEven: boolean = $state(loadDifferentOddEven());
   let hfDistances: HfDistances = $state(loadHfDistances());
+  // Sections past the first: imported and exported, not editable (see HeaderFooterLayer).
+  let extraHfSections: HfSet[] = $state(loadExtraHfSections());
   let hfEditor: Editor | null = $state(null);
   let hfActive: HfZone | null = $state(null);
   let hfTick: number = $state(0);
@@ -213,6 +215,9 @@
 
   $effect(() => {
     saveHfDistances(hfDistances);
+  });
+  $effect(() => {
+    saveExtraHfSections(extraHfSections);
   });
 
   $effect(() => {
@@ -377,6 +382,15 @@
   let docxBusy = $state(false);
   let exportMenuOpen = $state(false);
 
+  // The editable zones as one section — section 1 of the export.
+  function hfSetOfState(): HfSet {
+    return {
+      header: headerDoc, footer: footerDoc,
+      headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage,
+      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven,
+    };
+  }
+
   // odf-kit export options for the current header/footer + page geometry.
   function hfOpts() {
     return {
@@ -384,6 +398,7 @@
       headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage,
       headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven,
       pageCount: numPages,
+      sections: [hfSetOfState(), ...extraHfSections],
       headerDistanceCm: hfDistances.header, footerDistanceCm: hfDistances.footer,
     };
   }
@@ -426,6 +441,7 @@
     pageOrientation = 'portrait';
     pageFormat = 'A4';
     hfDistances = { ...DEFAULT_HF_DISTANCES };
+    extraHfSections = [];
     documentName = '';
     fileHandle = null;
     // Styles live in the document, so a new one starts from the built-ins
@@ -497,6 +513,7 @@
       headerEvenDoc = result.headerEven;
       footerEvenDoc = result.footerEven;
       differentOddEven = result.differentOddEven;
+      extraHfSections = (result.hfSections ?? []).slice(1);
       hfDistances = {
         header: result.headerDistanceCm ?? DEFAULT_HF_DISTANCES.header,
         footer: result.footerDistanceCm ?? DEFAULT_HF_DISTANCES.footer,
@@ -1018,6 +1035,7 @@
     bind:hfActive
     bind:hfTick
     {hfDistances}
+    {extraHfSections}
     {zoom}
     onZoom={setZoom}
     {showFormattingMarks}

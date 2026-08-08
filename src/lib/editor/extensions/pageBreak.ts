@@ -6,7 +6,9 @@ import { DEFAULT_SHORTCUTS } from '../shortcuts';
 // widow-orphan minimum (w:widowControl, fo:widows/fo:orphans); keepNext keeps the block
 // on the page its successor starts on (w:keepNext, fo:keep-with-next) — headings do
 // that anyway in both, so the attr only marks the other blocks; keepLines holds all of
-// a block's lines on one page (w:keepLines, fo:keep-together). null = default.
+// a block's lines on one page (w:keepLines, fo:keep-together). null = default;
+// sectionBreak marks the first block of a new section, which carries its own
+// header/footer set (storage/headerFooter.ts `HfSet`).
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -67,6 +69,18 @@ export const PageBreak = Extension.create({
             renderHTML: (attributes: Record<string, unknown>) => {
               if (attributes.keepLines !== true) return {};
               return { 'data-keep-lines': 'true' };
+            },
+          },
+          // First block of a new section (w:sectPr, ODF style:master-page-name): what
+          // gives it its own header/footer. Ordinal, so editing can't desync an index.
+          sectionBreak: {
+            default: null,
+            keepOnSplit: false,
+            parseHTML: (element: HTMLElement) =>
+              element.getAttribute('data-section-break') === 'true' ? true : null,
+            renderHTML: (attributes: Record<string, unknown>) => {
+              if (attributes.sectionBreak !== true) return {};
+              return { 'data-section-break': 'true' };
             },
           },
         },

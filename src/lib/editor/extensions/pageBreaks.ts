@@ -195,6 +195,9 @@ type Leaf = {
   // Keep with next (DOCX w:keepNext, ODF fo:keep-with-next; pageBreak.ts): the leaf
   // moves to the next page when its successor's first line no longer fits below it.
   keepNext?: boolean;
+  // First block of a new section (pageBreak.ts `sectionBreak`): the page it lands on
+  // is where that section's header/footer starts repeating.
+  sectionStart?: boolean;
   // Flow brackets for a too-tall row's cells (each cell is an independent flow from
   // the row top, so placement resets cumulative shift per cell): cellStart = a cell's
   // first leaf, rowStart = the row's first cell, rowEnd = last leaf of the last cell.
@@ -741,6 +744,7 @@ export const PageBreaks = Extension.create({
                   // so their styles carry it and the attr only marks the other blocks.
                   keepNext: !inTableCell
                     && (child.dataset?.keepNext === 'true' || /^H[1-5]$/.test(child.tagName)),
+                  sectionStart: !inTableCell && child.dataset?.sectionBreak === 'true',
                 });
                 cumulativeSpacerHeight += intraSpacerHeight;
                 continue;
@@ -797,6 +801,13 @@ export const PageBreaks = Extension.create({
           const effTopFirst = Number.isFinite(ctFirst) ? ctFirst : vm.top;
           const cbFirst = parseFloat(csRoot.getPropertyValue('--pb-content-bottom-first'));
           const effBottomFirst = Number.isFinite(cbFirst) ? cbFirst : vm.bottom;
+          // Each section's own reaches (Editor.svelte), so a later section's tall header
+          // clears its own pages. Missing/short → the document-wide pair above.
+          const reach = csRoot.getPropertyValue('--pb-section-reach').split(',')
+            .map((g) => g.split('|').map(Number))
+            .filter((g) => g.length === 4 && g.every(Number.isFinite));
+          const reachAt = (i: number) => reach[Math.min(i, reach.length - 1)]
+            ?? [effTopFirst, vm.top, effBottomFirst, vm.bottom];
 
           const scale = getScaleFactor();
           const leaves = collectLeaves(CONTENT_HEIGHT, scale);
@@ -810,6 +821,11 @@ export const PageBreaks = Extension.create({
           // Lowest rendered content bottom across all leaves (incl. parallel cells),
           // used for the page count — a single last-leaf reading misses taller cells.
           let maxEffectiveBottom = 0;
+          // Page each section after the first begins on, in body order — the layer picks
+          // a page's header/footer set from it.
+          const sectionStartPages: number[] = [];
+          let sectionIndex = 0;
+          let sectionFirstPage = 1;
           const placements: {
             docPos: number;
             height: number;
@@ -841,11 +857,21 @@ export const PageBreaks = Extension.create({
             const effectiveTop = leaf.naturalTop + cumulativeShift;
             const effectiveBottom = effectiveTop + leaf.naturalHeight;
             const page = getPageForY(effectiveTop, CYCLE_PX);
-            const contentStart = page === 1 ? effTopFirst : pageContentStart(page, vm.top, CYCLE_PX);
-            const contentEnd =
-              page === 1
-                ? vm.pageHeight - effBottomFirst
-                : pageContentEnd(page, vm.top, CONTENT_HEIGHT, CYCLE_PX);
+            // A section's first page uses its "first" reaches, every other page its
+            // "rest" ones — page 1 is section 1's first page.
+            if (leaf.sectionStart) {
+              // Where the section really begins: a forced break moves its first block to
+              // the next page, and that page is the one its "first" zones belong to.
+              const prevStart = (page - 1) * CYCLE_PX + reachAt(sectionIndex)[1];
+              const pushed = !!leaf.forceBreakBefore && i > 0 && effectiveTop > prevStart + 0.5;
+              sectionIndex++;
+              sectionFirstPage = pushed ? page + 1 : page;
+            }
+            const [topFirst, topRest, bottomFirst, bottomRest] = reachAt(sectionIndex);
+            const onFirst = page === sectionFirstPage;
+            const pageTop = (page - 1) * CYCLE_PX;
+            const contentStart = pageTop + (onFirst ? topFirst : topRest);
+            const contentEnd = pageTop + vm.pageHeight - (onFirst ? bottomFirst : bottomRest);
 
             // A leaf may need several spacers: a splittable block taller than one
             // page crosses multiple boundaries, one break each.
@@ -913,7 +939,10 @@ export const PageBreaks = Extension.create({
             const forced = !!leaf.forceBreakBefore && i > 0 && effectiveTop > contentStart + 0.5;
 
             if (forced) {
-              const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+              // The next page's own content start: a section beginning here brings its
+              // first-page header with it.
+              const nextTop = page + 1 === sectionFirstPage ? topFirst : topRest;
+              const target = pageContentStart(page + 1, nextTop, CYCLE_PX);
               const { docPos, row } = leafSpacer(leaf);
               breaks.push({
                 height: target - effectiveTop,
@@ -1104,6 +1133,10 @@ export const PageBreaks = Extension.create({
               });
             }
 
+            // Read after this leaf's own spacer, so the page is the one it really lands on.
+            if (leaf.sectionStart) {
+              sectionStartPages.push(getPageForY(leaf.naturalTop + cumulativeShift, CYCLE_PX));
+            }
             // Track the lowest rendered content bottom (cumulativeShift now includes
             // this leaf's own spacer, so a pushed/split leaf counts at its real spot).
             maxEffectiveBottom = Math.max(
@@ -1189,7 +1222,7 @@ export const PageBreaks = Extension.create({
           // docHeight (document px) lets Editor.svelte size the scaled scroll footprint.
           dom.dispatchEvent(new CustomEvent('pm-pagecount', {
             bubbles: true,
-            detail: { numPages, docHeight: targetHeight, tableBreakBands },
+            detail: { numPages, docHeight: targetHeight, tableBreakBands, sectionStartPages },
           }));
 
           lastSnapshot = {

@@ -452,12 +452,28 @@ export class StyleResolver {
     return { count, gapCm: Math.round(gapCm * 100) / 100 };
   }
 
-  // The master page governing the document (prefer "Standard", else the first).
-  private masterPageEl(): Element | null {
+  // The master page governing the document (prefer "Standard", else the first), or a
+  // named one — a section past the first points at its own (style:master-page-name).
+  private masterPageEl(name: string | null = null): Element | null {
     const doc = this.stylesDoc;
     if (!doc) return null;
     const pages = Array.from(doc.getElementsByTagNameNS(NS.style, 'master-page'));
+    if (name) return pages.find(p => p.getAttributeNS(NS.style, 'name') === name) ?? null;
     return pages.find(p => p.getAttributeNS(NS.style, 'name') === 'Standard') ?? pages[0] ?? null;
+  }
+
+  // The master page a paragraph style switches to, walking style:parent-style-name.
+  masterPageOf(styleName: string | null): string | null {
+    const seen = new Set<string>();
+    let cur = styleName;
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const el = this.paraStyleEls.get(cur);
+      const name = el?.getAttributeNS(NS.style, 'master-page-name');
+      if (name) return name;
+      cur = this.styles.get(`paragraph\0${cur}`)?.parent ?? null;
+    }
+    return null;
   }
 
   private pageLayoutEl(): Element | null {
@@ -473,7 +489,7 @@ export class StyleResolver {
   // Header/footer of the master page: the content elements, the vertical space the
   // zone occupies below/above the page margin (height + body-side spacing, for the
   // body-margin reconstruction), and whether per-page variants exist.
-  masterPageHF(): {
+  masterPageHF(pageName: string | null = null): {
     header: Element | null;
     footer: Element | null;
     headerFirst: Element | null;
@@ -483,7 +499,7 @@ export class StyleResolver {
     headerExtraCm: number;
     footerExtraCm: number;
   } {
-    const mp = this.masterPageEl();
+    const mp = this.masterPageEl(pageName);
     const layout = this.pageLayoutEl();
 
     const zone = (local: string): Element | null => {

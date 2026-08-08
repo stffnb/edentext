@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Editor, generateHTML, type Content } from '@tiptap/core';
   import { hfExtensions } from '../editor/extensions/headerFooter';
-  import { hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfVariant, type HfDistances } from '../storage/headerFooter';
+  import { hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfVariant, type HfDistances, type HfSet } from '../storage/headerFooter';
   import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
   import { type Orientation } from '../storage/pageOrientation';
   import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
@@ -25,6 +25,8 @@
     hfEditor = $bindable(),
     hfActive = $bindable(),
     hfTick = $bindable(),
+    extraHfSections = [],
+    sectionStartPages = [],
   }: {
     headerDoc: HfDoc;
     footerDoc: HfDoc;
@@ -43,6 +45,8 @@
     hfEditor: Editor | null;
     hfActive: HfZone | null;
     hfTick: number;
+    extraHfSections?: HfSet[];
+    sectionStartPages?: number[];
   } = $props();
 
   const PAGE_GAP = 20;
@@ -109,25 +113,52 @@
       return '';
     }
   }
-  let headerHtml = $derived(staticHtml(headerDoc));
-  let footerHtml = $derived(staticHtml(footerDoc));
-  let headerFirstHtml = $derived(staticHtml(headerFirstDoc));
-  let footerFirstHtml = $derived(staticHtml(footerFirstDoc));
-  let headerEvenHtml = $derived(staticHtml(headerEvenDoc));
-  let footerEvenHtml = $derived(staticHtml(footerEvenDoc));
+  // Section 1 is the app's own editable state; the rest ride along from the file.
+  let sets = $derived<HfSet[]>([
+    {
+      header: headerDoc, footer: footerDoc,
+      headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage,
+      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven,
+    },
+    ...extraHfSections,
+  ]);
+  // Rendered once per set, not per page: a 48-page document would otherwise run
+  // generateHTML for every page of every zone.
+  let setHtml = $derived(sets.map((s) => ({
+    header: staticHtml(s.header), footer: staticHtml(s.footer),
+    headerFirst: staticHtml(s.headerFirst), footerFirst: staticHtml(s.footerFirst),
+    headerEven: staticHtml(s.headerEven), footerEven: staticHtml(s.footerEven),
+  })));
 
-  // Which variant a page shows, in precedence order: page 1 → first (if on), other even
-  // pages → even (if on), everything else → default/odd. Each variant, when on, always
-  // shows its own (possibly empty) zone, never the default.
-  function variantFor(page: number): HfVariant {
-    if (differentFirstPage && page === 1) return 'first';
-    if (differentOddEven && page % 2 === 0) return 'even';
+  // Which section a page belongs to: the count of section starts at or before it,
+  // clamped to what the document actually carries.
+  function sectionOf(page: number): number {
+    let i = 0;
+    for (const start of sectionStartPages) {
+      if (page >= start) i++;
+      else break;
+    }
+    return Math.min(i, sets.length - 1);
+  }
+  function sectionFirstPage(index: number): number {
+    return index === 0 ? 1 : sectionStartPages[index - 1] ?? 1;
+  }
+
+  // Which variant a page shows, in precedence order: a section's own first page →
+  // first (if on), other even pages → even (if on), everything else → default/odd.
+  // Each variant, when on, always shows its own (possibly empty) zone.
+  function variantFor(page: number, index = sectionOf(page)): HfVariant {
+    const s = sets[index] ?? sets[0];
+    if (s.differentFirstPage && page === sectionFirstPage(index)) return 'first';
+    if (s.differentOddEven && page % 2 === 0) return 'even';
     return 'default';
   }
   function zoneHtml(zone: HfZone, page: number): string {
-    const v = variantFor(page);
-    if (zone === 'header') return v === 'first' ? headerFirstHtml : v === 'even' ? headerEvenHtml : headerHtml;
-    return v === 'first' ? footerFirstHtml : v === 'even' ? footerEvenHtml : footerHtml;
+    const index = sectionOf(page);
+    const v = variantFor(page, index);
+    const h = setHtml[index] ?? setHtml[0];
+    if (zone === 'header') return v === 'first' ? h.headerFirst : v === 'even' ? h.headerEven : h.header;
+    return v === 'first' ? h.footerFirst : v === 'even' ? h.footerEven : h.footer;
   }
 
   // Replace the placeholder text in every page-field span with the real value:
@@ -256,12 +287,14 @@
     {#each ['header', 'footer'] as const as zone}
       {#if !(hfActive === zone && editingPage === p)}
         {@const html = zoneHtml(zone, p)}
+        {@const locked = sectionOf(p) > 0}
         <div
           class="hf-zone hf-{zone}"
-          class:hf-empty={!html}
+          class:hf-empty={!html && !locked}
+          class:hf-locked={locked}
           data-hf-label={zone === 'header' ? t().hf.addHeaderHint : t().hf.addFooterHint}
           style={boxStyle(zoneBox(zone, p))}
-          ondblclick={() => startEdit(zone, p)}
+          ondblclick={() => { if (!locked) startEdit(zone, p); }}
           role="button"
           tabindex="-1"
           use:patchFields={[p, numPages, html]}
@@ -320,6 +353,11 @@
   }
   .hf-footer {
     justify-content: flex-end;
+  }
+
+  /* A section past the first carries the file's zones and has no editing UI yet. */
+  .hf-locked {
+    cursor: default;
   }
 
   /* Empty zone: invisible until hovered, then show a faint double-click hint. */

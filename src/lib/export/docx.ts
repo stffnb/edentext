@@ -17,7 +17,7 @@ import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
-import { HF_DISTANCE_CM, hfIsEmpty } from '../storage/headerFooter';
+import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
@@ -899,30 +899,46 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
 // content. DOCX has no block-level column container — a mid-document multi-column
 // region is its own section, delimited by continuous section breaks.
 type BodyGroup = {
+  // Which header/footer set the group belongs to (index into HfExport.sections).
+  section: number;
   columns: { count: number; gapCm: number } | null;
   children: (Paragraph | Table | TableOfContents)[];
 };
 
+// A block carrying `sectionBreak` opens the next section — on import it may already sit
+// inside a columns node, so its first child counts too.
+function startsSection(node: TiptapNode): boolean {
+  if (node.attrs?.sectionBreak === true) return true;
+  return node.type === 'columns' && node.content?.[0]?.attrs?.sectionBreak === true;
+}
+
 function bodyGroups(content: TiptapNode[], num: Numbering, contentWidthCm: number, textBoxes: TextBoxDocx[]): BodyGroup[] {
   const groups: BodyGroup[] = [];
+  let section = 0;
   let plain: TiptapNode[] = [];
   // Adjacent equal-attr fragments (a columnsFlow page-split chain) = one section;
   // their blocks are collected raw so page-split paragraphs merge before serializing.
   let cols: { count: number; gapCm: number; blocks: TiptapNode[] } | null = null;
   const flushPlain = () => {
     if (!plain.length) return;
-    groups.push({ columns: null, children: blocksToDocx(plain, num, contentWidthCm, textBoxes) });
+    groups.push({ section, columns: null, children: blocksToDocx(plain, num, contentWidthCm, textBoxes) });
     plain = [];
   };
   const flushCols = () => {
     if (!cols) return;
     groups.push({
+      section,
       columns: { count: cols.count, gapCm: cols.gapCm },
       children: blocksToDocx(mergeJoinedParagraphsJson(cols.blocks), num, contentWidthCm, textBoxes),
     });
     cols = null;
   };
   for (const node of content) {
+    if (startsSection(node)) {
+      flushCols();
+      flushPlain();
+      section++;
+    }
     if (node.type === 'columns') {
       const a = node.attrs ?? {};
       const count = typeof a.count === 'number' ? Math.min(3, Math.max(2, Math.round(a.count))) : 2;
@@ -941,7 +957,7 @@ function bodyGroups(content: TiptapNode[], num: Numbering, contentWidthCm: numbe
   }
   flushCols();
   flushPlain();
-  if (!groups.length) groups.push({ columns: null, children: [] });
+  if (!groups.length) groups.push({ section: 0, columns: null, children: [] });
   return groups;
 }
 
@@ -1089,16 +1105,20 @@ export async function buildDocx(
   // on open so Word/LibreOffice populate + hyperlink it (standard for TOC fields).
   const hasToc = (docJson.content ?? []).some(n => n.type === 'tableOfContents');
 
-  const headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
-  const footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
-  // Different first page (Word w:titlePg): page 1 gets its own header/footer.
-  const differentFirstPage = !!hf?.differentFirstPage;
-  const firstHeaderPara = differentFirstPage && !hfIsEmpty(hf?.headerFirst ?? null) ? (hf!.headerFirst!.content![0] as TiptapNode) : null;
-  const firstFooterPara = differentFirstPage && !hfIsEmpty(hf?.footerFirst ?? null) ? (hf!.footerFirst!.content![0] as TiptapNode) : null;
-  // Different odd & even pages (Word w:evenAndOddHeaders): even pages get their own zone.
-  const differentOddEven = !!hf?.differentOddEven;
-  const evenHeaderPara = differentOddEven && !hfIsEmpty(hf?.headerEven ?? null) ? (hf!.headerEven!.content![0] as TiptapNode) : null;
-  const evenFooterPara = differentOddEven && !hfIsEmpty(hf?.footerEven ?? null) ? (hf!.footerEven!.content![0] as TiptapNode) : null;
+  // One set per section; a document with no section breaks has exactly one. The flat
+  // fields describe section 1, so they are the fallback when `sections` is absent.
+  const hfSets: HfSet[] = hf?.sections?.length ? hf.sections : [{
+    header: hf?.header ?? null, footer: hf?.footer ?? null,
+    headerFirst: hf?.headerFirst ?? null, footerFirst: hf?.footerFirst ?? null,
+    differentFirstPage: !!hf?.differentFirstPage,
+    headerEven: hf?.headerEven ?? null, footerEven: hf?.footerEven ?? null,
+    differentOddEven: !!hf?.differentOddEven,
+  }];
+  const setAt = (i: number) => hfSets[Math.min(i, hfSets.length - 1)];
+  const para = (d: HfDoc) => (hfIsEmpty(d) ? null : (d!.content![0] as TiptapNode));
+  // Different odd & even pages is a document setting (w:evenAndOddHeaders), not a
+  // section one, so any section asking for it turns it on.
+  const differentOddEven = hfSets.some((s) => s.differentOddEven);
   // Word's model: header/footer distance is from the page edge; the body still starts
   // at the body margin. Clamp the distance below the margin (matches odt.ts).
   const headerDist = Math.min(hf?.headerDistanceCm ?? HF_DISTANCE_CM, margins.top);
@@ -1115,23 +1135,27 @@ export async function buildDocx(
       header: cmToTwip(headerDist), footer: cmToTwip(footerDist),
     },
   };
-  // Fresh instances per section (Word's per-sectPr references). A first-page variant
-  // rides `first:` and is activated by properties.titlePage below.
-  const mkHeaders = () => {
-    if (!headerPara && !firstHeaderPara && !evenHeaderPara) return undefined;
+  // Fresh instances per section (Word's per-sectPr references, i.e. no "Link to
+  // Previous"). A first-page variant rides `first:` and is activated by titlePage below.
+  const mkHeaders = (i: number) => {
+    const s = setAt(i);
+    const d = para(s.header), f = s.differentFirstPage ? para(s.headerFirst) : null, e = s.differentOddEven ? para(s.headerEven) : null;
+    if (!d && !f && !e) return undefined;
     const h: { default?: Header; first?: Header; even?: Header } = {};
-    if (headerPara) h.default = new Header({ children: [paragraphToDocx(headerPara)] });
-    if (firstHeaderPara) h.first = new Header({ children: [paragraphToDocx(firstHeaderPara)] });
-    if (evenHeaderPara) h.even = new Header({ children: [paragraphToDocx(evenHeaderPara)] });
+    if (d) h.default = new Header({ children: [paragraphToDocx(d)] });
+    if (f) h.first = new Header({ children: [paragraphToDocx(f)] });
+    if (e) h.even = new Header({ children: [paragraphToDocx(e)] });
     return h;
   };
-  const mkFooters = () => {
-    if (!footerPara && !firstFooterPara && !evenFooterPara) return undefined;
-    const f: { default?: Footer; first?: Footer; even?: Footer } = {};
-    if (footerPara) f.default = new Footer({ children: [paragraphToDocx(footerPara)] });
-    if (firstFooterPara) f.first = new Footer({ children: [paragraphToDocx(firstFooterPara)] });
-    if (evenFooterPara) f.even = new Footer({ children: [paragraphToDocx(evenFooterPara)] });
-    return f;
+  const mkFooters = (i: number) => {
+    const s = setAt(i);
+    const d = para(s.footer), f = s.differentFirstPage ? para(s.footerFirst) : null, e = s.differentOddEven ? para(s.footerEven) : null;
+    if (!d && !f && !e) return undefined;
+    const fo: { default?: Footer; first?: Footer; even?: Footer } = {};
+    if (d) fo.default = new Footer({ children: [paragraphToDocx(d)] });
+    if (f) fo.first = new Footer({ children: [paragraphToDocx(f)] });
+    if (e) fo.even = new Footer({ children: [paragraphToDocx(e)] });
+    return fo;
   };
 
   const doc = new Document({
@@ -1146,14 +1170,14 @@ export async function buildDocx(
     sections: groups.map((g, i) => ({
       properties: {
         page: pageProps,
-        ...(differentFirstPage ? { titlePage: true } : {}),
+        ...(setAt(g.section).differentFirstPage ? { titlePage: true } : {}),
         ...(i > 0 ? { type: SectionType.CONTINUOUS } : {}),
         ...(g.columns
           ? { column: { count: g.columns.count, space: cmToTwip(g.columns.gapCm), equalWidth: true } }
           : {}),
       },
-      headers: mkHeaders(),
-      footers: mkFooters(),
+      headers: mkHeaders(g.section),
+      footers: mkFooters(g.section),
       children: g.children.length ? g.children : [new Paragraph({})],
     })),
   });

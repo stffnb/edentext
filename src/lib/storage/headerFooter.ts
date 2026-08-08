@@ -6,6 +6,52 @@ export type HfZone = 'header' | 'footer';
 export type HfVariant = 'default' | 'first' | 'even';
 export type HfDoc = { type: 'doc'; content?: unknown[] } | null;
 
+// One section's zones. A document has one per section (a body block carrying
+// `sectionBreak` starts the next one); section 1 is the app's own editable state,
+// the rest ride along from the file.
+export type HfSet = {
+  header: HfDoc;
+  footer: HfDoc;
+  headerFirst: HfDoc;
+  footerFirst: HfDoc;
+  differentFirstPage: boolean;
+  headerEven: HfDoc;
+  footerEven: HfDoc;
+  differentOddEven: boolean;
+};
+
+export const EMPTY_HF_SET: HfSet = {
+  header: null, footer: null,
+  headerFirst: null, footerFirst: null, differentFirstPage: false,
+  headerEven: null, footerEven: null, differentOddEven: false,
+};
+
+export function hfSetIsEmpty(s: HfSet): boolean {
+  return hfIsEmpty(s.header) && hfIsEmpty(s.footer)
+    && hfIsEmpty(s.headerFirst) && hfIsEmpty(s.footerFirst)
+    && hfIsEmpty(s.headerEven) && hfIsEmpty(s.footerEven);
+}
+
+// Sections past the first, in order — imported and exported but not editable, so they
+// are persisted whole rather than per zone like section 1's.
+const EXTRA_KEY = 'odf-editor-hf-sections';
+
+export function loadExtraHfSections(): HfSet[] {
+  const raw = localStorage.getItem(EXTRA_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map((s) => ({ ...EMPTY_HF_SET, ...s })) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveExtraHfSections(sections: HfSet[]): void {
+  if (sections.length) localStorage.setItem(EXTRA_KEY, JSON.stringify(sections));
+  else localStorage.removeItem(EXTRA_KEY);
+}
+
 const KEYS: Record<HfZone, Record<HfVariant, string>> = {
   header: { default: 'odf-editor-header', first: 'odf-editor-header-first', even: 'odf-editor-header-even' },
   footer: { default: 'odf-editor-footer', first: 'odf-editor-footer-first', even: 'odf-editor-footer-even' },

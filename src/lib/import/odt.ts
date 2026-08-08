@@ -15,7 +15,7 @@ import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
-import type { HfDoc } from '../storage/headerFooter';
+import type { HfDoc, HfSet } from '../storage/headerFooter';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, type CellPadding } from '../editor/extensions/tableCellPadding';
 
@@ -50,6 +50,9 @@ export interface OdtImportResult {
   headerEven: HfDoc;
   footerEven: HfDoc;
   differentOddEven: boolean;
+  // One set per section, in body order — [0] repeats the fields above (the app's own
+  // editable zones); the rest belong to blocks after a `sectionBreak`.
+  hfSections: HfSet[];
   // Edge→zone distance (cm): header from top, footer from bottom. null = no zone.
   headerDistanceCm: number | null;
   footerDistanceCm: number | null;
@@ -86,6 +89,8 @@ type Ctx = {
   pendingBlocks: Node[];
   // Text width (cm) of the file's page setup; a table's margins are relative to it.
   contentWidthCm: number;
+  // Master pages the body switches to, in order — one section each past the first.
+  masterPages: string[];
 };
 
 // Read a Pictures/ entry into a base64 data-URI; null when it's missing or in a format
@@ -393,7 +398,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, masterPages: [] };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
 
@@ -442,25 +447,48 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const hasHeader = hf.header || headerFirst || headerEven;
   const hasFooter = hf.footer || footerFirst || footerEven;
 
+  const header = hf.header ? convertHfZone(hf.header, ctx) : null;
+  const footer = hf.footer ? convertHfZone(hf.footer, ctx) : null;
+
   return {
     content: { type: 'doc', content: blocks },
     margins: geometry?.margins ?? null,
     orientation: geometry?.orientation ?? null,
     format: geometry?.format ?? null,
-    header: hf.header ? convertHfZone(hf.header, ctx) : null,
-    footer: hf.footer ? convertHfZone(hf.footer, ctx) : null,
+    header,
+    footer,
     headerFirst,
     footerFirst,
     differentFirstPage,
     headerEven,
     footerEven,
     differentOddEven,
+    hfSections: [
+      { header, footer, headerFirst, footerFirst, differentFirstPage, headerEven, footerEven, differentOddEven },
+      ...ctx.masterPages.map((name) => hfSetOfMasterPage(name, ctx)),
+    ],
     headerDistanceCm: hasHeader ? edge?.top ?? null : null,
     footerDistanceCm: hasFooter ? edge?.bottom ?? null : null,
     language,
     fonts,
     styles: collectStyleSheet(resolver, ctx),
     warnings: [...warnings],
+  };
+}
+
+// The zones of a named master page — what a section past the first switches to.
+function hfSetOfMasterPage(name: string, ctx: Ctx): HfSet {
+  const hf = ctx.resolver.masterPageHF(name);
+  const zone = (el: Element | null) => (el ? convertHfZone(el, ctx) : null);
+  return {
+    header: zone(hf.header),
+    footer: zone(hf.footer),
+    headerFirst: zone(hf.headerFirst),
+    footerFirst: zone(hf.footerFirst),
+    differentFirstPage: !!(hf.headerFirst || hf.footerFirst),
+    headerEven: zone(hf.headerLeft),
+    footerEven: zone(hf.footerLeft),
+    differentOddEven: !!(hf.headerLeft || hf.footerLeft),
   };
 }
 
@@ -907,6 +935,13 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   const defaults = blockDefaults(resolver, named, isHeading ? level : null, boldByDefault);
 
   const attrs = blockAttrs(paraProps, baseTextProps, defaults, kind);
+  // A style:master-page-name switches the page master, which is how ODF gives a section
+  // its own header/footer; the block that does it opens that section.
+  const master = kind === 'body' ? resolver.masterPageOf(styleName) : null;
+  if (master && ctx.masterPages[ctx.masterPages.length - 1] !== master) {
+    ctx.masterPages.push(master);
+    attrs.sectionBreak = true;
+  }
   // Tab stops live in a child element of the paragraph properties, so they come from
   // the resolver's own walk rather than the flattened paraProps.
   const stops = formatTabStops(resolver.tabStops(styleName));
