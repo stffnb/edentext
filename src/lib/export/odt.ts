@@ -14,6 +14,7 @@ import {
 type TableStyleRef = { name: string; look: TableLook };
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
+import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { parseTabStops } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
@@ -40,10 +41,6 @@ const CUST_HF = '__cust_hf__';
 // Table export styling. Values mirror the editor's table CSS (src/styles/editor.css)
 // so the .odt matches the on-screen preview.
 const TABLE_BORDER = '0.5pt solid #000000';
-// Word's/LibreOffice's cell margins, asymmetric. Must match td/th padding in editor.css.
-const CELL_PADDING_X = '0.19cm';
-const CELL_PADDING_Y = '0cm';
-const CELL_PADDING = CELL_PADDING_X;
 
 // odf-kit emits this as the document's default font (Standard style). The editor
 // renders the bundled, metric-identical Liberation Serif on screen.
@@ -764,18 +761,21 @@ function applyTableRowHeights(odtBytes: Uint8Array, heights: (string | null)[]):
 }
 
 // odf-kit only writes the fo:padding shorthand, which ODF defines as one length —
-// LibreOffice drops a two-value form. Cells need Word's asymmetric margins, so the
-// shorthand is expanded per side (scoped to cell properties; paragraphs use it too).
+// LibreOffice drops a multi-value form. The cells carry their table's margins as a
+// CSS-style TRBL shorthand, which this expands per side (scoped to cell properties).
 function expandCellPadding(odtBytes: Uint8Array): Uint8Array {
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
   if (!contentBytes) return odtBytes;
 
-  const perSide = `fo:padding-left="${CELL_PADDING_X}" fo:padding-right="${CELL_PADDING_X}"`
-    + ` fo:padding-top="${CELL_PADDING_Y}" fo:padding-bottom="${CELL_PADDING_Y}"`;
   const content = strFromU8(contentBytes).replace(
-    /(<style:table-cell-properties\b[^>]*?)fo:padding="[^"]*"/g,
-    (_m, head: string) => head + perSide,
+    /(<style:table-cell-properties\b[^>]*?)fo:padding="([^"]*)"/g,
+    (_m, head: string, value: string) => {
+      const [top, right, bottom, left] = value.trim().split(/\s+/);
+      if (!left) return head + `fo:padding="${value}"`;
+      return head + `fo:padding-top="${top}" fo:padding-right="${right}"`
+        + ` fo:padding-bottom="${bottom}" fo:padding-left="${left}"`;
+    },
   );
 
   files['content.xml'] = strToU8(content);
@@ -2489,6 +2489,9 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
   const look = parseTableLook(node.attrs?.tableLook);
   tableStyleNames.push(tableStyle && styleName ? { name: styleName, look } : null);
   const columnWidths = tableColumnWidthsCm(node, contentWidthCm - (margins ? margins.ml + margins.mr : 0));
+  // The table's cell margins ride on every cell as a TRBL shorthand; expandCellPadding
+  // splits it, since odf-kit only writes fo:padding and ODF only allows one length.
+  const cellPad = (parseCellPadding(node.attrs?.cellPadding) ?? DEFAULT_CELL_PADDING).map(n => `${n}cm`).join(' ');
   doc.addTable((t: TableBuilder) => {
     for (const row of rows) {
       t.addRow((r: RowBuilder) => {
@@ -2497,7 +2500,7 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
           // Emit the cell's runs (SEG-separated) and record its descriptor; addCell is
           // synchronous, so the push stays in document order, matching applyCellBlocks'
           // walk. Spans make odf-kit emit covered cells, which its cell regex never matches.
-          const opts: CellOptions = { padding: CELL_PADDING };
+          const opts: CellOptions = { padding: cellPad };
           const colspan = (cell.attrs?.colspan as number) ?? 1;
           const rowspan = (cell.attrs?.rowspan as number) ?? 1;
           if (colspan > 1) opts.colSpan = colspan;

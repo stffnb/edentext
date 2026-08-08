@@ -371,6 +371,16 @@ export class StyleResolver {
     return out;
   }
 
+  // A cell style's padding (the cell margin) as [top, right, bottom, left] cm, per-side
+  // overriding the fo:padding shorthand. A side nobody declares comes back null.
+  cellPadding(styleName: string | null): (number | null)[] {
+    if (!styleName) return [null, null, null, null];
+    const misc = this.merged('table-cell', styleName).misc;
+    const all = misc['fo:padding'];
+    return (['top', 'right', 'bottom', 'left'] as const)
+      .map((side) => lengthToCm(misc[`fo:padding-${side}`] ?? all));
+  }
+
   listStyle(name: string | null): Element | null {
     return name ? this.listStyles.get(name) ?? null : null;
   }

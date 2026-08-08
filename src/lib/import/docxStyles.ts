@@ -172,6 +172,7 @@ export class DocxStyles {
   private ownKeepNext = new Map<string, boolean>(); // style's own w:pPr/w:keepNext
   private ownKeepLines = new Map<string, boolean>(); // style's own w:pPr/w:keepLines
   private ownTabs = new Map<string, TabStop[]>(); // style's own w:pPr/w:tabs
+  private ownCellMar = new Map<string, Element>(); // table style's own w:tblPr/w:tblCellMar
   private defaultsWidow: boolean | null = null; // docDefaults w:pPrDefault/w:widowControl
   private numToAbstract = new Map<string, string>();
   private abstractLevels = new Map<string, Map<number, LevelDef>>();
@@ -246,6 +247,8 @@ export class DocxStyles {
         const left = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10);
         if (Number.isFinite(left)) this.ownIndentTwip.set(id, left);
       }
+      const cellMar = firstChild(style, 'tblPr') && firstChild(firstChild(style, 'tblPr')!, 'tblCellMar');
+      if (cellMar) this.ownCellMar.set(id, cellMar);
       const kind = style.getAttributeNS(W, 'type');
       if (kind === 'paragraph' || kind === 'character' || kind === 'table') {
         const nameEl = firstChild(style, 'name');
@@ -445,6 +448,14 @@ export class DocxStyles {
   // w:pStyle. An attribute no layer sets is Word's implied 0 (applied in blockAttrs).
   paragraphSpacing(pStyleId: string | null | undefined): ParaSpacing {
     return { ...this.defaultsSpacing, ...this.styleSpacing(pStyleId ?? this.defaultParaStyle) };
+  }
+
+  // The table style's own w:tblCellMar along the w:basedOn chain (leaf wins). The
+  // element itself, so the caller reads whichever sides it declares.
+  tableCellMar(styleId: string | null | undefined, seen = new Set<string>()): Element | null {
+    if (!styleId || seen.has(styleId)) return null;
+    seen.add(styleId);
+    return this.ownCellMar.get(styleId) ?? this.tableCellMar(this.basedOn.get(styleId) ?? null, seen);
   }
 
   level(numId: number, ilvl: number): LevelDef {

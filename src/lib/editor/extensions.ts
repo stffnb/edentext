@@ -41,6 +41,7 @@ import { TableRowResize } from './extensions/tableRowResize';
 import { TableSplit } from './extensions/tableSplit';
 import { TableCellBackground } from './extensions/tableCellBackground';
 import { TableCellBorders } from './extensions/tableCellBorders';
+import { TableCellPadding } from './extensions/tableCellPadding';
 import { TableHeaderRow } from './extensions/tableHeaderRow';
 import { TableStyle } from './extensions/tableStyle';
 import { TrailingNode } from './extensions/trailingNode';
@@ -134,6 +135,8 @@ export const extensions = [
   TableCellBackground,
   // Border presets: per-side border attrs on cells (→ fo:border-*).
   TableCellBorders,
+  // The table's cell margins (→ w:tblCellMar / fo:padding on the cell style).
+  TableCellPadding,
   // "Header row" styling preset: bold + light shading on the first row (toggle).
   TableHeaderRow,
   // Named table style (Word table style / LibreOffice AutoFormat): paints the table's

@@ -20,6 +20,7 @@ import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { HF_DISTANCE_CM, hfIsEmpty } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
+import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
 import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat } from '../editor/extensions/listMarker';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
@@ -805,6 +806,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
   let ml = Math.max(0, Number(node.attrs?.marginLeft) || 0);
   let mr = Math.max(0, Number(node.attrs?.marginRight) || 0);
   if (ml + mr > contentWidthCm - 1) { ml = 0; mr = 0; }
+  const pad = parseCellPadding(node.attrs?.cellPadding) ?? DEFAULT_CELL_PADDING;
   const colsCm = columnWidthsCm(node, contentWidthCm - ml - mr);
   const colsTwip = colsCm?.map(cmToTwip);
   const totalTwip = colsTwip ? colsTwip.reduce((a, b) => a + b, 0) : cmToTwip(contentWidthCm - ml - mr);
@@ -856,7 +858,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
     width: { size: totalTwip, type: WidthType.DXA },
     indent: ml ? { size: cmToTwip(ml), type: WidthType.DXA } : undefined,
     layout: TableLayoutType.FIXED,
-    margins: { marginUnitType: WidthType.DXA, top: cmToTwip(0.05), bottom: cmToTwip(0.05), left: cmToTwip(0.1), right: cmToTwip(0.1) },
+    margins: { marginUnitType: WidthType.DXA, top: cmToTwip(pad[0]), right: cmToTwip(pad[1]), bottom: cmToTwip(pad[2]), left: cmToTwip(pad[3]) },
     borders: {
       top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder,
       insideHorizontal: cellBorder, insideVertical: cellBorder,

@@ -1,4 +1,5 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { parseCellPadding } from './tableCellPadding';
 import type { ViewMutationRecord } from '@tiptap/pm/view';
 
 // Custom table node view: <colgroup> uses percentage widths and the table stays at
@@ -56,6 +57,13 @@ function applyTableStyleAttr(node: PMNode, table: HTMLElement): void {
   else delete table.dataset.tableLook;
 }
 
+// Also bypassed by the node view: the cell margins editor.css reads off the table.
+function applyCellPadding(node: PMNode, table: HTMLElement): void {
+  const p = parseCellPadding(node.attrs.cellPadding);
+  if (p) table.style.setProperty('--cell-pad', p.map((n) => `${n}cm`).join(' '));
+  else table.style.removeProperty('--cell-pad');
+}
+
 function buildColgroup(node: PMNode, colgroup: HTMLElement): void {
   while (colgroup.firstChild) colgroup.removeChild(colgroup.firstChild);
   const percents = columnPercents(columnWeightsFromRow(node.firstChild));
@@ -86,6 +94,7 @@ export class TableView {
     // table the full text width regardless of the stored weights.
     this.table.style.width = '100%';
     applyTableStyleAttr(node, this.table);
+    applyCellPadding(node, this.table);
     this.colgroup = this.table.appendChild(document.createElement('colgroup'));
     buildColgroup(node, this.colgroup);
     this.contentDOM = this.table.appendChild(document.createElement('tbody'));
@@ -96,6 +105,7 @@ export class TableView {
     this.node = node;
     applyMargins(node, this.dom);
     applyTableStyleAttr(node, this.table);
+    applyCellPadding(node, this.table);
     buildColgroup(node, this.colgroup);
     return true;
   }
