@@ -33,6 +33,10 @@ Tests live in `tests/` (outside `src/`, so `svelte-check` ignores them), jsdom v
 - **Never describe how the current code differs from an older version** (no "previously…", "this used to…", "changed from…"). Comment only what the current code does and why — git history covers the rest.
 - **Don't use Word as a placeholder for "a word processor".** Where LibreOffice does the same thing, describe the behaviour itself ("the caret moves", "the zone auto-grows") instead of "Word-style" / "like Word" / "as in Word". Name a product only where the statement really is about that product: its file format (`w:tblLook`, DOCX), or a quirk only it has — then name both if both apply.
 
+**Commit messages** — a clear description, never an essay: a subject line plus **at most ~8
+lines**, however large the change. Probed behaviour, measurements and rationale lists belong
+in `docs/architecture/` or the nearest `CLAUDE.md`, not repeated in the history.
+
 **IMPORTANT: never introduce a default only this editor has.** Both importers suppress values equal
 to the defaults, so an editor-only default is indistinguishable from a failed style resolution and
 silently lands in every imported document as direct formatting. The defaults follow **LibreOffice**
