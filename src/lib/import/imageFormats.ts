@@ -140,3 +140,16 @@ export async function convertUnsupportedImages(bytes: Uint8Array): Promise<Conve
   }
   return out;
 }
+
+// A frame whose picture cannot be shown — a chart, a metafile — as a labelled box at
+// the drawing's own size, so the document keeps the space it reserves for it.
+export function placeholderImage(label: string, widthPx: number, heightPx: number): string {
+  const w = Math.max(8, Math.round(widthPx));
+  const h = Math.max(8, Math.round(heightPx));
+  const text = label.replace(/[<>&]/g, '');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+    + `<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" fill="#f4f4f5" stroke="#c2c2c8" stroke-dasharray="6 4"/>`
+    + `<text x="${w / 2}" y="${h / 2}" fill="#8a8a90" font-family="sans-serif" font-size="13"`
+    + ` text-anchor="middle" dominant-baseline="middle">${text}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}

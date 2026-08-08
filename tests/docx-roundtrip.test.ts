@@ -762,7 +762,7 @@ describe('DOCX import of foreign text boxes / shapes', () => {
     expect(walk(b, 'text')[0].text).toBe('vml text');
   });
 
-  it('drops unsupported shapes / blip-less drawings with accurate warnings', () => {
+  it('drops unsupported shapes, and keeps a chart as a placeholder of its size', () => {
     const documentXml = `<?xml version="1.0"?><w:document ${W} ${WPNS} ${ANS} ${WPSNS}><w:body>
       <w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">
         <wp:extent cx="914400" cy="914400"/><wp:docPr id="1" name="Star"/>
@@ -779,7 +779,12 @@ describe('DOCX import of foreign text boxes / shapes', () => {
     const result = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml) }));
     expect(walk(result.content as N, 'textBox').length).toBe(0);
     expect(result.warnings).toContain('Unsupported shapes were removed');
-    expect(result.warnings).toContain('Drawings were removed');
+    expect(result.warnings).toContain('Charts and other drawings were replaced by a placeholder');
+    // The chart keeps the box it reserves (914400 EMU = 96px), so pagination holds.
+    const ph = walk(result.content as N, 'image');
+    expect(ph.length).toBe(1);
+    expect(ph[0].attrs.width).toBe(96);
+    expect(ph[0].attrs.height).toBe(96);
     // The wrong "images could not be read" warning must NOT appear for shapes.
     expect(result.warnings).not.toContain('Some images could not be read and were skipped');
   });

@@ -10,7 +10,7 @@ import { tableLookAttr } from '../styles/tableStyles';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
-import { imageDataUrl, type ConvertedImages } from './imageFormats';
+import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
@@ -1135,8 +1135,22 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   // A wordprocessingShape (text box / preset shape) has no blip — convert it first.
   const wsp = root.getElementsByTagNameNS(WPS, 'wsp')[0];
   if (wsp) return convertWpsShape(wsp, root, !!anchor, ctx);
+  const extentEl = root.getElementsByTagNameNS(WP, 'extent')[0];
+  const boxPx = {
+    w: Math.round(emuToPx(intAttr(extentEl, '', 'cx') ?? 0)),
+    h: Math.round(emuToPx(intAttr(extentEl, '', 'cy') ?? 0)),
+  };
   const blip = drawing.getElementsByTagNameNS(A, 'blip')[0];
-  if (!blip) { ctx.warnings.add('Drawings were removed'); return null; }
+  if (!blip) {
+    // A chart (or any other graphic the editor cannot draw) still occupies its box, so
+    // it comes in as a placeholder of that size rather than collapsing the layout.
+    if (boxPx.w > 0 && boxPx.h > 0) {
+      ctx.warnings.add('Charts and other drawings were replaced by a placeholder');
+      return placeholderNode(boxPx, 'Chart', anchor, ctx);
+    }
+    ctx.warnings.add('Drawings were removed');
+    return null;
+  }
   // Candidate media: the primary blip plus any SVG alternative (Word 2016+ stores an
   // svgBlip beside a raster fallback) — prefer whichever the browser can display.
   const candidates: string[] = [];
@@ -1151,9 +1165,11 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   const path = candidates.find(p => loadImageDataUrl(p, ctx)) ?? candidates[0];
   const src = loadImageDataUrl(path, ctx);
   if (!src) {
-    ctx.warnings.add(ctx.files[path]
-      ? 'Images in a format the browser can’t display (e.g. WMF, EMF, TIFF) were removed'
-      : 'Some images could not be read and were skipped');
+    if (boxPx.w > 0 && boxPx.h > 0) {
+      ctx.warnings.add('Images in a format the browser can’t display (e.g. WMF, EMF) were replaced by a placeholder');
+      return placeholderNode(boxPx, 'Image', anchor, ctx);
+    }
+    ctx.warnings.add('Some images could not be read and were skipped');
     return null;
   }
 
@@ -1183,6 +1199,19 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
 // The wrap mode, plus where the frame sits in the text column (cm from its left edge,
 // null when the file only names a side). Text can only flow on one side of a CSS float,
 // so the side is the half of the column the frame does *not* fill.
+// An undrawable frame as an image node of the same size, wrapped like the real one.
+function placeholderNode(box: { w: number; h: number }, label: string, anchor: Element | undefined, ctx: Ctx): Node {
+  const attrs: Record<string, unknown> = { src: placeholderImage(label, box.w, box.h), width: box.w, height: box.h, alt: label };
+  if (anchor) {
+    const { wrap, offsetCm } = anchorWrap(anchor, ctx);
+    attrs.wrap = wrap;
+    if (offsetCm != null) attrs.wrapOffset = offsetCm;
+  } else {
+    fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
+  }
+  return { type: 'image', attrs };
+}
+
 function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom'; offsetCm: number | null } {
   if (anchor.getElementsByTagNameNS(WP, 'wrapTopAndBottom')[0]) return { wrap: 'topBottom', offsetCm: null };
   const sq = anchor.getElementsByTagNameNS(WP, 'wrapSquare')[0];
