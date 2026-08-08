@@ -1,0 +1,26 @@
+# `src/lib/storage/`
+
+## Page layout settings
+
+- **`pageMargins.ts`** — `PageMargins` in **cm** (default `{ top: 2, bottom: 2, left: 2, right: 2 }` — LibreOffice's; clamped 0–10). `applyMarginVars` sets `--user-margin-*` (px) on `:root`; `PX_PER_CM = 96/2.54`.
+- **`pageOrientation.ts`** — `'portrait' | 'landscape'`. `applyOrientationVars` sets `--user-page-{width,height}`; landscape swaps the A4 dimensions (matching odf-kit's automatic swap).
+
+Both margins and orientation are passed into the ODT export so the exported document's geometry/line-wrapping matches the on-screen preview.
+
+## localStorage keys
+
+- **Document:** `odf-editor-doc` — TipTap JSON, debounced 1 s on every `onUpdate` (`autosave.ts`).
+- **Theme:** `odf-editor-theme` — `'light' | 'dark' | 'allBlack' | 'auto'`.
+- **Toolbar expanded:** `odf-editor-toolbar-expanded` — boolean string.
+- **Formatting marks:** `odf-editor-formatting-marks` — boolean string.
+- **Ruler:** `odf-editor-ruler` — boolean string; absent = on.
+- **Zoom:** `odf-editor-zoom` — integer percent.
+- **Page margins:** `odf-editor-page-margins` — JSON cm values.
+- **Page orientation:** `odf-editor-page-orientation` — `'portrait' | 'landscape'`.
+- **Recent fonts:** `odf-editor-recent-fonts` — JSON string array (ToolbarExpanded).
+- **Header/footer:** `odf-editor-header` / `-footer` (HfDoc), `odf-editor-hf-distances`.
+- **Styles:** `odf-editor-styles` — the style registry (`styles/sheet.svelte.ts`).
+
+## Themes (`theme.ts`, `styles/global.css`)
+
+Four modes: `light`, `dark`, `allBlack` (forces font colors white), `auto` (follows `prefers-color-scheme`). Applied by setting `data-theme` on `<html>`; CSS variables for each theme live in `global.css`.

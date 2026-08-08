@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # CLAUDE.md is read at every session start; detail belongs in the nested files.
+      - run: test "$(wc -l < CLAUDE.md)" -le 120 || { echo "CLAUDE.md over its 120-line budget"; exit 1; }
       - uses: actions/setup-node@v4
         with:
           node-version: 20
