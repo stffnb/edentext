@@ -3,3 +3,4 @@ dist
 .vite
 debug
 .DS_Store
+tests/render-parity/fixtures
