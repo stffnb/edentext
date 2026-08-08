@@ -42,7 +42,7 @@
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
     headerEvenDoc = $bindable(null), footerEvenDoc = $bindable(null), differentOddEven = false,
     hfEditor = $bindable(null), hfActive = $bindable(null), hfTick = $bindable(0),
-    extraHfSections = [],
+    extraHfSections = $bindable([]),
   }: {
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
     onZoom?: (zoom: number) => void;
@@ -853,7 +853,7 @@
         {orientation}
         {pageFormat}
         {hfDistances}
-        {extraHfSections}
+        bind:extraHfSections
         {sectionStartPages}
       />
     </div>

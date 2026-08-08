@@ -57,8 +57,11 @@ In dev builds a **Debug** button (`App.svelte`) downloads a JSON snapshot combin
 
 A body block carrying `sectionBreak` (pageBreak.ts) opens a section; `HeaderFooterLayer`
 picks that section's `HfSet` per page from `sectionStartPages`, which `pageBreaks.ts`
-reports on `pm-pagecount`. Section 1 is the app's own editable state, the rest ride along
-from the file (`extraHfSections`, persisted whole) and are read-only.
+reports on `pm-pagecount`. Section 1 is the app's six per-zone states, the rest live in
+`extraHfSections` (bound up to `App`, persisted whole). Editing targets the section of the
+page it starts on, so a double-click edits the zone under the pointer and the Layout-panel
+buttons the current page's; `zoneKey`/`writeZone` route the one live editor's read and
+write-back to either side. Page geometry is still document-wide.
 
 Word's "different first page" is per section, so a later section's first page shows its
 own variant. `Editor.svelte` publishes each section's zone reaches as `--pb-section-reach`

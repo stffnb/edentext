@@ -393,6 +393,7 @@ const de: Messages = {
     footerPlaceholder: 'Fußzeile…',
     headerLabel: 'Kopfzeile',
     footerLabel: 'Fußzeile',
+    section: 'Abschnitt',
     firstPageHeader: 'Kopfzeile erste Seite',
     firstPageFooter: 'Fußzeile erste Seite',
     evenPageHeader: 'Kopfzeile gerade Seiten',

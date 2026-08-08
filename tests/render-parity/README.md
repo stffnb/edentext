@@ -95,10 +95,9 @@ LibreOffice's 48, with 62 line-level differences, most of them the justification
   one is rendered: a line box avoids a float's whole *margin* box, so applying the
   vertical one as a top margin makes dead space where Word flows text — measured, the
   thesis' figure page went from 131mm off to 187mm and the document grew a page.
-- **A later section's header/footer cannot be edited.** Its zones import, render and
-  export, but the Layout panel still edits section 1 only — the layer marks the others
-  read-only (`hf-locked`). Page geometry stays document-wide too, so a file whose
-  sections disagree on margins keeps the last one's.
+- **Page geometry is document-wide.** Headers and footers are per section (each is
+  editable in place), but margins, orientation and format are not — a file whose sections
+  disagree on them keeps the last one's.
 - **Line height follows the paragraph, not the line.** The block's CSS strut applies to
   every line; a word processor takes each line's own runs and the paragraph mark only on
   the last. The mark's font rides the block (`blockFontSize.ts`), and a paragraph whose

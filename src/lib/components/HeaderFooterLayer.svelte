@@ -26,7 +26,7 @@
     hfEditor = $bindable(),
     hfActive = $bindable(),
     hfTick = $bindable(),
-    extraHfSections = [],
+    extraHfSections = $bindable([]),
     sectionStartPages = [],
   }: {
     headerDoc: HfDoc;
@@ -114,7 +114,7 @@
       return '';
     }
   }
-  // Section 1 is the app's own editable state; the rest ride along from the file.
+  // Section 1 is the app's own editable state; the rest live in extraHfSections.
   let sets = $derived<HfSet[]>([
     {
       header: headerDoc, footer: footerDoc,
@@ -192,11 +192,26 @@
   let pendingPage: number | null = null;
   let liveZone: HfZone | null = null;
 
-  // The doc for a zone + which variant is being edited.
-  function zoneDoc(zone: HfZone, variant: HfVariant): HfDoc {
-    if (variant === 'first') return zone === 'header' ? headerFirstDoc : footerFirstDoc;
-    if (variant === 'even') return zone === 'header' ? headerEvenDoc : footerEvenDoc;
-    return zone === 'header' ? headerDoc : footerDoc;
+  // Which HfSet field a zone + variant is.
+  type ZoneKey = 'header' | 'footer' | 'headerFirst' | 'footerFirst' | 'headerEven' | 'footerEven';
+  const zoneKey = (zone: HfZone, variant: HfVariant): ZoneKey =>
+    (zone + (variant === 'first' ? 'First' : variant === 'even' ? 'Even' : '')) as ZoneKey;
+
+  function zoneDoc(index: number, zone: HfZone, variant: HfVariant): HfDoc {
+    return (sets[index] ?? sets[0])[zoneKey(zone, variant)];
+  }
+  // Section 1's zones are separate bindable props; a later section's live in the array,
+  // replaced whole so the reassignment reaches App (which persists it).
+  function writeZone(index: number, zone: HfZone, variant: HfVariant, doc: HfDoc): void {
+    const key = zoneKey(zone, variant);
+    if (index > 0) {
+      extraHfSections = extraHfSections.map((s, i) => (i === index - 1 ? { ...s, [key]: doc } : s));
+    } else if (key === 'header') headerDoc = doc;
+    else if (key === 'footer') footerDoc = doc;
+    else if (key === 'headerFirst') headerFirstDoc = doc;
+    else if (key === 'footerFirst') footerFirstDoc = doc;
+    else if (key === 'headerEven') headerEvenDoc = doc;
+    else footerEvenDoc = doc;
   }
   function emptyDoc(): HfDoc {
     return { type: 'doc', content: [{ type: 'paragraph' }] };
@@ -229,28 +244,21 @@
     editingPage = pendingPage ?? currentPage;
     pendingPage = null;
     liveZone = zone;
-    // Which variant this edit session targets — fixed for its lifetime (the edited page's
-    // variant; App ends the edit when a flag toggles).
-    const editingVariant = variantFor(editingPage);
+    // Which section and variant this edit session targets — fixed for its lifetime (the
+    // edited page's; App ends the edit when a flag toggles).
+    const editingIndex = sectionOf(editingPage);
+    const editingVariant = variantFor(editingPage, editingIndex);
     const ed = new Editor({
       element: mount,
       extensions: hfExtensions(zone === 'header' ? t().hf.headerPlaceholder : t().hf.footerPlaceholder),
-      content: (zoneDoc(zone, editingVariant) ?? emptyDoc()) as Content,
+      content: (zoneDoc(editingIndex, zone, editingVariant) ?? emptyDoc()) as Content,
       // No autofocus: its scrollIntoView nudges the page so the just-clicked zone
       // appears to jump. Focus the zone explicitly without scrolling instead.
       onTransaction: () => {
         hfTick++;
       },
       onUpdate: ({ editor }) => {
-        const json = editor.getJSON() as HfDoc;
-        if (editingVariant === 'first') {
-          if (zone === 'header') headerFirstDoc = json;
-          else footerFirstDoc = json;
-        } else if (editingVariant === 'even') {
-          if (zone === 'header') headerEvenDoc = json;
-          else footerEvenDoc = json;
-        } else if (zone === 'header') headerDoc = json;
-        else footerDoc = json;
+        writeZone(editingIndex, zone, editingVariant, editor.getJSON() as HfDoc);
       },
       editorProps: {
         handleKeyDown: (_view, event) => {
@@ -296,14 +304,12 @@
     {#each ['header', 'footer'] as const as zone}
       {#if !(hfActive === zone && editingPage === p)}
         {@const html = zoneHtml(zone, p)}
-        {@const locked = sectionOf(p) > 0}
         <div
           class="hf-zone hf-{zone}"
-          class:hf-empty={!html && !locked}
-          class:hf-locked={locked}
+          class:hf-empty={!html}
           data-hf-label={zone === 'header' ? t().hf.addHeaderHint : t().hf.addFooterHint}
           style={boxStyle(zoneBox(zone, p))}
-          ondblclick={() => { if (!locked) startEdit(zone, p); }}
+          ondblclick={() => startEdit(zone, p)}
           role="button"
           tabindex="-1"
           use:patchFields={[p, numPages, html]}
@@ -317,12 +323,16 @@
 
   {#if hfActive}
     {@const box = activeZoneBox(hfActive, editingPage)}
-    {@const variant = variantFor(editingPage)}
+    {@const index = sectionOf(editingPage)}
+    {@const variant = variantFor(editingPage, index)}
     <div class="hf-zone hf-{hfActive} hf-active" style={boxStyle(box) + ` --hf-tb-offset: ${-activeTrailingPx}px;`} bind:this={liveMount}></div>
     <div class="hf-tag" style="top: {box.top}px; left: {box.left}px;">
       {hfActive === 'header'
         ? (variant === 'first' ? t().hf.firstPageHeader : variant === 'even' ? t().hf.evenPageHeader : t().hf.headerLabel)
-        : (variant === 'first' ? t().hf.firstPageFooter : variant === 'even' ? t().hf.evenPageFooter : t().hf.footerLabel)}
+        : (variant === 'first' ? t().hf.firstPageFooter : variant === 'even' ? t().hf.evenPageFooter : t().hf.footerLabel)}{sets.length >
+      1
+        ? ` · ${t().hf.section} ${index + 1}`
+        : ''}
     </div>
     <div class="hf-bar" style="top: {box.top}px; left: {box.left + box.width}px;">
       <span class="hf-bar-label">{t().hf.insert}</span>
@@ -363,11 +373,6 @@
   }
   .hf-footer {
     justify-content: flex-end;
-  }
-
-  /* A section past the first carries the file's zones and has no editing UI yet. */
-  .hf-locked {
-    cursor: default;
   }
 
   /* Empty zone: invisible until hovered, then show a faint double-click hint. */

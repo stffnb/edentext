@@ -70,7 +70,8 @@
   let footerEvenDoc: HfDoc = $state(loadHfDoc('footer', 'even'));
   let differentOddEven: boolean = $state(loadDifferentOddEven());
   let hfDistances: HfDistances = $state(loadHfDistances());
-  // Sections past the first: imported and exported, not editable (see HeaderFooterLayer).
+  // Sections past the first; the layer edits them in place, section 1 stays the
+  // per-zone state above.
   let extraHfSections: HfSet[] = $state(loadExtraHfSections());
   let hfEditor: Editor | null = $state(null);
   let hfActive: HfZone | null = $state(null);
@@ -1045,7 +1046,7 @@
     bind:hfTick
     {hfDistances}
     {tabIntervalCm}
-    {extraHfSections}
+    bind:extraHfSections
     {zoom}
     onZoom={setZoom}
     {showFormattingMarks}

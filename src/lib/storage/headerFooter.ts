@@ -7,8 +7,7 @@ export type HfVariant = 'default' | 'first' | 'even';
 export type HfDoc = { type: 'doc'; content?: unknown[] } | null;
 
 // One section's zones. A document has one per section (a body block carrying
-// `sectionBreak` starts the next one); section 1 is the app's own editable state,
-// the rest ride along from the file.
+// `sectionBreak` starts the next one).
 export type HfSet = {
   header: HfDoc;
   footer: HfDoc;
@@ -32,8 +31,8 @@ export function hfSetIsEmpty(s: HfSet): boolean {
     && hfIsEmpty(s.headerEven) && hfIsEmpty(s.footerEven);
 }
 
-// Sections past the first, in order — imported and exported but not editable, so they
-// are persisted whole rather than per zone like section 1's.
+// Sections past the first, in order. Persisted whole rather than per zone like
+// section 1's, whose six docs each have their own key.
 const EXTRA_KEY = 'odf-editor-hf-sections';
 
 export function loadExtraHfSections(): HfSet[] {

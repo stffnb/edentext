@@ -397,6 +397,7 @@ const en = {
     footerPlaceholder: 'Footer…',
     headerLabel: 'Header',
     footerLabel: 'Footer',
+    section: 'Section',
     firstPageHeader: 'First page header',
     firstPageFooter: 'First page footer',
     evenPageHeader: 'Even page header',
