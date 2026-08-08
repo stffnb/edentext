@@ -119,7 +119,13 @@ LibreOffice's 48, with 62 line-level differences, most of them the justification
   write (`LIST_HANGING_CM`). The marker is drawn there and overflows if it is wider,
   where Word moves the text to the next list tab — reading `w:lvl/w:pPr/w:ind w:hanging`
   would settle it. Deliberate for now: in flow, a wide marker pushed the text and cost
-  the thesis fixture a page.
+  the thesis fixture a page. (The level's *left* indent is read, at every depth.)
+  What a probe of the ODF side turned up, before anything is built on it: LibreOffice
+  honours a nested level's `fo:text-indent` linearly (−0.300 → label at 2.243cm, −1.000
+  → 1.543, −1.200 → 1.344, against `fo:margin-left="2.540cm"`) — **except** at −1.270,
+  the value odf-kit writes for level 2, where it draws its own flat 0.635cm hanging
+  (1.909cm) instead. So reading the attribute back naively moves the markers of our own
+  exports. Whatever rule that is has to be understood before the value is trusted.
 - Lines whose natural width lands within ~0.2mm of the right margin may take one word
   more or fewer than LibreOffice. Sub-0.1mm engine rounding, not a layout rule.
 
