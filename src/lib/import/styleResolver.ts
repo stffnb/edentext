@@ -1,7 +1,7 @@
 import type { PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
-import type { TabAlign } from '../editor/extensions/tabStops';
+import { normalizeLeader, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
 
 // Resolves ODF style indirection for the importer: producers (our export, LibreOffice,
 // Word) spread formatting across named/automatic styles and parent-style-name chains.
@@ -123,6 +123,9 @@ function entryFromStyleElement(el: Element): StyleEntry {
   collectProps(el, 'graphic-properties', entry.misc);
   return entry;
 }
+
+// style:leader-style, for a file that names the line kind but no leader text.
+const ODF_LEADER: Record<string, string> = { dotted: '.', dash: '-', solid: '_' };
 
 export class StyleResolver {
   // (family + '\0' + name) → entry; later registrations win (content.xml
@@ -315,6 +318,12 @@ export class StyleResolver {
     return { language, country: props['fo:country'] ?? '' };
   }
 
+  // The grid every tab past the last custom stop falls on, from the paragraph
+  // default-style (Standard may override it). null when the file declares none.
+  defaultTabInterval(): number | null {
+    return lengthToCm(this.merged('paragraph', 'Standard').para['style:tab-stop-distance']);
+  }
+
   // Resolve a text-props map's font: fo:font-family wins, else style:font-name
   // through the font-face declarations.
   fontFamilyOf(props: PropMap): string | null {
@@ -393,7 +402,7 @@ export class StyleResolver {
   // Tab stops of a paragraph style, in cm from the left text margin (the origin Word
   // and ODF share). ODF replaces the list rather than merging it, so the nearest
   // declaration in the parent chain wins outright.
-  tabStops(styleName: string | null): { pos: number; align: TabAlign }[] {
+  tabStops(styleName: string | null): TabStop[] {
     const seen = new Set<string>();
     let cur = styleName;
     while (cur && !seen.has(cur)) {
@@ -401,14 +410,18 @@ export class StyleResolver {
       const el = this.paraStyleEls.get(cur);
       const list = el?.getElementsByTagNameNS(NS.style, 'tab-stops')[0];
       if (list) {
-        const out: { pos: number; align: TabAlign }[] = [];
+        const out: TabStop[] = [];
         for (const stop of Array.from(list.getElementsByTagNameNS(NS.style, 'tab-stop'))) {
           const pos = lengthToCm(stop.getAttributeNS(NS.style, 'position'));
           if (pos == null) continue;
           const type = stop.getAttributeNS(NS.style, 'type');
           const align: TabAlign = type === 'char' ? 'decimal'
             : type === 'center' || type === 'right' ? type : 'left';
-          out.push({ pos, align });
+          // The fill character is the leader text; style:leader-style stands in where
+          // the file names only the line kind (LibreOffice writes both).
+          const leader = stop.getAttributeNS(NS.style, 'leader-text')
+            ?? ODF_LEADER[stop.getAttributeNS(NS.style, 'leader-style') ?? ''] ?? null;
+          out.push({ pos, align, leader: normalizeLeader(leader) });
         }
         return out;
       }

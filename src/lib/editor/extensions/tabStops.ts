@@ -10,30 +10,39 @@ import { PX_PER_CM } from '../../storage/pageMargins';
 // resolves to a stop is measured and given the exact advance as an inline margin.
 
 export type TabAlign = 'left' | 'center' | 'right' | 'decimal';
-export type TabStop = { pos: number; align: TabAlign };
+export type TabStop = { pos: number; align: TabAlign; leader?: string | null };
 
 const CODE: Record<TabAlign, string> = { left: 'l', center: 'c', right: 'r', decimal: 'd' };
 const ALIGN: Record<string, TabAlign> = { l: 'left', c: 'center', r: 'right', d: 'decimal' };
 
-// Canonical attr form: one '<cm><align code>' per stop, ';'-separated ('6c;12r;16d').
-// Positions are cm from the left text margin — the origin Word and ODF share.
+// The fill characters a stop may repeat across its gap. Anything else a file names is
+// dropped rather than approximated, so the gap simply stays blank.
+export const LEADER_CHARS = ['.', '-', '_', '·'] as const;
+
+export function normalizeLeader(ch: unknown): string | null {
+  return typeof ch === 'string' && (LEADER_CHARS as readonly string[]).includes(ch) ? ch : null;
+}
+
+// Canonical attr form: one '<cm><align code><leader?>' per stop, ';'-separated
+// ('6c;12r.;16d'). Positions are cm from the left text margin — Word's origin and ODF's.
 export function parseTabStops(value: unknown): TabStop[] {
   if (typeof value !== 'string' || !value) return [];
   const out: TabStop[] = [];
   for (const part of value.split(';')) {
-    const m = /^(-?\d*\.?\d+)([lcrd])$/.exec(part.trim());
-    if (m) out.push({ pos: parseFloat(m[1]), align: ALIGN[m[2]] });
+    const m = /^(-?\d*\.?\d+)([lcrd])(\S)?$/.exec(part.trim());
+    if (m) out.push({ pos: parseFloat(m[1]), align: ALIGN[m[2]], leader: normalizeLeader(m[3]) });
   }
   return out.sort((a, b) => a.pos - b.pos);
 }
 
 export function formatTabStops(stops: TabStop[]): string | null {
-  const byPos = new Map<number, TabAlign>();
+  const byPos = new Map<number, TabStop>();
   for (const s of stops) {
     const pos = Math.round(s.pos * 100) / 100;
-    if (pos >= 0) byPos.set(pos, s.align);
+    if (pos >= 0) byPos.set(pos, { ...s, pos });
   }
-  const out = [...byPos.entries()].sort((a, b) => a[0] - b[0]).map(([pos, align]) => `${pos}${CODE[align]}`);
+  const out = [...byPos.values()].sort((a, b) => a.pos - b.pos)
+    .map((s) => `${s.pos}${CODE[s.align]}${normalizeLeader(s.leader) ?? ''}`);
   return out.length ? out.join(';') : null;
 }
 
@@ -92,7 +101,7 @@ function tabPositions(node: PmNode, blockPos: number): number[] {
   return out;
 }
 
-type TabWidth = { pos: number; width: number };
+type TabWidth = { pos: number; width: number; leader: string | null };
 
 function measure(view: EditorView): TabWidth[] {
   const dom = view.dom as HTMLElement;
@@ -138,7 +147,7 @@ function measure(view: EditorView): TabWidth[] {
           width -= back;
         }
       }
-      out.push({ pos: tabPos, width: Math.max(0, Math.round(width * 100) / 100) });
+      out.push({ pos: tabPos, width: Math.max(0, Math.round(width * 100) / 100), leader: normalizeLeader(stop.leader) });
     }
     return false;
   });
@@ -242,14 +251,18 @@ export const TabStops = Extension.create({
             // coordsAtPos throws on a position the browser hasn't rendered yet; the
             // next change re-runs the pass anyway.
             try { widths = measure(view); } catch { return; }
-            const next = widths.map((w) => `${w.pos}:${w.width}`).join(',');
+            const next = widths.map((w) => `${w.pos}:${w.width}:${w.leader ?? ''}`).join(',');
             if (next === key) return;
             key = next;
             const decos = widths.map((w) =>
               // margin-LEFT: the gap is the tab's own advance, so a caret placed after
               // the tab has to sit behind it. As margin-right it stayed at the old x
               // until the next keystroke moved it into the following text node.
-              Decoration.inline(w.pos, w.pos + 1, { style: `tab-size:0;margin-left:${w.width}px` }),
+              Decoration.inline(w.pos, w.pos + 1, w.leader
+                // The fill is a ::before clipped to the gap (editor.css), so the leader
+                // stays out of the document's text.
+                ? { style: `tab-size:0;margin-left:${w.width}px;--leader-w:${w.width}px`, class: 'tab-leader', 'data-leader': w.leader }
+                : { style: `tab-size:0;margin-left:${w.width}px` }),
             );
             // The advances change line breaking, so pagination has to re-measure.
             view.dispatch(view.state.tr

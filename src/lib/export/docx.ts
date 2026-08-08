@@ -5,7 +5,7 @@ import {
   AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
   WidthType, HeightRule, PageOrientation, LineRuleType, TableLayoutType, SectionType,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
-  TextWrappingType, TextWrappingSide, ImportedXmlComponent, TabStopType,
+  TextWrappingType, TextWrappingSide, ImportedXmlComponent, TabStopType, LeaderType,
 } from 'docx';
 import type { TiptapNode } from 'odf-kit';
 import type {
@@ -17,6 +17,7 @@ import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
+import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
@@ -76,6 +77,10 @@ const pxToTwip = (px: number) => Math.round((px * 1440) / 96); // px @96dpi → 
 const DOCX_TAB_TYPE: Record<TabAlign, (typeof TabStopType)[keyof typeof TabStopType]> = {
   left: TabStopType.LEFT, center: TabStopType.CENTER,
   right: TabStopType.RIGHT, decimal: TabStopType.DECIMAL,
+};
+// The fill character a stop repeats across its gap; anything else means none.
+const DOCX_LEADER: Record<string, (typeof LeaderType)[keyof typeof LeaderType] | undefined> = {
+  '.': LeaderType.DOT, '-': LeaderType.HYPHEN, '_': LeaderType.UNDERSCORE, '·': LeaderType.MIDDLE_DOT,
 };
 const EMU_PER_PX = 9525;
 const EMU_PER_PT = 12700;
@@ -700,7 +705,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     keepNext: attrs.keepNext === true || undefined,
     keepLines: attrs.keepLines === true || undefined,
     tabStops: stops.length
-      ? stops.map((s) => ({ type: DOCX_TAB_TYPE[s.align], position: cmToTwip(s.pos) }))
+      ? stops.map((s) => ({ type: DOCX_TAB_TYPE[s.align], position: cmToTwip(s.pos), leader: DOCX_LEADER[s.leader ?? ''] }))
       : undefined,
     numbering: opts.numbering,
     shading: paraShadingOf(attrs),
@@ -1090,6 +1095,7 @@ export async function buildDocx(
   language?: { language: string; country: string } | null,
   pageFormat: PageFormat = 'A4',
   styles: StyleSheet = builtinStyleSheet(),
+  tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
@@ -1160,7 +1166,7 @@ export async function buildDocx(
 
   const doc = new Document({
     creator: 'Web ODF Editor',
-    defaultTabStop: cmToTwip(1.25),
+    defaultTabStop: cmToTwip(tabIntervalCm),
     ...(differentOddEven ? { evenAndOddHeaderAndFooters: true } : {}),
     ...(hasToc ? { features: { updateFields: true } } : {}),
     styles: buildStyles(styles, usedStyleNames(docJson, styles), language, usedTableStyles(docJson, styles)),

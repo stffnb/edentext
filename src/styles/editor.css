@@ -376,9 +376,36 @@
   margin-bottom: 0;
 }
 
-/* Tab stops every 1.25cm, matching ODF's default tab interval. */
+/* A tab stop's leader fills the gap the measuring plugin left as margin-left. The span
+   is zero-width (tab-size:0), so its right padding edge is where the stop sits. */
+.paper .tiptap .tab-leader {
+  position: relative;
+}
+.paper .tiptap .tab-leader::before {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: var(--leader-w, 0);
+  overflow: hidden;
+  white-space: pre;
+  line-height: inherit;
+  pointer-events: none;
+  /* Long enough to outrun any gap A4 can hold; the box clips the rest. */
+  content: '................................................................................................................................................................................................................';
+}
+.paper .tiptap .tab-leader[data-leader='-']::before {
+  content: '----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------';
+}
+.paper .tiptap .tab-leader[data-leader='_']::before {
+  content: '____________________________________________________________________________________________________________________________________________________________________________________________________________';
+}
+.paper .tiptap .tab-leader[data-leader='·']::before {
+  content: '····································································································································································································································';
+}
+
+/* The document's own tab interval (storage/tabInterval.ts), LibreOffice's by default. */
 .paper .tiptap {
-  tab-size: 1.25cm;
+  tab-size: var(--tab-interval, 1.25cm);
   /* prosemirror-view sets `break-spaces`, which forbids a line-end space from
      hanging into the margin, so lines break one word earlier than in
      Word/LibreOffice. `pre-wrap` lets it hang, as they do. */

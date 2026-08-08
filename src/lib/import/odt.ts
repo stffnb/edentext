@@ -37,6 +37,8 @@ export interface OdtImportResult {
   margins: PageMargins | null;
   orientation: Orientation | null;
   format: PageFormat | null;
+  // The grid every tab past the last custom stop falls on; null = the file declares none.
+  tabIntervalCm: number | null;
   // Single-paragraph docs in the hfExtensions schema; null = no zone.
   header: HfDoc;
   footer: HfDoc;
@@ -455,6 +457,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     margins: geometry?.margins ?? null,
     orientation: geometry?.orientation ?? null,
     format: geometry?.format ?? null,
+    tabIntervalCm: resolver.defaultTabInterval(),
     header,
     footer,
     headerFirst,

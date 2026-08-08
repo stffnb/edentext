@@ -51,6 +51,12 @@ export function wVal(el: Element): string | null {
 
 // <w:tabs> → stops in cm from the left text margin, w:pos's origin (which the editor's
 // attr shares). 'clear' removes an inherited stop and 'bar' is a rule, not a stop.
+// w:leader → the fill character. "heavy" is a bold underscore, which we can only
+// render as the plain one.
+const DOCX_LEADER: Record<string, string> = {
+  dot: '.', hyphen: '-', underscore: '_', heavy: '_', middleDot: '·',
+};
+
 export function readTabStops(tabs: Element): TabStop[] {
   const out: TabStop[] = [];
   for (const tab of Array.from(tabs.getElementsByTagNameNS(W, 'tab'))) {
@@ -61,7 +67,7 @@ export function readTabStops(tabs: Element): TabStop[] {
     const align: TabAlign = val === 'center' ? 'center'
       : val === 'right' || val === 'end' ? 'right'
       : val === 'decimal' ? 'decimal' : 'left';
-    out.push({ pos: Math.round((pos / 1440) * 2.54 * 100) / 100, align });
+    out.push({ pos: Math.round((pos / 1440) * 2.54 * 100) / 100, align, leader: DOCX_LEADER[tab.getAttributeNS(W, 'leader') ?? ''] ?? null });
   }
   return out;
 }

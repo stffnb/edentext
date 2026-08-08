@@ -41,4 +41,5 @@ The filename is derived from the first non-empty heading (max 50 chars, sanitize
 Sentinel order matters — the passes assume it. Full list of sentinels in use:
 `LBR`/`TAB` (inline), `IMG`, `SEG` (cell blocks), `TBX` U+E008 (text boxes),
 U+E009 (columns), U+E00A (date/time fields), `STY` U+E00D (paragraph styles),
-`CST` U+E00E (character styles), `TEF` U+E00F (text effects), `PBX` (paragraph boxes).
+`CST` U+E00E (character styles), `TEF` U+E00F (text effects), `PBX` (paragraph boxes), `SEC` U+E010
+(section breaks), `LEAD` U+E011 (a tab stop's leader, inside `style:type`).

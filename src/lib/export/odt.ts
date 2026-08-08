@@ -3,6 +3,7 @@ import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
+import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import {
@@ -16,7 +17,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
-import { parseTabStops } from '../editor/extensions/tabStops';
+import { normalizeLeader, parseTabStops } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
 import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
@@ -134,6 +135,10 @@ const TEF = '\uE00F';
 // block's first run; applySectionMasterPages points it at that section's master page,
 // which is what carries the section's own header/footer. U+E010.
 const SEC = '\uE010';
+
+// Separates a tab stop's alignment from its leader character inside style:type,
+// which odf-kit writes verbatim. U+E011.
+const LEAD = '\uE011';
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
@@ -1994,7 +1999,7 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
 // Rewrite styles.xml to match the editor's preview: default font Liberation Serif →
 // Times New Roman (metric-identical; see EXPORT_FONT), and Heading_20_1/2/3 sizes &
 // margins → the editor's values (odf-kit's defaults are larger; HEADING_STYLE_OVERRIDES).
-function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set()): Uint8Array {
+function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
   if (!stylesBytes) return odtBytes;
@@ -2027,6 +2032,13 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
     '<style:master-page style:name="Default"',
     '<style:master-page style:name="Standard"',
   );
+
+  // The document's tab interval, on the paragraph default-style. Written only when it
+  // differs from LibreOffice's own, so a file that never declared one doesn't gain it.
+  if (Math.abs(tabIntervalCm - DEFAULT_TAB_INTERVAL_CM) > 0.001) {
+    styles = styles.replace('<office:styles>', '<office:styles>'
+      + `<style:default-style style:family="paragraph"><style:paragraph-properties style:tab-stop-distance="${round3(tabIntervalCm)}cm"/></style:default-style>`);
+  }
 
   // odf-kit's Standard style carries fo:margin-bottom="0.212cm", but the editor (like
   // LibreOffice and Word) has no paragraph spacing by default — every paragraph and list
@@ -2576,6 +2588,24 @@ function collapseRunWhitespace(odtBytes: Uint8Array): Uint8Array {
 // inside <text:span>), and complete the decimal stop odf-kit only half-writes.
 const CHAR_TAB_STOP = 'style:type="char"';
 
+// The ODF line kind that goes with a fill character.
+const ODF_LEADER_STYLE: Record<string, string> = { '.': 'dotted', '·': 'dotted', '-': 'dash', '_': 'solid' };
+
+// odf-kit has no leader option and mints one automatic style per distinct option set,
+// so the leader rides style:type — where a bare map would give two stops that agree on
+// position and alignment the same style, and with it the same leader.
+function applyTabLeaders(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+  let content = strFromU8(contentBytes);
+  if (!content.includes(LEAD)) return odtBytes;
+  content = content.replace(new RegExp(`style:type="([a-z]+)${LEAD}(.)"`, 'g'), (_m, type, ch) =>
+    `style:type="${type}" style:leader-style="${ODF_LEADER_STYLE[ch]}" style:leader-text="${ch}"`);
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 function applyInlineSentinels(odtBytes: Uint8Array): Uint8Array {
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
@@ -3005,7 +3035,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet()): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM): Promise<Uint8Array> {
   // Images become IMG sentinels before serialization; applyImages resolves them and writes
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
@@ -3130,8 +3160,10 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
       if (stops.length) {
         opts.tabStops = stops.map((s) => ({
           position: `${s.pos}cm`,
-          // odf-kit writes style:type verbatim but types it without ODF's 'char'.
-          type: (s.align === 'decimal' ? 'char' : s.align) as 'left' | 'center' | 'right',
+          // odf-kit writes style:type verbatim but types it without ODF's 'char'; a
+          // LEAD suffix rides along so the leader reaches applyTabLeaders.
+          type: ((s.align === 'decimal' ? 'char' : s.align)
+            + (normalizeLeader(s.leader) ? `${LEAD}${s.leader}` : '')) as 'left' | 'center' | 'right',
         }));
       }
       const content = node.content ?? [];
@@ -3209,7 +3241,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
     applyTableMargins(styledRows, tableMargins, contentWidthCm), tableStyleNames);
 
   const cleaned = collapseRunWhitespace(withTableMargins);
-  const withBreaks = applyInlineSentinels(cleaned);
+  // Before applyInlineSentinels: it matches the bare style:type="char" a leader would hide.
+  const withBreaks = applyInlineSentinels(applyTabLeaders(cleaned));
   const withImages = applyImages(withBreaks, images);
   const withDateFields = applyDateTimeFields(withImages, dateFields, language ?? null);
   const withTextBoxes = applyTextBoxes(withDateFields, textBoxes);
@@ -3221,7 +3254,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Effects first: applyCharacterStyles then clones the style that already carries them.
   const withNamedStyles = applyCharacterStyles(applyTextEffects(applyParagraphStyles(withParaBoxes)));
   const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
-  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables);
+  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm);
   const withHf = applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.

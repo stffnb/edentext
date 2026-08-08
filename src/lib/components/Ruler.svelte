@@ -77,7 +77,8 @@
     strip.releasePointerCapture(event.pointerId);
     if (target.kind === 'stop') {
       const rest = info.stops.filter((_, i) => i !== target.index);
-      apply(off ? rest : [...rest, { pos: cm, align: info.stops[target.index].align }]);
+      // Dragging moves the stop, so it keeps its alignment and its leader.
+      apply(off ? rest : [...rest, { ...info.stops[target.index], pos: cm }]);
     } else if (target.kind === 'indent') {
       // Moves the whole block: the first line keeps its offset from the indent.
       editor?.chain().focus().setIndent(Math.max(0, cm)).run();

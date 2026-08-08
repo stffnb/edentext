@@ -3,6 +3,7 @@
 ## Page layout settings
 
 - **`pageMargins.ts`** — `PageMargins` in **cm** (default `{ top: 2, bottom: 2, left: 2, right: 2 }` — LibreOffice's; clamped 0–10). `applyMarginVars` sets `--user-margin-*` (px) on `:root`; `PX_PER_CM = 96/2.54`.
+- **`tabInterval.ts`** — the document's default tab interval in **cm** (`DEFAULT_TAB_INTERVAL_CM = 1.25`, LibreOffice's; Word's is 1.27; clamped 0.05–10). `applyTabIntervalVar` sets `--tab-interval`, which is `.tiptap`'s `tab-size`.
 - **`pageOrientation.ts`** — `'portrait' | 'landscape'`. `applyOrientationVars` sets `--user-page-{width,height}`; landscape swaps the A4 dimensions (matching odf-kit's automatic swap).
 
 Both margins and orientation are passed into the ODT export so the exported document's geometry/line-wrapping matches the on-screen preview.
@@ -17,6 +18,7 @@ Both margins and orientation are passed into the ODT export so the exported docu
 - **Zoom:** `odf-editor-zoom` — integer percent.
 - **Page margins:** `odf-editor-page-margins` — JSON cm values.
 - **Page orientation:** `odf-editor-page-orientation` — `'portrait' | 'landscape'`.
+- **Tab interval:** `odf-editor-tab-interval` — cm as a decimal string.
 - **Recent fonts:** `odf-editor-recent-fonts` — JSON string array (ToolbarExpanded).
 - **Header/footer:** `odf-editor-header` / `-footer` (HfDoc), `odf-editor-hf-distances`.
 - **Styles:** `odf-editor-styles` — the style registry (`styles/sheet.svelte.ts`).

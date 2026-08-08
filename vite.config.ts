@@ -21,5 +21,8 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['tests/**/*.test.ts'],
     globals: false,
+    // A build+re-import leg runs ~10s when the whole suite competes for the CPU,
+    // well past vitest's 5s default.
+    testTimeout: 60000,
   },
 });

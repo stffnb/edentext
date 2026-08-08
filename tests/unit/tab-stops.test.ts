@@ -29,7 +29,9 @@ const stopsOf = (d: N, i: number) => d.content[i].attrs?.tabStops ?? null;
 describe('tab stops', () => {
   it('parses and formats the canonical attr form', () => {
     expect(parseTabStops('6c;12r;16d')).toEqual([
-      { pos: 6, align: 'center' }, { pos: 12, align: 'right' }, { pos: 16, align: 'decimal' },
+      { pos: 6, align: 'center', leader: null },
+      { pos: 12, align: 'right', leader: null },
+      { pos: 16, align: 'decimal', leader: null },
     ]);
     // Sorted, deduped by position, rounded to 0.01cm; empty becomes null.
     expect(formatTabStops([{ pos: 12, align: 'right' }, { pos: 1.004, align: 'left' }])).toBe('1l;12r');

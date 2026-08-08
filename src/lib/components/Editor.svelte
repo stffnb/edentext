@@ -19,6 +19,7 @@
   import Ruler from './Ruler.svelte';
   import { saveDocument, loadDocument } from '../storage/autosave';
   import { applyMarginVars, cmToPx, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
+  import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
   import { type Orientation } from '../storage/pageOrientation';
   import { applyPageSizeVars, type PageFormat } from '../storage/pageFormat';
   import { DEFAULT_HF_DISTANCES, hfIsEmpty, type HfDoc, type HfZone, type HfDistances, type HfSet } from '../storage/headerFooter';
@@ -36,7 +37,7 @@
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
     zoom = 100, onZoom, showFormattingMarks = false, showRuler = true, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
-    pageFormat = 'A4',
+    pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM,
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
     headerEvenDoc = $bindable(null), footerEvenDoc = $bindable(null), differentOddEven = false,
@@ -45,7 +46,7 @@
   }: {
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
     onZoom?: (zoom: number) => void;
-    showFormattingMarks?: boolean; showRuler?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat;
+    showFormattingMarks?: boolean; showRuler?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat; tabIntervalCm?: number;
     headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
     headerFirstDoc?: HfDoc; footerFirstDoc?: HfDoc; differentFirstPage?: boolean;
     headerEvenDoc?: HfDoc; footerEvenDoc?: HfDoc; differentOddEven?: boolean;
@@ -126,6 +127,8 @@
     void (pageMargins.top + pageMargins.bottom + pageMargins.left + pageMargins.right);
     void orientation;
     void pageFormat;
+    // …the tab grid, which changes where a tab lands and so where a line breaks…
+    void tabIntervalCm;
     // …and the header/footer-driven effective margins, so growing a zone re-paginates.
     void (effTopRest + effTopFirst + effBottomRest + effBottomFirst);
     void sectionReach;

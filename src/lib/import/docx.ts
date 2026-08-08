@@ -15,6 +15,7 @@ import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFor
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
+import { clampTabInterval } from '../storage/tabInterval';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { applyUniformRunFont, type OdtImportResult } from './odt';
@@ -176,6 +177,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     margins: sect.margins,
     orientation: sect.orientation,
     format: sect.format,
+    tabIntervalCm: docTabInterval(files),
     header: first.header,
     footer: first.footer,
     headerFirst: first.differentFirstPage ? first.headerFirst : null,
@@ -1665,6 +1667,19 @@ function docHasEvenOddHeaders(files: Record<string, Uint8Array>): boolean {
     return !!el && onOff(el);
   } catch {
     return false;
+  }
+}
+
+// The grid every tab past the last custom stop falls on, also from settings.xml.
+function docTabInterval(files: Record<string, Uint8Array>): number | null {
+  const bytes = files['word/settings.xml'];
+  if (!bytes) return null;
+  try {
+    const el = parseXml(strFromU8(bytes)).getElementsByTagNameNS(W, 'defaultTabStop')[0];
+    const tw = el && intAttr(el, W, 'val');
+    return tw ? clampTabInterval(round2(twipToCm(tw))) : null;
+  } catch {
+    return null;
   }
 }
 

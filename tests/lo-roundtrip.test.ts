@@ -243,4 +243,20 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     check('LO hf: header distance ≈0.8cm', Math.abs((hfRes.headerDistanceCm ?? 0) - 0.8) < 0.1, hfRes.headerDistanceCm);
     check('LO hf: footer distance ≈1.6cm', Math.abs((hfRes.footerDistanceCm ?? 0) - 1.6) < 0.1, hfRes.footerDistanceCm);
   });
+
+  it('survives a `soffice` re-save of the tab interval and a stop leader', { timeout: 180000 }, async () => {
+    const tabDoc: N = { type: 'doc', content: [
+      { type: 'paragraph', attrs: { tabStops: '6l.;12r_' }, content: [T('Kapitel\t1\tS. 3')] },
+    ] };
+    const bytes = await buildOdt(tabDoc, margins, 'portrait', undefined, undefined, 'A4', undefined, 1.27);
+    mkdirSync('/tmp/lo-rt', { recursive: true });
+    writeFileSync('/tmp/lo-rt/tab.odt', bytes);
+    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/tabout /tmp/lo-rt/tab.odt', { stdio: 'pipe', timeout: 120000 });
+
+    const res = importOdt(new Uint8Array(readFileSync('/tmp/lo-rt/tabout/tab.odt')));
+    check('LO tab: no warnings', res.warnings.length === 0, res.warnings);
+    check('LO tab: interval ≈1.27cm', Math.abs((res.tabIntervalCm ?? 0) - 1.27) < 0.01, res.tabIntervalCm);
+    const stops = (res.content.content ?? [])[0]?.attrs?.tabStops;
+    check('LO tab: stops + leaders survive', stops === '6l.;12r_', stops);
+  });
 });
