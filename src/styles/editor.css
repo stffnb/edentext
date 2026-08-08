@@ -376,12 +376,13 @@
   margin-bottom: 0;
 }
 
-/* A tab stop's leader fills the gap the measuring plugin left as margin-left. The span
-   is zero-width (tab-size:0), so its right padding edge is where the stop sits. */
-.paper .tiptap .tab-leader {
+/* A tab stop's leader fills the gap the tab was given as margin-left. The span is
+   zero-width (tab-size:0), so its right padding edge is where the stop sits. Not scoped
+   to .tiptap: a static header/footer zone carries the same spans. */
+.paper .tab-leader {
   position: relative;
 }
-.paper .tiptap .tab-leader::before {
+.paper .tab-leader::before {
   position: absolute;
   right: 0;
   top: 0;
@@ -393,13 +394,13 @@
   /* Long enough to outrun any gap A4 can hold; the box clips the rest. */
   content: '................................................................................................................................................................................................................';
 }
-.paper .tiptap .tab-leader[data-leader='-']::before {
+.paper .tab-leader[data-leader='-']::before {
   content: '----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------';
 }
-.paper .tiptap .tab-leader[data-leader='_']::before {
+.paper .tab-leader[data-leader='_']::before {
   content: '____________________________________________________________________________________________________________________________________________________________________________________________________________';
 }
-.paper .tiptap .tab-leader[data-leader='·']::before {
+.paper .tab-leader[data-leader='·']::before {
   content: '····································································································································································································································';
 }
 

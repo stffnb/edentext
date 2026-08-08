@@ -1776,9 +1776,15 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
   // is a line of the zone too, and the body starts under the whole of it.
   const lines: Node[][] = [];
   let textAlign: string | null = null;
+  let stops: string | null = null;
   const boxMaps: Record<string, string>[] = [];
   for (const p of hfParagraphs(root)) {
     const ppr = fc(p, 'pPr');
+    // The zone is one paragraph, so the first line's stops are the zone's. Word puts a
+    // header's centre/right pair on the Header style rather than the paragraph.
+    const tabs = ppr && fc(ppr, 'tabs');
+    stops ??= formatTabStops(tabs ? readTabStops(tabs)
+      : hfCtx.styles.paragraphTabs(fc(ppr, 'pStyle') ? wVal(fc(ppr, 'pStyle')!) : null));
     if (textAlign === null) {
       const ta = (fc(ppr, 'jc') ? wVal(fc(ppr, 'jc')!) : null) ?? '';
       textAlign = ta === 'center' || ta === 'both' ? (ta === 'both' ? 'justify' : 'center') : ta === 'right' || ta === 'end' ? 'right' : '';
@@ -1803,6 +1809,7 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
   const para: Node = { type: 'paragraph', content: inline };
   const attrs: Record<string, string> = {};
   if (textAlign) attrs.textAlign = textAlign;
+  if (stops) attrs.tabStops = stops;
   Object.assign(attrs, box);
   if (Object.keys(attrs).length) para.attrs = attrs;
   return { type: 'doc', content: [para] };

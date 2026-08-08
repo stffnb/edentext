@@ -19,6 +19,7 @@ import { CharacterStyle } from './characterStyle';
 import { PageNumber, PageCount } from './pageField';
 import { Image } from './image';
 import { Shortcuts } from './shortcuts';
+import { TabStops } from './tabStops';
 
 // Schema for the header/footer mini editors: exactly one paragraph of formatted
 // runs, line breaks, page fields, and inline (as-character) images. Marks mirror
@@ -58,6 +59,8 @@ export function hfExtensions(placeholder = '') {
     TextEffects,
     // Paragraph background ("colored field") + rule line, common in letterhead headers.
     ParagraphBox,
+    // The centre/right stops a header's left\tcentre\tright layout rides on.
+    TabStops.configure({ types: ['paragraph'] }),
     CharacterStyle,
     Highlight.configure({ multicolor: true }),
     HfHardBreak,

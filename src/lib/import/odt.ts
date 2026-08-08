@@ -500,11 +500,14 @@ function hfSetOfMasterPage(name: string, ctx: Ctx): HfSet {
 function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
   const inline: Node[] = [];
   let textAlign: string | null = null;
+  let stops: string | null = null;
   const boxMaps: Record<string, string>[] = [];
 
   const addPara = (p: Element) => {
     if (inline.length) inline.push({ type: 'hardBreak' });
     const styleName = p.getAttributeNS(NS.text, 'style-name');
+    // The zone is one paragraph, so the first line's stops are the zone's.
+    stops ??= formatTabStops(ctx.resolver.tabStops(styleName));
     if (textAlign === null) {
       const ta = ctx.resolver.paraProps(styleName)['fo:text-align'] ?? '';
       textAlign = ta === 'center' || ta === 'justify' ? ta : ta === 'right' || ta === 'end' ? 'right' : null;
@@ -532,6 +535,7 @@ function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
   const para: Node = { type: 'paragraph', content: inline };
   const attrs: Record<string, string> = {};
   if (textAlign) attrs.textAlign = textAlign;
+  if (stops) attrs.tabStops = stops;
   Object.assign(attrs, box);
   if (Object.keys(attrs).length) para.attrs = attrs;
   return { type: 'doc', content: [para] };

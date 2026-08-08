@@ -106,7 +106,9 @@ type TabWidth = { pos: number; width: number; leader: string | null };
 function measure(view: EditorView): TabWidth[] {
   const dom = view.dom as HTMLElement;
   const tipRect = dom.getBoundingClientRect();
-  const scale = dom.offsetHeight ? tipRect.height / dom.offsetHeight : 1;
+  // From the width, not the height: offsetWidth/Height are rounded, and a one-line
+  // header/footer zone is short enough for that rounding to be half a percent.
+  const scale = dom.offsetWidth ? tipRect.width / dom.offsetWidth : 1;
   if (!scale) return [];
   // x = 0 is the left text margin (.tiptap's padding edge), the origin of a stop.
   const originX = tipRect.left + parseFloat(getComputedStyle(dom).paddingLeft || '0') * scale;
@@ -133,25 +135,32 @@ function measure(view: EditorView): TabWidth[] {
       let width = (stop.pos - xCm) * PX_PER_CM;
 
       if (stop.align !== 'left') {
-        const segEnd = t + 1 < tabs.length ? tabs[t + 1] : blockEnd;
-        const segStart = view.coordsAtPos(tabPos + 1, 1);
-        const end = view.coordsAtPos(segEnd, -1);
-        // A segment that wraps can't satisfy the alignment, so it falls back to left.
-        if (segEnd > tabPos + 1 && Math.abs(end.top - start.top) < 1) {
-          let back = (end.left - segStart.left) / scale;
-          if (stop.align === 'center') back /= 2;
-          if (stop.align === 'decimal') {
-            const dec = decimalPos(node, pos, tabPos + 1, segEnd);
-            back = dec == null ? back : (view.coordsAtPos(dec, -1).left - segStart.left) / scale;
-          }
-          width -= back;
-        }
+        let segEnd = t + 1 < tabs.length ? tabs[t + 1] : blockEnd;
+        if (stop.align === 'decimal') segEnd = decimalPos(node, pos, tabPos + 1, segEnd) ?? segEnd;
+        let back = segEnd > tabPos + 1 ? rangeWidth(view, tabPos + 1, segEnd) / scale : 0;
+        if (stop.align === 'center') back /= 2;
+        width -= back;
       }
       out.push({ pos: tabPos, width: Math.max(0, Math.round(width * 100) / 100), leader: normalizeLeader(stop.leader) });
     }
     return false;
   });
   return out;
+}
+
+// Natural width of a doc range: the sum of its client rects, so a segment pushed onto
+// the next line still reads its own width. Measuring its span end-to-end instead would
+// feed a wrapped line back in, and the alignment could never recover.
+function rangeWidth(view: EditorView, from: number, to: number): number {
+  // Biased outwards, or the range swallows the tab's own span at either end.
+  const a = view.domAtPos(from, 1);
+  const b = view.domAtPos(to, -1);
+  const range = document.createRange();
+  range.setStart(a.node, a.offset);
+  range.setEnd(b.node, b.offset);
+  let width = 0;
+  for (const rect of Array.from(range.getClientRects())) width += rect.width;
+  return width;
 }
 
 // Position of the segment's decimal separator ('.' or ',' — the attr carries no
@@ -169,6 +178,76 @@ function decimalPos(node: PmNode, blockPos: number, from: number, to: number): n
     }
   });
   return found;
+}
+
+// A tab's own span, so it can carry an advance. Idempotent: the pass re-runs on every
+// zoom or content change.
+function wrapZoneTabs(para: HTMLElement): HTMLElement[] {
+  const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
+  const found: Text[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if ((n.textContent ?? '').includes('\t') && !(n.parentElement as HTMLElement)?.dataset.zoneTab) found.push(n as Text);
+  }
+  for (const text of found) {
+    let node: Text | null = text;
+    while (node) {
+      const at: number = (node.textContent ?? '').indexOf('\t');
+      if (at < 0) break;
+      const tab: Text = at ? node.splitText(at) : node;
+      node = tab.length > 1 ? tab.splitText(1) : null;
+      const span = document.createElement('span');
+      span.dataset.zoneTab = '';
+      tab.replaceWith(span);
+      span.append(tab);
+    }
+  }
+  return Array.from(para.querySelectorAll<HTMLElement>('span[data-zone-tab]'));
+}
+
+// An inactive header/footer zone is generateHTML output no ProseMirror plugin reaches,
+// so its tabs are measured straight on the DOM — same rule, left to right, each advance
+// applied before the next is read.
+export function layOutZoneTabs(zone: HTMLElement): void {
+  const para = zone.querySelector<HTMLElement>('[data-tab-stops]');
+  const stops = para ? parseTabStops(para.getAttribute('data-tab-stops')) : [];
+  if (!para || !stops.length) return;
+  const tabs = wrapZoneTabs(para);
+  for (const t of tabs) {
+    t.className = '';
+    t.removeAttribute('data-leader');
+    t.style.cssText = 'tab-size:0';
+  }
+  const rect = para.getBoundingClientRect();
+  const scale = para.offsetWidth ? rect.width / para.offsetWidth : 1;
+  if (!scale) return;
+  const originX = rect.left + parseFloat(getComputedStyle(para).paddingLeft || '0') * scale;
+
+  for (let i = 0; i < tabs.length; i++) {
+    const tab = tabs[i];
+    const xCm = (tab.getBoundingClientRect().left - originX) / scale / PX_PER_CM;
+    const stop = stops.find((s) => s.pos > xCm + 0.01);
+    if (!stop) continue;
+    let width = (stop.pos - xCm) * PX_PER_CM;
+    // A decimal stop takes the whole segment back, i.e. behaves as right — a zone is one
+    // paragraph of running text, where a separator to align on is not a case that arises.
+    if (stop.align !== 'left') {
+      const range = document.createRange();
+      range.setStartAfter(tab);
+      if (i + 1 < tabs.length) range.setEndBefore(tabs[i + 1]);
+      else range.setEnd(para, para.childNodes.length);
+      let seg = 0;
+      for (const rect of Array.from(range.getClientRects())) seg += rect.width;
+      width -= (stop.align === 'center' ? seg / 2 : seg) / scale;
+    }
+    width = Math.max(0, Math.round(width * 100) / 100);
+    tab.style.marginLeft = `${width}px`;
+    const leader = normalizeLeader(stop.leader);
+    if (leader) {
+      tab.className = 'tab-leader';
+      tab.dataset.leader = leader;
+      tab.style.setProperty('--leader-w', `${width}px`);
+    }
+  }
 }
 
 export const TabStops = Extension.create({

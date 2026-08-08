@@ -139,19 +139,12 @@ one-page fixture.
   the always-reserved paragraph mark, which is inline content *past* the break and so
   opened a line of its own. Fixed in `editor.css`.
 
-What tab stops (`tabStops.ts`) deliberately left out, none of it exercised by a fixture:
-
-- **Leader characters** (`w:tab w:leader`, `style:leader-text`) are dropped: a tab can't
-  fill its gap with dots. odf-kit can't emit them either. The generated index draws its
-  own leader (`tableOfContents.ts`), so only a leader on a *tab stop* is missing.
-- **The default tab interval is fixed at 1.25cm**, so a file's own `w:defaultTabStop` /
-  `style:tab-stop-distance` is ignored. It is the CSS `tab-size`, which the measuring
-  pass leaves to handle every tab past the last custom stop.
-- **Header/footer zones** get no stops: an inactive zone is static HTML from
-  `generateHTML`, which no ProseMirror plugin reaches.
-
 ## Known ceilings
 
+- **A stop's leader is drawn, but the harness can't see it.** The fill is CSS generated
+  content, so `Range.getClientRects()` reads the gap as empty while LibreOffice's PDF has
+  the dots in its text. The contract's `Zwischen ......` line reports a `lineBreak` for
+  that reason alone — compare it by eye, not by this harness.
 - Lines are grouped by vertical band, so **multi-column** text on one page merges
   columns into single lines. Columns fixtures need per-block grouping first.
 - **Only where text sits is compared** — not what it looks like. A dropped colour,

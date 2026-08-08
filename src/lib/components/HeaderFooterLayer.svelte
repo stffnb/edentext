@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Editor, generateHTML, type Content } from '@tiptap/core';
+  import { layOutZoneTabs } from '../editor/extensions/tabStops';
   import { hfExtensions } from '../editor/extensions/headerFooter';
   import { hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfVariant, type HfDistances, type HfSet } from '../storage/headerFooter';
   import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
@@ -161,6 +162,14 @@
     return v === 'first' ? h.footerFirst : v === 'even' ? h.footerEven : h.footer;
   }
 
+  // Lay out the zone's tabs: static HTML no ProseMirror plugin reaches. The advances are
+  // layout px, so only a content change invalidates them — not the zoom transform.
+  function layOutTabs(node: HTMLElement, _params: [number, number, string]) {
+    const apply = () => layOutZoneTabs(node);
+    apply();
+    return { update: apply };
+  }
+
   // Replace the placeholder text in every page-field span with the real value:
   // current page number, or the total page count. Re-runs when its param changes.
   function patchFields(node: HTMLElement, params: [number, number, string]) {
@@ -298,6 +307,7 @@
           role="button"
           tabindex="-1"
           use:patchFields={[p, numPages, html]}
+          use:layOutTabs={[p, numPages, html]}
         >
           {@html html}
         </div>

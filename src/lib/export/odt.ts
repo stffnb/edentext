@@ -3268,7 +3268,23 @@ function hfAlign(para: TiptapNode): AlignValue | null {
 
 // fo:* paragraph-properties for a header/footer paragraph: alignment plus the paragraph
 // background ("colored field") and per-side borders ("rule line"). Empty ⇒ no override.
-function hfParaProps(para: TiptapNode): string[] {
+// <style:tab-stops> for a zone paragraph: odf-kit builds the body's, but a header/footer
+// style is written by hand here.
+function tabStopsXml(attrs: TiptapNode['attrs']): string {
+  const stops = parseTabStops(attrs?.tabStops);
+  if (!stops.length) return '';
+  const inner = stops.map((st) => {
+    const leader = normalizeLeader(st.leader);
+    return `<style:tab-stop style:position="${st.pos}cm" style:type="${st.align === 'decimal' ? 'char' : st.align}"`
+      + (st.align === 'decimal' ? ' style:char="."' : '')
+      + (leader ? ` style:leader-style="${ODF_LEADER_STYLE[leader]}" style:leader-text="${leader}"` : '')
+      + '/>';
+  }).join('');
+  return `<style:tab-stops>${inner}</style:tab-stops>`;
+}
+
+// The whole <style:paragraph-properties> of a zone paragraph, or '' when it needs none.
+function hfParaPropsXml(para: TiptapNode): string {
   const props: string[] = [];
   const align = hfAlign(para);
   if (align) props.push(`fo:text-align="${align}"`);
@@ -3279,7 +3295,10 @@ function hfParaProps(para: TiptapNode): string[] {
   ] as const) {
     if (s[attr]) props.push(`fo:border-${side}="${s[attr]}"`);
   }
-  return props;
+  const tabs = tabStopsXml(para.attrs);
+  if (!props.length && !tabs) return '';
+  const open = `<style:paragraph-properties${props.length ? ` ${props.join(' ')}` : ''}`;
+  return tabs ? `${open}>${tabs}</style:paragraph-properties>` : `${open}/>`;
 }
 
 // Header/footer post-processing on styles.xml: resolve LBR/PGC sentinels, apply the
@@ -3314,12 +3333,12 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
       new RegExp(`<style:${kind}-style>[\\s\\S]*?</style:${kind}-style>`),
       `<style:${kind}-style><style:header-footer-properties fo:min-height="${minH}cm" ${spacingAttr}="0cm" style:dynamic-spacing="false"/></style:${kind}-style>`,
     );
-    const props = hfParaProps(para);
-    if (props.length) {
+    const props = hfParaPropsXml(para);
+    if (props) {
       const styleName = kind === 'header' ? 'Header' : 'Footer';
       styles = styles.replace(
         new RegExp(`(<style:style style:name="${styleName}"[^>]*?)/>`),
-        `$1><style:paragraph-properties ${props.join(' ')}/></style:style>`,
+        `$1>${props}</style:style>`,
       );
     }
   };
@@ -3412,11 +3431,11 @@ function hfVariantZoneXml(kind: 'header' | 'footer', suffix: 'first' | 'left' | 
   }
 
   const parent = kind === 'header' ? 'Header' : 'Footer';
-  const props = hfParaProps(para);
+  const props = hfParaPropsXml(para);
   let paraStyle = parent;
-  if (props.length) {
+  if (props) {
     paraStyle = `${pfx}P`;
-    mint(`<style:style style:name="${paraStyle}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${props.join(' ')}/></style:style>`);
+    mint(`<style:style style:name="${paraStyle}" style:family="paragraph" style:parent-style-name="${parent}">${props}</style:style>`);
   }
   const tag = suffix ? `${kind}-${suffix}` : kind;
   return `<style:${tag}><text:p text:style-name="${paraStyle}">${inner}</text:p></style:${tag}>`;
