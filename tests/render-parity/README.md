@@ -104,6 +104,14 @@ LibreOffice's 48, with 62 line-level differences, most of them the justification
   the last. The mark's font rides the block (`blockFontSize.ts`), and a paragraph whose
   runs all agree takes theirs — which covers everything the corpus has. A paragraph of
   *mixed* sizes still struts at the block's.
+  Attempted and **reverted**: `line-height: 0` on the block with the content's line-height
+  restored by an inline decoration does drop the strut, and measured right on a purpose-built
+  fixture (a 24pt run over 10pt text came to 62.1pt against LibreOffice's 61.8, from 69.0).
+  It cost the contract 22 issues all the same. Two things the strut was quietly holding up:
+  a line of no runs at all — two breaks in a row — collapses to nothing, and the reserved
+  paragraph mark is an `::after` on the block, so the same rule takes the *last* line's
+  height away with it. An empty widget span at the block's end gets that line back but not
+  to the same value. Whatever replaces the strut has to carry both.
 - **Charts and metafiles are placeholders.** No renderer exists for either, so an
   undrawable frame keeps its box and its label but not its picture (`imageFormats.ts`).
   Exporting writes the placeholder back out — the original is gone from the moment it
