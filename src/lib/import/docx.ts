@@ -729,15 +729,16 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   const stops = formatTabStops(directTabs ? readTabStops(directTabs) : ctx.styles.paragraphTabs(styleId));
   if (stops) attrs.tabStops = stops;
   const baseRun = ctx.styles.paragraphRun(styleId);
-  const defaults = blockDefaults(baseRun, level, boldByDefault);
+  const name = styleId && kind === 'body' ? ctx.styleNames.get(styleId) : undefined;
+  // A block that cannot carry its style's name — one in a cell or a text box — has to
+  // carry the formatting instead, so it is measured against the default style: the only
+  // thing re-applied on import. A caption's italic and colour live nowhere else.
+  const defaults = blockDefaults(name ? baseRun : ctx.styles.paragraphRun(ctx.styles.defaultParagraphStyle()), level, boldByDefault);
   const content = convertInline(el, ctx, baseRun, defaults, false);
 
-  if (styleId && kind === 'body') {
-    const name = ctx.styleNames.get(styleId);
-    if (name) {
-      ctx.usedStyles.add(styleId);
-      if (name !== (level ? `Heading ${level}` : DEFAULT_STYLE)) attrs.styleName = name;
-    }
+  if (name) {
+    ctx.usedStyles.add(styleId!);
+    if (name !== (level ? `Heading ${level}` : DEFAULT_STYLE)) attrs.styleName = name;
   }
 
   // The paragraph mark's own run props (w:pPr/w:rPr) set the line-height floor for

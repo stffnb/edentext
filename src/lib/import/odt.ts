@@ -1000,7 +1000,10 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // The file's own named style for this block (an automatic style is direct formatting
   // layered on top of it); everything it already provides is not direct formatting.
   const named = resolver.namedAncestor(styleName);
-  const defaults = blockDefaults(resolver, named, isHeading ? level : null, boldByDefault);
+  // Only a body block carries its style's name (below); anywhere else — a cell, a text
+  // box — the formatting has to become direct, so it is measured against the default
+  // style instead: the only one re-applied on import.
+  const defaults = blockDefaults(resolver, kind === 'body' ? named : null, isHeading ? level : null, boldByDefault);
 
   const attrs = blockAttrs(paraProps, baseTextProps, defaults, kind);
   // A style:master-page-name switches the page master, which is how ODF gives a section
