@@ -716,8 +716,11 @@ export const PageBreaks = Extension.create({
               // next to the float, where ProseMirror drops the widget.
               const splittableTag = SPLITTABLE_TAGS.has(tag);
               const hasImage = splittableTag && !!child.querySelector('.image-node');
-              const isAtomic = ATOMIC_TAGS.has(tag) || hasImage;
-              const isSplittable = splittableTag && !hasImage;
+              // Keep lines together (w:keepLines, fo:keep-together): the block moves
+              // whole. One taller than a page still splits — as it does in Word.
+              const keepLines = child.dataset?.keepLines === 'true' && child.offsetHeight <= contentHeight;
+              const isAtomic = ATOMIC_TAGS.has(tag) || hasImage || (splittableTag && keepLines);
+              const isSplittable = splittableTag && !hasImage && !keepLines;
               if (isAtomic || isSplittable) {
                 let intraSpacerHeight = 0;
                 for (const sp of Array.from(

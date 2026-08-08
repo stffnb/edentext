@@ -920,6 +920,7 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // Keep with next: a heading does that anyway (pageBreaks.ts), so only a plain
   // paragraph carries it — otherwise every heading would accrete the producer's flag.
   if (!isHeading && paraProps['fo:keep-with-next'] === 'always') attrs.keepNext = true;
+  if (!isHeading && paraProps['fo:keep-together'] === 'always') attrs.keepLines = true;
   const markFont = resolver.fontFamilyOf(baseTextProps);
   if (markFont && !defaults.fonts.has(markFont.toLowerCase())) attrs.fontFamily = markFont;
   applyUniformRunFont(attrs, content);

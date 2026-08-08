@@ -170,6 +170,7 @@ export class DocxStyles {
   private ownWidow = new Map<string, boolean>(); // style's own w:pPr/w:widowControl
   private ownContextual = new Map<string, boolean>(); // style's own w:pPr/w:contextualSpacing
   private ownKeepNext = new Map<string, boolean>(); // style's own w:pPr/w:keepNext
+  private ownKeepLines = new Map<string, boolean>(); // style's own w:pPr/w:keepLines
   private ownTabs = new Map<string, TabStop[]>(); // style's own w:pPr/w:tabs
   private defaultsWidow: boolean | null = null; // docDefaults w:pPrDefault/w:widowControl
   private numToAbstract = new Map<string, string>();
@@ -236,6 +237,8 @@ export class DocxStyles {
       if (cs) this.ownContextual.set(id, toggle(cs));
       const kn = ppr && firstChild(ppr, 'keepNext');
       if (kn) this.ownKeepNext.set(id, toggle(kn));
+      const kl = ppr && firstChild(ppr, 'keepLines');
+      if (kl) this.ownKeepLines.set(id, toggle(kl));
       const tabs = ppr && firstChild(ppr, 'tabs');
       if (tabs) this.ownTabs.set(id, readTabStops(tabs));
       const ind = ppr && firstChild(ppr, 'ind');
@@ -396,6 +399,15 @@ export class DocxStyles {
     const own = this.ownKeepNext.get(styleId);
     if (own != null) return own;
     return this.paragraphKeepNext(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // w:keepLines along the same chain (Word's heading styles carry this one too).
+  paragraphKeepLines(styleId: string | null | undefined, seen = new Set<string>()): boolean {
+    if (!styleId || seen.has(styleId)) return false;
+    seen.add(styleId);
+    const own = this.ownKeepLines.get(styleId);
+    if (own != null) return own;
+    return this.paragraphKeepLines(this.basedOn.get(styleId) ?? null, seen);
   }
 
   private styleWidow(styleId: string | null | undefined, seen = new Set<string>()): boolean | null {

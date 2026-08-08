@@ -5,7 +5,8 @@ import { DEFAULT_SHORTCUTS } from '../shortcuts';
 // fo:break-before and DOCX w:pageBreakBefore; widowControl: false turns off the
 // widow-orphan minimum (w:widowControl, fo:widows/fo:orphans); keepNext keeps the block
 // on the page its successor starts on (w:keepNext, fo:keep-with-next) — headings do
-// that anyway in both, so the attr only marks the other blocks. null = default.
+// that anyway in both, so the attr only marks the other blocks; keepLines holds all of
+// a block's lines on one page (w:keepLines, fo:keep-together). null = default.
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -57,6 +58,15 @@ export const PageBreak = Extension.create({
             renderHTML: (attributes: Record<string, unknown>) => {
               if (attributes.keepNext !== true) return {};
               return { 'data-keep-next': 'true' };
+            },
+          },
+          keepLines: {
+            default: null,
+            parseHTML: (element: HTMLElement) =>
+              element.getAttribute('data-keep-lines') === 'true' ? true : null,
+            renderHTML: (attributes: Record<string, unknown>) => {
+              if (attributes.keepLines !== true) return {};
+              return { 'data-keep-lines': 'true' };
             },
           },
         },

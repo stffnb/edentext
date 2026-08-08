@@ -697,6 +697,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,
     widowControl: attrs.widowControl === false ? false : undefined,
     keepNext: attrs.keepNext === true || undefined,
+    keepLines: attrs.keepLines === true || undefined,
     tabStops: stops.length
       ? stops.map((s) => ({ type: DOCX_TAB_TYPE[s.align], position: cmToTwip(s.pos) }))
       : undefined,

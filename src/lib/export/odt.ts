@@ -238,6 +238,7 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (typeof attrs.backgroundColor === 'string' && attrs.backgroundColor) return true;
   if (attrs.widowControl === false) return true;
   if (attrs.keepNext === true) return true;
+  if (attrs.keepLines === true) return true;
   for (const s of ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'])
     if (typeof attrs[s] === 'string' && attrs[s] && attrs[s] !== 'none') return true;
   const ta = attrs.textAlign;
@@ -1071,15 +1072,17 @@ function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   const s = paraStyleFromAttrs(attrs);
   const noWidow = attrs?.widowControl === false;
   const keepNext = attrs?.keepNext === true;
+  const keepLines = attrs?.keepLines === true;
   // odf-kit has a paragraph option for the left indent but none for the right one.
   const right = typeof attrs?.indentRight === 'number' && attrs.indentRight > 0 ? attrs.indentRight : 0;
-  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right && !keepNext) return '';
+  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right && !keepNext && !keepLines) return '';
   return [s.background, s.borderTop, s.borderRight, s.borderBottom, s.borderLeft]
-    .map((v) => v ?? '').concat(noWidow ? 'w0' : '', right ? `${right}cm` : '', keepNext ? 'k1' : '').join('|');
+    .map((v) => v ?? '')
+    .concat(noWidow ? 'w0' : '', right ? `${right}cm` : '', keepNext ? 'k1' : '', keepLines ? 'g1' : '').join('|');
 }
 
 function boxSpecToProps(spec: string): string {
-  const [bg, bt, br, bb, bl, widow, marginRight, keepNext] = spec.split('|');
+  const [bg, bt, br, bb, bl, widow, marginRight, keepNext, keepLines] = spec.split('|');
   const props: string[] = [];
   if (bg) props.push(`fo:background-color="${bg}"`);
   if (bt) props.push(`fo:border-top="${bt}"`);
@@ -1090,6 +1093,7 @@ function boxSpecToProps(spec: string): string {
   if (widow === 'w0') props.push('fo:orphans="0"', 'fo:widows="0"');
   if (marginRight) props.push(`fo:margin-right="${marginRight}"`);
   if (keepNext === 'k1') props.push('fo:keep-with-next="always"');
+  if (keepLines === 'g1') props.push('fo:keep-together="always"');
   return props.join(' ');
 }
 

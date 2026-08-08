@@ -65,17 +65,15 @@ export function fitInlineImage(attrs: Record<string, unknown>, maxWidthPx: numbe
   attrs.width = maxWidthPx;
 }
 
-// A floating frame's margins from its offsets: wrapOffset is its left edge in the text
-// column, measured against the live column vars an indented anchor cannot skew (a right
-// float is placed from the far side), wrapOffsetY how far below its anchor it sits.
-export function frameMargins(wrap: WrapMode, offsetCm: unknown, offsetYCm: unknown, boxWidthPx: number): string {
-  const px = (v: unknown) => (typeof v === 'number' ? `${Math.round(cmToPx(v))}px` : null);
-  const down = px(offsetYCm);
-  if (wrap === 'topBottom') return `${down ?? '6px'} 0 6px`;
-  const near = px(offsetCm);
-  if (wrap === 'left') return `${down ?? '0'} 14px 6px ${near ?? '0'}`;
+// A floating frame's margins from its wrapOffset: its left edge in the text column,
+// measured against the live column vars an indented anchor cannot skew (a right float
+// is placed from the far side). wrapOffsetY is data only — see the note on the attr.
+export function frameMargins(wrap: WrapMode, offsetCm: unknown, boxWidthPx: number): string {
+  if (wrap === 'topBottom') return '6px 0';
+  const near = typeof offsetCm === 'number' ? `${Math.round(cmToPx(offsetCm))}px` : null;
+  if (wrap === 'left') return `0 14px 6px ${near ?? '0'}`;
   const far = near == null ? '0' : `calc(${COLUMN_WIDTH_CSS} - ${near} - ${boxWidthPx}px)`;
-  return `${down ?? '0'} ${far} 6px 14px`;
+  return `0 ${far} 6px 14px`;
 }
 
 // The page text height in px, capping how tall an image can be stretched. Read live
@@ -131,7 +129,8 @@ export const Image = Node.create({
         renderHTML: () => ({}),
       },
       // How far below its anchor paragraph the frame sits, in cm (Word's positionV
-      // posOffset, ODF svg:y). null = at the anchor.
+      // posOffset, ODF svg:y). Kept for the file only: a line box avoids a float's whole
+      // margin box, so rendering it as a top margin makes dead space Word fills with text.
       wrapOffsetY: {
         default: null,
         parseHTML: el => parseCm((el as HTMLElement).getAttribute('data-wrap-offset-y')),
@@ -299,7 +298,7 @@ class ImageView {
     const a = this.node.attrs;
     if (wrap === 'left' || wrap === 'right') {
       d.style.float = wrap;
-      d.style.margin = frameMargins(wrap, a.wrapOffset, a.wrapOffsetY, this.boxWidth());
+      d.style.margin = frameMargins(wrap, a.wrapOffset, this.boxWidth());
     } else if (wrap === 'topBottom') {
       // A full-width float (not display:block — which on an inline atom node view
       // disrupts ProseMirror's view + page-break spacer widgets): text can only flow
@@ -307,7 +306,7 @@ class ImageView {
       d.style.float = 'left';
       d.style.clear = 'both';
       d.style.width = '100%';
-      d.style.margin = frameMargins(wrap, a.wrapOffset, a.wrapOffsetY, this.boxWidth());
+      d.style.margin = frameMargins(wrap, a.wrapOffset, this.boxWidth());
     }
   }
 
