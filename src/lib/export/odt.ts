@@ -15,7 +15,7 @@ import {
 type TableStyleRef = { name: string; look: TableLook };
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
-import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
+import { parseCellPadding, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { normalizeLeader, parseTabStops } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
@@ -2523,9 +2523,11 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
   const look = parseTableLook(node.attrs?.tableLook);
   tableStyleNames.push(tableStyle && styleName ? { name: styleName, look } : null);
   const columnWidths = tableColumnWidthsCm(node, contentWidthCm - (margins ? margins.ml + margins.mr : 0));
-  // The table's cell margins ride on every cell as a TRBL shorthand; expandCellPadding
-  // splits it, since odf-kit only writes fo:padding and ODF only allows one length.
-  const cellPad = (parseCellPadding(node.attrs?.cellPadding) ?? DEFAULT_CELL_PADDING).map(n => `${n}cm`).join(' ');
+  // Cell margins ride on every cell as a TRBL shorthand (ODF has no table-level one);
+  // expandCellPadding splits it, since odf-kit only writes fo:padding and ODF only
+  // allows one length there. A cell's own attr overrides the table's.
+  const tablePad = parseCellPadding(node.attrs?.cellPadding) ?? DEFAULT_CELL_PADDING;
+  const padValue = (p: CellPadding) => p.map(n => `${n}cm`).join(' ');
   doc.addTable((t: TableBuilder) => {
     for (const row of rows) {
       t.addRow((r: RowBuilder) => {
@@ -2534,7 +2536,7 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
           // Emit the cell's runs (SEG-separated) and record its descriptor; addCell is
           // synchronous, so the push stays in document order, matching applyCellBlocks'
           // walk. Spans make odf-kit emit covered cells, which its cell regex never matches.
-          const opts: CellOptions = { padding: cellPad };
+          const opts: CellOptions = { padding: padValue(parseCellPadding(cell.attrs?.cellPadding) ?? tablePad) };
           const colspan = (cell.attrs?.colspan as number) ?? 1;
           const rowspan = (cell.attrs?.rowspan as number) ?? 1;
           if (colspan > 1) opts.colSpan = colspan;

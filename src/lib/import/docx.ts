@@ -20,7 +20,7 @@ import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/
 import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { applyUniformRunFont, type OdtImportResult } from './odt';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
-import { cellPaddingAttr, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 
 // .docx → TipTap JSON, inverting export/docx.ts. Editor-expressible OOXML becomes its
 // native node/mark/attr; values matching the editor's defaults are suppressed so round
@@ -1433,13 +1433,11 @@ function convertTable(tbl: Element, ctx: Ctx): Node | null {
   }
 }
 
-// w:tblCellMar → [top, right, bottom, left] cm, direct before the table style's.
-// A side nobody declares stays the editor default (cellPaddingAttr fills it in).
-function docxCellPadding(tbl: Element, styleId: string | null, ctx: Ctx): CellPadding | null {
-  const direct = fc(fc(tbl, 'tblPr'), 'tblCellMar');
-  const fromStyle = ctx.styles.tableCellMar(styleId);
-  const side = (...names: string[]): number | null => {
-    for (const el of [direct, fromStyle]) {
+// A w:tblCellMar / w:tcMar's four sides in cm, taking the first element that declares
+// each. w:type="nil" is an explicit zero; a side nobody declares comes back null.
+function cellMarginsCm(els: (Element | null)[]): (number | null)[] {
+  return [['top'], ['right', 'end'], ['bottom'], ['left', 'start']].map((names) => {
+    for (const el of els) {
       for (const name of names) {
         const s = el && fc(el, name);
         if (!s) continue;
@@ -1449,8 +1447,12 @@ function docxCellPadding(tbl: Element, styleId: string | null, ctx: Ctx): CellPa
       }
     }
     return null;
-  };
-  return cellPaddingAttr([side('top'), side('right', 'end'), side('bottom'), side('left', 'start')]);
+  });
+}
+
+// The table's own cell margins: direct before the table style's.
+function docxCellPadding(tbl: Element, styleId: string | null, ctx: Ctx): CellPadding | null {
+  return cellPaddingAttr(cellMarginsCm([fc(fc(tbl, 'tblPr'), 'tblCellMar'), ctx.styles.tableCellMar(styleId)]));
 }
 
 function buildTable(tbl: Element, ctx: Ctx): Node | null {
@@ -1460,6 +1462,13 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
 
   // Table-level border defaults; per-cell w:tcBorders override per side. Edge cells
   // fall back to the outer sides, interior cells to insideH/insideV.
+  // Word's w:tblStyle: only the name comes back — the look rides on the cell attrs, and
+  // the editor re-derives the regions from its own registry (refreshTableStyles).
+  const styleEl = fc(fc(tbl, 'tblPr'), 'tblStyle');
+  const styleId = styleEl ? wVal(styleEl) : null;
+  const pad = docxCellPadding(tbl, styleId, ctx);
+  const padBase = pad ?? DEFAULT_CELL_PADDING;
+
   const tblBorders = fc(fc(tbl, 'tblPr'), 'tblBorders');
   const tblSide = (name: string) => docxBorderAttr(fc(tblBorders, name));
   const tblDef = {
@@ -1491,6 +1500,9 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
       const blocks = convertBlocks(Array.from(tc.children), ctx, 'cell', bg === HEADER_SHADE);
       const attrs: Record<string, unknown> = { colspan, rowspan: 1 };
       if (bg) attrs.backgroundColor = bg;
+      // The cell's own margins (w:tcMar), kept only where they differ from the table's.
+      const ownPad = cellPaddingAttr(cellMarginsCm([fc(tcPr, 'tcMar')]), padBase);
+      if (ownPad) attrs.cellPadding = ownPad;
       const tcBorders = fc(tcPr, 'tcBorders');
       const isRight = gridWidth != null && col + colspan >= gridWidth;
       const resolve = (name: string, tblVal: string | null | undefined) => {
@@ -1518,13 +1530,8 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
     rows.push(row);
   }
   if (rows.length === 0) return null;
-  // Word's w:tblStyle: only the name comes back — the look rides on the cell attrs, and
-  // the editor re-derives the regions from its own registry (refreshTableStyles).
-  const styleEl = fc(fc(tbl, 'tblPr'), 'tblStyle');
-  const styleId = styleEl ? wVal(styleEl) : null;
   const named = ctx.styles.tableStyleName(styleId);
   const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx) ?? {}) };
-  const pad = docxCellPadding(tbl, styleId, ctx);
   if (pad) attrs.cellPadding = pad;
   if (named) {
     attrs.tableStyle = named;

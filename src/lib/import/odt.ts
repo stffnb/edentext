@@ -17,7 +17,7 @@ import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import type { HfDoc, HfSet } from '../storage/headerFooter';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
-import { cellPaddingAttr, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 
 // .odt → TipTap JSON, inverting export/odt.ts. Editor-expressible content becomes its
 // native node/mark/attr; values matching the editor's defaults are suppressed so round
@@ -1596,9 +1596,11 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       const colspan = parseInt(cellEl.getAttributeNS(NS.table, 'number-columns-spanned') ?? '1', 10) || 1;
       const rowspan = parseInt(cellEl.getAttributeNS(NS.table, 'number-rows-spanned') ?? '1', 10) || 1;
       const cellStyleName = cellEl.getAttributeNS(NS.table, 'style-name');
-      // ODF has no table-level cell margin — it sits on each cell's style, and every
-      // producer writes it uniformly, so the first cell's stands for the table.
-      if (cellPad === undefined) cellPad = cellPaddingAttr(ctx.resolver.cellPadding(cellStyleName));
+      // ODF has no table-level cell margin — it sits on each cell's style, so the first
+      // cell's stands for the table and any cell that disagrees keeps its own.
+      const padSides = ctx.resolver.cellPadding(cellStyleName);
+      if (cellPad === undefined) cellPad = cellPaddingAttr(padSides);
+      const ownPad = cellPaddingAttr(padSides, cellPad ?? DEFAULT_CELL_PADDING);
       const rawBg = ctx.resolver.cellBackgroundColor(cellStyleName);
       const backgroundColor = rawBg ? normalizeColor(rawBg) ?? rawBg : null;
       // Per-side borders; an undeclared side means no border in ODF → 'none'.
@@ -1616,6 +1618,7 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       const blocks = convertBlocks(Array.from(cellEl.children), ctx, 'cell', backgroundColor === HEADER_SHADE);
       for (let r = 0; r < repeated; r++) {
         const attrs: Record<string, unknown> = { colspan, rowspan, ...borders };
+        if (ownPad) attrs.cellPadding = ownPad;
         if (backgroundColor) attrs.backgroundColor = backgroundColor;
         if (weights) attrs.colwidth = weights.slice(colIndex, colIndex + colspan);
         cells.push({

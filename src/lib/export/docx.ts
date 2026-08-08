@@ -828,9 +828,14 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
       const fill = typeof bg === 'string' ? hexColor(bg) : undefined;
       const widthTwip = colsTwip ? colsTwip.slice(col, col + colspan).reduce((a, b) => a + b, 0) : undefined;
       col += colspan;
+      // The cell's own margins (w:tcMar); absent, Word falls back to the table's.
+      const ownPad = parseCellPadding(cell.attrs?.cellPadding);
       cells.push(new TableCell({
         columnSpan: colspan > 1 ? colspan : undefined,
         rowSpan: rowspan > 1 ? rowspan : undefined,
+        margins: ownPad
+          ? { marginUnitType: WidthType.DXA, top: cmToTwip(ownPad[0]), right: cmToTwip(ownPad[1]), bottom: cmToTwip(ownPad[2]), left: cmToTwip(ownPad[3]) }
+          : undefined,
         shading: fill ? { type: ShadingType.CLEAR, fill } : undefined,
         width: widthTwip ? { size: widthTwip, type: WidthType.DXA } : undefined,
         borders: {

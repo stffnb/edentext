@@ -120,9 +120,6 @@ LibreOffice's 48, with 62 line-level differences, most of them the justification
   where Word moves the text to the next list tab — reading `w:lvl/w:pPr/w:ind w:hanging`
   would settle it. Deliberate for now: in flow, a wide marker pushed the text and cost
   the thesis fixture a page.
-- **A cell's own margins are not read**, only the table's (`w:tcMar`; ODF puts padding on
-  every cell style, and we take the first cell's for the whole table). No producer in
-  the corpus writes per-cell margins.
 - Lines whose natural width lands within ~0.2mm of the right margin may take one word
   more or fewer than LibreOffice. Sub-0.1mm engine rounding, not a layout rule.
 

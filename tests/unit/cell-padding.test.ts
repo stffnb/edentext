@@ -46,6 +46,31 @@ describe('table cell padding', () => {
     // Word's 108 twips and LibreOffice's 0.191cm are both our 0.19cm default.
     expect(cellPaddingAttr([0, 0.1905, 0, 0.191])).toBeNull();
     expect(cellPaddingAttr([0.026, 0.026, 0.026, 0.026])).toEqual([0.026, 0.026, 0.026, 0.026]);
+    // A cell measures against its table's, so the editor default is an override there
+    // and its own table's value is not.
+    expect(cellPaddingAttr([0, 0.19, 0, 0.19], [0.3, 0.3, 0.3, 0.3])).toEqual([0, 0.19, 0, 0.19]);
+    expect(cellPaddingAttr([0.3, 0.3, 0.3, 0.3], [0.3, 0.3, 0.3, 0.3])).toBeNull();
+    // An undeclared side falls back to the table's, not the editor default.
+    expect(cellPaddingAttr([0.1, null, null, null], [0.3, 0.3, 0.3, 0.3])).toEqual([0.1, 0.3, 0.3, 0.3]);
+  });
+
+  it('round-trips one cell’s own margins against the table’s', async () => {
+    const mixed: N = structuredClone(doc);
+    mixed.content[1].attrs = { cellPadding: [0.3, 0.3, 0.3, 0.3] };
+    mixed.content[1].content[0].content[1].attrs.cellPadding = [0.02, 0.6, 0.02, 0.6];
+    const margins = { top: 2, bottom: 2, left: 2, right: 2 };
+    const cellOf = (d: N, row: number, col: number) =>
+      (d.content!.find((n: N) => n.type === 'table') as N).content[row].content[col];
+
+    const odt = await importOdt(await buildOdt(mixed, margins, 'portrait'));
+    expect(cellOf(odt.content, 0, 0).attrs?.cellPadding ?? null).toBeNull();
+    expect(cellOf(odt.content, 0, 1).attrs?.cellPadding).toEqual([0.02, 0.6, 0.02, 0.6]);
+
+    const docx = importDocx(await buildDocx(mixed, margins, 'portrait'));
+    expect(cellOf(docx.content, 0, 0).attrs?.cellPadding ?? null).toBeNull();
+    for (const [i, cm] of [0.02, 0.6, 0.02, 0.6].entries()) {
+      expect(cellOf(docx.content, 0, 1).attrs?.cellPadding[i]).toBeCloseTo(cm, 2);
+    }
   });
 
   it('round-trips a table’s own cell margins', async () => {

@@ -1,8 +1,8 @@
 import { Extension } from '@tiptap/core';
 
-// A table's cell margins in cm, [top, right, bottom, left] — Word's w:tblCellMar,
-// ODF's fo:padding on the cell style. `null` = the default below, which is Word's
-// own and what editor.css falls back to, so an ordinary table carries no attr.
+// Cell margins in cm, [top, right, bottom, left] — Word's w:tblCellMar (or w:tcMar on
+// the cell), ODF's fo:padding on the cell style. `null` = inherit, which for a table is
+// the default below (Word's own, and editor.css's fallback) and for a cell its table's.
 export type CellPadding = [number, number, number, number];
 export const DEFAULT_CELL_PADDING: CellPadding = [0, 0.19, 0, 0.19];
 
@@ -11,14 +11,18 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
 // side this close to the default is the default — otherwise every table carries one.
 const SAME_CM = 0.005;
 
-// Clamped, rounded, and collapsed to null when every side is the default.
-export function cellPaddingAttr(sides: (number | null | undefined)[]): CellPadding | null {
-  const p = DEFAULT_CELL_PADDING.map((d, i) => {
+// Clamped, rounded, and collapsed to null when every side matches the baseline it would
+// override: the table's for a cell (which inherits it), the default for a table.
+export function cellPaddingAttr(
+  sides: (number | null | undefined)[],
+  base: CellPadding = DEFAULT_CELL_PADDING,
+): CellPadding | null {
+  const p = base.map((d, i) => {
     const v = sides[i];
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return d;
     return Math.abs(v - d) <= SAME_CM ? d : round3(Math.min(v, 5));
   }) as CellPadding;
-  return p.every((v, i) => v === DEFAULT_CELL_PADDING[i]) ? null : p;
+  return p.every((v, i) => v === base[i]) ? null : p;
 }
 
 export function parseCellPadding(value: unknown): CellPadding | null {
@@ -41,7 +45,9 @@ export const TableCellPadding = Extension.create({
   addGlobalAttributes() {
     return [
       {
-        types: ['table'],
+        // On a cell it is the cell's own margin (Word w:tcMar), overriding the table's:
+        // the custom property inherits, so the cell's own declaration wins for its td.
+        types: ['table', 'tableCell', 'tableHeader'],
         attributes: {
           cellPadding: {
             default: null,
