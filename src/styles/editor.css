@@ -638,33 +638,34 @@
   display: none;
 }
 
-/* Empty block fix: a paragraph/heading/li-paragraph holding only the ProseMirror
-   trailing-break BR would render the inline ¶ on a second line, doubling its height.
-   Pull ::after out of flow. Applied always so the reserved ¶ stays zero-height. */
-.paper .tiptap p:has(> br.ProseMirror-trailingBreak:only-child),
-.paper .tiptap h1:has(> br.ProseMirror-trailingBreak:only-child),
-.paper .tiptap h2:has(> br.ProseMirror-trailingBreak:only-child),
-.paper .tiptap h3:has(> br.ProseMirror-trailingBreak:only-child),
-.paper .tiptap h4:has(> br.ProseMirror-trailingBreak:only-child),
-.paper .tiptap h5:has(> br.ProseMirror-trailingBreak:only-child),
-.paper .tiptap li > p:has(> br.ProseMirror-trailingBreak:only-child) {
+/* A block ProseMirror ends with a trailing-break BR — an empty one, or one ending in a
+   hard break — puts the inline ¶ on a line of its own past that BR, so the block renders
+   one line too tall. Pull ::after out of flow, onto the last line. */
+.paper .tiptap p:has(> br.ProseMirror-trailingBreak),
+.paper .tiptap h1:has(> br.ProseMirror-trailingBreak),
+.paper .tiptap h2:has(> br.ProseMirror-trailingBreak),
+.paper .tiptap h3:has(> br.ProseMirror-trailingBreak),
+.paper .tiptap h4:has(> br.ProseMirror-trailingBreak),
+.paper .tiptap h5:has(> br.ProseMirror-trailingBreak),
+.paper .tiptap li > p:has(> br.ProseMirror-trailingBreak) {
   position: relative;
 }
 
-.paper .tiptap p:has(> br.ProseMirror-trailingBreak:only-child)::after,
-.paper .tiptap h1:has(> br.ProseMirror-trailingBreak:only-child)::after,
-.paper .tiptap h2:has(> br.ProseMirror-trailingBreak:only-child)::after,
-.paper .tiptap h3:has(> br.ProseMirror-trailingBreak:only-child)::after,
-.paper .tiptap h4:has(> br.ProseMirror-trailingBreak:only-child)::after,
-.paper .tiptap h5:has(> br.ProseMirror-trailingBreak:only-child)::after,
-.paper .tiptap li > p:has(> br.ProseMirror-trailingBreak:only-child)::after {
+.paper .tiptap p:has(> br.ProseMirror-trailingBreak)::after,
+.paper .tiptap h1:has(> br.ProseMirror-trailingBreak)::after,
+.paper .tiptap h2:has(> br.ProseMirror-trailingBreak)::after,
+.paper .tiptap h3:has(> br.ProseMirror-trailingBreak)::after,
+.paper .tiptap h4:has(> br.ProseMirror-trailingBreak)::after,
+.paper .tiptap h5:has(> br.ProseMirror-trailingBreak)::after,
+.paper .tiptap li > p:has(> br.ProseMirror-trailingBreak)::after {
   position: absolute;
-  top: 0;
+  /* Out of flow, so restore the paragraph's line-height (the base rule zeroes it) to
+     seat the glyph on a line instead of the collapsed top edge — the last one, which
+     for an empty block is also the first. */
+  line-height: inherit;
+  top: calc(100% - 1lh);
   left: 0;
   margin-left: 0;
-  /* Out of flow, so restore the paragraph's line-height (the base rule zeroes it) to
-     seat the glyph on the empty line instead of the collapsed top edge. */
-  line-height: inherit;
 }
 
 .paper.show-formatting-marks .tiptap .pm-space-mark {
