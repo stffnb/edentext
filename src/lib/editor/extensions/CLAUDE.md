@@ -20,7 +20,7 @@ Five topics are large enough to have their own deep-dive — read the file befor
 
 - **`fontColor.ts`** (`FontColor`) — `color` attr on the TextStyle mark; also emits `data-color` so theme CSS (allBlack) can target color-bearing spans.
 - **`fontWeight.ts`** (`FontWeight`) — `fontWeight` attr on TextStyle (set `normal` to un-bold a heading without changing the node type).
-- **`lineHeight.ts`** (`LineHeight`) — `lineHeight` attr on paragraph/heading. `LINE_HEIGHT_RATIO = 1.15`: ODF line spacing multiplies the font's *natural* line height (Liberation Serif ≈1.15× em), CSS multiplies the font size — so the on-screen value is scaled to match what LibreOffice renders.
+- **`lineHeight.ts`** (`LineHeight`) — `lineHeight` attr on paragraph/heading. `LINE_HEIGHT_RATIO = 1.15`: ODF line spacing multiplies the font's *natural* line height (Liberation Serif ≈1.15× em), CSS multiplies the font size — so the on-screen value is scaled to match what LibreOffice renders. A spacing above single puts **all** of its extra leading below each line (probed: at 150% LibreOffice starts line 1 flush under the block above and adds 6.9pt after every line, the last included); CSS half-leads it, so `editor.css` shifts the block up by that half with `position:relative; top:` — flow, and so pagination, unchanged.
 - **`paragraphSpacing.ts`** (`ParagraphSpacing`) — `spaceBefore`/`spaceAfter` in **pt**, round-tripping 1:1 to `fo:margin-top`/`fo:margin-bottom`.
 - **`blockFontSize.ts`** — the font of the paragraph mark (Word `w:pPr/w:rPr`, ODF the paragraph's own text properties).
 - **`pageBreak.ts`** — the text-flow attrs of a paragraph/heading: `breakBefore: 'page'`, plus `keepNext`/`keepLines` (see `docs/architecture/pagination.md`). Owns `Mod-Enter`.

@@ -461,6 +461,14 @@
   line-height: calc(var(--line-factor) * var(--natural-line));
 }
 
+/* A spacing above single puts all of its extra leading *below* each line (measured in
+   LibreOffice); CSS splits it half above. Shifting the block up by that half draws its
+   lines where LibreOffice does and leaves the flow — so pagination — untouched. */
+.paper .tiptap :is(p, h1, h2, h3, h4, h5) {
+  position: relative;
+  top: calc((1 - var(--line-factor)) * var(--natural-line) * 0.5em);
+}
+
 .paper .tiptap ul,
 .paper .tiptap ol {
   /* One level = LIST_LEFT_STEP_CM (export/docx.ts, and the 1.27cm base the ODT list
