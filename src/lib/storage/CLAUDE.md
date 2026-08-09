@@ -10,7 +10,7 @@ Both margins and orientation are passed into the ODT export so the exported docu
 
 ## localStorage keys
 
-- **Document:** `odf-editor-doc` — TipTap JSON, debounced 1 s on every `onUpdate` (`autosave.ts`).
+- **Document:** `odf-editor-doc` — TipTap JSON, debounced 1 s on every `onUpdate` (`autosave.ts`). Loading it raises `odf-editor-doc-loading`, which only a completed startup clears (`markDocumentLoaded`, two frames after `Editor.svelte`'s mount). Still set at the next load = that document hung or crashed the editor: it moves to `odf-editor-doc-broken` and the app starts empty, so a reload escapes the freeze instead of repeating it.
 - **Theme:** `odf-editor-theme` — `'light' | 'dark' | 'allBlack' | 'auto'`.
 - **Toolbar expanded:** `odf-editor-toolbar-expanded` — boolean string.
 - **Formatting marks:** `odf-editor-formatting-marks` — boolean string.

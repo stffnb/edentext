@@ -17,7 +17,7 @@
   import ContextMenu from './ContextMenu.svelte';
   import HeaderFooterLayer from './HeaderFooterLayer.svelte';
   import Ruler from './Ruler.svelte';
-  import { saveDocument, loadDocument } from '../storage/autosave';
+  import { saveDocument, loadDocument, markDocumentLoaded } from '../storage/autosave';
   import { applyMarginVars, cmToPx, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
   import { type Orientation } from '../storage/pageOrientation';
@@ -791,6 +791,9 @@
     // also fires pm-pagecount shortly after with the precise document height.
     recomputeScaledSize();
     requestAnimationFrame(recomputeScaledSize);
+    // Two frames in: the first pagination pass has run and painted. A document that
+    // hangs or throws on the way here leaves the boot flag set and is skipped next load.
+    requestAnimationFrame(() => requestAnimationFrame(markDocumentLoaded));
   });
 
   function onEditorScroll() {
