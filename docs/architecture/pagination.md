@@ -32,6 +32,17 @@ leave nothing to catch).
 
 **Line breaking:** `editor.css` overrides prosemirror-view's `white-space: break-spaces` back to `pre-wrap` on `.paper .tiptap`. Under `break-spaces` a line-end space may not hang into the margin and counts toward the line width, so lines break one word earlier than in Word/LibreOffice whenever a line reaches within a space width of the margin.
 
+**Space above a block** is dropped where a page break — soft or hard — put the block at a page
+top, as LibreOffice does (probed: an automatic break at the page top swallows it, the document's
+first block keeps it). `pageBreaks.ts` marks those blocks with a `padding-top:0;margin-top:0`
+node decoration; the value itself rides `--space-before` (`storage/spacingModel.ts`).
+
+**A justified line fits more in LibreOffice than in a browser:** LibreOffice compresses the
+inter-word spaces to squeeze one more word onto a justified line, CSS `text-align: justify` only
+stretches them. Measured on `02-blocks`: LO fits a trailing "et" that needs ~5mm of compression
+across 15 spaces. Nothing in CSS expresses that, so a justified paragraph may break one word
+earlier here; the same paragraph left-aligned matches LibreOffice to 0.1mm.
+
 **Tables across page breaks:** when a single continuous table box crosses a page boundary, the plugin reports `TableBreakBand`s (doc-px geometry). `Editor.svelte` renders an overlay (`.band-layer` inside `.paper`) that masks the table borders bleeding through the page margins and paints the dark page gap as one seam-free stripe.
 
 **Layout constants** (must stay in sync between `pageBreaks.ts`, `Editor.svelte`, and `editor.css`):
