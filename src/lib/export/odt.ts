@@ -875,7 +875,7 @@ function applyTableRowHeights(odtBytes: Uint8Array, heights: (string | null)[]):
     `<style:style style:name="${name}" style:family="table-row"><style:table-row-properties style:min-row-height="${height}" style:use-optimal-row-height="false"/></style:style>`,
   ).join('\n');
 
-  content = content.replace('</office:automatic-styles>', `${newStyles}\n</office:automatic-styles>`);
+  content = injectAutomaticStyles(content, `${newStyles}\n`);
 
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
@@ -1012,7 +1012,7 @@ function applyListItemStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Ar
     `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${paraStyleProps(style).join(' ')}/></style:style>`,
   ).join('\n');
 
-  content = content.replace('</office:automatic-styles>', `${newStyles}\n</office:automatic-styles>`);
+  content = injectAutomaticStyles(content, `${newStyles}\n`);
 
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
@@ -1095,7 +1095,7 @@ function applyPageBreaks(odtBytes: Uint8Array): Uint8Array {
   content = content.split(PGB).join('');
 
   if (minted.length) {
-    content = content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`);
+    content = injectAutomaticStyles(content, minted.join(''));
   }
 
   files['content.xml'] = strToU8(content);
@@ -1179,7 +1179,7 @@ function applyEmptyLineFontSizes(odtBytes: Uint8Array): Uint8Array {
   content = content.replace(new RegExp(`${FSZ}[^${FSZ}]*${FSZ}`, 'g'), '');
 
   if (minted.length) {
-    content = content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`);
+    content = injectAutomaticStyles(content, minted.join(''));
   }
 
   files['content.xml'] = strToU8(content);
@@ -1424,7 +1424,7 @@ function applyParagraphStyles(odtBytes: Uint8Array): Uint8Array {
   content = content.replace(new RegExp(`${STY}[^${STY}]*${STY}`, 'g'), '');
 
   if (minted.length) {
-    content = content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`);
+    content = injectAutomaticStyles(content, minted.join(''));
   }
 
   files['content.xml'] = strToU8(content);
@@ -1480,7 +1480,7 @@ function applyParagraphBoxes(odtBytes: Uint8Array): Uint8Array {
   content = content.replace(new RegExp(`${PBX}[^${PBX}]*${PBX}`, 'g'), '');
 
   if (minted.length) {
-    content = content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`);
+    content = injectAutomaticStyles(content, minted.join(''));
   }
 
   files['content.xml'] = strToU8(content);
@@ -1900,7 +1900,7 @@ function applyNestedListTypes(odtBytes: Uint8Array, fixes: (ListDef | null)[]): 
   });
 
   if (minted.length) {
-    content = content.replace('</office:automatic-styles>', `${minted.join('\n')}\n</office:automatic-styles>`);
+    content = injectAutomaticStyles(content, `${minted.join('\n')}\n`);
   }
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
@@ -2093,7 +2093,7 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
   }
 
   if (additions.length) {
-    content = content.replace('</office:automatic-styles>', `${additions.join('\n')}\n</office:automatic-styles>`);
+    content = injectAutomaticStyles(content, `${additions.join('\n')}\n`);
   }
 
   files['content.xml'] = strToU8(content);
@@ -2446,7 +2446,7 @@ function applyCharacterStyles(odtBytes: Uint8Array): Uint8Array {
   content = content.replace(new RegExp(`${CST}[^${CST}]*${CST}`, 'g'), '');
 
   if (minted.length) {
-    content = content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`);
+    content = injectAutomaticStyles(content, minted.join(''));
   }
 
   files['content.xml'] = strToU8(content);
@@ -2510,9 +2510,7 @@ function applyTextEffects(odtBytes: Uint8Array): Uint8Array {
   const content = resolveTextEffects(before, (s) => minted.push(s), 'TE');
   if (content === before) return odtBytes;
 
-  files['content.xml'] = strToU8(
-    minted.length ? content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`) : content,
-  );
+  files['content.xml'] = strToU8(injectAutomaticStyles(content, minted.join('')));
   return rezipOdt(files);
 }
 
@@ -2831,16 +2829,19 @@ function hfBackgroundStyleXml(index: number): string {
   );
 }
 
-// Inject automatic styles, tolerating an empty/self-closed or absent section.
+// Inject automatic styles into content.xml or styles.xml, tolerating an empty/self-closed
+// or absent section — a document odf-kit gave none writes `<office:automatic-styles/>`, and
+// a plain string replace on the closing tag would drop the styles there.
 function injectAutomaticStyles(content: string, styles: string): string {
   if (!styles) return content;
   if (content.includes('</office:automatic-styles>')) {
     return content.replace('</office:automatic-styles>', `${styles}</office:automatic-styles>`);
   }
+  const section = `<office:automatic-styles>${styles}</office:automatic-styles>`;
   if (content.includes('<office:automatic-styles/>')) {
-    return content.replace('<office:automatic-styles/>', `<office:automatic-styles>${styles}</office:automatic-styles>`);
+    return content.replace('<office:automatic-styles/>', section);
   }
-  return content.replace('<office:body', `<office:automatic-styles>${styles}</office:automatic-styles><office:body`);
+  return content.replace(/<office:(body|master-styles)\b/, (m) => `${section}${m}`);
 }
 
 // Resolve image sentinels: swap each IMG{i}IMG for its <draw:frame>, add the binary
@@ -3587,8 +3588,7 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
   }
   if (mintedStyles.length) {
     const defs = mintedStyles.join('');
-    if (styles.includes('</office:automatic-styles>')) styles = styles.replace('</office:automatic-styles>', `${defs}</office:automatic-styles>`);
-    else styles = styles.replace('<office:automatic-styles/>', `<office:automatic-styles>${defs}</office:automatic-styles>`);
+    styles = injectAutomaticStyles(styles, defs);
   }
 
   // Resolve HFIMG sentinels (default + first-page zones) to as-char <draw:frame>s, then
@@ -3601,8 +3601,7 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
     });
     const bgStyles = hfImages.map((img, i) => (img.wrap === 'inline' ? '' : hfBackgroundStyleXml(i))).join('');
     if (bgStyles) {
-      if (styles.includes('</office:automatic-styles>')) styles = styles.replace('</office:automatic-styles>', `${bgStyles}</office:automatic-styles>`);
-      else styles = styles.replace('<office:automatic-styles/>', `<office:automatic-styles>${bgStyles}</office:automatic-styles>`);
+      styles = injectAutomaticStyles(styles, bgStyles);
     }
     for (const img of hfImages) files[img.path] = img.bytes;
     const manifestBytes = files['META-INF/manifest.xml'];
@@ -3719,9 +3718,7 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
     },
   );
   if (minted.length) {
-    content = content.includes('</office:automatic-styles>')
-      ? content.replace('</office:automatic-styles>', `${minted.join('')}</office:automatic-styles>`)
-      : content.replace('<office:automatic-styles/>', `<office:automatic-styles>${minted.join('')}</office:automatic-styles>`);
+    content = injectAutomaticStyles(content, minted.join(''));
   }
 
   // Reuse the page layout odf-kit gave the Standard master page: the geometry is
@@ -3737,9 +3734,7 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
   if (pages.length) styles = styles.replace('</office:master-styles>', `${pages.join('')}</office:master-styles>`);
   if (hfStyles.length) {
     const defs = hfStyles.join('');
-    styles = styles.includes('</office:automatic-styles>')
-      ? styles.replace('</office:automatic-styles>', `${defs}</office:automatic-styles>`)
-      : styles.replace('<office:automatic-styles/>', `<office:automatic-styles>${defs}</office:automatic-styles>`);
+    styles = injectAutomaticStyles(styles, defs);
   }
 
   files['content.xml'] = strToU8(content);
