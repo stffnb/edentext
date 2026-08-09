@@ -27,6 +27,9 @@
      Editor.svelte), which lives inside .paper so the same transform scales it
      identically to the .tiptap page background. */
   position: relative;
+  /* A frame or a formula wider than the text area is cut at the sheet's edge, as it is
+     in LibreOffice. `clip` rather than `hidden`: it must not become a scroll box. */
+  overflow-x: clip;
 }
 
 .paper .tiptap {
