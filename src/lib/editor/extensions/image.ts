@@ -139,6 +139,14 @@ export const Image = Node.create({
         parseHTML: el => parseCm((el as HTMLElement).getAttribute('data-wrap-offset-y')),
         renderHTML: () => ({}),
       },
+      // Which end of its band a `topBottom` frame is set against (Word's positionH align,
+      // ODF's style:horizontal-pos). Set only where two frames share the band, so they
+      // sit side by side; a lone one fills the band, which is what the wrap means.
+      wrapAlign: {
+        default: null,
+        parseHTML: el => (el as HTMLElement).getAttribute('data-wrap-align') || null,
+        renderHTML: () => ({}),
+      },
     };
   },
 
@@ -164,6 +172,7 @@ export const Image = Node.create({
       ...(wrap !== 'inline' ? { 'data-wrap': wrap } : {}),
       ...(offset != null ? { 'data-wrap-offset': String(offset) } : {}),
       ...(offsetY != null ? { 'data-wrap-offset-y': String(offsetY) } : {}),
+      ...(node.attrs.wrapAlign ? { 'data-wrap-align': String(node.attrs.wrapAlign) } : {}),
     })];
   },
 
@@ -304,6 +313,13 @@ class ImageView {
     if (wrap === 'left' || wrap === 'right') {
       d.style.float = wrap;
       d.style.margin = frameMargins(wrap, a.wrapOffset, this.boxWidth());
+    } else if (wrap === 'topBottom' && (a.wrapAlign === 'left' || a.wrapAlign === 'right')) {
+      // Sharing its band with the frame set against the other end (the importers only
+      // keep wrapAlign for such a pair): each floats to its own side, so both fit.
+      d.style.float = a.wrapAlign;
+      d.style.clear = a.wrapAlign;
+      d.style.margin = frameMargins(wrap, null, 0, a.wrapOffsetY);
+      this.sinkToOffset();
     } else if (wrap === 'topBottom') {
       // A full-width float (not display:block — which on an inline atom node view
       // disrupts ProseMirror's view + page-break spacer widgets): text can only flow
@@ -316,7 +332,7 @@ class ImageView {
     }
     // The wrapper spans the column, so the picture's own x is the rotor's place in it
     // (the rotor is centred by CSS); every other mode positions the wrapper itself.
-    const x = wrap === 'topBottom' ? a.wrapOffset : null;
+    const x = wrap === 'topBottom' && !a.wrapAlign ? a.wrapOffset : null;
     this.rotor.style.left = typeof x === 'number'
       ? `${Math.round(cmToPx(x)) + (parseFloat(this.rotor.style.width) || 0) / 2}px` : '';
   }

@@ -18,7 +18,7 @@ import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { clampTabInterval, DOCX_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
-import { applyUniformRunFont, sinkOffsetFrames, type OdtImportResult } from './odt';
+import { applyUniformRunFont, pairAlignedFrames, sinkOffsetFrames, type OdtImportResult } from './odt';
 import { chartDataUrl } from './chart';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
@@ -163,6 +163,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     else blocks.push(...inner);
   });
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
+  pairAlignedFrames(blocks, Math.floor(cmToPx(ctx.contentWidthCm)));
 
   // Odd/even pages: a document-level setting (settings.xml), not a section property.
   const oddEven = docHasEvenOddHeaders(files);
@@ -1259,10 +1260,11 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   if (Number.isFinite(rot) && rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
 
   if (anchor) {
-    const { wrap, offsetCm, offsetYCm } = anchorWrap(anchor, ctx);
+    const { wrap, offsetCm, offsetYCm, alignH } = anchorWrap(anchor, ctx);
     attrs.wrap = wrap;
     if (offsetCm != null) attrs.wrapOffset = offsetCm;
     if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
+    if (alignH && wrap === 'topBottom') attrs.wrapAlign = alignH;
   } else {
     fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
   }
@@ -1293,10 +1295,11 @@ function chartImage(drawing: Element, box: { w: number; h: number }, ctx: Ctx): 
 function frameNode(src: string, box: { w: number; h: number }, label: string, anchor: Element | undefined, ctx: Ctx): Node {
   const attrs: Record<string, unknown> = { src, width: box.w, height: box.h, alt: label };
   if (anchor) {
-    const { wrap, offsetCm, offsetYCm } = anchorWrap(anchor, ctx);
+    const { wrap, offsetCm, offsetYCm, alignH } = anchorWrap(anchor, ctx);
     attrs.wrap = wrap;
     if (offsetCm != null) attrs.wrapOffset = offsetCm;
     if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
+    if (alignH && wrap === 'topBottom') attrs.wrapAlign = alignH;
   } else {
     fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
   }
@@ -1329,16 +1332,18 @@ function anchorOffsetX(anchor: Element, ctx: Ctx): number | null {
 // Wrap mode and place are independent: the mode is what the file's wrap element says,
 // the place its position offsets. Only where neither names a side does the frame's own
 // x decide which half of the column it fills (text flows on one side of a CSS float).
-function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom'; offsetCm: number | null; offsetYCm: number | null } {
+function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom'; offsetCm: number | null; offsetYCm: number | null; alignH: 'left' | 'right' | null } {
   const offsetYCm = anchorOffsetY(anchor);
   const offsetCm = anchorOffsetX(anchor, ctx);
-  const at = (wrap: 'left' | 'right' | 'topBottom') => ({ wrap, offsetCm, offsetYCm });
+  const align = anchor.getElementsByTagNameNS(WP, 'positionH')[0]
+    ?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
+  const alignH: 'left' | 'right' | null = align === 'right' || align === 'outside' ? 'right'
+    : align === 'left' || align === 'inside' ? 'left' : null;
+  const at = (wrap: 'left' | 'right' | 'topBottom') => ({ wrap, offsetCm, offsetYCm, alignH });
   if (anchor.getElementsByTagNameNS(WP, 'wrapTopAndBottom')[0]) return at('topBottom');
   const wt = anchor.getElementsByTagNameNS(WP, 'wrapSquare')[0]?.getAttribute('wrapText');
   if (wt === 'right') return at('left'); // text on right ⇒ image on left
   if (wt === 'left') return at('right');
-  const align = anchor.getElementsByTagNameNS(WP, 'positionH')[0]
-    ?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
   if (align === 'right' || align === 'outside') return at('right');
   if (align) return at('left');
   if (offsetCm == null) return at('left');

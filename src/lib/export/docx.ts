@@ -360,20 +360,26 @@ function decodeDataUri(src: string): { bytes: Uint8Array; type: 'png' | 'jpg' | 
 
 // offsetCm places the frame in the text column (Word's posOffset); without one it is
 // flush to its side. offsetYCm is how far below the anchor paragraph it sits.
-function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | null): IFloating | undefined {
+function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | null, alignH?: string | null): IFloating | undefined {
   if (wrap === 'inline') return undefined;
   const verticalPosition = {
     relative: VerticalPositionRelativeFrom.PARAGRAPH,
     offset: offsetYCm != null ? Math.round(offsetYCm * 360000) : 0,
   };
   if (wrap === 'topBottom') {
+    // A frame sharing its band with another is set against one end of it, and the two
+    // may overlap vertically — that is what puts them side by side.
+    const end = alignH === 'right' ? HorizontalPositionAlign.RIGHT
+      : alignH === 'left' ? HorizontalPositionAlign.LEFT : null;
     return {
-      horizontalPosition: offsetCm != null
-        ? { relative: HorizontalPositionRelativeFrom.MARGIN, offset: Math.round(offsetCm * 360000) }
-        : { relative: HorizontalPositionRelativeFrom.MARGIN, align: HorizontalPositionAlign.LEFT },
+      horizontalPosition: end
+        ? { relative: HorizontalPositionRelativeFrom.MARGIN, align: end }
+        : offsetCm != null
+          ? { relative: HorizontalPositionRelativeFrom.MARGIN, offset: Math.round(offsetCm * 360000) }
+          : { relative: HorizontalPositionRelativeFrom.MARGIN, align: HorizontalPositionAlign.LEFT },
       verticalPosition,
       wrap: { type: TextWrappingType.TOP_AND_BOTTOM },
-      allowOverlap: false,
+      allowOverlap: !!end,
     };
   }
   // left: image at left, text on the right; right: mirror.
@@ -406,7 +412,7 @@ function imageRun(node: TiptapNode): ImageRun | null {
     data: decoded.bytes,
     altText: typeof node.attrs?.alt === 'string' && node.attrs.alt ? { name: node.attrs.alt, title: node.attrs.alt, description: node.attrs.alt } : undefined,
     transformation: { width, height, rotation: rotation || undefined },
-    floating: floatingFor(wrap, offsetCm, offsetYCm),
+    floating: floatingFor(wrap, offsetCm, offsetYCm, node.attrs?.wrapAlign as string | null),
   });
 }
 

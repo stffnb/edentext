@@ -146,8 +146,11 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   }
   // A frame placed by coordinate (style:horizontal-pos="from-left") keeps its x in the
   // column; the wrap mode alone would snap it to a side.
-  const x = gp['style:horizontal-pos'] === 'from-left' ? lengthToCm(el.getAttributeNS(NS.svg, 'x')) : null;
+  const hpos = gp['style:horizontal-pos'];
+  const x = hpos === 'from-left' ? lengthToCm(el.getAttributeNS(NS.svg, 'x')) : null;
   if (x != null && attrs.wrap) attrs.wrapOffset = Math.round(x * 100) / 100;
+  // Set against one end of its band rather than filling it (Word's positionH align).
+  if (attrs.wrap === 'topBottom' && (hpos === 'left' || hpos === 'right')) attrs.wrapAlign = hpos;
   // Likewise down the page, but only against the anchor paragraph — a page-relative
   // frame is placed absolutely, which one in the text flow cannot be.
   const rel = gp['style:vertical-rel'];
@@ -188,6 +191,34 @@ export function sinkOffsetFrames(content: { type: string; text?: string; attrs?:
   const frames = content.filter(sinks);
   for (const f of frames) content.splice(content.indexOf(f), 1);
   content.push(...frames);
+}
+
+// Two top-and-bottom frames set against opposite ends of nearby paragraphs share one
+// band and sit side by side, as they do in LibreOffice and Word. Only such a pair keeps
+// its wrapAlign: a lone frame reserves the whole band, which is what the wrap means.
+export function pairAlignedFrames(blocks: { content?: { type: string; attrs?: Record<string, unknown> }[] }[], columnPx: number): void {
+  const found: { attrs: Record<string, unknown>; at: number }[] = [];
+  blocks.forEach((b, i) => {
+    for (const node of b.content ?? [])
+      if (node.type === 'image' && node.attrs?.wrap === 'topBottom' && node.attrs.wrapAlign) found.push({ attrs: node.attrs, at: i });
+  });
+  const paired = new Set<Record<string, unknown>>();
+  for (let i = 0; i + 1 < found.length; i++) {
+    const [a, b] = [found[i], found[i + 1]];
+    if (paired.has(a.attrs) || b.at - a.at > 3 || a.attrs.wrapAlign === b.attrs.wrapAlign) continue;
+    const total = ((a.attrs.width as number) ?? 0) + ((b.attrs.width as number) ?? 0);
+    if (!total || total > columnPx * 1.15) continue;
+    // Word lets the two overlap in the middle; two floats cannot, so a pair a little
+    // wider than the column is scaled down to it instead of breaking apart.
+    if (total > columnPx) for (const f of [a, b]) scaleFrame(f.attrs, columnPx / total);
+    paired.add(a.attrs).add(b.attrs);
+  }
+  for (const f of found) if (!paired.has(f.attrs)) f.attrs.wrapAlign = null;
+}
+
+function scaleFrame(attrs: Record<string, unknown>, factor: number): void {
+  for (const k of ['width', 'height'])
+    if (typeof attrs[k] === 'number') attrs[k] = Math.max(1, Math.round(attrs[k] * factor));
 }
 
 // A <draw:frame><draw:image> → an image node. Size comes from the frame's svg
@@ -492,6 +523,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, masterPages: [] };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
+  pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
 
   // Whole-document columns declared on the page layout instead of a
   // text:section: wrap the body's wrappable runs the way a section would be.
