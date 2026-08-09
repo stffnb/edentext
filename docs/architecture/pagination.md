@@ -32,10 +32,15 @@ leave nothing to catch).
 
 **Line breaking:** `editor.css` overrides prosemirror-view's `white-space: break-spaces` back to `pre-wrap` on `.paper .tiptap`. Under `break-spaces` a line-end space may not hang into the margin and counts toward the line width, so lines break one word earlier than in Word/LibreOffice whenever a line reaches within a space width of the margin.
 
-**Space above a block** is dropped where a page break — soft or hard — put the block at a page
-top, as LibreOffice does (probed: an automatic break at the page top swallows it, the document's
-first block keeps it). `pageBreaks.ts` marks those blocks with a `padding-top:0;margin-top:0`
-node decoration; the value itself rides `--space-before` (`storage/spacingModel.ts`).
+**A block's spacing is part of the block.** LibreOffice's paragraph frame includes the space
+below it, so the fit test adds `leaf.spaceAfter` (and keep-with-next adds the successor's space
+above too): a block whose text fits but whose spacing doesn't moves down whole. The **space
+above** is then dropped at the page top, as LibreOffice does (probed: an automatic *and* a hard
+break at a page top swallow it, the document's first block keeps it). `pageBreaks.ts` marks those
+blocks with a `padding-top:0;margin-top:0` node decoration — geometrically, a leaf pushed by its
+own spacer never measures as sitting at the page top, since `effectiveTop` excludes that push, so
+the mark follows from the break it got. The value itself rides `--space-before`
+(`storage/spacingModel.ts`).
 
 **A justified line fits more in LibreOffice than in a browser:** LibreOffice compresses the
 inter-word spaces to squeeze one more word onto a justified line, CSS `text-align: justify` only
