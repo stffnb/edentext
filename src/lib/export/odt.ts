@@ -673,7 +673,7 @@ function replaceColumns(doc: TiptapNode, cols: ColumnsExport[]): TiptapNode {
 // One generated table of contents, collected by replaceTableOfContents and emitted by
 // applyToc. Entries are the cached heading→page rows (the node view keeps them current).
 type TocEntry = { text: string; level: number; page: number };
-type TocExport = { entries: TocEntry[]; title: string | null };
+type TocExport = { entries: TocEntry[]; title: string | null; maxLevel: number };
 
 // Swap each top-level tableOfContents node for a marker paragraph carrying the TOC
 // sentinel and collect its cached entries. Top-level only (like replacePageBreaks): a
@@ -692,7 +692,12 @@ function replaceTableOfContents(doc: TiptapNode, tocs: TocExport[]): TiptapNode 
           page: Math.max(1, Number(e.page) || 1),
         }));
       const rawTitle = child.attrs?.title;
-      tocs.push({ entries, title: typeof rawTitle === 'string' && rawTitle ? rawTitle : null });
+      const depth = Number(child.attrs?.maxLevel);
+      tocs.push({
+        entries,
+        title: typeof rawTitle === 'string' ? rawTitle : null,
+        maxLevel: depth >= 1 ? Math.min(MAX_HEADING_LEVEL, depth) : MAX_HEADING_LEVEL,
+      });
       content.push({ type: 'paragraph', content: [{ type: 'text', text: `${TOC_SENT}${tocs.length - 1}${TOC_SENT}` }] });
       continue;
     }
@@ -3118,9 +3123,9 @@ function tocXml(toc: TocExport, index: number): string {
   const title = toc.title ?? 'Table of Contents';
   const name = `Table of Contents${index + 1}`;
   const source =
-    `<text:table-of-content-source text:outline-level="${MAX_HEADING_LEVEL}" text:use-index-marks="false" text:use-index-source-styles="false">` +
-    `<text:index-title-template text:style-name="Contents_20_Heading">${escapeXml(title)}</text:index-title-template>` +
-    HEADING_LEVELS
+    `<text:table-of-content-source text:outline-level="${toc.maxLevel}" text:use-index-marks="false" text:use-index-source-styles="false">` +
+    (title ? `<text:index-title-template text:style-name="Contents_20_Heading">${escapeXml(title)}</text:index-title-template>` : '') +
+    HEADING_LEVELS.filter(l => l <= toc.maxLevel)
       .map(
         l =>
           `<text:table-of-content-entry-template text:outline-level="${l}" text:style-name="Contents_20_${l}">` +
@@ -3135,9 +3140,11 @@ function tocXml(toc: TocExport, index: number): string {
     `</text:table-of-content-source>`;
   const body =
     `<text:index-body>` +
-    `<text:index-title text:name="${escapeXml(name)}_Head">` +
-    `<text:p text:style-name="Contents_20_Heading">${escapeXml(title)}</text:p>` +
-    `</text:index-title>` +
+    (title
+      ? `<text:index-title text:name="${escapeXml(name)}_Head">` +
+        `<text:p text:style-name="Contents_20_Heading">${escapeXml(title)}</text:p>` +
+        `</text:index-title>`
+      : '') +
     toc.entries
       .map(e => `<text:p text:style-name="Contents_20_${e.level}">${escapeXml(e.text)}<text:tab/>${e.page}</text:p>`)
       .join('') +

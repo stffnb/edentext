@@ -1396,6 +1396,24 @@ describe('Leg 5: table of contents (text:table-of-content)', () => {
     check('headings after the TOC survive',
       blocks.some((n: N) => n.type === 'heading' && n.content?.[0]?.text === 'Introduction'));
   });
+
+  // Listing deeper than the index asks for inflates it by whole pages; a title the file
+  // doesn't have doubles the heading standing above it.
+  it('round-trips the index depth and a title-less index', async () => {
+    const shallow: N = { ...tocDoc, content: [
+      { type: 'tableOfContents', attrs: { entries: [], title: '', maxLevel: 1 } },
+      ...(tocDoc.content ?? []).slice(1),
+    ] };
+    const bytes = await buildOdt(shallow, margins, 'portrait');
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('source stops at the index depth', content.includes('<text:table-of-content-source text:outline-level="1"'));
+    check('one entry template only', (content.match(/<text:table-of-content-entry-template/g) ?? []).length === 1);
+    check('no index title emitted', !content.includes('<text:index-title'));
+
+    const toc = (importOdt(bytes).content.content ?? []).find((n: N) => n.type === 'tableOfContents');
+    check('maxLevel survives', toc?.attrs?.maxLevel === 1, toc?.attrs);
+    check('title stays empty', toc?.attrs?.title === '', toc?.attrs);
+  });
 });
 
 describe('Leg 10: date/time fields (text:date / text:time)', () => {

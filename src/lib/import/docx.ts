@@ -262,6 +262,17 @@ function documentLanguage(stylesDoc: Document | null, warnings: Set<string>): Do
 // so field depth is tracked (across one convertBlocks call) to match the TOC's own end.
 type TocFieldState = { fieldDepth: number; tocDepth: number; instr: string[] };
 
+// The deepest heading level a TOC field lists: the end of its `\o "1-3"` range (Word's
+// own default is 1-9). Anything deeper only inflates the block on screen.
+function tocMaxLevel(instr: string): number {
+  const m = /\\o\s+"?\s*\d+\s*-\s*(\d+)/.exec(instr);
+  const n = m ? Number(m[1]) : NaN;
+  return n >= 1 ? Math.min(MAX_HEADING_LEVEL, n) : MAX_HEADING_LEVEL;
+}
+
+const instrTextOf = (el: Element): string =>
+  Array.from(el.getElementsByTagNameNS(W, 'instrText')).map(i => i.textContent ?? '').join('');
+
 function scanTocField(p: Element, st: TocFieldState): { emit: boolean } {
   let emit = false;
   for (const r of Array.from(p.getElementsByTagNameNS(W, 'r'))) {
@@ -384,7 +395,11 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
       // A paragraph owned by a TOC field is skipped; the field emits one node.
       const startedInToc = tocState.tocDepth >= 0;
       const { emit } = scanTocField(el, tocState);
-      if (emit && kind === 'body') { flush(); out.push({ type: 'tableOfContents', attrs: { entries: [] } }); }
+      if (emit && kind === 'body') {
+        flush();
+        // The field carries no heading of its own — Word's sits in a separate paragraph.
+        out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', maxLevel: tocMaxLevel(instrTextOf(el)) } });
+      }
       if (startedInToc || emit) continue;
       const num = paragraphNum(el, ctx);
       if (num) {
@@ -429,8 +444,12 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
       if (sdtIsToc(el)) {
         // A content-control-wrapped TOC → one node (regenerated live); skip its content.
         if (kind === 'body') {
-          const title = tocHeading(fc(el, 'sdtContent'));
-          out.push({ type: 'tableOfContents', attrs: { entries: [], ...(title ? { title } : {}) } });
+          const content = fc(el, 'sdtContent');
+          out.push({ type: 'tableOfContents', attrs: {
+            entries: [],
+            title: tocHeading(content) ?? '',
+            maxLevel: tocMaxLevel(content ? instrTextOf(content) : ''),
+          } });
         }
       } else {
         const content = fc(el, 'sdtContent');

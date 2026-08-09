@@ -813,8 +813,13 @@ function convertToc(el: Element): Node {
     }
   }
   // The file's own heading ("Inhalt", "Sommaire", …), so a reopened index keeps its name.
-  const title = el.getElementsByTagNameNS(NS.text, 'index-title')[0]?.textContent?.trim();
-  return { type: 'tableOfContents', attrs: { entries, ...(title ? { title } : {}) } };
+  // No <text:index-title> means the index really has none — its heading is an ordinary
+  // paragraph above it, and adding ours would double it.
+  const title = el.getElementsByTagNameNS(NS.text, 'index-title')[0]?.textContent?.trim() ?? '';
+  const source = el.getElementsByTagNameNS(NS.text, 'table-of-content-source')[0];
+  const depth = Number(source?.getAttributeNS(NS.text, 'outline-level'));
+  const maxLevel = depth >= 1 ? Math.min(MAX_HEADING_LEVEL, depth) : MAX_HEADING_LEVEL;
+  return { type: 'tableOfContents', attrs: { entries, title, maxLevel } };
 }
 
 // Split a TOC entry paragraph around its last <text:tab/>: the text before it is the

@@ -30,7 +30,7 @@ Five topics are large enough to have their own deep-dive — read the file befor
 - **`bookmark.ts`** / **`crossReference.ts`** — a named range of text (a mark) and the live references to it (`REF`/`PAGEREF`). `ToolbarExpanded.svelte` owns both dialogs, as it does the link one.
 - **`searchReplace.ts`** — Find & Replace: decorations highlight all matches, commands navigate/replace. Touches the document only for actual replacements.
 - **`spellCheck.ts`** — decorations from `spell/controller.ts`; `spellErrorAt` feeds the context menu.
-- **`tableOfContents.ts`** — a generated TOC: block atom listing every heading (levels 1–5).
+- **`tableOfContents.ts`** — a generated TOC: block atom listing every heading down to `maxLevel` (ODF `text:outline-level`, Word's `TOC \o` range, default 5 — listing deeper than the file asks inflates the block by pages). `title: ''` is an index that deliberately has none (its heading is a separate paragraph, as Word and LibreOffice write it); only a missing title falls back to "Table of Contents".
 - **`trailingNode.ts`** — keeps an empty paragraph after a trailing table, text box or columns section (they are isolating, so the caret would otherwise have nowhere to go).
 - **`headerFooter.ts`** (`hfExtensions`) — the header/footer schema: `Document` constrained to one paragraph, the body's marks, `HardBreak`, `TextAlign`, and the two `pageField.ts` atoms. No image, no date field, no table.
 - **`pageField.ts`** — inline atoms `pageNumber`/`pageCount`, rendered as `<span data-page-field>`; `HeaderFooterLayer.svelte` patches each span's text to the real per-page value.

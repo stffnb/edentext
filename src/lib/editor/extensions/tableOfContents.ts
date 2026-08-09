@@ -11,7 +11,8 @@ import { readVerticalMargins, pageOfElement } from './pageBreaks';
 export type TocEntry = { text: string; level: number; page: number };
 
 // The heading above the entries. An imported TOC keeps the one its file used
-// ("Inhalt", "Sommaire", …); a freshly inserted one takes this.
+// ("Inhalt", "Sommaire", …), or none at all where the file put its heading in a
+// separate paragraph (`''`); a freshly inserted one takes this.
 const TITLE = 'Table of Contents';
 // Enough leader dots to cross the widest gap a page can offer; the row clips the rest.
 const LEADER_DOTS = 200;
@@ -35,8 +36,15 @@ export const TableOfContents = Node.create({
     return {
       title: {
         default: null as string | null,
-        parseHTML: el => (el as HTMLElement).getAttribute('data-toc-title') || null,
-        renderHTML: attrs => (attrs.title ? { 'data-toc-title': String(attrs.title) } : {}),
+        parseHTML: el => (el as HTMLElement).getAttribute('data-toc-title'),
+        renderHTML: attrs => (attrs.title != null ? { 'data-toc-title': String(attrs.title) } : {}),
+      },
+      // Deepest heading level the index lists (ODF text:outline-level, Word's TOC \o
+      // range): listing more than the file asks for inflates the block by pages.
+      maxLevel: {
+        default: MAX_HEADING_LEVEL,
+        parseHTML: el => Number((el as HTMLElement).getAttribute('data-toc-levels')) || MAX_HEADING_LEVEL,
+        renderHTML: attrs => ({ 'data-toc-levels': String(attrs.maxLevel ?? MAX_HEADING_LEVEL) }),
       },
       entries: {
         default: [] as TocEntry[],
@@ -71,7 +79,8 @@ export const TableOfContents = Node.create({
   },
 });
 
-const tocTitle = (title: unknown): string => (typeof title === 'string' && title ? title : TITLE);
+// `''` is a title the file deliberately doesn't have, so only a missing one defaults.
+const tocTitle = (title: unknown): string => (typeof title === 'string' ? title : TITLE);
 
 type HeadingRef = { text: string; level: number; pos: number };
 
@@ -113,13 +122,15 @@ class TocView {
     });
   }
 
-  // Every heading (level ≤ MAX_HEADING_LEVEL) with non-empty text, in document order.
+  // Every heading with non-empty text down to the index's own level, in document order.
   private headings(): HeadingRef[] {
+    const max = Math.min(MAX_HEADING_LEVEL, Number(this.node()?.attrs?.maxLevel) || MAX_HEADING_LEVEL);
     const out: HeadingRef[] = [];
     this.editor.state.doc.descendants((node, pos) => {
       if (node.type.name === 'heading') {
         const text = node.textContent.trim();
-        if (text) out.push({ text, level: Math.min(MAX_HEADING_LEVEL, (node.attrs.level as number) ?? 1), pos });
+        const level = Math.min(MAX_HEADING_LEVEL, (node.attrs.level as number) ?? 1);
+        if (text && level <= max) out.push({ text, level, pos });
       }
     });
     return out;
@@ -149,10 +160,13 @@ class TocView {
 
   private paint(entries: TocEntry[], heads: HeadingRef[]): void {
     this.dom.textContent = '';
-    const title = document.createElement('div');
-    title.className = 'toc-title';
-    title.textContent = tocTitle(this.node()?.attrs?.title);
-    this.dom.appendChild(title);
+    const titleText = tocTitle(this.node()?.attrs?.title);
+    if (titleText) {
+      const title = document.createElement('div');
+      title.className = 'toc-title';
+      title.textContent = titleText;
+      this.dom.appendChild(title);
+    }
 
     if (entries.length === 0) {
       const empty = document.createElement('div');

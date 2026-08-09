@@ -984,12 +984,16 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       textBoxes.push(textBoxDocxDescriptor(node));
       out.push(new Paragraph({ children: [new TextRun({ text: `${TBX}${i}${TBX}` })] }));
     } else if (node.type === 'tableOfContents') {
-      // A real, recognized TOC field (levels 1–3, hyperlinked); Word/LibreOffice populate
-      // + link it on field update (features.updateFields does this on open). Title is a
-      // plain bold paragraph so it isn't itself listed; our importer regenerates the node.
-      const tocTitle = typeof node.attrs?.title === 'string' && node.attrs.title ? node.attrs.title : 'Table of Contents';
-      out.push(new Paragraph({ children: [new TextRun({ text: tocTitle, bold: true, size: 32 })], spacing: { after: cmToTwip(0.3) } }));
-      out.push(new TableOfContents(tocTitle, { hyperlink: true, headingStyleRange: `1-${MAX_HEADING_LEVEL}` }));
+      // A real, recognized TOC field (hyperlinked, over the index's own heading levels);
+      // Word/LibreOffice populate + link it on field update (features.updateFields does
+      // this on open). Title is a plain bold paragraph so it isn't itself listed, and is
+      // omitted where the index has none; our importer regenerates the node.
+      const rawTitle = node.attrs?.title;
+      const tocTitle = typeof rawTitle === 'string' ? rawTitle : 'Table of Contents';
+      const depth = Number(node.attrs?.maxLevel);
+      const maxLevel = depth >= 1 ? Math.min(MAX_HEADING_LEVEL, depth) : MAX_HEADING_LEVEL;
+      if (tocTitle) out.push(new Paragraph({ children: [new TextRun({ text: tocTitle, bold: true, size: 32 })], spacing: { after: cmToTwip(0.3) } }));
+      out.push(new TableOfContents(tocTitle, { hyperlink: true, headingStyleRange: `1-${maxLevel}` }));
     }
   }
   return out;
