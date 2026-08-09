@@ -208,6 +208,9 @@ type Leaf = {
   // pages. Their breaks get a full-width close/open mask so the single continuous
   // table box looks closed at each page break (it can't break structurally).
   inTableCell?: boolean;
+  // The block's space below (px). A word processor's paragraph frame includes it, so it
+  // must fit on the page too — a block whose text fits but whose spacing doesn't moves.
+  spaceAfter?: number;
   // Manual page break before this block (ODF fo:break-before; pageBreak.ts): force the
   // leaf to the next page's top even when it would otherwise fit on the current page.
   forceBreakBefore?: boolean;
@@ -793,6 +796,7 @@ export const PageBreaks = Extension.create({
                   kind: isAtomic ? 'atomic' : 'splittable',
                   naturalTop: topWithin(child) - cumulativeSpacerHeight,
                   naturalHeight: Math.max(child.offsetHeight, floatBottom) - intraSpacerHeight,
+                  spaceAfter: inTableCell ? 0 : parseFloat(getComputedStyle(child).marginBottom) || 0,
                   inTableCell,
                   // A manual page break is honored for top-level blocks only (not in
                   // a table cell, where the table breaks atomically between rows).
@@ -998,16 +1002,6 @@ export const PageBreaks = Extension.create({
             // A forced block that then overflows is split by the normal logic next pass.
             const forced = !!leaf.forceBreakBefore && i > 0 && effectiveTop > contentStart + 0.5;
 
-            if (
-              i > 0 && !leaf.inTableCell
-              && Math.abs(effectiveTop - contentStart) < 0.5
-              && parseFloat(getComputedStyle(leaf.el).paddingTop) > 0.5
-            ) {
-              const from = docPosBeforeElement(leaf.el);
-              const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
-              if (from !== null && node) pageTopBlocks.push({ from, to: from + node.nodeSize });
-            }
-
             if (forced) {
               // The next page's own content start: a section beginning here brings its
               // first-page header with it.
@@ -1043,7 +1037,7 @@ export const PageBreaks = Extension.create({
                 bandOpenY: target,
                 reason: 'leaf-jump-to-next-page',
               });
-            } else if (effectiveBottom > contentEnd) {
+            } else if (effectiveBottom + (leaf.spaceAfter ?? 0) > contentEnd) {
               if (leaf.kind === 'atomic') {
                 const cf = leaf.columnsFragment;
                 if (cf && cf.blockCount > 1 && cf.firstBlockNeededPx + COLUMNS_FIT_MARGIN_PX <= contentEnd - effectiveTop) {
@@ -1122,10 +1116,13 @@ export const PageBreaks = Extension.create({
               && effectiveTop > contentStart + 0.5
             ) {
               const next = leaves[i + 1];
+              // What the pair needs below this block: its own space below, then the
+              // successor's space above (its padding; an atomic leaf's height has it
+              // already) and its first line.
               const needed = next.kind === 'atomic'
                 ? Math.min(next.naturalHeight, CONTENT_HEIGHT)
-                : firstLineHeight(next.el, scale);
-              if (effectiveBottom + needed > contentEnd) {
+                : firstLineHeight(next.el, scale) + (parseFloat(getComputedStyle(next.el).paddingTop) || 0);
+              if (effectiveBottom + (leaf.spaceAfter ?? 0) + needed > contentEnd) {
                 const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
                 const { docPos, row } = leafSpacer(leaf);
                 breaks.push({
@@ -1136,6 +1133,20 @@ export const PageBreaks = Extension.create({
                   reason: 'keep-with-next',
                 });
               }
+            }
+
+            // A page break — its own spacer, or one that left it at the top — swallows the
+            // block's space above, as LibreOffice does. A line split doesn't: there the
+            // page starts mid-block. `effectiveTop` still excludes this leaf's own push.
+            if (
+              i > 0 && !leaf.inTableCell
+              && (breaks.some((b) => b.reason !== 'line-split')
+                || (breaks.length === 0 && Math.abs(effectiveTop - contentStart) < 0.5))
+              && parseFloat(getComputedStyle(leaf.el).paddingTop) > 0.5
+            ) {
+              const from = docPosBeforeElement(leaf.el);
+              const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
+              if (from !== null && node) pageTopBlocks.push({ from, to: from + node.nodeSize });
             }
 
             leavesDebug.push({
