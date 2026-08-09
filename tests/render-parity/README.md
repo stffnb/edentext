@@ -133,13 +133,19 @@ with 51 line-level differences — most of them the two engine rules below, not 
   the value odf-kit writes for level 2, where it draws its own flat 0.635cm hanging
   (1.909cm) instead. So reading the attribute back naively moves the markers of our own
   exports. Whatever rule that is has to be understood before the value is trusted.
-- Lines whose natural width lands within ~0.2mm of the right margin may take one word
-  more or fewer than LibreOffice. Sub-0.1mm engine rounding, not a layout rule — but it
-  **accumulates**: measured on the thesis' page 2, matching word widths (11.86mm for
-  `haben,` on both sides) had drifted 0.45mm apart by the 150th mm of the line, which is
-  what decides whether the next word fits. LibreOffice quantizes each glyph advance where
-  Chromium keeps it fractional, and nothing in CSS exposes that. Most of the thesis'
-  remaining `lineBreak` reports are this.
+- Lines take one word more or fewer than LibreOffice, which is most of the thesis'
+  remaining `lineBreak` reports. Two causes, both measured on that fixture:
+  - **LibreOffice compresses inter-word spaces to fit a line**, CSS justification only
+    expands. Of 349 full-width justified lines, **91** are narrower in LibreOffice than
+    their natural width here — up to **0.83px per space** at 12pt (p99 0.68px).
+    Attempted and **reverted**: `word-spacing: -0.05em` on justified blocks. It does fix
+    the break decision (the thesis' page 6 paragraph goes 7 lines → LibreOffice's 6), but
+    the corpus got *worse* — `lineBreak` 45 → 43 while `lineEnd` went 2 → 16, because the
+    tighter spacing also shortens every paragraph's unjustified last line by 1–3mm.
+  - Sub-0.1mm engine rounding, which **accumulates**: matching word widths (11.86mm for
+    `haben,` on both sides) had drifted 0.45mm apart by the 150th mm of the line.
+    LibreOffice quantizes each glyph advance where Chromium keeps it fractional, and
+    nothing in CSS exposes that.
 
 ## Findings that did not survive measurement
 

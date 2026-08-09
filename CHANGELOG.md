@@ -56,7 +56,9 @@
 **Insert**
 - Tables: insert via size picker, Word-style row/column drag-resize, add / delete rows & columns, delete table, cell borders, merge cells and split cells (N×M, Word/LibreOffice-style), cell background shading, header row / first column toggles, named table styles (see Styles); a table splits cleanly across page boundaries
 - Table border control (Word/LibreOffice-style): per-side cell borders with presets (all / outside / inside / single edges / none), line width and color; buttons show active states matching the current pen and toggle borders off; round-trips to ODF `fo:border-*` and DOCX `w:tcBorders`
-- Images: inline or floating with text wrap (left / right / top-bottom), resize handles, rotation, live size badge; insert via toolbar, drag-and-drop, or paste. A floating frame is placed by the file's own offsets
+- Images: inline or floating with text wrap (left / right / top-bottom), resize handles, rotation, live size badge; insert via toolbar, drag-and-drop, or paste. A floating frame is placed by the file's own offsets, and two top-and-bottom frames set against opposite ends of the text share one band, side by side
+- EMF metafiles are drawn (`import/emf.ts`): the picture is rebuilt as SVG from the metafile's own records — paths, filled shapes, text with its font and colour, embedded bitmaps — so a plot pasted out of MATLAB or Excel arrives as a picture instead of a placeholder
+- Anything wider than the sheet — an oversized formula, a frame reaching past the margin — is cut at the page edge, as it is in LibreOffice
 - Charts are drawn from the file — DrawingML `chartN.xml` and ODF `chart:chart`, bar / line / area / scatter / pie, with their titles, axis titles, gridlines, axis bounds and series colours (read-only; see the limitations below)
 - Special characters picker
 - Date and time fields: picker with 7 date and 4 time formats (live samples) and an "update automatically" toggle — fixed fields keep the inserted moment, auto fields refresh on open. Round-trips to ODF `text:date`/`text:time` (minted `number:date/time-style`) and DOCX `DATE`/`TIME` fields; the field carries the surrounding font
@@ -109,7 +111,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - Comments / annotations: dropped on import (`office:annotation`, `w:comment`)
 - Track changes / revisions: no recording, no accept/reject, no author colors (`text:tracked-changes`, `w:ins`/`w:del`); imported revisions are flattened to their current state
 - Bookmarks and cross-references: no anchor, no reference field ("see chapter 3 on page 7"), none survive an import — this also blocks internal hyperlinks
-- Charts are **drawn** from the file (`import/chart.ts`: DrawingML `chartN.xml` and ODF `chart:chart`), but as a picture, not a chart object — a re-export carries the drawing and the numbers behind it are no longer editable. OLE objects and WMF/EMF/SVM metafiles keep their box and a placeholder label, and export writes that back out (`import/imageFormats.ts`): no JS decoder exists for the metafile formats, and none can be embedded without a backend
+- Charts are **drawn** from the file (`import/chart.ts`: DrawingML `chartN.xml` and ODF `chart:chart`), but as a picture, not a chart object — a re-export carries the drawing and the numbers behind it are no longer editable. The same holds for an **EMF** metafile (`import/emf.ts`): it is drawn, but as the SVG picture it was rebuilt into, and only from the record set a plot consists of — a hatched brush, a clipping region or a rotated bitmap is skipped. **WMF/SVM** metafiles and OLE objects still keep their box and a placeholder label, and export writes that back out: WMF is a different (16-bit) record format, SVM is StarOffice-proprietary, and an OLE object cannot be rendered without its application
 - Shapes beyond rect / round-rect / ellipse: lines, arrows, connectors, polygons, freeform, and rotated shape text (dropped on import with a warning)
 - Text boxes in the DOCX export: lists inside a box are flattened to literal-marker paragraphs (`•` / `1.`) and images inside a box are dropped — the box XML is injected by a post-pack string pass (`export/docx.ts` `applyTextBoxesDocx`) that mints no numbering.xml or media/rels entries. The ODT export has neither limitation
 
@@ -167,11 +169,15 @@ merely unimplemented belongs in the list above, not here.
   reach is a frame a word processor puts *inside* running text: Chromium moves
   every line after a full-width float below it, so such a frame lands after the
   paragraph's text instead. Noted 2026-08-08, revised 2026-08-09.
-- A line takes one word more or fewer than LibreOffice where its natural width
-  lands within ~0.2 mm of the right margin. LibreOffice quantizes every glyph
-  advance, Chromium keeps it fractional, and the two drift apart along the line
-  (measured on the thesis fixture: identical word widths, 0.45 mm apart by the
-  150th mm). Nothing in CSS exposes the quantization. Noted 2026-08-09.
+- A line takes one word more or fewer than LibreOffice, for two reasons neither
+  of which CSS exposes. LibreOffice **compresses** inter-word spaces to fit a
+  line (measured on the thesis: 91 of 349 full-width justified lines, up to
+  0.83 px per space at 12 pt) where CSS justification only expands; and it
+  quantizes every glyph advance where Chromium keeps it fractional, so the two
+  drift apart along the line (identical word widths, 0.45 mm apart by the
+  150th mm). A matching negative `word-spacing` was tried and reverted — it
+  fixes the break but shortens every last line; see
+  `tests/render-parity/README.md`. Noted 2026-08-09.
 - A text box anchored inside a paragraph loses the vertical offset it was
   anchored by: it is a block node here, so the importer lifts it out and it
   simply follows that paragraph (measured 4.7 mm on the thesis' figure page).
