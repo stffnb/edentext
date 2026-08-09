@@ -518,22 +518,27 @@ export class StyleResolver {
     const mp = this.masterPageEl(pageName);
     const layout = this.pageLayoutEl();
 
-    const zone = (local: string): Element | null => {
-      if (!mp) return null;
-      for (const child of Array.from(mp.children)) {
-        if (child.namespaceURI === NS.style && child.localName === local) return child;
-      }
-      return null;
-    };
-    // header-first/footer-first (ODF 1.3 style: or older LibreOffice loext:) — match
-    // by local name in either namespace so both producers round-trip.
-    const firstZone = (local: string): Element | null => {
-      if (!mp) return null;
-      for (const child of Array.from(mp.children)) {
+    // Match by local name in either namespace: header-first/footer-first are ODF 1.3
+    // style: or older LibreOffice loext:, so both producers round-trip.
+    const zoneIn = (owner: Element | null, local: string): Element | null => {
+      if (!owner) return null;
+      for (const child of Array.from(owner.children)) {
         if (child.localName === local && (child.namespaceURI === NS.style || child.namespaceURI === NS.loext)) return child;
       }
       return null;
     };
+    // A master page naming a different style:next-style-name governs one page and then
+    // hands over — the "different first page" idiom. Its own zones become the first-page
+    // variants, the successor's the ones every later page in the section uses.
+    const nextName = mp?.getAttributeNS(NS.style, 'next-style-name') ?? null;
+    const successor = nextName && nextName !== mp?.getAttributeNS(NS.style, 'name')
+      ? this.masterPageEl(nextName)
+      : null;
+    const rest = successor ?? mp;
+
+    const zone = (local: string) => zoneIn(rest, local);
+    const firstZone = (local: string): Element | null =>
+      zoneIn(mp, `${local}-first`) ?? (successor ? zoneIn(mp, local) : null);
     const extraCm = (local: 'header-style' | 'footer-style', spacingAttr: 'margin-bottom' | 'margin-top'): number => {
       if (!layout) return 0;
       let props: Element | null = null;
@@ -558,11 +563,11 @@ export class StyleResolver {
     return {
       header: zone('header'),
       footer: zone('footer'),
-      headerFirst: firstZone('header-first'),
-      footerFirst: firstZone('footer-first'),
+      headerFirst: firstZone('header'),
+      footerFirst: firstZone('footer'),
       // Even-page variant (Word odd/even). ODF header-left = the left (even) page.
-      headerLeft: firstZone('header-left'),
-      footerLeft: firstZone('footer-left'),
+      headerLeft: zoneIn(rest, 'header-left'),
+      footerLeft: zoneIn(rest, 'footer-left'),
       headerExtraCm: extraCm('header-style', 'margin-bottom'),
       footerExtraCm: extraCm('footer-style', 'margin-top'),
     };

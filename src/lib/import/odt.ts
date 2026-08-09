@@ -1428,11 +1428,14 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
       }
       if (e.namespaceURI === NS.draw) {
         const conv = convertDrawElement(e, ctx);
-        // The one-paragraph header/footer schema holds inline images (forced
-        // as-character) but not boxes — those are dropped with a warning.
+        // The one-paragraph zone takes as-char images only — boxes and positioned
+        // frames (a page-sized background reserves the whole page inline) are dropped
+        // with a warning, as the DOCX importer does.
         if (hfFields) {
-          if (conv?.inline?.type === 'image') out.push({ ...conv.inline, attrs: { ...conv.inline.attrs, wrap: 'inline' } });
-          else if (conv) ctx.warnings.add('Drawings were removed');
+          const wrap = conv?.inline?.attrs?.wrap;
+          if (conv?.inline?.type === 'image' && (!wrap || wrap === 'inline')) {
+            out.push({ ...conv.inline, attrs: { ...conv.inline.attrs, wrap: 'inline' } });
+          } else if (conv) ctx.warnings.add('Drawings were removed');
           continue;
         }
         if (conv?.inline) out.push(conv.inline);
