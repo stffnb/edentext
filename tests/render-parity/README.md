@@ -95,6 +95,10 @@ with 51 line-level differences — most of them the two engine rules below, not 
   paragraph is a block node here, so the importer lifts it out and it simply follows that
   paragraph. On the thesis' figure page that leaves its caption 4.7mm high — LibreOffice
   places the box by its own 19.52cm, we place it after the picture.
+  Attempted and **reverted**: a top margin of the offset minus the previous block's
+  measured height overshot by 4.5mm (231.2 against 227.7, from 223.0) and improved
+  nothing in the corpus. The anchor paragraph's box is not the right basis — the frame
+  it holds is a float, so its height is the text's alone.
 - **Page geometry is document-wide.** Headers and footers are per section (each is
   editable in place), but margins, orientation and format are not — a file whose sections
   disagree on them keeps the last one's.
