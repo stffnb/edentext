@@ -860,6 +860,9 @@ type BlockDefaults = {
   marginTopPt: number;
   marginBottomPt: number;
   indentPt: number;
+  // The named style's line spacing as an ODF factor; a block declaring the same one adds
+  // nothing, but a block that declares 100% under a 115% style is direct formatting.
+  lineHeight: number;
   boldByDefault: boolean;
   fonts: Set<string>;
   color: string;
@@ -880,6 +883,13 @@ const FONT_TWINS: Record<string, string[]> = {
   'liberation sans': ['arial'],
 };
 
+// fo:line-height as a factor; null for a length or `normal`, which is not a percentage.
+function linePercent(lh: string | undefined): number | null {
+  if (!lh || !lh.endsWith('%')) return null;
+  const p = parseFloat(lh);
+  return Number.isFinite(p) ? Math.round(p) / 100 : null;
+}
+
 function blockDefaults(resolver: StyleResolver, named: string | null, headingLevel: number | null, boldByDefault: boolean): BlockDefaults {
   const hdef = headingLevel != null ? HEADING_DEFAULTS[headingLevel - 1] : null;
   const fallback: BlockDefaults = {
@@ -887,6 +897,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     marginTopPt: hdef ? hdef.marginTopPt : 0,
     marginBottomPt: hdef ? hdef.marginBottomPt : 0,
     indentPt: 0,
+    lineHeight: 1,
     boldByDefault: headingLevel != null || boldByDefault,
     fonts: new Set(headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS),
     color: '#000000',
@@ -911,6 +922,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     marginTopPt: lengthToPt(para['fo:margin-top']) ?? 0,
     marginBottomPt: lengthToPt(para['fo:margin-bottom']) ?? 0,
     indentPt: lengthToPt(para['fo:margin-left']) ?? 0,
+    lineHeight: linePercent(para['fo:line-height']) ?? 1,
     boldByDefault: weight ? weight === 'bold' || parseInt(weight, 10) >= 600 : fallback.boldByDefault,
     fonts,
     color: (text['fo:color'] && normalizeColor(text['fo:color'])) || fallback.color,
@@ -946,9 +958,11 @@ function paraPropsFromOdf(props: PropMap): ParaProps {
   if (mt != null) out.spaceBefore = snapPt(mt);
   if (mb != null) out.spaceAfter = snapPt(mb);
   if (ml != null) out.indent = Math.round(ml * 100) / 100;
+  // The ODF percentage itself, as everywhere else in the model (blockAttrs, both DOCX
+  // paths, and the export, which writes it straight back out as a percentage).
   const lh = props['fo:line-height'];
   if (lh && lh.endsWith('%')) {
-    const mult = parseFloat(lh) / 100 / LINE_HEIGHT_RATIO;
+    const mult = parseFloat(lh) / 100;
     if (Number.isFinite(mult)) out.lineHeight = String(Math.round(mult * 100) / 100);
   }
   const bg = props['fo:background-color'];
@@ -1150,7 +1164,7 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefau
     }
     if (mult != null) {
       mult = Math.round(mult * 100) / 100;
-      if (Math.abs(mult - 1) > 0.01) attrs.lineHeight = String(mult);
+      if (Math.abs(mult - defaults.lineHeight) > 0.01) attrs.lineHeight = String(mult);
     }
   }
 
