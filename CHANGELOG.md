@@ -56,7 +56,8 @@
 **Insert**
 - Tables: insert via size picker, Word-style row/column drag-resize, add / delete rows & columns, delete table, cell borders, merge cells and split cells (N×M, Word/LibreOffice-style), cell background shading, header row / first column toggles, named table styles (see Styles); a table splits cleanly across page boundaries
 - Table border control (Word/LibreOffice-style): per-side cell borders with presets (all / outside / inside / single edges / none), line width and color; buttons show active states matching the current pen and toggle borders off; round-trips to ODF `fo:border-*` and DOCX `w:tcBorders`
-- Images: inline or floating with text wrap (left / right / top-bottom), resize handles, rotation, live size badge; insert via toolbar, drag-and-drop, or paste
+- Images: inline or floating with text wrap (left / right / top-bottom), resize handles, rotation, live size badge; insert via toolbar, drag-and-drop, or paste. A floating frame is placed by the file's own offsets
+- Charts are drawn from the file — DrawingML `chartN.xml` and ODF `chart:chart`, bar / line / area / scatter / pie, with their titles, axis titles, gridlines, axis bounds and series colours (read-only; see the limitations below)
 - Special characters picker
 - Date and time fields: picker with 7 date and 4 time formats (live samples) and an "update automatically" toggle — fixed fields keep the inserted moment, auto fields refresh on open. Round-trips to ODF `text:date`/`text:time` (minted `number:date/time-style`) and DOCX `DATE`/`TIME` fields; the field carries the surrounding font
 - Table of contents: generated from headings (H1–H5) with live page numbers and dot leaders, click an entry to jump to its heading; round-trips to ODF `text:table-of-content` and a Word TOC field
@@ -108,7 +109,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - Comments / annotations: dropped on import (`office:annotation`, `w:comment`)
 - Track changes / revisions: no recording, no accept/reject, no author colors (`text:tracked-changes`, `w:ins`/`w:del`); imported revisions are flattened to their current state
 - Bookmarks and cross-references: no anchor, no reference field ("see chapter 3 on page 7"), none survive an import — this also blocks internal hyperlinks
-- Charts and OLE objects: an undrawable frame keeps its box and its label but not its picture, and the original is gone from the moment it is imported — export writes the placeholder back out (`import/imageFormats.ts`). The same holds for WMF/EMF metafiles
+- Charts are **drawn** from the file (`import/chart.ts`: DrawingML `chartN.xml` and ODF `chart:chart`), but as a picture, not a chart object — a re-export carries the drawing and the numbers behind it are no longer editable. OLE objects and WMF/EMF/SVM metafiles keep their box and a placeholder label, and export writes that back out (`import/imageFormats.ts`): no JS decoder exists for the metafile formats, and none can be embedded without a backend
 - Shapes beyond rect / round-rect / ellipse: lines, arrows, connectors, polygons, freeform, and rotated shape text (dropped on import with a warning)
 - Text boxes in the DOCX export: lists inside a box are flattened to literal-marker paragraphs (`•` / `1.`) and images inside a box are dropped — the box XML is injected by a post-pack string pass (`export/docx.ts` `applyTextBoxesDocx`) that mints no numbering.xml or media/rels entries. The ODT export has neither limitation
 
@@ -123,7 +124,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - Line numbering (LibreOffice Tools ▸ Line numbering / Word Layout ▸ Line numbers)
 - Section-level page setup: a section with its own page size, orientation or margins. Page geometry is one document-wide setting, so a file whose sections disagree keeps the last one's (per-section headers/footers already work)
 - Table extras: repeat the header row on every page, keep a row from splitting across pages, sort, sum/formula in a cell, number recognition
-- A list level's own hanging indent: the marker sits at the 0.635 cm both exports write (`LIST_HANGING_CM`), so a wider marker overflows where Word moves the text to the next list tab. Reading the value back naively also moves the markers of our own ODT exports — LibreOffice draws its own flat hanging at exactly the value odf-kit writes for level 2; see `tests/render-parity/README.md` before building on it
+- A list level's own hanging indent: the marker sits at the 0.635 cm both exports write (`LIST_HANGING_CM`), so a wider *left*-set marker overflows where Word moves the text to the next list tab (a **right**-set one — `w:lvlJc`, which is what the built-in Roman numberings use — grows into the margin and is fine). Reading the value back naively also moves the markers of our own ODT exports — LibreOffice draws its own flat hanging at exactly the value odf-kit writes for level 2; see `tests/render-parity/README.md` before building on it
 - Images live as data-URIs in the autosaved JSON, so an image-heavy document can exceed the ~5 MB localStorage quota; `storage/autosave.ts` warns once and a reload restores the last version that still fit. IndexedDB (as `embeddedFontStore.ts` already uses) would lift the ceiling
 - Linked / chained text frames
 - Find & Replace by regular expression or by formatting/style
@@ -160,12 +161,21 @@ merely unimplemented belongs in the list above, not here.
   around a box. CSS Exclusions, which would wrap around a freely placed one,
   are unimplemented in every engine, and `position: absolute` takes the frame
   out of flow so text runs underneath it.
-  A file's own offsets are a separate matter: both round-trip
-  (`wrapOffset`/`wrapOffsetY` = `svg:x`/`svg:y`, `positionH`/`positionV`), but
-  only the horizontal one is rendered, as the float's near-side margin. A line
-  box avoids a float's whole *margin* box, so applying the vertical one as a top
-  margin makes dead space where a word processor flows text — measured, the
-  thesis fixture went from 131 mm off to 187 mm and grew a page. Noted 2026-08-08.
+  A file's own offsets are drawn: both round-trip (`wrapOffset`/`wrapOffsetY` =
+  `svg:x`/`svg:y`, `positionH`/`positionV`) and both place the frame, the vertical
+  one for top-and-bottom wrap, where no text sits beside it. What stays out of
+  reach is a frame a word processor puts *inside* running text: Chromium moves
+  every line after a full-width float below it, so such a frame lands after the
+  paragraph's text instead. Noted 2026-08-08, revised 2026-08-09.
+- A line takes one word more or fewer than LibreOffice where its natural width
+  lands within ~0.2 mm of the right margin. LibreOffice quantizes every glyph
+  advance, Chromium keeps it fractional, and the two drift apart along the line
+  (measured on the thesis fixture: identical word widths, 0.45 mm apart by the
+  150th mm). Nothing in CSS exposes the quantization. Noted 2026-08-09.
+- A text box anchored inside a paragraph loses the vertical offset it was
+  anchored by: it is a block node here, so the importer lifts it out and it
+  simply follows that paragraph (measured 4.7 mm on the thesis' figure page).
+  Noted 2026-08-09.
 - Line height follows the paragraph, not the line: the block's CSS strut applies
   to every line, where a word processor takes each line's own runs. A paragraph
   whose runs all agree takes theirs, so only a paragraph of *mixed* sizes struts
