@@ -292,4 +292,38 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
       found[0]?.attrs?.display === false && found[1]?.attrs?.display === true,
       found.map((f) => f.attrs?.display));
   });
+
+  it('survives a `soffice` re-save of bookmarks and cross-references', { timeout: 180000 }, async () => {
+    const doc: N = { type: 'doc', content: [
+      P(null, T('Figure '), T('Figure 1', { type: 'bookmark', attrs: { name: 'Fig1' } }), T(' – a caption')),
+      P(null,
+        T('See '), { type: 'crossRef', attrs: { name: 'Fig1', format: 'text', text: 'Figure 1' } },
+        T(' on page '), { type: 'crossRef', attrs: { name: 'Fig1', format: 'page', text: '1' } },
+        T(' or '), T('jump', { type: 'link', attrs: { href: '#Fig1' } }), T('.'),
+      ),
+    ] };
+    mkdirSync('/tmp/lo-rt', { recursive: true });
+    writeFileSync('/tmp/lo-rt/bm.odt', await buildOdt(doc, margins, 'portrait'));
+    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/bmout /tmp/lo-rt/bm.odt', { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/bmout/bm.odt'));
+    const xml = strFromU8(unzipSync(resaved)['content.xml']);
+
+    check('LO bookmarks: the range survives', xml.includes('text:bookmark-start text:name="Fig1"') && xml.includes('text:bookmark-end text:name="Fig1"'));
+    check('LO bookmarks: both references stay fields', (xml.match(/<text:bookmark-ref/g) ?? []).length === 2, xml.match(/<text:bookmark-ref[^>]*>/g));
+
+    const res = importOdt(resaved);
+    const marked: N[] = [];
+    const refs: N[] = [];
+    (function walk(n: N) {
+      if (n.type === 'crossRef') refs.push(n);
+      if ((n.marks ?? []).some((m: N) => m.type === 'bookmark')) marked.push(n);
+      for (const c of n.content ?? []) walk(c);
+    })(res.content);
+    check('LO bookmarks: the mark comes back on its text', marked[0]?.text === 'Figure 1', marked.map((m) => m.text));
+    check('LO bookmarks: both references come back',
+      refs.map((r) => `${r.attrs.name}/${r.attrs.format}`).join(',') === 'Fig1/text,Fig1/page',
+      refs.map((r) => r.attrs));
+    // LibreOffice re-evaluates the fields on load, so the shown values are its own.
+    check('LO bookmarks: the text reference resolves to the caption', refs[0]?.attrs?.text === 'Figure 1', refs[0]?.attrs?.text);
+  });
 });

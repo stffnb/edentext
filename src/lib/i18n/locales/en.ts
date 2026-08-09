@@ -10,6 +10,7 @@ const en = {
     cancel: 'Cancel',
     close: 'Close',
     apply: 'Apply',
+    insert: 'Insert',
     remove: 'Remove',
   },
   appearance: {
@@ -205,6 +206,11 @@ const en = {
     tocNotInHf: 'A table of contents is not available in headers/footers',
     insertLink: 'Insert link',
     linkNotInHf: 'Links are not available in headers/footers',
+    insertBookmark: 'Bookmark',
+    bookmarkNeedsSelection: 'Select the text the bookmark should cover',
+    bookmarkNotInHf: 'Bookmarks are not available in headers/footers',
+    insertCrossRef: 'Insert cross-reference',
+    crossRefNeedsBookmark: 'Add a bookmark first — a cross-reference points at one',
     clearFormatting: 'Clear formatting',
   },
   image: {
@@ -231,6 +237,16 @@ const en = {
     noBorder: 'No border',
     borderWidth: 'Border width',
     pt: (w: number) => `${w} pt`,
+  },
+  bookmark: {
+    dialogLabel: 'Bookmark',
+    namePlaceholder: 'Bookmark name',
+    existing: 'In this document',
+    none: 'No bookmarks yet',
+    crossRefLabel: 'Insert cross-reference',
+    formatText: 'Text of the bookmark',
+    formatPage: 'Page number',
+    openHint: (mod: string) => `${mod}+Click to jump to the bookmark`,
   },
   link: {
     dialogLabel: 'Insert link',
@@ -340,6 +356,8 @@ const en = {
     insertLink: 'Link…',
     editLink: 'Edit Link…',
     removeLink: 'Remove Link',
+    insertBookmark: 'Bookmark…',
+    insertCrossRef: 'Cross-reference…',
     clearFormatting: 'Clear Formatting',
   },
   about: {

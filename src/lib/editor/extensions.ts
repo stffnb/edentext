@@ -8,6 +8,7 @@ import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import Highlight from '@tiptap/extension-highlight';
 import { Link } from './extensions/link';
+import { Bookmark } from './extensions/bookmark';
 import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style';
 import { FontWeight } from './extensions/fontWeight';
 import { FontColor } from './extensions/fontColor';
@@ -47,6 +48,7 @@ import { TableStyle } from './extensions/tableStyle';
 import { TrailingNode } from './extensions/trailingNode';
 import { Image } from './extensions/image';
 import { DateTimeField } from './extensions/dateTimeField';
+import { CrossReference } from './extensions/crossReference';
 import { Formula } from './extensions/formula';
 import { TextBox } from './extensions/textBox';
 import { Columns } from './extensions/columns';
@@ -66,6 +68,9 @@ export const extensions = [
   UnderlineStyled,
   StrikeStyled,
   Link,
+  // Named range of text, the target of a cross-reference or an internal link;
+  // round-trips to ODF text:bookmark-start/-end and DOCX w:bookmarkStart/End.
+  Bookmark,
   Subscript,
   Superscript,
   TextStyle,
@@ -88,6 +93,9 @@ export const extensions = [
   // Inline date/time field (fixed or auto-updating); round-trips to ODF
   // <text:date>/<text:time> and DOCX DATE/TIME fields.
   DateTimeField,
+  // Inline reference to a bookmark, showing its text or its page; kept live by its
+  // node view. Round-trips to ODF <text:bookmark-ref> and DOCX REF/PAGEREF fields.
+  CrossReference,
   // Mathematical formula; stores LaTeX, renders native MathML, round-trips to an ODF
   // embedded formula object and DOCX OMML. See docs/architecture/formulas.md.
   Formula,

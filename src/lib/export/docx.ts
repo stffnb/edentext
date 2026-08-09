@@ -1,5 +1,5 @@
 import {
-  Document, Packer, Paragraph, TextRun, ImageRun, ExternalHyperlink, Tab,
+  Document, Packer, Paragraph, TextRun, ImageRun, ExternalHyperlink, InternalHyperlink, Bookmark, Tab,
   TableOfContents,
   Table, TableRow, TableCell, Header, Footer, PageNumber, SimpleField,
   AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
@@ -284,7 +284,7 @@ function textNodeToRuns(node: TiptapNode, force: TextProps): TextRun[] {
   return [new TextRun({ children, ...props })];
 }
 
-type Inline = TextRun | ImageRun | ExternalHyperlink | SimpleField;
+type Inline = TextRun | ImageRun | ExternalHyperlink | InternalHyperlink | SimpleField | Bookmark;
 
 // A date/time field. A fixed field is plain text (Word has no fixed-date field); an
 // auto field is a DATE/TIME field with the picture switch and a cached value.
@@ -302,15 +302,52 @@ function dateTimeRun(node: TiptapNode): Inline {
   return new SimpleField(`${kind === 'time' ? 'TIME' : 'DATE'} \\@ "${docxPicture(fmt)}"`, text);
 }
 
+// A cross-reference: a REF/PAGEREF field with the resolved text as its cached result,
+// so Word and LibreOffice show it before anyone updates fields.
+function crossRefField(node: TiptapNode): SimpleField {
+  const a = node.attrs ?? {};
+  const verb = a.format === 'page' ? 'PAGEREF' : 'REF';
+  return new SimpleField(`${verb} ${String(a.name ?? '')} \\h`, String(a.text ?? ''));
+}
+
+const bookmarkNameOf = (node: TiptapNode): string | null => {
+  const name = node.marks?.find((m) => m.type === 'bookmark')?.attrs?.name;
+  return typeof name === 'string' && name ? name : null;
+};
+
 function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline[] {
   const out: Inline[] = [];
+  // Consecutive nodes sharing a bookmark become one w:bookmarkStart/End pair.
+  // ponytail: a range spanning paragraphs is emitted per paragraph — Word tolerates the
+  // repeated name, and splitting it would need a second pass over the whole document.
+  let open: { name: string; children: Inline[] } | null = null;
+  const flush = () => {
+    if (!open) return;
+    out.push(new Bookmark({ id: open.name, children: open.children }));
+    open = null;
+  };
+  const emit = (runs: Inline[], name: string | null) => {
+    if (name !== (open?.name ?? null)) flush();
+    if (!name) { out.push(...runs); return; }
+    if (!open) open = { name, children: [] };
+    open.children.push(...runs);
+  };
+
   for (const node of content) {
+    const bookmark = bookmarkNameOf(node);
     if (node.type === 'text' && node.text) {
       const runs = textNodeToRuns(node, force);
       const href = node.marks?.find((m) => m.type === 'link')?.attrs?.href;
-      if (href) out.push(new ExternalHyperlink({ link: String(href), children: runs }));
-      else out.push(...runs);
-    } else if (node.type === 'hardBreak') {
+      const link = href ? String(href) : '';
+      // An internal href targets a bookmark in this document, not a URL.
+      if (link.startsWith('#')) emit([new InternalHyperlink({ anchor: link.slice(1), children: runs })], bookmark);
+      else if (link) emit([new ExternalHyperlink({ link, children: runs })], bookmark);
+      else emit(runs, bookmark);
+      continue;
+    }
+    if (node.type === 'crossRef') { emit([crossRefField(node)], bookmark); continue; }
+    flush();
+    if (node.type === 'hardBreak') {
       // Carry the run's props so an empty line between two breaks keeps its font size.
       out.push(new TextRun({ break: 1, ...runPropsFromMarks(node.marks) }));
     } else if (node.type === 'image') {

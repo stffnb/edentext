@@ -12,7 +12,7 @@ Five topics are large enough to have their own deep-dive — read the file befor
 | `pageBreaks.ts`, `columns.ts`, `columnsFlow.ts` | `docs/architecture/pagination.md` |
 | `image.ts`, `textBox.ts` | `docs/architecture/frames.md` |
 | `table*.ts`, `tableStyle.ts` | `docs/architecture/tables.md` |
-| `textEffects.ts`, `indent.ts`, `tabStops.ts`, `listMarker.ts`, `paragraphBox.ts`, `dateTimeField.ts` | `docs/architecture/formatting.md` |
+| `textEffects.ts`, `indent.ts`, `tabStops.ts`, `listMarker.ts`, `paragraphBox.ts`, `dateTimeField.ts`, `bookmark.ts`, `crossReference.ts` | `docs/architecture/formatting.md` |
 | `formula.ts` | `docs/architecture/formulas.md` |
 | `paragraphStyle.ts`, `characterStyle.ts` | `src/lib/styles/CLAUDE.md` |
 
@@ -26,7 +26,8 @@ Five topics are large enough to have their own deep-dive — read the file befor
 - **`pageBreak.ts`** — the text-flow attrs of a paragraph/heading: `breakBefore: 'page'`, plus `keepNext`/`keepLines` (see `docs/architecture/pagination.md`). Owns `Mod-Enter`.
 - **`formattingMarks.ts`** (`FormattingMarks`) — decorations marking spaces (`·`) and tabs (`→`) when `.paper.show-formatting-marks` is set.
 - **`bulletList.ts`** / **`orderedList.ts`** — the TipTap lists plus a marker-type attr: `setBulletChar` (innermost list, `null` = default cycle) and the ordered numbering cycle (`utils/orderedListTypes.ts`, multilevel targets the outermost list).
-- **`link.ts`** — hyperlink mark; owns `Mod-k`, which fires the event `Toolbar.svelte` listens for to open the link dialog.
+- **`link.ts`** — hyperlink mark; owns `Mod-k`, which fires the event `Toolbar.svelte` listens for to open the link dialog. A `#name` href targets a bookmark: `Editor.svelte`'s `handleClick` scrolls to it instead of opening a tab.
+- **`bookmark.ts`** / **`crossReference.ts`** — a named range of text (a mark) and the live references to it (`REF`/`PAGEREF`). `ToolbarExpanded.svelte` owns both dialogs, as it does the link one.
 - **`searchReplace.ts`** — Find & Replace: decorations highlight all matches, commands navigate/replace. Touches the document only for actual replacements.
 - **`spellCheck.ts`** — decorations from `spell/controller.ts`; `spellErrorAt` feeds the context menu.
 - **`tableOfContents.ts`** — a generated TOC: block atom listing every heading (levels 1–5).

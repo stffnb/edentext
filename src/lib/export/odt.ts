@@ -147,6 +147,16 @@ const LEAD = '\uE011';
 // <draw:frame>/<draw:object> and writes the embedded formula object. U+E012.
 const MTH = '\uE012';
 
+// Sentinels bracketing a bookmark's text (BMS<name>BMS \u2026 BME<name>BME), spliced into
+// the run text by replaceBookmarks so they ride every odf-kit path; applyBookmarks
+// rewrites them to <text:bookmark-start/>/<text:bookmark-end/>. U+E013/U+E014.
+const BMS = '\uE013';
+const BME = '\uE014';
+
+// Sentinel wrapping a cross-reference's index and its display text
+// (XRF{i}XRF<text>XRF); applyBookmarks rewrites it to <text:bookmark-ref>. U+E015.
+const XRF = '\uE015';
+
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -499,6 +509,52 @@ function replaceDateTimeFields(node: TiptapNode, fields: DateTimeFieldExport[]):
     }
     content.push(replaceDateTimeFields(child, fields));
   }
+  return { ...node, content };
+}
+
+// One cross-reference, collected by replaceCrossRefs and emitted by applyBookmarks.
+type CrossRefExport = { name: string; format: 'text' | 'page' };
+
+const bookmarkNameOf = (node: TiptapNode): string =>
+  String(node.marks?.find((m) => m.type === 'bookmark')?.attrs?.name ?? '');
+
+// Bracket each bookmark's text with the BMS/BME sentinels and replace every `crossRef`
+// node with an XRF-sentinel run. Splicing into the run text (rather than into a run
+// emitter) is what makes both ride every odf-kit path — cells and custom paragraphs
+// included. applyBookmarks resolves them after serialization.
+function replaceBookmarks(node: TiptapNode, refs: CrossRefExport[]): TiptapNode {
+  if (!node.content?.length) return node;
+  const content: TiptapNode[] = [];
+  // Index of the run the open bookmark started on, so its end sentinel lands on the
+  // last run of the range.
+  let open = '';
+  let lastOfRange = -1;
+  const closeRange = () => {
+    if (!open) return;
+    const run = content[lastOfRange];
+    content[lastOfRange] = { ...run, text: `${run.text ?? ''}${BME}${open}${BME}` };
+    open = '';
+  };
+  for (const child of node.content) {
+    if (child.type === 'crossRef') {
+      closeRange();
+      const a = child.attrs ?? {};
+      refs.push({ name: String(a.name ?? ''), format: a.format === 'page' ? 'page' : 'text' });
+      content.push({ type: 'text', text: `${XRF}${refs.length - 1}${XRF}${String(a.text ?? '')}${XRF}`, marks: child.marks });
+      continue;
+    }
+    const name = child.type === 'text' ? bookmarkNameOf(child) : '';
+    if (name !== open) closeRange();
+    if (name && !open) {
+      open = name;
+      content.push({ ...child, text: `${BMS}${name}${BMS}${child.text ?? ''}` });
+      lastOfRange = content.length - 1;
+      continue;
+    }
+    content.push(name ? child : replaceBookmarks(child, refs));
+    if (name) lastOfRange = content.length - 1;
+  }
+  closeRange();
   return { ...node, content };
 }
 
@@ -3091,6 +3147,31 @@ function tocXml(toc: TocExport, index: number): string {
 
 // Resolve TOC sentinels: rewrite each marker <text:p>TOC{i}TOC</text:p> to its
 // <text:table-of-content> and mint the Contents_20_* paragraph styles it references.
+// BMS/BME/XRF sentinels → <text:bookmark-start/>, <text:bookmark-end/> and
+// <text:bookmark-ref>. All three are legal anywhere in paragraph content, so a plain
+// replace works wherever odf-kit put the run — inside a <text:span> included. Bookmark
+// names are sanitized on insert, so nothing here needs XML escaping.
+function applyBookmarks(odtBytes: Uint8Array, refs: CrossRefExport[]): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  if (!content.includes(BMS) && !content.includes(XRF)) return odtBytes;
+
+  content = content
+    .replace(new RegExp(`${BMS}([^${BMS}]*)${BMS}`, 'g'), (_m, name: string) => `<text:bookmark-start text:name="${name}"/>`)
+    .replace(new RegExp(`${BME}([^${BME}]*)${BME}`, 'g'), (_m, name: string) => `<text:bookmark-end text:name="${name}"/>`)
+    .replace(new RegExp(`${XRF}(\\d+)${XRF}([^${XRF}]*)${XRF}`, 'g'), (_m, idx: string, shown: string) => {
+      const ref = refs[Number(idx)];
+      if (!ref) return shown;
+      return `<text:bookmark-ref text:reference-format="${ref.format}" text:ref-name="${ref.name}">${shown}</text:bookmark-ref>`;
+    });
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 function applyToc(odtBytes: Uint8Array, tocs: TocExport[], contentWidthCm: number): Uint8Array {
   if (!tocs.length) return odtBytes;
   const files = unzipSync(odtBytes);
@@ -3156,7 +3237,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const columns: ColumnsExport[] = [];
   const dateFields: DateTimeFieldExport[] = [];
   const formulas: FormulaExport[] = [];
-  const sentinels = replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns)))), images), dateFields), formulas);
+  const crossRefs: CrossRefExport[] = [];
+  const sentinels = replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns)))), images), dateFields), formulas), crossRefs);
   const raw = markTextEffects(bakeListCharStyles(sentinels, styles));
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
@@ -3359,7 +3441,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withFormulas = applyFormulas(withDateFields, formulas);
   const withTextBoxes = applyTextBoxes(withFormulas, textBoxes);
   const withColumns = applyColumns(withTextBoxes, columns);
-  const withToc = applyToc(withColumns, tocs, contentWidthCm);
+  const withBookmarks = applyBookmarks(withColumns, crossRefs);
+  const withToc = applyToc(withBookmarks, tocs, contentWidthCm);
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withParaBoxes = applyParagraphBoxes(withEmptyFontSizes);

@@ -3,6 +3,8 @@ import { t } from '../i18n/i18n.svelte';
 import { withShortcut } from '../i18n/shortcut';
 import { shortcutHint } from './shortcuts';
 import { OPEN_LINK_DIALOG_EVENT } from './extensions/link';
+import { OPEN_BOOKMARK_DIALOG_EVENT, bookmarkNames } from './extensions/bookmark';
+import { OPEN_CROSS_REF_DIALOG_EVENT } from './extensions/crossReference';
 
 // The right-click menu's contents, the usual text menu mapped onto this editor. Pure
 // data + closures — ContextMenu.svelte only renders it.
@@ -89,6 +91,19 @@ export function buildContextMenu(editor: Editor, opts: { spell?: SpellSection } 
       run: () => editor.chain().focus().extendMarkRange('link').unsetLink().run(),
     });
   }
+
+  entries.push({
+    kind: 'item',
+    label: m.insertBookmark,
+    disabled: !hasSelection,
+    run: () => window.dispatchEvent(new CustomEvent(OPEN_BOOKMARK_DIALOG_EVENT)),
+  });
+  entries.push({
+    kind: 'item',
+    label: m.insertCrossRef,
+    disabled: !bookmarkNames(editor.state.doc).length,
+    run: () => window.dispatchEvent(new CustomEvent(OPEN_CROSS_REF_DIALOG_EVENT)),
+  });
 
   entries.push(
     { kind: 'sep' },

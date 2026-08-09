@@ -58,6 +58,9 @@ type Ctx = {
   cellSpacing: ParaSpacing;
   // theme1.xml's accent1..6, the colours a chart series names instead of an sRGB.
   accents: string[];
+  // Bookmarks open at this point of the walk (w:id → name). A range may start beside a
+  // paragraph and end inside a later one, so the state outlives both walks.
+  openBookmarks: Map<string, string>;
 };
 
 // ---- units & editor defaults to suppress -----------------------------------
@@ -139,7 +142,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const sectPr = fc(body, 'sectPr');
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, cellSpacing: {}, accents: themeAccents(themeDoc) };
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, cellSpacing: {}, accents: themeAccents(themeDoc), openBookmarks: new Map() };
 
   // Mid-body sectPr paragraphs delimit sections; a section whose w:cols declares
   // more than one column becomes a columns node (the trailing group is described
@@ -303,6 +306,33 @@ function tocHeading(content: Element | null): string | null {
   return text && text.length <= 60 ? text : null;
 }
 
+// Word's own cursor bookkeeping, never a reference target.
+const BOOKMARK_SKIP = new Set(['_GoBack']);
+
+// w:bookmarkStart/w:bookmarkEnd sit beside runs, beside paragraphs, or split across
+// both, so both walks feed the same open-range map. Returns true when the element was
+// one of them.
+function trackBookmark(el: Element, ctx: Ctx): boolean {
+  if (el.localName === 'bookmarkStart') {
+    const id = el.getAttributeNS(W, 'id');
+    const name = el.getAttributeNS(W, 'name');
+    if (id && name && !BOOKMARK_SKIP.has(name)) ctx.openBookmarks.set(id, name);
+    return true;
+  }
+  if (el.localName === 'bookmarkEnd') {
+    const id = el.getAttributeNS(W, 'id');
+    if (id) ctx.openBookmarks.delete(id);
+    return true;
+  }
+  return false;
+}
+
+// A mark can hold one bookmark, so overlapping ranges collapse to the outermost.
+function openBookmarkMark(ctx: Ctx): Mark | null {
+  const name = ctx.openBookmarks.values().next().value;
+  return name ? { type: 'bookmark', attrs: { name } } : null;
+}
+
 function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDefault = false): Node[] {
   const out: Node[] = [];
   const stack: { ilvl: number; numId: number; list: Node }[] = [];
@@ -349,6 +379,7 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
 
   for (const el of children) {
     if (el.namespaceURI !== W) continue;
+    if (trackBookmark(el, ctx)) continue;
     if (el.localName === 'p') {
       // A paragraph owned by a TOC field is skipped; the field emits one node.
       const startedInToc = tocState.tocDepth >= 0;
@@ -917,11 +948,18 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
   // A recognized body date/time field: its cached result runs are dropped and a live
   // dateTimeField node is emitted in their place when the field ends.
   let fieldDateTime: Node | null = null;
+  // Same for a REF/PAGEREF field: the cached result runs are collected as the node's
+  // display text instead of being pushed.
+  let fieldCrossRef: Node | null = null;
+  let fieldCrossRefText = '';
 
   const pushText = (text: string, marks: Mark[]) => {
     if (!text) return;
+    // The one-paragraph header/footer schema has no bookmark mark.
+    const bookmark = hfFields ? null : openBookmarkMark(ctx);
+    const all = bookmark ? [...marks, bookmark] : marks;
     const node: Node = { type: 'text', text };
-    if (marks.length) node.marks = marks;
+    if (all.length) node.marks = all;
     out.push(node);
   };
 
@@ -957,7 +995,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     const marks = runMarks(r, linkHref);
     // Hide a field's cached result: always for a hf field, and for a recognized body
     // date/time field (replaced by its live node).
-    const skipResult = () => fieldMode === 'result' && (hfFields || !!fieldDateTime);
+    const skipResult = () => fieldMode === 'result' && (hfFields || !!fieldDateTime || !!fieldCrossRef);
 
     // Route a drawing/pict result: an image is inline, a text box a block node riding
     // ctx.pendingBlocks. The one-paragraph header/footer zone takes as-char images only —
@@ -993,24 +1031,39 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       switch (child.localName) {
         case 'fldChar': {
           const t = child.getAttributeNS(W, 'fldCharType');
-          if (t === 'begin') { fieldMode = 'instr'; fieldInstr = ''; fieldDateTime = null; }
+          if (t === 'begin') { fieldMode = 'instr'; fieldInstr = ''; fieldDateTime = null; fieldCrossRef = null; fieldCrossRefText = ''; }
           else if (t === 'separate') {
             fieldMode = 'result';
             if (!hfFields) {
               fieldDateTime = dateTimeFieldFromInstr(fieldInstr);
+              fieldCrossRef = fieldDateTime ? null : crossRefFromInstr(fieldInstr);
+              fieldCrossRefText = '';
               // Carry the field run's marks so the atom renders in the run's font.
-              if (fieldDateTime && marks.length) fieldDateTime.marks = marks;
+              const field = fieldDateTime ?? fieldCrossRef;
+              if (field && marks.length) field.marks = marks;
             }
           } else if (t === 'end') {
+            // A reference Word never resolved has no w:separate and so no cached result
+            // (it shows nothing until the field is updated); the node view fills it in
+            // when the bookmark is still there.
+            if (!hfFields && !fieldDateTime && !fieldCrossRef) {
+              fieldCrossRef = crossRefFromInstr(fieldInstr);
+              if (fieldCrossRef && marks.length) fieldCrossRef.marks = marks;
+            }
             if (fieldDateTime) out.push(fieldDateTime);
+            else if (fieldCrossRef) out.push({ ...fieldCrossRef, attrs: { ...fieldCrossRef.attrs, text: fieldCrossRefText } });
             else emitField(out, fieldInstr, hfFields, marks);
             fieldMode = 'none';
             fieldDateTime = null;
+            fieldCrossRef = null;
           }
           break;
         }
         case 'instrText': if (fieldMode === 'instr') fieldInstr += child.textContent ?? ''; break;
-        case 't': if (!skipResult()) pushText(child.textContent ?? '', marks); break;
+        case 't':
+          if (fieldCrossRef && fieldMode === 'result') fieldCrossRefText += child.textContent ?? '';
+          else if (!skipResult()) pushText(child.textContent ?? '', marks);
+          break;
         case 'tab': if (!skipResult()) pushText('\t', marks); break;
         case 'br': out.push(child.getAttributeNS(W, 'type') === 'page' ? { type: PB_MARKER } : hardBreakNode(marks)); break;
         case 'cr': out.push(hardBreakNode(marks)); break;
@@ -1029,17 +1082,28 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       continue;
     }
     if (el.namespaceURI !== W) continue;
+    if (trackBookmark(el, ctx)) continue;
     switch (el.localName) {
       case 'r': handleRun(el); break;
       case 'hyperlink': {
         const rid = el.getAttributeNS(R, 'id');
-        const href = rid ? ctx.rels.get(rid)?.target : undefined;
+        // No relationship id: an internal link to a bookmark in this document.
+        const anchor = el.getAttributeNS(W, 'anchor');
+        const href = rid ? ctx.rels.get(rid)?.target : anchor ? `#${anchor}` : undefined;
         for (const r of fcAll(el, 'r')) handleRun(r, href);
         break;
       }
       case 'fldSimple': {
         const instr = el.getAttributeNS(W, 'instr') ?? '';
         if (hfFields) { const first = fcAll(el, 'r')[0]; emitField(out, instr, true, first ? runMarks(first) : []); break; }
+        const xref = crossRefFromInstr(instr);
+        if (xref) {
+          const first = fcAll(el, 'r')[0];
+          const m = first ? runMarks(first) : [];
+          if (m.length) xref.marks = m;
+          out.push({ ...xref, attrs: { ...xref.attrs, text: el.textContent ?? '' } });
+          break;
+        }
         const field = dateTimeFieldFromInstr(instr);
         if (field) {
           const first = fcAll(el, 'r')[0];
@@ -1079,6 +1143,15 @@ function emitField(out: Node[], instr: string, hfFields: boolean, marks: Mark[] 
   const push = (type: string) => out.push(marks.length ? { type, marks } : { type });
   if (/\bNUMPAGES\b/.test(instr)) push('pageCount');
   else if (/\bPAGE\b/.test(instr)) push('pageNumber');
+}
+
+// A REF/PAGEREF field instruction → a cross-reference node; its cached result text is
+// filled in by the caller when the field closes. Every other field (SEQ, CITATION, …)
+// returns null and keeps showing the text the producer cached.
+function crossRefFromInstr(instr: string): Node | null {
+  const m = /^\s*(PAGEREF|REF)\s+(\S+)/i.exec(instr);
+  if (!m) return null;
+  return { type: 'crossRef', attrs: { name: m[2], format: /^PAGEREF$/i.test(m[1]) ? 'page' : 'text', text: '' } };
 }
 
 // A DATE/TIME field instruction with a picture switch we recognize → a live

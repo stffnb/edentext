@@ -7,8 +7,12 @@
   import SpecialCharPicker from './SpecialCharPicker.svelte';
   import DateTimePicker from './DateTimePicker.svelte';
   import LinkDialog from './LinkDialog.svelte';
+  import BookmarkDialog from './BookmarkDialog.svelte';
+  import CrossRefDialog from './CrossRefDialog.svelte';
   import FormulaDialog from './FormulaDialog.svelte';
   import { OPEN_LINK_DIALOG_EVENT } from '../editor/extensions/link';
+  import { OPEN_BOOKMARK_DIALOG_EVENT, bookmarkNames, findBookmark } from '../editor/extensions/bookmark';
+  import { OPEN_CROSS_REF_DIALOG_EVENT } from '../editor/extensions/crossReference';
   import { EDIT_FORMULA_EVENT } from '../editor/extensions/formula';
   import {
     detectInstalledFonts,
@@ -953,6 +957,63 @@
     return { destroy() { window.removeEventListener('mousedown', handler); } };
   }
 
+  // --- Bookmarks + cross-references (bookmark.ts / crossReference.ts) ---
+  let bookmarkOpen = $state(false);
+  let crossRefOpen = $state(false);
+  let bmNames = $derived(tick >= 0 && editor && !hfActive ? bookmarkNames(editor.state.doc) : []);
+  // A bookmark covers a range, so there has to be one selected.
+  let hasSelection = $derived(tick >= 0 && !!editor && !editor.state.selection.empty);
+
+  function openBookmarkDialog() {
+    if (!editor || hfActive || !hasSelection) return;
+    bookmarkOpen = true;
+    crossRefOpen = false;
+  }
+
+  function applyBookmark(name: string) {
+    bookmarkOpen = false;
+    editor?.chain().focus().setBookmark(name).run();
+  }
+
+  function goToBookmark(name: string) {
+    const found = editor && findBookmark(editor.state.doc, name);
+    if (!editor || !found) return;
+    bookmarkOpen = false;
+    editor.chain().focus().setTextSelection({ from: found.from, to: found.to }).scrollIntoView().run();
+  }
+
+  function openCrossRefDialog() {
+    if (!editor || hfActive || !bmNames.length) return;
+    crossRefOpen = true;
+    bookmarkOpen = false;
+  }
+
+  function insertCrossRef(name: string, format: 'text' | 'page') {
+    crossRefOpen = false;
+    editor?.chain().focus().insertCrossRef({ name, format }).run();
+  }
+
+  function bookmarkClickOutside(node: HTMLElement) {
+    function handler(e: MouseEvent) {
+      if (node.contains(e.target as Node)) return;
+      bookmarkOpen = false;
+      crossRefOpen = false;
+    }
+    window.addEventListener('mousedown', handler);
+    return { destroy() { window.removeEventListener('mousedown', handler); } };
+  }
+
+  $effect(() => {
+    const openBm = () => openBookmarkDialog();
+    const openXr = () => openCrossRefDialog();
+    window.addEventListener(OPEN_BOOKMARK_DIALOG_EVENT, openBm);
+    window.addEventListener(OPEN_CROSS_REF_DIALOG_EVENT, openXr);
+    return () => {
+      window.removeEventListener(OPEN_BOOKMARK_DIALOG_EVENT, openBm);
+      window.removeEventListener(OPEN_CROSS_REF_DIALOG_EVENT, openXr);
+    };
+  });
+
   // Ctrl/Cmd+K (from the Link extension) opens the dialog.
   $effect(() => {
     const open = () => openLinkDialog();
@@ -1687,6 +1748,47 @@
           onApply={applyLink}
           onRemove={removeLink}
           onClose={() => (linkDialogOpen = false)}
+        />
+      </div>
+      <div class="link-wrap" use:bookmarkClickOutside>
+        <button
+          onclick={openBookmarkDialog}
+          disabled={!!hfActive || !hasSelection}
+          title={hfActive ? t().toolbarExpanded.bookmarkNotInHf : hasSelection ? t().toolbarExpanded.insertBookmark : t().toolbarExpanded.bookmarkNeedsSelection}
+          aria-label={t().toolbarExpanded.insertBookmark}
+          aria-haspopup="dialog"
+          aria-expanded={bookmarkOpen}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M4 2.5h8v11l-4-3-4 3v-11z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <BookmarkDialog
+          open={bookmarkOpen}
+          names={bmNames}
+          onApply={applyBookmark}
+          onRemove={(n) => editor?.chain().focus().removeBookmark(n).run()}
+          onGoTo={goToBookmark}
+          onClose={() => (bookmarkOpen = false)}
+        />
+        <button
+          onclick={openCrossRefDialog}
+          disabled={!!hfActive || !bmNames.length}
+          title={hfActive ? t().toolbarExpanded.bookmarkNotInHf : bmNames.length ? t().toolbarExpanded.insertCrossRef : t().toolbarExpanded.crossRefNeedsBookmark}
+          aria-label={t().toolbarExpanded.insertCrossRef}
+          aria-haspopup="dialog"
+          aria-expanded={crossRefOpen}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M2.5 4.5h5M2.5 8h5M2.5 11.5h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <path d="M9.5 8h4M11.5 6l2 2-2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <CrossRefDialog
+          open={crossRefOpen}
+          names={bmNames}
+          onInsert={insertCrossRef}
+          onClose={() => (crossRefOpen = false)}
         />
       </div>
     </div>

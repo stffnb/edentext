@@ -97,6 +97,9 @@ type Ctx = {
   contentWidthCm: number;
   // Master pages the body switches to, in order — one section each past the first.
   masterPages: string[];
+  // Bookmark ranges open at this point of the walk, outermost first; a range may end in
+  // a later paragraph than it started in, so the set outlives one convertInline call.
+  openBookmarks: Set<string>;
 };
 
 // Read a Pictures/ entry into a base64 data-URI; null when it's missing or in a format
@@ -520,7 +523,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, masterPages: [] };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, masterPages: [], openBookmarks: new Set() };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -1303,6 +1306,10 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
       marks.push({ type: 'charStyle', attrs: { name: display } });
     }
     if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
+    // A mark can hold one bookmark, so overlapping ranges collapse to the outermost.
+    // The one-paragraph header/footer schema has no bookmark mark.
+    const bookmark = hfFields ? undefined : ctx.openBookmarks.values().next().value;
+    if (bookmark) marks.push({ type: 'bookmark', attrs: { name: bookmark } });
     const node: Node = { type: 'text', text: clean };
     if (marks.length) node.marks = marks;
     out.push(node);
@@ -1344,8 +1351,8 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
             continue;
           }
           case 'a': {
-            // ODF hyperlink → link mark on the contained text (internal #bookmark
-            // links are kept as-is though the editor has no bookmark targets).
+            // ODF hyperlink → link mark on the contained text; an internal #bookmark
+            // href is kept as-is and resolved against the document's bookmarks.
             const href = e.getAttributeNS(NS.xlink, 'href') ?? '';
             walk(e, props, href || linkHref);
             continue;
@@ -1353,9 +1360,35 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
           case 'note':
             ctx.warnings.add('Footnotes and endnotes were removed');
             continue;
-          case 'bookmark':
           case 'bookmark-start':
-          case 'bookmark-end':
+          case 'bookmark-end': {
+            // A named range → a bookmark mark on the text it covers. A point bookmark
+            // (<text:bookmark/>) has no range to mark, so it is dropped.
+            const name = e.getAttributeNS(NS.text, 'name');
+            if (name) {
+              if (e.localName === 'bookmark-start') ctx.openBookmarks.add(name);
+              else ctx.openBookmarks.delete(name);
+            }
+            continue;
+          }
+          case 'bookmark-ref': {
+            const name = e.getAttributeNS(NS.text, 'ref-name');
+            const fmt = e.getAttributeNS(NS.text, 'reference-format');
+            // Only the two formats the editor models; any other one (chapter, number,
+            // …) keeps the value the file cached.
+            // Same for the crossRef node: in a zone the reference stays its shown text.
+            if (!hfFields && name && (fmt === 'text' || fmt === 'page')) {
+              const field: Node = { type: 'crossRef', attrs: { name, format: fmt, text: e.textContent ?? '' } };
+              const marks = marksFor(props, ctx.resolver, defaults);
+              if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
+              if (marks.length) field.marks = marks;
+              out.push(field);
+              continue;
+            }
+            if (e.textContent) pushText(e.textContent, props, linkHref);
+            continue;
+          }
+          case 'bookmark':
           case 'soft-page-break':
           case 'change':
           case 'change-start':

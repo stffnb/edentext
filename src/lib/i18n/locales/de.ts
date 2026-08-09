@@ -9,6 +9,7 @@ const de: Messages = {
     cancel: 'Abbrechen',
     close: 'Schließen',
     apply: 'Übernehmen',
+    insert: 'Einfügen',
     remove: 'Entfernen',
   },
   appearance: {
@@ -201,6 +202,11 @@ const de: Messages = {
     tocNotInHf: 'Ein Inhaltsverzeichnis ist in Kopf-/Fußzeilen nicht verfügbar',
     insertLink: 'Link einfügen',
     linkNotInHf: 'Links sind in Kopf-/Fußzeilen nicht verfügbar',
+    insertBookmark: 'Lesezeichen',
+    bookmarkNeedsSelection: 'Markiere den Text, den das Lesezeichen umfassen soll',
+    bookmarkNotInHf: 'Lesezeichen sind in Kopf-/Fußzeilen nicht verfügbar',
+    insertCrossRef: 'Querverweis einfügen',
+    crossRefNeedsBookmark: 'Erst ein Lesezeichen setzen — ein Querverweis zeigt darauf',
     clearFormatting: 'Formatierung entfernen',
   },
   image: {
@@ -227,6 +233,16 @@ const de: Messages = {
     noBorder: 'Kein Rahmen',
     borderWidth: 'Rahmenbreite',
     pt: (w) => `${w} pt`,
+  },
+  bookmark: {
+    dialogLabel: 'Lesezeichen',
+    namePlaceholder: 'Name des Lesezeichens',
+    existing: 'In diesem Dokument',
+    none: 'Noch keine Lesezeichen',
+    crossRefLabel: 'Querverweis einfügen',
+    formatText: 'Text des Lesezeichens',
+    formatPage: 'Seitenzahl',
+    openHint: (mod) => `${mod}+Klick, um zum Lesezeichen zu springen`,
   },
   link: {
     dialogLabel: 'Link einfügen',
@@ -336,6 +352,8 @@ const de: Messages = {
     insertLink: 'Link…',
     editLink: 'Link bearbeiten…',
     removeLink: 'Link entfernen',
+    insertBookmark: 'Lesezeichen…',
+    insertCrossRef: 'Querverweis…',
     clearFormatting: 'Direkte Formatierung löschen',
   },
   about: {

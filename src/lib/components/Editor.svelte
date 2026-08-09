@@ -24,6 +24,7 @@
   import { applyPageSizeVars, type PageFormat } from '../storage/pageFormat';
   import { DEFAULT_HF_DISTANCES, hfIsEmpty, type HfDoc, type HfZone, type HfDistances, type HfSet } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, type TableBreakBand } from '../editor/extensions/pageBreaks';
+  import { findBookmark } from '../editor/extensions/bookmark';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
   import { wheelZoomFactor } from '../utils/zoom';
   import { styleCss } from '../styles/styleSheet';
@@ -705,11 +706,18 @@
         // they don't double up.
         attributes: { spellcheck: 'false' },
         // Ctrl/Cmd+click opens a hyperlink (a plain click just places the cursor).
-        handleClick: (_view, _pos, event) => {
+        handleClick: (view, _pos, event) => {
           if (!(event.metaKey || event.ctrlKey)) return false;
           const a = (event.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
           const href = a?.getAttribute('href');
           if (!href) return false;
+          // An internal href targets a bookmark in this document, not a URL.
+          if (href.startsWith('#')) {
+            const found = findBookmark(view.state.doc, href.slice(1));
+            if (!found) return true;
+            editor?.chain().focus().setTextSelection({ from: found.from, to: found.to }).scrollIntoView().run();
+            return true;
+          }
           window.open(href, '_blank', 'noopener,noreferrer');
           return true;
         },

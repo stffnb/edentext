@@ -2,6 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { MAX_HEADING_LEVEL } from '../../export/odt';
+import { readVerticalMargins, pageOfElement } from './pageBreaks';
 
 // A generated table of contents: a block atom listing every heading (levels 1–5) with its
 // live page number. The node view regenerates entries from the headings + pagination and
@@ -9,10 +10,6 @@ import { MAX_HEADING_LEVEL } from '../../export/odt';
 
 export type TocEntry = { text: string; level: number; page: number };
 
-// Mirrors pageBreaks.ts PAGE_GAP + Editor.svelte getCycle(): the rendered page of a
-// heading is its offsetTop within .tiptap (spacers included) divided by the cycle.
-const PAGE_GAP = 20;
-const FALLBACK_PAGE_HEIGHT = 1123;
 // The heading above the entries. An imported TOC keeps the one its file used
 // ("Inhalt", "Sommaire", …); a freshly inserted one takes this.
 const TITLE = 'Table of Contents';
@@ -129,25 +126,13 @@ class TocView {
   }
 
   private cycle(): number {
-    const tiptap = this.editor.view.dom as HTMLElement;
-    const ph = parseFloat(getComputedStyle(tiptap).getPropertyValue('--user-page-height'));
-    return (Number.isFinite(ph) ? ph : FALLBACK_PAGE_HEIGHT) + PAGE_GAP;
+    return readVerticalMargins(this.editor.view.dom as HTMLElement).cycle;
   }
 
-  // Rendered page of a heading: sum offsetTop up the offsetParent chain to .tiptap (the
-  // live DOM already includes pagination spacers, so this is the on-page position),
-  // divided by the page cycle. Mirrors topWithin/getPageForY in pageBreaks.ts.
   private pageOf(pos: number, cycle: number): number {
-    const tiptap = this.editor.view.dom as HTMLElement;
     const el = this.editor.view.nodeDOM(pos) as HTMLElement | null;
     if (!el || el.nodeType !== 1) return 1;
-    let top = 0;
-    let n: HTMLElement | null = el;
-    while (n && n !== tiptap) {
-      top += n.offsetTop;
-      n = n.offsetParent as HTMLElement | null;
-    }
-    return Math.max(1, Math.floor(top / cycle) + 1);
+    return pageOfElement(this.editor.view, el, cycle);
   }
 
   private render(): void {

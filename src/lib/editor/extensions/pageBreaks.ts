@@ -158,6 +158,20 @@ export function readVerticalMargins(dom: HTMLElement): VMargins {
   };
 }
 
+// Rendered page of an element: its offsetTop within the editor DOM (summed up the
+// offsetParent chain, spacers included) divided by the page cycle. The TOC and every
+// cross-reference resolve their page numbers with it.
+export function pageOfElement(view: EditorView, el: HTMLElement, cycle: number): number {
+  const tiptap = view.dom as HTMLElement;
+  let top = 0;
+  let n: HTMLElement | null = el;
+  while (n && n !== tiptap) {
+    top += n.offsetTop;
+    n = n.offsetParent as HTMLElement | null;
+  }
+  return Math.max(1, Math.floor(top / cycle) + 1);
+}
+
 function pageContentStart(page: number, marginTop: number, cycle: number): number {
   return (page - 1) * cycle + marginTop;
 }
