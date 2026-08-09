@@ -16,6 +16,7 @@ import { astToLatex } from '../math/latex';
 import { parseMathml } from '../math/mathml';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
+import type { SpacingModel } from '../storage/spacingModel';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import type { HfDoc, HfSet } from '../storage/headerFooter';
@@ -43,6 +44,9 @@ export interface OdtImportResult {
   // The grid every tab past the last custom stop falls on; the format's own fallback
   // when the file declares none.
   tabIntervalCm: number;
+  // How the space between two blocks is measured; 'max' only where the file says so
+  // (settings.xml AddParaTableSpacing=false, what LibreOffice writes for a Word import).
+  spacingModel: SpacingModel;
   // Single-paragraph docs in the hfExtensions schema; null = no zone.
   header: HfDoc;
   footer: HfDoc;
@@ -495,6 +499,13 @@ const LIST_INDENT_EPS_CM = 0.05;
 
 // ---- entry --------------------------------------------------------------------
 
+// LibreOffice writes AddParaTableSpacing=false for a document it imported from Word,
+// and then takes the larger of two adjoining spacings instead of adding them.
+function odfSpacingModel(files: Record<string, Uint8Array>): SpacingModel {
+  const xml = files['settings.xml'] ? strFromU8(files['settings.xml']) : '';
+  return /AddParaTableSpacing"[^>]*>false</.test(xml) ? 'max' : 'add';
+}
+
 export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = new Map()): OdtImportResult {
   let files: Record<string, Uint8Array>;
   try {
@@ -582,6 +593,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     orientation: geometry?.orientation ?? null,
     format: geometry?.format ?? null,
     tabIntervalCm: resolver.defaultTabInterval(),
+    spacingModel: odfSpacingModel(files),
     header,
     footer,
     headerFirst,

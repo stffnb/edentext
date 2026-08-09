@@ -392,6 +392,7 @@
 }
 .paper .tiptap .textbox-content > :first-child {
   margin-top: 0;
+  padding-top: 0;
 }
 .paper .tiptap .textbox-content > :last-child {
   margin-bottom: 0;
@@ -405,6 +406,7 @@
 }
 .paper .tiptap .columns-node > :first-child {
   margin-top: 0;
+  padding-top: 0;
 }
 .paper .tiptap .columns-node > :last-child {
   margin-bottom: 0;
@@ -460,6 +462,22 @@
      (styles/styleSheet.ts → the #document-styles element Editor.svelte writes). */
   font: inherit;
   margin: 0;
+}
+
+/* Space above a block. LibreOffice adds it to the space below the block above, which CSS
+   margins can't do (they collapse to the larger) — so it renders as padding. A Word
+   document takes the larger, LibreOffice included, and gets a margin instead. */
+@property --space-before {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0;
+}
+.paper .tiptap :is(p, h1, h2, h3, h4, h5, .toc, .toc-title) {
+  padding-top: var(--space-before);
+}
+.paper[data-spacing-model='max'] .tiptap :is(p, h1, h2, h3, h4, h5, .toc, .toc-title) {
+  padding-top: 0;
+  margin-top: var(--space-before);
 }
 
 /* The line box: the paragraph's spacing factor times its font's natural line height.
@@ -848,7 +866,6 @@
   }
 
   .paper .tiptap > *[data-page-break] {
-    margin-top: 0 !important;
     page-break-before: always;
   }
 

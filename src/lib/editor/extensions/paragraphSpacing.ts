@@ -1,8 +1,8 @@
 import { Extension } from '@tiptap/core';
 
-// Space above/below a paragraph, stored in pt so it round-trips 1:1 to ODF's
-// fo:margin-top/bottom. null inherits the style/CSS default. Renders as an
-// inline margin overriding editor.css; exported via export/odt.ts.
+// Space above/below a paragraph in pt, round-tripping 1:1 to fo:margin-top/bottom;
+// null inherits the style default. Space before rides `--space-before`, which editor.css
+// turns into padding or margin per the document's spacing model (storage/spacingModel.ts).
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -42,7 +42,7 @@ export const ParagraphSpacing = Extension.create({
               const pt = Number(attributes.spaceBefore);
               return {
                 'data-space-before': String(pt),
-                style: `margin-top: ${pt}pt`,
+                style: `--space-before: ${pt}pt`,
               };
             },
           },

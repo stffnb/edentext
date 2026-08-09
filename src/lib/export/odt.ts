@@ -2,6 +2,7 @@ import { tiptapToOdt, type TiptapNode, type TiptapMark, type TextFormatting, typ
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
+import type { SpacingModel } from '../storage/spacingModel';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
@@ -3253,7 +3254,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add'): Promise<Uint8Array> {
   // Images become IMG sentinels before serialization; applyImages resolves them and writes
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
@@ -3480,7 +3481,40 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withHf = applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.
-  return applySectionMasterPages(withHf, hf?.sections ?? [], hf?.pageCount ?? 1);
+  const withSections = applySectionMasterPages(withHf, hf?.sections ?? [], hf?.pageCount ?? 1);
+  return applySpacingModel(withSections, spacingModel);
+}
+
+// A document that takes the larger of two adjoining spacings needs LibreOffice's
+// AddParaTableSpacing=false — its own default adds them, so without this the space
+// between every pair of blocks would grow when the file is reopened.
+function applySpacingModel(odtBytes: Uint8Array, model: SpacingModel): Uint8Array {
+  if (model !== 'max') return odtBytes;
+  const files = unzipSync(odtBytes);
+  const item =
+    '<config:config-item-set config:name="ooo:configuration-settings">' +
+    '<config:config-item config:name="AddParaTableSpacing" config:type="boolean">false</config:config-item>' +
+    '</config:config-item-set>';
+  const existing = files['settings.xml'];
+  if (existing) {
+    files['settings.xml'] = strToU8(strFromU8(existing).replace('</office:settings>', `${item}</office:settings>`));
+    return rezipOdt(files);
+  }
+  files['settings.xml'] = strToU8(
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<office:document-settings xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"' +
+    ' xmlns:config="urn:oasis:names:tc:opendocument:xmlns:config:1.0" office:version="1.3">' +
+    `<office:settings>${item}</office:settings></office:document-settings>`,
+  );
+  const manifestBytes = files['META-INF/manifest.xml'];
+  if (manifestBytes) {
+    const entry = '<manifest:file-entry manifest:full-path="settings.xml" manifest:media-type="text/xml"/>';
+    const manifest = strFromU8(manifestBytes);
+    if (!manifest.includes('"settings.xml"')) {
+      files['META-INF/manifest.xml'] = strToU8(manifest.replace('</manifest:manifest>', `${entry}</manifest:manifest>`));
+    }
+  }
+  return rezipOdt(files);
 }
 
 function hfAlign(para: TiptapNode): AlignValue | null {

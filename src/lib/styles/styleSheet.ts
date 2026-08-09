@@ -245,7 +245,8 @@ function declarations(r: ResolvedStyle): string[] {
   const out = textDeclarations(r.text, true);
   if (p.textAlign) out.push(`text-align: ${p.textAlign}`);
   if (p.lineHeight) out.push(`--line-factor: ${p.lineHeight}`);
-  if (p.spaceBefore != null) out.push(`margin-top: ${p.spaceBefore}pt`);
+  // Padding or margin per the document's spacing model — editor.css resolves it.
+  if (p.spaceBefore != null) out.push(`--space-before: ${p.spaceBefore}pt`);
   if (p.spaceAfter != null) out.push(`margin-bottom: ${p.spaceAfter}pt`);
   if (p.indent != null) out.push(`margin-left: ${p.indent}cm`);
   if (p.backgroundColor) out.push(`background-color: ${p.backgroundColor}`);

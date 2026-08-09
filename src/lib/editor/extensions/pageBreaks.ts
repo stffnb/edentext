@@ -891,6 +891,9 @@ export const PageBreaks = Extension.create({
           // Node-decoration range collapsing the trailing empty paragraph after a
           // document-final columns chain when it sits past the page content area.
           let collapsedTrailing: { from: number; to: number } | null = null;
+          // Node-decoration ranges dropping the space before a block a soft break put
+          // at a page top (probed in LibreOffice); a hard break and the first block keep it.
+          const pageTopBlocks: { from: number; to: number }[] = [];
           // Close/open bands for in-cell + between-rows table breaks. Keyed by the
           // rounded openY (the grouping id) → the unrounded openY (so the band lands
           // exactly on the page cycle) plus whether it's a between-rows break.
@@ -994,6 +997,16 @@ export const PageBreaks = Extension.create({
             // leaf, so no leading blank page); once settled at a page top the guard stops.
             // A forced block that then overflows is split by the normal logic next pass.
             const forced = !!leaf.forceBreakBefore && i > 0 && effectiveTop > contentStart + 0.5;
+
+            if (
+              i > 0 && !leaf.inTableCell
+              && Math.abs(effectiveTop - contentStart) < 0.5
+              && parseFloat(getComputedStyle(leaf.el).paddingTop) > 0.5
+            ) {
+              const from = docPosBeforeElement(leaf.el);
+              const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
+              if (from !== null && node) pageTopBlocks.push({ from, to: from + node.nodeSize });
+            }
 
             if (forced) {
               // The next page's own content start: a section beginning here brings its
@@ -1213,7 +1226,8 @@ export const PageBreaks = Extension.create({
           // recreates the spacer DOM nodes (no `key` on the widgets) for no gain.
           const placementsKey =
             placements.map((p) => `${p.docPos}:${p.height}:${p.row ? p.row.columns : 'b'}`).join('|') +
-            (collapsedTrailing ? `|c${collapsedTrailing.from}` : '');
+            (collapsedTrailing ? `|c${collapsedTrailing.from}` : '') +
+            pageTopBlocks.map((b) => `|t${b.from}`).join('');
           const placementsChanged =
             placementsKey !== lastPlacementsKey && placementsKey !== prevPlacementsKey;
           if (placementsChanged) {
@@ -1247,6 +1261,9 @@ export const PageBreaks = Extension.create({
               decoArray.push(Decoration.node(collapsedTrailing.from, collapsedTrailing.to, {
                 style: 'height:0;min-height:0;margin:0;overflow:hidden',
               }));
+            }
+            for (const b of pageTopBlocks) {
+              decoArray.push(Decoration.node(b.from, b.to, { style: 'padding-top:0;margin-top:0' }));
             }
 
             decorations = decoArray.length > 0

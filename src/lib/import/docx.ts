@@ -187,6 +187,9 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     orientation: sect.orientation,
     format: sect.format,
     tabIntervalCm: docTabInterval(files),
+    // Word takes the larger of the two spacings, and LibreOffice follows it for a
+    // Word document — its own ODF default adds them (probed).
+    spacingModel: 'max' as const,
     header: first.header,
     footer: first.footer,
     headerFirst: first.differentFirstPage ? first.headerFirst : null,

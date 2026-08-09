@@ -24,6 +24,7 @@
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadTabInterval, saveTabInterval, applyTabIntervalVar, DEFAULT_TAB_INTERVAL_CM } from './lib/storage/tabInterval';
+  import { loadSpacingModel, saveSpacingModel, type SpacingModel } from './lib/storage/spacingModel';
   import { loadPageFormat, savePageFormat, type PageFormat } from './lib/storage/pageFormat';
   import { setStyleSheet, styleSheet } from './lib/styles/sheet.svelte';
   import { builtinStyleSheet, type StyleFamily } from './lib/styles/styleSheet';
@@ -123,6 +124,7 @@
   let pageOrientation: Orientation = $state(loadOrientation());
   let pageFormat: PageFormat = $state(loadPageFormat());
   let tabIntervalCm = $state(loadTabInterval());
+  let spacingModel: SpacingModel = $state(loadSpacingModel());
 
   // The document's spell-check language; round-trips through the .odt. The effect
   // below persists it and switches the shared spell controller (loads the dict).
@@ -178,6 +180,10 @@
   $effect(() => {
     saveTabInterval(tabIntervalCm);
     applyTabIntervalVar(tabIntervalCm);
+  });
+
+  $effect(() => {
+    saveSpacingModel(spacingModel);
   });
 
   $effect(() => {
@@ -449,6 +455,7 @@
     pageOrientation = 'portrait';
     pageFormat = 'A4';
     tabIntervalCm = DEFAULT_TAB_INTERVAL_CM;
+    spacingModel = 'add';
     hfDistances = { ...DEFAULT_HF_DISTANCES };
     extraHfSections = [];
     documentName = '';
@@ -506,6 +513,7 @@
       if (result.orientation) pageOrientation = result.orientation;
       if (result.format) pageFormat = result.format;
       if (result.tabIntervalCm) tabIntervalCm = result.tabIntervalCm;
+      spacingModel = result.spacingModel;
       // Adopt the document's spell-check language (the $effect switches the
       // controller + loads its dictionary). null = file declared none; keep ours.
       if (result.language) documentLanguage = result.language;
@@ -584,7 +592,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel);
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -600,7 +608,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel);
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -1046,6 +1054,7 @@
     bind:hfTick
     {hfDistances}
     {tabIntervalCm}
+    {spacingModel}
     bind:extraHfSections
     {zoom}
     onZoom={setZoom}

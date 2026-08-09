@@ -4,6 +4,12 @@
 
 - **`pageMargins.ts`** — `PageMargins` in **cm** (default `{ top: 2, bottom: 2, left: 2, right: 2 }` — LibreOffice's; clamped 0–10). `applyMarginVars` sets `--user-margin-*` (px) on `:root`; `PX_PER_CM = 96/2.54`.
 - **`tabInterval.ts`** — the document's default tab interval in **cm** (`DEFAULT_TAB_INTERVAL_CM = 1.25`, LibreOffice's for a new document; clamped 0.05–10). `applyTabIntervalVar` sets `--tab-interval`, which is `.tiptap`'s `tab-size`. A file that declares none falls back to its format's own value, neither of them ours: `ODF_IMPLIED_TAB_CM` 2cm (measured against LibreOffice), `DOCX_IMPLIED_TAB_CM` 1.27cm — so both exports always write the value out.
+- **`spacingModel.ts`** — how the gap between two blocks is measured: `'add'` (LibreOffice's
+  own — space-below **plus** space-above) or `'max'` (the larger of the two, what it uses for a
+  Word document). Probed against soffice; per document, read from ODF `settings.xml`
+  (`AddParaTableSpacing`), always `'max'` on DOCX import, and written back on ODF export.
+  `editor.css` turns `--space-before` into padding or margin accordingly (CSS margins can
+  only collapse, so `'add'` cannot be a margin).
 - **`pageOrientation.ts`** — `'portrait' | 'landscape'`. `applyOrientationVars` sets `--user-page-{width,height}`; landscape swaps the A4 dimensions (matching odf-kit's automatic swap).
 
 Both margins and orientation are passed into the ODT export so the exported document's geometry/line-wrapping matches the on-screen preview.
@@ -19,6 +25,7 @@ Both margins and orientation are passed into the ODT export so the exported docu
 - **Page margins:** `odf-editor-page-margins` — JSON cm values.
 - **Page orientation:** `odf-editor-page-orientation` — `'portrait' | 'landscape'`.
 - **Tab interval:** `odf-editor-tab-interval` — cm as a decimal string.
+- **Spacing model:** `odf-editor-spacing-model` — `'add' | 'max'`.
 - **Recent fonts:** `odf-editor-recent-fonts` — JSON string array (ToolbarExpanded).
 - **Header/footer:** `odf-editor-header` / `-footer` (HfDoc), `odf-editor-hf-distances`.
 - **Styles:** `odf-editor-styles` — the style registry (`styles/sheet.svelte.ts`).
