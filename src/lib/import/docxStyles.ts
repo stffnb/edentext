@@ -179,6 +179,7 @@ export class DocxStyles {
   private ownKeepLines = new Map<string, boolean>(); // style's own w:pPr/w:keepLines
   private ownTabs = new Map<string, TabStop[]>(); // style's own w:pPr/w:tabs
   private ownCellMar = new Map<string, Element>(); // table style's own w:tblPr/w:tblCellMar
+  private ownTblBorders = new Map<string, Element>(); // table style's own w:tblPr/w:tblBorders
   private defaultsWidow: boolean | null = null; // docDefaults w:pPrDefault/w:widowControl
   private numToAbstract = new Map<string, string>();
   private abstractLevels = new Map<string, Map<number, LevelDef>>();
@@ -253,8 +254,11 @@ export class DocxStyles {
         const left = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10);
         if (Number.isFinite(left)) this.ownIndentTwip.set(id, left);
       }
-      const cellMar = firstChild(style, 'tblPr') && firstChild(firstChild(style, 'tblPr')!, 'tblCellMar');
+      const tblPr = firstChild(style, 'tblPr');
+      const cellMar = tblPr && firstChild(tblPr, 'tblCellMar');
       if (cellMar) this.ownCellMar.set(id, cellMar);
+      const tblBorders = tblPr && firstChild(tblPr, 'tblBorders');
+      if (tblBorders) this.ownTblBorders.set(id, tblBorders);
       const kind = style.getAttributeNS(W, 'type');
       if (kind === 'paragraph' || kind === 'character' || kind === 'table') {
         const nameEl = firstChild(style, 'name');
@@ -464,6 +468,16 @@ export class DocxStyles {
     if (!styleId || seen.has(styleId)) return null;
     seen.add(styleId);
     return this.ownCellMar.get(styleId) ?? this.tableCellMar(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // Every w:tblBorders along the w:basedOn chain, leaf first. The sides merge one by one,
+  // so the caller takes each from the nearest style that declares it.
+  tableBorders(styleId: string | null | undefined, seen = new Set<string>()): Element[] {
+    if (!styleId || seen.has(styleId)) return [];
+    seen.add(styleId);
+    const own = this.ownTblBorders.get(styleId);
+    const rest = this.tableBorders(this.basedOn.get(styleId) ?? null, seen);
+    return own ? [own, ...rest] : rest;
   }
 
   level(numId: number, ilvl: number): LevelDef {

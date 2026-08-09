@@ -26,6 +26,11 @@ The **Open .odt** button (`App.svelte`) parses an uploaded file with `importOdt(
 
 ## Defaults on DOCX import
 
+**Table borders** come from the table's own `w:tblBorders`, else its table style's along the
+`w:basedOn` chain (per side, nearest declaring style wins). A side nobody declares is **not
+drawn**: Word's Normal Table has no border, and the gridlines it shows on screen are not
+printed. ODF says the same for an undeclared `fo:border`, so both importers agree.
+
 Body text with no resolved font falls back to the *document's own theme minor font*
 (`docx.ts` `runMarks`), not the editor default — Word's implicit body default. Headings don't
 (they keep the editor heading default); DOCX page margins default to Word's 2.54cm.

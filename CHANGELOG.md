@@ -181,7 +181,11 @@ merely unimplemented belongs in the list above, not here.
 - A text box anchored inside a paragraph loses the vertical offset it was
   anchored by: it is a block node here, so the importer lifts it out and it
   simply follows that paragraph (measured 4.7 mm on the thesis' figure page).
-  Noted 2026-08-09.
+  It also costs flow height a word processor does not spend: Word's picture
+  caption is a text box declared 0.05 pt tall that overflows its own box, so
+  LibreOffice reserves nothing for it and the empty paragraph after it holds the
+  caption. Here it is a block, ~55 px — enough to push two lines off the thesis'
+  page 15 and keep it one page behind through page 45. Noted 2026-08-09.
 - Line height follows the paragraph, not the line: the block's CSS strut applies
   to every line, where a word processor takes each line's own runs. A paragraph
   whose runs all agree takes theirs, so only a paragraph of *mixed* sizes struts

@@ -16,6 +16,8 @@ import {
   type BorderPreset, type BorderSpec,
 } from '../../src/lib/editor/extensions/tableCellBorders';
 import { borderAttrFromOdf } from '../../src/lib/import/odt';
+import { zipSync, strToU8 } from 'fflate';
+import { importDocx } from '../../src/lib/import/docx';
 
 type N = any;
 
@@ -241,5 +243,67 @@ describe('border attr helpers', () => {
     expect(borderAttrFromOdf('0.018cm solid #000000')).toBe(null); // LibreOffice cm form
     expect(borderAttrFromOdf('2.25pt solid #ff0000')).toBe('2.25pt solid #FF0000');
     expect(borderAttrFromOdf('0.06pt double #808080')).toBe('0.06pt solid #808080'); // style coerced
+  });
+});
+
+// A Word table draws only what something declares: its own w:tblBorders, else its table
+// style's chain. Nothing anywhere (Normal Table) is no border — the gridlines Word shows
+// on screen are not printed.
+const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+
+const TABLE_STYLES = `<?xml version="1.0"?>
+<w:styles xmlns:w="${W}">
+  <w:style w:type="table" w:default="1" w:styleId="NormalTable"><w:name w:val="Normal Table"/></w:style>
+  <w:style w:type="table" w:styleId="Formula"><w:name w:val="Formel-tab"/>
+    <w:basedOn w:val="NormalTable"/><w:tblPr/></w:style>
+  <w:style w:type="table" w:styleId="Grid"><w:name w:val="Table Grid"/><w:basedOn w:val="NormalTable"/>
+    <w:tblPr><w:tblBorders>
+      <w:top w:val="single" w:sz="4" w:color="auto"/><w:left w:val="single" w:sz="4" w:color="auto"/>
+      <w:bottom w:val="single" w:sz="4" w:color="auto"/><w:right w:val="single" w:sz="4" w:color="auto"/>
+      <w:insideH w:val="single" w:sz="4" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:color="auto"/>
+    </w:tblBorders></w:tblPr></w:style>
+  <w:style w:type="table" w:styleId="Thick"><w:name w:val="Thick"/><w:basedOn w:val="Grid"/>
+    <w:tblPr><w:tblBorders><w:top w:val="single" w:sz="24" w:color="FF0000"/></w:tblBorders></w:tblPr></w:style>
+</w:styles>`;
+
+const styledTable = (styleId: string | null) => `<w:tbl><w:tblPr>
+    ${styleId ? `<w:tblStyle w:val="${styleId}"/>` : ''}
+  </w:tblPr><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid>
+  <w:tr><w:tc><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`;
+
+const docxWith = (body: string) =>
+  zipSync({
+    'word/document.xml': strToU8(
+      `<?xml version="1.0"?><w:document xmlns:w="${W}"><w:body>${body}</w:body></w:document>`,
+    ),
+    'word/styles.xml': strToU8(TABLE_STYLES),
+  });
+
+const importedSides = (bytes: Uint8Array) => {
+  const table = (importDocx(bytes).content.content as N[]).find((n: N) => n.type === 'table')!;
+  const attrs = table.content[0].content[0].attrs;
+  return ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'].map((s) => attrs[s] ?? null);
+};
+
+describe('DOCX table borders', () => {
+  it('draws nothing when no style in the chain declares one', () => {
+    expect(importedSides(docxWith(styledTable('Formula')))).toEqual(['none', 'none', 'none', 'none']);
+    expect(importedSides(docxWith(styledTable(null)))).toEqual(['none', 'none', 'none', 'none']);
+  });
+
+  it("takes the table style's borders, the editor default left off the attrs", () => {
+    expect(importedSides(docxWith(styledTable('Grid')))).toEqual([null, null, null, null]);
+  });
+
+  it('lets a leaf style override one side and inherit the rest', () => {
+    expect(importedSides(docxWith(styledTable('Thick')))).toEqual(['3pt solid #FF0000', null, null, null]);
+  });
+
+  it('lets the table’s own w:tblBorders win over its style', () => {
+    const own = styledTable('Grid').replace(
+      '</w:tblPr>',
+      '<w:tblBorders><w:top w:val="nil"/></w:tblBorders></w:tblPr>',
+    );
+    expect(importedSides(docxWith(own))).toEqual(['none', null, null, null]);
   });
 });

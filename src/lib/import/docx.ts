@@ -1539,8 +1539,16 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   const pad = docxCellPadding(tbl, styleId, ctx);
   const padBase = pad ?? DEFAULT_CELL_PADDING;
 
+  // The table's own w:tblBorders, then its style's; a side nobody declares is not drawn
+  // (Word's Normal Table has no border — its on-screen gridlines are not printed).
   const tblBorders = fc(fc(tbl, 'tblPr'), 'tblBorders');
-  const tblSide = (name: string) => docxBorderAttr(fc(tblBorders, name));
+  const tblSide = (name: string) => {
+    for (const el of [tblBorders, ...ctx.styles.tableBorders(styleId)]) {
+      const v = docxBorderAttr(fc(el, name));
+      if (v !== undefined) return v;
+    }
+    return 'none';
+  };
   const tblDef = {
     top: tblSide('top'), bottom: tblSide('bottom'), left: tblSide('left'),
     right: tblSide('right'), insideH: tblSide('insideH'), insideV: tblSide('insideV'),
