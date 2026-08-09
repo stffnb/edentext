@@ -244,7 +244,9 @@ export const PageBreaks = Extension.create({
     // The layout before the current one. A block below a float's overhang moves further
     // than the spacer the model accounts for, so two layouts can each imply the other —
     // seeing the older one come back means a ping-pong, and the current one is kept.
-    let prevPlacementsKey = '';
+    // null, not '': that is the real key of a spacer-free layout, and a reset
+    // sharing it would read "all spacers removed" as a ping-pong and skip the dispatch.
+    let prevPlacementsKey: string | null = null;
     // Each pass measures against the spacers left by the previous pass, so a changed
     // result needs one more pass to re-measure and settle (see calculate). Bounded so
     // a hypothetical two-layout ping-pong can't loop forever; reset per external change.
@@ -1330,7 +1332,7 @@ export const PageBreaks = Extension.create({
               // Layout-only writes — the TOC rewriting its page numbers on every
               // pm-pagecount — answer the last pass, so forgetting the ping-pong
               // memory on them would leave the guard with nothing to catch.
-              if (forced || isEditTr) prevPlacementsKey = '';
+              if (forced || isEditTr) prevPlacementsKey = null;
               schedule();
             }
           },
