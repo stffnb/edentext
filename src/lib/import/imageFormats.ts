@@ -85,10 +85,16 @@ function isTiff(bytes: Uint8Array, path: string): boolean {
       || (bytes[0] === 0x4d && bytes[1] === 0x4d && bytes[2] === 0x00 && bytes[3] === 0x2a));
 }
 
+// EMF: the record header's ' EMF' signature at byte 40, or a .emf extension.
+function isEmf(bytes: Uint8Array, path: string): boolean {
+  if (imageExtOf(path) === 'emf') return true;
+  return bytes.length >= 44 && new DataView(bytes.buffer, bytes.byteOffset, 44).getUint32(40, true) === 0x464d4520;
+}
+
 // True when the browser can't display the bytes directly but a lazy decoder can turn
 // them into something it can (see convertImageToDataUrl).
 export function isConvertibleImage(bytes: Uint8Array, path: string): boolean {
-  return displayableImageMime(bytes, path) === null && isTiff(bytes, path);
+  return displayableImageMime(bytes, path) === null && (isTiff(bytes, path) || isEmf(bytes, path));
 }
 
 // RGBA pixels → a PNG data-URI via an offscreen canvas (browser only, which is where
@@ -116,6 +122,10 @@ export async function convertImageToDataUrl(bytes: Uint8Array, path: string): Pr
       if (!ifds.length) return null;
       UTIF.decodeImage(buf, ifds[0]);
       return rgbaToPngDataUrl(UTIF.toRGBA8(ifds[0]), ifds[0].width, ifds[0].height);
+    }
+    if (isEmf(bytes, path)) {
+      const svg = (await import('./emf')).emfToSvg(bytes);
+      return svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : null;
     }
   } catch { /* corrupt/unsupported → the importer skips it with a warning */ }
   return null;
