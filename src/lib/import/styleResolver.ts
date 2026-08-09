@@ -81,6 +81,20 @@ export function layerTextProps(base: PropMap, over: PropMap): PropMap {
   return Object.assign(out, over);
 }
 
+// LibreOffice holds a paragraph's two vertical margins in one item, so a style that
+// declares just one of them does not inherit the other — the missing one falls back to
+// the default paragraph style's value (probed: heading margins, and the space after a
+// paragraph that only sets fo:margin-top).
+const VERTICAL_MARGINS = ['fo:margin-top', 'fo:margin-bottom'] as const;
+
+export function layerParaProps(base: PropMap, over: PropMap, poolDefaults: PropMap): PropMap {
+  const out = Object.assign({}, base, over);
+  if (VERTICAL_MARGINS.some((k) => k in over)) {
+    for (const k of VERTICAL_MARGINS) if (!(k in over)) out[k] = poolDefaults[k] ?? '0cm';
+  }
+  return out;
+}
+
 // The size a percentage font-size is relative to when nothing is inherited yet
 // (ODF's implied default, matching the editor's body size).
 const BASE_FONT_SIZE_PT = 12;
@@ -277,12 +291,13 @@ export class StyleResolver {
     if (def) chain.push(def);
 
     const result = { text: {} as PropMap, para: {} as PropMap, misc: {} as PropMap };
+    const poolDefaults = def?.para ?? {};
     // Apply root-first so nearer definitions overwrite.
     for (const entry of chain.reverse()) {
       const inherited = result.text['fo:font-size'];
       result.text = layerTextProps(result.text, entry.text);
       resolvePercentSize(result.text, inherited);
-      Object.assign(result.para, entry.para);
+      result.para = entry === def ? { ...entry.para } : layerParaProps(result.para, entry.para, poolDefaults);
       Object.assign(result.misc, entry.misc);
     }
     this.mergedCache.set(cacheKey, result);
