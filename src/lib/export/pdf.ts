@@ -67,7 +67,8 @@ function buildClone(paper: HTMLElement, pageW: number): { holder: HTMLElement; c
   const style = document.createElement('style');
   style.textContent = `
 [data-pdf-export] .paper, [data-pdf-export] .paper .tiptap { box-shadow:none !important; }
-[data-pdf-export] .paper .tiptap { background:#fff !important; }
+[data-pdf-export] .paper { background:#fff !important; }
+[data-pdf-export] .paper .tiptap { background:none !important; }
 [data-pdf-export] .column-resize-handle, [data-pdf-export] .row-resize-handle { display:none !important; }
 [data-pdf-export] .selectedCell::after { display:none !important; }
 [data-pdf-export] .tiptap .is-editor-empty::before { content:none !important; }
@@ -471,8 +472,8 @@ function printCss(o: PrintPdfOptions): string {
 ${o.differentOddEven ? `@page :left {\n  ${marginBoxesFirst(o.headerEvenDoc ?? null, o.footerEvenDoc ?? null)}\n}` : ''}
 ${o.differentFirstPage ? `@page :first {\n  ${marginBoxesFirst(o.headerFirstDoc ?? null, o.footerFirstDoc ?? null)}\n}` : ''}
 html, body { margin: 0; padding: 0; background: #fff; }
-.paper { width: auto !important; transform: none !important; box-shadow: none !important; background: none !important; }
-.paper .tiptap { padding: 0 !important; min-height: 0 !important; background: #fff !important; box-shadow: none !important; color: #000 !important; }
+.paper { width: auto !important; transform: none !important; box-shadow: none !important; background: #fff !important; }
+.paper .tiptap { padding: 0 !important; min-height: 0 !important; background: none !important; box-shadow: none !important; color: #000 !important; }
 /* generateHTML drops TipTap's .tableWrapper; mirror its (zero) margin. */
 .paper .tiptap table { margin: 0; }
 .paper .tiptap tr { break-inside: avoid; }

@@ -74,14 +74,15 @@
   const HF_LINE_PX = 16 * 1.15;
   function hfReachPx(doc: HfDoc, distPx: number): number {
     if (!doc || hfIsEmpty(doc)) return 0;
-    const inline = ((doc.content?.[0] as { content?: { type?: string; attrs?: { height?: number } }[] } | undefined)?.content ?? []);
+    const inline = ((doc.content?.[0] as { content?: { type?: string; attrs?: { height?: number; wrap?: string } }[] } | undefined)?.content ?? []);
     // Per line, since an as-character image (a letterhead logo) makes its own line
-    // as tall as it is; the others are one text line each.
+    // as tall as it is; the others are one text line each. A positioned frame is out
+    // of flow — a page-sized background would otherwise reserve the whole page.
     let total = 0;
     let image = 0;
     for (const n of inline) {
       if (n.type === 'hardBreak') { total += Math.max(HF_LINE_PX, image); image = 0; }
-      else if (n.type === 'image' && typeof n.attrs?.height === 'number') image = Math.max(image, n.attrs.height);
+      else if (n.type === 'image' && typeof n.attrs?.height === 'number' && (n.attrs.wrap ?? 'inline') === 'inline') image = Math.max(image, n.attrs.height);
     }
     return distPx + total + Math.max(HF_LINE_PX, image);
   }

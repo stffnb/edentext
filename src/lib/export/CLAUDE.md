@@ -38,7 +38,7 @@ The filename is derived from the first non-empty heading (max 50 chars, sanitize
 
 ## Header/footer export
 
-- **Export:** a synthetic `__cust_hf__` node routes to `unknownNodeHandler`, which calls odf-kit's `setHeader`/`setFooter` (`applyHfRuns`); `hardBreak`→`LBR`, `pageNumber`→`addPageNumber`, `pageCount`→`PGC` sentinel. `applyHfPostProcess` (on styles.xml) rewrites the sentinels to `<text:line-break/>`/`<text:page-count>`, applies the paragraph alignment to the `Header`/`Footer` styles, and converts geometry to Word's model: page margin = the zone's edge distance (`headerDistanceCm`/`footerDistanceCm`), header/footer `min-height` = body margin − distance, so the **body** still starts at the editor's margin.
+- **Export:** a synthetic `__cust_hf__` node routes to `unknownNodeHandler`, which calls odf-kit's `setHeader`/`setFooter` (`applyHfRuns`); `hardBreak`→`LBR`, `pageNumber`→`addPageNumber`, `pageCount`→`PGC` sentinel. A zone image is an as-char `<draw:frame>`, or — floating — a page-anchored one plus a minted `HfBg*` graphic style (`run-through` behind the text, positioned from the page corner). `applyHfPostProcess` (on styles.xml) rewrites the sentinels to `<text:line-break/>`/`<text:page-count>`, applies the paragraph alignment to the `Header`/`Footer` styles, and converts geometry to Word's model: page margin = the zone's edge distance (`headerDistanceCm`/`footerDistanceCm`), header/footer `min-height` = body margin − distance, so the **body** still starts at the editor's margin.
 
 Sentinel order matters — the passes assume it. Full list of sentinels in use:
 `LBR`/`TAB` (inline), `IMG`, `SEG` (cell blocks), `TBX` U+E008 (text boxes),

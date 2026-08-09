@@ -1433,13 +1433,17 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
       }
       if (e.namespaceURI === NS.draw) {
         const conv = convertDrawElement(e, ctx);
-        // The one-paragraph zone takes as-char images only — boxes and positioned
-        // frames (a page-sized background reserves the whole page inline) are dropped
-        // with a warning, as the DOCX importer does.
+        // The one-paragraph zone flows as-char images; a positioned frame is out of
+        // flow — the page-anchored letterhead or watermark a title page is made of —
+        // and keeps its wrap plus its position from the page corner. Boxes are dropped.
         if (hfFields) {
-          const wrap = conv?.inline?.attrs?.wrap;
-          if (conv?.inline?.type === 'image' && (!wrap || wrap === 'inline')) {
-            out.push({ ...conv.inline, attrs: { ...conv.inline.attrs, wrap: 'inline' } });
+          const img = conv?.inline?.type === 'image' ? conv.inline : null;
+          const wrap = img?.attrs?.wrap;
+          if (img && (!wrap || wrap === 'inline')) {
+            out.push({ ...img, attrs: { ...img.attrs, wrap: 'inline' } });
+          } else if (img) {
+            const at = (a: string) => Math.max(0, lengthToCm(e.getAttributeNS(NS.svg, a)) ?? 0);
+            out.push({ ...img, attrs: { ...img.attrs, wrapOffset: at('x'), wrapOffsetY: at('y') } });
           } else if (conv) ctx.warnings.add('Drawings were removed');
           continue;
         }

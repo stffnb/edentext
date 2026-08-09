@@ -2799,16 +2799,35 @@ function imageFrameXml(img: ImageExport, index: number): string {
   );
 }
 
-// As-character <draw:frame> for a header/footer image (always inline; no wrap style or
-// rotation). Distinct draw:name so it never collides with a body image's frame.
+// <draw:frame> for a header/footer image. As-character by default; a positioned frame
+// (a page-anchored background) instead rides the zone paragraph at its page corner
+// offset, run through behind the text. Distinct draw:name per frame.
 function hfImageFrameXml(img: ImageExport, index: number): string {
   const dims =
     (img.widthCm ? ` svg:width="${img.widthCm}cm"` : '') +
     (img.heightCm ? ` svg:height="${img.heightCm}cm"` : '');
   const title = img.alt ? `<svg:title>${escapeXml(img.alt)}</svg:title>` : '';
+  const anchor =
+    img.wrap === 'inline'
+      ? `text:anchor-type="as-char"`
+      : `text:anchor-type="paragraph" draw:style-name="${HF_BG_STYLE}${index + 1}"` +
+        ` svg:x="${img.wrapOffsetCm ?? 0}cm" svg:y="${img.wrapOffsetYCm ?? 0}cm"`;
   return (
-    `<draw:frame draw:name="HfImage${index + 1}" text:anchor-type="as-char" draw:z-index="${index}"${dims}>` +
+    `<draw:frame draw:name="HfImage${index + 1}" ${anchor} draw:z-index="${index}"${dims}>` +
     `<draw:image xlink:href="${img.path}"/>${title}</draw:frame>`
+  );
+}
+
+const HF_BG_STYLE = 'HfBg';
+
+// The graphic style a page-anchored zone frame points at: positioned from the page's
+// top-left corner and run through behind the text, as LibreOffice writes a watermark.
+function hfBackgroundStyleXml(index: number): string {
+  return (
+    `<style:style style:name="${HF_BG_STYLE}${index + 1}" style:family="graphic">` +
+    `<style:graphic-properties style:wrap="run-through" style:run-through="background"` +
+    ` style:horizontal-rel="page" style:horizontal-pos="from-left"` +
+    ` style:vertical-rel="page" style:vertical-pos="from-top"/></style:style>`
   );
 }
 
@@ -3580,6 +3599,11 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
       const img = hfImages[Number(idx)];
       return img ? hfImageFrameXml(img, Number(idx)) : '';
     });
+    const bgStyles = hfImages.map((img, i) => (img.wrap === 'inline' ? '' : hfBackgroundStyleXml(i))).join('');
+    if (bgStyles) {
+      if (styles.includes('</office:automatic-styles>')) styles = styles.replace('</office:automatic-styles>', `${bgStyles}</office:automatic-styles>`);
+      else styles = styles.replace('<office:automatic-styles/>', `<office:automatic-styles>${bgStyles}</office:automatic-styles>`);
+    }
     for (const img of hfImages) files[img.path] = img.bytes;
     const manifestBytes = files['META-INF/manifest.xml'];
     if (manifestBytes) {

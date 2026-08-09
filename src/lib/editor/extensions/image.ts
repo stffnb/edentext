@@ -305,6 +305,9 @@ class ImageView {
   private applyWrap(): void {
     const d = this.dom;
     const wrap = this.attrWrap();
+    // Mirrors renderHTML's data-wrap, so one selector reaches a floating frame in the
+    // live view and in generated static HTML alike.
+    if (wrap === 'inline') delete d.dataset.wrap; else d.dataset.wrap = wrap;
     d.style.float = '';
     d.style.display = '';
     d.style.clear = '';

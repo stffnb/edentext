@@ -114,6 +114,25 @@
       return '';
     }
   }
+  // A positioned frame in a zone is out of flow: the page-anchored letterhead or
+  // watermark a title page is made of. It paints once per page from the page corner,
+  // behind the body, and the zone's own box never sees it (editor.css hides it there).
+  type PageBg = { src: string; x: number; y: number; width: number; height: number };
+  function backgrounds(doc: HfDoc): PageBg[] {
+    const inline = ((doc?.content?.[0] as { content?: { type?: string; attrs?: Record<string, unknown> }[] } | undefined)?.content ?? []);
+    const out: PageBg[] = [];
+    for (const n of inline) {
+      if (n.type !== 'image' || typeof n.attrs?.src !== 'string' || (n.attrs.wrap ?? 'inline') === 'inline') continue;
+      out.push({
+        src: n.attrs.src,
+        x: cmToPx(Number(n.attrs.wrapOffset) || 0),
+        y: cmToPx(Number(n.attrs.wrapOffsetY) || 0),
+        width: Number(n.attrs.width) || pageWidthPx,
+        height: Number(n.attrs.height) || pageHeightPx,
+      });
+    }
+    return out;
+  }
   // Section 1 is the app's own editable state; the rest live in extraHfSections.
   let sets = $derived<HfSet[]>([
     {
@@ -129,6 +148,11 @@
     header: staticHtml(s.header), footer: staticHtml(s.footer),
     headerFirst: staticHtml(s.headerFirst), footerFirst: staticHtml(s.footerFirst),
     headerEven: staticHtml(s.headerEven), footerEven: staticHtml(s.footerEven),
+  })));
+  let setBg = $derived(sets.map((s) => ({
+    header: backgrounds(s.header), footer: backgrounds(s.footer),
+    headerFirst: backgrounds(s.headerFirst), footerFirst: backgrounds(s.footerFirst),
+    headerEven: backgrounds(s.headerEven), footerEven: backgrounds(s.footerEven),
   })));
 
   // Which section a page belongs to: the count of section starts at or before it,
@@ -160,6 +184,13 @@
     const h = setHtml[index] ?? setHtml[0];
     if (zone === 'header') return v === 'first' ? h.headerFirst : v === 'even' ? h.headerEven : h.header;
     return v === 'first' ? h.footerFirst : v === 'even' ? h.footerEven : h.footer;
+  }
+  function zoneBackgrounds(zone: HfZone, page: number): PageBg[] {
+    const index = sectionOf(page);
+    const v = variantFor(page, index);
+    const b = setBg[index] ?? setBg[0];
+    if (zone === 'header') return v === 'first' ? b.headerFirst : v === 'even' ? b.headerEven : b.header;
+    return v === 'first' ? b.footerFirst : v === 'even' ? b.footerEven : b.footer;
   }
 
   // Lay out the zone's tabs: static HTML no ProseMirror plugin reaches. The advances are
@@ -299,6 +330,23 @@
   }
 </script>
 
+<!-- Own layer below the body (z-index -1 against .paper's zoom stacking context), so a
+     full-page background sits under the text the way LibreOffice paints it. -->
+<div class="hf-bg-layer">
+  {#each pages as p}
+    {#each ['header', 'footer'] as const as zone}
+      {#each zoneBackgrounds(zone, p) as bg}
+        <img
+          class="hf-page-bg"
+          src={bg.src}
+          alt=""
+          style="top: {(p - 1) * cycle + bg.y}px; left: {bg.x}px; width: {bg.width}px; height: {bg.height}px;"
+        />
+      {/each}
+    {/each}
+  {/each}
+</div>
+
 <div class="hf-layer">
   {#each pages as p}
     {#each ['header', 'footer'] as const as zone}
@@ -352,6 +400,21 @@
     inset: 0;
     z-index: 22;
     pointer-events: none;
+  }
+
+  .hf-bg-layer {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+  }
+  .hf-page-bg {
+    position: absolute;
+  }
+  /* The frame is painted by .hf-bg-layer; inside the zone it would grow the box and,
+     while editing, flow as a line. Selecting it still works from the keyboard. */
+  .hf-zone :global([data-wrap]) {
+    display: none;
   }
 
   .hf-zone {

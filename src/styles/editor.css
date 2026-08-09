@@ -19,6 +19,12 @@
 /* A4 paper container (794px = 210mm at 96dpi by default; --user-page-width is
    set from the Layout panel and swaps to 1123px in landscape — pageOrientation.ts) */
 .paper {
+  /* Driven by --user-page-height (pageOrientation.ts); fallback = A4 portrait. The
+     page geometry lives here, not on .tiptap, so both inherit the same values. */
+  --page-height: var(--user-page-height, 1123px);
+  --page-gap: 20px;
+  --page-cycle: calc(var(--page-height) + var(--page-gap));
+
   width: var(--user-page-width, 794px);
   /* Zoom is a `transform: scale()` set inline (Editor.svelte); pin the origin so the
      page scales down/right from the top-left of its reserved footprint. */
@@ -30,19 +36,28 @@
   /* A frame or a formula wider than the text area is cut at the sheet's edge, as it is
      in LibreOffice. `clip` rather than `hidden`: it must not become a scroll box. */
   overflow-x: clip;
+
+  /* The page surface (white) alternating with the gap, where .tiptap paints only the
+     borders on top of it. It sits here so a header's page background (.hf-bg-layer,
+     z-index -1) can paint between the sheet and the body text. */
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--color-page-bg) 0px,
+    var(--color-page-bg) var(--page-height),
+    transparent var(--page-height),
+    transparent var(--page-cycle)
+  );
+  background-size: 100% var(--page-cycle);
+  background-repeat: repeat-y;
 }
 
 .paper .tiptap {
-  /* Driven by --user-page-height (pageOrientation.ts); fallback = A4 portrait. */
-  --page-height: var(--user-page-height, 1123px);
-  --page-gap: 20px;
   /* Driven by --user-margin-* set on :root from the Layout panel (pageMargins.ts).
      Fallbacks preserve the original hardcoded layout when unset. */
   --page-margin-top: var(--user-margin-top, 96px);
   --page-margin-bottom: var(--user-margin-bottom, 96px);
   --page-margin-left: var(--user-margin-left, 80px);
   --page-margin-right: var(--user-margin-right, 80px);
-  --page-cycle: calc(var(--page-height) + var(--page-gap));
 
   position: relative;
   width: 100%;
@@ -60,7 +75,7 @@
   line-height: 1.15;
   color: var(--color-page-text);
 
-  /* Multi-page background: page surfaces separated by editor background */
+  /* Page borders, drawn over the sheet .paper paints */
   background:
     /* Left border per page */
     repeating-linear-gradient(
@@ -89,24 +104,14 @@
       var(--color-page-border) var(--page-height),
       transparent var(--page-height),
       transparent var(--page-cycle)
-    ),
-    /* Page surface (white) alternating with gap (transparent = editor bg shows) */
-    repeating-linear-gradient(
-      to bottom,
-      var(--color-page-bg) 0px,
-      var(--color-page-bg) var(--page-height),
-      transparent var(--page-height),
-      transparent var(--page-cycle)
     );
   background-size:
     1px var(--page-cycle),
     1px var(--page-cycle),
-    100% var(--page-cycle),
     100% var(--page-cycle);
   background-position:
     left top,
     right top,
-    left top,
     left top;
   background-repeat: repeat-y;
 
@@ -826,10 +831,11 @@
     width: 100%;
     max-width: none;
     transform: none;
+    background: white !important;
   }
 
   .paper .tiptap {
-    background: white !important;
+    background: none !important;
     box-shadow: none;
     border: none;
     padding: 0;
