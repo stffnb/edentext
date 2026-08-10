@@ -1673,6 +1673,11 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
       const blocks = convertBlocks(Array.from(tc.children), ctx, 'cell', bg === HEADER_SHADE);
       const attrs: Record<string, unknown> = { colspan, rowspan: 1 };
       if (bg) attrs.backgroundColor = bg;
+      // w:vAlign — Word's "center" is the editor's "middle"; "top"/"both" stay the default.
+      const vAlignEl = fc(tcPr, 'vAlign');
+      const vAlign = vAlignEl ? wVal(vAlignEl) : null;
+      if (vAlign === 'center') attrs.verticalAlign = 'middle';
+      else if (vAlign === 'bottom') attrs.verticalAlign = 'bottom';
       // The cell's own margins (w:tcMar), kept only where they differ from the table's.
       const ownPad = cellPaddingAttr(cellMarginsCm([fc(tcPr, 'tcMar')]), padBase);
       if (ownPad) attrs.cellPadding = ownPad;

@@ -927,6 +927,9 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
           ? { marginUnitType: WidthType.DXA, top: cmToTwip(ownPad[0]), right: cmToTwip(ownPad[1]), bottom: cmToTwip(ownPad[2]), left: cmToTwip(ownPad[3]) }
           : undefined,
         shading: fill ? { type: ShadingType.CLEAR, fill } : undefined,
+        // Content set against the middle/bottom of the box → w:vAlign.
+        verticalAlign: cell.attrs?.verticalAlign === 'middle' ? 'center'
+          : cell.attrs?.verticalAlign === 'bottom' ? 'bottom' : undefined,
         width: widthTwip ? { size: widthTwip, type: WidthType.DXA } : undefined,
         borders: {
           top: docxCellBorder(cell.attrs, 'borderTop'),

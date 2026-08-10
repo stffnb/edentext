@@ -507,6 +507,7 @@ describe('Leg 1b: merged table cells (colspan/rowspan)', () => {
       ] },
     ],
   };
+  mergedDoc.content![1].content![0].content![1].attrs!.verticalAlign = 'middle';
 
   it('exports spans + covered cells and re-imports them', async () => {
     const bytes = await buildOdt(mergedDoc, margins, 'portrait');
@@ -527,6 +528,8 @@ describe('Leg 1b: merged table cells (colspan/rowspan)', () => {
     check('C has rowspan 2', rows[1]?.content?.[0]?.attrs?.rowspan === 2, rows[1]?.content?.[0]?.attrs);
     check('A shading round-trips (#FFFF00)', rows[0]?.content?.[0]?.attrs?.backgroundColor === '#FFFF00', rows[0]?.content?.[0]?.attrs?.backgroundColor);
     check('B has no shading', rows[0]?.content?.[1]?.attrs?.backgroundColor == null, rows[0]?.content?.[1]?.attrs?.backgroundColor);
+    check('B keeps vertical-align middle', rows[0]?.content?.[1]?.attrs?.verticalAlign === 'middle', rows[0]?.content?.[1]?.attrs?.verticalAlign);
+    check('A stays top-aligned', rows[0]?.content?.[0]?.attrs?.verticalAlign == null, rows[0]?.content?.[0]?.attrs?.verticalAlign);
 
     const textOf = (cell: N) => cell?.content?.[0]?.content?.[0]?.text;
     check('A text preserved', textOf(rows[0]?.content?.[0]) === 'A', textOf(rows[0]?.content?.[0]));

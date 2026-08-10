@@ -2669,6 +2669,9 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
             const c = normalizeColor(bg);
             if (c) opts.backgroundColor = c;
           }
+          // Content set against the middle/bottom of the box → style:vertical-align.
+          const va = cell.attrs?.verticalAlign;
+          if (va === 'middle' || va === 'bottom') opts.verticalAlign = va;
           // Per-side borders → fo:border-* (null = the table default border below).
           for (const side of BORDER_SIDES) {
             const b = parseBorderAttr(cell.attrs?.[side] as string | null);
