@@ -373,6 +373,11 @@
    shared image-* handles; .textbox-content is the editable area. */
 .paper .tiptap .textbox-node {
   position: relative;
+  /* The anchor paragraph's space above, as padding so it adds to the block above
+     rather than collapsing against it (textBox.ts, storage/spacingModel.ts). The
+     inline height is the frame's, so the padding has to sit outside it. */
+  box-sizing: content-box;
+  padding-top: var(--space-before);
 }
 .paper .tiptap .textbox-node.textbox-selected,
 .paper .tiptap .textbox-node.textbox-active {
@@ -381,7 +386,9 @@
 .paper .tiptap .textbox-rotor {
   position: absolute;
   left: 50%;
-  top: 50%;
+  /* Centred in the padding box, so half the space above has to come back to keep the
+     frame itself below it. */
+  top: calc(50% + var(--space-before) / 2);
   box-sizing: border-box;
   transform: translate(-50%, -50%);
 }

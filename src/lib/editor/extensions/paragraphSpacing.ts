@@ -24,7 +24,9 @@ export const ParagraphSpacing = Extension.create({
 
   addOptions() {
     return {
-      types: ['paragraph', 'heading'] as string[],
+      // textBox: a box lifted out of its anchor paragraph carries that paragraph's
+      // spacing, since it stands in its place (import/odt.ts).
+      types: ['paragraph', 'heading', 'textBox'] as string[],
     };
   },
 

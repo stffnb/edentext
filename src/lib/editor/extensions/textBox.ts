@@ -383,6 +383,18 @@ class TextBoxView {
     } else if (a.wrap === 'topBottom') {
       d.style.clear = 'both';
     }
+    // The anchor paragraph's spacing, which a lifted box stands in for: space above as
+    // padding so it adds to the block above (editor.css), space below as the margin the
+    // frame distance already is.
+    const before = this.node.attrs.spaceBefore as number | null;
+    const after = this.node.attrs.spaceAfter as number | null;
+    // On the rotor too: --space-before is a registered non-inheriting property, and the
+    // rotor centres itself in the padding box, so it needs the value to correct for it.
+    for (const el of [d, this.rotor]) {
+      if (before != null) el.style.setProperty('--space-before', `${before}pt`);
+      else el.style.removeProperty('--space-before');
+    }
+    if (after != null) d.style.marginBottom = `${after}pt`;
     // Set against the middle or the far end of the column, unless the file placed the
     // box by coordinate.
     if ((a.wrapAlign === 'center' || a.wrapAlign === 'right')

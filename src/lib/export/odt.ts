@@ -579,6 +579,9 @@ type TextBoxExport = {
   fill: string | null;
   stroke: string | null;
   strokeWidthPt: number;
+  // The anchor paragraph's own spacing in pt, which the box stands in for.
+  spaceBeforePt: number;
+  spaceAfterPt: number;
 };
 
 function textBoxDescriptor(node: TiptapNode): TextBoxExport {
@@ -600,6 +603,8 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
     strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
+    spaceBeforePt: typeof a.spaceBefore === 'number' ? round3(a.spaceBefore) : 0,
+    spaceAfterPt: typeof a.spaceAfter === 'number' ? round3(a.spaceAfter) : 0,
   };
 }
 
@@ -3069,6 +3074,17 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   );
 }
 
+// The anchor paragraph carries the spacing the box stands in for (import/odt.ts hands a
+// lifted box its anchor's margins); nothing to mint when it has none.
+function textBoxAnchorStyle(box: TextBoxExport, index: number): string {
+  if (!box.spaceBeforePt && !box.spaceAfterPt) return '';
+  return (
+    `<style:style style:name="TbxP${index + 1}" style:family="paragraph" style:parent-style-name="Standard">` +
+    `<style:paragraph-properties fo:margin-top="${box.spaceBeforePt}pt" fo:margin-bottom="${box.spaceAfterPt}pt"/>` +
+    `</style:style>`
+  );
+}
+
 // The drawing element wrapping a box's serialized blocks: a <draw:frame>/<draw:text-box>
 // for plain text boxes (height = fo:min-height, so it grows with content like the
 // editor), or a <draw:custom-shape> with preset geometry for roundRect/ellipse.
@@ -3112,10 +3128,14 @@ function applyTextBoxes(odtBytes: Uint8Array, boxes: TextBoxExport[]): Uint8Arra
       const i = Number(idx);
       const box = boxes[i];
       if (!box) return '';
-      return `<text:p text:style-name="Standard">${textBoxXml(box, inner, i)}</text:p>`;
+      const style = box.spaceBeforePt || box.spaceAfterPt ? `TbxP${i + 1}` : 'Standard';
+      return `<text:p text:style-name="${style}">${textBoxXml(box, inner, i)}</text:p>`;
     },
   );
-  content = injectAutomaticStyles(content, boxes.map((b, i) => textBoxGraphicStyle(b, i)).join(''));
+  content = injectAutomaticStyles(
+    content,
+    boxes.map((b, i) => textBoxGraphicStyle(b, i) + textBoxAnchorStyle(b, i)).join(''),
+  );
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
 }

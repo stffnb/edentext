@@ -1100,6 +1100,9 @@ describe('Leg 6: text boxes / shapes (ODT)', () => {
       TBX({ width: 192, height: 80, wrap: 'left', shapeKind: 'roundRect', fillColor: null, strokeColor: null },
         P(null, T('transparent round')),
       ),
+      TBX({ width: 192, height: 96, spaceBefore: 6, spaceAfter: 8 },
+        P(null, T('spaced box')),
+      ),
       P(null, T('after')),
     ],
   };
@@ -1118,9 +1121,12 @@ describe('Leg 6: text boxes / shapes (ODT)', () => {
     const res = importOdt(bytes);
     check('no warnings on own export', res.warnings.length === 0, res.warnings);
     const boxes = (res.content.content ?? []).filter((n: N) => n.type === 'textBox');
-    check('all 3 boxes round-trip', boxes.length === 3, (res.content.content ?? []).map((n: N) => n.type));
+    check('all 4 boxes round-trip', boxes.length === 4, (res.content.content ?? []).map((n: N) => n.type));
 
-    const [plain, ellipse, round] = boxes;
+    const [plain, ellipse, round, spaced] = boxes;
+    check('anchor paragraph carries the box spacing',
+      xml.includes('style:name="TbxP4"') && xml.includes('fo:margin-top="6pt" fo:margin-bottom="8pt"'), xml.slice(0, 0));
+    check('box spacing round-trips', spaced?.attrs?.spaceBefore === 6 && spaced?.attrs?.spaceAfter === 8, spaced?.attrs);
     check('plain box: size 288×96, defaults suppressed', plain?.attrs?.width === 288 && plain?.attrs?.height === 96 &&
       plain?.attrs?.fillColor === undefined && plain?.attrs?.strokeColor === undefined && plain?.attrs?.shapeKind === undefined, plain?.attrs);
     check('plain box: both paragraphs + marks survive',

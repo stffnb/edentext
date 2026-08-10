@@ -1233,6 +1233,21 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   if (stops) attrs.tabStops = stops;
   const content = convertInline(el, ctx, baseTextProps, defaults, false);
 
+  // A box lifted out of a paragraph that held nothing else replaces it in the flow, so
+  // it takes that paragraph's own space above and below — resolved, not the direct half:
+  // the box carries no style name to inherit the rest from.
+  if (kind === 'body' && !content.length && ctx.pendingBlocks.length) {
+    const mt = snapPt(lengthToPt(paraProps['fo:margin-top']) ?? 0);
+    const mb = snapPt(lengthToPt(paraProps['fo:margin-bottom']) ?? 0);
+    for (const b of ctx.pendingBlocks) {
+      // A floating box is out of the flow and placed by its own offsets instead.
+      const wrap = b.attrs?.wrap;
+      if (b.type !== 'textBox' || wrap === 'left' || wrap === 'right') continue;
+      if (mt) b.attrs!.spaceBefore = mt;
+      if (mb) b.attrs!.spaceAfter = mb;
+    }
+  }
+
   // The paragraph style's own font size is the block's line-height floor on every
   // line, not only on an empty one; carry it as a block attr (mirrors the docx
   // paragraph-mark size), or text smaller than the style keeps the taller strut.
