@@ -20,6 +20,7 @@ import { PageNumber, PageCount, ChapterField } from './pageField';
 import { Image } from './image';
 import { Shortcuts } from './shortcuts';
 import { TabStops } from './tabStops';
+import { ParagraphSpacing } from './paragraphSpacing';
 
 // Schema for the header/footer mini editors: exactly one paragraph of formatted
 // runs, line breaks, page fields, and inline (as-character) images. Marks mirror
@@ -61,6 +62,9 @@ export function hfExtensions(placeholder = '') {
     ParagraphBox,
     // The centre/right stops a header's left\tcentre\tright layout rides on.
     TabStops.configure({ types: ['paragraph'] }),
+    // The zone style's own margins: what the band has to be tall enough for
+    // (Editor.svelte's hfReachPx), not a gap the bottom-anchored footer moves by.
+    ParagraphSpacing.configure({ types: ['paragraph'] }),
     CharacterStyle,
     Highlight.configure({ multicolor: true }),
     HfHardBreak,

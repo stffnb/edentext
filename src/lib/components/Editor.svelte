@@ -101,19 +101,31 @@
   // its line count) pushes the body's content area in so text doesn't overlap it: the
   // margin grows to fit the zone. ~18.4px = one 12pt line.
   const HF_LINE_PX = 16 * 1.15;
-  function hfReachPx(doc: HfDoc, distPx: number): number {
+  function hfReachPx(doc: HfDoc, distPx: number, footer = false): number {
     if (!doc || hfIsEmpty(doc)) return 0;
-    const inline = ((doc.content?.[0] as { content?: { type?: string; attrs?: { height?: number; wrap?: string } }[] } | undefined)?.content ?? []);
+    type Run = { type?: string; attrs?: { height?: number; wrap?: string }; marks?: { type?: string; attrs?: { fontSize?: string } }[] };
+    const para = doc.content?.[0] as { content?: Run[]; attrs?: { spaceBefore?: number; spaceAfter?: number } } | undefined;
+    const inline = para?.content ?? [];
+    // The zone's biggest run sizes its lines: LibreOffice grows the band to hold them
+    // when fo:min-height is smaller (probed, a 3-line header).
+    let linePx = HF_LINE_PX;
+    for (const n of inline) {
+      const size = n.marks?.find((m) => m.type === 'textStyle')?.attrs?.fontSize;
+      if (size) linePx = Math.max(linePx, (parseFloat(size) * 96) / 72 * 1.15);
+    }
     // Per line, since an as-character image (a letterhead logo) makes its own line
     // as tall as it is; the others are one text line each. A positioned frame is out
     // of flow — a page-sized background would otherwise reserve the whole page.
     let total = 0;
     let image = 0;
     for (const n of inline) {
-      if (n.type === 'hardBreak') { total += Math.max(HF_LINE_PX, image); image = 0; }
+      if (n.type === 'hardBreak') { total += Math.max(linePx, image); image = 0; }
       else if (n.type === 'image' && typeof n.attrs?.height === 'number' && (n.attrs.wrap ?? 'inline') === 'inline') image = Math.max(image, n.attrs.height);
     }
-    return distPx + total + Math.max(HF_LINE_PX, image);
+    // A footer is laid out from the page edge up, so its space above rides the band too;
+    // a header's space below just hangs into the body, which LibreOffice does not move.
+    const spacing = footer ? ((para?.attrs?.spaceBefore ?? 0) * 96) / 72 : 0;
+    return distPx + spacing + total + Math.max(linePx, image);
   }
   let footerDistPx = $derived(cmToPx((hfDistances ?? DEFAULT_HF_DISTANCES).footer));
   let headerDistPx = $derived(cmToPx((hfDistances ?? DEFAULT_HF_DISTANCES).header));
@@ -123,11 +135,11 @@
   // header/footer: "first" = page 1's own zone, "rest" = every page ≥ 2 with the even
   // variant folded in (max), since one --pb-content-*-rest covers all of them.
   let evenTopReach = $derived(differentOddEven ? hfReachPx(headerEvenDoc ?? null, headerDistPx) : 0);
-  let evenBottomReach = $derived(differentOddEven ? hfReachPx(footerEvenDoc ?? null, footerDistPx) : 0);
+  let evenBottomReach = $derived(differentOddEven ? hfReachPx(footerEvenDoc ?? null, footerDistPx, true) : 0);
   let effTopRest = $derived(Math.max(mTopPx, hfReachPx(headerDoc ?? null, headerDistPx), evenTopReach));
   let effTopFirst = $derived(Math.max(mTopPx, hfReachPx((differentFirstPage ? headerFirstDoc : headerDoc) ?? null, headerDistPx)));
-  let effBottomRest = $derived(Math.max(mBottomPx, hfReachPx(footerDoc ?? null, footerDistPx), evenBottomReach));
-  let effBottomFirst = $derived(Math.max(mBottomPx, hfReachPx((differentFirstPage ? footerFirstDoc : footerDoc) ?? null, footerDistPx)));
+  let effBottomRest = $derived(Math.max(mBottomPx, hfReachPx(footerDoc ?? null, footerDistPx, true), evenBottomReach));
+  let effBottomFirst = $derived(Math.max(mBottomPx, hfReachPx((differentFirstPage ? footerFirstDoc : footerDoc) ?? null, footerDistPx, true)));
   // Per-section reaches for pageBreaks: "topFirst|topRest|bottomFirst|bottomRest" in px,
   // one group per section, comma-separated. Section 1 repeats the four vars below.
   let sectionReach = $derived([
@@ -135,8 +147,8 @@
     ...extraHfSections.map((s) => [
       Math.max(mTopPx, hfReachPx((s.differentFirstPage ? s.headerFirst : s.header) ?? null, headerDistPx)),
       Math.max(mTopPx, hfReachPx(s.header ?? null, headerDistPx), s.differentOddEven ? hfReachPx(s.headerEven ?? null, headerDistPx) : 0),
-      Math.max(mBottomPx, hfReachPx((s.differentFirstPage ? s.footerFirst : s.footer) ?? null, footerDistPx)),
-      Math.max(mBottomPx, hfReachPx(s.footer ?? null, footerDistPx), s.differentOddEven ? hfReachPx(s.footerEven ?? null, footerDistPx) : 0),
+      Math.max(mBottomPx, hfReachPx((s.differentFirstPage ? s.footerFirst : s.footer) ?? null, footerDistPx, true)),
+      Math.max(mBottomPx, hfReachPx(s.footer ?? null, footerDistPx, true), s.differentOddEven ? hfReachPx(s.footerEven ?? null, footerDistPx, true) : 0),
     ]),
   ].map((g) => g.map((n) => Math.round(n)).join('|')).join(','));
 

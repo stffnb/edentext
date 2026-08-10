@@ -690,9 +690,17 @@ function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
   let stops: string | null = null;
   const boxMaps: Record<string, string>[] = [];
 
+  // The zone's paragraphs collapse into one, so the outer two margins become its own:
+  // what the band has to be tall enough to hold (Editor.svelte's hfReachPx).
+  let spaceBefore: number | null = null;
+  let spaceAfter = 0;
+
   const addPara = (p: Element) => {
     if (inline.length) inline.push({ type: 'hardBreak' });
     const styleName = p.getAttributeNS(NS.text, 'style-name');
+    const outer = ctx.resolver.paraProps(styleName);
+    spaceBefore ??= snapPt(lengthToPt(outer['fo:margin-top']) ?? 0);
+    spaceAfter = snapPt(lengthToPt(outer['fo:margin-bottom']) ?? 0);
     // The zone is one paragraph, so the first line's stops are the zone's.
     stops ??= formatTabStops(ctx.resolver.tabStops(styleName));
     if (textAlign === null) {
@@ -721,9 +729,11 @@ function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
   if (content.length === 0 && Object.keys(box).length === 0) return null;
 
   const para: Node = { type: 'paragraph', content };
-  const attrs: Record<string, string> = {};
+  const attrs: Record<string, string | number> = {};
   if (textAlign) attrs.textAlign = textAlign;
   if (stops) attrs.tabStops = stops;
+  if (spaceBefore) attrs.spaceBefore = spaceBefore;
+  if (spaceAfter) attrs.spaceAfter = spaceAfter;
   Object.assign(attrs, box);
   if (Object.keys(attrs).length) para.attrs = attrs;
   return { type: 'doc', content: [para] };
