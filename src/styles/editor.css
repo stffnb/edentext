@@ -655,9 +655,11 @@
   border: 1px solid #000;
   padding: var(--cell-pad-t, 0) var(--cell-pad-r, 0.19cm) var(--cell-pad-b, 0) var(--cell-pad-l, 0.19cm);
   /* A painted border is a whole pixel wide whatever the file declares, so the excess
-     comes off here — else a long table grows a line every few rows
-     (tableCellBorders.ts). */
+     comes off the padding — else a long table grows a line every few rows
+     (tableCellBorders.ts). Below first, then what is left of it above. */
   padding-bottom: max(0px, calc(var(--cell-pad-b, 0px) - var(--border-over, 0px)));
+  padding-top: max(0px, calc(
+    var(--cell-pad-t, 0px) - max(0px, var(--border-over, 0px) - var(--cell-pad-b, 0px))));
   vertical-align: top;
   /* A repeating header row is a <th>, and no word processor centres or bolds its text
      for that reason — drop the two UA defaults so the cell follows its own style. */
