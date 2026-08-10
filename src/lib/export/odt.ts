@@ -590,7 +590,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' ? wrapAttr : 'inline',
     wrapOffsetCm: typeof a.wrapOffset === 'number' ? round3(a.wrapOffset) : null,
     wrapOffsetYCm: typeof a.wrapOffsetY === 'number' ? round3(a.wrapOffsetY) : null,
-    wrapAlign: a.wrapAlign === 'center' ? 'center' : null,
+    wrapAlign: a.wrapAlign === 'center' || a.wrapAlign === 'right' ? a.wrapAlign : null,
     paddingCm: typeof a.paddingCm === 'number' ? round3(a.paddingCm) : TEXTBOX_PADDING_CM,
     shapeKind: kind === 'roundRect' || kind === 'ellipse' ? kind : 'textbox',
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
@@ -3029,7 +3029,7 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   // An as-char frame keeps only its horizontal-pos: that is what centres a figure
   // frame, and the anchor paragraph this export mints carries no alignment.
   const wrap = box.wrap === 'inline'
-    ? (box.wrapAlign === 'center' ? ' style:horizontal-pos="center" style:horizontal-rel="paragraph-content"' : '')
+    ? (box.wrapAlign ? ` style:horizontal-pos="${box.wrapAlign}" style:horizontal-rel="paragraph-content"` : '')
     : ` ${imageWrapProps(box.wrap, box.wrapOffsetCm, box.wrapAlign)} style:number-wrapped-paragraphs="no-limit"` +
       ` style:horizontal-rel="paragraph-content"` +
       ` style:vertical-pos="${box.wrapOffsetYCm != null ? 'from-top' : 'top'}" style:vertical-rel="paragraph"`;

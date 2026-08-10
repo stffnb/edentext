@@ -38,7 +38,7 @@ export interface TextBoxAttrs {
   wrap: WrapMode;
   wrapOffset: number | null;  // cm from the text column's left edge
   wrapOffsetY: number | null; // cm below the anchor paragraph
-  wrapAlign: string | null;   // 'center' = set against the middle of the column
+  wrapAlign: string | null;   // 'center'/'right' = set against the middle/far end
   paddingCm: number;          // inset ring around the text (ODF fo:padding)
   shapeKind: ShapeKind;
   fillColor: string | null;
@@ -383,10 +383,12 @@ class TextBoxView {
     } else if (a.wrap === 'topBottom') {
       d.style.clear = 'both';
     }
-    // Set against the middle of the column, unless the file placed it by coordinate.
-    if (a.wrapAlign === 'center' && a.wrapOffset == null && a.wrap !== 'left' && a.wrap !== 'right') {
+    // Set against the middle or the far end of the column, unless the file placed the
+    // box by coordinate.
+    if ((a.wrapAlign === 'center' || a.wrapAlign === 'right')
+        && a.wrapOffset == null && a.wrap !== 'left' && a.wrap !== 'right') {
       d.style.marginLeft = 'auto';
-      d.style.marginRight = 'auto';
+      if (a.wrapAlign === 'center') d.style.marginRight = 'auto';
     }
   }
 

@@ -800,6 +800,17 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
     if (anchor && !(pending.length && anchorIsEmpty)) out.push(anchor);
     if (!pending.length) return;
     if (kind === 'body') {
+      // A box lifted out of its anchor paragraph keeps the alignment that paragraph gave
+      // it: an as-char figure frame is set against the middle of the column by the
+      // paragraph it sits in, not by anything of its own.
+      const align = anchor?.attrs?.textAlign;
+      if (align === 'center' || align === 'right') {
+        for (const b of pending) {
+          if (b.type === 'textBox' && b.attrs && b.attrs.wrapOffset == null && !b.attrs.wrapAlign) {
+            b.attrs.wrapAlign = align;
+          }
+        }
+      }
       out.push(...pending);
     } else {
       ctx.warnings.add('Text boxes nested in table cells or other text boxes were flattened');
