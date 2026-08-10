@@ -1142,7 +1142,9 @@ export const PageBreaks = Extension.create({
               i > 0 && !leaf.inTableCell
               && (breaks.some((b) => b.reason !== 'line-split')
                 || (breaks.length === 0 && Math.abs(effectiveTop - contentStart) < 0.5))
-              && parseFloat(getComputedStyle(leaf.el).paddingTop) > 0.5
+              // The block's own space above, not its rendered padding: the drop below
+              // zeroes that padding, so reading it back makes the rule flip every pass.
+              && parseFloat(getComputedStyle(leaf.el).getPropertyValue('--space-before')) > 0.5
             ) {
               const from = docPosBeforeElement(leaf.el);
               const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
