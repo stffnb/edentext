@@ -759,9 +759,9 @@
   height: 0;
 }
 
-/* Paragraph mark (¶). Reserved in the layout at all times, so the toggle
-   only recolors it and text never reflows. Zero-size inline-block, glyph overflows
-   visibly: width/height/line-height 0 drop both footprint and line-box strut. */
+/* Paragraph mark (¶). Out of flow at its static position — after the last character,
+   but invisible to line breaking, so a line-end space still hangs into the margin and
+   the mark can never be pushed onto a line of its own. The toggle only recolors it. */
 .paper .tiptap p::after,
 .paper .tiptap h1::after,
 .paper .tiptap h2::after,
@@ -769,10 +769,13 @@
 .paper .tiptap h4::after,
 .paper .tiptap h5::after {
   content: '\00A0¶';
+  position: absolute;
   display: inline-block;
   width: 0;
   height: 0;
-  line-height: 0;
+  /* Out of flow the glyph has no baseline to align to, so it needs a line box of the
+     block's own height to sit in — the static position gives it that line's top. */
+  line-height: inherit;
   overflow: visible;
   white-space: pre;
   color: transparent;
@@ -800,8 +803,7 @@
 }
 
 /* A block ProseMirror ends with a trailing-break BR — an empty one, or one ending in a
-   hard break — puts the inline ¶ on a line of its own past that BR, so the block renders
-   one line too tall. Pull ::after out of flow, onto the last line. */
+   hard break — has its last line before that BR, not after it. */
 .paper .tiptap p:has(> br.ProseMirror-trailingBreak),
 .paper .tiptap h1:has(> br.ProseMirror-trailingBreak),
 .paper .tiptap h2:has(> br.ProseMirror-trailingBreak),
@@ -819,11 +821,8 @@
 .paper .tiptap h4:has(> br.ProseMirror-trailingBreak)::after,
 .paper .tiptap h5:has(> br.ProseMirror-trailingBreak)::after,
 .paper .tiptap li > p:has(> br.ProseMirror-trailingBreak)::after {
-  position: absolute;
-  /* Out of flow, so restore the paragraph's line-height (the base rule zeroes it) to
-     seat the glyph on a line instead of the collapsed top edge — the last one, which
-     for an empty block is also the first. */
-  line-height: inherit;
+  /* The static position would land past the BR, a line below the block; name the last
+     line instead — for an empty block that is also its first. */
   top: calc(100% - 1lh);
   left: 0;
   margin-left: 0;
