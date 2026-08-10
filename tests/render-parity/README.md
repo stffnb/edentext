@@ -89,7 +89,7 @@ form), the summary (a student summary: bullets, wrapped
 pictures, one table), the thesis (a 48-page thesis with charts, metafile figures and
 a German TOC) and the Math Guide (LibreOffice's own 63-page Math Guide: a title page,
 a three-page index, per-section masters, ~35 figure frames and 400 formulas) — still
-report. The thesis matches LibreOffice's 49 pages, the Math Guide is one over at 64 —
+report. The thesis matches LibreOffice's 49 pages and so does the Math Guide at 63 —
 most of what is left is the engine rules below, not layout:
 
 - **A page-anchored frame's coordinates are its page's, but a frame in a *header* keeps
@@ -98,15 +98,9 @@ most of what is left is the engine rules below, not layout:
 - **The index is its own pagination.** A generated TOC is a block atom, so pagination has
   no inner position to put a spacer at; the node view breaks it between entries itself
   (`tableOfContents.ts`) and asks for one recompute when that changes its height.
-- **A cell's `style:vertical-align` is read but not written back** — see
-  `docs/architecture/tables.md`.
-- **The chapter name in a header/footer is the value the file cached**, not the chapter
-  of the page it sits on: `text:chapter` arrives as plain text, where `text:page-number`
-  arrives as a live field. The Math Guide's footer says "Math commands - Reference" on
-  every page for that reason.
-
 - **A hoisted text box loses the vertical offset it was anchored by.** A frame's own
-  offsets are drawn now (`docs/architecture/frames.md`), but a text box anchored inside a
+  offsets are drawn now (`docs/architecture/frames.md`), and a lifted box takes its anchor
+  paragraph's spacing (`docs/architecture/frames.md`), but a text box anchored inside a
   paragraph is a block node here, so the importer lifts it out and it simply follows that
   paragraph. On the thesis' figure page that leaves its caption 4.7mm high — LibreOffice
   places the box by its own 19.52cm, we place it after the picture.
@@ -114,6 +108,13 @@ most of what is left is the engine rules below, not layout:
   measured height overshot by 4.5mm (231.2 against 227.7, from 223.0) and improved
   nothing in the corpus. The anchor paragraph's box is not the right basis — the frame
   it holds is a float, so its height is the text's alone.
+- **A page's last line is where the footer band ends.** The body margin a file's header or
+  footer reconstructs is the page margin plus the zone's declared height; the zone's own gap
+  to the body sits *inside* that height (probed — `styleResolver.ts`). Getting that wrong
+  costs a line on every page, which is worth more than any single block's spacing.
+- **Chromium floors every painted border to one pixel**, so a table's rows come out
+  ~0.25mm too tall each unless the excess is taken off the cell padding
+  (`docs/architecture/tables.md`).
 - **Page geometry is document-wide.** Headers and footers are per section (each is
   editable in place), but margins, orientation and format are not: they come from the
   master page governing the most body blocks (`import/odt.ts`), so a title page with its
