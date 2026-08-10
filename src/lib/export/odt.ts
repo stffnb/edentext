@@ -3637,6 +3637,11 @@ function hfParaPropsXml(para: TiptapNode): string {
   if (align) props.push(`fo:text-align="${align}"`);
   const s = paraStyleFromAttrs(para.attrs);
   if (s.background) props.push(`fo:background-color="${s.background}"`);
+  // The zone's own margins, which grow the band on the way back in (import/CLAUDE.md).
+  for (const [attr, side] of [['spaceBefore', 'top'], ['spaceAfter', 'bottom']] as const) {
+    const v = para.attrs?.[attr];
+    if (typeof v === 'number' && v) props.push(`fo:margin-${side}="${v}pt"`);
+  }
   for (const [attr, side] of [
     ['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left'],
   ] as const) {
