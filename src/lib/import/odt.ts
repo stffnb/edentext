@@ -1995,7 +1995,7 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   // name comes back — the look rides on the cell attrs above, and the editor re-derives
   // the regions from the registry (refreshTableStyles).
   const named = ctx.resolver.namedAncestor(el.getAttributeNS(NS.table, 'style-name'), 'table');
-  const attrs: Record<string, unknown> = { ...(tableMargins(el, ctx) ?? {}) };
+  const attrs: Record<string, unknown> = { ...(tableMargins(el, ctx) ?? {}), ...tableSpacing(el, ctx) };
   if (cellPad) attrs.cellPadding = cellPad;
   if (named) {
     attrs.tableStyle = displayStyleName(named);
@@ -2049,6 +2049,19 @@ function tableMargins(el: Element, ctx: Ctx): { marginLeft: number; marginRight:
   if (left + right > content - 1) return null;
   const round2 = (v: number) => Math.round(v * 100) / 100;
   return { marginLeft: round2(left), marginRight: round2(right) };
+}
+
+// The space a table's own style puts above and below it (fo:margin-top/-bottom on
+// the table, which LibreOffice honours like a paragraph's).
+function tableSpacing(el: Element, ctx: Ctx): { marginTop?: number; marginBottom?: number } {
+  const props = ctx.resolver.tableProps(el.getAttributeNS(NS.table, 'style-name'));
+  const round3 = (v: number) => Math.round(v * 1000) / 1000;
+  const out: { marginTop?: number; marginBottom?: number } = {};
+  const top = lengthToCm(props['fo:margin-top']);
+  const bottom = lengthToCm(props['fo:margin-bottom']);
+  if (top && top > 0) out.marginTop = round3(top);
+  if (bottom && bottom > 0) out.marginBottom = round3(bottom);
+  return out;
 }
 
 // Per-column proportional weights for the colwidth cell attr (tableView.ts uses

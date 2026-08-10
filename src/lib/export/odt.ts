@@ -808,7 +808,7 @@ type CellBlock =
   | { kind: 'heading'; level: number; style: ParaStyle }
   | CellListBlock;
 // A table's own margins in cm (0/0 tables are recorded as null).
-type TableMargins = { ml: number; mr: number };
+type TableMargins = { ml: number; mr: number; mt: number; mb: number };
 
 // Collect the alignment + paragraph spacing of each listItem's first paragraph,
 // in DFS order — matching the order that odf-kit emits <text:list-item> elements
@@ -930,9 +930,12 @@ function applyTableMargins(odtBytes: Uint8Array, margins: (TableMargins | null)[
   margins.forEach((m, i) => {
     if (!m) return;
     const width = Math.round((contentWidthCm - m.ml - m.mr) * 1000) / 1000;
+    const horiz = m.ml || m.mr
+      ? ` style:width="${width}cm" fo:margin-left="${m.ml}cm" fo:margin-right="${m.mr}cm"` : '';
+    const vert = `${m.mt ? ` fo:margin-top="${m.mt}cm"` : ''}${m.mb ? ` fo:margin-bottom="${m.mb}cm"` : ''}`;
     content = content.replace(
       new RegExp(`(<style:style[^>]*style:name="Table${i + 1}"[^>]*>\\s*<style:table-properties)`),
-      `$1 style:width="${width}cm" fo:margin-left="${m.ml}cm" fo:margin-right="${m.mr}cm"`,
+      `$1${horiz}${vert}`,
     );
   });
 
@@ -2636,11 +2639,13 @@ function tableColumnWidthsCm(node: TiptapNode, contentWidthCm: number): string[]
 // text width. null = the table spans the full text width (the common case).
 function tableMarginsCm(node: TiptapNode, contentWidthCm: number): TableMargins | null {
   const round3 = (v: number) => Math.round(v * 1000) / 1000;
-  const ml = Math.max(0, Number(node.attrs?.marginLeft) || 0);
-  const mr = Math.max(0, Number(node.attrs?.marginRight) || 0);
-  if (!ml && !mr) return null;
-  if (ml + mr > contentWidthCm - 1) return null;
-  return { ml: round3(ml), mr: round3(mr) };
+  let ml = Math.max(0, Number(node.attrs?.marginLeft) || 0);
+  let mr = Math.max(0, Number(node.attrs?.marginRight) || 0);
+  const mt = Math.max(0, Number(node.attrs?.marginTop) || 0);
+  const mb = Math.max(0, Number(node.attrs?.marginBottom) || 0);
+  if (ml + mr > contentWidthCm - 1) ml = mr = 0;
+  if (!ml && !mr && !mt && !mb) return null;
+  return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb) };
 }
 
 // Build an ODF table from a CUST_TABLE node, bypassing odf-kit's native walkTable to

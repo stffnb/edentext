@@ -42,8 +42,12 @@ export function columnPercents(weights: (number | null)[]): number[] {
 function applyMargins(node: PMNode, wrapper: HTMLElement): void {
   const ml = (node.attrs.marginLeft as number) || 0;
   const mr = (node.attrs.marginRight as number) || 0;
+  const mt = (node.attrs.marginTop as number) || 0;
+  const mb = (node.attrs.marginBottom as number) || 0;
   wrapper.style.marginLeft = ml ? `${ml}cm` : '';
   wrapper.style.marginRight = mr ? `${mr}cm` : '';
+  wrapper.style.marginTop = mt ? `${mt}cm` : '';
+  wrapper.style.marginBottom = mb ? `${mb}cm` : '';
 }
 
 // The node view never calls the node's renderHTML, so the table-style hook the generated

@@ -89,6 +89,12 @@ We deliberately keep TipTap's `resizable: false` (so its own columnResizing plug
   without it an emphasis-only area such as first/last column or the total row is **invisible** in
   a tile, since the tiles hold no real text — only fills and borders would show.
 
+- **A table's own space above/below** (`marginTop`/`marginBottom`, cm, beside the two horizontal
+  ones) — ODF `fo:margin-top`/`-bottom` on the table style, which LibreOffice honours like a
+  paragraph's. Rendered on the `.tableWrapper` (`TableView`, plus the inline style for the static
+  paths). Word has no table-level spacing, so it round-trips through ODF only. the Math Guide's callout
+  tables carry 0.109/0.409cm and lost half a line each without it.
+
 ## Cell metrics measured against LibreOffice
 
 - **No space above a cell's first block.** LibreOffice adds none there (its

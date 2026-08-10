@@ -44,8 +44,13 @@ function marginCm(value: string): number {
 function tableMarginStyle(attrs: Record<string, unknown>): Record<string, string> {
   const ml = Number(attrs.marginLeft) || 0;
   const mr = Number(attrs.marginRight) || 0;
-  if (!ml && !mr) return {};
-  return { style: `margin-left: ${ml}cm; margin-right: ${mr}cm; width: calc(100% - ${round3(ml + mr)}cm)` };
+  const mt = Number(attrs.marginTop) || 0;
+  const mb = Number(attrs.marginBottom) || 0;
+  const decls: string[] = [];
+  if (ml || mr) decls.push(`margin-left: ${ml}cm`, `margin-right: ${mr}cm`, `width: calc(100% - ${round3(ml + mr)}cm)`);
+  if (mt) decls.push(`margin-top: ${mt}cm`);
+  if (mb) decls.push(`margin-bottom: ${mb}cm`);
+  return decls.length ? { style: decls.join('; ') } : {};
 }
 
 export const tableColumnResizeKey = new PluginKey<ResizeState>('tableColumnResize');
@@ -371,6 +376,18 @@ export const TableColumnResize = Extension.create({
           marginRight: {
             default: 0,
             parseHTML: (element: HTMLElement) => marginCm(element.style.marginRight),
+            renderHTML: () => ({}),
+          },
+          // The space above/below the table (ODF fo:margin-top/-bottom on the table
+          // style). Word has no equivalent, so it only round-trips through ODF.
+          marginTop: {
+            default: 0,
+            parseHTML: (element: HTMLElement) => marginCm(element.style.marginTop),
+            renderHTML: () => ({}),
+          },
+          marginBottom: {
+            default: 0,
+            parseHTML: (element: HTMLElement) => marginCm(element.style.marginBottom),
             renderHTML: () => ({}),
           },
         },
