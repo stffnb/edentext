@@ -12,7 +12,7 @@ import { chromium } from 'playwright-core';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
 const CHROME = process.env.PARITY_CHROME ?? newestChromium();
-const PORT = 5199;
+const PORT = +(process.env.PARITY_PORT ?? 5199);   // reuse a dev server already up
 const PAGE_GAP = 20;           // pageBreaks.ts
 const PT_MM = 25.4 / 72;
 const PX_MM = 25.4 / 96;
