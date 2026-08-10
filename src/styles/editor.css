@@ -625,6 +625,12 @@
      margin-left/-right here (tableView.ts), which is what the export writes. */
   margin: 0;
   overflow-x: auto;
+  /* The table's space above adds to the block above it, as a paragraph's does. */
+  padding-top: var(--space-before);
+}
+.paper[data-spacing-model='max'] .tiptap .tableWrapper {
+  padding-top: 0;
+  margin-top: var(--space-before);
 }
 
 .paper .tiptap table {
@@ -640,7 +646,11 @@
 .paper .tiptap td,
 .paper .tiptap th {
   border: 1px solid #000;
-  padding: var(--cell-pad, 0 0.19cm);
+  padding: var(--cell-pad-t, 0) var(--cell-pad-r, 0.19cm) var(--cell-pad-b, 0) var(--cell-pad-l, 0.19cm);
+  /* A painted border is a whole pixel wide whatever the file declares, so the excess
+     comes off here — else a long table grows a line every few rows
+     (tableCellBorders.ts). */
+  padding-bottom: max(0px, calc(var(--cell-pad-b, 0px) - var(--border-over, 0px)));
   vertical-align: top;
   /* A repeating header row is a <th>, and no word processor centres or bolds its text
      for that reason — drop the two UA defaults so the cell follows its own style. */

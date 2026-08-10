@@ -1,5 +1,5 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { parseCellPadding } from './tableCellPadding';
+import { CELL_PAD_VARS, parseCellPadding } from './tableCellPadding';
 import type { ViewMutationRecord } from '@tiptap/pm/view';
 
 // Custom table node view: <colgroup> uses percentage widths and the table stays at
@@ -46,8 +46,11 @@ function applyMargins(node: PMNode, wrapper: HTMLElement): void {
   const mb = (node.attrs.marginBottom as number) || 0;
   wrapper.style.marginLeft = ml ? `${ml}cm` : '';
   wrapper.style.marginRight = mr ? `${mr}cm` : '';
-  wrapper.style.marginTop = mt ? `${mt}cm` : '';
   wrapper.style.marginBottom = mb ? `${mb}cm` : '';
+  // Space above rides --space-before so editor.css can add it to the block above
+  // instead of collapsing against it (storage/spacingModel.ts).
+  if (mt) wrapper.style.setProperty('--space-before', `${mt}cm`);
+  else wrapper.style.removeProperty('--space-before');
 }
 
 // The node view never calls the node's renderHTML, so the table-style hook the generated
@@ -64,8 +67,10 @@ function applyTableStyleAttr(node: PMNode, table: HTMLElement): void {
 // Also bypassed by the node view: the cell margins editor.css reads off the table.
 function applyCellPadding(node: PMNode, table: HTMLElement): void {
   const p = parseCellPadding(node.attrs.cellPadding);
-  if (p) table.style.setProperty('--cell-pad', p.map((n) => `${n}cm`).join(' '));
-  else table.style.removeProperty('--cell-pad');
+  CELL_PAD_VARS.forEach((v, i) => {
+    if (p) table.style.setProperty(v, `${p[i]}cm`);
+    else table.style.removeProperty(v);
+  });
 }
 
 function buildColgroup(node: PMNode, colgroup: HTMLElement): void {

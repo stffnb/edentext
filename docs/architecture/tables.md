@@ -93,7 +93,9 @@ We deliberately keep TipTap's `resizable: false` (so its own columnResizing plug
   ones) — ODF `fo:margin-top`/`-bottom` on the table style, which LibreOffice honours like a
   paragraph's. Rendered on the `.tableWrapper` (`TableView`, plus the inline style for the static
   paths). Word has no table-level spacing, so it round-trips through ODF only. the Math Guide's callout
-  tables carry 0.109/0.409cm and lost half a line each without it.
+  tables carry 0.109/0.409cm and lost half a line each without it. The space **above** rides
+  `--space-before`, so the document's spacing model adds it to the block above instead of
+  collapsing against it, exactly as a paragraph's does.
 
 ## Cell metrics measured against LibreOffice
 
@@ -102,6 +104,12 @@ We deliberately keep TipTap's `resizable: false` (so its own columnResizing plug
   model only. Measured on the Math Guide: the table row grew 1mm per row without it. `pageBreaks.ts`
   excludes cell leaves from its page-top-drop detection, or that missing padding would read
   as a decoration to add back.
+- **A painted border is always a whole pixel**, whatever width the file declares — Chromium
+  floors it, LibreOffice reserves the declared width (the Math Guide's cells ask for a 0.05pt hairline).
+  The excess comes off the cell's `padding-bottom` (`--border-over`, `tableCellBorders.ts`;
+  the bottom side only, since `border-collapse` draws one line per boundary), which is why the
+  cell padding rides four custom properties rather than one shorthand. 0.25mm a row, a page
+  over the Math Guide's length.
 - **`<th>` carries no UA defaults.** A repeating ODF header row (`table:table-header-rows`)
   becomes a `tableHeader`, and the browser centres and bolds it — neither Word nor LibreOffice
   does. `editor.css` resets both, so the cell follows its own style (the "header row" preset's

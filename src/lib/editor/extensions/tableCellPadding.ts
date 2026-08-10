@@ -32,11 +32,14 @@ export function parseCellPadding(value: unknown): CellPadding | null {
   return nums.length === 4 && nums.every((n) => Number.isFinite(n)) ? cellPaddingAttr(nums) : null;
 }
 
-// One custom property carrying the whole shorthand; editor.css reads it with the
-// default as its fallback, so nothing to write for an ordinary table.
+// One custom property per side; editor.css reads them with the default as their
+// fallback, so nothing to write for an ordinary table. Per side rather than one
+// shorthand because the bottom one is what the border overshoot comes off (editor.css).
+export const CELL_PAD_VARS = ['--cell-pad-t', '--cell-pad-r', '--cell-pad-b', '--cell-pad-l'];
+
 export function cellPaddingStyle(value: unknown): string | null {
   const p = parseCellPadding(value);
-  return p ? `--cell-pad:${p.map((n) => `${n}cm`).join(' ')}` : null;
+  return p ? CELL_PAD_VARS.map((v, i) => `${v}:${p[i]}cm`).join(';') : null;
 }
 
 export const TableCellPadding = Extension.create({
@@ -51,7 +54,8 @@ export const TableCellPadding = Extension.create({
         attributes: {
           cellPadding: {
             default: null,
-            parseHTML: (element: HTMLElement) => parseCellPadding(element.style.getPropertyValue('--cell-pad')),
+            parseHTML: (element: HTMLElement) =>
+              parseCellPadding(CELL_PAD_VARS.map((v) => element.style.getPropertyValue(v)).join(' ')),
             renderHTML: (attributes: Record<string, unknown>) => {
               const style = cellPaddingStyle(attributes.cellPadding);
               return style ? { style } : {};

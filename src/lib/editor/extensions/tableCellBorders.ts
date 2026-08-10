@@ -57,6 +57,16 @@ export function cssBorder(value: string): string | null {
   return `${px}px solid ${b.color}`;
 }
 
+// What the painted border costs the row beyond the width the file declares: Chromium
+// floors every border to a whole pixel, LibreOffice reserves the declared width (a
+// 0.05pt hairline is next to nothing). editor.css takes it off the cell's padding.
+export function borderOvershootPx(value: string): number {
+  const b = parseBorderAttr(value);
+  if (b === null || b === 'none') return 0;
+  const declared = (b.widthPt * 96) / 72;
+  return Math.round((Math.max(1, Math.round(declared)) - declared) * 1000) / 1000;
+}
+
 const SIDE_META: Record<BorderSide, { data: string; css: string }> = {
   borderTop: { data: 'data-border-top', css: 'border-top' },
   borderRight: { data: 'data-border-right', css: 'border-right' },
@@ -216,7 +226,11 @@ export const TableCellBorders = Extension.create({
                 if (!v) return {};
                 const css = cssBorder(v);
                 if (!css) return {};
-                return { [SIDE_META[side].data]: v, style: `${SIDE_META[side].css}: ${css}` };
+                // Only the bottom one: with border-collapse a boundary draws a single
+                // line, so compensating both sides of it would take the excess twice.
+                const over = side === 'borderBottom' ? borderOvershootPx(v) : 0;
+                const style = `${SIDE_META[side].css}: ${css}` + (over ? `; --border-over: ${over}px` : '');
+                return { [SIDE_META[side].data]: v, style };
               },
             },
           ]),
