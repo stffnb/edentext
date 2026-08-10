@@ -796,9 +796,9 @@
 }
 
 /* After an inline atom ProseMirror's trailing-break BR adds a line the block has not
-   got, so a paragraph holding an image renders one too tall. Kept after a real BR
-   (it carries the caret onto the empty line) and in an empty block (its only line). */
-.paper .tiptap :not(br) + br.ProseMirror-trailingBreak {
+   got, so a paragraph holding an image renders one too tall. Kept where the block really
+   does end in a break — bare, or wrapped in the mark spans of the run that carried it. */
+.paper .tiptap :not(br):not(:has(br:last-child)) + br.ProseMirror-trailingBreak {
   display: none;
 }
 
