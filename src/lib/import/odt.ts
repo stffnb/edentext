@@ -1231,7 +1231,14 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // the resolver's own walk rather than the flattened paraProps.
   const stops = formatTabStops(resolver.tabStops(styleName));
   if (stops) attrs.tabStops = stops;
-  const content = convertInline(el, ctx, baseTextProps, defaults, false);
+  // A run inherits the block's own size (attrs.fontSize below), not the default style's,
+  // so that is what it is measured against — else a list item whose style sets 11pt drops
+  // every 12pt run as "the style supplies it" and renders them at 11.
+  const markSizePt = lengthToPt(baseTextProps['fo:font-size']);
+  const runDefaults = markSizePt != null && Math.abs(markSizePt - defaults.fontSizePt) > 0.05
+    ? { ...defaults, fontSizePt: markSizePt }
+    : defaults;
+  const content = convertInline(el, ctx, baseTextProps, runDefaults, false);
 
   // A box lifted out of a paragraph that held nothing else replaces it in the flow, so
   // it takes that paragraph's own space above and below — resolved, not the direct half:
