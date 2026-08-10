@@ -1075,9 +1075,10 @@ describe('Leg 4: foreign header/footer → importOdt', () => {
     check('foreign hf: page-number field', hPara?.content?.some((n: N) => n.type === 'pageNumber'), hPara);
     check('foreign hf: page-count field', hPara?.content?.some((n: N) => n.type === 'pageCount'), hPara);
     check('foreign hf: footer text', fhf.footer?.content?.[0]?.content?.[0]?.text === 'Confidential', fhf.footer);
-    // Body top margin = page margin (1.5) + header height (0.8) + spacing (0.3) = 2.6.
-    check('foreign hf: body top margin reconstructed', Math.abs((fhf.margins?.top ?? 0) - 2.6) < 0.02, fhf.margins);
-    check('foreign hf: body bottom margin reconstructed', Math.abs((fhf.margins?.bottom ?? 0) - 2.4) < 0.02, fhf.margins);
+    // Body top margin = page margin (1.5) + the header band (0.8): its 0.3 spacing to
+    // the body is laid out inside that height, not added to it (styleResolver.ts).
+    check('foreign hf: body top margin reconstructed', Math.abs((fhf.margins?.top ?? 0) - 2.3) < 0.02, fhf.margins);
+    check('foreign hf: body bottom margin reconstructed', Math.abs((fhf.margins?.bottom ?? 0) - 2.1) < 0.02, fhf.margins);
     // header-first is a supported variant (Word "Different First Page" / ODF header-first).
     check('foreign hf: first-page header parsed', fhf.headerFirst?.content?.[0]?.content?.[0]?.text === 'Cover', fhf.headerFirst);
     check('foreign hf: different-first-page flag set', fhf.differentFirstPage === true, fhf.differentFirstPage);

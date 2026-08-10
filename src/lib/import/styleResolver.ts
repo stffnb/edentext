@@ -587,12 +587,11 @@ export class StyleResolver {
       const height = lengthToCm(props.getAttributeNS(NS.svg, 'height'))
         ?? lengthToCm(props.getAttributeNS(NS.fo, 'min-height'))
         ?? 0;
-      // style:dynamic-spacing="true" makes the header↔body gap collapsible (the header
-      // grows into it), so the body isn't pushed down by it. Only fixed (non-dynamic)
-      // spacing is added to the body margin.
-      const dynamic = props.getAttributeNS(NS.style, 'dynamic-spacing') === 'true';
-      const spacing = dynamic ? 0 : (lengthToCm(props.getAttributeNS(NS.fo, spacingAttr)) ?? 0);
-      return height + spacing;
+      // The zone's gap to the body is laid out *inside* that height, not added to it
+      // (probed: a footer's fo:margin-top moves its text down the band and leaves the
+      // last body line where it was; style:dynamic-spacing changes neither side).
+      const spacing = lengthToCm(props.getAttributeNS(NS.fo, spacingAttr)) ?? 0;
+      return Math.max(height, spacing);
     };
 
     return {
