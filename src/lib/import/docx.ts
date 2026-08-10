@@ -791,7 +791,13 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // carry the formatting instead, so it is measured against the default style: the only
   // thing re-applied on import. A caption's italic and colour live nowhere else.
   const defaults = blockDefaults(name ? baseRun : ctx.styles.paragraphRun(ctx.styles.defaultParagraphStyle()), level, boldByDefault);
-  const content = convertInline(el, ctx, baseRun, defaults, false);
+  // A run inherits the block's own size, not the default style's, so that is what it is
+  // measured against — else a size the block overrides is suppressed and lost (odt.ts).
+  const ownSizePt = blockDefaults(baseRun, level, boldByDefault).fontSizePt;
+  const runDefaults = Math.abs(ownSizePt - defaults.fontSizePt) > 0.05
+    ? { ...defaults, fontSizePt: ownSizePt }
+    : defaults;
+  const content = convertInline(el, ctx, baseRun, runDefaults, false);
 
   if (name) {
     ctx.usedStyles.add(styleId!);
