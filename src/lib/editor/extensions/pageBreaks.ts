@@ -1084,7 +1084,10 @@ export const PageBreaks = Extension.create({
                 bandOpenY: target,
                 reason: 'leaf-jump-to-next-page',
               });
-            } else if (effectiveBottom + (leaf.spaceAfter ?? 0) > contentEnd) {
+              // Space below is not part of what has to fit: a block whose last line ends
+              // on the page keeps it and the gap is dropped at the page bottom, the way
+              // space above is at a page top (probed: 2cm below a line 8mm short of it).
+            } else if (effectiveBottom > contentEnd) {
               if (leaf.kind === 'atomic') {
                 const cf = leaf.columnsFragment;
                 if (cf && cf.blockCount > 1 && cf.firstBlockNeededPx + COLUMNS_FIT_MARGIN_PX <= contentEnd - effectiveTop) {
