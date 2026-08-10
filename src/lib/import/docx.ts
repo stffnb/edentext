@@ -661,9 +661,11 @@ function stylePara(ctx: Ctx, id: string | null): ParaProps {
   const sp = ctx.styles.paragraphSpacing(id);
   if (sp.before != null) out.spaceBefore = snapPt(twipToPt(sp.before));
   if (sp.after != null) out.spaceAfter = snapPt(twipToPt(sp.after));
+  // Not suppressed against single spacing — the document default may be something else
+  // (Word writes 1.08), and a style declaring 1 would then inherit that instead. What
+  // the parent style already supplies is dropped by the caller's ownProps.
   if (sp.line != null && (!sp.lineRule || sp.lineRule === 'auto')) {
-    const mult = round2(sp.line / 240);
-    if (Math.abs(mult - 1) > 0.01) out.lineHeight = String(mult);
+    out.lineHeight = String(round2(sp.line / 240));
   }
   const jc = ctx.styles.paragraphAlign(id);
   if (jc === 'center') out.textAlign = 'center';
