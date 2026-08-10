@@ -106,7 +106,9 @@ async function settle(page) {
     const w = window;
     if (w.__parityKey !== key) { w.__parityKey = key; w.__paritySince = performance.now(); return false; }
     return performance.now() - (w.__paritySince ?? 0) > 3000;
-  }, null, { timeout: 180_000 });
+    // Polled, not per frame: the predicate walks every spacer and index row, and on a
+  // 60-page document doing that each frame starves the layout it is waiting for.
+  }, null, { timeout: 180_000, polling: 500 });
 }
 
 // Runs in the browser: every rendered word with its page and mm position.
@@ -236,8 +238,10 @@ function compare(ref, ed) {
 }
 
 // Whitespace-insensitive: spell decorations split text nodes mid-word and the two
-// engines needn't agree on word boundaries — only on what sits on a line.
-const norm = (s) => s.replace(/[\s\u00a0\u00ad]+/g, '');
+// engines needn't agree on word boundaries — only on what sits on a line. A tab or
+// index leader collapses to one token too: how many dots fill the gap is the fill's
+// own business, and both engines end it at the same stop.
+const norm = (s) => s.replace(/[\s\u00a0\u00ad]+/g, '').replace(/([.\u00b7_-])\1{2,}/g, '\u2026');
 
 // ------------------------------------------------------------------- driver
 
