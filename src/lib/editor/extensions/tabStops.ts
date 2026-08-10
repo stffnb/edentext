@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { EditorState } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { FORCE_PAGE_RECALC } from './pageBreaks';
+import { FORCE_PAGE_RECALC, pageBreakKey } from './pageBreaks';
 import { PX_PER_CM } from '../../storage/pageMargins';
 
 // Per-paragraph tab stops. CSS only has the fixed `tab-size` grid, so a tab that
@@ -178,36 +178,50 @@ function measure(view: EditorView): TabLayout {
     if (!stops.length) return false;
     const blockEnd = pos + node.nodeSize - 1;
 
+    // Where the pen stands (cm from the text margin) after the tab before this one.
+    // Carrying it along the line is what makes one pass self-consistent: read from the
+    // DOM instead and every tab but the line's first measures the advance the *previous*
+    // pass gave the one before it, so the layout takes another pass to settle — and on a
+    // long document, where pagination keeps moving lines, it may never get a stable one.
+    let pen: number | null = null;
+    let lineTop = NaN;
     for (let t = 0; t < tabs.length; t++) {
       const tabPos = tabs[t];
-      // Side -1 measures at the end of the content BEFORE the tab, outside the tab's
-      // own span — so the margin this pass applies can't contaminate the next one's
-      // reading of where the pen stands.
+      // Side -1 measures at the end of the content BEFORE the tab. A new line — a hard
+      // break, or a wrap — starts the pen over at what the DOM shows there.
       const start = view.coordsAtPos(tabPos, -1);
-      const xCm = (start.left - originX) / scale / PX_PER_CM;
-      // Custom stops replace the default grid to their left; past the last one the
-      // CSS grid already does the right thing, so that tab stays undecorated.
-      const stop = stops.find((s) => s.pos > xCm + 0.01);
-      if (!stop) continue;
-      let width = (stop.pos - xCm) * PX_PER_CM;
+      if (pen == null || Math.abs(start.top - lineTop) > 1) pen = (start.left - originX) / scale / PX_PER_CM;
+      lineTop = start.top;
+      // Custom stops replace the default grid to their left; past the last one the CSS
+      // grid already does the right thing, so that tab stays undecorated — and the pen
+      // has to be read off the DOM again at the next one.
+      const stop = stops.find((s) => s.pos > (pen as number) + 0.01);
+      if (!stop) { pen = null; continue; }
+      let width = (stop.pos - pen) * PX_PER_CM;
 
+      const segEnd = t + 1 < tabs.length ? tabs[t + 1] : blockEnd;
+      const segCm = segEnd > tabPos + 1 ? rangeWidth(view, tabPos + 1, segEnd) / scale / PX_PER_CM : 0;
       if (stop.align !== 'left') {
-        let segEnd = t + 1 < tabs.length ? tabs[t + 1] : blockEnd;
-        if (stop.align === 'decimal') segEnd = decimalPos(node, pos, tabPos + 1, segEnd) ?? segEnd;
-        let back = segEnd > tabPos + 1 ? rangeWidth(view, tabPos + 1, segEnd) / scale : 0;
+        const alignEnd = stop.align === 'decimal'
+          ? decimalPos(node, pos, tabPos + 1, segEnd) ?? segEnd
+          : segEnd;
+        let back = alignEnd > tabPos + 1 ? rangeWidth(view, tabPos + 1, alignEnd) / scale : 0;
         if (stop.align === 'center') back /= 2;
         width -= back;
       }
       out.push({ pos: tabPos, width: Math.max(0, Math.round(width * 100) / 100), leader: normalizeLeader(stop.leader) });
+      // The segment sits behind a left stop, astride a centred one and ahead of the rest.
+      pen = stop.align === 'left' ? stop.pos + segCm : stop.align === 'center' ? stop.pos + segCm / 2 : stop.pos;
     }
     return false;
   });
   return { widths: out, breaks };
 }
 
-// Natural width of a doc range: the sum of its client rects, so a segment pushed onto
-// the next line still reads its own width. Measuring its span end-to-end instead would
-// feed a wrapped line back in, and the alignment could never recover.
+// Natural width of a doc range: the extent of each line it covers, added up — so a
+// segment pushed onto the next line still reads its own width. Not the sum of the rects:
+// a range crossing an inline element yields one for the element's box and one for the
+// text inside it, and adding those counts the text twice.
 function rangeWidth(view: EditorView, from: number, to: number): number {
   // Biased outwards, or the range swallows the tab's own span at either end.
   const a = view.domAtPos(from, 1);
@@ -215,8 +229,16 @@ function rangeWidth(view: EditorView, from: number, to: number): number {
   const range = document.createRange();
   range.setStart(a.node, a.offset);
   range.setEnd(b.node, b.offset);
+  const rows = new Map<number, { left: number; right: number }>();
+  for (const rect of Array.from(range.getClientRects())) {
+    if (!rect.width) continue;
+    const key = Math.round(rect.top);
+    const row = rows.get(key);
+    if (row) { row.left = Math.min(row.left, rect.left); row.right = Math.max(row.right, rect.right); }
+    else rows.set(key, { left: rect.left, right: rect.right });
+  }
   let width = 0;
-  for (const rect of Array.from(range.getClientRects())) width += rect.width;
+  for (const row of rows.values()) width += row.right - row.left;
   return width;
 }
 
@@ -371,7 +393,10 @@ export const TabStops = Extension.create({
           apply(tr, old) {
             const next = tr.getMeta(tabStopsKey) as DecorationSet | undefined;
             if (next) return next;
-            if (tr.getMeta(FORCE_PAGE_RECALC)) forced++;
+            // A pagination placement change moves lines, so the advances measured before
+            // it are stale — and pagination settles over many frames on a long document,
+            // long after two passes of ours have agreed on the layout of the moment.
+            if (tr.getMeta(FORCE_PAGE_RECALC) || tr.getMeta(pageBreakKey)) forced++;
             return old.map(tr.mapping, tr.doc);
           },
         },

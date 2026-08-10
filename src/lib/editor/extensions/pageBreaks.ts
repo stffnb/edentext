@@ -189,7 +189,9 @@ function getPageForY(y: number, cycle: number): number {
 // answer to the last pass from a fresh change.
 type PageBreakState = { recalc: number; edit: number };
 
-const pageBreakKey = new PluginKey<PageBreakState>('pageBreaks');
+// Exported for tabStops.ts: a placement change moves lines, so the tab advances
+// measured before it are stale.
+export const pageBreakKey = new PluginKey<PageBreakState>('pageBreaks');
 
 // Transaction meta flag: set it (e.g. when page margins change) to force a
 // pagination recompute even though the document content is unchanged.
