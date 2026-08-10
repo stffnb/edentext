@@ -76,6 +76,14 @@ declare module '@tiptap/core' {
 
 const tabStopsKey = new PluginKey<DecorationSet>('tabStops');
 
+// A stop past the end of the line is drawn at the end of the line, as LibreOffice does:
+// the Math Guide's footer style puts its right stop at 18cm in a 17cm column, and honoured
+// literally that hangs the page number outside the page — or wraps the footer.
+function clampStops(stops: TabStop[], widthCm: number): TabStop[] {
+  if (!(widthCm > 0)) return stops;
+  return stops.map((s) => (s.pos > widthCm ? { ...s, pos: widthCm } : s));
+}
+
 // A tab's advance is decided per line, so a block only needs measuring when it has
 // stops of its own; a hanging indent implies one at the text position.
 function stopsOf(node: PmNode): TabStop[] {
@@ -172,8 +180,10 @@ function measure(view: EditorView): TabLayout {
     if (!node.isTextblock) return true;
     const tabs = tabPositions(node, pos);
     if (!tabs.length) return false;
-    const stops = stopsOf(node);
     const blockEl = view.nodeDOM(pos);
+    const stops = blockEl instanceof HTMLElement
+      ? clampStops(stopsOf(node), (blockEl.getBoundingClientRect().right - originX) / scale / PX_PER_CM - 0.03)
+      : stopsOf(node);
     if (blockEl instanceof HTMLElement) breaks.push(...runBreaks(view, blockEl, tabs, stops, scale, originX));
     if (!stops.length) return false;
     const blockEnd = pos + node.nodeSize - 1;
@@ -265,7 +275,9 @@ function wrapZoneTabs(para: HTMLElement): HTMLElement[] {
   const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
   const found: Text[] = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    if ((n.textContent ?? '').includes('\t') && !(n.parentElement as HTMLElement)?.dataset.zoneTab) found.push(n as Text);
+    // hasAttribute, not dataset: the marker's value is '', which reads as falsy — and a
+    // tab wrapped again on every pass nests a span per pass, each with its own advance.
+    if ((n.textContent ?? '').includes('\t') && !n.parentElement?.hasAttribute('data-zone-tab')) found.push(n as Text);
   }
   for (const text of found) {
     let node: Text | null = text;
@@ -288,18 +300,30 @@ function wrapZoneTabs(para: HTMLElement): HTMLElement[] {
 // applied before the next is read.
 export function layOutZoneTabs(zone: HTMLElement): void {
   const para = zone.querySelector<HTMLElement>('[data-tab-stops]');
-  const stops = para ? parseTabStops(para.getAttribute('data-tab-stops')) : [];
-  if (!para || !stops.length) return;
+  if (!para || !parseTabStops(para.getAttribute('data-tab-stops')).length) return;
   const tabs = wrapZoneTabs(para);
   for (const t of tabs) {
     t.className = '';
     t.removeAttribute('data-leader');
     t.style.cssText = 'tab-size:0';
   }
+  // Measured with wrapping off: a segment that has already wrapped reads short by the
+  // space its break swallowed, so the advance computed from it keeps it wrapped — the
+  // Math Guide's footer stayed two lines over three pixels.
+  const wrapping = para.style.whiteSpace;
+  para.style.whiteSpace = 'pre';
   const rect = para.getBoundingClientRect();
   const scale = para.offsetWidth ? rect.width / para.offsetWidth : 1;
-  if (!scale) return;
-  const originX = rect.left + parseFloat(getComputedStyle(para).paddingLeft || '0') * scale;
+  const cs = getComputedStyle(para);
+  const padLeft = parseFloat(cs.paddingLeft || '0');
+  // The line's own width, not clientWidth: that is rounded up to whole px, and half a
+  // pixel of it is enough to wrap the run a right-aligned stop puts at the very end.
+  // One px of slack: a run ending exactly on the boundary wraps, and a stop a pixel
+  // short of it is a pixel nobody sees.
+  const lineCm = (rect.width / (scale || 1) - padLeft - parseFloat(cs.paddingRight || '0') - 1) / PX_PER_CM;
+  const stops = clampStops(parseTabStops(para.getAttribute('data-tab-stops')), lineCm);
+  if (!scale) { para.style.whiteSpace = wrapping; return; }
+  const originX = rect.left + padLeft * scale;
 
   for (let i = 0; i < tabs.length; i++) {
     const tab = tabs[i];
@@ -314,8 +338,12 @@ export function layOutZoneTabs(zone: HTMLElement): void {
       range.setStartAfter(tab);
       if (i + 1 < tabs.length) range.setEndBefore(tabs[i + 1]);
       else range.setEnd(para, para.childNodes.length);
-      let seg = 0;
-      for (const rect of Array.from(range.getClientRects())) seg += rect.width;
+      // The extent, not the sum: a range crossing inline elements yields a rect for the
+      // element's box as well as for the text inside it.
+      const boxes = Array.from(range.getClientRects()).filter((r) => r.width);
+      const seg = boxes.length
+        ? Math.max(...boxes.map((r) => r.right)) - Math.min(...boxes.map((r) => r.left))
+        : 0;
       width -= (stop.align === 'center' ? seg / 2 : seg) / scale;
     }
     width = Math.max(0, Math.round(width * 100) / 100);
@@ -327,6 +355,7 @@ export function layOutZoneTabs(zone: HTMLElement): void {
       tab.style.setProperty('--leader-w', `${width}px`);
     }
   }
+  para.style.whiteSpace = wrapping;
 }
 
 export const TabStops = Extension.create({
