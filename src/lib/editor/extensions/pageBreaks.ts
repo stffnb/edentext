@@ -217,6 +217,9 @@ type Leaf = {
   // The block's space below (px). A word processor's paragraph frame includes it, so it
   // must fit on the page too — a block whose text fits but whose spacing doesn't moves.
   spaceAfter?: number;
+  // The block's space above (px), always the declared one: the leaf is measured as if
+  // the page-top drop below had not been applied, so a pass can't read its own answer.
+  spaceAbove?: number;
   // Manual page break before this block (ODF fo:break-before; pageBreak.ts): force the
   // leaf to the next page's top even when it would otherwise fit on the current page.
   forceBreakBefore?: boolean;
@@ -607,6 +610,10 @@ export const PageBreaks = Extension.create({
           // cumulativeSpacerHeight accumulates spacer offsetHeights (unscaled
           // layout px), matching the offsetHeight-based naturalHeight.
           let cumulativeSpacerHeight = 0;
+          // Space above that the page-top rule has already taken off the blocks walked
+          // so far: added back, so what is measured is the document, not the last pass's
+          // answer to it. Reading the answer back is what made the layout flip-flop.
+          let cumulativeDropped = 0;
 
           // A leaf's border-box top within .tiptap, in document px. Summing offsetTop up
           // the offsetParent chain is unaffected by .paper's transform:scale, so it's the
@@ -797,12 +804,20 @@ export const PageBreaks = Extension.create({
                     floatBottom = Math.max(floatBottom, below);
                   }
                 }
+                const cs = getComputedStyle(child);
+                // The block's own space above, and how much of it the last pass took off
+                // at a page top (the decoration zeroes both padding and margin).
+                const spaceAbove = parseFloat(cs.getPropertyValue('--space-before')) || 0;
+                const dropped = spaceAbove > 0.5
+                  && parseFloat(cs.paddingTop) < 0.5 && parseFloat(cs.marginTop) < 0.5
+                  ? spaceAbove : 0;
                 leaves.push({
                   el: child,
                   kind: isAtomic ? 'atomic' : 'splittable',
-                  naturalTop: topWithin(child) - cumulativeSpacerHeight,
-                  naturalHeight: Math.max(child.offsetHeight, floatBottom) - intraSpacerHeight,
-                  spaceAfter: inTableCell ? 0 : parseFloat(getComputedStyle(child).marginBottom) || 0,
+                  naturalTop: topWithin(child) - cumulativeSpacerHeight + cumulativeDropped,
+                  naturalHeight: Math.max(child.offsetHeight, floatBottom) - intraSpacerHeight + dropped,
+                  spaceAfter: inTableCell ? 0 : parseFloat(cs.marginBottom) || 0,
+                  spaceAbove,
                   inTableCell,
                   // A manual page break is honored for top-level blocks only (not in
                   // a table cell, where the table breaks atomically between rows).
@@ -814,6 +829,7 @@ export const PageBreaks = Extension.create({
                   sectionStart: !inTableCell && child.dataset?.sectionBreak === 'true',
                 });
                 cumulativeSpacerHeight += intraSpacerHeight;
+                cumulativeDropped += dropped;
                 continue;
               }
               if (CONTAINER_TAGS.has(tag)) {
@@ -954,6 +970,8 @@ export const PageBreaks = Extension.create({
             }[] = [];
             // Set when a leaf overflows but no spacer can bridge it (block > one page).
             let noPushReason: string | null = null;
+            // Space above this leaf loses for opening a page — taken off the flow below it.
+            let droppedShift = 0;
 
             // A sequential-fill chain's fragment box may run to the page bottom, which
             // would shove this trailing empty paragraph onto a phantom extra page —
@@ -1145,16 +1163,18 @@ export const PageBreaks = Extension.create({
             // block's space above, as LibreOffice does. A line split doesn't: there the
             // page starts mid-block. `effectiveTop` still excludes this leaf's own push.
             if (
-              i > 0 && !leaf.inTableCell
+              i > 0 && !leaf.inTableCell && (leaf.spaceAbove ?? 0) > 0.5
               && (breaks.some((b) => b.reason !== 'line-split')
                 || (breaks.length === 0 && Math.abs(effectiveTop - contentStart) < 0.5))
-              // The block's own space above, not its rendered padding: the drop below
-              // zeroes that padding, so reading it back makes the rule flip every pass.
-              && parseFloat(getComputedStyle(leaf.el).getPropertyValue('--space-before')) > 0.5
             ) {
               const from = docPosBeforeElement(leaf.el);
               const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
-              if (from !== null && node) pageTopBlocks.push({ from, to: from + node.nodeSize });
+              if (from !== null && node) {
+                pageTopBlocks.push({ from, to: from + node.nodeSize });
+                // The block is that much shorter from here on; the leaves below it were
+                // measured with the space still in place.
+                droppedShift += leaf.spaceAbove ?? 0;
+              }
             }
 
             leavesDebug.push({
@@ -1226,6 +1246,7 @@ export const PageBreaks = Extension.create({
             if (leaf.sectionStart) {
               sectionStartPages.push(getPageForY(leaf.naturalTop + cumulativeShift, CYCLE_PX));
             }
+            cumulativeShift -= droppedShift;
             // Track the lowest rendered content bottom (cumulativeShift now includes
             // this leaf's own spacer, so a pushed/split leaf counts at its real spot).
             maxEffectiveBottom = Math.max(
