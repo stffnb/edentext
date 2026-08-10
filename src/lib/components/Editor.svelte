@@ -82,6 +82,12 @@
     return out;
   }
 
+  // Pagination refreshes the starts; inserting a chapter field into a zone isn't a
+  // pagination event, so collect them as soon as a zone asks for them.
+  $effect(() => {
+    chapterStarts = wantsChapters ? collectChapterStarts() : [];
+  });
+
   // Apply the page margins + orientation to the :root CSS vars (visual padding,
   // page dimensions, and pagination all read these). DOM-only, safe in effects.
   $effect(() => {

@@ -2,6 +2,7 @@
   import type { Editor, ChainedCommands } from '@tiptap/core';
   import { CellSelection } from '@tiptap/pm/tables';
   import { isHeaderStyled } from '../editor/extensions/tableHeaderRow';
+  import type { CellVerticalAlign } from '../editor/extensions/tableCellAlign';
   import ColorPicker from './ColorPicker.svelte';
   import TableBorderPicker from './TableBorderPicker.svelte';
   import TableStylePicker from './TableStylePicker.svelte';
@@ -38,29 +39,35 @@
   const isHeaderRow = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'row'));
   const isHeaderCol = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'column'));
 
-  // Background colour of the selected cell(s): the uniform value, '' if mixed, null if
-  // none. Drives the ColorPicker's "current" swatch (re-evaluated per `tick`).
-  function cellBg(): string | null {
+  // One attribute over the selected cell(s): the uniform value, '' if they disagree,
+  // null if there is no cell. Re-evaluated per `tick`.
+  function cellAttr(name: string): string | null {
     if (!editor) return null;
     const sel = editor.state.selection;
-    const colors = new Set<string | null>();
+    const values = new Set<string | null>();
     if (sel instanceof CellSelection) {
-      sel.forEachCell((cell) => colors.add((cell.attrs.backgroundColor as string) ?? null));
+      sel.forEachCell((cell) => values.add((cell.attrs[name] as string) ?? null));
     } else {
       const from = sel.$from;
       for (let d = from.depth; d > 0; d--) {
         const role = from.node(d).type.spec.tableRole;
         if (role === 'cell' || role === 'header_cell') {
-          colors.add((from.node(d).attrs.backgroundColor as string) ?? null);
+          values.add((from.node(d).attrs[name] as string) ?? null);
           break;
         }
       }
     }
-    if (colors.size === 0) return null;
-    if (colors.size > 1) return '';
-    return [...colors][0] ?? null;
+    if (values.size === 0) return null;
+    if (values.size > 1) return '';
+    return [...values][0] ?? null;
   }
-  const currentCellColor = $derived(tick >= 0 ? cellBg() : null);
+  const currentCellColor = $derived(tick >= 0 ? cellAttr('backgroundColor') : null);
+  // Where the content sits in the cell box; null = top, the default in both formats.
+  const cellVAlign = $derived(tick >= 0 ? cellAttr('verticalAlign') : null);
+
+  function setVAlign(v: CellVerticalAlign | null) {
+    editor?.chain().focus().setCellAttribute('verticalAlign', v).run();
+  }
 
   function applyCellColor(color: string) {
     editor?.chain().focus().setCellAttribute('backgroundColor', color).run();
@@ -197,6 +204,28 @@
       <path d="M7.5 9H3M3 9l2.2-2.2M3 9l2.2 2.2M10.5 9H15M15 9l-2.2-2.2M15 9l-2.2 2.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
+
+  <span class="tt-sep"></span>
+
+  {#each [
+    { v: null, label: t().table.cellAlignTop, d: 'M5 5h8M5 8h5' },
+    { v: 'middle', label: t().table.cellAlignMiddle, d: 'M5 7.5h8M5 10.5h5' },
+    { v: 'bottom', label: t().table.cellAlignBottom, d: 'M5 10h8M5 13h5' },
+  ] as const as a}
+    <button
+      class="tt-btn"
+      class:active={cellVAlign === a.v}
+      title={a.label}
+      aria-label={a.label}
+      aria-pressed={cellVAlign === a.v}
+      onclick={() => setVAlign(a.v)}
+    >
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="15" height="15" rx="1" stroke="currentColor" stroke-width="1.3"/>
+        <path d={a.d} stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+      </svg>
+    </button>
+  {/each}
 
   <span class="tt-sep"></span>
 

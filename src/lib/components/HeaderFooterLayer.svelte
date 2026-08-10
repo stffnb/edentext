@@ -346,7 +346,7 @@
     activeTrailingPx = tb && getComputedStyle(tb).display !== 'none' && Number.isFinite(lineH) ? lineH : 0;
   });
 
-  function insertField(kind: 'pageNumber' | 'pageCount') {
+  function insertField(kind: 'pageNumber' | 'pageCount' | 'chapterField') {
     hfEditor?.chain().focus().insertContent({ type: kind }).run();
   }
 </script>
@@ -407,6 +407,7 @@
       <span class="hf-bar-label">{t().hf.insert}</span>
       <button class="hf-bar-btn" title={t().hf.pageNumberTitle} onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageNumber')}>{t().hf.pageNumber}</button>
       <button class="hf-bar-btn" title={t().hf.pageCountTitle} onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageCount')}>{t().hf.pageCount}</button>
+      <button class="hf-bar-btn" title={t().hf.chapterTitle} onmousedown={(e) => e.preventDefault()} onclick={() => insertField('chapterField')}>{t().hf.chapter}</button>
       <span class="hf-bar-sep"></span>
       <button class="hf-bar-btn hf-bar-done" title={t().hf.doneTitle} onmousedown={(e) => e.preventDefault()} onclick={() => (hfActive = null)}>{t().hf.done}</button>
     </div>
