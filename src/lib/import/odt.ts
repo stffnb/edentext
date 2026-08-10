@@ -1894,6 +1894,7 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       const padSides = ctx.resolver.cellPadding(cellStyleName);
       if (cellPad === undefined) cellPad = cellPaddingAttr(padSides);
       const ownPad = cellPaddingAttr(padSides, cellPad ?? DEFAULT_CELL_PADDING);
+      const verticalAlign = ctx.resolver.cellVerticalAlign(cellStyleName);
       const rawBg = ctx.resolver.cellBackgroundColor(cellStyleName);
       const backgroundColor = rawBg ? normalizeColor(rawBg) ?? rawBg : null;
       // Per-side borders; an undeclared side means no border in ODF → 'none'.
@@ -1913,6 +1914,7 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
         const attrs: Record<string, unknown> = { colspan, rowspan, ...borders };
         if (ownPad) attrs.cellPadding = ownPad;
         if (backgroundColor) attrs.backgroundColor = backgroundColor;
+        if (verticalAlign) attrs.verticalAlign = verticalAlign;
         if (weights) attrs.colwidth = weights.slice(colIndex, colIndex + colspan);
         cells.push({
           type: header ? 'tableHeader' : 'tableCell',

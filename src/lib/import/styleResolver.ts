@@ -384,6 +384,13 @@ export class StyleResolver {
     return c && c !== 'transparent' && c !== 'none' ? c : null;
   }
 
+  // A cell style's style:vertical-align, where it is not the ODF default (top).
+  cellVerticalAlign(styleName: string | null): 'middle' | 'bottom' | null {
+    if (!styleName) return null;
+    const v = this.merged('table-cell', styleName).misc['style:vertical-align'];
+    return v === 'middle' ? 'middle' : v === 'bottom' ? 'bottom' : null;
+  }
+
   // A cell style's raw fo:border-* values (per-side overriding the fo:border
   // shorthand). Sides the style doesn't declare stay undefined (= no border in ODF).
   cellBorders(styleName: string | null): Partial<Record<'top' | 'right' | 'bottom' | 'left', string>> {

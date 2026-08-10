@@ -41,6 +41,7 @@ import { TableColumnResize } from './extensions/tableColumnResize';
 import { TableRowResize } from './extensions/tableRowResize';
 import { TableSplit } from './extensions/tableSplit';
 import { TableCellBackground } from './extensions/tableCellBackground';
+import { TableCellAlign } from './extensions/tableCellAlign';
 import { TableCellBorders } from './extensions/tableCellBorders';
 import { TableCellPadding } from './extensions/tableCellPadding';
 import { TableHeaderRow } from './extensions/tableHeaderRow';
@@ -145,6 +146,8 @@ export const extensions = [
   TableSplit,
   // Cell shading: backgroundColor attr on tableCell/tableHeader (→ fo:background-color).
   TableCellBackground,
+  // Cell content set against the middle/bottom of its box (→ style:vertical-align).
+  TableCellAlign,
   // Border presets: per-side border attrs on cells (→ fo:border-*).
   TableCellBorders,
   // The table's cell margins (→ w:tblCellMar / fo:padding on the cell style).
