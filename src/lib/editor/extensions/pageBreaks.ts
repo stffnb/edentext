@@ -511,8 +511,10 @@ export const PageBreaks = Extension.create({
         function firstLinesHeight(el: HTMLElement, scale: number, want: number): number {
           const lines = getLineRects(el);
           if (!lines.length) return el.offsetHeight;
-          const last = lines[Math.min(want, lines.length) - 1];
-          return (last.bottom - lines[0].top) / scale;
+          // A block with fewer lines than orphan and widow control demand together has
+          // no legal split point at all, so the pair needs room for the whole of it.
+          const keep = lines.length < want * 2 ? lines.length : want;
+          return (lines[keep - 1].bottom - lines[0].top) / scale;
         }
 
         function findLineSplit(
