@@ -4,3 +4,4 @@ dist
 debug
 .DS_Store
 tests/render-parity/fixtures
+docs/others

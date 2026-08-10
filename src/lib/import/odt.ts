@@ -164,6 +164,15 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   const y = gp['style:vertical-pos'] === 'from-top' && (!rel || rel.startsWith('paragraph') || rel === 'line')
     ? lengthToCm(el.getAttributeNS(NS.svg, 'y')) : null;
   if (y != null && y > 0 && attrs.wrap) attrs.wrapOffsetY = Math.round(y * 100) / 100;
+  // A page-anchored frame is out of the text flow, placed from its page's corner: the
+  // cover graphic or watermark of a title page. Its offsets are that corner's, not the
+  // column's, so they replace whatever the wrap rules above read.
+  if (anchor === 'page') {
+    const page = Number(el.getAttributeNS(NS.text, 'anchor-page-number'));
+    attrs.anchorPage = Number.isInteger(page) && page > 0 ? page : 1;
+    attrs.wrapOffset = Math.max(0, lengthToCm(el.getAttributeNS(NS.svg, 'x')) ?? 0);
+    attrs.wrapOffsetY = Math.max(0, lengthToCm(el.getAttributeNS(NS.svg, 'y')) ?? 0);
+  }
 }
 
 // A paragraph mark that declares nothing keeps the style's font, but the runs may all
@@ -756,10 +765,25 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
     }
   };
 
+  // A page-anchored frame is out of the text flow: it rides a paragraph of its own,
+  // which collapses to nothing (editor.css). In a cell there is no page corner to place
+  // it from, so it stays the ordinary floating frame the wrap rules made of it.
+  const hoistPageFrames = (block: Node | null): Node | null => {
+    const frames = (block?.content ?? []).filter(n => n.type === 'image' && n.attrs?.anchorPage);
+    if (!block || !frames.length) return block;
+    if (kind !== 'body') {
+      for (const f of frames) delete f.attrs!.anchorPage;
+      return block;
+    }
+    block.content = block.content!.filter(n => !frames.includes(n));
+    for (const f of frames) out.push({ type: 'paragraph', content: [f] });
+    return block;
+  };
+
   for (const el of elements) {
     if (el.namespaceURI === NS.text) {
       if (el.localName === 'p' || el.localName === 'h') {
-        pushWithPending(convertParaLike(el, ctx, kind, boldByDefault));
+        pushWithPending(hoistPageFrames(convertParaLike(el, ctx, kind, boldByDefault)));
       } else if (el.localName === 'list') {
         // A list wrapping only headings is ODF outline (chapter) numbering, not a real
         // list — unwrap it to plain headings instead of empty nested list levels.

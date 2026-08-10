@@ -161,6 +161,13 @@
   margin-bottom: 0;
 }
 
+/* A page-anchored frame is placed from its page corner and is out of the flow, so the
+   paragraph the importer hoists it into reserves no space (image.ts). */
+.paper .tiptap p:has(> [data-anchor-page]) {
+  height: 0;
+  margin: 0;
+}
+
 /* Paragraph "colored field" + rule line (paragraphBox.ts). Background-color and per-side
    borders are inline styles from renderHTML; a bordered block gets a little padding so the
    text doesn't touch the rule (matches LibreOffice's fo:padding on such paragraphs). */

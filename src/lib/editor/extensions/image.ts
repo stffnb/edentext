@@ -139,6 +139,14 @@ export const Image = Node.create({
         parseHTML: el => parseCm((el as HTMLElement).getAttribute('data-wrap-offset-y')),
         renderHTML: () => ({}),
       },
+      // The page a page-anchored frame is placed on (ODF text:anchor-page-number): a
+      // cover graphic or a watermark, out of the text flow. wrapOffset/-Y are then the
+      // frame's coordinates from that page's top-left corner, not from its column.
+      anchorPage: {
+        default: null,
+        parseHTML: el => parsePx((el as HTMLElement).getAttribute('data-anchor-page')),
+        renderHTML: () => ({}),
+      },
       // Which end of its band a `topBottom` frame is set against (Word's positionH align,
       // ODF's style:horizontal-pos). Set only where two frames share the band, so they
       // sit side by side; a lone one fills the band, which is what the wrap means.
@@ -173,6 +181,7 @@ export const Image = Node.create({
       ...(offset != null ? { 'data-wrap-offset': String(offset) } : {}),
       ...(offsetY != null ? { 'data-wrap-offset-y': String(offsetY) } : {}),
       ...(node.attrs.wrapAlign ? { 'data-wrap-align': String(node.attrs.wrapAlign) } : {}),
+      ...(node.attrs.anchorPage ? { 'data-anchor-page': String(node.attrs.anchorPage) } : {}),
     })];
   },
 
@@ -312,7 +321,16 @@ class ImageView {
     d.style.display = '';
     d.style.clear = '';
     d.style.margin = '';
+    d.style.position = '';
+    d.style.zIndex = '';
+    d.style.top = '';
+    d.style.left = '';
     const a = this.node.attrs;
+    if (typeof a.anchorPage === 'number' && a.anchorPage > 0) {
+      this.applyPageAnchor(a.anchorPage);
+      return;
+    }
+    delete d.dataset.anchorPage;
     if (wrap === 'left' || wrap === 'right') {
       d.style.float = wrap;
       d.style.margin = frameMargins(wrap, a.wrapOffset, this.boxWidth());
@@ -338,6 +356,19 @@ class ImageView {
     const x = wrap === 'topBottom' && !a.wrapAlign ? a.wrapOffset : null;
     this.rotor.style.left = typeof x === 'number'
       ? `${Math.round(cmToPx(x)) + (parseFloat(this.rotor.style.width) || 0) / 2}px` : '';
+  }
+
+  // Placed from its page's top-left corner (--page-cycle is the page plus the gap) and
+  // behind the text, like the header layer's page background. Its paragraph collapses to
+  // nothing (editor.css), so the frame takes no flow space.
+  private applyPageAnchor(page: number): void {
+    const d = this.dom;
+    d.dataset.anchorPage = String(page);
+    const px = (cm: unknown) => Math.round(cmToPx(typeof cm === 'number' ? cm : 0));
+    d.style.position = 'absolute';
+    d.style.zIndex = '-1';
+    d.style.left = `${px(this.node.attrs.wrapOffset)}px`;
+    d.style.top = `calc(${page - 1} * var(--page-cycle) + ${px(this.node.attrs.wrapOffsetY)}px)`;
   }
 
   // The offset counts from the anchor paragraph's top. Where text precedes the frame
