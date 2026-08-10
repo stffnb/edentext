@@ -829,6 +829,17 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
       }
     }
   }
+  // A block's own "break after" becomes the next block's break before — the same page
+  // break, and the only one the editor stores. A trailing one has nothing left to break,
+  // and only a paragraph/heading carries the attr.
+  for (let i = 0; i < out.length; i++) {
+    if (out[i].attrs?.breakAfter !== 'page') continue;
+    delete out[i].attrs!.breakAfter;
+    const next = out[i + 1];
+    if (next && (next.type === 'paragraph' || next.type === 'heading')) {
+      next.attrs = { ...next.attrs, breakBefore: 'page' };
+    }
+  }
   return out;
 }
 
@@ -1219,6 +1230,9 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefau
   // (pageBreaks.ts forces them to the next page top); the editor has no column
   // breaks, so only "page". Cell/list blocks can't carry it.
   if (kind === 'body' && paraProps['fo:break-before'] === 'page') attrs.breakBefore = 'page';
+  // fo:break-after is the same break seen from the block above; convertBlocks moves it
+  // onto the next block, which is what the editor can express.
+  if (kind === 'body' && paraProps['fo:break-after'] === 'page') attrs.breakAfter = 'page';
 
   // Widow-orphan control: LibreOffice writes 0 for "off", absent means the XSL-FO
   // default of 2 (on) — so only an explicit 0 disables it.
