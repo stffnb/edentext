@@ -22,6 +22,7 @@ import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/
 import type { HfDoc, HfSet } from '../storage/headerFooter';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { getSchema } from '@tiptap/core';
 import type { Schema } from '@tiptap/pm/model';
 import { hfExtensions } from '../editor/extensions/headerFooter';
@@ -348,6 +349,8 @@ function convertTextBoxFrame(frame: Element, textBoxEl: Element, ctx: Ctx): Node
   // as-char anchor paragraph would otherwise give it — has to ride the box itself.
   // An image needs none: with no side to float to it is centred anyway.
   if (gp['style:horizontal-pos'] === 'center' && attrs.wrapOffset == null) attrs.wrapAlign = 'center';
+  const padCm = lengthToCm(gp['fo:padding']);
+  if (padCm != null && Math.abs(padCm - TEXTBOX_PADDING_CM) > 0.01) attrs.paddingCm = Math.round(padCm * 1000) / 1000;
   shapeStyleAttrs(gp, attrs, false);
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(textBoxEl.children), ctx) };
 }

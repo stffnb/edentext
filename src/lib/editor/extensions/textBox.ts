@@ -21,7 +21,7 @@ export type ShapeKind = 'textbox' | 'roundRect' | 'ellipse';
 
 // Fixed text inset inside the frame; exported as fo:padding / wps:bodyPr insets.
 export const TEXTBOX_PADDING_CM = 0.15;
-const PADDING_PX = (TEXTBOX_PADDING_CM * 96) / 2.54;
+const paddingPx = (cm: unknown) => ((typeof cm === 'number' ? cm : TEXTBOX_PADDING_CM) * 96) / 2.54;
 
 // Extra per-axis inset that fits the text area into an ellipse's inscribed
 // rectangle (half-axis / √2), so text follows the oval instead of the bbox.
@@ -39,6 +39,7 @@ export interface TextBoxAttrs {
   wrapOffset: number | null;  // cm from the text column's left edge
   wrapOffsetY: number | null; // cm below the anchor paragraph
   wrapAlign: string | null;   // 'center' = set against the middle of the column
+  paddingCm: number;          // inset ring around the text (ODF fo:padding)
   shapeKind: ShapeKind;
   fillColor: string | null;
   strokeColor: string | null;
@@ -125,6 +126,13 @@ export const TextBox = Node.create({
         parseHTML: el => (el as HTMLElement).getAttribute('data-wrap-align') || null,
         renderHTML: () => ({}),
       },
+      // The file's own fo:padding (cm). A figure frame declares 0, and the default
+      // ring would make every such box a little taller and its text a little inset.
+      paddingCm: {
+        default: TEXTBOX_PADDING_CM,
+        parseHTML: el => parseCmAttr((el as HTMLElement).getAttribute('data-padding')) ?? TEXTBOX_PADDING_CM,
+        renderHTML: () => ({}),
+      },
       shapeKind: {
         default: 'textbox',
         parseHTML: el => (el as HTMLElement).getAttribute('data-shape') ?? 'textbox',
@@ -164,7 +172,7 @@ export const TextBox = Node.create({
       a.strokeColor ? `border:${a.strokeWidthPt * PX_PER_PT}px solid ${a.strokeColor}` : '',
       a.shapeKind !== 'textbox' ? `border-radius:${shapeRadius(a.shapeKind)}` : '',
       a.rotation ? `transform:rotate(${a.rotation}deg)` : '',
-      `padding:${PADDING_PX.toFixed(2)}px`,
+      `padding:${paddingPx(a.paddingCm).toFixed(2)}px`,
     ].filter(Boolean).join(';');
     return ['div', mergeAttributes(HTMLAttributes, {
       'data-textbox': '',
@@ -175,6 +183,7 @@ export const TextBox = Node.create({
       ...(a.fillColor ? { 'data-fill': a.fillColor } : {}),
       ...(a.strokeColor ? { 'data-stroke': a.strokeColor } : {}),
       ...(a.strokeWidthPt !== 1 ? { 'data-stroke-width': String(a.strokeWidthPt) } : {}),
+      ...(a.paddingCm !== TEXTBOX_PADDING_CM ? { 'data-padding': String(a.paddingCm) } : {}),
     }), 0];
   },
 
@@ -270,7 +279,7 @@ class TextBoxView {
 
     // Padding lives on the rotor, so the inset ring around the text is frame
     // (click-to-select) area rather than content.
-    this.rotor.style.padding = `${PADDING_PX.toFixed(2)}px`;
+    this.rotor.style.padding = `${paddingPx(this.attrs().paddingCm).toFixed(2)}px`;
     this.contentDOM = document.createElement('div');
     this.contentDOM.className = 'textbox-content';
     this.rotor.appendChild(this.contentDOM);

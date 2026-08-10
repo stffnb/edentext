@@ -570,6 +570,7 @@ type TextBoxExport = {
   wrapOffsetCm: number | null;
   wrapOffsetYCm: number | null;
   wrapAlign: string | null;
+  paddingCm: number;
   shapeKind: ShapeKind;
   fill: string | null;
   stroke: string | null;
@@ -590,6 +591,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     wrapOffsetCm: typeof a.wrapOffset === 'number' ? round3(a.wrapOffset) : null,
     wrapOffsetYCm: typeof a.wrapOffsetY === 'number' ? round3(a.wrapOffsetY) : null,
     wrapAlign: a.wrapAlign === 'center' ? 'center' : null,
+    paddingCm: typeof a.paddingCm === 'number' ? round3(a.paddingCm) : TEXTBOX_PADDING_CM,
     shapeKind: kind === 'roundRect' || kind === 'ellipse' ? kind : 'textbox',
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
@@ -3038,7 +3040,7 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
     : ' draw:auto-grow-height="false" draw:auto-grow-width="false"';
   return (
     `<style:style style:name="TbxFr${index + 1}" style:family="graphic">` +
-    `<style:graphic-properties ${fill} ${stroke} fo:padding="${TEXTBOX_PADDING_CM}cm"` +
+    `<style:graphic-properties ${fill} ${stroke} fo:padding="${box.paddingCm}cm"` +
     `${grow} draw:textarea-vertical-align="top"${wrap}/>` +
     `</style:style>`
   );
