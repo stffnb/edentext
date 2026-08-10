@@ -42,6 +42,14 @@ own spacer never measures as sitting at the page top, since `effectiveTop` exclu
 the mark follows from the break it got. The value itself rides `--space-before`
 (`storage/spacingModel.ts`).
 
+**A pass must not read its own last answer.** Dropping that space shortens the block, which moves
+everything below it, which changes what sits at the *next* page top — so measuring the decorated
+DOM made the two layouts imply each other, and `prevPlacementsKey` froze whichever came first: the
+same document opened at 59 or 65 pages from one load to the next. `collectLeaves` adds the dropped
+space back (`spaceAbove`, and a running `cumulativeDropped` for the leaves below), so what it
+measures is the document; the placement loop then takes the drop off `cumulativeShift` itself. The
+rule is general — anything the pass decides has to be reconstructed out of the next pass's input.
+
 **A justified line fits more in LibreOffice than in a browser:** LibreOffice compresses the
 inter-word spaces to squeeze one more word onto a justified line, CSS `text-align: justify` only
 stretches them. Measured on `02-blocks`: LO fits a trailing "et" that needs ~5mm of compression
