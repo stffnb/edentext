@@ -679,7 +679,7 @@ function replaceColumns(doc: TiptapNode, cols: ColumnsExport[]): TiptapNode {
 // One generated table of contents, collected by replaceTableOfContents and emitted by
 // applyToc. Entries are the cached heading→page rows (the node view keeps them current).
 type TocEntry = { text: string; level: number; page: number };
-type TocExport = { entries: TocEntry[]; title: string | null; maxLevel: number };
+type TocExport = { entries: TocEntry[]; title: string | null; maxLevel: number; leader: string | null };
 
 // Swap each top-level tableOfContents node for a marker paragraph carrying the TOC
 // sentinel and collect its cached entries. Top-level only (like replacePageBreaks): a
@@ -703,6 +703,7 @@ function replaceTableOfContents(doc: TiptapNode, tocs: TocExport[]): TiptapNode 
         entries,
         title: typeof rawTitle === 'string' ? rawTitle : null,
         maxLevel: depth >= 1 ? Math.min(MAX_HEADING_LEVEL, depth) : MAX_HEADING_LEVEL,
+        leader: normalizeLeader(child.attrs?.leader),
       });
       content.push({ type: 'paragraph', content: [{ type: 'text', text: `${TOC_SENT}${tocs.length - 1}${TOC_SENT}` }] });
       continue;
@@ -3170,7 +3171,7 @@ function tocXml(toc: TocExport, index: number): string {
           `<text:table-of-content-entry-template text:outline-level="${l}" text:style-name="Contents_20_${l}">` +
           `<text:index-entry-link-start/>` +
           `<text:index-entry-text/>` +
-          `<text:index-entry-tab-stop style:type="right" style:leader-char="."/>` +
+          `<text:index-entry-tab-stop style:type="right"${toc.leader ? ` style:leader-char="${escapeXml(toc.leader)}"` : ''}/>` +
           `<text:index-entry-page-number/>` +
           `<text:index-entry-link-end/>` +
           `</text:table-of-content-entry-template>`,

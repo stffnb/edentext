@@ -5,7 +5,7 @@ import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type Styl
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage } from '../editor/extensions/image';
 import { odfChartDataUrl } from './chart';
-import { formatTabStops } from '../editor/extensions/tabStops';
+import { formatTabStops, normalizeLeader } from '../editor/extensions/tabStops';
 import type { CapsMode, LineStyle } from '../editor/extensions/textEffects';
 import { TABLE_REGIONS, tableLookAttr, type TableLook, type TableRegion } from '../styles/tableStyles';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
@@ -919,7 +919,13 @@ function convertToc(el: Element): Node {
   const source = el.getElementsByTagNameNS(NS.text, 'table-of-content-source')[0];
   const depth = Number(source?.getAttributeNS(NS.text, 'outline-level'));
   const maxLevel = depth >= 1 ? Math.min(MAX_HEADING_LEVEL, depth) : MAX_HEADING_LEVEL;
-  return { type: 'tableOfContents', attrs: { entries, title, maxLevel } };
+  // The fill between an entry and its page number. A template that declares the stop but
+  // no leader-char means the gap really is empty (Word's TOC \p " " does the same); only
+  // an index with no template at all falls back to dots.
+  const stop = source?.getElementsByTagNameNS(NS.style, 'index-entry-tab-stop')[0]
+    ?? source?.getElementsByTagNameNS(NS.text, 'index-entry-tab-stop')[0];
+  const leader = source ? normalizeLeader(stop?.getAttributeNS(NS.style, 'leader-char')) : '.';
+  return { type: 'tableOfContents', attrs: { entries, title, maxLevel, leader } };
 }
 
 // Split a TOC entry paragraph around its last <text:tab/>: the text before it is the

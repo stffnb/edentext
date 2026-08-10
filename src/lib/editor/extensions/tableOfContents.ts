@@ -17,7 +17,7 @@ const TITLE = 'Table of Contents';
 // Enough leader dots to cross the widest gap a page can offer; fillLeaders cuts each
 // row's back to what its own gap holds, measuring one dot with this sample.
 const LEADER_DOTS = 200;
-const LEADER_PROBE = '..........';
+const LEADER_PROBE = 10;
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -47,6 +47,13 @@ export const TableOfContents = Node.create({
         default: MAX_HEADING_LEVEL,
         parseHTML: el => Number((el as HTMLElement).getAttribute('data-toc-levels')) || MAX_HEADING_LEVEL,
         renderHTML: attrs => ({ 'data-toc-levels': String(attrs.maxLevel ?? MAX_HEADING_LEVEL) }),
+      },
+      // The character filling the gap to the page number; null = the file's index leaves
+      // it empty. Round-trips to style:leader-char on the entry template.
+      leader: {
+        default: '.',
+        parseHTML: el => (el as HTMLElement).getAttribute('data-toc-leader') || null,
+        renderHTML: attrs => (attrs.leader ? { 'data-toc-leader': String(attrs.leader) } : {}),
       },
       entries: {
         default: [] as TocEntry[],
@@ -212,6 +219,7 @@ class TocView {
       return;
     }
 
+    const fill = typeof this.node()?.attrs?.leader === 'string' ? String(this.node()!.attrs.leader) : '';
     entries.forEach((e, i) => {
       const row = document.createElement('div');
       row.className = `toc-entry toc-level-${e.level}`;
@@ -220,9 +228,9 @@ class TocView {
       text.textContent = e.text;
       const leader = document.createElement('span');
       leader.className = 'toc-leader';
-      // Real dots, as a word processor fills the gap: they scale with the font and
-      // reach the PDF as text. The row clips whatever the gap has no room for.
-      leader.textContent = '.'.repeat(LEADER_DOTS);
+      // Real fill characters, as a word processor draws them: they scale with the font
+      // and reach the PDF as text. The row clips whatever the gap has no room for.
+      leader.textContent = fill.repeat(fill ? LEADER_DOTS : 0);
       const page = document.createElement('span');
       page.className = 'toc-page';
       page.textContent = String(e.page);
@@ -245,13 +253,15 @@ class TocView {
   private fillLeaders(): void {
     const leaders = Array.from(this.dom.querySelectorAll<HTMLElement>('.toc-leader'));
     if (!leaders.length) return;
-    leaders[0].textContent = LEADER_PROBE;
+    const fill = leaders[0].textContent?.[0];
+    if (!fill) return;
+    leaders[0].textContent = fill.repeat(LEADER_PROBE);
     const range = document.createRange();
     range.selectNodeContents(leaders[0]);
-    const dot = range.getBoundingClientRect().width / LEADER_PROBE.length;
-    if (!(dot > 0)) return;
+    const one = range.getBoundingClientRect().width / LEADER_PROBE;
+    if (!(one > 0)) return;
     for (const el of leaders) {
-      el.textContent = '.'.repeat(Math.max(0, Math.floor(el.getBoundingClientRect().width / dot)));
+      el.textContent = fill.repeat(Math.max(0, Math.floor(el.getBoundingClientRect().width / one)));
     }
   }
 
