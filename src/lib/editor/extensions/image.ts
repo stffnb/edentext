@@ -368,6 +368,9 @@ class ImageView {
       this.dom.style.height = `${bh}px`;
       this.dom.style.verticalAlign =
         inlineVerticalAlign(this.node.attrs.vAlign, bh, this.node.attrs.wrapOffsetY);
+      // A frame alone on its line is the whole line, so where it sits against a baseline
+      // no longer means anything — except an offset, which still lengthens the line.
+      this.dom.dataset.vAlign = String(this.node.attrs.vAlign ?? '');
     } else {
       this.rotor.style.width = '';
       this.rotor.style.height = '';
