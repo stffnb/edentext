@@ -55,6 +55,13 @@ export const TableOfContents = Node.create({
         parseHTML: el => (el as HTMLElement).getAttribute('data-toc-leader') || null,
         renderHTML: attrs => (attrs.leader ? { 'data-toc-leader': String(attrs.leader) } : {}),
       },
+      // Where the page number ends, in cm from the text margin — the file's own stop.
+      // null = the end of the column, which is where a fresh index puts it.
+      tabPosCm: {
+        default: null,
+        parseHTML: el => Number((el as HTMLElement).getAttribute('data-toc-tab')) || null,
+        renderHTML: attrs => (attrs.tabPosCm ? { 'data-toc-tab': String(attrs.tabPosCm) } : {}),
+      },
       entries: {
         default: [] as TocEntry[],
         parseHTML: el => {
@@ -245,7 +252,18 @@ class TocView {
       }
       this.dom.appendChild(row);
     });
+    this.stopAtTab();
     this.fillLeaders();
+  }
+
+  // Pull the rows' right edge in to the index's own tab stop, so the page numbers end
+  // where the file puts them rather than at the column's edge.
+  private stopAtTab(): void {
+    const cm = Number(this.node()?.attrs?.tabPosCm);
+    this.dom.style.paddingRight = '';
+    if (!(cm > 0)) return;
+    const inset = this.dom.clientWidth - (cm * 96) / 2.54;
+    if (inset > 1) this.dom.style.paddingRight = `${Math.round(inset)}px`;
   }
 
   // As many leader dots as the gap holds. The row clips the rest on screen, but nothing

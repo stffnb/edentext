@@ -855,7 +855,7 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         else out.push(...inner);
       } else if (el.localName === 'table-of-content' && kind === 'body') {
         // Generated table of contents → a tableOfContents node (regenerated live).
-        out.push(convertToc(el));
+        out.push(convertToc(el, ctx));
       } else if (/-index$|^table-of-content$|^bibliography$/.test(el.localName)) {
         // Other generated indexes (bibliography, …) or a TOC nested in a cell: keep the
         // rendered text from index-body.
@@ -899,7 +899,7 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
 // A <text:table-of-content> → a tableOfContents node. Entries (text + level + page) are
 // parsed from the cached index-body as a starting cache; the node view recomputes page
 // numbers live after mount, so parse fidelity isn't critical.
-function convertToc(el: Element): Node {
+function convertToc(el: Element, ctx: Ctx): Node {
   const indexBody = el.getElementsByTagNameNS(NS.text, 'index-body')[0];
   const entries: { text: string; level: number; page: number }[] = [];
   if (indexBody) {
@@ -925,7 +925,14 @@ function convertToc(el: Element): Node {
   const stop = source?.getElementsByTagNameNS(NS.style, 'index-entry-tab-stop')[0]
     ?? source?.getElementsByTagNameNS(NS.text, 'index-entry-tab-stop')[0];
   const leader = source ? normalizeLeader(stop?.getAttributeNS(NS.style, 'leader-char')) : '.';
-  return { type: 'tableOfContents', attrs: { entries, title, maxLevel, leader } };
+  // Where the page number ends: the entry template's own stop, else the right stop of
+  // the paragraph style its entries use. Word and LibreOffice both put it short of the
+  // text width in some templates, and the number then hangs 45mm out of place.
+  const template = source?.getElementsByTagNameNS(NS.text, 'table-of-content-entry-template')[0];
+  const styled = ctx.resolver.tabStops(template?.getAttributeNS(NS.text, 'style-name') ?? null);
+  const tabPosCm = lengthToCm(stop?.getAttributeNS(NS.style, 'position'))
+    ?? [...styled].reverse().find(t => t.align === 'right')?.pos ?? null;
+  return { type: 'tableOfContents', attrs: { entries, title, maxLevel, leader, tabPosCm } };
 }
 
 // Split a TOC entry paragraph around its last <text:tab/>: the text before it is the
