@@ -106,13 +106,16 @@
     type Run = { type?: string; attrs?: { height?: number; wrap?: string }; marks?: { type?: string; attrs?: { fontSize?: string } }[] };
     const para = doc.content?.[0] as { content?: Run[]; attrs?: { spaceBefore?: number; spaceAfter?: number } } | undefined;
     const inline = para?.content ?? [];
-    // The zone's biggest run sizes its lines: LibreOffice grows the band to hold them
-    // when fo:min-height is smaller (probed, a 3-line header).
-    let linePx = HF_LINE_PX;
+    // The zone's biggest text run sizes its lines: LibreOffice grows the band to hold them
+    // when fo:min-height is smaller (probed, a 3-line header), and a zone set throughout in
+    // 10pt reserves 10pt — the body default only stands in for a run that declares none.
+    let linePx = 0;
     for (const n of inline) {
+      if (n.type === 'image') continue;
       const size = n.marks?.find((m) => m.type === 'textStyle')?.attrs?.fontSize;
-      if (size) linePx = Math.max(linePx, (parseFloat(size) * 96) / 72 * 1.15);
+      linePx = Math.max(linePx, size ? (parseFloat(size) * 96) / 72 * 1.15 : HF_LINE_PX);
     }
+    if (!linePx) linePx = HF_LINE_PX;
     // Per line, since an as-character image (a letterhead logo) makes its own line
     // as tall as it is; the others are one text line each. A positioned frame is out
     // of flow — a page-sized background would otherwise reserve the whole page.
