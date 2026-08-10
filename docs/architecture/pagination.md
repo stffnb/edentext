@@ -49,6 +49,9 @@ same document opened at 59 or 65 pages from one load to the next. `collectLeaves
 space back (`spaceAbove`, and a running `cumulativeDropped` for the leaves below), so what it
 measures is the document; the placement loop then takes the drop off `cumulativeShift` itself. The
 rule is general — anything the pass decides has to be reconstructed out of the next pass's input.
+Every leaf is therefore born through `naturalTopOf`: four of the six push sites (index, text box,
+columns fragment, table row) once subtracted the spacers but not the dropped space, and a figure
+frame below a chapter heading landed 16mm down its page.
 
 **A justified line fits more in LibreOffice than in a browser:** LibreOffice compresses the
 inter-word spaces to squeeze one more word onto a justified line, CSS `text-align: justify` only

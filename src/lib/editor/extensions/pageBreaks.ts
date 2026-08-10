@@ -628,6 +628,13 @@ export const PageBreaks = Extension.create({
             return top;
           }
 
+          // A leaf's top in the undecorated document: the rendered top with the spacers
+          // above it taken out and the space they swallowed put back, so a pass never
+          // measures its own previous answer. Every leaf must be born through this.
+          function naturalTopOf(el: HTMLElement): number {
+            return topWithin(el) - cumulativeSpacerHeight + cumulativeDropped;
+          }
+
           // Emit one atomic leaf per table row so the table breaks between rows across
           // pages (a whole table is usually taller than a page). TipTap renders tables as
           // <div class="tableWrapper"><table><colgroup><tbody>…, so walk the tbody rows.
@@ -645,7 +652,7 @@ export const PageBreaks = Extension.create({
               leaves.push({
                 el: wrapperEl,
                 kind: 'atomic',
-                naturalTop: topWithin(wrapperEl) - cumulativeSpacerHeight,
+                naturalTop: naturalTopOf(wrapperEl),
                 naturalHeight: wrapperEl.offsetHeight,
               });
               return;
@@ -665,7 +672,7 @@ export const PageBreaks = Extension.create({
                 leaves.push({
                   el: tr,
                   kind: 'atomic',
-                  naturalTop: topWithin(tr) - cumulativeSpacerHeight,
+                  naturalTop: naturalTopOf(tr),
                   naturalHeight: rowHeight,
                   tableRow: { columns, wrapperEl, isFirstRow: !seenRealRow },
                 });
@@ -732,7 +739,7 @@ export const PageBreaks = Extension.create({
                 leaves.push({
                   el: child,
                   kind: 'atomic',
-                  naturalTop: topWithin(child) - cumulativeSpacerHeight,
+                  naturalTop: naturalTopOf(child),
                   naturalHeight: child.offsetHeight,
                   inTableCell,
                 });
@@ -744,7 +751,7 @@ export const PageBreaks = Extension.create({
                 leaves.push({
                   el: child,
                   kind: 'atomic',
-                  naturalTop: topWithin(child) - cumulativeSpacerHeight,
+                  naturalTop: naturalTopOf(child),
                   naturalHeight: child.offsetHeight,
                   inTableCell,
                 });
@@ -764,7 +771,7 @@ export const PageBreaks = Extension.create({
                 leaves.push({
                   el: child,
                   kind: 'atomic',
-                  naturalTop: topWithin(child) - cumulativeSpacerHeight,
+                  naturalTop: naturalTopOf(child),
                   naturalHeight: child.offsetHeight,
                   inTableCell,
                   columnsFragment: {
@@ -816,7 +823,7 @@ export const PageBreaks = Extension.create({
                 leaves.push({
                   el: child,
                   kind: isAtomic ? 'atomic' : 'splittable',
-                  naturalTop: topWithin(child) - cumulativeSpacerHeight + cumulativeDropped,
+                  naturalTop: naturalTopOf(child),
                   naturalHeight: Math.max(child.offsetHeight, floatBottom) - intraSpacerHeight + dropped,
                   spaceAfter: inTableCell ? 0 : parseFloat(cs.marginBottom) || 0,
                   spaceAbove,
@@ -847,7 +854,7 @@ export const PageBreaks = Extension.create({
               leaves.push({
                 el: child,
                 kind: 'splittable',
-                naturalTop: topWithin(child) - cumulativeSpacerHeight,
+                naturalTop: naturalTopOf(child),
                 naturalHeight: child.offsetHeight,
                 inTableCell,
               });
