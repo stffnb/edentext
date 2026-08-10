@@ -344,6 +344,10 @@ function convertTextBoxFrame(frame: Element, textBoxEl: Element, ctx: Ctx): Node
   if (hCm != null) attrs.height = Math.round(cmToPx(hCm));
   const gp = ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
   applyFrameRotationAndWrap(frame, attrs, gp);
+  // A box is a block of its own here, so the centring of a figure frame — which its
+  // as-char anchor paragraph would otherwise give it — has to ride the box itself.
+  // An image needs none: with no side to float to it is centred anyway.
+  if (gp['style:horizontal-pos'] === 'center' && attrs.wrapOffset == null) attrs.wrapAlign = 'center';
   shapeStyleAttrs(gp, attrs, false);
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(textBoxEl.children), ctx) };
 }

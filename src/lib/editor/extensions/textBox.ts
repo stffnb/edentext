@@ -38,6 +38,7 @@ export interface TextBoxAttrs {
   wrap: WrapMode;
   wrapOffset: number | null;  // cm from the text column's left edge
   wrapOffsetY: number | null; // cm below the anchor paragraph
+  wrapAlign: string | null;   // 'center' = set against the middle of the column
   shapeKind: ShapeKind;
   fillColor: string | null;
   strokeColor: string | null;
@@ -115,6 +116,13 @@ export const TextBox = Node.create({
       wrapOffsetY: {
         default: null,
         parseHTML: el => parseCmAttr((el as HTMLElement).getAttribute('data-wrap-offset-y')),
+        renderHTML: () => ({}),
+      },
+      // 'center' = set against the middle of the column (ODF style:horizontal-pos): a
+      // figure frame keeps it after the importer lifts it out of its anchor paragraph.
+      wrapAlign: {
+        default: null,
+        parseHTML: el => (el as HTMLElement).getAttribute('data-wrap-align') || null,
         renderHTML: () => ({}),
       },
       shapeKind: {
@@ -365,6 +373,11 @@ class TextBoxView {
       d.style.margin = frameMargins(a.wrap, a.wrapOffset, parseFloat(d.style.width) || 0);
     } else if (a.wrap === 'topBottom') {
       d.style.clear = 'both';
+    }
+    // Set against the middle of the column, unless the file placed it by coordinate.
+    if (a.wrapAlign === 'center' && a.wrapOffset == null && a.wrap !== 'left' && a.wrap !== 'right') {
+      d.style.marginLeft = 'auto';
+      d.style.marginRight = 'auto';
     }
   }
 
