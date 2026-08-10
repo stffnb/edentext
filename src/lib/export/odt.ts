@@ -379,7 +379,7 @@ function replaceSectionBreaks(doc: TiptapNode): TiptapNode {
 // bytes is ArrayBuffer-backed to match fflate's zip entry map. rotationDeg is CW;
 // wrap floats the frame at its anchor paragraph (left/right/top-bottom).
 type WrapMode = 'inline' | 'left' | 'right' | 'topBottom';
-type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number; wrap: WrapMode; wrapOffsetCm: number | null; wrapOffsetYCm: number | null; wrapAlign: string | null; anchorPage: number | null };
+type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number; wrap: WrapMode; wrapOffsetCm: number | null; wrapOffsetYCm: number | null; wrapAlign: string | null; anchorPage: number | null; vAlign: string | null };
 
 function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
@@ -424,6 +424,7 @@ function imageDescriptor(node: TiptapNode, index: number, namePrefix = 'image'):
     wrapOffsetYCm: typeof node.attrs?.wrapOffsetY === 'number' ? round3(node.attrs.wrapOffsetY) : null,
     wrapAlign: node.attrs?.wrapAlign === 'left' || node.attrs?.wrapAlign === 'right' ? node.attrs.wrapAlign : null,
     anchorPage: typeof node.attrs?.anchorPage === 'number' && node.attrs.anchorPage > 0 ? node.attrs.anchorPage : null,
+    vAlign: typeof node.attrs?.vAlign === 'string' ? node.attrs.vAlign : null,
   };
 }
 
@@ -2798,6 +2799,17 @@ function imageWrapProps(wrap: WrapMode, offset: number | null, align?: string | 
   return `style:wrap="none" style:horizontal-pos="${align ?? pos ?? 'center'}"`;
 }
 
+// The inverse of the importer's as-char alignment map (import/odt.ts): a frame with no
+// entry stands on the baseline, which is what a style-less as-char frame does anyway.
+const INLINE_VALIGN_ODF: Record<string, string> = {
+  middle: 'style:vertical-pos="middle" style:vertical-rel="baseline"',
+  below: 'style:vertical-pos="bottom" style:vertical-rel="baseline"',
+  'text-top': 'style:vertical-pos="top" style:vertical-rel="text"',
+  'text-middle': 'style:vertical-pos="middle" style:vertical-rel="text"',
+  'text-bottom': 'style:vertical-pos="bottom" style:vertical-rel="text"',
+  offset: 'style:vertical-pos="from-top" style:vertical-rel="text"',
+};
+
 // Graphic style for a floating frame (wrap + side, anchored to the paragraph top).
 // Inline images need none. Injected into content.xml automatic-styles by applyImages.
 function imageGraphicStyle(img: ImageExport, index: number): string {
@@ -2809,7 +2821,13 @@ function imageGraphicStyle(img: ImageExport, index: number): string {
       ` style:vertical-rel="page" style:vertical-pos="from-top"/></style:style>`
     );
   }
-  if (img.wrap === 'inline') return '';
+  if (img.wrap === 'inline') {
+    const v = INLINE_VALIGN_ODF[img.vAlign ?? ''];
+    return v
+      ? `<style:style style:name="ImgFr${index + 1}" style:family="graphic">` +
+        `<style:graphic-properties style:wrap="none" ${v}/></style:style>`
+      : '';
+  }
   return (
     `<style:style style:name="ImgFr${index + 1}" style:family="graphic">` +
     `<style:graphic-properties ${imageWrapProps(img.wrap, img.wrapOffsetCm, img.wrapAlign)}` +
@@ -2833,9 +2851,12 @@ function imageFrameXml(img: ImageExport, index: number): string {
   const anchor = img.anchorPage != null
     ? ` text:anchor-type="page" text:anchor-page-number="${img.anchorPage}"`
     : ` text:anchor-type="${floats ? 'paragraph' : 'as-char'}"`;
-  const styleName = floats ? ` draw:style-name="ImgFr${index + 1}"` : '';
+  const named = floats || (img.vAlign != null && img.vAlign in INLINE_VALIGN_ODF);
+  const styleName = named ? ` draw:style-name="ImgFr${index + 1}"` : '';
   const x = img.wrapOffsetCm != null && floats && !img.wrapAlign ? ` svg:x="${img.wrapOffsetCm}cm"` : '';
-  const y = img.wrapOffsetYCm != null && floats ? ` svg:y="${img.wrapOffsetYCm}cm"` : '';
+  // An as-char frame carries svg:y only for the offset alignment, which is what it means.
+  const y = img.wrapOffsetYCm != null && (floats || img.vAlign === 'offset')
+    ? ` svg:y="${img.wrapOffsetYCm}cm"` : '';
   return (
     `<draw:frame draw:name="Image${index + 1}"${styleName}${anchor} draw:z-index="${index}"${dims}${x}${y}${imageTransform(img)}>` +
     `${inner}</draw:frame>`

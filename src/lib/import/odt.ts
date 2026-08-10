@@ -149,11 +149,31 @@ function frameRotationDeg(el: Element): number {
 // Rotation + wrap attrs, shared by images, text boxes and shapes. A non-as-char anchor or
 // an explicit style:wrap floats the element (free x/y collapse to the nearest side). An
 // explicit as-char anchor stays inline: LibreOffice's Graphics style carries a style:wrap.
+// Where an as-char frame sits against the line. `baseline`/`char` measure from the text
+// baseline, `text`/`line` from the character area, and `from-top` puts the frame's top
+// svg:y below the baseline whatever the relation says (all probed against LibreOffice).
+function applyInlineVAlign(el: Element, attrs: Record<string, unknown>, gp: PropMap): void {
+  const pos = gp['style:vertical-pos'];
+  const rel = gp['style:vertical-rel'];
+  const area = rel === 'text' || rel === 'line';
+  if (pos === 'from-top') {
+    const y = lengthToCm(el.getAttributeNS(NS.svg, 'y'));
+    if (y == null) return;
+    attrs.vAlign = 'offset';
+    attrs.wrapOffsetY = Math.round(y * 1000) / 1000;
+  } else if (pos === 'middle') attrs.vAlign = area ? 'text-middle' : 'middle';
+  else if (pos === 'bottom') attrs.vAlign = area ? 'text-bottom' : 'below';
+  else if (pos === 'top' && area) attrs.vAlign = 'text-top';
+}
+
 function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap): void {
   const deg = frameRotationDeg(el);
   if (deg) attrs.rotation = deg;
   const anchor = el.getAttributeNS(NS.text, 'anchor-type');
-  if (anchor === 'as-char') return;
+  if (anchor === 'as-char') {
+    applyInlineVAlign(el, attrs, gp);
+    return;
+  }
   const wrapVal = gp['style:wrap'];
   if (anchor || wrapVal) {
     attrs.wrap = wrapModeFromOdf(wrapVal, gp['style:horizontal-pos']);

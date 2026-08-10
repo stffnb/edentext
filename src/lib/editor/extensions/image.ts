@@ -81,6 +81,27 @@ export function frameMargins(wrap: WrapMode, offsetCm: unknown, boxWidthPx: numb
   return `0 ${far} 0 14px`;
 }
 
+// Where an as-char frame sits against the line (ODF style:vertical-pos/-rel, probed
+// against LibreOffice): its bottom on the baseline by default, `text-*` against the
+// character area, `offset` its top wrapOffsetY cm below the baseline.
+export type InlineVAlign = 'middle' | 'below' | 'text-top' | 'text-middle' | 'text-bottom' | 'offset';
+
+export function inlineVerticalAlign(vAlign: unknown, boxHeightPx: number, offsetYCm: unknown): string {
+  if (!boxHeightPx) return '';
+  switch (vAlign) {
+    case 'middle': return `${-boxHeightPx / 2}px`;
+    case 'below': return `${-boxHeightPx}px`;
+    case 'text-top': return 'text-top';
+    case 'text-bottom': return 'text-bottom';
+    // No CSS keyword centres on the character area; 0.36em stands in for half of
+    // (ascent − descent), which Liberation Serif/Sans, Times and Arial all share.
+    case 'text-middle': return `calc(0.36em - ${boxHeightPx / 2}px)`;
+    case 'offset':
+      return typeof offsetYCm === 'number' ? `${-(cmToPx(offsetYCm) + boxHeightPx)}px` : '';
+    default: return '';
+  }
+}
+
 // The page text height in px, capping how tall an image can be stretched. Read live
 // from the :root vars the editor maintains (orientation/margins change them).
 export function pageContentHeightPx(): number {
@@ -157,6 +178,13 @@ export const Image = Node.create({
         parseHTML: el => (el as HTMLElement).getAttribute('data-wrap-align') || null,
         renderHTML: () => ({}),
       },
+      // Where an as-char frame sits against the line (see inlineVerticalAlign).
+      // null = its bottom on the baseline, which is LibreOffice's and Word's default.
+      vAlign: {
+        default: null,
+        parseHTML: el => (el as HTMLElement).getAttribute('data-v-align') || null,
+        renderHTML: () => ({}),
+      },
     };
   },
 
@@ -171,10 +199,12 @@ export const Image = Node.create({
     const wrap = (node.attrs.wrap as WrapMode) || 'inline';
     const offset = node.attrs.wrapOffset as number | null;
     const offsetY = node.attrs.wrapOffsetY as number | null;
+    const va = h ? inlineVerticalAlign(node.attrs.vAlign, h, offsetY) : '';
     const style = [
       w ? `width:${w}px` : '',
       h ? `height:${h}px` : '',
       rot ? `transform:rotate(${rot}deg)` : '',
+      va ? `vertical-align:${va}` : '',
     ].filter(Boolean).join(';');
     return ['img', mergeAttributes(HTMLAttributes, {
       ...(style ? { style } : {}),
@@ -183,6 +213,7 @@ export const Image = Node.create({
       ...(offset != null ? { 'data-wrap-offset': String(offset) } : {}),
       ...(offsetY != null ? { 'data-wrap-offset-y': String(offsetY) } : {}),
       ...(node.attrs.wrapAlign ? { 'data-wrap-align': String(node.attrs.wrapAlign) } : {}),
+      ...(node.attrs.vAlign ? { 'data-v-align': String(node.attrs.vAlign) } : {}),
       ...(node.attrs.anchorPage ? { 'data-anchor-page': String(node.attrs.anchorPage) } : {}),
     })];
   },
@@ -301,11 +332,14 @@ class ImageView {
       const bh = Math.abs(w * Math.sin(rad)) + Math.abs(h * Math.cos(rad));
       this.dom.style.width = `${bw}px`;
       this.dom.style.height = `${bh}px`;
+      this.dom.style.verticalAlign =
+        inlineVerticalAlign(this.node.attrs.vAlign, bh, this.node.attrs.wrapOffsetY);
     } else {
       this.rotor.style.width = '';
       this.rotor.style.height = '';
       this.dom.style.width = '';
       this.dom.style.height = '';
+      this.dom.style.verticalAlign = '';
     }
     this.rotor.style.transform = `translate(-50%, -50%) rotate(${deg}deg)`;
   }

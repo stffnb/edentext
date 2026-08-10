@@ -274,7 +274,9 @@
 .paper .tiptap .image-node {
   position: relative;
   display: inline-block;
-  vertical-align: bottom;
+  /* An as-char frame stands on the text baseline in LibreOffice and Word alike; the
+     file may say otherwise, and image.ts then overrides this per frame. */
+  vertical-align: baseline;
   line-height: 0;
 }
 /* While selected, lift the node (and its handles) above the header/footer layer
