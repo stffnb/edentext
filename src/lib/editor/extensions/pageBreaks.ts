@@ -505,11 +505,14 @@ export const PageBreaks = Extension.create({
 
         // `minLines` is the widow-orphan minimum, or 1 for a leaf taller than one page
         // slot — there the rule is unsatisfiable and splitting beats overflowing.
-        // What a keep-with-next block has to fit below itself: the successor's first
-        // line, in unscaled doc px. An empty block falls back to its whole height.
-        function firstLineHeight(el: HTMLElement, scale: number): number {
-          const first = getLineRects(el)[0];
-          return first ? (first.bottom - first.top) / scale : el.offsetHeight;
+        // What a keep-with-next block has to fit below itself, in unscaled doc px: as
+        // many lines of the successor as widow-orphan control would keep together
+        // anyway. An empty block falls back to its whole height.
+        function firstLinesHeight(el: HTMLElement, scale: number, want: number): number {
+          const lines = getLineRects(el);
+          if (!lines.length) return el.offsetHeight;
+          const last = lines[Math.min(want, lines.length) - 1];
+          return (last.bottom - lines[0].top) / scale;
         }
 
         function findLineSplit(
@@ -1152,9 +1155,10 @@ export const PageBreaks = Extension.create({
               // What the pair needs below this block: its own space below, then the
               // successor's space above (its padding; an atomic leaf's height has it
               // already) and its first line.
+              const wantLines = next.el.getAttribute('data-widow-control') === 'false' ? 1 : MIN_KEPT_LINES;
               const needed = next.kind === 'atomic'
                 ? Math.min(next.naturalHeight, CONTENT_HEIGHT)
-                : firstLineHeight(next.el, scale) + (parseFloat(getComputedStyle(next.el).paddingTop) || 0);
+                : firstLinesHeight(next.el, scale, wantLines) + (parseFloat(getComputedStyle(next.el).paddingTop) || 0);
               if (effectiveBottom + (leaf.spaceAfter ?? 0) + needed > contentEnd) {
                 const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
                 const { docPos, row } = leafSpacer(leaf);

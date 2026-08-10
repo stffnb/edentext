@@ -28,7 +28,7 @@ ping-pong and keeps the current layout; only an edit or a forced recalc forgets 
 rewrites its page numbers on every `pm-pagecount`, so resetting on any document change would
 leave nothing to catch).
 
-**Keeping blocks together** (`pageBreak.ts` attrs, both read from the direct property *and* the paragraph style): `keepNext` (`w:keepNext`, `fo:keep-with-next`) moves a block down when its successor's first line no longer fits below it — headings do that in Word and LibreOffice anyway, so the attr only marks the others. `keepLines` (`w:keepLines`, `fo:keep-together`) makes an otherwise splittable block paginate atomically, unless it is taller than the page slot, where Word splits it too.
+**Keeping blocks together** (`pageBreak.ts` attrs, both read from the direct property *and* the paragraph style): `keepNext` (`w:keepNext`, `fo:keep-with-next`) moves a block down when the successor's first `MIN_KEPT_LINES` no longer fit below it — one line is not enough, because widow-orphan control would carry the second one over and strand the block anyway (measured on the Math Guide: a heading left alone at the foot of page 8) — headings do that in Word and LibreOffice anyway, so the attr only marks the others. `keepLines` (`w:keepLines`, `fo:keep-together`) makes an otherwise splittable block paginate atomically, unless it is taller than the page slot, where Word splits it too.
 
 **Line breaking:** `editor.css` overrides prosemirror-view's `white-space: break-spaces` back to `pre-wrap` on `.paper .tiptap`. Under `break-spaces` a line-end space may not hang into the margin and counts toward the line width, so lines break one word earlier than in Word/LibreOffice whenever a line reaches within a space width of the margin.
 
