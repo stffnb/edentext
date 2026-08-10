@@ -683,7 +683,7 @@ function replaceColumns(doc: TiptapNode, cols: ColumnsExport[]): TiptapNode {
 // One generated table of contents, collected by replaceTableOfContents and emitted by
 // applyToc. Entries are the cached heading→page rows (the node view keeps them current).
 type TocEntry = { text: string; level: number; page: number };
-type TocExport = { entries: TocEntry[]; title: string | null; maxLevel: number; leader: string | null; tabPosCm: number | null };
+type TocExport = { entries: TocEntry[]; title: string | null; maxLevel: number; leader: string | null; tabPosCm: number | null; levelStyles: (string | null)[] | null };
 
 // Swap each top-level tableOfContents node for a marker paragraph carrying the TOC
 // sentinel and collect its cached entries. Top-level only (like replacePageBreaks): a
@@ -709,6 +709,7 @@ function replaceTableOfContents(doc: TiptapNode, tocs: TocExport[]): TiptapNode 
         maxLevel: depth >= 1 ? Math.min(MAX_HEADING_LEVEL, depth) : MAX_HEADING_LEVEL,
         leader: normalizeLeader(child.attrs?.leader),
         tabPosCm: typeof child.attrs?.tabPosCm === 'number' ? child.attrs.tabPosCm : null,
+        levelStyles: Array.isArray(child.attrs?.levelStyles) ? (child.attrs!.levelStyles as (string | null)[]) : null,
       });
       content.push({ type: 'paragraph', content: [{ type: 'text', text: `${TOC_SENT}${tocs.length - 1}${TOC_SENT}` }] });
       continue;
@@ -3175,6 +3176,13 @@ function contentsHeadingStyle(): string {
 // The full <text:table-of-content>: a source (title + per-level entry templates that
 // carry a right tab stop, page number, and link markers so LibreOffice rebuilds it as a
 // linking TOC) plus a cached index-body (title + one entry paragraph per heading).
+// A level's entry style: the file's own named one where the index came with it, else
+// the automatic Contents_20_N this export mints.
+function tocLevelStyle(toc: TocExport, level: number): string {
+  const own = toc.levelStyles?.[level - 1];
+  return own ? odfStyleName(own) : `Contents_20_${level}`;
+}
+
 function tocXml(toc: TocExport, index: number): string {
   const title = toc.title ?? 'Table of Contents';
   const name = `Table of Contents${index + 1}`;
@@ -3184,7 +3192,7 @@ function tocXml(toc: TocExport, index: number): string {
     HEADING_LEVELS.filter(l => l <= toc.maxLevel)
       .map(
         l =>
-          `<text:table-of-content-entry-template text:outline-level="${l}" text:style-name="Contents_20_${l}">` +
+          `<text:table-of-content-entry-template text:outline-level="${l}" text:style-name="${tocLevelStyle(toc, l)}">` +
           `<text:index-entry-link-start/>` +
           `<text:index-entry-text/>` +
           `<text:index-entry-tab-stop style:type="right"` +
@@ -3204,7 +3212,7 @@ function tocXml(toc: TocExport, index: number): string {
         `</text:index-title>`
       : '') +
     toc.entries
-      .map(e => `<text:p text:style-name="Contents_20_${e.level}">${escapeXml(e.text)}<text:tab/>${e.page}</text:p>`)
+      .map(e => `<text:p text:style-name="${tocLevelStyle(toc, e.level)}">${escapeXml(e.text)}<text:tab/>${e.page}</text:p>`)
       .join('') +
     `</text:index-body>`;
   return `<text:table-of-content text:name="${escapeXml(name)}" text:protected="true">${source}${body}</text:table-of-content>`;

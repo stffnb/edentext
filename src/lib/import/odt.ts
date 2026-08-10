@@ -928,11 +928,24 @@ function convertToc(el: Element, ctx: Ctx): Node {
   // Where the page number ends: the entry template's own stop, else the right stop of
   // the paragraph style its entries use. Word and LibreOffice both put it short of the
   // text width in some templates, and the number then hangs 45mm out of place.
-  const template = source?.getElementsByTagNameNS(NS.text, 'table-of-content-entry-template')[0];
+  const templates = Array.from(source?.getElementsByTagNameNS(NS.text, 'table-of-content-entry-template') ?? []);
+  const template = templates[0];
   const styled = ctx.resolver.tabStops(template?.getAttributeNS(NS.text, 'style-name') ?? null);
   const tabPosCm = lengthToCm(stop?.getAttributeNS(NS.style, 'position'))
     ?? [...styled].reverse().find(t => t.align === 'right')?.pos ?? null;
-  return { type: 'tableOfContents', attrs: { entries, title, maxLevel, leader, tabPosCm } };
+  // Each level's own paragraph style: the entry rows carry its name, so the document
+  // stylesheet gives them the file's indent, spacing and font instead of our defaults.
+  const levelStyles: (string | null)[] = [];
+  for (const tpl of templates) {
+    const level = Number(tpl.getAttributeNS(NS.text, 'outline-level'));
+    const named = ctx.resolver.namedAncestor(tpl.getAttributeNS(NS.text, 'style-name'));
+    if (!(level >= 1) || !named) continue;
+    ctx.usedStyles.add(named);
+    levelStyles[level - 1] = ctx.styleNames.get(named) ?? named;
+  }
+  const attrs: Record<string, unknown> = { entries, title, maxLevel, leader, tabPosCm };
+  if (levelStyles.some(Boolean)) attrs.levelStyles = Array.from(levelStyles, (s) => s ?? null);
+  return { type: 'tableOfContents', attrs };
 }
 
 // Split a TOC entry paragraph around its last <text:tab/>: the text before it is the

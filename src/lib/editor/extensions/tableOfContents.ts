@@ -62,6 +62,17 @@ export const TableOfContents = Node.create({
         parseHTML: el => Number((el as HTMLElement).getAttribute('data-toc-tab')) || null,
         renderHTML: attrs => (attrs.tabPosCm ? { 'data-toc-tab': String(attrs.tabPosCm) } : {}),
       },
+      // The named paragraph style of each level's entries (ODF's per-level entry
+      // template). The rows carry it as data-style, so the document stylesheet gives
+      // them the file's own indent, spacing and font.
+      levelStyles: {
+        default: null as (string | null)[] | null,
+        parseHTML: el => {
+          try { return JSON.parse((el as HTMLElement).getAttribute('data-toc-styles') ?? 'null'); }
+          catch { return null; }
+        },
+        renderHTML: attrs => (attrs.levelStyles ? { 'data-toc-styles': JSON.stringify(attrs.levelStyles) } : {}),
+      },
       entries: {
         default: [] as TocEntry[],
         parseHTML: el => {
@@ -227,9 +238,12 @@ class TocView {
     }
 
     const fill = typeof this.node()?.attrs?.leader === 'string' ? String(this.node()!.attrs.leader) : '';
+    const levelStyles = this.node()?.attrs?.levelStyles as (string | null)[] | null | undefined;
     entries.forEach((e, i) => {
       const row = document.createElement('div');
       row.className = `toc-entry toc-level-${e.level}`;
+      const levelStyle = levelStyles?.[e.level - 1];
+      if (levelStyle) row.dataset.style = levelStyle;
       const text = document.createElement('span');
       text.className = 'toc-text';
       text.textContent = e.text;

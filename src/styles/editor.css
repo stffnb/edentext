@@ -214,16 +214,16 @@
   display: flex;
   align-items: baseline;
   cursor: pointer;
-  line-height: 1.5;
 }
 .paper .tiptap .toc-entry:hover .toc-text {
   text-decoration: underline;
 }
-/* One level = 0.5cm, the indent LibreOffice's own Contents 1…5 styles carry. */
-.paper .tiptap .toc-level-2 { padding-left: 0.5cm; }
-.paper .tiptap .toc-level-3 { padding-left: 1cm; }
-.paper .tiptap .toc-level-4 { padding-left: 1.5cm; }
-.paper .tiptap .toc-level-5 { padding-left: 2cm; }
+/* One level = 0.5cm, the indent LibreOffice's own Contents 1…5 styles carry — the
+   fallback for an index whose file names no per-level style (that one brings its own). */
+.paper .tiptap .toc-level-2:not([data-style]) { padding-left: 0.5cm; }
+.paper .tiptap .toc-level-3:not([data-style]) { padding-left: 1cm; }
+.paper .tiptap .toc-level-4:not([data-style]) { padding-left: 1.5cm; }
+.paper .tiptap .toc-level-5:not([data-style]) { padding-left: 2cm; }
 .paper .tiptap .toc-text {
   white-space: nowrap;
   overflow: hidden;
@@ -480,10 +480,10 @@
   inherits: false;
   initial-value: 0;
 }
-.paper .tiptap :is(p, h1, h2, h3, h4, h5, .toc, .toc-title) {
+.paper .tiptap :is(p, h1, h2, h3, h4, h5, .toc, .toc-title, .toc-entry) {
   padding-top: var(--space-before);
 }
-.paper[data-spacing-model='max'] .tiptap :is(p, h1, h2, h3, h4, h5, .toc, .toc-title) {
+.paper[data-spacing-model='max'] .tiptap :is(p, h1, h2, h3, h4, h5, .toc, .toc-title, .toc-entry) {
   padding-top: 0;
   margin-top: var(--space-before);
 }
@@ -491,7 +491,7 @@
 /* The line box: the paragraph's spacing factor times its font's natural line height.
    Either half may come from the style rule or, nearer, from the block's own attrs
    (lineHeight.ts / blockFontSize.ts) — multiplying them here is what keeps both. */
-.paper .tiptap :is(p, h1, h2, h3, h4, h5, li) {
+.paper .tiptap :is(p, h1, h2, h3, h4, h5, li, .toc-entry) {
   line-height: calc(var(--line-factor) * var(--natural-line));
 }
 
