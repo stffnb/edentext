@@ -387,8 +387,8 @@
   position: absolute;
   left: 50%;
   /* Centred in the padding box, so half the space above has to come back to keep the
-     frame itself below it. */
-  top: calc(50% + var(--space-before) / 2);
+     frame itself below it — the *applied* space, which a page top drops. */
+  top: calc(50% + var(--space-top, 0px) / 2);
   box-sizing: border-box;
   transform: translate(-50%, -50%);
 }

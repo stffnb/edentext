@@ -388,11 +388,11 @@ class TextBoxView {
     // frame distance already is.
     const before = this.node.attrs.spaceBefore as number | null;
     const after = this.node.attrs.spaceAfter as number | null;
-    // On the rotor too: --space-before is a registered non-inheriting property, and the
-    // rotor centres itself in the padding box, so it needs the value to correct for it.
-    for (const el of [d, this.rotor]) {
-      if (before != null) el.style.setProperty('--space-before', `${before}pt`);
-      else el.style.removeProperty('--space-before');
+    // --space-top is the same value the rotor can inherit (--space-before is registered
+    // non-inheriting), and it is what pageBreaks.ts zeroes at a page top.
+    for (const prop of ['--space-before', '--space-top']) {
+      if (before != null) d.style.setProperty(prop, `${before}pt`);
+      else d.style.removeProperty(prop);
     }
     if (after != null) d.style.marginBottom = `${after}pt`;
     // Set against the middle or the far end of the column, unless the file placed the

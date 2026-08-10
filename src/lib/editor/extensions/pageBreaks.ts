@@ -751,13 +751,22 @@ export const PageBreaks = Extension.create({
               // A text box paginates atomically: a line-split spacer can't render
               // sanely inside a rotated/floated node view.
               if (child.classList.contains('textbox-node')) {
+                // Its anchor paragraph's spacing rides the box (textBox.ts): space above
+                // as padding, which a page top drops, space below as the margin.
+                const boxCs = getComputedStyle(child);
+                const spaceAbove = parseFloat(boxCs.getPropertyValue('--space-before')) || 0;
+                const dropped = spaceAbove > 0.5 && !inTableCell && parseFloat(boxCs.paddingTop) < 0.5
+                  ? spaceAbove : 0;
                 leaves.push({
                   el: child,
                   kind: 'atomic',
                   naturalTop: naturalTopOf(child),
-                  naturalHeight: child.offsetHeight,
+                  naturalHeight: child.offsetHeight + dropped,
+                  spaceAfter: inTableCell ? 0 : parseFloat(boxCs.marginBottom) || 0,
+                  spaceAbove,
                   inTableCell,
                 });
+                cumulativeDropped += dropped;
                 continue;
               }
               // A multi-column section fragment: also atomic for spacer purposes (a
@@ -1316,7 +1325,8 @@ export const PageBreaks = Extension.create({
               }));
             }
             for (const b of pageTopBlocks) {
-              decoArray.push(Decoration.node(b.from, b.to, { style: 'padding-top:0;margin-top:0' }));
+              // --space-top: a text box draws its own space above from it (textBox.ts).
+              decoArray.push(Decoration.node(b.from, b.to, { style: 'padding-top:0;margin-top:0;--space-top:0px' }));
             }
 
             decorations = decoArray.length > 0
