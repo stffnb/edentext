@@ -22,6 +22,9 @@ import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/
 import type { HfDoc, HfSet } from '../storage/headerFooter';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { getSchema } from '@tiptap/core';
+import type { Schema } from '@tiptap/pm/model';
+import { hfExtensions } from '../editor/extensions/headerFooter';
 
 // .odt → TipTap JSON, inverting export/odt.ts. Editor-expressible content becomes its
 // native node/mark/attr; values matching the editor's defaults are suppressed so round
@@ -597,7 +600,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const footerFirst = hf.footerFirst ? convertHfZone(hf.footerFirst, ctx) : null;
   // The presence of a first-page element is the flag, even when it's empty (an empty
   // first-page zone deliberately blanks page 1 while the default fills later pages).
-  const differentFirstPage = !!(hf.headerFirst || hf.footerFirst);
+  const differentFirstPage = !!(hf.headerFirst || hf.footerFirst || hf.firstPageOnly);
   const headerEven = hf.headerLeft ? convertHfZone(hf.headerLeft, ctx) : null;
   const footerEven = hf.footerLeft ? convertHfZone(hf.footerLeft, ctx) : null;
   const differentOddEven = !!(hf.headerLeft || hf.footerLeft);
@@ -645,7 +648,7 @@ function hfSetOfMasterPage(name: string, ctx: Ctx): HfSet {
     footer: zone(hf.footer),
     headerFirst: zone(hf.headerFirst),
     footerFirst: zone(hf.footerFirst),
-    differentFirstPage: !!(hf.headerFirst || hf.footerFirst),
+    differentFirstPage: !!(hf.headerFirst || hf.footerFirst || hf.firstPageOnly),
     headerEven: zone(hf.headerLeft),
     footerEven: zone(hf.footerLeft),
     differentOddEven: !!(hf.headerLeft || hf.footerLeft),
@@ -687,15 +690,35 @@ function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
   // runs and no inter-paragraph break, so inline stays empty. Keep such a zone only when
   // it carries a background/rule line (a footer that is just a colored line has no text).
   const box = mergeHfBox(boxMaps);
-  if (inline.length === 0 && Object.keys(box).length === 0) return null;
+  const content = fitZoneSchema(inline);
+  if (content.length === 0 && Object.keys(box).length === 0) return null;
 
-  const para: Node = { type: 'paragraph', content: inline };
+  const para: Node = { type: 'paragraph', content };
   const attrs: Record<string, string> = {};
   if (textAlign) attrs.textAlign = textAlign;
   if (stops) attrs.tabStops = stops;
   Object.assign(attrs, box);
   if (Object.keys(attrs).length) para.attrs = attrs;
   return { type: 'doc', content: [para] };
+}
+
+// The header/footer schema is a subset of the body's, and it is not forgiving: one node
+// or mark it doesn't know (a hyperlink, a date field) makes the whole zone fail to render
+// and come out blank. Drop what it can't hold, keeping the text.
+let zoneSchema: Schema | null = null;
+function fitZoneSchema(nodes: Node[]): Node[] {
+  zoneSchema ??= getSchema(hfExtensions());
+  const out: Node[] = [];
+  for (const n of nodes) {
+    if (!zoneSchema.nodes[n.type]) {
+      const text = typeof n.attrs?.text === 'string' ? n.attrs.text : '';
+      if (text) out.push({ type: 'text', text });
+      continue;
+    }
+    const marks = n.marks?.filter((m) => zoneSchema!.marks[m.type]);
+    out.push(marks && marks.length !== n.marks?.length ? { ...n, marks } : n);
+  }
+  return out;
 }
 
 // The zone collapses several source paragraphs into one, so pick the box props that

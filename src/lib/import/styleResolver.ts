@@ -541,6 +541,7 @@ export class StyleResolver {
     footerLeft: Element | null;
     headerExtraCm: number;
     footerExtraCm: number;
+    firstPageOnly: boolean;
   } {
     const mp = this.masterPageEl(pageName);
     const layout = this.pageLayoutEl();
@@ -597,6 +598,9 @@ export class StyleResolver {
       footerLeft: zoneIn(rest, 'footer-left'),
       headerExtraCm: extraCm('header-style', 'margin-bottom'),
       footerExtraCm: extraCm('footer-style', 'margin-top'),
+      // Handing over to a successor is itself the "different first page" flag: a title
+      // master with no zones of its own leaves page one deliberately blank.
+      firstPageOnly: !!successor,
     };
   }
 
