@@ -70,13 +70,15 @@ export function fitInlineImage(attrs: Record<string, unknown>, maxWidthPx: numbe
 // is placed from the far side). wrapOffsetY becomes a top margin — see the attr's note.
 export function frameMargins(wrap: WrapMode, offsetCm: unknown, boxWidthPx: number, offsetYCm?: unknown): string {
   const near = typeof offsetCm === 'number' ? `${Math.round(cmToPx(offsetCm))}px` : null;
+  // No vertical spacing of our own: LibreOffice and Word both wrap flush against a
+  // frame unless the file declares a distance (fo:margin-top/-bottom, distT/distB).
   if (wrap === 'topBottom') {
-    const top = typeof offsetYCm === 'number' && offsetYCm > 0 ? `${Math.round(cmToPx(offsetYCm))}px` : '6px';
-    return `${top} 0 6px ${near ?? '0'}`;
+    const top = typeof offsetYCm === 'number' && offsetYCm > 0 ? `${Math.round(cmToPx(offsetYCm))}px` : '0';
+    return `${top} 0 0 ${near ?? '0'}`;
   }
-  if (wrap === 'left') return `0 14px 6px ${near ?? '0'}`;
+  if (wrap === 'left') return `0 14px 0 ${near ?? '0'}`;
   const far = near == null ? '0' : `calc(${COLUMN_WIDTH_CSS} - ${near} - ${boxWidthPx}px)`;
-  return `0 ${far} 6px 14px`;
+  return `0 ${far} 0 14px`;
 }
 
 // The page text height in px, capping how tall an image can be stretched. Read live
