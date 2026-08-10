@@ -487,6 +487,12 @@
   padding-top: 0;
   margin-top: var(--space-before);
 }
+/* LibreOffice adds no space above the first block of a table cell (measured; its
+   AddParaTableSpacingAtStart), Word does — so it follows the document's spacing model. */
+.paper:not([data-spacing-model='max']) .tiptap :is(td, th) > :first-child {
+  padding-top: 0;
+  margin-top: 0;
+}
 
 /* The line box: the paragraph's spacing factor times its font's natural line height.
    Either half may come from the style rule or, nearer, from the block's own attrs
@@ -636,6 +642,10 @@
   border: 1px solid #000;
   padding: var(--cell-pad, 0 0.19cm);
   vertical-align: top;
+  /* A repeating header row is a <th>, and no word processor centres or bolds its text
+     for that reason — drop the two UA defaults so the cell follows its own style. */
+  text-align: inherit;
+  font-weight: inherit;
   /* Positioning context for the column-resize handle widget (a child div the
      resize plugin places at the cell's right edge). */
   position: relative;

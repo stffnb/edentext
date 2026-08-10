@@ -807,8 +807,10 @@ export const PageBreaks = Extension.create({
                 const cs = getComputedStyle(child);
                 // The block's own space above, and how much of it the last pass took off
                 // at a page top (the decoration zeroes both padding and margin).
+                // A cell's first block never carries it (LibreOffice adds none there), so
+                // the missing padding is the document, not a decoration to add back.
                 const spaceAbove = parseFloat(cs.getPropertyValue('--space-before')) || 0;
-                const dropped = spaceAbove > 0.5
+                const dropped = spaceAbove > 0.5 && !inTableCell
                   && parseFloat(cs.paddingTop) < 0.5 && parseFloat(cs.marginTop) < 0.5
                   ? spaceAbove : 0;
                 leaves.push({

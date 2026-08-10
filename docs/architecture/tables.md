@@ -88,3 +88,15 @@ We deliberately keep TipTap's `resizable: false` (so its own columnResizing plug
   schematic text line (`previewTextCss`: thickness = bold, slant = italic, colour = the region's):
   without it an emphasis-only area such as first/last column or the total row is **invisible** in
   a tile, since the tiles hold no real text — only fills and borders would show.
+
+## Cell metrics measured against LibreOffice
+
+- **No space above a cell's first block.** LibreOffice adds none there (its
+  `AddParaTableSpacingAtStart`); Word does, so `editor.css` drops it for the `add` spacing
+  model only. Measured on the Math Guide: the table row grew 1mm per row without it. `pageBreaks.ts`
+  excludes cell leaves from its page-top-drop detection, or that missing padding would read
+  as a decoration to add back.
+- **`<th>` carries no UA defaults.** A repeating ODF header row (`table:table-header-rows`)
+  becomes a `tableHeader`, and the browser centres and bolds it — neither Word nor LibreOffice
+  does. `editor.css` resets both, so the cell follows its own style (the "header row" preset's
+  bold still comes from `.cell-header`).
