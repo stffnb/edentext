@@ -1545,6 +1545,16 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
               out.push(field);
               continue;
             }
+            // The running head's chapter name; text:display="number"/"plain-number" is a
+            // numbering we don't track, so those keep the file's cached string.
+            if (hfFields && e.localName === 'chapter' && e.getAttributeNS(NS.text, 'display') === 'name') {
+              const level = Number(e.getAttributeNS(NS.text, 'outline-level')) || 1;
+              const field: Node = { type: 'chapterField', attrs: { level, text: e.textContent ?? '' } };
+              const marks = marksFor(props, ctx.resolver, defaults);
+              if (marks.length) field.marks = marks;
+              out.push(field);
+              continue;
+            }
             // Date/time fields become live dateTimeField nodes in the body (a known
             // format; falls through to the shown text otherwise). The one-paragraph
             // header/footer schema has no such node, so there they stay text.

@@ -423,6 +423,8 @@ function hfContent(doc: HfDoc): { content: string; align: 'left' | 'center' | 'r
     if (n.type === 'text' && n.text) parts.push(cssStr(n.text));
     else if (n.type === 'pageNumber') parts.push('counter(page)');
     else if (n.type === 'pageCount') parts.push('counter(pages)');
+    // Chrome's print engine has no named strings, so the chapter stays its cached name.
+    else if (n.type === 'chapterField') parts.push(cssStr(String(n.attrs?.text ?? '')));
     else if (n.type === 'hardBreak') parts.push('"\\A0 "');
   }
   if (!parts.length) return null;

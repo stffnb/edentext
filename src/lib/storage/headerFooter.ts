@@ -133,6 +133,16 @@ export function saveHfDoc(zone: HfZone, doc: HfDoc, variant: HfVariant = 'defaul
   else localStorage.setItem(KEYS[zone][variant], JSON.stringify(doc));
 }
 
+// Whether any zone shows a chapter field — only then does the layer need the
+// heading→page map, which costs a DOM read per heading.
+export function hfUsesChapterField(sets: HfSet[]): boolean {
+  const inZone = (doc: HfDoc) =>
+    ((doc?.content?.[0] as { content?: { type?: string }[] } | undefined)?.content ?? [])
+      .some((n) => n.type === 'chapterField');
+  return sets.some((s) => inZone(s.header) || inZone(s.footer) || inZone(s.headerFirst)
+    || inZone(s.footerFirst) || inZone(s.headerEven) || inZone(s.footerEven));
+}
+
 // Empty = null or a single paragraph without inline content AND without a visible box
 // (a footer that is just a colored rule line has no text but must still render/export).
 export function hfIsEmpty(doc: HfDoc): boolean {

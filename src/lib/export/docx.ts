@@ -357,6 +357,9 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       out.push(new TextRun({ children: [PageNumber.CURRENT], ...runPropsFromMarks(node.marks) }));
     } else if (node.type === 'pageCount') {
       out.push(new TextRun({ children: [PageNumber.TOTAL_PAGES], ...runPropsFromMarks(node.marks) }));
+    } else if (node.type === 'chapterField') {
+      // Word's running head: STYLEREF picks the heading of that level in force on the page.
+      out.push(new SimpleField(`STYLEREF "Heading ${Number(node.attrs?.level) || 1}" \\* MERGEFORMAT`, String(node.attrs?.text ?? '')));
     } else if (node.type === 'dateTimeField') {
       out.push(dateTimeRun(node));
     } else if (node.type === 'formula') {

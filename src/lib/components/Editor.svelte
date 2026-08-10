@@ -23,8 +23,8 @@
   import { type Orientation } from '../storage/pageOrientation';
   import { type SpacingModel } from '../storage/spacingModel';
   import { applyPageSizeVars, type PageFormat } from '../storage/pageFormat';
-  import { DEFAULT_HF_DISTANCES, hfIsEmpty, type HfDoc, type HfZone, type HfDistances, type HfSet } from '../storage/headerFooter';
-  import { FORCE_PAGE_RECALC, type TableBreakBand } from '../editor/extensions/pageBreaks';
+  import { DEFAULT_HF_DISTANCES, hfIsEmpty, hfUsesChapterField, type HfDoc, type HfZone, type HfDistances, type HfSet } from '../storage/headerFooter';
+  import { FORCE_PAGE_RECALC, pageOfElement, readVerticalMargins, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { findBookmark } from '../editor/extensions/bookmark';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
   import { wheelZoomFactor } from '../utils/zoom';
@@ -59,6 +59,28 @@
   // Page each section after the first starts on (pageBreaks reports it); the layer
   // turns it into a per-page set.
   let sectionStartPages = $state<number[]>([]);
+  // Where each heading starts, for the running head's chapter field. Only collected
+  // when a zone actually shows one — it costs a layout read per heading.
+  let chapterStarts = $state<{ page: number; level: number; text: string }[]>([]);
+  let wantsChapters = $derived(hfUsesChapterField([
+    { header: headerDoc, footer: footerDoc, headerFirst: headerFirstDoc, footerFirst: footerFirstDoc,
+      differentFirstPage, headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven },
+    ...extraHfSections,
+  ]));
+
+  function collectChapterStarts(): { page: number; level: number; text: string }[] {
+    if (!editor || editor.isDestroyed) return [];
+    const cycle = readVerticalMargins(editor.view.dom as HTMLElement).cycle;
+    const out: { page: number; level: number; text: string }[] = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== 'heading') return;
+      const text = node.textContent.trim();
+      const el = editor!.view.nodeDOM(pos) as HTMLElement | null;
+      if (!text || !el || el.nodeType !== 1) return;
+      out.push({ page: pageOfElement(editor!.view, el, cycle), level: (node.attrs.level as number) ?? 1, text });
+    });
+    return out;
+  }
 
   // Apply the page margins + orientation to the :root CSS vars (visual padding,
   // page dimensions, and pagination all read these). DOM-only, safe in effects.
@@ -624,6 +646,7 @@
     if (typeof detail.docHeight === 'number') docHeightDoc = detail.docHeight;
     tableBandsDoc = detail.tableBreakBands ?? [];
     sectionStartPages = detail.sectionStartPages ?? [];
+    chapterStarts = wantsChapters ? collectChapterStarts() : [];
     // The document height changed → resize the scaled scroll footprint.
     recomputeScaledSize();
     updateCurrentPage();
@@ -870,6 +893,7 @@
         {hfDistances}
         bind:extraHfSections
         {sectionStartPages}
+        {chapterStarts}
       />
     </div>
   </div>

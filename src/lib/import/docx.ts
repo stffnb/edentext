@@ -1165,6 +1165,12 @@ function emitField(out: Node[], instr: string, hfFields: boolean, marks: Mark[] 
   const push = (type: string) => out.push(marks.length ? { type, marks } : { type });
   if (/\bNUMPAGES\b/.test(instr)) push('pageCount');
   else if (/\bPAGE\b/.test(instr)) push('pageNumber');
+  // Word's running head: STYLEREF on a heading style → the live chapter field. The
+  // level rides in the style name ("Heading 2", or a localized "Überschrift 2").
+  else {
+    const m = /\bSTYLEREF\s+"?[^"\d]*(\d)/i.exec(instr);
+    if (m) out.push({ type: 'chapterField', attrs: { level: Number(m[1]), text: '' }, ...(marks.length ? { marks } : {}) });
+  }
 }
 
 // A REF/PAGEREF field instruction → a cross-reference node; its cached result text is

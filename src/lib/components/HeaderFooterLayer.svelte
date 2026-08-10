@@ -28,6 +28,7 @@
     hfTick = $bindable(),
     extraHfSections = $bindable([]),
     sectionStartPages = [],
+    chapterStarts = [],
   }: {
     headerDoc: HfDoc;
     footerDoc: HfDoc;
@@ -48,6 +49,7 @@
     hfTick: number;
     extraHfSections?: HfSet[];
     sectionStartPages?: number[];
+    chapterStarts?: { page: number; level: number; text: string }[];
   } = $props();
 
   const PAGE_GAP = 20;
@@ -193,9 +195,24 @@
     return v === 'first' ? b.footerFirst : v === 'even' ? b.footerEven : b.footer;
   }
 
+  // Page, page count, the zone's HTML and the chapter map: everything the two actions
+  // below re-run on (the map's identity changes with each pagination pass).
+  type ZoneParams = [number, number, string, unknown];
+
   // Lay out the zone's tabs: static HTML no ProseMirror plugin reaches. The advances are
   // layout px, so only a content change invalidates them — not the zoom transform.
-  function layOutTabs(node: HTMLElement, _params: [number, number, string]) {
+  // The chapter a page runs under: the last heading at or above the field's outline
+  // level that has started by then (ODF text:chapter, Word STYLEREF).
+  function chapterOn(page: number, level: number): string {
+    let text = '';
+    for (const c of chapterStarts) {
+      if (c.page > page) break;
+      if (c.level <= level) text = c.text;
+    }
+    return text;
+  }
+
+  function layOutTabs(node: HTMLElement, _params: ZoneParams) {
     const apply = () => layOutZoneTabs(node);
     apply();
     return { update: apply };
@@ -203,10 +220,12 @@
 
   // Replace the placeholder text in every page-field span with the real value:
   // current page number, or the total page count. Re-runs when its param changes.
-  function patchFields(node: HTMLElement, params: [number, number, string]) {
-    const apply = ([page, total]: [number, number, string]) => {
+  function patchFields(node: HTMLElement, params: ZoneParams) {
+    const apply = ([page, total]: ZoneParams) => {
       for (const el of Array.from(node.querySelectorAll('[data-page-field]'))) {
-        el.textContent = String(el.getAttribute('data-page-field') === 'count' ? total : page);
+        const kind = el.getAttribute('data-page-field');
+        if (kind === 'chapter') el.textContent = chapterOn(page, Number(el.getAttribute('data-level')) || 1);
+        else el.textContent = String(kind === 'count' ? total : page);
       }
     };
     apply(params);
@@ -312,7 +331,9 @@
     void editingPage;
     if (!liveMount) return;
     for (const el of Array.from(liveMount.querySelectorAll('[data-page-field]'))) {
-      el.textContent = String(el.getAttribute('data-page-field') === 'count' ? numPages : editingPage);
+      const kind = el.getAttribute('data-page-field');
+      if (kind === 'chapter') el.textContent = chapterOn(editingPage, Number(el.getAttribute('data-level')) || 1);
+      else el.textContent = String(kind === 'count' ? numPages : editingPage);
     }
     // Content height (unscaled by the zoom transform) drives the active zone's frame.
     const tt = liveMount.querySelector('.tiptap') as HTMLElement | null;
@@ -360,8 +381,8 @@
           ondblclick={() => startEdit(zone, p)}
           role="button"
           tabindex="-1"
-          use:patchFields={[p, numPages, html]}
-          use:layOutTabs={[p, numPages, html]}
+          use:patchFields={[p, numPages, html, chapterStarts]}
+          use:layOutTabs={[p, numPages, html, chapterStarts]}
         >
           {@html html}
         </div>

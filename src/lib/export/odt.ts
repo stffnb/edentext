@@ -158,6 +158,10 @@ const BME = '\uE014';
 // (XRF{i}XRF<text>XRF); applyBookmarks rewrites it to <text:bookmark-ref>. U+E015.
 const XRF = '\uE015';
 
+// Sentinel wrapping a header/footer chapter field (CHP<level>CHP<name>CHP);
+// applyHfPostProcess rewrites it to <text:chapter> in styles.xml. U+E016.
+const CHP = '\uE016';
+
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -2533,7 +2537,15 @@ function applyHfRuns(b: HeaderFooterBuilder, para: TiptapNode, pageCount: number
     else if (node.type === 'hardBreak')    b.addText(LBR);
     else if (node.type === 'pageNumber')   b.addPageNumber(f);
     else if (node.type === 'pageCount')    b.addText(`${PGC}${pageCount}${PGC}`, f);
+    else if (node.type === 'chapterField') b.addText(chapterSentinel(node), f);
   }
+}
+
+// CHP<level>CHP<cached name>CHP — the cached name is what a reader shows before it
+// resolves the field itself, so it rides along like LibreOffice writes it.
+function chapterSentinel(node: TiptapNode): string {
+  const level = Number(node.attrs?.level) || 1;
+  return `${CHP}${level}${CHP}${String(node.attrs?.text ?? '')}${CHP}`;
 }
 
 // Emit a cell's inline content into odf-kit's run-based CellBuilder and, in lockstep,
@@ -3598,6 +3610,8 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
   styles = styles.replace(/<text:p\b[^>]*>[\s\S]*?<\/text:p>/g, (block) => block.replace(/\n/g, ''));
   styles = styles.split(LBR).join('<text:line-break/>');
   styles = styles.replace(new RegExp(`${PGC}(\\d*)${PGC}`, 'g'), '<text:page-count>$1</text:page-count>');
+  styles = styles.replace(new RegExp(`${CHP}(\\d)${CHP}([\\s\\S]*?)${CHP}`, 'g'),
+    (_m, level: string, name: string) => `<text:chapter text:display="name" text:outline-level="${level}">${name}</text:chapter>`);
 
   const mintedStyles: string[] = [];
   const mint = (n: string) => { mintedStyles.push(n); };
@@ -3712,6 +3726,8 @@ function hfVariantZoneXml(kind: 'header' | 'footer', suffix: 'first' | 'left' | 
     else if (node.type === 'hardBreak') inner += '<text:line-break/>';
     else if (node.type === 'pageNumber') inner += styled('<text:page-number text:select-page="current">1</text:page-number>', node.marks);
     else if (node.type === 'pageCount') inner += styled(`<text:page-count>${pageCount}</text:page-count>`, node.marks);
+    else if (node.type === 'chapterField') inner += styled(
+      `<text:chapter text:display="name" text:outline-level="${Number(node.attrs?.level) || 1}">${odfEncodeInline(String(node.attrs?.text ?? ''))}</text:chapter>`, node.marks);
   }
 
   const parent = kind === 'header' ? 'Header' : 'Footer';
