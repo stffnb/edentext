@@ -2,7 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { MAX_HEADING_LEVEL } from '../../export/odt';
-import { readVerticalMargins, pageOfElement } from './pageBreaks';
+import { readVerticalMargins, pageOfElement, topInEditor, FORCE_PAGE_RECALC } from './pageBreaks';
 
 // A generated table of contents: a block atom listing every heading (levels 1–5) with its
 // live page number. The node view regenerates entries from the headings + pagination and
@@ -93,6 +93,7 @@ class TocView {
   private getPos: () => number;
   private scheduled = false;
   private lastKey = '';
+  private wasPaginated = false;
   private paper: HTMLElement | null = null;
   private onPageCount = () => this.schedule();
 
@@ -152,10 +153,43 @@ class TocView {
     const cycle = this.cycle();
     const entries: TocEntry[] = heads.map(h => ({ text: h.text, level: h.level, page: this.pageOf(h.pos, cycle) }));
     const key = JSON.stringify(entries);
-    if (key === this.lastKey) return;
-    this.lastKey = key;
-    this.paint(entries, heads);
-    this.syncAttr(entries);
+    if (key !== this.lastKey) {
+      this.lastKey = key;
+      this.paint(entries, heads);
+      this.syncAttr(entries);
+    }
+    this.paginate();
+  }
+
+  // The index is a block atom: it has no inner document positions for pagination to put
+  // a spacer at, so one longer than a page breaks itself — the row that would cross the
+  // boundary takes the gap to the next page's content top as its margin.
+  private paginate(): void {
+    const rows = Array.from(this.dom.querySelectorAll<HTMLElement>('.toc-entry'));
+    if (!rows.length) return;
+    const view = this.editor.view;
+    const vm = readVerticalMargins(view.dom as HTMLElement);
+    for (const row of rows) row.style.marginTop = '';
+    // Read every natural top first: applying a gap moves each row below it, and one
+    // reflow for the whole index beats one per row.
+    const tops = rows.map(row => topInEditor(view, row));
+    let shift = 0;
+    let moved = false;
+    rows.forEach((row, i) => {
+      const top = tops[i] + shift;
+      const page = Math.max(1, Math.floor(top / vm.cycle) + 1);
+      if (top + row.offsetHeight <= (page - 1) * vm.cycle + vm.top + vm.contentHeight) return;
+      const gap = page * vm.cycle + vm.top - top;
+      if (gap <= 0) return;
+      row.style.marginTop = `${gap}px`;
+      shift += gap;
+      moved = true;
+    });
+    // The index just changed height, and pagination measured the old one.
+    if (moved !== this.wasPaginated) {
+      this.wasPaginated = moved;
+      view.dispatch(view.state.tr.setMeta('addToHistory', false).setMeta(FORCE_PAGE_RECALC, true));
+    }
   }
 
   private paint(entries: TocEntry[], heads: HeadingRef[]): void {

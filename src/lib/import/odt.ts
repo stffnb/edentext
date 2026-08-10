@@ -101,6 +101,9 @@ type Ctx = {
   contentWidthCm: number;
   // Master pages the body switches to, in order — one section each past the first.
   masterPages: string[];
+  // How many body blocks each of them governs: the largest count is the document's own
+  // page geometry, which is not per section.
+  masterBlocks: Map<string, number>;
   // Bookmark ranges open at this point of the walk, outermost first; a range may end in
   // a later paragraph than it started in, so the set outlives one convertInline call.
   openBookmarks: Set<string>;
@@ -543,7 +546,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, masterPages: [], openBookmarks: new Set() };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, masterPages: [], masterBlocks: new Map(), openBookmarks: new Set() };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -557,9 +560,18 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     blocks = wrapped;
   }
 
-  const hf = resolver.masterPageHF();
+  // Page geometry — margins, format, and the band a header/footer reserves — is
+  // document-wide, so it comes from the master governing most of the body rather than
+  // from one the file merely declares (`geo` above only sized the tables).
+  let dominant = '';
+  let governed = 0;
+  for (const [name, count] of ctx.masterBlocks) {
+    if (count > governed) { dominant = name; governed = count; }
+  }
+  resolver.setDefaultMaster(dominant || null);
 
-  const geometry = geo;
+  const hf = resolver.masterPageHF();
+  const geometry = resolver.pageGeometry() ?? geo;
   const edge = resolver.edgeDistancesCm();
 
   const fonts: EmbeddedFont[] = [];
@@ -1145,6 +1157,9 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
     // the master the document opens with, which is where the text already is.
     if (ctx.masterPages.length > 1) attrs.breakBefore = 'page';
   }
+  // '' = the file's own default master, which the blocks before the first switch use.
+  const governing = kind === 'body' ? ctx.masterPages[ctx.masterPages.length - 1] ?? '' : null;
+  if (governing != null) ctx.masterBlocks.set(governing, (ctx.masterBlocks.get(governing) ?? 0) + 1);
   // Tab stops live in a child element of the paragraph properties, so they come from
   // the resolver's own walk rather than the flattened paraProps.
   const stops = formatTabStops(resolver.tabStops(styleName));

@@ -162,14 +162,18 @@ export function readVerticalMargins(dom: HTMLElement): VMargins {
 // offsetParent chain, spacers included) divided by the page cycle. The TOC and every
 // cross-reference resolve their page numbers with it.
 export function pageOfElement(view: EditorView, el: HTMLElement, cycle: number): number {
+  return Math.max(1, Math.floor(topInEditor(view, el) / cycle) + 1);
+}
+
+// An element's top in document px from the editor's own top — spacers included, since
+// they sit in the flow above it.
+export function topInEditor(view: EditorView, el: HTMLElement): number {
   const tiptap = view.dom as HTMLElement;
   let top = 0;
-  let n: HTMLElement | null = el;
-  while (n && n !== tiptap) {
+  for (let n: HTMLElement | null = el; n && n !== tiptap; n = n.offsetParent as HTMLElement | null) {
     top += n.offsetTop;
-    n = n.offsetParent as HTMLElement | null;
   }
-  return Math.max(1, Math.floor(top / cycle) + 1);
+  return top;
 }
 
 function pageContentStart(page: number, marginTop: number, cycle: number): number {

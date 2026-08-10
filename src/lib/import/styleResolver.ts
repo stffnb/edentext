@@ -159,6 +159,7 @@ export class StyleResolver {
   private paraStyleEls = new Map<string, Element>();
   private mergedCache = new Map<string, { text: PropMap; para: PropMap; misc: PropMap }>();
   private stylesDoc: Document | null;
+  private defaultMaster: string | null = null;
   private namedParagraphNames = new Set<string>();
   private namedTextNames = new Set<string>();
   private namedTableNames = new Set<string>();
@@ -489,8 +490,19 @@ export class StyleResolver {
     const doc = this.stylesDoc;
     if (!doc) return null;
     const pages = Array.from(doc.getElementsByTagNameNS(NS.style, 'master-page'));
-    if (name) return pages.find(p => p.getAttributeNS(NS.style, 'name') === name) ?? null;
+    const want = name ?? this.defaultMaster;
+    if (want) {
+      const found = pages.find(p => p.getAttributeNS(NS.style, 'name') === want);
+      if (found || name) return found ?? null;
+    }
     return pages.find(p => p.getAttributeNS(NS.style, 'name') === 'Standard') ?? pages[0] ?? null;
+  }
+
+  // The master page the body actually uses. Page geometry is document-wide, so it has
+  // to come from that one: a file whose "Standard" master no paragraph references would
+  // otherwise take a geometry — and a header/footer band — no page of it has.
+  setDefaultMaster(name: string | null): void {
+    this.defaultMaster = name;
   }
 
   // The master page a paragraph style switches to, walking style:parent-style-name.
