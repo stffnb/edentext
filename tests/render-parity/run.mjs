@@ -98,8 +98,11 @@ async function settle(page) {
     // The spacers' heights too, not just their count: they go on settling for a while
     // after the last one is placed, and the page a line lands on moves with them.
     const spacers = Array.from(document.querySelectorAll('[data-page-break-spacer]'));
+    // The index's page numbers settle after the spacers do — a stale one is a line of
+    // text that still changes.
+    const toc = Array.from(document.querySelectorAll('.toc-page')).map((t) => t.textContent).join(',');
     const key = el.style.minHeight + '|' + el.children.length + '|' + spacers.length + '|'
-      + spacers.reduce((sum, s) => sum + s.offsetHeight, 0);
+      + spacers.reduce((sum, s) => sum + s.offsetHeight, 0) + '|' + toc;
     const w = window;
     if (w.__parityKey !== key) { w.__parityKey = key; w.__paritySince = performance.now(); return false; }
     return performance.now() - (w.__paritySince ?? 0) > 3000;

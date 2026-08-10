@@ -14,8 +14,10 @@ export type TocEntry = { text: string; level: number; page: number };
 // ("Inhalt", "Sommaire", …), or none at all where the file put its heading in a
 // separate paragraph (`''`); a freshly inserted one takes this.
 const TITLE = 'Table of Contents';
-// Enough leader dots to cross the widest gap a page can offer; the row clips the rest.
+// Enough leader dots to cross the widest gap a page can offer; fillLeaders cuts each
+// row's back to what its own gap holds, measuring one dot with this sample.
 const LEADER_DOTS = 200;
+const LEADER_PROBE = '..........';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -235,6 +237,22 @@ class TocView {
       }
       this.dom.appendChild(row);
     });
+    this.fillLeaders();
+  }
+
+  // As many leader dots as the gap holds. The row clips the rest on screen, but nothing
+  // else does: 200 of them reach the PDF, the clipboard and every measurement as text.
+  private fillLeaders(): void {
+    const leaders = Array.from(this.dom.querySelectorAll<HTMLElement>('.toc-leader'));
+    if (!leaders.length) return;
+    leaders[0].textContent = LEADER_PROBE;
+    const range = document.createRange();
+    range.selectNodeContents(leaders[0]);
+    const dot = range.getBoundingClientRect().width / LEADER_PROBE.length;
+    if (!(dot > 0)) return;
+    for (const el of leaders) {
+      el.textContent = '.'.repeat(Math.max(0, Math.floor(el.getBoundingClientRect().width / dot)));
+    }
   }
 
   // Scroll the heading into view and drop the cursor into it.

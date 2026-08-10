@@ -219,10 +219,11 @@
 .paper .tiptap .toc-entry:hover .toc-text {
   text-decoration: underline;
 }
-.paper .tiptap .toc-level-2 { padding-left: 0.6cm; }
-.paper .tiptap .toc-level-3 { padding-left: 1.2cm; }
-.paper .tiptap .toc-level-4 { padding-left: 1.8cm; }
-.paper .tiptap .toc-level-5 { padding-left: 2.4cm; }
+/* One level = 0.5cm, the indent LibreOffice's own Contents 1…5 styles carry. */
+.paper .tiptap .toc-level-2 { padding-left: 0.5cm; }
+.paper .tiptap .toc-level-3 { padding-left: 1cm; }
+.paper .tiptap .toc-level-4 { padding-left: 1.5cm; }
+.paper .tiptap .toc-level-5 { padding-left: 2cm; }
 .paper .tiptap .toc-text {
   white-space: nowrap;
   overflow: hidden;
