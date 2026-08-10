@@ -90,13 +90,15 @@ async function editorRender(browser, file) {
 async function settle(page) {
   await page.waitForFunction(() => {
     const el = document.querySelector('.tiptap');
-    if (!el) return false;
+    // Importing a large file takes seconds; an editor still empty is not "settled",
+    // it is the blank document the file has not replaced yet.
+    if (!el || !el.textContent.trim()) return false;
     const imgs = Array.from(document.querySelectorAll('.paper img'));
     if (imgs.some((i) => !i.complete)) return false;
     // The spacers' heights too, not just their count: they go on settling for a while
     // after the last one is placed, and the page a line lands on moves with them.
     const spacers = Array.from(document.querySelectorAll('[data-page-break-spacer]'));
-    const key = el.style.minHeight + '|' + spacers.length + '|'
+    const key = el.style.minHeight + '|' + el.children.length + '|' + spacers.length + '|'
       + spacers.reduce((sum, s) => sum + s.offsetHeight, 0);
     const w = window;
     if (w.__parityKey !== key) { w.__parityKey = key; w.__paritySince = performance.now(); return false; }
