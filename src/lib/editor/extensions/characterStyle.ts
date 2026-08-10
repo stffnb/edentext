@@ -16,6 +16,10 @@ declare module '@tiptap/core' {
 export const CharacterStyle = Mark.create({
   name: 'charStyle',
 
+  // Above TextStyle's 101, so this span wraps the direct formatting's instead of sitting
+  // inside it: the style is a stylesheet rule, and a rule beats an ancestor's inline style.
+  priority: 102,
+
   addAttributes() {
     return {
       name: {

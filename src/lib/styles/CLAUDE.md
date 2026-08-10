@@ -56,7 +56,8 @@ holds it as a reactive singleton persisted to `odf-editor-styles` (same shape as
   declares no style; `tests/unit/style-resolve.test.ts` asserts the built-ins match it.
 - **Character styles** are the second family (`sheet.character`, LibreOffice's Emphasis /
   Strong Emphasis / Source Text): the `CharacterStyle` mark (`charStyle`, attr `name`) tags a run
-  and renders `data-char-style`, `styleCss` emits a rule per style, and the gallery lists them
+  and renders `data-char-style` (`priority: 102`, so the span wraps the direct formatting's —
+  a stylesheet rule beats an ancestor's inline style), `styleCss` emits a rule per style, and the gallery lists them
   under the paragraph styles (clicking the active one toggles it off). **ODF**: export bakes the
   style's resolved formatting onto the run *and* prefixes a `CST` sentinel (U+E00E) so
   `applyCharacterStyles` re-points that span at a clone whose parent is the named
