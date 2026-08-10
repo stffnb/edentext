@@ -1,7 +1,8 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { NodeSelection } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { dropCursor } from '@tiptap/pm/dropcursor';
 import { cmToPx } from '../../storage/pageMargins';
 
@@ -245,9 +246,42 @@ export const Image = Node.create({
   // The drop cursor paints a caret where a dragged-in image *file* lands; moving an
   // existing image uses the node view's live re-anchor drag, not PM's native node move.
   addProseMirrorPlugins() {
-    return [dropCursor({ color: '#3b82f6', width: 2 })];
+    return [dropCursor({ color: '#3b82f6', width: 2 }), imageLinePlugin()];
   },
 });
+
+// A line carrying nothing but an as-character image is as tall as the image or the
+// block's line height, whichever is more — no text descent hangs below it (probed
+// against LibreOffice). Whitespace beside the image adds none, which CSS cannot ask.
+const imageLineKey = new PluginKey('imageLine');
+
+function imageLineDecorations(doc: PMNode): DecorationSet {
+  const decos: Decoration[] = [];
+  doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true;
+    let image = false;
+    let text = false;
+    node.forEach((child) => {
+      if (child.type.name === 'image') {
+        if ((child.attrs.wrap ?? 'inline') === 'inline') image = true;
+      } else if (child.isText ? child.text?.trim() : child.type.name !== 'hardBreak') text = true;
+    });
+    if (image && !text) decos.push(Decoration.node(pos, pos + node.nodeSize, { class: 'image-line' }));
+    return false;
+  });
+  return DecorationSet.create(doc, decos);
+}
+
+function imageLinePlugin(): Plugin {
+  return new Plugin({
+    key: imageLineKey,
+    state: {
+      init: (_, state) => imageLineDecorations(state.doc),
+      apply: (tr, old) => (tr.docChanged ? imageLineDecorations(tr.doc) : old),
+    },
+    props: { decorations(state) { return imageLineKey.getState(state); } },
+  });
+}
 
 // Node view: a bounding-box wrapper (reserves the rotated footprint for text flow)
 // holds a centered, rotated "rotor" with the <img>, eight resize handles (corners

@@ -279,6 +279,11 @@
   vertical-align: baseline;
   line-height: 0;
 }
+/* Alone on its line (image.ts marks the block) the frame sets the line height by
+   itself: no descent hangs below it, so it sits on the line bottom, not the baseline. */
+.paper .tiptap .image-line .image-node {
+  vertical-align: bottom;
+}
 /* While selected, lift the node (and its handles) above the header/footer layer
    (z-index 22) so a rotate/resize handle poking into a margin stays grabbable. */
 .paper .tiptap .image-node.image-selected {
