@@ -1141,6 +1141,9 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   if (master && ctx.masterPages[ctx.masterPages.length - 1] !== master) {
     ctx.masterPages.push(master);
     attrs.sectionBreak = true;
+    // Switching the page master starts a new page in LibreOffice, always — except for
+    // the master the document opens with, which is where the text already is.
+    if (ctx.masterPages.length > 1) attrs.breakBefore = 'page';
   }
   // Tab stops live in a child element of the paragraph properties, so they come from
   // the resolver's own walk rather than the flattened paraProps.
