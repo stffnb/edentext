@@ -84,11 +84,26 @@ editor (`global.css`), so give LibreOffice the same answer:
 
 ## Open findings
 
-What the three real-world fixtures — the contract (an IHK
-contract form), the summary (a student summary: bullets,
-wrapped pictures, one table) and the thesis (a 48-page thesis with charts,
-metafile figures and a German TOC) — still report. The thesis matches LibreOffice's 49 pages,
-with 51 line-level differences — most of them the two engine rules below, not layout:
+What the real-world fixtures — the contract (an IHK contract
+form), the summary (a student summary: bullets, wrapped
+pictures, one table), the thesis (a 48-page thesis with charts, metafile figures and
+a German TOC) and the Math Guide (LibreOffice's own 63-page Math Guide: a title page,
+a three-page index, per-section masters, ~35 figure frames and 400 formulas) — still
+report. The thesis matches LibreOffice's 49 pages, the Math Guide is one over at 64 —
+most of what is left is the engine rules below, not layout:
+
+- **A page-anchored frame's coordinates are its page's, but a frame in a *header* keeps
+  the ones its zone gives it.** Both are drawn out of flow; the body one (`anchorPage`,
+  `image.ts`) sits behind the text at `--page-cycle` × (page − 1) + its `svg:y`.
+- **The index is its own pagination.** A generated TOC is a block atom, so pagination has
+  no inner position to put a spacer at; the node view breaks it between entries itself
+  (`tableOfContents.ts`) and asks for one recompute when that changes its height.
+- **A cell's `style:vertical-align` is read but not written back** — see
+  `docs/architecture/tables.md`.
+- **The chapter name in a header/footer is the value the file cached**, not the chapter
+  of the page it sits on: `text:chapter` arrives as plain text, where `text:page-number`
+  arrives as a live field. The Math Guide's footer says "Math commands - Reference" on
+  every page for that reason.
 
 - **A hoisted text box loses the vertical offset it was anchored by.** A frame's own
   offsets are drawn now (`docs/architecture/frames.md`), but a text box anchored inside a
@@ -100,8 +115,10 @@ with 51 line-level differences — most of them the two engine rules below, not 
   nothing in the corpus. The anchor paragraph's box is not the right basis — the frame
   it holds is a float, so its height is the text's alone.
 - **Page geometry is document-wide.** Headers and footers are per section (each is
-  editable in place), but margins, orientation and format are not — a file whose sections
-  disagree on them keeps the last one's.
+  editable in place), but margins, orientation and format are not: they come from the
+  master page governing the most body blocks (`import/odt.ts`), so a title page with its
+  own margins is laid out with the body's. The Math Guide's title sits 9.8mm low and
+  3.3mm left for exactly that reason.
 - **Line height follows the paragraph, not the line.** The block's CSS strut applies to
   every line; a word processor takes each line's own runs and the paragraph mark only on
   the last. The mark's font rides the block (`blockFontSize.ts`), and a paragraph whose
@@ -169,7 +186,9 @@ one-page fixture.
 - **A stop's leader is drawn, but the harness can't see it.** The fill is CSS generated
   content, so `Range.getClientRects()` reads the gap as empty while LibreOffice's PDF has
   the dots in its text. The contract's `Zwischen ......` line reports a `lineBreak` for
-  that reason alone — compare it by eye, not by this harness.
+  that reason alone — compare it by eye, not by this harness. An **index** leader is real
+  text on both sides, so it is compared: as one token, since how many dots fill the gap is
+  the fill's business (`norm`). A TOC whose file declares *no* leader still gets ours.
 - Lines are grouped by vertical band, so **multi-column** text on one page merges
   columns into single lines. Columns fixtures need per-block grouping first.
 - **Only where text sits is compared** — not what it looks like. A dropped colour,
