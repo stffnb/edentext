@@ -32,4 +32,4 @@ Both margins and orientation are passed into the ODT export so the exported docu
 
 ## Themes (`theme.ts`, `styles/global.css`)
 
-Four modes: `light`, `dark`, `allBlack` (forces font colors white), `auto` (follows `prefers-color-scheme`). Applied by setting `data-theme` on `<html>`; CSS variables for each theme live in `global.css`.
+Four modes: `light`, `dark`, `allBlack` (forces font colors white), `auto` (follows `prefers-color-scheme`). Applied by setting `data-theme` on `<html>`; CSS variables for each theme live in `global.css`. The sheet keeps its own pair through light and dark — white paper, **black** text, the colour LibreOffice and Word draw an uncoloured run in (the app's slate would also differ from a run the file colours `#000000`); only `allBlack` inverts it.
