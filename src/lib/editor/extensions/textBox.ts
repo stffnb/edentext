@@ -38,6 +38,7 @@ export interface TextBoxAttrs {
   wrap: WrapMode;
   wrapOffset: number | null;  // cm from the text column's left edge
   wrapOffsetY: number | null; // cm below the anchor paragraph
+  wrapDist: number | null;    // cm of gap to the text beside it
   wrapAlign: string | null;   // 'center'/'right' = set against the middle/far end
   paddingCm: number;          // inset ring around the text (ODF fo:padding)
   shapeKind: ShapeKind;
@@ -117,6 +118,12 @@ export const TextBox = Node.create({
       wrapOffsetY: {
         default: null,
         parseHTML: el => parseCmAttr((el as HTMLElement).getAttribute('data-wrap-offset-y')),
+        renderHTML: () => ({}),
+      },
+      // The gap to the text beside it, in cm — as on an image.
+      wrapDist: {
+        default: null,
+        parseHTML: el => parseCmAttr((el as HTMLElement).getAttribute('data-wrap-dist')),
         renderHTML: () => ({}),
       },
       // 'center' = set against the middle of the column (ODF style:horizontal-pos): a
@@ -379,7 +386,7 @@ class TextBoxView {
     d.style.margin = frameMargins('topBottom', a.wrap === 'topBottom' ? a.wrapOffset : null, 0);
     if (a.wrap === 'left' || a.wrap === 'right') {
       d.style.float = a.wrap;
-      d.style.margin = frameMargins(a.wrap, a.wrapOffset, parseFloat(d.style.width) || 0);
+      d.style.margin = frameMargins(a.wrap, a.wrapOffset, parseFloat(d.style.width) || 0, null, a.wrapDist);
     } else if (a.wrap === 'topBottom') {
       d.style.clear = 'both';
     }

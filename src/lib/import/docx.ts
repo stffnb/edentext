@@ -1375,10 +1375,11 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   if (Number.isFinite(rot) && rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
 
   if (anchor) {
-    const { wrap, offsetCm, offsetYCm, alignH } = anchorWrap(anchor, ctx);
+    const { wrap, offsetCm, offsetYCm, alignH, distCm } = anchorWrap(anchor, ctx);
     attrs.wrap = wrap;
     if (offsetCm != null) attrs.wrapOffset = offsetCm;
     if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
+    if (distCm != null) attrs.wrapDist = distCm;
     if (alignH && wrap === 'topBottom') attrs.wrapAlign = alignH;
   } else {
     fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
@@ -1410,10 +1411,11 @@ function chartImage(drawing: Element, box: { w: number; h: number }, ctx: Ctx): 
 function frameNode(src: string, box: { w: number; h: number }, label: string, anchor: Element | undefined, ctx: Ctx): Node {
   const attrs: Record<string, unknown> = { src, width: box.w, height: box.h, alt: label };
   if (anchor) {
-    const { wrap, offsetCm, offsetYCm, alignH } = anchorWrap(anchor, ctx);
+    const { wrap, offsetCm, offsetYCm, alignH, distCm } = anchorWrap(anchor, ctx);
     attrs.wrap = wrap;
     if (offsetCm != null) attrs.wrapOffset = offsetCm;
     if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
+    if (distCm != null) attrs.wrapDist = distCm;
     if (alignH && wrap === 'topBottom') attrs.wrapAlign = alignH;
   } else {
     fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
@@ -1447,14 +1449,19 @@ function anchorOffsetX(anchor: Element, ctx: Ctx): number | null {
 // Wrap mode and place are independent: the mode is what the file's wrap element says,
 // the place its position offsets. Only where neither names a side does the frame's own
 // x decide which half of the column it fills (text flows on one side of a CSS float).
-function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom'; offsetCm: number | null; offsetYCm: number | null; alignH: 'left' | 'right' | null } {
+function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom'; offsetCm: number | null; offsetYCm: number | null; alignH: 'left' | 'right' | null; distCm: number | null } {
   const offsetYCm = anchorOffsetY(anchor);
   const offsetCm = anchorOffsetX(anchor, ctx);
   const align = anchor.getElementsByTagNameNS(WP, 'positionH')[0]
     ?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
   const alignH: 'left' | 'right' | null = align === 'right' || align === 'outside' ? 'right'
     : align === 'left' || align === 'inside' ? 'left' : null;
-  const at = (wrap: 'left' | 'right' | 'topBottom') => ({ wrap, offsetCm, offsetYCm, alignH });
+  // Only the side the text flows on: the gap on the other one is the frame's offset.
+  const distOf = (wrap: string) => {
+    const emu = parseInt(anchor.getAttribute(wrap === 'right' ? 'distL' : 'distR') ?? '', 10);
+    return Number.isFinite(emu) && emu > 0 ? round2(emu / 360000) : null;
+  };
+  const at = (wrap: 'left' | 'right' | 'topBottom') => ({ wrap, offsetCm, offsetYCm, alignH, distCm: distOf(wrap) });
   if (anchor.getElementsByTagNameNS(WP, 'wrapTopAndBottom')[0]) return at('topBottom');
   const wt = anchor.getElementsByTagNameNS(WP, 'wrapSquare')[0]?.getAttribute('wrapText');
   if (wt === 'right') return at('left'); // text on right ⇒ image on left
@@ -1509,10 +1516,11 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
   const rot = intAttr(nsChild(spPr, A, 'xfrm'), '', 'rot');
   if (rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
   if (isAnchor) {
-    const { wrap, offsetCm, offsetYCm } = anchorWrap(root, ctx);
+    const { wrap, offsetCm, offsetYCm, distCm } = anchorWrap(root, ctx);
     attrs.wrap = wrap;
     if (offsetCm != null) attrs.wrapOffset = offsetCm;
     if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
+    if (distCm != null) attrs.wrapDist = distCm;
   }
 
   const fillClr = nsChild(nsChild(spPr, A, 'solidFill'), A, 'srgbClr')?.getAttribute('val');

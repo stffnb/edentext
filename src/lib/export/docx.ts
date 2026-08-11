@@ -400,8 +400,10 @@ function decodeDataUri(src: string): { bytes: Uint8Array; type: 'png' | 'jpg' | 
 
 // offsetCm places the frame in the text column (Word's posOffset); without one it is
 // flush to its side. offsetYCm is how far below the anchor paragraph it sits.
-function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | null, alignH?: string | null): IFloating | undefined {
+function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | null, alignH?: string | null, distCm?: number | null): IFloating | undefined {
   if (wrap === 'inline') return undefined;
+  // The gap beside the frame, on both sides as Word writes it; none above or below.
+  const margins = distCm ? { left: Math.round(distCm * 360000), right: Math.round(distCm * 360000) } : undefined;
   const verticalPosition = {
     relative: VerticalPositionRelativeFrom.PARAGRAPH,
     offset: offsetYCm != null ? Math.round(offsetYCm * 360000) : 0,
@@ -420,6 +422,7 @@ function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | 
       verticalPosition,
       wrap: { type: TextWrappingType.TOP_AND_BOTTOM },
       allowOverlap: !!end,
+      margins,
     };
   }
   // left: image at left, text on the right; right: mirror.
@@ -433,6 +436,7 @@ function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | 
     verticalPosition,
     wrap: { type: TextWrappingType.SQUARE, side },
     allowOverlap: false,
+    margins,
   };
 }
 
@@ -447,12 +451,13 @@ function imageRun(node: TiptapNode): ImageRun | null {
   const wrap = String(node.attrs?.wrap ?? 'inline');
   const offsetCm = typeof node.attrs?.wrapOffset === 'number' ? node.attrs.wrapOffset : null;
   const offsetYCm = typeof node.attrs?.wrapOffsetY === 'number' ? node.attrs.wrapOffsetY : null;
+  const distCm = typeof node.attrs?.wrapDist === 'number' ? node.attrs.wrapDist : null;
   return new ImageRun({
     type: decoded.type,
     data: decoded.bytes,
     altText: typeof node.attrs?.alt === 'string' && node.attrs.alt ? { name: node.attrs.alt, title: node.attrs.alt, description: node.attrs.alt } : undefined,
     transformation: { width, height, rotation: rotation || undefined },
-    floating: floatingFor(wrap, offsetCm, offsetYCm, node.attrs?.wrapAlign as string | null),
+    floating: floatingFor(wrap, offsetCm, offsetYCm, node.attrs?.wrapAlign as string | null, distCm),
   });
 }
 
@@ -466,6 +471,7 @@ type TextBoxDocx = {
   wrap: 'inline' | 'left' | 'right' | 'topBottom';
   offsetCm: number | null;
   offsetYCm: number | null;
+  distCm: number | null;
   shapeKind: 'textbox' | 'roundRect' | 'ellipse';
   fill: string | null;
   stroke: string | null;
@@ -484,6 +490,7 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' ? wrapAttr : 'inline',
     offsetCm: typeof a.wrapOffset === 'number' ? a.wrapOffset : null,
     offsetYCm: typeof a.wrapOffsetY === 'number' ? a.wrapOffsetY : null,
+    distCm: typeof a.wrapDist === 'number' ? a.wrapDist : null,
     shapeKind: kind === 'roundRect' || kind === 'ellipse' ? kind : 'textbox',
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
@@ -665,7 +672,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number): string {
     ? `<wp:posOffset>${emu(box.offsetCm)}</wp:posOffset>`
     : `<wp:align>${align}</wp:align>`;
   return (
-    `<w:drawing><wp:anchor ${wpNs} distT="0" distB="0" distL="114300" distR="114300"` +
+    `<w:drawing><wp:anchor ${wpNs} distT="0" distB="0" distL="${emu(box.distCm ?? 0)}" distR="${emu(box.distCm ?? 0)}"` +
     ` simplePos="0" relativeHeight="${251658240 + index}" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="0">` +
     `<wp:simplePos x="0" y="0"/>` +
     `<wp:positionH relativeFrom="margin">${posH}</wp:positionH>` +

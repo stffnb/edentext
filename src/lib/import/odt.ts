@@ -178,6 +178,12 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   if (anchor || wrapVal) {
     attrs.wrap = wrapModeFromOdf(wrapVal, gp['style:horizontal-pos']);
   }
+  // Only the text side of the gap is drawn — the other one is the frame's own offset.
+  if (attrs.wrap === 'left' || attrs.wrap === 'right') {
+    const side = attrs.wrap === 'right' ? 'fo:margin-left' : 'fo:margin-right';
+    const dist = lengthToCm(gp[side] ?? gp['fo:margin']);
+    if (dist != null && dist > 0) attrs.wrapDist = Math.round(dist * 1000) / 1000;
+  }
   // A frame placed by coordinate (style:horizontal-pos="from-left") keeps its x in the
   // column; the wrap mode alone would snap it to a side.
   const hpos = gp['style:horizontal-pos'];

@@ -82,17 +82,19 @@ export function framePx(px: number): number {
 // A floating frame's margins from its wrapOffset: its left edge in the text column,
 // measured against the live column vars an indented anchor cannot skew (a right float
 // is placed from the far side). wrapOffsetY becomes a top margin — see the attr's note.
-export function frameMargins(wrap: WrapMode, offsetCm: unknown, boxWidthPx: number, offsetYCm?: unknown): string {
+export function frameMargins(wrap: WrapMode, offsetCm: unknown, boxWidthPx: number, offsetYCm?: unknown, distCm?: unknown): string {
   const near = typeof offsetCm === 'number' ? `${Math.round(cmToPx(offsetCm))}px` : null;
-  // No vertical spacing of our own: LibreOffice and Word both wrap flush against a
-  // frame unless the file declares a distance (fo:margin-top/-bottom, distT/distB).
+  // The gap beside the frame is the file's own (fo:margin-*, distL/distR) and nothing
+  // where it declares none — probed: LibreOffice wraps flush against a frame whose
+  // graphic style leaves the margin out. Above and below likewise.
+  const gap = typeof distCm === 'number' && distCm > 0 ? `${Math.round(cmToPx(distCm))}px` : '0';
   if (wrap === 'topBottom') {
     const top = typeof offsetYCm === 'number' && offsetYCm > 0 ? `${Math.round(cmToPx(offsetYCm))}px` : '0';
     return `${top} 0 0 ${near ?? '0'}`;
   }
-  if (wrap === 'left') return `0 14px 0 ${near ?? '0'}`;
+  if (wrap === 'left') return `0 ${gap} 0 ${near ?? '0'}`;
   const far = near == null ? '0' : `calc(${COLUMN_WIDTH_CSS} - ${near} - ${boxWidthPx}px)`;
-  return `0 ${far} 0 14px`;
+  return `0 ${far} 0 ${gap}`;
 }
 
 // Where an as-char frame sits against the line (ODF style:vertical-pos/-rel, probed
@@ -176,6 +178,14 @@ export const Image = Node.create({
         parseHTML: el => parseCm((el as HTMLElement).getAttribute('data-wrap-offset-y')),
         renderHTML: () => ({}),
       },
+      // The gap the file keeps between a floating frame and the text beside it, in cm
+      // (Word's distL/distR, ODF's fo:margin-left/-right). null = none, which is what
+      // both render for a frame that declares none.
+      wrapDist: {
+        default: null,
+        parseHTML: el => parseCm((el as HTMLElement).getAttribute('data-wrap-dist')),
+        renderHTML: () => ({}),
+      },
       // The page a page-anchored frame is placed on (ODF text:anchor-page-number): a
       // cover graphic or a watermark, out of the text flow. wrapOffset/-Y are then the
       // frame's coordinates from that page's top-left corner, not from its column.
@@ -226,6 +236,7 @@ export const Image = Node.create({
       ...(wrap !== 'inline' ? { 'data-wrap': wrap } : {}),
       ...(offset != null ? { 'data-wrap-offset': String(offset) } : {}),
       ...(offsetY != null ? { 'data-wrap-offset-y': String(offsetY) } : {}),
+      ...(node.attrs.wrapDist != null ? { 'data-wrap-dist': String(node.attrs.wrapDist) } : {}),
       ...(node.attrs.wrapAlign ? { 'data-wrap-align': String(node.attrs.wrapAlign) } : {}),
       ...(node.attrs.vAlign ? { 'data-v-align': String(node.attrs.vAlign) } : {}),
       ...(node.attrs.anchorPage ? { 'data-anchor-page': String(node.attrs.anchorPage) } : {}),
@@ -246,7 +257,10 @@ export const Image = Node.create({
           const sel = state.selection;
           if (!(sel instanceof NodeSelection) || sel.node.type.name !== this.name) return false;
           // Picking a side means "put it there", so the imported offset goes with it.
-          if (dispatch) dispatch(state.tr.setNodeMarkup(sel.from, undefined, { ...sel.node.attrs, wrap, wrapOffset: null, wrapOffsetY: null }));
+          // A frame the file never floated has no distance either; give it the one a
+          // word processor's own wrap command writes (0.32cm).
+          const wrapDist = wrap === 'inline' ? sel.node.attrs.wrapDist : sel.node.attrs.wrapDist ?? 0.32;
+          if (dispatch) dispatch(state.tr.setNodeMarkup(sel.from, undefined, { ...sel.node.attrs, wrap, wrapDist, wrapOffset: null, wrapOffsetY: null }));
           return true;
         },
     };
@@ -428,7 +442,7 @@ class ImageView {
     delete d.dataset.anchorPage;
     if (wrap === 'left' || wrap === 'right') {
       d.style.float = wrap;
-      d.style.margin = frameMargins(wrap, a.wrapOffset, this.boxWidth());
+      d.style.margin = frameMargins(wrap, a.wrapOffset, this.boxWidth(), null, a.wrapDist);
     } else if (wrap === 'topBottom' && (a.wrapAlign === 'left' || a.wrapAlign === 'right')) {
       // Sharing its band with the frame set against the other end (the importers only
       // keep wrapAlign for such a pair): each floats to its own side, so both fit.

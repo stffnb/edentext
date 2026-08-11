@@ -379,7 +379,7 @@ function replaceSectionBreaks(doc: TiptapNode): TiptapNode {
 // bytes is ArrayBuffer-backed to match fflate's zip entry map. rotationDeg is CW;
 // wrap floats the frame at its anchor paragraph (left/right/top-bottom).
 type WrapMode = 'inline' | 'left' | 'right' | 'topBottom';
-type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number; wrap: WrapMode; wrapOffsetCm: number | null; wrapOffsetYCm: number | null; wrapAlign: string | null; anchorPage: number | null; vAlign: string | null };
+type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number; wrap: WrapMode; wrapOffsetCm: number | null; wrapOffsetYCm: number | null; wrapDistCm: number | null; wrapAlign: string | null; anchorPage: number | null; vAlign: string | null };
 
 function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
@@ -422,6 +422,7 @@ function imageDescriptor(node: TiptapNode, index: number, namePrefix = 'image'):
     wrap,
     wrapOffsetCm: typeof node.attrs?.wrapOffset === 'number' ? round3(node.attrs.wrapOffset) : null,
     wrapOffsetYCm: typeof node.attrs?.wrapOffsetY === 'number' ? round3(node.attrs.wrapOffsetY) : null,
+    wrapDistCm: typeof node.attrs?.wrapDist === 'number' ? round3(node.attrs.wrapDist) : null,
     wrapAlign: node.attrs?.wrapAlign === 'left' || node.attrs?.wrapAlign === 'right' ? node.attrs.wrapAlign : null,
     anchorPage: typeof node.attrs?.anchorPage === 'number' && node.attrs.anchorPage > 0 ? node.attrs.anchorPage : null,
     vAlign: typeof node.attrs?.vAlign === 'string' ? node.attrs.vAlign : null,
@@ -574,6 +575,7 @@ type TextBoxExport = {
   wrap: WrapMode;
   wrapOffsetCm: number | null;
   wrapOffsetYCm: number | null;
+  wrapDistCm: number | null;
   wrapAlign: string | null;
   paddingCm: number;
   shapeKind: ShapeKind;
@@ -598,6 +600,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' ? wrapAttr : 'inline',
     wrapOffsetCm: typeof a.wrapOffset === 'number' ? round3(a.wrapOffset) : null,
     wrapOffsetYCm: typeof a.wrapOffsetY === 'number' ? round3(a.wrapOffsetY) : null,
+    wrapDistCm: typeof a.wrapDist === 'number' ? round3(a.wrapDist) : null,
     wrapAlign: a.wrapAlign === 'center' || a.wrapAlign === 'right' ? a.wrapAlign : null,
     paddingCm: typeof a.paddingCm === 'number' ? round3(a.paddingCm) : TEXTBOX_PADDING_CM,
     shapeKind: kind === 'roundRect' || kind === 'ellipse' ? kind : 'textbox',
@@ -2797,10 +2800,12 @@ function imageTransform(img: ImageExport): string {
 // ODF style:wrap is the side TEXT flows on (inverse of the image side); horizontal-pos
 // places the frame on that side. topBottom ⇒ no wrap, centred.
 // An offset frame is placed by coordinate instead (svg:x on the frame).
-function imageWrapProps(wrap: WrapMode, offset: number | null, align?: string | null): string {
+function imageWrapProps(wrap: WrapMode, offset: number | null, align?: string | null, distCm?: number | null): string {
   const pos = offset != null ? 'from-left' : null;
-  if (wrap === 'left') return `style:wrap="right" style:horizontal-pos="${pos ?? 'left'}"`;
-  if (wrap === 'right') return `style:wrap="left" style:horizontal-pos="${pos ?? 'right'}"`;
+  // Only the text side is written; the frame's own offset covers the other one.
+  const gap = distCm ? ` fo:margin-${wrap === 'right' ? 'left' : 'right'}="${distCm}cm"` : '';
+  if (wrap === 'left') return `style:wrap="right" style:horizontal-pos="${pos ?? 'left'}"${gap}`;
+  if (wrap === 'right') return `style:wrap="left" style:horizontal-pos="${pos ?? 'right'}"${gap}`;
   return `style:wrap="none" style:horizontal-pos="${align ?? pos ?? 'center'}"`;
 }
 
@@ -2835,7 +2840,7 @@ function imageGraphicStyle(img: ImageExport, index: number): string {
   }
   return (
     `<style:style style:name="ImgFr${index + 1}" style:family="graphic">` +
-    `<style:graphic-properties ${imageWrapProps(img.wrap, img.wrapOffsetCm, img.wrapAlign)}` +
+    `<style:graphic-properties ${imageWrapProps(img.wrap, img.wrapOffsetCm, img.wrapAlign, img.wrapDistCm)}` +
     ` style:number-wrapped-paragraphs="no-limit"` +
     ` style:horizontal-rel="paragraph-content"` +
     ` style:vertical-pos="${img.wrapOffsetYCm != null ? 'from-top' : 'top'}" style:vertical-rel="paragraph"/>` +
@@ -3084,7 +3089,7 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   // frame, and the anchor paragraph this export mints carries no alignment.
   const wrap = box.wrap === 'inline'
     ? (box.wrapAlign ? ` style:horizontal-pos="${box.wrapAlign}" style:horizontal-rel="paragraph-content"` : '')
-    : ` ${imageWrapProps(box.wrap, box.wrapOffsetCm, box.wrapAlign)} style:number-wrapped-paragraphs="no-limit"` +
+    : ` ${imageWrapProps(box.wrap, box.wrapOffsetCm, box.wrapAlign, box.wrapDistCm)} style:number-wrapped-paragraphs="no-limit"` +
       ` style:horizontal-rel="paragraph-content"` +
       ` style:vertical-pos="${box.wrapOffsetYCm != null ? 'from-top' : 'top'}" style:vertical-rel="paragraph"`;
   // auto-grow only for plain text boxes; a custom-shape needs both explicitly
