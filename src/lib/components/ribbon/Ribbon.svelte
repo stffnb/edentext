@@ -4,6 +4,7 @@
   import RibbonMenu from './RibbonMenu.svelte';
   import HistoryButton from '../HistoryButton.svelte';
   import HomeTab from './tabs/HomeTab.svelte';
+  import InsertTab from './tabs/InsertTab.svelte';
   import UiLanguagePicker from '../UiLanguagePicker.svelte';
   import { clickOutside, isMenuOpen, toggleMenu, closeMenu } from './menu.svelte';
   import { t } from '../../i18n/i18n.svelte';
@@ -11,6 +12,10 @@
   import { shortcutHint } from '../../editor/shortcuts';
   import type { ChromeMode, ThemeMode } from '../../storage/theme';
   import type { StyleFamily } from '../../styles/styleSheet';
+  import type { PageMargins } from '../../storage/pageMargins';
+  import type { Orientation } from '../../storage/pageOrientation';
+  import type { PageFormat } from '../../storage/pageFormat';
+  import type { HfZone } from '../../storage/headerFooter';
 
   let {
     editor,
@@ -18,7 +23,13 @@
     chromeMode = $bindable<ChromeMode>('ribbon'),
     documentName = $bindable(''),
     showFormattingMarks = $bindable(false),
+    pageMargins,
+    pageOrientation,
+    pageFormat,
+    hfActive = null,
     onManageStyles,
+    onManageTableStyles,
+    onEditZone,
     onFind,
     namePlaceholder = '',
     themeMode = 'auto',
@@ -32,7 +43,13 @@
     chromeMode?: ChromeMode;
     documentName?: string;
     showFormattingMarks?: boolean;
+    pageMargins: PageMargins;
+    pageOrientation: Orientation;
+    pageFormat: PageFormat;
+    hfActive?: HfZone | null;
     onManageStyles?: (family: StyleFamily) => void;
+    onManageTableStyles?: (family: StyleFamily) => void;
+    onEditZone?: (zone: HfZone) => void;
     onFind?: (mode: 'find' | 'replace') => void;
     namePlaceholder?: string;
     themeMode?: ThemeMode;
@@ -185,6 +202,8 @@
   <div class="ribbon-body">
     {#if tab === 'home'}
       <HomeTab {editor} {tick} bind:showFormattingMarks {onManageStyles} {onFind} />
+    {:else if tab === 'insert'}
+      <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} {onEditZone} {onManageTableStyles} />
     {/if}
   </div>
 </div>

@@ -832,7 +832,13 @@
       bind:chromeMode
       bind:documentName
       bind:showFormattingMarks
+      {pageMargins}
+      {pageOrientation}
+      {pageFormat}
+      {hfActive}
       onManageStyles={openStyleManager}
+      onManageTableStyles={() => openStyleManager('table')}
+      onEditZone={(zone) => (hfActive = zone)}
       onFind={openFind}
       {namePlaceholder}
       {themeMode}
