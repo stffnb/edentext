@@ -3582,7 +3582,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withHf = applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.
-  const withSections = applySectionMasterPages(withHf, hf?.sections ?? [], hf?.pageCount ?? 1);
+  const withSections = applySectionMasterPages(withHf, hf?.sections ?? [], hf?.pageCount ?? 1, margins);
   return applySpacingModel(withSections, spacingModel);
 }
 
@@ -3832,7 +3832,7 @@ function masterPageXml(name: string, layoutName: string, set: HfSet, pageCount: 
 
 // Point each SEC-marked block at its section's master page (ODF's only per-section
 // header/footer), minting the master pages beside the Standard one odf-kit wrote.
-function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount: number): Uint8Array {
+function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount: number, margins: PageMargins): Uint8Array {
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
   const stylesBytes = files['styles.xml'];
@@ -3865,16 +3865,32 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
     content = injectAutomaticStyles(content, minted.join(''));
   }
 
-  // Reuse the page layout odf-kit gave the Standard master page: the geometry is
-  // document-wide, only the zones differ per section.
+  // The page layout odf-kit gave the Standard master page: reused as is by a section
+  // whose margins are the document's, cloned with them shifted by a section that has
+  // its own — a shift, so whatever the header/footer pass folded into it survives.
   const layout = /<style:master-page\b[^>]*style:page-layout-name="([^"]*)"/.exec(styles)?.[1] ?? 'pm1';
+  const layoutXml = new RegExp(`<style:page-layout\\b[^>]*style:name="${layout}"[\\s\\S]*?</style:page-layout>`).exec(styles)?.[0] ?? null;
+  const layouts: string[] = [];
+  const layoutFor = (index: number, set: HfSet): string => {
+    const m = set.margins;
+    if (!m || !layoutXml) return layout;
+    const name = `${layout}Sec${index + 1}`;
+    layouts.push(layoutXml
+      .replace(`style:name="${layout}"`, `style:name="${name}"`)
+      .replace(/<style:page-layout-properties\b[^>]*>/, (props) =>
+        (['top', 'bottom', 'left', 'right'] as const).reduce((p, side) =>
+          p.replace(new RegExp(`fo:margin-${side}="([\\d.]+)cm"`), (_x, cm: string) =>
+            `fo:margin-${side}="${Math.max(0, Math.round((parseFloat(cm) + m[side] - margins[side]) * 1000) / 1000)}cm"`), props)));
+    return name;
+  };
   const hfStyles: string[] = [];
   const pages: string[] = [];
   for (const index of [...used].sort((a, b) => a - b)) {
     const set = sets[index];
     if (!set) continue;
-    pages.push(masterPageXml(`Section${index + 1}`, layout, set, pageCount, (x) => hfStyles.push(x), `MS${index}`));
+    pages.push(masterPageXml(`Section${index + 1}`, layoutFor(index, set), set, pageCount, (x) => hfStyles.push(x), `MS${index}`));
   }
+  if (layouts.length) styles = styles.replace('</office:automatic-styles>', `${layouts.join('')}</office:automatic-styles>`);
   if (pages.length) styles = styles.replace('</office:master-styles>', `${pages.join('')}</office:master-styles>`);
   if (hfStyles.length) {
     const defs = hfStyles.join('');

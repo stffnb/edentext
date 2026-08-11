@@ -10,6 +10,9 @@ import { importOdt } from '../src/lib/import/odt';
 import { hfExtensions } from '../src/lib/editor/extensions/headerFooter';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
 import { builtinStyleSheet } from '../src/lib/styles/styleSheet';
+import { buildDocx } from '../src/lib/export/docx';
+import { importDocx } from '../src/lib/import/docx';
+import { EMPTY_HF_SET } from '../src/lib/storage/headerFooter';
 
 type N = any;
 
@@ -1589,5 +1592,38 @@ describe('Leg 13: named character styles (ODF)', () => {
     const imported = importOdt(bytes).styles.character['Signal'];
     check('the character style itself round-trips',
       imported?.text.bold === true && imported?.text.color === '#CC0000', imported);
+  });
+});
+
+describe('Leg 12: per-section page margins (ODT + DOCX)', () => {
+  const secDoc: N = {
+    type: 'doc',
+    content: [
+      P(null, T('first section')),
+      P({ sectionBreak: true, breakBefore: 'page' }, T('second section')),
+    ],
+  };
+  const wide = { top: 1, bottom: 1.91, left: 3.18, right: 2.41 };
+  const sections = [
+    { ...EMPTY_HF_SET },
+    { ...EMPTY_HF_SET, margins: wide },
+  ];
+
+  it('ODT: the section gets a page layout of its own, shifted off the document one', async () => {
+    const bytes = await buildOdt(secDoc, margins, 'portrait', { sections, pageCount: 2 });
+    const styles = strFromU8(unzipSync(bytes)['styles.xml']);
+    check('section master points at its own layout', /<style:master-page style:name="Section2" style:page-layout-name="([^"]*)Sec2"/.test(styles), styles.slice(0, 200));
+    const res = importOdt(bytes);
+    check('document margins unchanged', JSON.stringify(res.margins) === JSON.stringify(margins), res.margins);
+    const back = res.hfSections?.[1]?.margins ?? null;
+    check('section margins round-trip', JSON.stringify(back) === JSON.stringify(wide), back);
+  });
+
+  it('DOCX: each sectPr carries its own w:pgMar', async () => {
+    const bytes = await buildDocx(secDoc, margins, 'portrait', { sections, pageCount: 2 });
+    const res = importDocx(bytes);
+    check('document margins unchanged', JSON.stringify(res.margins) === JSON.stringify(margins), res.margins);
+    const back = res.hfSections?.[1]?.margins ?? null;
+    check('section margins round-trip', JSON.stringify(back) === JSON.stringify(wide), back);
   });
 });

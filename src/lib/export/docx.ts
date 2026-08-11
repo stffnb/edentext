@@ -1247,16 +1247,20 @@ export async function buildDocx(
   const headerDist = Math.min(hf?.headerDistanceCm ?? HF_DISTANCE_CM, margins.top);
   const footerDist = Math.min(hf?.footerDistanceCm ?? HF_DISTANCE_CM, margins.bottom);
 
-  // Identical page geometry on every sectPr (Word requires it per section). Fresh
+  // Page geometry rides every sectPr (Word requires it per section); the size is
+  // document-wide, the margins are the section's own where it has them. Fresh
   // Header/Footer instances per section so each sectPr — including the body-final
   // one our importer reads — carries its own references (Word's "Link to Previous").
-  const pageProps = {
-    size: { width: cmToTwip(pageWidthCm), height: cmToTwip(pageHeightCm), orientation: landscape ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT },
-    margin: {
-      top: cmToTwip(margins.top), bottom: cmToTwip(margins.bottom),
-      left: cmToTwip(margins.left), right: cmToTwip(margins.right),
-      header: cmToTwip(headerDist), footer: cmToTwip(footerDist),
-    },
+  const pagePropsFor = (i: number) => {
+    const m = setAt(i).margins ?? margins;
+    return {
+      size: { width: cmToTwip(pageWidthCm), height: cmToTwip(pageHeightCm), orientation: landscape ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT },
+      margin: {
+        top: cmToTwip(m.top), bottom: cmToTwip(m.bottom),
+        left: cmToTwip(m.left), right: cmToTwip(m.right),
+        header: cmToTwip(Math.min(headerDist, m.top)), footer: cmToTwip(Math.min(footerDist, m.bottom)),
+      },
+    };
   };
   // Fresh instances per section (Word's per-sectPr references, i.e. no "Link to
   // Previous"). A first-page variant rides `first:` and is activated by titlePage below.
@@ -1292,7 +1296,7 @@ export async function buildDocx(
     // BEFORE a section, so it goes on every section but the first.
     sections: groups.map((g, i) => ({
       properties: {
-        page: pageProps,
+        page: pagePropsFor(g.section),
         ...(setAt(g.section).differentFirstPage ? { titlePage: true } : {}),
         ...(i > 0 ? { type: SectionType.CONTINUOUS } : {}),
         ...(g.columns

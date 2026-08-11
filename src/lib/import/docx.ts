@@ -170,8 +170,9 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
 
   // Odd/even pages: a document-level setting (settings.xml), not a section property.
   const oddEven = docHasEvenOddHeaders(files);
-  // Page geometry stays document-wide, from the body-final sectPr; only the zones are
-  // per section. A file whose sections disagree on geometry keeps the last one's.
+  // Page size stays document-wide, from the body-final sectPr; the margins are the
+  // first section's, since that is the pair .tiptap's padding draws and every later
+  // section is measured against (Editor.svelte's --pb-section-inset).
   const sect = parseSectPr(finalSectPr, ctx, oddEven);
   const hfSections = sectionHfSets(groups.map((g) => g.sectPr ?? finalSectPr), ctx, oddEven);
   const first = hfSections[0];
@@ -183,7 +184,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   return {
     content: { type: 'doc', content: blocks },
     styles: collectStyleSheet(ctx),
-    margins: sect.margins,
+    margins: first.margins ?? sect.margins,
     orientation: sect.orientation,
     format: sect.format,
     tabIntervalCm: docTabInterval(files),

@@ -152,7 +152,9 @@ function extractLayout() {
       });
     }
   }
-  const numPages = words.length ? Math.max(...words.map((w) => w.page)) + 1 : 1;
+  // Folded, not spread: a several-hundred-page document has more words than a call
+  // takes arguments, and Math.max(...words) then blows the stack instead of measuring.
+  const numPages = words.reduce((m, w) => (w.page > m ? w.page : m), 0) + 1;
   const pages = Array.from({ length: numPages }, (_, i) => ({
     words: words.filter((w) => w.page === i).map(({ page, ...r }) => r),
     width: pageW * PX_MM,
