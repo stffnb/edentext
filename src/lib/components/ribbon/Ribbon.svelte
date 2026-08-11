@@ -5,6 +5,7 @@
   import HistoryButton from '../HistoryButton.svelte';
   import HomeTab from './tabs/HomeTab.svelte';
   import InsertTab from './tabs/InsertTab.svelte';
+  import LayoutTab from './tabs/LayoutTab.svelte';
   import UiLanguagePicker from '../UiLanguagePicker.svelte';
   import { clickOutside, isMenuOpen, toggleMenu, closeMenu } from './menu.svelte';
   import { t } from '../../i18n/i18n.svelte';
@@ -12,7 +13,7 @@
   import { shortcutHint } from '../../editor/shortcuts';
   import type { ChromeMode, ThemeMode } from '../../storage/theme';
   import type { StyleFamily } from '../../styles/styleSheet';
-  import type { PageMargins } from '../../storage/pageMargins';
+  import { DEFAULT_MARGINS, type PageMargins } from '../../storage/pageMargins';
   import type { Orientation } from '../../storage/pageOrientation';
   import type { PageFormat } from '../../storage/pageFormat';
   import type { HfZone } from '../../storage/headerFooter';
@@ -23,9 +24,9 @@
     chromeMode = $bindable<ChromeMode>('ribbon'),
     documentName = $bindable(''),
     showFormattingMarks = $bindable(false),
-    pageMargins,
-    pageOrientation,
-    pageFormat,
+    pageMargins = $bindable(DEFAULT_MARGINS),
+    pageOrientation = $bindable<Orientation>('portrait'),
+    pageFormat = $bindable<PageFormat>('A4'),
     hfActive = null,
     onManageStyles,
     onManageTableStyles,
@@ -43,9 +44,9 @@
     chromeMode?: ChromeMode;
     documentName?: string;
     showFormattingMarks?: boolean;
-    pageMargins: PageMargins;
-    pageOrientation: Orientation;
-    pageFormat: PageFormat;
+    pageMargins?: PageMargins;
+    pageOrientation?: Orientation;
+    pageFormat?: PageFormat;
     hfActive?: HfZone | null;
     onManageStyles?: (family: StyleFamily) => void;
     onManageTableStyles?: (family: StyleFamily) => void;
@@ -204,6 +205,8 @@
       <HomeTab {editor} {tick} bind:showFormattingMarks {onManageStyles} {onFind} />
     {:else if tab === 'insert'}
       <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} {onEditZone} {onManageTableStyles} />
+    {:else if tab === 'layout'}
+      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat />
     {/if}
   </div>
 </div>

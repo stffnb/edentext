@@ -832,9 +832,9 @@
       bind:chromeMode
       bind:documentName
       bind:showFormattingMarks
-      {pageMargins}
-      {pageOrientation}
-      {pageFormat}
+      bind:pageMargins
+      bind:pageOrientation
+      bind:pageFormat
       {hfActive}
       onManageStyles={openStyleManager}
       onManageTableStyles={() => openStyleManager('table')}

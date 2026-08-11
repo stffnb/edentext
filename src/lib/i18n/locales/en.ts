@@ -474,6 +474,7 @@ const en = {
       headerFooter: 'Header & Footer',
       text: 'Text',
       symbols: 'Symbols',
+      pageSetup: 'Page Setup',
       editing: 'Editing',
     },
     case: {
@@ -504,6 +505,20 @@ const en = {
     table: 'Table',
     dateTime: 'Date & time',
     symbol: 'Symbol',
+    margins: 'Margins',
+    size: 'Size',
+    breaks: 'Breaks',
+    sectionBreak: 'Section break',
+    sectionBreakHint: 'Starts its own header and footer',
+    indentLeft: 'Indent left',
+    indentRight: 'Indent right',
+    spaceBefore: 'Space before',
+    spaceAfter: 'Space after',
+    marginPresets: {
+      normal: 'Normal',
+      narrow: 'Narrow',
+      wide: 'Wide',
+    },
     chrome: {
       title: 'Toolbar style',
       ribbon: 'Ribbon',

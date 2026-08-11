@@ -470,6 +470,7 @@ const de: Messages = {
       headerFooter: 'Kopf- und Fußzeile',
       text: 'Text',
       symbols: 'Symbole',
+      pageSetup: 'Seite einrichten',
       editing: 'Bearbeiten',
     },
     case: {
@@ -500,6 +501,20 @@ const de: Messages = {
     table: 'Tabelle',
     dateTime: 'Datum & Uhrzeit',
     symbol: 'Symbol',
+    margins: 'Seitenränder',
+    size: 'Größe',
+    breaks: 'Umbrüche',
+    sectionBreak: 'Abschnittsumbruch',
+    sectionBreakHint: 'Beginnt eine eigene Kopf- und Fußzeile',
+    indentLeft: 'Einzug links',
+    indentRight: 'Einzug rechts',
+    spaceBefore: 'Abstand davor',
+    spaceAfter: 'Abstand danach',
+    marginPresets: {
+      normal: 'Normal',
+      narrow: 'Schmal',
+      wide: 'Breit',
+    },
     chrome: {
       title: 'Symbolleisten-Stil',
       ribbon: 'Menüband',
