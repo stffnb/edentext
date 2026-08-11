@@ -627,7 +627,12 @@ export const PageBreaks = Extension.create({
             let top = 0;
             let node: HTMLElement | null = el;
             while (node && node !== dom) {
-              top += node.offsetTop;
+              // A block spaced above single is drawn half a leading above its flow
+              // position (editor.css), and offsetTop reports where it is drawn — so the
+              // shift comes back off, or the flow inherits a paint correction.
+              const cs = getComputedStyle(node);
+              const shift = cs.position === 'relative' ? parseFloat(cs.top) : 0;
+              top += node.offsetTop - (Number.isFinite(shift) ? shift : 0);
               node = node.offsetParent as HTMLElement | null;
             }
             return top;
