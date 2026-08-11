@@ -1250,12 +1250,15 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // A style:master-page-name switches the page master, which is how ODF gives a section
   // its own header/footer; the block that does it opens that section.
   const master = kind === 'body' ? resolver.masterPageOf(styleName) : null;
-  if (master && ctx.masterPages[ctx.masterPages.length - 1] !== master) {
-    ctx.masterPages.push(master);
-    attrs.sectionBreak = true;
-    // Switching the page master starts a new page in LibreOffice, always — except for
-    // the master the document opens with, which is where the text already is.
-    if (ctx.masterPages.length > 1) attrs.breakBefore = 'page';
+  if (master) {
+    // Naming a master *is* a page break, even where the page already uses that one
+    // (probed) — which is how a book starts every chapter on a fresh page. Only the
+    // document's first block has nothing above it to break from.
+    if (ctx.masterBlocks.size) attrs.breakBefore = 'page';
+    if (ctx.masterPages[ctx.masterPages.length - 1] !== master) {
+      ctx.masterPages.push(master);
+      attrs.sectionBreak = true;
+    }
   }
   // '' = the file's own default master, which the blocks before the first switch use.
   const governing = kind === 'body' ? ctx.masterPages[ctx.masterPages.length - 1] ?? '' : null;

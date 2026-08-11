@@ -519,8 +519,10 @@ export class StyleResolver {
     while (cur && !seen.has(cur)) {
       seen.add(cur);
       const el = this.paraStyleEls.get(cur);
+      // Present but empty is LibreOffice's explicit "no page style change", so it ends
+      // the walk instead of letting an ancestor's break through to every child style.
       const name = el?.getAttributeNS(NS.style, 'master-page-name');
-      if (name) return name;
+      if (name != null) return name || null;
       cur = this.styles.get(`paragraph\0${cur}`)?.parent ?? null;
     }
     return null;
