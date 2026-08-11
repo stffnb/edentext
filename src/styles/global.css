@@ -275,6 +275,7 @@
   --w-hover: #f3f2f1;
   --w-pressed: #edebe9;
   --w-active: #e2e0de;
+  --w-accent-soft: #e8f1fb;
   --w-menu-shadow: 0 8px 24px rgb(0 0 0 / 18%);
   --w-font: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   /* Body height: three control rows plus the group-label row. A tuning knob. */
@@ -296,8 +297,31 @@
   animation: menu-in 0.14s ease;
 }
 
-/* Rows inside a ribbon menu. Global because the panel (RibbonMenu.svelte) renders
-   its rows from a caller's snippet, which Svelte scopes to that caller. */
+/* The ribbon's dropdown panel and its rows. Global because the panel renders its
+   contents from a caller's snippet, which Svelte scopes to that caller. */
+/* `anchored` (menu.svelte.ts) switches this to position: fixed and pins it under
+   the trigger — the ribbon band clips its own overflow, so a panel has to leave
+   the flow to be seen. z-index clears the classic island (200) and the editor's
+   own overlays. */
+.ribbon-menu {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 5px;
+  background: var(--w-surface);
+  border: 1px solid var(--w-border-strong);
+  border-radius: 6px;
+  box-shadow: var(--w-menu-shadow);
+  font-family: var(--w-font);
+  color: var(--w-text);
+}
+
+.ribbon-menu.right { left: auto; right: 0; }
+
 .ribbon-menu button {
   display: flex;
   align-items: center;
@@ -325,6 +349,87 @@
 .ribbon-menu .menu-sub { margin-left: auto; padding-left: 16px; color: var(--w-text-dim); }
 .ribbon-menu .menu-key { font-size: 12px; }
 .ribbon-menu .menu-sub { font-size: 11px; }
+
+/* Section label above a run of rows, and the sticky action row below the list. */
+.ribbon-menu .rb-menu-label {
+  padding: 6px 12px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--w-text-tertiary);
+  user-select: none;
+}
+
+.ribbon-menu .rb-menu-foot {
+  flex-shrink: 0;
+  margin: 4px -5px -5px;
+  width: auto;
+  border-top: 1px solid var(--w-border);
+  border-radius: 0 0 5px 5px;
+  font-weight: 600;
+  color: var(--w-accent);
+}
+
+/* Between two ribbon groups, and between two runs of buttons inside one. */
+.ribbon-sep {
+  width: 1px;
+  flex-shrink: 0;
+  background: var(--w-border);
+  margin: 2px 6px;
+}
+
+.rb-mini-sep {
+  width: 1px;
+  height: 20px;
+  flex-shrink: 0;
+  background: var(--w-border);
+  margin: 0 4px;
+}
+
+/* Combo box: a borderless input welded to a caret button, as in Word's font and
+   size fields. */
+.rb-combo-wrap { position: relative; }
+
+.rb-combo {
+  display: flex;
+  align-items: stretch;
+  height: 28px;
+  border: 1px solid var(--w-border-strong);
+  border-radius: 3px;
+  background: var(--w-surface);
+  overflow: hidden;
+}
+
+.rb-combo:hover,
+.rb-combo:focus-within { border-color: var(--w-accent); }
+
+.rb-combo-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 0 4px;
+  color: var(--w-text);
+  font-family: var(--w-font);
+  font-size: 12px;
+}
+
+.rb-combo-input:focus { outline: none; }
+
+.rb-combo-caret {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  border: none;
+  border-left: 1px solid var(--w-border);
+  background: none;
+  color: var(--w-text-dim);
+  cursor: pointer;
+}
+
+.rb-combo-caret:hover { background: var(--w-hover); }
 .ribbon-menu hr { border: none; border-top: 1px solid var(--w-border); margin: 4px 2px; }
 
 /* Scrolling body of a popup menu. Only this inner box scrolls; the panel keeps

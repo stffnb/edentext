@@ -3,18 +3,23 @@
   import Icon from './Icon.svelte';
   import RibbonMenu from './RibbonMenu.svelte';
   import HistoryButton from '../HistoryButton.svelte';
+  import HomeTab from './tabs/HomeTab.svelte';
   import UiLanguagePicker from '../UiLanguagePicker.svelte';
   import { clickOutside, isMenuOpen, toggleMenu, closeMenu } from './menu.svelte';
   import { t } from '../../i18n/i18n.svelte';
   import { withShortcut } from '../../i18n/shortcut';
   import { shortcutHint } from '../../editor/shortcuts';
   import type { ChromeMode, ThemeMode } from '../../storage/theme';
+  import type { StyleFamily } from '../../styles/styleSheet';
 
   let {
     editor,
     tick,
     chromeMode = $bindable<ChromeMode>('ribbon'),
     documentName = $bindable(''),
+    showFormattingMarks = $bindable(false),
+    onManageStyles,
+    onFind,
     namePlaceholder = '',
     themeMode = 'auto',
     onSelectTheme,
@@ -26,6 +31,9 @@
     tick: number;
     chromeMode?: ChromeMode;
     documentName?: string;
+    showFormattingMarks?: boolean;
+    onManageStyles?: (family: StyleFamily) => void;
+    onFind?: (mode: 'find' | 'replace') => void;
     namePlaceholder?: string;
     themeMode?: ThemeMode;
     onSelectTheme?: (mode: ThemeMode) => void;
@@ -58,7 +66,7 @@
 
 <div class="ribbon">
   <div class="ribbon-tabs">
-    <div class="file-tab-wrap" use:clickOutside>
+    <div class="file-tab-wrap" use:clickOutside={'file'}>
       <button
         class="ribbon-tab-file"
         class:open={isMenuOpen('file')}
@@ -140,7 +148,7 @@
       <span class="doc-name-ext">.odt</span>
     </div>
 
-    <div class="appearance-wrap" use:clickOutside>
+    <div class="appearance-wrap" use:clickOutside={'appearance'}>
       <button
         class="qa-btn"
         class:open={isMenuOpen('appearance')}
@@ -160,7 +168,7 @@
             {t().ribbon.chrome.classic}<span class="menu-sub">{t().ribbon.chrome.classicHint}</span>
           </button>
           <hr />
-          <div class="menu-heading">{t().appearance.title}</div>
+          <div class="rb-menu-label">{t().appearance.title}</div>
           {#each (['light', 'dark', 'allBlack', 'auto'] as const) as m}
             <button class:selected={themeMode === m} onclick={() => { onSelectTheme?.(m); closeMenu(); }}>
               {t().appearance[m]}
@@ -176,7 +184,7 @@
 
   <div class="ribbon-body">
     {#if tab === 'home'}
-      <!-- tabs land here phase by phase -->
+      <HomeTab {editor} {tick} bind:showFormattingMarks {onManageStyles} {onFind} />
     {/if}
   </div>
 </div>
@@ -288,17 +296,6 @@
   .ribbon-tabs-spacer { flex: 1; }
 
   .appearance-wrap { position: relative; }
-
-  /* The heading style RibbonMenu applies to its own `heading` prop, for the second
-     section of a menu that has two. */
-  .menu-heading {
-    padding: 4px 12px 6px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--w-text-tertiary);
-  }
 
   /* The name field grows with its text: the sizer mirrors the value and lends the
      input its width. */

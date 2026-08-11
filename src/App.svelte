@@ -831,6 +831,9 @@
       tick={activeTick}
       bind:chromeMode
       bind:documentName
+      bind:showFormattingMarks
+      onManageStyles={openStyleManager}
+      onFind={openFind}
       {namePlaceholder}
       {themeMode}
       onSelectTheme={selectTheme}
