@@ -87,14 +87,23 @@ editor (`global.css`), so give LibreOffice the same answer:
 What the real-world fixtures — the contract (an IHK contract
 form), the summary (a student summary: bullets, wrapped
 pictures, one table), the thesis (a 48-page thesis with charts, metafile figures and
-a German TOC) and the Math Guide (LibreOffice's own 63-page Math Guide: a title page,
-a three-page index, per-section masters, ~35 figure frames and 400 formulas) — still
-report. Both run one page off LibreOffice (thesis 48 against 49, Math Guide 64 against 63),
-in each case downstream of a line the rules below cost or gained:
+a German TOC) the Math Guide (LibreOffice's own 63-page Math Guide: a title page,
+a three-page index, per-section masters, ~35 figure frames and 400 formulas) and
+the Writer Guide (its 458-page Writer Guide) — still report. The two guides and
+the thesis run off LibreOffice on page count (thesis 48 against 49, Math Guide 64 against
+63, Writer Guide 477 against 458), in each case downstream of a line the rules below cost
+or gained:
 
 - **A page-anchored frame's coordinates are its page's, but a frame in a *header* keeps
   the ones its zone gives it.** Both are drawn out of flow; the body one (`anchorPage`,
   `image.ts`) sits behind the text at `--page-cycle` × (page − 1) + its `svg:y`.
+- **An index entry keeps its heading's hard break.** A book's chapter heading is its
+  number and its title on two lines, and both producers copy that break into the entry —
+  the Writer Guide's contents is 18 rows shorter without it. The leader and the page
+  number ride the entry's last line (`align-items: last baseline`).
+- **The 458-page Writer Guide is a frontier of its own**: 19 pages over LibreOffice, with
+  the drift accumulating (its index is one page short at "Autoformatting", two long by
+  "Index"). Nothing in it has been diagnosed past the contents.
 - **The index is its own pagination.** A generated TOC is a block atom, so pagination has
   no inner position to put a spacer at; the node view breaks it between entries itself
   (`tableOfContents.ts`) and asks for one recompute when that changes its height.
