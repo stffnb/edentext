@@ -209,6 +209,13 @@ export const Image = Node.create({
         parseHTML: el => (el as HTMLElement).getAttribute('data-v-align') || null,
         renderHTML: () => ({}),
       },
+      // A page-anchored frame's stacking against text (ODF style:run-through): default
+      // "background" sits behind; a title page's own cover graphic sets "foreground".
+      inFront: {
+        default: false,
+        parseHTML: el => (el as HTMLElement).hasAttribute('data-in-front'),
+        renderHTML: () => ({}),
+      },
     };
   },
 
@@ -240,6 +247,7 @@ export const Image = Node.create({
       ...(node.attrs.wrapAlign ? { 'data-wrap-align': String(node.attrs.wrapAlign) } : {}),
       ...(node.attrs.vAlign ? { 'data-v-align': String(node.attrs.vAlign) } : {}),
       ...(node.attrs.anchorPage ? { 'data-anchor-page': String(node.attrs.anchorPage) } : {}),
+      ...(node.attrs.inFront ? { 'data-in-front': '' } : {}),
     })];
   },
 
@@ -467,15 +475,16 @@ class ImageView {
       ? `${Math.round(cmToPx(x)) + (parseFloat(this.rotor.style.width) || 0) / 2}px` : '';
   }
 
-  // Placed from its page's top-left corner (--page-cycle is the page plus the gap) and
-  // behind the text, like the header layer's page background. Its paragraph collapses to
-  // nothing (editor.css), so the frame takes no flow space.
+  // Placed from its page's top-left corner (--page-cycle is the page plus the gap), behind
+  // the text like the header layer's page background — unless the file's own run-through
+  // says otherwise (inFront). Its paragraph collapses to nothing (editor.css), so it takes
+  // no flow space either way.
   private applyPageAnchor(page: number): void {
     const d = this.dom;
     d.dataset.anchorPage = String(page);
     const px = (cm: unknown) => Math.round(cmToPx(typeof cm === 'number' ? cm : 0));
     d.style.position = 'absolute';
-    d.style.zIndex = '-1';
+    d.style.zIndex = this.node.attrs.inFront ? '1' : '-1';
     d.style.left = `${px(this.node.attrs.wrapOffset)}px`;
     d.style.top = `calc(${page - 1} * var(--page-cycle) + ${px(this.node.attrs.wrapOffsetY)}px)`;
   }

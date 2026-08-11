@@ -175,10 +175,14 @@
 }
 
 /* A page-anchored frame is placed from its page corner and is out of the flow, so the
-   paragraph the importer hoists it into reserves no space (image.ts). */
+   paragraph the importer hoists it into reserves no space (image.ts). !important: several
+   other paragraph rules below set their own `position: relative` (line-height shift, the
+   trailing-break spacer) — any of those would make this paragraph the frame's containing
+   block instead of the page, offsetting it by a page margin. */
 .paper .tiptap p:has(> [data-anchor-page]) {
   height: 0;
   margin: 0;
+  position: static !important;
 }
 
 /* Paragraph "colored field" + rule line (paragraphBox.ts). Background-color and per-side

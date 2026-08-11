@@ -202,6 +202,9 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
     attrs.anchorPage = Number.isInteger(page) && page > 0 ? page : 1;
     attrs.wrapOffset = Math.max(0, lengthToCm(el.getAttributeNS(NS.svg, 'x')) ?? 0);
     attrs.wrapOffsetY = Math.max(0, lengthToCm(el.getAttributeNS(NS.svg, 'y')) ?? 0);
+    // "background" (LibreOffice's default for a new one) sits behind text; a cover
+    // page's own graphic instead declares "foreground" to sit in front of everything.
+    if (gp['style:run-through'] === 'foreground') attrs.inFront = true;
   }
 }
 

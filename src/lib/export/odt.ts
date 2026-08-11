@@ -379,7 +379,7 @@ function replaceSectionBreaks(doc: TiptapNode): TiptapNode {
 // bytes is ArrayBuffer-backed to match fflate's zip entry map. rotationDeg is CW;
 // wrap floats the frame at its anchor paragraph (left/right/top-bottom).
 type WrapMode = 'inline' | 'left' | 'right' | 'topBottom';
-type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number; wrap: WrapMode; wrapOffsetCm: number | null; wrapOffsetYCm: number | null; wrapDistCm: number | null; wrapAlign: string | null; anchorPage: number | null; vAlign: string | null };
+type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number; wrap: WrapMode; wrapOffsetCm: number | null; wrapOffsetYCm: number | null; wrapDistCm: number | null; wrapAlign: string | null; anchorPage: number | null; vAlign: string | null; inFront: boolean };
 
 function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
@@ -426,6 +426,7 @@ function imageDescriptor(node: TiptapNode, index: number, namePrefix = 'image'):
     wrapAlign: node.attrs?.wrapAlign === 'left' || node.attrs?.wrapAlign === 'right' ? node.attrs.wrapAlign : null,
     anchorPage: typeof node.attrs?.anchorPage === 'number' && node.attrs.anchorPage > 0 ? node.attrs.anchorPage : null,
     vAlign: typeof node.attrs?.vAlign === 'string' ? node.attrs.vAlign : null,
+    inFront: node.attrs?.inFront === true,
   };
 }
 
@@ -2824,7 +2825,7 @@ function imageGraphicStyle(img: ImageExport, index: number): string {
   if (img.anchorPage) {
     return (
       `<style:style style:name="ImgFr${index + 1}" style:family="graphic">` +
-      `<style:graphic-properties style:wrap="run-through" style:run-through="background"` +
+      `<style:graphic-properties style:wrap="run-through" style:run-through="${img.inFront ? 'foreground' : 'background'}"` +
       ` style:horizontal-rel="page" style:horizontal-pos="from-left"` +
       ` style:vertical-rel="page" style:vertical-pos="from-top"/></style:style>`
     );

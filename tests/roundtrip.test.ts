@@ -648,6 +648,36 @@ describe('Leg 1e: table margins (dragged outer edges)', () => {
   });
 });
 
+describe('Leg 1f: page-anchored frame (cover graphic) stacking', () => {
+  // A cover page's own graphic sits in front of text (ODF style:run-through="foreground");
+  // the default — no attr — is the usual behind-text watermark case.
+  const doc: N = { type: 'doc', content: [
+    P(null, { type: 'image', attrs: { src: PNG, width: 60, height: 40, anchorPage: 1, inFront: true } }),
+  ] };
+
+  it('exports style:run-through="foreground" and re-imports inFront', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('export writes foreground run-through', xml.includes('style:run-through="foreground"'), xml.match(/style:run-through="[^"]*"/g));
+
+    const res = importOdt(bytes);
+    check('no warnings on own export', res.warnings.length === 0, res.warnings);
+    const img = collectImages(res.content).find((i: N) => i.attrs?.anchorPage);
+    check('page and foreground stacking round-trip', img?.attrs?.anchorPage === 1 && img?.attrs?.inFront === true, img?.attrs);
+  });
+
+  it('defaults to background (no inFront) when the file has none', async () => {
+    const behind: N = { type: 'doc', content: [
+      P(null, { type: 'image', attrs: { src: PNG, width: 60, height: 40, anchorPage: 1 } }),
+    ] };
+    const bytes = await buildOdt(behind, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('export writes background run-through', xml.includes('style:run-through="background"'), xml.match(/style:run-through="[^"]*"/g));
+    const img = collectImages(importOdt(bytes).content).find((i: N) => i.attrs?.anchorPage);
+    check('inFront stays unset', !img?.attrs?.inFront, img?.attrs);
+  });
+});
+
 describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
   it('resolves named/automatic styles, repeated cells, lists, and reports degradations', () => {
     const stylesXml = `<?xml version="1.0" encoding="UTF-8"?>
