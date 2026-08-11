@@ -106,10 +106,9 @@
     type Run = { type?: string; attrs?: { height?: number; wrap?: string }; marks?: { type?: string; attrs?: { fontSize?: string; fontFamily?: string } }[] };
     const para = doc.content?.[0] as { content?: Run[]; attrs?: { spaceBefore?: number; spaceAfter?: number; fontSize?: string; fontFamily?: string } } | undefined;
     const inline = para?.content ?? [];
-    // The zone's biggest text run sizes its lines: LibreOffice grows the band to hold them
-    // when fo:min-height is smaller (probed, a 3-line header), and a zone set throughout in
-    // 10pt reserves 10pt — the body default only stands in for a run that declares none.
-    // A line is its font's own natural height, which is what the band renders at.
+    // A line is its font's own natural height: the zone's biggest run sizes its lines and
+    // LibreOffice grows the band to hold them where fo:min-height is smaller (probed).
+    // The body default only stands in for a run that declares no size of its own.
     const line = (size?: string, family?: string) =>
       size ? (parseFloat(size) * 96) / 72 * singleLineHeight(family) : HF_LINE_PX;
     // The paragraph mark is the strut every run that declares no size of its own takes.
@@ -148,9 +147,8 @@
   let effBottomRest = $derived(Math.max(mBottomPx, hfReachPx(footerDoc ?? null, footerDistPx, true), evenBottomReach));
   let effBottomFirst = $derived(Math.max(mBottomPx, hfReachPx((differentFirstPage ? footerFirstDoc : footerDoc) ?? null, footerDistPx, true)));
   // Per-section reaches for pageBreaks: "topFirst|topRest|bottomFirst|bottomRest" in px,
-  // one group per section, comma-separated. Section 1 repeats the four vars below.
-  // A section with page margins of its own (w:pgMar, its own ODF page layout) measures
-  // against those instead of the document's; `marginsFirst` is its first page's.
+  // one group per section, comma-separated. Section 1 repeats the four vars below; a
+  // section with page margins of its own measures against those (`marginsFirst` = page 1).
   let sectionReach = $derived([
     [effTopFirst, effTopRest, effBottomFirst, effBottomRest],
     ...extraHfSections.map((s) => {

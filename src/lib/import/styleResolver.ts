@@ -81,10 +81,9 @@ export function layerTextProps(base: PropMap, over: PropMap): PropMap {
   return Object.assign(out, over);
 }
 
-// LibreOffice holds a paragraph's two vertical margins in one item, so a style that
-// declares just one of them does not inherit the other — the missing one falls back to
-// the default paragraph style's value (probed: heading margins, and the space after a
-// paragraph that only sets fo:margin-top).
+// LibreOffice holds a paragraph's two vertical margins in one item, so a style declaring
+// just one does not inherit the other: the missing one falls back to the default
+// paragraph style's value (probed on heading margins).
 const VERTICAL_MARGINS = ['fo:margin-top', 'fo:margin-bottom'] as const;
 
 export function layerParaProps(base: PropMap, over: PropMap, poolDefaults: PropMap): PropMap {

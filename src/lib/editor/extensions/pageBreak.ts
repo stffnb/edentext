@@ -1,14 +1,9 @@
 import { Extension } from '@tiptap/core';
 import { DEFAULT_SHORTCUTS } from '../shortcuts';
 
-// The text-flow attrs of a paragraph/heading. breakBefore: 'page' round-trips to ODF
-// fo:break-before and DOCX w:pageBreakBefore; widowControl: false turns off the
-// widow-orphan minimum (w:widowControl, fo:widows/fo:orphans); keepNext keeps the block
-// on the page its successor starts on (w:keepNext, fo:keep-with-next) — headings do
-// that anyway in both, so the attr only marks the other blocks; keepLines holds all of
-// a block's lines on one page (w:keepLines, fo:keep-together). null = default;
-// sectionBreak marks the first block of a new section, which carries its own
-// header/footer set (storage/headerFooter.ts `HfSet`).
+// The text-flow attrs of a paragraph/heading, null = default: breakBefore 'page', widow
+// control, keepNext (a heading has it anyway, so the attr marks the other blocks),
+// keepLines, and sectionBreak — which opens a section (storage/headerFooter.ts).
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {

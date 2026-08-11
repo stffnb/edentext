@@ -967,9 +967,9 @@ function snapPt(v: number): number {
 }
 
 // ---- inline conversion (runs, marks, fields, images) -----------------------
-// Word wraps a citation, a bibliography entry or any content control in a w:sdt whose
-// content is ordinary inline content — walk through the wrapper, or the runs inside it
-// (a citation's whole visible text) never reach the paragraph.
+
+// Word wraps a citation or any content control in a w:sdt holding ordinary inline
+// content — walk through the wrapper, or those runs never reach the paragraph.
 function inlineChildren(el: Element): Element[] {
   return Array.from(el.children).flatMap((c) => {
     if (c.namespaceURI !== W || c.localName !== 'sdt') return [c];
@@ -1662,8 +1662,9 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
 
   // Table-level border defaults; per-cell w:tcBorders override per side. Edge cells
   // fall back to the outer sides, interior cells to insideH/insideV.
-  // Word's w:tblStyle: only the name comes back — the look rides on the cell attrs, and
-  // the editor re-derives the regions from its own registry (refreshTableStyles).
+
+  // From w:tblStyle only the name comes back — the look rides on the cell attrs, and the
+  // editor re-derives the regions from its own registry (refreshTableStyles).
   const styleEl = fc(fc(tbl, 'tblPr'), 'tblStyle');
   const styleId = styleEl ? wVal(styleEl) : null;
   const pad = docxCellPadding(tbl, styleId, ctx);

@@ -1,10 +1,9 @@
 import { Mark, mergeAttributes } from '@tiptap/core';
 import type { Node as PMNode, Mark as PMMark } from '@tiptap/pm/model';
 
-// A bookmark: a named range of text, the target a cross-reference or an internal link
-// points at. A mark, not a point node — both formats store a range, and a REF field
-// needs that range to recompute its text. Round-trips to ODF text:bookmark-start/-end
-// and DOCX w:bookmarkStart/w:bookmarkEnd.
+// A bookmark: a named range of text, the target a cross-reference or internal link points
+// at. A mark, not a point node — both formats store a range (ODF text:bookmark-start/-end,
+// DOCX w:bookmarkStart/-End) and a REF field needs it to recompute its text.
 
 export type BookmarkRef = { name: string; from: number; to: number; text: string };
 
@@ -26,8 +25,7 @@ export function bookmarkNameOf(marks: readonly PMMark[]): string | null {
 }
 
 // Every bookmark range in document order. Adjacent text nodes sharing a name merge into
-// one range; a name that reappears later (a paste, or across a paragraph boundary) gets
-// its own entry and every lookup below takes the first.
+// one range; a name that reappears later gets its own entry, and lookups take the first.
 // ponytail: no cross-paragraph merge — the DOCX exporter can't write one either.
 export function bookmarks(doc: PMNode): BookmarkRef[] {
   const out: BookmarkRef[] = [];

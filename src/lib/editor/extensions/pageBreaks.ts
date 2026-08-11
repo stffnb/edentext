@@ -258,11 +258,9 @@ export const PageBreaks = Extension.create({
     let isUpdating = false;
     let rafId: number | null = null;
     let lastPlacementsKey = '';
-    // The layout before the current one. A block below a float's overhang moves further
-    // than the spacer the model accounts for, so two layouts can each imply the other —
-    // seeing the older one come back means a ping-pong, and the current one is kept.
-    // null, not '': that is the real key of a spacer-free layout, and a reset
-    // sharing it would read "all spacers removed" as a ping-pong and skip the dispatch.
+    // The layout before the current one: two layouts can each imply the other (a block
+    // below a float's overhang moves further than the model's spacer), so seeing the older
+    // key return means a ping-pong. null, not '' — that is a spacer-free layout's own key.
     let prevPlacementsKey: string | null = null;
     // Each pass measures against the spacers left by the previous pass, so a changed
     // result needs one more pass to re-measure and settle (see calculate). Bounded so
@@ -535,11 +533,9 @@ export const PageBreaks = Extension.create({
           return lines;
         }
 
-        // `minLines` is the widow-orphan minimum, or 1 for a leaf taller than one page
-        // slot — there the rule is unsatisfiable and splitting beats overflowing.
-        // What a keep-with-next block has to fit below itself, in unscaled doc px: as
-        // many lines of the successor as widow-orphan control would keep together
-        // anyway. An empty block falls back to its whole height.
+        // What a keep-with-next block has to fit below itself, in unscaled doc px: as many
+        // lines of the successor as widow-orphan control would keep together anyway. An
+        // empty block falls back to its whole height.
         function firstLinesHeight(el: HTMLElement, scale: number, want: number): number {
           const lines = getLineRects(el);
           if (!lines.length) return el.offsetHeight;
@@ -875,10 +871,9 @@ export const PageBreaks = Extension.create({
                   }
                 }
                 const cs = getComputedStyle(child);
-                // The block's own space above, and how much of it the last pass took off
-                // at a page top (the decoration zeroes both padding and margin).
-                // A cell's first block never carries it (LibreOffice adds none there), so
-                // the missing padding is the document, not a decoration to add back.
+                // The block's own space above, and how much of it the last pass took off at
+                // a page top. A cell's first block never carries any (LibreOffice adds none
+                // there), so missing padding is the document, not a decoration to add back.
                 const spaceAbove = parseFloat(cs.getPropertyValue('--space-before')) || 0;
                 const dropped = spaceAbove > 0.5 && !inTableCell
                   && parseFloat(cs.paddingTop) < 0.5 && parseFloat(cs.marginTop) < 0.5
@@ -1193,6 +1188,8 @@ export const PageBreaks = Extension.create({
                 let extraShift = 0;
                 const guarded = leaf.naturalHeight <= CONTENT_HEIGHT
                   && leaf.el.getAttribute('data-widow-control') !== 'false';
+                // Taller than a page slot: the widow-orphan rule is unsatisfiable there,
+                // and splitting beats overflowing.
                 const minLines = guarded ? MIN_KEPT_LINES : 1;
                 while (boundaryNatural < leaf.naturalHeight) {
                   const split = findLineSplit(leaf.el, boundaryNatural, scale, minLines);

@@ -52,8 +52,7 @@ export function wVal(el: Element): string | null {
 
 // <w:tabs> → stops in cm from the left text margin, w:pos's origin (which the editor's
 // attr shares). 'clear' removes an inherited stop and 'bar' is a rule, not a stop.
-// w:leader → the fill character. "heavy" is a bold underscore, which we can only
-// render as the plain one.
+// w:leader → the fill character; "heavy" is a bold underscore we can only draw plain.
 const DOCX_LEADER: Record<string, string> = {
   dot: '.', hyphen: '-', underscore: '_', heavy: '_', middleDot: '·',
 };

@@ -998,10 +998,9 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       textBoxes.push(textBoxDocxDescriptor(node));
       out.push(new Paragraph({ children: [new TextRun({ text: `${TBX}${i}${TBX}` })] }));
     } else if (node.type === 'tableOfContents') {
-      // A real, recognized TOC field (hyperlinked, over the index's own heading levels);
-      // Word/LibreOffice populate + link it on field update (features.updateFields does
-      // this on open). Title is a plain bold paragraph so it isn't itself listed, and is
-      // omitted where the index has none; our importer regenerates the node.
+      // A real TOC field over the index's own heading levels, populated and linked on
+      // field update (features.updateFields). The title is a plain bold paragraph so it
+      // isn't itself listed, and is omitted where the index has none.
       const rawTitle = node.attrs?.title;
       const tocTitle = typeof rawTitle === 'string' ? rawTitle : 'Table of Contents';
       const depth = Number(node.attrs?.maxLevel);
@@ -1248,10 +1247,9 @@ export async function buildDocx(
   const headerDist = Math.min(hf?.headerDistanceCm ?? HF_DISTANCE_CM, margins.top);
   const footerDist = Math.min(hf?.footerDistanceCm ?? HF_DISTANCE_CM, margins.bottom);
 
-  // Page geometry rides every sectPr (Word requires it per section); the size is
-  // document-wide, the margins are the section's own where it has them. Fresh
-  // Header/Footer instances per section so each sectPr — including the body-final
-  // one our importer reads — carries its own references (Word's "Link to Previous").
+  // Page geometry rides every sectPr (Word requires it per section): the size is
+  // document-wide, the margins the section's own where it has them. Fresh Header/Footer
+  // instances per section, or a later one inherits ("Link to Previous").
   const pagePropsFor = (i: number) => {
     const m = setAt(i).margins ?? margins;
     return {

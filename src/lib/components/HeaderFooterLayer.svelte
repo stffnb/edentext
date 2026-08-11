@@ -199,8 +199,6 @@
   // below re-run on (the map's identity changes with each pagination pass).
   type ZoneParams = [number, number, string, unknown];
 
-  // Lay out the zone's tabs: static HTML no ProseMirror plugin reaches. The advances are
-  // layout px, so only a content change invalidates them — not the zoom transform.
   // The chapter a page runs under: the last heading at or above the field's outline
   // level that has started by then (ODF text:chapter, Word STYLEREF).
   function chapterOn(page: number, level: number): string {
@@ -212,6 +210,8 @@
     return text;
   }
 
+  // The zone's tabs: static HTML no ProseMirror plugin reaches. The advances are layout
+  // px, so only a content change invalidates them — not the zoom transform.
   function layOutTabs(node: HTMLElement, _params: ZoneParams) {
     const apply = () => layOutZoneTabs(node);
     apply();

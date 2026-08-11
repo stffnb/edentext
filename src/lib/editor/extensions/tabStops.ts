@@ -121,10 +121,9 @@ export function nextStopCm(x: number, stops: number[], interval: number): number
   return Math.floor(x / interval + 1e-9) * interval + interval;
 }
 
-// A run of tabs wider than the line continues on the next one, as LibreOffice lays it
-// out; Chromium instead hangs the leftover tabs and starts the next line at the margin.
-// Walked from the pen BEFORE the run — the one thing a break of ours can't move — so the
-// answer is the same whether or not the break is already in place.
+// A run of tabs wider than the line continues on the next one, as LibreOffice lays it out
+// (Chromium hangs the leftover tabs instead). Walked from the pen BEFORE the run — the one
+// thing a break of ours can't move — so the answer holds with the break already in place.
 function runBreaks(view: EditorView, blockEl: HTMLElement, tabs: number[], stops: TabStop[], scale: number, originX: number): number[] {
   // Only a run of two or more can outgrow a line, and reading the block's geometry
   // forces a reflow — so the ordinary single tab costs nothing here.
@@ -189,10 +188,8 @@ function measure(view: EditorView): TabLayout {
     const blockEnd = pos + node.nodeSize - 1;
 
     // Where the pen stands (cm from the text margin) after the tab before this one.
-    // Carrying it along the line is what makes one pass self-consistent: read from the
-    // DOM instead and every tab but the line's first measures the advance the *previous*
-    // pass gave the one before it, so the layout takes another pass to settle — and on a
-    // long document, where pagination keeps moving lines, it may never get a stable one.
+    // Carrying it along the line is what makes one pass self-consistent: read from the DOM
+    // instead and each tab measures the advance the previous pass gave the one before it.
     let pen: number | null = null;
     let lineTop = NaN;
     for (let t = 0; t < tabs.length; t++) {
@@ -228,10 +225,9 @@ function measure(view: EditorView): TabLayout {
   return { widths: out, breaks };
 }
 
-// Natural width of a doc range: the extent of each line it covers, added up — so a
-// segment pushed onto the next line still reads its own width. Not the sum of the rects:
-// a range crossing an inline element yields one for the element's box and one for the
-// text inside it, and adding those counts the text twice.
+// Natural width of a doc range: the extent of each line it covers, added up — so a segment
+// pushed onto the next line still reads its own width. Not the sum of the rects: one comes
+// from an inline element's box and one from the text in it, counting that text twice.
 function rangeWidth(view: EditorView, from: number, to: number): number {
   // Biased outwards, or the range swallows the tab's own span at either end.
   const a = view.domAtPos(from, 1);
@@ -316,10 +312,9 @@ export function layOutZoneTabs(zone: HTMLElement): void {
   const scale = para.offsetWidth ? rect.width / para.offsetWidth : 1;
   const cs = getComputedStyle(para);
   const padLeft = parseFloat(cs.paddingLeft || '0');
-  // The line's own width, not clientWidth: that is rounded up to whole px, and half a
-  // pixel of it is enough to wrap the run a right-aligned stop puts at the very end.
-  // One px of slack: a run ending exactly on the boundary wraps, and a stop a pixel
-  // short of it is a pixel nobody sees.
+  // The line's own width, not clientWidth: that is rounded up to whole px, and half a pixel
+  // is enough to wrap the run a right-aligned stop puts at the end. One px of slack, since
+  // a run ending exactly on the boundary wraps and a pixel short of it shows on nothing.
   const lineCm = (rect.width / (scale || 1) - padLeft - parseFloat(cs.paddingRight || '0') - 1) / PX_PER_CM;
   const stops = clampStops(parseTabStops(para.getAttribute('data-tab-stops')), lineCm);
   if (!scale) { para.style.whiteSpace = wrapping; return; }

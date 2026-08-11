@@ -239,10 +239,9 @@ function compare(ref, ed) {
   return issues;
 }
 
-// Whitespace-insensitive: spell decorations split text nodes mid-word and the two
-// engines needn't agree on word boundaries — only on what sits on a line. A tab or
-// index leader collapses to one token too: how many dots fill the gap is the fill's
-// own business, and both engines end it at the same stop.
+// Whitespace-insensitive: spell decorations split text nodes mid-word and the engines
+// needn't agree on word boundaries, only on what sits on a line. A tab or index leader
+// collapses to one token too — both engines end the fill at the same stop.
 const norm = (s) => s.replace(/[\s\u00a0\u00ad]+/g, '').replace(/([.\u00b7_-])\1{2,}/g, '\u2026');
 
 // ------------------------------------------------------------------- driver

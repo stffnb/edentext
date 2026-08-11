@@ -526,10 +526,9 @@ type CrossRefExport = { name: string; format: 'text' | 'page' };
 const bookmarkNameOf = (node: TiptapNode): string =>
   String(node.marks?.find((m) => m.type === 'bookmark')?.attrs?.name ?? '');
 
-// Bracket each bookmark's text with the BMS/BME sentinels and replace every `crossRef`
-// node with an XRF-sentinel run. Splicing into the run text (rather than into a run
-// emitter) is what makes both ride every odf-kit path — cells and custom paragraphs
-// included. applyBookmarks resolves them after serialization.
+// Bracket each bookmark's text with the BMS/BME sentinels and every `crossRef` node with
+// an XRF-sentinel run; applyBookmarks resolves them after serialization. Spliced into the
+// run text, not a run emitter, so both ride every odf-kit path (cells included).
 function replaceBookmarks(node: TiptapNode, refs: CrossRefExport[]): TiptapNode {
   if (!node.content?.length) return node;
   const content: TiptapNode[] = [];
@@ -925,10 +924,9 @@ function expandCellPadding(odtBytes: Uint8Array): Uint8Array {
   return rezipOdt(files);
 }
 
-// A dragged table edge → the table style's fo:margin-left/-right + style:width (with
-// odf-kit's table:align="margins" the table fills exactly what's left), and keep-rows
-// → style:may-break-between-rows. odf-kit names table styles Table1, Table2, … in
-// document order, matching the descriptor list.
+// A dragged table edge → the style's fo:margin-left/-right + style:width (with odf-kit's
+// table:align="margins" the table fills what's left); keep-rows → may-break-between-rows.
+// odf-kit names table styles Table1, Table2, … in document order, as the descriptors are.
 function applyTableProps(odtBytes: Uint8Array, margins: (TableProps | null)[], contentWidthCm: number): Uint8Array {
   if (margins.every(m => m === null)) return odtBytes;
 
@@ -3229,11 +3227,8 @@ function contentsHeadingStyle(): string {
   );
 }
 
-// The full <text:table-of-content>: a source (title + per-level entry templates that
-// carry a right tab stop, page number, and link markers so LibreOffice rebuilds it as a
-// linking TOC) plus a cached index-body (title + one entry paragraph per heading).
-// A level's entry style: the file's own named one where the index came with it, else
-// the automatic Contents_20_N this export mints.
+// A level's entry style: the file's own named one where the index came with it, else the
+// automatic Contents_20_N this export mints.
 function tocLevelStyle(toc: TocExport, level: number): string {
   const own = toc.levelStyles?.[level - 1];
   return own ? odfStyleName(own) : `Contents_20_${level}`;
@@ -3274,12 +3269,9 @@ function tocXml(toc: TocExport, index: number): string {
   return `<text:table-of-content text:name="${escapeXml(name)}" text:protected="true">${source}${body}</text:table-of-content>`;
 }
 
-// Resolve TOC sentinels: rewrite each marker <text:p>TOC{i}TOC</text:p> to its
-// <text:table-of-content> and mint the Contents_20_* paragraph styles it references.
 // BMS/BME/XRF sentinels → <text:bookmark-start/>, <text:bookmark-end/> and
 // <text:bookmark-ref>. All three are legal anywhere in paragraph content, so a plain
-// replace works wherever odf-kit put the run — inside a <text:span> included. Bookmark
-// names are sanitized on insert, so nothing here needs XML escaping.
+// replace works wherever odf-kit put the run — inside a <text:span> included.
 function applyBookmarks(odtBytes: Uint8Array, refs: CrossRefExport[]): Uint8Array {
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
@@ -3623,8 +3615,6 @@ function hfAlign(para: TiptapNode): AlignValue | null {
   return ta === 'center' || ta === 'right' || ta === 'justify' ? ta : null;
 }
 
-// fo:* paragraph-properties for a header/footer paragraph: alignment plus the paragraph
-// background ("colored field") and per-side borders ("rule line"). Empty ⇒ no override.
 // <style:tab-stops> for a zone paragraph: odf-kit builds the body's, but a header/footer
 // style is written by hand here.
 function tabStopsXml(attrs: TiptapNode['attrs']): string {
@@ -3640,7 +3630,8 @@ function tabStopsXml(attrs: TiptapNode['attrs']): string {
   return `<style:tab-stops>${inner}</style:tab-stops>`;
 }
 
-// The whole <style:paragraph-properties> of a zone paragraph, or '' when it needs none.
+// The whole <style:paragraph-properties> of a zone paragraph, or '' when it needs none:
+// alignment plus the paragraph background ("colored field") and per-side borders.
 function hfParaPropsXml(para: TiptapNode): string {
   const props: string[] = [];
   const align = hfAlign(para);
@@ -3771,11 +3762,9 @@ function ensureDrawNamespaces(styles: string): string {
   return missing.length ? styles.replace(/<office:document-styles\b/, `<office:document-styles ${missing.join(' ')}`) : styles;
 }
 
-// Serialize a variant header/footer paragraph to <style:{header,footer}-{first,left}>
-// XML (first = page 1, left = even pages). Runs and page fields become <text:span>
-// referencing minted automatic text styles (pushed via `mint`); hardBreak → line-break.
-// suffix null = the section's own <style:header>/<style:footer>; 'first'/'left' are the
-// per-page variants ODF hangs beside it.
+// A variant zone paragraph → <style:{header,footer}-{first,left}> XML (suffix null = the
+// section's own zone). Runs and page fields become <text:span>s referencing minted
+// automatic text styles (pushed via `mint`); hardBreak → line-break.
 function hfVariantZoneXml(kind: 'header' | 'footer', suffix: 'first' | 'left' | null, para: TiptapNode, pageCount: number, mint: (styleXml: string) => void, prefix = ''): string {
   let styleSeq = 0;
   // Distinct minted-style prefix per variant so first + even styles never collide.

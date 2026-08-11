@@ -146,10 +146,7 @@ function frameRotationDeg(el: Element): number {
   return ((Math.round((-parseFloat(rot[1]) * 180) / Math.PI) % 360) + 360) % 360;
 }
 
-// Rotation + wrap attrs, shared by images, text boxes and shapes. A non-as-char anchor or
-// an explicit style:wrap floats the element (free x/y collapse to the nearest side). An
-// explicit as-char anchor stays inline: LibreOffice's Graphics style carries a style:wrap.
-// Where an as-char frame sits against the line. `baseline`/`char` measure from the text
+// Where an as-char frame sits against the line: `baseline`/`char` measure from the text
 // baseline, `text`/`line` from the character area, and `from-top` puts the frame's top
 // svg:y below the baseline whatever the relation says (all probed against LibreOffice).
 function applyInlineVAlign(el: Element, attrs: Record<string, unknown>, gp: PropMap): void {
@@ -2009,11 +2006,9 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       const colspan = parseInt(cellEl.getAttributeNS(NS.table, 'number-columns-spanned') ?? '1', 10) || 1;
       const rowspan = parseInt(cellEl.getAttributeNS(NS.table, 'number-rows-spanned') ?? '1', 10) || 1;
       const cellStyleName = cellEl.getAttributeNS(NS.table, 'style-name');
-      // ODF has no table-level cell margin — it sits on each cell's style, so the first
-      // cell's stands for the table and any cell that disagrees keeps its own.
-      // fo:padding defaults to 0 in ODF, so a side nobody declares really is zero —
-      // leaving it open would hand the cell Word's implicit 0.19cm instead (probed:
-      // LibreOffice sets an unstyled cell's text flush against the column edge).
+      // ODF has no table-level cell margin: it sits on each cell's style, and fo:padding
+      // defaults to 0, so a side nobody declares really is zero — left open, the cell
+      // would take Word's implicit 0.19cm instead (probed).
       const padSides = ctx.resolver.cellPadding(cellStyleName).map((v) => v ?? 0);
       if (cellPad === undefined) cellPad = cellPaddingAttr(padSides);
       const ownPad = cellPaddingAttr(padSides, cellPad ?? DEFAULT_CELL_PADDING);
