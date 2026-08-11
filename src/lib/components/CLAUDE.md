@@ -3,6 +3,10 @@
 All Svelte UI. `Editor.svelte` mounts TipTap and owns pagination wiring, zoom, the floating
 toolbars and the header/footer layer.
 
+Two chromes sit above the document and `chromeMode` (`storage/theme.ts`) picks which mounts:
+the floating command island below, or `ribbon/` — see `docs/architecture/ribbon.md`. Both drive
+the same editor through `activeEditor`/`activeTick`, and only one is mounted at a time.
+
 ## Data flow
 
 ```
