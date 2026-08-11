@@ -1319,6 +1319,7 @@ function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<stri
     text['style:font-size-complex'] = size;
   }
   if (t.letterSpacingPt) text['fo:letter-spacing'] = `${t.letterSpacingPt}pt`;
+  if (t.kerning === false) text['style:letter-kerning'] = 'false';
   if (t.bold != null) text['fo:font-weight'] = t.bold ? 'bold' : 'normal';
   if (t.italic != null) text['fo:font-style'] = t.italic ? 'italic' : 'normal';
   if (t.underline) text['style:text-underline-style'] = 'solid';

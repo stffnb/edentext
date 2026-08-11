@@ -1114,6 +1114,9 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   if (t.fontFamily) run.font = twinFontName(t.fontFamily);
   if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
   if (t.letterSpacingPt) run.characterSpacing = Math.round(t.letterSpacingPt * 20);
+  // Word kerns nothing unless a size to start at is named, so the on state is the one
+  // this side has to write — half a point, i.e. every run.
+  if (t.kerning !== false) run.kern = 1;
   if (t.bold != null) run.bold = t.bold;
   if (t.italic != null) run.italics = t.italic;
   if (t.underline) run.underline = {};
@@ -1147,6 +1150,7 @@ function characterStyleOf(style: Style): ICharacterStyleOptions {
   if (t.fontFamily) run.font = t.fontFamily === 'Liberation Serif' ? DOC_FONT : t.fontFamily;
   if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
   if (t.letterSpacingPt) run.characterSpacing = Math.round(t.letterSpacingPt * 20);
+  if (t.kerning !== false) run.kern = 1;
   if (t.bold != null) run.bold = t.bold;
   if (t.italic != null) run.italics = t.italic;
   if (t.underline) run.underline = {};

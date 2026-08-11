@@ -1128,6 +1128,9 @@ function textPropsFromOdf(props: PropMap, resolver: StyleResolver): TextProps {
   if (size != null) out.fontSizePt = Math.round(size * 10) / 10;
   const spacing = lengthToPt(props['fo:letter-spacing']);
   if (spacing) out.letterSpacingPt = Math.round(spacing * 100) / 100;
+  // Kerning is on unless the file says otherwise (probed), which is the browser default
+  // too — so only the "off" is worth carrying.
+  if (props['style:letter-kerning'] === 'false') out.kerning = false;
   const weight = props['fo:font-weight'];
   if (weight) out.bold = weight === 'bold' || parseInt(weight, 10) >= 600;
   const style = props['fo:font-style'];

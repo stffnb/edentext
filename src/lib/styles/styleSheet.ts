@@ -22,6 +22,9 @@ export type TextProps = {
   fontFamily?: string;
   fontSizePt?: number;
   letterSpacingPt?: number; // character spacing (Word's w:spacing, ODF fo:letter-spacing)
+  // Pair kerning. ODF has it on and Word off, so only `false` is ever stored — the
+  // editor saves .odt and follows ODF (which is also the browser default).
+  kerning?: boolean;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
@@ -230,6 +233,7 @@ export function textDeclarations(t: TextProps, asBlock = false): string[] {
   }
   if (t.fontSizePt != null) out.push(`font-size: ${t.fontSizePt}pt`);
   if (t.letterSpacingPt) out.push(`letter-spacing: ${t.letterSpacingPt}pt`);
+  if (t.kerning === false) out.push('font-kerning: none');
   if (t.bold != null) out.push(`font-weight: ${t.bold ? 700 : 400}`);
   if (t.italic != null) out.push(`font-style: ${t.italic ? 'italic' : 'normal'}`);
   if (t.underline || t.strike) {

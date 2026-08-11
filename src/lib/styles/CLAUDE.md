@@ -12,6 +12,15 @@ built-ins (Standard → Heading → Heading 1–5 / Title / Subtitle, plus Quota
 (parent chain root-first, nearest wins, cycle-safe), `styleOrder`, and `styleCss`. `sheet.svelte.ts`
 holds it as a reactive singleton persisted to `odf-editor-styles` (same shape as `i18n.svelte.ts`).
 
+- **Pair kerning** (`TextProps.kerning` → `font-kerning: none`) is where the two formats
+  disagree: ODF kerns unless `style:letter-kerning="false"`, Word kerns **nothing** unless
+  `w:kern` names the point size to start at — and a browser kerns always. Probed: the same
+  string runs 5% narrower kerned, which broke a line a word early on every Word document in
+  the corpus. So only the off state is stored (the editor saves `.odt`, so ODF wins the tie),
+  a DOCX run below its own `w:kern` threshold counts as off, and export writes `w:kern="1"`
+  wherever kerning is on. Document-wide only — `w:docDefaults` and the default paragraph
+  style are where files declare it; a single run overriding it needs a mark we don't have.
+
 - **Assignment**: the `ParagraphStyle` extension adds a global `styleName` attr on paragraph/heading,
   rendered as `data-style`. `setParagraphStyle(name)` switches the node type when the style has an
   `outlineLevel` (heading) and **keeps hard formatting**, as in Word/LibreOffice;

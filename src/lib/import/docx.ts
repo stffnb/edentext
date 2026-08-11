@@ -681,7 +681,9 @@ function stylePara(ctx: Ctx, id: string | null): ParaProps {
 // paragraph's formatting, so the document defaults are not its properties.
 function styleText(ctx: Ctx, id: string | null, own = false): TextProps {
   if (!id) return {};
-  if (own) return runTextProps(ctx.styles.styleOwn(id));
+  // A character style adds to the run it decorates, so its own chain saying nothing
+  // about kerning means "unchanged", not Word's off.
+  if (own) { const t = runTextProps(ctx.styles.styleOwn(id)); delete t.kerning; return t; }
   // A paragraph style naming no font uses the document's theme (minorHAnsi for body,
   // majorHAnsi for headings) — the family single line spacing is measured against.
   const run = ctx.styles.paragraphRun(id);
@@ -696,6 +698,10 @@ function runTextProps(run: RunProps): TextProps {
     : run.font === 'Arial' ? 'Liberation Sans' : run.font;
   if (run.sizeHalfPt != null) out.fontSizePt = Math.round((run.sizeHalfPt / 2) * 10) / 10;
   if (run.spacingTwip) out.letterSpacingPt = Math.round((run.spacingTwip / 20) * 100) / 100;
+  // Word kerns nothing unless w:kern names the size to start at, and a document that
+  // says so for headings only leaves body text unkerned (probed against LibreOffice).
+  const kern = run.kernHalfPt ?? 0;
+  if (!kern || (run.sizeHalfPt != null && run.sizeHalfPt < kern)) out.kerning = false;
   if (run.bold != null) out.bold = run.bold;
   if (run.italic != null) out.italic = run.italic;
   if (run.underline != null) out.underline = run.underline;
