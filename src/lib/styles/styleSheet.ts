@@ -291,7 +291,12 @@ export function styleCss(sheet: StyleSheet): string {
     const text = textDeclarations(resolveStyle(sheet, style.name).text);
     if (!text.length) continue;
     const items = [`.paper .tiptap li:has(> ${attr})`];
-    if (style.name === DEFAULT_STYLE) items.push('.paper .tiptap li:has(> p:not([data-style]))');
+    if (style.name === DEFAULT_STYLE) {
+      items.push('.paper .tiptap li:has(> p:not([data-style]))');
+      // A header/footer zone is a paragraph of the file too, and both formats base its
+      // style on the default one — without this it renders in the editor's own font.
+      items.push('.paper .hf-layer .hf-zone');
+    }
     rules.push(`${items.join(',\n')} {\n  ${text.join(';\n  ')};\n}`);
   }
   // Table styles last: their cell selectors must outrank the paragraph rules above.

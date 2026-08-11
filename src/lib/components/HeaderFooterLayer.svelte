@@ -526,7 +526,9 @@
     min-height: 0;
     width: 100%;
     background: none !important;
-    font-size: 12pt;
+    /* The zone's own size, which follows the document's default style — not the 12pt
+       `.paper .tiptap` puts on the body. */
+    font-size: inherit;
     line-height: 1.15;
     outline: none;
     /* Keep the editable root at its content height (min-height:0 would otherwise let
