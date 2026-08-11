@@ -279,10 +279,10 @@
   vertical-align: baseline;
   line-height: 0;
 }
-/* Alone on its line (image.ts marks the block) the frame sets the line height by itself:
-   no descent hangs below it, and every vertical-pos but `offset` is moot (probed). Beats
+/* Alone on its line (image.ts marks the frame) it sets the line height by itself: no
+   descent hangs below it, and every vertical-pos but `offset` is moot (probed). Beats
    the node view's own inline alignment, which has no other way to know. */
-.paper .tiptap .image-line .image-node:not([data-v-align='offset']) {
+.paper .tiptap .image-node.image-line:not([data-v-align='offset']) {
   vertical-align: bottom !important;
 }
 /* While selected, lift the node (and its handles) above the header/footer layer

@@ -255,18 +255,27 @@ export const Image = Node.create({
 // against LibreOffice). Whitespace beside the image adds none, which CSS cannot ask.
 const imageLineKey = new PluginKey('imageLine');
 
+// Hard breaks are the only line boundaries visible in the model, so a frame is taken
+// as alone on its line when nothing but whitespace shares its break-delimited run —
+// the image-plus-caption idiom. A soft wrap around it can't be seen from here.
 function imageLineDecorations(doc: PMNode): DecorationSet {
   const decos: Decoration[] = [];
   doc.descendants((node, pos) => {
     if (!node.isTextblock) return true;
-    let image = false;
+    let images: number[] = [];
     let text = false;
-    node.forEach((child) => {
-      if (child.type.name === 'image') {
-        if ((child.attrs.wrap ?? 'inline') === 'inline') image = true;
-      } else if (child.isText ? child.text?.trim() : child.type.name !== 'hardBreak') text = true;
+    const flush = () => {
+      if (!text) for (const at of images) decos.push(Decoration.node(at, at + 1, { class: 'image-line' }));
+      images = [];
+      text = false;
+    };
+    node.forEach((child, offset) => {
+      if (child.type.name === 'hardBreak') flush();
+      else if (child.type.name === 'image') {
+        if ((child.attrs.wrap ?? 'inline') === 'inline') images.push(pos + 1 + offset);
+      } else if (child.isText ? child.text?.trim() : true) text = true;
     });
-    if (image && !text) decos.push(Decoration.node(pos, pos + node.nodeSize, { class: 'image-line' }));
+    flush();
     return false;
   });
   return DecorationSet.create(doc, decos);
