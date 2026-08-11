@@ -225,7 +225,9 @@
 }
 .paper .tiptap .toc-entry {
   display: flex;
-  align-items: baseline;
+  /* The last one: an entry whose heading carries a hard break is several lines, and the
+     leader and page number belong beside the last of them. */
+  align-items: last baseline;
   cursor: pointer;
 }
 .paper .tiptap .toc-entry:hover .toc-text {

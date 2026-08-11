@@ -156,7 +156,11 @@ class TocView {
     const out: HeadingRef[] = [];
     this.editor.state.doc.descendants((node, pos) => {
       if (node.type.name === 'heading') {
-        const text = node.textContent.trim();
+        // A hard break inside the heading is a line of the entry too — a book's
+        // "Chapter 1" / title pair is two lines in LibreOffice's own index.
+        let raw = '';
+        node.forEach((child) => { raw += child.type.name === 'hardBreak' ? '\n' : child.textContent; });
+        const text = raw.trim();
         const level = Math.min(MAX_HEADING_LEVEL, (node.attrs.level as number) ?? 1);
         if (text && level <= max) out.push({ text, level, pos });
       }
@@ -246,7 +250,10 @@ class TocView {
       if (levelStyle) row.dataset.style = levelStyle;
       const text = document.createElement('span');
       text.className = 'toc-text';
-      text.textContent = e.text;
+      e.text.split('\n').forEach((part, li) => {
+        if (li) text.appendChild(document.createElement('br'));
+        text.appendChild(document.createTextNode(part));
+      });
       const leader = document.createElement('span');
       leader.className = 'toc-leader';
       // Real fill characters, as a word processor draws them: they scale with the font

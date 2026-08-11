@@ -3268,7 +3268,7 @@ function tocXml(toc: TocExport, index: number): string {
         `</text:index-title>`
       : '') +
     toc.entries
-      .map(e => `<text:p text:style-name="${tocLevelStyle(toc, e.level)}">${escapeXml(e.text)}<text:tab/>${e.page}</text:p>`)
+      .map(e => `<text:p text:style-name="${tocLevelStyle(toc, e.level)}">${escapeXml(e.text).replace(/\n/g, '<text:line-break/>')}<text:tab/>${e.page}</text:p>`)
       .join('') +
     `</text:index-body>`;
   return `<text:table-of-content text:name="${escapeXml(name)}" text:protected="true">${source}${body}</text:table-of-content>`;
