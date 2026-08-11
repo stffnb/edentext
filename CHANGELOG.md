@@ -177,7 +177,12 @@ merely unimplemented belongs in the list above, not here.
   drift apart along the line (identical word widths, 0.45 mm apart by the
   150th mm). A matching negative `word-spacing` was tried and reverted — it
   fixes the break but shortens every last line; see
-  `tests/render-parity/README.md`. Noted 2026-08-09.
+  `tests/render-parity/README.md`. A third case is a run with no break
+  opportunity in it that is longer than the space left (a row of leader dots, a
+  long URL): LibreOffice fills the line and breaks the run at the margin, where
+  Chromium moves the whole run to the next line. `overflow-wrap: anywhere` would
+  match it but also breaks runs LibreOffice keeps whole and shrinks a table
+  column to its narrowest glyph. Noted 2026-08-09, revised 2026-08-11.
 - A text box anchored inside a paragraph loses the vertical offset it was
   anchored by: it is a block node here, so the importer lifts it out and it
   simply follows that paragraph (measured 4.7 mm on the thesis' figure page).
@@ -196,6 +201,29 @@ merely unimplemented belongs in the list above, not here.
   editor). LibreOffice recomputes auto-grow heights on open, so a re-saved box
   keeps its content but sheds excess empty height. Shapes (rect/ellipse) export
   with fixed geometry instead. Noted 2026-07-03.
+- A list marker does not size the line it labels. Word and LibreOffice put the
+  numbering's own font on that line, so a marker whose font reaches deeper than
+  the text grows it (measured: a Courier New bullet on 11 pt Carlito text adds
+  0.031 em ≈ 0.12 mm, which is ~1 mm down a page of bullets). Root cause: the
+  marker is an out-of-flow `::before` (`editor.css`) because CSS gives an
+  outside `::marker` no position; and an outside `::marker` has no metric
+  influence either — probed, changing its `font-family` moves nothing, only its
+  `font-size` does, and that grows the line *above* the baseline where a word
+  processor grows it below. Noted 2026-08-11.
+- **Deliberate, not a defect:** an inline formula is typeset here, not placed as
+  a box. LibreOffice stores each one as an OLE frame and positions that frame
+  (`style:vertical-pos="middle"`/`"from-top"`); we render MathML, whose own
+  baseline is the typographically right one, so the frame's vertical placement is
+  ignored on import. Honouring it was tried and measured worse — every inline
+  formula in the Math Guide sank ~1 mm and the corpus went from 100 to 125
+  reported differences. It also means a render-parity run cannot compare a
+  formula-heavy page: the two sides typeset the glyphs independently.
+  Noted 2026-08-11.
+- **Deliberate, not a defect:** a table of contents shows live page numbers.
+  LibreOffice and Word print the numbers cached in the file until the reader
+  updates the index, so a document whose cache is stale disagrees with us (the
+  deputy-standards fixture caches page 7 for a heading that is on page 8 in both
+  renderings). Noted 2026-08-11.
 
 ---
 

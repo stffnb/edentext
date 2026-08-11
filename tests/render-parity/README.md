@@ -89,8 +89,8 @@ form), the summary (a student summary: bullets, wrapped
 pictures, one table), the thesis (a 48-page thesis with charts, metafile figures and
 a German TOC) and the Math Guide (LibreOffice's own 63-page Math Guide: a title page,
 a three-page index, per-section masters, ~35 figure frames and 400 formulas) — still
-report. The thesis matches LibreOffice's 49 pages and so does the Math Guide at 63 —
-most of what is left is the engine rules below, not layout:
+report. Both run one page off LibreOffice (thesis 48 against 49, Math Guide 64 against 63),
+in each case downstream of a line the rules below cost or gained:
 
 - **A page-anchored frame's coordinates are its page's, but a frame in a *header* keeps
   the ones its zone gives it.** Both are drawn out of flow; the body one (`anchorPage`,
@@ -110,11 +110,25 @@ most of what is left is the engine rules below, not layout:
   it holds is a float, so its height is the text's alone.
 - **A page's last line is where the footer band ends.** The body margin a file's header or
   footer reconstructs is the page margin plus the zone's declared height; the zone's own gap
-  to the body sits *inside* that height (probed — `styleResolver.ts`). Getting that wrong
-  costs a line on every page, which is worth more than any single block's spacing.
+  to the body sits *inside* that height (probed — `styleResolver.ts`). The height is the
+  zone's *own* font: it is one paragraph here, so its mark struts every line of the band
+  (`blockFontSize.ts` is in the zone schema, `hfReachPx` measures the same value). Getting
+  that wrong costs a line on every page, which is worth more than any single block's
+  spacing.
 - **Chromium floors every painted border to one pixel**, so a table's rows come out
   ~0.25mm too tall each unless the excess is taken off the cell padding
   (`docs/architecture/tables.md`).
+- **A bulleted line is 0.12mm shorter here than in LibreOffice.** The numbering font joins
+  the line it labels there; our marker is out of flow and CSS gives an outside `::marker`
+  no metric influence either (probed: its `font-family` changes nothing, its `font-size`
+  grows the line above the baseline where LibreOffice grows it below). The summary
+  fixture's bullet pages drift ~1mm by their last line — that is all its `position`
+  reports are.
+- **A formula page cannot be compared.** LibreOffice draws each formula from its own OLE
+  frame; we typeset MathML, so `pdftotext` and `getClientRects` measure two different
+  typesettings and the harness splits a row whose glyph boxes disagree. Honouring the
+  frame's `style:vertical-pos` on a formula was tried and **reverted** — every inline
+  formula sank ~1mm and the Math Guide went from 100 to 125 issues (CHANGELOG).
 - **Page geometry is document-wide.** Headers and footers are per section (each is
   editable in place), but margins, orientation and format are not: they come from the
   master page governing the most body blocks (`import/odt.ts`), so a title page with its
