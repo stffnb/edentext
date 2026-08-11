@@ -1990,7 +1990,10 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       const cellStyleName = cellEl.getAttributeNS(NS.table, 'style-name');
       // ODF has no table-level cell margin — it sits on each cell's style, so the first
       // cell's stands for the table and any cell that disagrees keeps its own.
-      const padSides = ctx.resolver.cellPadding(cellStyleName);
+      // fo:padding defaults to 0 in ODF, so a side nobody declares really is zero —
+      // leaving it open would hand the cell Word's implicit 0.19cm instead (probed:
+      // LibreOffice sets an unstyled cell's text flush against the column edge).
+      const padSides = ctx.resolver.cellPadding(cellStyleName).map((v) => v ?? 0);
       if (cellPad === undefined) cellPad = cellPaddingAttr(padSides);
       const ownPad = cellPaddingAttr(padSides, cellPad ?? DEFAULT_CELL_PADDING);
       const verticalAlign = ctx.resolver.cellVerticalAlign(cellStyleName);
