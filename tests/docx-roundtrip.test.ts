@@ -545,7 +545,7 @@ describe('DOCX import of a foreign Word document', () => {
     expect(top.attrs?.bulletChar).toBe('❖'); // Wingdings U+F076
     const nested = walk(top, 'bulletList').find((b) => b !== top)!;
     expect(walk(nested, 'text')[0].text).toBe('Courier hollow');
-    expect(nested.attrs?.bulletChar ?? null).toBe(null); // Courier 'o' = default ◦ at level 2
+    expect(nested.attrs?.bulletChar).toBe('o'); // Word's hollow bullet is the letter, as LO draws it
   });
 
   it("imports Word's legal numbering (%1.%2.) as a multilevel list", () => {

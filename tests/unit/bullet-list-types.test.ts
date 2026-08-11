@@ -53,8 +53,9 @@ describe('bulletCharFromDocx (Word numbering.xml patterns)', () => {
     expect(bulletCharFromDocx('v', 'Wingdings')).toBe('❖');
   });
 
-  it("maps Courier New 'o' (Word's hollow bullet) to ◦", () => {
-    expect(bulletCharFromDocx('o', 'Courier New')).toBe('◦');
+  it("keeps Word's hollow bullet the letter it is", () => {
+    // A Courier New "o" — LibreOffice and Word both draw the glyph, not a ring.
+    expect(bulletCharFromDocx('o', 'Courier New')).toBe('o');
   });
 
   it('passes literal chars in text fonts through', () => {

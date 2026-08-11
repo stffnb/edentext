@@ -72,8 +72,6 @@ function mapSymbolChar(char: string, font: string | null | undefined): string | 
     return map[code & 0xff] ?? null;
   }
   if (isPua) return null;
-  // Word's classic hollow bullet is a Courier New "o" — render it as a real circle.
-  if (char === 'o' && (font ?? '').toLowerCase().startsWith('courier')) return '◦';
   return char;
 }
 
