@@ -63,11 +63,51 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
+// A JPEG's colour component count (4 = CMYK) and where its ICC profile segments sit.
+// Marker walk up to the scan; a segment is 0xFF, marker, 2-byte length, payload.
+function jpegHeader(b: Uint8Array): { components: number; icc: Array<[number, number]> } {
+  const icc: Array<[number, number]> = [];
+  let components = 0;
+  let i = 2;
+  while (i + 3 < b.length && b[i] === 0xff) {
+    const marker = b[i + 1];
+    if (marker === 0xd9 || marker === 0xda) break;
+    const len = (b[i + 2] << 8) | b[i + 3];
+    // SOF0…SOF15 (not the DHT/JPG/DAC markers sharing the range) carry the component count.
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      components = b[i + 9];
+    } else if (marker === 0xe2 && String.fromCharCode(...b.subarray(i + 4, i + 15)) === 'ICC_PROFILE') {
+      icc.push([i, i + 2 + len]);
+    }
+    i += 2 + len;
+  }
+  return { components, icc };
+}
+
+// Chromium colour-manages a CMYK JPEG through its embedded profile where LibreOffice and
+// Word convert it naively — measured on a CMYK logo: its blue arrived (0,80,131) against
+// LibreOffice's (0,32,183), its black as grey. Dropping the profile makes the two agree.
+export function stripCmykIccProfile(bytes: Uint8Array): Uint8Array {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return bytes;
+  const { components, icc } = jpegHeader(bytes);
+  if (components !== 4 || !icc.length) return bytes;
+  const out = new Uint8Array(bytes.length - icc.reduce((n, [from, to]) => n + (to - from), 0));
+  let at = 0;
+  let kept = 0;
+  for (const [from, to] of icc) {
+    out.set(bytes.subarray(kept, from), at);
+    at += from - kept;
+    kept = to;
+  }
+  out.set(bytes.subarray(kept), at);
+  return out;
+}
+
 // A base64 data-URI for a displayable image, or null when the format can't be shown.
 export function imageDataUrl(bytes: Uint8Array, path: string): string | null {
   const mime = displayableImageMime(bytes, path);
   if (!mime) return null;
-  return `data:${mime};base64,${bytesToBase64(bytes)}`;
+  return `data:${mime};base64,${bytesToBase64(mime === 'image/jpeg' ? stripCmykIccProfile(bytes) : bytes)}`;
 }
 
 // ---- client-side decoding of formats the browser can't render ----------------
