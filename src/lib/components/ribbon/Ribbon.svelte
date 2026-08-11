@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
+  import { NodeSelection } from '@tiptap/pm/state';
   import Icon from './Icon.svelte';
   import RibbonMenu from './RibbonMenu.svelte';
   import HistoryButton from '../HistoryButton.svelte';
@@ -9,6 +10,8 @@
   import ReferencesTab from './tabs/ReferencesTab.svelte';
   import ReviewTab from './tabs/ReviewTab.svelte';
   import ViewTab from './tabs/ViewTab.svelte';
+  import TableTabs from './tabs/TableTabs.svelte';
+  import FrameTabs from './tabs/FrameTabs.svelte';
   import UiLanguagePicker from '../UiLanguagePicker.svelte';
   import { clickOutside, isMenuOpen, toggleMenu, closeMenu } from './menu.svelte';
   import { t } from '../../i18n/i18n.svelte';
@@ -85,10 +88,38 @@
   } = $props();
 
   const TABS = ['home', 'insert', 'layout', 'references', 'review', 'view'] as const;
-  type Tab = (typeof TABS)[number];
+  const CONTEXTUAL = ['tableDesign', 'tableLayout', 'pictureFormat', 'shapeFormat'] as const;
+  type Tab = (typeof TABS)[number] | (typeof CONTEXTUAL)[number];
 
   // Word opens on Home every time, so the active tab is not persisted.
   let tab = $state<Tab>('home');
+
+  // Word's contextual tabs: they appear while the caret is in the object and
+  // vanish with it, so a tab that disappears hands the strip back to Home.
+  let inTable = $derived(tick >= 0 && !!editor?.isActive('table'));
+
+  let selectedNode = $derived.by<string | null>(() => {
+    if (tick < 0 || !editor) return null;
+    const sel = editor.state.selection;
+    return sel instanceof NodeSelection ? sel.node.type.name : null;
+  });
+
+  let frameAttrs = $derived.by<Record<string, unknown> | null>(() => {
+    if (tick < 0 || !editor) return null;
+    const sel = editor.state.selection;
+    return sel instanceof NodeSelection ? sel.node.attrs : null;
+  });
+
+  let shown = $derived([
+    ...TABS,
+    ...(inTable ? (['tableDesign', 'tableLayout'] as const) : []),
+    ...(selectedNode === 'image' ? (['pictureFormat'] as const) : []),
+    ...(selectedNode === 'textBox' ? (['shapeFormat'] as const) : []),
+  ] as Tab[]);
+
+  $effect(() => {
+    if (!shown.includes(tab)) tab = 'home';
+  });
 
   let docNameSizerWidth = $state(0);
 
@@ -159,8 +190,13 @@
     <HistoryButton {editor} {tick} direction="redo" />
     <span class="qa-sep"></span>
 
-    {#each TABS as id}
-      <button class="ribbon-tab" class:active={tab === id} onclick={() => (tab = id)}>
+    {#each shown as id}
+      <button
+        class="ribbon-tab"
+        class:active={tab === id}
+        class:contextual={!(TABS as readonly string[]).includes(id)}
+        onclick={() => (tab = id)}
+      >
         {t().ribbon.tabs[id]}
       </button>
     {/each}
@@ -229,6 +265,18 @@
       <ReviewTab {editor} {tick} {documentLanguage} {onLanguage} />
     {:else if tab === 'view'}
       <ViewTab bind:showRuler bind:showFormattingMarks {zoom} {onZoom} {onDebugDump} />
+    {:else if tab === 'tableDesign' || tab === 'tableLayout'}
+      <TableTabs {editor} {tick} which={tab === 'tableDesign' ? 'design' : 'layout'} />
+    {:else if tab === 'pictureFormat' || tab === 'shapeFormat'}
+      <FrameTabs
+        {editor}
+        which={tab === 'pictureFormat' ? 'picture' : 'shape'}
+        wrap={(frameAttrs?.wrap ?? 'inline') as never}
+        shapeKind={frameAttrs?.shapeKind as never}
+        fillColor={frameAttrs?.fillColor as string | null}
+        strokeColor={frameAttrs?.strokeColor as string | null}
+        strokeWidthPt={frameAttrs?.strokeWidthPt as number}
+      />
     {/if}
   </div>
 </div>
@@ -279,6 +327,18 @@
   }
 
   .ribbon-tab:hover { color: var(--w-accent); }
+
+  /* Word tints a contextual tab so it reads as belonging to the selected object
+     rather than to the document. */
+  .ribbon-tab.contextual { color: var(--w-accent-dark); }
+  .ribbon-tab.contextual::before {
+    content: '';
+    position: absolute;
+    inset: 2px 4px auto;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--w-accent-soft);
+  }
   .ribbon-tab.active { color: var(--w-accent); }
 
   /* Word's underline is inset from the tab's edges, not full width. */

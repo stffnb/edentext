@@ -1,0 +1,295 @@
+<script lang="ts">
+  import type { Editor, ChainedCommands } from '@tiptap/core';
+  import { CellSelection } from '@tiptap/pm/tables';
+  import RibbonGroup from '../RibbonGroup.svelte';
+  import RibbonButton from '../RibbonButton.svelte';
+  import ColorPicker from '../../ColorPicker.svelte';
+  import TableBorderPicker from '../../TableBorderPicker.svelte';
+  import TableStylePicker from '../../TableStylePicker.svelte';
+  import TableSplitDialog from '../../TableSplitDialog.svelte';
+  import { anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
+  import { isHeaderStyled } from '../../../editor/extensions/tableHeaderRow';
+  import { DEFAULT_CELL_PADDING, parseCellPadding, type CellPadding } from '../../../editor/extensions/tableCellPadding';
+  import type { CellVerticalAlign } from '../../../editor/extensions/tableCellAlign';
+  import { t } from '../../../i18n/i18n.svelte';
+
+  // Word splits the table's contextual tabs in two: Design paints it, Layout
+  // changes its shape.
+  let { editor, tick, which }: {
+    editor: Editor | null;
+    tick: number;
+    which: 'design' | 'layout';
+  } = $props();
+
+  let splitOpen = $state(false);
+  let splitAt = $state({ top: 0, left: 0 });
+
+  function openSplit(e: MouseEvent) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    splitAt = { top: r.bottom + 4, left: r.left };
+    splitOpen = true;
+  }
+
+  function run(cmd: (chain: ChainedCommands) => ChainedCommands) {
+    if (!editor) return;
+    cmd(editor.chain().focus()).run();
+  }
+
+  const canMerge = $derived(tick >= 0 && !!editor && editor.can().mergeCells());
+  const isHeaderRow = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'row'));
+  const isHeaderCol = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'column'));
+
+  // One attribute over the selected cells: the shared value, '' if they disagree.
+  function cellAttr(name: string): string | null {
+    if (!editor) return null;
+    const sel = editor.state.selection;
+    const values = new Set<string | null>();
+    if (sel instanceof CellSelection) {
+      sel.forEachCell((cell) => values.add((cell.attrs[name] as string) ?? null));
+    } else {
+      const from = sel.$from;
+      for (let d = from.depth; d > 0; d--) {
+        const role = from.node(d).type.spec.tableRole;
+        if (role === 'cell' || role === 'header_cell') {
+          values.add((from.node(d).attrs[name] as string) ?? null);
+          break;
+        }
+      }
+    }
+    if (values.size === 0) return null;
+    return values.size > 1 ? '' : ([...values][0] ?? null);
+  }
+
+  const cellColor = $derived(tick >= 0 ? cellAttr('backgroundColor') : null);
+  const vAlign = $derived(tick >= 0 ? cellAttr('verticalAlign') : null);
+  // The cell's margins in cm, [top, right, bottom, left]; null outside a table.
+  const padding = $derived.by<CellPadding | null>(() => {
+    if (tick < 0 || !editor || !editor.isActive('table')) return null;
+    // A cell that never set its margins reports none, and shows the format default.
+    return parseCellPadding(cellAttr('cellPadding')) ?? DEFAULT_CELL_PADDING;
+  });
+
+  function setPaddingEdge(i: number, cm: number) {
+    if (!editor || !padding) return;
+    const next = [...padding] as CellPadding;
+    next[i] = cm;
+    editor.chain().focus().setCellAttribute('cellPadding', next).run();
+  }
+
+  const VALIGNS: { key: CellVerticalAlign | null; icon: 'alignTop' | 'alignMiddle' | 'alignBottom'; label: () => string }[] = [
+    { key: null, icon: 'alignTop', label: () => t().table.cellAlignTop },
+    { key: 'middle', icon: 'alignMiddle', label: () => t().table.cellAlignMiddle },
+    { key: 'bottom', icon: 'alignBottom', label: () => t().table.cellAlignBottom },
+  ];
+</script>
+
+{#if which === 'design'}
+  <RibbonGroup label={t().styles.tableStyles}>
+    <div class="rb-captioned">
+      <TableStylePicker {editor} {tick} />
+      <span class="rb-caption">{t().table.tableStyle}</span>
+    </div>
+  </RibbonGroup>
+
+  <div class="ribbon-sep"></div>
+
+  <RibbonGroup label={t().ribbon.groups.tableDecor}>
+    <div class="rb-captioned">
+      <ColorPicker
+        {editor}
+        currentColor={cellColor}
+        defaultColor="#D9D9D9"
+        title={t().table.cellShading}
+        chevronTitle={t().table.chooseCellColor}
+        clearLabel={t().table.noFill}
+        onApply={(c) => editor?.chain().focus().setCellAttribute('backgroundColor', c).run()}
+        onClear={() => editor?.chain().focus().setCellAttribute('backgroundColor', null).run()}
+        icon={shadeIcon}
+      />
+      <span class="rb-caption">{t().table.cellShading}</span>
+    </div>
+    <div class="rb-captioned">
+      <TableBorderPicker {editor} {tick} />
+      <span class="rb-caption">{t().borders.title}</span>
+    </div>
+  </RibbonGroup>
+
+  <div class="ribbon-sep"></div>
+
+  <RibbonGroup label={t().ribbon.groups.tableOptions}>
+    <div class="rb-col">
+      <RibbonButton variant="small" icon="headerRow" label={t().styles.regions.headerRow} active={isHeaderRow} onclick={() => run((c) => c.toggleHeaderRowStyle())} />
+      <RibbonButton variant="small" icon="firstColumn" label={t().styles.regions.firstColumn} active={isHeaderCol} onclick={() => run((c) => c.toggleHeaderColumnStyle())} />
+    </div>
+  </RibbonGroup>
+{:else}
+  <RibbonGroup label={t().ribbon.groups.rowsColumns}>
+    <div class="rb-col">
+      <RibbonButton variant="small" icon="rowAbove" label={t().table.insertRowAbove} onclick={() => run((c) => c.addRowBefore())} />
+      <RibbonButton variant="small" icon="rowBelow" label={t().table.insertRowBelow} onclick={() => run((c) => c.addRowAfter())} />
+    </div>
+    <div class="rb-col">
+      <RibbonButton variant="small" icon="colLeft" label={t().table.insertColumnLeft} onclick={() => run((c) => c.addColumnBefore())} />
+      <RibbonButton variant="small" icon="colRight" label={t().table.insertColumnRight} onclick={() => run((c) => c.addColumnAfter())} />
+    </div>
+  </RibbonGroup>
+
+  <div class="ribbon-sep"></div>
+
+  <RibbonGroup label={t().common.remove}>
+    <div class="rb-col">
+      <RibbonButton variant="small" icon="deleteRow" label={t().table.deleteRow} onclick={() => run((c) => c.deleteRow())} />
+      <RibbonButton variant="small" icon="deleteCol" label={t().table.deleteColumn} onclick={() => run((c) => c.deleteColumn())} />
+      <RibbonButton variant="small" icon="deleteTable" label={t().table.deleteTable} onclick={() => run((c) => c.deleteTable())} />
+    </div>
+  </RibbonGroup>
+
+  <div class="ribbon-sep"></div>
+
+  <RibbonGroup label={t().ribbon.groups.merge}>
+    <RibbonButton variant="big" icon="merge" label={t().table.mergeCells} disabled={!canMerge} onclick={() => run((c) => c.mergeCells())} />
+    <span class="split-anchor">
+      <button class="split-trigger" onclick={openSplit} title={t().table.splitCells}>
+        <RibbonButton variant="big" icon="split" label={t().table.splitCellsAria} />
+      </button>
+      <TableSplitDialog
+        open={splitOpen}
+        top={splitAt.top}
+        left={splitAt.left}
+        onApply={(cols, rows) => { splitOpen = false; editor?.chain().focus().splitCellInto(cols, rows).run(); }}
+        onClose={() => (splitOpen = false)}
+      />
+    </span>
+  </RibbonGroup>
+
+  <div class="ribbon-sep"></div>
+
+  <RibbonGroup label={t().align.section}>
+    {#each VALIGNS as v}
+      <RibbonButton
+        icon={v.icon}
+        title={v.label()}
+        active={vAlign === v.key}
+        onclick={() => editor?.chain().focus().setCellAttribute('verticalAlign', v.key).run()}
+      />
+    {/each}
+  </RibbonGroup>
+
+  <div class="ribbon-sep"></div>
+
+  <RibbonGroup label={t().ribbon.groups.cellSize}>
+    <div class="rb-menu-wrap" use:clickOutside={'cellMargins'}>
+      <RibbonButton
+        variant="big"
+        icon="cellMargins"
+        label={t().ribbon.cellMargins}
+        title={t().ribbon.cellMargins}
+        disabled={!padding}
+        caret
+        caretActive={isMenuOpen('cellMargins')}
+        onclick={() => toggleMenu('cellMargins')}
+        onCaret={() => toggleMenu('cellMargins')}
+      />
+      {#if isMenuOpen('cellMargins') && padding}
+        <div class="ribbon-menu margin-menu" use:anchored role="menu">
+          <div class="rb-menu-label">{t().ribbon.cellMargins}</div>
+          <div class="margin-grid">
+            {#each (['top', 'right', 'bottom', 'left'] as const) as edge, i}
+              <label class="margin-field">
+                <span>{t().toolbarExpanded.margins[edge]}</span>
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  value={padding[i]}
+                  onchange={(e) => {
+                    const v = parseFloat((e.currentTarget as HTMLInputElement).value.replace(',', '.'));
+                    if (!isNaN(v)) setPaddingEdge(i, Math.max(0, v));
+                  }}
+                />
+              </label>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
+  </RibbonGroup>
+{/if}
+
+{#snippet shadeIcon()}<span class="shade-glyph"></span>{/snippet}
+
+<style>
+  .rb-col {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    height: 100%;
+  }
+
+  .rb-menu-wrap { position: relative; }
+
+  /* The dialog positions itself in viewport coordinates, so the trigger only has
+     to hand it the button's rect. */
+  .split-trigger {
+    display: contents;
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+  }
+  .margin-menu { min-width: 210px; }
+
+  .margin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 2px 7px 4px;
+  }
+
+  .margin-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--w-font);
+    font-size: 12px;
+    color: var(--w-text-dim);
+  }
+
+  .margin-field input {
+    width: 52px;
+    height: 24px;
+    border: 1px solid var(--w-border-strong);
+    border-radius: 3px;
+    background: var(--w-surface);
+    padding: 0 5px;
+    color: var(--w-text);
+    font: inherit;
+    text-align: right;
+  }
+
+  .margin-field input:focus { outline: none; border-color: var(--w-accent); }
+
+  .shade-glyph {
+    width: 14px;
+    height: 14px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    background: repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 3px);
+  }
+
+  .rb-captioned {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px 7px 6px;
+  }
+
+  .rb-caption {
+    font-family: var(--w-font);
+    font-size: 12px;
+    color: var(--w-text);
+    white-space: nowrap;
+  }
+</style>

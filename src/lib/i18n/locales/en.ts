@@ -480,6 +480,13 @@ const en = {
       language: 'Language',
       show: 'Show',
       debug: 'Debug',
+      tableDecor: 'Shading & Borders',
+      tableOptions: 'Table Style Options',
+      rowsColumns: 'Rows & Columns',
+      merge: 'Merge',
+      cellSize: 'Cell Size',
+      arrange: 'Arrange',
+      shapeStyles: 'Shape Styles',
       editing: 'Editing',
     },
     case: {
@@ -528,6 +535,7 @@ const en = {
     tocOptions: 'Levels',
     tocMaxLevel: 'Deepest level shown',
     debugDump: 'Dump',
+    cellMargins: 'Cell margins',
     chrome: {
       title: 'Toolbar style',
       ribbon: 'Ribbon',

@@ -476,6 +476,13 @@ const de: Messages = {
       language: 'Sprache',
       show: 'Anzeigen',
       debug: 'Debug',
+      tableDecor: 'Schattierung & Rahmen',
+      tableOptions: 'Tabellenformatoptionen',
+      rowsColumns: 'Zeilen & Spalten',
+      merge: 'Zusammenführen',
+      cellSize: 'Zellengröße',
+      arrange: 'Anordnen',
+      shapeStyles: 'Formenarten',
       editing: 'Bearbeiten',
     },
     case: {
@@ -524,6 +531,7 @@ const de: Messages = {
     tocOptions: 'Ebenen',
     tocMaxLevel: 'Tiefste angezeigte Ebene',
     debugDump: 'Dump',
+    cellMargins: 'Zellenränder',
     chrome: {
       title: 'Symbolleisten-Stil',
       ribbon: 'Menüband',
