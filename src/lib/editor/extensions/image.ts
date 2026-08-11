@@ -58,12 +58,25 @@ const COLUMN_WIDTH_CSS =
 
 // An as-character image wider than the text column takes a line of its own and leaves an
 // empty one above it. Fitting it to the column is where an image the file sizes to the
-// column lands anyway, once its cm/EMU width is rounded to whole px (importers).
+// column lands anyway. Fractional px throughout: whole ones cost a big frame 0.3mm.
 export function fitInlineImage(attrs: Record<string, unknown>, maxWidthPx: number): void {
   const w = attrs.width;
   if (typeof w !== 'number' || w <= maxWidthPx) return;
-  if (typeof attrs.height === 'number') attrs.height = Math.max(1, Math.round((attrs.height * maxWidthPx) / w));
-  attrs.width = maxWidthPx;
+  // Under a pixel over is our cm arithmetic disagreeing with the rendered column, not an
+  // oversized picture: trim the width so the line still holds it, and keep the height —
+  // LibreOffice lets that much overhang stand and draws the frame at its stated size.
+  if (typeof attrs.height === 'number' && w - maxWidthPx > 1) {
+    attrs.height = framePx(Math.max(1, (attrs.height * maxWidthPx) / w));
+  }
+  attrs.width = framePx(maxWidthPx);
+}
+
+// A frame size in doc px, from the cm or EMU the file states. Kept fractional — rounding
+// a page-wide picture to whole pixels loses 0.3mm of height — but our own export
+// quantizes to 0.001cm (0.04px), so a size that close to a whole pixel *is* one.
+export function framePx(px: number): number {
+  const whole = Math.round(px);
+  return Math.abs(px - whole) < 0.05 ? whole : Math.round(px * 100) / 100;
 }
 
 // A floating frame's margins from its wrapOffset: its left edge in the text column,

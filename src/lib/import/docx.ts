@@ -4,7 +4,7 @@ import { lengthToPt } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
-import { fitInlineImage } from '../editor/extensions/image';
+import { fitInlineImage, framePx } from '../editor/extensions/image';
 import { formatTabStops } from '../editor/extensions/tabStops';
 import type { CapsMode, LineStyle } from '../editor/extensions/textEffects';
 import { tableLookAttr } from '../styles/tableStyles';
@@ -1323,8 +1323,8 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   if (wsp) return convertWpsShape(wsp, root, !!anchor, ctx);
   const extentEl = root.getElementsByTagNameNS(WP, 'extent')[0];
   const boxPx = {
-    w: Math.round(emuToPx(intAttr(extentEl, '', 'cx') ?? 0)),
-    h: Math.round(emuToPx(intAttr(extentEl, '', 'cy') ?? 0)),
+    w: framePx(emuToPx(intAttr(extentEl, '', 'cx') ?? 0)),
+    h: framePx(emuToPx(intAttr(extentEl, '', 'cy') ?? 0)),
   };
   const blip = drawing.getElementsByTagNameNS(A, 'blip')[0];
   if (!blip) {
@@ -1365,8 +1365,8 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   const extent = root.getElementsByTagNameNS(WP, 'extent')[0];
   const cx = intAttr(extent, '', 'cx');
   const cy = intAttr(extent, '', 'cy');
-  if (cx) attrs.width = Math.round(emuToPx(cx));
-  if (cy) attrs.height = Math.round(emuToPx(cy));
+  if (cx) attrs.width = framePx(emuToPx(cx));
+  if (cy) attrs.height = framePx(emuToPx(cy));
   const docPr = root.getElementsByTagNameNS(WP, 'docPr')[0];
   const alt = docPr?.getAttribute('title') || docPr?.getAttribute('descr');
   if (alt) attrs.alt = alt;
@@ -1504,8 +1504,8 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
   const extent = root.getElementsByTagNameNS(WP, 'extent')[0];
   const cx = intAttr(extent, '', 'cx');
   const cy = intAttr(extent, '', 'cy');
-  if (cx) attrs.width = Math.round(emuToPx(cx));
-  if (cy) attrs.height = Math.round(emuToPx(cy));
+  if (cx) attrs.width = framePx(emuToPx(cx));
+  if (cy) attrs.height = framePx(emuToPx(cy));
   const rot = intAttr(nsChild(spPr, A, 'xfrm'), '', 'rot');
   if (rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
   if (isAnchor) {

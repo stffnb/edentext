@@ -3,7 +3,7 @@ import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
-import { fitInlineImage } from '../editor/extensions/image';
+import { fitInlineImage, framePx } from '../editor/extensions/image';
 import { odfChartDataUrl } from './chart';
 import { formatTabStops, normalizeLeader } from '../editor/extensions/tabStops';
 import type { CapsMode, LineStyle } from '../editor/extensions/textEffects';
@@ -289,8 +289,8 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
     src = placeholderImage('Image', cmToPx(wCm), cmToPx(hCm));
   }
   const attrs: Record<string, unknown> = { src };
-  if (wCm != null) attrs.width = Math.round(cmToPx(wCm));
-  if (hCm != null) attrs.height = Math.round(cmToPx(hCm));
+  if (wCm != null) attrs.width = framePx(cmToPx(wCm));
+  if (hCm != null) attrs.height = framePx(cmToPx(hCm));
   const title = frame.getElementsByTagNameNS(NS.svg, 'title')[0]?.textContent;
   if (title) attrs.alt = title;
   applyFrameRotationAndWrap(frame, attrs, ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name')));
@@ -359,10 +359,10 @@ function textBoxContent(children: Element[], ctx: Ctx): Node[] {
 function convertTextBoxFrame(frame: Element, textBoxEl: Element, ctx: Ctx): Node {
   const attrs: Record<string, unknown> = {};
   const wCm = lengthToCm(frame.getAttributeNS(NS.svg, 'width'));
-  if (wCm != null) attrs.width = Math.round(cmToPx(wCm));
+  if (wCm != null) attrs.width = framePx(cmToPx(wCm));
   const hCm = lengthToCm(textBoxEl.getAttributeNS(NS.fo, 'min-height'))
     ?? lengthToCm(frame.getAttributeNS(NS.svg, 'height'));
-  if (hCm != null) attrs.height = Math.round(cmToPx(hCm));
+  if (hCm != null) attrs.height = framePx(cmToPx(hCm));
   const gp = ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
   applyFrameRotationAndWrap(frame, attrs, gp);
   // A box is a block of its own here, so the centring of a figure frame — which its
@@ -407,7 +407,7 @@ function convertChartFrame(frame: Element, ctx: Ctx): Node | null {
   const doc = loadObjectDoc(obj.getAttributeNS(NS.xlink, 'href'), ctx);
   const src = doc && odfChartDataUrl(doc, cmToPx(wCm), cmToPx(hCm));
   if (!src) return null;
-  const attrs: Record<string, unknown> = { src, width: Math.round(cmToPx(wCm)), height: Math.round(cmToPx(hCm)), alt: 'Chart' };
+  const attrs: Record<string, unknown> = { src, width: framePx(cmToPx(wCm)), height: framePx(cmToPx(hCm)), alt: 'Chart' };
   applyFrameRotationAndWrap(frame, attrs, ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name')));
   if (!attrs.wrap || attrs.wrap === 'inline') fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
   return { type: 'image', attrs };
@@ -466,8 +466,8 @@ function convertShape(el: Element, ctx: Ctx): Node | null {
   if (kind !== 'textbox') attrs.shapeKind = kind;
   const wCm = lengthToCm(el.getAttributeNS(NS.svg, 'width'));
   const hCm = lengthToCm(el.getAttributeNS(NS.svg, 'height'));
-  if (wCm != null) attrs.width = Math.round(cmToPx(wCm));
-  if (hCm != null) attrs.height = Math.round(cmToPx(hCm));
+  if (wCm != null) attrs.width = framePx(cmToPx(wCm));
+  if (hCm != null) attrs.height = framePx(cmToPx(hCm));
   const gp = ctx.resolver.graphicProps(el.getAttributeNS(NS.draw, 'style-name'));
   applyFrameRotationAndWrap(el, attrs, gp);
   shapeStyleAttrs(gp, attrs, true);
