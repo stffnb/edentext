@@ -932,10 +932,12 @@ describe('Leg 3a: different first page header/footer → buildOdt → importOdt'
     // Arial 10pt on the runs AND the page-field atoms, so the field digits keep the font.
     const arial = [{ type: 'textStyle', attrs: { fontFamily: 'Arial', fontSize: '10pt' } }];
     const header: N = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Default header' }] }] };
-    const footer: N = { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'center' }, content: [
+    // The strut follows runs that agree on a font (applyUniformRunFont), so the zone
+    // paragraph carries it either way — stating it keeps the round trip an identity.
+    const footer: N = { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'center', fontFamily: 'Arial', fontSize: '10pt' }, content: [
       { type: 'text', text: 'Seite ', marks: arial }, { type: 'pageNumber', marks: arial }, { type: 'text', text: ' von ', marks: arial }, { type: 'pageCount', marks: arial },
     ] }] };
-    const headerFirst: N = { type: 'doc', content: [{ type: 'paragraph', content: [
+    const headerFirst: N = { type: 'doc', content: [{ type: 'paragraph', attrs: { fontFamily: 'Arial', fontSize: '10pt' }, content: [
       { type: 'text', text: 'Cover', marks: [{ type: 'bold' }, ...arial] },
     ] }] };
     const footerFirst: N = { type: 'doc', content: [{ type: 'paragraph', content: [

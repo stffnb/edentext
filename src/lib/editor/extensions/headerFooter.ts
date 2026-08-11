@@ -21,6 +21,7 @@ import { Image } from './image';
 import { Shortcuts } from './shortcuts';
 import { TabStops } from './tabStops';
 import { ParagraphSpacing } from './paragraphSpacing';
+import { BlockFontSize } from './blockFontSize';
 
 // Schema for the header/footer mini editors: exactly one paragraph of formatted
 // runs, line breaks, page fields, and inline (as-character) images. Marks mirror
@@ -65,6 +66,9 @@ export function hfExtensions(placeholder = '') {
     // The zone style's own margins: what the band has to be tall enough for
     // (Editor.svelte's hfReachPx), not a gap the bottom-anchored footer moves by.
     ParagraphSpacing.configure({ types: ['paragraph'] }),
+    // The zone is one paragraph, so its mark's font is the band's line height: a 10pt
+    // footer reserves 10pt lines, not the body's 12pt.
+    BlockFontSize.configure({ types: ['paragraph'] }),
     CharacterStyle,
     Highlight.configure({ multicolor: true }),
     HfHardBreak,

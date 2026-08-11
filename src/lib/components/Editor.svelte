@@ -28,7 +28,7 @@
   import { findBookmark } from '../editor/extensions/bookmark';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
   import { wheelZoomFactor } from '../utils/zoom';
-  import { styleCss } from '../styles/styleSheet';
+  import { styleCss, singleLineHeight } from '../styles/styleSheet';
   import { styleSheet } from '../styles/sheet.svelte';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
@@ -103,19 +103,23 @@
   const HF_LINE_PX = 16 * 1.15;
   function hfReachPx(doc: HfDoc, distPx: number, footer = false): number {
     if (!doc || hfIsEmpty(doc)) return 0;
-    type Run = { type?: string; attrs?: { height?: number; wrap?: string }; marks?: { type?: string; attrs?: { fontSize?: string } }[] };
-    const para = doc.content?.[0] as { content?: Run[]; attrs?: { spaceBefore?: number; spaceAfter?: number } } | undefined;
+    type Run = { type?: string; attrs?: { height?: number; wrap?: string }; marks?: { type?: string; attrs?: { fontSize?: string; fontFamily?: string } }[] };
+    const para = doc.content?.[0] as { content?: Run[]; attrs?: { spaceBefore?: number; spaceAfter?: number; fontSize?: string; fontFamily?: string } } | undefined;
     const inline = para?.content ?? [];
     // The zone's biggest text run sizes its lines: LibreOffice grows the band to hold them
     // when fo:min-height is smaller (probed, a 3-line header), and a zone set throughout in
     // 10pt reserves 10pt — the body default only stands in for a run that declares none.
-    let linePx = 0;
+    // A line is its font's own natural height, which is what the band renders at.
+    const line = (size?: string, family?: string) =>
+      size ? (parseFloat(size) * 96) / 72 * singleLineHeight(family) : HF_LINE_PX;
+    // The paragraph mark is the strut every run that declares no size of its own takes.
+    const base = line(para?.attrs?.fontSize, para?.attrs?.fontFamily);
+    let linePx = base;
     for (const n of inline) {
       if (n.type === 'image') continue;
-      const size = n.marks?.find((m) => m.type === 'textStyle')?.attrs?.fontSize;
-      linePx = Math.max(linePx, size ? (parseFloat(size) * 96) / 72 * 1.15 : HF_LINE_PX);
+      const ts = n.marks?.find((m) => m.type === 'textStyle')?.attrs;
+      linePx = Math.max(linePx, ts?.fontSize ? line(ts.fontSize, ts.fontFamily) : base);
     }
-    if (!linePx) linePx = HF_LINE_PX;
     // Per line, since an as-character image (a letterhead logo) makes its own line
     // as tall as it is; the others are one text line each. A positioned frame is out
     // of flow — a page-sized background would otherwise reserve the whole page.

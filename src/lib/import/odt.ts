@@ -736,6 +736,9 @@ function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
 
   const para: Node = { type: 'paragraph', content };
   const attrs: Record<string, string | number> = {};
+  // The zone is one paragraph here, so its strut is the whole band's line height —
+  // runs that agree on a size must set it, or a 10pt footer reserves 12pt lines.
+  applyUniformRunFont(attrs, content);
   if (textAlign) attrs.textAlign = textAlign;
   if (stops) attrs.tabStops = stops;
   if (spaceBefore) attrs.spaceBefore = spaceBefore;

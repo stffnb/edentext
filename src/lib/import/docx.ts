@@ -2022,6 +2022,9 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
 
   const para: Node = { type: 'paragraph', content: inline };
   const attrs: Record<string, string> = {};
+  // The zone is one paragraph here, so its strut is the whole band's line height —
+  // runs that agree on a size must set it, or a 10pt footer reserves 12pt lines.
+  applyUniformRunFont(attrs, inline);
   if (textAlign) attrs.textAlign = textAlign;
   if (stops) attrs.tabStops = stops;
   Object.assign(attrs, box);
