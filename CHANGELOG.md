@@ -139,6 +139,8 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - Password-protected ODT/DOCX; digital signatures
 - Navigator / outline view, split view
 - PWA / offline support
+- A committed corpus of documents we author ourselves, so CI can test against real files
+  (`.gitignore` excludes all of `tests/render-parity/fixtures/` today)
 
 **Out of scope for now**
 - Mail merge, data sources, form fields

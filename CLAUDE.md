@@ -37,6 +37,10 @@ Tests live in `tests/` (outside `src/`, so `svelte-check` ignores them), jsdom v
 lines**, however large the change. Probed behaviour, measurements and rationale lists belong
 in `docs/architecture/` or the nearest `CLAUDE.md`, not repeated in the history.
 
+**IMPORTANT: no real-world document's name anywhere in the repo, and a commit message
+names no document at all** — not even "the thesis": describe the fix and its measurement,
+never the file it helped. Detail in `tests/render-parity/README.md`.
+
 **IMPORTANT: never introduce a default only this editor has.** Both importers suppress values equal
 to the defaults, so an editor-only default is indistinguishable from a failed style resolution and
 silently lands in every imported document as direct formatting. The defaults follow **LibreOffice**

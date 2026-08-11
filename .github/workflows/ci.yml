@@ -12,6 +12,10 @@ jobs:
       - uses: actions/checkout@v4
       # CLAUDE.md is read at every session start; detail belongs in the nested files.
       - run: test "$(wc -l < CLAUDE.md)" -le 120 || { echo "CLAUDE.md over its 120-line budget"; exit 1; }
+      # The corpus is gitignored, so a test reading it would name a document and fail here.
+      - run: |
+          ! git grep -l "render-parity/fixtures" -- src tests ':!tests/render-parity' \
+            || { echo "a test reads the gitignored parity corpus"; exit 1; }
       - uses: actions/setup-node@v4
         with:
           node-version: 20
