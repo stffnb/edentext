@@ -676,7 +676,13 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
 function hfSetOfMasterPage(name: string, ctx: Ctx): HfSet {
   const hf = ctx.resolver.masterPageHF(name);
   const zone = (el: Element | null) => (el ? convertHfZone(el, ctx) : null);
+  // Its page layout is the section's own geometry; where the master hands over, that
+  // layout governs the first page only and the successor's the rest.
+  const own = ctx.resolver.pageGeometry(name)?.margins ?? null;
+  const rest = hf.restPage ? ctx.resolver.pageGeometry(hf.restPage)?.margins ?? own : own;
   return {
+    margins: rest,
+    marginsFirst: hf.restPage ? own : null,
     header: zone(hf.header),
     footer: zone(hf.footer),
     headerFirst: zone(hf.headerFirst),

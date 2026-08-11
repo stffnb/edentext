@@ -2,12 +2,15 @@
 // 'default' repeats on every page (odd pages when odd/even is on), 'first' overrides
 // page 1, 'even' overrides even pages — also their precedence. null = empty zone.
 
+import type { PageMargins } from './pageMargins';
+
 export type HfZone = 'header' | 'footer';
 export type HfVariant = 'default' | 'first' | 'even';
 export type HfDoc = { type: 'doc'; content?: unknown[] } | null;
 
-// One section's zones. A document has one per section (a body block carrying
-// `sectionBreak` starts the next one).
+// One section's page setup: its zones and, where the file gives the section its own,
+// its page margins. A document has one per section (a body block carrying
+// `sectionBreak` starts the next one). `margins` null = the document's own.
 export type HfSet = {
   header: HfDoc;
   footer: HfDoc;
@@ -17,12 +20,17 @@ export type HfSet = {
   headerEven: HfDoc;
   footerEven: HfDoc;
   differentOddEven: boolean;
+  margins?: PageMargins | null;
+  // The section's first page, where its page style hands over to another after it
+  // (ODF style:next-style-name — the title-page idiom). null = same as `margins`.
+  marginsFirst?: PageMargins | null;
 };
 
 export const EMPTY_HF_SET: HfSet = {
   header: null, footer: null,
   headerFirst: null, footerFirst: null, differentFirstPage: false,
   headerEven: null, footerEven: null, differentOddEven: false,
+  margins: null, marginsFirst: null,
 };
 
 export function hfSetIsEmpty(s: HfSet): boolean {

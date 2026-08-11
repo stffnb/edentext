@@ -528,9 +528,9 @@ export class StyleResolver {
     return null;
   }
 
-  private pageLayoutEl(): Element | null {
+  private pageLayoutEl(pageName: string | null = null): Element | null {
     const doc = this.stylesDoc;
-    const layoutName = this.masterPageEl()?.getAttributeNS(NS.style, 'page-layout-name');
+    const layoutName = this.masterPageEl(pageName)?.getAttributeNS(NS.style, 'page-layout-name');
     if (!doc || !layoutName) return null;
     for (const layout of Array.from(doc.getElementsByTagNameNS(NS.style, 'page-layout'))) {
       if (layout.getAttributeNS(NS.style, 'name') === layoutName) return layout;
@@ -551,9 +551,10 @@ export class StyleResolver {
     headerExtraCm: number;
     footerExtraCm: number;
     firstPageOnly: boolean;
+    restPage: string | null;
   } {
     const mp = this.masterPageEl(pageName);
-    const layout = this.pageLayoutEl();
+    const layout = this.pageLayoutEl(pageName);
 
     // Match by local name in either namespace: header-first/footer-first are ODF 1.3
     // style: or older LibreOffice loext:, so both producers round-trip.
@@ -609,17 +610,19 @@ export class StyleResolver {
       // Handing over to a successor is itself the "different first page" flag: a title
       // master with no zones of its own leaves page one deliberately blank.
       firstPageOnly: !!successor,
+      // The master every page after the first uses — also where their geometry comes from.
+      restPage: successor?.getAttributeNS(NS.style, 'name') ?? null,
     };
   }
 
   // Page margins + orientation + format from the master page's layout. With a
   // header/footer the body margin is page margin + zone height + spacing (inverse of
   // the export mapping). Format is matched from fo:page-width/height (fallback A4).
-  pageGeometry(): { margins: PageMargins; orientation: Orientation; format: PageFormat } | null {
-    const props = this.pageLayoutEl()?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
+  pageGeometry(pageName: string | null = null): { margins: PageMargins; orientation: Orientation; format: PageFormat } | null {
+    const props = this.pageLayoutEl(pageName)?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
     if (!props) return null;
 
-    const hf = this.masterPageHF();
+    const hf = this.masterPageHF(pageName);
     const cm = (attr: string, fallback: number, extra = 0) => {
       const v = lengthToCm(props.getAttributeNS(NS.fo, attr));
       if (v == null) return fallback;

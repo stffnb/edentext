@@ -732,7 +732,9 @@ export const PageBreaks = Extension.create({
           function walk(container: HTMLElement, inTableCell = false) {
             for (const child of Array.from(container.children) as HTMLElement[]) {
               if (child.dataset?.pageBreakSpacer) {
-                cumulativeSpacerHeight += child.offsetHeight;
+                // A lifting spacer carries its (negative) contribution as a margin, which
+                // offsetHeight doesn't report — without it the next pass measures its own answer.
+                cumulativeSpacerHeight += child.offsetHeight + (parseFloat(child.style.marginTop) || 0);
                 continue;
               }
               // Skip the resize-handle widgets (tableColumnResize/tableRowResize), which
@@ -978,8 +980,8 @@ export const PageBreaks = Extension.create({
               }
               cumulativeShift = rowBaseline;
             }
-            const effectiveTop = leaf.naturalTop + cumulativeShift;
-            const effectiveBottom = effectiveTop + leaf.naturalHeight;
+            let effectiveTop = leaf.naturalTop + cumulativeShift;
+            let effectiveBottom = effectiveTop + leaf.naturalHeight;
             const page = getPageForY(effectiveTop, CYCLE_PX);
             // A section's first page uses its "first" reaches, every other page its
             // "rest" ones — page 1 is section 1's first page.
@@ -1008,6 +1010,18 @@ export const PageBreaks = Extension.create({
             }[] = [];
             // Set when a leaf overflows but no spacer can bridge it (block > one page).
             let noPushReason: string | null = null;
+            // A section whose top page margin is smaller than the document's starts above
+            // where .tiptap's own padding puts it. Only where nothing was pushed down onto
+            // this page ahead of it — a spacer can add space, so only a lift is missing.
+            if (
+              leaf.sectionStart && onFirst
+              && effectiveTop > contentStart + 0.5 && effectiveTop <= pageTop + vm.top + 0.5
+            ) {
+              const { docPos, row } = leafSpacer(leaf);
+              breaks.push({ height: contentStart - effectiveTop, docPos, row, bandOpenY: null, reason: 'section-margin-lift' });
+              effectiveBottom += contentStart - effectiveTop;
+              effectiveTop = contentStart;
+            }
             // Space above this leaf loses for opening a page — taken off the flow below it.
             let droppedShift = 0;
 
@@ -1248,7 +1262,7 @@ export const PageBreaks = Extension.create({
             for (const br of breaks) {
               if (br.docPos === null) continue;
               const h = Math.round(br.height);
-              if (h <= 0) continue;
+              if (h === 0) continue;
               // In-cell or between-rows breaks sit inside the continuous table box,
               // whose borders bleed through the gap, so they need a close/open band.
               const inBand = !!leaf.inTableCell || br.row !== null;
@@ -1333,7 +1347,10 @@ export const PageBreaks = Extension.create({
               }
               const spacerEl = document.createElement('div');
               spacerEl.dataset.pageBreakSpacer = 'true';
-              spacerEl.style.height = `${p.height}px`;
+              // A negative one pulls the block above the padding — the only way up, since
+              // a box's height can't be.
+              spacerEl.style.height = `${Math.max(0, p.height)}px`;
+              if (p.height < 0) spacerEl.style.marginTop = `${p.height}px`;
               spacerEl.style.pointerEvents = 'none';
               spacerEl.style.userSelect = 'none';
               spacerEl.setAttribute('contenteditable', 'false');

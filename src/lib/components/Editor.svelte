@@ -149,14 +149,22 @@
   let effBottomFirst = $derived(Math.max(mBottomPx, hfReachPx((differentFirstPage ? footerFirstDoc : footerDoc) ?? null, footerDistPx, true)));
   // Per-section reaches for pageBreaks: "topFirst|topRest|bottomFirst|bottomRest" in px,
   // one group per section, comma-separated. Section 1 repeats the four vars below.
+  // A section with page margins of its own (w:pgMar, its own ODF page layout) measures
+  // against those instead of the document's; `marginsFirst` is its first page's.
   let sectionReach = $derived([
     [effTopFirst, effTopRest, effBottomFirst, effBottomRest],
-    ...extraHfSections.map((s) => [
-      Math.max(mTopPx, hfReachPx((s.differentFirstPage ? s.headerFirst : s.header) ?? null, headerDistPx)),
-      Math.max(mTopPx, hfReachPx(s.header ?? null, headerDistPx), s.differentOddEven ? hfReachPx(s.headerEven ?? null, headerDistPx) : 0),
-      Math.max(mBottomPx, hfReachPx((s.differentFirstPage ? s.footerFirst : s.footer) ?? null, footerDistPx, true)),
-      Math.max(mBottomPx, hfReachPx(s.footer ?? null, footerDistPx, true), s.differentOddEven ? hfReachPx(s.footerEven ?? null, footerDistPx, true) : 0),
-    ]),
+    ...extraHfSections.map((s) => {
+      const rest = s.margins ?? null;
+      const first = s.marginsFirst ?? rest;
+      const topOf = (m: PageMargins | null) => (m ? cmToPx(m.top) : mTopPx);
+      const bottomOf = (m: PageMargins | null) => (m ? cmToPx(m.bottom) : mBottomPx);
+      return [
+        Math.max(topOf(first), hfReachPx((s.differentFirstPage ? s.headerFirst : s.header) ?? null, headerDistPx)),
+        Math.max(topOf(rest), hfReachPx(s.header ?? null, headerDistPx), s.differentOddEven ? hfReachPx(s.headerEven ?? null, headerDistPx) : 0),
+        Math.max(bottomOf(first), hfReachPx((s.differentFirstPage ? s.footerFirst : s.footer) ?? null, footerDistPx, true)),
+        Math.max(bottomOf(rest), hfReachPx(s.footer ?? null, footerDistPx, true), s.differentOddEven ? hfReachPx(s.footerEven ?? null, footerDistPx, true) : 0),
+      ];
+    }),
   ].map((g) => g.map((n) => Math.round(n)).join('|')).join(','));
 
   $effect(() => {

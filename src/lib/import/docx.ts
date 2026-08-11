@@ -1914,9 +1914,7 @@ function parseSectPr(sect: Element | null, ctx: Ctx, oddEven = false): {
 
   const pgMar = fc(sect, 'pgMar');
   const clampCm = (tw: number | null) => (tw == null ? null : Math.min(10, Math.max(0, round2(twipToCm(tw)))));
-  const margins: PageMargins | null = pgMar
-    ? { top: clampCm(intAttr(pgMar, W, 'top')) ?? 2.54, bottom: clampCm(intAttr(pgMar, W, 'bottom')) ?? 2.54, left: clampCm(intAttr(pgMar, W, 'left')) ?? 2.12, right: clampCm(intAttr(pgMar, W, 'right')) ?? 2.12 }
-    : null;
+  const margins = sectMargins(sect);
 
   // Different first page: w:titlePg turns on the "first"-type refs for page 1.
   const titlePgEl = fc(sect, 'titlePg');
@@ -1942,6 +1940,17 @@ function parseSectPr(sect: Element | null, ctx: Ctx, oddEven = false): {
   };
 }
 
+// The section's own page margins (w:pgMar). Word has no first-page variant of them.
+function sectMargins(sect: Element | null): PageMargins | null {
+  const pgMar = sect ? fc(sect, 'pgMar') : null;
+  if (!pgMar) return null;
+  const cm = (a: string, fallback: number) => {
+    const tw = intAttr(pgMar, W, a);
+    return tw == null ? fallback : Math.min(10, Math.max(0, round2(twipToCm(tw))));
+  };
+  return { top: cm('top', 2.54), bottom: cm('bottom', 2.54), left: cm('left', 2.12), right: cm('right', 2.12) };
+}
+
 // One HfSet per section, in body order, resolving Word's "Link to Previous": a section
 // that declares no reference of a type keeps the previous section's. w:titlePg is per
 // section, odd/even is document-wide (settings.xml).
@@ -1958,6 +1967,7 @@ function sectionHfSets(sectPrs: (Element | null)[], ctx: Ctx, oddEven: boolean):
       return ref ? convertHfPart(ref.getAttributeNS(R, 'id'), ctx) : inherited;
     };
     out.push({
+      margins: sectMargins(sect),
       header: zone('header', 'default', prev.header),
       footer: zone('footer', 'default', prev.footer),
       headerFirst: titlePg ? zone('header', 'first', prev.headerFirst) : null,
