@@ -167,8 +167,23 @@
     }),
   ].map((g) => g.map((n) => Math.round(n)).join('|')).join(','));
 
+  // The same per section for the side margins, as a delta against the document's own:
+  // .tiptap's padding draws those for every page, so a section that wants others has
+  // its blocks inset by the difference ("leftFirst|rightFirst|leftRest|rightRest").
+  let sectionInset = $derived([
+    [0, 0, 0, 0],
+    ...extraHfSections.map((s) => {
+      const rest = s.margins ?? null;
+      const first = s.marginsFirst ?? rest;
+      const d = (m: PageMargins | null, side: 'left' | 'right') =>
+        m ? Math.round(cmToPx(m[side]) - cmToPx(pageMargins[side])) : 0;
+      return [d(first, 'left'), d(first, 'right'), d(rest, 'left'), d(rest, 'right')];
+    }),
+  ].map((g) => g.join('|')).join(','));
+
   $effect(() => {
     const s = document.documentElement.style;
+    s.setProperty('--pb-section-inset', sectionInset);
     s.setProperty('--pb-content-top-rest', `${effTopRest}px`);
     s.setProperty('--pb-content-top-first', `${effTopFirst}px`);
     s.setProperty('--pb-content-bottom-rest', `${effBottomRest}px`);
@@ -192,6 +207,7 @@
     // …and the header/footer-driven effective margins, so growing a zone re-paginates.
     void (effTopRest + effTopFirst + effBottomRest + effBottomFirst);
     void sectionReach;
+    void sectionInset;
     const ed = editor;
     if (!ed) return;
     cancelAnimationFrame(marginRecalcRaf);

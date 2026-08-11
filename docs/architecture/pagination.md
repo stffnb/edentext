@@ -59,6 +59,24 @@ stretches them. Measured on `02-blocks`: LO fits a trailing "et" that needs ~5mm
 across 15 spaces. Nothing in CSS expresses that, so a justified paragraph may break one word
 earlier here; the same paragraph left-aligned matches LibreOffice to 0.1mm.
 
+**Per-section page margins.** Word's `w:pgMar` and ODF's page layout belong to the section,
+not the document, so each section's `HfSet` carries its own `margins` (and `marginsFirst`
+where an ODF master hands over to another with `style:next-style-name` — that layout governs
+the section's first page, the successor's the rest). `Editor.svelte` publishes them as
+`--pb-section-reach` (already the per-page content area) and `--pb-section-inset`
+("leftFirst|rightFirst|leftRest|rightRest" px against the document's own side margins).
+Vertically a spacer can only push down, so a section whose top margin is *smaller* than the
+document's gets a **lifting** spacer — height 0 and a negative `margin-top` — on its first
+block, and only where nothing was pushed onto that page ahead of it; `collectLeaves` counts
+that margin into `cumulativeSpacerHeight` or the next pass measures its own answer.
+Horizontally `.tiptap`'s padding draws one pair for every page, so the difference becomes a
+`--sec-inset-left`/`-right` node decoration on the section's top-level blocks, added in by
+everything that writes a block margin (`editor.css`, `indent.ts`, `styleSheet.ts`,
+`tableView.ts`) and cleared on descendants so a nested indent can't count it twice. The page
+a block lands on is read *after* its own spacer, so a forced break onto the section's second
+page takes the "rest" pair. Not carried: the ruler, the header/footer layer and a frame's
+`COLUMN_WIDTH_CSS` stay document-wide, and both exports write one page geometry.
+
 **Tables across page breaks:** when a single continuous table box crosses a page boundary, the plugin reports `TableBreakBand`s (doc-px geometry). `Editor.svelte` renders an overlay (`.band-layer` inside `.paper`) that masks the table borders bleeding through the page margins and paints the dark page gap as one seam-free stripe.
 
 **Layout constants** (must stay in sync between `pageBreaks.ts`, `Editor.svelte`, and `editor.css`):

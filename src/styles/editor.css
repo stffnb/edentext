@@ -153,6 +153,19 @@
   font-size: 0;
 }
 
+/* A section whose page setup has side margins of its own insets its top-level blocks by
+   the difference — .tiptap's padding can only draw one pair (pageBreaks.ts sets the two
+   properties per block). Everything that writes a block margin adds them in, so an indent
+   and the inset compose; a descendant clears them, or a nested one would add them twice. */
+.paper .tiptap > * {
+  margin-left: var(--sec-inset-left, 0px);
+  margin-right: var(--sec-inset-right, 0px);
+}
+.paper .tiptap > * * {
+  --sec-inset-left: 0px;
+  --sec-inset-right: 0px;
+}
+
 /* No paragraph spacing by default, like LibreOffice's Default Paragraph Style and
    Word's implied 0 — an editor default here would show up as extra space in every
    imported document (export/odt.ts zeroes odf-kit's Standard style to match). */

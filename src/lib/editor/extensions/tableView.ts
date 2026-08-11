@@ -44,8 +44,10 @@ function applyMargins(node: PMNode, wrapper: HTMLElement): void {
   const mr = (node.attrs.marginRight as number) || 0;
   const mt = (node.attrs.marginTop as number) || 0;
   const mb = (node.attrs.marginBottom as number) || 0;
-  wrapper.style.marginLeft = ml ? `${ml}cm` : '';
-  wrapper.style.marginRight = mr ? `${mr}cm` : '';
+  // Always written: .tableWrapper's own `margin: 0` would otherwise beat the section
+  // inset editor.css puts on a top-level block.
+  wrapper.style.marginLeft = `calc(var(--sec-inset-left, 0px) + ${ml}cm)`;
+  wrapper.style.marginRight = `calc(var(--sec-inset-right, 0px) + ${mr}cm)`;
   wrapper.style.marginBottom = mb ? `${mb}cm` : '';
   // Space above rides --space-before so editor.css can add it to the block above
   // instead of collapsing against it (storage/spacingModel.ts).

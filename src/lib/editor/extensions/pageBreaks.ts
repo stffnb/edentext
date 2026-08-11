@@ -931,6 +931,12 @@ export const PageBreaks = Extension.create({
             .filter((g) => g.length === 4 && g.every(Number.isFinite));
           const reachAt = (i: number) => reach[Math.min(i, reach.length - 1)]
             ?? [effTopFirst, vm.top, effBottomFirst, vm.bottom];
+          // Its side margins, as a delta on the document's: .tiptap's padding draws only
+          // one pair, so a section wanting others insets its own blocks by the difference.
+          const inset = csRoot.getPropertyValue('--pb-section-inset').split(',')
+            .map((g) => g.split('|').map(Number))
+            .filter((g) => g.length === 4 && g.every(Number.isFinite));
+          const insetAt = (i: number) => inset[Math.min(i, inset.length - 1)] ?? [0, 0, 0, 0];
 
           const scale = getScaleFactor();
           const leaves = collectLeaves(CONTENT_HEIGHT, scale);
@@ -960,6 +966,8 @@ export const PageBreaks = Extension.create({
           // Node-decoration ranges dropping the space before a block a soft break put
           // at a page top (probed in LibreOffice); a hard break and the first block keep it.
           const pageTopBlocks: { from: number; to: number }[] = [];
+          // Top-level blocks a section's own side margins inset, keyed by doc position.
+          const sectionInsets = new Map<number, { to: number; left: number; right: number }>();
           // Close/open bands for in-cell + between-rows table breaks. Keyed by the
           // rounded openY (the grouping id) → the unrounded openY (so the band lands
           // exactly on the page cycle) plus whether it's a between-rows break.
@@ -998,6 +1006,7 @@ export const PageBreaks = Extension.create({
             const pageTop = (page - 1) * CYCLE_PX;
             const contentStart = pageTop + (onFirst ? topFirst : topRest);
             const contentEnd = pageTop + vm.pageHeight - (onFirst ? bottomFirst : bottomRest);
+
 
             // A leaf may need several spacers: a splittable block taller than one
             // page crosses multiple boundaries, one break each.
@@ -1299,8 +1308,21 @@ export const PageBreaks = Extension.create({
             }
 
             // Read after this leaf's own spacer, so the page is the one it really lands on.
-            if (leaf.sectionStart) {
-              sectionStartPages.push(getPageForY(leaf.naturalTop + cumulativeShift, CYCLE_PX));
+            const landedPage = getPageForY(leaf.naturalTop + cumulativeShift, CYCLE_PX);
+            if (leaf.sectionStart) sectionStartPages.push(landedPage);
+            const ins = insetAt(sectionIndex);
+            const insLeft = Math.round(landedPage === sectionFirstPage ? ins[0] : ins[2]);
+            const insRight = Math.round(landedPage === sectionFirstPage ? ins[1] : ins[3]);
+            if (insLeft || insRight) {
+              // The leaf may be a row, or a line inside one; the inset belongs on the
+              // top-level block, which is the ancestor .tiptap holds directly.
+              let block: HTMLElement = leaf.el;
+              while (block.parentElement && block.parentElement !== dom) block = block.parentElement;
+              const from = block.parentElement === dom ? docPosBeforeElement(block) : null;
+              const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
+              if (from !== null && node && !sectionInsets.has(from)) {
+                sectionInsets.set(from, { to: from + node.nodeSize, left: insLeft, right: insRight });
+              }
             }
             cumulativeShift -= droppedShift;
             // Track the lowest rendered content bottom (cumulativeShift now includes
@@ -1323,7 +1345,8 @@ export const PageBreaks = Extension.create({
           const placementsKey =
             placements.map((p) => `${p.docPos}:${p.height}:${p.row ? p.row.columns : 'b'}`).join('|') +
             (collapsedTrailing ? `|c${collapsedTrailing.from}` : '') +
-            pageTopBlocks.map((b) => `|t${b.from}`).join('');
+            pageTopBlocks.map((b) => `|t${b.from}`).join('') +
+            Array.from(sectionInsets, ([f, s]) => `|i${f}:${s.left}:${s.right}`).join('');
           const placementsChanged =
             placementsKey !== lastPlacementsKey && placementsKey !== prevPlacementsKey;
           if (placementsChanged) {
@@ -1359,6 +1382,11 @@ export const PageBreaks = Extension.create({
             if (collapsedTrailing) {
               decoArray.push(Decoration.node(collapsedTrailing.from, collapsedTrailing.to, {
                 style: 'height:0;min-height:0;margin:0;overflow:hidden',
+              }));
+            }
+            for (const [from, s] of sectionInsets) {
+              decoArray.push(Decoration.node(from, s.to, {
+                style: `--sec-inset-left:${s.left}px;--sec-inset-right:${s.right}px`,
               }));
             }
             for (const b of pageTopBlocks) {

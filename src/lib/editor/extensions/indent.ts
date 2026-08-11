@@ -146,7 +146,8 @@ export const Indent = Extension.create({
               const cm = Number(attributes.indent);
               return {
                 'data-indent': String(cm),
-                style: `margin-left: ${cm}cm`,
+                // Plus the section inset, which .tiptap's own padding can't draw (editor.css).
+                style: `margin-left: calc(var(--sec-inset-left, 0px) + ${cm}cm)`,
               };
             },
           },
@@ -159,7 +160,7 @@ export const Indent = Extension.create({
               const cm = Number(attributes.indentRight);
               return {
                 'data-indent-right': String(cm),
-                style: `margin-right: ${cm}cm`,
+                style: `margin-right: calc(var(--sec-inset-right, 0px) + ${cm}cm)`,
               };
             },
           },
