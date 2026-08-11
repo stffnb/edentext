@@ -475,6 +475,11 @@ const en = {
       text: 'Text',
       symbols: 'Symbols',
       pageSetup: 'Page Setup',
+      toc: 'Table of Contents',
+      proofing: 'Proofing',
+      language: 'Language',
+      show: 'Show',
+      debug: 'Debug',
       editing: 'Editing',
     },
     case: {
@@ -519,6 +524,10 @@ const en = {
       narrow: 'Narrow',
       wide: 'Wide',
     },
+    toc: 'Table of contents',
+    tocOptions: 'Levels',
+    tocMaxLevel: 'Deepest level shown',
+    debugDump: 'Dump',
     chrome: {
       title: 'Toolbar style',
       ribbon: 'Ribbon',

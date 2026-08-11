@@ -471,6 +471,11 @@ const de: Messages = {
       text: 'Text',
       symbols: 'Symbole',
       pageSetup: 'Seite einrichten',
+      toc: 'Inhaltsverzeichnis',
+      proofing: 'Rechtschreibung',
+      language: 'Sprache',
+      show: 'Anzeigen',
+      debug: 'Debug',
       editing: 'Bearbeiten',
     },
     case: {
@@ -515,6 +520,10 @@ const de: Messages = {
       narrow: 'Schmal',
       wide: 'Breit',
     },
+    toc: 'Inhaltsverzeichnis',
+    tocOptions: 'Ebenen',
+    tocMaxLevel: 'Tiefste angezeigte Ebene',
+    debugDump: 'Dump',
     chrome: {
       title: 'Symbolleisten-Stil',
       ribbon: 'Menüband',

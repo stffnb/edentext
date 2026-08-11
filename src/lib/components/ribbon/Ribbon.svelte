@@ -6,6 +6,9 @@
   import HomeTab from './tabs/HomeTab.svelte';
   import InsertTab from './tabs/InsertTab.svelte';
   import LayoutTab from './tabs/LayoutTab.svelte';
+  import ReferencesTab from './tabs/ReferencesTab.svelte';
+  import ReviewTab from './tabs/ReviewTab.svelte';
+  import ViewTab from './tabs/ViewTab.svelte';
   import UiLanguagePicker from '../UiLanguagePicker.svelte';
   import { clickOutside, isMenuOpen, toggleMenu, closeMenu } from './menu.svelte';
   import { t } from '../../i18n/i18n.svelte';
@@ -17,6 +20,7 @@
   import type { Orientation } from '../../storage/pageOrientation';
   import type { PageFormat } from '../../storage/pageFormat';
   import type { HfZone } from '../../storage/headerFooter';
+  import type { DocumentLanguage } from '../../storage/documentLanguage';
 
   let {
     editor,
@@ -24,6 +28,12 @@
     chromeMode = $bindable<ChromeMode>('ribbon'),
     documentName = $bindable(''),
     showFormattingMarks = $bindable(false),
+    showRuler = $bindable(true),
+    documentLanguage,
+    onLanguage,
+    zoom = 100,
+    onZoom,
+    onDebugDump,
     pageMargins = $bindable(DEFAULT_MARGINS),
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
@@ -44,6 +54,12 @@
     chromeMode?: ChromeMode;
     documentName?: string;
     showFormattingMarks?: boolean;
+    showRuler?: boolean;
+    documentLanguage: DocumentLanguage;
+    onLanguage: (code: DocumentLanguage) => void;
+    zoom?: number;
+    onZoom?: (value: number) => void;
+    onDebugDump?: () => void;
     pageMargins?: PageMargins;
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
@@ -207,6 +223,12 @@
       <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} {onEditZone} {onManageTableStyles} />
     {:else if tab === 'layout'}
       <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat />
+    {:else if tab === 'references'}
+      <ReferencesTab {editor} {tick} {hfActive} />
+    {:else if tab === 'review'}
+      <ReviewTab {editor} {tick} {documentLanguage} {onLanguage} />
+    {:else if tab === 'view'}
+      <ViewTab bind:showRuler bind:showFormattingMarks {zoom} {onZoom} {onDebugDump} />
     {/if}
   </div>
 </div>

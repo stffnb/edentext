@@ -832,6 +832,12 @@
       bind:chromeMode
       bind:documentName
       bind:showFormattingMarks
+      bind:showRuler
+      {documentLanguage}
+      onLanguage={(code) => (documentLanguage = code)}
+      {zoom}
+      onZoom={setZoom}
+      onDebugDump={import.meta.env.DEV ? handleDebugDump : undefined}
       bind:pageMargins
       bind:pageOrientation
       bind:pageFormat
