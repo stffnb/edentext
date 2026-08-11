@@ -1,7 +1,12 @@
 export type ThemeMode = 'light' | 'dark' | 'allBlack' | 'auto';
 
+// Which chrome mounts above the document: the floating command island, or the
+// Word-style ribbon. Both drive the same editor; only one is mounted at a time.
+export type ChromeMode = 'classic' | 'ribbon';
+
 const THEME_KEY = 'odf-editor-theme';
 const TOOLBAR_KEY = 'odf-editor-toolbar-expanded';
+const CHROME_KEY = 'odf-editor-chrome';
 const FORMATTING_MARKS_KEY = 'odf-editor-formatting-marks';
 const RULER_KEY = 'odf-editor-ruler';
 
@@ -21,6 +26,14 @@ export function loadToolbarExpanded(): boolean {
 
 export function saveToolbarExpanded(expanded: boolean): void {
     localStorage.setItem(TOOLBAR_KEY, String(expanded));
+}
+
+export function loadChromeMode(): ChromeMode {
+    return localStorage.getItem(CHROME_KEY) === 'ribbon' ? 'ribbon' : 'classic';
+}
+
+export function saveChromeMode(mode: ChromeMode): void {
+    localStorage.setItem(CHROME_KEY, mode);
 }
 
 export function loadFormattingMarks(): boolean {

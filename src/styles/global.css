@@ -260,6 +260,27 @@
     --brand-gradient: linear-gradient(90deg, var(--color-primary), var(--accent-warm));
   }
 
+/* The ribbon's palette: Word's own greys and accent, deliberately outside the
+   [data-theme] blocks — the theme switcher styles the canvas, not the ribbon. */
+:root {
+  --w-accent: #185abd;
+  --w-accent-dark: #124a9e;
+  --w-chrome: #ffffff;
+  --w-surface: #ffffff;
+  --w-border: #e3e6ea;
+  --w-border-strong: #d9d9d9;
+  --w-text: #242424;
+  --w-text-dim: #605e5c;
+  --w-text-tertiary: #909499;
+  --w-hover: #f3f2f1;
+  --w-pressed: #edebe9;
+  --w-active: #e2e0de;
+  --w-menu-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  --w-font: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  /* Body height: three control rows plus the group-label row. A tuning knob. */
+  --w-ribbon-h: 96px;
+}
+
 /* Signature micro-interactions, shared across all toolbar components. */
 @keyframes menu-in {
   from { opacity: 0; transform: translateY(-5px); }
@@ -271,9 +292,40 @@
 
 .theme-dropdown, .ol-dropdown, .align-dropdown, .font-dropdown, .size-dropdown,
 .color-dropdown, .char-dropdown, .history-dropdown, .layout-dropdown,
-.lh-dropdown, .sp-dropdown, .table-dropdown, .bp-dropdown {
+.lh-dropdown, .sp-dropdown, .table-dropdown, .bp-dropdown, .ribbon-menu {
   animation: menu-in 0.14s ease;
 }
+
+/* Rows inside a ribbon menu. Global because the panel (RibbonMenu.svelte) renders
+   its rows from a caller's snippet, which Svelte scopes to that caller. */
+.ribbon-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: var(--w-text);
+  font-family: var(--w-font);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ribbon-menu button:hover:not(:disabled) { background: var(--w-hover); }
+.ribbon-menu button:disabled { color: var(--w-text-tertiary); cursor: default; }
+.ribbon-menu button.selected { background: var(--w-active); }
+
+/* Both trail the row's label: the shortcut hint and the secondary description
+   Word puts at the right edge of a menu entry. */
+.ribbon-menu .menu-key,
+.ribbon-menu .menu-sub { margin-left: auto; padding-left: 16px; color: var(--w-text-dim); }
+.ribbon-menu .menu-key { font-size: 12px; }
+.ribbon-menu .menu-sub { font-size: 11px; }
+.ribbon-menu hr { border: none; border-top: 1px solid var(--w-border); margin: 4px 2px; }
 
 /* Scrolling body of a popup menu. Only this inner box scrolls; the panel keeps
    the background and frame, so the elastic overscroll bounce can't drag the
@@ -289,7 +341,7 @@
   .toolbar-region button:active:not(:disabled) { transform: none; }
   .theme-dropdown, .ol-dropdown, .align-dropdown, .font-dropdown, .size-dropdown,
   .color-dropdown, .char-dropdown, .history-dropdown, .layout-dropdown,
-  .lh-dropdown, .sp-dropdown, .table-dropdown, .bp-dropdown { animation: none; }
+  .lh-dropdown, .sp-dropdown, .table-dropdown, .bp-dropdown, .ribbon-menu { animation: none; }
 }
 
   [data-theme="light"] {
