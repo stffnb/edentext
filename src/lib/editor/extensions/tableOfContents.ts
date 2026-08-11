@@ -290,17 +290,23 @@ class TocView {
   // As many leader dots as the gap holds. The row clips the rest on screen, but nothing
   // else does: 200 of them reach the PDF, the clipboard and every measurement as text.
   private fillLeaders(): void {
-    const leaders = Array.from(this.dom.querySelectorAll<HTMLElement>('.toc-leader'));
-    if (!leaders.length) return;
-    const fill = leaders[0].textContent?.[0];
-    if (!fill) return;
-    leaders[0].textContent = fill.repeat(LEADER_PROBE);
     const range = document.createRange();
-    range.selectNodeContents(leaders[0]);
-    const one = range.getBoundingClientRect().width / LEADER_PROBE;
-    if (!(one > 0)) return;
-    for (const el of leaders) {
-      el.textContent = fill.repeat(Math.max(0, Math.floor(el.getBoundingClientRect().width / one)));
+    // One dot's advance, probed once per font: the levels have styles of their own, and
+    // measuring level 1's dot for a smaller level 3 leaves its row short of the number.
+    const advances = new Map<string, number>();
+    for (const el of this.dom.querySelectorAll<HTMLElement>('.toc-leader')) {
+      const fill = el.textContent?.[0];
+      if (!fill) continue;
+      const cs = getComputedStyle(el);
+      const key = `${fill}|${cs.fontSize}|${cs.fontFamily}|${cs.fontWeight}|${cs.fontStyle}`;
+      let one = advances.get(key);
+      if (one == null) {
+        el.textContent = fill.repeat(LEADER_PROBE);
+        range.selectNodeContents(el);
+        one = range.getBoundingClientRect().width / LEADER_PROBE;
+        advances.set(key, one);
+      }
+      el.textContent = one > 0 ? fill.repeat(Math.max(0, Math.floor(el.getBoundingClientRect().width / one))) : '';
     }
   }
 
