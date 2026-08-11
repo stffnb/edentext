@@ -97,9 +97,9 @@ export type TableBreakBand = {
   key: number;
   closeY: number;     // content-end of the closing page (band/mask top)
   height: number;     // bandSpan = marginBottom + gap + marginTop
-  // True when the break falls between whole table rows: the rows' own cell borders
-  // already cap the table at the gap, so only the gap stripe is painted (no mask /
-  // close-open lines, which would double the real borders). False for in-cell splits.
+  // True when the break falls between whole table rows: the spacer row draws the table's
+  // own close/open lines there, so only the gap stripe is painted (a mask would double
+  // them). False for in-cell splits.
   rowBreak: boolean;
   left: number;       // content-area left (mask left)
   width: number;      // content-area width (mask width)
@@ -200,6 +200,11 @@ export const pageBreakKey = new PluginKey<PageBreakState>('pageBreaks');
 // Transaction meta flag: set it (e.g. when page margins change) to force a
 // pagination recompute even though the document content is unchanged.
 export const FORCE_PAGE_RECALC = 'forcePageBreakRecalc';
+
+// A table-row spacer: the colspan bridging the row, plus the lines that close the table
+// at the break — LibreOffice draws the row separator the break falls on, or, where the
+// rows carry none, the table's own box (its top border closes, its bottom border opens).
+type RowSpacer = { columns: number; close: string; open: string };
 
 type Leaf = {
   el: HTMLElement;
@@ -416,9 +421,33 @@ export const PageBreaks = Extension.create({
           return docPosBeforeElement(target);
         }
 
+        // What a cell edge draws, as a border shorthand ('' where it draws nothing).
+        function edgeLine(cell: Element | null, side: 'Top' | 'Bottom'): string {
+          if (!cell) return '';
+          const cs = getComputedStyle(cell);
+          const width = side === 'Top' ? cs.borderTopWidth : cs.borderBottomWidth;
+          const style = side === 'Top' ? cs.borderTopStyle : cs.borderBottomStyle;
+          const color = side === 'Top' ? cs.borderTopColor : cs.borderBottomColor;
+          return parseFloat(width) > 0 && style !== 'none' ? `${width} ${style} ${color}` : '';
+        }
+
+        // The lines closing the table where a break falls before row `tr` (see RowSpacer).
+        // The first cell speaks for the row: a spacer bridges every column with one <td>.
+        function splitLines(tr: HTMLElement): { close: string; open: string } {
+          const cell = (r: Element | null | undefined) => r?.firstElementChild ?? null;
+          const sep = edgeLine(cell(tr), 'Top') || edgeLine(cell(previousNonSpacerSibling(tr)), 'Bottom');
+          if (sep) return { close: sep, open: sep };
+          const rows = Array.from(tr.parentElement?.children ?? [])
+            .filter((r) => r.tagName === 'TR' && !(r as HTMLElement).dataset?.pageBreakSpacer);
+          return {
+            close: edgeLine(cell(rows[0]), 'Top'),
+            open: edgeLine(cell(rows[rows.length - 1]), 'Bottom'),
+          };
+        }
+
         // Where to place a leaf's page-break spacer, and whether it must be a
         // table row (so the widget is valid markup inside a <tbody>).
-        function leafSpacer(leaf: Leaf): { docPos: number | null; row: { columns: number } | null } {
+        function leafSpacer(leaf: Leaf): { docPos: number | null; row: RowSpacer | null } {
           if (leaf.tableRow) {
             // First row crossing the boundary → push the whole table with a block
             // spacer before the wrapper (otherwise the table's top would be
@@ -428,7 +457,10 @@ export const PageBreaks = Extension.create({
             }
             // Later rows → a spacer <tr> before the row pushes it (and the rows
             // after it) to the next page while the table stays one element.
-            return { docPos: docPosBeforeElement(leaf.el), row: { columns: leaf.tableRow.columns } };
+            return {
+              docPos: docPosBeforeElement(leaf.el),
+              row: { columns: leaf.tableRow.columns, ...splitLines(leaf.el) },
+            };
           }
           return { docPos: preLeafDocPos(leaf.el), row: null };
         }
@@ -958,7 +990,7 @@ export const PageBreaks = Extension.create({
           const placements: {
             docPos: number;
             height: number;
-            row: { columns: number } | null;
+            row: RowSpacer | null;
           }[] = [];
           // Node-decoration range collapsing the trailing empty paragraph after a
           // document-final columns chain when it sits past the page content area.
@@ -1013,7 +1045,7 @@ export const PageBreaks = Extension.create({
             const breaks: {
               height: number;
               docPos: number | null;
-              row: { columns: number } | null;
+              row: RowSpacer | null;
               bandOpenY: number | null;
               reason: string;
             }[] = [];
@@ -1343,7 +1375,7 @@ export const PageBreaks = Extension.create({
           // previous pass. Most keystrokes don't change pagination, and re-dispatching
           // recreates the spacer DOM nodes (no `key` on the widgets) for no gain.
           const placementsKey =
-            placements.map((p) => `${p.docPos}:${p.height}:${p.row ? p.row.columns : 'b'}`).join('|') +
+            placements.map((p) => `${p.docPos}:${p.height}:${p.row ? `${p.row.columns}${p.row.close}${p.row.open}` : 'b'}`).join('|') +
             (collapsedTrailing ? `|c${collapsedTrailing.from}` : '') +
             pageTopBlocks.map((b) => `|t${b.from}`).join('') +
             Array.from(sectionInsets, ([f, s]) => `|i${f}:${s.left}:${s.right}`).join('');
@@ -1365,6 +1397,16 @@ export const PageBreaks = Extension.create({
                 tdEl.dataset.pageBreakSpacerCell = 'true';
                 tdEl.setAttribute('colspan', String(p.row.columns));
                 tdEl.style.height = `${p.height}px`;
+                // Collapsed borders paint a shared edge once, so without these lines the
+                // gap keeps it and one of the two fragments ends unclosed. Out of flow:
+                // a collapsed border on the spacer itself moves every row below by half.
+                tdEl.style.position = 'relative';
+                for (const [border, side] of [[p.row.close, 'top'], [p.row.open, 'bottom']] as const) {
+                  if (!border) continue;
+                  const line = document.createElement('div');
+                  line.style.cssText = `position:absolute;left:0;right:0;${side}:0;border-${side}:${border}`;
+                  tdEl.appendChild(line);
+                }
                 trEl.appendChild(tdEl);
                 return Decoration.widget(p.docPos, trEl, { side: -1 });
               }

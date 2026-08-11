@@ -79,6 +79,8 @@ page takes the "rest" pair. Not carried: the ruler, the header/footer layer and 
 
 **Tables across page breaks:** when a single continuous table box crosses a page boundary, the plugin reports `TableBreakBand`s (doc-px geometry). `Editor.svelte` renders an overlay (`.band-layer` inside `.paper`) that masks the table borders bleeding through the page margins and paints the dark page gap as one seam-free stripe.
 
+A break *between rows* instead closes the table on both sides of the gap: collapsed borders paint a shared edge only once, so the spacer `<tr>` would leave one fragment open. `splitLines` (`pageBreaks.ts`) resolves what LibreOffice draws there — the row separator the break falls on, or, where the rows carry none, the table's own box (probed: its **top** border closes the fragment, its **bottom** border opens the continuation) — and the spacer cell renders it as two absolutely positioned lines. Out of flow deliberately: a collapsed border on the spacer itself moves every row below it down by half its width.
+
 **Layout constants** (must stay in sync between `pageBreaks.ts`, `Editor.svelte`, and `editor.css`):
 - `PAGE_HEIGHT = 1123px` (A4 portrait), `PAGE_GAP = 20px`, `CYCLE = PAGE_HEIGHT + PAGE_GAP = 1143px`.
 - Page height/width and margins are read **live** from CSS custom properties (`--user-page-height`, `--user-page-width`, `--user-margin-*`) so orientation/margin changes don't require new constants. `getCycle()` in `Editor.svelte` reads `--user-page-height` at runtime.
