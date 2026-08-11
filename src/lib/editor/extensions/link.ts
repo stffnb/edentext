@@ -15,6 +15,19 @@ export const Link = LinkBase.configure({
   defaultProtocol: 'https',
   HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
 }).extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      // A link a file gives no look of its own (Word writes the blue as a character
+      // style, so a run without one is drawn like the text around it). ODF has no such
+      // link: LibreOffice paints every text:a, styled or not — probed.
+      plain: {
+        default: false,
+        parseHTML: (el: HTMLElement) => el.hasAttribute('data-plain'),
+        renderHTML: (attrs: Record<string, unknown>) => (attrs.plain ? { 'data-plain': '' } : {}),
+      },
+    };
+  },
   addKeyboardShortcuts() {
     return {
       [DEFAULT_SHORTCUTS.link]: () => {

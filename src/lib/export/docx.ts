@@ -261,8 +261,9 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
     const h = hexColor(String(hl.attrs.color));
     if (h) props.shading = { type: ShadingType.CLEAR, fill: h };
   }
-  // Visible hyperlink styling (the ExternalHyperlink wrapper carries the target).
-  if (markPresent(marks, 'link')) {
+  // Visible hyperlink styling (the ExternalHyperlink wrapper carries the target), unless
+  // the link came in without one — Word draws those like the text around them.
+  if (marks?.some((m) => m.type === 'link' && !m.attrs?.plain)) {
     if (!props.color) props.color = '0563C1';
     if (!props.underline) props.underline = { type: UnderlineType.SINGLE };
   }

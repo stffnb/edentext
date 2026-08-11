@@ -1024,7 +1024,13 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       ctx.usedCharStyles.add(charId!);
       marks.push({ type: 'charStyle', attrs: { name: charName } });
     }
-    if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
+    if (linkHref) {
+      // Word never paints a hyperlink for being one: the blue is its Hyperlink character
+      // style, which arrives as an ordinary run mark, so the editor must add nothing of
+      // its own. Only our exporter's blue is an editor link — it is stripped above.
+      const ours = hexColor(props.color)?.toUpperCase() === LINK_BLUE;
+      marks.push({ type: 'link', attrs: { href: linkHref, plain: !ours } });
+    }
     return marks;
   };
 

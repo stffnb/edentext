@@ -192,10 +192,17 @@
 }
 
 /* Hyperlinks (link.ts). Ctrl/Cmd+click opens them (Editor.svelte). */
+/* The browser's own link colour is off first: a link Word left unstyled is drawn like the
+   text around it, since there the blue is a character style, not a property of being a
+   link (link.ts). Every other link — ODF paints them all — takes the visual back. */
 .paper .tiptap a {
+  color: inherit;
+  text-decoration: none;
+  cursor: text;
+}
+.paper .tiptap a:not([data-plain]) {
   color: #1a56db;
   text-decoration: underline;
-  cursor: text;
 }
 
 /* Find & Replace match highlights (searchReplace.ts); current match is stronger. */
