@@ -814,7 +814,7 @@ type CellBlock =
   | { kind: 'heading'; level: number; style: ParaStyle }
   | CellListBlock;
 // A table's own margins in cm (0/0 tables are recorded as null).
-type TableMargins = { ml: number; mr: number; mt: number; mb: number };
+type TableProps = { ml: number; mr: number; mt: number; mb: number; keepRows: boolean };
 
 // Collect the alignment + paragraph spacing of each listItem's first paragraph,
 // in DFS order — matching the order that odf-kit emits <text:list-item> elements
@@ -923,9 +923,10 @@ function expandCellPadding(odtBytes: Uint8Array): Uint8Array {
 }
 
 // A dragged table edge → the table style's fo:margin-left/-right + style:width (with
-// odf-kit's table:align="margins" the table fills exactly what's left). odf-kit names
-// table styles Table1, Table2, … in document order, matching the descriptor list.
-function applyTableMargins(odtBytes: Uint8Array, margins: (TableMargins | null)[], contentWidthCm: number): Uint8Array {
+// odf-kit's table:align="margins" the table fills exactly what's left), and keep-rows
+// → style:may-break-between-rows. odf-kit names table styles Table1, Table2, … in
+// document order, matching the descriptor list.
+function applyTableProps(odtBytes: Uint8Array, margins: (TableProps | null)[], contentWidthCm: number): Uint8Array {
   if (margins.every(m => m === null)) return odtBytes;
 
   const files = unzipSync(odtBytes);
@@ -939,9 +940,10 @@ function applyTableMargins(odtBytes: Uint8Array, margins: (TableMargins | null)[
     const horiz = m.ml || m.mr
       ? ` style:width="${width}cm" fo:margin-left="${m.ml}cm" fo:margin-right="${m.mr}cm"` : '';
     const vert = `${m.mt ? ` fo:margin-top="${m.mt}cm"` : ''}${m.mb ? ` fo:margin-bottom="${m.mb}cm"` : ''}`;
+    const keep = m.keepRows ? ' style:may-break-between-rows="false"' : '';
     content = content.replace(
       new RegExp(`(<style:style[^>]*style:name="Table${i + 1}"[^>]*>\\s*<style:table-properties)`),
-      `$1${horiz}${vert}`,
+      `$1${horiz}${vert}${keep}`,
     );
   });
 
@@ -2641,26 +2643,28 @@ function tableColumnWidthsCm(node: TiptapNode, contentWidthCm: number): string[]
   return cm.map(v => `${v}cm`);
 }
 
-// A table's own left/right margins (cm, from the outer-edge drag), clamped into the
-// text width. null = the table spans the full text width (the common case).
-function tableMarginsCm(node: TiptapNode, contentWidthCm: number): TableMargins | null {
+// What rides on a table's own automatic style: its left/right margins (cm, from the
+// outer-edge drag, clamped into the text width) and whether a page break may fall
+// between its rows. null = a full-width table that may break, the common case.
+function tablePropsOf(node: TiptapNode, contentWidthCm: number): TableProps | null {
   const round3 = (v: number) => Math.round(v * 1000) / 1000;
   let ml = Math.max(0, Number(node.attrs?.marginLeft) || 0);
   let mr = Math.max(0, Number(node.attrs?.marginRight) || 0);
   const mt = Math.max(0, Number(node.attrs?.marginTop) || 0);
   const mb = Math.max(0, Number(node.attrs?.marginBottom) || 0);
+  const keepRows = node.attrs?.keepRows === true;
   if (ml + mr > contentWidthCm - 1) ml = mr = 0;
-  if (!ml && !mr && !mt && !mb) return null;
-  return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb) };
+  if (!ml && !mr && !mt && !mb && !keepRows) return null;
+  return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb), keepRows };
 }
 
 // Build an ODF table from a CUST_TABLE node, bypassing odf-kit's native walkTable to
 // pass an explicit cell border (the native path emits none → invisible). Column widths
 // come from tableColumnWidthsCm; when absent odf-kit distributes columns evenly.
-function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number, cellBlocks: CellBlock[][], tableMargins: (TableMargins | null)[], tableStyleNames: (TableStyleRef | null)[]): void {
+function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number, cellBlocks: CellBlock[][], tableMargins: (TableProps | null)[], tableStyleNames: (TableStyleRef | null)[]): void {
   const rows = (node.content ?? []).filter(r => r.type === 'tableRow');
   if (rows.length === 0) return;
-  const margins = tableMarginsCm(node, contentWidthCm);
+  const margins = tablePropsOf(node, contentWidthCm);
   tableMargins.push(margins);
   // The named table style, if the registry still knows it: its name goes on the table's
   // automatic style (applyTableStyleNames), its text formatting is baked per cell.
@@ -3410,8 +3414,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Filled by exportTable, in document order, one CellBlock[] per table cell.
   // applyCellBlocks consumes it to rebuild real <text:h>/<text:p>/<text:list>.
   const cellBlocks: CellBlock[][] = [];
-  // One entry per table, same order — consumed by applyTableMargins.
-  const tableMargins: (TableMargins | null)[] = [];
+  // One entry per table, same order — consumed by applyTableProps.
+  const tableMargins: (TableProps | null)[] = [];
   // The named table style + its options per table, same order — applyTableStyleNames.
   const tableStyleNames: (TableStyleRef | null)[] = [];
 
@@ -3550,7 +3554,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   collectTableRowHeights(raw, rowHeights);
   const styledRows = applyTableRowHeights(expandCellPadding(styledCells), rowHeights);
   const withTableMargins = applyTableStyleNames(
-    applyTableMargins(styledRows, tableMargins, contentWidthCm), tableStyleNames);
+    applyTableProps(styledRows, tableMargins, contentWidthCm), tableStyleNames);
 
   const cleaned = collapseRunWhitespace(withTableMargins);
   // Before applyInlineSentinels: it matches the bare style:type="char" a leader would hide.

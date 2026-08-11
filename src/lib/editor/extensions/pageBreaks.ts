@@ -652,13 +652,23 @@ export const PageBreaks = Extension.create({
               ? (Array.from(tbody.children) as HTMLElement[])
               : [];
             const realRows = rowEls.filter(r => r.tagName === 'TR' && !r.dataset?.pageBreakSpacer);
+            const spacerHeight = rowEls
+              .filter(r => r.dataset?.pageBreakSpacer)
+              .reduce((sum, r) => sum + r.offsetHeight, 0);
+            // No break may fall between the rows (ODF style:may-break-between-rows), so
+            // the table moves whole — unless it is taller than a page, where the rule
+            // cannot be met and LibreOffice breaks it anyway.
+            const keepRows = tableEl?.dataset?.keepRows === 'true'
+              && wrapperEl.offsetHeight - spacerHeight <= contentHeight;
             // Fallback: no rows found — measure the whole wrapper as one atomic leaf.
-            if (realRows.length === 0) {
+            if (realRows.length === 0 || keepRows) {
+              const top = naturalTopOf(wrapperEl);
+              cumulativeSpacerHeight += spacerHeight;
               leaves.push({
                 el: wrapperEl,
                 kind: 'atomic',
-                naturalTop: naturalTopOf(wrapperEl),
-                naturalHeight: wrapperEl.offsetHeight,
+                naturalTop: top,
+                naturalHeight: wrapperEl.offsetHeight - spacerHeight,
               });
               return;
             }

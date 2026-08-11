@@ -62,6 +62,9 @@ function applyTableStyleAttr(node: PMNode, table: HTMLElement): void {
   const look = node.attrs.tableLook as string | null;
   if (look != null) table.dataset.tableLook = look;
   else delete table.dataset.tableLook;
+  // pageBreaks.ts reads this to keep the table whole (ODF style:may-break-between-rows).
+  if (node.attrs.keepRows === true) table.dataset.keepRows = 'true';
+  else delete table.dataset.keepRows;
 }
 
 // Also bypassed by the node view: the cell margins editor.css reads off the table.

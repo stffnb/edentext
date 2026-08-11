@@ -85,6 +85,21 @@ export const PageBreak = Extension.create({
           },
         },
       },
+      {
+        types: ['table'],
+        attributes: {
+          // ODF style:may-break-between-rows="false": no page break falls between two
+          // of the table's rows, so one too tall for the space left moves whole. A
+          // table taller than a page still breaks — the rule is then unsatisfiable.
+          keepRows: {
+            default: null,
+            parseHTML: (element: HTMLElement) =>
+              element.getAttribute('data-keep-rows') === 'true' ? true : null,
+            renderHTML: (attributes: Record<string, unknown>) =>
+              attributes.keepRows === true ? { 'data-keep-rows': 'true' } : {},
+          },
+        },
+      },
     ];
   },
 

@@ -2049,6 +2049,10 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   const named = ctx.resolver.namedAncestor(el.getAttributeNS(NS.table, 'style-name'), 'table');
   const attrs: Record<string, unknown> = { ...(tableMargins(el, ctx) ?? {}), ...tableSpacing(el, ctx) };
   if (cellPad) attrs.cellPadding = cellPad;
+  // The default is to allow a break, so only the explicit "no" is worth an attr.
+  if (ctx.resolver.tableProps(el.getAttributeNS(NS.table, 'style-name'))['style:may-break-between-rows'] === 'false') {
+    attrs.keepRows = true;
+  }
   if (named) {
     attrs.tableStyle = displayStyleName(named);
     // Which conditional areas the table opts into (ODF's table template attributes).
