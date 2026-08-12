@@ -1109,4 +1109,40 @@ describe('DOCX table margins (dragged outer edges)', () => {
     const weights = (table.content?.[0].content ?? []).map((c: N) => c.attrs.colwidth[0]);
     expect(weights[0] / weights[1]).toBeCloseTo(2, 2);
   });
+
+  // Word 2010 and earlier measure w:tblInd to the cell's text, so LibreOffice draws such
+  // a table a left cell margin outside the body text; Word 2013 (mode 15) does not.
+  const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  const indentedTable = (mode: number | null) => {
+    const full = Math.round((16.76 / 2.54) * 1440);
+    return zipSync({
+      'word/document.xml': strToU8(
+        `<?xml version="1.0"?><w:document xmlns:w="${W}"><w:body><w:tbl>` +
+        `<w:tblPr><w:tblInd w:type="dxa" w:w="0"/></w:tblPr>` +
+        `<w:tblGrid><w:gridCol w:w="${full}"/></w:tblGrid>` +
+        `<w:tr><w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc></w:tr></w:tbl>` +
+        `<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1202" w:right="1202"/></w:sectPr>` +
+        `</w:body></w:document>`,
+      ),
+      ...(mode == null ? {} : {
+        'word/settings.xml': strToU8(
+          `<?xml version="1.0"?><w:settings xmlns:w="${W}"><w:compat>` +
+          `<w:compatSetting w:name="compatibilityMode" w:uri="x" w:val="${mode}"/></w:compat></w:settings>`,
+        ),
+      }),
+    });
+  };
+
+  it('hangs an older file’s table its left cell margin into the page margin', () => {
+    for (const mode of [null, 14]) {
+      const table = walk(importDocx(indentedTable(mode)).content as N, 'table')[0];
+      expect(table.attrs.marginLeft).toBeCloseTo(-0.19, 2);
+      expect(table.attrs.marginRight).toBeCloseTo(0.19, 2);
+    }
+  });
+
+  it('leaves a Word 2013 file’s table flush with the text area', () => {
+    const table = walk(importDocx(indentedTable(15)).content as N, 'table')[0];
+    expect(table.attrs?.marginLeft ?? 0).toBe(0);
+  });
 });

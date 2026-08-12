@@ -940,8 +940,8 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
   const tableStyle = styleName ? exportSheet.table?.[styleName] : undefined;
   const look = parseTableLook(node.attrs?.tableLook);
   // A dragged table edge (tableColumnResize.ts) → w:tblInd + the narrower grid.
-  let ml = Math.max(0, Number(node.attrs?.marginLeft) || 0);
-  let mr = Math.max(0, Number(node.attrs?.marginRight) || 0);
+  let ml = Number(node.attrs?.marginLeft) || 0;
+  let mr = Number(node.attrs?.marginRight) || 0;
   if (ml + mr > contentWidthCm - 1) { ml = 0; mr = 0; }
   const pad = parseCellPadding(node.attrs?.cellPadding) ?? DEFAULT_CELL_PADDING;
   const colsCm = columnWidthsCm(node, contentWidthCm - ml - mr);
@@ -1001,6 +1001,8 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
     rows: tableRows,
     columnWidths: colsTwip,
     width: { size: totalTwip, type: WidthType.DXA },
+    // The table's own edge, negative where it hangs into the page margin: what we write
+    // declares Word 2013 compatibility, where w:tblInd means exactly that.
     indent: ml ? { size: cmToTwip(ml), type: WidthType.DXA } : undefined,
     layout: TableLayoutType.FIXED,
     margins: { marginUnitType: WidthType.DXA, top: cmToTwip(pad[0]), right: cmToTwip(pad[1]), bottom: cmToTwip(pad[2]), left: cmToTwip(pad[3]) },

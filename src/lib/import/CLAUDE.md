@@ -46,6 +46,12 @@ The **Open .odt** button (`App.svelte`) parses an uploaded file with `importOdt(
 drawn**: Word's Normal Table has no border, and the gridlines it shows on screen are not
 printed. ODF says the same for an undeclared `fo:border`, so both importers agree.
 
+**`w:tblInd` changes meaning with the file's compatibility mode.** Word 2010 and earlier
+(`compatibilityMode` ≤ 14, or no `word/settings.xml`) measure it to the cell's **text**, so
+the table hangs its left cell margin into the page margin; Word 2013 (15) measures it to the
+table's edge. LibreOffice follows the setting — probed both ways on the same file — so
+`tblIndIsToText` gates the subtraction and a table's `marginLeft` may come out negative.
+
 **A table style's conditional areas** (`w:tblStylePr`: header row, banded rows, first
 column, …) are **baked into the cells** — fill and borders as attrs, the area's `w:rPr` as
 real marks on its runs — because the file's own style is not in the editor's registry,

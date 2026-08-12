@@ -56,6 +56,8 @@ type Ctx = {
   leftMarginCm: number;
   // The enclosing table style's w:pPr/w:spacing, applied to its cells' paragraphs.
   cellSpacing: ParaSpacing;
+  // Whether w:tblInd is measured to the cell's text rather than the table's edge.
+  tblIndToText: boolean;
   // theme1.xml's accent1..6, the colours a chart series names instead of an sRGB.
   accents: string[];
   // Bookmarks open at this point of the walk (w:id → name). A range may start beside a
@@ -142,7 +144,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const sectPr = fc(body, 'sectPr');
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, cellSpacing: {}, accents: themeAccents(themeDoc), openBookmarks: new Map() };
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map() };
 
   // Mid-body sectPr paragraphs delimit sections; a section whose w:cols declares
   // more than one column becomes a columns node (the trailing group is described
@@ -1854,7 +1856,7 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   }
   if (rows.length === 0) return null;
   const named = ctx.styles.tableStyleName(styleId);
-  const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx) ?? {}) };
+  const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx, padBase[3]) ?? {}) };
   if (pad) attrs.cellPadding = pad;
   if (named) {
     attrs.tableStyle = named;
@@ -1876,19 +1878,21 @@ function docxTableLook(tblPr: Element | null): string | null {
 }
 
 // A table narrower than the text width: w:tblInd is its left indent, the grid (or
-// w:tblW) its width — the rest becomes the editor's right margin.
-function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx): { marginLeft: number; marginRight: number } | null {
+// w:tblW) its width — the rest becomes the editor's right margin. Under the older
+// compatibility mode the indent is measured to the cell's *text*, so the table hangs its
+// left cell margin into the page margin (tblIndIsToText).
+function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx, leftPadCm: number): { marginLeft: number; marginRight: number } | null {
   const tblPr = fc(tbl, 'tblPr');
   const content = ctx.contentWidthCm;
   const dxa = (el: Element | null) => (el?.getAttributeNS(W, 'type') ?? 'dxa') === 'dxa' ? intAttr(el, W, 'w') : null;
-  const left = Math.max(0, twipToCm(dxa(fc(tblPr, 'tblInd')) ?? 0));
+  const left = twipToCm(dxa(fc(tblPr, 'tblInd')) ?? 0) - (ctx.tblIndToText ? leftPadCm : 0);
   const declared = dxa(fc(tblPr, 'tblW'));
   const width = declared && declared > 0
     ? twipToCm(declared)
     : weights ? twipToCm(weights.reduce((a, b) => a + b, 0)) : null;
-  const right = width != null ? Math.max(0, content - left - width) : 0;
+  const right = width != null ? content - left - width : 0;
 
-  if (left < 0.05 && right < 0.05) return null;
+  if (Math.abs(left) < 0.05 && Math.abs(right) < 0.05) return null;
   if (left + right > content - 1) return null;
   const round2 = (v: number) => Math.round(v * 100) / 100;
   return { marginLeft: round2(left), marginRight: round2(right) };
@@ -1985,6 +1989,23 @@ function pushColumnRuns(inner: Node[], cols: { count: number; gapCm: number }, o
 
 // Word's mirror margins are a document setting too: w:pgMar's left/right then read as
 // the inner/outer pair and an even page swaps them.
+// Word 2013 (compatibilityMode 15) made w:tblInd the table's own edge; before that it was
+// measured to the cell's text, so the table hangs its left cell margin into the page
+// margin. Probed against `soffice`, which follows the setting: the same table sits at the
+// margin under 15 and 2.1mm left of it under 14. No setting at all is an old file.
+function tblIndIsToText(files: Record<string, Uint8Array>): boolean {
+  const bytes = files['word/settings.xml'];
+  if (!bytes) return true;
+  try {
+    for (const el of Array.from(parseXml(strFromU8(bytes)).getElementsByTagNameNS(W, 'compatSetting'))) {
+      if (el.getAttributeNS(W, 'name') !== 'compatibilityMode') continue;
+      const n = parseInt(el.getAttributeNS(W, 'val') ?? '', 10);
+      return !Number.isFinite(n) || n < 15;
+    }
+  } catch { /* an unreadable settings.xml is no setting */ }
+  return true;
+}
+
 function docHasMirrorMargins(files: Record<string, Uint8Array>): boolean {
   const bytes = files['word/settings.xml'];
   if (!bytes) return false;

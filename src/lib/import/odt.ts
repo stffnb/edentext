@@ -2164,12 +2164,11 @@ function tableMargins(el: Element, ctx: Ctx): { marginLeft: number; marginRight:
     const align = props['table:align'];
     left = align === 'center' ? (content - width) / 2 : align === 'right' ? content - width : 0;
   }
-  left = Math.max(0, left ?? 0);
+  left = left ?? 0; // negative is real: a table may hang into the page margin
   if (right == null) right = width != null ? content - left - width : 0;
-  right = Math.max(0, right);
 
   // Rounding noise from the producer, or a table that would be left with no room.
-  if (left < 0.05 && right < 0.05) return null;
+  if (Math.abs(left) < 0.05 && Math.abs(right) < 0.05) return null;
   if (left + right > content - 1) return null;
   const round2 = (v: number) => Math.round(v * 100) / 100;
   return { marginLeft: round2(left), marginRight: round2(right) };

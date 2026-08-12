@@ -33,9 +33,10 @@ type ResizeAction =
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
 // A CSS margin (our own output is cm, pasted HTML may be px) as cm; 0 when absent.
+// Negative is real: a Word table hangs its left cell margin into the page margin.
 function marginCm(value: string): number {
   const n = parseFloat(value);
-  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (!Number.isFinite(n)) return 0;
   return value.trim().endsWith('px') ? round3(n / PX_PER_CM) : round3(n);
 }
 
