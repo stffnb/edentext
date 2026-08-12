@@ -1526,7 +1526,8 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
       clean = clean.replace(/[ \t]*\n[ \t]*/g, ' ');
     }
     if (!clean) return;
-    const marks = marksFor(props, ctx.resolver, charStyle ? charDefaults(ctx, defaults, charStyle) : defaults);
+    const marks = marksFor(complexScriptProps(clean, props), ctx.resolver,
+      charStyle ? charDefaults(ctx, defaults, charStyle) : defaults);
     if (charStyle) {
       const display = ctx.charStyleNames.get(charStyle) ?? charStyle;
       ctx.usedCharStyles.add(charStyle);
@@ -1732,6 +1733,34 @@ function capsFromOdf(props: PropMap): CapsMode | null {
   if (props['fo:font-variant'] === 'small-caps') return 'smallCaps';
   const t = props['fo:text-transform'];
   return t === 'uppercase' || t === 'lowercase' || t === 'capitalize' ? t : null;
+}
+
+// Hebrew, Arabic, the Indic and Thai blocks: a style carries western, asian and
+// complex-script fonts side by side, and text in a complex script is set from the
+// -complex ones. A file that leaves them at the defaults sets Hebrew at 12pt Times
+// where LibreOffice sets it at the 16pt the style really declares.
+const COMPLEX_SCRIPT_RE = /[֐-ࣿऀ-෿฀-๿ក-៿יִ-﷿ﹰ-ﻼ]/;
+
+const COMPLEX_ALIASES = [
+  ['fo:font-size', 'style:font-size-complex'],
+  ['fo:font-weight', 'style:font-weight-complex'],
+  ['fo:font-style', 'style:font-style-complex'],
+  ['fo:font-family', 'style:font-family-complex'],
+  ['style:font-name', 'style:font-name-complex'],
+] as const;
+
+function complexScriptProps(text: string, props: PropMap): PropMap {
+  if (!COMPLEX_SCRIPT_RE.test(text)) return props;
+  const out = { ...props };
+  // The two font forms shadow each other, as everywhere else (layerTextProps).
+  if (props['style:font-family-complex'] || props['style:font-name-complex']) {
+    delete out['fo:font-family'];
+    delete out['style:font-name'];
+  }
+  for (const [western, complex] of COMPLEX_ALIASES) {
+    if (props[complex]) out[western] = props[complex];
+  }
+  return out;
 }
 
 function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaults): Mark[] {
