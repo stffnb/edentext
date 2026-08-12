@@ -276,7 +276,7 @@
     />
     <span class="rb-caption">{t().ribbon.symbol}</span>
   </div>
-  <RibbonButton variant="big" icon="formula" label={t().ribbon.equation} title={t().formula.insert} disabled={!editor} onclick={openFormula} />
+  <RibbonButton variant="big" content={equationIcon} label={t().ribbon.equation} title={t().formula.insert} disabled={!editor} onclick={openFormula} />
 </RibbonGroup>
 
 <input
@@ -288,6 +288,15 @@
 />
 
 <FormulaDialog bind:open={formulaOpen} initialLatex={formulaLatex} initialDisplay={formulaDisplay} onApply={applyFormula} />
+
+<!-- Word's Equation button is a π, as its Symbol button beside it is an Ω. Same
+     canvas, baseline and weight as that Ω; the size is 20 rather than its 14
+     because π is lowercase, so at one size its x-height reads 1.44× smaller. -->
+{#snippet equationIcon()}
+  <svg width="28" height="28" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <text x="8" y="12.5" font-size="20" font-weight="700" font-family="var(--font-serif, serif)" fill="currentColor" text-anchor="middle">π</text>
+  </svg>
+{/snippet}
 
 <style>
   .rb-col {

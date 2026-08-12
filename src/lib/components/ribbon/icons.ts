@@ -96,7 +96,6 @@ export const STROKED = {
   header: ['M2 2.5h12v3H2z', 'M2 8h12M2 11h8'],
   footer: ['M2 10.5h12v3H2z', 'M2 5h12M2 8h8'],
   pageNumber: ['M3.25 1.75h9.5v12.5h-9.5z', 'M6.9 6.4 8 5.3v5.2', 'M6.75 10.5h2.5'],
-  formula: ['M9 3.5h4', 'M9.5 8h3', 'M2.5 13.5c1.6 0 2-.9 2.4-2.4L7.2 3.4C7.5 2.3 8 2 8.8 2', 'M2.5 6.5h4'],
   pageBreak: ['M2 4.5h12M2 11.5h12', 'M8 6.5v3', 'M6.4 8.2 8 9.8l1.6-1.6'],
 } as const;
 
