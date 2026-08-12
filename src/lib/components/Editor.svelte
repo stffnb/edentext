@@ -39,7 +39,7 @@
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
     zoom = 100, onZoom, showFormattingMarks = false, showRuler = true, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
-    pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', documentEpoch = 0,
+    pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', documentEpoch = 0, pageRtl = false,
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
     headerEvenDoc = $bindable(null), footerEvenDoc = $bindable(null), differentOddEven = false,
@@ -51,6 +51,8 @@
     showFormattingMarks?: boolean; showRuler?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat; tabIntervalCm?: number; spacingModel?: SpacingModel;
     /** Bumped by App for each document it opens; re-arms the settle gate. */
     documentEpoch?: number;
+    /** A right-to-left page: the body's base direction, so its columns fill from the right. */
+    pageRtl?: boolean;
     headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
     headerFirstDoc?: HfDoc; footerFirstDoc?: HfDoc; differentFirstPage?: boolean;
     headerEvenDoc?: HfDoc; footerEvenDoc?: HfDoc; differentOddEven?: boolean;
@@ -957,7 +959,7 @@
     <div bind:this={paperEl} class="paper" data-spacing-model={spacingModel} class:show-formatting-marks={showFormattingMarks} class:hf-editing={hfActive} class:settling style="transform: scale({appliedZoom / 100});">
       <!-- Dedicated mount point that TipTap fully owns — keeping it free of Svelte
            content avoids Svelte and ProseMirror fighting over the same parent's DOM. -->
-      <div bind:this={element} class="tiptap-host"></div>
+      <div bind:this={element} class="tiptap-host" dir={pageRtl ? 'rtl' : null}></div>
       {#if gapStripeStyles.length}
         <div class="band-layer">
           {#each bandStyles as b}

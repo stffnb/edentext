@@ -26,6 +26,7 @@
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadTabInterval, saveTabInterval, applyTabIntervalVar, DEFAULT_TAB_INTERVAL_CM } from './lib/storage/tabInterval';
   import { loadSpacingModel, saveSpacingModel, type SpacingModel } from './lib/storage/spacingModel';
+  import { loadPageRtl, savePageRtl } from './lib/storage/writingMode';
   import { loadPageFormat, savePageFormat, type PageFormat } from './lib/storage/pageFormat';
   import { setStyleSheet, styleSheet } from './lib/styles/sheet.svelte';
   import { builtinStyleSheet, type StyleFamily } from './lib/styles/styleSheet';
@@ -128,6 +129,8 @@
   let pageFormat: PageFormat = $state(loadPageFormat());
   let tabIntervalCm = $state(loadTabInterval());
   let spacingModel: SpacingModel = $state(loadSpacingModel());
+  // The page's text direction, from the file's own page setup (writingMode.ts).
+  let pageRtl = $state(loadPageRtl());
   // Bumped for each document opened (import, new); Editor hides the page until that
   // document's pagination holds still.
   let documentEpoch = $state(0);
@@ -194,6 +197,10 @@
 
   $effect(() => {
     saveSpacingModel(spacingModel);
+  });
+
+  $effect(() => {
+    savePageRtl(pageRtl);
   });
 
   $effect(() => {
@@ -526,6 +533,7 @@
       if (result.format) pageFormat = result.format;
       if (result.tabIntervalCm) tabIntervalCm = result.tabIntervalCm;
       spacingModel = result.spacingModel;
+      pageRtl = result.rtl;
       // Adopt the document's spell-check language (the $effect switches the
       // controller + loads its dictionary). null = file declared none; keep ours.
       if (result.language) documentLanguage = result.language;
@@ -604,7 +612,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl);
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -620,7 +628,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl);
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -638,7 +646,7 @@
     try {
       const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       const { buildDocx } = await import('./lib/export/docx');
-      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm);
+      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, pageRtl);
       await saveAsDocx(bytes, suggestedFilenameDocx(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -1104,6 +1112,7 @@
   />
   <EditorComponent
     {documentEpoch}
+    {pageRtl}
     bind:editor
     bind:tick
     bind:currentPage

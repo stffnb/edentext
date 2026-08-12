@@ -72,6 +72,7 @@
 **Page & layout**
 - Page margins (cm) and page orientation (portrait / landscape)
 - Page format picker (Layout panel): 15 Word/LibreOffice sizes — A3–A6, ISO B4–B6, JIS B4/B5, Letter, Legal, Tabloid, Executive, Folio, Statement — each showing its cm dimensions; drives the on-screen page, pagination, and ODT/DOCX/PDF export, and is detected & adopted on import
+- Right-to-left pages (ODF `style:writing-mode="rl-tb"`, Word's `w:bidi`): the body's base direction, so a multi-column page fills its columns **from the right** as LibreOffice does, and bidi resolves a Hebrew or Arabic line the way the file means it. Round-trips through both formats
 - Mirrored page margins (ODF `style:page-usage="mirrored"`, Word's `w:mirrorMargins`): the declared left/right are the inner/outer pair, and an even (left-hand) page swaps them — body text and the header/footer band alike. Round-trips through both formats
 - Multi-column (newspaper) layout: 1–3 columns with adjustable gap, applied to the whole document (no selection) or to selected paragraphs, Word-style — text fills column 1 to the page bottom, then column 2, and flows across pages with mid-paragraph line breaks; a section followed by other content balances its columns. Round-trips to ODF `text:section`/`style:columns` and DOCX continuous sections with `w:cols`
 - Page margins per section: a section's own `w:pgMar` / ODF page layout is read, rendered and written back, and an ODF page style that hands over to another (`style:next-style-name`, the title-page idiom) gives its layout to the section's first page and the successor's to the rest. The ruler and the header/footer layer still show the document's own pair
@@ -136,7 +137,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - Save as template (`.ott` / `.dotx`), multi-document management, recent-files list
 - Watermark; page background and page border
 - Thesaurus, grammar check, word completion, AutoText / building blocks
-- Right-to-left and vertical text, Asian typography (ruby)
+- Vertical writing modes (ODF `tb-rl`) and Asian typography (ruby). Right-to-left **pages** are supported (see above); a per-*paragraph* direction is not — the page's own carries the whole body
 - Password-protected ODT/DOCX; digital signatures
 - Navigator / outline view, split view
 - PWA / offline support

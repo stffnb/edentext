@@ -617,7 +617,7 @@ export class StyleResolver {
   // Page margins + orientation + format from the master page's layout. With a
   // header/footer the body margin is page margin + zone height + spacing (inverse of
   // the export mapping). Format is matched from fo:page-width/height (fallback A4).
-  pageGeometry(pageName: string | null = null): { margins: PageMargins; orientation: Orientation; format: PageFormat } | null {
+  pageGeometry(pageName: string | null = null): { margins: PageMargins; orientation: Orientation; format: PageFormat; rtl: boolean } | null {
     const props = this.pageLayoutEl(pageName)?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
     if (!props) return null;
 
@@ -642,7 +642,10 @@ export class StyleResolver {
     const h = lengthToCm(props.getAttributeNS(NS.fo, 'page-height'));
     const orientation: Orientation = w != null && h != null && w > h ? 'landscape' : 'portrait';
     const format: PageFormat = w != null && h != null ? (formatFromCm(w, h) ?? 'A4') : 'A4';
-    return { margins, orientation, format };
+    // style:writing-mode: rl-tb is a right-to-left page — the columns fill from the
+    // right and the text's base direction is RTL. The vertical modes are not read.
+    const rtl = (props.getAttributeNS(NS.style, 'writing-mode') ?? '').startsWith('rl');
+    return { margins, orientation, format, rtl };
   }
 
   // Raw page margins (cm) = ODF's edge→zone distance, i.e. the header distance from

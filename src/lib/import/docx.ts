@@ -186,6 +186,8 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     content: { type: 'doc', content: blocks },
     styles: collectStyleSheet(ctx),
     margins: withMirror(first.margins ?? sect.margins, mirrored),
+    // A right-to-left section (w:bidi): the columns fill from the right.
+    rtl: !!finalSectPr && (() => { const b = fc(finalSectPr, 'bidi'); return !!b && onOff(b); })(),
     orientation: sect.orientation,
     format: sect.format,
     tabIntervalCm: docTabInterval(files),

@@ -745,6 +745,20 @@ function applyMirrorMarginsDocx(bytes: Uint8Array): Uint8Array {
   return zipSync(out);
 }
 
+// Post-pack pass: a right-to-left section is <w:bidi/> in every w:sectPr, which the
+// docx package does not expose (it has the paragraph-level flag only).
+function applyBidiDocx(bytes: Uint8Array): Uint8Array {
+  const files = unzipSync(bytes);
+  const docBytes = files['word/document.xml'];
+  if (!docBytes) return bytes;
+  files['word/document.xml'] = strToU8(
+    strFromU8(docBytes).replace(/<w:sectPr\b[^>]*>/g, (m) => `${m}<w:bidi/>`),
+  );
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
 // ---- paragraphs ------------------------------------------------------------
 function alignOf(attrs: TiptapNode['attrs']): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
   switch (attrs?.textAlign) {
@@ -1229,6 +1243,7 @@ export async function buildDocx(
   pageFormat: PageFormat = 'A4',
   styles: StyleSheet = builtinStyleSheet(),
   tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM,
+  rtl = false,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
@@ -1327,5 +1342,6 @@ export async function buildDocx(
 
   const blob = await Packer.toBlob(doc);
   const packed = applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
-  return margins.mirrored ? applyMirrorMarginsDocx(packed) : packed;
+  const mirrored = margins.mirrored ? applyMirrorMarginsDocx(packed) : packed;
+  return rtl ? applyBidiDocx(mirrored) : mirrored;
 }

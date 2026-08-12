@@ -10,6 +10,7 @@
   (`AddParaTableSpacing`), always `'max'` on DOCX import, and written back on ODF export.
   `editor.css` turns `--space-before` into padding or margin accordingly (CSS margins can
   only collapse, so `'add'` cannot be a margin).
+- **`writingMode.ts`** — the page's text direction (`loadPageRtl`/`savePageRtl`, `odf-editor-page-rtl`), from ODF `style:writing-mode="rl-tb"` or Word's section-level `w:bidi`. `Editor.svelte` puts it on the body host as `dir`, which is what makes a multi-column page fill from the right; the header/footer band is left alone (LibreOffice lays those out unchanged — measured). The vertical modes are not read.
 - **`pageOrientation.ts`** — `'portrait' | 'landscape'`. `applyOrientationVars` sets `--user-page-{width,height}`; landscape swaps the A4 dimensions (matching odf-kit's automatic swap).
 
 Both margins and orientation are passed into the ODT export so the exported document's geometry/line-wrapping matches the on-screen preview.

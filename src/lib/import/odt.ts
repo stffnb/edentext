@@ -45,6 +45,9 @@ export interface OdtImportResult {
   margins: PageMargins | null;
   orientation: Orientation | null;
   format: PageFormat | null;
+  // A right-to-left page (ODF style:writing-mode="rl-tb", Word w:bidi): the columns
+  // fill from the right and the body's base direction is RTL.
+  rtl: boolean;
   // The grid every tab past the last custom stop falls on; the format's own fallback
   // when the file declares none.
   tabIntervalCm: number;
@@ -649,6 +652,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     margins: geometry?.margins ?? null,
     orientation: geometry?.orientation ?? null,
     format: geometry?.format ?? null,
+    rtl: geometry?.rtl ?? false,
     tabIntervalCm: resolver.defaultTabInterval(),
     spacingModel: odfSpacingModel(files),
     header,
