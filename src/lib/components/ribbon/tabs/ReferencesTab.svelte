@@ -48,9 +48,8 @@
       title={t().ribbon.tocOptions}
       disabled={!toc}
       caret
-      caretActive={isMenuOpen('tocLevels')}
+      active={isMenuOpen('tocLevels')}
       onclick={() => toggleMenu('tocLevels')}
-      onCaret={() => toggleMenu('tocLevels')}
     />
     {#if isMenuOpen('tocLevels')}
       <div class="ribbon-menu" use:anchored role="menu">

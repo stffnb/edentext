@@ -76,7 +76,7 @@
 
 <RibbonGroup label={t().ribbon.groups.pageSetup}>
   <div class="rb-menu-wrap" use:clickOutside={'margins'}>
-    <RibbonButton variant="big" icon="margins" label={t().ribbon.margins} title={t().toolbarExpanded.pageMargins} caret caretActive={isMenuOpen('margins')} onclick={() => toggleMenu('margins')} onCaret={() => toggleMenu('margins')} />
+    <RibbonButton variant="big" icon="margins" label={t().ribbon.margins} title={t().toolbarExpanded.pageMargins} caret active={isMenuOpen('margins')} onclick={() => toggleMenu('margins')} />
     {#if isMenuOpen('margins')}
       <div class="ribbon-menu margin-menu" use:anchored role="menu">
         {#each MARGIN_PRESETS as p}
@@ -106,7 +106,7 @@
   </div>
 
   <div class="rb-menu-wrap" use:clickOutside={'orientation'}>
-    <RibbonButton variant="big" icon="orientation" label={t().toolbarExpanded.orientation} title={t().toolbarExpanded.orientation} caret caretActive={isMenuOpen('orientation')} onclick={() => toggleMenu('orientation')} onCaret={() => toggleMenu('orientation')} />
+    <RibbonButton variant="big" icon="orientation" label={t().toolbarExpanded.orientation} title={t().toolbarExpanded.orientation} caret active={isMenuOpen('orientation')} onclick={() => toggleMenu('orientation')} />
     {#if isMenuOpen('orientation')}
       <div class="ribbon-menu" use:anchored role="menu">
         {#each (['portrait', 'landscape'] as const) as o}
@@ -117,7 +117,7 @@
   </div>
 
   <div class="rb-menu-wrap" use:clickOutside={'pageFormat'}>
-    <RibbonButton variant="big" icon="pageSize" label={t().ribbon.size} title={t().toolbarExpanded.pageFormat} caret caretActive={isMenuOpen('pageFormat')} onclick={() => toggleMenu('pageFormat')} onCaret={() => toggleMenu('pageFormat')} />
+    <RibbonButton variant="big" icon="pageSize" label={t().ribbon.size} title={t().toolbarExpanded.pageFormat} caret active={isMenuOpen('pageFormat')} onclick={() => toggleMenu('pageFormat')} />
     {#if isMenuOpen('pageFormat')}
       <div class="ribbon-menu format-menu" use:anchored role="menu">
         <div class="menu-scroll">
@@ -140,9 +140,8 @@
       title={hfActive ? t().toolbarExpanded.columnsNotInHf : t().toolbarExpanded.columns}
       disabled={!editor || !!hfActive}
       caret
-      caretActive={isMenuOpen('columns')}
+      active={isMenuOpen('columns')}
       onclick={() => toggleMenu('columns')}
-      onCaret={() => toggleMenu('columns')}
     />
     {#if isMenuOpen('columns')}
       <div class="ribbon-menu" use:anchored role="menu">
@@ -174,9 +173,8 @@
       title={t().ribbon.breaks}
       disabled={!editor || !!hfActive}
       caret
-      caretActive={isMenuOpen('breaks')}
+      active={isMenuOpen('breaks')}
       onclick={() => toggleMenu('breaks')}
-      onCaret={() => toggleMenu('breaks')}
     />
     {#if isMenuOpen('breaks')}
       <div class="ribbon-menu breaks-menu" use:anchored role="menu">
@@ -271,6 +269,13 @@
     gap: 3px 12px;
   }
 
-  .field span { min-width: 74px; }
+  /* The label takes whatever its grid column is wide, so the boxes line up on the
+     column's right edge. A fixed label width only holds until a translation
+     outgrows it, and then one row of the pair sits deeper than the other. */
+  .margin-field > span, .field > span {
+    flex: 1;
+    white-space: nowrap;
+  }
+
   .field input:disabled { opacity: 0.5; }
 </style>

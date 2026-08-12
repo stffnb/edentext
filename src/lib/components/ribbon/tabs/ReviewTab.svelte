@@ -3,7 +3,7 @@
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
   import LanguagePicker from '../../LanguagePicker.svelte';
-  import { anchored, clickOutside, isMenuOpen, toggleMenu } from '../menu.svelte';
+  import { captionClicks, anchored, clickOutside, isMenuOpen, toggleMenu } from '../menu.svelte';
   import { countText, type TextStats } from '../../../utils/wordCount';
   import type { DocumentLanguage } from '../../../storage/documentLanguage';
   import { t } from '../../../i18n/i18n.svelte';
@@ -65,7 +65,7 @@
 <div class="ribbon-sep"></div>
 
 <RibbonGroup label={t().ribbon.groups.language}>
-  <div class="rb-captioned">
+  <div class="rb-captioned" use:captionClicks>
     <LanguagePicker value={documentLanguage} onChange={onLanguage} />
     <span class="rb-caption">{t().spellPicker.label}</span>
   </div>

@@ -452,7 +452,38 @@
   justify-content: center;
   gap: 4px;
   padding: 4px 7px 6px;
-  --toolbar-btn-size: 34px;
+  border-radius: 4px;
+  cursor: pointer;
+  --toolbar-btn-size: 28px;
+}
+
+/* Mirrors .rb-big's box, down to the slot it holds open for a caret, so a picker
+   and a labelled button in the same row put their glyph and their words on one
+   line. Their triggers carry their own frame and padding, which is dropped. */
+/* A picker root is a block, so its inline-flex trigger would sit on a text
+   baseline and carry the descender gap with it. */
+.rb-captioned > * { display: flex; }
+
+.rb-captioned :is(.table-trigger, .char-trigger, .dt-trigger, .tsp-trigger, .bp-trigger, .lang-picker) {
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  margin: 0;
+}
+
+.rb-captioned::after {
+  content: '';
+  display: block;
+  height: 10px;
+  margin-top: -3px;
+}
+
+/* The trigger lives in the picker's own component, so the tint goes on the wrapper
+   instead — glyph and caption light up together, as they do on a ribbon button.
+   `captionClicks` gives the caption the click to match. */
+.rb-captioned:hover { background: var(--w-hover); }
+.rb-captioned:hover :is(.table-trigger, .char-trigger, .dt-trigger, .tsp-trigger, .bp-trigger, .color-split) {
+  background: none;
 }
 
 /* The first svg is the glyph; a second one is the trigger's own caret and keeps
@@ -464,7 +495,6 @@
 /* The spell-check picker is chromeless for the status bar; in a group it needs
    the combo frame and the same box as the labelled buttons beside it. */
 .rb-captioned .lang-picker {
-  height: 34px;
   padding: 0 6px;
   border: 1px solid var(--w-border-strong);
   border-radius: 3px;

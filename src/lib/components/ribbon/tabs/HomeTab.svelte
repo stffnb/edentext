@@ -195,7 +195,7 @@
       <RibbonButton title={t().toolbarExpanded.growFont} content={growIcon} onclick={() => editor && stepFontSize(editor, 1)} />
       <RibbonButton title={t().toolbarExpanded.shrinkFont} content={shrinkIcon} onclick={() => editor && stepFontSize(editor, -1)} />
       <div class="rb-menu-wrap" use:clickOutside={'case'}>
-        <RibbonButton icon="changeCase" title={t().ribbon.case.title} caretActive={isMenuOpen('case')} caret onCaret={() => toggleMenu('case')} onclick={() => toggleMenu('case')} />
+        <RibbonButton icon="changeCase" title={t().ribbon.case.title} active={isMenuOpen('case')} caret onclick={() => toggleMenu('case')} />
         {#if isMenuOpen('case')}
           <div class="ribbon-menu" use:anchored role="menu">
             {#each CASES as c}
@@ -311,7 +311,7 @@
         />
       {/each}
       <div class="rb-menu-wrap" use:clickOutside={'lineHeight'}>
-        <RibbonButton icon="lineSpacing" title={t().toolbarExpanded.lineSpacing} caret caretActive={isMenuOpen('lineHeight')} onclick={() => toggleMenu('lineHeight')} onCaret={() => toggleMenu('lineHeight')} />
+        <RibbonButton icon="lineSpacing" title={t().toolbarExpanded.lineSpacing} caret active={isMenuOpen('lineHeight')} onclick={() => toggleMenu('lineHeight')} />
         {#if isMenuOpen('lineHeight')}
           <div class="ribbon-menu" use:anchored role="menu">
             {#each LINE_HEIGHTS as h}

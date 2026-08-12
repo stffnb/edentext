@@ -34,17 +34,26 @@
   } = $props();
 
   const ICON_SIZE = { big: 28, small: 14, icon: 20 } as const;
+
+  // Nothing to split when the whole button opens the menu, so the caret joins the
+  // column under the label instead of sitting beside the icon.
+  let stackCaret = $derived(caret && !onCaret && variant === 'big');
 </script>
 
 {#snippet face(withLabel = true)}
   <span class="rb-face">
     {#if content}{@render content()}
     {:else if icon}<Icon name={icon} size={ICON_SIZE[variant]} />{/if}
-    {#if caret && !onCaret}
+    {#if caret && !onCaret && !stackCaret}
       <Icon name="chevronDown" size={10} />
     {/if}
   </span>
   {#if withLabel && label && variant !== 'icon'}<span class="rb-label">{label}</span>{/if}
+  <!-- Held open on every big button, carrying a caret or nothing: the group centres
+       its controls, so one taller button lifts its own icon and label off the row. -->
+  {#if variant === 'big' && !onCaret}
+    <span class="rb-stack-caret">{#if caret}<Icon name="chevronDown" size={10} />{/if}</span>
+  {/if}
 {/snippet}
 
 {#if caret && onCaret}
@@ -67,7 +76,15 @@
     </button>
   </span>
 {:else}
-  <button class="rb rb-{variant}" class:active {disabled} {title} {onclick}>
+  <button
+    class="rb rb-{variant}"
+    class:active
+    {disabled}
+    {title}
+    aria-haspopup={caret ? 'menu' : undefined}
+    aria-expanded={caret ? active : undefined}
+    {onclick}
+  >
     {@render face()}
   </button>
 {/if}
@@ -98,8 +115,8 @@
     gap: 2px;
   }
 
-  /* Icon over label. The hover tint paints the icon box, not the whole button —
-     Word's signature, and what keeps a labelled column from looking like a slab. */
+  /* Icon over label, and the tint takes both. Word paints only the icon box, but
+     then the words beside an identical-looking neighbour light up and these do not. */
   .rb-big {
     flex-direction: column;
     gap: 4px;
@@ -115,9 +132,9 @@
     margin: 0 -4px;
   }
 
-  .rb-big:hover:not(:disabled) .rb-face { background: var(--w-hover); }
-  .rb-big:active:not(:disabled) .rb-face { background: var(--w-pressed); }
-  .rb-big.active .rb-face { background: var(--w-active); }
+  .rb-big:hover:not(:disabled) { background: var(--w-hover); }
+  .rb-big:active:not(:disabled) { background: var(--w-pressed); }
+  .rb-big.active { background: var(--w-active); }
 
   /* A row in a stacked mini-column (Cut / Copy under a big Paste). */
   .rb-small {
@@ -145,6 +162,14 @@
     color: inherit;
   }
 
+  /* Rides closer to the label than the 4px column gap: the two read as one line. */
+  .rb-stack-caret {
+    display: flex;
+    height: 10px;
+    margin-top: -3px;
+    color: var(--w-text-dim);
+  }
+
   /* Split button: the two halves read as one control, so the hover outline sits on
      the wrapper and each half only tints its own surface. */
   .rb-split {
@@ -169,15 +194,15 @@
   }
 
   /* A big split button stacks, as in Word: the icon runs the command, the label
-     and its caret open the menu. Welded to the right the caret would float at
-     icon height, beside the label rather than with it. */
+     and the caret under it open the menu. Icon, label and caret each get their
+     own line — abreast, the caret widens the button by its own width. */
   .rb-split-col { flex-direction: column; }
-  .rb-split-col .rb-big { padding: 4px 7px 0; }
+  .rb-split-col .rb-big { padding: 3px 7px 0; }
 
   .rb-split-col .rb-caret {
+    flex-direction: column;
     width: auto;
-    gap: 3px;
-    padding: 4px 7px 6px;
+    padding: 0 7px 2px;
     border-radius: 0 0 3px 3px;
     color: var(--w-text);
   }

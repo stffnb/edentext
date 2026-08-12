@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { captionClicks } from '../menu.svelte';
   import type { Editor } from '@tiptap/core';
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
@@ -70,7 +71,7 @@
     {#each SHAPES as s}
       <RibbonButton variant="big" icon={s.key === 'ellipse' ? 'shapeEllipse' : s.key === 'roundRect' ? 'shapeRound' : 'shapeRect'} label={s.label()} title={s.label()} active={shapeKind === s.key} onclick={() => editor?.chain().focus().setTextBoxAttrs({ shapeKind: s.key }).run()} />
     {/each}
-    <div class="rb-captioned">
+    <div class="rb-captioned" use:captionClicks>
       <ColorPicker
         {editor}
         currentColor={fillColor ?? null}
@@ -84,7 +85,7 @@
       />
       <span class="rb-caption">{t().textBox.fillColor}</span>
     </div>
-    <div class="rb-captioned">
+    <div class="rb-captioned" use:captionClicks>
       <ColorPicker
         {editor}
         currentColor={strokeColor ?? null}

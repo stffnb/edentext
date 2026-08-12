@@ -7,7 +7,7 @@
   import TableBorderPicker from '../../TableBorderPicker.svelte';
   import TableStylePicker from '../../TableStylePicker.svelte';
   import TableSplitDialog from '../../TableSplitDialog.svelte';
-  import { anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
+  import { captionClicks, anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
   import { isHeaderStyled } from '../../../editor/extensions/tableHeaderRow';
   import { DEFAULT_CELL_PADDING, parseCellPadding, type CellPadding } from '../../../editor/extensions/tableCellPadding';
   import type { CellVerticalAlign } from '../../../editor/extensions/tableCellAlign';
@@ -85,7 +85,7 @@
 
 {#if which === 'design'}
   <RibbonGroup label={t().styles.tableStyles}>
-    <div class="rb-captioned">
+    <div class="rb-captioned" use:captionClicks>
       <TableStylePicker {editor} {tick} />
       <span class="rb-caption">{t().table.tableStyle}</span>
     </div>
@@ -94,7 +94,7 @@
   <div class="ribbon-sep"></div>
 
   <RibbonGroup label={t().ribbon.groups.tableDecor}>
-    <div class="rb-captioned">
+    <div class="rb-captioned" use:captionClicks>
       <ColorPicker
         {editor}
         currentColor={cellColor}
@@ -108,7 +108,7 @@
       />
       <span class="rb-caption">{t().table.cellShading}</span>
     </div>
-    <div class="rb-captioned">
+    <div class="rb-captioned" use:captionClicks>
       <TableBorderPicker {editor} {tick} />
       <span class="rb-caption">{t().borders.title}</span>
     </div>
@@ -186,9 +186,8 @@
         title={t().ribbon.cellMargins}
         disabled={!padding}
         caret
-        caretActive={isMenuOpen('cellMargins')}
+        active={isMenuOpen('cellMargins')}
         onclick={() => toggleMenu('cellMargins')}
-        onCaret={() => toggleMenu('cellMargins')}
       />
       {#if isMenuOpen('cellMargins') && padding}
         <div class="ribbon-menu margin-menu" use:anchored role="menu">

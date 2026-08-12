@@ -111,3 +111,16 @@ export function clickOutside(node: HTMLElement, id?: string) {
   window.addEventListener('mousedown', handler);
   return { destroy() { window.removeEventListener('mousedown', handler); } };
 }
+
+// A reused picker keeps its trigger inside its own component, so the caption the
+// ribbon puts beside it is not part of that button: hovering the words lit nothing
+// and clicking them did nothing. Forwards a click that missed every button to the
+// first one, so glyph and caption behave as the single control they look like.
+export function captionClicks(node: HTMLElement) {
+  function handler(e: MouseEvent) {
+    if ((e.target as HTMLElement).closest('button, select, input')) return;
+    node.querySelector('button')?.click();
+  }
+  node.addEventListener('click', handler);
+  return { destroy() { node.removeEventListener('click', handler); } };
+}

@@ -9,7 +9,7 @@
   import BookmarkDialog from '../../BookmarkDialog.svelte';
   import CrossRefDialog from '../../CrossRefDialog.svelte';
   import FormulaDialog from '../../FormulaDialog.svelte';
-  import { anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
+  import { captionClicks, anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
   import { OPEN_LINK_DIALOG_EVENT } from '../../../editor/extensions/link';
   import { OPEN_BOOKMARK_DIALOG_EVENT, bookmarkNames, findBookmark } from '../../../editor/extensions/bookmark';
   import { OPEN_CROSS_REF_DIALOG_EVENT } from '../../../editor/extensions/crossReference';
@@ -198,7 +198,7 @@
 <div class="ribbon-sep"></div>
 
 <RibbonGroup label={t().ribbon.groups.tables}>
-  <div class="rb-captioned">
+  <div class="rb-captioned" use:captionClicks>
     <TablePicker
       {editor}
       bind:open={tableOpen}
@@ -242,7 +242,7 @@
   <RibbonButton variant="big" icon="header" label={t().ribbon.header} title={t().toolbarExpanded.editHeader} disabled={!editor} onclick={() => onEditZone?.('header')} />
   <RibbonButton variant="big" icon="footer" label={t().ribbon.footer} title={t().toolbarExpanded.editFooter} disabled={!editor} onclick={() => onEditZone?.('footer')} />
   <div class="rb-menu-wrap" use:clickOutside={'pageField'}>
-    <RibbonButton variant="big" icon="pageNumber" label={t().ribbon.pageNumber} title={t().ribbon.pageNumber} caret caretActive={isMenuOpen('pageField')} onclick={() => toggleMenu('pageField')} onCaret={() => toggleMenu('pageField')} />
+    <RibbonButton variant="big" icon="pageNumber" label={t().ribbon.pageNumber} title={t().ribbon.pageNumber} caret active={isMenuOpen('pageField')} onclick={() => toggleMenu('pageField')} />
     {#if isMenuOpen('pageField')}
       <div class="ribbon-menu" use:anchored role="menu">
         <button onclick={() => insertPageField('pageNumber')}>{t().hf.pageNumber}</button>
@@ -255,7 +255,7 @@
 <div class="ribbon-sep"></div>
 
 <RibbonGroup label={t().ribbon.groups.text}>
-  <div class="rb-captioned">
+  <div class="rb-captioned" use:captionClicks>
     <DateTimePicker
       bind:open={dateOpen}
       {editor}
@@ -268,7 +268,7 @@
 <div class="ribbon-sep"></div>
 
 <RibbonGroup label={t().ribbon.groups.symbols}>
-  <div class="rb-captioned">
+  <div class="rb-captioned" use:captionClicks>
     <SpecialCharPicker
       bind:open={charOpen}
       {editor}
