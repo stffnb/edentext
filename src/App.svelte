@@ -128,6 +128,9 @@
   let pageFormat: PageFormat = $state(loadPageFormat());
   let tabIntervalCm = $state(loadTabInterval());
   let spacingModel: SpacingModel = $state(loadSpacingModel());
+  // Bumped for each document opened (import, new); Editor hides the page until that
+  // document's pagination holds still.
+  let documentEpoch = $state(0);
 
   // The document's spell-check language; round-trips through the .odt. The effect
   // below persists it and switches the shared spell controller (loads the dict).
@@ -447,6 +450,7 @@
     if (!editor) return;
     if (isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
     editor.commands.setContent('<p></p>'); // onUpdate fires → autosave
+    documentEpoch++;
     resetHistory();
     // Reset everything to defaults; the $effects persist these.
     hfActive = null;
@@ -511,6 +515,7 @@
       void saveEmbeddedFonts(result.fonts);
 
       editor.commands.setContent(result.content); // onUpdate fires → autosave
+      documentEpoch++;
       resetHistory();
       // Adopt the opened file's name as the document name (drives the save filename).
       if (sourceName) documentName = stripOdtExtension(sourceName).replace(/\.docx$/i, '');
@@ -1098,6 +1103,7 @@
     onchange={handleImportFile}
   />
   <EditorComponent
+    {documentEpoch}
     bind:editor
     bind:tick
     bind:currentPage

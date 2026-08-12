@@ -51,6 +51,13 @@
   background-repeat: repeat-y;
 }
 
+/* While a freshly opened document is still finding its pagination (Editor.svelte).
+   Hidden, not removed: every pass measures the same boxes either way, and the sheet
+   .paper paints stays up, so the page appears once instead of shuffling into place. */
+.paper.settling > * {
+  visibility: hidden;
+}
+
 .paper .tiptap {
   /* Driven by --user-margin-* set on :root from the Layout panel (pageMargins.ts).
      Fallbacks preserve the original hardcoded layout when unset. */

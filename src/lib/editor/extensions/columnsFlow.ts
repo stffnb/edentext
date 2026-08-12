@@ -201,6 +201,10 @@ export const ColumnsFlow = Extension.create({
         }
 
         function dispatchFlow(tr: Transaction): void {
+          // A split or join replaces the nodes the height decorations sit on, so
+          // ProseMirror drops them; the cache key would keep them from coming back
+          // and leave the fragment measuring its balanced height instead of its slot.
+          lastDecoKey = '';
           editorView.dispatch(tr.setMeta('addToHistory', false).setMeta(FLOW_TX, true));
         }
 
@@ -318,7 +322,10 @@ export const ColumnsFlow = Extension.create({
             // are judged from the content itself (per-column share of the flow).
             const usedPerColumn = contentHeightPx(children, scale) / count;
 
-            if (usedPerColumn > available + 1) {
+            // The estimate averages the flow over the columns, but each column ends on
+            // a whole line, so a fragment measuring exactly its slot still spills once
+            // the decoration pins the height — split with the budget's own headroom.
+            if (usedPerColumn > available - SAFETY_PX) {
               // Overflow. Same first-block fit test (incl. margin) as pageBreaks'
               // push decision — the two must agree, or split/push/join cycle.
               const first = Math.max(blockHeightPx(children[0], scale) / count, MIN_BLOCK_PX);

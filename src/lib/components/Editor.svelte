@@ -39,7 +39,7 @@
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
     zoom = 100, onZoom, showFormattingMarks = false, showRuler = true, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
-    pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add',
+    pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', documentEpoch = 0,
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
     headerEvenDoc = $bindable(null), footerEvenDoc = $bindable(null), differentOddEven = false,
@@ -49,6 +49,8 @@
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
     onZoom?: (zoom: number) => void;
     showFormattingMarks?: boolean; showRuler?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat; tabIntervalCm?: number; spacingModel?: SpacingModel;
+    /** Bumped by App for each document it opens; re-arms the settle gate. */
+    documentEpoch?: number;
     headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
     headerFirstDoc?: HfDoc; footerFirstDoc?: HfDoc; differentFirstPage?: boolean;
     headerEvenDoc?: HfDoc; footerEvenDoc?: HfDoc; differentOddEven?: boolean;
@@ -766,6 +768,57 @@
     reader.readAsDataURL(file);
   }
 
+  // A pagination pass measures the DOM the previous one changed, so a freshly opened
+  // document re-flows a few times before it holds still (a columns chain the longest).
+  // The reader gets the page it settles on, not the search for it.
+  const SETTLE_CAP_MS = 1500;
+  let settling = $state(true);
+  let settleRaf = 0;
+
+  // The document height pagination derives, plus a bounded sample of block placements
+  // — reading all of them each frame starves the very layout this waits for on a long
+  // document, and a reflow that moves nothing in SETTLE_SAMPLES places moves nothing.
+  const SETTLE_SAMPLES = 48;
+
+  function layoutSignature(): string {
+    const tip = element?.querySelector('.tiptap') as HTMLElement | null;
+    if (!tip) return '';
+    const kids = tip.children;
+    let sig = `${tip.style.minHeight}|${kids.length}`;
+    const stride = Math.max(1, Math.ceil(kids.length / SETTLE_SAMPLES));
+    for (let i = 0; i < kids.length; i += stride) {
+      const child = kids[i] as HTMLElement;
+      sig += `|${child.offsetTop}:${child.offsetHeight}`;
+    }
+    return sig;
+  }
+
+  function waitForSettled(): void {
+    cancelAnimationFrame(settleRaf);
+    settling = true;
+    const deadline = performance.now() + SETTLE_CAP_MS;
+    let last = '';
+    let stable = 0;
+    const tick = () => {
+      const sig = layoutSignature();
+      stable = sig && sig === last ? stable + 1 : 0;
+      last = sig;
+      // Two repeats, so a pass that only re-dispatches decorations doesn't count.
+      if (stable >= 2 || performance.now() > deadline) {
+        settling = false;
+        return;
+      }
+      settleRaf = requestAnimationFrame(tick);
+    };
+    settleRaf = requestAnimationFrame(tick);
+  }
+
+  // Re-arms on every document the app loads (mount included), never on an edit.
+  $effect(() => {
+    documentEpoch;
+    waitForSettled();
+  });
+
   onMount(() => {
     // Start with empty history lists — loaded content is not an undoable edit.
     resetHistoryLog();
@@ -877,6 +930,7 @@
   }
 
   onDestroy(() => {
+    cancelAnimationFrame(settleRaf);
     if (zoomRaf !== null) cancelAnimationFrame(zoomRaf);
     cancelAnimationFrame(marginRecalcRaf);
     cancelAnimationFrame(marksRecalcRaf);
@@ -900,7 +954,7 @@
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
   <div class="paper-scaler" style={scaledWidth ? `width: ${scaledWidth}px; height: ${scaledHeight}px;` : ''}>
-    <div bind:this={paperEl} class="paper" data-spacing-model={spacingModel} class:show-formatting-marks={showFormattingMarks} class:hf-editing={hfActive} style="transform: scale({appliedZoom / 100});">
+    <div bind:this={paperEl} class="paper" data-spacing-model={spacingModel} class:show-formatting-marks={showFormattingMarks} class:hf-editing={hfActive} class:settling style="transform: scale({appliedZoom / 100});">
       <!-- Dedicated mount point that TipTap fully owns — keeping it free of Svelte
            content avoids Svelte and ProseMirror fighting over the same parent's DOM. -->
       <div bind:this={element} class="tiptap-host"></div>

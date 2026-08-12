@@ -37,6 +37,17 @@ App.svelte                    – owns app-level state (theme, zoom, margins, or
 
 `Editor.svelte` exposes `editor`, `tick`, `currentPage`, and `numPages` as bindable props to `App.svelte`, and takes `zoom`, `showFormattingMarks`, `pageMargins`, and `orientation` as inputs. `tick` is incremented on every TipTap transaction; toolbar components use `$derived(tick >= 0 && ...)` to re-evaluate `isActive`/value checks reactively without subscribing to ProseMirror directly.
 
+## The settle gate (`Editor.svelte`)
+
+A pagination pass measures the DOM the previous one changed, so a freshly opened document
+re-flows a few times before it holds still — a columns chain longest (measured: 12 layouts
+over 550ms). `.paper.settling` hides the page's contents (`visibility`, so every pass still
+measures the same boxes) until `layoutSignature()` repeats twice or `SETTLE_CAP_MS` passes;
+the reader gets one layout instead of the search for it. It re-arms on the `documentEpoch`
+prop, which `App.svelte` bumps per document it opens — never on an edit. The signature samples
+at most `SETTLE_SAMPLES` blocks: reading every one each frame starves the layout it waits for
+(the 458-page guide then never settled at all).
+
 ## Zoom (`Editor.svelte`)
 
 Zoom is a CSS `transform: scale()` on `.paper` (layout and pagination always run at 100%, so they stay stable across zoom — this replaced an earlier CSS `zoom` approach that re-ran layout at every scale). A transform reserves no layout space, so `.paper-scaler` reserves the scaled footprint to drive scrollbars and horizontal centering — it's sized in the `$effect.pre`, so it reaches the DOM in the same flush as the transform and the anchor pass below measures the right geometry. The applied zoom is throttled to one DOM write per animation frame. Range 20–300% (`MIN_ZOOM`/`MAX_ZOOM`/`clampZoom` in `utils/zoom.ts`), persisted in `localStorage['odf-editor-zoom']`.
