@@ -223,6 +223,15 @@ merely unimplemented belongs in the list above, not here.
   reported differences. It also means a render-parity run cannot compare a
   formula-heavy page: the two sides typeset the glyphs independently.
   Noted 2026-08-11.
+- A paragraph a style hides (`text:display="none"`) is dropped on import, but a
+  hidden **heading** still renders where LibreOffice draws nothing. Root cause:
+  the editor has no block it can hold without drawing one, and that heading is
+  the outline the running head's `text:chapter` field reads — a chapter marker
+  exists for nothing else. Dropping it was tried and reverted: the running head
+  went blank on every page quoting it, which is a whole line wrong on each
+  against one line wrong once. A real fix needs a hidden-block attr that
+  pagination and `collectChapterStarts` (`Editor.svelte`) both understand.
+  Noted 2026-08-12.
 - **Deliberate, not a defect:** a table of contents shows live page numbers.
   LibreOffice and Word print the numbers cached in the file until the reader
   updates the index, so a document whose cache is stale disagrees with us (the
