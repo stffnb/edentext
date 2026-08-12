@@ -50,11 +50,13 @@
     return shortcutHint(`heading${level}` as ShortcutId);
   }
 
-  // The tile previews its own style, clamped so a 28pt Title still fits the row.
-  function tileStyle(name: string): string {
+  // Previews the style at 1px per pt. A tile takes 21 as its ceiling — measured:
+  // the widest four letters at that size still clear its 56px of inner width — and
+  // a menu row keeps the smaller one, since it also carries a shortcut hint.
+  function tileStyle(name: string, max = 15): string {
     const s = resolveStyle(sheet, name);
     const pt = s.text.fontSizePt ?? 12;
-    return `font-size: ${Math.min(15, Math.max(9, pt * 0.62))}px;`
+    return `font-size: ${Math.min(max, Math.max(Math.min(13, max), pt))}px;`
       + `font-weight: ${s.text.bold ? 700 : 400};`
       + `font-style: ${s.text.italic ? 'italic' : 'normal'};`
       + `font-family: ${s.text.fontFamily ?? 'inherit'};`
@@ -89,7 +91,7 @@
         title={styleShortcut(s.name) ? `${label(s.name)} (${styleShortcut(s.name)})` : label(s.name)}
         aria-pressed={current === s.name}
       >
-        <span class="tile-sample" style={tileStyle(s.name)}>AaBbCc</span>
+        <span class="tile-sample" style={tileStyle(s.name, 21)}>AaBb</span>
         <span class="tile-name">{label(s.name)}</span>
       </button>
     {/each}
@@ -120,10 +122,13 @@
 </div>
 
 <style>
+  /* The group centres its controls; a gallery tile is Word's full-height card, so
+     it opts out and fills the band instead. */
   .gallery-wrap {
     position: relative;
     display: flex;
     align-items: stretch;
+    align-self: stretch;
     flex: 1;
     min-width: 0;
     gap: 3px;
@@ -145,14 +150,13 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     gap: 2px;
     flex-shrink: 0;
     width: 66px;
     border: 1px solid var(--w-border);
     border-radius: 4px;
     background: var(--w-surface);
-    padding: 2px 4px;
+    padding: 4px;
     cursor: pointer;
     overflow: hidden;
   }
@@ -160,7 +164,12 @@
   .tile:hover { border-color: var(--w-accent); background: var(--w-hover); }
   .tile.active { border-color: var(--w-accent); background: var(--w-accent-soft, #e8f1fb); }
 
+  /* Takes the height the name leaves over and centres the sample in it, so the
+     name stays on the tile's bottom edge whatever the sample's size. */
   .tile-sample {
+    display: flex;
+    align-items: center;
+    flex: 1;
     line-height: 1.1;
     white-space: nowrap;
     color: var(--w-text);
