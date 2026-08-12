@@ -36,7 +36,7 @@
   const ICON_SIZE = { big: 28, small: 14, icon: 20 } as const;
 </script>
 
-{#snippet face()}
+{#snippet face(withLabel = true)}
   <span class="rb-face">
     {#if content}{@render content()}
     {:else if icon}<Icon name={icon} size={ICON_SIZE[variant]} />{/if}
@@ -44,13 +44,14 @@
       <Icon name="chevronDown" size={10} />
     {/if}
   </span>
-  {#if label && variant !== 'icon'}<span class="rb-label">{label}</span>{/if}
+  {#if withLabel && label && variant !== 'icon'}<span class="rb-label">{label}</span>{/if}
 {/snippet}
 
 {#if caret && onCaret}
-  <span class="rb-split" class:rb-split-active={active || caretActive}>
+  {@const stacked = variant === 'big'}
+  <span class="rb-split" class:rb-split-col={stacked} class:rb-split-active={active || caretActive}>
     <button class="rb rb-{variant}" class:active {disabled} {title} {onclick}>
-      {@render face()}
+      {@render face(!stacked)}
     </button>
     <button
       class="rb-caret"
@@ -61,6 +62,7 @@
       aria-expanded={caretActive}
       onclick={onCaret}
     >
+      {#if stacked && label}<span class="rb-label">{label}</span>{/if}
       <Icon name="chevronDown" size={10} />
     </button>
   </span>
@@ -164,6 +166,20 @@
     border-radius: 0 3px 3px 0;
     color: var(--w-text-dim);
     cursor: pointer;
+  }
+
+  /* A big split button stacks, as in Word: the icon runs the command, the label
+     and its caret open the menu. Welded to the right the caret would float at
+     icon height, beside the label rather than with it. */
+  .rb-split-col { flex-direction: column; }
+  .rb-split-col .rb-big { padding: 4px 7px 0; }
+
+  .rb-split-col .rb-caret {
+    width: auto;
+    gap: 3px;
+    padding: 4px 7px 6px;
+    border-radius: 0 0 3px 3px;
+    color: var(--w-text);
   }
 
   .rb-caret:hover:not(:disabled) { background: var(--w-pressed); }
