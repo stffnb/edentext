@@ -51,8 +51,8 @@
   }
 
   // Previews the style at 1px per pt. A tile takes 21 as its ceiling — measured:
-  // the widest four letters at that size still clear its 56px of inner width — and
-  // a menu row keeps the smaller one, since it also carries a shortcut hint.
+  // the widest four letters at that size still clear its inner width — and a menu
+  // row keeps the smaller one, since it also carries a shortcut hint.
   function tileStyle(name: string, max = 15): string {
     const s = resolveStyle(sheet, name);
     const pt = s.text.fontSizePt ?? 12;
@@ -152,7 +152,10 @@
     align-items: center;
     gap: 2px;
     flex-shrink: 0;
-    width: 66px;
+    /* Wide enough for the longest style name in either locale: 'Überschrift 4'
+       measures 58.4px, and truncating a numbered family before its number tells
+       the five headings apart not at all. */
+    width: 72px;
     border: 1px solid var(--w-border);
     border-radius: 4px;
     background: var(--w-surface);
