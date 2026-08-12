@@ -260,11 +260,13 @@
     --brand-gradient: linear-gradient(90deg, var(--color-primary), var(--accent-warm));
   }
 
-/* The ribbon's palette: Word's own greys and accent, deliberately outside the
-   [data-theme] blocks — the theme switcher styles the canvas, not the ribbon. */
+/* The ribbon's palette: Word's own greys and accent. Its own token set rather than
+   the app's, so the two chromes can look nothing alike while sharing a theme. */
 :root {
   --w-accent: #185abd;
   --w-accent-dark: #124a9e;
+  --w-accent-fill: #185abd;
+  --w-accent-fill-open: #124a9e;
   --w-chrome: #ffffff;
   --w-surface: #ffffff;
   --w-border: #e3e6ea;
@@ -280,6 +282,41 @@
   --w-font: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   /* Body height: three control rows plus the group-label row. A tuning knob. */
   --w-ribbon-h: 96px;
+}
+
+/* Word's dark mode: the Fluent dark neutrals, and the accent lightened because
+   #185abd on a dark chrome is unreadable. Only the colours flip — every metric
+   above holds, so the two modes are the same ribbon. */
+[data-theme='dark'], [data-theme='allBlack'] {
+  --w-accent: #479ef5;
+  --w-accent-dark: #2886de;
+  --w-accent-fill: #115ea3;
+  --w-accent-fill-open: #0f6cbd;
+  --w-chrome: #1f1f1f;
+  --w-surface: #292929;
+  --w-border: #383838;
+  --w-border-strong: #4a4a4a;
+  --w-text: #ffffff;
+  --w-text-dim: #c8c6c4;
+  --w-text-tertiary: #8a8886;
+  --w-hover: #3d3d3d;
+  --w-pressed: #333333;
+  --w-active: #4a4a4a;
+  --w-accent-soft: #10395f;
+  --w-menu-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+/* AllBlack darkens the canvas past dark, so the ribbon follows with Word's Black
+   theme rather than sitting a shade lighter than the page behind it. */
+[data-theme='allBlack'] {
+  --w-chrome: #0f0f0f;
+  --w-surface: #1a1a1a;
+  --w-border: #2b2b2b;
+  --w-border-strong: #3d3d3d;
+  --w-hover: #2e2e2e;
+  --w-pressed: #262626;
+  --w-active: #3d3d3d;
+  --w-accent-soft: #0d2d4d;
 }
 
 /* Signature micro-interactions, shared across all toolbar components. */

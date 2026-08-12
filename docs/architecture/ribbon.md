@@ -21,18 +21,24 @@ chrome is mounted at a time, so the two sets never coexist.
 
 ## Palette
 
-Word's greys live in `--w-*` in `global.css`, deliberately **outside** the `[data-theme]` blocks:
-the theme switcher styles the canvas, the page, the status bar and the classic toolbar, never the
-ribbon. Accent `--w-accent: #185abd`; the tab's active underline is 2.5px **inset 13px from each
-side**, not a full-width border.
+Word's greys live in `--w-*` in `global.css` — its own token set, not the app's, so the two
+chromes can look nothing alike while sharing a theme. Accent `--w-accent: #185abd`; the tab's
+active underline is 2.5px **inset 13px from each side**, not a full-width border.
 
 `.ribbon` remaps the app's own tokens onto that palette (`--color-surface`, `--color-primary`,
 `--toolbar-btn-size`, …). Custom properties inherit, so every reused picker — `ColorPicker`,
 `HistoryButton`, `TablePicker`, `TableStylePicker`, the border pickers — adopts the ribbon's look
 with no edit of its own, while the classic toolbar keeps the themed set.
 
-Consequence, accepted: in dark and AllBlack the ribbon stays light while the rest of the app goes
-dark.
+**Dark** flips only the colours — every metric holds, so it is the same ribbon. The values are
+Word's dark mode: Fluent's dark neutrals, chrome `#1f1f1f` on surface `#292929`, and the accent
+lightened to `#479ef5` because `#185abd` on a dark chrome is unreadable. AllBlack goes on to
+Word's Black theme (`#0f0f0f`), since the app's AllBlack canvas is darker than its dark one.
+
+That lightened accent cannot also carry white text, so a **second** pair exists for the one place
+the accent is a surface rather than a line: `--w-accent-fill` / `-fill-open`, on the File pill and
+on `--color-primary` for the pickers. In light mode both equal `--w-accent` / `--w-accent-dark`,
+so the split is invisible there.
 
 ## Layout
 

@@ -303,7 +303,9 @@
     --color-border: var(--w-border);
     --color-text: var(--w-text);
     --color-text-muted: var(--w-text-dim);
-    --color-primary: var(--w-accent);
+    /* Those pickers paint --color-primary as a surface under white far more than
+       as text, so it takes the fill accent. */
+    --color-primary: var(--w-accent-fill);
     --color-btn-hover: var(--w-hover);
     --font-sans: var(--w-font);
     --radius: 3px;
@@ -396,9 +398,11 @@
     position: relative;
   }
 
+  /* The one place the accent is a surface rather than a line, so it has its own
+     token: the accent that reads on the chrome is too light to carry white. */
   .ribbon-tab-file {
     border: none;
-    background: var(--w-accent);
+    background: var(--w-accent-fill);
     color: #fff;
     border-radius: 4px;
     padding: 6px 16px;
@@ -410,7 +414,7 @@
   }
 
   .ribbon-tab-file:hover,
-  .ribbon-tab-file.open { background: var(--w-accent-dark); }
+  .ribbon-tab-file.open { background: var(--w-accent-fill-open); }
 
   .qa-btn {
     display: inline-flex;
