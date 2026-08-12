@@ -833,6 +833,16 @@ function pushColumnRuns(inner: Node[], cols: { count: number; gapCm: number }, o
   flush();
 }
 
+// A style that hides its paragraph takes the line with it, not just the text. A hidden
+// *heading* stays: it is the document's outline, which the running head's chapter field
+// reads — an ODF chapter marker exists for nothing else, and dropping it blanks the head.
+function hiddenParagraph(el: Element, ctx: Ctx): boolean {
+  if (el.localName !== 'p') return false;
+  if (ctx.resolver.paraTextProps(el.getAttributeNS(NS.text, 'style-name'))['text:display'] !== 'none') return false;
+  ctx.warnings.add('Hidden text was removed');
+  return true;
+}
+
 function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDefault = false): Node[] {
   const out: Node[] = [];
 
@@ -881,6 +891,7 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
   for (const el of elements) {
     if (el.namespaceURI === NS.text) {
       if (el.localName === 'p' || el.localName === 'h') {
+        if (hiddenParagraph(el, ctx)) continue;
         pushWithPending(hoistPageFrames(convertParaLike(el, ctx, kind, boldByDefault)));
       } else if (el.localName === 'list') {
         // A list wrapping only headings is ODF outline (chapter) numbering, not a real
@@ -1553,6 +1564,8 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
       const e = child as Element;
 
       if (e.namespaceURI === NS.text) {
+        // A field set to show nothing shows nothing: its stored value is not text.
+        if (e.getAttributeNS(NS.text, 'display') === 'none') continue;
         switch (e.localName) {
           case 'span': {
             const spanStyle = e.getAttributeNS(NS.text, 'style-name');
@@ -1739,7 +1752,7 @@ function capsFromOdf(props: PropMap): CapsMode | null {
 // complex-script fonts side by side, and text in a complex script is set from the
 // -complex ones. A file that leaves them at the defaults sets Hebrew at 12pt Times
 // where LibreOffice sets it at the 16pt the style really declares.
-const COMPLEX_SCRIPT_RE = /[֐-ࣿऀ-෿฀-๿ក-៿יִ-﷿ﹰ-ﻼ]/;
+const COMPLEX_SCRIPT_RE = /[֐-ࣿऀ-෿฀-๿ក-៿יִ-﷿ﹰ-ﻼ]/;
 
 const COMPLEX_ALIASES = [
   ['fo:font-size', 'style:font-size-complex'],
