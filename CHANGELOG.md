@@ -127,6 +127,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - Alphabetical index and bibliography
 - Line numbering (LibreOffice Tools ▸ Line numbering / Word Layout ▸ Line numbers)
 - Section-level page **size and orientation**: only the margins are per section. A file whose sections disagree on the page size keeps the last one's
+- Mirrored page margins (ODF `style:page-usage="mirrored"`, Word's mirror margins): the inner and outer margins are drawn as left and right on every page, so an even page's text block sits where an odd page's does (measured 19 mm on a two-column scripture extract)
 - Table extras: repeat the header row on every page, keep a row from splitting across pages, sort, sum/formula in a cell, number recognition
 - A list level's own hanging indent: the marker sits at the 0.635 cm both exports write (`LIST_HANGING_CM`), so a wider *left*-set marker overflows where Word moves the text to the next list tab (a **right**-set one — `w:lvlJc`, which is what the built-in Roman numberings use — grows into the margin and is fine). Reading the value back naively also moves the markers of our own ODT exports — LibreOffice draws its own flat hanging at exactly the value odf-kit writes for level 2; see `tests/render-parity/README.md` before building on it
 - Images live as data-URIs in the autosaved JSON, so an image-heavy document can exceed the ~5 MB localStorage quota; `storage/autosave.ts` warns once and a reload restores the last version that still fit. IndexedDB (as `embeddedFontStore.ts` already uses) would lift the ceiling
