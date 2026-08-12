@@ -914,7 +914,7 @@
             <path d="M8 8v3.5M6.25 9.75h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
         </button>
-        <button class="file-action-btn" onclick={handleOpen} disabled={!editor} title={`${t().app.openOdt} (${shortcutHint('open')})`}>
+        <button class="file-action-btn" onclick={handleOpen} disabled={!editor} title={`${t().app.open} (${shortcutHint('open')})`}>
           <!-- Folder -->
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M1.75 12.5V4a1 1 0 0 1 1-1h3.2a1 1 0 0 1 .8.4l.7.95a1 1 0 0 0 .8.4h4.2a1 1 0 0 1 1 1v6.75a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
@@ -1035,13 +1035,6 @@
         {/if}
       </div>
       <UiLanguagePicker />
-      <input
-        bind:this={fileInput}
-        type="file"
-        accept=".odt,.ott,.docx,application/vnd.oasis.opendocument.text,application/vnd.oasis.opendocument.text-template,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        class="file-input"
-        onchange={handleImportFile}
-      />
     </div>
     {#if !toolbarExpanded}
       {@render toolbarScrollbar()}
@@ -1095,6 +1088,15 @@
     </div>
   </div>
   {/if}
+  <!-- Outside the chrome fork: `handleOpen` clicks it wherever the File System
+       Access API is missing, and both chromes reach that path. -->
+  <input
+    bind:this={fileInput}
+    type="file"
+    accept=".odt,.ott,.docx,application/vnd.oasis.opendocument.text,application/vnd.oasis.opendocument.text-template,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    class="file-input"
+    onchange={handleImportFile}
+  />
   <EditorComponent
     bind:editor
     bind:tick

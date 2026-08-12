@@ -565,7 +565,7 @@ const de: Messages = {
     documentName: 'Dokumentname',
     untitled: 'Unbenanntes Dokument',
     newDocument: 'Neues Dokument',
-    openOdt: '.odt öffnen…',
+    open: 'Öffnen…',
     save: '.odt speichern',
     saveExport: 'Speichern / Exportieren',
     odt: 'ODT',

@@ -569,7 +569,7 @@ const en = {
     documentName: 'Document name',
     untitled: 'Untitled document',
     newDocument: 'New document',
-    openOdt: 'Open .odt…',
+    open: 'Open…',
     save: 'Save .odt',
     saveExport: 'Save / Export',
     odt: 'ODT',

@@ -154,7 +154,7 @@
             <Icon name="newDoc" size={16} />{t().app.newDocument}
           </button>
           <button onclick={() => run(onOpen)} disabled={!editor}>
-            <Icon name="folder" size={16} />{t().app.openOdt}
+            <Icon name="folder" size={16} />{t().app.open}
             <span class="menu-key">{shortcutHint('open')}</span>
           </button>
           <hr />
