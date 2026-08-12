@@ -170,6 +170,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
 
   // Odd/even pages: a document-level setting (settings.xml), not a section property.
   const oddEven = docHasEvenOddHeaders(files);
+  const mirrored = docHasMirrorMargins(files);
   // Page size stays document-wide, from the body-final sectPr; the margins are the
   // first section's, since that is the pair .tiptap's padding draws and every later
   // section is measured against (Editor.svelte's --pb-section-inset).
@@ -184,7 +185,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   return {
     content: { type: 'doc', content: blocks },
     styles: collectStyleSheet(ctx),
-    margins: first.margins ?? sect.margins,
+    margins: withMirror(first.margins ?? sect.margins, mirrored),
     orientation: sect.orientation,
     format: sect.format,
     tabIntervalCm: docTabInterval(files),
@@ -1879,6 +1880,19 @@ function pushColumnRuns(inner: Node[], cols: { count: number; gapCm: number }, o
   flush();
 }
 
+// Word's mirror margins are a document setting too: w:pgMar's left/right then read as
+// the inner/outer pair and an even page swaps them.
+function docHasMirrorMargins(files: Record<string, Uint8Array>): boolean {
+  const bytes = files['word/settings.xml'];
+  if (!bytes) return false;
+  try {
+    const el = parseXml(strFromU8(bytes)).getElementsByTagNameNS(W, 'mirrorMargins')[0];
+    return !!el && onOff(el);
+  } catch {
+    return false;
+  }
+}
+
 // Word's "Different Odd & Even Pages" toggle lives in settings.xml, not the sectPr.
 function docHasEvenOddHeaders(files: Record<string, Uint8Array>): boolean {
   const bytes = files['word/settings.xml'];
@@ -1949,6 +1963,9 @@ function parseSectPr(sect: Element | null, ctx: Ctx, oddEven = false): {
 }
 
 // The section's own page margins (w:pgMar). Word has no first-page variant of them.
+const withMirror = (m: PageMargins | null, mirrored: boolean): PageMargins | null =>
+  m && mirrored ? { ...m, mirrored: true } : m;
+
 function sectMargins(sect: Element | null): PageMargins | null {
   const pgMar = sect ? fc(sect, 'pgMar') : null;
   if (!pgMar) return null;

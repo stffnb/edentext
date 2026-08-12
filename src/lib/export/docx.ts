@@ -728,6 +728,23 @@ function applyFormulasDocx(bytes: Uint8Array, formulas: FormulaDocx[]): Uint8Arr
   return zipSync(out);
 }
 
+// Post-pack pass: Word's mirror margins are a document setting (w:mirrorMargins in
+// word/settings.xml); the docx lib writes only the per-section w:pgMar, where left and
+// right are already the inner/outer pair the editor holds.
+function applyMirrorMarginsDocx(bytes: Uint8Array): Uint8Array {
+  const files = unzipSync(bytes);
+  const setBytes = files['word/settings.xml'];
+  if (!setBytes) return bytes;
+  const xml = strFromU8(setBytes);
+  if (xml.includes('w:mirrorMargins')) return bytes;
+  files['word/settings.xml'] = strToU8(
+    xml.replace(/(<w:settings\b[^>]*>)/, '$1<w:mirrorMargins/>'),
+  );
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
 // ---- paragraphs ------------------------------------------------------------
 function alignOf(attrs: TiptapNode['attrs']): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
   switch (attrs?.textAlign) {
@@ -1309,5 +1326,6 @@ export async function buildDocx(
   });
 
   const blob = await Packer.toBlob(doc);
-  return applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
+  const packed = applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
+  return margins.mirrored ? applyMirrorMarginsDocx(packed) : packed;
 }

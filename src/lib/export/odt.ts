@@ -2142,7 +2142,7 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
 // Rewrite styles.xml to match the editor's preview: default font Liberation Serif →
 // Times New Roman (metric-identical; see EXPORT_FONT), and Heading_20_1/2/3 sizes &
 // margins → the editor's values (odf-kit's defaults are larger; HEADING_STYLE_OVERRIDES).
-function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM): Uint8Array {
+function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, mirrored = false): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
   if (!stylesBytes) return odtBytes;
@@ -2156,6 +2156,12 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
   styles = styles
     .replace(/fo:page-width="[^"]*"/, `fo:page-width="${round3(dims.w)}cm"`)
     .replace(/fo:page-height="[^"]*"/, `fo:page-height="${round3(dims.h)}cm"`);
+
+  // Mirrored margins: fo:margin-left/right are the inner/outer pair, which is what
+  // the editor already holds, so only the flag has to be written back.
+  if (mirrored) {
+    styles = styles.replace(/<style:page-layout /, '<style:page-layout style:page-usage="mirrored" ');
+  }
 
   // Document spell-check language: set fo:language/fo:country on the base
   // Standard paragraph style, which every paragraph inherits from. LibreOffice
@@ -3571,7 +3577,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Effects first: applyCharacterStyles then clones the style that already carries them.
   const withNamedStyles = applyCharacterStyles(applyTextEffects(applyParagraphStyles(withParaBoxes)));
   const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
-  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm);
+  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm, margins.mirrored === true);
   const withHf = applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.

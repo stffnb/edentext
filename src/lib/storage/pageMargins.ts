@@ -1,4 +1,8 @@
-export type PageMargins = { top: number; bottom: number; left: number; right: number }; // cm
+// cm. `mirrored` = ODF style:page-usage="mirrored" / Word's mirror margins: left and
+// right are the inner/outer pair, and an even (left-hand) page swaps them.
+export type PageMargins = {
+  top: number; bottom: number; left: number; right: number; mirrored?: boolean;
+};
 
 const KEY = 'odf-editor-page-margins';
 
@@ -27,6 +31,7 @@ export function loadPageMargins(): PageMargins {
       bottom: typeof parsed.bottom === 'number' ? clampCm(parsed.bottom) : DEFAULT_MARGINS.bottom,
       left:   typeof parsed.left   === 'number' ? clampCm(parsed.left)   : DEFAULT_MARGINS.left,
       right:  typeof parsed.right  === 'number' ? clampCm(parsed.right)  : DEFAULT_MARGINS.right,
+      ...(parsed.mirrored === true ? { mirrored: true } : {}),
     };
   } catch {
     return { ...DEFAULT_MARGINS };
@@ -46,4 +51,7 @@ export function applyMarginVars(m: PageMargins): void {
   root.setProperty('--user-margin-bottom', `${cmToPx(m.bottom)}px`);
   root.setProperty('--user-margin-left',   `${cmToPx(m.left)}px`);
   root.setProperty('--user-margin-right',  `${cmToPx(m.right)}px`);
+  // How far an even page's text block moves right; .tiptap's padding draws the odd
+  // page's pair, so pageBreaks.ts insets the even one by the difference.
+  root.setProperty('--user-margin-mirror', `${m.mirrored ? cmToPx(m.right - m.left) : 0}px`);
 }

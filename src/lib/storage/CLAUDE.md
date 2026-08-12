@@ -2,7 +2,7 @@
 
 ## Page layout settings
 
-- **`pageMargins.ts`** — `PageMargins` in **cm** (default `{ top: 2, bottom: 2, left: 2, right: 2 }` — LibreOffice's; clamped 0–10). `applyMarginVars` sets `--user-margin-*` (px) on `:root`; `PX_PER_CM = 96/2.54`.
+- **`pageMargins.ts`** — `PageMargins` in **cm** (default `{ top: 2, bottom: 2, left: 2, right: 2 }` — LibreOffice's; clamped 0–10). `applyMarginVars` sets `--user-margin-*` (px) on `:root`; `PX_PER_CM = 96/2.54`. Optional `mirrored` (ODF `style:page-usage="mirrored"`, Word `w:mirrorMargins`) makes left/right the **inner/outer** pair, which an even page swaps: `--user-margin-mirror` carries the difference, `pageBreaks.ts` insets an even page's blocks by it and `HeaderFooterLayer.svelte` moves the band. The key is **absent**, never `false`, when off — margins are compared whole in the round-trip tests.
 - **`tabInterval.ts`** — the document's default tab interval in **cm** (`DEFAULT_TAB_INTERVAL_CM = 1.25`, LibreOffice's for a new document; clamped 0.05–10). `applyTabIntervalVar` sets `--tab-interval`, which is `.tiptap`'s `tab-size`. A file that declares none falls back to its format's own value, neither of them ours: `ODF_IMPLIED_TAB_CM` 2cm (measured against LibreOffice), `DOCX_IMPLIED_TAB_CM` 1.27cm — so both exports always write the value out.
 - **`spacingModel.ts`** — how the gap between two blocks is measured: `'add'` (LibreOffice's
   own — space-below **plus** space-above) or `'max'` (the larger of the two, what it uses for a

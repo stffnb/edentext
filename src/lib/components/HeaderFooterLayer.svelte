@@ -77,7 +77,8 @@
   let pages = $derived(Array.from({ length: Math.max(1, numPages) }, (_, i) => i + 1));
 
   function zoneBox(zone: HfZone, page: number) {
-    const left = mLeft;
+    // Mirrored margins: an even page is the left-hand one, so the pair is swapped.
+    const left = pageMargins.mirrored && page % 2 === 0 ? mRight : mLeft;
     const width = contentWidth;
     if (zone === 'header') {
       const top = (page - 1) * cycle + headerDistPx;

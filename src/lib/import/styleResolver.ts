@@ -630,9 +630,14 @@ export class StyleResolver {
     const margins: PageMargins = {
       top: cm('margin-top', 2.54, hf.header ? hf.headerExtraCm : 0),
       bottom: cm('margin-bottom', 2.54, hf.footer ? hf.footerExtraCm : 0),
+      // Mirrored: fo:margin-left is the *inner* margin, so an even (left-hand) page
+      // swaps the pair. The declared values stay the odd page's, as the file writes them.
       left: cm('margin-left', 2.12),
       right: cm('margin-right', 2.12),
     };
+    if (this.pageLayoutEl(pageName)?.getAttributeNS(NS.style, 'page-usage') === 'mirrored') {
+      margins.mirrored = true;
+    }
     const w = lengthToCm(props.getAttributeNS(NS.fo, 'page-width'));
     const h = lengthToCm(props.getAttributeNS(NS.fo, 'page-height'));
     const orientation: Orientation = w != null && h != null && w > h ? 'landscape' : 'portrait';

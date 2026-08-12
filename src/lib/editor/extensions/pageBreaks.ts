@@ -964,6 +964,10 @@ export const PageBreaks = Extension.create({
             .map((g) => g.split('|').map(Number))
             .filter((g) => g.length === 4 && g.every(Number.isFinite));
           const insetAt = (i: number) => inset[Math.min(i, inset.length - 1)] ?? [0, 0, 0, 0];
+          // Mirrored margins (pageMargins.ts): the padding draws the odd page's pair,
+          // so an even page's blocks move right by the difference between the two.
+          const mirrorRaw = parseFloat(csRoot.getPropertyValue('--user-margin-mirror'));
+          const mirror = Number.isFinite(mirrorRaw) ? mirrorRaw : 0;
 
           const scale = getScaleFactor();
           const leaves = collectLeaves(CONTENT_HEIGHT, scale);
@@ -1340,8 +1344,9 @@ export const PageBreaks = Extension.create({
             const landedPage = getPageForY(leaf.naturalTop + cumulativeShift, CYCLE_PX);
             if (leaf.sectionStart) sectionStartPages.push(landedPage);
             const ins = insetAt(sectionIndex);
-            const insLeft = Math.round(landedPage === sectionFirstPage ? ins[0] : ins[2]);
-            const insRight = Math.round(landedPage === sectionFirstPage ? ins[1] : ins[3]);
+            const mir = landedPage % 2 === 0 ? mirror : 0;
+            const insLeft = Math.round((landedPage === sectionFirstPage ? ins[0] : ins[2]) + mir);
+            const insRight = Math.round((landedPage === sectionFirstPage ? ins[1] : ins[3]) - mir);
             if (insLeft || insRight) {
               // The leaf may be a row, or a line inside one; the inset belongs on the
               // top-level block, which is the ancestor .tiptap holds directly.
