@@ -394,7 +394,7 @@
 .rb-combo {
   display: flex;
   align-items: stretch;
-  height: 28px;
+  height: 30px;
   border: 1px solid var(--w-border-strong);
   border-radius: 3px;
   background: var(--w-surface);

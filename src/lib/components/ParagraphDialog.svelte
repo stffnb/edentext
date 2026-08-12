@@ -24,7 +24,9 @@
 
   const ALIGNS = ['left', 'center', 'right', 'justify'] as const;
 
-  let align = $derived(tick >= 0 && editor ? (ALIGNS.find((a) => editor!.isActive({ textAlign: a })) ?? '') : '');
+  // An unset paragraph renders left, so that's what the box shows; a selection
+  // mixing two alignments still reads '' and leaves it blank.
+  let align = $derived(read('textAlign', 'left'));
   let indent = $derived(read('indent', 0));
   let indentRight = $derived(read('indentRight', 0));
   let indentFirst = $derived(read('indentFirst', 0));
@@ -78,28 +80,28 @@
     </div>
 
     {#if pane === 'indents'}
-      <label class="row">
-        <span>{t().align.section}</span>
-        <select value={align} onchange={(e) => editor?.chain().focus().setTextAlign((e.currentTarget as HTMLSelectElement).value as never).run()}>
-          {#each ALIGNS as a}<option value={a}>{t().align[a]}</option>{/each}
-        </select>
-      </label>
-
       <div class="grid">
-        <label class="row"><span>{t().ribbon.indentLeft}</span><input type="text" inputmode="decimal" value={num(indent)} onchange={(e) => setNumber('indent', (e.currentTarget as HTMLInputElement).value)} /><em>cm</em></label>
+        <label class="row">
+          <span>{t().align.section}</span>
+          <select value={align} onchange={(e) => editor?.chain().focus().setTextAlign((e.currentTarget as HTMLSelectElement).value as never).run()}>
+            {#each ALIGNS as a}<option value={a}>{t().align[a]}</option>{/each}
+          </select>
+        </label>
+
+        <label class="row newline"><span>{t().ribbon.indentLeft}</span><input type="text" inputmode="decimal" value={num(indent)} onchange={(e) => setNumber('indent', (e.currentTarget as HTMLInputElement).value)} /><em>cm</em></label>
         <label class="row"><span>{t().ribbon.indentRight}</span><input type="text" inputmode="decimal" value={num(indentRight)} onchange={(e) => setNumber('indentRight', (e.currentTarget as HTMLInputElement).value)} /><em>cm</em></label>
         <label class="row"><span>{t().ruler.firstLineIndent}</span><input type="text" inputmode="decimal" value={num(indentFirst)} onchange={(e) => setNumber('indentFirst', (e.currentTarget as HTMLInputElement).value)} /><em>cm</em></label>
-        <span></span>
-        <label class="row"><span>{t().ribbon.spaceBefore}</span><input type="text" inputmode="decimal" value={num(spaceBefore)} onchange={(e) => setNumber('spaceBefore', (e.currentTarget as HTMLInputElement).value)} /><em>pt</em></label>
-        <label class="row"><span>{t().ribbon.spaceAfter}</span><input type="text" inputmode="decimal" value={num(spaceAfter)} onchange={(e) => setNumber('spaceAfter', (e.currentTarget as HTMLInputElement).value)} /><em>pt</em></label>
-      </div>
 
-      <label class="row">
-        <span>{t().toolbarExpanded.lineSpacing}</span>
-        <select value={String(lineHeight)} onchange={(e) => editor?.chain().focus().setLineHeight((e.currentTarget as HTMLSelectElement).value).run()}>
-          {#each ['1', '1.15', '1.5', '2'] as h}<option value={h}>{h === '1' ? t().toolbarExpanded.lineSingle : h === '2' ? t().toolbarExpanded.lineDouble : h}</option>{/each}
-        </select>
-      </label>
+        <label class="row newline"><span>{t().ribbon.spaceBefore}</span><input type="text" inputmode="decimal" value={num(spaceBefore)} onchange={(e) => setNumber('spaceBefore', (e.currentTarget as HTMLInputElement).value)} /><em>pt</em></label>
+        <label class="row"><span>{t().ribbon.spaceAfter}</span><input type="text" inputmode="decimal" value={num(spaceAfter)} onchange={(e) => setNumber('spaceAfter', (e.currentTarget as HTMLInputElement).value)} /><em>pt</em></label>
+
+        <label class="row newline">
+          <span>{t().toolbarExpanded.lineSpacing}</span>
+          <select value={String(lineHeight)} onchange={(e) => editor?.chain().focus().setLineHeight((e.currentTarget as HTMLSelectElement).value).run()}>
+            {#each ['1', '1.15', '1.5', '2'] as h}<option value={h}>{h === '1' ? t().toolbarExpanded.lineSingle : h === '2' ? t().toolbarExpanded.lineDouble : h}</option>{/each}
+          </select>
+        </label>
+      </div>
     {:else}
       <div class="flow">
         {#each FLOW as f}
@@ -139,7 +141,7 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    width: 420px;
+    width: 500px;
     padding: 18px 20px 16px;
     font-family: var(--font-sans);
     font-size: 0.85rem;
@@ -165,14 +167,18 @@
 
   .tabs button.active { color: var(--color-text); border-bottom-color: var(--color-primary); }
 
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+
+  /* Equal columns plus a fixed unit width put every field on the same edge; the
+     label takes the rest and never wraps, so no row grows a second line. */
+  .newline { grid-column: 1; }
 
   .row { display: flex; align-items: center; gap: 8px; }
-  .row > span { flex: 1; color: var(--color-text-muted); }
-  .row em { font-style: normal; color: var(--color-text-muted); }
+  .row > span { flex: 1; white-space: nowrap; color: var(--color-text-muted); }
+  .row em { width: 1.5em; font-style: normal; color: var(--color-text-muted); }
 
   .row input, .row select {
-    width: 72px;
+    width: 76px;
     height: 26px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -182,7 +188,8 @@
     font: inherit;
   }
 
-  .row select { width: 130px; }
+  /* No unit of its own, so it reaches across the field and unit columns. */
+  .row select { width: calc(84px + 1.5em); }
   .row input { text-align: right; }
 
   .flow { display: flex; flex-direction: column; gap: 8px; }

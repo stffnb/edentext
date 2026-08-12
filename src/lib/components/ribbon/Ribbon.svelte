@@ -307,7 +307,7 @@
     --color-btn-hover: var(--w-hover);
     --font-sans: var(--w-font);
     --radius: 3px;
-    --toolbar-btn-size: 28px;
+    --toolbar-btn-size: 30px;
 
     flex-shrink: 0;
     background: var(--w-chrome);
@@ -316,6 +316,34 @@
     color: var(--w-text);
     user-select: none;
   }
+
+  /* Those pickers frame their trigger for the classic toolbar's tinted island. A
+     ribbon row is borderless icon buttons, so the frame comes off and the hover
+     tint takes over — same 30px box as .rb-icon, so a row reads as one strip. */
+  .ribbon :global(.color-split) {
+    border-color: transparent;
+    background: none;
+  }
+
+  .ribbon :global(.color-split:hover) {
+    border-color: transparent;
+    background: var(--w-hover);
+  }
+
+  .ribbon :global(.color-main) {
+    min-width: 28px;
+    padding: 0 4px;
+  }
+
+  .ribbon :global(.color-chevron) {
+    width: 13px;
+    border-left: none;
+    color: var(--w-text-dim);
+  }
+
+  .ribbon :global(.color-chevron:hover) { background: var(--w-pressed); }
+
+  .ribbon :global(.bp-trigger) { height: 30px; }
 
   .ribbon-tabs {
     display: flex;
