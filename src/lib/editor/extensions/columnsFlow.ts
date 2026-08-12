@@ -34,6 +34,7 @@ const MIN_TAIL_LINES = 2;
 const MAX_FLOW_PASSES = 48;
 
 type Fragment = { pos: number; node: PMNode };
+export type LineRect = { left: number; right: number; top: number; height: number };
 
 // Live per-fragment view of the flow's decisions, for the dev Debug dump.
 export type ColumnsFlowDebug = {
@@ -86,27 +87,53 @@ function contentHeightPx(children: Element[], scale: number): number {
   return sum;
 }
 
-// One rect per rendered text line of `el`, in document order (multicol renders
-// column 1's lines before column 2's, so a new line = a top jump in either
-// direction). Viewport coordinates.
-function lineRects(el: Element): { left: number; top: number; height: number }[] {
+// The first rect of each rendered line, in document order — column 1's lines
+// before column 2's. A rect joins the line it overlaps by half the taller of the
+// two, so a raised run (a verse number, a superscript) is no line of its own.
+export function groupLines(rects: LineRect[]): LineRect[] {
+  const lines: LineRect[] = [];
+  let band: { top: number; bottom: number } | null = null;
+  for (const r of rects) {
+    const bottom = r.top + r.height;
+    if (band) {
+      const overlap = Math.min(band.bottom, bottom) - Math.max(band.top, r.top);
+      if (overlap >= Math.max(band.bottom - band.top, r.height) / 2) continue;
+    }
+    band = { top: r.top, bottom };
+    lines.push(r);
+  }
+  return lines;
+}
+
+// The rendered lines of `el`, in viewport coordinates.
+function lineRects(el: Element): LineRect[] {
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  const lines: { left: number; top: number; height: number }[] = [];
-  let lastTop = -Infinity;
+  const rects: LineRect[] = [];
   let textNode: Node | null;
   while ((textNode = walker.nextNode())) {
     if (!textNode.textContent) continue;
     const range = document.createRange();
     range.selectNodeContents(textNode);
     for (const r of Array.from(range.getClientRects())) {
-      if (r.width <= 0 || r.height <= 0) continue;
-      if (Math.abs(r.top - lastTop) > 2) {
-        lines.push({ left: r.left, top: r.top, height: r.height });
-        lastTop = r.top;
+      if (r.width > 0 && r.height > 0) {
+        rects.push({ left: r.left, right: r.right, top: r.top, height: r.height });
       }
     }
   }
-  return lines;
+  return groupLines(rects);
+}
+
+// How many of `lines` a flow budget buys, measured top to top: a line carrying a
+// raised run is taller than the rest, so one median advance for all of them is
+// well short. `advance` stands in where the tops reset at a column break.
+export function linesWithin(lines: LineRect[], budgetPx: number, advance: number, scale: number): number {
+  let used = 0;
+  for (let n = 1; n < lines.length; n++) {
+    const gap = (lines[n].top - lines[n - 1].top) / scale;
+    used += gap > 2 && gap < advance * 3 ? gap : advance;
+    if (used > budgetPx) return n - 1;
+  }
+  return lines.length;
 }
 
 // Median top-to-top line advance (viewport px); 0 when there are too few lines.
@@ -197,6 +224,17 @@ export const ColumnsFlow = Extension.create({
           return open;
         }
 
+        // First document position on a line. Its first rect in document order runs
+        // from whichever edge is logically first — the right one on a line of Hebrew
+        // or Arabic — so both edges are probed and the earlier position wins.
+        function lineStartPos(line: LineRect): number | null {
+          const top = line.top + line.height / 2;
+          const a = editorView.posAtCoords({ left: line.left + 1, top });
+          const b = editorView.posAtCoords({ left: line.right - 1, top });
+          const pos = Math.min(a?.pos ?? Infinity, b?.pos ?? Infinity);
+          return Number.isFinite(pos) ? pos : null;
+        }
+
         // Split the paragraph at `blockIndex` at the line consuming `budgetPx` (a
         // mid-paragraph page break); the second part is marked joinPrev so joins/export
         // restore the original. `force` takes at least one line for an over-tall paragraph.
@@ -211,16 +249,14 @@ export const ColumnsFlow = Extension.create({
           const lines = lineRects(blockEl);
           if (lines.length < 2) return false;
           const advance = (lineAdvance(lines) || DEFAULT_LINE_PX * scale) / scale;
-          let budgetLines = Math.floor(budgetPx / advance);
+          let budgetLines = linesWithin(lines, budgetPx, advance, scale);
           if (budgetLines < MIN_TAIL_LINES) {
             if (!force) return false;
             budgetLines = 1;
           }
           const prefixLines = Math.min(Math.max(budgetLines, 1), lines.length - 1);
-          const target = lines[prefixLines];
-          const coords = editorView.posAtCoords({ left: target.left + 1, top: target.top + target.height / 2 });
-          if (!coords) return false;
-          const pos = coords.pos;
+          const pos = lineStartPos(lines[prefixLines]);
+          if (pos === null) return false;
           let blockStart = frag.pos + 1;
           for (let j = 0; j < blockIndex; j++) blockStart += frag.node.child(j).nodeSize;
           if (pos <= blockStart + 1 || pos >= blockStart + block.nodeSize - 1) return false;
