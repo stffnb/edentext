@@ -1,0 +1,298 @@
+<script lang="ts">
+  import type { Editor } from '@tiptap/core';
+  import RibbonGroup from '../RibbonGroup.svelte';
+  import RibbonButton from '../RibbonButton.svelte';
+  import { anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
+  import { uniformBlockAttr } from '../../../utils/selectionFormat';
+  import { findColumns, DEFAULT_COLUMN_GAP_CM } from '../../../editor/extensions/columns';
+  import { PAGE_FORMAT_CM, type PageFormat } from '../../../storage/pageFormat';
+  import { DEFAULT_MARGINS, type PageMargins } from '../../../storage/pageMargins';
+  import type { Orientation } from '../../../storage/pageOrientation';
+  import type { HfZone } from '../../../storage/headerFooter';
+  import { t } from '../../../i18n/i18n.svelte';
+  import { shortcutHint } from '../../../editor/shortcuts';
+
+  let {
+    editor, tick, hfActive = null,
+    pageMargins = $bindable(DEFAULT_MARGINS),
+    pageOrientation = $bindable<Orientation>('portrait'),
+    pageFormat = $bindable<PageFormat>('A4'),
+    onParagraphDialog,
+  }: {
+    editor: Editor | null;
+    tick: number;
+    hfActive?: HfZone | null;
+    pageMargins?: PageMargins;
+    pageOrientation?: Orientation;
+    pageFormat?: PageFormat;
+    onParagraphDialog?: () => void;
+  } = $props();
+
+  const FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
+  const EDGES = ['top', 'bottom', 'left', 'right'] as const;
+
+  // Named after the value they set, so no preset hides what it does.
+  const MARGIN_PRESETS: { key: 'normal' | 'narrow' | 'wide'; m: PageMargins }[] = [
+    { key: 'normal', m: { top: 2, bottom: 2, left: 2, right: 2 } },
+    { key: 'narrow', m: { top: 1.27, bottom: 1.27, left: 1.27, right: 1.27 } },
+    { key: 'wide', m: { top: 2.54, bottom: 2.54, left: 5.08, right: 5.08 } },
+  ];
+
+  const fmtCm = (v: number) => (Math.round(v * 100) / 100).toString().replace('.', ',');
+
+  function setMargin(edge: (typeof EDGES)[number], raw: string) {
+    const v = parseFloat(raw.replace(',', '.'));
+    if (isNaN(v)) return;
+    pageMargins = { ...pageMargins, [edge]: Math.min(10, Math.max(0, v)) };
+  }
+
+  // --- Columns ---
+  let colState = $derived.by(() => {
+    if (tick < 0 || !editor) return { count: 1, gap: DEFAULT_COLUMN_GAP_CM, inColumns: false };
+    const found = findColumns(editor.state);
+    return found
+      ? { count: found.node.attrs.count as number, gap: found.node.attrs.gap as number, inColumns: true }
+      : { count: 1, gap: DEFAULT_COLUMN_GAP_CM, inColumns: false };
+  });
+
+  function setColumns(n: number) {
+    closeMenu();
+    editor?.chain().focus().setColumns(n).run();
+  }
+
+  // --- Paragraph indent and spacing, in the units Word's Layout tab uses ---
+  let indentLeft = $derived(tick >= 0 && editor ? uniformBlockAttr<number>(editor.state, 'indent', 0) : 0);
+  let indentRight = $derived(tick >= 0 && editor ? uniformBlockAttr<number>(editor.state, 'indentRight', 0) : 0);
+  let spaceBefore = $derived(tick >= 0 && editor ? uniformBlockAttr<number>(editor.state, 'spaceBefore', 0) : 0);
+  let spaceAfter = $derived(tick >= 0 && editor ? uniformBlockAttr<number>(editor.state, 'spaceAfter', 0) : 0);
+
+  const num = (v: number | '') => (v === '' ? '' : String(Math.round(v * 100) / 100));
+
+  function apply(fn: (v: number) => void, raw: string) {
+    const v = parseFloat(raw.replace(',', '.'));
+    if (!isNaN(v)) fn(v);
+  }
+</script>
+
+<RibbonGroup label={t().ribbon.groups.pageSetup}>
+  <div class="rb-menu-wrap" use:clickOutside={'margins'}>
+    <RibbonButton variant="big" icon="margins" label={t().ribbon.margins} title={t().toolbarExpanded.pageMargins} caret active={isMenuOpen('margins')} onclick={() => toggleMenu('margins')} />
+    {#if isMenuOpen('margins')}
+      <div class="ribbon-menu margin-menu" use:anchored role="menu">
+        {#each MARGIN_PRESETS as p}
+          <button onclick={() => { closeMenu(); pageMargins = p.m; }}>
+            {t().ribbon.marginPresets[p.key]}
+            <span class="menu-sub">{fmtCm(p.m.top)} / {fmtCm(p.m.left)} cm</span>
+          </button>
+        {/each}
+        <hr />
+        <div class="rb-menu-label">{t().toolbarExpanded.pageMargins}</div>
+        <div class="margin-grid">
+          {#each EDGES as edge}
+            <label class="margin-field">
+              <span>{t().toolbarExpanded.margins[edge]}</span>
+              <input
+                type="text"
+                inputmode="decimal"
+                value={fmtCm(pageMargins[edge])}
+                title={t().toolbarExpanded.marginField(t().toolbarExpanded.margins[edge])}
+                onchange={(e) => setMargin(edge, (e.currentTarget as HTMLInputElement).value)}
+              />
+            </label>
+          {/each}
+        </div>
+      </div>
+    {/if}
+  </div>
+
+  <div class="rb-menu-wrap" use:clickOutside={'orientation'}>
+    <RibbonButton variant="big" icon="orientation" label={t().toolbarExpanded.orientation} title={t().toolbarExpanded.orientation} caret active={isMenuOpen('orientation')} onclick={() => toggleMenu('orientation')} />
+    {#if isMenuOpen('orientation')}
+      <div class="ribbon-menu" use:anchored role="menu">
+        {#each (['portrait', 'landscape'] as const) as o}
+          <button class:selected={pageOrientation === o} onclick={() => { closeMenu(); pageOrientation = o; }}>{t().toolbarExpanded[o]}</button>
+        {/each}
+      </div>
+    {/if}
+  </div>
+
+  <div class="rb-menu-wrap" use:clickOutside={'pageFormat'}>
+    <RibbonButton variant="big" icon="pageSize" label={t().ribbon.size} title={t().toolbarExpanded.pageFormat} caret active={isMenuOpen('pageFormat')} onclick={() => toggleMenu('pageFormat')} />
+    {#if isMenuOpen('pageFormat')}
+      <div class="ribbon-menu format-menu" use:anchored role="menu">
+        <div class="menu-scroll">
+          {#each FORMATS as f}
+            <button class:selected={pageFormat === f} onclick={() => { closeMenu(); pageFormat = f; }}>
+              {t().toolbarExpanded.pageFormats[f]}
+              <span class="menu-sub">{fmtCm(PAGE_FORMAT_CM[f].w)} × {fmtCm(PAGE_FORMAT_CM[f].h)} cm</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/if}
+  </div>
+
+  <div class="rb-menu-wrap" use:clickOutside={'columns'}>
+    <RibbonButton
+      variant="big"
+      icon="columns"
+      label={t().toolbarExpanded.columns}
+      title={hfActive ? t().toolbarExpanded.columnsNotInHf : t().toolbarExpanded.columns}
+      disabled={!editor || !!hfActive}
+      caret
+      active={isMenuOpen('columns')}
+      onclick={() => toggleMenu('columns')}
+    />
+    {#if isMenuOpen('columns')}
+      <div class="ribbon-menu" use:anchored role="menu">
+        {#each [1, 2, 3] as n}
+          <button class:selected={colState.count === n} onclick={() => setColumns(n)}>
+            {@render colPreview(n)}
+            {n === 1 ? t().toolbarExpanded.columnsOne : n === 2 ? t().toolbarExpanded.columnsTwo : t().toolbarExpanded.columnsThree}
+          </button>
+        {/each}
+        <hr />
+        <label class="gap-field">
+          <span>{t().toolbarExpanded.columnGap}</span>
+          <input
+            type="text"
+            inputmode="decimal"
+            value={fmtCm(colState.gap)}
+            disabled={!colState.inColumns}
+            onchange={(e) => apply((v) => editor?.chain().focus().setColumnGap(v).run(), (e.currentTarget as HTMLInputElement).value)}
+          />
+        </label>
+      </div>
+    {/if}
+  </div>
+
+  <div class="rb-menu-wrap" use:clickOutside={'breaks'}>
+    <RibbonButton
+      variant="big"
+      icon="pageBreak"
+      label={t().ribbon.breaks}
+      title={t().ribbon.breaks}
+      disabled={!editor || !!hfActive}
+      caret
+      active={isMenuOpen('breaks')}
+      onclick={() => toggleMenu('breaks')}
+    />
+    {#if isMenuOpen('breaks')}
+      <div class="ribbon-menu breaks-menu" use:anchored role="menu">
+        <button onclick={() => { closeMenu(); editor?.chain().focus().insertPageBreak().run(); }}>
+          {t().ribbon.pageBreak}
+          <span class="menu-key">{shortcutHint('pageBreak')}</span>
+        </button>
+        <button onclick={() => { closeMenu(); editor?.chain().focus().updateAttributes('paragraph', { sectionBreak: true }).run(); }}>
+          {t().ribbon.sectionBreak}
+          <span class="menu-sub">{t().ribbon.sectionBreakHint}</span>
+        </button>
+      </div>
+    {/if}
+  </div>
+</RibbonGroup>
+
+<div class="ribbon-sep"></div>
+
+<!-- Absolute indent and spacing: the ruler can drag these, but only here can a
+     value be typed. -->
+<RibbonGroup label={t().ribbon.groups.paragraph} onLauncher={onParagraphDialog} launcherTitle={t().paragraphDialog.title}>
+  <div class="field-grid">
+    <label class="field">
+      <span>{t().ribbon.indentLeft}</span>
+      <input type="text" inputmode="decimal" value={num(indentLeft)} disabled={!editor}
+        onchange={(e) => apply((v) => editor?.chain().focus().setIndent(v).run(), (e.currentTarget as HTMLInputElement).value)} />
+    </label>
+    <label class="field">
+      <span>{t().ribbon.spaceBefore}</span>
+      <input type="text" inputmode="decimal" value={num(spaceBefore)} disabled={!editor}
+        onchange={(e) => apply((v) => editor?.chain().focus().setSpaceBefore(v).run(), (e.currentTarget as HTMLInputElement).value)} />
+    </label>
+    <label class="field">
+      <span>{t().ribbon.indentRight}</span>
+      <input type="text" inputmode="decimal" value={num(indentRight)} disabled={!editor}
+        onchange={(e) => apply((v) => editor?.chain().focus().setIndentRight(v).run(), (e.currentTarget as HTMLInputElement).value)} />
+    </label>
+    <label class="field">
+      <span>{t().ribbon.spaceAfter}</span>
+      <input type="text" inputmode="decimal" value={num(spaceAfter)} disabled={!editor}
+        onchange={(e) => apply((v) => editor?.chain().focus().setSpaceAfter(v).run(), (e.currentTarget as HTMLInputElement).value)} />
+    </label>
+  </div>
+</RibbonGroup>
+
+<!-- Word shows the layout rather than naming it. The page is 20 units of text
+     width with a 2-unit gutter, so the columns narrow as their count rises. -->
+{#snippet colPreview(n: number)}
+  {@const gap = 2}
+  {@const w = (20 - (n - 1) * gap) / n}
+  <svg class="col-preview" width="25" height="32" viewBox="0 0 26 32" fill="none" aria-hidden="true">
+    <rect x="0.5" y="0.5" width="25" height="31" rx="1.5" fill="var(--w-surface)" stroke="var(--w-border-strong)" />
+    {#each { length: n } as _, c}
+      {#each [6, 10, 14, 18, 22, 26] as y}
+        <rect x={3 + c * (w + gap)} {y} width={w} height="1.5" fill="var(--w-text-dim)" opacity="0.6" />
+      {/each}
+    {/each}
+  </svg>
+{/snippet}
+
+<style>
+  .rb-menu-wrap { position: relative; }
+
+  .col-preview { flex-shrink: 0; }
+
+  .margin-menu, .format-menu, .breaks-menu { min-width: 230px; }
+  .format-menu { max-height: 340px; overflow: hidden; }
+
+  .margin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 2px 7px 4px;
+  }
+
+  .margin-field, .gap-field, .field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--w-font);
+    font-size: 12px;
+    color: var(--w-text-dim);
+  }
+
+  .gap-field { padding: 4px 12px; }
+
+  .margin-field input, .gap-field input, .field input {
+    width: 52px;
+    height: 24px;
+    border: 1px solid var(--w-border-strong);
+    border-radius: 3px;
+    background: var(--w-surface);
+    padding: 0 5px;
+    color: var(--w-text);
+    font: inherit;
+    text-align: right;
+  }
+
+  .margin-field input:focus, .gap-field input:focus, .field input:focus {
+    outline: none;
+    border-color: var(--w-accent);
+  }
+
+  /* Word's Layout tab puts indent and spacing side by side, two rows each. */
+  .field-grid {
+    display: grid;
+    grid-template-columns: auto auto;
+    align-content: center;
+    gap: 3px 12px;
+  }
+
+  /* The label takes whatever its grid column is wide, so the boxes line up on that
+     column's right edge at any label length. */
+  .margin-field > span, .field > span {
+    flex: 1;
+    white-space: nowrap;
+  }
+
+  .field input:disabled { opacity: 0.5; }
+</style>

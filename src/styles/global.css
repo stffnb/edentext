@@ -260,6 +260,65 @@
     --brand-gradient: linear-gradient(90deg, var(--color-primary), var(--accent-warm));
   }
 
+/* The ribbon's palette: Word's own greys and accent. Its own token set rather than
+   the app's, so the two chromes can look nothing alike while sharing a theme. */
+:root {
+  --w-accent: #185abd;
+  --w-accent-dark: #124a9e;
+  --w-accent-fill: #185abd;
+  --w-accent-fill-open: #124a9e;
+  --w-chrome: #ffffff;
+  --w-surface: #ffffff;
+  --w-border: #e3e6ea;
+  --w-border-strong: #d9d9d9;
+  --w-text: #242424;
+  --w-text-dim: #605e5c;
+  --w-text-tertiary: #909499;
+  --w-hover: #f3f2f1;
+  --w-pressed: #edebe9;
+  --w-active: #e2e0de;
+  --w-accent-soft: #e8f1fb;
+  --w-menu-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  --w-font: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  /* Body height: three control rows plus the group-label row. A tuning knob. */
+  --w-ribbon-h: 96px;
+}
+
+/* Word's dark mode: the Fluent dark neutrals, and the accent lightened because
+   #185abd on a dark chrome is unreadable. Only the colours flip — every metric
+   above holds, so the two modes are the same ribbon. */
+[data-theme='dark'], [data-theme='allBlack'] {
+  --w-accent: #479ef5;
+  --w-accent-dark: #2886de;
+  --w-accent-fill: #115ea3;
+  --w-accent-fill-open: #0f6cbd;
+  --w-chrome: #1f1f1f;
+  --w-surface: #292929;
+  --w-border: #383838;
+  --w-border-strong: #4a4a4a;
+  --w-text: #ffffff;
+  --w-text-dim: #c8c6c4;
+  --w-text-tertiary: #8a8886;
+  --w-hover: #3d3d3d;
+  --w-pressed: #333333;
+  --w-active: #4a4a4a;
+  --w-accent-soft: #10395f;
+  --w-menu-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+/* AllBlack darkens the canvas past dark, so the ribbon follows with Word's Black
+   theme rather than sitting a shade lighter than the page behind it. */
+[data-theme='allBlack'] {
+  --w-chrome: #0f0f0f;
+  --w-surface: #1a1a1a;
+  --w-border: #2b2b2b;
+  --w-border-strong: #3d3d3d;
+  --w-hover: #2e2e2e;
+  --w-pressed: #262626;
+  --w-active: #3d3d3d;
+  --w-accent-soft: #0d2d4d;
+}
+
 /* Signature micro-interactions, shared across all toolbar components. */
 @keyframes menu-in {
   from { opacity: 0; transform: translateY(-5px); }
@@ -271,9 +330,231 @@
 
 .theme-dropdown, .ol-dropdown, .align-dropdown, .font-dropdown, .size-dropdown,
 .color-dropdown, .char-dropdown, .history-dropdown, .layout-dropdown,
-.lh-dropdown, .sp-dropdown, .table-dropdown, .bp-dropdown {
+.lh-dropdown, .sp-dropdown, .table-dropdown, .bp-dropdown, .ribbon-menu {
   animation: menu-in 0.14s ease;
 }
+
+/* The ribbon's dropdown panel and its rows. Global because the panel renders its
+   contents from a caller's snippet, which Svelte scopes to that caller. */
+/* `anchored` (menu.svelte.ts) switches this to position: fixed and pins it under
+   the trigger — the ribbon band clips its own overflow, so a panel has to leave
+   the flow to be seen. z-index clears the classic island (200) and the editor's
+   own overlays. */
+.ribbon-menu {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 5px;
+  background: var(--w-surface);
+  border: 1px solid var(--w-border-strong);
+  border-radius: 6px;
+  box-shadow: var(--w-menu-shadow);
+  font-family: var(--w-font);
+  color: var(--w-text);
+}
+
+.ribbon-menu.right { left: auto; right: 0; }
+
+.ribbon-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: var(--w-text);
+  font-family: var(--w-font);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ribbon-menu button:hover:not(:disabled) { background: var(--w-hover); }
+.ribbon-menu button:disabled { color: var(--w-text-tertiary); cursor: default; }
+.ribbon-menu button.selected { background: var(--w-active); }
+
+/* Both trail the row's label: the shortcut hint and the secondary description
+   Word puts at the right edge of a menu entry. */
+.ribbon-menu .menu-key,
+.ribbon-menu .menu-sub { margin-left: auto; padding-left: 16px; color: var(--w-text-dim); }
+.ribbon-menu .menu-key { font-size: 12px; }
+.ribbon-menu .menu-sub { font-size: 11px; }
+
+/* Section label above a run of rows, and the sticky action row below the list. */
+.ribbon-menu .rb-menu-label {
+  padding: 6px 12px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--w-text-tertiary);
+  user-select: none;
+}
+
+.ribbon-menu .rb-menu-foot {
+  flex-shrink: 0;
+  margin: 4px -5px -5px;
+  width: auto;
+  border-top: 1px solid var(--w-border);
+  border-radius: 0 0 5px 5px;
+  font-weight: 600;
+  color: var(--w-accent);
+}
+
+/* Between two ribbon groups, and between two runs of buttons inside one. */
+.ribbon-sep {
+  width: 1px;
+  flex-shrink: 0;
+  background: var(--w-border);
+  margin: 2px 6px;
+}
+
+.rb-mini-sep {
+  width: 1px;
+  height: 20px;
+  flex-shrink: 0;
+  background: var(--w-border);
+  margin: 0 4px;
+}
+
+/* The reused pickers style their trigger for the classic toolbar's tinted island:
+   a frame on hover, the accent as the open state. Beside a row of ribbon buttons
+   that reads as a different control, so both become the ribbon's own tints. */
+.ribbon .table-trigger:hover,
+.ribbon .char-trigger:hover,
+.ribbon .dt-trigger:hover,
+.ribbon .tsp-trigger:hover,
+.ribbon .bp-trigger:hover { border-color: transparent; }
+
+.ribbon .table-trigger[aria-pressed='true'],
+.ribbon .char-trigger[aria-pressed='true'],
+.ribbon .dt-trigger[aria-pressed='true'],
+.ribbon .tsp-trigger[aria-pressed='true'],
+.ribbon .bp-trigger[aria-pressed='true'] {
+  background: var(--w-active);
+  color: var(--w-text);
+}
+
+/* A picker standing alone in a group is a labelled button, so its own compact
+   trigger grows to the big variant's box and icon size. The stroke is pinned to
+   the same 1.5px the ribbon's own icons paint at 28px. */
+.rb-captioned {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 7px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  --toolbar-btn-size: 28px;
+}
+
+/* Mirrors .rb-big's box, down to the slot it holds open for a caret, so a picker
+   and a labelled button in the same row put their glyph and their words on one
+   line. Their triggers carry their own frame and padding, which is dropped. */
+/* A picker root is a block, so its inline-flex trigger would sit on a text
+   baseline and carry the descender gap with it. */
+.rb-captioned > * { display: flex; }
+
+.rb-captioned :is(.table-trigger, .char-trigger, .dt-trigger, .tsp-trigger, .bp-trigger, .lang-picker) {
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  margin: 0;
+}
+
+.rb-captioned::after {
+  content: '';
+  display: block;
+  height: 10px;
+  margin-top: -3px;
+}
+
+/* The trigger lives in the picker's own component, so the tint goes on the wrapper
+   instead — glyph and caption light up together, as they do on a ribbon button.
+   `captionClicks` gives the caption the click to match. */
+.rb-captioned:hover { background: var(--w-hover); }
+.rb-captioned:hover :is(.table-trigger, .char-trigger, .dt-trigger, .tsp-trigger, .bp-trigger, .color-split) {
+  background: none;
+}
+
+/* The first svg is the glyph; a second one is the trigger's own caret and keeps
+   the size every other caret in the ribbon has. */
+.rb-captioned > * > button > svg:first-of-type { width: 28px; height: 28px; }
+.rb-captioned > * > button > svg:first-of-type :is(path, rect, line, circle, polyline) { stroke-width: 0.86; }
+.rb-captioned .color-bar { width: 24px; }
+
+/* The spell-check picker is chromeless for the status bar; in a group it needs
+   the combo frame and the same box as the labelled buttons beside it. */
+.rb-captioned .lang-picker {
+  padding: 0 6px;
+  border: 1px solid var(--w-border-strong);
+  border-radius: 3px;
+  background: var(--w-surface);
+}
+
+.rb-captioned .lang-picker:hover,
+.rb-captioned .lang-picker:focus-within { border-color: var(--w-accent); }
+
+.rb-caption {
+  font-family: var(--w-font);
+  font-size: 12px;
+  color: var(--w-text);
+  white-space: nowrap;
+}
+
+/* Combo box: a borderless input welded to a caret button, as in Word's font and
+   size fields. */
+.rb-combo-wrap { position: relative; }
+
+.rb-combo {
+  display: flex;
+  align-items: stretch;
+  height: 30px;
+  border: 1px solid var(--w-border-strong);
+  border-radius: 3px;
+  background: var(--w-surface);
+  overflow: hidden;
+}
+
+.rb-combo:hover,
+.rb-combo:focus-within { border-color: var(--w-accent); }
+
+.rb-combo-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 0 4px;
+  color: var(--w-text);
+  font-family: var(--w-font);
+  font-size: 12px;
+}
+
+.rb-combo-input:focus { outline: none; }
+
+.rb-combo-caret {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  border: none;
+  border-left: 1px solid var(--w-border);
+  background: none;
+  color: var(--w-text-dim);
+  cursor: pointer;
+}
+
+.rb-combo-caret:hover { background: var(--w-hover); }
+.ribbon-menu hr { border: none; border-top: 1px solid var(--w-border); margin: 4px 2px; }
 
 /* Scrolling body of a popup menu. Only this inner box scrolls; the panel keeps
    the background and frame, so the elastic overscroll bounce can't drag the
@@ -289,7 +570,7 @@
   .toolbar-region button:active:not(:disabled) { transform: none; }
   .theme-dropdown, .ol-dropdown, .align-dropdown, .font-dropdown, .size-dropdown,
   .color-dropdown, .char-dropdown, .history-dropdown, .layout-dropdown,
-  .lh-dropdown, .sp-dropdown, .table-dropdown, .bp-dropdown { animation: none; }
+  .lh-dropdown, .sp-dropdown, .table-dropdown, .bp-dropdown, .ribbon-menu { animation: none; }
 }
 
   [data-theme="light"] {

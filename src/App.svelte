@@ -6,6 +6,7 @@
   import EditorComponent from './lib/components/Editor.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
   import ToolbarExpanded from './lib/components/ToolbarExpanded.svelte';
+  import Ribbon from './lib/components/ribbon/Ribbon.svelte';
   import FindReplaceBar from './lib/components/FindReplaceBar.svelte';
   import { buildOdt, deriveFilename } from './lib/export/odt';
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
@@ -20,7 +21,7 @@
   import { resetHistoryLog } from './lib/utils/historyLog.svelte';
   import { countText, type TextStats } from './lib/utils/wordCount';
   import { clampZoom, wheelZoomFactor, MIN_ZOOM, MAX_ZOOM } from './lib/utils/zoom';
-  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadFormattingMarks, saveFormattingMarks, loadRuler, saveRuler, type ThemeMode } from './lib/storage/theme';
+  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadChromeMode, saveChromeMode, loadFormattingMarks, saveFormattingMarks, loadRuler, saveRuler, type ThemeMode, type ChromeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadTabInterval, saveTabInterval, applyTabIntervalVar, DEFAULT_TAB_INTERVAL_CM } from './lib/storage/tabInterval';
@@ -117,6 +118,8 @@
   let themeMode: ThemeMode = $state(loadTheme());
   let themeOpen = $state(false);
   let toolbarExpanded = $state(loadToolbarExpanded());
+  // Which chrome mounts: the floating island or the ribbon. Both drive one editor.
+  let chromeMode: ChromeMode = $state(loadChromeMode());
   let showFormattingMarks = $state(loadFormattingMarks());
   let showRuler = $state(loadRuler());
   let zoom = $state(clampZoom(parseInt(localStorage.getItem('odf-editor-zoom') ?? '100', 10)));
@@ -156,6 +159,10 @@
     const n = documentName.trim();
     return n ? `${sanitizeNameForFile(n)}.docx` : deriveFilename(json).replace(/\.odt$/, '.docx');
   }
+
+  $effect(() => {
+    saveChromeMode(chromeMode);
+  });
 
   $effect(() => {
     saveFormattingMarks(showFormattingMarks);
@@ -260,7 +267,7 @@
   // Expand it (not persisted) and re-fire once the dialog's own listener exists.
   $effect(() => {
     const open = () => {
-      if (toolbarExpanded) return;
+      if (chromeMode === 'ribbon' || toolbarExpanded) return;
       toolbarExpanded = true;
       domUpdated().then(() => window.dispatchEvent(new CustomEvent(OPEN_LINK_DIALOG_EVENT)));
     };
@@ -793,7 +800,9 @@
   }
 </script>
 
-<main style="--toolbar-overlay-h: {toolbarRegionH}px">
+<!-- The ribbon docks in flow, so only the classic island needs the editor's top
+     padding to clear an overlay. -->
+<main style="--toolbar-overlay-h: {chromeMode === 'ribbon' ? 0 : toolbarRegionH}px">
   {#snippet toolbarScrollbar()}
     {#if tbOverflow > 0}
       <div
@@ -815,6 +824,46 @@
       </div>
     {/if}
   {/snippet}
+  {#if chromeMode === 'ribbon'}
+  <div bind:clientHeight={toolbarRegionH}>
+    <Ribbon
+      editor={activeEditor}
+      tick={activeTick}
+      bind:chromeMode
+      bind:documentName
+      bind:showFormattingMarks
+      bind:showRuler
+      {documentLanguage}
+      onLanguage={(code) => (documentLanguage = code)}
+      {zoom}
+      onZoom={setZoom}
+      onDebugDump={import.meta.env.DEV ? handleDebugDump : undefined}
+      bind:tabIntervalCm
+      bind:pageMargins
+      bind:pageOrientation
+      bind:pageFormat
+      {hfActive}
+      onManageStyles={openStyleManager}
+      onManageTableStyles={() => openStyleManager('table')}
+      onEditZone={(zone) => (hfActive = zone)}
+      onFind={openFind}
+      {namePlaceholder}
+      {themeMode}
+      onSelectTheme={selectTheme}
+      {docxBusy}
+      {pdfBusy}
+      onNew={handleNew}
+      onOpen={handleOpen}
+      onSave={handleSave}
+      onSaveAs={handleSaveAs}
+      onSaveDocx={handleSaveDocx}
+      onExportPdf={handleExportPdf}
+      onPrintPdf={handlePrintPdf}
+      onPrint={handlePrint}
+      onAbout={() => (aboutOpen = true)}
+    />
+  </div>
+  {:else}
   <div class="toolbar-region" bind:clientHeight={toolbarRegionH}>
     <div class="toolbar-clip" id="primary-toolbar" bind:this={toolbarClipEl} onwheel={onToolbarWheel}>
       <div class="toolbar-stack" bind:this={toolbarStackEl} style="transform: translateX(-{tbScroll}px);">
@@ -865,7 +914,7 @@
             <path d="M8 8v3.5M6.25 9.75h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
         </button>
-        <button class="file-action-btn" onclick={handleOpen} disabled={!editor} title={`${t().app.openOdt} (${shortcutHint('open')})`}>
+        <button class="file-action-btn" onclick={handleOpen} disabled={!editor} title={`${t().app.open} (${shortcutHint('open')})`}>
           <!-- Folder -->
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M1.75 12.5V4a1 1 0 0 1 1-1h3.2a1 1 0 0 1 .8.4l.7.95a1 1 0 0 0 .8.4h4.2a1 1 0 0 1 1 1v6.75a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
@@ -973,17 +1022,19 @@
                 {/if}
               </button>
             {/each}
+            <div class="theme-heading">{t().ribbon.chrome.title}</div>
+            <button
+              class="theme-option"
+              onclick={() => { chromeMode = 'ribbon'; themeOpen = false; }}
+              role="menuitem"
+            >
+              <span>{t().ribbon.chrome.ribbon}</span>
+              <span class="theme-option-hint">{t().ribbon.chrome.ribbonHint}</span>
+            </button>
           </div>
         {/if}
       </div>
       <UiLanguagePicker />
-      <input
-        bind:this={fileInput}
-        type="file"
-        accept=".odt,.ott,.docx,application/vnd.oasis.opendocument.text,application/vnd.oasis.opendocument.text-template,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        class="file-input"
-        onchange={handleImportFile}
-      />
     </div>
     {#if !toolbarExpanded}
       {@render toolbarScrollbar()}
@@ -1036,6 +1087,16 @@
       </div>
     </div>
   </div>
+  {/if}
+  <!-- Outside the chrome fork: `handleOpen` clicks it wherever the File System
+       Access API is missing, and both chromes reach that path. -->
+  <input
+    bind:this={fileInput}
+    type="file"
+    accept=".odt,.ott,.docx,application/vnd.oasis.opendocument.text,application/vnd.oasis.opendocument.text-template,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    class="file-input"
+    onchange={handleImportFile}
+  />
   <EditorComponent
     bind:editor
     bind:tick

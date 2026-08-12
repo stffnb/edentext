@@ -19,6 +19,7 @@ export default defineConfig({
   // jsdom supplies a global DOMParser, so the export/import specs need no setup.
   test: {
     environment: 'jsdom',
+    setupFiles: ['tests/setup.ts'],
     include: ['tests/**/*.test.ts'],
     globals: false,
     // A build+re-import leg runs ~10s when the whole suite competes for the CPU,

@@ -77,6 +77,7 @@ src/
   App.svelte                – app shell + app-level state
   lib/
     components/             – all Svelte UI (toolbars, pickers, dialogs, Editor, HeaderFooterLayer)
+      ribbon/               – the Word-style ribbon chrome (shell, controls, one file per tab)
     editor/
       extensions.ts         – the TipTap extension registry
       extensions/           – the custom TipTap/ProseMirror extensions, one file per feature
@@ -100,6 +101,7 @@ Directory-level `CLAUDE.md` files load automatically when you touch that directo
 | ODF/DOCX import, style resolver, image formats | `src/lib/import/CLAUDE.md` |
 | Paragraph + character styles, style manager | `src/lib/styles/CLAUDE.md` |
 | localStorage keys, page margins/orientation, themes | `src/lib/storage/CLAUDE.md` |
+| The ribbon chrome, its palette and the mode switch | `docs/architecture/ribbon.md` |
 | Pagination, widow/orphan, columns flow | `docs/architecture/pagination.md` |
 | Images, text boxes, wrap modes | `docs/architecture/frames.md` |
 | Table extensions + table styles | `docs/architecture/tables.md` |

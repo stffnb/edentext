@@ -22,12 +22,12 @@ export interface SpellSection {
 // Cut/copy go through execCommand so ProseMirror's own copy handler builds the
 // clipboard payload (HTML + its slice metadata) — formatting survives.
 // ponytail: deprecated but the only route to that payload; revisit if a browser drops it.
-function clipboardCommand(editor: Editor, command: 'cut' | 'copy') {
+export function clipboardCommand(editor: Editor, command: 'cut' | 'copy') {
   editor.view.focus();
   document.execCommand(command);
 }
 
-async function readClipboard(editor: Editor, plainOnly: boolean) {
+export async function readClipboard(editor: Editor, plainOnly: boolean) {
   const view = editor.view;
   view.focus();
   try {
