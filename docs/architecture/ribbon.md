@@ -84,6 +84,17 @@ The ribbon surfaces a good deal the engine already carried with nothing to reach
 underline and strikethrough line styles, Find and Replace as buttons, the page break, section
 breaks, absolute left/right indent, the table-of-contents depth, cell margins, Save As.
 
+## Dialogs
+
+`ParagraphDialog` and `TabsDialog` open from Word's ↘ launcher in a group's corner. They are
+chrome-agnostic, so classic could gain launchers of its own at no cost.
+
+There is **no Font dialog**: the Home tab already carries change case and the underline and
+strikethrough line styles, and the two things left over — `letterSpacingPt` and `kerning` — live
+on a named style, not on a run. Setting them as direct formatting would mean a new mark attribute
+and export work on both formats, which is more than a chrome rebuild. The style manager is where
+they belong.
+
 ## What retiring classic would free
 
 Recorded so the option stays visible, not as a plan: `Toolbar.svelte` and
