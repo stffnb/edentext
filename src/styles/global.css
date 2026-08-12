@@ -280,8 +280,9 @@
   --w-accent-soft: #e8f1fb;
   --w-menu-shadow: 0 8px 24px rgb(0 0 0 / 18%);
   --w-font: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-  /* Body height: three control rows plus the group-label row. A tuning knob. */
-  --w-ribbon-h: 96px;
+  /* Body height: three control rows plus the group-label row, and a big button's
+     label may take two of them. A tuning knob. */
+  --w-ribbon-h: 108px;
 }
 
 /* Word's dark mode: the Fluent dark neutrals, and the accent lightened because

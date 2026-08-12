@@ -3,6 +3,8 @@
   import { CellSelection } from '@tiptap/pm/tables';
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
+  import Icon from '../Icon.svelte';
+  import type { IconName } from '../icons';
   import ColorPicker from '../../ColorPicker.svelte';
   import TableBorderPicker from '../../TableBorderPicker.svelte';
   import TableStylePicker from '../../TableStylePicker.svelte';
@@ -76,6 +78,14 @@
     editor.chain().focus().setCellAttribute('cellPadding', next).run();
   }
 
+  // Word folds the three deletions into one big button's menu, so the four inserts
+  // beside it are the group's whole width.
+  const DELETES: { icon: IconName; label: () => string; cmd: (c: ChainedCommands) => ChainedCommands }[] = [
+    { icon: 'deleteRow', label: () => t().table.deleteRow, cmd: (c) => c.deleteRow() },
+    { icon: 'deleteCol', label: () => t().table.deleteColumn, cmd: (c) => c.deleteColumn() },
+    { icon: 'deleteTable', label: () => t().table.deleteTable, cmd: (c) => c.deleteTable() },
+  ];
+
   const VALIGNS: { key: CellVerticalAlign | null; icon: 'alignTop' | 'alignMiddle' | 'alignBottom'; label: () => string }[] = [
     { key: null, icon: 'alignTop', label: () => t().table.cellAlignTop },
     { key: 'middle', icon: 'alignMiddle', label: () => t().table.cellAlignMiddle },
@@ -124,23 +134,32 @@
   </RibbonGroup>
 {:else}
   <RibbonGroup label={t().ribbon.groups.rowsColumns}>
-    <div class="rb-col">
-      <RibbonButton variant="small" icon="rowAbove" label={t().table.insertRowAbove} onclick={() => run((c) => c.addRowBefore())} />
-      <RibbonButton variant="small" icon="rowBelow" label={t().table.insertRowBelow} onclick={() => run((c) => c.addRowAfter())} />
+    <div class="rb-menu-wrap" use:clickOutside={'tableDelete'}>
+      <RibbonButton
+        variant="big"
+        icon="deleteRow"
+        label={t().common.remove}
+        title={t().common.remove}
+        caret
+        active={isMenuOpen('tableDelete')}
+        onclick={() => toggleMenu('tableDelete')}
+      />
+      {#if isMenuOpen('tableDelete')}
+        <div class="ribbon-menu" use:anchored role="menu">
+          {#each DELETES as d}
+            <button role="menuitem" onclick={() => { closeMenu(); run(d.cmd); }}>
+              <Icon name={d.icon} size={16} />{d.label()}
+            </button>
+          {/each}
+        </div>
+      {/if}
     </div>
-    <div class="rb-col">
-      <RibbonButton variant="small" icon="colLeft" label={t().table.insertColumnLeft} onclick={() => run((c) => c.addColumnBefore())} />
-      <RibbonButton variant="small" icon="colRight" label={t().table.insertColumnRight} onclick={() => run((c) => c.addColumnAfter())} />
-    </div>
-  </RibbonGroup>
-
-  <div class="ribbon-sep"></div>
-
-  <RibbonGroup label={t().common.remove}>
-    <div class="rb-col">
-      <RibbonButton variant="small" icon="deleteRow" label={t().table.deleteRow} onclick={() => run((c) => c.deleteRow())} />
-      <RibbonButton variant="small" icon="deleteCol" label={t().table.deleteColumn} onclick={() => run((c) => c.deleteColumn())} />
-      <RibbonButton variant="small" icon="deleteTable" label={t().table.deleteTable} onclick={() => run((c) => c.deleteTable())} />
+    <div class="rb-mini-sep"></div>
+    <div class="inserts">
+      <RibbonButton variant="big" icon="rowAbove" label={t().ribbon.insertAbove} onclick={() => run((c) => c.addRowBefore())} />
+      <RibbonButton variant="big" icon="rowBelow" label={t().ribbon.insertBelow} onclick={() => run((c) => c.addRowAfter())} />
+      <RibbonButton variant="big" icon="colLeft" label={t().ribbon.insertLeft} onclick={() => run((c) => c.addColumnBefore())} />
+      <RibbonButton variant="big" icon="colRight" label={t().ribbon.insertRight} onclick={() => run((c) => c.addColumnAfter())} />
     </div>
   </RibbonGroup>
 
@@ -226,6 +245,24 @@
   }
 
   .rb-menu-wrap { position: relative; }
+
+  /* Wrapped onto two lines, as in Word — on one they are half the group's width.
+     `min-content` is what keeps the button off the label's unwrapped width, and
+     the caret slot goes because the two lines already reach the group's foot. */
+  .inserts {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+  }
+
+  .inserts :global(.rb-label) {
+    width: min-content;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.15;
+  }
+
+  .inserts :global(.rb-stack-caret) { display: none; }
 
   /* The dialog positions itself in viewport coordinates, so the trigger only has
      to hand it the button's rect. */
