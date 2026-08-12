@@ -34,9 +34,12 @@
     padding: 2px 4px 0;
   }
 
+  /* Takes the slack, but the only group that may shrink must still stop: crushed
+     to nothing it shows an empty frame and spills its label onto the next group's.
+     Two tiles plus the gallery's own chevron; past that the band scrolls. */
   .ribbon-group.grow {
     flex: 1;
-    min-width: 0;
+    min-width: 163px;
   }
 
   .ribbon-group-items {
@@ -56,11 +59,16 @@
     height: 15px;
   }
 
+  /* Truncates rather than reaching into the next group: a translation longer than
+     its group's controls must read as cut off, not as two labels run together. */
   .ribbon-group-label {
+    min-width: 0;
     font-family: var(--w-font);
     font-size: 11px;
     color: var(--w-text-dim);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .ribbon-launcher {

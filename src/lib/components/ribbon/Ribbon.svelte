@@ -370,8 +370,12 @@
 
   .ribbon :global(.bp-trigger) { height: 30px; }
 
+  /* Wraps once the tabs, the name and the chrome buttons stop fitting. It cannot
+     scroll like the band does: the File and appearance menus drop from inside it,
+     and a scroll container would clip them. */
   .ribbon-tabs {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 2px;
     padding: 5px 10px 0;
