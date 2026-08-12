@@ -838,6 +838,7 @@
       {zoom}
       onZoom={setZoom}
       onDebugDump={import.meta.env.DEV ? handleDebugDump : undefined}
+      bind:tabIntervalCm
       bind:pageMargins
       bind:pageOrientation
       bind:pageFormat

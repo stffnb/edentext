@@ -13,6 +13,8 @@
   import TableTabs from './tabs/TableTabs.svelte';
   import FrameTabs from './tabs/FrameTabs.svelte';
   import UiLanguagePicker from '../UiLanguagePicker.svelte';
+  import ParagraphDialog from '../ParagraphDialog.svelte';
+  import TabsDialog from '../TabsDialog.svelte';
   import { clickOutside, isMenuOpen, toggleMenu, closeMenu } from './menu.svelte';
   import { t } from '../../i18n/i18n.svelte';
   import { withShortcut } from '../../i18n/shortcut';
@@ -24,6 +26,7 @@
   import type { PageFormat } from '../../storage/pageFormat';
   import type { HfZone } from '../../storage/headerFooter';
   import type { DocumentLanguage } from '../../storage/documentLanguage';
+  import { DEFAULT_TAB_INTERVAL_CM } from '../../storage/tabInterval';
 
   let {
     editor,
@@ -37,6 +40,7 @@
     zoom = 100,
     onZoom,
     onDebugDump,
+    tabIntervalCm = $bindable(DEFAULT_TAB_INTERVAL_CM),
     pageMargins = $bindable(DEFAULT_MARGINS),
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
@@ -63,6 +67,7 @@
     zoom?: number;
     onZoom?: (value: number) => void;
     onDebugDump?: () => void;
+    tabIntervalCm?: number;
     pageMargins?: PageMargins;
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
@@ -122,6 +127,8 @@
   });
 
   let docNameSizerWidth = $state(0);
+  let paragraphDialogOpen = $state(false);
+  let tabsDialogOpen = $state(false);
 
   function run(fn?: () => void) {
     closeMenu();
@@ -254,11 +261,11 @@
 
   <div class="ribbon-body">
     {#if tab === 'home'}
-      <HomeTab {editor} {tick} bind:showFormattingMarks {onManageStyles} {onFind} />
+      <HomeTab {editor} {tick} bind:showFormattingMarks {onManageStyles} {onFind} onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'insert'}
       <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} {onEditZone} {onManageTableStyles} />
     {:else if tab === 'layout'}
-      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat />
+      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'references'}
       <ReferencesTab {editor} {tick} {hfActive} />
     {:else if tab === 'review'}
@@ -272,6 +279,7 @@
         {editor}
         which={tab === 'pictureFormat' ? 'picture' : 'shape'}
         wrap={(frameAttrs?.wrap ?? 'inline') as never}
+        alt={(frameAttrs?.alt ?? '') as string}
         shapeKind={frameAttrs?.shapeKind as never}
         fillColor={frameAttrs?.fillColor as string | null}
         strokeColor={frameAttrs?.strokeColor as string | null}
@@ -279,6 +287,9 @@
       />
     {/if}
   </div>
+
+  <ParagraphDialog bind:open={paragraphDialogOpen} {editor} {tick} onTabs={() => (tabsDialogOpen = true)} />
+  <TabsDialog bind:open={tabsDialogOpen} {editor} {tick} bind:tabIntervalCm />
 </div>
 
 <style>

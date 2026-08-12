@@ -445,6 +445,24 @@ const en = {
     done: 'Done',
     doneTitle: 'Finish editing the header/footer',
   },
+  paragraphDialog: {
+    title: 'Paragraph',
+    indentsTab: 'Indents and spacing',
+    breaksTab: 'Line and page breaks',
+    widowControl: 'Widow/orphan control',
+    keepNext: 'Keep with next',
+    keepLines: 'Keep lines together',
+    pageBreakBefore: 'Page break before',
+    flowHint: 'These control where the paragraph may be split across pages.',
+    tabsButton: 'Tabs…',
+  },
+  tabsDialog: {
+    title: 'Tabs',
+    none: 'No tab stops on this paragraph',
+    position: 'Position',
+    noLeader: 'No leader',
+    defaultInterval: 'Default tab stops',
+  },
   ribbon: {
     tabs: {
       file: 'File',
@@ -487,6 +505,7 @@ const en = {
       cellSize: 'Cell Size',
       arrange: 'Arrange',
       shapeStyles: 'Shape Styles',
+      accessibility: 'Accessibility',
       editing: 'Editing',
     },
     case: {
@@ -536,6 +555,8 @@ const en = {
     tocMaxLevel: 'Deepest level shown',
     debugDump: 'Dump',
     cellMargins: 'Cell margins',
+    altText: 'Alt text',
+    altTextHint: 'Describe the image',
     chrome: {
       title: 'Toolbar style',
       ribbon: 'Ribbon',

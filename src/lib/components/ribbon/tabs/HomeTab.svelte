@@ -25,12 +25,13 @@
   import { withShortcut } from '../../../i18n/shortcut';
   import { shortcutHint, type ShortcutId } from '../../../editor/shortcuts';
 
-  let { editor, tick, showFormattingMarks = $bindable(false), onManageStyles, onFind }: {
+  let { editor, tick, showFormattingMarks = $bindable(false), onManageStyles, onFind, onParagraphDialog }: {
     editor: Editor | null;
     tick: number;
     showFormattingMarks?: boolean;
     onManageStyles?: (family: StyleFamily) => void;
     onFind?: (mode: 'find' | 'replace') => void;
+    onParagraphDialog?: () => void;
   } = $props();
 
   let sheet = $derived(styleSheet());
@@ -240,7 +241,7 @@
 
 <div class="ribbon-sep"></div>
 
-<RibbonGroup label={t().ribbon.groups.paragraph}>
+<RibbonGroup label={t().ribbon.groups.paragraph} onLauncher={onParagraphDialog} launcherTitle={t().paragraphDialog.title}>
   <div class="rb-rows">
     <div class="rb-row">
       <div class="rb-menu-wrap" use:clickOutside={'bullets'}>

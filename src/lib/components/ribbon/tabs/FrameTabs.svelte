@@ -9,10 +9,11 @@
 
   // Word's Picture Format and Shape Format: the same wrap modes, plus a shape's
   // own fill, outline and kind.
-  let { editor, which, wrap, shapeKind, fillColor, strokeColor, strokeWidthPt }: {
+  let { editor, which, wrap, alt = '', shapeKind, fillColor, strokeColor, strokeWidthPt }: {
     editor: Editor | null;
     which: 'picture' | 'shape';
     wrap: WrapMode;
+    alt?: string;
     shapeKind?: ShapeKind;
     fillColor?: string | null;
     strokeColor?: string | null;
@@ -43,6 +44,24 @@
     <RibbonButton variant="big" icon={w.icon} label={w.label()} title={w.label()} active={wrap === w.key} onclick={() => setWrap(w.key)} />
   {/each}
 </RibbonGroup>
+
+{#if which === 'picture'}
+  <div class="ribbon-sep"></div>
+
+  <!-- The alt text has always ridden along in both formats, filled in from the
+       file name and never editable. -->
+  <RibbonGroup label={t().ribbon.groups.accessibility}>
+    <label class="field alt">
+      <span>{t().ribbon.altText}</span>
+      <input
+        type="text"
+        value={alt}
+        placeholder={t().ribbon.altTextHint}
+        onchange={(e) => editor?.chain().focus().updateAttributes('image', { alt: (e.currentTarget as HTMLInputElement).value }).run()}
+      />
+    </label>
+  </RibbonGroup>
+{/if}
 
 {#if which === 'shape'}
   <div class="ribbon-sep"></div>
@@ -143,4 +162,6 @@
   }
 
   .field input:focus { outline: none; border-color: var(--w-accent); }
+
+  .alt input { width: 200px; text-align: left; }
 </style>

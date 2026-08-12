@@ -17,6 +17,7 @@
     pageMargins = $bindable(DEFAULT_MARGINS),
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
+    onParagraphDialog,
   }: {
     editor: Editor | null;
     tick: number;
@@ -24,6 +25,7 @@
     pageMargins?: PageMargins;
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
+    onParagraphDialog?: () => void;
   } = $props();
 
   const FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
@@ -195,7 +197,7 @@
 
 <!-- Absolute indent and spacing: the ruler can drag these, but only here can a
      value be typed. -->
-<RibbonGroup label={t().ribbon.groups.paragraph}>
+<RibbonGroup label={t().ribbon.groups.paragraph} onLauncher={onParagraphDialog} launcherTitle={t().paragraphDialog.title}>
   <div class="field-grid">
     <label class="field">
       <span>{t().ribbon.indentLeft}</span>

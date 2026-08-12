@@ -441,6 +441,24 @@ const de: Messages = {
     done: 'Fertig',
     doneTitle: 'Bearbeiten der Kopf-/Fußzeile beenden',
   },
+  paragraphDialog: {
+    title: 'Absatz',
+    indentsTab: 'Einzüge und Abstände',
+    breaksTab: 'Zeilen- und Seitenumbruch',
+    widowControl: 'Absatzkontrolle',
+    keepNext: 'Nicht vom nächsten Absatz trennen',
+    keepLines: 'Zeilen nicht trennen',
+    pageBreakBefore: 'Seitenumbruch oberhalb',
+    flowHint: 'Diese Optionen bestimmen, wo der Absatz über Seiten getrennt werden darf.',
+    tabsButton: 'Tabstopps…',
+  },
+  tabsDialog: {
+    title: 'Tabstopps',
+    none: 'Dieser Absatz hat keine Tabstopps',
+    position: 'Position',
+    noLeader: 'Kein Füllzeichen',
+    defaultInterval: 'Standardtabstopps',
+  },
   ribbon: {
     tabs: {
       file: 'Datei',
@@ -483,6 +501,7 @@ const de: Messages = {
       cellSize: 'Zellengröße',
       arrange: 'Anordnen',
       shapeStyles: 'Formenarten',
+      accessibility: 'Barrierefreiheit',
       editing: 'Bearbeiten',
     },
     case: {
@@ -532,6 +551,8 @@ const de: Messages = {
     tocMaxLevel: 'Tiefste angezeigte Ebene',
     debugDump: 'Dump',
     cellMargins: 'Zellenränder',
+    altText: 'Alternativtext',
+    altTextHint: 'Das Bild beschreiben',
     chrome: {
       title: 'Symbolleisten-Stil',
       ribbon: 'Menüband',
