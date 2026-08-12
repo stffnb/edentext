@@ -147,6 +147,7 @@
       <div class="ribbon-menu" use:anchored role="menu">
         {#each [1, 2, 3] as n}
           <button class:selected={colState.count === n} onclick={() => setColumns(n)}>
+            {@render colPreview(n)}
             {n === 1 ? t().toolbarExpanded.columnsOne : n === 2 ? t().toolbarExpanded.columnsTwo : t().toolbarExpanded.columnsThree}
           </button>
         {/each}
@@ -220,8 +221,25 @@
   </div>
 </RibbonGroup>
 
+<!-- Word shows the layout rather than naming it. The page is 20 units of text
+     width with a 2-unit gutter, so the columns narrow as their count rises. -->
+{#snippet colPreview(n: number)}
+  {@const gap = 2}
+  {@const w = (20 - (n - 1) * gap) / n}
+  <svg class="col-preview" width="25" height="32" viewBox="0 0 26 32" fill="none" aria-hidden="true">
+    <rect x="0.5" y="0.5" width="25" height="31" rx="1.5" fill="var(--w-surface)" stroke="var(--w-border-strong)" />
+    {#each { length: n } as _, c}
+      {#each [6, 10, 14, 18, 22, 26] as y}
+        <rect x={3 + c * (w + gap)} {y} width={w} height="1.5" fill="var(--w-text-dim)" opacity="0.6" />
+      {/each}
+    {/each}
+  </svg>
+{/snippet}
+
 <style>
   .rb-menu-wrap { position: relative; }
+
+  .col-preview { flex-shrink: 0; }
 
   .margin-menu, .format-menu, .breaks-menu { min-width: 230px; }
   .format-menu { max-height: 340px; overflow: hidden; }
