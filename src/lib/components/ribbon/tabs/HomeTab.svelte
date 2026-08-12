@@ -68,6 +68,11 @@
   let paraShade = $derived(tick >= 0 && editor ? (uniformBlockAttr<string | null>(editor.state, 'backgroundColor', null) || null) : null);
   let lineHeight = $derived(tick >= 0 && editor ? uniformBlockAttr(editor.state, 'lineHeight', '1') : '1');
 
+  function paste(plainOnly: boolean) {
+    closeMenu();
+    if (editor) void readClipboard(editor, plainOnly);
+  }
+
   // Sub- and superscript are mutually exclusive, so each clears the other.
   const toggleSuper = () => editor?.chain().focus().unsetSubscript().toggleSuperscript().run();
   const toggleSub = () => editor?.chain().focus().unsetSuperscript().toggleSubscript().run();
@@ -149,14 +154,31 @@
 </script>
 
 <RibbonGroup label={t().ribbon.groups.clipboard}>
-  <RibbonButton
-    variant="big"
-    icon="paste"
-    label={t().contextMenu.paste}
-    title={`${t().contextMenu.paste} (${withShortcut('Ctrl+V')})`}
-    disabled={!editor}
-    onclick={() => editor && void readClipboard(editor, false)}
-  />
+  <div class="rb-menu-wrap" use:clickOutside={'paste'}>
+    <RibbonButton
+      variant="big"
+      icon="paste"
+      label={t().contextMenu.paste}
+      title={`${t().contextMenu.paste} (${withShortcut('Ctrl+V')})`}
+      disabled={!editor}
+      caret
+      caretActive={isMenuOpen('paste')}
+      onclick={() => paste(false)}
+      onCaret={() => toggleMenu('paste')}
+    />
+    {#if isMenuOpen('paste')}
+      <!-- Word offers a third, Merge Formatting. The engine reads the clipboard
+           either as HTML or as text, so there is no third thing to offer. -->
+      <div class="ribbon-menu" use:anchored role="menu">
+        <button onclick={() => paste(false)}>
+          {t().contextMenu.paste}<span class="menu-key">{withShortcut('Ctrl+V')}</span>
+        </button>
+        <button onclick={() => paste(true)}>
+          {t().contextMenu.pasteWithoutFormatting}<span class="menu-key">{withShortcut('Ctrl+Shift+V')}</span>
+        </button>
+      </div>
+    {/if}
+  </div>
   <div class="rb-col">
     <RibbonButton variant="small" icon="cut" label={t().contextMenu.cut} title={`${t().contextMenu.cut} (${withShortcut('Ctrl+X')})`} disabled={!hasSelection} onclick={() => editor && clipboardCommand(editor, 'cut')} />
     <RibbonButton variant="small" icon="copy" label={t().contextMenu.copy} title={`${t().contextMenu.copy} (${withShortcut('Ctrl+C')})`} disabled={!hasSelection} onclick={() => editor && clipboardCommand(editor, 'copy')} />
