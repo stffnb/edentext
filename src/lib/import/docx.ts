@@ -1622,6 +1622,102 @@ function docxBorderAttr(el: Element | null): string | null | undefined {
   return `${w}pt solid ${c}`;
 }
 
+// A conditional table-style area (w:tblStylePr) and the grid box it covers. A band's box
+// is the whole banded region, not the single band: that is what makes its insideH the
+// line *between* two band rows, which is how Word and LibreOffice draw one.
+type GridBox = { row: number; col: number; rowEnd: number; colEnd: number };
+type CondArea = { el: Element; box: GridBox };
+type LookFlags = { firstRow: boolean; lastRow: boolean; firstCol: boolean; lastCol: boolean; hBand: boolean; vBand: boolean };
+
+// w:tblLook: Word 2010+ writes the named attributes, older files only the w:val bitmask.
+// No element at all means no conditional area applies.
+function docxLookFlags(tblPr: Element | null): LookFlags {
+  const el = fc(tblPr, 'tblLook');
+  const bits = parseInt(el?.getAttributeNS(W, 'val') ?? '', 16);
+  const on = (name: string, bit: number) => {
+    const v = el?.getAttributeNS(W, name);
+    if (v != null) return v === '1' || v === 'true';
+    return Number.isFinite(bits) && (bits & bit) !== 0;
+  };
+  if (!el) return { firstRow: false, lastRow: false, firstCol: false, lastCol: false, hBand: false, vBand: false };
+  return {
+    firstRow: on('firstRow', 0x020), lastRow: on('lastRow', 0x040),
+    firstCol: on('firstColumn', 0x080), lastCol: on('lastColumn', 0x100),
+    hBand: !on('noHBand', 0x200), vBand: !on('noVBand', 0x400),
+  };
+}
+
+// The areas covering one cell, lowest precedence first. Banding counts from the first body
+// row/column, so the row under a header row is the first band (as in Word and LibreOffice).
+function condAreasFor(
+  conds: Map<string, Element>, flags: LookFlags, band: { row: number; col: number },
+  cell: GridBox, rows: number, cols: number,
+): CondArea[] {
+  const out: CondArea[] = [];
+  const push = (type: string, box: GridBox) => {
+    const el = conds.get(type);
+    if (el) out.push({ el, box });
+  };
+  const r0 = flags.firstRow ? 1 : 0, r1 = flags.lastRow ? rows - 2 : rows - 1;
+  const c0 = flags.firstCol ? 1 : 0, c1 = flags.lastCol ? cols - 2 : cols - 1;
+  if (flags.vBand && cell.col >= c0 && cell.col <= c1) {
+    const even = Math.floor((cell.col - c0) / band.col) % 2 === 0;
+    push(even ? 'band1Vert' : 'band2Vert', { row: 0, rowEnd: rows, col: c0, colEnd: c1 + 1 });
+  }
+  if (flags.hBand && cell.row >= r0 && cell.row <= r1) {
+    const even = Math.floor((cell.row - r0) / band.row) % 2 === 0;
+    push(even ? 'band1Horz' : 'band2Horz', { row: r0, rowEnd: r1 + 1, col: 0, colEnd: cols });
+  }
+  if (flags.lastCol && cell.colEnd === cols) push('lastCol', { row: 0, rowEnd: rows, col: cols - 1, colEnd: cols });
+  if (flags.firstCol && cell.col === 0) push('firstCol', { row: 0, rowEnd: rows, col: 0, colEnd: 1 });
+  if (flags.lastRow && cell.rowEnd === rows) push('lastRow', { row: rows - 1, rowEnd: rows, col: 0, colEnd: cols });
+  if (flags.firstRow && cell.row === 0) push('firstRow', { row: 0, rowEnd: 1, col: 0, colEnd: cols });
+  return out;
+}
+
+// Which side of an area a cell's edge is: its own outer side where the cell sits on the
+// area's edge, the area's inside line otherwise.
+function areaSide(area: GridBox, cell: GridBox, side: 'top' | 'bottom' | 'left' | 'right'): string {
+  if (side === 'top') return cell.row <= area.row ? 'top' : 'insideH';
+  if (side === 'bottom') return cell.rowEnd >= area.rowEnd ? 'bottom' : 'insideH';
+  if (side === 'left') return cell.col <= area.col ? 'left' : 'insideV';
+  return cell.colEnd >= area.colEnd ? 'right' : 'insideV';
+}
+
+// A cell's shading and run properties from the table style, layered over its areas. The
+// runs are baked below: a file's own table style has no entry in the editor's registry.
+function condPaint(areas: CondArea[]): { fill?: string; run: RunProps } {
+  let fill: string | undefined;
+  let run: RunProps = {};
+  for (const a of areas) {
+    const shd = fc(fc(a.el, 'tcPr'), 'shd');
+    if (shd) fill = hexColor(shd.getAttributeNS(W, 'fill'));
+    run = mergeRunProps(run, parseRunProps(fc(a.el, 'rPr')));
+  }
+  return { fill, run };
+}
+
+// A conditional area's bold/italic/colour as real marks on the cell's text, skipping what
+// a run already declares — the file's own formatting outranks its table style.
+function bakeCellRuns(nodes: Node[], props: RunProps): void {
+  const color = hexColor(props.color);
+  if (!props.bold && !props.italic && !color) return;
+  for (const n of nodes) {
+    if (n.content) bakeCellRuns(n.content, props);
+    if (n.type !== 'text') continue;
+    const marks = n.marks ?? [];
+    const has = (t: string) => marks.some((m) => m.type === t);
+    if (props.bold && !has('bold')) marks.push({ type: 'bold' });
+    if (props.italic && !has('italic')) marks.push({ type: 'italic' });
+    if (color) {
+      const ts = marks.find((m) => m.type === 'textStyle');
+      if (!ts) marks.push({ type: 'textStyle', attrs: { color } });
+      else if (!ts.attrs?.color) ts.attrs = { ...ts.attrs, color };
+    }
+    if (marks.length) n.marks = marks;
+  }
+}
+
 function convertTable(tbl: Element, ctx: Ctx): Node | null {
   // The table style's own w:pPr/w:spacing governs its cells' paragraphs (Word's Table
   // Grid zeroes the space after and the line spacing). Restored for a nested table.
@@ -1663,11 +1759,6 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   const weights = grid ? fcAll(grid, 'gridCol').map((g) => Math.max(1, intAttr(g, W, 'w') ?? 1)) : null;
   const useWeights = weights && weights.length ? weights : null;
 
-  // Table-level border defaults; per-cell w:tcBorders override per side. Edge cells
-  // fall back to the outer sides, interior cells to insideH/insideV.
-
-  // From w:tblStyle only the name comes back — the look rides on the cell attrs, and the
-  // editor re-derives the regions from its own registry (refreshTableStyles).
   const styleEl = fc(fc(tbl, 'tblPr'), 'tblStyle');
   const styleId = styleEl ? wVal(styleEl) : null;
   const pad = docxCellPadding(tbl, styleId, ctx);
@@ -1676,22 +1767,20 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   // The table's own w:tblBorders, then its style's; a side nobody declares is not drawn
   // (Word's Normal Table has no border — its on-screen gridlines are not printed).
   const tblBorders = fc(fc(tbl, 'tblPr'), 'tblBorders');
-  const tblSide = (name: string) => {
-    for (const el of [tblBorders, ...ctx.styles.tableBorders(styleId)]) {
-      const v = docxBorderAttr(fc(el, name));
-      if (v !== undefined) return v;
-    }
-    return 'none';
-  };
-  const tblDef = {
-    top: tblSide('top'), bottom: tblSide('bottom'), left: tblSide('left'),
-    right: tblSide('right'), insideH: tblSide('insideH'), insideV: tblSide('insideV'),
-  };
-  const gridWidth = useWeights?.length ?? null;
+  const tblBorderEls = [tblBorders, ...ctx.styles.tableBorders(styleId)];
 
   const rows: Node[] = [];
   const pending: (Node | null)[] = []; // origin cell per grid column, for vMerge spans
   const trs = fcAll(tbl, 'tr');
+
+  // The table style's conditional areas paint what only the style declares, so they are
+  // baked into the cells: a foreign style is not in the editor's registry, which is where
+  // an assigned table style's regions otherwise come from (refreshTableStyles).
+  const conds = ctx.styles.tableConditional(styleId);
+  const flags = docxLookFlags(fc(tbl, 'tblPr'));
+  const band = ctx.styles.tableBandSize(styleId);
+  const gridCols = useWeights?.length
+    ?? Math.max(1, ...trs.map((tr) => fcAll(tr, 'tc').reduce((n, tc) => n + (intAttr(fc(fc(tc, 'tcPr'), 'gridSpan'), W, 'val') ?? 1), 0)));
   for (let ri = 0; ri < trs.length; ri++) {
     const tr = trs[ri];
     const cells: Node[] = [];
@@ -1707,9 +1796,13 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
         col += colspan;
         continue; // covered cell — dropped, span folded into its origin
       }
+      const box: GridBox = { row: ri, col, rowEnd: ri + 1, colEnd: col + colspan };
+      const areas = conds.size ? condAreasFor(conds, flags, band, box, trs.length, gridCols) : [];
+      const paint = condPaint(areas);
       const fill = fc(tcPr, 'shd')?.getAttributeNS(W, 'fill');
-      const bg = fill ? hexColor(fill) : undefined;
+      const bg = fill ? hexColor(fill) : paint.fill;
       const blocks = convertBlocks(Array.from(tc.children), ctx, 'cell', bg === HEADER_SHADE);
+      bakeCellRuns(blocks, paint.run);
       const attrs: Record<string, unknown> = { colspan, rowspan: 1 };
       if (bg) attrs.backgroundColor = bg;
       // w:vAlign — Word's "center" is the editor's "middle"; "top"/"both" stay the default.
@@ -1720,17 +1813,30 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
       // The cell's own margins (w:tcMar), kept only where they differ from the table's.
       const ownPad = cellPaddingAttr(cellMarginsCm([fc(tcPr, 'tcMar')]), padBase);
       if (ownPad) attrs.cellPadding = ownPad;
+      // Per side: the table's borders, then each conditional area over them, then the
+      // cell's own w:tcBorders. An edge of the box a layer covers takes that layer's
+      // outer side, anything inside it the layer's insideH/insideV.
       const tcBorders = fc(tcPr, 'tcBorders');
-      const isRight = gridWidth != null && col + colspan >= gridWidth;
-      const resolve = (name: string, tblVal: string | null | undefined) => {
-        const own = docxBorderAttr(fc(tcBorders, name));
-        return own !== undefined ? own : tblVal;
+      const table: GridBox = { row: 0, col: 0, rowEnd: trs.length, colEnd: gridCols };
+      const layers: { els: (Element | null)[]; box: GridBox }[] = [
+        { els: tblBorderEls, box: table },
+        ...areas.map((a) => ({ els: [fc(fc(a.el, 'tcPr'), 'tcBorders')], box: a.box })),
+        { els: [tcBorders], box },
+      ];
+      const resolve = (side: 'top' | 'bottom' | 'left' | 'right') => {
+        let v: string | null | undefined;
+        for (const layer of layers) {
+          const name = areaSide(layer.box, box, side);
+          for (const el of layer.els) {
+            const got = docxBorderAttr(fc(el, name));
+            if (got !== undefined) { v = got; break; }
+          }
+        }
+        return v === undefined ? 'none' : v;
       };
-      const sides: [string, string | null | undefined][] = [
-        ['borderTop', resolve('top', ri === 0 ? tblDef.top : tblDef.insideH)],
-        ['borderBottom', resolve('bottom', ri === trs.length - 1 ? tblDef.bottom : tblDef.insideH)],
-        ['borderLeft', resolve('left', col === 0 ? tblDef.left : tblDef.insideV)],
-        ['borderRight', resolve('right', isRight ? tblDef.right : tblDef.insideV)],
+      const sides: [string, string | null][] = [
+        ['borderTop', resolve('top')], ['borderBottom', resolve('bottom')],
+        ['borderLeft', resolve('left')], ['borderRight', resolve('right')],
       ];
       // undefined (nothing declared) and null (= editor default) both leave the attr off.
       for (const [attr, v] of sides) if (typeof v === 'string') attrs[attr] = v;
@@ -1761,16 +1867,11 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
 // Word's w:tblLook → the editor's tableLook attr (its band flags are inverted).
 // null when the file declares none, so the default look applies.
 function docxTableLook(tblPr: Element | null): string | null {
-  const el = fc(tblPr, 'tblLook');
-  if (!el) return null;
-  const on = (name: string) => {
-    const v = el.getAttributeNS(W, name);
-    return v === '1' || v === 'true';
-  };
+  if (!fc(tblPr, 'tblLook')) return null;
+  const f = docxLookFlags(tblPr);
   return tableLookAttr({
-    headerRow: on('firstRow'), lastRow: on('lastRow'),
-    firstColumn: on('firstColumn'), lastColumn: on('lastColumn'),
-    bandedRow: !on('noHBand'), bandedColumn: !on('noVBand'),
+    headerRow: f.firstRow, lastRow: f.lastRow, firstColumn: f.firstCol,
+    lastColumn: f.lastCol, bandedRow: f.hBand, bandedColumn: f.vBand,
   });
 }
 

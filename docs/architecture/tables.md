@@ -81,6 +81,11 @@ We deliberately keep TipTap's `resizable: false` (so its own columnResizing plug
   `refreshTableStyles`, and `App.svelte` keeps `sheet.table` across an import because the file
   never carried it. Baked bold is only suppressed for `HEADER_SHADE` cells (the existing
   `boldByDefault` path) — a foreign style's bold survives as direct formatting.
+  A **Word** file's own table style does carry its areas (`w:tblStylePr`), and the registry has
+  no entry to re-derive them from, so the DOCX importer bakes those into the cells instead —
+  fill, borders and run marks alike (`src/lib/import/CLAUDE.md` for the area rules). What is
+  re-exported is that bake, which is why the round trip is stable: our `w:tblStyle` is
+  name-only, so a reimport finds no areas to apply over it.
 
 - **Table-style gallery**: `TableStylePicker.svelte` in the floating `TableToolbar` — tiles drawn
   by `previewCellCss` (the same resolver), so a preview can't disagree with what applying does,

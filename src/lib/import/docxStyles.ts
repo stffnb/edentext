@@ -181,6 +181,8 @@ export class DocxStyles {
   private ownTabs = new Map<string, TabStop[]>(); // style's own w:pPr/w:tabs
   private ownCellMar = new Map<string, Element>(); // table style's own w:tblPr/w:tblCellMar
   private ownTblBorders = new Map<string, Element>(); // table style's own w:tblPr/w:tblBorders
+  private ownCond = new Map<string, Map<string, Element>>(); // table styleId → w:type → w:tblStylePr
+  private ownBandSize = new Map<string, { row: number; col: number }>(); // w:tblStyle*BandSize
   private defaultsWidow: boolean | null = null; // docDefaults w:pPrDefault/w:widowControl
   private numToAbstract = new Map<string, string>();
   private abstractLevels = new Map<string, Map<number, LevelDef>>();
@@ -260,6 +262,19 @@ export class DocxStyles {
       if (cellMar) this.ownCellMar.set(id, cellMar);
       const tblBorders = tblPr && firstChild(tblPr, 'tblBorders');
       if (tblBorders) this.ownTblBorders.set(id, tblBorders);
+      const conds = Array.from(style.children).filter((c) => c.namespaceURI === W && c.localName === 'tblStylePr');
+      if (conds.length) {
+        const m = new Map<string, Element>();
+        for (const c of conds) { const t = c.getAttributeNS(W, 'type'); if (t) m.set(t, c); }
+        this.ownCond.set(id, m);
+      }
+      const bandSize = (name: string) => {
+        const el = tblPr && firstChild(tblPr, name);
+        const n = parseInt((el && wVal(el)) ?? '', 10);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+      };
+      const rowBand = bandSize('tblStyleRowBandSize'), colBand = bandSize('tblStyleColBandSize');
+      if (rowBand || colBand) this.ownBandSize.set(id, { row: rowBand, col: colBand });
       const kind = style.getAttributeNS(W, 'type');
       if (kind === 'paragraph' || kind === 'character' || kind === 'table') {
         const nameEl = firstChild(style, 'name');
@@ -479,6 +494,26 @@ export class DocxStyles {
     const own = this.ownTblBorders.get(styleId);
     const rest = this.tableBorders(this.basedOn.get(styleId) ?? null, seen);
     return own ? [own, ...rest] : rest;
+  }
+
+  // The table style's conditional areas (w:tblStylePr) along the w:basedOn chain: Word's
+  // "first row", "banded row 1", … each carrying the w:tcPr and w:rPr it paints. Leaf wins
+  // per area, so a derived style replaces the whole area rather than merging into it.
+  tableConditional(styleId: string | null | undefined, seen = new Set<string>()): Map<string, Element> {
+    if (!styleId || seen.has(styleId)) return new Map();
+    seen.add(styleId);
+    const base = this.tableConditional(this.basedOn.get(styleId) ?? null, seen);
+    for (const [type, el] of this.ownCond.get(styleId) ?? []) base.set(type, el);
+    return base;
+  }
+
+  // How many rows/columns one band spans (w:tblStyleRowBandSize), 1 where none is declared.
+  tableBandSize(styleId: string | null | undefined, seen = new Set<string>()): { row: number; col: number } {
+    if (!styleId || seen.has(styleId)) return { row: 1, col: 1 };
+    seen.add(styleId);
+    const base = this.tableBandSize(this.basedOn.get(styleId) ?? null, seen);
+    const own = this.ownBandSize.get(styleId);
+    return { row: own?.row || base.row, col: own?.col || base.col };
   }
 
   level(numId: number, ilvl: number): LevelDef {

@@ -46,6 +46,19 @@ The **Open .odt** button (`App.svelte`) parses an uploaded file with `importOdt(
 drawn**: Word's Normal Table has no border, and the gridlines it shows on screen are not
 printed. ODF says the same for an undeclared `fo:border`, so both importers agree.
 
+**A table style's conditional areas** (`w:tblStylePr`: header row, banded rows, first
+column, …) are **baked into the cells** — fill and borders as attrs, the area's `w:rPr` as
+real marks on its runs — because the file's own style is not in the editor's registry,
+which is where an assigned style's regions otherwise come from. An area covers a grid box:
+its `top`/`bottom`/`left`/`right` apply where the cell sits on that box's edge, its
+`insideH`/`insideV` anywhere within. A **band's box is the whole banded region**, not the
+one row it shades — that is what makes `insideH` the line *between* two band rows, which
+is how a style with no inner rules (Word's Medium Shading) comes out borderless. Areas
+layer in Word's ascending precedence, over the table's borders and under the cell's own
+`w:tcPr`; banding counts from the first *body* row, so the row under a header row is band 1.
+`w:tblLook` decides which areas apply at all — named flags where the file has them, the
+older `w:val` bitmask otherwise, and no element at all means none.
+
 Body text with no resolved font falls back to the *document's own theme minor font*
 (`docx.ts` `runMarks`), not the editor default — Word's implicit body default. Headings don't
 (they keep the editor heading default); DOCX page margins default to Word's 2.54cm.
