@@ -210,8 +210,8 @@
           </div>
         {/if}
       </div>
-      <RibbonButton icon="subscript" title={`${t().toolbarExpanded.subscript} (${shortcutHint('subscript')})`} active={isSub} onclick={toggleSub} />
-      <RibbonButton icon="superscript" title={`${t().toolbarExpanded.superscript} (${shortcutHint('superscript')})`} active={isSuper} onclick={toggleSuper} />
+      <RibbonButton content={subIcon} title={`${t().toolbarExpanded.subscript} (${shortcutHint('subscript')})`} active={isSub} onclick={toggleSub} />
+      <RibbonButton content={superIcon} title={`${t().toolbarExpanded.superscript} (${shortcutHint('superscript')})`} active={isSuper} onclick={toggleSuper} />
       <span class="rb-mini-sep"></span>
       <ColorPicker
         {editor}
@@ -337,6 +337,8 @@
 {#snippet italicIcon()}<span class="glyph" style="font-style: italic; font-family: serif">I</span>{/snippet}
 {#snippet underlineIcon()}<span class="glyph" style="text-decoration: underline">U</span>{/snippet}
 {#snippet strikeIcon()}<span class="glyph" style="text-decoration: line-through">S</span>{/snippet}
+{#snippet subIcon()}<span class="glyph">X<span class="glyph-script down">2</span></span>{/snippet}
+{#snippet superIcon()}<span class="glyph">X<span class="glyph-script up">2</span></span>{/snippet}
 {#snippet growIcon()}<span class="glyph">A<span class="glyph-sup">▲</span></span>{/snippet}
 {#snippet shrinkIcon()}<span class="glyph glyph-small">A<span class="glyph-sup">▼</span></span>{/snippet}
 {#snippet fontColorIcon()}<span class="glyph">A</span>{/snippet}
@@ -377,6 +379,13 @@
 
   .glyph-small { font-size: 12px; }
   .glyph-sup { font-size: 7px; margin-left: 1px; }
+
+  /* The digit rides a relative offset, not vertical-align, which a flex item
+     ignores: baseline alignment keeps the X on the row's baseline and the box
+     the same 15px as B, I, U and S, so all six letters sit on one line. */
+  .glyph-script { position: relative; font-size: 9px; margin-left: 0.5px; }
+  .glyph-script.up { top: -4.5px; }
+  .glyph-script.down { top: 2px; }
 
   .line-menu button { padding: 5px 12px; }
   .line-sample { text-underline-offset: 3px; }
