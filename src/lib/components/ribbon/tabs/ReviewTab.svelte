@@ -87,19 +87,4 @@
 
   .stat b { color: var(--w-text); }
 
-  .rb-captioned {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 4px 7px 6px;
-  }
-
-  .rb-caption {
-    font-family: var(--w-font);
-    font-size: 12px;
-    color: var(--w-text);
-    white-space: nowrap;
-  }
 </style>

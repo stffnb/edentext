@@ -15,7 +15,7 @@
   import UiLanguagePicker from '../UiLanguagePicker.svelte';
   import ParagraphDialog from '../ParagraphDialog.svelte';
   import TabsDialog from '../TabsDialog.svelte';
-  import { clickOutside, isMenuOpen, toggleMenu, closeMenu } from './menu.svelte';
+  import { clickOutside, isMenuOpen, pinPanels, toggleMenu, closeMenu } from './menu.svelte';
   import { t } from '../../i18n/i18n.svelte';
   import { withShortcut } from '../../i18n/shortcut';
   import { shortcutHint } from '../../editor/shortcuts';
@@ -259,7 +259,7 @@
     <UiLanguagePicker />
   </div>
 
-  <div class="ribbon-body">
+  <div class="ribbon-body" use:pinPanels>
     {#if tab === 'home'}
       <HomeTab {editor} {tick} bind:showFormattingMarks {onManageStyles} {onFind} onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'insert'}

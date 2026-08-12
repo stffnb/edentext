@@ -387,6 +387,63 @@
   margin: 0 4px;
 }
 
+/* The reused pickers style their trigger for the classic toolbar's tinted island:
+   a frame on hover, the accent as the open state. Beside a row of ribbon buttons
+   that reads as a different control, so both become the ribbon's own tints. */
+.ribbon .table-trigger:hover,
+.ribbon .char-trigger:hover,
+.ribbon .dt-trigger:hover,
+.ribbon .tsp-trigger:hover,
+.ribbon .bp-trigger:hover { border-color: transparent; }
+
+.ribbon .table-trigger[aria-pressed='true'],
+.ribbon .char-trigger[aria-pressed='true'],
+.ribbon .dt-trigger[aria-pressed='true'],
+.ribbon .tsp-trigger[aria-pressed='true'],
+.ribbon .bp-trigger[aria-pressed='true'] {
+  background: var(--w-active);
+  color: var(--w-text);
+}
+
+/* A picker standing alone in a group is a labelled button, so its own compact
+   trigger grows to the big variant's box and icon size. The stroke is pinned to
+   the same 1.5px the ribbon's own icons paint at 28px. */
+.rb-captioned {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 7px 6px;
+  --toolbar-btn-size: 34px;
+}
+
+/* The first svg is the glyph; a second one is the trigger's own caret and keeps
+   the size every other caret in the ribbon has. */
+.rb-captioned > * > button > svg:first-of-type { width: 28px; height: 28px; }
+.rb-captioned > * > button > svg:first-of-type :is(path, rect, line, circle, polyline) { stroke-width: 0.86; }
+.rb-captioned .color-bar { width: 24px; }
+
+/* The spell-check picker is chromeless for the status bar; in a group it needs
+   the combo frame and the same box as the labelled buttons beside it. */
+.rb-captioned .lang-picker {
+  height: 34px;
+  padding: 0 6px;
+  border: 1px solid var(--w-border-strong);
+  border-radius: 3px;
+  background: var(--w-surface);
+}
+
+.rb-captioned .lang-picker:hover,
+.rb-captioned .lang-picker:focus-within { border-color: var(--w-accent); }
+
+.rb-caption {
+  font-family: var(--w-font);
+  font-size: 12px;
+  color: var(--w-text);
+  white-space: nowrap;
+}
+
 /* Combo box: a borderless input welded to a caret button, as in Word's font and
    size fields. */
 .rb-combo-wrap { position: relative; }

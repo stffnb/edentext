@@ -49,7 +49,11 @@ biggest simplification here, and the reason two things below are necessary.
 
 - **A menu must leave the flow.** `.ribbon-body` clips its own overflow, so the `anchored` action
   (`ribbon/menu.svelte.ts`) switches a panel to `position: fixed` and pins it under its wrapper,
-  clamped inside the window.
+  clamped inside the window. Panels drop below the **whole band**, not below their own button —
+  inside it they would cover the controls and group labels underneath.
+- **A reused picker anchors its panel itself**, and no prop says when it opened. `pinPanels`,
+  one action on the band, watches for a mounted absolutely-positioned node and pins that; the
+  ColorPicker places its own and only needs the band-aware top.
 - **Each wrapper names the menu it owns.** One shared open-menu id means every `clickOutside`
   sees every mousedown; without the id each wrapper would close a sibling's open menu, and the
   click on one of its rows would never land.
@@ -63,10 +67,11 @@ biggest simplification here, and the reason two things below are necessary.
 | `RibbonButton.svelte` | `big` / `small` / `icon`, plus the split button. Hover paints the **icon box**, not the whole button |
 | `RibbonMenu.svelte` | The dropdown panel; its look is global CSS, since its rows come from a caller's snippet |
 | `Icon.svelte`, `icons.ts` | Path data on a 16-unit canvas. `pinnedStroke(size)` holds the painted stroke at ~1.5px on large glyphs and ~1.1px on small ones, so 14px and 28px icons read as one family |
-| `menu.svelte.ts` | The one open-menu id, `anchored`, `clickOutside` |
+| `menu.svelte.ts` | The one open-menu id, `anchored`, `pinPanels`, `clickOutside` |
 | `selection.ts` | `saveRange` / `withRange` — a popover steals focus, so the range is replayed before the command |
 | `fontList.svelte.ts` | Recent, web-safe and detected fonts, shared by every font picker |
 | `controls/` | Font family box, font size box, style gallery |
+| `.rb-captioned` (global.css) | Wraps a reused picker standing alone in a group: its trigger grows to the big button's 34px box and 28px glyph, so a group of pickers and a group of buttons are the same size |
 | `tabs/` | One file per tab |
 
 Reading what the selection formats is **not** here: `utils/selectionFormat.ts` answers it

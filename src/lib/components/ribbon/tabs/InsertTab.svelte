@@ -300,22 +300,6 @@
 
   .link-anchor { position: relative; }
 
-  /* A reused picker draws its own compact trigger, so the caption is what makes
-     it read like the labelled buttons beside it. */
-  .rb-captioned {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 7px 6px;
-  }
-
-  .rb-caption {
-    font-family: var(--w-font);
-    font-size: 12px;
-    color: var(--w-text);
-    white-space: nowrap;
-  }
   .rb-menu-wrap { position: relative; }
 
   .file-input {

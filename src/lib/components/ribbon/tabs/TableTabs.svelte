@@ -270,26 +270,11 @@
   .margin-field input:focus { outline: none; border-color: var(--w-accent); }
 
   .shade-glyph {
-    width: 14px;
-    height: 14px;
+    width: 24px;
+    height: 24px;
     border: 1px solid currentColor;
     border-radius: 2px;
     background: repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 3px);
   }
 
-  .rb-captioned {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 4px 7px 6px;
-  }
-
-  .rb-caption {
-    font-family: var(--w-font);
-    font-size: 12px;
-    color: var(--w-text);
-    white-space: nowrap;
-  }
 </style>

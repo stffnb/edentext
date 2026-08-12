@@ -118,24 +118,15 @@
 
 <style>
   .swatch {
-    width: 14px;
-    height: 14px;
+    width: 24px;
+    height: 24px;
     border: 1px solid var(--w-border-strong);
     border-radius: 2px;
   }
 
   .swatch.outline { background: transparent; border-width: 2px; }
 
-  .rb-captioned {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 4px 7px 6px;
-  }
-
-  .rb-caption, .field {
+  .field {
     font-family: var(--w-font);
     font-size: 12px;
     color: var(--w-text);
