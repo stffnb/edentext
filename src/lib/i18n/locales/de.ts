@@ -474,6 +474,8 @@ const de: Messages = {
       shapeFormat: 'Formformat',
     },
     saveAs: 'Speichern unter…',
+    collapse: 'Menüband minimieren',
+    expand: 'Menüband erweitern',
     export: 'Exportieren',
     find: 'Suchen',
     replace: 'Ersetzen',

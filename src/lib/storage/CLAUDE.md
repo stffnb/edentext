@@ -20,6 +20,7 @@ Both margins and orientation are passed into the ODT export so the exported docu
 - **Theme:** `odf-editor-theme` — `'light' | 'dark' | 'allBlack' | 'auto'`.
 - **Toolbar expanded:** `odf-editor-toolbar-expanded` — boolean string.
 - **Chrome:** `odf-editor-chrome` — `'classic' | 'ribbon'`; absent = classic.
+- **Ribbon collapsed:** `odf-editor-ribbon-collapsed` — boolean string; absent = expanded.
 - **Formatting marks:** `odf-editor-formatting-marks` — boolean string.
 - **Ruler:** `odf-editor-ruler` — boolean string; absent = on.
 - **Zoom:** `odf-editor-zoom` — integer percent.

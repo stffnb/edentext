@@ -478,6 +478,8 @@ const en = {
       shapeFormat: 'Shape Format',
     },
     saveAs: 'Save as…',
+    collapse: 'Collapse the ribbon',
+    expand: 'Expand the ribbon',
     export: 'Export',
     find: 'Find',
     replace: 'Replace',

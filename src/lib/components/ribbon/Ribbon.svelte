@@ -19,7 +19,7 @@
   import { t } from '../../i18n/i18n.svelte';
   import { withShortcut } from '../../i18n/shortcut';
   import { shortcutHint } from '../../editor/shortcuts';
-  import type { ChromeMode, ThemeMode } from '../../storage/theme';
+  import { loadRibbonCollapsed, saveRibbonCollapsed, type ChromeMode, type ThemeMode } from '../../storage/theme';
   import type { StyleFamily } from '../../styles/styleSheet';
   import { DEFAULT_MARGINS, type PageMargins } from '../../storage/pageMargins';
   import type { Orientation } from '../../storage/pageOrientation';
@@ -130,6 +130,9 @@
   let paragraphDialogOpen = $state(false);
   let tabsDialogOpen = $state(false);
 
+  let collapsed = $state(loadRibbonCollapsed());
+  $effect(() => saveRibbonCollapsed(collapsed));
+
   function run(fn?: () => void) {
     closeMenu();
     fn?.();
@@ -202,7 +205,7 @@
         class="ribbon-tab"
         class:active={tab === id}
         class:contextual={!(TABS as readonly string[]).includes(id)}
-        onclick={() => (tab = id)}
+        onclick={() => { tab = id; collapsed = false; }}
       >
         {t().ribbon.tabs[id]}
       </button>
@@ -224,6 +227,20 @@
       />
       <span class="doc-name-ext">.odt</span>
     </div>
+
+    <!-- Word puts this chevron in the band's corner. Here it rides the strip: in
+         the corner it covered whichever group's dialog launcher reached the edge,
+         and reserving that corner costs the band a column at every height. -->
+    <button
+      class="qa-btn rb-collapse"
+      class:rb-collapse-up={!collapsed}
+      onclick={() => (collapsed = !collapsed)}
+      title={collapsed ? t().ribbon.expand : t().ribbon.collapse}
+      aria-label={collapsed ? t().ribbon.expand : t().ribbon.collapse}
+      aria-expanded={!collapsed}
+    >
+      <Icon name="chevronDown" size={16} />
+    </button>
 
     <div class="appearance-wrap" use:clickOutside={'appearance'}>
       <button
@@ -259,6 +276,7 @@
     <UiLanguagePicker />
   </div>
 
+  {#if !collapsed}
   <div class="ribbon-body" use:pinPanels>
     {#if tab === 'home'}
       <HomeTab {editor} {tick} bind:showFormattingMarks {onManageStyles} {onFind} onParagraphDialog={() => (paragraphDialogOpen = true)} />
@@ -287,6 +305,7 @@
       />
     {/if}
   </div>
+  {/if}
 
   <ParagraphDialog bind:open={paragraphDialogOpen} {editor} {tick} onTabs={() => (tabsDialogOpen = true)} />
   <TabsDialog bind:open={tabsDialogOpen} {editor} {tick} bind:tabIntervalCm />
@@ -318,6 +337,10 @@
     color: var(--w-text);
     user-select: none;
   }
+
+  /* Points down to bring the band back, up to send it away. */
+  .rb-collapse :global(svg) { transition: transform 0.12s ease; }
+  .rb-collapse-up :global(svg) { transform: rotate(180deg); }
 
   /* Those pickers frame their trigger for the classic toolbar's tinted island. A
      ribbon row is borderless icon buttons, so the frame comes off and the hover

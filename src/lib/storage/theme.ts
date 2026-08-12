@@ -7,6 +7,7 @@ export type ChromeMode = 'classic' | 'ribbon';
 const THEME_KEY = 'odf-editor-theme';
 const TOOLBAR_KEY = 'odf-editor-toolbar-expanded';
 const CHROME_KEY = 'odf-editor-chrome';
+const RIBBON_COLLAPSED_KEY = 'odf-editor-ribbon-collapsed';
 const FORMATTING_MARKS_KEY = 'odf-editor-formatting-marks';
 const RULER_KEY = 'odf-editor-ruler';
 
@@ -34,6 +35,14 @@ export function loadChromeMode(): ChromeMode {
 
 export function saveChromeMode(mode: ChromeMode): void {
     localStorage.setItem(CHROME_KEY, mode);
+}
+
+export function loadRibbonCollapsed(): boolean {
+    return localStorage.getItem(RIBBON_COLLAPSED_KEY) === 'true';
+}
+
+export function saveRibbonCollapsed(collapsed: boolean): void {
+    localStorage.setItem(RIBBON_COLLAPSED_KEY, String(collapsed));
 }
 
 export function loadFormattingMarks(): boolean {

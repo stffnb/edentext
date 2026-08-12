@@ -53,6 +53,15 @@ The band's height never changes: it scrolls horizontally with a hidden scrollbar
 collapsing groups into popovers the way Word does when the window narrows. That is the single
 biggest simplification here, and the reason two things below are necessary.
 
+A chevron in the tab strip drops the band entirely, leaving the strip (`odf-editor-ribbon-collapsed`).
+Clicking any tab brings it back — Word instead floats it over the document until the next click
+lands in the text, which is the part not built.
+
+Word puts that chevron in the band's bottom-right corner, and this one did too. Both ways of
+reserving that corner failed: as a layer it covered whichever group's dialog launcher reached the
+edge, and since the band scrolls, which one that is varies; in the flow it cost the band a column
+at every height. A flex row cannot reserve width in part of its height, so it moved to the strip.
+
 - **A menu must leave the flow.** `.ribbon-body` clips its own overflow, so the `anchored` action
   (`ribbon/menu.svelte.ts`) switches a panel to `position: fixed` and pins it under its wrapper,
   clamped inside the window. Panels drop below the **whole band**, not below their own button —
