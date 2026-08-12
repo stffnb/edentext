@@ -287,9 +287,8 @@
     gap: 3px 12px;
   }
 
-  /* The label takes whatever its grid column is wide, so the boxes line up on the
-     column's right edge. A fixed label width only holds until a translation
-     outgrows it, and then one row of the pair sits deeper than the other. */
+  /* The label takes whatever its grid column is wide, so the boxes line up on that
+     column's right edge at any label length. */
   .margin-field > span, .field > span {
     flex: 1;
     white-space: nowrap;

@@ -152,9 +152,8 @@
     align-items: center;
     gap: 2px;
     flex-shrink: 0;
-    /* Wide enough for the longest style name in either locale: 'Überschrift 4'
-       measures 58.4px, and truncating a numbered family before its number tells
-       the five headings apart not at all. */
+    /* Holds the longest style name in either locale, so a numbered family keeps the
+       number that distinguishes it: 'Überschrift 4' measures 58.4px. */
     width: 72px;
     border: 1px solid var(--w-border);
     border-radius: 4px;

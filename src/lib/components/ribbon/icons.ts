@@ -85,22 +85,38 @@ export const STROKED = {
   find: ['M7.25 12.5a5.25 5.25 0 1 0 0-10.5 5.25 5.25 0 0 0 0 10.5z', 'M11.2 11.2 14 14'],
   replace: ['M2 4.5h6.5M2 4.5 4 2.5M2 4.5l2 2', 'M14 11.5H7.5M14 11.5l-2-2M14 11.5l-2 2'],
   margins: ['M1.75 1.75h12.5v12.5H1.75z', 'M4.5 1.75v12.5M11.5 1.75v12.5', 'M1.75 4.5h12.5M1.75 11.5h12.5'],
-  orientation: ['M2.5 2h7v12h-7z', 'M11 6.5h3v6h-3z'],
-  pageSize: ['M2.5 1.75h11v12.5h-11z', 'M5 5h6M5 8h6M5 11h4'],
-  columns: ['M2 2.5h4.5v11H2zM9.5 2.5H14v11H9.5z'],
+  // One page turned: the same 6.5 × 9.2 sheet upright behind and on its side in
+  // front, overlapping so both stay full size. The upright one is traced only where
+  // the other does not cover it. Ratio A4's 0.707.
+  orientation: ['M8.5 7.5V2H2v9.2h2.8', 'M4.8 7.5h9.2v6.5H4.8z'],
+  // A page with its width and height measured off.
+  pageSize: [
+    'M1.75 1.5h7.6v9.8H1.75z',
+    'M1.75 13.7h7.6', 'M2.65 12.8 1.75 13.7l.9.9', 'M8.45 12.8 9.35 13.7l-.9.9',
+    'M13.35 1.5v9.8', 'M12.45 2.4 13.35 1.5l.9.9', 'M12.45 10.4 13.35 11.3l.9-.9',
+  ],
+  // Text running in two columns, the same picture the Columns menu previews.
+  columns: [
+    'M2 2h12v12H2z',
+    'M4 5h3.2M4 8h3.2M4 11h3.2',
+    'M8.8 5H12M8.8 8H12M8.8 11H12',
+  ],
   image: ['M2 3.25h12v9.5H2z', 'M2 10.5 5.75 7l3 2.75L11 7.5l3 3', 'M10.6 6.4a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2z'],
   textBox: ['M1.75 4h12.5v8H1.75z', 'M5 6.5h6M5 9h4'],
   link: ['M6.6 9.4 9.4 6.6', 'M7.4 4.4 9 2.8a2.7 2.7 0 0 1 3.8 3.8l-1.6 1.6', 'M8.6 11.6 7 13.2a2.7 2.7 0 0 1-3.8-3.8l1.6-1.6'],
   bookmark: ['M4 2.25h8v11.5L8 10.5l-4 3.25z'],
   crossRef: ['M2.5 3.5h6M2.5 6.5h4M2.5 9.5h5', 'M8.5 12.5h5M11 10l2.5 2.5L11 15'],
-  header: ['M2 2.5h12v3H2z', 'M2 8h12M2 11h8'],
-  footer: ['M2 10.5h12v3H2z', 'M2 5h12M2 8h8'],
+  // The whole page with one zone filled in, so which end it is reads at a glance.
+  header: ['M3.5 1.75h9v12.5h-9z', 'M5.4 7.8h5.2M5.4 9.9h5.2M5.4 12h3.1'],
+  footer: ['M3.5 1.75h9v12.5h-9z', 'M5.4 4h5.2M5.4 6.1h5.2M5.4 8.2h3.1'],
   pageNumber: ['M3.25 1.75h9.5v12.5h-9.5z', 'M6.9 6.4 8 5.3v5.2', 'M6.75 10.5h2.5'],
-  pageBreak: ['M2 4.5h12M2 11.5h12', 'M8 6.5v3', 'M6.4 8.2 8 9.8l1.6-1.6'],
+  pageBreak: ['M2 2.5h12M2 13.5h12', 'M8 5.5v5.2', 'M6.2 8.9 8 10.7l1.8-1.8'],
 } as const;
 
 export const FILLED = {
   infoDot: ['M8 4.4a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6z'],
+  header: ['M5.4 3.8h5.2v1.7H5.4z'],
+  footer: ['M5.4 10.5h5.2v1.7H5.4z'],
 } as const;
 
 // Constant painted stroke rather than proportional scaling: a 1-unit stroke would

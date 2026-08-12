@@ -228,9 +228,8 @@
       <span class="doc-name-ext">.odt</span>
     </div>
 
-    <!-- Word puts this chevron in the band's corner. Here it rides the strip: in
-         the corner it covered whichever group's dialog launcher reached the edge,
-         and reserving that corner costs the band a column at every height. -->
+    <!-- Word puts this chevron in the band's corner. It rides the strip so the band
+         keeps its full width: a flex row can only reserve a column, never a corner. -->
     <button
       class="qa-btn rb-collapse"
       class:rb-collapse-up={!collapsed}

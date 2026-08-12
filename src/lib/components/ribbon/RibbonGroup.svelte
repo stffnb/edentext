@@ -34,9 +34,8 @@
     padding: 2px 4px 0;
   }
 
-  /* Takes the slack, but the only group that may shrink must still stop: crushed
-     to nothing it shows an empty frame and spills its label onto the next group's.
-     Two tiles plus the gallery's own chevron; past that the band scrolls. */
+  /* Takes the slack down to a floor of two gallery tiles plus its chevron; past
+     that the band scrolls. It is the one group that may shrink at all. */
   .ribbon-group.grow {
     flex: 1;
     min-width: 163px;
@@ -59,8 +58,8 @@
     height: 15px;
   }
 
-  /* Truncates rather than reaching into the next group: a translation longer than
-     its group's controls must read as cut off, not as two labels run together. */
+  /* Stays inside its own group, so a label longer than the controls above it reads
+     as cut off. */
   .ribbon-group-label {
     min-width: 0;
     font-family: var(--w-font);

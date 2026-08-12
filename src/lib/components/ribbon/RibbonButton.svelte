@@ -35,8 +35,8 @@
 
   const ICON_SIZE = { big: 28, small: 14, icon: 20 } as const;
 
-  // Nothing to split when the whole button opens the menu, so the caret joins the
-  // column under the label instead of sitting beside the icon.
+  // One button when the whole of it opens the menu, and the caret joins the column
+  // under the label.
   let stackCaret = $derived(caret && !onCaret && variant === 'big');
 </script>
 
@@ -115,8 +115,8 @@
     gap: 2px;
   }
 
-  /* Icon over label, and the tint takes both. Word paints only the icon box, but
-     then the words beside an identical-looking neighbour light up and these do not. */
+  /* Icon over label, with the tint over both, so a labelled button and a captioned
+     picker beside it answer the pointer the same way. */
   .rb-big {
     flex-direction: column;
     gap: 4px;

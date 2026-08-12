@@ -113,9 +113,8 @@ export function clickOutside(node: HTMLElement, id?: string) {
 }
 
 // A reused picker keeps its trigger inside its own component, so the caption the
-// ribbon puts beside it is not part of that button: hovering the words lit nothing
-// and clicking them did nothing. Forwards a click that missed every button to the
-// first one, so glyph and caption behave as the single control they look like.
+// ribbon sets beside it belongs to no button. Forwards a click that missed every
+// button to the first one, so glyph and caption act as the one control they look like.
 export function captionClicks(node: HTMLElement) {
   function handler(e: MouseEvent) {
     if ((e.target as HTMLElement).closest('button, select, input')) return;
