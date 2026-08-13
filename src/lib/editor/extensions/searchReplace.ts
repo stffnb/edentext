@@ -7,8 +7,10 @@ import type { Node as PmNode } from '@tiptap/pm/model';
 // Find & Replace: highlights all matches via decorations, navigates/replaces via commands.
 // Pure editor feature — never touches the document model beyond the actual replacements.
 
-export interface SearchOptions { term: string; matchCase: boolean; wholeWord: boolean; }
-interface Match { from: number; to: number; }
+export interface SearchOptions { term: string; matchCase: boolean; wholeWord: boolean; useRegex: boolean; }
+// `groups` is the match's captures, so a regex replacement can expand $1…$9 (LibreOffice's
+// syntax; Word has no such thing).
+interface Match { from: number; to: number; groups: string[] }
 interface SearchState extends SearchOptions {
   matches: Match[];
   current: number; // index into matches, or -1
@@ -23,22 +25,30 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function buildSearchRegex(term: string, matchCase: boolean, wholeWord: boolean): RegExp | null {
+export function buildSearchRegex(term: string, matchCase: boolean, wholeWord: boolean, useRegex = false): RegExp | null {
   if (!term) return null;
-  let pat = escapeRegExp(term);
+  // A user pattern is wrapped, not escaped — the whole-word guard then bounds it.
+  let pat = useRegex ? (wholeWord ? `(?:${term})` : term) : escapeRegExp(term);
   if (wholeWord) pat = `\\b${pat}\\b`;
   try { return new RegExp(pat, matchCase ? 'g' : 'gi'); }
   catch { return null; }
 }
 
-// All [start, end) char ranges of a global regex in `text` (skips zero-width matches).
-export function regexRanges(text: string, re: RegExp): [number, number][] {
-  const out: [number, number][] = [];
+// $1…$9 and $& in a replacement, filled from one match's captures. Anything the pattern
+// did not capture expands to nothing, as it does in LibreOffice.
+export function expandGroups(text: string, groups: string[]): string {
+  return text.replace(/\$([1-9]|&)/g, (_, k: string) => (k === '&' ? groups[0] : groups[Number(k)]) ?? '');
+}
+
+// All [start, end) char ranges of a global regex in `text`, with each match's captures
+// (skips zero-width matches).
+export function regexRanges(text: string, re: RegExp): [number, number, string[]][] {
+  const out: [number, number, string[]][] = [];
   re.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     if (m[0].length === 0) { re.lastIndex++; continue; }
-    out.push([m.index, m.index + m[0].length]);
+    out.push([m.index, m.index + m[0].length, [...m]]);
   }
   return out;
 }
@@ -61,7 +71,7 @@ function findMatches(doc: PmNode, re: RegExp | null): Match[] {
         map.push(pos + 1 + offset);
       }
     });
-    for (const [s, e] of regexRanges(text, re)) matches.push({ from: map[s], to: map[e - 1] + 1 });
+    for (const [s, e, groups] of regexRanges(text, re)) matches.push({ from: map[s], to: map[e - 1] + 1, groups });
     return false;
   });
   return matches;
@@ -81,7 +91,7 @@ function pickCurrent(matches: Match[], selFrom: number): number {
   return i === -1 ? 0 : i;
 }
 
-const EMPTY: SearchState = { term: '', matchCase: false, wholeWord: false, matches: [], current: -1, deco: DecorationSet.empty };
+const EMPTY: SearchState = { term: '', matchCase: false, wholeWord: false, useRegex: false, matches: [], current: -1, deco: DecorationSet.empty };
 
 // Match count + current index for the toolbar UI (FindReplaceBar.svelte).
 export function getSearchState(state: EditorState): { count: number; current: number; term: string } {
@@ -130,14 +140,14 @@ export const SearchReplace = Extension.create({
           apply(tr: Transaction, old: SearchState, _oldState: EditorState, newState: EditorState): SearchState {
             const set = tr.getMeta(SET_SEARCH) as SearchOptions | undefined;
             if (set) {
-              const matches = findMatches(newState.doc, buildSearchRegex(set.term, set.matchCase, set.wholeWord));
+              const matches = findMatches(newState.doc, buildSearchRegex(set.term, set.matchCase, set.wholeWord, set.useRegex));
               const current = pickCurrent(matches, newState.selection.from);
               return { ...set, matches, current, deco: buildDeco(newState.doc, matches, current) };
             }
             const cur = tr.getMeta(SET_CURRENT) as number | undefined;
             if (cur !== undefined) return { ...old, current: cur, deco: buildDeco(newState.doc, old.matches, cur) };
             if (tr.docChanged && old.term) {
-              const matches = findMatches(newState.doc, buildSearchRegex(old.term, old.matchCase, old.wholeWord));
+              const matches = findMatches(newState.doc, buildSearchRegex(old.term, old.matchCase, old.wholeWord, old.useRegex));
               const current = pickCurrent(matches, newState.selection.from);
               return { ...old, matches, current, deco: buildDeco(newState.doc, matches, current) };
             }
@@ -174,11 +184,12 @@ export const SearchReplace = Extension.create({
           // Marks of the first matched char (resolving at m.from would read the
           // boundary before the match, i.e. the preceding run's formatting).
           const marks = state.doc.resolve(m.from + 1).marks();
+          const out = s.useRegex ? expandGroups(text, m.groups) : text;
           const tr = state.tr;
-          if (text) tr.replaceWith(m.from, m.to, state.schema.text(text, marks));
+          if (out) tr.replaceWith(m.from, m.to, state.schema.text(out, marks));
           else tr.delete(m.from, m.to);
           // Land the cursor after the replacement so the recompute picks the next match.
-          tr.setSelection(TextSelection.create(tr.doc, m.from + text.length));
+          tr.setSelection(TextSelection.create(tr.doc, m.from + out.length));
           tr.scrollIntoView();
           dispatch(tr);
         }
@@ -193,7 +204,8 @@ export const SearchReplace = Extension.create({
           for (let i = s.matches.length - 1; i >= 0; i--) {
             const m = s.matches[i];
             const marks = state.doc.resolve(m.from + 1).marks();
-            if (text) tr.replaceWith(m.from, m.to, state.schema.text(text, marks));
+            const out = s.useRegex ? expandGroups(text, m.groups) : text;
+            if (out) tr.replaceWith(m.from, m.to, state.schema.text(out, marks));
             else tr.delete(m.from, m.to);
           }
           dispatch(tr);
@@ -202,7 +214,7 @@ export const SearchReplace = Extension.create({
       },
       clearSearch: () => ({ state, dispatch }) => {
         const s = searchKey.getState(state);
-        if (dispatch) dispatch(state.tr.setMeta(SET_SEARCH, { term: '', matchCase: s?.matchCase ?? false, wholeWord: s?.wholeWord ?? false }));
+        if (dispatch) dispatch(state.tr.setMeta(SET_SEARCH, { term: '', matchCase: s?.matchCase ?? false, wholeWord: s?.wholeWord ?? false, useRegex: s?.useRegex ?? false }));
         return true;
       },
     };

@@ -93,6 +93,7 @@
 - Word/LibreOffice keyboard shortcuts throughout: Ctrl+L/E/R/J alignment, Ctrl+Alt+1–5 headings and Ctrl+Shift+N default style, Ctrl+1/2/5 line spacing, Ctrl+Shift+P / Ctrl+Shift+B super/subscript, Ctrl+Shift+. / Ctrl+Shift+, grow/shrink font, Ctrl+Space clear formatting, Ctrl+Shift+Space non-breaking space, Ctrl+Shift+- soft hyphen, Alt+Shift+D / Alt+Shift+T date & time field, Ctrl+O open, F3 / Shift+F3 find next/previous, Ctrl+F10 formatting marks — alongside the existing Ctrl+B/I/U, Ctrl+M, Ctrl+K, Ctrl+Enter, Ctrl+F/H, Ctrl+S/P and Tab/Shift+Tab. All bindings live in one table, so tooltips stay in sync and they can be remapped later
 - Undo / Redo with a labelled history dropdown
 - Search & Replace (Ctrl+F / Ctrl+H): live match highlighting, match count, next / previous, match-case and whole-word options, replace current / replace all
+  A `.*` toggle searches by regular expression, and the replacement expands `$1`…`$9` / `$&` from the match's captures (LibreOffice's syntax; Word has no equivalent)
 - Right-click context menu for text: cut / copy / paste / paste without formatting, link insert-edit-remove, clear formatting — with the spelling suggestions merged in on top. Shift+right-click keeps the browser's own menu; images, text boxes and header/footer stay with their existing UI
 - Spell check in English and German with squiggles and suggestions in the context menu (add / ignore word); selectable document language. Powered by Hunspell (WASM), so German compound words (Fußgänger, Krankenversicherung …) are recognised; dictionaries are lazy-loaded per language on demand
 - Word / character count statistics (whole document and selection)
@@ -138,7 +139,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - A list level's own hanging indent: the marker sits at the 0.635 cm both exports write (`LIST_HANGING_CM`), so a wider *left*-set marker overflows where Word moves the text to the next list tab (a **right**-set one — `w:lvlJc`, which is what the built-in Roman numberings use — grows into the margin and is fine). Reading the value back naively also moves the markers of our own ODT exports — LibreOffice draws its own flat hanging at exactly the value odf-kit writes for level 2; see `tests/render-parity/README.md` before building on it
 - Images live as data-URIs in the autosaved JSON, so an image-heavy document can exceed the ~5 MB localStorage quota; `storage/autosave.ts` warns once and a reload restores the last version that still fit. IndexedDB (as `embeddedFontStore.ts` already uses) would lift the ceiling
 - Linked / chained text frames
-- Find & Replace by regular expression or by formatting/style
+- Find & Replace by formatting or by style (the regular-expression half is implemented)
 - Save as template (`.ott` / `.dotx`), multi-document management, recent-files list
 - Watermark; page background and page border
 - Thesaurus, grammar check, word completion, AutoText / building blocks

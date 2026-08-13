@@ -12,6 +12,7 @@
   let replaceText = $state('');
   let matchCase = $state(false);
   let wholeWord = $state(false);
+  let useRegex = $state(false);
   let showReplace = $state(false); // set from `mode` in the focusNonce effect below
   let findInput = $state<HTMLInputElement | null>(null);
 
@@ -22,7 +23,7 @@
   });
 
   function applySearch() {
-    editor?.commands.setSearch({ term: findText, matchCase, wholeWord });
+    editor?.commands.setSearch({ term: findText, matchCase, wholeWord, useRegex });
     editor?.commands.scrollToCurrent();
   }
 
@@ -43,6 +44,7 @@
 
   function toggleCase() { matchCase = !matchCase; applySearch(); }
   function toggleWord() { wholeWord = !wholeWord; applySearch(); }
+  function toggleRegex() { useRegex = !useRegex; applySearch(); }
 
   // Prefill from the current selection (single line) on first open.
   onMount(() => {
@@ -92,6 +94,7 @@
       <button class="fb-opt fb-word" class:on={wholeWord} onclick={toggleWord} title={t().findReplace.wholeWord} aria-pressed={wholeWord}>
         <span>W</span>
       </button>
+      <button class="fb-opt" class:on={useRegex} onclick={toggleRegex} title={t().findReplace.regex} aria-pressed={useRegex}>.*</button>
       <button class="fb-nav" onclick={prev} disabled={!results.count} title={`${t().findReplace.previous} (${withShortcut('Shift+Enter')})`} aria-label={t().findReplace.previousAria}>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 7.5L6 4l3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>

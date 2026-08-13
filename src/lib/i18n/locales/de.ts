@@ -406,6 +406,7 @@ const de: Messages = {
     noResults: 'Keine Treffer',
     matchCase: 'Groß-/Kleinschreibung beachten',
     wholeWord: 'Ganzes Wort',
+    regex: 'Regulärer Ausdruck ($1…$9 im Ersetzungstext)',
     previous: 'Zurück',
     previousAria: 'Vorheriger Treffer',
     next: 'Weiter',

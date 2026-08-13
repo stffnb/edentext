@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildSearchRegex, regexRanges } from '../../src/lib/editor/extensions/searchReplace';
+import { buildSearchRegex, expandGroups, regexRanges } from '../../src/lib/editor/extensions/searchReplace';
 
-function ranges(text: string, term: string, matchCase = false, wholeWord = false): [number, number][] {
-  const re = buildSearchRegex(term, matchCase, wholeWord);
-  return re ? regexRanges(text, re) : [];
+function ranges(text: string, term: string, matchCase = false, wholeWord = false, useRegex = false): [number, number][] {
+  const re = buildSearchRegex(term, matchCase, wholeWord, useRegex);
+  return re ? regexRanges(text, re).map(([a, b]) => [a, b] as [number, number]) : [];
 }
 
 describe('buildSearchRegex', () => {
@@ -39,5 +39,31 @@ describe('regexRanges', () => {
     // term is escaped so this can't actually be zero-width, but guard the helper directly
     const re = new RegExp('', 'g');
     expect(regexRanges('abc', re)).toEqual([]);
+  });
+});
+
+describe('regular expressions', () => {
+  it('takes the term as a pattern when asked', () => {
+    expect(ranges('a.b a_b', 'a.b', false, false, true)).toEqual([[0, 3], [4, 7]]);
+    expect(ranges('cat 12 dog 345', '\\d+', false, false, true)).toEqual([[4, 6], [11, 14]]);
+  });
+
+  it('still bounds a pattern by whole words', () => {
+    expect(ranges('cat category', 'ca.', false, true, true)).toEqual([[0, 3]]);
+  });
+
+  it('returns null for a pattern that will not compile', () => {
+    expect(buildSearchRegex('a(', false, false, true)).toBeNull();
+  });
+
+  it('carries each match\'s captures', () => {
+    const re = buildSearchRegex('(\\w+)@(\\w+)', false, false, true)!;
+    expect(regexRanges('mail a@b here', re)).toEqual([[5, 8, ['a@b', 'a', 'b']]]);
+  });
+
+  it('expands $1…$9 and $& in the replacement', () => {
+    expect(expandGroups('$2, $1', ['a@b', 'a', 'b'])).toBe('b, a');
+    expect(expandGroups('<$&>', ['a@b', 'a', 'b'])).toBe('<a@b>');
+    expect(expandGroups('$3!', ['a@b', 'a', 'b'])).toBe('!');
   });
 });

@@ -410,6 +410,7 @@ const en = {
     noResults: 'No results',
     matchCase: 'Match case',
     wholeWord: 'Whole word',
+    regex: 'Regular expression ($1…$9 in the replacement)',
     previous: 'Previous',
     previousAria: 'Previous match',
     next: 'Next',
