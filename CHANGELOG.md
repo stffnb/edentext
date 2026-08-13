@@ -192,6 +192,15 @@ merely unimplemented belongs in the list above, not here.
   Chromium moves the whole run to the next line. `overflow-wrap: anywhere` would
   match it but also breaks runs LibreOffice keeps whole and shrinks a table
   column to its narrowest glyph. Noted 2026-08-09, revised 2026-08-11.
+- A line **inside a table cell** has slightly less room than in Word/LibreOffice,
+  so it may take one word fewer. Root cause: with `border-collapse` Chromium
+  takes the collapsed border's whole pixel off the cell's *content* width, while
+  a word processor lays the line out between the cell margins whatever the
+  border is — measured at 80.64 px of text in a 95.77 px column against
+  LibreOffice's 21.59 mm. Giving the pixel back through the horizontal padding
+  was tried and reverted: it fixes the line it was measured on and breaks
+  another two tables on, so the real offset is under 0.2 mm — the same engine
+  rounding as above. See `tests/render-parity/README.md`. Noted 2026-08-13.
 - A text box anchored inside a paragraph loses the vertical offset it was
   anchored by: it is a block node here, so the importer lifts it out and it
   simply follows that paragraph (measured 4.7 mm on the thesis' figure page).
