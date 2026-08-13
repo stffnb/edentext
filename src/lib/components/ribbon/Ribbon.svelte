@@ -379,14 +379,14 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 2px;
-    padding: 5px 10px 0;
+    padding: 3px 10px 0;
   }
 
   .ribbon-tab {
     position: relative;
     border: none;
     background: none;
-    padding: 7px 9px 6px;
+    padding: 5px 9px;
     border-radius: 4px 4px 0 0;
     color: var(--w-text);
     font-family: inherit;
@@ -433,7 +433,7 @@
     background: var(--w-accent-fill);
     color: #fff;
     border-radius: 4px;
-    padding: 6px 16px;
+    padding: 5px 14px;
     margin-right: 6px;
     font-family: inherit;
     font-size: 13px;
@@ -448,8 +448,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 28px;
+    width: 28px;
+    height: 26px;
     border: none;
     background: none;
     border-radius: 4px;
@@ -512,7 +512,7 @@
     display: flex;
     align-items: stretch;
     height: var(--w-ribbon-h);
-    padding: 6px 12px;
+    padding: 3px 10px;
     /* Fixed height, scroll instead of Word's responsive group collapsing — the
        scrollbar is hidden so the band stays clean. */
     overflow-x: auto;

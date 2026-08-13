@@ -259,7 +259,9 @@
     width: min-content;
     white-space: normal;
     text-align: center;
-    line-height: 1.15;
+    /* The two lines make this the band's tallest control, so --w-ribbon-h is cut
+       to fit it: a ratio would put that height at the mercy of the font. */
+    line-height: 13px;
   }
 
   .inserts :global(.rb-stack-caret) { display: none; }

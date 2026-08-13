@@ -31,7 +31,7 @@
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    padding: 2px 4px 0;
+    padding: 0 4px;
   }
 
   /* Takes the slack down to a floor of two gallery tiles plus its chevron; past
@@ -55,7 +55,7 @@
     align-items: center;
     justify-content: center;
     gap: 2px;
-    height: 15px;
+    height: 13px;
   }
 
   /* Stays inside its own group, so a label longer than the controls above it reads
@@ -64,6 +64,7 @@
     min-width: 0;
     font-family: var(--w-font);
     font-size: 11px;
+    line-height: 13px;
     color: var(--w-text-dim);
     white-space: nowrap;
     overflow: hidden;
@@ -74,8 +75,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 14px;
-    height: 14px;
+    width: 13px;
+    height: 13px;
     border: none;
     background: none;
     border-radius: 2px;

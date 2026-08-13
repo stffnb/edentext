@@ -123,7 +123,8 @@
 
 <style>
   /* The group centres its controls; a gallery tile is Word's full-height card, so
-     it opts out and fills the band instead. */
+     it opts out and fills the band instead — short of the group label, which a
+     tile edge would otherwise sit straight on top of. */
   .gallery-wrap {
     position: relative;
     display: flex;
@@ -132,6 +133,7 @@
     flex: 1;
     min-width: 0;
     gap: 3px;
+    margin: 2px 0 5px;
   }
 
   /* Scrolls rather than wrapping, so the group keeps the band's fixed height. */

@@ -119,8 +119,8 @@
      picker beside it answer the pointer the same way. */
   .rb-big {
     flex-direction: column;
-    gap: 4px;
-    padding: 4px 7px 6px;
+    gap: 2px;
+    padding: 2px 6px 3px;
   }
 
   .rb-big .rb-face {
@@ -128,7 +128,7 @@
     min-height: 28px;
     flex: 1;
     border-radius: 4px;
-    padding: 3px 4px;
+    padding: 2px 4px;
     margin: 0 -4px;
   }
 
@@ -140,7 +140,7 @@
   .rb-small {
     gap: 5px;
     border-radius: 3px;
-    padding: 3px 8px;
+    padding: 2px 8px;
   }
 
   .rb-icon {
@@ -158,14 +158,17 @@
   .rb-small.active,
   .rb-icon.active { background: var(--w-active); }
 
+  /* Word wraps a two-word label onto two lines; at the default line-height that
+     button alone would set the band's height. */
   .rb-label {
+    line-height: 14px;
     color: inherit;
   }
 
   /* Rides closer to the label than the 4px column gap: the two read as one line. */
   .rb-stack-caret {
     display: flex;
-    height: 10px;
+    height: 8px;
     margin-top: -3px;
     color: var(--w-text-dim);
   }
@@ -197,12 +200,12 @@
      and the caret under it open the menu. Icon, label and caret each get their
      own line — abreast, the caret widens the button by its own width. */
   .rb-split-col { flex-direction: column; }
-  .rb-split-col .rb-big { padding: 3px 7px 0; }
+  .rb-split-col .rb-big { padding: 2px 6px 0; }
 
   .rb-split-col .rb-caret {
     flex-direction: column;
     width: auto;
-    padding: 0 7px 2px;
+    padding: 0 6px 1px;
     border-radius: 0 0 3px 3px;
     color: var(--w-text);
   }

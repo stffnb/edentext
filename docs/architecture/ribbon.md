@@ -46,12 +46,17 @@ so the split is invisible there.
 Ribbon.svelte
 ├─ .ribbon-tabs     File pill · quick access (save, undo, redo) · tabs · contextual tabs
 │                   · spacer · document name · appearance · UI language
-└─ .ribbon-body     the active tab's groups, a fixed --w-ribbon-h (108px) band
+└─ .ribbon-body     the active tab's groups, a fixed --w-ribbon-h (84px) band
 ```
 
 The band's height never changes: it scrolls horizontally with a hidden scrollbar instead of
 collapsing groups into popovers the way Word does when the window narrows. That is the single
 biggest simplification here, and the reason two things below are necessary.
+
+84px is the tallest control in any tab — Table Layout's two-line `Insert above`, 65px — plus the
+group footer and the band's padding, so no tab carries dead space above its buttons. Every metric
+feeding that sum is pinned in px, line-heights included: a ratio hands the band's height to
+whatever font resolves, and the group footers then hang out of the band.
 
 A chevron in the tab strip drops the band entirely, leaving the strip (`odf-editor-ribbon-collapsed`).
 Clicking any tab brings it back — Word instead floats it over the document until the next click
@@ -86,7 +91,7 @@ at every height. A flex row cannot reserve width in part of its height, so it mo
 | `selection.ts` | `saveRange` / `withRange` — a popover steals focus, so the range is replayed before the command |
 | `fontList.svelte.ts` | Recent, web-safe and detected fonts, shared by every font picker |
 | `controls/` | Font family box, font size box, style gallery |
-| `.rb-captioned` (global.css) | Wraps a reused picker standing alone in a group: its trigger grows to the big button's 34px box and 28px glyph, so a group of pickers and a group of buttons are the same size |
+| `.rb-captioned` (global.css) | Wraps a reused picker standing alone in a group: its trigger grows to the big button's 32px box and 28px glyph, so a group of pickers and a group of buttons are the same size |
 | `tabs/` | One file per tab |
 
 Reading what the selection formats is **not** here: `utils/selectionFormat.ts` answers it

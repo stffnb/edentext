@@ -282,7 +282,7 @@
   --w-font: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   /* Body height: three control rows plus the group-label row, and a big button's
      label may take two of them. A tuning knob. */
-  --w-ribbon-h: 108px;
+  --w-ribbon-h: 84px;
 }
 
 /* Word's dark mode: the Fluent dark neutrals, and the accent lightened because
@@ -451,8 +451,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 4px 7px 6px;
+  gap: 2px;
+  padding: 2px 6px 3px;
   border-radius: 4px;
   cursor: pointer;
   --toolbar-btn-size: 28px;
@@ -466,8 +466,8 @@
 .rb-captioned > * { display: flex; }
 
 .rb-captioned :is(.table-trigger, .char-trigger, .dt-trigger, .tsp-trigger, .bp-trigger, .lang-picker) {
-  height: 34px;
-  min-height: 34px;
+  height: 32px;
+  min-height: 32px;
   padding: 0;
   margin: 0;
 }
@@ -475,7 +475,7 @@
 .rb-captioned::after {
   content: '';
   display: block;
-  height: 10px;
+  height: 8px;
   margin-top: -3px;
 }
 
@@ -508,6 +508,7 @@
 .rb-caption {
   font-family: var(--w-font);
   font-size: 12px;
+  line-height: 14px;
   color: var(--w-text);
   white-space: nowrap;
 }
