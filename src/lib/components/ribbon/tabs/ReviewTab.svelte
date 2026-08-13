@@ -8,11 +8,12 @@
   import type { DocumentLanguage } from '../../../storage/documentLanguage';
   import { t } from '../../../i18n/i18n.svelte';
 
-  let { editor, tick, documentLanguage, onLanguage }: {
+  let { editor, tick, documentLanguage, onLanguage, onAutoCorrect }: {
     editor: Editor | null;
     tick: number;
     documentLanguage: DocumentLanguage;
     onLanguage: (code: DocumentLanguage) => void;
+    onAutoCorrect?: () => void;
   } = $props();
 
   let stats = $derived.by<TextStats>(() => {
@@ -60,6 +61,14 @@
       </div>
     {/if}
   </div>
+  <RibbonButton
+    variant="big"
+    icon="autoCorrect"
+    label={t().ribbon.autoCorrect}
+    title={t().autoCorrect.title}
+    disabled={!onAutoCorrect}
+    onclick={() => onAutoCorrect?.()}
+  />
 </RibbonGroup>
 
 <div class="ribbon-sep"></div>

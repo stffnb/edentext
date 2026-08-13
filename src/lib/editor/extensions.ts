@@ -57,6 +57,7 @@ import { ColumnsFlow } from './extensions/columnsFlow';
 import { TableOfContents } from './extensions/tableOfContents';
 import { Note, NoteRef, NoteSection, Notes } from './extensions/notes';
 import { Shortcuts } from './extensions/shortcuts';
+import { AutoCorrect } from './extensions/autoCorrect';
 import { HEADING_LEVELS } from '../export/odt';
 import { styleSheet } from '../styles/sheet.svelte';
 import { noteSettings } from '../storage/notes.svelte';
@@ -182,6 +183,8 @@ export const extensions = [
   PageBreaks,
   FormattingMarks,
   SpellCheck,
+  // Last of the typing extensions: its handleTextInput runs after every input rule.
+  AutoCorrect,
   SearchReplace,
   // Word/LibreOffice key bindings that aren't TipTap defaults; body:true adds the
   // ones the header/footer schema has no commands for (headings, line spacing, fields).

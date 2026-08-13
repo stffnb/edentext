@@ -1,5 +1,6 @@
 import LinkBase from '@tiptap/extension-link';
 import { DEFAULT_SHORTCUTS } from '../shortcuts';
+import { autoCorrect } from '../../storage/autoCorrect.svelte';
 
 // Event the toolbar listens for to open the link dialog (Ctrl/Cmd+K). The extension
 // can't reach Svelte state directly, so it dispatches this on window instead.
@@ -11,6 +12,8 @@ export const OPEN_LINK_DIALOG_EVENT = 'odf-open-link-dialog';
 export const Link = LinkBase.configure({
   openOnClick: false,
   autolink: true,
+  // LibreOffice's AutoCorrect ▸ URL recognition, switchable in its dialog.
+  shouldAutoLink: () => autoCorrect().urls,
   linkOnPaste: true,
   defaultProtocol: 'https',
   HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },

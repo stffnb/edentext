@@ -78,6 +78,8 @@ export const STROKED = {
   toc: ['M2 3h6M2 6.5h5M2 10h6M2 13.5h4', 'M11 3h3M10 6.5h4M11 10h3M10 13.5h4'],
   tocLevels: ['M2.5 3.5h11M4.5 7h9M6.5 10.5h7M8.5 14h5'],
   wordCount: ['M2.5 2.5h11v11h-11z', 'M5 6h6M5 9h4'],
+  // An A with a tick beside it: the letter AutoCorrect fixes, corrected.
+  autoCorrect: ['M1.5 12 5 3.5 8.5 12', 'M2.9 9.2h4.2', 'M10 8.5l2 2 3.5-4.5'],
   ruler: ['M1.5 5.5h13v5h-13z', 'M4 5.5v2.2M6.5 5.5v3M9 5.5v2.2M11.5 5.5v3'],
   zoomIn: ['M7.25 12.5a5.25 5.25 0 1 0 0-10.5 5.25 5.25 0 0 0 0 10.5z', 'M11.2 11.2 14 14', 'M5.25 7.25h4M7.25 5.25v4'],
   zoomOut: ['M7.25 12.5a5.25 5.25 0 1 0 0-10.5 5.25 5.25 0 0 0 0 10.5z', 'M11.2 11.2 14 14', 'M5.25 7.25h4'],

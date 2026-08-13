@@ -35,6 +35,7 @@ All keys share the `edentext-` prefix — a namespace, not a description: on Git
 - **Header/footer:** `edentext-header` / `-footer` (HfDoc), `edentext-hf-distances`.
 - **Styles:** `edentext-styles` — the style registry (`styles/sheet.svelte.ts`).
 - **Document properties:** `edentext-doc-properties` — title/subject/author/keywords/comments (`docProperties.ts`); the key is removed when every field is empty, so a fresh document writes nothing into `meta.xml`.
+- **AutoCorrect:** `edentext-autocorrect` — one flag per rule (`autoCorrect.ts`, reactive singleton in `autoCorrect.svelte.ts`), LibreOffice's defaults (all on).
 - **Notes:** `edentext-notes` — footnote/endnote numbering and the separator (`noteSettings.ts`, reactive singleton in `notes.svelte.ts`); `applyNoteVars` puts the separator on `:root`, where `editor.css` draws it and `pageBreaks.ts` reserves its band.
 
 ## Themes (`theme.ts`, `styles/global.css`)

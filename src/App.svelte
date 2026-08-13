@@ -42,6 +42,7 @@
   import UiLanguagePicker from './lib/components/UiLanguagePicker.svelte';
   import AboutDialog from './lib/components/AboutDialog.svelte';
   import DocPropertiesDialog from './lib/components/DocPropertiesDialog.svelte';
+  import AutoCorrectDialog from './lib/components/AutoCorrectDialog.svelte';
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
   import { t } from './lib/i18n/i18n.svelte';
@@ -151,6 +152,7 @@
   let documentName: string = $state(loadDocName());
   let docProps: DocProperties = $state(loadDocProperties());
   let docPropsOpen = $state(false);
+  let autoCorrectOpen = $state(false);
 
   // Width of the hidden mirror span (below), so the title input grows/shrinks
   // with its text instead of sitting in a fixed-width box.
@@ -897,6 +899,7 @@
       onPrint={handlePrint}
       onAbout={() => (aboutOpen = true)}
       onDocProperties={() => (docPropsOpen = true)}
+      onAutoCorrect={() => (autoCorrectOpen = true)}
     />
   </div>
   {:else}
@@ -1062,6 +1065,10 @@
                 {/if}
               </button>
             {/each}
+            <div class="theme-heading">{t().autoCorrect.title}</div>
+            <button class="theme-option" onclick={() => { themeOpen = false; autoCorrectOpen = true; }} role="menuitem">
+              <span>{t().ribbon.autoCorrect}</span>
+            </button>
             <div class="theme-heading">{t().ribbon.chrome.title}</div>
             <button
               class="theme-option"
@@ -1233,6 +1240,7 @@
   </footer>
 
   <AboutDialog bind:open={aboutOpen} />
+  <AutoCorrectDialog bind:open={autoCorrectOpen} />
   <DocPropertiesDialog bind:open={docPropsOpen} props={docProps} onApply={(p) => { docProps = p; saveDocProperties(p); }} />
   <!-- One instance for every entry point (styles gallery, insert-table menu): the
        callers only say which family to land on. -->
