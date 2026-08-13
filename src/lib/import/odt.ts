@@ -20,6 +20,7 @@ import type { SpacingModel } from '../storage/spacingModel';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import type { HfDoc, HfSet } from '../storage/headerFooter';
+import type { NoteKind, NoteSettings } from '../storage/noteSettings';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -81,6 +82,8 @@ export interface OdtImportResult {
   // The document's named paragraph styles: the file's own (only those it uses, plus
   // their parent chains) merged over the editor's built-ins.
   styles: StyleSheet;
+  // How its footnotes and endnotes are numbered and separated.
+  notes: NoteSettings;
   warnings: string[];
 }
 
@@ -114,6 +117,9 @@ type Ctx = {
   // Bookmark ranges open at this point of the walk, outermost first; a range may end in
   // a later paragraph than it started in, so the set outlives one convertInline call.
   openBookmarks: Set<string>;
+  // Footnotes/endnotes in anchor order: the file stores each note's text at its anchor,
+  // the editor keeps them in one section at the document end (notes.ts).
+  notes: { id: string; kind: NoteKind; label: string | null; text: string; content: Node[] }[];
 };
 
 // Read a Pictures/ entry into a base64 data-URI; null when it's missing or in a format
@@ -585,7 +591,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, masterPages: [], masterBlocks: new Map(), openBookmarks: new Set() };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, masterPages: [], masterBlocks: new Map(), openBookmarks: new Set(), notes: [] };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -597,6 +603,16 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     const wrapped: Node[] = [];
     pushColumnRuns(blocks, pageCols, wrapped, ctx);
     blocks = wrapped;
+  }
+
+  // The notes the walk collected, in anchor order, as the section the editor keeps at
+  // the document end. Empty when the file has none, so nothing is added.
+  if (ctx.notes.length) {
+    blocks.push({ type: 'noteSection', content: ctx.notes.map((n) => ({
+      type: 'note',
+      attrs: { id: n.id, kind: n.kind, label: n.label, text: n.text },
+      ...(n.content.length ? { content: n.content } : {}),
+    })) });
   }
 
   // Page geometry — margins, format, and the band a header/footer reserves — is
@@ -672,6 +688,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     language,
     fonts,
     styles: collectStyleSheet(resolver, ctx),
+    notes: resolver.noteSettings(),
     warnings: [...warnings],
   };
 }
@@ -1520,6 +1537,28 @@ function convertDateTimeField(e: Element, ctx: Ctx): Node | null {
   return { type: 'dateTimeField', attrs: { kind, format, fixed, value: fieldValue(kind, raw) } };
 }
 
+// <text:note> → the anchor node, with the note's own text collected into ctx for the
+// section the document end gets. A body of several paragraphs is flattened to hard
+// breaks — the editor's note holds one paragraph, as convertHfZone does for a zone.
+function convertNote(e: Element, ctx: Ctx, defaults: BlockDefaults): Node | null {
+  const kind: NoteKind = e.getAttributeNS(NS.text, 'note-class') === 'endnote' ? 'endnote' : 'footnote';
+  const citation = e.getElementsByTagNameNS(NS.text, 'note-citation')[0] ?? null;
+  const label = citation?.getAttributeNS(NS.text, 'label') || null;
+  const shown = label ?? (citation?.textContent ?? '').trim();
+  const body = e.getElementsByTagNameNS(NS.text, 'note-body')[0] ?? null;
+
+  const content: Node[] = [];
+  for (const para of Array.from(body?.children ?? [])) {
+    if (para.localName !== 'p' && para.localName !== 'h') continue;
+    if (content.length) content.push({ type: 'hardBreak' });
+    content.push(...convertInline(para, ctx, {}, defaults));
+  }
+  // The file's own id is unique within it, so it is the anchor's id too.
+  const id = e.getAttributeNS(NS.text, 'id') || `${kind}${ctx.notes.length + 1}`;
+  ctx.notes.push({ id, kind, label, text: shown, content });
+  return { type: 'noteRef', attrs: { id, kind, text: shown } };
+}
+
 // A number style with any calendar token is a date style; hours/minutes → time; else null.
 function numberStyleKind(tokens: Token[]): 'date' | 'time' | null {
   if (tokens.some(t => t.t === 'year' || t.t === 'month' || t.t === 'day' || t.t === 'weekday')) return 'date';
@@ -1607,9 +1646,11 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
             walk(e, props, href || linkHref);
             continue;
           }
-          case 'note':
-            ctx.warnings.add('Footnotes and endnotes were removed');
+          case 'note': {
+            const note = convertNote(e, ctx, defaults);
+            if (note) out.push(note);
             continue;
+          }
           case 'bookmark-start':
           case 'bookmark-end': {
             // A named range → a bookmark mark on the text it covers. A point bookmark

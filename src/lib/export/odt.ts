@@ -6,6 +6,7 @@ import type { SpacingModel } from '../storage/spacingModel';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
+import { DEFAULT_NOTE_SETTINGS, NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteSettings } from '../storage/noteSettings';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
@@ -161,6 +162,11 @@ const XRF = '\uE015';
 // Sentinel wrapping a header/footer chapter field (CHP<level>CHP<name>CHP);
 // applyHfPostProcess rewrites it to <text:chapter> in styles.xml. U+E016.
 const CHP = '\uE016';
+
+// Sentinels for footnotes/endnotes (notes.ts): FNT A{i} FNT marks the anchor in the
+// running text, FNT B{i} FNT opens the note's own hoisted paragraph. applyNotes cuts
+// the body out and splices it into a <text:note> at the anchor. U+E017.
+const FNT = '\uE017';
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
@@ -630,6 +636,59 @@ function replaceTextBoxes(doc: TiptapNode, boxes: TextBoxExport[]): TiptapNode {
     content.push(child);
   }
   return { ...doc, content };
+}
+
+// One footnote/endnote, collected by replaceNotes and emitted by applyNotes.
+type NoteExport = { kind: 'footnote' | 'endnote'; citation: string; label: string | null };
+
+// Anchors become an FNT A{i} sentinel run in the running text; the note section is
+// dissolved and each note re-emitted as its own top-level paragraph opening with an
+// FNT B{i} sentinel. Hoisted like a text box, so the note text rides every existing
+// pass — marks, character styles, links, bookmarks, fields and formulas all included.
+function replaceNotes(doc: TiptapNode, notes: NoteExport[]): TiptapNode {
+  const bodies = new Map<string, { content: TiptapNode[]; label: string | null }>();
+  const body: TiptapNode[] = [];
+  for (const child of doc.content ?? []) {
+    if (child.type !== 'noteSection') { body.push(child); continue; }
+    for (const note of child.content ?? []) {
+      const a = note.attrs ?? {};
+      bodies.set(String(a.id ?? ''), {
+        content: note.content ?? [],
+        label: typeof a.label === 'string' && a.label ? a.label : null,
+      });
+    }
+  }
+
+  // Anchor order is the numbering order, so it is also the index order.
+  const order: string[] = [];
+  const swapRefs = (node: TiptapNode): TiptapNode => {
+    if (!node.content?.length) return node;
+    return {
+      ...node,
+      content: node.content.map((child) => {
+        if (child.type !== 'noteRef') return swapRefs(child);
+        const a = child.attrs ?? {};
+        const id = String(a.id ?? '');
+        const i = notes.length;
+        order.push(id);
+        notes.push({
+          kind: a.kind === 'endnote' ? 'endnote' : 'footnote',
+          citation: String(a.text ?? ''),
+          label: bodies.get(id)?.label ?? null,
+        });
+        return { type: 'text', text: `${FNT}A${i}${FNT}` };
+      }),
+    };
+  };
+
+  const hoisted = body.map(swapRefs);
+  order.forEach((id, i) => {
+    hoisted.push({
+      type: 'paragraph',
+      content: [{ type: 'text', text: `${FNT}B${i}${FNT}` }, ...(bodies.get(id)?.content ?? [])],
+    });
+  });
+  return { ...doc, content: hoisted };
 }
 
 // A multi-column section's geometry, collected by replaceColumns.
@@ -2145,7 +2204,7 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
 // Rewrite styles.xml to match the editor's preview: default font Liberation Serif →
 // Times New Roman (metric-identical; see EXPORT_FONT), and Heading_20_1/2/3 sizes &
 // margins → the editor's values (odf-kit's defaults are larger; HEADING_STYLE_OVERRIDES).
-function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, mirrored = false, rtl = false): Uint8Array {
+function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, mirrored = false, rtl = false, notes: NoteSettings = DEFAULT_NOTE_SETTINGS): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
   if (!stylesBytes) return odtBytes;
@@ -2194,7 +2253,14 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
   // that declares none falls back to ODF's own 2cm, which is not what the editor shows
   // (measured — LibreOffice puts a bare A⇥X at 2cm, not at its UI default of 1.25).
   styles = styles.replace('<office:styles>', '<office:styles>'
-    + `<style:default-style style:family="paragraph"><style:paragraph-properties style:tab-stop-distance="${round3(tabIntervalCm)}cm"/></style:default-style>`);
+    + `<style:default-style style:family="paragraph"><style:paragraph-properties style:tab-stop-distance="${round3(tabIntervalCm)}cm"/></style:default-style>`
+    + notesStyles() + notesConfiguration(notes));
+
+  // The separator belongs to the page layout, beside the margins it is measured against.
+  styles = styles.replace(
+    /<style:page-layout-properties\b[^>]*\/>/,
+    (props) => `${props.slice(0, -2)}>${footnoteSepXml(notes.separator)}</style:page-layout-properties>`,
+  );
 
   // odf-kit's Standard style carries fo:margin-bottom="0.212cm", but the editor (like
   // LibreOffice and Word) has no paragraph spacing by default — every paragraph and list
@@ -3222,6 +3288,55 @@ function applyColumns(odtBytes: Uint8Array, cols: ColumnsExport[]): Uint8Array {
 // Minted automatic paragraph style for a TOC entry level: per-level left indent and a
 // right tab stop at the text width with a dotted leader (so the page number right-aligns
 // with dots, matching the on-screen TOC and Word/LibreOffice).
+// The note styles LibreOffice ships, written verbatim so a re-save changes nothing:
+// Footnote/Endnote at 10pt with a 0.6cm hanging indent, and the two character styles
+// its notes-configuration points at (the anchor raised, the symbol plain).
+function notesStyles(): string {
+  const para = (name: string) =>
+    `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="Standard" style:class="extra">`
+    + `<style:paragraph-properties fo:margin-left="${NOTE_INDENT_CM}cm" fo:text-indent="-${NOTE_INDENT_CM}cm" style:auto-text-indent="false"/>`
+    + `<style:text-properties fo:font-size="${NOTE_FONT_SIZE_PT}pt" style:font-size-asian="${NOTE_FONT_SIZE_PT}pt" style:font-size-complex="${NOTE_FONT_SIZE_PT}pt"/>`
+    + '</style:style>';
+  const anchor = (name: string, display: string) =>
+    `<style:style style:name="${name}" style:display-name="${display}" style:family="text">`
+    + '<style:text-properties style:text-position="super 58%"/></style:style>';
+  return para('Footnote') + para('Endnote')
+    + `<style:style style:name="Footnote_20_Symbol" style:display-name="Footnote Symbol" style:family="text"/>`
+    + `<style:style style:name="Endnote_20_Symbol" style:display-name="Endnote Symbol" style:family="text"/>`
+    + anchor('Footnote_20_anchor', 'Footnote anchor')
+    + anchor('Endnote_20_anchor', 'Endnote anchor');
+}
+
+// <text:notes-configuration> per class. ODF counts start-value from 0, so the first
+// note of a class carries startAt - 1.
+function notesConfiguration(settings: NoteSettings): string {
+  const one = (kind: NoteKind) => {
+    const s = settings[kind];
+    const foot = kind === 'footnote';
+    const prefix = s.prefix ? ` style:num-prefix="${escapeXml(s.prefix)}"` : '';
+    const suffix = s.suffix ? ` style:num-suffix="${escapeXml(s.suffix)}"` : '';
+    return `<text:notes-configuration text:note-class="${kind}"`
+      + ` text:citation-style-name="${odfStyleName(s.citationStyle)}"`
+      + ` text:citation-body-style-name="${foot ? 'Footnote_20_anchor' : 'Endnote_20_anchor'}"`
+      + ` text:default-style-name="${odfStyleName(s.bodyStyle)}"`
+      + ` style:num-format="${s.numFormat}"${prefix}${suffix}`
+      + ` text:start-value="${Math.max(0, s.startAt - 1)}"`
+      + (foot ? ` text:footnotes-position="${s.position}" text:start-numbering-at="${s.restart}"` : '')
+      + '/>';
+  };
+  return one('footnote') + one('endnote');
+}
+
+// <style:footnote-sep> lives inside the page layout's own properties, not the styles.
+function footnoteSepXml(sep: NoteSettings['separator']): string {
+  const round3 = (v: number) => Math.round(v * 1000) / 1000;
+  return `<style:footnote-sep style:width="${round3((sep.weightPt / 72) * 2.54)}cm"`
+    + ` style:distance-before-sep="${round3(sep.spaceAboveCm)}cm"`
+    + ` style:distance-after-sep="${round3(sep.spaceBelowCm)}cm"`
+    + ` style:line-style="solid" style:adjustment="${sep.align}"`
+    + ` style:rel-width="${round3(sep.relWidthPercent)}%" style:color="${sep.color}"/>`;
+}
+
 function contentsEntryStyle(name: string, level: number, tabPosCm: number): string {
   const indentCm = level === 2 ? 0.6 : level === 3 ? 1.2 : 0;
   const margin = indentCm > 0 ? ` fo:margin-left="${indentCm}cm"` : '';
@@ -3308,6 +3423,54 @@ function applyBookmarks(odtBytes: Uint8Array, refs: CrossRefExport[]): Uint8Arra
   return rezipOdt(files);
 }
 
+// Cut each hoisted note paragraph out of content.xml and splice its runs into a
+// <text:note> at the anchor sentinel. Runs last of the content.xml passes, so the note
+// text carries everything the earlier ones resolved inside it.
+function applyNotes(odtBytes: Uint8Array, notes: NoteExport[]): Uint8Array {
+  if (!notes.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  if (!content.includes(FNT)) return odtBytes;
+
+  // The note's runs, taken out of the paragraph the hoist gave it. A wrapper span may
+  // hold the sentinel, so it is cut by string and the empty remains are swept after.
+  const bodies: string[] = notes.map((_note, i) => {
+    const open = `${FNT}B${i}${FNT}`;
+    const at = content.indexOf(open);
+    if (at < 0) return '';
+    const start = content.lastIndexOf('<text:p', at);
+    const end = content.indexOf('</text:p>', at);
+    if (start < 0 || end < 0) return '';
+    const block = content.slice(start, end + '</text:p>'.length);
+    content = content.slice(0, start) + content.slice(end + '</text:p>'.length);
+    return block
+      .replace(/^<text:p\b[^>]*>/, '')
+      .replace(/<\/text:p>$/, '')
+      .replace(open, '')
+      .replace(/<text:span\b[^>]*\/>|<text:span\b[^>]*><\/text:span>/g, '');
+  });
+
+  content = content.replace(new RegExp(`${FNT}A(\\d+)${FNT}`, 'g'), (_m, idx: string) => {
+    const i = Number(idx);
+    const note = notes[i];
+    if (!note) return '';
+    const endnote = note.kind === 'endnote';
+    const label = note.label ? ` text:label="${escapeXml(note.label)}"` : '';
+    return `<text:note text:id="${endnote ? 'edn' : 'ftn'}${i + 1}" text:note-class="${note.kind}">`
+      + `<text:note-citation${label}>${escapeXml(note.citation)}</text:note-citation>`
+      + `<text:note-body><text:p text:style-name="${endnote ? 'Endnote' : 'Footnote'}">${bodies[i]}</text:p></text:note-body>`
+      + '</text:note>';
+  });
+  // Defensive: strip any sentinel the passes above left behind.
+  content = content.split(FNT).join('');
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 function applyToc(odtBytes: Uint8Array, tocs: TocExport[], contentWidthCm: number): Uint8Array {
   if (!tocs.length) return odtBytes;
   const files = unzipSync(odtBytes);
@@ -3362,7 +3525,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS): Promise<Uint8Array> {
   // Images become IMG sentinels before serialization; applyImages resolves them and writes
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
@@ -3374,7 +3537,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const dateFields: DateTimeFieldExport[] = [];
   const formulas: FormulaExport[] = [];
   const crossRefs: CrossRefExport[] = [];
-  const sentinels = replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns)))), images), dateFields), formulas), crossRefs);
+  const notes: NoteExport[] = [];
+  const sentinels = replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs);
   const raw = markTextEffects(bakeListCharStyles(sentinels, styles));
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
@@ -3578,14 +3742,17 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withTextBoxes = applyTextBoxes(withFormulas, textBoxes);
   const withColumns = applyColumns(withTextBoxes, columns);
   const withBookmarks = applyBookmarks(withColumns, crossRefs);
-  const withToc = applyToc(withBookmarks, tocs, contentWidthCm);
+  // After every other content.xml pass: the note's own runs are hoisted into the body,
+  // so they must be fully resolved before they are cut out and moved into <text:note>.
+  const withNotes = applyNotes(withBookmarks, notes);
+  const withToc = applyToc(withNotes, tocs, contentWidthCm);
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withParaBoxes = applyParagraphBoxes(withEmptyFontSizes);
   // Effects first: applyCharacterStyles then clones the style that already carries them.
   const withNamedStyles = applyCharacterStyles(applyTextEffects(applyParagraphStyles(withParaBoxes)));
   const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
-  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm, margins.mirrored === true, rtl);
+  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm, margins.mirrored === true, rtl, notesSettings);
   const withHf = applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.

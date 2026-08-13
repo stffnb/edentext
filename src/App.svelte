@@ -29,6 +29,8 @@
   import { loadPageRtl, savePageRtl } from './lib/storage/writingMode';
   import { loadPageFormat, savePageFormat, type PageFormat } from './lib/storage/pageFormat';
   import { setStyleSheet, styleSheet } from './lib/styles/sheet.svelte';
+  import { noteSettings, setNoteSettings } from './lib/storage/notes.svelte';
+  import { DEFAULT_NOTE_SETTINGS } from './lib/storage/noteSettings';
   import { builtinStyleSheet, type StyleFamily } from './lib/styles/styleSheet';
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, loadExtraHfSections, saveExtraHfSections, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
@@ -478,8 +480,9 @@
     extraHfSections = [];
     documentName = '';
     fileHandle = null;
-    // Styles live in the document, so a new one starts from the built-ins
+    // Styles and note settings live in the document, so a new one starts from the built-ins
     setStyleSheet(builtinStyleSheet());
+    setNoteSettings(DEFAULT_NOTE_SETTINGS);
     clearEmbeddedFonts();
     void clearEmbeddedFontStore();
     editor.commands.focus();
@@ -541,6 +544,7 @@
       // styles are not stored in the file (ODF has no banding), so the registry survives —
       // an imported table finds its style again by name.
       setStyleSheet({ ...result.styles, table: styleSheet().table });
+      setNoteSettings(result.notes);
       // Adopt header/footer + first-page variants (null clears the zone); end any edit.
       hfActive = null;
       headerDoc = result.header;
@@ -612,7 +616,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings());
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -628,7 +632,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings());
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;

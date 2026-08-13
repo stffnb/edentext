@@ -3,6 +3,7 @@ import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { ODF_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { normalizeLeader, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
+import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteSettings } from '../storage/noteSettings';
 
 // Resolves ODF style indirection for the importer: producers (our export, LibreOffice,
 // Word) spread formatting across named/automatic styles and parent-style-name chains.
@@ -488,6 +489,53 @@ export class StyleResolver {
     }
     const gapCm = Math.min(5, Math.max(0, gap ?? 0.5));
     return { count, gapCm: Math.round(gapCm * 100) / 100 };
+  }
+
+  // <text:notes-configuration> per class, plus <style:footnote-sep> off the page
+  // layout. Everything the file leaves out keeps the editor's (= LibreOffice's) default.
+  noteSettings(): NoteSettings {
+    const doc = this.stylesDoc;
+    if (!doc) return DEFAULT_NOTE_SETTINGS;
+    const out: NoteSettings = {
+      footnote: { ...DEFAULT_NOTE_SETTINGS.footnote },
+      endnote: { ...DEFAULT_NOTE_SETTINGS.endnote },
+      separator: { ...DEFAULT_NOTE_SETTINGS.separator },
+    };
+    for (const el of Array.from(doc.getElementsByTagNameNS(NS.text, 'notes-configuration'))) {
+      const kind: NoteKind = el.getAttributeNS(NS.text, 'note-class') === 'endnote' ? 'endnote' : 'footnote';
+      const cls = out[kind];
+      const fmt = el.getAttributeNS(NS.style, 'num-format');
+      if (fmt === '1' || fmt === 'a' || fmt === 'A' || fmt === 'i' || fmt === 'I') cls.numFormat = fmt;
+      // ODF counts from 0, the dialog from the number the first note shows.
+      const start = Number(el.getAttributeNS(NS.text, 'start-value'));
+      if (Number.isFinite(start)) cls.startAt = Math.max(1, start + 1);
+      const restart = el.getAttributeNS(NS.text, 'start-numbering-at');
+      if (restart === 'page' || restart === 'chapter' || restart === 'document') cls.restart = restart;
+      if (el.getAttributeNS(NS.text, 'footnotes-position') === 'document') cls.position = 'document';
+      cls.prefix = el.getAttributeNS(NS.style, 'num-prefix') ?? '';
+      cls.suffix = el.getAttributeNS(NS.style, 'num-suffix') ?? '';
+      const body = el.getAttributeNS(NS.text, 'default-style-name');
+      if (body) cls.bodyStyle = this.displayNames.get(body) ?? body.replace(/_20_/g, ' ');
+      const cite = el.getAttributeNS(NS.text, 'citation-style-name');
+      if (cite) cls.citationStyle = this.displayNames.get(cite) ?? cite.replace(/_20_/g, ' ');
+    }
+    const sep = this.pageLayoutEl()?.getElementsByTagNameNS(NS.style, 'footnote-sep')[0];
+    if (sep) {
+      const num = (v: string | null) => (v == null ? null : lengthToCm(v));
+      const width = num(sep.getAttributeNS(NS.style, 'width'));
+      if (width != null) out.separator.weightPt = Math.round((width / 2.54) * 72 * 100) / 100;
+      const above = num(sep.getAttributeNS(NS.style, 'distance-before-sep'));
+      if (above != null) out.separator.spaceAboveCm = Math.round(above * 1000) / 1000;
+      const below = num(sep.getAttributeNS(NS.style, 'distance-after-sep'));
+      if (below != null) out.separator.spaceBelowCm = Math.round(below * 1000) / 1000;
+      const rel = parseFloat(sep.getAttributeNS(NS.style, 'rel-width') ?? '');
+      if (Number.isFinite(rel)) out.separator.relWidthPercent = rel;
+      const align = sep.getAttributeNS(NS.style, 'adjustment');
+      if (align === 'left' || align === 'center' || align === 'right') out.separator.align = align;
+      const color = sep.getAttributeNS(NS.style, 'color');
+      if (color && /^#[0-9a-fA-F]{6}$/.test(color)) out.separator.color = color;
+    }
+    return out;
   }
 
   // The master page governing the document (prefer "Standard", else the first), or a

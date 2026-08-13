@@ -637,7 +637,6 @@ const de: Messages = {
     hfFlattened: 'Listen/Tabellen in Kopf- oder Fußzeilen wurden in Text umgewandelt',
     textBoxFlattened: 'In Tabellenzellen oder anderen Textfeldern verschachtelte Textfelder wurden aufgelöst',
     nestedTables: 'Verschachtelte Tabellen wurden in Absätze umgewandelt',
-    footnotes: 'Fuß- und Endnoten wurden entfernt',
     comments: 'Kommentare wurden entfernt',
     missingFonts: (fonts) => `Diese Schriftarten sind nicht installiert und wurden durch Ersatzschriften dargestellt: ${fonts}`,
   },

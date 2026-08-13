@@ -18,6 +18,7 @@ import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { clampTabInterval, DOCX_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
+import { DEFAULT_NOTE_SETTINGS } from '../storage/noteSettings';
 import { applyUniformRunFont, pairAlignedFrames, sinkOffsetFrames, type OdtImportResult } from './odt';
 import { chartDataUrl } from './chart';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
@@ -187,6 +188,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   return {
     content: { type: 'doc', content: blocks },
     styles: collectStyleSheet(ctx),
+    notes: DEFAULT_NOTE_SETTINGS,
     margins: withMirror(first.margins ?? sect.margins, mirrored),
     // A right-to-left section (w:bidi): the columns fill from the right.
     rtl: !!finalSectPr && (() => { const b = fc(finalSectPr, 'bidi'); return !!b && onOff(b); })(),

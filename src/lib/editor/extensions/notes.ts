@@ -370,6 +370,11 @@ function syncNumbers(state: EditorState, settings: NoteSettings): Transaction | 
   const refs = collectNoteRefs(state.doc);
   const labels = noteLabels(refs, settings);
   const section = findNoteSection(state.doc);
+  // A note the file numbered by hand keeps its own mark, and the anchor shows the same
+  // one — the two are one mark drawn twice, not two.
+  section?.node.forEach((child) => {
+    if (child.attrs.label) labels.set(String(child.attrs.id ?? ''), String(child.attrs.label));
+  });
   const tr = state.tr;
   let changed = false;
 
@@ -380,7 +385,7 @@ function syncNumbers(state: EditorState, settings: NoteSettings): Transaction | 
     changed = true;
   }
   section?.node.forEach((child, offset) => {
-    const own = child.attrs.label ? String(child.attrs.label) : labels.get(String(child.attrs.id ?? '')) ?? '';
+    const own = labels.get(String(child.attrs.id ?? '')) ?? '';
     if (child.attrs.text === own) return;
     tr.setNodeAttribute(section.pos + 1 + offset, 'text', own);
     changed = true;

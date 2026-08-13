@@ -643,7 +643,6 @@ const en = {
     hfFlattened: 'Lists/tables in headers or footers were flattened to text',
     textBoxFlattened: 'Text boxes nested in table cells or other text boxes were flattened',
     nestedTables: 'Nested tables were flattened to paragraphs',
-    footnotes: 'Footnotes and endnotes were removed',
     comments: 'Comments were removed',
     missingFonts: (fonts: string) => `These fonts aren't installed and were shown with a substitute: ${fonts}`,
   },

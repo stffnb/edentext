@@ -401,6 +401,53 @@ describe('Leg 1a2b: formulas (embedded ODF formula objects)', () => {
   });
 });
 
+describe('Leg 1a2c: footnotes and endnotes', () => {
+  const REF = (id: string, kind: string, text: string): N =>
+    ({ type: 'noteRef', attrs: { id, kind, text } });
+  const notesDoc = (): N => ({ type: 'doc', content: [
+    P(null, T('Body one'), REF('a', 'footnote', '1'), T(' and on.')),
+    P(null, T('Body two'), REF('b', 'endnote', 'i'), T(' ends.')),
+    { type: 'noteSection', content: [
+      { type: 'note', attrs: { id: 'a', kind: 'footnote', label: null, text: '1' },
+        content: [T('The footnote, with '), T('bold', { type: 'bold' }), T(' inside.')] },
+      { type: 'note', attrs: { id: 'b', kind: 'endnote', label: null, text: 'i' },
+        content: [T('The endnote.')] },
+    ] },
+  ] });
+
+  it('writes text:note at the anchor and reads it back', async () => {
+    const bytes = await buildOdt(notesDoc(), margins, 'portrait');
+    const files = unzipSync(bytes);
+    const content = strFromU8(files['content.xml']);
+    check('the footnote sits inside the body paragraph', /Body one<text:note text:id="ftn1" text:note-class="footnote">/.test(content), content.match(/<text:note[^>]*>/g));
+    check('the endnote carries its own class', /text:note-class="endnote"/.test(content), content.match(/<text:note[^>]*>/g));
+    check('each note keeps its citation', /<text:note-citation>1<\/text:note-citation>/.test(content) && /<text:note-citation>i<\/text:note-citation>/.test(content), content.match(/<text:note-citation[^>]*>[^<]*</g));
+    check('the note body is a Footnote-styled paragraph', /<text:note-body><text:p text:style-name="Footnote">/.test(content), content.match(/<text:note-body>[\s\S]{0,80}/g));
+    check('run formatting inside the note survives', /The footnote, with <text:span[^>]*>bold<\/text:span>/.test(content), content.match(/The footnote[^<]*(<[^>]*>[^<]*){0,4}/g));
+    check('no hoisted note paragraph is left behind', !content.includes('\uE017'), content.match(/.\uE017./g));
+
+    const styles = strFromU8(files['styles.xml']);
+    check('both note classes are configured', /<text:notes-configuration text:note-class="footnote"/.test(styles) && /<text:notes-configuration text:note-class="endnote"/.test(styles), styles.match(/<text:notes-configuration[^>]*>/g));
+    check('footnotes are numbered document-wide, as LibreOffice does', /text:footnotes-position="page" text:start-numbering-at="document"/.test(styles), styles.match(/<text:notes-configuration text:note-class="footnote"[^>]*>/g));
+    check('endnotes keep their roman format', /text:note-class="endnote"[^>]*style:num-format="i"/.test(styles), styles.match(/<text:notes-configuration text:note-class="endnote"[^>]*>/g));
+    check('the Footnote paragraph style is written out', /<style:style style:name="Footnote" style:family="paragraph"/.test(styles), null);
+    check('the separator rides the page layout', /<style:footnote-sep [^>]*style:rel-width="25%"/.test(styles), styles.match(/<style:footnote-sep[^>]*>/g));
+
+    const res = importOdt(bytes);
+    const refs: N[] = [];
+    (function walk(n: N) { if (n.type === 'noteRef') refs.push(n); for (const c of n.content ?? []) walk(c); })(res.content);
+    const section = (res.content.content ?? []).find((n: N) => n.type === 'noteSection');
+    check('both anchors come back', refs.length === 2, refs.map((r) => r.attrs));
+    check('their classes survive', refs[0]?.attrs?.kind === 'footnote' && refs[1]?.attrs?.kind === 'endnote', refs.map((r) => r.attrs?.kind));
+    check('a note section is rebuilt', (section?.content ?? []).length === 2, section?.content?.length);
+    check('each anchor points at its own note', refs[0]?.attrs?.id === section?.content?.[0]?.attrs?.id && refs[1]?.attrs?.id === section?.content?.[1]?.attrs?.id, [refs.map((r) => r.attrs?.id), section?.content?.map((n: N) => n.attrs?.id)]);
+    check('the note text comes back', JSON.stringify(section).includes('The footnote, with'), JSON.stringify(section)?.slice(0, 200));
+    check('bold inside the note survives', JSON.stringify(section).includes('"bold"'), JSON.stringify(section)?.slice(0, 300));
+    check('the body text is untouched', JSON.stringify(res.content).includes('Body one') && JSON.stringify(res.content).includes('and on.'), null);
+    check('no note-removed warning is raised', !res.warnings.some((w: string) => /[Ff]ootnote/.test(w)), res.warnings);
+  });
+});
+
 describe('Leg 1a3: continued ordered-list start value', () => {
   it('round-trips a start > 1 (odf-kit drops it) via text:start-value', async () => {
     const olist = (start: number | null, t: string): N => ({
@@ -796,9 +843,10 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: Mono style keeps its size', monoStyle?.text.fontSizePt === 10, monoStyle);
     check('foreign: no direct formatting on the block', !mono.content![0].marks, mono.content![0]);
 
-    check('foreign: image imported, footnote dropped, text kept',
-      c[4].content!.length === 2 && c[4].content![0].text === 'img:' &&
-      c[4].content![1].type === 'image' && c[4].content![1].attrs?.src?.startsWith('data:image/png;base64,'), c[4]);
+    check('foreign: image and footnote anchor imported, text kept',
+      c[4].content!.length === 3 && c[4].content![0].text === 'img:' &&
+      c[4].content![1].type === 'image' && c[4].content![1].attrs?.src?.startsWith('data:image/png;base64,') &&
+      c[4].content![2].type === 'noteRef', c[4]);
 
     const list = c[5];
     check('foreign: list → lower-roman-paren, start 3', list.type === 'orderedList' && list.attrs?.listStyleType === 'lower-roman-paren' && list.attrs?.start === 3, list.attrs);
@@ -817,9 +865,10 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: spanned cell colwidth [500,1000]', JSON.stringify(row.content![0].attrs?.colwidth) === JSON.stringify([500, 1000]), row.content![0].attrs);
     check('foreign: min-row-height 2cm → 76px', row.attrs?.rowHeight === 76, row.attrs);
 
-    const expectWarn = ['Footnotes and endnotes were removed'];
-    check('foreign: warnings reported', expectWarn.every(w => f.warnings.includes(w)), f.warnings);
+    const notes = c.find((n: N) => n.type === 'noteSection');
+    check('foreign: the note body follows at the document end', notes?.content?.[0]?.content?.[0]?.text === 'note body', notes);
     check('foreign: no hyperlink warning (now round-tripped)', !f.warnings.includes('Hyperlinks were converted to plain text'), f.warnings);
+    check('foreign: no note warning (now round-tripped)', !f.warnings.some((w: string) => /[Ff]ootnote/.test(w)), f.warnings);
   });
 
   it('resolves a drawn shape\'s fill/stroke inherited from the default graphic style', () => {

@@ -326,4 +326,40 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     // LibreOffice re-evaluates the fields on load, so the shown values are its own.
     check('LO bookmarks: the text reference resolves to the caption', refs[0]?.attrs?.text === 'Figure 1', refs[0]?.attrs?.text);
   });
+
+  it('survives a `soffice` re-save of footnotes and endnotes', { timeout: 180000 }, async () => {
+    const doc: N = { type: 'doc', content: [
+      P(null, T('Body one'), { type: 'noteRef', attrs: { id: 'a', kind: 'footnote', text: '1' } }, T(' and on.')),
+      P(null, T('Body two'), { type: 'noteRef', attrs: { id: 'b', kind: 'endnote', text: 'i' } }, T(' ends.')),
+      { type: 'noteSection', content: [
+        { type: 'note', attrs: { id: 'a', kind: 'footnote', label: null, text: '1' },
+          content: [T('The footnote, with '), T('bold', { type: 'bold' }), T(' inside.')] },
+        { type: 'note', attrs: { id: 'b', kind: 'endnote', label: null, text: 'i' },
+          content: [T('The endnote.')] },
+      ] },
+    ] };
+    mkdirSync('/tmp/lo-rt', { recursive: true });
+    writeFileSync('/tmp/lo-rt/note.odt', await buildOdt(doc, margins, 'portrait'));
+    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/noteout /tmp/lo-rt/note.odt', { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/noteout/note.odt'));
+    const files = unzipSync(resaved);
+    const xml = strFromU8(files['content.xml']);
+
+    // LibreOffice drops a note it cannot parse, so surviving its re-save is the proof
+    // that the anchor, the citation and the body are where the format wants them.
+    check('LO notes: both classes survive', /text:note-class="footnote"/.test(xml) && /text:note-class="endnote"/.test(xml), xml.match(/<text:note [^>]*>/g));
+    check('LO notes: the body keeps the Footnote style', /<text:note-body><text:p text:style-name="Footnote"/.test(xml), xml.match(/<text:note-body>[\s\S]{0,60}/g));
+    const styles = strFromU8(files['styles.xml']);
+    check('LO notes: it keeps our numbering configuration', /text:note-class="endnote"[^>]*style:num-format="i"/.test(styles), styles.match(/<text:notes-configuration[^>]*>/g));
+
+    const res = importOdt(resaved);
+    const refs: N[] = [];
+    (function walk(n: N) { if (n.type === 'noteRef') refs.push(n); for (const c of n.content ?? []) walk(c); })(res.content);
+    const section = (res.content.content ?? []).find((n: N) => n.type === 'noteSection');
+    check('LO notes: both anchors come back', refs.length === 2, refs.map((r) => r.attrs));
+    check('LO notes: their classes survive', refs.map((r) => r.attrs.kind).join(',') === 'footnote,endnote', refs.map((r) => r.attrs.kind));
+    check('LO notes: each anchor still points at its own note', refs[0]?.attrs?.id === section?.content?.[0]?.attrs?.id, [refs.map((r) => r.attrs.id), section?.content?.map((n: N) => n.attrs.id)]);
+    check('LO notes: the note text comes back', JSON.stringify(section).includes('The footnote, with'), JSON.stringify(section)?.slice(0, 200));
+    check('LO notes: bold inside the note survives', JSON.stringify(section).includes('"bold"'), JSON.stringify(section)?.slice(0, 300));
+  });
 });
