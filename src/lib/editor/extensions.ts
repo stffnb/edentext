@@ -55,13 +55,15 @@ import { TextBox } from './extensions/textBox';
 import { Columns } from './extensions/columns';
 import { ColumnsFlow } from './extensions/columnsFlow';
 import { TableOfContents } from './extensions/tableOfContents';
+import { Note, NoteRef, NoteSection, Notes } from './extensions/notes';
 import { Shortcuts } from './extensions/shortcuts';
 import { styleSheet } from '../styles/sheet.svelte';
+import { noteSettings } from '../storage/notes.svelte';
 
 export const extensions = [
   // textBox and columns have their own groups so only the document (not
-  // cells/lists/boxes) admits them.
-  Document.extend({ content: '(block | textBox | columns)+' }),
+  // cells/lists/boxes) admits them; the note section is last or nowhere.
+  Document.extend({ content: '(block | textBox | columns)+ noteSection?' }),
   Paragraph,
   Text,
   Bold,
@@ -111,6 +113,13 @@ export const extensions = [
   // Generated table of contents from headings; round-trips to ODF
   // <text:table-of-content> (export/odt.ts, import/odt.ts) and a DOCX TOC field.
   TableOfContents,
+  // Footnotes and endnotes: the anchor rides the text, the note text lives in the one
+  // noteSection at the document end. pageBreaks.ts lifts a footnote to the foot of its
+  // anchor's page. Round-trips to ODF <text:note> and DOCX word/footnotes.xml.
+  NoteRef,
+  Note,
+  NoteSection,
+  Notes.configure({ settings: () => noteSettings() }),
   LineHeight,
   ParagraphSpacing,
   // Paragraph background ("colored field") + borders ("colored rule line"); round-trips

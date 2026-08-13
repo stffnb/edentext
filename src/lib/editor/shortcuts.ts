@@ -38,6 +38,10 @@ export const DEFAULT_SHORTCUTS = {
   softHyphen: 'Mod-Shift--',
   dateField: 'Alt-Shift-d',
   timeField: 'Alt-Shift-t',
+  // Word's own note keys. Letters, not digits: the AltGr collision only affects
+  // Mod-Alt-<digit> (see editor/CLAUDE.md).
+  footnote: 'Mod-Alt-f',
+  endnote: 'Mod-Alt-d',
 
   // Application (window keydown in App.svelte)
   open: 'Mod-o',

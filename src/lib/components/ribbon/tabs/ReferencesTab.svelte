@@ -5,6 +5,7 @@
   import { anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
   import type { HfZone } from '../../../storage/headerFooter';
   import { t } from '../../../i18n/i18n.svelte';
+  import { shortcutHint } from '../../../editor/shortcuts';
 
   let { editor, tick, hfActive = null }: {
     editor: Editor | null;
@@ -60,6 +61,24 @@
       </div>
     {/if}
   </div>
+</RibbonGroup>
+
+<RibbonGroup label={t().ribbon.groups.notes}>
+  <RibbonButton
+    variant="big"
+    icon="footnote"
+    label={t().ribbon.footnote}
+    title={hfActive ? t().toolbarExpanded.noteNotInHf : `${t().toolbarExpanded.insertFootnote} (${shortcutHint('footnote')})`}
+    disabled={!editor || !!hfActive}
+    onclick={() => editor?.chain().focus().insertNote('footnote').run()}
+  />
+  <RibbonButton
+    icon="endnote"
+    label={t().ribbon.endnote}
+    title={hfActive ? t().toolbarExpanded.noteNotInHf : `${t().toolbarExpanded.insertEndnote} (${shortcutHint('endnote')})`}
+    disabled={!editor || !!hfActive}
+    onclick={() => editor?.chain().focus().insertNote('endnote').run()}
+  />
 </RibbonGroup>
 
 <style>

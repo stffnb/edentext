@@ -276,6 +276,55 @@
   white-space: nowrap;
 }
 
+/* Footnotes and endnotes (notes.ts). Sizes and indents are LibreOffice's own Footnote
+   style; the separator values follow its style:footnote-sep — see
+   docs/architecture/notes.md, all of them probed. The dialog overrides them on :root. */
+.paper .tiptap {
+  --note-sep-rel-width: 25%;
+  --note-sep-weight: 0.5pt;
+  --note-sep-below: 0.1cm;
+  --note-sep-color: #000000;
+  --note-sep-align: left;
+}
+.paper .tiptap .note-ref {
+  /* style:text-position="super 58%" on LibreOffice's Footnote anchor style. */
+  vertical-align: super;
+  font-size: 58%;
+  line-height: 0;
+  cursor: pointer;
+}
+.paper .tiptap .note {
+  font-size: 10pt;
+  margin-left: 0.6cm;
+  text-indent: -0.6cm;
+}
+/* The note's own marker is plain text at the baseline — LibreOffice's Footnote Symbol
+   style carries nothing, only the anchor is raised. An inline-block the width of the
+   hanging indent stands in for the tab LibreOffice puts after it. */
+.paper .tiptap .note::before {
+  content: attr(data-note-num);
+  display: inline-block;
+  width: 0.6cm;
+  text-indent: 0;
+}
+/* A footnote is lifted out of the flow to the foot of its anchor's page; pageBreaks.ts
+   sets `top` in document px and marks the first note of each page. The margin custom
+   properties are .tiptap's own, so the box spans exactly the text width. */
+.paper .tiptap .note[data-note-kind='footnote'] {
+  position: absolute;
+  left: var(--page-margin-left);
+  right: var(--page-margin-right);
+}
+/* The separator rides the first note of a page as a background line, so its 25% width
+   costs no element of its own; a border-top would always span the full text width. */
+.paper .tiptap .note[data-note-page-first] {
+  padding-top: calc(var(--note-sep-weight) + var(--note-sep-below));
+  background-image: linear-gradient(var(--note-sep-color), var(--note-sep-color));
+  background-size: var(--note-sep-rel-width) var(--note-sep-weight);
+  background-repeat: no-repeat;
+  background-position: var(--note-sep-align) top;
+}
+
 /* Formulas (formula.ts). MathML needs a font with an OpenType MATH table or Chromium
    drops ∑/ϕ and won't stretch brackets — STIX Two Math is bundled for that. */
 /* The family must be set on <math> itself: the UA stylesheet declares
