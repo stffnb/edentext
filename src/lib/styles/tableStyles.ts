@@ -195,7 +195,8 @@ export type ResolvedTableCell = {
 };
 
 // The conditional regions a grid position belongs to, in ascending precedence. Banding
-// counts body rows only, so a header row doesn't shift the stripes (as in Word).
+// counts body rows only, so a header row doesn't shift the stripes, and the **first**
+// body row is the first stripe — both probed against LibreOffice.
 function regionsAt(
   style: TableStyle, look: TableLook,
   row: number, col: number, rows: number, cols: number,
@@ -206,8 +207,8 @@ function regionsAt(
   const bodyRow = row - (on('headerRow') ? 1 : 0);
   const bodyCol = col - (on('firstColumn') ? 1 : 0);
   const matches: Record<TableRegion, boolean> = {
-    bandedColumn: bodyCol >= 0 && bodyCol % 2 === 1,
-    bandedRow: bodyRow >= 0 && bodyRow % 2 === 1,
+    bandedColumn: bodyCol >= 0 && bodyCol % 2 === 0,
+    bandedRow: bodyRow >= 0 && bodyRow % 2 === 0,
     lastColumn: col === cols - 1,
     firstColumn: col === 0,
     lastRow: row === rows - 1,

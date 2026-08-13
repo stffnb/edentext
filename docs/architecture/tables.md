@@ -31,7 +31,9 @@ We deliberately keep TipTap's `resizable: false` (so its own columnResizing plug
   `lastColumn` < `firstColumn` < `lastRow` < `headerRow`), with `wholeTable` as the base.
   `resolveTableCell(style, coords, look)` is the single source of truth for **all four**
   consumers (apply, CSS, export bake, preview tiles): it layers the matching regions, counts
-  banding over *body* rows (a header row doesn't shift the stripes) and decides each border
+  banding over *body* rows — a header row doesn't shift the stripes, and the **first** body
+  row is the first stripe (probed: LibreOffice shades the row under the header, and row 0
+  where the style paints no header) — and decides each border
   **per grid line** from both sides, so two facing cells never disagree once collapsed.
   **Table Style Options** are Word's per-table `w:tblLook`: a `TableLook` (one flag per region)
   stored space-separated in the table's `tableLook` attr, absent ⇒ `DEFAULT_TABLE_LOOK` (Word's

@@ -51,15 +51,15 @@ describe('resolveTableCell', () => {
     expect(corner.fill).toBe('#EEEEEE');
   });
 
-  it('counts banding over body rows, so a header row does not shift the stripes', () => {
-    expect(at(banded, 1, 1).fill).toBe(null); // first body row
-    expect(at(banded, 2, 1).fill).toBe('#FAFAFA');
-    expect(at(banded, 3, 1).fill).toBe(null);
+  it('starts the stripes at the first body row, past a header row', () => {
+    expect(at(banded, 1, 1).fill).toBe('#FAFAFA'); // first body row
+    expect(at(banded, 2, 1).fill).toBe(null);
+    expect(at(banded, 3, 1).fill).toBe('#FAFAFA');
 
-    // Without a header region the stripes start one row higher.
+    // Without a header region the body starts at row 0, and so do the stripes.
     const noHeader: TableStyleDef = { ...banded, regions: { bandedRow: { fill: '#FAFAFA' } } };
-    expect(at(noHeader, 0, 0).fill).toBe(null);
-    expect(at(noHeader, 1, 0).fill).toBe('#FAFAFA');
+    expect(at(noHeader, 0, 0).fill).toBe('#FAFAFA');
+    expect(at(noHeader, 1, 0).fill).toBe(null);
   });
 
   it('gives both cells of a grid line the same border', () => {
@@ -105,7 +105,8 @@ describe('table style options (Word\'s tblLook)', () => {
   it('only paints a region the table opts into', () => {
     const off: TableLook = { ...ALL_ON, headerRow: false };
     expect(at(banded, 0, 1).fill).toBe('#EEEEEE');
-    expect(at(banded, 0, 1, 4, 2, off).fill).toBe(null);
+    // The header's own fill is gone; row 0 is the body's first stripe now.
+    expect(at(banded, 0, 1, 4, 2, off).fill).toBe('#FAFAFA');
     // The header's rule goes with it, from both sides of that grid line.
     expect(at(banded, 0, 0, 4, 2, off).borders.borderBottom).toBe('none');
     expect(at(banded, 1, 0, 4, 2, off).borders.borderTop).toBe('none');
@@ -113,13 +114,13 @@ describe('table style options (Word\'s tblLook)', () => {
 
   it('shifts the banding when the header row is switched off', () => {
     const off: TableLook = { ...ALL_ON, headerRow: false };
-    // Header on: row 0 is the header, so the first stripe is row 2.
+    // Header on: row 0 is the header, so the first stripe is row 1.
     expect([0, 1, 2, 3].map(r => at(banded, r, 1).fill)).toEqual([
-      '#EEEEEE', null, '#FAFAFA', null,
+      '#EEEEEE', '#FAFAFA', null, '#FAFAFA',
     ]);
     // Header off: the body starts at row 0, so the stripes move up one row.
     expect([0, 1, 2, 3].map(r => at(banded, r, 1, 4, 2, off).fill)).toEqual([
-      null, '#FAFAFA', null, '#FAFAFA',
+      '#FAFAFA', null, '#FAFAFA', null,
     ]);
   });
 
@@ -227,7 +228,7 @@ describe('header toggles and style options are one state', () => {
     editor.commands.toggleHeaderRowStyle();
     expect(parseTableLook(table(editor).attrs.tableLook).headerRow).toBe(false);
     expect(isHeaderStyled(editor.state, 'row')).toBe(false);
-    expect(table(editor).content[0].content[0].attrs.backgroundColor).toBe(null);
+    expect(table(editor).content[0].content[0].attrs.backgroundColor).toBe('#FAFAFA');
 
     // And the other way round: setting the option updates the button's state.
     editor.commands.setTableLook('headerRow', true);
@@ -260,7 +261,7 @@ describe('setTableStyle', () => {
     expect(t.content[0].content[1].attrs.region).toBe('headerRow');
     expect(t.content[0].content[0].attrs.borderBottom).toBe(RULE);
     expect(t.content[1].content[0].attrs.borderTop).toBe(RULE);
-    expect(fills(editor)).toEqual(['#EEEEEE', null, '#FAFAFA']);
+    expect(fills(editor)).toEqual(['#EEEEEE', '#FAFAFA', null]);
 
     // Applying again changes nothing — the re-band plugin depends on this.
     const before = JSON.stringify(editor.getJSON());
@@ -273,11 +274,11 @@ describe('setTableStyle', () => {
     const editor = makeEditor();
     editor.commands.focus('start');
     editor.commands.setTableStyle('Test Bands');
-    expect(fills(editor)).toEqual(['#EEEEEE', null, '#FAFAFA']);
+    expect(fills(editor)).toEqual(['#EEEEEE', '#FAFAFA', null]);
 
     // Cursor is in the header row; a row added after it shifts every stripe below.
     editor.commands.addRowAfter();
-    expect(fills(editor)).toEqual(['#EEEEEE', null, '#FAFAFA', null]);
+    expect(fills(editor)).toEqual(['#EEEEEE', '#FAFAFA', null, '#FAFAFA']);
     editor.destroy();
   });
 
@@ -341,7 +342,7 @@ describe('setTableStyle', () => {
     const t = table(editor);
     expect(t.content[1].content.length).toBe(1);
     expect(t.content[1].content[0].attrs.colspan).toBe(2);
-    expect(t.content[1].content[0].attrs.region).toBe('firstColumn');
+    expect(t.content[1].content[0].attrs.region).toBe('bandedRow firstColumn');
     // Its bottom is the boundary to the banded row below, its right the table edge.
     expect(t.content[1].content[0].attrs.borderRight).toBe(null);
     editor.destroy();
@@ -351,16 +352,16 @@ describe('setTableStyle', () => {
     const editor = makeEditor(4);
     editor.commands.focus('start');
     editor.commands.setTableStyle('Test Bands');
-    expect(fills(editor)).toEqual(['#EEEEEE', null, '#FAFAFA', null]);
+    expect(fills(editor)).toEqual(['#EEEEEE', '#FAFAFA', null, '#FAFAFA']);
 
     // Header row off: it loses its fill and the stripes move up a row.
     editor.commands.setTableLook('headerRow', false);
-    expect(fills(editor)).toEqual([null, '#FAFAFA', null, '#FAFAFA']);
-    expect(table(editor).content[0].content[0].attrs.region).toBe('firstColumn');
+    expect(fills(editor)).toEqual(['#FAFAFA', null, '#FAFAFA', null]);
+    expect(table(editor).content[0].content[0].attrs.region).toBe('bandedRow firstColumn');
 
     // And back again.
     editor.commands.setTableLook('headerRow', true);
-    expect(fills(editor)).toEqual(['#EEEEEE', null, '#FAFAFA', null]);
+    expect(fills(editor)).toEqual(['#EEEEEE', '#FAFAFA', null, '#FAFAFA']);
     editor.destroy();
   });
 
