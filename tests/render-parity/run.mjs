@@ -11,24 +11,13 @@ import { chromium } from 'playwright-core';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
-const CHROME = process.env.PARITY_CHROME ?? newestChromium();
+const CHROME = process.env.PARITY_CHROME ?? chromium.executablePath();
 const PORT = +(process.env.PARITY_PORT ?? 5199);   // reuse a dev server already up
 const PAGE_GAP = 20;           // pageBreaks.ts
 const PT_MM = 25.4 / 72;
 const PX_MM = 25.4 / 96;
 const LINE_TOL_MM = 1.2;       // words within this vertical span are one line
 const POS_TOL_MM = 1.0;        // reported as a position difference beyond this
-
-// `playwright-core install chromium` names the directory after its own build number,
-// so take the highest one present. PARITY_CHROME overrides it.
-function newestChromium() {
-  const base = join(process.env.HOME, '.cache/ms-playwright');
-  const builds = (existsSync(base) ? readdirSync(base) : [])
-    .filter((d) => /^chromium-\d+$/.test(d))
-    .sort((a, b) => +b.slice(9) - +a.slice(9));
-  if (!builds.length) throw new Error('no Chromium in ~/.cache/ms-playwright — see README.md');
-  return join(base, builds[0], 'chrome-linux/chrome');
-}
 
 // ---------------------------------------------------------------- reference
 
