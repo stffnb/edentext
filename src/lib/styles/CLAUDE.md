@@ -12,14 +12,16 @@ built-ins (Standard → Heading → Heading 1–5 / Title / Subtitle, plus Quota
 (parent chain root-first, nearest wins, cycle-safe), `styleOrder`, and `styleCss`. `sheet.svelte.ts`
 holds it as a reactive singleton persisted to `odf-editor-styles` (same shape as `i18n.svelte.ts`).
 
-- **Pair kerning** (`TextProps.kerning` → `font-kerning: none`) is where the two formats
+- **Pair kerning** (`TextProps.kerning` → `font-kerning`) is where the two formats
   disagree: ODF kerns unless `style:letter-kerning="false"`, Word kerns **nothing** unless
   `w:kern` names the point size to start at — and a browser kerns always. Probed: the same
   string runs 5% narrower kerned, which broke a line a word early on every Word document in
-  the corpus. So only the off state is stored (the editor saves `.odt`, so ODF wins the tie),
-  a DOCX run below its own `w:kern` threshold counts as off, and export writes `w:kern="1"`
-  wherever kerning is on. Document-wide only — `w:docDefaults` and the default paragraph
-  style are where files declare it; a single run overriding it needs a mark we don't have.
+  the corpus. **Both states are stored, per style**: a style inherits its parent's, so a
+  Title whose own `w:kern` names 14pt has to say so to overrule a document kerning nothing
+  (measured at 26pt: 0.34mm, which is the difference between a title of one line and of
+  two). A style set below its own threshold counts as off. Export writes the state it has —
+  ODF `style:letter-kerning`, DOCX `w:kern="1"` wherever kerning is on. A single **run**
+  overriding its style still needs a mark we don't have.
 
 - **Assignment**: the `ParagraphStyle` extension adds a global `styleName` attr on paragraph/heading,
   rendered as `data-style`. `setParagraphStyle(name)` switches the node type when the style has an

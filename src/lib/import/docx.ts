@@ -762,7 +762,7 @@ function runTextProps(run: RunProps): TextProps {
   // Word kerns nothing unless w:kern names the size to start at, and a document that
   // says so for headings only leaves body text unkerned (probed against LibreOffice).
   const kern = run.kernHalfPt ?? 0;
-  if (!kern || (run.sizeHalfPt != null && run.sizeHalfPt < kern)) out.kerning = false;
+  out.kerning = kern > 0 && (run.sizeHalfPt == null || run.sizeHalfPt >= kern);
   if (run.bold != null) out.bold = run.bold;
   if (run.italic != null) out.italic = run.italic;
   if (run.underline != null) out.underline = run.underline;
