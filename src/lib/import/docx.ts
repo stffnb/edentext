@@ -8,7 +8,7 @@ import { fitInlineImage, framePx } from '../editor/extensions/image';
 import { formatTabStops } from '../editor/extensions/tabStops';
 import type { CapsMode, LineStyle } from '../editor/extensions/textEffects';
 import { tableLookAttr } from '../styles/tableStyles';
-import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
+import { formatOrdinal, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
 import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
@@ -18,7 +18,7 @@ import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { clampTabInterval, DOCX_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
-import { DEFAULT_NOTE_SETTINGS } from '../storage/noteSettings';
+import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { applyUniformRunFont, pairAlignedFrames, sinkOffsetFrames, type OdtImportResult } from './odt';
 import { chartDataUrl } from './chart';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
@@ -64,7 +64,26 @@ type Ctx = {
   // Bookmarks open at this point of the walk (w:id → name). A range may start beside a
   // paragraph and end inside a later one, so the state outlives both walks.
   openBookmarks: Map<string, string>;
+  // word/footnotes.xml and endnotes.xml by w:id, and the notes the body referenced, in
+  // anchor order — the editor keeps them in one section at the document end (notes.ts).
+  noteParts: Record<NoteKind, Map<string, Element>>;
+  notes: { id: string; kind: NoteKind; text: string; content: Node[] }[];
 };
+
+// The real notes of a part, by w:id: Word's own separator entries carry a w:type and
+// are referenced by nothing.
+function noteParts(files: Record<string, Uint8Array>, part: string, tag: string): Map<string, Element> {
+  const out = new Map<string, Element>();
+  const bytes = files[`word/${part}.xml`];
+  if (!bytes) return out;
+  const root = parseXml(strFromU8(bytes)).documentElement;
+  for (const el of Array.from(root.getElementsByTagNameNS(W, tag))) {
+    if (el.getAttributeNS(W, 'type')) continue;
+    const id = el.getAttributeNS(W, 'id');
+    if (id != null) out.set(id, el);
+  }
+  return out;
+}
 
 // ---- units & editor defaults to suppress -----------------------------------
 const twipToCm = (tw: number) => (tw / 1440) * 2.54;
@@ -145,7 +164,10 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const sectPr = fc(body, 'sectPr');
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map() };
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), notes: [], noteParts: {
+    footnote: noteParts(files, 'footnotes', 'footnote'),
+    endnote: noteParts(files, 'endnotes', 'endnote'),
+  } };
 
   // Mid-body sectPr paragraphs delimit sections; a section whose w:cols declares
   // more than one column becomes a columns node (the trailing group is described
@@ -171,6 +193,16 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(ctx.contentWidthCm)));
 
+  // The notes the walk collected, in anchor order, as the one section the editor keeps
+  // at the document end.
+  if (ctx.notes.length) {
+    blocks.push({ type: 'noteSection', content: ctx.notes.map((n) => ({
+      type: 'note',
+      attrs: { id: n.id, kind: n.kind, label: null, text: n.text },
+      ...(n.content.length ? { content: n.content } : {}),
+    })) });
+  }
+
   // Odd/even pages: a document-level setting (settings.xml), not a section property.
   const oddEven = docHasEvenOddHeaders(files);
   const mirrored = docHasMirrorMargins(files);
@@ -188,7 +220,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   return {
     content: { type: 'doc', content: blocks },
     styles: collectStyleSheet(ctx),
-    notes: DEFAULT_NOTE_SETTINGS,
+    notes: docNoteSettings(files),
     margins: withMirror(first.margins ?? sect.margins, mirrored),
     // A right-to-left section (w:bidi): the columns fill from the right.
     rtl: !!finalSectPr && (() => { const b = fc(finalSectPr, 'bidi'); return !!b && onOff(b); })(),
@@ -1012,6 +1044,33 @@ function inlineChildren(el: Element): Element[] {
   });
 }
 
+// A w:footnoteReference → the anchor node, with the note's own paragraphs collected
+// into ctx for the section the document end gets. Word's numbering is implicit, so the
+// citation is counted here; several paragraphs flatten to hard breaks.
+function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunProps, defaults: BlockDefaults): Node | null {
+  const note = wid == null ? null : ctx.noteParts[kind].get(wid);
+  if (!note) return null;
+  const content: Node[] = [];
+  for (const para of Array.from(note.children)) {
+    if (para.namespaceURI !== W || para.localName !== 'p') continue;
+    const runs = convertInline(para, ctx, baseRun, defaults, false);
+    if (content.length && runs.length) content.push({ type: 'hardBreak' });
+    content.push(...runs);
+  }
+  // Word opens the note with its own marker run and a tab; the editor draws both from
+  // the note's own indent, so the leading tab would be a second one.
+  const first = content[0];
+  if (first?.type === 'text' && typeof first.text === 'string') {
+    first.text = first.text.replace(/^\t+/, '');
+    if (!first.text) content.shift();
+  }
+  const seen = ctx.notes.filter((n) => n.kind === kind).length;
+  const text = formatOrdinal(seen + 1, kind === 'endnote' ? 'i' : '1');
+  const id = `${kind}${wid}`;
+  ctx.notes.push({ id, kind, text, content });
+  return { type: 'noteRef', attrs: { id, kind, text } };
+}
+
 function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockDefaults, hfFields: boolean): Node[] {
   const out: Node[] = [];
   let fieldMode: 'none' | 'instr' | 'result' = 'none';
@@ -1146,6 +1205,15 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
         case 'cr': out.push(hardBreakNode(marks)); break;
         case 'drawing': pushDrawn(convertDrawing(child, ctx), drawingIsFloating(child)); break;
         case 'pict': pushDrawn(convertPict(child, ctx), drawingIsFloating(child)); break;
+        case 'footnoteReference':
+        case 'endnoteReference': {
+          // The zone schema has no notes, and Word's own separator notes are referenced
+          // by nothing — only a real anchor reaches here.
+          const kind: NoteKind = child.localName === 'endnoteReference' ? 'endnote' : 'footnote';
+          const ref = hfFields ? null : noteRefNode(child.getAttributeNS(W, 'id'), kind, ctx, baseRun, defaults);
+          if (ref) out.push(ref);
+          break;
+        }
       }
     }
   };
@@ -2070,6 +2138,42 @@ function docHasMirrorMargins(files: Record<string, Uint8Array>): boolean {
 }
 
 // Word's "Different Odd & Even Pages" toggle lives in settings.xml, not the sectPr.
+// Word's num-format ids, reversed onto the five ODF ones.
+const NUM_FMT_FROM_DOCX: Record<string, NoteNumFormat> = {
+  decimal: '1', lowerLetter: 'a', upperLetter: 'A', lowerRoman: 'i', upperRoman: 'I',
+};
+
+// The document-wide <w:footnotePr>/<w:endnotePr> in settings.xml. The separator is not
+// Word's to describe — it draws a fixed one — so it keeps the editor's.
+function docNoteSettings(files: Record<string, Uint8Array>): NoteSettings {
+  const bytes = files['word/settings.xml'];
+  if (!bytes) return DEFAULT_NOTE_SETTINGS;
+  const out: NoteSettings = {
+    footnote: { ...DEFAULT_NOTE_SETTINGS.footnote },
+    endnote: { ...DEFAULT_NOTE_SETTINGS.endnote },
+    separator: { ...DEFAULT_NOTE_SETTINGS.separator },
+  };
+  try {
+    const root = parseXml(strFromU8(bytes)).documentElement;
+    for (const kind of ['footnote', 'endnote'] as NoteKind[]) {
+      const el = root.getElementsByTagNameNS(W, `${kind}Pr`)[0];
+      if (!el) continue;
+      const cls = out[kind];
+      const val = (name: string) => { const c = fc(el, name); return c ? wVal(c) : null; };
+      const fmt = NUM_FMT_FROM_DOCX[val('numFmt') ?? ''];
+      if (fmt) cls.numFormat = fmt;
+      const start = Number(val('numStart'));
+      if (Number.isFinite(start) && start > 0) cls.startAt = start;
+      const restart = val('numRestart');
+      if (restart === 'eachPage') cls.restart = 'page';
+      else if (restart === 'eachSect') cls.restart = 'chapter';
+      else if (restart === 'continuous') cls.restart = 'document';
+      if (kind === 'footnote' && val('pos') === 'docEnd') cls.position = 'document';
+    }
+  } catch { /* a malformed settings part just keeps the defaults */ }
+  return out;
+}
+
 function docHasEvenOddHeaders(files: Record<string, Uint8Array>): boolean {
   const bytes = files['word/settings.xml'];
   if (!bytes) return false;

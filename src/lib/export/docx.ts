@@ -1,5 +1,6 @@
 import {
   Document, Packer, Paragraph, TextRun, ImageRun, ExternalHyperlink, InternalHyperlink, Bookmark, Tab,
+  FootnoteReferenceRun, EndnoteReferenceRun,
   TableOfContents,
   Table, TableRow, TableCell, Header, Footer, PageNumber, SimpleField,
   AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
@@ -19,6 +20,7 @@ import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
+import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteSettings } from '../storage/noteSettings';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
@@ -97,6 +99,11 @@ const MTH = '';
 // docLangTag: inlineToRuns is reached from every block path without a collector).
 type FormulaDocx = { latex: string; display: boolean };
 let docFormulas: FormulaDocx[] = [];
+
+// Word numbers footnotes and endnotes in separate files, so each class counts from 1.
+// Filled from the note section before the body is walked, then read by the anchor —
+// module-level for the same reason as docFormulas.
+let docNoteIds = new Map<string, { id: number; kind: NoteKind }>();
 
 // Sentinel wrapping a text box's index in a marker paragraph (same trick as
 // export/odt.ts): the docx library can't emit DrawingML shapes, so buildDocx swaps
@@ -347,6 +354,13 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       continue;
     }
     if (node.type === 'crossRef') { emit([crossRefField(node)], bookmark); continue; }
+    if (node.type === 'noteRef') {
+      const note = docNoteIds.get(String(node.attrs?.id ?? ''));
+      if (note) {
+        emit([note.kind === 'endnote' ? new EndnoteReferenceRun(note.id) : new FootnoteReferenceRun(note.id)], bookmark);
+      }
+      continue;
+    }
     flush();
     if (node.type === 'hardBreak') {
       // Carry the run's props so an empty line between two breaks keeps its font size.
@@ -739,6 +753,37 @@ function applyMirrorMarginsDocx(bytes: Uint8Array): Uint8Array {
   if (xml.includes('w:mirrorMargins')) return bytes;
   files['word/settings.xml'] = strToU8(
     xml.replace(/(<w:settings\b[^>]*>)/, '$1<w:mirrorMargins/>'),
+  );
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
+// Word's num-format ids for the five ODF ones.
+const DOCX_NUM_FMT: Record<string, string> = {
+  '1': 'decimal', a: 'lowerLetter', A: 'upperLetter', i: 'lowerRoman', I: 'upperRoman',
+};
+
+// Post-pack pass: the document-wide <w:footnotePr>/<w:endnotePr>, which the docx
+// package does not expose. Word keeps its defaults in settings.xml, beside
+// w:mirrorMargins.
+function applyNotePrDocx(bytes: Uint8Array, notes: NoteSettings): Uint8Array {
+  const files = unzipSync(bytes);
+  const setBytes = files['word/settings.xml'];
+  if (!setBytes) return bytes;
+  const block = (kind: NoteKind) => {
+    const s = notes[kind];
+    const tag = kind === 'footnote' ? 'footnotePr' : 'endnotePr';
+    // Word's restart values; ODF's 'chapter' is its 'eachSect'.
+    const restart = s.restart === 'page' ? 'eachPage' : s.restart === 'chapter' ? 'eachSect' : 'continuous';
+    const pos = kind === 'footnote'
+      ? `<w:pos w:val="${s.position === 'document' ? 'docEnd' : 'pageBottom'}"/>`
+      : '<w:pos w:val="docEnd"/>';
+    return `<w:${tag}>${pos}<w:numFmt w:val="${DOCX_NUM_FMT[s.numFormat] ?? 'decimal'}"/>`
+      + `<w:numStart w:val="${Math.max(1, s.startAt)}"/><w:numRestart w:val="${restart}"/></w:${tag}>`;
+  };
+  files['word/settings.xml'] = strToU8(
+    strFromU8(setBytes).replace(/(<w:settings\b[^>]*>)/, `$1${block('footnote')}${block('endnote')}`),
   );
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
   for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
@@ -1246,6 +1291,7 @@ export async function buildDocx(
   styles: StyleSheet = builtinStyleSheet(),
   tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM,
   rtl = false,
+  notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
@@ -1256,7 +1302,23 @@ export async function buildDocx(
   const contentWidthCm = pageWidthCm - margins.left - margins.right;
 
   const textBoxes: TextBoxDocx[] = [];
-  const groups = bodyGroups(docJson.content ?? [], num, contentWidthCm, textBoxes);
+  // The note section holds the notes in anchor order (notes.ts), which is the order
+  // Word numbers them in; each class counts from 1 because each has its own part.
+  // Numbered before the body is walked, so an anchor already knows its id.
+  const noteBlocks = (docJson.content ?? []).filter((n) => n.type === 'noteSection')
+    .flatMap((n) => n.content ?? []);
+  docNoteIds = new Map();
+  const notesByClass: Record<NoteKind, Record<string, { children: Paragraph[] }>> = { footnote: {}, endnote: {} };
+  for (const note of noteBlocks) {
+    const kind: NoteKind = note.attrs?.kind === 'endnote' ? 'endnote' : 'footnote';
+    const id = Object.keys(notesByClass[kind]).length + 1;
+    docNoteIds.set(String(note.attrs?.id ?? ''), { id, kind });
+    notesByClass[kind][String(id)] = {
+      children: [new Paragraph({ style: kind === 'endnote' ? 'EndnoteText' : 'FootnoteText', children: inlineToRuns(note.content ?? []) })],
+    };
+  }
+  const body = (docJson.content ?? []).filter((n) => n.type !== 'noteSection');
+  const groups = bodyGroups(body, num, contentWidthCm, textBoxes);
 
   // A TOC field is empty until its field is calculated; ask the reader to update fields
   // on open so Word/LibreOffice populate + hyperlink it (standard for TOC fields).
@@ -1325,6 +1387,8 @@ export async function buildDocx(
     ...(hasToc ? { features: { updateFields: true } } : {}),
     styles: buildStyles(styles, usedStyleNames(docJson, styles), language, usedTableStyles(docJson, styles)),
     numbering: { config: num.config },
+    ...(Object.keys(notesByClass.footnote).length ? { footnotes: notesByClass.footnote } : {}),
+    ...(Object.keys(notesByClass.endnote).length ? { endnotes: notesByClass.endnote } : {}),
     // A columns group is its own section; w:type=continuous describes the break
     // BEFORE a section, so it goes on every section but the first.
     sections: groups.map((g, i) => ({
@@ -1344,6 +1408,7 @@ export async function buildDocx(
 
   const blob = await Packer.toBlob(doc);
   const packed = applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
-  const mirrored = margins.mirrored ? applyMirrorMarginsDocx(packed) : packed;
+  const withNotes = docNoteIds.size ? applyNotePrDocx(packed, notesSettings) : packed;
+  const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withNotes) : withNotes;
   return rtl ? applyBidiDocx(mirrored) : mirrored;
 }

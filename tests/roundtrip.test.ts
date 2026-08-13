@@ -13,6 +13,7 @@ import { builtinStyleSheet } from '../src/lib/styles/styleSheet';
 import { buildDocx } from '../src/lib/export/docx';
 import { importDocx } from '../src/lib/import/docx';
 import { EMPTY_HF_SET } from '../src/lib/storage/headerFooter';
+import { DEFAULT_NOTE_SETTINGS } from '../src/lib/storage/noteSettings';
 
 type N = any;
 
@@ -445,6 +446,49 @@ describe('Leg 1a2c: footnotes and endnotes', () => {
     check('bold inside the note survives', JSON.stringify(section).includes('"bold"'), JSON.stringify(section)?.slice(0, 300));
     check('the body text is untouched', JSON.stringify(res.content).includes('Body one') && JSON.stringify(res.content).includes('and on.'), null);
     check('no note-removed warning is raised', !res.warnings.some((w: string) => /[Ff]ootnote/.test(w)), res.warnings);
+  });
+
+  it('DOCX: writes word/footnotes.xml + endnotes.xml and reads them back', async () => {
+    const bytes = await buildDocx(notesDoc(), margins, 'portrait');
+    const files = unzipSync(bytes);
+    check('a footnote part is written', !!files['word/footnotes.xml'], Object.keys(files).filter((f) => /note/.test(f)));
+    check('an endnote part is written', !!files['word/endnotes.xml'], Object.keys(files).filter((f) => /note/.test(f)));
+    const doc = strFromU8(files['word/document.xml']);
+    check('the body references both', /<w:footnoteReference w:id="1"/.test(doc) && /<w:endnoteReference w:id="1"/.test(doc), doc.match(/<w:(foot|end)noteReference[^>]*>/g));
+    const fn = strFromU8(files['word/footnotes.xml']);
+    check('the note text lives in its own part', fn.includes('The footnote, with'), fn.slice(0, 400));
+
+    const res = importDocx(bytes);
+    const refs: N[] = [];
+    (function walk(n: N) { if (n.type === 'noteRef') refs.push(n); for (const c of n.content ?? []) walk(c); })(res.content);
+    const section = (res.content.content ?? []).find((n: N) => n.type === 'noteSection');
+    check('DOCX: both anchors come back', refs.length === 2, refs.map((r) => r.attrs));
+    check('DOCX: their classes survive', refs.map((r) => r.attrs.kind).join(',') === 'footnote,endnote', refs.map((r) => r.attrs.kind));
+    // Word's own separator entries carry a w:type and are referenced by nothing.
+    check('DOCX: the separator notes are not imported', (section?.content ?? []).length === 2, section?.content?.map((n: N) => n.attrs));
+    check('DOCX: each anchor points at its own note', refs[0]?.attrs?.id === section?.content?.[0]?.attrs?.id, [refs.map((r) => r.attrs.id), section?.content?.map((n: N) => n.attrs.id)]);
+    check('DOCX: the note text comes back', JSON.stringify(section).includes('The footnote, with'), JSON.stringify(section)?.slice(0, 200));
+    check('DOCX: bold inside the note survives', JSON.stringify(section).includes('"bold"'), JSON.stringify(section)?.slice(0, 300));
+    check('DOCX: the body text is untouched', JSON.stringify(res.content).includes('Body one'), null);
+  });
+
+  it('round-trips changed numbering settings through both formats', async () => {
+    const custom = {
+      ...DEFAULT_NOTE_SETTINGS,
+      footnote: { ...DEFAULT_NOTE_SETTINGS.footnote, numFormat: 'A' as const, startAt: 4, restart: 'page' as const },
+      separator: { ...DEFAULT_NOTE_SETTINGS.separator, relWidthPercent: 60, weightPt: 1.5, align: 'center' as const },
+    };
+    const odt = await buildOdt(notesDoc(), margins, 'portrait', undefined, null, 'A4', builtinStyleSheet(), 1.25, 'add', false, custom);
+    const back = importOdt(odt).notes;
+    check('ODF: format, start and restart survive',
+      back.footnote.numFormat === 'A' && back.footnote.startAt === 4 && back.footnote.restart === 'page', back.footnote);
+    check('ODF: the separator survives',
+      back.separator.relWidthPercent === 60 && Math.abs(back.separator.weightPt - 1.5) < 0.05 && back.separator.align === 'center', back.separator);
+
+    const docx = await buildDocx(notesDoc(), margins, 'portrait', undefined, null, 'A4', builtinStyleSheet(), 1.25, false, custom);
+    const dback = importDocx(docx).notes;
+    check('DOCX: format, start and restart survive',
+      dback.footnote.numFormat === 'A' && dback.footnote.startAt === 4 && dback.footnote.restart === 'page', dback.footnote);
   });
 });
 
