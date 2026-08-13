@@ -1704,6 +1704,28 @@ function condAreasFor(
   return out;
 }
 
+// How many rows a vertically merged cell covers. Its box has to say so before the covered
+// rows are read, or a merge reaching the table's last row reads as an inside line there —
+// which a style whose band declares insideH nil then drops.
+function vMergeRows(trs: Element[], from: number, col: number): number {
+  let n = 1;
+  for (let ri = from + 1; ri < trs.length; ri++) {
+    let c = 0;
+    let covered = false;
+    for (const tc of fcAll(trs[ri], 'tc')) {
+      if (c >= col) {
+        const el = fc(fc(tc, 'tcPr'), 'vMerge');
+        covered = c === col && !!el && (wVal(el) ?? 'continue') !== 'restart';
+        break;
+      }
+      c += intAttr(fc(fc(tc, 'tcPr'), 'gridSpan'), W, 'val') ?? 1;
+    }
+    if (!covered) break;
+    n++;
+  }
+  return n;
+}
+
 // Which side of an area a cell's edge is: its own outer side where the cell sits on the
 // area's edge, the area's inside line otherwise.
 function areaSide(area: GridBox, cell: GridBox, side: 'top' | 'bottom' | 'left' | 'right'): string {
@@ -1825,7 +1847,8 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
         col += colspan;
         continue; // covered cell — dropped, span folded into its origin
       }
-      const box: GridBox = { row: ri, col, rowEnd: ri + 1, colEnd: col + colspan };
+      const rowEnd = ri + (vMerge === 'restart' ? vMergeRows(trs, ri, col) : 1);
+      const box: GridBox = { row: ri, col, rowEnd, colEnd: col + colspan };
       const areas = conds.size ? condAreasFor(conds, flags, band, box, trs.length, gridCols) : [];
       const paint = condPaint(areas);
       const fill = fc(tcPr, 'shd')?.getAttributeNS(W, 'fill');

@@ -40,6 +40,17 @@ const table = (look = '<w:tblLook w:firstRow="1" w:firstColumn="1" w:noHBand="0"
     `<w:tr>${[0, 1].map((c) => `<w:tc><w:p><w:r><w:t>r${r}c${c}</w:t></w:r></w:p></w:tc>`).join('')}</w:tr>`,
   ).join('') + '</w:tbl>';
 
+// The same grid with its first column merged from the first body row down to the last.
+const mergedTable = () =>
+  `<w:tbl><w:tblPr><w:tblStyle w:val="Banded"/><w:tblLook w:firstRow="1" w:firstColumn="1" w:noHBand="0" w:noVBand="1"/></w:tblPr>
+   <w:tblGrid><w:gridCol w:w="4000"/><w:gridCol w:w="4000"/></w:tblGrid>` +
+  [0, 1, 2, 3].map((r) => {
+    const merge = r === 1 ? '<w:vMerge w:val="restart"/>' : '<w:vMerge/>';
+    const first = r === 0 ? '<w:tc><w:p><w:r><w:t>h</w:t></w:r></w:p></w:tc>'
+      : `<w:tc><w:tcPr>${merge}</w:tcPr><w:p><w:r><w:t>m</w:t></w:r></w:p></w:tc>`;
+    return `<w:tr>${first}<w:tc><w:p><w:r><w:t>r${r}</w:t></w:r></w:p></w:tc></w:tr>`;
+  }).join('') + '</w:tbl>';
+
 const docxWith = (body: string) =>
   zipSync({
     'word/document.xml': strToU8(`<?xml version="1.0"?><w:document xmlns:w="${W}"><w:body>${body}</w:body></w:document>`),
@@ -75,6 +86,12 @@ describe('a Word table style paints its conditional areas', () => {
     expect(rows[3][0].attrs.borderTop).toBe('none');
     expect(rows[2][0].attrs.borderTop).toBe('1pt solid #4F81BD');
     expect(rows[3][0].attrs.borderBottom).toBe('1pt solid #4F81BD'); // the table's own edge
+  });
+
+  it('gives a merged cell the edges of every row it covers', () => {
+    const merged = cellsOf(docxWith(mergedTable()));
+    expect(merged[1][0].attrs.rowspan).toBe(3);
+    expect(merged[1][0].attrs.borderBottom).toBe('1pt solid #4F81BD'); // the table's own edge
   });
 
   it('paints nothing the table’s look switches off', () => {

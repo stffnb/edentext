@@ -59,7 +59,10 @@ which is where an assigned style's regions otherwise come from. An area covers a
 its `top`/`bottom`/`left`/`right` apply where the cell sits on that box's edge, its
 `insideH`/`insideV` anywhere within. A **band's box is the whole banded region**, not the
 one row it shades — that is what makes `insideH` the line *between* two band rows, which
-is how a style with no inner rules (Word's Medium Shading) comes out borderless. Areas
+is how a style with no inner rules (Word's Medium Shading) comes out borderless. A cell's
+own box spans the rows its `w:vMerge` covers — counted ahead of the covered rows
+(`vMergeRows`) — or a merge reaching the last row loses its bottom edge to that same rule.
+Areas
 layer in Word's ascending precedence, over the table's borders and under the cell's own
 `w:tcPr`; banding counts from the first *body* row, so the row under a header row is band 1.
 `w:tblLook` decides which areas apply at all — named flags where the file has them, the
