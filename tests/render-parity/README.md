@@ -45,6 +45,16 @@ line breaks differently for a reason that is not a bug. With them, both engines
 resolve Times New Roman → Liberation Serif, Arial → Liberation Sans, Calibri →
 Carlito, Cambria → Caladea — the same files the editor bundles.
 
+**But install only what LibreOffice does not already ship.** A second copy of a
+family it bundles makes its render *non-deterministic*: it picks between the two
+files per run — measured as `Carlito` against `Carlito-Regular` in the PDF's font
+list — and their vertical metrics differ, so a page carrying a large-font heading
+lands 1.85mm lower on some runs and a fixture's issue count swings by 40. The
+browser side never needs the install: the app `@font-face`s its own copies. On a
+macOS install `/Applications/LibreOffice.app/Contents/Resources/fonts/truetype/`
+already holds Carlito, Caladea and Liberation, so **skip the `cp` there entirely**;
+check any other platform with `fc-list | grep -ci carlito` before copying.
+
 The runner starts `npm run dev` on port 5199 itself if nothing answers there.
 
 ## Fixtures
