@@ -142,7 +142,7 @@
 </script>
 
 <div class="ribbon">
-  <div class="ribbon-tabs">
+  <div class="ribbon-tabs" class:strip-only={collapsed}>
     <div class="file-tab-wrap" use:clickOutside={'file'}>
       <button
         class="ribbon-tab-file"
@@ -381,6 +381,10 @@
     gap: 2px;
     padding: 3px 10px 0;
   }
+
+  /* The active tab's underline hangs below its box, onto the band. Collapsed there
+     is no band, so the strip lends it the room instead of the bottom border. */
+  .ribbon-tabs.strip-only { padding-bottom: 5px; }
 
   .ribbon-tab {
     position: relative;
