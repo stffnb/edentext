@@ -1,5 +1,6 @@
 import { Extension, Node, mergeAttributes } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { DEFAULT_SHORTCUTS } from '../shortcuts';
@@ -13,8 +14,6 @@ import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteSettings } from '../../s
 // docs/architecture/notes.md.
 
 export type { NoteKind };
-
-const KINDS: NoteKind[] = ['footnote', 'endnote'];
 
 const readKind = (v: unknown): NoteKind => (v === 'endnote' ? 'endnote' : 'footnote');
 
@@ -107,11 +106,19 @@ export const Note = Node.create({
         parseHTML: (el) => el.getAttribute('data-note-label'),
         renderHTML: (attrs) => (attrs.label ? { 'data-note-label': String(attrs.label) } : {}),
       },
-      // The marker drawn in front of the text, via editor.css's ::before.
+      // The marker drawn in front of the text, by the widget decoration below.
       text: {
         default: '',
         parseHTML: (el) => el.getAttribute('data-note-num') ?? '',
         renderHTML: (attrs) => ({ 'data-note-num': String(attrs.text ?? '') }),
+      },
+      // The file's own note paragraph style, rendered as data-style like any block's:
+      // the document stylesheet then gives the note that file's size and indent, and
+      // editor.css only supplies LibreOffice's for a note that names none.
+      styleName: {
+        default: null as string | null,
+        parseHTML: (el) => el.getAttribute('data-style'),
+        renderHTML: (attrs) => (attrs.styleName ? { 'data-style': String(attrs.styleName) } : {}),
       },
     };
   },
@@ -289,6 +296,28 @@ export const Notes = Extension.create<NotesOptions>({
         key: notesKey,
 
         props: {
+          // The note's own marker, as a widget rather than generated content: real text
+          // reaches the PDF, the clipboard and every measurement, which is why the index
+          // draws its leader dots the same way. Not document content — nothing to edit,
+          // delete or serialize.
+          decorations(state) {
+            const section = findNoteSection(state.doc);
+            if (!section) return null;
+            const decos: Decoration[] = [];
+            section.node.forEach((child, offset) => {
+              const label = String(child.attrs.text ?? '');
+              if (!label) return;
+              decos.push(Decoration.widget(section.pos + offset + 2, () => {
+                const el = document.createElement('span');
+                el.className = 'note-marker';
+                el.setAttribute('contenteditable', 'false');
+                el.textContent = label;
+                return el;
+              }, { side: -1, key: `nm:${child.attrs.id}:${label}` }));
+            });
+            return DecorationSet.create(state.doc, decos);
+          },
+
           // Clicking an anchor jumps to its note, the way the TOC's rows jump to their
           // heading. A note's own marker jumps nowhere — it is where you already are.
           handleClickOn(view, _pos, node) {

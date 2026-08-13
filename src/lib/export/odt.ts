@@ -639,14 +639,14 @@ function replaceTextBoxes(doc: TiptapNode, boxes: TextBoxExport[]): TiptapNode {
 }
 
 // One footnote/endnote, collected by replaceNotes and emitted by applyNotes.
-type NoteExport = { kind: 'footnote' | 'endnote'; citation: string; label: string | null };
+type NoteExport = { kind: 'footnote' | 'endnote'; citation: string; label: string | null; styleName: string | null };
 
 // Anchors become an FNT A{i} sentinel run in the running text; the note section is
 // dissolved and each note re-emitted as its own top-level paragraph opening with an
 // FNT B{i} sentinel. Hoisted like a text box, so the note text rides every existing
 // pass — marks, character styles, links, bookmarks, fields and formulas all included.
 function replaceNotes(doc: TiptapNode, notes: NoteExport[]): TiptapNode {
-  const bodies = new Map<string, { content: TiptapNode[]; label: string | null }>();
+  const bodies = new Map<string, { content: TiptapNode[]; label: string | null; styleName: string | null }>();
   const body: TiptapNode[] = [];
   for (const child of doc.content ?? []) {
     if (child.type !== 'noteSection') { body.push(child); continue; }
@@ -655,6 +655,7 @@ function replaceNotes(doc: TiptapNode, notes: NoteExport[]): TiptapNode {
       bodies.set(String(a.id ?? ''), {
         content: note.content ?? [],
         label: typeof a.label === 'string' && a.label ? a.label : null,
+        styleName: typeof a.styleName === 'string' && a.styleName ? a.styleName : null,
       });
     }
   }
@@ -675,6 +676,7 @@ function replaceNotes(doc: TiptapNode, notes: NoteExport[]): TiptapNode {
           kind: a.kind === 'endnote' ? 'endnote' : 'footnote',
           citation: String(a.text ?? ''),
           label: bodies.get(id)?.label ?? null,
+          styleName: bodies.get(id)?.styleName ?? null,
         });
         return { type: 'text', text: `${FNT}A${i}${FNT}` };
       }),
@@ -3461,7 +3463,7 @@ function applyNotes(odtBytes: Uint8Array, notes: NoteExport[]): Uint8Array {
     const label = note.label ? ` text:label="${escapeXml(note.label)}"` : '';
     return `<text:note text:id="${endnote ? 'edn' : 'ftn'}${i + 1}" text:note-class="${note.kind}">`
       + `<text:note-citation${label}>${escapeXml(note.citation)}</text:note-citation>`
-      + `<text:note-body><text:p text:style-name="${endnote ? 'Endnote' : 'Footnote'}">${bodies[i]}</text:p></text:note-body>`
+      + `<text:note-body><text:p text:style-name="${odfStyleName(note.styleName ?? (endnote ? 'Endnote' : 'Footnote'))}">${bodies[i]}</text:p></text:note-body>`
       + '</text:note>';
   });
   // Defensive: strip any sentinel the passes above left behind.

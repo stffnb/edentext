@@ -119,7 +119,7 @@ type Ctx = {
   openBookmarks: Set<string>;
   // Footnotes/endnotes in anchor order: the file stores each note's text at its anchor,
   // the editor keeps them in one section at the document end (notes.ts).
-  notes: { id: string; kind: NoteKind; label: string | null; text: string; content: Node[] }[];
+  notes: { id: string; kind: NoteKind; label: string | null; text: string; content: Node[]; styleName: string | null }[];
 };
 
 // Read a Pictures/ entry into a base64 data-URI; null when it's missing or in a format
@@ -610,7 +610,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   if (ctx.notes.length) {
     blocks.push({ type: 'noteSection', content: ctx.notes.map((n) => ({
       type: 'note',
-      attrs: { id: n.id, kind: n.kind, label: n.label, text: n.text },
+      attrs: { id: n.id, kind: n.kind, label: n.label, text: n.text, styleName: n.styleName },
       ...(n.content.length ? { content: n.content } : {}),
     })) });
   }
@@ -1537,6 +1537,19 @@ function convertDateTimeField(e: Element, ctx: Ctx): Node | null {
   return { type: 'dateTimeField', attrs: { kind, format, fixed, value: fieldValue(kind, raw) } };
 }
 
+// The note's paragraph style: the one its own <text:p> names, else the class's
+// configured default. Registered as used, or collectStyleSheet drops it.
+function noteBodyStyle(e: Element, ctx: Ctx, kind: NoteKind): string | null {
+  const body = e.getElementsByTagNameNS(NS.text, 'note-body')[0] ?? null;
+  const own = Array.from(body?.children ?? []).find((c) => c.localName === 'p' || c.localName === 'h');
+  const raw = own?.getAttributeNS(NS.text, 'style-name')
+    ?? ctx.resolver.noteSettings()[kind].bodyStyle.replace(/ /g, '_20_');
+  const named = ctx.resolver.namedAncestor(raw, 'paragraph');
+  if (!named) return null;
+  ctx.usedStyles.add(named);
+  return ctx.styleNames.get(named) ?? named.replace(/_20_/g, ' ');
+}
+
 // <text:note> → the anchor node, with the note's own text collected into ctx for the
 // section the document end gets. A body of several paragraphs is flattened to hard
 // breaks — the editor's note holds one paragraph, as convertHfZone does for a zone.
@@ -1553,9 +1566,12 @@ function convertNote(e: Element, ctx: Ctx, defaults: BlockDefaults): Node | null
     if (content.length) content.push({ type: 'hardBreak' });
     content.push(...convertInline(para, ctx, {}, defaults));
   }
-  // The file's own id is unique within it, so it is the anchor's id too.
+  // The file's own id is unique within it, so it is the anchor's id too. The note takes
+  // the paragraph style its notes-configuration names, so it renders at the file's own
+  // size and indent rather than at LibreOffice's.
   const id = e.getAttributeNS(NS.text, 'id') || `${kind}${ctx.notes.length + 1}`;
-  ctx.notes.push({ id, kind, label, text: shown, content });
+  const styleName = noteBodyStyle(e, ctx, kind);
+  ctx.notes.push({ id, kind, label, text: shown, content, styleName });
   return { type: 'noteRef', attrs: { id, kind, text: shown } };
 }
 

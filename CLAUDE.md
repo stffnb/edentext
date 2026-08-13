@@ -107,4 +107,5 @@ Directory-level `CLAUDE.md` files load automatically when you touch that directo
 | Table extensions + table styles | `docs/architecture/tables.md` |
 | Text effects, indents, tab stops, list markers, date fields | `docs/architecture/formatting.md` |
 | Formulas (LaTeX model, MathML, OMML, the math font) | `docs/architecture/formulas.md` |
+| Footnotes and endnotes (model, page-foot reservation) | `docs/architecture/notes.md` |
 | Headless browser + PDF-export debugging | `docs/headless-testing.md` |

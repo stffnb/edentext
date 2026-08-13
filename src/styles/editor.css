@@ -292,20 +292,30 @@
   cursor: pointer;
 }
 /* Padding, not a margin, for the hanging indent: the box then still spans the whole
-   text width, which is what the separator's 25% is measured against. */
+   text width, which is what the separator's 25% is measured against. LibreOffice's own
+   Footnote style, and only for a note whose file names none of its own. */
 .paper .tiptap .note {
-  font-size: 10pt;
   padding-left: 0.6cm;
   text-indent: -0.6cm;
+}
+.paper .tiptap .note:not([data-style]) {
+  font-size: 10pt;
 }
 /* The note's own marker is plain text at the baseline — LibreOffice's Footnote Symbol
    style carries nothing, only the anchor is raised. An inline-block the width of the
    hanging indent stands in for the tab LibreOffice puts after it. */
-.paper .tiptap .note::before {
-  content: attr(data-note-num);
+.paper .tiptap .note-marker {
   display: inline-block;
-  width: 0.6cm;
+  min-width: 0.6cm;
   text-indent: 0;
+}
+/* A note style declares its indent as a hanging pair (fo:margin-left with a negative
+   fo:text-indent) and the style model has no first-line half, so its margin alone would
+   just push the note right. The hanging pair stays LibreOffice's; the font, size and
+   colour are the file's. */
+.paper .tiptap .note[data-style] {
+  margin-left: 0;
+  margin-right: 0;
 }
 /* A footnote is lifted out of the flow to the foot of its anchor's page; pageBreaks.ts
    sets `top` in document px and marks the first note of each page. The margin custom

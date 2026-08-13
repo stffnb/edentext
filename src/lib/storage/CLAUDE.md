@@ -32,6 +32,7 @@ Both margins and orientation are passed into the ODT export so the exported docu
 - **Recent fonts:** `odf-editor-recent-fonts` — JSON string array (ToolbarExpanded).
 - **Header/footer:** `odf-editor-header` / `-footer` (HfDoc), `odf-editor-hf-distances`.
 - **Styles:** `odf-editor-styles` — the style registry (`styles/sheet.svelte.ts`).
+- **Notes:** `odf-editor-notes` — footnote/endnote numbering and the separator (`noteSettings.ts`, reactive singleton in `notes.svelte.ts`); `applyNoteVars` puts the separator on `:root`, where `editor.css` draws it and `pageBreaks.ts` reserves its band.
 
 ## Themes (`theme.ts`, `styles/global.css`)
 

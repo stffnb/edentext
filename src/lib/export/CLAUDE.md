@@ -47,4 +47,5 @@ Sentinel order matters — the passes assume it. Full list of sentinels in use:
 U+E009 (columns), U+E00A (date/time fields), `STY` U+E00D (paragraph styles),
 `CST` U+E00E (character styles), `TEF` U+E00F (text effects), `PBX` (paragraph boxes), `SEC` U+E010
 (section breaks), `LEAD` U+E011 (a tab stop's leader, inside `style:type`), `MTH` U+E012 (formulas),
-`BMS`/`BME` U+E013/U+E014 (a bookmark's range), `XRF` U+E015 (cross-references).
+`BMS`/`BME` U+E013/U+E014 (a bookmark's range), `XRF` U+E015 (cross-references),
+`CHP` U+E016 (the chapter field), `FNT` U+E017 (footnotes/endnotes).

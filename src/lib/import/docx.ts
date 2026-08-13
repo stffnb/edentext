@@ -67,7 +67,7 @@ type Ctx = {
   // word/footnotes.xml and endnotes.xml by w:id, and the notes the body referenced, in
   // anchor order — the editor keeps them in one section at the document end (notes.ts).
   noteParts: Record<NoteKind, Map<string, Element>>;
-  notes: { id: string; kind: NoteKind; text: string; content: Node[] }[];
+  notes: { id: string; kind: NoteKind; text: string; content: Node[]; styleName: string | null }[];
 };
 
 // The real notes of a part, by w:id: Word's own separator entries carry a w:type and
@@ -198,7 +198,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   if (ctx.notes.length) {
     blocks.push({ type: 'noteSection', content: ctx.notes.map((n) => ({
       type: 'note',
-      attrs: { id: n.id, kind: n.kind, label: null, text: n.text },
+      attrs: { id: n.id, kind: n.kind, label: null, text: n.text, styleName: n.styleName },
       ...(n.content.length ? { content: n.content } : {}),
     })) });
   }
@@ -1067,7 +1067,14 @@ function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunP
   const seen = ctx.notes.filter((n) => n.kind === kind).length;
   const text = formatOrdinal(seen + 1, kind === 'endnote' ? 'i' : '1');
   const id = `${kind}${wid}`;
-  ctx.notes.push({ id, kind, text, content });
+  // The note renders at the file's own size and indent: its first paragraph names the
+  // style (Word's FootnoteText), and collectStyleSheet only keeps a style in use.
+  const firstPara = Array.from(note.children).find((c) => c.namespaceURI === W && c.localName === 'p');
+  const pStyle = fc(fc(firstPara ?? null, 'pPr'), 'pStyle');
+  const styleId = pStyle ? wVal(pStyle) : null;
+  const styleName = styleId ? ctx.styleNames.get(styleId) ?? null : null;
+  if (styleId && styleName) ctx.usedStyles.add(styleId);
+  ctx.notes.push({ id, kind, text, content, styleName });
   return { type: 'noteRef', attrs: { id, kind, text } };
 }
 

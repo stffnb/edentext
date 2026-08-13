@@ -3,7 +3,7 @@
 One file per feature (`image.ts`, `indent.ts`, …), never `XyzExtension.ts`. All are assembled in
 `../extensions.ts`, which also lists the TipTap built-ins in use (Bold, Italic, Highlight
 `multicolor`, TextStyle/FontFamily/FontSize, Heading, HardBreak, lists, Table family, History,
-Placeholder, TextAlign). `Document` is widened to `'(block | textBox | columns)+'`.
+Placeholder, TextAlign). `Document` is widened to `'(block | textBox | columns)+ noteSection?'`.
 
 Five topics are large enough to have their own deep-dive — read the file before changing them:
 
@@ -14,6 +14,7 @@ Five topics are large enough to have their own deep-dive — read the file befor
 | `table*.ts`, `tableStyle.ts` | `docs/architecture/tables.md` |
 | `textEffects.ts`, `indent.ts`, `tabStops.ts`, `listMarker.ts`, `paragraphBox.ts`, `dateTimeField.ts`, `bookmark.ts`, `crossReference.ts` | `docs/architecture/formatting.md` |
 | `formula.ts` | `docs/architecture/formulas.md` |
+| `notes.ts` | `docs/architecture/notes.md` |
 | `paragraphStyle.ts`, `characterStyle.ts` | `src/lib/styles/CLAUDE.md` |
 
 ## The rest, one line each
