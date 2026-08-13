@@ -1304,7 +1304,10 @@ function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<stri
   if (p.backgroundColor) para['fo:background-color'] = String(p.backgroundColor);
   for (const [key, side] of [['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left']] as const) {
     const v = p[key];
-    if (v && v !== 'none') para[`fo:border-${side}`] = String(v);
+    if (!v || v === 'none') continue;
+    para[`fo:border-${side}`] = String(v);
+    // The gap to the rule, on the ruled sides only — fo:padding would ring the block.
+    if (p.borderPadding != null) para[`fo:padding-${side}`] = `${p.borderPadding}pt`;
   }
   const text: Record<string, string> = {};
   if (t.fontFamily) {

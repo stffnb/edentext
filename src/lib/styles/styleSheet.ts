@@ -16,6 +16,9 @@ export type ParaProps = {
   borderRight?: string;
   borderBottom?: string;
   borderLeft?: string;
+  // pt between the text and its own rule lines (Word's w:pBdr w:space, ODF fo:padding).
+  // Only the sides that draw a border take it.
+  borderPadding?: number;
 };
 
 export type TextProps = {
@@ -255,9 +258,17 @@ function declarations(r: ResolvedStyle): string[] {
   // Plus the section inset, which .tiptap's own padding can't draw (editor.css).
   if (p.indent != null) out.push(`margin-left: calc(var(--sec-inset-left, 0px) + ${p.indent}cm)`);
   if (p.backgroundColor) out.push(`background-color: ${p.backgroundColor}`);
+  const drawn: Record<string, boolean> = {};
   for (const [key, side] of [['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left']] as const) {
     const v = p[key];
-    if (v && v !== 'none') out.push(`border-${side}: ${v}`);
+    drawn[side] = !!v && v !== 'none';
+    if (drawn[side]) out.push(`border-${side}: ${v}`);
+  }
+  // The gap the file puts between the text and its rule, on the ruled sides only —
+  // a bottom rule must not indent the paragraph or push its first line down.
+  if (p.borderPadding != null) {
+    const pad = (side: string) => (drawn[side] ? `${p.borderPadding}pt` : '0');
+    out.push(`padding: ${pad('top')} ${pad('right')} ${pad('bottom')} ${pad('left')}`);
   }
   return out;
 }

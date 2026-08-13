@@ -181,6 +181,8 @@ export class DocxStyles {
   private ownTabs = new Map<string, TabStop[]>(); // style's own w:pPr/w:tabs
   private ownCellMar = new Map<string, Element>(); // table style's own w:tblPr/w:tblCellMar
   private ownTblBorders = new Map<string, Element>(); // table style's own w:tblPr/w:tblBorders
+  private ownPBdr = new Map<string, Element>(); // style's own w:pPr/w:pBdr (rule lines)
+  private ownParaShd = new Map<string, Element>(); // style's own w:pPr/w:shd (colored field)
   private ownCond = new Map<string, Map<string, Element>>(); // table styleId → w:type → w:tblStylePr
   private ownBandSize = new Map<string, { row: number; col: number }>(); // w:tblStyle*BandSize
   private defaultsWidow: boolean | null = null; // docDefaults w:pPrDefault/w:widowControl
@@ -257,6 +259,10 @@ export class DocxStyles {
         const left = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10);
         if (Number.isFinite(left)) this.ownIndentTwip.set(id, left);
       }
+      const pBdr = ppr && firstChild(ppr, 'pBdr');
+      if (pBdr) this.ownPBdr.set(id, pBdr);
+      const paraShd = ppr && firstChild(ppr, 'shd');
+      if (paraShd) this.ownParaShd.set(id, paraShd);
       const tblPr = firstChild(style, 'tblPr');
       const cellMar = tblPr && firstChild(tblPr, 'tblCellMar');
       if (cellMar) this.ownCellMar.set(id, cellMar);
@@ -494,6 +500,23 @@ export class DocxStyles {
     const own = this.ownTblBorders.get(styleId);
     const rest = this.tableBorders(this.basedOn.get(styleId) ?? null, seen);
     return own ? [own, ...rest] : rest;
+  }
+
+  // Every w:pPr/w:pBdr along the w:basedOn chain, leaf first — a paragraph style's rule
+  // lines, which the registry renders like any other style property.
+  paragraphBorders(styleId: string | null | undefined, seen = new Set<string>()): Element[] {
+    if (!styleId || seen.has(styleId)) return [];
+    seen.add(styleId);
+    const own = this.ownPBdr.get(styleId);
+    const rest = this.paragraphBorders(this.basedOn.get(styleId) ?? null, seen);
+    return own ? [own, ...rest] : rest;
+  }
+
+  // The nearest w:pPr/w:shd along the chain (the paragraph's own background).
+  paragraphShading(styleId: string | null | undefined, seen = new Set<string>()): Element | null {
+    if (!styleId || seen.has(styleId)) return null;
+    seen.add(styleId);
+    return this.ownParaShd.get(styleId) ?? this.paragraphShading(this.basedOn.get(styleId) ?? null, seen);
   }
 
   // The table style's conditional areas (w:tblStylePr) along the w:basedOn chain: Word's

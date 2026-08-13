@@ -680,6 +680,26 @@ function stylePara(ctx: Ctx, id: string | null): ParaProps {
   else if (jc === 'left' || jc === 'start') out.textAlign = 'left';
   const ind = ctx.styles.styleIndentTwip(id);
   if (ind != null) out.indent = round2(twipToCm(ind));
+  // The style's own rule lines and colored field — a Title's rule lives here, not on the
+  // block, so every paragraph the style governs draws it (styleCss).
+  const shd = ctx.styles.paragraphShading(id);
+  const fill = shd ? hexColor(shd.getAttributeNS(W, 'fill')) : undefined;
+  if (fill) out.backgroundColor = fill;
+  let space: number | null = null;
+  for (const [wSide, attr] of PARA_BORDER_SIDES) {
+    for (const pBdr of ctx.styles.paragraphBorders(id)) {
+      const side = fc(pBdr, wSide);
+      if (!side) continue;
+      const v = paraBorderAttr(side);
+      if (v) {
+        out[attr] = v;
+        // w:space is in whole points, per side; the widest gap is the paragraph's.
+        space = Math.max(space ?? 0, intAttr(side, W, 'space') ?? 0);
+      }
+      break; // the nearest level that declares the side decides it
+    }
+  }
+  if (space) out.borderPadding = space;
   return out;
 }
 
@@ -949,20 +969,27 @@ function readParaBox(ppr: Element | null): Record<string, string> {
 
   const pBdr = fc(ppr, 'pBdr');
   if (pBdr) {
-    for (const [wSide, attr] of [
-      ['top', 'borderTop'], ['right', 'borderRight'], ['bottom', 'borderBottom'], ['left', 'borderLeft'],
-    ] as const) {
-      const b = fc(pBdr, wSide);
-      if (!b) continue;
-      const val = b.getAttributeNS(W, 'val');
-      if (!val || val === 'none' || val === 'nil') continue;
-      const sz = intAttr(b, W, 'sz'); // eighths of a point
-      const widthPt = sz != null ? Math.round((sz / 8) * 100) / 100 : 0.5;
-      const color = hexColor(b.getAttributeNS(W, 'color')) ?? '#000000';
-      out[attr] = `${widthPt}pt solid ${color}`;
+    for (const [wSide, attr] of PARA_BORDER_SIDES) {
+      const v = paraBorderAttr(fc(pBdr, wSide));
+      if (v) out[attr] = v;
     }
   }
   return out;
+}
+
+const PARA_BORDER_SIDES = [
+  ['top', 'borderTop'], ['right', 'borderRight'], ['bottom', 'borderBottom'], ['left', 'borderLeft'],
+] as const;
+
+// One w:pBdr side → the canonical '<W>pt solid #RRGGBB'. null when it draws nothing:
+// unlike a table cell, a paragraph has no 0.5pt-black default to collapse against.
+function paraBorderAttr(b: Element | null): string | null {
+  if (!b) return null;
+  const val = b.getAttributeNS(W, 'val');
+  if (!val || val === 'none' || val === 'nil') return null;
+  const sz = intAttr(b, W, 'sz'); // eighths of a point
+  const widthPt = sz != null ? Math.round((sz / 8) * 100) / 100 : 0.5;
+  return `${widthPt}pt solid ${hexColor(b.getAttributeNS(W, 'color')) ?? '#000000'}`;
 }
 
 function snapPt(v: number): number {

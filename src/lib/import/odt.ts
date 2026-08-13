@@ -1141,10 +1141,15 @@ function paraPropsFromOdf(props: PropMap): ParaProps {
   }
   const bg = props['fo:background-color'];
   if (bg && bg !== 'transparent') out.backgroundColor = normalizeColor(bg) ?? undefined;
+  let pad: number | null = null;
   for (const [key, side] of [['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left']] as const) {
     const v = props[`fo:border-${side}`] ?? props['fo:border'];
-    if (v && v !== 'none') out[key] = borderAttrFromOdf(v) ?? undefined;
+    if (!v || v === 'none') continue;
+    out[key] = borderAttrFromOdf(v) ?? undefined;
+    const p = lengthToPt(props[`fo:padding-${side}`] ?? props['fo:padding']);
+    if (p) pad = Math.max(pad ?? 0, p);
   }
+  if (pad) out.borderPadding = snapPt(pad);
   return out;
 }
 
