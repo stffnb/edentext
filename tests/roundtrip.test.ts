@@ -485,7 +485,7 @@ describe('Leg 1a2c: footnotes and endnotes', () => {
     check('ODF: the separator survives',
       back.separator.relWidthPercent === 60 && Math.abs(back.separator.weightPt - 1.5) < 0.05 && back.separator.align === 'center', back.separator);
 
-    const docx = await buildDocx(notesDoc(), margins, 'portrait', undefined, null, 'A4', builtinStyleSheet(), 1.25, false, custom);
+    const docx = await buildDocx(notesDoc(), margins, 'portrait', undefined, null, 'A4', builtinStyleSheet(), 1.25, 'add', false, custom);
     const dback = importDocx(docx).notes;
     check('DOCX: format, start and restart survive',
       dback.footnote.numFormat === 'A' && dback.footnote.startAt === 4 && dback.footnote.restart === 'page', dback.footnote);

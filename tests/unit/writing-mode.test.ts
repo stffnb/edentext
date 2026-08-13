@@ -52,7 +52,7 @@ describe('a right-to-left page', () => {
   });
 
   it('round-trips through a DOCX export as w:bidi', async () => {
-    const bytes = await buildDocx(doc, margins, 'portrait', undefined, null, 'A4', undefined, undefined, true);
+    const bytes = await buildDocx(doc, margins, 'portrait', undefined, null, 'A4', undefined, undefined, undefined, true);
     expect(strFromU8(unzipSync(bytes)['word/document.xml'])).toContain('<w:bidi/>');
     expect(importDocx(bytes).rtl).toBe(true);
   });

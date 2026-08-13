@@ -2366,6 +2366,7 @@ function linkHrefOf(marks: TiptapNode['marks'] = []): string | undefined {
 // The sheet of the export in flight, so the run emitters can resolve character styles
 // without threading it through every cell/list helper (mirrors docLangTag in docx.ts).
 let exportSheet: StyleSheet = builtinStyleSheet();
+let exportSpacingModel: SpacingModel = 'add';
 
 // Emit each text node as an odf-kit run; link-marked runs become <text:a> via addLink.
 // `force` bakes formatting onto every run regardless of marks — for header/region cells,
@@ -2651,6 +2652,18 @@ function chapterSentinel(node: TiptapNode): string {
 
 // A segment is one paragraph, heading, or list item's paragraph; exactly one SEG
 // between consecutive segments, so splitting yields one piece per segment in DFS order.
+// Neither word processor passes the default style's spacing into a cell (LibreOffice's Table
+// Contents zeroes both, Word's table styles the space below), and editor.css renders it that
+// way — so the file says so too. A paragraph's own spacing still wins.
+function cellParaStyle(attrs: TiptapNode['attrs']): ParaStyle {
+  const style = paraStyleFromAttrs(attrs);
+  if (attrs?.styleName) return style;
+  const def = resolveStyle(exportSheet, DEFAULT_STYLE).para;
+  if (!def.spaceBefore && !def.spaceAfter) return style;
+  const spaceBefore = exportSpacingModel === 'max' ? style.spaceBefore : style.spaceBefore ?? 0;
+  return { ...style, spaceBefore, spaceAfter: style.spaceAfter ?? 0 };
+}
+
 function buildCellContent(cell: TiptapNode, c: CellBuilder, force: TextProps = {}): CellBlock[] {
   const blocks: CellBlock[] = [];
   const state = { emitted: false }; // whether any segment has been emitted yet
@@ -2681,7 +2694,7 @@ function buildCellContent(cell: TiptapNode, c: CellBuilder, force: TextProps = {
   for (const block of cell.content ?? []) {
     if (block.type === 'paragraph') {
       emitSegment(block.content);
-      blocks.push({ kind: 'paragraph', style: paraStyleFromAttrs(block.attrs) });
+      blocks.push({ kind: 'paragraph', style: cellParaStyle(block.attrs) });
     } else if (block.type === 'heading') {
       emitSegment(block.content);
       blocks.push({ kind: 'heading', level: (block.attrs?.level as number) ?? 1, style: paraStyleFromAttrs(block.attrs) });
@@ -2693,7 +2706,7 @@ function buildCellContent(cell: TiptapNode, c: CellBuilder, force: TextProps = {
   // Empty cell: odf-kit emits an empty <text:p/>; record one empty paragraph so
   // applyCellBlocks stays aligned and leaves it untouched.
   if (blocks.length === 0) {
-    blocks.push({ kind: 'paragraph', style: paraStyleFromAttrs(undefined) });
+    blocks.push({ kind: 'paragraph', style: cellParaStyle(undefined) });
   }
   return blocks;
 }
@@ -3532,6 +3545,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
   exportSheet = styles;
+  exportSpacingModel = spacingModel;
   const images: ImageExport[] = [];
   const tocs: TocExport[] = [];
   const textBoxes: TextBoxExport[] = [];

@@ -784,13 +784,18 @@
   /* Positioning context for the column-resize handle widget (a child div the
      resize plugin places at the cell's right edge). */
   position: relative;
-  /* Cells hold paragraphs; suppress their bottom margin so a single-line cell
-     isn't taller than its text (matches the list-item paragraph treatment). */
 }
 
-.paper .tiptap td > p,
-.paper .tiptap th > p {
+/* No space below a cell paragraph that names no style: LibreOffice's Table Contents and
+   Word's table styles both zero it, and the space would fill the cell, leaving vertical
+   alignment no slack. An inline value (direct formatting) still wins. */
+.paper .tiptap :is(td, th) > p:not([data-style]) {
   margin-bottom: 0;
+}
+/* Only LibreOffice's style zeroes the space above too; Word's table styles set the
+   spacing after alone, so a Word document keeps it (as the cell-start rule above does). */
+.paper:not([data-spacing-model='max']) .tiptap :is(td, th) > p:not([data-style]) {
+  --space-before: 0;
 }
 
 /* Header-row cells (tableHeaderRow.ts toggle): bold rendered presentationally so all

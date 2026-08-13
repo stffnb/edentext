@@ -111,6 +111,15 @@ We deliberately keep TipTap's `resizable: false` (so its own columnResizing plug
   model only. Measured on the Math Guide: the table row grew 1mm per row without it. `pageBreaks.ts`
   excludes cell leaves from its page-top-drop detection, or that missing padding would read
   as a decoration to add back.
+- **A cell paragraph that names no style has no space below it.** Neither word processor passes
+  the default style's spacing into a cell: LibreOffice puts cell text in its Table Contents style
+  (probed — an auto-height row stays exactly as tall as its lines, and a bottom-aligned cell
+  reaches the row bottom), Word's table styles carry `w:spacing w:after="0"`. The **space above**
+  is LibreOffice's alone, so the `add` model zeroes that too. `editor.css` renders it, and both
+  exporters write the zeros onto the paragraph (`cellParaStyle`/`cellSpacingOf`) — only when the
+  default style has spacing at all, so files without it export unchanged. Without this the space
+  fills the cell and vertical alignment (`tableCellAlign.ts`) has no slack left to move text in,
+  which is what makes it look dead.
 - **A painted border is always a whole pixel**, whatever width the file declares — Chromium
   floors it, LibreOffice reserves the declared width (the Math Guide's cells ask for a 0.05pt hairline).
   The excess comes off the cell's `padding-bottom` (`--border-over`, `tableCellBorders.ts`;

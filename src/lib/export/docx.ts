@@ -19,6 +19,7 @@ import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
+import type { SpacingModel } from '../storage/spacingModel';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteSettings } from '../storage/noteSettings';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
@@ -29,7 +30,7 @@ import { charStyleProps, listMarkerFormat } from '../editor/extensions/listMarke
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
-import { builtinStyleSheet, DEFAULT_STYLE, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
+import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { parseTableLook, regionText, type TableStyle } from '../styles/tableStyles';
 import { findFormat, renderFormat, docxPicture, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../utils/dateTime';
 import { parseLatex } from '../math/latex';
@@ -41,6 +42,7 @@ let docLangTag = 'en-US';
 // The sheet of the export in flight, so the table/cell emitters can resolve a named
 // table style without threading it through every helper (mirrors odt.ts).
 let exportSheet: StyleSheet = builtinStyleSheet();
+let exportSpacingModel: SpacingModel = 'add';
 
 // DOCX export. Mirrors export/odt.ts feature-for-feature, but builds OOXML via the
 // `docx` library instead of odf-kit. Lazy-loaded from App.svelte so neither this
@@ -815,6 +817,17 @@ function alignOf(attrs: TiptapNode['attrs']): (typeof AlignmentType)[keyof typeo
   }
 }
 
+// Word's table styles carry w:spacing after=0 and LibreOffice's Table Contents zeroes both,
+// which is what editor.css renders — written onto the paragraph itself, where a file without
+// a table style needs it anyway.
+function cellSpacingOf(attrs: TiptapNode['attrs'], node: TiptapNode): ISpacingProperties | undefined {
+  const s = spacingOf(attrs);
+  if (attrs?.styleName || node.type !== 'paragraph') return s;
+  const def = resolveStyle(exportSheet, DEFAULT_STYLE).para;
+  if (!def.spaceBefore && !def.spaceAfter) return s;
+  return { ...(exportSpacingModel === 'max' ? { after: 0 } : { before: 0, after: 0 }), ...s };
+}
+
 function spacingOf(attrs: TiptapNode['attrs']): ISpacingProperties | undefined {
   const s: Writable<ISpacingProperties> = {};
   if (typeof attrs?.spaceBefore === 'number') s.before = ptToTwip(attrs.spaceBefore);
@@ -834,7 +847,7 @@ function spacingOf(attrs: TiptapNode['attrs']): ISpacingProperties | undefined {
 }
 
 
-type ParaOpts = { numbering?: { reference: string; level: number }; indentLeftTwip?: number; force?: TextProps };
+type ParaOpts = { numbering?: { reference: string; level: number }; indentLeftTwip?: number; force?: TextProps; inCell?: boolean };
 
 // Paragraph background ("colored field") → w:shd; per-side borders ("rule line") → w:pBdr.
 function paraShadingOf(attrs: TiptapNode['attrs']) {
@@ -875,7 +888,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
   return new Paragraph({
     style,
     alignment: alignOf(attrs),
-    spacing: spacingOf(attrs),
+    spacing: opts.inCell ? cellSpacingOf(attrs, node) : spacingOf(attrs),
     indent: Object.keys(indent).length ? indent : undefined,
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,
     widowControl: attrs.widowControl === false ? false : undefined,
@@ -970,7 +983,7 @@ function cellBlocksToDocx(content: TiptapNode[] = [], force: TextProps, num: Num
     } else if (child.type === 'table') {
       out.push(tableToDocx(child, contentWidthCm, num));
     } else if (child.type === 'paragraph' || child.type === 'heading') {
-      out.push(paragraphToDocx(child, { force }));
+      out.push(paragraphToDocx(child, { force, inCell: true }));
     }
   }
   if (out.length === 0) out.push(new Paragraph({}));
@@ -1290,11 +1303,13 @@ export async function buildDocx(
   pageFormat: PageFormat = 'A4',
   styles: StyleSheet = builtinStyleSheet(),
   tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM,
+  spacingModel: SpacingModel = 'add',
   rtl = false,
   notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
+  exportSpacingModel = spacingModel;
   docFormulas = [];
   const num = new Numbering();
   const landscape = orientation === 'landscape';
