@@ -119,26 +119,46 @@ function extractLayout() {
     return false;
   };
 
+  // A word broken mid-word — a token wider than its line, or one carrying a hyphen or a
+  // slash — has a client rect per line, and pdftotext reads those as separate words. So
+  // split it the same way, by the line each character lands on.
+  const fragments = (node, from, to) => {
+    const r = document.createRange();
+    r.setStart(node, from); r.setEnd(node, to);
+    const rects = r.getClientRects();
+    const whole = (rect) => ({ top: rect.top, left: rect.left, width: rect.width, text: node.nodeValue.slice(from, to) });
+    if (rects.length < 2) return rects.length ? [whole(rects[0])] : [];
+    const out = [];
+    for (let i = from; i < to; i++) {
+      const c = document.createRange();
+      c.setStart(node, i); c.setEnd(node, i + 1);
+      const rect = c.getClientRects()[0];
+      if (!rect) continue;
+      const last = out[out.length - 1];
+      if (last && Math.abs(last.top - rect.top) < 1) { last.text += node.nodeValue[i]; last.right = rect.right; }
+      else out.push({ top: rect.top, left: rect.left, right: rect.right, text: node.nodeValue[i] });
+    }
+    return out.map((f) => ({ top: f.top, left: f.left, width: f.right - f.left, text: f.text }));
+  };
+
   const words = [];
   const walker = document.createTreeWalker(paper, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const text = n.nodeValue;
     if (!text || !text.trim() || skip(n)) continue;
     for (const m of text.matchAll(/\S+/g)) {
-      const r = document.createRange();
-      r.setStart(n, m.index);
-      r.setEnd(n, m.index + m[0].length);
-      const rect = r.getClientRects()[0];
-      if (!rect || !rect.width) continue;
-      const y = rect.top - origin.top;
-      const page = Math.floor(y / cycle);
-      words.push({
-        text: m[0],
-        page,
-        x: (rect.left - origin.left) * PX_MM,
-        y: (y - page * cycle) * PX_MM,
-        w: rect.width * PX_MM,
-      });
+      for (const f of fragments(n, m.index, m.index + m[0].length)) {
+        if (!f.width) continue;
+        const y = f.top - origin.top;
+        const page = Math.floor(y / cycle);
+        words.push({
+          text: f.text,
+          page,
+          x: (f.left - origin.left) * PX_MM,
+          y: (y - page * cycle) * PX_MM,
+          w: f.width * PX_MM,
+        });
+      }
     }
   }
   // Folded, not spread: a several-hundred-page document has more words than a call
