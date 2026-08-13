@@ -30,7 +30,7 @@ App.svelte                    – owns app-level state (theme, zoom, margins, or
  │    │                         markers (first line, left and right, via setIndent/setIndentRight/setIndentFirst). Sticky
  │    │                         inside .editor, so it clears the toolbar island and scrolls
  │    │                         horizontally with the page; positions are scaled by zoom while the
- │    │                         chrome keeps its size. Toggled in ToolbarExpanded (odf-editor-ruler).
+ │    │                         chrome keeps its size. Toggled in ToolbarExpanded (edentext-ruler).
  │    └─ TableToolbar.svelte  – floating row/column/table actions, shown above the active table
  └─ footer statusbar          – "Page X of Y" + zoom controls (20–300%)
 ```
@@ -50,7 +50,7 @@ at most `SETTLE_SAMPLES` blocks: reading every one each frame starves the layout
 
 ## Zoom (`Editor.svelte`)
 
-Zoom is a CSS `transform: scale()` on `.paper` (layout and pagination always run at 100%, so they stay stable across zoom — this replaced an earlier CSS `zoom` approach that re-ran layout at every scale). A transform reserves no layout space, so `.paper-scaler` reserves the scaled footprint to drive scrollbars and horizontal centering — it's sized in the `$effect.pre`, so it reaches the DOM in the same flush as the transform and the anchor pass below measures the right geometry. The applied zoom is throttled to one DOM write per animation frame. Range 20–300% (`MIN_ZOOM`/`MAX_ZOOM`/`clampZoom` in `utils/zoom.ts`), persisted in `localStorage['odf-editor-zoom']`.
+Zoom is a CSS `transform: scale()` on `.paper` (layout and pagination always run at 100%, so they stay stable across zoom — this replaced an earlier CSS `zoom` approach that re-ran layout at every scale). A transform reserves no layout space, so `.paper-scaler` reserves the scaled footprint to drive scrollbars and horizontal centering — it's sized in the `$effect.pre`, so it reaches the DOM in the same flush as the transform and the anchor pass below measures the right geometry. The applied zoom is throttled to one DOM write per animation frame. Range 20–300% (`MIN_ZOOM`/`MAX_ZOOM`/`clampZoom` in `utils/zoom.ts`), persisted in `localStorage['edentext-zoom']`.
 
 `zoom` lives in `App.svelte`; `setZoom` is the only writer (clamps + persists) and reaches `Editor.svelte` as the `onZoom` prop, so a gesture there routes back through it and the status-bar slider follows for free. Inputs beyond the slider:
 
@@ -61,7 +61,7 @@ Both anchors differ: a wheel zoom holds the **point under the cursor** fixed (`p
 
 ## Headers & footers (`HeaderFooterLayer.svelte`, `storage/headerFooter.ts`)
 
-One header and one footer (`HfDoc` = a single-paragraph TipTap doc per zone, persisted to `odf-editor-header`/`-footer`), repeated on every page. Double-clicking a page margin — or the Layout-panel "Edit header/footer" buttons — opens the zone for editing; clicking back into the body (`onFocus`) or Escape ends it. The edge→zone distance (header from top, footer from bottom) is user-configurable in cm via the Layout panel (`HfDistances`, persisted to `odf-editor-hf-distances`, default `HF_DISTANCE_CM` 1.27cm, clamped 0–10 and below the body margin).
+One header and one footer (`HfDoc` = a single-paragraph TipTap doc per zone, persisted to `edentext-header`/`-footer`), repeated on every page. Double-clicking a page margin — or the Layout-panel "Edit header/footer" buttons — opens the zone for editing; clicking back into the body (`onFocus`) or Escape ends it. The edge→zone distance (header from top, footer from bottom) is user-configurable in cm via the Layout panel (`HfDistances`, persisted to `edentext-hf-distances`, default `HF_DISTANCE_CM` 1.27cm, clamped 0–10 and below the body margin).
 - **Fields:** the bar beside the active zone inserts the `pageField.ts` atoms — page number, page count, chapter (the running head, level 1). Each is patched per page, so the same zone shows a different value on every page.
 - **Rendering:** the zone's own font is the document's **default paragraph style** (`styleCss` gives `.paper .hf-layer .hf-zone` its text half): both formats base the Header/Footer style on it, so a file whose body is Arial 10pt has an Arial footer, not the editor's serif. `HeaderFooterLayer.svelte` mounts inside the scaled `.paper` (like `.band-layer`), positioning per-page zone boxes in unscaled doc px. A zone's out-of-flow frame (`wrap` ≠ inline) is hidden in the box and painted per page by `.hf-bg-layer` at `z-index: -1` — hence `.paper`, not `.tiptap`, paints the page surface, so the image lands between the sheet and the body text. Inactive zones render as static HTML (`generateHTML` + `hfExtensions`); the active zone hosts the single live TipTap editor. `App.svelte`'s `activeEditor`/`activeTick` route the top toolbars to `hfEditor` while a zone is active, so all body formatting works on the header/footer with no toolbar changes.
 

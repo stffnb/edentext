@@ -656,7 +656,7 @@ const de: Messages = {
     autosaveQuota:
       'Das Dokument ist zu groß, um automatisch gespeichert zu werden (Speicherlimit des Browsers erreicht). Das passiert meist bei großen eingebetteten Bildern. Speichere es als .odt-Datei, um deine Arbeit zu sichern.',
     documentNotLoaded:
-      'Das zuletzt bearbeitete Dokument hat den Start des Editors blockiert und wurde deshalb nicht geladen. Du arbeitest in einem neuen, leeren Dokument; das alte bleibt im Browser-Speicher unter „odf-editor-doc-broken" erhalten.',
+      'Das zuletzt bearbeitete Dokument hat den Start des Editors blockiert und wurde deshalb nicht geladen. Du arbeitest in einem neuen, leeren Dokument; das alte bleibt im Browser-Speicher unter „edentext-doc-broken" erhalten.',
   },
   importWarn: {
     imagesSkipped: 'Einige Bilder konnten nicht gelesen werden und wurden übersprungen',

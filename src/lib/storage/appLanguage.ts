@@ -3,7 +3,7 @@
 
 import { isLocale, resolveBrowserLocale, type Locale } from '../i18n/config';
 
-const KEY = 'odf-editor-app-language';
+const KEY = 'edentext-app-language';
 
 export function loadAppLanguage(): Locale {
   const saved = localStorage.getItem(KEY);

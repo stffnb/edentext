@@ -7,7 +7,7 @@ export type PageFormat =
   | 'jisB4' | 'jisB5'
   | 'letter' | 'legal' | 'tabloid' | 'executive' | 'folio' | 'statement';
 
-const KEY = 'odf-editor-page-format';
+const KEY = 'edentext-page-format';
 
 // Portrait page dimensions in cm per format (width < height). Landscape swaps them.
 // Grouped A / ISO-B / JIS-B / US, matching the Word/LibreOffice paper menus.

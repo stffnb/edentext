@@ -1,7 +1,7 @@
 import { loadChecker, type Checker } from './dictionary';
 import { loadDocumentLanguage, type DocumentLanguage } from '../storage/documentLanguage';
 
-const PERSONAL_KEY = 'odf-editor-user-dictionary';
+const PERSONAL_KEY = 'edentext-user-dictionary';
 
 function loadPersonal(): string[] {
   try {

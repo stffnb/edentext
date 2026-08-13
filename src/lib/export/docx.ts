@@ -1381,7 +1381,7 @@ export async function buildDocx(
   };
 
   const doc = new Document({
-    creator: 'Web ODF Editor',
+    creator: 'EdenText',
     defaultTabStop: cmToTwip(tabIntervalCm),
     ...(differentOddEven ? { evenAndOddHeaderAndFooters: true } : {}),
     ...(hasToc ? { features: { updateFields: true } } : {}),

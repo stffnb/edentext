@@ -45,7 +45,7 @@
   ];
   const WEB_SAFE_SET = new Set<string>(WEB_SAFE_FONTS);
 
-  const RECENT_FONTS_KEY = 'odf-editor-recent-fonts';
+  const RECENT_FONTS_KEY = 'edentext-recent-fonts';
   const MAX_RECENT_FONTS = 5;
 
   let recentFonts = $state<string[]>([]);

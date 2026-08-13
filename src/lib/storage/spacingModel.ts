@@ -3,7 +3,7 @@
 // only the larger of the two for a Word document ('max') — probed, and per document.
 export type SpacingModel = 'add' | 'max';
 
-const KEY = 'odf-editor-spacing-model';
+const KEY = 'edentext-spacing-model';
 
 export function loadSpacingModel(): SpacingModel {
   return localStorage.getItem(KEY) === 'max' ? 'max' : 'add';

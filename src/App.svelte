@@ -127,7 +127,7 @@
   let chromeMode: ChromeMode = $state(loadChromeMode());
   let showFormattingMarks = $state(loadFormattingMarks());
   let showRuler = $state(loadRuler());
-  let zoom = $state(clampZoom(parseInt(localStorage.getItem('odf-editor-zoom') ?? '100', 10)));
+  let zoom = $state(clampZoom(parseInt(localStorage.getItem('edentext-zoom') ?? '100', 10)));
   let pageMargins: PageMargins = $state(loadPageMargins());
   let pageOrientation: Orientation = $state(loadOrientation());
   let pageFormat: PageFormat = $state(loadPageFormat());
@@ -262,7 +262,7 @@
 
   function setZoom(value: number) {
     zoom = clampZoom(value);
-    localStorage.setItem('odf-editor-zoom', String(zoom));
+    localStorage.setItem('edentext-zoom', String(zoom));
   }
 
   function selectTheme(m: ThemeMode) {

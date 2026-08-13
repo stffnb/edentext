@@ -4,12 +4,12 @@ export type ThemeMode = 'light' | 'dark' | 'allBlack' | 'auto';
 // Word-style ribbon. Both drive the same editor; only one is mounted at a time.
 export type ChromeMode = 'classic' | 'ribbon';
 
-const THEME_KEY = 'odf-editor-theme';
-const TOOLBAR_KEY = 'odf-editor-toolbar-expanded';
-const CHROME_KEY = 'odf-editor-chrome';
-const RIBBON_COLLAPSED_KEY = 'odf-editor-ribbon-collapsed';
-const FORMATTING_MARKS_KEY = 'odf-editor-formatting-marks';
-const RULER_KEY = 'odf-editor-ruler';
+const THEME_KEY = 'edentext-theme';
+const TOOLBAR_KEY = 'edentext-toolbar-expanded';
+const CHROME_KEY = 'edentext-chrome';
+const RIBBON_COLLAPSED_KEY = 'edentext-ribbon-collapsed';
+const FORMATTING_MARKS_KEY = 'edentext-formatting-marks';
+const RULER_KEY = 'edentext-ruler';
 
 export function loadTheme(): ThemeMode {
     const saved = localStorage.getItem(THEME_KEY);

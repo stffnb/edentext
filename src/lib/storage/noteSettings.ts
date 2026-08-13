@@ -1,6 +1,6 @@
 import type { OrderedTypeDef } from '../utils/orderedListTypes';
 
-const KEY = 'odf-editor-notes';
+const KEY = 'edentext-notes';
 
 // How footnotes and endnotes are numbered and where they sit. Every default here was
 // read out of a document LibreOffice saved (docs/architecture/notes.md) — an

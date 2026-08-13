@@ -3,7 +3,7 @@ import type { EmbeddedFont } from '../fonts/embeddedFonts';
 // The current document's embedded fonts, persisted in IndexedDB (not localStorage, whose
 // ~5 MB quota is already tight for images). One record, replaced on each open, so storage
 // stays bounded to the open document; on app start it is re-registered via FontFace.
-const DB_NAME = 'odf-editor-fonts';
+const DB_NAME = 'edentext-fonts';
 const STORE = 'fonts';
 const KEY = 'current';
 

@@ -22,7 +22,7 @@ export const LANGUAGES: LanguageDef[] = [
 
 export const DEFAULT_LANGUAGE: DocumentLanguage = 'en';
 
-const KEY = 'odf-editor-doc-language';
+const KEY = 'edentext-doc-language';
 
 export function findLanguage(code: DocumentLanguage): LanguageDef | undefined {
   return LANGUAGES.find((l) => l.code === code);

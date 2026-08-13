@@ -4,7 +4,7 @@ export type PageMargins = {
   top: number; bottom: number; left: number; right: number; mirrored?: boolean;
 };
 
-const KEY = 'odf-editor-page-margins';
+const KEY = 'edentext-page-margins';
 
 // LibreOffice Writer's default page margins (Word uses 2.54cm all round). Only a new
 // document gets these — an imported one always adopts its own page geometry.

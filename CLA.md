@@ -1,6 +1,6 @@
 # Contributor License Agreement (CLA)
 
-**Project:** Web ODF Editor
+**Project:** EdenText
 **Maintainer / Licensor:** Steffen Becker &lt;your-contact-email&gt; (the "Maintainer")
 
 > ⚠️ **Note:** This is a plain-language template adapted from common individual CLAs

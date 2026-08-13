@@ -1,7 +1,7 @@
 // The user-visible document name (without the .odt extension). Drives the
 // suggested filename on save; empty falls back to the heading-derived name.
 
-const KEY = 'odf-editor-doc-name';
+const KEY = 'edentext-doc-name';
 
 export function loadDocName(): string {
   return localStorage.getItem(KEY) ?? '';

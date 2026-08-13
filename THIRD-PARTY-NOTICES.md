@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Web ODF Editor as a whole is licensed under the GNU Affero General Public License
+EdenText as a whole is licensed under the GNU Affero General Public License
 v3.0 (see [`LICENSE`](./LICENSE)), with a separate commercial license available
 (see [`LICENSE.commercial.md`](./LICENSE.commercial.md)).
 

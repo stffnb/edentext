@@ -2,7 +2,7 @@
 // right-to-left page fills its columns from the right and sets the body's base
 // direction, so bidi resolves a Hebrew or Arabic line the way the file means it.
 
-const KEY = 'odf-editor-page-rtl';
+const KEY = 'edentext-page-rtl';
 
 export function loadPageRtl(): boolean {
   return localStorage.getItem(KEY) === 'true';

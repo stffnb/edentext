@@ -1,13 +1,13 @@
 import { t } from '../i18n/i18n.svelte';
 
-const STORAGE_KEY = 'odf-editor-doc';
+const STORAGE_KEY = 'edentext-doc';
 // Set while a stored document is being handed to the editor, cleared once the editor
 // has actually come up (markDocumentLoaded). Finding it still set at load time means
 // the last attempt hung or threw — reloading would only freeze again.
-const BOOT_KEY = 'odf-editor-doc-loading';
+const BOOT_KEY = 'edentext-doc-loading';
 // Where such a document is parked instead of being loaded, so nothing is lost and
 // it can still be pulled out of localStorage.
-const BROKEN_KEY = 'odf-editor-doc-broken';
+const BROKEN_KEY = 'edentext-doc-broken';
 const DEBOUNCE_MS = 1000;
 
 let timeout: ReturnType<typeof setTimeout> | null = null;

@@ -62,7 +62,7 @@ async function editorRender(browser, file) {
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
   await page.evaluate(() => {
     localStorage.clear();
-    localStorage.setItem('odf-editor-zoom', '100');   // no transform scale => rects are doc px
+    localStorage.setItem('edentext-zoom', '100');   // no transform scale => rects are doc px
   });
   await page.reload({ waitUntil: 'load' });
   await page.waitForSelector('.tiptap');

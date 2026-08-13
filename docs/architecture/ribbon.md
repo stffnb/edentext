@@ -7,7 +7,7 @@ compared. Everything the ribbon drives is the same editor, through the same comm
 ## The mode switch
 
 `chromeMode: 'classic' | 'ribbon'` lives in `storage/theme.ts` beside the other UI-chrome prefs
-(`odf-editor-chrome`, default `'classic'`). `App.svelte` forks on it: the ribbon docks as a plain
+(`edentext-chrome`, default `'classic'`). `App.svelte` forks on it: the ribbon docks as a plain
 flex child, the island keeps its absolute overlay. Reachable from both sides — the theme dropdown
 in classic, the strip's appearance menu in the ribbon.
 
@@ -58,7 +58,7 @@ group footer and the band's padding, so no tab carries dead space above its butt
 feeding that sum is pinned in px, line-heights included: a ratio hands the band's height to
 whatever font resolves, and the group footers then hang out of the band.
 
-A chevron in the tab strip drops the band entirely, leaving the strip (`odf-editor-ribbon-collapsed`).
+A chevron in the tab strip drops the band entirely, leaving the strip (`edentext-ribbon-collapsed`).
 Clicking any tab brings it back — Word instead floats it over the document until the next click
 lands in the text, which is the part not built.
 

@@ -1,5 +1,5 @@
 {
-  "name": "web-odf-editor",
+  "name": "edentext",
   "version": "0.1.0",
   "type": "module",
   "description": "A fully client-side, serverless rich-text editor that saves documents as .odt",

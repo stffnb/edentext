@@ -5,7 +5,7 @@
 import { builtinStyleSheet, DEFAULT_STYLE, mergeStoredSheet, STYLE_SHEET_VERSION, type Style, type StyleFamily, type StyleSheet } from './styleSheet';
 import type { TableStyle } from './tableStyles';
 
-const STORAGE_KEY = 'odf-editor-styles';
+const STORAGE_KEY = 'edentext-styles';
 
 function load(): StyleSheet {
   const raw = localStorage.getItem(STORAGE_KEY);

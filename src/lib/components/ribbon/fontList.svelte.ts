@@ -8,7 +8,7 @@ export const WEB_SAFE_FONTS: readonly string[] = [
 ];
 const WEB_SAFE_SET = new Set<string>(WEB_SAFE_FONTS);
 
-const RECENT_KEY = 'odf-editor-recent-fonts';
+const RECENT_KEY = 'edentext-recent-fonts';
 const MAX_RECENT = 5;
 
 let recents = $state<string[]>(load());

@@ -1,6 +1,6 @@
 export type Orientation = 'portrait' | 'landscape';
 
-const KEY = 'odf-editor-page-orientation';
+const KEY = 'edentext-page-orientation';
 
 export function loadOrientation(): Orientation {
   return localStorage.getItem(KEY) === 'landscape' ? 'landscape' : 'portrait';

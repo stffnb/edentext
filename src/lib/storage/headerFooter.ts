@@ -41,7 +41,7 @@ export function hfSetIsEmpty(s: HfSet): boolean {
 
 // Sections past the first, in order. Persisted whole rather than per zone like
 // section 1's, whose six docs each have their own key.
-const EXTRA_KEY = 'odf-editor-hf-sections';
+const EXTRA_KEY = 'edentext-hf-sections';
 
 export function loadExtraHfSections(): HfSet[] {
   const raw = localStorage.getItem(EXTRA_KEY);
@@ -60,14 +60,14 @@ export function saveExtraHfSections(sections: HfSet[]): void {
 }
 
 const KEYS: Record<HfZone, Record<HfVariant, string>> = {
-  header: { default: 'odf-editor-header', first: 'odf-editor-header-first', even: 'odf-editor-header-even' },
-  footer: { default: 'odf-editor-footer', first: 'odf-editor-footer-first', even: 'odf-editor-footer-even' },
+  header: { default: 'edentext-header', first: 'edentext-header-first', even: 'edentext-header-even' },
+  footer: { default: 'edentext-footer', first: 'edentext-footer-first', even: 'edentext-footer-even' },
 };
 
 // Whether page 1 uses its own header/footer (Word w:titlePg / ODF header-first).
-const DIFFERENT_FIRST_KEY = 'odf-editor-hf-different-first';
+const DIFFERENT_FIRST_KEY = 'edentext-hf-different-first';
 // Whether even pages use their own header/footer (Word w:evenAndOddHeaders / ODF header-left).
-const DIFFERENT_ODD_EVEN_KEY = 'odf-editor-hf-odd-even';
+const DIFFERENT_ODD_EVEN_KEY = 'edentext-hf-odd-even';
 
 export function loadDifferentFirstPage(): boolean {
   return localStorage.getItem(DIFFERENT_FIRST_KEY) === 'true';
@@ -98,7 +98,7 @@ export type HfDistances = { header: number; footer: number };
 
 export const DEFAULT_HF_DISTANCES: HfDistances = { header: HF_DISTANCE_CM, footer: HF_DISTANCE_CM };
 
-const DIST_KEY = 'odf-editor-hf-distances';
+const DIST_KEY = 'edentext-hf-distances';
 const DIST_MIN = 0;
 const DIST_MAX = 10;
 

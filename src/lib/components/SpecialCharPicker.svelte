@@ -22,7 +22,7 @@
     onInsert: (char: string, range: { from: number; to: number }) => void;
   } = $props();
 
-  const RECENT_CHARS_KEY = 'odf-editor-recent-chars';
+  const RECENT_CHARS_KEY = 'edentext-recent-chars';
   const MAX_RECENT = 12;
 
   // De-duplicated flat index across all categories, for search and name lookup.

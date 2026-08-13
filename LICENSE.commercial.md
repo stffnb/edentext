@@ -1,6 +1,6 @@
 # Commercial License
 
-Web ODF Editor is **dual-licensed**.
+EdenText is **dual-licensed**.
 
 ## 1. Open-source license (default)
 

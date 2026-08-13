@@ -10,7 +10,7 @@ LibreOffice's model: a style has a name, a **parent** it inherits from, a follow
 property groups (`ParaProps` layout / `TextProps` text). `styleSheet.ts` is framework-free — the
 built-ins (Standard → Heading → Heading 1–5 / Title / Subtitle, plus Quotations), `resolveStyle`
 (parent chain root-first, nearest wins, cycle-safe), `styleOrder`, and `styleCss`. `sheet.svelte.ts`
-holds it as a reactive singleton persisted to `odf-editor-styles` (same shape as `i18n.svelte.ts`).
+holds it as a reactive singleton persisted to `edentext-styles` (same shape as `i18n.svelte.ts`).
 
 - **Pair kerning** (`TextProps.kerning` → `font-kerning`) is where the two formats
   disagree: ODF kerns unless `style:letter-kerning="false"`, Word kerns **nothing** unless

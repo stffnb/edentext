@@ -660,7 +660,7 @@ const en = {
     autosaveQuota:
       'The document is too large to save automatically (browser storage limit reached). This usually happens with large embedded images. Save it as an .odt file to keep your work.',
     documentNotLoaded:
-      'The last document stopped the editor from starting, so it was not loaded. You are working in a new, empty document; the old one is kept in the browser storage under "odf-editor-doc-broken".',
+      'The last document stopped the editor from starting, so it was not loaded. You are working in a new, empty document; the old one is kept in the browser storage under "edentext-doc-broken".',
   },
   // Values mirror the canonical English messages the import parsers emit; the UI
   // maps a parser message to its localized form at display time (importMessages.ts).

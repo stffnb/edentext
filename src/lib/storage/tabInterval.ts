@@ -1,4 +1,4 @@
-const KEY = 'odf-editor-tab-interval';
+const KEY = 'edentext-tab-interval';
 
 // The grid every tab past the last custom stop falls on (Word w:defaultTabStop, ODF
 // style:tab-stop-distance). LibreOffice's default for a new document.
