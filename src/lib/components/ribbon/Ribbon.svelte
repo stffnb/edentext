@@ -55,7 +55,7 @@
     onSelectTheme,
     docxBusy = false,
     pdfBusy = false,
-    onNew, onOpen, onSave, onSaveAs, onSaveDocx, onExportPdf, onPrintPdf, onPrint, onAbout,
+    onNew, onOpen, onSave, onSaveAs, onSaveDocx, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties,
   }: {
     editor: Editor | null;
     tick: number;
@@ -92,6 +92,7 @@
     onPrintPdf?: () => void;
     onPrint?: () => void;
     onAbout?: () => void;
+    onDocProperties?: () => void;
   } = $props();
 
   const TABS = ['home', 'insert', 'layout', 'references', 'review', 'view'] as const;
@@ -187,6 +188,9 @@
           <button onclick={() => run(onPrint)} disabled={!editor || pdfBusy}>
             <Icon name="print" size={16} />{t().app.print}
             <span class="menu-key">{withShortcut('Ctrl+P')}</span>
+          </button>
+          <button onclick={() => run(onDocProperties)}>
+            <Icon name="info" size={16} />{t().docProps.title}
           </button>
           <button onclick={() => run(onAbout)}>
             <Icon name="info" size={16} />{t().about.label}

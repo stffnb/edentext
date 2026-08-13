@@ -30,7 +30,7 @@
 - Headings H1–H6 with LibreOffice's sizes (18/16/14/13/12/12 pt, levels 4 and 6 italic), including un-bolding a heading
 
 **Styles**
-- Named paragraph styles with LibreOffice's inheritance model: a style has a parent, a follow-on style and its own properties; changing a style updates every paragraph using it. Built-ins Default text → Heading → Heading 1–5 / Title / Subtitle / Quote, with LibreOffice's values (18/16/14/13/12 pt headings)
+- Named paragraph styles with LibreOffice's inheritance model: a style has a parent, a follow-on style and its own properties; changing a style updates every paragraph using it. Built-ins Default text → Heading → Heading 1–6 / Title / Subtitle / Quote, with LibreOffice's values (18/16/14/13/12/12 pt headings)
 - Named character styles (Emphasis / Strong Emphasis / Source Text + own ones) as a mark on a text run
 - Style gallery in the toolbar lists both families; assigning a style keeps hard formatting (Word/LibreOffice behavior), Ctrl+M clears direct formatting but keeps the style
 - Style manager ("Manage styles…"): inheritance tree, live property editing (empty field = inherit again), new / update from selection, rename, delete, reset a built-in — for paragraph and character styles alike
@@ -109,6 +109,7 @@
 - Opens `.ott` templates (OpenDocument Text Template): read like an `.odt`, but as a new untitled document — the first Save writes a fresh `.odt` and never overwrites the template (Word/LibreOffice behavior)
 - Embedded font loading: fonts embedded in an opened `.odt`/`.docx` (Word `.odttf` de-obfuscated) are registered via the FontFace API so text renders in its real face even when the font isn't installed; persisted per-document in IndexedDB so it survives a reload. Fonts the document only names but neither embeds nor installs are still flagged as substituted
 - Word (.docx) export and import — round-trips the editor's formatting (text, fonts, lists, tables, images, headers/footers, page geometry) and opens real Word documents
+- Document properties (title, subject, author, keywords, comments) in the File menu — LibreOffice's File ▸ Properties / Word's File ▸ Info. Round-trips through ODF `meta.xml` (one `meta:keyword` per keyword) and DOCX `docProps/core.xml`
 - PDF export — Raster (pixel-exact copy of the editor with a selectable text layer) and Vector (crisp, fonts embedded, via the browser print dialog)
 - Print (printer button / Ctrl+P) — opens the browser print dialog with a pixel-exact raster of the document (tables, headers/footers and page breaks intact)
 
@@ -128,7 +129,6 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - Automatic hyphenation: `fo:hyphenate` / `w:hyphenationZone` are ignored and the editor sets no `hyphens`, so a justified paragraph breaks its lines differently than LibreOffice — a systematic source of page-count drift in render parity
 - Captions with numbered figures/tables ("Abbildung 1: …") and the lists built from them (list of figures / tables). The TOC machinery exists, the other index families do not
 - Page numbering options: the page field is decimal-only — no start value, no roman/alpha format, no restart per section
-- Document properties: title, author, subject, keywords. No `meta.xml` is written and the DOCX creator is hard-coded, so an exported file carries no authorship
 - Heading levels 7–10 (Word and LibreOffice go that far; HTML stops at `h6`)
 - Alphabetical index and bibliography
 - Line numbering (LibreOffice Tools ▸ Line numbering / Word Layout ▸ Line numbers)

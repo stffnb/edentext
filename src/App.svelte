@@ -35,11 +35,13 @@
   import { builtinStyleSheet, type StyleFamily } from './lib/styles/styleSheet';
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, loadExtraHfSections, saveExtraHfSections, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
+  import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { spellController } from './lib/spell/controller';
   import LanguagePicker from './lib/components/LanguagePicker.svelte';
   import UiLanguagePicker from './lib/components/UiLanguagePicker.svelte';
   import AboutDialog from './lib/components/AboutDialog.svelte';
+  import DocPropertiesDialog from './lib/components/DocPropertiesDialog.svelte';
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
   import { t } from './lib/i18n/i18n.svelte';
@@ -147,6 +149,8 @@
   // The document name (without .odt). Source of truth for the save filename;
   // set on open, editable in the header, blank → heading-derived fallback.
   let documentName: string = $state(loadDocName());
+  let docProps: DocProperties = $state(loadDocProperties());
+  let docPropsOpen = $state(false);
 
   // Width of the hidden mirror span (below), so the title input grows/shrinks
   // with its text instead of sitting in a fixed-width box.
@@ -483,6 +487,8 @@
     hfDistances = { ...DEFAULT_HF_DISTANCES };
     extraHfSections = [];
     documentName = '';
+    docProps = { ...EMPTY_DOC_PROPERTIES };
+    saveDocProperties(docProps);
     fileHandle = null;
     // Styles and note settings live in the document, so a new one starts from the built-ins
     setStyleSheet(builtinStyleSheet());
@@ -549,6 +555,8 @@
       // an imported table finds its style again by name.
       setStyleSheet({ ...result.styles, table: styleSheet().table });
       setNoteSettings(result.notes);
+      docProps = result.props;
+      saveDocProperties(docProps);
       // Adopt header/footer + first-page variants (null clears the zone); end any edit.
       hfActive = null;
       headerDoc = result.header;
@@ -620,7 +628,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings());
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps);
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -636,7 +644,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings());
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps);
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -654,7 +662,7 @@
     try {
       const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       const { buildDocx } = await import('./lib/export/docx');
-      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings());
+      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps);
       await saveAsDocx(bytes, suggestedFilenameDocx(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -888,6 +896,7 @@
       onPrintPdf={handlePrintPdf}
       onPrint={handlePrint}
       onAbout={() => (aboutOpen = true)}
+      onDocProperties={() => (docPropsOpen = true)}
     />
   </div>
   {:else}
@@ -984,6 +993,10 @@
               <button class="theme-option" onclick={handlePrintPdf} role="menuitem">
                 <span>{t().app.vectorPdf}</span>
                 <span class="theme-option-hint">{t().app.vectorHint}</span>
+              </button>
+              <div class="theme-heading">{t().docProps.title}</div>
+              <button class="theme-option" onclick={() => { exportMenuOpen = false; docPropsOpen = true; }} role="menuitem">
+                <span>{t().docProps.title}</span>
               </button>
             </div>
           {/if}
@@ -1220,6 +1233,7 @@
   </footer>
 
   <AboutDialog bind:open={aboutOpen} />
+  <DocPropertiesDialog bind:open={docPropsOpen} props={docProps} onApply={(p) => { docProps = p; saveDocProperties(p); }} />
   <!-- One instance for every entry point (styles gallery, insert-table menu): the
        callers only say which family to land on. -->
   <StyleManagerDialog bind:open={styleManagerOpen} family={styleManagerFamily} editor={activeEditor} />

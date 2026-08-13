@@ -1750,3 +1750,38 @@ describe('Leg 12: per-section page margins (ODT + DOCX)', () => {
     check('section margins round-trip', JSON.stringify(back) === JSON.stringify(wide), back);
   });
 });
+
+describe('Leg 13: document properties (meta.xml / docProps/core.xml)', () => {
+  const propsDoc: N = { type: 'doc', content: [P(null, T('body'))] };
+  const props = {
+    title: 'Jahresbericht', subject: 'Finanzen', author: 'A. Muster',
+    keywords: 'Bilanz, Prüfung', description: 'Entwurf & Vorlage',
+  };
+
+  it('ODT: meta.xml carries the fields and they come back', async () => {
+    const bytes = await buildOdt(propsDoc, margins, 'portrait', undefined, null, 'A4',
+      builtinStyleSheet(), 1.25, 'add', false, DEFAULT_NOTE_SETTINGS, props);
+    const meta = strFromU8(unzipSync(bytes)['meta.xml']);
+    check('dc:title', meta.includes('<dc:title>Jahresbericht</dc:title>'), meta);
+    check('one meta:keyword per keyword', /<meta:keyword>Bilanz<\/meta:keyword><meta:keyword>Prüfung<\/meta:keyword>/.test(meta));
+    check('ampersand escaped', meta.includes('Entwurf &amp; Vorlage'));
+    check('generator is ours', meta.includes('<meta:generator>EdenText</meta:generator>'));
+    const back = importOdt(bytes).props;
+    check('round-trips whole', JSON.stringify(back) === JSON.stringify(props), back);
+  });
+
+  it('DOCX: docProps/core.xml carries the fields and they come back', async () => {
+    const bytes = await buildDocx(propsDoc, margins, 'portrait', undefined, null, 'A4',
+      builtinStyleSheet(), 1.25, 'add', false, DEFAULT_NOTE_SETTINGS, props);
+    const back = importDocx(bytes).props;
+    check('round-trips whole', JSON.stringify(back) === JSON.stringify(props), back);
+  });
+
+  it('an empty set leaves no fields behind', async () => {
+    const bytes = await buildOdt(propsDoc, margins, 'portrait');
+    const meta = strFromU8(unzipSync(bytes)['meta.xml']);
+    check('no dc:title', !meta.includes('<dc:title>'), meta);
+    const back = importOdt(bytes).props;
+    check('all empty', Object.values(back).every((v) => v === ''), back);
+  });
+});

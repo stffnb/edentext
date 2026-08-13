@@ -21,6 +21,7 @@ import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import type { HfDoc, HfSet } from '../storage/headerFooter';
 import type { NoteKind, NoteSettings } from '../storage/noteSettings';
+import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -84,6 +85,8 @@ export interface OdtImportResult {
   styles: StyleSheet;
   // How its footnotes and endnotes are numbered and separated.
   notes: NoteSettings;
+  // Title/subject/author/keywords (ODF meta.xml, DOCX docProps/core.xml).
+  props: DocProperties;
   warnings: string[];
 }
 
@@ -690,6 +693,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     fonts,
     styles: collectStyleSheet(resolver, ctx),
     notes: resolver.noteSettings(),
+    props: odfDocProperties(files),
     warnings: [...warnings],
   };
 }
@@ -812,6 +816,25 @@ function mergeHfBox(maps: Record<string, string>[]): Record<string, string> {
     if (val !== undefined) out[key] = val;
   }
   return out;
+}
+
+// meta.xml → the document's descriptive properties (LibreOffice's File ▸ Properties).
+function odfDocProperties(files: Record<string, Uint8Array>): DocProperties {
+  const bytes = files['meta.xml'];
+  if (!bytes) return { ...EMPTY_DOC_PROPERTIES };
+  let doc: Document;
+  try { doc = parseXml(strFromU8(bytes)); } catch { return { ...EMPTY_DOC_PROPERTIES }; }
+  const text = (ns: string, name: string) =>
+    doc.getElementsByTagNameNS(ns, name)[0]?.textContent?.trim() ?? '';
+  return {
+    title: text(NS.dc, 'title'),
+    subject: text(NS.dc, 'subject'),
+    // dc:creator is who saved it last, meta:initial-creator who started it.
+    author: text(NS.dc, 'creator') || text(NS.meta, 'initial-creator'),
+    keywords: Array.from(doc.getElementsByTagNameNS(NS.meta, 'keyword'))
+      .map(k => k.textContent?.trim() ?? '').filter(Boolean).join(', '),
+    description: text(NS.dc, 'description'),
+  };
 }
 
 function parseXml(xml: string): Document {

@@ -12,6 +12,16 @@ const de: Messages = {
     insert: 'Einfügen',
     remove: 'Entfernen',
   },
+  docProps: {
+    title: 'Dokumenteigenschaften',
+    docTitle: 'Titel',
+    subject: 'Thema',
+    author: 'Autor',
+    keywords: 'Schlüsselwörter',
+    keywordsHint: 'durch Komma getrennt',
+    description: 'Kommentare',
+    clear: 'Alle löschen',
+  },
   appearance: {
     language: 'Sprache',
     title: 'Darstellung',

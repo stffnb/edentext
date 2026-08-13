@@ -13,6 +13,16 @@ const en = {
     insert: 'Insert',
     remove: 'Remove',
   },
+  docProps: {
+    title: 'Document properties',
+    docTitle: 'Title',
+    subject: 'Subject',
+    author: 'Author',
+    keywords: 'Keywords',
+    keywordsHint: 'comma-separated',
+    description: 'Comments',
+    clear: 'Clear all',
+  },
   appearance: {
     language: 'Language',
     title: 'Appearance',

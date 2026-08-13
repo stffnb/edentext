@@ -29,7 +29,8 @@ import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat } from '../editor/extensions/listMarker';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
-import { normalizeColor, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
+import { normalizeColor, GENERATOR, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
+import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { parseTableLook, regionText, type TableStyle } from '../styles/tableStyles';
 import { findFormat, renderFormat, docxPicture, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../utils/dateTime';
@@ -1306,6 +1307,7 @@ export async function buildDocx(
   spacingModel: SpacingModel = 'add',
   rtl = false,
   notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS,
+  props: DocProperties = EMPTY_DOC_PROPERTIES,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
@@ -1396,7 +1398,12 @@ export async function buildDocx(
   };
 
   const doc = new Document({
-    creator: 'EdenText',
+    // Word's File ▸ Info; an empty field is left out so it does not overwrite Word's own.
+    creator: props.author.trim() || GENERATOR,
+    ...(props.title.trim() ? { title: props.title.trim() } : {}),
+    ...(props.subject.trim() ? { subject: props.subject.trim() } : {}),
+    ...(props.keywords.trim() ? { keywords: props.keywords.trim() } : {}),
+    ...(props.description.trim() ? { description: props.description.trim() } : {}),
     defaultTabStop: cmToTwip(tabIntervalCm),
     ...(differentOddEven ? { evenAndOddHeaderAndFooters: true } : {}),
     ...(hasToc ? { features: { updateFields: true } } : {}),

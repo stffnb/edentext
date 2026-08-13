@@ -19,6 +19,7 @@ import { clampTabInterval, DOCX_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
+import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { applyUniformRunFont, pairAlignedFrames, sinkOffsetFrames, type OdtImportResult } from './odt';
 import { chartDataUrl } from './chart';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
@@ -244,6 +245,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     headerDistanceCm: hasHeader ? sect.headerDistCm : null,
     footerDistanceCm: hasFooter ? sect.footerDistCm : null,
     language: documentLanguage(stylesDoc, warnings),
+    props: docxDocProperties(files),
     fonts: extractDocxFonts(files),
     warnings: [...warnings],
   };
@@ -2212,6 +2214,26 @@ function docTabInterval(files: Record<string, Uint8Array>): number {
   } catch {
     return DOCX_IMPLIED_TAB_CM;
   }
+}
+
+// docProps/core.xml → the document's descriptive properties (Word's File ▸ Info).
+const DC_NS = 'http://purl.org/dc/elements/1.1/';
+const CP_NS = 'http://schemas.openxmlformats.org/package/2006/metadata/core-properties';
+
+function docxDocProperties(files: Record<string, Uint8Array>): DocProperties {
+  const bytes = files['docProps/core.xml'];
+  if (!bytes) return { ...EMPTY_DOC_PROPERTIES };
+  let doc: Document;
+  try { doc = parseXml(strFromU8(bytes)); } catch { return { ...EMPTY_DOC_PROPERTIES }; }
+  const text = (ns: string, name: string) =>
+    doc.getElementsByTagNameNS(ns, name)[0]?.textContent?.trim() ?? '';
+  return {
+    title: text(DC_NS, 'title'),
+    subject: text(DC_NS, 'subject'),
+    author: text(DC_NS, 'creator'),
+    keywords: text(CP_NS, 'keywords'),
+    description: text(DC_NS, 'description'),
+  };
 }
 
 function parseSectPr(sect: Element | null, ctx: Ctx, oddEven = false): {

@@ -7,6 +7,7 @@ import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteSettings } from '../storage/noteSettings';
+import { EMPTY_DOC_PROPERTIES, keywordList, type DocProperties } from '../storage/docProperties';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
@@ -201,6 +202,9 @@ export const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTo
 // @font-face maps to Liberation Sans, so the declared name is metric-identical —
 // the same trick as EXPORT_FONT for the serif body font.
 export const HEADING_FONT = 'Arial';
+
+// What both formats name as the producing application (ODF meta:generator).
+export const GENERATOR = 'EdenText';
 
 // Highest heading level the editor offers (extensions.ts, both importers, TOC).
 export const MAX_HEADING_LEVEL = HEADING_STYLE_OVERRIDES.length;
@@ -3542,7 +3546,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES): Promise<Uint8Array> {
   // Images become IMG sentinels before serialization; applyImages resolves them and writes
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
@@ -3775,7 +3779,26 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.
   const withSections = applySectionMasterPages(withHf, hf?.sections ?? [], hf?.pageCount ?? 1, margins);
-  return applySpacingModel(withSections, spacingModel);
+  return applyDocProperties(applySpacingModel(withSections, spacingModel), props);
+}
+
+// The descriptive metadata → meta.xml, which odf-kit already writes (generator +
+// creation date). LibreOffice's File ▸ Properties and Word's File ▸ Info read it.
+function applyDocProperties(odtBytes: Uint8Array, props: DocProperties): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const metaBytes = files['meta.xml'];
+  if (!metaBytes) return odtBytes;
+  const el = (tag: string, value: string) => (value.trim() ? `<${tag}>${escapeXml(value.trim())}</${tag}>` : '');
+  const author = props.author.trim();
+  const fields = el('dc:title', props.title) + el('dc:subject', props.subject)
+    + el('dc:description', props.description)
+    + keywordList(props.keywords).map(k => `<meta:keyword>${escapeXml(k)}</meta:keyword>`).join('')
+    + (author ? el('meta:initial-creator', author) + el('dc:creator', author) : '')
+    + `<dc:date>${new Date().toISOString()}</dc:date>`;
+  files['meta.xml'] = strToU8(strFromU8(metaBytes)
+    .replace('<meta:generator>odf-kit</meta:generator>', `<meta:generator>${GENERATOR}</meta:generator>`)
+    .replace('</office:meta>', `${fields}</office:meta>`));
+  return rezipOdt(files);
 }
 
 // A document that takes the larger of two adjoining spacings needs LibreOffice's

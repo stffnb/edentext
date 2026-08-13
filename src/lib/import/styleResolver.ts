@@ -21,6 +21,8 @@ export const NS = {
   number: 'urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0',
   loext: 'urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0',
   math: 'http://www.w3.org/1998/Math/MathML',
+  dc: 'http://purl.org/dc/elements/1.1/',
+  meta: 'urn:oasis:names:tc:opendocument:xmlns:meta:1.0',
 } as const;
 
 // One embedded-font binary referenced from a <style:font-face>: the CSS family runs use,
