@@ -6,6 +6,7 @@
   import type { HfZone } from '../../../storage/headerFooter';
   import { t } from '../../../i18n/i18n.svelte';
   import { shortcutHint } from '../../../editor/shortcuts';
+  import { HEADING_LEVELS } from '../../../export/odt';
 
   let { editor, tick, hfActive = null, onNoteOptions }: {
     editor: Editor | null;
@@ -24,7 +25,7 @@
     });
     return found;
   });
-  const LEVELS = [1, 2, 3, 4, 5];
+  const LEVELS = HEADING_LEVELS;
 
   function setMaxLevel(level: number) {
     closeMenu();

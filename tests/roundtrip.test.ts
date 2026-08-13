@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { zipSync, strToU8, unzipSync, strFromU8 } from 'fflate';
 import { getSchema } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
-import { buildOdt } from '../src/lib/export/odt';
+import { buildOdt, MAX_HEADING_LEVEL } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
 import { hfExtensions } from '../src/lib/editor/extensions/headerFooter';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
@@ -1516,7 +1516,7 @@ describe('Leg 5: table of contents (text:table-of-content)', () => {
     const bytes = await buildOdt(tocDoc, margins, 'portrait');
     const content = strFromU8(unzipSync(bytes)['content.xml']);
     check('emits <text:table-of-content>', content.includes('<text:table-of-content '), content.slice(0, 200));
-    check('source spans all heading levels', content.includes('<text:table-of-content-source text:outline-level="5"'));
+    check('source spans all heading levels', content.includes(`<text:table-of-content-source text:outline-level="${MAX_HEADING_LEVEL}"`));
     check('mints Contents_20_1 style', content.includes('style:name="Contents_20_1"'));
     check('cached entry carries a tab + page', /Contents_20_1">Introduction<text:tab\/>1<\/text:p>/.test(content));
     check('ampersand in entry text is escaped', content.includes('Background &amp; Aims'));

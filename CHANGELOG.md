@@ -27,7 +27,7 @@
 - Font family picker (lists only fonts installed on the machine; remembers recently used fonts)
 - Font size
 - Font color and highlight color (color picker with custom colors)
-- Headings H1–H5, including un-bolding a heading
+- Headings H1–H6 with LibreOffice's sizes (18/16/14/13/12/12 pt, levels 4 and 6 italic), including un-bolding a heading
 
 **Styles**
 - Named paragraph styles with LibreOffice's inheritance model: a style has a parent, a follow-on style and its own properties; changing a style updates every paragraph using it. Built-ins Default text → Heading → Heading 1–5 / Title / Subtitle / Quote, with LibreOffice's values (18/16/14/13/12 pt headings)
@@ -71,6 +71,7 @@
 - Footnotes and endnotes (Ctrl+Alt+F / Ctrl+Alt+D): a footnote is drawn at the foot of the page its anchor sits on, with the separator line above it and the body text moved up to make room; endnotes are collected on their own page at the document end. Notes renumber themselves as anchors move, and deleting an anchor deletes its note. An options dialog covers numbering format, start value, restart, position, prefix/suffix, the two styles and the separator's length, thickness, spacing, alignment and colour. Round-trips to ODF `text:note` + `text:notes-configuration` and to Word's `word/footnotes.xml`/`endnotes.xml` + `w:footnotePr`
 - Formulas: dialog with a LaTeX field and live preview; only the LaTeX is stored, the MathML the browser typesets, the ODF formula object and the OMML are derived from it. Inline or as a centered display line, double-click to edit. Round-trips as a real embedded ODF formula object (`draw:object` + `Formula{n}/content.xml`, our LaTeX kept in the MathML `annotation`) and as Word's `m:oMath`. STIX Two Math is bundled, so stretched brackets and ∑/∫ look the same on every platform
 - Hyperlinks: create / edit / remove (toolbar + Ctrl+K), Ctrl/Cmd+click to open, hover hint showing the URL; ODF `text:a` round-trip
+- Bookmarks and cross-references: name a selection, then insert a reference to it (its text, its number or its page); the reference follows the text it points at. Round-trips to ODF `text:bookmark-start`/`text:bookmark-ref` and Word's `Bookmark` + `REF`/`PAGEREF` fields
 - Manual page break (Ctrl+Enter); round-trips to ODF `fo:break-before`
 - Text boxes and basic shapes (rectangle / rounded rectangle / ellipse): editable block content, fill and border colors, border width, resize/rotate handles, text wrap (inline / left / right / top-bottom) like images; floating toolbar for wrap, shape kind and colors. Round-trips to ODF `draw:frame`/`draw:text-box` + `draw:custom-shape` and DOCX DrawingML `wps:wsp`/`wps:txbx` (imports Word's `mc:AlternateContent` and legacy VML text boxes too)
 
@@ -118,7 +119,6 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 **Content an imported document loses**
 - Comments / annotations: dropped on import (`office:annotation`, `w:comment`)
 - Track changes / revisions: no recording, no accept/reject, no author colors (`text:tracked-changes`, `w:ins`/`w:del`); imported revisions are flattened to their current state
-- Bookmarks and cross-references: no anchor, no reference field ("see chapter 3 on page 7"), none survive an import — this also blocks internal hyperlinks
 - Charts are **drawn** from the file (`import/chart.ts`: DrawingML `chartN.xml` and ODF `chart:chart`), but as a picture, not a chart object — a re-export carries the drawing and the numbers behind it are no longer editable. The same holds for an **EMF** metafile (`import/emf.ts`): it is drawn, but as the SVG picture it was rebuilt into, and only from the record set a plot consists of — a hatched brush, a clipping region or a rotated bitmap is skipped. **WMF/SVM** metafiles and OLE objects still keep their box and a placeholder label, and export writes that back out: WMF is a different (16-bit) record format, SVM is StarOffice-proprietary, and an OLE object cannot be rendered without its application
 - Shapes beyond rect / round-rect / ellipse: lines, arrows, connectors, polygons, freeform, and rotated shape text (dropped on import with a warning)
 - Text boxes in the DOCX export: lists inside a box are flattened to literal-marker paragraphs (`•` / `1.`) and images inside a box are dropped — the box XML is injected by a post-pack string pass (`export/docx.ts` `applyTextBoxesDocx`) that mints no numbering.xml or media/rels entries. The ODT export has neither limitation
@@ -129,7 +129,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - Captions with numbered figures/tables ("Abbildung 1: …") and the lists built from them (list of figures / tables). The TOC machinery exists, the other index families do not
 - Page numbering options: the page field is decimal-only — no start value, no roman/alpha format, no restart per section
 - Document properties: title, author, subject, keywords. No `meta.xml` is written and the DOCX creator is hard-coded, so an exported file carries no authorship
-- Heading level H6 (clamped to H5; Word and LibreOffice go to 10)
+- Heading levels 7–10 (Word and LibreOffice go that far; HTML stops at `h6`)
 - Alphabetical index and bibliography
 - Line numbering (LibreOffice Tools ▸ Line numbering / Word Layout ▸ Line numbers)
 - Section-level page **size and orientation**: only the margins are per section. A file whose sections disagree on the page size keeps the last one's

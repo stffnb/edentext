@@ -27,6 +27,7 @@ export const DEFAULT_SHORTCUTS = {
   heading3: 'Mod-Alt-3',
   heading4: 'Mod-Alt-4',
   heading5: 'Mod-Alt-5',
+  heading6: 'Mod-Alt-6',
   styleStandard: 'Mod-Shift-n',
   indentMore: 'Tab',
   indentLess: 'Shift-Tab',

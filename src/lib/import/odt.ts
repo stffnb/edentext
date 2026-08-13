@@ -538,6 +538,7 @@ const HEADING_DEFAULTS = HEADING_STYLE_OVERRIDES.map(h => ({
   fontSizePt: lengthToPt(h.fontSize)!,
   marginTopPt: lengthToPt(h.marginTop)!,
   marginBottomPt: lengthToPt(h.marginBottom)!,
+  italic: h.italic === true,
 }));
 
 // The editor's on-screen default (Liberation Serif) and what the export declares
@@ -1092,7 +1093,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     boldByDefault: headingLevel != null || boldByDefault,
     fonts: new Set(headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS),
     color: '#000000',
-    italic: false,
+    italic: hdef ? hdef.italic : false,
     underline: false,
     strike: false,
     caps: null,

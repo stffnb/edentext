@@ -8,7 +8,7 @@ Three families: paragraph and character styles here, **table styles in
 
 LibreOffice's model: a style has a name, a **parent** it inherits from, a follow-on style, and two
 property groups (`ParaProps` layout / `TextProps` text). `styleSheet.ts` is framework-free — the
-built-ins (Standard → Heading → Heading 1–5 / Title / Subtitle, plus Quotations), `resolveStyle`
+built-ins (Standard → Heading → Heading 1–6 / Title / Subtitle, plus Quotations), `resolveStyle`
 (parent chain root-first, nearest wins, cycle-safe), `styleOrder`, and `styleCss`. `sheet.svelte.ts`
 holds it as a reactive singleton persisted to `edentext-styles` (same shape as `i18n.svelte.ts`).
 
@@ -35,7 +35,7 @@ holds it as a reactive singleton persisted to `edentext-styles` (same shape as `
   rule for the list item carrying the block** (`li:has(> …)`): a list marker inherits the item's
   own font, never its paragraph's, so without it the number renders in the editor default while
   the text it labels follows the style (see `listMarker.ts`). `editor.css` only keeps
-  a neutral `font: inherit; margin: 0` reset for `h1`–`h5`; all heading typography comes from the
+  a neutral `font: inherit; margin: 0` reset for `h1`–`h6`; all heading typography comes from the
   styles. Inline attrs/marks still win — the Word/LO precedence.
 - **ODF I/O is style-aware.** *Export*: `buildOdt(…, styles)` takes the sheet;
   `applyNamedStyles` (inside `rewriteStylesXml`) writes every built-in plus the user styles the

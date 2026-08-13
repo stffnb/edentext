@@ -47,6 +47,7 @@ const en = {
     heading3: 'Heading 3',
     heading4: 'Heading 4',
     heading5: 'Heading 5',
+    heading6: 'Heading 6',
     // Style gallery (Word/LibreOffice "Styles"): presets of direct formatting.
     styles: {
       title: 'Styles',

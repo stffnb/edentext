@@ -102,6 +102,7 @@ const BODY_FONT_SIZE_PT = 12;
 // Rounded to half points: that is all Word can store, so it is what our own export
 // writes and what an imported heading must be compared against.
 const HEADING_SIZES = HEADING_STYLE_OVERRIDES.map((h) => Math.round(lengthToPt(h.fontSize)! * 2) / 2);
+const HEADING_ITALIC = HEADING_STYLE_OVERRIDES.map((h) => h.italic === true);
 const DEFAULT_FONTS = new Set(['times new roman', 'liberation serif']);
 // Headings render sans (HEADING_FONT); Word writes Arial, LibreOffice Liberation Sans.
 const DEFAULT_HEADING_FONTS = new Set(['arial', 'liberation sans']);
@@ -661,7 +662,7 @@ function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDef
     boldByDefault: baseRun.bold ?? (headingLevel != null || boldByDefault),
     fonts,
     color: hexColor(baseRun.color) ?? '#000000',
-    italic: !!baseRun.italic,
+    italic: baseRun.italic ?? (headingLevel != null && HEADING_ITALIC[headingLevel - 1]),
     underline: !!baseRun.underline,
     strike: !!baseRun.strike,
     caps: baseRun.caps || null,

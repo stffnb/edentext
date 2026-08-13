@@ -187,12 +187,14 @@ const CELL_LIST_NUMBER_STYLE = 'TblListNumber';
 // LibreOffice's heading defaults, shown in the editor (editor.css) and written over
 // odf-kit's Heading_20_N styles on export: its sizes plus the Heading style's margins.
 // The importers use them as the fallback yardstick when a file declares no style.
-export const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTop: string; marginBottom: string }[] = [
+// Levels 4 and 6 are italic, as they are in LibreOffice (probed against its style pool).
+export const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTop: string; marginBottom: string; italic?: true }[] = [
   { name: 'Heading_20_1', fontSize: '18pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
   { name: 'Heading_20_2', fontSize: '16pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
   { name: 'Heading_20_3', fontSize: '14pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
-  { name: 'Heading_20_4', fontSize: '13pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
+  { name: 'Heading_20_4', fontSize: '13pt', marginTop: '0.423cm', marginBottom: '0.212cm', italic: true },
   { name: 'Heading_20_5', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
+  { name: 'Heading_20_6', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm', italic: true },
 ];
 
 // Headings are sans (LibreOffice's Heading style). On screen the bundled 'Arial'

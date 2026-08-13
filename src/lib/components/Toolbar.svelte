@@ -10,6 +10,7 @@
   import { blockStyleName } from '../editor/extensions/paragraphStyle';
   import { activeCharacterStyle } from '../editor/extensions/characterStyle';
   import { DEFAULT_STYLE, headingStyleName, resolveStyle, styleOrder, type StyleFamily } from '../styles/styleSheet';
+  import { MAX_HEADING_LEVEL } from '../export/odt';
   import { styleSheet } from '../styles/sheet.svelte';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
@@ -53,7 +54,7 @@
       Standard: s.default, Title: s.docTitle, Subtitle: s.subtitle, Quotations: s.quote,
       'Heading 1': t().toolbar.heading1, 'Heading 2': t().toolbar.heading2,
       'Heading 3': t().toolbar.heading3, 'Heading 4': t().toolbar.heading4,
-      'Heading 5': t().toolbar.heading5,
+      'Heading 5': t().toolbar.heading5, 'Heading 6': t().toolbar.heading6,
     } as Record<string, string>)[name] ?? name;
   }
 
@@ -79,7 +80,7 @@
     if (name === DEFAULT_STYLE) return shortcutHint('styleStandard');
     const level = sheet.paragraph[name]?.outlineLevel;
     // The keys apply the built-in heading styles, not any style at that level.
-    if (!level || level > 5 || name !== headingStyleName(level)) return undefined;
+    if (!level || level > MAX_HEADING_LEVEL || name !== headingStyleName(level)) return undefined;
     return shortcutHint(`heading${level}` as ShortcutId);
   }
 

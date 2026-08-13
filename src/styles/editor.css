@@ -588,7 +588,8 @@
 .paper .tiptap h2,
 .paper .tiptap h3,
 .paper .tiptap h4,
-.paper .tiptap h5 {
+.paper .tiptap h5,
+.paper .tiptap h6 {
   /* Neutral base: font, size and margins come from the named paragraph styles
      (styles/styleSheet.ts → the #document-styles element Editor.svelte writes). */
   font: inherit;
@@ -603,10 +604,10 @@
   inherits: false;
   initial-value: 0;
 }
-.paper .tiptap :is(p, h1, h2, h3, h4, h5, .toc, .toc-title, .toc-entry) {
+.paper .tiptap :is(p, h1, h2, h3, h4, h5, h6, .toc, .toc-title, .toc-entry) {
   padding-top: var(--space-before);
 }
-.paper[data-spacing-model='max'] .tiptap :is(p, h1, h2, h3, h4, h5, .toc, .toc-title, .toc-entry) {
+.paper[data-spacing-model='max'] .tiptap :is(p, h1, h2, h3, h4, h5, h6, .toc, .toc-title, .toc-entry) {
   padding-top: 0;
   margin-top: var(--space-before);
 }
@@ -620,14 +621,14 @@
 /* The line box: the paragraph's spacing factor times its font's natural line height.
    Either half may come from the style rule or, nearer, from the block's own attrs
    (lineHeight.ts / blockFontSize.ts) — multiplying them here is what keeps both. */
-.paper .tiptap :is(p, h1, h2, h3, h4, h5, li, .toc-entry) {
+.paper .tiptap :is(p, h1, h2, h3, h4, h5, h6, li, .toc-entry) {
   line-height: calc(var(--line-factor) * var(--natural-line));
 }
 
 /* A spacing above single puts all of its extra leading *below* each line (measured in
    LibreOffice); CSS splits it half above. Shifting the block up by that half draws its
    lines where LibreOffice does and leaves the flow — so pagination — untouched. */
-.paper .tiptap :is(p, h1, h2, h3, h4, h5) {
+.paper .tiptap :is(p, h1, h2, h3, h4, h5, h6) {
   position: relative;
   top: calc((1 - var(--line-factor)) * var(--natural-line) * 0.5em);
 }
@@ -654,11 +655,11 @@
 /* Out of flow, so the marker cannot touch the line it labels — in flow it grew every
    list line by a pixel, which cost the thesis fixture a page. `top: 0` seats it on the
    first line, since the pseudo takes the block's own line-height. */
-.paper .tiptap li > :is(p, h1, h2, h3, h4, h5) {
+.paper .tiptap li > :is(p, h1, h2, h3, h4, h5, h6) {
   position: relative;
 }
 
-.paper .tiptap li > :is(p, h1, h2, h3, h4, h5)::before {
+.paper .tiptap li > :is(p, h1, h2, h3, h4, h5, h6)::before {
   position: absolute;
   top: 0;
   left: -0.635cm;
@@ -675,7 +676,7 @@
 
 /* A label set against the far end of the hanging indent grows into the margin instead
    of into the text — what keeps Word's Roman numerals off the words they label. */
-.paper .tiptap :is(ol, ul)[data-marker-align="right"] > li > :is(p, h1, h2, h3, h4, h5)::before {
+.paper .tiptap :is(ol, ul)[data-marker-align="right"] > li > :is(p, h1, h2, h3, h4, h5, h6)::before {
   left: auto;
   right: calc(100% + 0.635cm);
 }
@@ -683,21 +684,21 @@
 /* Ordered numbering, keyed by data-eff-list-style — the effective numbering
    orderedList.ts's plugin resolves per <ol> from its attr + ancestor chain. The
    undecorated <ol> is the plain decimal fallback and must come first. */
-.paper .tiptap ol > li > :is(p, h1, h2, h3, h4, h5)::before                                { content: counter(list-item, decimal) ". "; }
-.paper .tiptap ol[data-eff-list-style="decimal"] > li > :is(p, h1, h2, h3, h4, h5)::before  { content: counter(list-item, decimal) ". "; }
-.paper .tiptap ol[data-eff-list-style="decimal-paren"] > li > :is(p, h1, h2, h3, h4, h5)::before     { content: counter(list-item, decimal) ") "; }
-.paper .tiptap ol[data-eff-list-style="lower-alpha"] > li > :is(p, h1, h2, h3, h4, h5)::before       { content: counter(list-item, lower-alpha) ". "; }
-.paper .tiptap ol[data-eff-list-style="lower-alpha-paren"] > li > :is(p, h1, h2, h3, h4, h5)::before { content: counter(list-item, lower-alpha) ") "; }
-.paper .tiptap ol[data-eff-list-style="upper-alpha"] > li > :is(p, h1, h2, h3, h4, h5)::before       { content: counter(list-item, upper-alpha) ". "; }
-.paper .tiptap ol[data-eff-list-style="upper-alpha-paren"] > li > :is(p, h1, h2, h3, h4, h5)::before { content: counter(list-item, upper-alpha) ") "; }
-.paper .tiptap ol[data-eff-list-style="lower-roman"] > li > :is(p, h1, h2, h3, h4, h5)::before       { content: counter(list-item, lower-roman) ". "; }
-.paper .tiptap ol[data-eff-list-style="lower-roman-paren"] > li > :is(p, h1, h2, h3, h4, h5)::before { content: counter(list-item, lower-roman) ") "; }
-.paper .tiptap ol[data-eff-list-style="upper-roman"] > li > :is(p, h1, h2, h3, h4, h5)::before       { content: counter(list-item, upper-roman) ". "; }
-.paper .tiptap ol[data-eff-list-style="upper-roman-paren"] > li > :is(p, h1, h2, h3, h4, h5)::before { content: counter(list-item, upper-roman) ") "; }
+.paper .tiptap ol > li > :is(p, h1, h2, h3, h4, h5, h6)::before                                { content: counter(list-item, decimal) ". "; }
+.paper .tiptap ol[data-eff-list-style="decimal"] > li > :is(p, h1, h2, h3, h4, h5, h6)::before  { content: counter(list-item, decimal) ". "; }
+.paper .tiptap ol[data-eff-list-style="decimal-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6)::before     { content: counter(list-item, decimal) ") "; }
+.paper .tiptap ol[data-eff-list-style="lower-alpha"] > li > :is(p, h1, h2, h3, h4, h5, h6)::before       { content: counter(list-item, lower-alpha) ". "; }
+.paper .tiptap ol[data-eff-list-style="lower-alpha-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6)::before { content: counter(list-item, lower-alpha) ") "; }
+.paper .tiptap ol[data-eff-list-style="upper-alpha"] > li > :is(p, h1, h2, h3, h4, h5, h6)::before       { content: counter(list-item, upper-alpha) ". "; }
+.paper .tiptap ol[data-eff-list-style="upper-alpha-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6)::before { content: counter(list-item, upper-alpha) ") "; }
+.paper .tiptap ol[data-eff-list-style="lower-roman"] > li > :is(p, h1, h2, h3, h4, h5, h6)::before       { content: counter(list-item, lower-roman) ". "; }
+.paper .tiptap ol[data-eff-list-style="lower-roman-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6)::before { content: counter(list-item, lower-roman) ") "; }
+.paper .tiptap ol[data-eff-list-style="upper-roman"] > li > :is(p, h1, h2, h3, h4, h5, h6)::before       { content: counter(list-item, upper-roman) ". "; }
+.paper .tiptap ol[data-eff-list-style="upper-roman-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6)::before { content: counter(list-item, upper-roman) ") "; }
 
 /* Legal/outline numbering (1., 1.1., 1.2.1. …): the plugin tags the multilevel list and
    every attr-less member of its chain with data-eff-list-style="multilevel". */
-.paper .tiptap ol[data-eff-list-style="multilevel"] > li > :is(p, h1, h2, h3, h4, h5)::before {
+.paper .tiptap ol[data-eff-list-style="multilevel"] > li > :is(p, h1, h2, h3, h4, h5, h6)::before {
   content: counters(list-item, ".") ". ";
 }
 
@@ -705,25 +706,25 @@
    (DEFAULT_BULLET_CYCLE in bulletListTypes.ts). The bundled symbol shim comes first: it
    holds only the glyphs Liberation Serif lacks (❖ ➢ ⇨ ✓ ▸ ◆), so those stay compact and
    platform-independent while every other char falls through to the text font. */
-.paper .tiptap ul > li > :is(p, h1, h2, h3, h4, h5)::before {
+.paper .tiptap ul > li > :is(p, h1, h2, h3, h4, h5, h6)::before {
   content: '• ';
   font-family: 'EdenText Symbols', var(--marker-family, var(--font-serif)), serif;
 }
-.paper .tiptap ul ul > li > :is(p, h1, h2, h3, h4, h5)::before             { content: '◦ '; }
-.paper .tiptap ul ul ul > li > :is(p, h1, h2, h3, h4, h5)::before          { content: '▪ '; }
-.paper .tiptap ul ul ul ul > li > :is(p, h1, h2, h3, h4, h5)::before       { content: '▸ '; }
-.paper .tiptap ul ul ul ul ul > li > :is(p, h1, h2, h3, h4, h5)::before    { content: '– '; }
-.paper .tiptap ul ul ul ul ul ul > li > :is(p, h1, h2, h3, h4, h5)::before { content: '· '; }
+.paper .tiptap ul ul > li > :is(p, h1, h2, h3, h4, h5, h6)::before             { content: '◦ '; }
+.paper .tiptap ul ul ul > li > :is(p, h1, h2, h3, h4, h5, h6)::before          { content: '▪ '; }
+.paper .tiptap ul ul ul ul > li > :is(p, h1, h2, h3, h4, h5, h6)::before       { content: '▸ '; }
+.paper .tiptap ul ul ul ul ul > li > :is(p, h1, h2, h3, h4, h5, h6)::before    { content: '– '; }
+.paper .tiptap ul ul ul ul ul ul > li > :is(p, h1, h2, h3, h4, h5, h6)::before { content: '· '; }
 
 /* A list's own `bulletChar` beats the cycle at any depth — an attribute outranks the
    descendant chain. A nested list without one keeps its depth's char, which is what both
    exports write, even though --bullet inherits into it. */
-.paper .tiptap ul[data-bullet] > li > :is(p, h1, h2, h3, h4, h5)::before {
+.paper .tiptap ul[data-bullet] > li > :is(p, h1, h2, h3, h4, h5, h6)::before {
   content: var(--bullet) ' ';
 }
 
 /* The PDF clone (the .paper itself) replaces every marker with a real span (pdf.ts). */
-.paper.pdf-list-markers li > :is(p, h1, h2, h3, h4, h5)::before {
+.paper.pdf-list-markers li > :is(p, h1, h2, h3, h4, h5, h6)::before {
   content: none;
 }
 
@@ -886,7 +887,8 @@
 .paper .tiptap h2::after,
 .paper .tiptap h3::after,
 .paper .tiptap h4::after,
-.paper .tiptap h5::after {
+.paper .tiptap h5::after,
+.paper .tiptap h6::after {
   content: '\00A0¶';
   position: absolute;
   display: inline-block;
@@ -910,7 +912,8 @@
 .paper.show-formatting-marks .tiptap h2::after,
 .paper.show-formatting-marks .tiptap h3::after,
 .paper.show-formatting-marks .tiptap h4::after,
-.paper.show-formatting-marks .tiptap h5::after {
+.paper.show-formatting-marks .tiptap h5::after,
+.paper.show-formatting-marks .tiptap h6::after {
   color: var(--color-primary);
 }
 
@@ -929,6 +932,7 @@
 .paper .tiptap h3:has(> br.ProseMirror-trailingBreak),
 .paper .tiptap h4:has(> br.ProseMirror-trailingBreak),
 .paper .tiptap h5:has(> br.ProseMirror-trailingBreak),
+.paper .tiptap h6:has(> br.ProseMirror-trailingBreak),
 .paper .tiptap li > p:has(> br.ProseMirror-trailingBreak) {
   position: relative;
 }
@@ -939,6 +943,7 @@
 .paper .tiptap h3:has(> br.ProseMirror-trailingBreak)::after,
 .paper .tiptap h4:has(> br.ProseMirror-trailingBreak)::after,
 .paper .tiptap h5:has(> br.ProseMirror-trailingBreak)::after,
+.paper .tiptap h6:has(> br.ProseMirror-trailingBreak)::after,
 .paper .tiptap li > p:has(> br.ProseMirror-trailingBreak)::after {
   /* The static position would land past the BR, a line below the block; name the last
      line instead — for an empty block that is also its first. */
@@ -1044,7 +1049,8 @@
   .paper.show-formatting-marks .tiptap h2::after,
   .paper.show-formatting-marks .tiptap h3::after,
   .paper.show-formatting-marks .tiptap h4::after,
-  .paper.show-formatting-marks .tiptap h5::after {
+  .paper.show-formatting-marks .tiptap h5::after,
+  .paper.show-formatting-marks .tiptap h6::after {
     color: transparent;
   }
 }

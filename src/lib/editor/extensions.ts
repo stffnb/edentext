@@ -13,7 +13,7 @@ import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style';
 import { FontWeight } from './extensions/fontWeight';
 import { FontColor } from './extensions/fontColor';
 import HardBreak from '@tiptap/extension-hard-break';
-import Heading from '@tiptap/extension-heading';
+import Heading, { type Level } from '@tiptap/extension-heading';
 import { BulletList } from './extensions/bulletList';
 import { OrderedList } from './extensions/orderedList';
 import ListItem from '@tiptap/extension-list-item';
@@ -57,6 +57,7 @@ import { ColumnsFlow } from './extensions/columnsFlow';
 import { TableOfContents } from './extensions/tableOfContents';
 import { Note, NoteRef, NoteSection, Notes } from './extensions/notes';
 import { Shortcuts } from './extensions/shortcuts';
+import { HEADING_LEVELS } from '../export/odt';
 import { styleSheet } from '../styles/sheet.svelte';
 import { noteSettings } from '../storage/notes.svelte';
 
@@ -135,7 +136,7 @@ export const extensions = [
   PageBreak,
   Indent,
   TabStops,
-  Heading.configure({ levels: [1, 2, 3, 4, 5] }),
+  Heading.configure({ levels: HEADING_LEVELS as Level[] }),
   BulletList,
   OrderedList,
   ListItem,

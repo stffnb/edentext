@@ -4,6 +4,7 @@ import type { Mark } from '@tiptap/pm/model';
 import { DEFAULT_SHORTCUTS, type ShortcutId } from '../shortcuts';
 import { FONT_SIZES, blockFontSize, coversWholeBlock } from '../../utils/fontSize';
 import { headingStyleName } from '../../styles/styleSheet';
+import { MAX_HEADING_LEVEL } from '../../export/odt';
 import { DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../../utils/dateTime';
 
 // The Word/LibreOffice shortcuts that aren't already a TipTap default, bound from
@@ -104,7 +105,7 @@ export const Shortcuts = Extension.create<{ body: boolean }>({
           // skips its keyCode fallback for exactly this combination.
           handleKeyDown(_view, event) {
             if (!(event.ctrlKey || event.metaKey) || !event.altKey || event.shiftKey) return false;
-            const digit = /^Digit([0-5])$/.exec(event.code);
+            const digit = new RegExp(`^Digit([0-${MAX_HEADING_LEVEL}])$`).exec(event.code);
             if (!digit) return false;
             const level = Number(digit[1]);
             event.preventDefault();

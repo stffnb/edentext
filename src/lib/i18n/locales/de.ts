@@ -45,6 +45,7 @@ const de: Messages = {
     heading3: 'Überschrift 3',
     heading4: 'Überschrift 4',
     heading5: 'Überschrift 5',
+    heading6: 'Überschrift 6',
     styles: {
       title: 'Formatvorlagen',
       default: 'Standard',

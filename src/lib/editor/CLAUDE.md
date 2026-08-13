@@ -23,8 +23,8 @@ the tooltips (via `withShortcut`, which localizes Ctrl/Shift/Alt and swaps in �
   NBSP, soft hyphen).
 - **`Mod-Alt-<digit>` can't go through the keymap**: Windows reads Ctrl+Alt as AltGr, so
   `event.key` is layout-dependent (German AltGr+2 = `²`) and prosemirror-keymap skips its
-  keyCode fallback for exactly that modifier pair. Those six run in `addProseMirrorPlugins`
-  off `event.code` (`Digit0`–`Digit5`) instead.
+  keyCode fallback for exactly that modifier pair. Those seven run in `addProseMirrorPlugins`
+  off `event.code` (`Digit0`–`Digit6`) instead.
 - Deliberate resolutions: `Mod-m` stays LibreOffice's *clear formatting* (Word's
   increase-indent is Tab); `Ctrl+1/2/5` are Word's **line spacing**, so headings are
   Ctrl+Alt+N only; `Mod-Shift-s` stays strikethrough, so there's no Save-As key;
