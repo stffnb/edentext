@@ -244,7 +244,21 @@ type Leaf = {
   // the first block alone can't fit the remaining space (else columnsFlow.ts splits
   // the overflow at a block boundary).
   columnsFragment?: { blockCount: number; firstBlockNeededPx: number };
+  // Footnote anchors inside this leaf (notes.ts), at their spacer-free offset from its
+  // top: the note goes to the page its anchor lands on, and a leaf split across a
+  // boundary carries the anchors below the split onto the next page with it.
+  refs?: NoteAnchor[];
 };
+
+type NoteAnchor = { id: string; dy: number };
+
+// One footnote waiting for a place at the foot of its anchor's page.
+type FootnoteBox = { id: string; el: HTMLElement; height: number };
+
+// Reserving space for a page's notes moves its own anchors, which may change the page
+// they sit on. The placement runs again on the new reservation until the two agree —
+// bounded, because a note that keeps its own anchor moving never settles.
+const MAX_NOTE_FIT_PASSES = 3;
 
 const ATOMIC_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
 const SPLITTABLE_TAGS = new Set(['P']);
@@ -647,6 +661,8 @@ export const PageBreaks = Extension.create({
           // so far: added back, so what is measured is the document, not the last pass's
           // answer to it. Reading the answer back is what made the layout flip-flop.
           let cumulativeDropped = 0;
+          // Only the first endnote opens a page; the rest follow it down the column.
+          let seenEndnote = false;
 
           // A leaf's border-box top within .tiptap, in document px. Summing offsetTop up
           // the offsetParent chain is unaffected by .paper's transform:scale, so it's the
@@ -671,6 +687,23 @@ export const PageBreaks = Extension.create({
           // measures its own previous answer. Every leaf must be born through this.
           function naturalTopOf(el: HTMLElement): number {
             return topWithin(el) - cumulativeSpacerHeight + cumulativeDropped;
+          }
+
+          // The footnote anchors this leaf holds, offset from its own top with the
+          // spacers above each of them taken back out — measured within the leaf, so
+          // naturalTopOf already carries everything above it.
+          function refsWithin(el: HTMLElement): NoteAnchor[] {
+            const refs = Array.from(el.querySelectorAll<HTMLElement>('.note-ref[data-note-kind="footnote"]'));
+            if (!refs.length) return [];
+            const spacers = Array.from(el.querySelectorAll<HTMLElement>('[data-page-break-spacer]'));
+            const base = topWithin(el);
+            return refs.map((ref) => {
+              let above = 0;
+              for (const sp of spacers) {
+                if (sp.compareDocumentPosition(ref) & Node.DOCUMENT_POSITION_FOLLOWING) above += sp.offsetHeight;
+              }
+              return { id: ref.dataset.noteRef ?? '', dy: topWithin(ref) - base - above };
+            });
           }
 
           // Emit one atomic leaf per table row so the table breaks between rows across
@@ -780,6 +813,25 @@ export const PageBreaks = Extension.create({
               // the wrapper DIV, not the TABLE. Break the table into per-row leaves.
               if (tag === 'TABLE' || (tag === 'DIV' && child.classList.contains('tableWrapper'))) {
                 walkTableRows(child, inTableCell);
+                continue;
+              }
+              // The note section (notes.ts) is not body text: a footnote is out of the
+              // flow and placed at the foot of its anchor's page below, an endnote flows
+              // here and starts its own page, as LibreOffice collects them.
+              if (child.classList.contains('note-section')) {
+                walk(child, inTableCell);
+                continue;
+              }
+              if (child.classList.contains('note')) {
+                if (child.dataset?.noteKind === 'footnote') continue;
+                leaves.push({
+                  el: child,
+                  kind: 'splittable',
+                  naturalTop: naturalTopOf(child),
+                  naturalHeight: child.offsetHeight,
+                  forceBreakBefore: !seenEndnote,
+                });
+                seenEndnote = true;
                 continue;
               }
               // The generated table of contents (tableOfContents.ts) is a block atom with
@@ -894,6 +946,7 @@ export const PageBreaks = Extension.create({
                   keepNext: !inTableCell
                     && (child.dataset?.keepNext === 'true' || /^H[1-5]$/.test(child.tagName)),
                   sectionStart: !inTableCell && child.dataset?.sectionBreak === 'true',
+                  refs: refsWithin(child),
                 });
                 cumulativeSpacerHeight += intraSpacerHeight;
                 cumulativeDropped += dropped;
@@ -972,126 +1025,341 @@ export const PageBreaks = Extension.create({
           const scale = getScaleFactor();
           const leaves = collectLeaves(CONTENT_HEIGHT, scale);
 
-          let cumulativeShift = 0;
-          // Per-cell flow bracketing for a too-tall row (see Leaf flow markers): each
-          // cell restarts from the shift inherited at the row top; the row then
-          // advances the main shift by the tallest cell's added shift.
-          let rowBaseline = 0;
-          let maxCellDelta = 0;
-          // Lowest rendered content bottom across all leaves (incl. parallel cells),
-          // used for the page count — a single last-leaf reading misses taller cells.
-          let maxEffectiveBottom = 0;
-          // Page each section after the first begins on, in body order — the layer picks
-          // a page's header/footer set from it.
-          const sectionStartPages: number[] = [];
-          let sectionIndex = 0;
-          let sectionFirstPage = 1;
-          const placements: {
-            docPos: number;
-            height: number;
-            row: RowSpacer | null;
-          }[] = [];
-          // Node-decoration range collapsing the trailing empty paragraph after a
-          // document-final columns chain when it sits past the page content area.
-          let collapsedTrailing: { from: number; to: number } | null = null;
-          // Node-decoration ranges dropping the space before a block a soft break put
-          // at a page top (probed in LibreOffice); a hard break and the first block keep it.
-          const pageTopBlocks: { from: number; to: number }[] = [];
-          // Top-level blocks a section's own side margins inset, keyed by doc position.
-          const sectionInsets = new Map<number, { to: number; left: number; right: number }>();
-          // Close/open bands for in-cell + between-rows table breaks. Keyed by the
-          // rounded openY (the grouping id) → the unrounded openY (so the band lands
-          // exactly on the page cycle) plus whether it's a between-rows break.
-          const tableBands = new Map<number, { openY: number; rowBreak: boolean }>();
-          const leavesDebug: PageBreakDebugSnapshot['leaves'] = [];
-          const placementsDebug: PageBreakDebugSnapshot['placements'] = [];
-
-          for (let i = 0; i < leaves.length; i++) {
-            const leaf = leaves[i];
-            // Enter a cell flow: capture the previous cell's added shift, then restart
-            // this cell from the row baseline so its measured tops align.
-            if (leaf.cellStart) {
-              if (leaf.rowStart) {
-                rowBaseline = cumulativeShift;
-                maxCellDelta = 0;
-              } else {
-                maxCellDelta = Math.max(maxCellDelta, cumulativeShift - rowBaseline);
-              }
-              cumulativeShift = rowBaseline;
-            }
-            let effectiveTop = leaf.naturalTop + cumulativeShift;
-            let effectiveBottom = effectiveTop + leaf.naturalHeight;
-            const page = getPageForY(effectiveTop, CYCLE_PX);
-            // A section's first page uses its "first" reaches, every other page its
-            // "rest" ones — page 1 is section 1's first page.
-            if (leaf.sectionStart) {
-              // Where the section really begins: a forced break moves its first block to
-              // the next page, and that page is the one its "first" zones belong to.
-              const prevStart = (page - 1) * CYCLE_PX + reachAt(sectionIndex)[1];
-              const pushed = !!leaf.forceBreakBefore && i > 0 && effectiveTop > prevStart + 0.5;
-              sectionIndex++;
-              sectionFirstPage = pushed ? page + 1 : page;
-            }
-            const [topFirst, topRest, bottomFirst, bottomRest] = reachAt(sectionIndex);
-            const onFirst = page === sectionFirstPage;
-            const pageTop = (page - 1) * CYCLE_PX;
-            const contentStart = pageTop + (onFirst ? topFirst : topRest);
-            const contentEnd = pageTop + vm.pageHeight - (onFirst ? bottomFirst : bottomRest);
-
-
-            // A leaf may need several spacers: a splittable block taller than one
-            // page crosses multiple boundaries, one break each.
-            const breaks: {
+          // One placement of every leaf against a given per-page note reservation. It
+          // owns all its accumulators, so the note fixed-point below can simply run it
+          // again on a reservation that changed.
+          function placeLeaves(reservedByPage: Map<number, number>) {
+            let cumulativeShift = 0;
+            // Per-cell flow bracketing for a too-tall row (see Leaf flow markers): each
+            // cell restarts from the shift inherited at the row top; the row then
+            // advances the main shift by the tallest cell's added shift.
+            let rowBaseline = 0;
+            let maxCellDelta = 0;
+            // Page each footnote anchor lands on, which is the page its note goes to.
+            const anchorPages = new Map<string, number>();
+            // Lowest rendered content bottom across all leaves (incl. parallel cells),
+            // used for the page count — a single last-leaf reading misses taller cells.
+            let maxEffectiveBottom = 0;
+            // Page each section after the first begins on, in body order — the layer picks
+            // a page's header/footer set from it.
+            const sectionStartPages: number[] = [];
+            let sectionIndex = 0;
+            let sectionFirstPage = 1;
+            const placements: {
+              docPos: number;
               height: number;
-              docPos: number | null;
               row: RowSpacer | null;
-              bandOpenY: number | null;
-              reason: string;
             }[] = [];
-            // Set when a leaf overflows but no spacer can bridge it (block > one page).
-            let noPushReason: string | null = null;
-            // A section whose top page margin is smaller than the document's starts above
-            // where .tiptap's own padding puts it. Only where nothing was pushed down onto
-            // this page ahead of it — a spacer can add space, so only a lift is missing.
-            if (
-              leaf.sectionStart && onFirst
-              && effectiveTop > contentStart + 0.5 && effectiveTop <= pageTop + vm.top + 0.5
-            ) {
-              const { docPos, row } = leafSpacer(leaf);
-              breaks.push({ height: contentStart - effectiveTop, docPos, row, bandOpenY: null, reason: 'section-margin-lift' });
-              effectiveBottom += contentStart - effectiveTop;
-              effectiveTop = contentStart;
-            }
-            // Space above this leaf loses for opening a page — taken off the flow below it.
-            let droppedShift = 0;
+            // Node-decoration range collapsing the trailing empty paragraph after a
+            // document-final columns chain when it sits past the page content area.
+            let collapsedTrailing: { from: number; to: number } | null = null;
+            // Node-decoration ranges dropping the space before a block a soft break put
+            // at a page top (probed in LibreOffice); a hard break and the first block keep it.
+            const pageTopBlocks: { from: number; to: number }[] = [];
+            // Top-level blocks a section's own side margins inset, keyed by doc position.
+            const sectionInsets = new Map<number, { to: number; left: number; right: number }>();
+            // Close/open bands for in-cell + between-rows table breaks. Keyed by the
+            // rounded openY (the grouping id) → the unrounded openY (so the band lands
+            // exactly on the page cycle) plus whether it's a between-rows break.
+            const tableBands = new Map<number, { openY: number; rowBreak: boolean }>();
+            const leavesDebug: PageBreakDebugSnapshot['leaves'] = [];
+            const placementsDebug: PageBreakDebugSnapshot['placements'] = [];
 
-            // A sequential-fill chain's fragment box may run to the page bottom, which
-            // would shove this trailing empty paragraph onto a phantom extra page —
-            // leave it in place and out of the page count; typed text re-enables it.
-            if (
-              i === leaves.length - 1 &&
-              leaf.el.tagName === 'P' &&
-              !(leaf.el.textContent ?? '').length &&
-              leaves[i - 1]?.columnsFragment
-            ) {
-              // Past the content area its height (+ .tiptap bottom padding) grows the
-              // element into the next page cycle, where the background gradient paints
-              // a phantom page top — collapse it visually (height:0 node decoration).
-              if (effectiveBottom > contentEnd) {
+            for (let i = 0; i < leaves.length; i++) {
+              const leaf = leaves[i];
+              // Enter a cell flow: capture the previous cell's added shift, then restart
+              // this cell from the row baseline so its measured tops align.
+              if (leaf.cellStart) {
+                if (leaf.rowStart) {
+                  rowBaseline = cumulativeShift;
+                  maxCellDelta = 0;
+                } else {
+                  maxCellDelta = Math.max(maxCellDelta, cumulativeShift - rowBaseline);
+                }
+                cumulativeShift = rowBaseline;
+              }
+              let effectiveTop = leaf.naturalTop + cumulativeShift;
+              let effectiveBottom = effectiveTop + leaf.naturalHeight;
+              const page = getPageForY(effectiveTop, CYCLE_PX);
+              // A section's first page uses its "first" reaches, every other page its
+              // "rest" ones — page 1 is section 1's first page.
+              if (leaf.sectionStart) {
+                // Where the section really begins: a forced break moves its first block to
+                // the next page, and that page is the one its "first" zones belong to.
+                const prevStart = (page - 1) * CYCLE_PX + reachAt(sectionIndex)[1];
+                const pushed = !!leaf.forceBreakBefore && i > 0 && effectiveTop > prevStart + 0.5;
+                sectionIndex++;
+                sectionFirstPage = pushed ? page + 1 : page;
+              }
+              const [topFirst, topRest, bottomFirst, bottomRest] = reachAt(sectionIndex);
+              const onFirst = page === sectionFirstPage;
+              const pageTop = (page - 1) * CYCLE_PX;
+              const contentStart = pageTop + (onFirst ? topFirst : topRest);
+              const contentEnd = pageTop + vm.pageHeight - (onFirst ? bottomFirst : bottomRest)
+                - (reservedByPage.get(page) ?? 0);
+
+
+              // A leaf may need several spacers: a splittable block taller than one
+              // page crosses multiple boundaries, one break each.
+              const breaks: {
+                height: number;
+                docPos: number | null;
+                row: RowSpacer | null;
+                bandOpenY: number | null;
+                reason: string;
+                // Offset from the leaf's top this break applies from: 0 for a whole-leaf
+                // push, the line's own top for a split — which is what tells an anchor
+                // below the split apart from one above it.
+                naturalY: number;
+              }[] = [];
+              // Set when a leaf overflows but no spacer can bridge it (block > one page).
+              let noPushReason: string | null = null;
+              // A section whose top page margin is smaller than the document's starts above
+              // where .tiptap's own padding puts it. Only where nothing was pushed down onto
+              // this page ahead of it — a spacer can add space, so only a lift is missing.
+              if (
+                leaf.sectionStart && onFirst
+                && effectiveTop > contentStart + 0.5 && effectiveTop <= pageTop + vm.top + 0.5
+              ) {
+                const { docPos, row } = leafSpacer(leaf);
+                breaks.push({ height: contentStart - effectiveTop, docPos, row, bandOpenY: null, reason: 'section-margin-lift', naturalY: 0 });
+                effectiveBottom += contentStart - effectiveTop;
+                effectiveTop = contentStart;
+              }
+              // Space above this leaf loses for opening a page — taken off the flow below it.
+              let droppedShift = 0;
+
+              // A sequential-fill chain's fragment box may run to the page bottom, which
+              // would shove this trailing empty paragraph onto a phantom extra page —
+              // leave it in place and out of the page count; typed text re-enables it.
+              if (
+                i === leaves.length - 1 &&
+                leaf.el.tagName === 'P' &&
+                !(leaf.el.textContent ?? '').length &&
+                leaves[i - 1]?.columnsFragment
+              ) {
+                // Past the content area its height (+ .tiptap bottom padding) grows the
+                // element into the next page cycle, where the background gradient paints
+                // a phantom page top — collapse it visually (height:0 node decoration).
+                if (effectiveBottom > contentEnd) {
+                  const from = docPosBeforeElement(leaf.el);
+                  const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
+                  if (from !== null && node) collapsedTrailing = { from, to: from + node.nodeSize };
+                }
+                leavesDebug.push({
+                  index: i,
+                  tag: leaf.el.tagName,
+                  kind: leaf.kind,
+                  inTableCell: !!leaf.inTableCell,
+                  tableRow: null,
+                  naturalTop: leaf.naturalTop,
+                  naturalHeight: leaf.naturalHeight,
+                  textPreview: '',
+                  intraSpacerHeights: [],
+                  effectiveTop,
+                  effectiveBottom,
+                  pageOfTop: page,
+                  pageOfBottom: getPageForY(effectiveBottom, CYCLE_PX),
+                  contentStart,
+                  contentEnd,
+                  overflowsPageEnd: effectiveBottom > contentEnd,
+                });
+                placementsDebug.push({
+                  leafIndex: i,
+                  docPos: null,
+                  height: 0,
+                  reason: collapsedTrailing
+                    ? 'trailing-empty-after-columns-collapsed'
+                    : 'trailing-empty-after-columns',
+                  spacerKind: 'none',
+                  columns: null,
+                });
+                continue;
+              }
+
+              // A manual page break forces the block to the next page's top (never the first
+              // leaf, so no leading blank page); once settled at a page top the guard stops.
+              // A forced block that then overflows is split by the normal logic next pass.
+              const forced = !!leaf.forceBreakBefore && i > 0 && effectiveTop > contentStart + 0.5;
+
+              if (forced) {
+                // The next page's own content start: a section beginning here brings its
+                // first-page header with it.
+                const nextTop = page + 1 === sectionFirstPage ? topFirst : topRest;
+                const target = pageContentStart(page + 1, nextTop, CYCLE_PX);
+                const { docPos, row } = leafSpacer(leaf);
+                breaks.push({
+                  height: target - effectiveTop,
+                  docPos,
+                  row,
+                  bandOpenY: target,
+                  reason: 'forced-page-break',
+                  naturalY: 0,
+                });
+              } else if (effectiveTop < contentStart && (i > 0 || effectiveTop < contentStart - 1)) {
+                // i === 0 only reaches here when a tall header on page 1 pushes the very
+                // first block down below its content start (a >1px gap); otherwise the
+                // first block already sits at the content start.
+                const { docPos, row } = leafSpacer(leaf);
+                breaks.push({
+                  height: contentStart - effectiveTop,
+                  docPos,
+                  row,
+                  bandOpenY: contentStart,
+                  reason: 'pre-leaf-push-to-content-start',
+                  naturalY: 0,
+                });
+              } else if (effectiveTop >= contentEnd) {
+                const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+                const { docPos, row } = leafSpacer(leaf);
+                breaks.push({
+                  height: target - effectiveTop,
+                  docPos,
+                  row,
+                  bandOpenY: target,
+                  reason: 'leaf-jump-to-next-page',
+                  naturalY: 0,
+                });
+                // Space below is not part of what has to fit: a block whose last line ends
+                // on the page keeps it and the gap is dropped at the page bottom, the way
+                // space above is at a page top (probed: 2cm below a line 8mm short of it).
+              } else if (effectiveBottom > contentEnd) {
+                if (leaf.kind === 'atomic') {
+                  const cf = leaf.columnsFragment;
+                  if (cf && cf.blockCount > 1 && cf.firstBlockNeededPx + COLUMNS_FIT_MARGIN_PX <= contentEnd - effectiveTop) {
+                    // columnsFlow.ts will split the fragment so a prefix fills this
+                    // page; pushing it whole here would fight that.
+                    noPushReason = 'columns-await-flow';
+                  } else if (cf && effectiveTop <= contentStart + 0.5) {
+                    // Already at a page top and still too tall (a paragraph taller
+                    // than the page slot): pushing just moves the problem one page
+                    // down forever — the flow line-splits the paragraph instead.
+                    noPushReason = 'columns-line-split-pending';
+                  } else if (leaf.naturalHeight <= CONTENT_HEIGHT || cf) {
+                    // A columns fragment may be pushed even when taller than a page:
+                    // the flow splits it again once it sits at the next page top.
+                    const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+                    const { docPos, row } = leafSpacer(leaf);
+                    breaks.push({
+                      height: target - effectiveTop,
+                      docPos,
+                      row,
+                      bandOpenY: target,
+                      reason: 'atomic-push-to-next-page',
+                      naturalY: 0,
+                    });
+                  } else {
+                    noPushReason = 'atomic-too-tall-no-push';
+                  }
+                } else {
+                  // A splittable leaf taller than one page crosses several boundaries:
+                  // keep splitting until the rest fits. Boundaries are in the leaf's
+                  // spacer-free natural coords, so successive splits stay correct.
+                  let boundaryNatural = contentEnd - effectiveTop;
+                  let targetPage = page + 1;
+                  let extraShift = 0;
+                  const guarded = leaf.naturalHeight <= CONTENT_HEIGHT
+                    && leaf.el.getAttribute('data-widow-control') !== 'false';
+                  // Taller than a page slot: the widow-orphan rule is unsatisfiable there,
+                  // and splitting beats overflowing.
+                  const minLines = guarded ? MIN_KEPT_LINES : 1;
+                  while (boundaryNatural < leaf.naturalHeight) {
+                    const split = findLineSplit(leaf.el, boundaryNatural, scale, minLines);
+                    if (split === null) break;
+                    const target = pageContentStart(targetPage, vm.top, CYCLE_PX);
+                    const h = target - (effectiveTop + extraShift + split.naturalLineTop);
+                    if (h <= 0) break;
+                    breaks.push({
+                      height: h,
+                      docPos: split.docPos,
+                      row: null,
+                      bandOpenY: target,
+                      reason: 'line-split',
+                      naturalY: split.naturalLineTop,
+                    });
+                    extraShift += h;
+                    boundaryNatural = split.naturalLineTop + CONTENT_HEIGHT;
+                    targetPage++;
+                  }
+                  if (breaks.length === 0) {
+                    if (leaf.naturalHeight <= CONTENT_HEIGHT) {
+                      const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+                      breaks.push({
+                        height: target - effectiveTop,
+                        docPos: preLeafDocPos(leaf.el),
+                        row: null,
+                        bandOpenY: target,
+                        reason: 'split-fallback-push-whole-leaf',
+                        naturalY: 0,
+                      });
+                    } else {
+                      noPushReason = 'splittable-too-tall-no-push';
+                    }
+                  }
+                }
+              }
+
+              // Keep with next: a heading that fits but whose successor's first line does
+              // not is left stranded at the page foot, so it goes down with it. One level
+              // only — a run of them would need the pass to reconsider earlier leaves.
+              if (
+                breaks.length === 0 && leaf.keepNext && i + 1 < leaves.length
+                && effectiveTop > contentStart + 0.5
+              ) {
+                const next = leaves[i + 1];
+                // What the pair needs below this block: its own space below, then the
+                // successor's space above (its padding; an atomic leaf's height has it
+                // already) and its first line.
+                const wantLines = next.el.getAttribute('data-widow-control') === 'false' ? 1 : MIN_KEPT_LINES;
+                const needed = next.kind === 'atomic'
+                  ? Math.min(next.naturalHeight, CONTENT_HEIGHT)
+                  : firstLinesHeight(next.el, scale, wantLines) + (parseFloat(getComputedStyle(next.el).paddingTop) || 0);
+                if (effectiveBottom + (leaf.spaceAfter ?? 0) + needed > contentEnd) {
+                  const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+                  const { docPos, row } = leafSpacer(leaf);
+                  breaks.push({
+                    height: target - effectiveTop,
+                    docPos,
+                    row,
+                    bandOpenY: target,
+                    reason: 'keep-with-next',
+                    naturalY: 0,
+                  });
+                }
+              }
+
+              // A page break — its own spacer, or one that left it at the top — swallows the
+              // block's space above, as LibreOffice does. A line split doesn't: there the
+              // page starts mid-block. `effectiveTop` still excludes this leaf's own push.
+              if (
+                i > 0 && !leaf.inTableCell && (leaf.spaceAbove ?? 0) > 0.5
+                && (breaks.some((b) => b.reason !== 'line-split')
+                  || (breaks.length === 0 && Math.abs(effectiveTop - contentStart) < 0.5))
+              ) {
                 const from = docPosBeforeElement(leaf.el);
                 const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
-                if (from !== null && node) collapsedTrailing = { from, to: from + node.nodeSize };
+                if (from !== null && node) {
+                  pageTopBlocks.push({ from, to: from + node.nodeSize });
+                  // The block is that much shorter from here on; the leaves below it were
+                  // measured with the space still in place.
+                  droppedShift += leaf.spaceAbove ?? 0;
+                }
               }
+
               leavesDebug.push({
                 index: i,
                 tag: leaf.el.tagName,
                 kind: leaf.kind,
                 inTableCell: !!leaf.inTableCell,
-                tableRow: null,
+                tableRow: leaf.tableRow
+                  ? { columns: leaf.tableRow.columns, isFirstRow: leaf.tableRow.isFirstRow }
+                  : null,
                 naturalTop: leaf.naturalTop,
                 naturalHeight: leaf.naturalHeight,
-                textPreview: '',
-                intraSpacerHeights: [],
+                textPreview: (leaf.el.textContent ?? '').slice(0, 120),
+                intraSpacerHeights: Array.from(
+                  leaf.el.querySelectorAll<HTMLElement>('[data-page-break-spacer]'),
+                ).map((sp) => sp.offsetHeight),
                 effectiveTop,
                 effectiveBottom,
                 pageOfTop: page,
@@ -1100,277 +1368,151 @@ export const PageBreaks = Extension.create({
                 contentEnd,
                 overflowsPageEnd: effectiveBottom > contentEnd,
               });
-              placementsDebug.push({
-                leafIndex: i,
-                docPos: null,
-                height: 0,
-                reason: collapsedTrailing
-                  ? 'trailing-empty-after-columns-collapsed'
-                  : 'trailing-empty-after-columns',
-                spacerKind: 'none',
-                columns: null,
-              });
-              continue;
-            }
 
-            // A manual page break forces the block to the next page's top (never the first
-            // leaf, so no leading blank page); once settled at a page top the guard stops.
-            // A forced block that then overflows is split by the normal logic next pass.
-            const forced = !!leaf.forceBreakBefore && i > 0 && effectiveTop > contentStart + 0.5;
-
-            if (forced) {
-              // The next page's own content start: a section beginning here brings its
-              // first-page header with it.
-              const nextTop = page + 1 === sectionFirstPage ? topFirst : topRest;
-              const target = pageContentStart(page + 1, nextTop, CYCLE_PX);
-              const { docPos, row } = leafSpacer(leaf);
-              breaks.push({
-                height: target - effectiveTop,
-                docPos,
-                row,
-                bandOpenY: target,
-                reason: 'forced-page-break',
-              });
-            } else if (effectiveTop < contentStart && (i > 0 || effectiveTop < contentStart - 1)) {
-              // i === 0 only reaches here when a tall header on page 1 pushes the very
-              // first block down below its content start (a >1px gap); otherwise the
-              // first block already sits at the content start.
-              const { docPos, row } = leafSpacer(leaf);
-              breaks.push({
-                height: contentStart - effectiveTop,
-                docPos,
-                row,
-                bandOpenY: contentStart,
-                reason: 'pre-leaf-push-to-content-start',
-              });
-            } else if (effectiveTop >= contentEnd) {
-              const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
-              const { docPos, row } = leafSpacer(leaf);
-              breaks.push({
-                height: target - effectiveTop,
-                docPos,
-                row,
-                bandOpenY: target,
-                reason: 'leaf-jump-to-next-page',
-              });
-              // Space below is not part of what has to fit: a block whose last line ends
-              // on the page keeps it and the gap is dropped at the page bottom, the way
-              // space above is at a page top (probed: 2cm below a line 8mm short of it).
-            } else if (effectiveBottom > contentEnd) {
-              if (leaf.kind === 'atomic') {
-                const cf = leaf.columnsFragment;
-                if (cf && cf.blockCount > 1 && cf.firstBlockNeededPx + COLUMNS_FIT_MARGIN_PX <= contentEnd - effectiveTop) {
-                  // columnsFlow.ts will split the fragment so a prefix fills this
-                  // page; pushing it whole here would fight that.
-                  noPushReason = 'columns-await-flow';
-                } else if (cf && effectiveTop <= contentStart + 0.5) {
-                  // Already at a page top and still too tall (a paragraph taller
-                  // than the page slot): pushing just moves the problem one page
-                  // down forever — the flow line-splits the paragraph instead.
-                  noPushReason = 'columns-line-split-pending';
-                } else if (leaf.naturalHeight <= CONTENT_HEIGHT || cf) {
-                  // A columns fragment may be pushed even when taller than a page:
-                  // the flow splits it again once it sits at the next page top.
-                  const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
-                  const { docPos, row } = leafSpacer(leaf);
-                  breaks.push({
-                    height: target - effectiveTop,
-                    docPos,
-                    row,
-                    bandOpenY: target,
-                    reason: 'atomic-push-to-next-page',
-                  });
-                } else {
-                  noPushReason = 'atomic-too-tall-no-push';
+              // Round each spacer to integer px (the browser renders spacers at integer
+              // height, so an unrounded model shakes 1px per keystroke at non-100% zoom).
+              let placedAny = false;
+              const shiftAtLeafTop = cumulativeShift;
+              const applied: { at: number; height: number }[] = [];
+              for (const br of breaks) {
+                if (br.docPos === null) continue;
+                const h = Math.round(br.height);
+                if (h === 0) continue;
+                // In-cell or between-rows breaks sit inside the continuous table box,
+                // whose borders bleed through the gap, so they need a close/open band.
+                const inBand = !!leaf.inTableCell || br.row !== null;
+                if (inBand && br.bandOpenY !== null) {
+                  const key = Math.round(br.bandOpenY);
+                  const rowBreak = br.row !== null;
+                  const existing = tableBands.get(key);
+                  if (!existing) tableBands.set(key, { openY: br.bandOpenY, rowBreak });
+                  // An in-cell break sharing the boundary needs the full mask, so a
+                  // band stays rowBreak only if every break at this key is one.
+                  else if (!rowBreak) existing.rowBreak = false;
                 }
-              } else {
-                // A splittable leaf taller than one page crosses several boundaries:
-                // keep splitting until the rest fits. Boundaries are in the leaf's
-                // spacer-free natural coords, so successive splits stay correct.
-                let boundaryNatural = contentEnd - effectiveTop;
-                let targetPage = page + 1;
-                let extraShift = 0;
-                const guarded = leaf.naturalHeight <= CONTENT_HEIGHT
-                  && leaf.el.getAttribute('data-widow-control') !== 'false';
-                // Taller than a page slot: the widow-orphan rule is unsatisfiable there,
-                // and splitting beats overflowing.
-                const minLines = guarded ? MIN_KEPT_LINES : 1;
-                while (boundaryNatural < leaf.naturalHeight) {
-                  const split = findLineSplit(leaf.el, boundaryNatural, scale, minLines);
-                  if (split === null) break;
-                  const target = pageContentStart(targetPage, vm.top, CYCLE_PX);
-                  const h = target - (effectiveTop + extraShift + split.naturalLineTop);
-                  if (h <= 0) break;
-                  breaks.push({
-                    height: h,
-                    docPos: split.docPos,
-                    row: null,
-                    bandOpenY: target,
-                    reason: 'line-split',
-                  });
-                  extraShift += h;
-                  boundaryNatural = split.naturalLineTop + CONTENT_HEIGHT;
-                  targetPage++;
-                }
-                if (breaks.length === 0) {
-                  if (leaf.naturalHeight <= CONTENT_HEIGHT) {
-                    const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
-                    breaks.push({
-                      height: target - effectiveTop,
-                      docPos: preLeafDocPos(leaf.el),
-                      row: null,
-                      bandOpenY: target,
-                      reason: 'split-fallback-push-whole-leaf',
-                    });
-                  } else {
-                    noPushReason = 'splittable-too-tall-no-push';
-                  }
-                }
+                placements.push({ docPos: br.docPos, height: h, row: br.row });
+                placementsDebug.push({
+                  leafIndex: i,
+                  docPos: br.docPos,
+                  height: h,
+                  reason: br.reason,
+                  spacerKind: br.row ? 'table-row' : 'block',
+                  columns: br.row ? br.row.columns : null,
+                });
+                cumulativeShift += h;
+                applied.push({ at: br.naturalY, height: h });
+                placedAny = true;
               }
-            }
-
-            // Keep with next: a heading that fits but whose successor's first line does
-            // not is left stranded at the page foot, so it goes down with it. One level
-            // only — a run of them would need the pass to reconsider earlier leaves.
-            if (
-              breaks.length === 0 && leaf.keepNext && i + 1 < leaves.length
-              && effectiveTop > contentStart + 0.5
-            ) {
-              const next = leaves[i + 1];
-              // What the pair needs below this block: its own space below, then the
-              // successor's space above (its padding; an atomic leaf's height has it
-              // already) and its first line.
-              const wantLines = next.el.getAttribute('data-widow-control') === 'false' ? 1 : MIN_KEPT_LINES;
-              const needed = next.kind === 'atomic'
-                ? Math.min(next.naturalHeight, CONTENT_HEIGHT)
-                : firstLinesHeight(next.el, scale, wantLines) + (parseFloat(getComputedStyle(next.el).paddingTop) || 0);
-              if (effectiveBottom + (leaf.spaceAfter ?? 0) + needed > contentEnd) {
-                const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
-                const { docPos, row } = leafSpacer(leaf);
-                breaks.push({
-                  height: target - effectiveTop,
-                  docPos,
-                  row,
-                  bandOpenY: target,
-                  reason: 'keep-with-next',
+              // Where each anchor in this leaf ended up: the shift at the leaf's top plus
+              // every break that falls above the anchor, so a leaf split across a page
+              // boundary sends the notes below the split to the next page.
+              for (const anchor of leaf.refs ?? []) {
+                let shift = shiftAtLeafTop;
+                for (const br of applied) if (br.at <= anchor.dy + 0.5) shift += br.height;
+                anchorPages.set(anchor.id, getPageForY(leaf.naturalTop + anchor.dy + shift, CYCLE_PX));
+              }
+              if (!placedAny && noPushReason !== null) {
+                placementsDebug.push({
+                  leafIndex: i,
+                  docPos: null,
+                  height: 0,
+                  reason: noPushReason,
+                  spacerKind: 'none',
+                  columns: null,
                 });
               }
-            }
 
-            // A page break — its own spacer, or one that left it at the top — swallows the
-            // block's space above, as LibreOffice does. A line split doesn't: there the
-            // page starts mid-block. `effectiveTop` still excludes this leaf's own push.
-            if (
-              i > 0 && !leaf.inTableCell && (leaf.spaceAbove ?? 0) > 0.5
-              && (breaks.some((b) => b.reason !== 'line-split')
-                || (breaks.length === 0 && Math.abs(effectiveTop - contentStart) < 0.5))
-            ) {
-              const from = docPosBeforeElement(leaf.el);
-              const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
-              if (from !== null && node) {
-                pageTopBlocks.push({ from, to: from + node.nodeSize });
-                // The block is that much shorter from here on; the leaves below it were
-                // measured with the space still in place.
-                droppedShift += leaf.spaceAbove ?? 0;
+              // Read after this leaf's own spacer, so the page is the one it really lands on.
+              const landedPage = getPageForY(leaf.naturalTop + cumulativeShift, CYCLE_PX);
+              if (leaf.sectionStart) sectionStartPages.push(landedPage);
+              const ins = insetAt(sectionIndex);
+              const mir = landedPage % 2 === 0 ? mirror : 0;
+              const insLeft = Math.round((landedPage === sectionFirstPage ? ins[0] : ins[2]) + mir);
+              const insRight = Math.round((landedPage === sectionFirstPage ? ins[1] : ins[3]) - mir);
+              if (insLeft || insRight) {
+                // The leaf may be a row, or a line inside one; the inset belongs on the
+                // top-level block, which is the ancestor .tiptap holds directly.
+                let block: HTMLElement = leaf.el;
+                while (block.parentElement && block.parentElement !== dom) block = block.parentElement;
+                const from = block.parentElement === dom ? docPosBeforeElement(block) : null;
+                const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
+                if (from !== null && node && !sectionInsets.has(from)) {
+                  sectionInsets.set(from, { to: from + node.nodeSize, left: insLeft, right: insRight });
+                }
+              }
+              cumulativeShift -= droppedShift;
+              // Track the lowest rendered content bottom (cumulativeShift now includes
+              // this leaf's own spacer, so a pushed/split leaf counts at its real spot).
+              maxEffectiveBottom = Math.max(
+                maxEffectiveBottom,
+                leaf.naturalTop + cumulativeShift + leaf.naturalHeight,
+              );
+              // Leave a cell flow: the row's added shift is its tallest cell's; the main
+              // flow continues below the row from there.
+              if (leaf.rowEnd) {
+                maxCellDelta = Math.max(maxCellDelta, cumulativeShift - rowBaseline);
+                cumulativeShift = rowBaseline + maxCellDelta;
               }
             }
+            return {
+              anchorPages, maxEffectiveBottom, sectionStartPages, placements, collapsedTrailing,
+              pageTopBlocks, sectionInsets, tableBands, leavesDebug, placementsDebug,
+            };
+          }
 
-            leavesDebug.push({
-              index: i,
-              tag: leaf.el.tagName,
-              kind: leaf.kind,
-              inTableCell: !!leaf.inTableCell,
-              tableRow: leaf.tableRow
-                ? { columns: leaf.tableRow.columns, isFirstRow: leaf.tableRow.isFirstRow }
-                : null,
-              naturalTop: leaf.naturalTop,
-              naturalHeight: leaf.naturalHeight,
-              textPreview: (leaf.el.textContent ?? '').slice(0, 120),
-              intraSpacerHeights: Array.from(
-                leaf.el.querySelectorAll<HTMLElement>('[data-page-break-spacer]'),
-              ).map((sp) => sp.offsetHeight),
-              effectiveTop,
-              effectiveBottom,
-              pageOfTop: page,
-              pageOfBottom: getPageForY(effectiveBottom, CYCLE_PX),
-              contentStart,
-              contentEnd,
-              overflowsPageEnd: effectiveBottom > contentEnd,
-            });
+          // Every footnote, in anchor order, at the height it renders at. They are out
+          // of the flow at a fixed width, so the height stands whatever page they land on
+          // and the fixed point below only has to settle *which* page that is.
+          const footnotes: FootnoteBox[] = Array
+            .from(dom.querySelectorAll<HTMLElement>('.note[data-note-kind="footnote"]'))
+            .map((el) => ({ id: el.dataset.noteId ?? '', el, height: el.offsetHeight }));
+          // The separator's own band. The three lengths are registered (@property in
+          // editor.css), so these read back in px rather than as "0.1cm".
+          const sepSpace = (['--note-sep-above', '--note-sep-weight', '--note-sep-below'] as const)
+            .reduce((sum, name) => sum + (parseFloat(csRoot.getPropertyValue(name)) || 0), 0);
 
-            // Round each spacer to integer px (the browser renders spacers at integer
-            // height, so an unrounded model shakes 1px per keystroke at non-100% zoom).
-            let placedAny = false;
-            for (const br of breaks) {
-              if (br.docPos === null) continue;
-              const h = Math.round(br.height);
-              if (h === 0) continue;
-              // In-cell or between-rows breaks sit inside the continuous table box,
-              // whose borders bleed through the gap, so they need a close/open band.
-              const inBand = !!leaf.inTableCell || br.row !== null;
-              if (inBand && br.bandOpenY !== null) {
-                const key = Math.round(br.bandOpenY);
-                const rowBreak = br.row !== null;
-                const existing = tableBands.get(key);
-                if (!existing) tableBands.set(key, { openY: br.bandOpenY, rowBreak });
-                // An in-cell break sharing the boundary needs the full mask, so a
-                // band stays rowBreak only if every break at this key is one.
-                else if (!rowBreak) existing.rowBreak = false;
-              }
-              placements.push({ docPos: br.docPos, height: h, row: br.row });
-              placementsDebug.push({
-                leafIndex: i,
-                docPos: br.docPos,
-                height: h,
-                reason: br.reason,
-                spacerKind: br.row ? 'table-row' : 'block',
-                columns: br.row ? br.row.columns : null,
-              });
-              cumulativeShift += h;
-              placedAny = true;
+          // The room each page's own notes take out of its content area.
+          function reservationFor(anchorPages: Map<string, number>): Map<number, number> {
+            const out = new Map<number, number>();
+            for (const note of footnotes) {
+              const page = anchorPages.get(note.id);
+              if (!page) continue;
+              out.set(page, (out.get(page) ?? 0) + note.height);
             }
-            if (!placedAny && noPushReason !== null) {
-              placementsDebug.push({
-                leafIndex: i,
-                docPos: null,
-                height: 0,
-                reason: noPushReason,
-                spacerKind: 'none',
-                columns: null,
-              });
-            }
+            // ponytail: a note is never split across pages — a page whose notes outgrow
+            // its content area keeps one line of body text and overflows. Splitting the
+            // note, as LibreOffice does, is the upgrade path.
+            for (const [page, sum] of out) out.set(page, Math.min(sum + sepSpace, CONTENT_HEIGHT - 1));
+            return out;
+          }
 
-            // Read after this leaf's own spacer, so the page is the one it really lands on.
-            const landedPage = getPageForY(leaf.naturalTop + cumulativeShift, CYCLE_PX);
-            if (leaf.sectionStart) sectionStartPages.push(landedPage);
-            const ins = insetAt(sectionIndex);
-            const mir = landedPage % 2 === 0 ? mirror : 0;
-            const insLeft = Math.round((landedPage === sectionFirstPage ? ins[0] : ins[2]) + mir);
-            const insRight = Math.round((landedPage === sectionFirstPage ? ins[1] : ins[3]) - mir);
-            if (insLeft || insRight) {
-              // The leaf may be a row, or a line inside one; the inset belongs on the
-              // top-level block, which is the ancestor .tiptap holds directly.
-              let block: HTMLElement = leaf.el;
-              while (block.parentElement && block.parentElement !== dom) block = block.parentElement;
-              const from = block.parentElement === dom ? docPosBeforeElement(block) : null;
-              const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
-              if (from !== null && node && !sectionInsets.has(from)) {
-                sectionInsets.set(from, { to: from + node.nodeSize, left: insLeft, right: insRight });
-              }
-            }
-            cumulativeShift -= droppedShift;
-            // Track the lowest rendered content bottom (cumulativeShift now includes
-            // this leaf's own spacer, so a pushed/split leaf counts at its real spot).
-            maxEffectiveBottom = Math.max(
-              maxEffectiveBottom,
-              leaf.naturalTop + cumulativeShift + leaf.naturalHeight,
-            );
-            // Leave a cell flow: the row's added shift is its tallest cell's; the main
-            // flow continues below the row from there.
-            if (leaf.rowEnd) {
-              maxCellDelta = Math.max(maxCellDelta, cumulativeShift - rowBaseline);
-              cumulativeShift = rowBaseline + maxCellDelta;
-            }
+          const sameReservation = (a: Map<number, number>, b: Map<number, number>) =>
+            a.size === b.size && Array.from(a).every(([k, v]) => Math.abs((b.get(k) ?? NaN) - v) < 0.5);
+
+          let reserved = new Map<number, number>();
+          let placed = placeLeaves(reserved);
+          for (let pass = 0; footnotes.length && pass < MAX_NOTE_FIT_PASSES; pass++) {
+            const next = reservationFor(placed.anchorPages);
+            if (sameReservation(next, reserved)) break;
+            reserved = next;
+            placed = placeLeaves(reserved);
+          }
+          const {
+            maxEffectiveBottom, sectionStartPages, placements, collapsedTrailing,
+            pageTopBlocks, sectionInsets, tableBands, leavesDebug, placementsDebug,
+          } = placed;
+
+          // Stack each page's notes up from its content end, in anchor order. The top
+          // of the block is where the separator is drawn (editor.css).
+          const noteTops = new Map<string, number>();
+          const nextTop = new Map<number, number>();
+          for (const note of footnotes) {
+            const page = placed.anchorPages.get(note.id);
+            if (!page) continue;
+            const base = page * CYCLE_PX - PAGE_GAP - vm.bottom - (reserved.get(page) ?? 0) + sepSpace;
+            const top = nextTop.get(page) ?? base;
+            noteTops.set(note.id, top);
+            nextTop.set(page, top + note.height);
           }
 
           // Skip the decoration rebuild + dispatch when placements are identical to the
@@ -1380,7 +1522,10 @@ export const PageBreaks = Extension.create({
             placements.map((p) => `${p.docPos}:${p.height}:${p.row ? `${p.row.columns}${p.row.close}${p.row.open}` : 'b'}`).join('|') +
             (collapsedTrailing ? `|c${collapsedTrailing.from}` : '') +
             pageTopBlocks.map((b) => `|t${b.from}`).join('') +
-            Array.from(sectionInsets, ([f, s]) => `|i${f}:${s.left}:${s.right}`).join('');
+            Array.from(sectionInsets, ([f, s]) => `|i${f}:${s.left}:${s.right}`).join('') +
+            // The notes ride the same guard: a frozen layout whose reservation has moved
+            // on would leave every footnote on the page it used to belong to.
+            Array.from(noteTops, ([id, top]) => `|n${id}:${Math.round(top)}`).join('');
           const placementsChanged =
             placementsKey !== lastPlacementsKey && placementsKey !== prevPlacementsKey;
           if (placementsChanged) {
@@ -1436,6 +1581,23 @@ export const PageBreaks = Extension.create({
             for (const b of pageTopBlocks) {
               // --space-top: a text box draws its own space above from it (textBox.ts).
               decoArray.push(Decoration.node(b.from, b.to, { style: 'padding-top:0;margin-top:0;--space-top:0px' }));
+            }
+            // Each footnote to the foot of its anchor's page; the topmost of a page also
+            // carries the separator (editor.css draws it above the box).
+            const seenPages = new Set<number>();
+            for (const note of footnotes) {
+              const top = noteTops.get(note.id);
+              if (top === undefined) continue;
+              const from = docPosBeforeElement(note.el);
+              const node = from === null ? null : doc.nodeAt(from);
+              if (from === null || !node) continue;
+              const page = placed.anchorPages.get(note.id) as number;
+              const opensPage = !seenPages.has(page);
+              seenPages.add(page);
+              decoArray.push(Decoration.node(from, from + node.nodeSize, {
+                style: `top:${Math.round(top)}px`,
+                ...(opensPage ? { 'data-note-page-first': 'true' } : {}),
+              }));
             }
 
             decorations = decoArray.length > 0
