@@ -17,6 +17,7 @@
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
   import { getColumnsFlowDebug } from './lib/editor/extensions/columnsFlow';
   import { getTextBoxDebug } from './lib/editor/extensions/textBox';
+  import { getTableCellDebug } from './lib/editor/extensions/tableCellAlign';
   import { getColorDebug } from './lib/utils/colorDebug';
   import { resetHistoryLog } from './lib/utils/historyLog.svelte';
   import { countText, type TextStats } from './lib/utils/wordCount';
@@ -653,7 +654,7 @@
     try {
       const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       const { buildDocx } = await import('./lib/export/docx');
-      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, pageRtl, noteSettings());
+      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings());
       await saveAsDocx(bytes, suggestedFilenameDocx(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -808,6 +809,11 @@
       pageBreaks: snapshot,
       columnsFlow: getColumnsFlowDebug(editor.view),
       textBoxes: getTextBoxDebug(editor.view),
+      // Cell alignment reads as broken whenever the content fills the box, so the
+      // dump carries the spacing that decides that: the sheet and the model it uses.
+      tableCells: getTableCellDebug(editor.view),
+      spacingModel,
+      styles: styleSheet(),
       colors: getColorDebug(editor),
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });

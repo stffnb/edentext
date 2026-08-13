@@ -67,7 +67,7 @@ One header and one footer (`HfDoc` = a single-paragraph TipTap doc per zone, per
 
 ## Debug tooling (dev only)
 
-In dev builds a **Debug** button (`App.svelte`) downloads a JSON snapshot combining `getPageBreakDebug(view)` (leaves, placements, rendered spacers, table-break bands, live overlay geometry) and `getColorDebug(editor)` (selection marks, text runs, document colors, DOM spans) — used to diagnose pagination and color round-trip issues.
+In dev builds a **Debug** button (`App.svelte`) downloads a JSON snapshot combining `getPageBreakDebug(view)` (leaves, placements, rendered spacers, table-break bands, live overlay geometry), `getTableCellDebug(view)` (per cell: the `verticalAlign` attr beside the computed value, cell/row height, the gap above and below the content, and every block's margins/`--space-before` — cell alignment reads as broken whenever the content fills the box, so the numbers that decide that travel with it), the style sheet + spacing model, and `getColorDebug(editor)` (selection marks, text runs, document colors, DOM spans).
 
 ## Per-section header/footer
 
