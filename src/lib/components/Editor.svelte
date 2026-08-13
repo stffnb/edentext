@@ -22,6 +22,9 @@
   import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
   import { type Orientation } from '../storage/pageOrientation';
   import { type SpacingModel } from '../storage/spacingModel';
+  import { applyNoteVars } from '../storage/noteSettings';
+  import { noteSettings } from '../storage/notes.svelte';
+  import { RESYNC_NOTES } from '../editor/extensions/notes';
   import { applyPageSizeVars, type PageFormat } from '../storage/pageFormat';
   import { DEFAULT_HF_DISTANCES, hfIsEmpty, hfUsesChapterField, type HfDoc, type HfZone, type HfDistances, type HfSet } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, pageOfElement, readVerticalMargins, type TableBreakBand } from '../editor/extensions/pageBreaks';
@@ -258,6 +261,25 @@
       // painted into the document — this effect is the choke point every change passes.
       ed.commands.refreshTableStyles();
       ed.view.dispatch(ed.state.tr.setMeta('addToHistory', false).setMeta(FORCE_PAGE_RECALC, true));
+    });
+  });
+
+  // The separator's own band is part of the space pagination reserves for a page's
+  // notes, so a change to it has to re-measure — and the line is drawn from the same
+  // custom properties.
+  $effect(() => {
+    applyNoteVars(noteSettings());
+    const ed = editor;
+    if (!ed) return;
+    requestAnimationFrame(() => {
+      if (ed.view.dom.isConnected) {
+        // The numbering follows the settings too, and nothing about them is a
+        // document change the sync pass would otherwise see.
+        ed.view.dispatch(ed.state.tr
+          .setMeta('addToHistory', false)
+          .setMeta(RESYNC_NOTES, true)
+          .setMeta(FORCE_PAGE_RECALC, true));
+      }
     });
   });
 

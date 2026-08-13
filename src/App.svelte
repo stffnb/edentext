@@ -40,6 +40,7 @@
   import UiLanguagePicker from './lib/components/UiLanguagePicker.svelte';
   import AboutDialog from './lib/components/AboutDialog.svelte';
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
+  import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
   import { t } from './lib/i18n/i18n.svelte';
   import { withShortcut } from './lib/i18n/shortcut';
   import { DEFAULT_SHORTCUTS, matchesEvent, shortcutHint } from './lib/editor/shortcuts';
@@ -56,6 +57,7 @@
   let aboutOpen = $state(false);
   let styleManagerOpen = $state(false);
   let styleManagerFamily = $state<StyleFamily>('paragraph');
+  let noteOptionsOpen = $state(false);
 
   function openStyleManager(family: StyleFamily) {
     styleManagerFamily = family;
@@ -200,6 +202,7 @@
   $effect(() => {
     saveSpacingModel(spacingModel);
   });
+
 
   $effect(() => {
     savePageRtl(pageRtl);
@@ -862,6 +865,7 @@
       {hfActive}
       onManageStyles={openStyleManager}
       onManageTableStyles={() => openStyleManager('table')}
+      onNoteOptions={() => (noteOptionsOpen = true)}
       onEditZone={(zone) => (hfActive = zone)}
       onFind={openFind}
       {namePlaceholder}
@@ -1096,6 +1100,7 @@
           onEditZone={(zone) => (hfActive = zone)}
           onDebugDump={handleDebugDump}
           onManageTableStyles={() => openStyleManager('table')}
+          onNoteOptions={() => (noteOptionsOpen = true)}
         />
       </div>
       {@render toolbarScrollbar()}
@@ -1212,6 +1217,7 @@
   <!-- One instance for every entry point (styles gallery, insert-table menu): the
        callers only say which family to land on. -->
   <StyleManagerDialog bind:open={styleManagerOpen} family={styleManagerFamily} editor={activeEditor} />
+  <NoteOptionsDialog bind:open={noteOptionsOpen} />
 </main>
 
 <style>

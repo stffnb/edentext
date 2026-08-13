@@ -7,10 +7,11 @@
   import { t } from '../../../i18n/i18n.svelte';
   import { shortcutHint } from '../../../editor/shortcuts';
 
-  let { editor, tick, hfActive = null }: {
+  let { editor, tick, hfActive = null, onNoteOptions }: {
     editor: Editor | null;
     tick: number;
     hfActive?: HfZone | null;
+    onNoteOptions?: () => void;
   } = $props();
 
   // The document holds at most one, so the first hit is it.
@@ -78,6 +79,13 @@
     title={hfActive ? t().toolbarExpanded.noteNotInHf : `${t().toolbarExpanded.insertEndnote} (${shortcutHint('endnote')})`}
     disabled={!editor || !!hfActive}
     onclick={() => editor?.chain().focus().insertNote('endnote').run()}
+  />
+  <RibbonButton
+    icon="tocLevels"
+    label={t().ribbon.noteOptions}
+    title={t().notesDialog.title}
+    disabled={!onNoteOptions}
+    onclick={() => onNoteOptions?.()}
   />
 </RibbonGroup>
 

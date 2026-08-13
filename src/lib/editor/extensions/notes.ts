@@ -210,6 +210,10 @@ export function noteLabels(refs: NoteRefInfo[], settings: NoteSettings): Map<str
 
 const notesKey = new PluginKey('notes');
 
+// Meta asking for a renumber without a document change: the numbering follows the
+// settings, and changing those in the dialog edits nothing the sync pass would see.
+export const RESYNC_NOTES = 'resyncNotes';
+
 export interface NotesOptions {
   settings: () => NoteSettings;
 }
@@ -301,7 +305,7 @@ export const Notes = Extension.create<NotesOptions>({
         // both at once would need positions from a document this transaction is still
         // rewriting.
         appendTransaction(trs, _oldState, newState) {
-          if (!trs.some((tr) => tr.docChanged)) return null;
+          if (!trs.some((tr) => tr.docChanged || tr.getMeta(RESYNC_NOTES))) return null;
           return syncStructure(newState) ?? syncNumbers(newState, getSettings());
         },
       }),

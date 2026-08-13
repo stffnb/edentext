@@ -30,8 +30,8 @@
   import { t } from '../i18n/i18n.svelte';
   import { shortcutHint, type ShortcutId } from '../editor/shortcuts';
 
-  let { editor, tick, showFormattingMarks = $bindable(), showRuler = $bindable(true), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), differentOddEven = $bindable(false), hfActive = null, onEditZone, onDebugDump, onManageTableStyles }:
-    { editor: Editor | null; tick: number; showFormattingMarks: boolean; showRuler?: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hfDistances?: HfDistances; differentFirstPage?: boolean; differentOddEven?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void; onManageTableStyles?: () => void } = $props();
+  let { editor, tick, showFormattingMarks = $bindable(), showRuler = $bindable(true), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), differentOddEven = $bindable(false), hfActive = null, onEditZone, onDebugDump, onManageTableStyles, onNoteOptions }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; showRuler?: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hfDistances?: HfDistances; differentFirstPage?: boolean; differentOddEven?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void; onManageTableStyles?: () => void; onNoteOptions?: () => void } = $props();
 
   const PAGE_FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
 
@@ -1747,6 +1747,18 @@
           <path d="M2 2.5h12M2 5h12M2 7.5h7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
           <path d="M2 10.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
           <path d="M2 13.5h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+        </svg>
+      </button>
+      <button
+        onclick={() => onNoteOptions?.()}
+        disabled={!onNoteOptions}
+        title={t().notesDialog.title}
+        aria-label={t().notesDialog.title}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M2 3h8M2 6h6M2 9h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+          <path d="M2 12.5h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+          <path d="M12 10.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4z" stroke="currentColor" stroke-width="1.3" />
         </svg>
       </button>
       <div class="link-wrap" use:linkClickOutside>

@@ -47,6 +47,7 @@
     hfActive = null,
     onManageStyles,
     onManageTableStyles,
+    onNoteOptions,
     onEditZone,
     onFind,
     namePlaceholder = '',
@@ -74,6 +75,7 @@
     hfActive?: HfZone | null;
     onManageStyles?: (family: StyleFamily) => void;
     onManageTableStyles?: (family: StyleFamily) => void;
+    onNoteOptions?: () => void;
     onEditZone?: (zone: HfZone) => void;
     onFind?: (mode: 'find' | 'replace') => void;
     namePlaceholder?: string;
@@ -284,7 +286,7 @@
     {:else if tab === 'layout'}
       <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'references'}
-      <ReferencesTab {editor} {tick} {hfActive} />
+      <ReferencesTab {editor} {tick} {hfActive} {onNoteOptions} />
     {:else if tab === 'review'}
       <ReviewTab {editor} {tick} {documentLanguage} {onLanguage} />
     {:else if tab === 'view'}

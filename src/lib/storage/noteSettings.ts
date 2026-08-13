@@ -133,3 +133,16 @@ export function loadNoteSettings(): NoteSettings {
 export function saveNoteSettings(s: NoteSettings): void {
   localStorage.setItem(KEY, JSON.stringify(s));
 }
+
+// The separator's geometry on :root, where editor.css draws the line from it and
+// pageBreaks.ts reads back the band it has to reserve. The three lengths are
+// registered (@property), so they resolve to px there.
+export function applyNoteVars(s: NoteSettings): void {
+  const root = document.documentElement.style;
+  root.setProperty('--note-sep-above', `${s.separator.spaceAboveCm}cm`);
+  root.setProperty('--note-sep-below', `${s.separator.spaceBelowCm}cm`);
+  root.setProperty('--note-sep-weight', `${s.separator.weightPt}pt`);
+  root.setProperty('--note-sep-rel-width', `${s.separator.relWidthPercent}%`);
+  root.setProperty('--note-sep-color', s.separator.color);
+  root.setProperty('--note-sep-align', s.separator.align);
+}

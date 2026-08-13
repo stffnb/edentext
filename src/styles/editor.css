@@ -284,11 +284,6 @@
 @property --note-sep-above { syntax: '<length>'; inherits: true; initial-value: 0.1cm; }
 @property --note-sep-weight { syntax: '<length>'; inherits: true; initial-value: 0.5pt; }
 @property --note-sep-below { syntax: '<length>'; inherits: true; initial-value: 0.1cm; }
-.paper .tiptap {
-  --note-sep-rel-width: 25%;
-  --note-sep-color: #000000;
-  --note-sep-align: left;
-}
 .paper .tiptap .note-ref {
   /* style:text-position="super 58%" on LibreOffice's Footnote anchor style. */
   vertical-align: super;
@@ -334,10 +329,12 @@
      nothing. The reservation above still uses the true weight, as a hairline border
      does — the line is a pixel wider than it measures, not the space it sits in. */
   height: max(1px, var(--note-sep-weight));
-  background-image: linear-gradient(var(--note-sep-color), var(--note-sep-color));
-  background-size: var(--note-sep-rel-width) 100%;
+  /* The two non-length values carry their own default: only a registered property
+     takes one from @property, and the dialog writes all of them onto :root. */
+  background-image: linear-gradient(var(--note-sep-color, #000), var(--note-sep-color, #000));
+  background-size: var(--note-sep-rel-width, 25%) 100%;
   background-repeat: no-repeat;
-  background-position: var(--note-sep-align) top;
+  background-position: var(--note-sep-align, left) top;
 }
 
 /* Formulas (formula.ts). MathML needs a font with an OpenType MATH table or Chromium
