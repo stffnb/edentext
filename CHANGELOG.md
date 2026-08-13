@@ -202,6 +202,15 @@ merely unimplemented belongs in the list above, not here.
   was tried and reverted: it fixes the line it was measured on and breaks
   another two tables on, so the real offset is under 0.2 mm — the same engine
   rounding as above. See `tests/render-parity/README.md`. Noted 2026-08-13.
+- The **first line of a page** sits slightly lower than LibreOffice's. Root cause:
+  a font carries two ascents, and the two engines pick different ones to place
+  the first baseline against the text-area top — LibreOffice the OS/2 typo
+  ascent, Chromium the hhea one its line box is built from. Read out of the
+  bundled TTFs that is 0.7500 against 0.9521 em for Carlito (Liberation Serif
+  0.6934 against 0.8911): **1.85 mm at 26 pt**, 0.84 mm at 12 pt. Every line
+  after it matches — the line pitch is the same 1.2207 em on both sides — so it
+  is visible only on a page opening with a large heading. CSS exposes no way to
+  choose the other ascent. Noted 2026-08-13.
 - A text box anchored inside a paragraph loses the vertical offset it was
   anchored by: it is a block node here, so the importer lifts it out and it
   simply follows that paragraph (measured 4.7 mm on the thesis' figure page).
