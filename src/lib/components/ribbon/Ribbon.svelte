@@ -27,6 +27,7 @@
   import type { HfZone } from '../../storage/headerFooter';
   import type { DocumentLanguage } from '../../storage/documentLanguage';
   import { DEFAULT_TAB_INTERVAL_CM } from '../../storage/tabInterval';
+  import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../../storage/pageNumbering';
 
   let {
     editor,
@@ -45,6 +46,7 @@
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
     hyphenate = $bindable(false),
+    pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     hfActive = null,
     onManageStyles,
     onManageTableStyles,
@@ -74,6 +76,7 @@
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
     hyphenate?: boolean;
+    pageNumbering?: PageNumbering;
     hfActive?: HfZone | null;
     onManageStyles?: (family: StyleFamily) => void;
     onManageTableStyles?: (family: StyleFamily) => void;
@@ -291,7 +294,7 @@
     {:else if tab === 'insert'}
       <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} {onEditZone} {onManageTableStyles} />
     {:else if tab === 'layout'}
-      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:hyphenate onParagraphDialog={() => (paragraphDialogOpen = true)} />
+      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:hyphenate bind:pageNumbering onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'references'}
       <ReferencesTab {editor} {tick} {hfActive} {onNoteOptions} />
     {:else if tab === 'review'}

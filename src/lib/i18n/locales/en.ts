@@ -627,6 +627,8 @@ const en = {
     noteOptions: 'Options',
     autoCorrect: 'AutoCorrect',
     hyphenation: 'Hyphenation',
+    pageNumberFormat: 'Page numbers',
+    pageNumberStart: 'Start at',
     hyphenationHint: 'Hyphenate automatically',
     debugDump: 'Dump',
     cellMargins: 'Cell margins',

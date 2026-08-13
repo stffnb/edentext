@@ -3,7 +3,7 @@ import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { ODF_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { normalizeLeader, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
-import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteSettings } from '../storage/noteSettings';
+import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 
 // Resolves ODF style indirection for the importer: producers (our export, LibreOffice,
 // Word) spread formatting across named/automatic styles and parent-style-name chains.
@@ -343,6 +343,14 @@ export class StyleResolver {
   // what "the document hyphenates" means.
   documentHyphenation(): boolean {
     return this.merged('paragraph', 'Standard').text['fo:hyphenate'] === 'true';
+  }
+
+  // The page-number format, from the page layout of the governing master page.
+  // ODF's own default is decimal, which is `1` here.
+  pageNumberFormat(): NoteNumFormat {
+    const props = this.pageLayoutEl()?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
+    const f = props?.getAttributeNS(NS.style, 'num-format') ?? '';
+    return (['1', 'i', 'I', 'a', 'A'] as const).includes(f as NoteNumFormat) ? (f as NoteNumFormat) : '1';
   }
 
   // The grid every tab past the last custom stop falls on, from the paragraph

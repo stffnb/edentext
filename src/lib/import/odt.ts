@@ -22,6 +22,7 @@ import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/
 import type { HfDoc, HfSet } from '../storage/headerFooter';
 import type { NoteKind, NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
+import { clampPageStart, type PageNumbering } from '../storage/pageNumbering';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -52,6 +53,8 @@ export interface OdtImportResult {
   rtl: boolean;
   // Automatic hyphenation (ODF fo:hyphenate on the base style, Word w:autoHyphenation).
   hyphenate: boolean;
+  // How the page-number field counts (ODF style:num-format + style:page-number, Word w:pgNumType).
+  pageNumbering: PageNumbering;
   // The grid every tab past the last custom stop falls on; the format's own fallback
   // when the file declares none.
   tabIntervalCm: number;
@@ -676,6 +679,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     format: geometry?.format ?? null,
     rtl: geometry?.rtl ?? false,
     hyphenate: resolver.documentHyphenation(),
+    pageNumbering: { format: resolver.pageNumberFormat(), start: odfPageNumberStart(resolver, body) },
     tabIntervalCm: resolver.defaultTabInterval(),
     spacingModel: odfSpacingModel(files),
     header,
@@ -819,6 +823,18 @@ function mergeHfBox(maps: Record<string, string>[]): Record<string, string> {
     if (val !== undefined) out[key] = val;
   }
   return out;
+}
+
+// The document's first page number: ODF has no document-level start, so LibreOffice puts
+// `style:page-number` on the first paragraph's own style.
+function odfPageNumberStart(resolver: StyleResolver, body: Element): number {
+  for (const el of Array.from(body.children)) {
+    if (el.namespaceURI !== NS.text || (el.localName !== 'p' && el.localName !== 'h')) continue;
+    const style = el.getAttributeNS(NS.text, 'style-name');
+    const n = style ? Number(resolver.paraProps(style)['style:page-number']) : NaN;
+    return Number.isFinite(n) ? clampPageStart(n) : 1;
+  }
+  return 1;
 }
 
 // meta.xml → the document's descriptive properties (LibreOffice's File ▸ Properties).

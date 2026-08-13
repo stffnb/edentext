@@ -1808,3 +1808,32 @@ describe('Leg 14: automatic hyphenation', () => {
     check('off round-trips', importDocx(off).hyphenate === false);
   });
 });
+
+describe('Leg 15: page numbering (format + start value)', () => {
+  const pnDoc: N = { type: 'doc', content: [P(null, T('erste Seite'))] };
+  const args = [margins, 'portrait', undefined, null, 'A4', builtinStyleSheet(), 1.25, 'add', false, DEFAULT_NOTE_SETTINGS, undefined, false] as const;
+  const roman = { format: 'i' as const, start: 7 };
+
+  it('ODT: num-format rides the page layout, the start the first paragraph', async () => {
+    const bytes = await buildOdt(pnDoc, ...args, roman);
+    const files = unzipSync(bytes);
+    check('num-format on the layout', strFromU8(files['styles.xml']).includes('style:num-format="i"'));
+    check('start on the first paragraph', strFromU8(files['content.xml']).includes('style:page-number="7"'));
+    const back = importOdt(bytes).pageNumbering;
+    check('round-trips whole', JSON.stringify(back) === JSON.stringify(roman), back);
+  });
+
+  it('DOCX: w:pgNumType carries both', async () => {
+    const bytes = await buildDocx(pnDoc, ...args, roman);
+    check('in the sectPr', strFromU8(unzipSync(bytes)['word/document.xml']).includes('lowerRoman'));
+    const back = importDocx(bytes).pageNumbering;
+    check('round-trips whole', JSON.stringify(back) === JSON.stringify(roman), back);
+  });
+
+  it('the defaults write nothing', async () => {
+    const bytes = await buildOdt(pnDoc, ...args, { format: '1', start: 1 });
+    const files = unzipSync(bytes);
+    check('no num-format on the layout', !/<style:page-layout-properties[^>]*style:num-format=/.test(strFromU8(files['styles.xml'])));
+    check('no page-number', !strFromU8(files['content.xml']).includes('style:page-number='));
+  });
+});

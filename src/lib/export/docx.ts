@@ -4,7 +4,7 @@ import {
   TableOfContents,
   Table, TableRow, TableCell, Header, Footer, PageNumber, SimpleField,
   AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
-  WidthType, HeightRule, PageOrientation, LineRuleType, TableLayoutType, SectionType,
+  WidthType, HeightRule, PageOrientation, LineRuleType, TableLayoutType, SectionType, NumberFormat,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
   TextWrappingType, TextWrappingSide, ImportedXmlComponent, TabStopType, LeaderType,
 } from 'docx';
@@ -31,6 +31,13 @@ import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, t
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, GENERATOR, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
+import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
+
+// The five page-number formats both word processors offer → Word's own names.
+const DOCX_PAGE_NUM_FORMAT = {
+  '1': NumberFormat.DECIMAL, i: NumberFormat.LOWER_ROMAN, I: NumberFormat.UPPER_ROMAN,
+  a: NumberFormat.LOWER_LETTER, A: NumberFormat.UPPER_LETTER,
+} as const;
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { parseTableLook, regionText, type TableStyle } from '../styles/tableStyles';
 import { findFormat, renderFormat, docxPicture, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../utils/dateTime';
@@ -1309,6 +1316,7 @@ export async function buildDocx(
   notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS,
   props: DocProperties = EMPTY_DOC_PROPERTIES,
   hyphenate = false,
+  pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
@@ -1373,6 +1381,11 @@ export async function buildDocx(
         left: cmToTwip(m.left), right: cmToTwip(m.right),
         header: cmToTwip(Math.min(headerDist, m.top)), footer: cmToTwip(Math.min(footerDist, m.bottom)),
       },
+      // w:pgNumType. Word restarts numbering at every section carrying it, so only the
+      // first gets it — the rest continue.
+      ...(i === 0 && (pageNumbering.format !== '1' || pageNumbering.start !== 1)
+        ? { pageNumbers: { formatType: DOCX_PAGE_NUM_FORMAT[pageNumbering.format], ...(pageNumbering.start !== 1 ? { start: pageNumbering.start } : {}) } }
+        : {}),
     };
   };
   // Fresh instances per section (Word's per-sectPr references, i.e. no "Link to

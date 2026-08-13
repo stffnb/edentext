@@ -8,6 +8,7 @@ import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, keywordList, type DocProperties } from '../storage/docProperties';
+import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
@@ -2212,7 +2213,7 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
 // Rewrite styles.xml to match the editor's preview: default font Liberation Serif →
 // Times New Roman (metric-identical; see EXPORT_FONT), and Heading_20_1/2/3 sizes &
 // margins → the editor's values (odf-kit's defaults are larger; HEADING_STYLE_OVERRIDES).
-function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, mirrored = false, rtl = false, notes: NoteSettings = DEFAULT_NOTE_SETTINGS, hyphenate = false): Uint8Array {
+function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, mirrored = false, rtl = false, notes: NoteSettings = DEFAULT_NOTE_SETTINGS, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
   if (!stylesBytes) return odtBytes;
@@ -2236,6 +2237,15 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
   // A right-to-left page: its columns fill from the right, as the editor draws them.
   if (rtl) {
     styles = styles.replace(/<style:page-layout-properties /, '<style:page-layout-properties style:writing-mode="rl-tb" ');
+  }
+
+  // How the page-number field counts. ODF keeps the format on the page layout; the start
+  // value is a property of the document's first paragraph (applyPageNumberStart).
+  if (pageNumbering.format !== '1') {
+    styles = styles.replace(
+      /<style:page-layout-properties /,
+      `<style:page-layout-properties style:num-format="${pageNumbering.format}" `,
+    );
   }
 
   // Document spell-check language: set fo:language/fo:country on the base
@@ -3558,7 +3568,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING): Promise<Uint8Array> {
   // Images become IMG sentinels before serialization; applyImages resolves them and writes
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
@@ -3786,12 +3796,42 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Effects first: applyCharacterStyles then clones the style that already carries them.
   const withNamedStyles = applyCharacterStyles(applyTextEffects(applyParagraphStyles(withParaBoxes)));
   const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
-  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm, margins.mirrored === true, rtl, notesSettings, hyphenate);
+  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm, margins.mirrored === true, rtl, notesSettings, hyphenate, pageNumbering);
   const withHf = applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.
   const withSections = applySectionMasterPages(withHf, hf?.sections ?? [], hf?.pageCount ?? 1, margins);
-  return applyDocProperties(applySpacingModel(withSections, spacingModel), props);
+  return applyDocProperties(applyPageNumberStart(applySpacingModel(withSections, spacingModel), pageNumbering.start), props);
+}
+
+// The document's first page number. ODF has no document-level start: LibreOffice puts
+// `style:page-number` on the first paragraph's own style (probed), beside the master page
+// it names.
+function applyPageNumberStart(odtBytes: Uint8Array, start: number): Uint8Array {
+  if (start <= 1) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+  const content = strFromU8(contentBytes);
+  const body = /<office:text\b[^>]*>/.exec(content);
+  if (!body) return odtBytes;
+  const first = /<text:(p|h)\b([^>]*)>/.exec(content.slice(body.index + body[0].length));
+  if (!first) return odtBytes;
+  const at = body.index + body[0].length + first.index;
+  const srcM = /text:style-name="([^"]*)"/.exec(first[2]);
+  const source = srcM ? srcM[1] : 'Standard';
+  const name = 'PgNumStart';
+  const def = findAutoStyle(content, source);
+  const minted = def
+    ? cloneStyleWithParaProps(def, name, `style:page-number="${start}"`)
+    : `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${source}"><style:paragraph-properties style:page-number="${start}"/></style:style>`;
+  const tag = srcM
+    ? first[0].replace(/text:style-name="[^"]*"/, `text:style-name="${name}"`)
+    : `<text:${first[1]} text:style-name="${name}"${first[2]}>`;
+  files['content.xml'] = strToU8(
+    injectAutomaticStyles(content.slice(0, at) + tag + content.slice(at + first[0].length), minted),
+  );
+  return rezipOdt(files);
 }
 
 // The descriptive metadata → meta.xml, which odf-kit already writes (generator +

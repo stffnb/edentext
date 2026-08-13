@@ -23,6 +23,7 @@
   import { type Orientation } from '../storage/pageOrientation';
   import { type SpacingModel } from '../storage/spacingModel';
   import { NO_LANGUAGE } from '../storage/documentLanguage';
+  import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
   import { applyNoteVars } from '../storage/noteSettings';
   import { noteSettings } from '../storage/notes.svelte';
   import { RESYNC_NOTES } from '../editor/extensions/notes';
@@ -43,7 +44,7 @@
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
     zoom = 100, onZoom, showFormattingMarks = false, showRuler = true, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
-    pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', documentEpoch = 0, pageRtl = false, hyphenate = false, documentLanguage = 'en',
+    pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', documentEpoch = 0, pageRtl = false, hyphenate = false, documentLanguage = 'en', pageNumbering = DEFAULT_PAGE_NUMBERING,
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
     headerEvenDoc = $bindable(null), footerEvenDoc = $bindable(null), differentOddEven = false,
@@ -59,6 +60,8 @@
     pageRtl?: boolean;
     /** Automatic hyphenation; the browser needs the document language to pick its patterns. */
     hyphenate?: boolean; documentLanguage?: string;
+    /** How the page-number field counts (format + start value). */
+    pageNumbering?: PageNumbering;
     headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
     headerFirstDoc?: HfDoc; footerFirstDoc?: HfDoc; differentFirstPage?: boolean;
     headerEvenDoc?: HfDoc; footerEvenDoc?: HfDoc; differentOddEven?: boolean;
@@ -1022,6 +1025,7 @@
         bind:extraHfSections
         {sectionStartPages}
         {chapterStarts}
+        {pageNumbering}
       />
     </div>
   </div>

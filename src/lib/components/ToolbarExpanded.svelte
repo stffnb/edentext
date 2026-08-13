@@ -27,11 +27,13 @@
   import { listContext } from '../editor/extensions/indent';
   import { stepFontSize } from '../editor/extensions/shortcuts';
   import { findColumns, DEFAULT_COLUMN_GAP_CM } from '../editor/extensions/columns';
+  import { DEFAULT_PAGE_NUMBERING, PAGE_NUM_FORMATS, clampPageStart, type PageNumbering } from '../storage/pageNumbering';
+  import { formatOrdinal } from '../utils/orderedListTypes';
   import { t } from '../i18n/i18n.svelte';
   import { shortcutHint, type ShortcutId } from '../editor/shortcuts';
 
-  let { editor, tick, showFormattingMarks = $bindable(), showRuler = $bindable(true), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hyphenate = $bindable(false), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), differentOddEven = $bindable(false), hfActive = null, onEditZone, onDebugDump, onManageTableStyles, onNoteOptions }:
-    { editor: Editor | null; tick: number; showFormattingMarks: boolean; showRuler?: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hyphenate?: boolean; hfDistances?: HfDistances; differentFirstPage?: boolean; differentOddEven?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void; onManageTableStyles?: () => void; onNoteOptions?: () => void } = $props();
+  let { editor, tick, showFormattingMarks = $bindable(), showRuler = $bindable(true), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hyphenate = $bindable(false), pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), differentOddEven = $bindable(false), hfActive = null, onEditZone, onDebugDump, onManageTableStyles, onNoteOptions }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; showRuler?: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hyphenate?: boolean; pageNumbering?: PageNumbering; hfDistances?: HfDistances; differentFirstPage?: boolean; differentOddEven?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void; onManageTableStyles?: () => void; onNoteOptions?: () => void } = $props();
 
   const PAGE_FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
 
@@ -1417,6 +1419,22 @@
       </button>
       {#if layoutOpen}
         <div class="layout-dropdown">
+          <div class="lh-section-label">{t().ribbon.pageNumberFormat}</div>
+          <div class="pagenum-row">
+            <select class="format-select" bind:value={pageNumbering.format}>
+              {#each PAGE_NUM_FORMATS as f}
+                <option value={f}>{[1, 2, 3].map((n) => formatOrdinal(n, f)).join(', ')}</option>
+              {/each}
+            </select>
+            <input
+              type="number"
+              min="1"
+              max="9999"
+              title={t().ribbon.pageNumberStart}
+              value={pageNumbering.start}
+              onchange={(e) => (pageNumbering = { ...pageNumbering, start: clampPageStart(Number(e.currentTarget.value)) })}
+            />
+          </div>
           <div class="lh-section-label">{t().ribbon.hyphenation}</div>
           <label class="hyphen-row" title={t().ribbon.hyphenationHint}>
             <input type="checkbox" bind:checked={hyphenate} />
@@ -2439,6 +2457,9 @@
   .margin-step:hover {
     background: var(--color-btn-hover);
   }
+
+  .pagenum-row { display: flex; gap: 6px; align-items: center; }
+  .pagenum-row input { width: 70px; }
 
   .hyphen-row { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; cursor: pointer; }
 

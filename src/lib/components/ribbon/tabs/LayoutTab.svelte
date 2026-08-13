@@ -9,6 +9,8 @@
   import { DEFAULT_MARGINS, type PageMargins } from '../../../storage/pageMargins';
   import type { Orientation } from '../../../storage/pageOrientation';
   import type { HfZone } from '../../../storage/headerFooter';
+  import { DEFAULT_PAGE_NUMBERING, PAGE_NUM_FORMATS, clampPageStart, type PageNumbering } from '../../../storage/pageNumbering';
+  import { formatOrdinal } from '../../../utils/orderedListTypes';
   import { t } from '../../../i18n/i18n.svelte';
   import { shortcutHint } from '../../../editor/shortcuts';
 
@@ -18,6 +20,7 @@
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
     hyphenate = $bindable(false),
+    pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     onParagraphDialog,
   }: {
     editor: Editor | null;
@@ -27,6 +30,7 @@
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
     hyphenate?: boolean;
+    pageNumbering?: PageNumbering;
     onParagraphDialog?: () => void;
   } = $props();
 
@@ -200,6 +204,37 @@
     active={hyphenate}
     onclick={() => (hyphenate = !hyphenate)}
   />
+
+  <div class="rb-menu-wrap" use:clickOutside={'pageNum'}>
+    <RibbonButton
+      icon="pageNumber"
+      label={t().ribbon.pageNumberFormat}
+      title={t().ribbon.pageNumberFormat}
+      caret
+      active={isMenuOpen('pageNum')}
+      onclick={() => toggleMenu('pageNum')}
+    />
+    {#if isMenuOpen('pageNum')}
+      <div class="ribbon-menu" use:anchored role="menu">
+        <div class="rb-menu-label">{t().ribbon.pageNumberFormat}</div>
+        {#each PAGE_NUM_FORMATS as f}
+          <button class:selected={pageNumbering.format === f} onclick={() => (pageNumbering = { ...pageNumbering, format: f })}>
+            {[1, 2, 3].map((n) => formatOrdinal(n, f)).join(', ')}
+          </button>
+        {/each}
+        <div class="rb-menu-label">{t().ribbon.pageNumberStart}</div>
+        <label class="num-row">
+          <input
+            type="number"
+            min="1"
+            max="9999"
+            value={pageNumbering.start}
+            onchange={(e) => (pageNumbering = { ...pageNumbering, start: clampPageStart(Number(e.currentTarget.value)) })}
+          />
+        </label>
+      </div>
+    {/if}
+  </div>
 </RibbonGroup>
 
 <div class="ribbon-sep"></div>
@@ -247,6 +282,9 @@
 {/snippet}
 
 <style>
+  .num-row { display: flex; padding: 2px 12px 6px; }
+  .num-row input { width: 84px; }
+
   .rb-menu-wrap { position: relative; }
 
   .col-preview { flex-shrink: 0; }

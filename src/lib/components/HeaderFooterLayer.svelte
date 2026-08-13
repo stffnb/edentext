@@ -6,6 +6,8 @@
   import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
   import { type Orientation } from '../storage/pageOrientation';
   import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
+  import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
+  import { formatOrdinal } from '../utils/orderedListTypes';
   import { t } from '../i18n/i18n.svelte';
 
   let {
@@ -29,6 +31,7 @@
     extraHfSections = $bindable([]),
     sectionStartPages = [],
     chapterStarts = [],
+    pageNumbering = DEFAULT_PAGE_NUMBERING,
   }: {
     headerDoc: HfDoc;
     footerDoc: HfDoc;
@@ -40,6 +43,8 @@
     differentOddEven?: boolean;
     numPages: number;
     currentPage: number;
+    /** How the page-number field counts (format + start value). */
+    pageNumbering?: PageNumbering;
     pageMargins: PageMargins;
     orientation: Orientation;
     pageFormat?: PageFormat;
@@ -219,6 +224,12 @@
     return { update: apply };
   }
 
+  // The number a page shows: its position offset by the document's start value, in the
+  // document's own format.
+  function pageLabel(page: number): string {
+    return formatOrdinal(page + pageNumbering.start - 1, pageNumbering.format);
+  }
+
   // Replace the placeholder text in every page-field span with the real value:
   // current page number, or the total page count. Re-runs when its param changes.
   function patchFields(node: HTMLElement, params: ZoneParams) {
@@ -226,7 +237,8 @@
       for (const el of Array.from(node.querySelectorAll('[data-page-field]'))) {
         const kind = el.getAttribute('data-page-field');
         if (kind === 'chapter') el.textContent = chapterOn(page, Number(el.getAttribute('data-level')) || 1);
-        else el.textContent = String(kind === 'count' ? total : page);
+        // The count stays decimal, as the field LibreOffice and Word write does.
+        else el.textContent = kind === 'count' ? String(total) : pageLabel(page);
       }
     };
     apply(params);
@@ -334,7 +346,7 @@
     for (const el of Array.from(liveMount.querySelectorAll('[data-page-field]'))) {
       const kind = el.getAttribute('data-page-field');
       if (kind === 'chapter') el.textContent = chapterOn(editingPage, Number(el.getAttribute('data-level')) || 1);
-      else el.textContent = String(kind === 'count' ? numPages : editingPage);
+      else el.textContent = kind === 'count' ? String(numPages) : pageLabel(editingPage);
     }
     // Content height (unscaled by the zoom transform) drives the active zone's frame.
     const tt = liveMount.querySelector('.tiptap') as HTMLElement | null;

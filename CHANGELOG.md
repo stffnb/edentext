@@ -69,6 +69,7 @@
 - Charts are drawn from the file — DrawingML `chartN.xml` and ODF `chart:chart`, bar / line / area / scatter / pie, with their titles, axis titles, gridlines, axis bounds and series colours (read-only; see the limitations below)
 - Special characters picker
 - Date and time fields: picker with 7 date and 4 time formats (live samples) and an "update automatically" toggle — fixed fields keep the inserted moment, auto fields refresh on open. Round-trips to ODF `text:date`/`text:time` (minted `number:date/time-style`) and DOCX `DATE`/`TIME` fields; the field carries the surrounding font
+- Page numbering options (Layout ▸ Page numbers): the five formats both word processors offer (1 / i / I / a / A) and a start value. Round-trips to ODF `style:num-format` on the page layout plus `style:page-number` on the first paragraph — where LibreOffice keeps the start, ODF having no document-level one — and to Word's `w:pgNumType`
 - Table of contents: generated from headings (H1–H5) with live page numbers and dot leaders, click an entry to jump to its heading; round-trips to ODF `text:table-of-content` and a Word TOC field
 - Footnotes and endnotes (Ctrl+Alt+F / Ctrl+Alt+D): a footnote is drawn at the foot of the page its anchor sits on, with the separator line above it and the body text moved up to make room; endnotes are collected on their own page at the document end. Notes renumber themselves as anchors move, and deleting an anchor deletes its note. An options dialog covers numbering format, start value, restart, position, prefix/suffix, the two styles and the separator's length, thickness, spacing, alignment and colour. Round-trips to ODF `text:note` + `text:notes-configuration` and to Word's `word/footnotes.xml`/`endnotes.xml` + `w:footnotePr`
 - Formulas: dialog with a LaTeX field and live preview; only the LaTeX is stored, the MathML the browser typesets, the ODF formula object and the OMML are derived from it. Inline or as a centered display line, double-click to edit. Round-trips as a real embedded ODF formula object (`draw:object` + `Formula{n}/content.xml`, our LaTeX kept in the MathML `annotation`) and as Word's `m:oMath`. STIX Two Math is bundled, so stretched brackets and ∑/∫ look the same on every platform
@@ -130,7 +131,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 **Missing while writing**
 - Hyphenation beyond the document switch: a per-paragraph "don't hyphenate", and the zone / ladder count (`fo:hyphenation-ladder-count`, `w:hyphenationZone`) — CSS exposes neither
 - Captions with numbered figures/tables ("Abbildung 1: …") and the lists built from them (list of figures / tables). The TOC machinery exists, the other index families do not
-- Page numbering options: the page field is decimal-only — no start value, no roman/alpha format, no restart per section
+- Restarting the page numbering **per section** (only the document's own format and start value exist)
 - Heading levels 7–10 (Word and LibreOffice go that far; HTML stops at `h6`)
 - Alphabetical index and bibliography
 - Line numbering (LibreOffice Tools ▸ Line numbering / Word Layout ▸ Line numbers)

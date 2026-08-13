@@ -623,6 +623,8 @@ const de: Messages = {
     noteOptions: 'Optionen',
     autoCorrect: 'AutoKorrektur',
     hyphenation: 'Silbentrennung',
+    pageNumberFormat: 'Seitenzahlen',
+    pageNumberStart: 'Beginnen bei',
     hyphenationHint: 'Automatisch trennen',
     debugDump: 'Dump',
     cellMargins: 'Zellenränder',

@@ -20,6 +20,7 @@ import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/
 import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
+import { clampPageStart, DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
 import { applyUniformRunFont, pairAlignedFrames, sinkOffsetFrames, type OdtImportResult } from './odt';
 import { chartDataUrl } from './chart';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
@@ -228,6 +229,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     // A right-to-left section (w:bidi): the columns fill from the right.
     rtl: !!finalSectPr && (() => { const b = fc(finalSectPr, 'bidi'); return !!b && onOff(b); })(),
     hyphenate: docAutoHyphenation(files),
+    pageNumbering: docxPageNumbering(sectPr),
     orientation: sect.orientation,
     format: sect.format,
     tabIntervalCm: docTabInterval(files),
@@ -2215,6 +2217,21 @@ function docTabInterval(files: Record<string, Uint8Array>): number {
   } catch {
     return DOCX_IMPLIED_TAB_CM;
   }
+}
+
+// w:pgNumType on the first section: how the page-number field counts.
+const DOCX_PAGE_NUM_FORMAT: Record<string, NoteNumFormat> = {
+  decimal: '1', lowerRoman: 'i', upperRoman: 'I', lowerLetter: 'a', upperLetter: 'A',
+};
+
+function docxPageNumbering(sectPr: Element | null): PageNumbering {
+  const el = fc(sectPr, 'pgNumType');
+  if (!el) return { ...DEFAULT_PAGE_NUMBERING };
+  const start = intAttr(el, W, 'start');
+  return {
+    format: DOCX_PAGE_NUM_FORMAT[el.getAttributeNS(W, 'fmt') ?? ''] ?? '1',
+    start: start != null ? clampPageStart(start) : 1,
+  };
 }
 
 // Word's Layout ▸ Hyphenation, from settings.xml (absent = off, as in Word).
