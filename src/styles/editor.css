@@ -531,7 +531,11 @@
 .paper .tiptap .columns-node {
   column-fill: balance;
 }
+/* Its first block sits flush with the column top — the space above it is dropped there,
+   as at a page top (probed: LibreOffice starts both columns level). Zeroing the property
+   the two spacing models read beats the block's own inline value, which a margin wouldn't. */
 .paper .tiptap .columns-node > :first-child {
+  --space-before: 0 !important;
   margin-top: 0;
   padding-top: 0;
 }
