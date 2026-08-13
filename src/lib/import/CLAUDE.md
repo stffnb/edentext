@@ -69,6 +69,12 @@ layer in Word's ascending precedence, over the table's borders and under the cel
 `w:tblLook` decides which areas apply at all — named flags where the file has them, the
 older `w:val` bitmask otherwise, and no element at all means none.
 
+**A table style's `w:pPr` ranks *below* the paragraph style**, so a cell's spacing layers
+docDefaults ← the table style ← the cell paragraph's own style chain ← direct `w:pPr`
+(`paragraphSpacing(id, under)`). The chain has to be baked in because a cell carries no
+style name; read as an override the way a table style zeroing `w:after` reads, every table
+loses the space after its cells' paragraphs and a long document comes out pages short.
+
 Body text with no resolved font falls back to the *document's own theme minor font*
 (`docx.ts` `runMarks`), not the editor default — Word's implicit body default. Headings don't
 (they keep the editor heading default); DOCX page margins default to Word's 2.54cm.

@@ -834,11 +834,12 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // paragraph style commonly carries justify), so style-level alignment isn't lost.
   const directJc = fc(ppr, 'jc');
   const jcVal = directJc ? wVal(directJc) : ctx.styles.paragraphAlign(pStyle ? wVal(pStyle) : null);
-  // Spacing/alignment from the style now live in the style registry, so only DIRECT
-  // w:pPr counts as formatting on the block — except in a cell, where the table style's
-  // w:pPr governs and no registry style reaches the cell's paragraphs.
-  const attrs = blockAttrs(ppr, kind, level, directJc ? jcVal : null, kind === 'cell' ? ctx.cellSpacing : {});
   const styleId = styleIdOf(ppr, ctx);
+  // Only DIRECT w:pPr counts as formatting on the block; the style's own lives in the
+  // registry — except in a cell, which carries no style name, so its chain is baked in
+  // over the table style's w:pPr (probed: that ranks *below* the paragraph style).
+  const attrs = blockAttrs(ppr, kind, level, directJc ? jcVal : null,
+    kind === 'cell' ? ctx.styles.paragraphSpacing(styleId, ctx.cellSpacing) : {});
   applyContextualSpacing(el, ppr, ctx, styleId, attrs);
   // Widow-orphan control has no registry home, so the resolved value rides the block.
   const directWc = fc(ppr, 'widowControl');
@@ -1847,12 +1848,12 @@ function bakeCellRuns(nodes: Node[], props: RunProps): void {
 }
 
 function convertTable(tbl: Element, ctx: Ctx): Node | null {
-  // The table style's own w:pPr/w:spacing governs its cells' paragraphs (Word's Table
-  // Grid zeroes the space after and the line spacing). Restored for a nested table.
+  // The table style's own w:pPr/w:spacing reaches its cells' paragraphs (Word's Table Grid
+  // zeroes the space after and the line spacing), under their own style chain. Restored
+  // for a nested table.
   const outerSpacing = ctx.cellSpacing;
   const tblStyleEl = fc(fc(tbl, 'tblPr'), 'tblStyle');
-  const tblStyleId = tblStyleEl ? wVal(tblStyleEl) : null;
-  if (tblStyleId) ctx.cellSpacing = ctx.styles.paragraphSpacing(tblStyleId);
+  ctx.cellSpacing = ctx.styles.tableSpacing(tblStyleEl ? wVal(tblStyleEl) : null);
   try {
     return buildTable(tbl, ctx);
   } finally {

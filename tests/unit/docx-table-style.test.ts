@@ -117,3 +117,45 @@ describe('a Word table style paints its conditional areas', () => {
     expect(marksOf(again[1][0])).toEqual([{ type: 'bold' }]);
   });
 });
+
+// docDefaults ← the table style's w:pPr ← the paragraph style's chain ← direct w:pPr.
+// Probed against soffice: a table style zeroing the space after does not take it off a
+// Normal that declares one, but its line spacing does beat docDefaults'.
+const SPACING_STYLES = `<?xml version="1.0"?>
+<w:styles xmlns:w="${W}">
+  <w:docDefaults><w:pPrDefault><w:pPr>
+    <w:spacing w:after="200" w:line="276" w:lineRule="auto"/>
+  </w:pPr></w:pPrDefault></w:docDefaults>
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/>
+    <w:pPr><w:spacing w:after="160"/></w:pPr></w:style>
+  <w:style w:type="table" w:styleId="Tight"><w:name w:val="Tight"/>
+    <w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:style>
+</w:styles>`;
+
+const spacedTable = (cellPPr = '') =>
+  zipSync({
+    'word/document.xml': strToU8(`<?xml version="1.0"?><w:document xmlns:w="${W}"><w:body>` +
+      `<w:tbl><w:tblPr><w:tblStyle w:val="Tight"/></w:tblPr><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid>` +
+      `<w:tr><w:tc><w:p>${cellPPr}<w:r><w:t>cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>` +
+      `</w:body></w:document>`),
+    'word/styles.xml': strToU8(SPACING_STYLES),
+  });
+
+describe('a table style’s w:pPr ranks under the paragraph style', () => {
+  const attrsOf = (bytes: Uint8Array) => cellsOf(bytes)[0][0].content[0].attrs;
+
+  it('keeps the paragraph style’s space after and takes the table style’s line', () => {
+    expect(attrsOf(spacedTable())).toMatchObject({ spaceAfter: 8, lineHeight: '1' });
+  });
+
+  it('lets direct w:pPr beat both', () => {
+    const direct = spacedTable('<w:pPr><w:spacing w:after="480" w:line="480" w:lineRule="auto"/></w:pPr>');
+    expect(attrsOf(direct)).toMatchObject({ spaceAfter: 24, lineHeight: '2' });
+  });
+
+  it('round-trips the baked values', async () => {
+    const doc = { type: 'doc', content: importDocx(spacedTable()).content.content };
+    const bytes = await buildDocx(doc as N, { top: 2, bottom: 2, left: 2, right: 2 });
+    expect(attrsOf(bytes)).toMatchObject({ spaceAfter: 8, lineHeight: '1' });
+  });
+});

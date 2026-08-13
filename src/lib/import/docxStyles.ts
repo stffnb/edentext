@@ -478,10 +478,16 @@ export class DocxStyles {
   }
 
   // Effective paragraph spacing from styles only (direct w:pPr/w:spacing wins in the caller):
-  // docDefaults ← the pStyle's basedOn chain, or the default paragraph style when there is no
-  // w:pStyle. An attribute no layer sets is Word's implied 0 (applied in blockAttrs).
-  paragraphSpacing(pStyleId: string | null | undefined): ParaSpacing {
-    return { ...this.defaultsSpacing, ...this.styleSpacing(pStyleId ?? this.defaultParaStyle) };
+  // docDefaults ← `under` ← the pStyle's basedOn chain, or the default paragraph style when
+  // there is no w:pStyle. An attribute no layer sets is Word's implied 0 (blockAttrs).
+  paragraphSpacing(pStyleId: string | null | undefined, under: ParaSpacing = {}): ParaSpacing {
+    return { ...this.defaultsSpacing, ...under, ...this.styleSpacing(pStyleId ?? this.defaultParaStyle) };
+  }
+
+  // A table style's own w:pPr/w:spacing along its w:basedOn chain. Word ranks it under
+  // the paragraph style, so it goes in as `under` above, never on top.
+  tableSpacing(styleId: string | null | undefined): ParaSpacing {
+    return this.styleSpacing(styleId);
   }
 
   // The table style's own w:tblCellMar along the w:basedOn chain (leaf wins). The
