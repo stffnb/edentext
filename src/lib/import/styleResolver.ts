@@ -338,6 +338,13 @@ export class StyleResolver {
     return { language, country: props['fo:country'] ?? '' };
   }
 
+  // Automatic hyphenation, from the same style — ODF counts it a text property, and
+  // LibreOffice keeps it there rather than document-wide, so that style's value is
+  // what "the document hyphenates" means.
+  documentHyphenation(): boolean {
+    return this.merged('paragraph', 'Standard').text['fo:hyphenate'] === 'true';
+  }
+
   // The grid every tab past the last custom stop falls on, from the paragraph
   // default-style (Standard may override it). A file that declares none gets ODF's own
   // fallback, which is what LibreOffice renders it at.

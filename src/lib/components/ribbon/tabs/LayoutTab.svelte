@@ -17,6 +17,7 @@
     pageMargins = $bindable(DEFAULT_MARGINS),
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
+    hyphenate = $bindable(false),
     onParagraphDialog,
   }: {
     editor: Editor | null;
@@ -25,6 +26,7 @@
     pageMargins?: PageMargins;
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
+    hyphenate?: boolean;
     onParagraphDialog?: () => void;
   } = $props();
 
@@ -190,6 +192,14 @@
       </div>
     {/if}
   </div>
+
+  <RibbonButton
+    icon="hyphenation"
+    label={t().ribbon.hyphenation}
+    title={t().ribbon.hyphenationHint}
+    active={hyphenate}
+    onclick={() => (hyphenate = !hyphenate)}
+  />
 </RibbonGroup>
 
 <div class="ribbon-sep"></div>

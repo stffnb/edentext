@@ -2212,7 +2212,7 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
 // Rewrite styles.xml to match the editor's preview: default font Liberation Serif →
 // Times New Roman (metric-identical; see EXPORT_FONT), and Heading_20_1/2/3 sizes &
 // margins → the editor's values (odf-kit's defaults are larger; HEADING_STYLE_OVERRIDES).
-function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, mirrored = false, rtl = false, notes: NoteSettings = DEFAULT_NOTE_SETTINGS): Uint8Array {
+function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, mirrored = false, rtl = false, notes: NoteSettings = DEFAULT_NOTE_SETTINGS, hyphenate = false): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
   if (!stylesBytes) return odtBytes;
@@ -2248,6 +2248,17 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
     );
   }
 
+  // Automatic hyphenation. ODF counts fo:hyphenate as a *text* property, so it sits
+  // beside the language on the style every paragraph inherits from — probed: in
+  // paragraph-properties LibreOffice ignores it and drops it on the next save. Its two
+  // limits ride along at LibreOffice's own defaults.
+  if (hyphenate) {
+    styles = styles.replace(
+      /(<style:style style:name="Standard"[\s\S]*?<style:text-properties\b[^>]*?)\/>/,
+      '$1 fo:hyphenate="true" fo:hyphenation-remain-char-count="2" fo:hyphenation-push-char-count="2"/>',
+    );
+  }
+
   // The only occurrences of "Liberation Serif" in styles.xml are the default
   // font-face declaration and the Standard style's font-name attributes.
   styles = styles.split(ODFKIT_DEFAULT_FONT).join(EXPORT_FONT);
@@ -2277,6 +2288,7 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
     /(<style:style style:name="Standard"[\s\S]*?<style:paragraph-properties[^>]*?)fo:margin-bottom="[^"]*"/,
     `$1fo:margin-bottom="0cm"`,
   );
+
 
   // ODF requires a font-face declaration for every referenced font name.
   styles = styles.replace(
@@ -3546,7 +3558,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false): Promise<Uint8Array> {
   // Images become IMG sentinels before serialization; applyImages resolves them and writes
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
@@ -3774,7 +3786,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Effects first: applyCharacterStyles then clones the style that already carries them.
   const withNamedStyles = applyCharacterStyles(applyTextEffects(applyParagraphStyles(withParaBoxes)));
   const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
-  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm, margins.mirrored === true, rtl, notesSettings);
+  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm, margins.mirrored === true, rtl, notesSettings, hyphenate);
   const withHf = applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.

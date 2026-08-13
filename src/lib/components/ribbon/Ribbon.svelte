@@ -44,6 +44,7 @@
     pageMargins = $bindable(DEFAULT_MARGINS),
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
+    hyphenate = $bindable(false),
     hfActive = null,
     onManageStyles,
     onManageTableStyles,
@@ -72,6 +73,7 @@
     pageMargins?: PageMargins;
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
+    hyphenate?: boolean;
     hfActive?: HfZone | null;
     onManageStyles?: (family: StyleFamily) => void;
     onManageTableStyles?: (family: StyleFamily) => void;
@@ -289,7 +291,7 @@
     {:else if tab === 'insert'}
       <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} {onEditZone} {onManageTableStyles} />
     {:else if tab === 'layout'}
-      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat onParagraphDialog={() => (paragraphDialogOpen = true)} />
+      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:hyphenate onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'references'}
       <ReferencesTab {editor} {tick} {hfActive} {onNoteOptions} />
     {:else if tab === 'review'}

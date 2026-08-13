@@ -56,6 +56,7 @@
 - Tab stops per paragraph: left, centre, right and decimal, honoured in the rendered text (CSS only has a fixed tab grid, so each tab is measured and placed); a hanging indent implies a stop at the text position. Set them on the ruler; round-trips to ODF `style:tab-stops` and DOCX `w:tabs`
 - Paragraph borders and shading: per-side borders with presets (all / single edges / none), width and color, plus a background fill, on paragraphs and headings; typing `---`, `___` or `===` on a line of its own turns it into a rule line (Word/LibreOffice AutoCorrect). Round-trips to ODF `fo:border-*`/`fo:background-color` and DOCX `w:pBdr`/`w:shd`
 - AutoCorrect while typing (LibreOffice's Tools ▸ AutoCorrect Options, one checkbox per rule): typographic quotes per document language (`"…"` / `„…“`), its dash matrix (`A - B` → `A – B`, `A--B` → `A—B`), its replacement table (`-->` → `→`, `(C)` → `©`, `...` → `…`), capitalize the first letter of a sentence — with an abbreviation exception list — and TWo INitial CApitals. URL recognition and auto-list ride the same switches
+- Automatic hyphenation for the whole document (Layout ▸ Hyphenation): the browser hyphenates in the document's own language, which shortens a justified paragraph the way LibreOffice does. Round-trips as ODF `fo:hyphenate` on the base style — where LibreOffice keeps it, in its *text* properties — and Word's `w:autoHyphenation`
 - Manual line breaks (Shift+Enter)
 
 **Insert**
@@ -126,7 +127,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - Text boxes in the DOCX export: lists inside a box are flattened to literal-marker paragraphs (`•` / `1.`) and images inside a box are dropped — the box XML is injected by a post-pack string pass (`export/docx.ts` `applyTextBoxesDocx`) that mints no numbering.xml or media/rels entries. The ODT export has neither limitation
 
 **Missing while writing**
-- Automatic hyphenation: `fo:hyphenate` / `w:hyphenationZone` are ignored and the editor sets no `hyphens`, so a justified paragraph breaks its lines differently than LibreOffice — a systematic source of page-count drift in render parity
+- Hyphenation beyond the document switch: a per-paragraph "don't hyphenate", and the zone / ladder count (`fo:hyphenation-ladder-count`, `w:hyphenationZone`) — CSS exposes neither
 - Captions with numbered figures/tables ("Abbildung 1: …") and the lists built from them (list of figures / tables). The TOC machinery exists, the other index families do not
 - Page numbering options: the page field is decimal-only — no start value, no roman/alpha format, no restart per section
 - Heading levels 7–10 (Word and LibreOffice go that far; HTML stops at `h6`)

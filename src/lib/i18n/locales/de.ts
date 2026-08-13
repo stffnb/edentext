@@ -621,6 +621,8 @@ const de: Messages = {
     endnote: 'Endnote',
     noteOptions: 'Optionen',
     autoCorrect: 'AutoKorrektur',
+    hyphenation: 'Silbentrennung',
+    hyphenationHint: 'Automatisch trennen',
     debugDump: 'Dump',
     cellMargins: 'Zellenränder',
     altText: 'Alternativtext',

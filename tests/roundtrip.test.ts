@@ -1785,3 +1785,26 @@ describe('Leg 13: document properties (meta.xml / docProps/core.xml)', () => {
     check('all empty', Object.values(back).every((v) => v === ''), back);
   });
 });
+
+describe('Leg 14: automatic hyphenation', () => {
+  const hDoc: N = { type: 'doc', content: [P(null, T('Silbentrennung'))] };
+  const args = [margins, 'portrait', undefined, null, 'A4', builtinStyleSheet(), 1.25, 'add', false, DEFAULT_NOTE_SETTINGS, undefined] as const;
+
+  it('ODT: fo:hyphenate rides the base style and comes back', async () => {
+    const on = await buildOdt(hDoc, ...args, true);
+    const styles = strFromU8(unzipSync(on)['styles.xml']);
+    check('written into Standard\'s text properties', /style:name="Standard"[\s\S]*?<style:text-properties[^>]*fo:hyphenate="true"/.test(styles), styles.slice(0, 600));
+    check('on round-trips', importOdt(on).hyphenate === true);
+    const off = await buildOdt(hDoc, ...args, false);
+    check('off writes nothing', !strFromU8(unzipSync(off)['styles.xml']).includes('fo:hyphenate'));
+    check('off round-trips', importOdt(off).hyphenate === false);
+  });
+
+  it('DOCX: w:autoHyphenation rides settings.xml and comes back', async () => {
+    const on = await buildDocx(hDoc, ...args, true);
+    check('in settings.xml', strFromU8(unzipSync(on)['word/settings.xml']).includes('autoHyphenation'));
+    check('on round-trips', importDocx(on).hyphenate === true);
+    const off = await buildDocx(hDoc, ...args, false);
+    check('off round-trips', importDocx(off).hyphenate === false);
+  });
+});

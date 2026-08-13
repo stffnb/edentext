@@ -50,6 +50,8 @@ export interface OdtImportResult {
   // A right-to-left page (ODF style:writing-mode="rl-tb", Word w:bidi): the columns
   // fill from the right and the body's base direction is RTL.
   rtl: boolean;
+  // Automatic hyphenation (ODF fo:hyphenate on the base style, Word w:autoHyphenation).
+  hyphenate: boolean;
   // The grid every tab past the last custom stop falls on; the format's own fallback
   // when the file declares none.
   tabIntervalCm: number;
@@ -673,6 +675,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     orientation: geometry?.orientation ?? null,
     format: geometry?.format ?? null,
     rtl: geometry?.rtl ?? false,
+    hyphenate: resolver.documentHyphenation(),
     tabIntervalCm: resolver.defaultTabInterval(),
     spacingModel: odfSpacingModel(files),
     header,

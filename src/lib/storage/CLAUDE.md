@@ -11,6 +11,7 @@
   `editor.css` turns `--space-before` into padding or margin accordingly (CSS margins can
   only collapse, so `'add'` cannot be a margin).
 - **`writingMode.ts`** — the page's text direction (`loadPageRtl`/`savePageRtl`, `edentext-page-rtl`), from ODF `style:writing-mode="rl-tb"` or Word's section-level `w:bidi`. `Editor.svelte` puts it on the body host as `dir`, which is what makes a multi-column page fill from the right; the header/footer band is left alone (LibreOffice lays those out unchanged — measured). The vertical modes are not read.
+- **`hyphenation.ts`** — automatic hyphenation for the whole document (`edentext-hyphenation`, off by default as in both word processors). `Editor.svelte` puts `hyphens: auto` and the document `lang` on the body host — the browser needs the language to pick its patterns. ODF keeps it as `fo:hyphenate` in the **text** properties of the base paragraph style (probed: in paragraph-properties LibreOffice ignores it and drops it on the next save), Word as `w:autoHyphenation` in settings.xml.
 - **`pageOrientation.ts`** — `'portrait' | 'landscape'`. `applyOrientationVars` sets `--user-page-{width,height}`; landscape swaps the A4 dimensions (matching odf-kit's automatic swap).
 
 Both margins and orientation are passed into the ODT export so the exported document's geometry/line-wrapping matches the on-screen preview.

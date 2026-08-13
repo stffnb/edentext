@@ -227,6 +227,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     margins: withMirror(first.margins ?? sect.margins, mirrored),
     // A right-to-left section (w:bidi): the columns fill from the right.
     rtl: !!finalSectPr && (() => { const b = fc(finalSectPr, 'bidi'); return !!b && onOff(b); })(),
+    hyphenate: docAutoHyphenation(files),
     orientation: sect.orientation,
     format: sect.format,
     tabIntervalCm: docTabInterval(files),
@@ -2213,6 +2214,18 @@ function docTabInterval(files: Record<string, Uint8Array>): number {
     return tw ? clampTabInterval(round2(twipToCm(tw))) : DOCX_IMPLIED_TAB_CM;
   } catch {
     return DOCX_IMPLIED_TAB_CM;
+  }
+}
+
+// Word's Layout ▸ Hyphenation, from settings.xml (absent = off, as in Word).
+function docAutoHyphenation(files: Record<string, Uint8Array>): boolean {
+  const bytes = files['word/settings.xml'];
+  if (!bytes) return false;
+  try {
+    const el = parseXml(strFromU8(bytes)).getElementsByTagNameNS(W, 'autoHyphenation')[0];
+    return !!el && onOff(el);
+  } catch {
+    return false;
   }
 }
 

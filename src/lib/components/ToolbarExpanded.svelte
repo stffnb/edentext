@@ -30,8 +30,8 @@
   import { t } from '../i18n/i18n.svelte';
   import { shortcutHint, type ShortcutId } from '../editor/shortcuts';
 
-  let { editor, tick, showFormattingMarks = $bindable(), showRuler = $bindable(true), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), differentOddEven = $bindable(false), hfActive = null, onEditZone, onDebugDump, onManageTableStyles, onNoteOptions }:
-    { editor: Editor | null; tick: number; showFormattingMarks: boolean; showRuler?: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hfDistances?: HfDistances; differentFirstPage?: boolean; differentOddEven?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void; onManageTableStyles?: () => void; onNoteOptions?: () => void } = $props();
+  let { editor, tick, showFormattingMarks = $bindable(), showRuler = $bindable(true), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hyphenate = $bindable(false), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), differentOddEven = $bindable(false), hfActive = null, onEditZone, onDebugDump, onManageTableStyles, onNoteOptions }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; showRuler?: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hyphenate?: boolean; hfDistances?: HfDistances; differentFirstPage?: boolean; differentOddEven?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void; onManageTableStyles?: () => void; onNoteOptions?: () => void } = $props();
 
   const PAGE_FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
 
@@ -1417,6 +1417,11 @@
       </button>
       {#if layoutOpen}
         <div class="layout-dropdown">
+          <div class="lh-section-label">{t().ribbon.hyphenation}</div>
+          <label class="hyphen-row" title={t().ribbon.hyphenationHint}>
+            <input type="checkbox" bind:checked={hyphenate} />
+            <span>{t().ribbon.hyphenationHint}</span>
+          </label>
           <div class="lh-section-label">{t().toolbarExpanded.pageFormat}</div>
           <select class="format-select" bind:value={pageFormat} title={t().toolbarExpanded.pageFormat}>
             {#each PAGE_FORMATS as fmt}
@@ -2434,6 +2439,8 @@
   .margin-step:hover {
     background: var(--color-btn-hover);
   }
+
+  .hyphen-row { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; cursor: pointer; }
 
   .lh-section-label {
     padding: 0.4rem 0.6rem 0.2rem;

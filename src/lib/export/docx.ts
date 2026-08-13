@@ -1308,6 +1308,7 @@ export async function buildDocx(
   rtl = false,
   notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS,
   props: DocProperties = EMPTY_DOC_PROPERTIES,
+  hyphenate = false,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
@@ -1405,6 +1406,8 @@ export async function buildDocx(
     ...(props.keywords.trim() ? { keywords: props.keywords.trim() } : {}),
     ...(props.description.trim() ? { description: props.description.trim() } : {}),
     defaultTabStop: cmToTwip(tabIntervalCm),
+    // Word's Layout > Hyphenation (w:autoHyphenation in settings.xml).
+    ...(hyphenate ? { hyphenation: { autoHyphenation: true } } : {}),
     ...(differentOddEven ? { evenAndOddHeaderAndFooters: true } : {}),
     ...(hasToc ? { features: { updateFields: true } } : {}),
     styles: buildStyles(styles, usedStyleNames(docJson, styles), language, usedTableStyles(docJson, styles)),

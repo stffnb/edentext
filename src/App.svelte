@@ -36,6 +36,7 @@
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, loadExtraHfSections, saveExtraHfSections, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
+  import { loadHyphenation, saveHyphenation } from './lib/storage/hyphenation';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { spellController } from './lib/spell/controller';
   import LanguagePicker from './lib/components/LanguagePicker.svelte';
@@ -152,6 +153,7 @@
   let documentName: string = $state(loadDocName());
   let docProps: DocProperties = $state(loadDocProperties());
   let docPropsOpen = $state(false);
+  let hyphenate = $state(loadHyphenation());
   let autoCorrectOpen = $state(false);
 
   // Width of the hidden mirror span (below), so the title input grows/shrinks
@@ -213,6 +215,10 @@
 
   $effect(() => {
     savePageRtl(pageRtl);
+  });
+
+  $effect(() => {
+    saveHyphenation(hyphenate);
   });
 
   $effect(() => {
@@ -489,6 +495,7 @@
     hfDistances = { ...DEFAULT_HF_DISTANCES };
     extraHfSections = [];
     documentName = '';
+    hyphenate = false;
     docProps = { ...EMPTY_DOC_PROPERTIES };
     saveDocProperties(docProps);
     fileHandle = null;
@@ -549,6 +556,7 @@
       if (result.tabIntervalCm) tabIntervalCm = result.tabIntervalCm;
       spacingModel = result.spacingModel;
       pageRtl = result.rtl;
+      hyphenate = result.hyphenate;
       // Adopt the document's spell-check language (the $effect switches the
       // controller + loads its dictionary). null = file declared none; keep ours.
       if (result.language) documentLanguage = result.language;
@@ -630,7 +638,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate);
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -646,7 +654,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate);
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -664,7 +672,7 @@
     try {
       const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       const { buildDocx } = await import('./lib/export/docx');
-      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps);
+      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate);
       await saveAsDocx(bytes, suggestedFilenameDocx(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -878,6 +886,7 @@
       bind:pageMargins
       bind:pageOrientation
       bind:pageFormat
+      bind:hyphenate
       {hfActive}
       onManageStyles={openStyleManager}
       onManageTableStyles={() => openStyleManager('table')}
@@ -1119,6 +1128,7 @@
           bind:pageMargins
           bind:pageOrientation
           bind:pageFormat
+          bind:hyphenate
           bind:hfDistances
           bind:differentFirstPage
           bind:differentOddEven
@@ -1166,6 +1176,8 @@
     {hfDistances}
     {tabIntervalCm}
     {spacingModel}
+    {hyphenate}
+    {documentLanguage}
     bind:extraHfSections
     {zoom}
     onZoom={setZoom}

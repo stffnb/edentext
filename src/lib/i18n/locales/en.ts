@@ -625,6 +625,8 @@ const en = {
     endnote: 'Endnote',
     noteOptions: 'Options',
     autoCorrect: 'AutoCorrect',
+    hyphenation: 'Hyphenation',
+    hyphenationHint: 'Hyphenate automatically',
     debugDump: 'Dump',
     cellMargins: 'Cell margins',
     altText: 'Alt text',
