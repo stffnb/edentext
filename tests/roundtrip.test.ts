@@ -1879,3 +1879,37 @@ describe('Leg 16: comments (office:annotation / w:comment)', () => {
     check('author and body round-trip', m?.attrs.author === 'A. Muster' && m?.attrs.text === 'Bitte prüfen', m?.attrs);
   });
 });
+
+describe('Leg 17: the header row repeats on every page', () => {
+  const hdrTable: N = { type: 'doc', content: [
+    { type: 'table', attrs: { repeatHeader: true }, content: [
+      ROW(CELL(null, P(null, T('Kopf A'))), CELL(null, P(null, T('Kopf B')))),
+      ROW(CELL(null, P(null, T('a1'))), CELL(null, P(null, T('b1')))),
+    ] },
+  ] };
+
+  it('ODT: <table:table-header-rows> wraps the first row and comes back', async () => {
+    const bytes = await buildOdt(hdrTable, margins, 'portrait');
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('wrapper emitted', content.includes('<table:table-header-rows>'), content.slice(0, 300));
+    check('wraps exactly one row', (content.match(/<table:table-row/g) ?? []).length === 2
+      && /<table:table-header-rows><table:table-row[\s\S]*?<\/table:table-row><\/table:table-header-rows>/.test(content));
+    const back = importOdt(bytes).content as N;
+    check('attr round-trips', back.content[0].attrs?.repeatHeader === true, back.content[0].attrs);
+    check('both rows survive', back.content[0].content.length === 2, back.content[0].content.length);
+  });
+
+  it('DOCX: w:tblHeader rides the first row only and comes back', async () => {
+    const bytes = await buildDocx(hdrTable, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    check('emitted once', (xml.match(/<w:tblHeader/g) ?? []).length === 1, xml.match(/<w:tblHeader[^>]*>/g));
+    const back = importDocx(bytes).content as N;
+    check('attr round-trips', back.content[0].attrs?.repeatHeader === true, back.content[0].attrs);
+  });
+
+  it('a plain table writes neither', async () => {
+    const plain: N = { type: 'doc', content: [{ type: 'table', content: [ROW(CELL(null, P(null, T('x'))))] }] };
+    check('no ODF wrapper', !strFromU8(unzipSync(await buildOdt(plain, margins, 'portrait'))['content.xml']).includes('table-header-rows'));
+    check('no w:tblHeader', !strFromU8(unzipSync(await buildDocx(plain, margins, 'portrait'))['word/document.xml']).includes('<w:tblHeader'));
+  });
+});

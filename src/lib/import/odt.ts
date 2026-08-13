@@ -2271,6 +2271,11 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   if (ctx.resolver.tableProps(el.getAttributeNS(NS.table, 'style-name'))['style:may-break-between-rows'] === 'false') {
     attrs.keepRows = true;
   }
+  // <table:table-header-rows> is what makes both word processors repeat the first row
+  // on every page the table continues on.
+  if (Array.from(el.children).some(c => c.namespaceURI === NS.table && c.localName === 'table-header-rows')) {
+    attrs.repeatHeader = true;
+  }
   if (named) {
     attrs.tableStyle = displayStyleName(named);
     // Which conditional areas the table opts into (ODF's table template attributes).

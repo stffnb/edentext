@@ -61,6 +61,7 @@
 
 **Insert**
 - Tables: insert via size picker, Word-style row/column drag-resize, add / delete rows & columns, delete table, cell borders, merge cells and split cells (N×M, Word/LibreOffice-style), cell background shading, header row / first column toggles, named table styles (see Styles); a table splits cleanly across page boundaries
+- Repeat the header row: the first row is drawn again at the top of every page the table continues on, as in Word and LibreOffice. Round-trips to ODF `table:table-header-rows` and Word's `w:tblHeader`. A row that fits a page never splits anyway (the editor paginates a table between its rows), so Word's "don't allow row to break" needs nothing
 - Table border control (Word/LibreOffice-style): per-side cell borders with presets (all / outside / inside / single edges / none), line width and color; buttons show active states matching the current pen and toggle borders off; round-trips to ODF `fo:border-*` and DOCX `w:tcBorders`
 - Images: inline or floating with text wrap (left / right / top-bottom), resize handles, rotation, live size badge; insert via toolbar, drag-and-drop, or paste. A floating frame is placed by the file's own offsets, and two top-and-bottom frames set against opposite ends of the text share one band, side by side
 - A CMYK JPEG's embedded ICC profile is dropped on import: Chromium colour-manages through it where LibreOffice and Word convert naively, which turned a contract's logo from vivid blue to dull teal and its black to grey. It also removes what is often most of the file (a 757 KB logo → 102 KB, easing the localStorage ceiling below)
@@ -136,7 +137,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - Alphabetical index and bibliography
 - Line numbering (LibreOffice Tools ▸ Line numbering / Word Layout ▸ Line numbers)
 - Section-level page **size and orientation**: only the margins are per section. A file whose sections disagree on the page size keeps the last one's
-- Table extras: repeat the header row on every page, keep a row from splitting across pages, sort, sum/formula in a cell, number recognition
+- Table extras: sort, sum/formula in a cell, number recognition
 - A list level's own hanging indent: the marker sits at the 0.635 cm both exports write (`LIST_HANGING_CM`), so a wider *left*-set marker overflows where Word moves the text to the next list tab (a **right**-set one — `w:lvlJc`, which is what the built-in Roman numberings use — grows into the margin and is fine). Reading the value back naively also moves the markers of our own ODT exports — LibreOffice draws its own flat hanging at exactly the value odf-kit writes for level 2; see `tests/render-parity/README.md` before building on it
 - Images live as data-URIs in the autosaved JSON, so an image-heavy document can exceed the ~5 MB localStorage quota; `storage/autosave.ts` warns once and a reload restores the last version that still fit. IndexedDB (as `embeddedFontStore.ts` already uses) would lift the ceiling
 - Linked / chained text frames

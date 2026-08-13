@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Editor, ChainedCommands } from '@tiptap/core';
-  import { CellSelection } from '@tiptap/pm/tables';
+  import { CellSelection, isInTable, selectedRect } from '@tiptap/pm/tables';
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
   import Icon from '../Icon.svelte';
@@ -40,6 +40,11 @@
   const canMerge = $derived(tick >= 0 && !!editor && editor.can().mergeCells());
   const isHeaderRow = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'row'));
   const isHeaderCol = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'column'));
+  // The structural header: the first row repeated on every page the table continues on.
+  const repeatsHeader = $derived.by(() => {
+    if (tick < 0 || !editor || !isInTable(editor.state)) return false;
+    return selectedRect(editor.state).table.attrs.repeatHeader === true;
+  });
 
   // One attribute over the selected cells: the shared value, '' if they disagree.
   function cellAttr(name: string): string | null {
@@ -130,6 +135,14 @@
     <div class="rb-col">
       <RibbonButton variant="small" icon="headerRow" label={t().styles.regions.headerRow} active={isHeaderRow} onclick={() => run((c) => c.toggleHeaderRowStyle())} />
       <RibbonButton variant="small" icon="firstColumn" label={t().styles.regions.firstColumn} active={isHeaderCol} onclick={() => run((c) => c.toggleHeaderColumnStyle())} />
+      <RibbonButton
+        variant="small"
+        icon="headerRow"
+        label={t().ribbon.repeatHeaderRow}
+        title={t().ribbon.repeatHeaderRowHint}
+        active={repeatsHeader}
+        onclick={() => run((c) => c.updateAttributes('table', { repeatHeader: repeatsHeader ? null : true }))}
+      />
     </div>
   </RibbonGroup>
 {:else}

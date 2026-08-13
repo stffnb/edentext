@@ -933,7 +933,7 @@ type CellBlock =
   | { kind: 'heading'; level: number; style: ParaStyle }
   | CellListBlock;
 // A table's own margins in cm (0/0 tables are recorded as null).
-type TableProps = { ml: number; mr: number; mt: number; mb: number; keepRows: boolean };
+type TableProps = { ml: number; mr: number; mt: number; mb: number; keepRows: boolean; repeatHeader: boolean };
 
 // Collect the alignment + paragraph spacing of each listItem's first paragraph,
 // in DFS order — matching the order that odf-kit emits <text:list-item> elements
@@ -1063,6 +1063,34 @@ function applyTableProps(odtBytes: Uint8Array, margins: (TableProps | null)[], c
       new RegExp(`(<style:style[^>]*style:name="Table${i + 1}"[^>]*>\\s*<style:table-properties)`),
       `$1${horiz}${vert}${keep}`,
     );
+  });
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+// <table:table-header-rows> around a table's first row, which is what makes both word
+// processors repeat it at the top of every page the table continues on. The tables come
+// out in document order, the same order applyTableProps walks.
+function applyTableHeaderRows(odtBytes: Uint8Array, tables: (TableProps | null)[]): Uint8Array {
+  if (!tables.some(t => t?.repeatHeader)) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  let index = -1;
+  content = content.replace(/<table:table\b[\s\S]*?<\/table:table>/g, (table) => {
+    index++;
+    if (!tables[index]?.repeatHeader) return table;
+    const open = table.indexOf('<table:table-row');
+    if (open < 0) return table;
+    const close = table.indexOf('</table:table-row>', open);
+    if (close < 0) return table;
+    const end = close + '</table:table-row>'.length;
+    return table.slice(0, open)
+      + `<table:table-header-rows>${table.slice(open, end)}</table:table-header-rows>`
+      + table.slice(end);
   });
 
   files['content.xml'] = strToU8(content);
@@ -2827,9 +2855,10 @@ function tablePropsOf(node: TiptapNode, contentWidthCm: number): TableProps | nu
   const mt = Math.max(0, Number(node.attrs?.marginTop) || 0);
   const mb = Math.max(0, Number(node.attrs?.marginBottom) || 0);
   const keepRows = node.attrs?.keepRows === true;
+  const repeatHeader = node.attrs?.repeatHeader === true;
   if (ml + mr > contentWidthCm - 1) ml = mr = 0;
-  if (!ml && !mr && !mt && !mb && !keepRows) return null;
-  return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb), keepRows };
+  if (!ml && !mr && !mt && !mb && !keepRows && !repeatHeader) return null;
+  return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb), keepRows, repeatHeader };
 }
 
 // Build an ODF table from a CUST_TABLE node, bypassing odf-kit's native walkTable to
@@ -3863,7 +3892,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   collectTableRowHeights(raw, rowHeights);
   const styledRows = applyTableRowHeights(expandCellPadding(styledCells), rowHeights);
   const withTableMargins = applyTableStyleNames(
-    applyTableProps(styledRows, tableMargins, contentWidthCm), tableStyleNames);
+    applyTableHeaderRows(applyTableProps(styledRows, tableMargins, contentWidthCm), tableMargins), tableStyleNames);
 
   const cleaned = collapseRunWhitespace(withTableMargins);
   // Before applyInlineSentinels: it matches the bare style:type="char" a leader would hide.

@@ -204,7 +204,10 @@ export const FORCE_PAGE_RECALC = 'forcePageBreakRecalc';
 // A table-row spacer: the colspan bridging the row, plus the lines that close the table
 // at the break — LibreOffice draws the row separator the break falls on, or, where the
 // rows carry none, the table's own box (its top border closes, its bottom border opens).
-type RowSpacer = { columns: number; close: string; open: string };
+// `header` is set for a table that repeats its first row (ODF table:table-header-rows,
+// Word w:tblHeader): the spacer grows by that row's height and draws a copy of it at the
+// foot of the gap, which is the top of the continuation.
+type RowSpacer = { columns: number; close: string; open: string; header: { html: string; height: number } | null };
 
 type Leaf = {
   el: HTMLElement;
@@ -457,6 +460,23 @@ export const PageBreaks = Extension.create({
           };
         }
 
+        // The first row of a table that repeats it, as markup plus its rendered height.
+        // The copy carries the table's own <colgroup>, so the columns line up.
+        function repeatedHeader(wrapperEl: HTMLElement): { html: string; height: number } | null {
+          const tableEl = wrapperEl.querySelector('table') as HTMLElement | null;
+          if (!tableEl || tableEl.dataset.repeatHeader !== 'true') return null;
+          const first = Array.from(tableEl.querySelectorAll('tr'))
+            .find((r) => !(r as HTMLElement).dataset?.pageBreakSpacer) as HTMLElement | undefined;
+          if (!first) return null;
+          const colgroup = tableEl.querySelector('colgroup');
+          return {
+            html: `<table style="width:100%;table-layout:fixed;border-collapse:collapse">`
+              + (colgroup?.outerHTML ?? '')
+              + `<tbody>${first.outerHTML}</tbody></table>`,
+            height: first.offsetHeight,
+          };
+        }
+
         // Where to place a leaf's page-break spacer, and whether it must be a
         // table row (so the widget is valid markup inside a <tbody>).
         function leafSpacer(leaf: Leaf): { docPos: number | null; row: RowSpacer | null } {
@@ -471,7 +491,11 @@ export const PageBreaks = Extension.create({
             // after it) to the next page while the table stays one element.
             return {
               docPos: docPosBeforeElement(leaf.el),
-              row: { columns: leaf.tableRow.columns, ...splitLines(leaf.el) },
+              row: {
+                columns: leaf.tableRow.columns,
+                ...splitLines(leaf.el),
+                header: repeatedHeader(leaf.tableRow.wrapperEl),
+              },
             };
           }
           return { docPos: preLeafDocPos(leaf.el), row: null };
@@ -1376,7 +1400,9 @@ export const PageBreaks = Extension.create({
               const applied: { at: number; height: number }[] = [];
               for (const br of breaks) {
                 if (br.docPos === null) continue;
-                const h = Math.round(br.height);
+                // A repeated header row sits in the gap, so the rows below start that
+                // much lower — the same number has to reach the shift below.
+                const h = Math.round(br.height) + (br.row?.header?.height ?? 0);
                 if (h === 0) continue;
                 // In-cell or between-rows breaks sit inside the continuous table box,
                 // whose borders bleed through the gap, so they need a close/open band.
@@ -1519,7 +1545,7 @@ export const PageBreaks = Extension.create({
           // previous pass. Most keystrokes don't change pagination, and re-dispatching
           // recreates the spacer DOM nodes (no `key` on the widgets) for no gain.
           const placementsKey =
-            placements.map((p) => `${p.docPos}:${p.height}:${p.row ? `${p.row.columns}${p.row.close}${p.row.open}` : 'b'}`).join('|') +
+            placements.map((p) => `${p.docPos}:${p.height}:${p.row ? `${p.row.columns}${p.row.close}${p.row.open}${p.row.header?.height ?? ''}` : 'b'}`).join('|') +
             (collapsedTrailing ? `|c${collapsedTrailing.from}` : '') +
             pageTopBlocks.map((b) => `|t${b.from}`).join('') +
             Array.from(sectionInsets, ([f, s]) => `|i${f}:${s.left}:${s.right}`).join('') +
@@ -1553,6 +1579,15 @@ export const PageBreaks = Extension.create({
                   const line = document.createElement('div');
                   line.style.cssText = `position:absolute;left:0;right:0;${side}:0;border-${side}:${border}`;
                   tdEl.appendChild(line);
+                }
+                // The repeated header row, drawn at the foot of the gap — which is the
+                // top of the continuation. Out of flow, like the closing lines above.
+                if (p.row.header) {
+                  const hdr = document.createElement('div');
+                  hdr.style.cssText = 'position:absolute;left:0;right:0;bottom:0;pointer-events:none';
+                  hdr.innerHTML = p.row.header.html;
+                  for (const el of Array.from(hdr.querySelectorAll('[contenteditable]'))) el.removeAttribute('contenteditable');
+                  tdEl.appendChild(hdr);
                 }
                 trEl.appendChild(tdEl);
                 return Decoration.widget(p.docPos, trEl, { side: -1 });

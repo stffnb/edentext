@@ -2021,6 +2021,11 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   const named = ctx.styles.tableStyleName(styleId);
   const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx, padBase[3]) ?? {}) };
   if (pad) attrs.cellPadding = pad;
+  // w:tblHeader on the first row: Word repeats it at the top of every page the table
+  // continues on. Only a leading run of rows can carry it, so the first one decides.
+  const firstTrPr = fc(fcAll(tbl, 'tr')[0] ?? null, 'trPr');
+  const hdr = fc(firstTrPr, 'tblHeader');
+  if (hdr && onOff(hdr)) attrs.repeatHeader = true;
   if (named) {
     attrs.tableStyle = named;
     const look = docxTableLook(fc(tbl, 'tblPr'));

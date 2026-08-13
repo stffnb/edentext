@@ -636,6 +636,8 @@ const de: Messages = {
     noteOptions: 'Optionen',
     autoCorrect: 'AutoKorrektur',
     hyphenation: 'Silbentrennung',
+    repeatHeaderRow: 'Kopfzeile wiederholen',
+    repeatHeaderRowHint: 'Die erste Zeile oben auf jeder Seite wiederholen',
     pageNumberFormat: 'Seitenzahlen',
     pageNumberStart: 'Beginnen bei',
     hyphenationHint: 'Automatisch trennen',

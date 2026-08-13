@@ -1065,7 +1065,9 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
   const colsTwip = colsCm?.map(cmToTwip);
   const totalTwip = colsTwip ? colsTwip.reduce((a, b) => a + b, 0) : cmToTwip(contentWidthCm - ml - mr);
 
-  const tableRows = rows.map((row) => {
+  // w:tblHeader on the first row is what makes Word repeat it on every page.
+  const repeatHeader = node.attrs?.repeatHeader === true;
+  const tableRows = rows.map((row, rowIndex) => {
     const rh = row.attrs?.rowHeight;
     let col = 0;
     const cells: TableCell[] = [];
@@ -1101,6 +1103,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
     }
     return new TableRow({
       height: typeof rh === 'number' && rh > 0 ? { value: pxToTwip(rh), rule: HeightRule.ATLEAST } : undefined,
+      ...(repeatHeader && rowIndex === 0 ? { tableHeader: true } : {}),
       children: cells,
     });
   });

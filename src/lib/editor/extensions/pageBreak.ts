@@ -93,6 +93,16 @@ export const PageBreak = Extension.create({
             renderHTML: (attributes: Record<string, unknown>) =>
               attributes.keepRows === true ? { 'data-keep-rows': 'true' } : {},
           },
+          // ODF <table:table-header-rows>, Word w:trPr/w:tblHeader: the first row is
+          // repeated at the top of every page the table continues on. The structural
+          // header, as against the styling one in tableHeaderRow.ts.
+          repeatHeader: {
+            default: null,
+            parseHTML: (element: HTMLElement) =>
+              element.getAttribute('data-repeat-header') === 'true' ? true : null,
+            renderHTML: (attributes: Record<string, unknown>) =>
+              attributes.repeatHeader === true ? { 'data-repeat-header': 'true' } : {},
+          },
         },
       },
     ];

@@ -640,6 +640,8 @@ const en = {
     noteOptions: 'Options',
     autoCorrect: 'AutoCorrect',
     hyphenation: 'Hyphenation',
+    repeatHeaderRow: 'Repeat header',
+    repeatHeaderRowHint: 'Repeat the first row at the top of every page',
     pageNumberFormat: 'Page numbers',
     pageNumberStart: 'Start at',
     hyphenationHint: 'Hyphenate automatically',
