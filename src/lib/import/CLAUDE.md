@@ -75,6 +75,11 @@ docDefaults ← the table style ← the cell paragraph's own style chain ← dir
 style name; read as an override the way a table style zeroing `w:after` reads, every table
 loses the space after its cells' paragraphs and a long document comes out pages short.
 
+**A `w:cols` gap the section's text cannot hold is no gap at all.** `w:space` is twips, and
+a producer writing EMU there (360000 = 1cm in EMU, 635cm read as twips) would otherwise
+leave columns of no width. Under that width LibreOffice lays the declared gap out literally
+— probed to 10.16cm on a 15.24cm text — so only the unholdable value is dropped.
+
 Body text with no resolved font falls back to the *document's own theme minor font*
 (`docx.ts` `runMarks`), not the editor default — Word's implicit body default. Headings don't
 (they keep the editor heading default); DOCX page margins default to Word's 2.54cm.

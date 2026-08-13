@@ -23,6 +23,7 @@ import { applyUniformRunFont, pairAlignedFrames, sinkOffsetFrames, type OdtImpor
 import { chartDataUrl } from './chart';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { clampColumnGap } from '../editor/extensions/columns';
 import { astToLatex } from '../math/latex';
 import { parseOmml, OMML_NS } from '../math/omml';
 
@@ -2089,7 +2090,12 @@ function sectPrColumns(sectPr: Element | null, ctx: Ctx): { count: number; gapCm
     count = 3;
   }
   const space = intAttr(cols, W, 'space') ?? (colEls[0] ? intAttr(colEls[0], W, 'space') : null) ?? 283;
-  return { count, gapCm: Math.min(5, Math.max(0, round2(twipToCm(space)))) };
+  // A gap the section's text has no room for is a producer's unit slip — EMU written into
+  // a twips attribute — and lays out as no gap at all, not as columns too narrow to hold a
+  // word. Below that LibreOffice honours the declared value literally (probed).
+  const gapCm = round2(twipToCm(space));
+  const fits = gapCm > 0 && (count - 1) * gapCm < sectionContentWidthCm(sectPr);
+  return { count, gapCm: fits ? clampColumnGap(gapCm) : 0 };
 }
 
 // Block types a columns node can contain (mirrors import/odt.ts).
