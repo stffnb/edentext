@@ -994,6 +994,19 @@
   text-decoration-skip-ink: none;
 }
 
+/* A commented range, as Word paints it: a tinted band the text still reads through,
+   and a heavier tint on the one the pane has selected. A resolved comment keeps only a
+   faint underline, the way both word processors grey a handled one out. */
+.tiptap .pm-comment {
+  background: rgba(255, 200, 60, 0.28);
+  border-bottom: 1px solid rgba(200, 140, 0, 0.7);
+}
+
+.tiptap .pm-comment[data-comment-resolved='true'] {
+  background: none;
+  border-bottom-color: rgba(140, 140, 140, 0.6);
+}
+
 /* Print styles: proper A4 pagination */
 @media print {
   .editor {

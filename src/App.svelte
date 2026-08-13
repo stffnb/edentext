@@ -44,6 +44,8 @@
   import UiLanguagePicker from './lib/components/UiLanguagePicker.svelte';
   import AboutDialog from './lib/components/AboutDialog.svelte';
   import DocPropertiesDialog from './lib/components/DocPropertiesDialog.svelte';
+  import CommentsPane from './lib/components/CommentsPane.svelte';
+  import { OPEN_COMMENT_EVENT } from './lib/editor/extensions/comment';
   import AutoCorrectDialog from './lib/components/AutoCorrectDialog.svelte';
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
@@ -157,6 +159,7 @@
   let hyphenate = $state(loadHyphenation());
   let pageNumbering: PageNumbering = $state(loadPageNumbering());
   let autoCorrectOpen = $state(false);
+  let commentsOpen = $state(false);
 
   // Width of the hidden mirror span (below), so the title input grows/shrinks
   // with its text instead of sitting in a fixed-width box.
@@ -616,6 +619,22 @@
     }
   }
 
+  // Word's New Comment: the selected text is annotated and the pane opens on it. A
+  // prompt rather than a dialog — the pane is where a comment is really written.
+  function addComment() {
+    if (!editor || editor.state.selection.empty) return;
+    const text = prompt(t().comments.prompt, '');
+    if (text === null) return;
+    editor.chain().focus().addComment({ author: docProps.author.trim(), text: text.trim() }).run();
+    commentsOpen = true;
+  }
+
+  $effect(() => {
+    const open = () => addComment();
+    window.addEventListener(OPEN_COMMENT_EVENT, open);
+    return () => window.removeEventListener(OPEN_COMMENT_EVENT, open);
+  });
+
   async function handleOpen() {
     if (!editor) return;
     if (fsSupported) {
@@ -918,6 +937,9 @@
       onAbout={() => (aboutOpen = true)}
       onDocProperties={() => (docPropsOpen = true)}
       onAutoCorrect={() => (autoCorrectOpen = true)}
+      onNewComment={addComment}
+      {commentsOpen}
+      onToggleComments={() => (commentsOpen = !commentsOpen)}
     />
   </div>
   {:else}
@@ -1165,6 +1187,7 @@
     class="file-input"
     onchange={handleImportFile}
   />
+  <div class="editor-row">
   <EditorComponent
     {documentEpoch}
     {pageRtl}
@@ -1198,6 +1221,10 @@
     orientation={pageOrientation}
     {pageFormat}
   />
+  {#if commentsOpen}
+    <CommentsPane {editor} {tick} author={docProps.author} onClose={() => (commentsOpen = false)} />
+  {/if}
+  </div>
   {#if findOpen && editor}
     <div class="find-bar-anchor" style="top: {toolbarRegionH + 8}px;">
       <FindReplaceBar {editor} {tick} mode={findMode} focusNonce={findNonce} onClose={closeFind} />
@@ -1277,6 +1304,14 @@
     flex-direction: column;
     height: 100%;
     position: relative;
+  }
+
+  /* The document scroller and the comments pane side by side; min-height keeps the
+     scroller from growing past the row instead of scrolling inside it. */
+  .editor-row {
+    display: flex;
+    flex: 1;
+    min-height: 0;
   }
 
   /* Find & Replace bar: floats at the top-right of the editing area, just under the

@@ -9,6 +9,7 @@ import Superscript from '@tiptap/extension-superscript';
 import Highlight from '@tiptap/extension-highlight';
 import { Link } from './extensions/link';
 import { Bookmark } from './extensions/bookmark';
+import { Comment } from './extensions/comment';
 import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style';
 import { FontWeight } from './extensions/fontWeight';
 import { FontColor } from './extensions/fontColor';
@@ -76,6 +77,9 @@ export const extensions = [
   // Named range of text, the target of a cross-reference or an internal link;
   // round-trips to ODF text:bookmark-start/-end and DOCX w:bookmarkStart/End.
   Bookmark,
+  // An annotation on a range of text; round-trips to ODF office:annotation and DOCX
+  // w:commentRangeStart/-End + word/comments.xml.
+  Comment,
   Subscript,
   Superscript,
   TextStyle,

@@ -67,6 +67,10 @@ type Ctx = {
   // Bookmarks open at this point of the walk (w:id → name). A range may start beside a
   // paragraph and end inside a later one, so the state outlives both walks.
   openBookmarks: Map<string, string>;
+  // Comment ranges currently open, by Word's numeric id → the mark's attrs.
+  openComments: Map<string, Record<string, unknown>>;
+  // word/comments.xml, by id.
+  commentDefs: Map<string, Record<string, unknown>>;
   // word/footnotes.xml and endnotes.xml by w:id, and the notes the body referenced, in
   // anchor order — the editor keeps them in one section at the document end (notes.ts).
   noteParts: Record<NoteKind, Map<string, Element>>;
@@ -168,7 +172,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const sectPr = fc(body, 'sectPr');
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), notes: [], noteParts: {
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), notes: [], noteParts: {
     footnote: noteParts(files, 'footnotes', 'footnote'),
     endnote: noteParts(files, 'endnotes', 'endnote'),
   } };
@@ -388,6 +392,29 @@ function trackBookmark(el: Element, ctx: Ctx): boolean {
   return false;
 }
 
+// w:commentRangeStart/-End bracket the annotated runs; w:commentReference marks the
+// anchor and needs no handling. Returns true when the element was one of the three.
+function trackComment(el: Element, ctx: Ctx): boolean {
+  if (el.localName === 'commentRangeStart') {
+    const id = el.getAttributeNS(W, 'id');
+    const def = id ? ctx.commentDefs.get(id) : undefined;
+    if (id && def) ctx.openComments.set(id, def);
+    return true;
+  }
+  if (el.localName === 'commentRangeEnd') {
+    const id = el.getAttributeNS(W, 'id');
+    if (id) ctx.openComments.delete(id);
+    return true;
+  }
+  return el.localName === 'commentReference';
+}
+
+// A mark can hold one comment, so overlapping ranges collapse to the outermost.
+function openCommentMark(ctx: Ctx): Mark | null {
+  const attrs = ctx.openComments.values().next().value;
+  return attrs ? { type: 'comment', attrs } : null;
+}
+
 // A mark can hold one bookmark, so overlapping ranges collapse to the outermost.
 function openBookmarkMark(ctx: Ctx): Mark | null {
   const name = ctx.openBookmarks.values().next().value;
@@ -440,7 +467,7 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
 
   for (const el of children) {
     if (el.namespaceURI !== W) continue;
-    if (trackBookmark(el, ctx)) continue;
+    if (trackBookmark(el, ctx) || trackComment(el, ctx)) continue;
     if (el.localName === 'p') {
       // A paragraph owned by a TOC field is skipped; the field emits one node.
       const startedInToc = tocState.tocDepth >= 0;
@@ -1100,9 +1127,10 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
 
   const pushText = (text: string, marks: Mark[]) => {
     if (!text) return;
-    // The one-paragraph header/footer schema has no bookmark mark.
+    // The one-paragraph header/footer schema has neither a bookmark nor a comment mark.
     const bookmark = hfFields ? null : openBookmarkMark(ctx);
-    const all = bookmark ? [...marks, bookmark] : marks;
+    const comment = hfFields ? null : openCommentMark(ctx);
+    const all = [...marks, ...(bookmark ? [bookmark] : []), ...(comment ? [comment] : [])];
     const node: Node = { type: 'text', text };
     if (all.length) node.marks = all;
     out.push(node);
@@ -1242,7 +1270,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       continue;
     }
     if (el.namespaceURI !== W) continue;
-    if (trackBookmark(el, ctx)) continue;
+    if (trackBookmark(el, ctx) || trackComment(el, ctx)) continue;
     switch (el.localName) {
       case 'r': handleRun(el); break;
       case 'hyperlink': {
@@ -2244,6 +2272,28 @@ function docAutoHyphenation(files: Record<string, Uint8Array>): boolean {
   } catch {
     return false;
   }
+}
+
+// word/comments.xml → the comment mark's attrs, by Word's numeric id.
+function docxComments(files: Record<string, Uint8Array>): Map<string, Record<string, unknown>> {
+  const out = new Map<string, Record<string, unknown>>();
+  const bytes = files['word/comments.xml'];
+  if (!bytes) return out;
+  let doc: Document;
+  try { doc = parseXml(strFromU8(bytes)); } catch { return out; }
+  for (const c of Array.from(doc.getElementsByTagNameNS(W, 'comment'))) {
+    const id = c.getAttributeNS(W, 'id');
+    if (!id) continue;
+    out.set(id, {
+      id: `w${id}`,
+      author: c.getAttributeNS(W, 'author') ?? '',
+      date: c.getAttributeNS(W, 'date') ?? '',
+      text: fcAll(c, 'p').map((p) => p.textContent ?? '').join('\n').trim(),
+      // Word 365 marks a resolved comment in commentsExtended.xml; not read.
+      resolved: false,
+    });
+  }
+  return out;
 }
 
 // docProps/core.xml → the document's descriptive properties (Word's File ▸ Info).

@@ -23,6 +23,7 @@ import type { HfDoc, HfSet } from '../storage/headerFooter';
 import type { NoteKind, NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { clampPageStart, type PageNumbering } from '../storage/pageNumbering';
+import { newCommentId } from '../editor/extensions/comment';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -125,6 +126,8 @@ type Ctx = {
   // Bookmark ranges open at this point of the walk, outermost first; a range may end in
   // a later paragraph than it started in, so the set outlives one convertInline call.
   openBookmarks: Set<string>;
+  // Ranged comments currently open, by their office:name — same shape as openBookmarks.
+  openComments: Map<string, Record<string, unknown>>;
   // Footnotes/endnotes in anchor order: the file stores each note's text at its anchor,
   // the editor keeps them in one section at the document end (notes.ts).
   notes: { id: string; kind: NoteKind; label: string | null; text: string; content: Node[]; styleName: string | null }[];
@@ -600,7 +603,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, masterPages: [], masterBlocks: new Map(), openBookmarks: new Set(), notes: [] };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, masterPages: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), notes: [] };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -1630,6 +1633,8 @@ function numberStyleKind(tokens: Token[]): 'date' | 'time' | null {
 
 function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: BlockDefaults, hfFields = false): Node[] {
   const out: Node[] = [];
+  // Point comments, with the run index they were seen at — resolved after the walk.
+  const points: { at: number; attrs: Record<string, unknown> }[] = [];
 
   // The named character style of the enclosing span, if any: its formatting belongs to
   // the style, so the run only keeps what goes beyond it.
@@ -1657,6 +1662,8 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
     // The one-paragraph header/footer schema has no bookmark mark.
     const bookmark = hfFields ? undefined : ctx.openBookmarks.values().next().value;
     if (bookmark) marks.push({ type: 'bookmark', attrs: { name: bookmark } });
+    const comment = hfFields ? undefined : ctx.openComments.values().next().value;
+    if (comment) marks.push({ type: 'comment', attrs: comment });
     const node: Node = { type: 'text', text: clean };
     if (marks.length) node.marks = marks;
     out.push(node);
@@ -1807,15 +1814,52 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
         else if (conv?.block) ctx.pendingBlocks.push(conv.block);
         continue;
       }
-      if (e.namespaceURI === NS.office && e.localName === 'annotation') {
-        ctx.warnings.add('Comments were removed');
+      if (e.namespaceURI === NS.office && (e.localName === 'annotation' || e.localName === 'annotation-end')) {
+        // A ranged comment brackets its text with a named annotation/annotation-end pair;
+        // a point one (LibreOffice's comment with nothing selected) carries no name and
+        // sits after the text it was made on. The zone schema has no comment mark.
+        if (hfFields) continue;
+        if (e.localName === 'annotation-end') {
+          const name = e.getAttributeNS(NS.office, 'name');
+          if (name) ctx.openComments.delete(name);
+          continue;
+        }
+        const attrs = odfCommentAttrs(e);
+        const name = e.getAttributeNS(NS.office, 'name');
+        if (name) ctx.openComments.set(name, attrs);
+        else points.push({ at: out.length, attrs });
         continue;
       }
     }
   };
 
   walk(root, baseProps);
+  // A point comment attaches to the run before it, else to the one after — it is anchored
+  // at a caret, and the editor's comment is a mark that needs a range.
+  for (const p of points) {
+    const target = (out[p.at - 1]?.type === 'text' ? out[p.at - 1] : out[p.at]) as Node | undefined;
+    if (target?.type !== 'text') continue;
+    target.marks = [...(target.marks ?? []), { type: 'comment', attrs: p.attrs }];
+  }
   return mergeAdjacentText(out);
+}
+
+// <office:annotation> → the comment mark's attrs. `office:name` is the id where the file
+// has one (a ranged comment); a point one gets a minted id.
+function odfCommentAttrs(el: Element): Record<string, unknown> {
+  const child = (ns: string, name: string) =>
+    Array.from(el.children).find(c => c.namespaceURI === ns && c.localName === name);
+  const body = Array.from(el.children)
+    .filter(c => c.namespaceURI === NS.text && c.localName === 'p')
+    .map(p => p.textContent ?? '')
+    .join('\n');
+  return {
+    id: el.getAttributeNS(NS.office, 'name') || newCommentId(),
+    author: child(NS.dc, 'creator')?.textContent?.trim() ?? '',
+    date: child(NS.dc, 'date')?.textContent?.trim() ?? '',
+    text: body.trim(),
+    resolved: el.getAttributeNS(NS.loext, 'resolved') === 'true',
+  };
 }
 
 // text + text:s + text would otherwise emit three identically-marked nodes.

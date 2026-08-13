@@ -8,13 +8,18 @@
   import type { DocumentLanguage } from '../../../storage/documentLanguage';
   import { t } from '../../../i18n/i18n.svelte';
 
-  let { editor, tick, documentLanguage, onLanguage, onAutoCorrect }: {
+  let { editor, tick, documentLanguage, onLanguage, onAutoCorrect, onNewComment, commentsOpen = false, onToggleComments }: {
     editor: Editor | null;
     tick: number;
     documentLanguage: DocumentLanguage;
     onLanguage: (code: DocumentLanguage) => void;
     onAutoCorrect?: () => void;
+    onNewComment?: () => void;
+    commentsOpen?: boolean;
+    onToggleComments?: () => void;
   } = $props();
+
+  let hasSelection = $derived(tick >= 0 && !!editor && !editor.state.selection.empty);
 
   let stats = $derived.by<TextStats>(() => {
     if (tick < 0 || !editor) return { words: 0, charsWithSpaces: 0, charsNoSpaces: 0, paragraphs: 0 };
@@ -68,6 +73,26 @@
     title={t().autoCorrect.title}
     disabled={!onAutoCorrect}
     onclick={() => onAutoCorrect?.()}
+  />
+</RibbonGroup>
+
+<div class="ribbon-sep"></div>
+
+<RibbonGroup label={t().comments.title}>
+  <RibbonButton
+    variant="big"
+    icon="comment"
+    label={t().comments.newComment}
+    title={hasSelection ? t().comments.newComment : t().comments.needsSelection}
+    disabled={!editor || !hasSelection}
+    onclick={() => onNewComment?.()}
+  />
+  <RibbonButton
+    icon="comment"
+    label={t().comments.title}
+    title={t().comments.showPane}
+    active={commentsOpen}
+    onclick={() => onToggleComments?.()}
   />
 </RibbonGroup>
 

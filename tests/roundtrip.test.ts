@@ -1837,3 +1837,45 @@ describe('Leg 15: page numbering (format + start value)', () => {
     check('no page-number', !strFromU8(files['content.xml']).includes('style:page-number='));
   });
 });
+
+describe('Leg 16: comments (office:annotation / w:comment)', () => {
+  const CM = (text: string, attrs: N): N => T(text, { type: 'comment', attrs });
+  const attrs = { id: 'c1', author: 'A. Muster', date: '2026-08-14T10:00:00.000Z', text: 'Bitte prüfen', resolved: false };
+  const cDoc: N = { type: 'doc', content: [P(null, T('vor '), CM('markiert', attrs), T(' nach'))] };
+
+  it('ODT: a named annotation brackets the text and comes back', async () => {
+    const bytes = await buildOdt(cDoc, margins, 'portrait');
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('annotation opens the range', content.includes('<office:annotation office:name="c1"'), content.slice(0, 300));
+    check('carries the author', content.includes('<dc:creator>A. Muster</dc:creator>'));
+    check('carries the body', content.includes('Bitte prüfen'));
+    check('closes the range', content.includes('<office:annotation-end office:name="c1"/>'));
+    check('no leftover sentinel', !/[]/.test(content));
+
+    const back = importOdt(bytes).content as N;
+    const runs = back.content[0].content as N[];
+    const marked = runs.find((r: N) => r.marks?.some((m: N) => m.type === 'comment'));
+    check('the marked run is the annotated text', marked?.text === 'markiert', runs.map((r: N) => r.text));
+    const m = marked?.marks.find((x: N) => x.type === 'comment');
+    check('attrs round-trip', m?.attrs.author === 'A. Muster' && m?.attrs.text === 'Bitte prüfen', m?.attrs);
+    check('neighbours stay uncommented', runs.filter((r: N) => r.marks?.some((x: N) => x.type === 'comment')).length === 1);
+  });
+
+  it('DOCX: the range brackets the runs and word/comments.xml holds the body', async () => {
+    const bytes = await buildDocx(cDoc, margins, 'portrait');
+    const files = unzipSync(bytes);
+    const doc = strFromU8(files['word/document.xml']);
+    check('range start', doc.includes('<w:commentRangeStart'), doc.slice(0, 200));
+    check('range end', doc.includes('<w:commentRangeEnd'));
+    check('reference run', doc.includes('<w:commentReference'));
+    check('comments part exists', !!files['word/comments.xml']);
+    check('body in the part', strFromU8(files['word/comments.xml'] ?? new Uint8Array()).includes('Bitte prüfen'));
+
+    const back = importDocx(bytes).content as N;
+    const runs = back.content[0].content as N[];
+    const marked = runs.find((r: N) => r.marks?.some((m: N) => m.type === 'comment'));
+    check('the marked run is the annotated text', marked?.text === 'markiert', runs.map((r: N) => r.text));
+    const m = marked?.marks.find((x: N) => x.type === 'comment');
+    check('author and body round-trip', m?.attrs.author === 'A. Muster' && m?.attrs.text === 'Bitte prüfen', m?.attrs);
+  });
+});

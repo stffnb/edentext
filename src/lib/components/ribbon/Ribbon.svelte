@@ -58,7 +58,7 @@
     onSelectTheme,
     docxBusy = false,
     pdfBusy = false,
-    onNew, onOpen, onSave, onSaveAs, onSaveDocx, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect,
+    onNew, onOpen, onSave, onSaveAs, onSaveDocx, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onNewComment, commentsOpen = false, onToggleComments,
   }: {
     editor: Editor | null;
     tick: number;
@@ -99,6 +99,9 @@
     onAbout?: () => void;
     onDocProperties?: () => void;
     onAutoCorrect?: () => void;
+    onNewComment?: () => void;
+    commentsOpen?: boolean;
+    onToggleComments?: () => void;
   } = $props();
 
   const TABS = ['home', 'insert', 'layout', 'references', 'review', 'view'] as const;
@@ -298,7 +301,7 @@
     {:else if tab === 'references'}
       <ReferencesTab {editor} {tick} {hfActive} {onNoteOptions} />
     {:else if tab === 'review'}
-      <ReviewTab {editor} {tick} {documentLanguage} {onLanguage} {onAutoCorrect} />
+      <ReviewTab {editor} {tick} {documentLanguage} {onLanguage} {onAutoCorrect} {onNewComment} {commentsOpen} {onToggleComments} />
     {:else if tab === 'view'}
       <ViewTab bind:showRuler bind:showFormattingMarks {zoom} {onZoom} {onDebugDump} />
     {:else if tab === 'tableDesign' || tab === 'tableLayout'}

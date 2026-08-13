@@ -3,6 +3,7 @@ import { t } from '../i18n/i18n.svelte';
 import { withShortcut } from '../i18n/shortcut';
 import { shortcutHint } from './shortcuts';
 import { OPEN_LINK_DIALOG_EVENT } from './extensions/link';
+import { OPEN_COMMENT_EVENT } from './extensions/comment';
 import { OPEN_BOOKMARK_DIALOG_EVENT, bookmarkNames } from './extensions/bookmark';
 import { OPEN_CROSS_REF_DIALOG_EVENT } from './extensions/crossReference';
 
@@ -97,6 +98,12 @@ export function buildContextMenu(editor: Editor, opts: { spell?: SpellSection } 
     label: m.insertBookmark,
     disabled: !hasSelection,
     run: () => window.dispatchEvent(new CustomEvent(OPEN_BOOKMARK_DIALOG_EVENT)),
+  });
+  entries.push({
+    kind: 'item',
+    label: m.newComment,
+    disabled: !hasSelection,
+    run: () => window.dispatchEvent(new CustomEvent(OPEN_COMMENT_EVENT)),
   });
   entries.push({
     kind: 'item',

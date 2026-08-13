@@ -165,6 +165,12 @@ const XRF = '\uE015';
 // applyHfPostProcess rewrites it to <text:chapter> in styles.xml. U+E016.
 const CHP = '\uE016';
 
+// Sentinels bracketing a comment's text (CMS{i}CMS \u2026 CME{i}CME), spliced into the run
+// text like the bookmark pair; applyComments rewrites them to <office:annotation> and
+// <office:annotation-end/>. U+E018/U+E019.
+const CMS = '\uE018';
+const CME = '\uE019';
+
 // Sentinels for footnotes/endnotes (notes.ts): FNT A{i} FNT marks the anchor in the
 // running text, FNT B{i} FNT opens the note's own hoisted paragraph. applyNotes cuts
 // the body out and splices it into a <text:note> at the anchor. U+E017.
@@ -539,6 +545,48 @@ type CrossRefExport = { name: string; format: 'text' | 'page' };
 
 const bookmarkNameOf = (node: TiptapNode): string =>
   String(node.marks?.find((m) => m.type === 'bookmark')?.attrs?.name ?? '');
+
+// One comment, collected by replaceComments and emitted by applyComments.
+type CommentExport = { name: string; author: string; date: string; text: string; resolved: boolean };
+
+// Bracket each comment's text with the CMS/CME sentinels, the same shape as the bookmark
+// pair — spliced into the run text, so a comment inside a cell or a list rides along too.
+function replaceComments(node: TiptapNode, out: CommentExport[]): TiptapNode {
+  if (!node.content?.length) return node;
+  const content: TiptapNode[] = [];
+  let openId = '';
+  let openIndex = -1;
+  let lastOfRange = -1;
+  const closeRange = () => {
+    if (!openId) return;
+    const run = content[lastOfRange];
+    content[lastOfRange] = { ...run, text: `${run.text ?? ''}${CME}${openIndex}${CME}` };
+    openId = '';
+  };
+  for (const child of node.content) {
+    const mark = child.type === 'text' ? child.marks?.find(m => m.type === 'comment') : undefined;
+    const id = mark ? String(mark.attrs?.id ?? '') : '';
+    if (id !== openId) closeRange();
+    if (id && !openId) {
+      openId = id;
+      openIndex = out.length;
+      out.push({
+        name: id,
+        author: String(mark!.attrs?.author ?? ''),
+        date: String(mark!.attrs?.date ?? ''),
+        text: String(mark!.attrs?.text ?? ''),
+        resolved: mark!.attrs?.resolved === true,
+      });
+      content.push({ ...child, text: `${CMS}${openIndex}${CMS}${child.text ?? ''}` });
+      lastOfRange = content.length - 1;
+      continue;
+    }
+    content.push(id ? child : replaceComments(child, out));
+    if (id) lastOfRange = content.length - 1;
+  }
+  closeRange();
+  return { ...node, content };
+}
 
 // Bracket each bookmark's text with the BMS/BME sentinels and every `crossRef` node with
 // an XRF-sentinel run; applyBookmarks resolves them after serialization. Spliced into the
@@ -3466,6 +3514,45 @@ function applyBookmarks(odtBytes: Uint8Array, refs: CrossRefExport[]): Uint8Arra
   return rezipOdt(files);
 }
 
+// CMS/CME sentinels → <office:annotation> (author, date and body) and
+// <office:annotation-end/>. content.xml declares neither dc: nor loext:, so the two
+// namespaces are added on the root when a document actually has comments.
+function applyComments(odtBytes: Uint8Array, list: CommentExport[]): Uint8Array {
+  if (!list.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  if (!content.includes(CMS)) return odtBytes;
+
+  content = content
+    .replace(new RegExp(`${CMS}(\\d+)${CMS}`, 'g'), (_m, idx: string) => {
+      const c = list[Number(idx)];
+      if (!c) return '';
+      // LibreOffice reads its own resolved flag off loext: and writes it either way;
+      // its comment bodies carry the pool's Comment paragraph style.
+      const body = c.text.split('\n').map(line => `<text:p text:style-name="Comment">${escapeXml(line)}</text:p>`).join('');
+      return `<office:annotation office:name="${escapeXml(c.name)}" loext:resolved="${c.resolved}">`
+        + (c.author ? `<dc:creator>${escapeXml(c.author)}</dc:creator>` : '')
+        + (c.date ? `<dc:date>${escapeXml(c.date)}</dc:date>` : '')
+        + (body || '<text:p text:style-name="Comment"/>')
+        + '</office:annotation>';
+    })
+    .replace(new RegExp(`${CME}(\\d+)${CME}`, 'g'), (_m, idx: string) => {
+      const c = list[Number(idx)];
+      return c ? `<office:annotation-end office:name="${escapeXml(c.name)}"/>` : '';
+    })
+    .replace(
+      '<office:document-content ',
+      '<office:document-content xmlns:dc="http://purl.org/dc/elements/1.1/"'
+      + ' xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0" ',
+    );
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 // Cut each hoisted note paragraph out of content.xml and splice its runs into a
 // <text:note> at the anchor sentinel. Runs last of the content.xml passes, so the note
 // text carries everything the earlier ones resolved inside it.
@@ -3582,7 +3669,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const formulas: FormulaExport[] = [];
   const crossRefs: CrossRefExport[] = [];
   const notes: NoteExport[] = [];
-  const sentinels = replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs);
+  const commentList: CommentExport[] = [];
+  const sentinels = replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList);
   const raw = markTextEffects(bakeListCharStyles(sentinels, styles));
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
@@ -3785,7 +3873,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withFormulas = applyFormulas(withDateFields, formulas);
   const withTextBoxes = applyTextBoxes(withFormulas, textBoxes);
   const withColumns = applyColumns(withTextBoxes, columns);
-  const withBookmarks = applyBookmarks(withColumns, crossRefs);
+  const withBookmarks = applyComments(applyBookmarks(withColumns, crossRefs), commentList);
   // After every other content.xml pass: the note's own runs are hoisted into the body,
   // so they must be fully resolved before they are cut out and moved into <text:note>.
   const withNotes = applyNotes(withBookmarks, notes);

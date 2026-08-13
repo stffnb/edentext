@@ -65,6 +65,15 @@ One header and one footer (`HfDoc` = a single-paragraph TipTap doc per zone, per
 - **Fields:** the bar beside the active zone inserts the `pageField.ts` atoms — page number, page count, chapter (the running head, level 1). Each is patched per page, so the same zone shows a different value on every page.
 - **Rendering:** the zone's own font is the document's **default paragraph style** (`styleCss` gives `.paper .hf-layer .hf-zone` its text half): both formats base the Header/Footer style on it, so a file whose body is Arial 10pt has an Arial footer, not the editor's serif. `HeaderFooterLayer.svelte` mounts inside the scaled `.paper` (like `.band-layer`), positioning per-page zone boxes in unscaled doc px. A zone's out-of-flow frame (`wrap` ≠ inline) is hidden in the box and painted per page by `.hf-bg-layer` at `z-index: -1` — hence `.paper`, not `.tiptap`, paints the page surface, so the image lands between the sheet and the body text. Inactive zones render as static HTML (`generateHTML` + `hfExtensions`); the active zone hosts the single live TipTap editor. `App.svelte`'s `activeEditor`/`activeTick` route the top toolbars to `hfEditor` while a zone is active, so all body formatting works on the header/footer with no toolbar changes.
 
+## Comments (`CommentsPane.svelte`)
+
+Word's Reviewing Pane, not its margin bubbles: the page here fills its own scroller, so a
+pane beside it (`.editor-row` in `App.svelte`) keeps the sheet at its true width. It lists
+`comments(editor.state.doc)` in document order — click a card to select the annotated
+range, edit / resolve / remove in place. `App.svelte` owns the New-comment prompt, which
+both the Review tab and the context menu (`OPEN_COMMENT_EVENT`) fire; the author comes
+from the document properties.
+
 ## Debug tooling (dev only)
 
 In dev builds a **Debug** button (`App.svelte`) downloads a JSON snapshot combining `getPageBreakDebug(view)` (leaves, placements, rendered spacers, table-break bands, live overlay geometry), `getTableCellDebug(view)` (per cell: the `verticalAlign` attr beside the computed value, cell/row height, the gap above and below the content, and every block's margins/`--space-before` — cell alignment reads as broken whenever the content fills the box, so the numbers that decide that travel with it), the style sheet + spacing model, and `getColorDebug(editor)` (selection marks, text runs, document colors, DOM spans).

@@ -40,6 +40,17 @@ const de: Messages = {
       urls: '',
     },
   },
+  comments: {
+    title: 'Kommentare',
+    empty: 'Noch keine Kommentare. Text markieren und einen hinzufügen.',
+    edit: 'Bearbeiten',
+    resolve: 'Erledigt',
+    reopen: 'Wieder öffnen',
+    prompt: 'Kommentar zum markierten Text:',
+    needsSelection: 'Zuerst den zu kommentierenden Text markieren',
+    showPane: 'Kommentare anzeigen',
+    newComment: 'Neuer Kommentar',
+  },
   appearance: {
     language: 'Sprache',
     title: 'Darstellung',
@@ -235,6 +246,7 @@ const de: Messages = {
     bookmarkNeedsSelection: 'Markiere den Text, den das Lesezeichen umfassen soll',
     bookmarkNotInHf: 'Lesezeichen sind in Kopf-/Fußzeilen nicht verfügbar',
     insertCrossRef: 'Querverweis einfügen',
+    newComment: 'Neuer Kommentar',
     crossRefNeedsBookmark: 'Erst ein Lesezeichen setzen — ein Querverweis zeigt darauf',
     insertFootnote: 'Fußnote einfügen',
     insertEndnote: 'Endnote einfügen',
@@ -389,6 +401,7 @@ const de: Messages = {
     removeLink: 'Link entfernen',
     insertBookmark: 'Lesezeichen…',
     insertCrossRef: 'Querverweis…',
+    newComment: 'Kommentar…',
     clearFormatting: 'Direkte Formatierung löschen',
   },
   about: {

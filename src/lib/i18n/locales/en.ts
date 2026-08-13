@@ -41,6 +41,17 @@ const en = {
       urls: '',
     },
   },
+  comments: {
+    title: 'Comments',
+    empty: 'No comments yet. Select some text and add one.',
+    edit: 'Edit',
+    resolve: 'Resolve',
+    reopen: 'Reopen',
+    prompt: 'Comment on the selected text:',
+    needsSelection: 'Select the text to comment on first',
+    showPane: 'Show comments',
+    newComment: 'New comment',
+  },
   appearance: {
     language: 'Language',
     title: 'Appearance',
@@ -239,6 +250,7 @@ const en = {
     bookmarkNeedsSelection: 'Select the text the bookmark should cover',
     bookmarkNotInHf: 'Bookmarks are not available in headers/footers',
     insertCrossRef: 'Insert cross-reference',
+    newComment: 'New comment',
     crossRefNeedsBookmark: 'Add a bookmark first — a cross-reference points at one',
     insertFootnote: 'Insert footnote',
     insertEndnote: 'Insert endnote',
@@ -393,6 +405,7 @@ const en = {
     removeLink: 'Remove Link',
     insertBookmark: 'Bookmark…',
     insertCrossRef: 'Cross-reference…',
+    newComment: 'Comment…',
     clearFormatting: 'Clear Formatting',
   },
   about: {

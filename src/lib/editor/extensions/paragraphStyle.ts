@@ -15,6 +15,9 @@ const DIRECT_ATTRS = [
   'backgroundColor', 'borderTop', 'borderRight', 'borderBottom', 'borderLeft',
 ];
 
+// Marks Ctrl+M keeps: they carry content, not formatting.
+const KEPT_MARKS = new Set(['link', 'bookmark', 'comment']);
+
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     paragraphStyle: {
@@ -68,8 +71,10 @@ export const ParagraphStyle = Extension.create<{ types: string[]; sheet: () => S
         const start = state.selection.$from.start();
         const end = state.selection.$to.end();
         const run = chain().focus().setTextSelection({ from: start, to: end });
+        // Formatting only: a link, a bookmark and a comment are content, not formatting,
+        // and neither word processor drops them here.
         for (const mark of Object.keys(editor.schema.marks)) {
-          if (mark !== 'link') run.unsetMark(mark);
+          if (!KEPT_MARKS.has(mark)) run.unsetMark(mark);
         }
         for (const type of this.options.types) run.resetAttributes(type, DIRECT_ATTRS);
         if (start !== end) run.setTextSelection({ from, to });

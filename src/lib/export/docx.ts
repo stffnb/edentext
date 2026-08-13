@@ -3,6 +3,7 @@ import {
   FootnoteReferenceRun, EndnoteReferenceRun,
   TableOfContents,
   Table, TableRow, TableCell, Header, Footer, PageNumber, SimpleField,
+  CommentRangeStart, CommentRangeEnd, CommentReference,
   AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
   WidthType, HeightRule, PageOrientation, LineRuleType, TableLayoutType, SectionType, NumberFormat,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
@@ -114,6 +115,31 @@ let docFormulas: FormulaDocx[] = [];
 // Filled from the note section before the body is walked, then read by the anchor —
 // module-level for the same reason as docFormulas.
 let docNoteIds = new Map<string, { id: number; kind: NoteKind }>();
+
+// Comments, numbered in document order before the runs are built — Word's ids are
+// integers and word/comments.xml has to exist before the Document is constructed.
+type CommentDocx = { id: number; author: string; date: Date; text: string };
+let docComments: CommentDocx[] = [];
+let docCommentIds = new Map<string, number>();
+
+function collectComments(node: TiptapNode): void {
+  for (const child of node.content ?? []) {
+    const mark = child.type === 'text' ? child.marks?.find(m => m.type === 'comment') : undefined;
+    const id = mark ? String(mark.attrs?.id ?? '') : '';
+    if (id && !docCommentIds.has(id)) {
+      docCommentIds.set(id, docComments.length);
+      const raw = String(mark!.attrs?.date ?? '');
+      const date = new Date(raw);
+      docComments.push({
+        id: docComments.length,
+        author: String(mark!.attrs?.author ?? ''),
+        date: Number.isNaN(date.getTime()) ? new Date() : date,
+        text: String(mark!.attrs?.text ?? ''),
+      });
+    }
+    if (!id) collectComments(child);
+  }
+}
 
 // Sentinel wrapping a text box's index in a marker paragraph (same trick as
 // export/odt.ts): the docx library can't emit DrawingML shapes, so buildDocx swaps
@@ -302,7 +328,8 @@ function textNodeToRuns(node: TiptapNode, force: TextProps): TextRun[] {
   return [new TextRun({ children, ...props })];
 }
 
-type Inline = TextRun | ImageRun | ExternalHyperlink | InternalHyperlink | SimpleField | Bookmark;
+type Inline = TextRun | ImageRun | ExternalHyperlink | InternalHyperlink | SimpleField | Bookmark
+  | CommentRangeStart | CommentRangeEnd;
 
 // A date/time field. A fixed field is plain text (Word has no fixed-date field); an
 // auto field is a DATE/TIME field with the picture switch and a cached value.
@@ -328,6 +355,13 @@ function crossRefField(node: TiptapNode): SimpleField {
   return new SimpleField(`${verb} ${String(a.name ?? '')} \\h`, String(a.text ?? ''));
 }
 
+// The Word comment id of a run's comment mark, or null.
+const commentIdOf = (node: TiptapNode): number | null => {
+  const id = node.marks?.find((m) => m.type === 'comment')?.attrs?.id;
+  const n = typeof id === 'string' ? docCommentIds.get(id) : undefined;
+  return n ?? null;
+};
+
 const bookmarkNameOf = (node: TiptapNode): string | null => {
   const name = node.marks?.find((m) => m.type === 'bookmark')?.attrs?.name;
   return typeof name === 'string' && name ? name : null;
@@ -351,7 +385,23 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
     open.children.push(...runs);
   };
 
+  // A comment's range brackets its runs; the reference run at the end is what Word
+  // draws the bubble from. Both live outside any bookmark, so they flush it first.
+  let openComment: number | null = null;
+  const closeComment = () => {
+    if (openComment === null) return;
+    flush();
+    out.push(new CommentRangeEnd(openComment), new TextRun({ children: [new CommentReference(openComment)] }));
+    openComment = null;
+  };
+  const openCommentAt = (id: number | null) => {
+    if (id === openComment) return;
+    closeComment();
+    if (id !== null) { flush(); out.push(new CommentRangeStart(id)); openComment = id; }
+  };
+
   for (const node of content) {
+    openCommentAt(commentIdOf(node));
     const bookmark = bookmarkNameOf(node);
     if (node.type === 'text' && node.text) {
       const runs = textNodeToRuns(node, force);
@@ -395,6 +445,7 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       }
     }
   }
+  closeComment();
   return out;
 }
 
@@ -1334,6 +1385,9 @@ export async function buildDocx(
   const noteBlocks = (docJson.content ?? []).filter((n) => n.type === 'noteSection')
     .flatMap((n) => n.content ?? []);
   docNoteIds = new Map();
+  docComments = [];
+  docCommentIds = new Map();
+  collectComments(docJson);
   const notesByClass: Record<NoteKind, Record<string, { children: Paragraph[] }>> = { footnote: {}, endnote: {} };
   for (const note of noteBlocks) {
     const kind: NoteKind = note.attrs?.kind === 'endnote' ? 'endnote' : 'footnote';
@@ -1427,6 +1481,14 @@ export async function buildDocx(
     numbering: { config: num.config },
     ...(Object.keys(notesByClass.footnote).length ? { footnotes: notesByClass.footnote } : {}),
     ...(Object.keys(notesByClass.endnote).length ? { endnotes: notesByClass.endnote } : {}),
+    // word/comments.xml; the range and reference components in the runs point at these ids.
+    ...(docComments.length
+      ? { comments: { children: docComments.map((c) => ({
+          id: c.id, author: c.author, date: c.date,
+          initials: c.author.split(/\s+/).map((w) => w[0] ?? '').join('').slice(0, 3),
+          children: c.text.split('\n').map((line) => new Paragraph({ children: [new TextRun(line)] })),
+        })) } }
+      : {}),
     // A columns group is its own section; w:type=continuous describes the break
     // BEFORE a section, so it goes on every section but the first.
     sections: groups.map((g, i) => ({

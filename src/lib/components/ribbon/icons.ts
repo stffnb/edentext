@@ -78,6 +78,8 @@ export const STROKED = {
   toc: ['M2 3h6M2 6.5h5M2 10h6M2 13.5h4', 'M11 3h3M10 6.5h4M11 10h3M10 13.5h4'],
   tocLevels: ['M2.5 3.5h11M4.5 7h9M6.5 10.5h7M8.5 14h5'],
   wordCount: ['M2.5 2.5h11v11h-11z', 'M5 6h6M5 9h4'],
+  // A speech bubble with its tail, the shape both word processors use for a comment.
+  comment: ['M2 3.25h12v7.5H7.5L4.5 13.5v-2.75H2z', 'M4.75 6h6.5M4.75 8.25h4'],
   // A word broken at a hyphen: two stubs with the dash between them.
   hyphenation: ['M2 8h3M11 8h3', 'M6.5 8h3', 'M2 4.5h12M2 11.5h6'],
   // An A with a tick beside it: the letter AutoCorrect fixes, corrected.
