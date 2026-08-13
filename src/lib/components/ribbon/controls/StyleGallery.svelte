@@ -96,29 +96,33 @@
       </button>
     {/each}
   </div>
-  <button class="gallery-more" onclick={() => toggleMenu(ID)} title={t().toolbar.styles.title} aria-haspopup="menu" aria-expanded={isMenuOpen(ID)}>
-    <Icon name="chevronDown" size={10} />
-  </button>
-  {#if isMenuOpen(ID)}
-    <div class="ribbon-menu gallery-menu" use:anchored={'right'} role="menu">
-      <div class="menu-scroll">
-        <div class="rb-menu-label">{t().toolbar.styles.title}</div>
-        {#each paraStyles as s}
-          <button class:selected={current === s.name} style={tileStyle(s.name)} onclick={() => apply(s.name)}>
-            {label(s.name)}
-            {#if styleShortcut(s.name)}<span class="menu-key">{styleShortcut(s.name)}</span>{/if}
-          </button>
-        {/each}
-        {#if charStyles.length}
-          <div class="rb-menu-label">{t().styles.characterStyles}</div>
-          {#each charStyles as c}
-            <button class:selected={currentChar === c.name} style={tileStyle(c.name)} onclick={() => applyChar(c.name)}>{c.name}</button>
+  <!-- The panel anchors to its parent, so it hangs off this button rather than the
+       stretched wrapper — whose right edge is the ribbon's, a strip away. -->
+  <div class="gallery-more-wrap">
+    <button class="gallery-more" onclick={() => toggleMenu(ID)} title={t().toolbar.styles.title} aria-haspopup="menu" aria-expanded={isMenuOpen(ID)}>
+      <Icon name="chevronDown" size={10} />
+    </button>
+    {#if isMenuOpen(ID)}
+      <div class="ribbon-menu gallery-menu" use:anchored={'right'} role="menu">
+        <div class="menu-scroll">
+          <div class="rb-menu-label">{t().toolbar.styles.title}</div>
+          {#each paraStyles as s}
+            <button class:selected={current === s.name} style={tileStyle(s.name)} onclick={() => apply(s.name)}>
+              {label(s.name)}
+              {#if styleShortcut(s.name)}<span class="menu-key">{styleShortcut(s.name)}</span>{/if}
+            </button>
           {/each}
-        {/if}
+          {#if charStyles.length}
+            <div class="rb-menu-label">{t().styles.characterStyles}</div>
+            {#each charStyles as c}
+              <button class:selected={currentChar === c.name} style={tileStyle(c.name)} onclick={() => applyChar(c.name)}>{c.name}</button>
+            {/each}
+          {/if}
+        </div>
+        <button class="rb-menu-foot" onclick={() => { closeMenu(); onManageStyles?.('paragraph'); }}>{t().styles.manage}</button>
       </div>
-      <button class="rb-menu-foot" onclick={() => { closeMenu(); onManageStyles?.('paragraph'); }}>{t().styles.manage}</button>
-    </div>
-  {/if}
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -189,6 +193,11 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .gallery-more-wrap {
+    display: flex;
+    flex-shrink: 0;
   }
 
   .gallery-more {
