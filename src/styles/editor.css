@@ -513,9 +513,22 @@
 .paper .tiptap .textbox-rotor {
   cursor: move;
 }
+/* The outline of a shape CSS can't draw, behind the text. Such a frame carries no
+   padding of its own (the text inset moves to .textbox-content), so the padding box
+   this covers is the frame. overflow stays visible or the stroke is clipped in half
+   at the viewBox edge. */
+.paper .tiptap .textbox-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
 .paper .tiptap .textbox-content {
   cursor: text;
   min-height: 1em;
+  position: relative;
 }
 .paper .tiptap .textbox-content > :first-child {
   margin-top: 0;

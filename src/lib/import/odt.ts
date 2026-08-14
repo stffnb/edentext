@@ -11,6 +11,7 @@ import { TABLE_REGIONS, tableLookAttr, type TableLook, type TableRegion } from '
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
+import { shapeFromOdfType, type ShapeKind } from '../utils/shapes';
 import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
 import { astToLatex } from '../math/latex';
 import { parseMathml } from '../math/mathml';
@@ -484,19 +485,16 @@ function loadObjectDoc(href: string | null, ctx: Ctx): Document | null {
   return doc.documentElement && !doc.getElementsByTagName('parsererror').length ? doc : null;
 }
 
-// draw:rect / draw:ellipse / draw:custom-shape (rect/round-rect/ellipse preset) → a
-// textBox with the matching shapeKind; the shape's text is its content. Other
-// custom-shape presets (stars, arrows, …) are dropped with a warning.
+// draw:rect / draw:ellipse / draw:custom-shape (any preset `utils/shapes.ts` knows) → a
+// textBox with the matching shapeKind; the shape's text is its content. A preset we
+// can't draw (a connector, a freeform) is dropped with a warning.
 function convertShape(el: Element, ctx: Ctx): Node | null {
-  let kind: 'textbox' | 'roundRect' | 'ellipse' | null = null;
+  let kind: ShapeKind | null = null;
   if (el.localName === 'rect') kind = 'textbox';
   else if (el.localName === 'ellipse') kind = 'ellipse';
   else {
     const geo = el.getElementsByTagNameNS(NS.draw, 'enhanced-geometry')[0];
-    const type = geo?.getAttributeNS(NS.draw, 'type') ?? '';
-    if (type === 'ellipse' || type === 'circle') kind = 'ellipse';
-    else if (type === 'round-rectangle') kind = 'roundRect';
-    else if (type === 'rectangle' || !type) kind = 'textbox';
+    kind = shapeFromOdfType(geo?.getAttributeNS(NS.draw, 'type'));
   }
   if (!kind) {
     ctx.warnings.add('Unsupported shapes were removed');

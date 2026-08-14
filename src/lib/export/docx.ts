@@ -16,6 +16,7 @@ import type {
 } from 'docx';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
+import { SHAPES, isShapeKind, type ShapeKind } from '../utils/shapes';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
@@ -610,7 +611,7 @@ type TextBoxDocx = {
   offsetCm: number | null;
   offsetYCm: number | null;
   distCm: number | null;
-  shapeKind: 'textbox' | 'roundRect' | 'ellipse';
+  shapeKind: ShapeKind;
   fill: string | null;
   stroke: string | null;
   strokeWidthPt: number;
@@ -620,7 +621,6 @@ type TextBoxDocx = {
 function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
   const a = node.attrs ?? {};
   const wrapAttr = a.wrap;
-  const kind = a.shapeKind;
   return {
     widthPx: typeof a.width === 'number' && a.width > 0 ? Math.round(a.width) : 280,
     heightPx: typeof a.height === 'number' && a.height > 0 ? Math.round(a.height) : 96,
@@ -629,7 +629,7 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     offsetCm: typeof a.wrapOffset === 'number' ? a.wrapOffset : null,
     offsetYCm: typeof a.wrapOffsetY === 'number' ? a.wrapOffsetY : null,
     distCm: typeof a.wrapDist === 'number' ? a.wrapDist : null,
-    shapeKind: kind === 'roundRect' || kind === 'ellipse' ? kind : 'textbox',
+    shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
     strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
@@ -761,12 +761,6 @@ function txbxContentXml(blocks: TiptapNode[]): string {
   return out || '<w:p/>';
 }
 
-const PRST_BY_KIND: Record<TextBoxDocx['shapeKind'], string> = {
-  textbox: 'rect',
-  roundRect: 'roundRect',
-  ellipse: 'ellipse',
-};
-
 // The full <w:drawing> for one text box. Namespaces are declared inline on the
 // wp/a/wps elements so the output never depends on what the library declares on
 // the document root.
@@ -787,7 +781,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number): string {
     `<wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">` +
     `<wps:cNvSpPr txBox="1"/>` +
     `<wps:spPr><a:xfrm${rot}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
-    `<a:prstGeom prst="${PRST_BY_KIND[box.shapeKind]}"><a:avLst/></a:prstGeom>${fill}${ln}</wps:spPr>` +
+    `<a:prstGeom prst="${SHAPES[box.shapeKind].prst}"><a:avLst/></a:prstGeom>${fill}${ln}</wps:spPr>` +
     `<wps:txbx><w:txbxContent>${txbxContentXml(box.content)}</w:txbxContent></wps:txbx>` +
     `<wps:bodyPr rot="0" vert="horz" wrap="square" lIns="${inset}" tIns="${inset}" rIns="${inset}" bIns="${inset}" anchor="t">${autofit}</wps:bodyPr>` +
     `</wps:wsp>`;

@@ -789,7 +789,7 @@ describe('DOCX import of foreign text boxes / shapes', () => {
       <w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">
         <wp:extent cx="914400" cy="914400"/><wp:docPr id="1" name="Star"/>
         <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
-          <wps:wsp><wps:spPr><a:prstGeom prst="star5"><a:avLst/></a:prstGeom></wps:spPr><wps:bodyPr/></wps:wsp>
+          <wps:wsp><wps:spPr><a:prstGeom prst="smileyFace"><a:avLst/></a:prstGeom></wps:spPr><wps:bodyPr/></wps:wsp>
         </a:graphicData></a:graphic>
       </wp:inline></w:drawing></w:r></w:p>
       <w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">

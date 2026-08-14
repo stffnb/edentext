@@ -1287,6 +1287,7 @@ describe('Leg 7: foreign shapes/text boxes → importOdt', () => {
   <text:p><draw:rect draw:style-name="gr2" text:anchor-type="as-char" svg:width="5.08cm" svg:height="2.54cm"><text:p>rect text</text:p></draw:rect></text:p>
   <text:p><draw:custom-shape draw:style-name="gr1" text:anchor-type="as-char" svg:width="5.08cm" svg:height="2.54cm"><text:p>lo ellipse</text:p><draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:glue-points="10800 0 3163 3163 0 10800" draw:text-areas="3163 3163 18437 18437" draw:type="ellipse" draw:enhanced-path="U 10800 10800 10800 10800 0 360 Z N"/></draw:custom-shape></text:p>
   <text:p><draw:custom-shape text:anchor-type="as-char" svg:width="2cm" svg:height="2cm"><text:p>star</text:p><draw:enhanced-geometry draw:type="star5"/></draw:custom-shape></text:p>
+  <text:p><draw:custom-shape text:anchor-type="as-char" svg:width="2cm" svg:height="2cm"><text:p>smiley</text:p><draw:enhanced-geometry draw:type="smiley"/></draw:custom-shape></text:p>
   <text:p><draw:line svg:x1="0cm" svg:y1="0cm" svg:x2="5cm" svg:y2="0cm"/></text:p>
   <table:table>
    <table:table-column/>
@@ -1302,9 +1303,9 @@ describe('Leg 7: foreign shapes/text boxes → importOdt', () => {
     const f = importOdt(foreign);
     const c = f.content.content!;
     const boxes = c.filter((n: N) => n.type === 'textBox');
-    check('3 supported shapes imported', boxes.length === 3, c.map((n: N) => n.type));
+    check('4 supported shapes imported', boxes.length === 4, c.map((n: N) => n.type));
 
-    const [floatBox, rect, ellipse] = boxes;
+    const [floatBox, rect, ellipse, star] = boxes;
     check('frame: free x/y collapses to wrap side (right)', floatBox?.attrs?.wrap === 'right', floatBox?.attrs);
     check('frame: 2in → 192px, min-height 1in → 96px', floatBox?.attrs?.width === 192 && floatBox?.attrs?.height === 96, floatBox?.attrs);
     check('frame: fill + stroke from graphic style', floatBox?.attrs?.fillColor === '#CCFFCC' && floatBox?.attrs?.strokeColor === '#003300', floatBox?.attrs);
@@ -1314,7 +1315,8 @@ describe('Leg 7: foreign shapes/text boxes → importOdt', () => {
     check('rect: imports as plain textbox, transparent', rect?.attrs?.shapeKind === undefined && rect?.attrs?.fillColor === null && rect?.attrs?.strokeColor === null, rect?.attrs);
     check('rect: text preserved', rect?.content?.[0]?.content?.[0]?.text === 'rect text', rect?.content);
     check('custom-shape ellipse: shapeKind + geometry', ellipse?.attrs?.shapeKind === 'ellipse' && ellipse?.attrs?.width === 192 && ellipse?.attrs?.height === 96, ellipse?.attrs);
-    check('star5 dropped with warning', f.warnings.includes('Unsupported shapes were removed'), f.warnings);
+    check('star5: preset kept', star?.attrs?.shapeKind === 'star5', star?.attrs);
+    check('a preset we can\'t draw is dropped with a warning', f.warnings.includes('Unsupported shapes were removed'), f.warnings);
     check('draw:line dropped with warning', f.warnings.includes('Drawings were removed'), f.warnings);
 
     const table = c.find((n: N) => n.type === 'table');
@@ -2188,5 +2190,36 @@ describe('Leg 23: recorded revisions', () => {
     check('no ODF registry', !strFromU8(unzipSync(await buildOdt(plain, margins, 'portrait'))['content.xml']).includes('tracked-changes'));
     const xml = strFromU8(unzipSync(await buildDocx(plain, margins, 'portrait'))['word/document.xml']);
     check('no w:ins/w:del', !xml.includes('<w:ins ') && !xml.includes('<w:del '));
+  });
+});
+
+describe('Leg 24: preset shapes beyond rect / round-rect / ellipse', () => {
+  const shape = (kind: string, text: string): N =>
+    TBX({ width: 200, height: 120, shapeKind: kind }, P(null, T(text)));
+  const doc: N = { type: 'doc', content: [
+    shape('triangle', 'tri'), shape('star5', 'star'), shape('rightArrow', 'arrow'),
+  ] };
+  const kinds = (back: N) => (back.content.content ?? [])
+    .filter((n: N) => n.type === 'textBox').map((n: N) => n.attrs?.shapeKind).join(',');
+
+  it('ODT: each preset gets its draw:type, its own path and its text area', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    for (const type of ['isosceles-triangle', 'star5', 'right-arrow']) {
+      check(`draw:type="${type}"`, xml.includes(`draw:type="${type}"`), xml.match(/draw:type="[^"]*"/g));
+    }
+    check('the triangle carries its own path', xml.includes('draw:enhanced-path="M 10800 0 L 21600 21600 0 21600 Z N"'),
+      xml.match(/draw:enhanced-path="[^"]*"/g));
+    check('a text area travels', xml.includes('draw:text-areas="5400 10800 16200 21600"'));
+    check('round-trips', kinds(importOdt(bytes)) === 'triangle,star5,rightArrow', kinds(importOdt(bytes)));
+  });
+
+  it('DOCX: each preset gets its prstGeom, and back', async () => {
+    const bytes = await buildDocx(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    for (const prst of ['triangle', 'star5', 'rightArrow']) {
+      check(`prst="${prst}"`, xml.includes(`<a:prstGeom prst="${prst}">`), xml.match(/prst="[^"]*"/g));
+    }
+    check('round-trips', kinds(importDocx(bytes)) === 'triangle,star5,rightArrow', kinds(importDocx(bytes)));
   });
 });

@@ -4,6 +4,7 @@
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
   import ColorPicker from '../../ColorPicker.svelte';
+  import ShapePicker from '../../ShapePicker.svelte';
   import type { WrapMode } from '../../../editor/extensions/image';
   import type { ShapeKind } from '../../../editor/extensions/textBox';
   import { t } from '../../../i18n/i18n.svelte';
@@ -26,12 +27,6 @@
     { key: 'left', icon: 'wrapLeft', label: () => t().image.wrapLeft },
     { key: 'right', icon: 'wrapRight', label: () => t().image.wrapRight },
     { key: 'topBottom', icon: 'wrapTopBottom', label: () => t().image.wrapTopBottom },
-  ];
-
-  const SHAPES: { key: ShapeKind; label: () => string }[] = [
-    { key: 'textbox', label: () => t().textBox.shapeRect },
-    { key: 'roundRect', label: () => t().textBox.shapeRoundRect },
-    { key: 'ellipse', label: () => t().textBox.shapeEllipse },
   ];
 
   function setWrap(w: WrapMode) {
@@ -68,9 +63,13 @@
   <div class="ribbon-sep"></div>
 
   <RibbonGroup label={t().ribbon.groups.shapeStyles}>
-    {#each SHAPES as s}
-      <RibbonButton variant="big" icon={s.key === 'ellipse' ? 'shapeEllipse' : s.key === 'roundRect' ? 'shapeRound' : 'shapeRect'} label={s.label()} title={s.label()} active={shapeKind === s.key} onclick={() => editor?.chain().focus().setTextBoxAttrs({ shapeKind: s.key }).run()} />
-    {/each}
+    <div class="rb-captioned" use:captionClicks>
+      <ShapePicker
+        value={shapeKind ?? 'textbox'}
+        onPick={(k) => editor?.chain().focus().setTextBoxAttrs({ shapeKind: k }).run()}
+      />
+      <span class="rb-caption">{t().textBox.shape}</span>
+    </div>
     <div class="rb-captioned" use:captionClicks>
       <ColorPicker
         {editor}

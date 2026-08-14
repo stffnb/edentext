@@ -23,6 +23,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
+import { isShapeKind, odfEnhancedGeometry, type ShapeKind } from '../utils/shapes';
 import { normalizeLeader, parseTabStops } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
 import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, formatOrdinal, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
@@ -786,7 +787,6 @@ function replaceBookmarks(node: TiptapNode, refs: CrossRefExport[]): TiptapNode 
 }
 
 // One text box / shape, collected by replaceTextBoxes and emitted by applyTextBoxes.
-type ShapeKind = 'textbox' | 'roundRect' | 'ellipse';
 type TextBoxExport = {
   widthCm: number;
   heightCm: number;
@@ -811,7 +811,6 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
   const pxToCm = (px: number) => round3((px * 2.54) / 96);
   const a = node.attrs ?? {};
   const wrapAttr = a.wrap;
-  const kind = a.shapeKind;
   return {
     widthCm: pxToCm(typeof a.width === 'number' && a.width > 0 ? a.width : 280),
     heightCm: pxToCm(typeof a.height === 'number' && a.height > 0 ? a.height : 96),
@@ -822,7 +821,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     wrapDistCm: typeof a.wrapDist === 'number' ? round3(a.wrapDist) : null,
     wrapAlign: a.wrapAlign === 'center' || a.wrapAlign === 'right' ? a.wrapAlign : null,
     paddingCm: typeof a.paddingCm === 'number' ? round3(a.paddingCm) : TEXTBOX_PADDING_CM,
-    shapeKind: kind === 'roundRect' || kind === 'ellipse' ? kind : 'textbox',
+    shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
     strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
@@ -3546,18 +3545,6 @@ function applyDateTimeFields(odtBytes: Uint8Array, fields: DateTimeFieldExport[]
   return rezipOdt(files);
 }
 
-// Static enhanced geometry for the two non-rectangular shape kinds, matching what
-// LibreOffice emits (round-rectangle path pre-evaluated for modifier 3600).
-const ENHANCED_GEOMETRY: Record<'roundRect' | 'ellipse', string> = {
-  ellipse:
-    '<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="ellipse"' +
-    ' draw:text-areas="3163 3163 18437 18437"' +
-    ' draw:enhanced-path="U 10800 10800 10800 10800 0 360 Z N"/>',
-  roundRect:
-    '<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="round-rectangle" draw:modifiers="3600"' +
-    ' draw:enhanced-path="M 3600 0 X 0 3600 L 0 18000 Y 3600 21600 L 18000 21600 X 21600 18000 L 21600 3600 Y 18000 0 Z N"/>',
-};
-
 // Graphic style for a text box / shape: fill, stroke, text padding, auto-grow, and —
 // for floating boxes — the same wrap/position props as floating images.
 function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
@@ -3601,7 +3588,7 @@ function textBoxAnchorStyle(box: TextBoxExport, index: number): string {
 
 // The drawing element wrapping a box's serialized blocks: a <draw:frame>/<draw:text-box>
 // for plain text boxes (height = fo:min-height, so it grows with content like the
-// editor), or a <draw:custom-shape> with preset geometry for roundRect/ellipse.
+// editor), or a <draw:custom-shape> with the preset geometry of `utils/shapes.ts`.
 function textBoxXml(box: TextBoxExport, inner: string, index: number): string {
   const n = index + 1;
   const anchor = box.wrap === 'inline' ? 'as-char' : 'paragraph';
@@ -3622,7 +3609,7 @@ function textBoxXml(box: TextBoxExport, inner: string, index: number): string {
   }
   return (
     `<draw:custom-shape draw:name="Shape${n}"${common} svg:height="${box.heightCm}cm"${transform}>` +
-    `${inner}${ENHANCED_GEOMETRY[box.shapeKind]}</draw:custom-shape>`
+    `${inner}${odfEnhancedGeometry(box.shapeKind) ?? ''}</draw:custom-shape>`
   );
 }
 

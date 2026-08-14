@@ -3,6 +3,7 @@
   import type { WrapMode } from '../editor/extensions/image';
   import type { ShapeKind, TextBoxAttrs } from '../editor/extensions/textBox';
   import ColorPicker from './ColorPicker.svelte';
+  import ShapePicker from './ShapePicker.svelte';
   import { t } from '../i18n/i18n.svelte';
 
   let {
@@ -38,13 +39,6 @@
       : m === 'left' ? t().textBox.wrapLeft
       : m === 'right' ? t().textBox.wrapRight
       : t().textBox.wrapTopBottom;
-  }
-
-  const shapes: ShapeKind[] = ['textbox', 'roundRect', 'ellipse'];
-  function shapeTitle(k: ShapeKind): string {
-    return k === 'textbox' ? t().textBox.shapeRect
-      : k === 'roundRect' ? t().textBox.shapeRoundRect
-      : t().textBox.shapeEllipse;
   }
 
   const strokeWidths = [0.5, 1, 2.25];
@@ -106,30 +100,7 @@
 
   <span class="tb-sep"></span>
 
-  {#each shapes as s}
-    <button
-      class="tb-btn"
-      class:active={shapeKind === s}
-      title={shapeTitle(s)}
-      aria-label={shapeTitle(s)}
-      aria-pressed={shapeKind === s}
-      onclick={() => set({ shapeKind: s })}
-    >
-      {#if s === 'textbox'}
-        <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-          <rect x="2.5" y="4.5" width="13" height="9" stroke="currentColor" stroke-width="1.3" />
-        </svg>
-      {:else if s === 'roundRect'}
-        <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-          <rect x="2.5" y="4.5" width="13" height="9" rx="3" stroke="currentColor" stroke-width="1.3" />
-        </svg>
-      {:else}
-        <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-          <ellipse cx="9" cy="9" rx="6.5" ry="4.5" stroke="currentColor" stroke-width="1.3" />
-        </svg>
-      {/if}
-    </button>
-  {/each}
+  <ShapePicker value={shapeKind} onPick={(k) => set({ shapeKind: k })} compact />
 
   <span class="tb-sep"></span>
 

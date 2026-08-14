@@ -6,6 +6,7 @@ import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { HANDLES, MIN_SIZE_PX, clamp, parsePx, frameMargins, pageContentHeightPx, type WrapMode } from './image';
+import { SHAPES, shapePath, isShapeKind, type ShapeKind } from '../../utils/shapes';
 
 // cm attribute value → number, for the frame offsets (px ones use parsePx).
 const parseCmAttr = (v: string | null): number | null => {
@@ -17,7 +18,7 @@ const parseCmAttr = (v: string | null): number | null => {
 // stroke, and the image's wrap model (inline = in-flow; left/right/topBottom float).
 // Round-trips to ODF <draw:frame>/<draw:text-box>/<draw:custom-shape> and DOCX <wps:wsp>.
 
-export type ShapeKind = 'textbox' | 'roundRect' | 'ellipse';
+export type { ShapeKind };
 
 // Fixed text inset inside the frame; exported as fo:padding / wps:bodyPr insets.
 export const TEXTBOX_PADDING_CM = 0.15;
@@ -142,7 +143,10 @@ export const TextBox = Node.create({
       },
       shapeKind: {
         default: 'textbox',
-        parseHTML: el => (el as HTMLElement).getAttribute('data-shape') ?? 'textbox',
+        parseHTML: el => {
+          const k = (el as HTMLElement).getAttribute('data-shape');
+          return isShapeKind(k) ? k : 'textbox';
+        },
         renderHTML: () => ({}),
       },
       fillColor: {
@@ -175,8 +179,10 @@ export const TextBox = Node.create({
     const style = [
       a.width ? `width:${a.width}px` : '',
       a.height ? `min-height:${a.height}px` : '',
-      a.fillColor ? `background:${a.fillColor}` : '',
-      a.strokeColor ? `border:${a.strokeWidthPt * PX_PER_PT}px solid ${a.strokeColor}` : '',
+      // A polygon shape paints itself, so the box behind it stays bare.
+      a.fillColor && !SHAPES[a.shapeKind]?.points ? `background:${a.fillColor}` : '',
+      a.strokeColor && !SHAPES[a.shapeKind]?.points
+        ? `border:${a.strokeWidthPt * PX_PER_PT}px solid ${a.strokeColor}` : '',
       a.shapeKind !== 'textbox' ? `border-radius:${shapeRadius(a.shapeKind)}` : '',
       a.rotation ? `transform:rotate(${a.rotation}deg)` : '',
       `padding:${paddingPx(a.paddingCm).toFixed(2)}px`,
@@ -269,9 +275,10 @@ class TextBoxView {
   private getPos: () => number;
   private observer: ResizeObserver | null = null;
   private resizing = false;
-  // Last ellipse text-area inset applied; guards the ResizeObserver feedback loop.
-  private lastInsetX = -1;
-  private lastInsetY = -1;
+  // The polygon outline, for a shape CSS cannot draw; null for the three it can.
+  private outline: SVGPathElement | null = null;
+  // Last text-area inset applied; guards the ResizeObserver feedback loop.
+  private lastInset = '';
 
   constructor(node: PMNode, editor: Editor, getPos: () => number) {
     this.node = node;
@@ -332,35 +339,76 @@ class TextBoxView {
     const a = this.attrs();
     this.rotor.style.width = a.width ? `${a.width}px` : `${DEFAULT_WIDTH_PX}px`;
     this.rotor.style.minHeight = a.height ? `${a.height}px` : '';
-    this.rotor.style.background = a.fillColor ?? 'transparent';
-    this.rotor.style.border = a.strokeColor
+    // A polygon shape paints its own fill and stroke, so the box behind it stays bare.
+    const poly = !!SHAPES[a.shapeKind]?.points;
+    // The outline covers the padding box, so the frame's own ring moves to the text
+    // where a polygon draws it — applyShapeInset adds it back in.
+    this.rotor.style.padding = poly ? '0' : `${paddingPx(a.paddingCm).toFixed(2)}px`;
+    this.rotor.style.background = !poly && a.fillColor ? a.fillColor : 'transparent';
+    this.rotor.style.border = !poly && a.strokeColor
       ? `${a.strokeWidthPt * PX_PER_PT}px solid ${a.strokeColor}`
       : 'none';
     this.rotor.style.borderRadius = shapeRadius(a.shapeKind);
     this.rotor.style.transform = `translate(-50%, -50%) rotate(${a.rotation}deg)`;
+    this.applyOutline();
     this.applyWrap();
     this.applyShapeInset();
     this.fitWrapper();
   }
 
-  // For an ellipse, pad the content into the inscribed rectangle so text stays inside
-  // the oval. The vertical inset feeds back into the auto-grown height, so rewrite it
-  // only past a threshold — the ResizeObserver then settles (ratio < 0.5 converges).
+  // The outline of a shape CSS can't draw, behind the text. preserveAspectRatio="none"
+  // stretches the 0…100 box to the frame, and non-scaling-stroke keeps the line even
+  // width under that distortion.
+  private applyOutline(): void {
+    const a = this.attrs();
+    const d = shapePath(a.shapeKind);
+    if (!d) {
+      this.outline?.parentElement?.remove();
+      this.outline = null;
+      return;
+    }
+    if (!this.outline) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'textbox-outline');
+      svg.setAttribute('viewBox', '0 0 100 100');
+      svg.setAttribute('preserveAspectRatio', 'none');
+      this.outline = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      this.outline.setAttribute('vector-effect', 'non-scaling-stroke');
+      svg.appendChild(this.outline);
+      this.rotor.insertBefore(svg, this.rotor.firstChild);
+    }
+    this.outline.setAttribute('d', d);
+    this.outline.setAttribute('fill', a.fillColor ?? 'none');
+    this.outline.setAttribute('stroke', a.strokeColor ?? 'none');
+    this.outline.setAttribute('stroke-width', String(a.strokeWidthPt * PX_PER_PT));
+  }
+
+  // Pad the content into the shape's own text area — the ellipse's inscribed rectangle,
+  // a polygon's `textArea` — so text stays inside the outline. The vertical inset feeds
+  // back into the auto-grown height, so rewrite it only past a threshold; the
+  // ResizeObserver then settles (every ratio below 0.5 converges).
   private applyShapeInset(): void {
-    if (this.attrs().shapeKind !== 'ellipse') {
+    const kind = this.attrs().shapeKind;
+    const area = SHAPES[kind]?.textArea;
+    if (kind !== 'ellipse' && !area) {
       if (this.contentDOM.style.padding) this.contentDOM.style.padding = '';
-      this.lastInsetX = this.lastInsetY = -1;
+      this.lastInset = '';
       return;
     }
     const w = this.rotor.offsetWidth;
     const h = this.rotor.offsetHeight;
     if (!w || !h) return;
-    const insetX = w * ELLIPSE_INSET_RATIO;
-    const insetY = h * ELLIPSE_INSET_RATIO;
-    if (Math.abs(insetX - this.lastInsetX) < 0.5 && Math.abs(insetY - this.lastInsetY) < 0.5) return;
-    this.lastInsetX = insetX;
-    this.lastInsetY = insetY;
-    this.contentDOM.style.padding = `${insetY.toFixed(2)}px ${insetX.toFixed(2)}px`;
+    const [l, t, r, b] = area
+      ? [area[0] / 100, area[1] / 100, 1 - area[2] / 100, 1 - area[3] / 100]
+      : [ELLIPSE_INSET_RATIO, ELLIPSE_INSET_RATIO, ELLIPSE_INSET_RATIO, ELLIPSE_INSET_RATIO];
+    // Whole px: the inset feeds back into the height, and rounding is what settles it.
+    // A polygon carries the frame's own ring here, its rotor having none.
+    const ring = area ? paddingPx(this.attrs().paddingCm) : 0;
+    const px = (v: number, base: number) => `${Math.round(v * base + ring)}px`;
+    const inset = `${px(t, h)} ${px(r, w)} ${px(b, h)} ${px(l, w)}`;
+    if (inset === this.lastInset) return;
+    this.lastInset = inset;
+    this.contentDOM.style.padding = inset;
   }
 
   // Size the wrapper to the rotor's rotated bounding box so surrounding text

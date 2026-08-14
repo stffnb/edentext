@@ -11,6 +11,7 @@ import { tableLookAttr } from '../styles/tableStyles';
 import { formatOrdinal, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
+import { shapeFromPrst } from '../utils/shapes';
 import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -1712,12 +1713,6 @@ function nsChild(el: Element | null, ns: string, localName: string): Element | n
   return null;
 }
 
-const KIND_BY_PRST: Record<string, 'textbox' | 'roundRect' | 'ellipse'> = {
-  rect: 'textbox',
-  roundRect: 'roundRect',
-  ellipse: 'ellipse',
-};
-
 // Fill/stroke attrs from a shape's spPr (or VML equivalents), suppressing the editor
 // defaults (white fill, 1pt black stroke); none → explicit null, since omitting the
 // attr would re-apply the default.
@@ -1729,13 +1724,12 @@ function setShapeStyleAttrs(attrs: Record<string, unknown>, fill: string | null,
   }
 }
 
-// A DrawingML <wps:wsp> (text box or preset shape) → a textBox node. Unsupported
-// preset geometries (stars, arrows, …) are dropped with a warning. All property
+// A DrawingML <wps:wsp> (text box or preset shape) → a textBox node. A preset
+// `utils/shapes.ts` can't draw (a connector, a freeform) is dropped with a warning. All property
 // lookups are scoped to spPr so a nested image's fill/xfrm can't leak in.
 function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ctx): Node | null {
   const spPr = nsChild(wsp, WPS, 'spPr');
-  const prst = nsChild(spPr, A, 'prstGeom')?.getAttribute('prst') ?? 'rect';
-  const kind = KIND_BY_PRST[prst];
+  const kind = shapeFromPrst(nsChild(spPr, A, 'prstGeom')?.getAttribute('prst') ?? 'rect');
   if (!kind) { ctx.warnings.add('Unsupported shapes were removed'); return null; }
 
   const attrs: Record<string, unknown> = {};

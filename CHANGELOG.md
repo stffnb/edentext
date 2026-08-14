@@ -79,7 +79,7 @@
 - Hyperlinks: create / edit / remove (toolbar + Ctrl+K), Ctrl/Cmd+click to open, hover hint showing the URL; ODF `text:a` round-trip
 - Bookmarks and cross-references: name a selection, then insert a reference to it (its text, its number or its page); the reference follows the text it points at. Round-trips to ODF `text:bookmark-start`/`text:bookmark-ref` and Word's `Bookmark` + `REF`/`PAGEREF` fields
 - Manual page break (Ctrl+Enter); round-trips to ODF `fo:break-before`
-- Text boxes and basic shapes (rectangle / rounded rectangle / ellipse): editable block content, fill and border colors, border width, resize/rotate handles, text wrap (inline / left / right / top-bottom) like images; floating toolbar for wrap, shape kind and colors. Round-trips to ODF `draw:frame`/`draw:text-box` + `draw:custom-shape` and DOCX DrawingML `wps:wsp`/`wps:txbx` (imports Word's `mc:AlternateContent` and legacy VML text boxes too)
+- Text boxes and basic shapes — rectangle, rounded rectangle, ellipse, triangles, diamond, pentagon, hexagon, five-point star, trapezoid, parallelogram and the four block arrows: editable block content, fill and border colors, border width, resize/rotate handles, text wrap (inline / left / right / top-bottom) like images; a shape gallery in the floating toolbar and in the ribbon's Shape tab. Each outline is one polygon in `utils/shapes.ts` that the editor draws as SVG and the ODF export scales into its `draw:enhanced-path`, so the shape on screen is the shape in the file; Word gets the preset's name and draws its own. Round-trips to ODF `draw:frame`/`draw:text-box` + `draw:custom-shape` and DOCX DrawingML `wps:wsp`/`wps:txbx` (imports Word's `mc:AlternateContent` and legacy VML text boxes too)
 
 **Page & layout**
 - Page margins (cm) and page orientation (portrait / landscape)
@@ -131,7 +131,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 
 **Content an imported document loses**
 - Charts are **drawn** from the file (`import/chart.ts`: DrawingML `chartN.xml` and ODF `chart:chart`), but as a picture, not a chart object — a re-export carries the drawing and the numbers behind it are no longer editable. The same holds for an **EMF** metafile (`import/emf.ts`): it is drawn, but as the SVG picture it was rebuilt into, and only from the record set a plot consists of — a hatched brush, a clipping region or a rotated bitmap is skipped. **WMF/SVM** metafiles and OLE objects still keep their box and a placeholder label, and export writes that back out: WMF is a different (16-bit) record format, SVM is StarOffice-proprietary, and an OLE object cannot be rendered without its application
-- Shapes beyond rect / round-rect / ellipse: lines, arrows, connectors, polygons, freeform, and rotated shape text (dropped on import with a warning)
+- Shapes with no text area of their own: lines, arrows as a *line* rather than a block arrow, connectors and freeform curves — they are two endpoints, not a box, and ODF gives each its own element (`draw:line`, `draw:polyline`) rather than a `draw:custom-shape` preset. Rotated shape text (`w:bodyPr vert`) too. All dropped on import with a warning
 - Text boxes in the DOCX export: lists inside a box are flattened to literal-marker paragraphs (`•` / `1.`) and images inside a box are dropped — the box XML is injected by a post-pack string pass (`export/docx.ts` `applyTextBoxesDocx`) that mints no numbering.xml or media/rels entries. The ODT export has neither limitation
 
 **Missing while writing**
