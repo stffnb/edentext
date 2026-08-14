@@ -3,6 +3,7 @@
     DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteRestart, type NoteSettings,
   } from '../storage/noteSettings';
   import { noteSettings, setNoteSettings } from '../storage/notes.svelte';
+  import ColorPicker from './ColorPicker.svelte';
   import { styleSheet } from '../styles/sheet.svelte';
   import { formatOrdinal } from '../utils/orderedListTypes';
   import { t } from '../i18n/i18n.svelte';
@@ -152,10 +153,18 @@
             {#each ALIGNS as a}<option value={a}>{t().align[a]}</option>{/each}
           </select>
         </label>
-        <label class="row">
+        <div class="row">
           <span>{t().notesDialog.sepColor}</span>
-          <input type="color" value={sep.color} onchange={(e) => patchSep({ color: e.currentTarget.value })} />
-        </label>
+          <ColorPicker
+            editor={null}
+            currentColor={sep.color}
+            defaultColor={sep.color}
+            title={t().notesDialog.sepColor}
+            chevronTitle={t().notesDialog.sepColor}
+            onApply={(c) => patchSep({ color: c })}
+            onClear={() => patchSep({ color: DEFAULT_NOTE_SETTINGS.separator.color })}
+          />
+        </div>
       </fieldset>
     {/if}
 
@@ -224,7 +233,6 @@
     padding: 0 6px;
     font: inherit;
   }
-  input[type='color'] { width: 44px; padding: 2px; }
   .affix { width: 68px; }
 
   .actions { display: flex; align-items: center; gap: 8px; }

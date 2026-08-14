@@ -4,6 +4,7 @@
     type PageBorder, type PageDecor, type Watermark,
   } from '../storage/pageDecor';
   import { t } from '../i18n/i18n.svelte';
+  import ColorPicker from './ColorPicker.svelte';
 
   // LibreOffice's Format ▸ Page Style ▸ Area and Borders plus its Format ▸ Watermark,
   // in one panel — all three decorate the page and all three ride the page layout.
@@ -13,6 +14,8 @@
   } = $props();
 
   let dialogEl = $state<HTMLDialogElement | null>(null);
+  // The colour a page background starts at, LibreOffice's own first "recent" yellow.
+  const DEFAULT_BACKGROUND = '#FFFFCC';
 
   $effect(() => {
     const el = dialogEl;
@@ -43,32 +46,49 @@
 
     <fieldset>
       <legend>{t().pageDecor.background}</legend>
-      <label class="row">
-        <input
-          type="checkbox"
-          checked={!!decor.background}
-          onchange={(e) => (decor = { ...decor, background: e.currentTarget.checked ? (decor.background ?? '#ffffcc') : null })}
+      <div class="row">
+        <label class="grow">
+          <input
+            type="checkbox"
+            checked={!!decor.background}
+            onchange={(e) => (decor = { ...decor, background: e.currentTarget.checked ? (decor.background ?? DEFAULT_BACKGROUND) : null })}
+          />
+          <span>{t().pageDecor.useBackground}</span>
+        </label>
+        <ColorPicker
+          editor={null}
+          currentColor={decor.background ?? null}
+          defaultColor={decor.background ?? DEFAULT_BACKGROUND}
+          title={t().pageDecor.background}
+          chevronTitle={t().pageDecor.background}
+          onApply={(c) => (decor = { ...decor, background: c })}
+          onClear={() => (decor = { ...decor, background: null })}
         />
-        <span>{t().pageDecor.useBackground}</span>
-        <input
-          type="color"
-          value={decor.background ?? '#ffffcc'}
-          onchange={(e) => (decor = { ...decor, background: e.currentTarget.value })}
-        />
-      </label>
+      </div>
     </fieldset>
 
     <fieldset>
       <legend>{t().pageDecor.border}</legend>
-      <label class="row">
-        <input
-          type="checkbox"
-          checked={!!decor.border}
-          onchange={(e) => (decor = { ...decor, border: e.currentTarget.checked ? (decor.border ?? DEFAULT_PAGE_BORDER) : null })}
+      <div class="row">
+        <label class="grow">
+          <input
+            type="checkbox"
+            checked={!!decor.border}
+            onchange={(e) => (decor = { ...decor, border: e.currentTarget.checked ? (decor.border ?? DEFAULT_PAGE_BORDER) : null })}
+          />
+          <span>{t().pageDecor.useBorder}</span>
+        </label>
+        <ColorPicker
+          editor={null}
+          currentColor={decor.border?.color ?? DEFAULT_PAGE_BORDER.color}
+          defaultColor={decor.border?.color ?? DEFAULT_PAGE_BORDER.color}
+          title={t().pageDecor.border}
+          chevronTitle={t().pageDecor.border}
+          disabled={!decor.border}
+          onApply={(c) => patchBorder({ color: c })}
+          onClear={() => patchBorder({ color: DEFAULT_PAGE_BORDER.color })}
         />
-        <span>{t().pageDecor.useBorder}</span>
-        <input type="color" value={decor.border?.color ?? DEFAULT_PAGE_BORDER.color} onchange={(e) => patchBorder({ color: e.currentTarget.value })} />
-      </label>
+      </div>
       <label class="row">
         <span class="grow">{t().pageDecor.borderWidth}</span>
         <input type="number" min="0.25" max="20" step="0.25" disabled={!decor.border}
@@ -95,11 +115,19 @@
           }}
         />
       </label>
-      <label class="row">
+      <div class="row">
         <span class="grow">{t().pageDecor.watermarkColor}</span>
-        <input type="color" value={decor.watermark?.color ?? DEFAULT_WATERMARK.color} disabled={!decor.watermark}
-          onchange={(e) => patchWatermark({ color: e.currentTarget.value })} />
-      </label>
+        <ColorPicker
+          editor={null}
+          currentColor={decor.watermark?.color ?? DEFAULT_WATERMARK.color}
+          defaultColor={decor.watermark?.color ?? DEFAULT_WATERMARK.color}
+          title={t().pageDecor.watermarkColor}
+          chevronTitle={t().pageDecor.watermarkColor}
+          disabled={!decor.watermark}
+          onApply={(c) => patchWatermark({ color: c })}
+          onClear={() => patchWatermark({ color: DEFAULT_WATERMARK.color })}
+        />
+      </div>
       <label class="row">
         <span class="grow">{t().pageDecor.watermarkAngle}</span>
         <input type="number" min="-180" max="180" step="5" disabled={!decor.watermark}
@@ -153,6 +181,7 @@
   .row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
   .row .grow { flex: 1; color: var(--color-text-muted); }
   .row span { color: var(--color-text-muted); }
+  .row label.grow { display: flex; align-items: center; gap: 8px; }
 
   input[type='text'], input[type='number'] {
     height: 26px;
@@ -164,7 +193,6 @@
     padding: 0 6px;
     font: inherit;
   }
-  input[type='color'] { width: 44px; height: 26px; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }
   input:disabled { opacity: 0.5; }
 
   .actions { display: flex; align-items: center; gap: 8px; }

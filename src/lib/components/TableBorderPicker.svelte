@@ -2,6 +2,7 @@
   import type { Editor } from '@tiptap/core';
   import { activeBorderPresets, type BorderPreset } from '../editor/extensions/tableCellBorders';
   import { t } from '../i18n/i18n.svelte';
+  import ColorPicker from './ColorPicker.svelte';
 
   let { editor, tick }: { editor: Editor | null; tick: number } = $props();
 
@@ -11,12 +12,6 @@
   let color = $state('#000000');
 
   const WIDTHS = [0.5, 1, 1.5, 2.25, 3];
-  // Greyscale + standard hues (the first two ColorPicker palette rows).
-  const COLORS = [
-    ['#000000', '#1A1A1A', '#333333', '#4D4D4D', '#666666', '#808080', '#999999', '#B3B3B3', '#CCCCCC', '#FFFFFF'],
-    ['#C00000', '#FF0000', '#FFC000', '#FFFF00', '#92D050', '#00B050', '#00B0F0', '#0070C0', '#002060', '#7030A0'],
-  ];
-
   // Preset icons: 6 segments (outer edges + the two inner grid lines); "on" segments
   // draw solid, the rest as faint guides.
   type Seg = 'top' | 'right' | 'bottom' | 'left' | 'h' | 'v';
@@ -136,22 +131,16 @@
       </div>
 
       <div class="bp-title">{t().borders.lineColor}</div>
-      <div class="bp-colors">
-        {#each COLORS as row}
-          <div class="bp-color-row">
-            {#each row as c}
-              <button
-                class="bp-color"
-                class:active={color === c}
-                style="background: {c}"
-                title={c}
-                aria-label={c}
-                onclick={() => (color = c)}
-              ></button>
-            {/each}
-          </div>
-        {/each}
-      </div>
+      <ColorPicker
+        editor={null}
+        currentColor={color}
+        defaultColor={color}
+        title={t().borders.lineColor}
+        chevronTitle={t().borders.lineColor}
+        clearLabel={t().color.automatic}
+        onApply={(c) => (color = c)}
+        onClear={() => (color = '#000000')}
+      />
     </div>
   {/if}
 </div>
@@ -279,34 +268,4 @@
     background: currentColor;
   }
 
-  .bp-colors {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .bp-color-row {
-    display: flex;
-    gap: 2px;
-  }
-
-  .bp-color {
-    width: 18px;
-    height: 18px;
-    min-width: unset;
-    padding: 0;
-    border: 1px solid var(--color-border);
-    border-radius: 2px;
-    cursor: pointer;
-    transition: transform 0.05s;
-  }
-
-  .bp-color:hover {
-    transform: scale(1.15);
-  }
-
-  .bp-color.active {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 1px;
-  }
 </style>

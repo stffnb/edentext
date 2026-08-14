@@ -12,6 +12,7 @@
     chevronTitle,
     clearLabel,
     open = $bindable(false),
+    disabled = false,
     onApply,
     onClear,
     onOpen,
@@ -25,10 +26,12 @@
     chevronTitle: string;
     clearLabel?: string;
     open?: boolean;
+    disabled?: boolean;
     onApply: (color: string, range: { from: number; to: number }) => void;
     onClear: (range: { from: number; to: number }) => void;
     onOpen?: () => void;
-    icon: Snippet;
+    // A toolbar button's glyph. A dialog field passes none and is the swatch alone.
+    icon?: Snippet;
   } = $props();
 
   // Row 1 = greyscale, row 2 = standard hues. Rows 3–7 are generated per column
@@ -80,6 +83,10 @@
   // The panels are `fixed` and placed from the button's rect, so a scrolling
   // ancestor (the style manager's field column) can't clip them.
   let split = $state<HTMLElement>();
+  // …and they live in the top layer, whose containing block is the viewport whatever
+  // sits above the button: a transform makes an ancestor the containing block for
+  // `fixed`, and the floating table toolbar has one (it hangs itself above the table).
+  const topLayer = (node: HTMLElement) => node.showPopover();
   let panel = $state<HTMLElement>();
   let pos = $state({ top: 0, left: 0 });
 
@@ -416,18 +423,20 @@
 
 <div class="color-picker" use:colorPickerClickOutside>
   <div class="color-split" bind:this={split}>
-    <button class="color-main" onclick={quickApplyColor} {title}>
-      {@render icon()}
-      <span class="color-bar" style="background: {lastColor}"></span>
+    <!-- A toolbar button re-applies its last colour and shows it; a dialog field is one
+         value, so its swatch reads that value and every click opens the palette. -->
+    <button class="color-main" class:swatch={!icon} onclick={icon ? quickApplyColor : openPicker} {title} {disabled}>
+      {#if icon}{@render icon()}{/if}
+      <span class="color-bar" style="background: {icon ? lastColor : (currentColor || defaultColor)}"></span>
     </button>
-    <button class="color-chevron" onclick={openPicker} tabindex="-1" title={chevronTitle}>
+    <button class="color-chevron" onclick={openPicker} tabindex="-1" title={chevronTitle} {disabled}>
       <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
         <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
   </div>
   {#if open && view === 'palette'}
-    <div class="color-dropdown" bind:this={panel} style="top: {pos.top}px; left: {pos.left}px">
+    <div class="color-dropdown" popover="manual" use:topLayer bind:this={panel} style="top: {pos.top}px; left: {pos.left}px">
       <div class="color-title">{title}</div>
       <button
         class="color-automatic"
@@ -473,6 +482,7 @@
   {/if}
   {#if open && view === 'custom'}
     <div class="color-window" role="dialog" aria-label={t().color.chooseColor}
+      popover="manual" use:topLayer
       bind:this={panel} style="top: {pos.top}px; left: {pos.left}px">
       <div class="color-window-body">
         <div
@@ -555,6 +565,18 @@
     border-radius: 1px;
   }
 
+  /* No glyph above it, so the bar is the button: a swatch, outlined so white still
+     reads against the surface. */
+  .color-main.swatch .color-bar {
+    width: 22px;
+    height: 14px;
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px var(--color-border);
+  }
+
+  .color-split:has(button:disabled) { opacity: 0.5; }
+  .color-split button:disabled { cursor: default; }
+
   .color-chevron {
     display: inline-flex;
     align-items: center;
@@ -573,6 +595,15 @@
 
   .color-chevron:hover {
     background: var(--color-btn-hover);
+  }
+
+  /* A popover carries the UA's own centring (`inset: 0; margin: auto`), which would
+     beat the top/left placed above. */
+  .color-dropdown,
+  .color-window {
+    inset: auto;
+    margin: 0;
+    overflow: visible;
   }
 
   .color-dropdown {
