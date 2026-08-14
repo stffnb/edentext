@@ -739,6 +739,10 @@ const de: Messages = {
     rasterHint: 'Exakte Kopie des Editors',
     vectorPdf: 'Vektor-PDF (Beta)',
     vectorHint: 'Scharf, aber Probleme mit Tabellen',
+    template: 'Vorlage',
+    templateHint: '.ott / .dotx — öffnet sich als neues Dokument',
+    recentFiles: 'Zuletzt verwendet',
+    clearRecentFiles: 'Liste leeren',
     print: 'Drucken',
     tools: 'Werkzeuge',
     showExtraTools: 'Weitere Werkzeuge anzeigen',
@@ -771,6 +775,8 @@ const de: Messages = {
     couldNotSave: 'Diese Datei konnte nicht gespeichert werden.',
     couldNotExportDocx: 'Export nach Word (.docx) nicht möglich.',
     couldNotExportPdf: 'PDF-Export nicht möglich.',
+    recentUnavailable: (name) =>
+      `„${name}“ konnte nicht erneut geöffnet werden — die Datei wurde vielleicht verschoben, oder der Browser hat keine Berechtigung mehr dafür. Öffne sie stattdessen über den Dateidialog.`,
     couldNotPrint: 'Drucken nicht möglich.',
     couldNotPrintPdf: 'Druck als PDF nicht möglich.',
     autosaveQuota:

@@ -743,6 +743,10 @@ const en = {
     rasterHint: 'Exact copy of the editor',
     vectorPdf: 'Vector PDF (beta)',
     vectorHint: 'Sharp, but problems with tables',
+    template: 'Template',
+    templateHint: '.ott / .dotx — opens as a new document',
+    recentFiles: 'Recent files',
+    clearRecentFiles: 'Clear the list',
     print: 'Print',
     tools: 'Tools',
     showExtraTools: 'Show extra tools',
@@ -775,6 +779,8 @@ const en = {
     couldNotSave: 'Could not save this file.',
     couldNotExportDocx: 'Could not export to Word (.docx).',
     couldNotExportPdf: 'Could not export to PDF.',
+    recentUnavailable: (name: string) =>
+      `"${name}" could not be opened again — it may have moved, or the browser no longer has permission for it. Open it from the file picker instead.`,
     couldNotPrint: 'Could not print.',
     couldNotPrintPdf: 'Could not print to PDF.',
     autosaveQuota:

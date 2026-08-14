@@ -62,7 +62,8 @@
     onSelectTheme,
     docxBusy = false,
     pdfBusy = false,
-    onNew, onOpen, onSave, onSaveAs, onSaveDocx, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onNewComment, commentsOpen = false, onToggleComments,
+    onNew, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onNewComment, commentsOpen = false, onToggleComments,
+    recentFiles = [], onOpenRecent, onForgetRecent,
   }: {
     editor: Editor | null;
     tick: number;
@@ -99,6 +100,10 @@
     onSave?: () => void;
     onSaveAs?: () => void;
     onSaveDocx?: () => void;
+    onSaveTemplate?: () => void;
+    recentFiles?: { id: string; name: string }[];
+    onOpenRecent?: (id: string) => void;
+    onForgetRecent?: () => void;
     onExportPdf?: () => void;
     onPrintPdf?: () => void;
     onPrint?: () => void;
@@ -199,6 +204,21 @@
             <Icon name="export" size={16} />{t().app.vectorPdf}
             <span class="menu-sub">{t().app.vectorHint}</span>
           </button>
+          <button onclick={() => run(onSaveTemplate)}>
+            <Icon name="export" size={16} />{t().app.template}
+            <span class="menu-sub">{t().app.templateHint}</span>
+          </button>
+          {#if recentFiles.length}
+            <hr />
+            {#each recentFiles as f (f.id)}
+              <button onclick={() => { closeMenu(); onOpenRecent?.(f.id); }}>
+                <Icon name="folder" size={16} />{f.name}
+              </button>
+            {/each}
+            <button onclick={() => run(onForgetRecent)}>
+              <span class="menu-sub">{t().app.clearRecentFiles}</span>
+            </button>
+          {/if}
           <hr />
           <button onclick={() => run(onPrint)} disabled={!editor || pdfBusy}>
             <Icon name="print" size={16} />{t().app.print}

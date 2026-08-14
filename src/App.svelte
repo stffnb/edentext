@@ -10,7 +10,8 @@
   import FindReplaceBar from './lib/components/FindReplaceBar.svelte';
   import { buildOdt, deriveFilename } from './lib/export/odt';
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
-  import { supportsFsAccess, saveOdt, saveAsOdt, saveAsDocx, openOdt } from './lib/export/saveFile';
+  import { supportsFsAccess, saveOdt, saveAsOdt, saveAsDocx, saveAsTemplate, openOdt } from './lib/export/saveFile';
+  import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFiles, type RecentFile } from './lib/storage/recentFiles';
   import { importOdt } from './lib/import/odt';
   import { importDocx } from './lib/import/docx';
   import { convertUnsupportedImages } from './lib/import/imageFormats';
@@ -440,6 +441,9 @@
   // The file the document is saved to (File System Access API). Session-only: a
   // reload restores the doc from localStorage but the first Save re-prompts.
   let fileHandle: FileSystemFileHandle | null = $state(null);
+  // Word's and LibreOffice's recent-documents list; a click reopens the file itself
+  // where the browser can hand back its handle.
+  let recentFiles: RecentFile[] = $state(loadRecentFiles());
   const fsSupported = supportsFsAccess();
   let fileInput: HTMLInputElement | null = $state(null);
   let pdfBusy = $state(false);
@@ -604,6 +608,7 @@
         footer: result.footerDistanceCm ?? DEFAULT_HF_DISTANCES.footer,
       };
       fileHandle = isTemplate ? null : handle;
+      if (sourceName) recentFiles = await rememberRecentFile(sourceName, isTemplate ? null : handle);
 
       // Warn about fonts the document uses but the browser can't render, so text
       // silently shown in a substitute (Liberation Serif) is at least flagged.
@@ -677,6 +682,7 @@
     try {
       const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering);
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
+      recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       // A stored handle may have lost permission; re-prompt via Save As.
@@ -693,11 +699,63 @@
     try {
       const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering);
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
+      recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save file:', err);
       alert(t().dialogs.couldNotSave);
     }
+  }
+
+  // Save the document as a template. The picker offers .ott and .dotx, so which
+  // exporter runs is only known once a name is chosen; a template is never bound as
+  // the current file, exactly as opening one isn't.
+  async function handleSaveTemplate() {
+    if (!editor) return;
+    exportMenuOpen = false;
+    const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
+    try {
+      await saveAsTemplate(async (kind) => {
+        const args = [pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering] as const;
+        const { odtToOtt, docxToDotx } = await import('./lib/export/template');
+        if (kind === 'dotx') {
+          const { buildDocx } = await import('./lib/export/docx');
+          return docxToDotx(await buildDocx(json, ...args));
+        }
+        return odtToOtt(await buildOdt(json, ...args));
+      }, stripOdtExtension(suggestedFilename(json)));
+    } catch (err) {
+      if ((err as DOMException)?.name === 'AbortError') return;
+      console.error('[save] Failed to save template:', err);
+      alert(t().dialogs.couldNotSave);
+    }
+  }
+
+  // Reopen a file from the recent list. The File System Access API re-prompts for
+  // permission after a reload, and a file that has moved or been deleted is gone —
+  // either way the entry is dropped rather than left to fail again.
+  async function handleOpenRecent(entry: RecentFile) {
+    exportMenuOpen = false;
+    try {
+      const r = await readRecentFile(entry.id);
+      if (!r) {
+        alert(t().dialogs.recentUnavailable(entry.name));
+        recentFiles = recentFiles.filter((f) => f.id !== entry.id);
+        localStorage.setItem('edentext-recent-files', JSON.stringify(recentFiles));
+        return;
+      }
+      await applyImport(r.bytes, r.handle, r.name);
+    } catch (err) {
+      if ((err as DOMException)?.name === 'AbortError') return;
+      console.error('[open] Failed to reopen a recent file:', err);
+      alert(t().dialogs.couldNotOpen);
+    }
+  }
+
+  function handleForgetRecent() {
+    forgetRecentFiles();
+    recentFiles = [];
+    exportMenuOpen = false;
   }
 
   // Export to Word .docx. The exporter (and the `docx` library) is lazy-loaded so it
@@ -943,6 +1001,10 @@
       onSave={handleSave}
       onSaveAs={handleSaveAs}
       onSaveDocx={handleSaveDocx}
+      onSaveTemplate={handleSaveTemplate}
+      recentFiles={recentFiles}
+      onOpenRecent={(id) => { const f = recentFiles.find((r) => r.id === id); if (f) void handleOpenRecent(f); }}
+      onForgetRecent={handleForgetRecent}
       onExportPdf={handleExportPdf}
       onPrintPdf={handlePrintPdf}
       onPrint={handlePrint}
@@ -1049,6 +1111,21 @@
                 <span>{t().app.vectorPdf}</span>
                 <span class="theme-option-hint">{t().app.vectorHint}</span>
               </button>
+              <button class="theme-option" onclick={handleSaveTemplate} role="menuitem">
+                <span>{t().app.template}</span>
+                <span class="theme-option-hint">{t().app.templateHint}</span>
+              </button>
+              {#if recentFiles.length}
+                <div class="theme-heading">{t().app.recentFiles}</div>
+                {#each recentFiles as f (f.id)}
+                  <button class="theme-option" onclick={() => handleOpenRecent(f)} role="menuitem">
+                    <span class="recent-name">{f.name}</span>
+                  </button>
+                {/each}
+                <button class="theme-option" onclick={handleForgetRecent} role="menuitem">
+                  <span class="theme-option-hint">{t().app.clearRecentFiles}</span>
+                </button>
+              {/if}
               <div class="theme-heading">{t().docProps.title}</div>
               <button class="theme-option" onclick={() => { exportMenuOpen = false; docPropsOpen = true; }} role="menuitem">
                 <span>{t().docProps.title}</span>

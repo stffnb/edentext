@@ -13,6 +13,14 @@ const DOCX_PICKER_TYPES = [
   { description: 'Word Document', accept: { [DOCX_MIME]: ['.docx'] } },
 ];
 
+const DOTX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.template';
+
+// Both template formats in one picker: the chosen extension decides which is written.
+const TEMPLATE_PICKER_TYPES = [
+  { description: 'OpenDocument Text Template', accept: { [OTT_MIME]: ['.ott'] } },
+  { description: 'Word Template', accept: { [DOTX_MIME]: ['.dotx'] } },
+];
+
 // The open picker also accepts .ott templates (read-only; saving stays .odt-only).
 const OPEN_PICKER_TYPES = [
   { description: 'OpenDocument Text', accept: { [ODT_MIME]: ['.odt'], [OTT_MIME]: ['.ott'] } },
@@ -86,6 +94,23 @@ export async function saveAsDocx(bytes: Uint8Array, suggestedName: string): Prom
   }
   const handle = await (window as WinFs).showSaveFilePicker!({ suggestedName, types: DOCX_PICKER_TYPES });
   await writeHandle(handle, bytes);
+}
+
+// Save a template. The picker offers both formats, so the bytes can only be built
+// once the user has picked one: `build` is called with the chosen extension. Falls
+// back to a plain .ott download where there is no picker.
+export async function saveAsTemplate(
+  build: (kind: 'ott' | 'dotx') => Promise<Uint8Array>,
+  baseName: string,
+): Promise<void> {
+  if (!supportsFsAccess()) {
+    download(await build('ott'), `${baseName}.ott`, OTT_MIME);
+    return;
+  }
+  const handle = await (window as WinFs).showSaveFilePicker!({
+    suggestedName: `${baseName}.ott`, types: TEMPLATE_PICKER_TYPES,
+  });
+  await writeHandle(handle, await build(handle.name.toLowerCase().endsWith('.dotx') ? 'dotx' : 'ott'));
 }
 
 // Prompt for an .odt/.ott/.docx to open, capturing its handle so a later save can
