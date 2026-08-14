@@ -508,6 +508,12 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       out.push(dateTimeRun(node));
     } else if (node.type === 'sequenceField') {
       out.push(sequenceField(node));
+    } else if (node.type === 'indexEntry') {
+      // Word's index entry: a hidden XE field, its term in the instruction. A key files
+      // the term under it, "key:term", exactly as LibreOffice's text:key1 does.
+      const term = String(node.attrs?.term ?? '').trim();
+      const key1 = String(node.attrs?.key1 ?? '').trim();
+      if (term) out.push(new SimpleField(`XE "${(key1 ? `${key1}:${term}` : term).replace(/"/g, "'")}"`, ''));
     } else if (node.type === 'formula') {
       const latex = typeof node.attrs?.latex === 'string' ? node.attrs.latex : '';
       if (latex) {
@@ -1431,6 +1437,12 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       const depth = Number(node.attrs?.maxLevel);
       const maxLevel = depth >= 1 ? Math.min(MAX_HEADING_LEVEL, depth) : MAX_HEADING_LEVEL;
       if (tocTitle) out.push(new Paragraph({ children: [new TextRun({ text: tocTitle, bold: true, size: 32 })], spacing: { after: cmToTwip(0.3) } }));
+      if (kind === 'alphabetical') {
+        // Word's INDEX field, which it fills from the XE entries on a field update —
+        // the same contract the TOC field above works under.
+        out.push(new Paragraph({ children: [new SimpleField('INDEX \\h "A" \\c "1" \\e "\t"', '')] }));
+        continue;
+      }
       out.push(new TableOfContents(tocTitle, kind === 'toc'
         ? { hyperlink: true, headingStyleRange: `1-${maxLevel}` }
         // `\c`, not `\a`: Word's own Insert Table of Figures keeps the label and number

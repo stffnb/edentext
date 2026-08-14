@@ -336,6 +336,8 @@ function tocMaxLevel(instr: string): number {
 // The TOC field's \c switch names a caption label, which makes it a list of figures or
 // tables rather than a contents. Word's own labels and LibreOffice's travel alike.
 function tocIndexKind(instr: string): IndexKind {
+  // INDEX is Word's alphabetical index; the rest are TOC fields differing by \\c.
+  if (/\bINDEX\b/.test(instr)) return 'alphabetical';
   const m = /\\c\s+"?([^"\\]+)/.exec(instr);
   const cat = m ? ODF_SEQ_CATEGORY[m[1].trim()] : undefined;
   return cat === 'table' ? 'tables' : cat === 'figure' ? 'figures' : 'toc';
@@ -359,7 +361,7 @@ function scanTocField(p: Element, st: TocFieldState): { emit: boolean } {
         }
       } else if (c.localName === 'instrText' && st.fieldDepth > 0) {
         st.instr[st.fieldDepth] += c.textContent ?? '';
-        if (st.tocDepth < 0 && /\bTOC\b/.test(st.instr[st.fieldDepth])) {
+        if (st.tocDepth < 0 && /\b(TOC|INDEX)\b/.test(st.instr[st.fieldDepth])) {
           st.tocDepth = st.fieldDepth;
           emit = true;
         }
@@ -488,6 +490,15 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
     if (el.localName === 'p') {
       // A paragraph owned by a TOC field is skipped; the field emits one node.
       const startedInToc = tocState.tocDepth >= 0;
+      // A simple INDEX field is a whole index in one element — the form our own export
+      // writes, since the package has no INDEX class to spread over runs.
+      const simple = Array.from(el.getElementsByTagNameNS(W, 'fldSimple'))
+        .map((f) => f.getAttributeNS(W, 'instr') ?? '').join(' ');
+      if (/\bINDEX\b/.test(simple) && kind === 'body') {
+        flush();
+        out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', index: 'alphabetical' } });
+        continue;
+      }
       const { emit } = scanTocField(el, tocState);
       if (emit && kind === 'body') {
         flush();
@@ -1259,7 +1270,11 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
             if (fieldDateTime) out.push(fieldDateTime);
             else if (fieldSeq) out.push({ ...fieldSeq, attrs: { ...fieldSeq.attrs, number: seqNumberOf(fieldResultText) } });
             else if (fieldCrossRef) out.push({ ...fieldCrossRef, attrs: { ...fieldCrossRef.attrs, text: fieldResultText } });
-            else emitField(out, fieldInstr, hfFields, marks);
+            else {
+              const mark = !hfFields && indexEntryFromInstr(fieldInstr);
+              if (mark) out.push(mark);
+              else emitField(out, fieldInstr, hfFields, marks);
+            }
             fieldMode = 'none';
             fieldDateTime = null;
             fieldCrossRef = null;
@@ -1324,6 +1339,8 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
           out.push({ ...xref, attrs: { ...xref.attrs, text: el.textContent ?? '' } });
           break;
         }
+        const mark = indexEntryFromInstr(instr);
+        if (mark) { out.push(mark); break; }
         const seq = seqFieldFromInstr(instr);
         if (seq) {
           const first = fcAll(el, 'r')[0];
@@ -1394,6 +1411,19 @@ function emitField(out: Node[], instr: string, hfFields: boolean, marks: Mark[] 
     const m = /\bSTYLEREF\s+"?[^"\d]*(\d)/i.exec(instr);
     if (m) out.push({ type: 'chapterField', attrs: { level: Number(m[1]), text: '' }, ...(marks.length ? { marks } : {}) });
   }
+}
+
+// An XE field instruction → an index entry. Word files the term under a key with
+// "key:term", exactly as LibreOffice's text:key1 does.
+function indexEntryFromInstr(instr: string): Node | null {
+  const m = /^\s*XE\s+"((?:[^"\\]|\\.)*)"/i.exec(instr);
+  if (!m) return null;
+  const raw = m[1].replace(/\\(.)/g, '$1').trim();
+  if (!raw) return null;
+  const at = raw.indexOf(':');
+  const key1 = at > 0 ? raw.slice(0, at).trim() : '';
+  const term = at > 0 ? raw.slice(at + 1).trim() : raw;
+  return term ? { type: 'indexEntry', attrs: { term, key1 } } : null;
 }
 
 // A REF/PAGEREF field instruction → a cross-reference node; its cached result text is

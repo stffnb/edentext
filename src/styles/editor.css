@@ -1023,6 +1023,18 @@
 /* Recorded revisions (trackChanges.ts). Both word processors underline an insertion
    and strike a deletion, in the reviewer's colour; one colour here, since the editor
    has a single author. */
+/* An index entry is a place, not text: a thin grey bar the way both word processors
+   shade a field, so it can be seen and deleted without taking room in the line. */
+.tiptap .pm-index-entry {
+  display: inline-block;
+  width: 3px;
+  height: 0.9em;
+  margin: 0 1px;
+  vertical-align: -0.05em;
+  border-radius: 1px;
+  background: var(--color-field-shade, rgba(0, 0, 0, 0.18));
+}
+
 .tiptap .pm-insertion {
   color: #b5179e;
   text-decoration: underline;

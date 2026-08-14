@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { MAX_HEADING_LEVEL } from '../../export/odt';
 import { seqCategoryOf, sequenceFieldText, type SeqCategory } from './caption';
+import { indexEntries, indexRows } from './indexEntry';
 import { readVerticalMargins, pageOfElement, topInEditor, FORCE_PAGE_RECALC } from './pageBreaks';
 
 // A generated index: a block atom listing every source with its live page number — the
@@ -10,15 +11,21 @@ import { readVerticalMargins, pageOfElement, topInEditor, FORCE_PAGE_RECALC } fr
 // or tables. The node view regenerates entries from the sources + pagination and caches
 // them in `entries` (persisted like a Word/LO field); round-trips to ODF/DOCX.
 
-export type TocEntry = { text: string; level: number; page: number };
+export type TocEntry = {
+  text: string;
+  level: number;
+  page: number;
+  /** Alphabetical index only: every page the term appears on, `page` being the first. */
+  pages?: number[];
+};
 
 // Which sources the index collects. ODF has an element per family
 // (text:table-of-content / -illustration-index / -table-index), Word the TOC field's
 // \c switch.
-export type IndexKind = 'toc' | 'figures' | 'tables';
+export type IndexKind = 'toc' | 'figures' | 'tables' | 'alphabetical';
 
 export function indexKindOf(value: unknown): IndexKind {
-  return value === 'figures' || value === 'tables' ? value : 'toc';
+  return value === 'figures' || value === 'tables' || value === 'alphabetical' ? value : 'toc';
 }
 
 // The heading above the entries. An imported index keeps the one its file used
@@ -28,12 +35,14 @@ export const INDEX_TITLES: Record<IndexKind, string> = {
   toc: 'Table of Contents',
   figures: 'List of Figures',
   tables: 'List of Tables',
+  alphabetical: 'Index',
 };
 
 const EMPTY_HINT: Record<IndexKind, string> = {
   toc: 'No headings yet — add an H1/H2/H3 to build the contents.',
   figures: 'No figure captions yet — insert one from the References tab.',
   tables: 'No table captions yet — insert one from the References tab.',
+  alphabetical: 'No index entries yet — mark a word from the References tab.',
 };
 // Enough leader dots to cross the widest gap a page can offer; fillLeaders cuts each
 // row's back to what its own gap holds, measuring one dot with this sample.
@@ -198,6 +207,13 @@ class TocView {
   private sources(): HeadingRef[] {
     const kind = indexKindOf(this.node()?.attrs?.index);
     const out: HeadingRef[] = [];
+    if (kind === 'alphabetical') {
+      // One source per mark; render() merges them into a row per term.
+      for (const e of indexEntries(this.editor.state.doc)) {
+        out.push({ text: e.key1 ? `${e.key1}: ${e.term}` : e.term, level: 1, pos: e.pos });
+      }
+      return out;
+    }
     if (kind !== 'toc') {
       const category: SeqCategory = kind === 'tables' ? 'table' : 'figure';
       this.editor.state.doc.descendants((node, pos) => {
@@ -235,9 +251,19 @@ class TocView {
 
   private render(): void {
     if (this.editor.isDestroyed || !this.dom.isConnected) return;
-    const heads = this.sources();
     const cycle = this.cycle();
-    const entries: TocEntry[] = heads.map(h => ({ text: h.text, level: h.level, page: this.pageOf(h.pos, cycle) }));
+    let heads = this.sources();
+    let entries: TocEntry[];
+    if (indexKindOf(this.node()?.attrs?.index) === 'alphabetical') {
+      // A term marked five times is one row with five page numbers, and the row jumps
+      // to the first of them.
+      const marks = heads.map(h => ({ ...h, page: this.pageOf(h.pos, cycle) }));
+      const rows = indexRows(marks.map(m => ({ term: m.text, key1: '', page: m.page })));
+      entries = rows.map(r => ({ text: r.text, level: 1, page: r.pages[0], pages: r.pages }));
+      heads = rows.map(r => marks.find(m => m.text === r.text)!);
+    } else {
+      entries = heads.map(h => ({ text: h.text, level: h.level, page: this.pageOf(h.pos, cycle) }));
+    }
     const key = JSON.stringify(entries);
     if (key !== this.lastKey) {
       this.lastKey = key;
@@ -316,7 +342,7 @@ class TocView {
       leader.textContent = fill.repeat(fill ? LEADER_DOTS : 0);
       const page = document.createElement('span');
       page.className = 'toc-page';
-      page.textContent = String(e.page);
+      page.textContent = e.pages ? e.pages.join(', ') : String(e.page);
       row.append(text, leader, page);
       const pos = heads[i]?.pos;
       if (pos != null) {

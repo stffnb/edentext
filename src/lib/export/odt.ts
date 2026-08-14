@@ -184,6 +184,8 @@ const FNT = '\uE017';
 // Sentinel wrapping a caption's sequence-field index (SEQ{i}SEQ); applySequenceFields
 // rewrites it to <text:sequence>. U+E01A.
 const SEQ = '\uE01A';
+// Sentinel wrapping an index entry's index (IXE{i}IXE); applyIndexEntries resolves it.
+const IXE = '\uE01E';
 
 // Sentinels for recorded revisions (trackChanges.ts): TCI{i}TCI brackets an insertion's
 // runs, TCD{i}TCD stands where a deletion's text was cut out. applyRevisions rewrites
@@ -699,6 +701,41 @@ function applySequenceFields(odtBytes: Uint8Array, fields: SequenceExport[]): Ui
   return rezipOdt(files);
 }
 
+// One alphabetical-index entry, collected by replaceIndexEntries.
+type IndexEntryExport = { term: string; key1: string };
+
+function replaceIndexEntries(node: TiptapNode, marks: IndexEntryExport[]): TiptapNode {
+  if (!node.content?.length) return node;
+  const content: TiptapNode[] = [];
+  for (const child of node.content) {
+    if (child.type === 'indexEntry') {
+      const a = child.attrs ?? {};
+      marks.push({ term: String(a.term ?? ''), key1: String(a.key1 ?? '') });
+      content.push({ type: 'text', text: `${IXE}${marks.length - 1}${IXE}`, marks: child.marks });
+      continue;
+    }
+    content.push(replaceIndexEntries(child, marks));
+  }
+  return { ...node, content };
+}
+
+// Resolve IXE sentinels into the point mark LibreOffice writes for an index entry.
+function applyIndexEntries(odtBytes: Uint8Array, marks: IndexEntryExport[]): Uint8Array {
+  if (!marks.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+  let content = strFromU8(contentBytes);
+  content = content.replace(new RegExp(`${IXE}(\\d+)${IXE}`, 'g'), (_m, idx: string) => {
+    const m = marks[Number(idx)];
+    if (!m) return '';
+    return `<text:alphabetical-index-mark text:string-value="${escapeXml(m.term)}"`
+      + (m.key1 ? ` text:key1="${escapeXml(m.key1)}"` : '') + '/>';
+  });
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 // One cross-reference, collected by replaceCrossRefs and emitted by applyBookmarks.
 type CrossRefExport = { name: string; format: 'text' | 'page' };
 
@@ -964,7 +1001,7 @@ function replaceColumns(doc: TiptapNode, cols: ColumnsExport[]): TiptapNode {
 
 // One generated table of contents, collected by replaceTableOfContents and emitted by
 // applyToc. Entries are the cached heading→page rows (the node view keeps them current).
-type TocEntry = { text: string; level: number; page: number };
+type TocEntry = { text: string; level: number; page: number; pages?: number[] };
 type TocExport = { kind: IndexKind; entries: TocEntry[]; title: string | null; maxLevel: number; leader: string | null; tabPosCm: number | null; levelStyles: (string | null)[] | null };
 
 // Swap each top-level tableOfContents node for a marker paragraph carrying the TOC
@@ -982,6 +1019,8 @@ function replaceTableOfContents(doc: TiptapNode, tocs: TocExport[]): TiptapNode 
           text: String(e.text),
           level: Math.min(MAX_HEADING_LEVEL, Math.max(1, Number(e.level) || 1)),
           page: Math.max(1, Number(e.page) || 1),
+          // An alphabetical row lists every page its term appears on.
+          ...(Array.isArray(e.pages) && e.pages.length ? { pages: e.pages.map((n: unknown) => Math.max(1, Number(n) || 1)) } : {}),
         }));
       const rawTitle = child.attrs?.title;
       const depth = Number(child.attrs?.maxLevel);
@@ -3761,6 +3800,7 @@ const ODF_INDEX: Record<IndexKind, { el: string; heading: string; entryStyle: st
   toc: { el: 'table-of-content', heading: 'Contents_20_Heading', entryStyle: 'Contents_20_', docName: 'Table of Contents' },
   figures: { el: 'illustration-index', heading: 'Illustration_20_Index_20_Heading', entryStyle: 'Illustration_20_Index_20_', docName: 'Illustration Index', seq: 'Illustration' },
   tables: { el: 'table-index', heading: 'Table_20_Index_20_Heading', entryStyle: 'Table_20_Index_20_', docName: 'Table Index', seq: 'Table' },
+  alphabetical: { el: 'alphabetical-index', heading: 'Index_20_Heading', entryStyle: 'Index_20_', docName: 'Alphabetical Index' },
 };
 
 function tocXml(toc: TocExport, index: number): string {
@@ -3776,14 +3816,20 @@ function tocXml(toc: TocExport, index: number): string {
     `<text:index-entry-link-start/><text:index-entry-text/>${stop}` +
     `<text:index-entry-page-number/><text:index-entry-link-end/>` +
     `</text:${spec.el}-entry-template>`;
-  const sourceAttrs = spec.seq
-    ? ` text:use-caption="true" text:caption-sequence-name="${spec.seq}" text:caption-sequence-format="category-and-value"`
-    : ` text:outline-level="${toc.maxLevel}" text:use-index-marks="false" text:use-index-source-styles="false"`;
+  // An alphabetical index is fed by its marks, is single-level, and merges the pages of
+  // a term the reader marked more than once — LibreOffice's text:combine-entries.
+  const sourceAttrs = toc.kind === 'alphabetical'
+    ? ' text:combine-entries="true" text:ignore-case="true"'
+    : spec.seq
+      ? ` text:use-caption="true" text:caption-sequence-name="${spec.seq}" text:caption-sequence-format="category-and-value"`
+      : ` text:outline-level="${toc.maxLevel}" text:use-index-marks="false" text:use-index-source-styles="false"`;
   const templates = spec.seq
     ? entry('', tocLevelStyle(toc, 1))
-    : HEADING_LEVELS.filter(l => l <= toc.maxLevel)
-        .map(l => entry(` text:outline-level="${l}"`, tocLevelStyle(toc, l)))
-        .join('');
+    : toc.kind === 'alphabetical'
+      ? entry(' text:outline-level="1"', tocLevelStyle(toc, 1))
+      : HEADING_LEVELS.filter(l => l <= toc.maxLevel)
+          .map(l => entry(` text:outline-level="${l}"`, tocLevelStyle(toc, l)))
+          .join('');
   const source =
     `<text:${spec.el}-source${sourceAttrs}>` +
     (title ? `<text:index-title-template text:style-name="${spec.heading}">${escapeXml(title)}</text:index-title-template>` : '') +
@@ -3797,7 +3843,7 @@ function tocXml(toc: TocExport, index: number): string {
         `</text:index-title>`
       : '') +
     toc.entries
-      .map(e => `<text:p text:style-name="${tocLevelStyle(toc, e.level)}">${escapeXml(e.text).replace(/\n/g, '<text:line-break/>')}<text:tab/>${e.page}</text:p>`)
+      .map(e => `<text:p text:style-name="${tocLevelStyle(toc, e.level)}">${escapeXml(e.text).replace(/\n/g, '<text:line-break/>')}<text:tab/>${e.pages?.join(', ') ?? e.page}</text:p>`)
       .join('') +
     `</text:index-body>`;
   return `<text:${spec.el} text:name="${escapeXml(name)}" text:protected="true">${source}${body}</text:${spec.el}>`;
@@ -3992,7 +4038,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const commentList: CommentExport[] = [];
   const seqFields: SequenceExport[] = [];
   const revisionList = new Map<string, RevisionExport>();
-  const sentinels = replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList), seqFields), revisionList);
+  const indexMarks: IndexEntryExport[] = [];
+  const sentinels = replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList), seqFields), revisionList), indexMarks);
   const raw = markTextEffects(bakeListCharStyles(sentinels, styles));
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
@@ -4192,7 +4239,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withBreaks = applyInlineSentinels(applyTabLeaders(cleaned));
   const withImages = applyImages(withBreaks, images);
   const withDateFields = applyDateTimeFields(withImages, dateFields, language ?? null);
-  const withSequences = applyRevisions(applySequenceFields(withDateFields, seqFields), revisionList);
+  const withSequences = applyIndexEntries(applyRevisions(applySequenceFields(withDateFields, seqFields), revisionList), indexMarks);
   const withFormulas = applyFormulas(withSequences, formulas);
   const withTextBoxes = applyTextBoxes(withFormulas, textBoxes);
   const withColumns = applyColumns(withTextBoxes, columns);

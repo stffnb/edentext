@@ -29,8 +29,18 @@
     return found;
   });
   const LEVELS = HEADING_LEVELS;
-  const INDEX_KINDS: IndexKind[] = ['toc', 'figures', 'tables'];
+  const INDEX_KINDS: IndexKind[] = ['toc', 'figures', 'tables', 'alphabetical'];
   let captionOpen = $state(false);
+  let hasSelection = $derived(tick >= 0 && !!editor && !editor.state.selection.empty);
+
+  // The selected text is the term unless the reader gives another — the same prompt
+  // both word processors open, which fills itself from the selection.
+  function markIndexEntry() {
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    const term = prompt(t().ribbon.indexEntryPrompt, editor.state.doc.textBetween(from, to, ' '));
+    if (term?.trim()) editor.chain().focus().setTextSelection(to).insertIndexEntry(term).run();
+  }
 
   function setMaxLevel(level: number) {
     closeMenu();
@@ -88,6 +98,14 @@
     title={t().caption.title}
     disabled={!editor || !!hfActive}
     onclick={() => (captionOpen = true)}
+  />
+  <RibbonButton
+    variant="big"
+    icon="bookmark"
+    label={t().ribbon.indexEntry}
+    title={hasSelection ? t().ribbon.indexEntry : t().ribbon.indexEntryNeedsSelection}
+    disabled={!editor || !!hfActive || !hasSelection}
+    onclick={markIndexEntry}
   />
 </RibbonGroup>
 

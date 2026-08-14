@@ -1042,6 +1042,7 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
 // numbers live after mount, so parse fidelity isn't critical.
 const ODF_INDEX_KIND: Record<string, IndexKind | undefined> = {
   'table-of-content': 'toc', 'illustration-index': 'figures', 'table-index': 'tables',
+  'alphabetical-index': 'alphabetical',
 };
 
 function convertToc(el: Element, ctx: Ctx, indexKind: IndexKind): Node {
@@ -1054,7 +1055,10 @@ function convertToc(el: Element, ctx: Ctx, indexKind: IndexKind): Node {
       const m = /Contents_20_(\d+)/.exec(style);
       const level = m ? Math.min(MAX_HEADING_LEVEL, Math.max(1, parseInt(m[1], 10))) : 1;
       const { text, page } = tocEntryTextAndPage(p);
-      if (text) entries.push({ text, level, page: Math.max(1, parseInt(page, 10) || 1) });
+      // An alphabetical row's number cell is a list ("3, 7, 12"); the node view rebuilds
+      // it from the marks, so the cache only has to survive until then.
+      const pages = page.split(/[,;]/).map((n) => Math.max(1, parseInt(n, 10) || 1)).filter(Boolean);
+      if (text) entries.push({ text, level, page: pages[0] ?? 1, ...(pages.length > 1 ? { pages } : {}) });
     }
   }
   // The file's own heading ("Inhalt", "Sommaire", …), so a reopened index keeps its name.
@@ -1894,6 +1898,17 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
                 continue;
               }
             }
+            // A place marked for the alphabetical index. LibreOffice writes a point
+            // mark; a range one (-mark-start/-end) is kept at its start, the editor's
+            // entry being a place too.
+            if (!hfFields && (e.localName === 'alphabetical-index-mark' || e.localName === 'alphabetical-index-mark-start')) {
+              const term = e.getAttributeNS(NS.text, 'string-value') ?? '';
+              if (term.trim()) {
+                out.push({ type: 'indexEntry', attrs: { term: term.trim(), key1: (e.getAttributeNS(NS.text, 'key1') ?? '').trim() } });
+              }
+              continue;
+            }
+            if (!hfFields && e.localName === 'alphabetical-index-mark-end') continue;
             // Other text fields (title, …) store their evaluated value as element
             // text — keep what the source document showed.
             if (e.textContent) pushText(e.textContent, props, linkHref);

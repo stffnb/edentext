@@ -2223,3 +2223,60 @@ describe('Leg 24: preset shapes beyond rect / round-rect / ellipse', () => {
     check('round-trips', kinds(importDocx(bytes)) === 'triangle,star5,rightArrow', kinds(importDocx(bytes)));
   });
 });
+
+describe('Leg 25: alphabetical index', () => {
+  const mark = (term: string, key1 = ''): N => ({ type: 'indexEntry', attrs: { term, key1 } });
+  const doc: N = { type: 'doc', content: [
+    P(null, T('Der '), mark('Kaffee'), T('Kaffee kommt aus Äthiopien.')),
+    P(null, T('Auch '), mark('Bohne', 'Kaffee'), T('die Bohne.')),
+    P(null, T('Und wieder '), mark('Kaffee'), T('Kaffee.')),
+    { type: 'tableOfContents', attrs: {
+      index: 'alphabetical', title: 'Index', leader: '.',
+      entries: [
+        { text: 'Kaffee', level: 1, page: 1, pages: [1, 2] },
+        { text: 'Kaffee: Bohne', level: 1, page: 1 },
+      ],
+    } },
+  ] };
+  const terms = (back: N) => {
+    const out: string[] = [];
+    const walk = (n: N): void => {
+      if (n?.type === 'indexEntry') out.push(`${n.attrs.key1 ? `${n.attrs.key1}:` : ''}${n.attrs.term}`);
+      (n?.content ?? []).forEach(walk);
+    };
+    walk(back.content);
+    return out.join(' ');
+  };
+  const indexKind = (back: N) => (back.content.content ?? [])
+    .find((n: N) => n.type === 'tableOfContents')?.attrs?.index;
+
+  it('ODT: point marks plus a text:alphabetical-index, and back', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('mark emitted', xml.includes('<text:alphabetical-index-mark text:string-value="Kaffee"/>'),
+      xml.match(/<text:alphabetical-index-mark[^>]*>/g));
+    check('a key files the term under it', xml.includes('text:string-value="Bohne" text:key1="Kaffee"'),
+      xml.match(/<text:alphabetical-index-mark[^>]*>/g));
+    check('index element emitted', xml.includes('<text:alphabetical-index ') || xml.includes('<text:alphabetical-index>'),
+      xml.match(/<text:alphabetical-index[^>]*>/g));
+    check('source merges repeated entries', xml.includes('text:combine-entries="true"'));
+    check('the row keeps every page it was marked on', xml.includes('<text:tab/>1, 2</text:p>'),
+      xml.match(/<text:index-body>[\s\S]*?<\/text:index-body>/)?.[0]);
+    const back = importOdt(bytes);
+    check('no warnings on own export', back.warnings.length === 0, back.warnings);
+    check('marks round-trip', terms(back as N) === 'Kaffee Kaffee:Bohne Kaffee', terms(back as N));
+    check('index round-trips as alphabetical', indexKind(back) === 'alphabetical', indexKind(back));
+  });
+
+  it('DOCX: XE fields plus an INDEX field, and back', async () => {
+    const bytes = await buildDocx(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    check('XE emitted', xml.includes('XE &quot;Kaffee&quot;'), xml.match(/w:instr="[^"]*XE[^"]*"/g));
+    check('a key rides the term', xml.includes('XE &quot;Kaffee:Bohne&quot;'), xml.match(/w:instr="[^"]*XE[^"]*"/g));
+    check('INDEX field emitted', /w:instr="INDEX[^"]*"/.test(xml), xml.match(/w:instr="[^"]*"/g));
+
+    const back = importDocx(bytes);
+    check('marks round-trip', terms(back as N) === 'Kaffee Kaffee:Bohne Kaffee', terms(back as N));
+    check('index round-trips as alphabetical', indexKind(back) === 'alphabetical', indexKind(back));
+  });
+});
