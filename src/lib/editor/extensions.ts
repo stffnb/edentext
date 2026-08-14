@@ -32,6 +32,7 @@ import { BlockFontSize } from './extensions/blockFontSize';
 import { ParagraphStyle } from './extensions/paragraphStyle';
 import { CharacterStyle } from './extensions/characterStyle';
 import { PageBreak } from './extensions/pageBreak';
+import { TextDirection } from './extensions/textDirection';
 import { Indent } from './extensions/indent';
 import { TabStops } from './extensions/tabStops';
 import { FormattingMarks } from './extensions/formattingMarks';
@@ -139,6 +140,8 @@ export const extensions = [
   // Named character style on a run (LibreOffice style:family="text" / Word w:rStyle).
   CharacterStyle,
   PageBreak,
+  // Per-block base direction, overriding the page's (storage/writingMode.ts).
+  TextDirection,
   Indent,
   TabStops,
   Heading.configure({ levels: HEADING_LEVELS as Level[] }),

@@ -1913,3 +1913,39 @@ describe('Leg 17: the header row repeats on every page', () => {
     check('no w:tblHeader', !strFromU8(unzipSync(await buildDocx(plain, margins, 'portrait'))['word/document.xml']).includes('<w:tblHeader'));
   });
 });
+
+describe('Leg 18: per-paragraph text direction', () => {
+  const doc: N = { type: 'doc', content: [
+    P(null, T('left to right')),
+    P({ dir: 'rtl' }, T('טקסט מימין לשמאל')),
+    { type: 'table', content: [ROW(CELL(null, P({ dir: 'rtl' }, T('בתא'))))] },
+  ] };
+
+  it('ODT: style:writing-mode="rl-tb" on the block, and back', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('emitted twice (block + cell)', (content.match(/style:writing-mode="rl-tb"/g) ?? []).length === 2,
+      content.match(/style:writing-mode="[^"]*"/g));
+    const back = importOdt(bytes).content as N;
+    check('plain block stays undirected', back.content[0].attrs?.dir === undefined, back.content[0].attrs);
+    check('rtl block round-trips', back.content[1].attrs?.dir === 'rtl', back.content[1].attrs);
+    const cellPara = back.content[2].content[0].content[0].content[0];
+    check('cell paragraph round-trips', cellPara.attrs?.dir === 'rtl', cellPara.attrs);
+  });
+
+  it('DOCX: w:bidi in w:pPr, and back', async () => {
+    const bytes = await buildDocx(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    check('emitted twice (block + cell)', (xml.match(/<w:bidi\s*\/>/g) ?? []).length === 2, xml.match(/<w:bidi[^>]*>/g));
+    const back = importDocx(bytes).content as N;
+    check('plain block stays undirected', back.content[0].attrs?.dir === undefined, back.content[0].attrs);
+    check('rtl block round-trips', back.content[1].attrs?.dir === 'rtl', back.content[1].attrs);
+  });
+
+  it('an undirected document writes no writing mode at all', async () => {
+    const plain: N = { type: 'doc', content: [P(null, T('plain'))] };
+    const content = strFromU8(unzipSync(await buildOdt(plain, margins, 'portrait'))['content.xml']);
+    check('no ODF writing mode', !content.includes('style:writing-mode'), content.match(/style:writing-mode="[^"]*"/g));
+    check('no w:bidi', !strFromU8(unzipSync(await buildDocx(plain, margins, 'portrait'))['word/document.xml']).includes('<w:bidi'));
+  });
+});

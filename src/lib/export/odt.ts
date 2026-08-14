@@ -287,6 +287,7 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (attrs.widowControl === false) return true;
   if (attrs.keepNext === true) return true;
   if (attrs.keepLines === true) return true;
+  if (attrs.dir === 'rtl' || attrs.dir === 'ltr') return true;
   for (const s of ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'])
     if (typeof attrs[s] === 'string' && attrs[s] && attrs[s] !== 'none') return true;
   const ta = attrs.textAlign;
@@ -869,12 +870,19 @@ type ParaStyle = {
   borderRight: string | null;
   borderBottom: string | null;
   borderLeft: string | null;
+  // The block's own base direction (textDirection.ts); null inherits the page's.
+  dir: 'ltr' | 'rtl' | null;
 };
 
 function paraStyleIsEmpty(s: ParaStyle): boolean {
   return s.align === null && s.spaceBefore === null && s.spaceAfter === null && s.lineHeight === null
     && s.background === null && s.borderTop === null && s.borderRight === null
-    && s.borderBottom === null && s.borderLeft === null;
+    && s.borderBottom === null && s.borderLeft === null && s.dir === null;
+}
+
+// ODF writes a direction as a writing mode; the vertical ones are not ours to emit.
+export function writingModeOf(dir: 'ltr' | 'rtl' | null | undefined): string | null {
+  return dir === 'rtl' ? 'rl-tb' : dir === 'ltr' ? 'lr-tb' : null;
 }
 
 // Extract the overridable paragraph properties from a node's attrs. Left
@@ -900,6 +908,7 @@ function paraStyleFromAttrs(attrs: TiptapNode['attrs']): ParaStyle {
     borderRight: border(attrs?.borderRight),
     borderBottom: border(attrs?.borderBottom),
     borderLeft: border(attrs?.borderLeft),
+    dir: attrs?.dir === 'rtl' || attrs?.dir === 'ltr' ? attrs.dir : null,
   };
 }
 
@@ -918,6 +927,8 @@ function paraStyleProps(style: ParaStyle): string[] {
     const v = style[attr];
     if (v) props.push(`fo:border-${side}="${v}"`);
   }
+  const wm = writingModeOf(style.dir);
+  if (wm) props.push(`style:writing-mode="${wm}"`);
   return props;
 }
 
@@ -1358,7 +1369,8 @@ function applyEmptyLineFontSizes(odtBytes: Uint8Array): Uint8Array {
 
 // A top-level paragraph's box spec for the PBX sentinel: bg|borderTop|Right|Bottom|Left,
 // each the raw value (canonical border '<W>pt solid #RRGGBB' is a valid fo:border) or '',
-// then a widow flag, the right indent and a keep-with-next flag. '' when it needs none.
+// then a widow flag, the right indent, a keep-with-next flag and the writing mode.
+// '' when it needs none.
 function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   const s = paraStyleFromAttrs(attrs);
   const noWidow = attrs?.widowControl === false;
@@ -1366,14 +1378,15 @@ function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   const keepLines = attrs?.keepLines === true;
   // odf-kit has a paragraph option for the left indent but none for the right one.
   const right = typeof attrs?.indentRight === 'number' && attrs.indentRight > 0 ? attrs.indentRight : 0;
-  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right && !keepNext && !keepLines) return '';
+  const wm = writingModeOf(s.dir);
+  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right && !keepNext && !keepLines && !wm) return '';
   return [s.background, s.borderTop, s.borderRight, s.borderBottom, s.borderLeft]
     .map((v) => v ?? '')
-    .concat(noWidow ? 'w0' : '', right ? `${right}cm` : '', keepNext ? 'k1' : '', keepLines ? 'g1' : '').join('|');
+    .concat(noWidow ? 'w0' : '', right ? `${right}cm` : '', keepNext ? 'k1' : '', keepLines ? 'g1' : '', wm ?? '').join('|');
 }
 
 function boxSpecToProps(spec: string): string {
-  const [bg, bt, br, bb, bl, widow, marginRight, keepNext, keepLines] = spec.split('|');
+  const [bg, bt, br, bb, bl, widow, marginRight, keepNext, keepLines, writingMode] = spec.split('|');
   const props: string[] = [];
   if (bg) props.push(`fo:background-color="${bg}"`);
   if (bt) props.push(`fo:border-top="${bt}"`);
@@ -1385,6 +1398,7 @@ function boxSpecToProps(spec: string): string {
   if (marginRight) props.push(`fo:margin-right="${marginRight}"`);
   if (keepNext === 'k1') props.push('fo:keep-with-next="always"');
   if (keepLines === 'g1') props.push('fo:keep-together="always"');
+  if (writingMode) props.push(`style:writing-mode="${writingMode}"`);
   return props.join(' ');
 }
 

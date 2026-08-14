@@ -27,6 +27,8 @@
   // An unset paragraph renders left, so that's what the box shows; a selection
   // mixing two alignments still reads '' and leaves it blank.
   let align = $derived(read('textAlign', 'left'));
+  // '' is the page's own direction (LibreOffice's "Use superordinate object settings").
+  let dir = $derived(read<string | null>('dir', null) ?? '');
   let indent = $derived(read('indent', 0));
   let indentRight = $derived(read('indentRight', 0));
   let indentFirst = $derived(read('indentFirst', 0));
@@ -85,6 +87,15 @@
           <span>{t().align.section}</span>
           <select value={align} onchange={(e) => editor?.chain().focus().setTextAlign((e.currentTarget as HTMLSelectElement).value as never).run()}>
             {#each ALIGNS as a}<option value={a}>{t().align[a]}</option>{/each}
+          </select>
+        </label>
+
+        <label class="row">
+          <span>{t().paragraphDialog.textDirection}</span>
+          <select value={dir} onchange={(e) => setAttr('dir', (e.currentTarget as HTMLSelectElement).value || null)}>
+            <option value="">{t().paragraphDialog.dirPage}</option>
+            <option value="ltr">{t().paragraphDialog.dirLtr}</option>
+            <option value="rtl">{t().paragraphDialog.dirRtl}</option>
           </select>
         </label>
 

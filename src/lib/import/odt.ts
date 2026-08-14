@@ -118,6 +118,9 @@ type Ctx = {
   pendingBlocks: Node[];
   // Text width (cm) of the file's page setup; a table's margins are relative to it.
   contentWidthCm: number;
+  // The page's own direction: a block declaring the same one is inheriting, not
+  // formatted, so only a block that differs carries a `dir` attr.
+  pageRtl: boolean;
   // Master pages the body switches to, in order — one section each past the first.
   masterPages: string[];
   // How many body blocks each of them governs: the largest count is the document's own
@@ -603,7 +606,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, masterPages: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), notes: [] };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), notes: [] };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -1399,6 +1402,11 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // paragraph carries it — otherwise every heading would accrete the producer's flag.
   if (!isHeading && paraProps['fo:keep-with-next'] === 'always') attrs.keepNext = true;
   if (!isHeading && paraProps['fo:keep-together'] === 'always') attrs.keepLines = true;
+  // style:writing-mode — the block's own base direction. "page" inherits, and the mode
+  // the page already has is no formatting, so only a block that differs carries it.
+  const wm = paraProps['style:writing-mode'];
+  if (wm === 'rl-tb' && !ctx.pageRtl) attrs.dir = 'rtl';
+  else if (wm === 'lr-tb' && ctx.pageRtl) attrs.dir = 'ltr';
   const markFont = resolver.fontFamilyOf(baseTextProps);
   if (markFont && !defaults.fonts.has(markFont.toLowerCase())) attrs.fontFamily = markFont;
   applyUniformRunFont(attrs, content);

@@ -178,6 +178,7 @@ export class DocxStyles {
   private ownContextual = new Map<string, boolean>(); // style's own w:pPr/w:contextualSpacing
   private ownKeepNext = new Map<string, boolean>(); // style's own w:pPr/w:keepNext
   private ownKeepLines = new Map<string, boolean>(); // style's own w:pPr/w:keepLines
+  private ownBidi = new Map<string, boolean>(); // style's own w:pPr/w:bidi
   private ownTabs = new Map<string, TabStop[]>(); // style's own w:pPr/w:tabs
   private ownCellMar = new Map<string, Element>(); // table style's own w:tblPr/w:tblCellMar
   private ownTblBorders = new Map<string, Element>(); // table style's own w:tblPr/w:tblBorders
@@ -252,6 +253,8 @@ export class DocxStyles {
       if (kn) this.ownKeepNext.set(id, toggle(kn));
       const kl = ppr && firstChild(ppr, 'keepLines');
       if (kl) this.ownKeepLines.set(id, toggle(kl));
+      const bd = ppr && firstChild(ppr, 'bidi');
+      if (bd) this.ownBidi.set(id, toggle(bd));
       const tabs = ppr && firstChild(ppr, 'tabs');
       if (tabs) this.ownTabs.set(id, readTabStops(tabs));
       const ind = ppr && firstChild(ppr, 'ind');
@@ -445,6 +448,15 @@ export class DocxStyles {
     const own = this.ownKeepLines.get(styleId);
     if (own != null) return own;
     return this.paragraphKeepLines(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // w:bidi — the style's base direction. null = it declares none, so the section's holds.
+  paragraphBidi(styleId: string | null | undefined, seen = new Set<string>()): boolean | null {
+    if (!styleId || seen.has(styleId)) return null;
+    seen.add(styleId);
+    const own = this.ownBidi.get(styleId);
+    if (own != null) return own;
+    return this.paragraphBidi(this.basedOn.get(styleId) ?? null, seen);
   }
 
   private styleWidow(styleId: string | null | undefined, seen = new Set<string>()): boolean | null {

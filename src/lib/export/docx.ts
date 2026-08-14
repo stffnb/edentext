@@ -953,6 +953,8 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     widowControl: attrs.widowControl === false ? false : undefined,
     keepNext: attrs.keepNext === true || undefined,
     keepLines: attrs.keepLines === true || undefined,
+    // w:bidi — the block's own base direction (textDirection.ts).
+    bidirectional: attrs.dir === 'rtl' ? true : attrs.dir === 'ltr' ? false : undefined,
     tabStops: stops.length
       ? stops.map((s) => ({ type: DOCX_TAB_TYPE[s.align], position: cmToTwip(s.pos), leader: DOCX_LEADER[s.leader ?? ''] }))
       : undefined,

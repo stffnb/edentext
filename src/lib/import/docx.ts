@@ -58,6 +58,9 @@ type Ctx = {
   contentWidthCm: number;
   // Left page margin (cm), the origin a page-relative frame offset is measured against.
   leftMarginCm: number;
+  // The section's own direction: a block declaring the same one is inheriting, not
+  // formatted, so only a block that differs carries a `dir` attr.
+  pageRtl: boolean;
   // The enclosing table style's w:pPr/w:spacing, applied to its cells' paragraphs.
   cellSpacing: ParaSpacing;
   // Whether w:tblInd is measured to the cell's text rather than the table's edge.
@@ -172,7 +175,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const sectPr = fc(body, 'sectPr');
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), notes: [], noteParts: {
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, pageRtl: sectPrRtl(sectPr), cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), notes: [], noteParts: {
     footnote: noteParts(files, 'footnotes', 'footnote'),
     endnote: noteParts(files, 'endnotes', 'endnote'),
   } };
@@ -230,8 +233,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     styles: collectStyleSheet(ctx),
     notes: docNoteSettings(files),
     margins: withMirror(first.margins ?? sect.margins, mirrored),
-    // A right-to-left section (w:bidi): the columns fill from the right.
-    rtl: !!finalSectPr && (() => { const b = fc(finalSectPr, 'bidi'); return !!b && onOff(b); })(),
+    rtl: sectPrRtl(finalSectPr),
     hyphenate: docAutoHyphenation(files),
     pageNumbering: docxPageNumbering(sectPr),
     orientation: sect.orientation,
@@ -884,6 +886,11 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   if (!level && (directKn ? onOff(directKn) : ctx.styles.paragraphKeepNext(styleId))) attrs.keepNext = true;
   const directKl = fc(ppr, 'keepLines');
   if (!level && (directKl ? onOff(directKl) : ctx.styles.paragraphKeepLines(styleId))) attrs.keepLines = true;
+  // w:bidi — the block's own base direction; the section's own is inheritance, not
+  // formatting, so only a block that differs from it carries the attr.
+  const directBidi = fc(ppr, 'bidi');
+  const bidi = directBidi ? onOff(directBidi) : ctx.styles.paragraphBidi(styleId);
+  if (bidi != null && bidi !== ctx.pageRtl) attrs.dir = bidi ? 'rtl' : 'ltr';
   // Tab stops: a direct w:tabs replaces the style's, which the resolver walks for.
   const directTabs = fc(ppr, 'tabs');
   const stops = formatTabStops(directTabs ? readTabStops(directTabs) : ctx.styles.paragraphTabs(styleId));
@@ -2106,6 +2113,13 @@ function splitBodySections(children: Element[]): {
   }
   groups.push({ els, sectPr: null });
   return { groups, midSectPrs };
+}
+
+// A right-to-left section (w:bidi): the columns fill from the right, and it is the
+// direction a block inherits when it declares none of its own.
+function sectPrRtl(sectPr: Element | null): boolean {
+  const b = fc(sectPr, 'bidi');
+  return !!b && onOff(b);
 }
 
 // A section break's w:type: 'continuous'/'nextColumn' flow within the page; anything
