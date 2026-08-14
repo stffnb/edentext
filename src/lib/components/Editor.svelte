@@ -857,10 +857,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     waitForSettled();
   });
 
-  onMount(() => {
+  onMount(async () => {
     // Start with empty history lists — loaded content is not an undoable edit.
     resetHistoryLog();
-    const saved = loadDocument();
+    // Awaited: the document's pictures live in IndexedDB, and the editor is built
+    // from the whole document or the first pagination pass measures the wrong one.
+    const saved = await loadDocument();
 
     editor = new Editor({
       element,

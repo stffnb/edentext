@@ -1,4 +1,5 @@
 import { t } from '../i18n/i18n.svelte';
+import { stashImages, putImages, restoreImages } from './imageStore';
 
 const STORAGE_KEY = 'edentext-doc';
 // Set while a stored document is being handed to the editor, cleared once the editor
@@ -18,9 +19,13 @@ let quotaWarned = false;
 
 export function saveDocument(json: object): void {
   if (timeout) clearTimeout(timeout);
-  timeout = setTimeout(() => {
+  timeout = setTimeout(async () => {
+    // Pictures go to IndexedDB and the JSON keeps a key; where that fails they stay
+    // inline, which is the only thing localStorage ever held.
+    const { json: slim, blobs } = stashImages(json);
+    const stashed = await putImages(blobs);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(json));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stashed ? slim : json));
     } catch (err) {
       console.error('[autosave] Could not save the document:', err);
       if (!quotaWarned) {
@@ -31,7 +36,7 @@ export function saveDocument(json: object): void {
   }, DEBOUNCE_MS);
 }
 
-export function loadDocument(): object | null {
+export async function loadDocument(): Promise<object | null> {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (localStorage.getItem(BOOT_KEY)) {
     localStorage.removeItem(BOOT_KEY);
@@ -51,6 +56,8 @@ export function loadDocument(): object | null {
     return null;
   }
   localStorage.setItem(BOOT_KEY, '1');
+  const missing = await restoreImages(doc);
+  if (missing) requestAnimationFrame(() => alert(t().dialogs.picturesNotRestored(missing)));
   return doc;
 }
 
