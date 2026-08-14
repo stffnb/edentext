@@ -64,6 +64,9 @@ import { AutoCorrect } from './extensions/autoCorrect';
 import { HEADING_LEVELS } from '../export/odt';
 import { styleSheet } from '../styles/sheet.svelte';
 import { noteSettings } from '../storage/notes.svelte';
+import { recordChanges } from '../storage/trackChanges.svelte';
+import { loadDocProperties } from '../storage/docProperties';
+import { Insertion, Deletion, TrackChanges } from './extensions/trackChanges';
 
 export const extensions = [
   // textBox and columns have their own groups so only the document (not
@@ -195,6 +198,11 @@ export const extensions = [
   FormattingMarks,
   SpellCheck,
   // Last of the typing extensions: its handleTextInput runs after every input rule.
+  // Recorded revisions: an insertion is marked text, a deletion is text kept and
+  // marked. Round-trips to ODF <text:tracked-changes> and DOCX w:ins/w:del.
+  Insertion,
+  Deletion,
+  TrackChanges.configure({ recording: recordChanges, author: () => loadDocProperties().author.trim() }),
   AutoCorrect,
   SearchReplace,
   // Word/LibreOffice key bindings that aren't TipTap defaults; body:true adds the

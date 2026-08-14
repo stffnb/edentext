@@ -138,6 +138,10 @@ type Ctx = {
   openBookmarks: Set<string>;
   // Ranged comments currently open, by their office:name — same shape as openBookmarks.
   openComments: Map<string, Record<string, unknown>>;
+  // Recorded revisions: the <text:tracked-changes> registry by change id, and the
+  // insertions whose <text:change-start> has been seen but not their end.
+  revisions: Map<string, { kind: 'insertion' | 'deletion'; author: string; date: string; text: string }>;
+  openInsertions: Map<string, Record<string, unknown>>;
   // Footnotes/endnotes in anchor order: the file stores each note's text at its anchor,
   // the editor keeps them in one section at the document end (notes.ts).
   notes: { id: string; kind: NoteKind; label: string | null; text: string; content: Node[]; styleName: string | null }[];
@@ -616,7 +620,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), notes: [] };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), revisions: odfRevisions(body), openInsertions: new Map(), notes: [] };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -1611,6 +1615,27 @@ function convertDateTimeField(e: Element, ctx: Ctx): Node | null {
   return { type: 'dateTimeField', attrs: { kind, format, fixed, value: fieldValue(kind, raw) } };
 }
 
+// The <text:tracked-changes> registry: one entry per change id. A deletion carries the
+// text it removed (the body has only a point marker), an insertion only who and when.
+function odfRevisions(body: Element): Map<string, { kind: 'insertion' | 'deletion'; author: string; date: string; text: string }> {
+  const out = new Map<string, { kind: 'insertion' | 'deletion'; author: string; date: string; text: string }>();
+  const registry = body.getElementsByTagNameNS(NS.text, 'tracked-changes')[0];
+  for (const region of Array.from(registry?.children ?? [])) {
+    const id = region.getAttributeNS(NS.text, 'id') ?? region.getAttribute('xml:id');
+    const kindEl = Array.from(region.children).find((c) => c.localName === 'insertion' || c.localName === 'deletion');
+    if (!id || !kindEl) continue;
+    const info = kindEl.getElementsByTagNameNS(NS.office, 'change-info')[0];
+    const paras = Array.from(kindEl.children).filter((c) => c.namespaceURI === NS.text && c.localName === 'p');
+    out.set(id, {
+      kind: kindEl.localName === 'deletion' ? 'deletion' : 'insertion',
+      author: info?.getElementsByTagNameNS(NS.dc, 'creator')[0]?.textContent?.trim() ?? '',
+      date: info?.getElementsByTagNameNS(NS.dc, 'date')[0]?.textContent?.trim() ?? '',
+      text: paras.map((n) => n.textContent ?? '').join('\n'),
+    });
+  }
+  return out;
+}
+
 // <text:sequence> → a caption's running number. The counter's name is the category
 // (LibreOffice's "Illustration"/"Table"); the element text is the file's cached value,
 // which the editor's own numbering overwrites on the first edit.
@@ -1710,6 +1735,8 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
     if (bookmark) marks.push({ type: 'bookmark', attrs: { name: bookmark } });
     const comment = hfFields ? undefined : ctx.openComments.values().next().value;
     if (comment) marks.push({ type: 'comment', attrs: comment });
+    const insertion = hfFields ? undefined : ctx.openInsertions.values().next().value;
+    if (insertion) marks.push({ type: 'insertion', attrs: insertion });
     const node: Node = { type: 'text', text: clean };
     if (marks.length) node.marks = marks;
     out.push(node);
@@ -1792,12 +1819,34 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
             if (e.textContent) pushText(e.textContent, props, linkHref);
             continue;
           }
+          // A point bookmark has no range to mark; a soft page break is the
+          // producer's own pagination, which the editor recomputes.
           case 'bookmark':
           case 'soft-page-break':
-          case 'change':
-          case 'change-start':
-          case 'change-end':
             continue;
+          case 'change-start':
+          case 'change-end': {
+            // A recorded insertion brackets its runs; the registry holds who and when.
+            const id = e.getAttributeNS(NS.text, 'change-id');
+            const rev = id ? ctx.revisions.get(id) : undefined;
+            if (!hfFields && id && rev?.kind === 'insertion') {
+              if (e.localName === 'change-start') ctx.openInsertions.set(id, { id, author: rev.author, date: rev.date });
+              else ctx.openInsertions.delete(id);
+            }
+            continue;
+          }
+          case 'change': {
+            // A deletion is a point marker: its text lives only in the registry, and the
+            // editor keeps it in the document marked as removed.
+            const id = e.getAttributeNS(NS.text, 'change-id');
+            const rev = id ? ctx.revisions.get(id) : undefined;
+            if (!hfFields && id && rev?.kind === 'deletion' && rev.text) {
+              const marks = marksFor(props, ctx.resolver, defaults);
+              marks.push({ type: 'deletion', attrs: { id, author: rev.author, date: rev.date } });
+              out.push({ type: 'text', text: rev.text, marks });
+            }
+            continue;
+          }
           default:
             // In headers/footers, page fields stay live fields (pageField.ts). The atom
             // carries the run's marks so its digits render in the run's font/size.

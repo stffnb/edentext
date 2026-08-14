@@ -1007,6 +1007,19 @@
   border-bottom-color: rgba(140, 140, 140, 0.6);
 }
 
+/* Recorded revisions (trackChanges.ts). Both word processors underline an insertion
+   and strike a deletion, in the reviewer's colour; one colour here, since the editor
+   has a single author. */
+.tiptap .pm-insertion {
+  color: #b5179e;
+  text-decoration: underline;
+}
+
+.tiptap .pm-deletion {
+  color: #b5179e;
+  text-decoration: line-through;
+}
+
 /* Print styles: proper A4 pagination */
 @media print {
   .editor {

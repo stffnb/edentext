@@ -3,7 +3,7 @@ import {
   FootnoteReferenceRun, EndnoteReferenceRun,
   TableOfContents,
   Table, TableRow, TableCell, Header, Footer, PageNumber, SimpleField,
-  CommentRangeStart, CommentRangeEnd, CommentReference,
+  CommentRangeStart, CommentRangeEnd, CommentReference, InsertedTextRun, DeletedTextRun,
   AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
   WidthType, HeightRule, PageOrientation, LineRuleType, LineNumberRestartFormat, TableLayoutType, SectionType, NumberFormat,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
@@ -319,21 +319,62 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
 
 // A text node → one run; tab chars become <w:tab/> via mixed children (a literal \t
 // would otherwise be dropped). Returned as an array so a link wrapper can adopt it.
-function textNodeToRuns(node: TiptapNode, force: TextProps): TextRun[] {
+function textNodeToRuns(node: TiptapNode, force: TextProps): Inline[] {
   const text = node.text ?? '';
   const props = runPropsFromMarks(node.marks, force);
-  if (!text.includes('\t')) return [new TextRun({ text, ...props })];
-  const parts = text.split('\t');
+  const opts = text.includes('\t')
+    ? { children: tabbedChildren(text), ...props }
+    : { text, ...props };
+  // A recorded revision wraps the run: w:ins keeps its text, w:del turns it into
+  // w:delText — the package's own two run kinds.
+  const rev = revisionOf(node);
+  if (rev) {
+    const attrs = { id: docRevisionId(rev.attrs.id), author: rev.attrs.author, date: rev.attrs.date };
+    return [rev.kind === 'insertion'
+      ? new InsertedTextRun({ ...opts, ...attrs })
+      : new DeletedTextRun({ ...opts, ...attrs })];
+  }
+  return [new TextRun(opts)];
+}
+
+function tabbedChildren(text: string): (string | Tab)[] {
   const children: (string | Tab)[] = [];
-  parts.forEach((p, i) => {
+  text.split('\t').forEach((p, i) => {
     if (i > 0) children.push(new Tab());
     if (p) children.push(p);
   });
-  return [new TextRun({ children, ...props })];
+  return children;
+}
+
+// The insertion/deletion mark on a run, if any (trackChanges.ts).
+function revisionOf(node: TiptapNode): { kind: 'insertion' | 'deletion'; attrs: { id: string; author: string; date: string } } | null {
+  const m = node.marks?.find((x) => x.type === 'insertion' || x.type === 'deletion');
+  if (!m) return null;
+  const a = m.attrs ?? {};
+  return {
+    kind: m.type as 'insertion' | 'deletion',
+    attrs: {
+      id: String(a.id ?? ''),
+      author: String(a.author ?? '') || GENERATOR,
+      // Word wants a UTC stamp; a file's own is kept when it parses.
+      date: typeof a.date === 'string' && a.date ? a.date : new Date().toISOString(),
+    },
+  };
+}
+
+// Word numbers its revisions; the editor's ids are strings, so they are handed out in
+// first-seen order and every run of one change keeps the same number.
+let docRevisionIds = new Map<string, number>();
+function docRevisionId(id: string): number {
+  const seen = docRevisionIds.get(id);
+  if (seen != null) return seen;
+  const next = docRevisionIds.size;
+  docRevisionIds.set(id, next);
+  return next;
 }
 
 type Inline = TextRun | ImageRun | ExternalHyperlink | InternalHyperlink | SimpleField | Bookmark
-  | CommentRangeStart | CommentRangeEnd;
+  | CommentRangeStart | CommentRangeEnd | InsertedTextRun | DeletedTextRun;
 
 // A date/time field. A fixed field is plain text (Word has no fixed-date field); an
 // auto field is a DATE/TIME field with the picture switch and a cached value.
@@ -1521,6 +1562,7 @@ export async function buildDocx(
   docNoteIds = new Map();
   docComments = [];
   docCommentIds = new Map();
+  docRevisionIds = new Map();
   collectComments(docJson);
   const notesByClass: Record<NoteKind, Record<string, { children: Paragraph[] }>> = { footnote: {}, endnote: {} };
   for (const note of noteBlocks) {

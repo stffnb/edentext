@@ -6,6 +6,8 @@
   import { captionClicks, anchored, clickOutside, isMenuOpen, toggleMenu } from '../menu.svelte';
   import { countText, type TextStats } from '../../../utils/wordCount';
   import type { DocumentLanguage } from '../../../storage/documentLanguage';
+  import { recordChanges, setRecordChanges } from '../../../storage/trackChanges.svelte';
+  import { revisions } from '../../../editor/extensions/trackChanges';
   import { t } from '../../../i18n/i18n.svelte';
 
   let { editor, tick, documentLanguage, onLanguage, onAutoCorrect, onNewComment, commentsOpen = false, onToggleComments }: {
@@ -20,6 +22,7 @@
   } = $props();
 
   let hasSelection = $derived(tick >= 0 && !!editor && !editor.state.selection.empty);
+  let hasRevisions = $derived(tick >= 0 && !!editor && revisions(editor.state.doc).length > 0);
 
   let stats = $derived.by<TextStats>(() => {
     if (tick < 0 || !editor) return { words: 0, charsWithSpaces: 0, charsNoSpaces: 0, paragraphs: 0 };
@@ -93,6 +96,47 @@
     title={t().comments.showPane}
     active={commentsOpen}
     onclick={() => onToggleComments?.()}
+  />
+</RibbonGroup>
+
+<div class="ribbon-sep"></div>
+
+<RibbonGroup label={t().ribbon.groups.revisions}>
+  <RibbonButton
+    variant="big"
+    icon="trackChanges"
+    label={t().revisions.record}
+    title={t().revisions.recordHint}
+    active={recordChanges()}
+    onclick={() => setRecordChanges(!recordChanges())}
+  />
+  <RibbonButton
+    icon="check"
+    label={t().revisions.accept}
+    title={t().revisions.acceptHint}
+    disabled={!hasRevisions}
+    onclick={() => editor?.chain().focus().acceptRevisions().run()}
+  />
+  <RibbonButton
+    icon="close"
+    label={t().revisions.reject}
+    title={t().revisions.rejectHint}
+    disabled={!hasRevisions}
+    onclick={() => editor?.chain().focus().rejectRevisions().run()}
+  />
+  <RibbonButton
+    variant="small"
+    icon="check"
+    label={t().revisions.acceptAll}
+    disabled={!hasRevisions}
+    onclick={() => editor?.chain().focus().acceptRevisions(true).run()}
+  />
+  <RibbonButton
+    variant="small"
+    icon="close"
+    label={t().revisions.rejectAll}
+    disabled={!hasRevisions}
+    onclick={() => editor?.chain().focus().rejectRevisions(true).run()}
   />
 </RibbonGroup>
 

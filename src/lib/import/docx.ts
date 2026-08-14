@@ -1267,6 +1267,9 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
           break;
         }
         case 'instrText': if (fieldMode === 'instr') fieldInstr += child.textContent ?? ''; break;
+        // w:delText is a deleted run's text — the same content, kept because the
+        // revision is only recorded, not applied.
+        case 'delText':
         case 't':
           if ((fieldCrossRef || fieldSeq) && fieldMode === 'result') fieldResultText += child.textContent ?? '';
           else if (!skipResult()) pushText(child.textContent ?? '', marks);
@@ -1339,9 +1342,26 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
         for (const r of fcAll(el, 'r')) handleRun(r); // body: keep the shown value
         break;
       }
-      case 'ins': // accepted tracked-change insertion → keep its runs
+      case 'ins':
+      case 'del': {
+        // A recorded revision. Its runs keep their formatting and take the mark; a
+        // deletion's text sits in w:delText, which handleRun reads as ordinary text.
+        const kind = el.localName === 'del' ? 'deletion' : 'insertion';
+        const attrs = {
+          id: el.getAttributeNS(W, 'id') ?? '',
+          author: el.getAttributeNS(W, 'author') ?? '',
+          date: el.getAttributeNS(W, 'date') ?? '',
+        };
+        const before = out.length;
         for (const r of fcAll(el, 'r')) handleRun(r);
+        if (!hfFields) {
+          for (let i = before; i < out.length; i++) {
+            if (out[i].type !== 'text') continue;
+            out[i].marks = [...(out[i].marks ?? []), { type: kind, attrs }];
+          }
+        }
         break;
+      }
       case 'smartTag':
         for (const r of fcAll(el, 'r')) handleRun(r);
         break;

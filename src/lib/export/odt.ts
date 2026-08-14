@@ -184,6 +184,12 @@ const FNT = '\uE017';
 // rewrites it to <text:sequence>. U+E01A.
 const SEQ = '\uE01A';
 
+// Sentinels for recorded revisions (trackChanges.ts): TCI{i}TCI brackets an insertion's
+// runs, TCD{i}TCD stands where a deletion's text was cut out. applyRevisions rewrites
+// both and builds the <text:tracked-changes> registry. U+E01B/U+E01C.
+const TCI = '\uE01B';
+const TCD = '\uE01C';
+
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -547,6 +553,94 @@ function replaceDateTimeFields(node: TiptapNode, fields: DateTimeFieldExport[]):
     content.push(replaceDateTimeFields(child, fields));
   }
   return { ...node, content };
+}
+
+// One recorded revision. Runs of the same change share an id, so the registry holds one
+// entry per id and a deletion's text is the concatenation of its runs.
+type RevisionExport = { kind: 'insertion' | 'deletion'; id: string; author: string; date: string; text: string };
+
+// Bracket every insertion run with TCI sentinels and cut every deletion run out, leaving
+// a TCD sentinel where it was — ODF keeps a deletion's text in the registry, not inline.
+function replaceRevisions(node: TiptapNode, out: Map<string, RevisionExport>): TiptapNode {
+  if (!node.content?.length) return node;
+  const content: TiptapNode[] = [];
+  for (const child of node.content) {
+    const mark = child.type === 'text'
+      ? child.marks?.find((m) => m.type === 'insertion' || m.type === 'deletion')
+      : undefined;
+    if (!mark) { content.push(replaceRevisions(child, out)); continue; }
+    const a = mark.attrs ?? {};
+    const id = String(a.id ?? '');
+    const kind = mark.type as 'insertion' | 'deletion';
+    const entry = out.get(id) ?? {
+      kind, id,
+      author: String(a.author ?? '') || GENERATOR,
+      date: typeof a.date === 'string' && a.date ? a.date : new Date().toISOString(),
+      text: '',
+    };
+    entry.text += child.text ?? '';
+    out.set(id, entry);
+    // The marks stay off the sentinel runs: a change is not formatting, and odf-kit
+    // would otherwise split the paragraph's runs around it.
+    const rest = child.marks?.filter((m) => m !== mark);
+    if (kind === 'deletion') {
+      content.push({ type: 'text', text: `${TCD}${id}${TCD}` });
+      continue;
+    }
+    content.push({ type: 'text', text: `${TCI}${id}${TCI}` });
+    content.push({ ...child, ...(rest?.length ? { marks: rest } : { marks: undefined }) });
+    content.push({ type: 'text', text: `${TCI}${id}${TCI}` });
+  }
+  return { ...node, content };
+}
+
+// Resolve the revision sentinels and prepend the registry the body points into.
+function applyRevisions(odtBytes: Uint8Array, list: Map<string, RevisionExport>): Uint8Array {
+  if (!list.size) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  // ODF ids are per document; the editor's are opaque strings.
+  const odfId = new Map([...list.keys()].map((id, i) => [id, `ct${i + 1}`]));
+  let open = new Map<string, boolean>();
+  content = content
+    .replace(new RegExp(`${TCI}([^${TCI}]*)${TCI}`, 'g'), (_m, id: string) => {
+      const ct = odfId.get(id);
+      if (!ct) return '';
+      const isEnd = open.get(id) === true;
+      open.set(id, !isEnd);
+      return isEnd
+        ? `<text:change-end text:change-id="${ct}"/>`
+        : `<text:change-start text:change-id="${ct}"/>`;
+    })
+    .replace(new RegExp(`${TCD}([^${TCD}]*)${TCD}`, 'g'), (_m, id: string) => {
+      const ct = odfId.get(id);
+      return ct ? `<text:change text:change-id="${ct}"/>` : '';
+    });
+
+  const regions = [...list.values()].map((r) => {
+    const ct = odfId.get(r.id)!;
+    const info = `<office:change-info><dc:creator>${escapeXml(r.author)}</dc:creator>`
+      + `<dc:date>${escapeXml(r.date.replace(/\.\d+Z?$/, ''))}</dc:date></office:change-info>`;
+    const body = r.kind === 'deletion'
+      ? `<text:deletion>${info}<text:p text:style-name="Standard">${escapeXml(r.text)}</text:p></text:deletion>`
+      : `<text:insertion>${info}</text:insertion>`;
+    return `<text:changed-region xml:id="${ct}" text:id="${ct}">${body}</text:changed-region>`;
+  }).join('');
+  content = content.replace(/(<office:text\b[^>]*>)/, `$1<text:tracked-changes>${regions}</text:tracked-changes>`);
+  content = ensureDcNamespace(content);
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+// The change registry names its author with dc:creator; odf-kit declares no dc: prefix
+// in content.xml, and an undeclared one loses the whole element.
+function ensureDcNamespace(content: string): string {
+  if (content.includes('xmlns:dc=')) return content;
+  return content.replace(/<office:document-content\b/, '<office:document-content xmlns:dc="http://purl.org/dc/elements/1.1/"');
 }
 
 // One caption sequence field, collected by replaceSequenceFields and emitted by
@@ -3910,7 +4004,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const notes: NoteExport[] = [];
   const commentList: CommentExport[] = [];
   const seqFields: SequenceExport[] = [];
-  const sentinels = replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList), seqFields);
+  const revisionList = new Map<string, RevisionExport>();
+  const sentinels = replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList), seqFields), revisionList);
   const raw = markTextEffects(bakeListCharStyles(sentinels, styles));
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
@@ -4110,7 +4205,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withBreaks = applyInlineSentinels(applyTabLeaders(cleaned));
   const withImages = applyImages(withBreaks, images);
   const withDateFields = applyDateTimeFields(withImages, dateFields, language ?? null);
-  const withSequences = applySequenceFields(withDateFields, seqFields);
+  const withSequences = applyRevisions(applySequenceFields(withDateFields, seqFields), revisionList);
   const withFormulas = applyFormulas(withSequences, formulas);
   const withTextBoxes = applyTextBoxes(withFormulas, textBoxes);
   const withColumns = applyColumns(withTextBoxes, columns);

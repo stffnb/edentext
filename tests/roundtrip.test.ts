@@ -2141,3 +2141,52 @@ describe('Leg 22: line numbering', () => {
     check('no w:lnNumType', !strFromU8(unzipSync(await buildDocx(doc, margins, 'portrait'))['word/document.xml']).includes('<w:lnNumType'));
   });
 });
+
+describe('Leg 23: recorded revisions', () => {
+  const rev = (type: string, id: string): N =>
+    ({ type, attrs: { id, author: 'Steffen', date: '2026-08-14T06:57:08.000Z' } });
+  const doc: N = { type: 'doc', content: [P(null,
+    T('Der '),
+    T('NEUER TEXT ', rev('insertion', 'r1')),
+    T('unveraenderte S'),
+    T('atz bleib', rev('deletion', 'r2')),
+    T('t stehen.'),
+  )] };
+  const runs = (back: N) => back.content[0].content.map(
+    (r: N) => `${r.text}|${(r.marks ?? []).map((m: N) => m.type).join(',')}`).join(' ');
+
+  it('ODT: the registry plus change-start/-end and a deletion marker, and back', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('registry emitted', /<text:tracked-changes><text:changed-region/.test(content), content.slice(0, 200));
+    check('insertion bracketed', /<text:change-start text:change-id="ct1"\/>NEUER TEXT <text:change-end/.test(content),
+      content.match(/<text:p[^>]*>[\s\S]*?<\/text:p>/g)?.slice(-1));
+    // ODF keeps a deletion's text in the registry, never inline.
+    check('deletion lifted out', content.includes('<text:change text:change-id="ct2"/>')
+      && !/<text:p text:style-name="Standard">Der [\s\S]*?atz bleib/.test(content),
+      content.match(/<text:deletion>[\s\S]*?<\/text:deletion>/)?.[0]);
+    // dc:creator needs its prefix declared or LibreOffice drops the change-info.
+    check('dc namespace declared', content.includes('xmlns:dc='));
+    check('round-trips', runs(importOdt(bytes).content as N)
+      === 'Der | NEUER TEXT |insertion unveraenderte S| atz bleib|deletion t stehen.|',
+      runs(importOdt(bytes).content as N));
+  });
+
+  it('DOCX: w:ins and w:del/w:delText, and back', async () => {
+    const bytes = await buildDocx(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    check('w:ins emitted', /<w:ins [^>]*w:author="Steffen"/.test(xml), xml.match(/<w:ins [^>]*>/g));
+    check('w:del keeps its text', xml.includes('<w:delText') && xml.includes('atz bleib'),
+      xml.match(/<w:del [\s\S]*?<\/w:del>/)?.[0]);
+    check('round-trips', runs(importDocx(bytes).content as N)
+      === 'Der | NEUER TEXT |insertion unveraenderte S| atz bleib|deletion t stehen.|',
+      runs(importDocx(bytes).content as N));
+  });
+
+  it('a document with no revisions writes no registry', async () => {
+    const plain: N = { type: 'doc', content: [P(null, T('plain'))] };
+    check('no ODF registry', !strFromU8(unzipSync(await buildOdt(plain, margins, 'portrait'))['content.xml']).includes('tracked-changes'));
+    const xml = strFromU8(unzipSync(await buildDocx(plain, margins, 'portrait'))['word/document.xml']);
+    check('no w:ins/w:del', !xml.includes('<w:ins ') && !xml.includes('<w:del '));
+  });
+});
