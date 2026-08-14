@@ -242,88 +242,94 @@
     {/if}
   </div>
 
-  <RibbonButton
-    icon="hyphenation"
-    label={t().ribbon.hyphenation}
-    title={t().ribbon.hyphenationHint}
-    active={hyphenate}
-    onclick={() => (hyphenate = !hyphenate)}
-  />
-
-  <div class="rb-menu-wrap" use:clickOutside={'pageNum'}>
+  <div class="rb-col">
     <RibbonButton
-      icon="pageNumber"
-      label={t().ribbon.pageNumberFormat}
-      title={t().ribbon.pageNumberFormat}
-      caret
-      active={isMenuOpen('pageNum')}
-      onclick={() => toggleMenu('pageNum')}
+      variant="small"
+      icon="hyphenation"
+      label={t().ribbon.hyphenation}
+      title={t().ribbon.hyphenationHint}
+      active={hyphenate}
+      onclick={() => (hyphenate = !hyphenate)}
     />
-    {#if isMenuOpen('pageNum')}
-      <div class="ribbon-menu" use:anchored role="menu">
-        <div class="rb-menu-label">{t().ribbon.pageNumberFormat}</div>
-        {#each PAGE_NUM_FORMATS as f}
-          <button class:selected={pageNumbering.format === f} onclick={() => (pageNumbering = { ...pageNumbering, format: f })}>
-            {[1, 2, 3].map((n) => formatOrdinal(n, f)).join(', ')}
+    <div class="rb-menu-wrap" use:clickOutside={'pageNum'}>
+      <RibbonButton
+        variant="small"
+        icon="pageNumber"
+        label={t().ribbon.pageNumberFormat}
+        title={t().ribbon.pageNumberFormat}
+        caret
+        active={isMenuOpen('pageNum')}
+        onclick={() => toggleMenu('pageNum')}
+      />
+      {#if isMenuOpen('pageNum')}
+        <div class="ribbon-menu" use:anchored role="menu">
+          <div class="rb-menu-label">{t().ribbon.pageNumberFormat}</div>
+          {#each PAGE_NUM_FORMATS as f}
+            <button class:selected={pageNumbering.format === f} onclick={() => (pageNumbering = { ...pageNumbering, format: f })}>
+              {[1, 2, 3].map((n) => formatOrdinal(n, f)).join(', ')}
+            </button>
+          {/each}
+          <div class="rb-menu-label">{t().ribbon.pageNumberStart}</div>
+          <label class="num-row">
+            <input
+              type="number"
+              min="1"
+              max="9999"
+              value={pageNumbering.start}
+              onchange={(e) => (pageNumbering = { ...pageNumbering, start: clampPageStart(Number(e.currentTarget.value)) })}
+            />
+          </label>
+        </div>
+      {/if}
+      </div>
+  </div>
+
+  <div class="rb-col">
+    <div class="rb-menu-wrap" use:clickOutside={'lineNum'}>
+      <RibbonButton
+        variant="small"
+        icon="lineNumbers"
+        label={t().ribbon.lineNumbers}
+        title={t().lineNumbers.title}
+        caret
+        active={isMenuOpen('lineNum') || lineNumbering.on}
+        onclick={() => toggleMenu('lineNum')}
+      />
+      {#if isMenuOpen('lineNum')}
+        <div class="ribbon-menu" use:anchored role="menu">
+          <button class:selected={!lineNumbering.on} onclick={() => (lineNumbering = { ...lineNumbering, on: false })}>
+            {t().lineNumbers.off}
           </button>
-        {/each}
-        <div class="rb-menu-label">{t().ribbon.pageNumberStart}</div>
-        <label class="num-row">
-          <input
-            type="number"
-            min="1"
-            max="9999"
-            value={pageNumbering.start}
-            onchange={(e) => (pageNumbering = { ...pageNumbering, start: clampPageStart(Number(e.currentTarget.value)) })}
-          />
-        </label>
+          <button class:selected={lineNumbering.on && lineNumbering.restart === 'continuous'}
+            onclick={() => (lineNumbering = { ...lineNumbering, on: true, restart: 'continuous' })}>
+            {t().lineNumbers.continuous}
+          </button>
+          <button class:selected={lineNumbering.on && lineNumbering.restart === 'page'}
+            onclick={() => (lineNumbering = { ...lineNumbering, on: true, restart: 'page' })}>
+            {t().lineNumbers.perPage}
+          </button>
+          <div class="rb-menu-label">{t().lineNumbers.interval}</div>
+          <label class="num-row">
+            <input type="number" min="1" max="100" value={lineNumbering.interval}
+              onchange={(e) => (lineNumbering = { ...lineNumbering, interval: Math.max(1, Math.min(100, Number(e.currentTarget.value) || 1)) })} />
+          </label>
+          <label class="check-row">
+            <input type="checkbox" checked={lineNumbering.countEmpty}
+              onchange={(e) => (lineNumbering = { ...lineNumbering, countEmpty: e.currentTarget.checked })} />
+            {t().lineNumbers.countEmpty}
+          </label>
+        </div>
+      {/if}
       </div>
-    {/if}
-  </div>
-
-  <div class="rb-menu-wrap" use:clickOutside={'lineNum'}>
     <RibbonButton
-      icon="lineNumbers"
-      label={t().ribbon.lineNumbers}
-      title={t().lineNumbers.title}
-      caret
-      active={isMenuOpen('lineNum') || lineNumbering.on}
-      onclick={() => toggleMenu('lineNum')}
+      variant="small"
+      icon="watermark"
+      label={t().ribbon.pageDecor}
+      title={t().pageDecor.title}
+      active={!!(pageDecor.background || pageDecor.border || pageDecor.watermark)}
+      onclick={() => (decorOpen = true)}
     />
-    {#if isMenuOpen('lineNum')}
-      <div class="ribbon-menu" use:anchored role="menu">
-        <button class:selected={!lineNumbering.on} onclick={() => (lineNumbering = { ...lineNumbering, on: false })}>
-          {t().lineNumbers.off}
-        </button>
-        <button class:selected={lineNumbering.on && lineNumbering.restart === 'continuous'}
-          onclick={() => (lineNumbering = { ...lineNumbering, on: true, restart: 'continuous' })}>
-          {t().lineNumbers.continuous}
-        </button>
-        <button class:selected={lineNumbering.on && lineNumbering.restart === 'page'}
-          onclick={() => (lineNumbering = { ...lineNumbering, on: true, restart: 'page' })}>
-          {t().lineNumbers.perPage}
-        </button>
-        <div class="rb-menu-label">{t().lineNumbers.interval}</div>
-        <label class="num-row">
-          <input type="number" min="1" max="100" value={lineNumbering.interval}
-            onchange={(e) => (lineNumbering = { ...lineNumbering, interval: Math.max(1, Math.min(100, Number(e.currentTarget.value) || 1)) })} />
-        </label>
-        <label class="check-row">
-          <input type="checkbox" checked={lineNumbering.countEmpty}
-            onchange={(e) => (lineNumbering = { ...lineNumbering, countEmpty: e.currentTarget.checked })} />
-          {t().lineNumbers.countEmpty}
-        </label>
-      </div>
-    {/if}
   </div>
-
-  <RibbonButton
-    icon="watermark"
-    label={t().ribbon.pageDecor}
-    title={t().pageDecor.title}
-    active={!!(pageDecor.background || pageDecor.border || pageDecor.watermark)}
-    onclick={() => (decorOpen = true)}
-  />
 </RibbonGroup>
 
 <PageDecorDialog bind:open={decorOpen} bind:decor={pageDecor} />
@@ -378,6 +384,10 @@
   .check-row { display: flex; align-items: center; gap: 6px; padding: 2px 12px 6px; white-space: nowrap; }
 
   .rb-menu-wrap { position: relative; }
+
+  /* Two rows of named commands beside the big ones, as the band is one big button tall. */
+  .rb-col { display: flex; flex-direction: column; gap: 2px; }
+  .rb-col :global(.rb-small) { width: 100%; }
 
   .col-preview { flex-shrink: 0; }
 

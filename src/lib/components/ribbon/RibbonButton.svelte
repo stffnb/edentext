@@ -34,21 +34,19 @@
   } = $props();
 
   const ICON_SIZE = { big: 28, small: 14, icon: 20 } as const;
-
-  // One button when the whole of it opens the menu, and the caret joins the column
-  // under the label.
-  let stackCaret = $derived(caret && !onCaret && variant === 'big');
 </script>
 
 {#snippet face(withLabel = true)}
   <span class="rb-face">
     {#if content}{@render content()}
     {:else if icon}<Icon name={icon} size={ICON_SIZE[variant]} />{/if}
-    {#if caret && !onCaret && !stackCaret}
+    {#if caret && !onCaret && variant === 'icon'}
       <Icon name="chevronDown" size={10} />
     {/if}
   </span>
   {#if withLabel && label && variant !== 'icon'}<span class="rb-label">{label}</span>{/if}
+  <!-- A row reads left to right, so its caret follows the label rather than the icon. -->
+  {#if caret && !onCaret && variant === 'small'}<Icon name="chevronDown" size={10} />{/if}
   <!-- Held open on every big button, carrying a caret or nothing: the group centres
        its controls, so one taller button lifts its own icon and label off the row. -->
   {#if variant === 'big' && !onCaret}

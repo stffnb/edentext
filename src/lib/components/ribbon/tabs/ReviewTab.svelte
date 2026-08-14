@@ -91,6 +91,7 @@
     onclick={() => onNewComment?.()}
   />
   <RibbonButton
+    variant="small"
     icon="comment"
     label={t().comments.title}
     title={t().comments.showPane}
@@ -110,34 +111,41 @@
     active={recordChanges()}
     onclick={() => setRecordChanges(!recordChanges())}
   />
-  <RibbonButton
-    icon="check"
-    label={t().revisions.accept}
-    title={t().revisions.acceptHint}
-    disabled={!hasRevisions}
-    onclick={() => editor?.chain().focus().acceptRevisions().run()}
-  />
-  <RibbonButton
-    icon="close"
-    label={t().revisions.reject}
-    title={t().revisions.rejectHint}
-    disabled={!hasRevisions}
-    onclick={() => editor?.chain().focus().rejectRevisions().run()}
-  />
-  <RibbonButton
-    variant="small"
-    icon="check"
-    label={t().revisions.acceptAll}
-    disabled={!hasRevisions}
-    onclick={() => editor?.chain().focus().acceptRevisions(true).run()}
-  />
-  <RibbonButton
-    variant="small"
-    icon="close"
-    label={t().revisions.rejectAll}
-    disabled={!hasRevisions}
-    onclick={() => editor?.chain().focus().rejectRevisions(true).run()}
-  />
+  <!-- The one at the cursor over the whole document, so the pair reads as one column. -->
+  <div class="rb-col">
+    <RibbonButton
+      variant="small"
+      icon="check"
+      label={t().revisions.accept}
+      title={t().revisions.acceptHint}
+      disabled={!hasRevisions}
+      onclick={() => editor?.chain().focus().acceptRevisions().run()}
+    />
+    <RibbonButton
+      variant="small"
+      icon="check"
+      label={t().revisions.acceptAll}
+      disabled={!hasRevisions}
+      onclick={() => editor?.chain().focus().acceptRevisions(true).run()}
+    />
+  </div>
+  <div class="rb-col">
+    <RibbonButton
+      variant="small"
+      icon="close"
+      label={t().revisions.reject}
+      title={t().revisions.rejectHint}
+      disabled={!hasRevisions}
+      onclick={() => editor?.chain().focus().rejectRevisions().run()}
+    />
+    <RibbonButton
+      variant="small"
+      icon="close"
+      label={t().revisions.rejectAll}
+      disabled={!hasRevisions}
+      onclick={() => editor?.chain().focus().rejectRevisions(true).run()}
+    />
+  </div>
 </RibbonGroup>
 
 <div class="ribbon-sep"></div>
@@ -152,6 +160,9 @@
 <style>
   .rb-menu-wrap { position: relative; }
   .stats-menu { min-width: 240px; }
+
+  .rb-col { display: flex; flex-direction: column; gap: 2px; }
+  .rb-col :global(.rb-small) { width: 100%; }
 
   .stat {
     display: flex;
