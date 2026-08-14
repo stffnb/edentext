@@ -18,8 +18,8 @@
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
   import { getColumnsFlowDebug } from './lib/editor/extensions/columnsFlow';
   import { getTextBoxDebug } from './lib/editor/extensions/textBox';
-  import { getFrameDebug } from './lib/editor/extensions/image';
   import { getTableCellDebug } from './lib/editor/extensions/tableCellAlign';
+  import { getFrameDebug } from './lib/editor/extensions/caption';
   import { getColorDebug } from './lib/utils/colorDebug';
   import { resetHistoryLog } from './lib/utils/historyLog.svelte';
   import { countText, type TextStats } from './lib/utils/wordCount';

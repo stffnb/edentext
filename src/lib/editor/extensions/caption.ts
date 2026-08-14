@@ -1,7 +1,9 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import { formatOrdinal } from '../../utils/orderedListTypes';
+import { PX_PER_CM } from '../../storage/pageMargins';
 import type { NoteNumFormat } from '../../storage/noteSettings';
 
 // A caption is an ordinary paragraph in the `Caption` style carrying one inline atom:
@@ -61,26 +63,51 @@ declare module '@tiptap/core' {
   }
 }
 
-// Where a caption has to stand to be under the frame it belongs to. A frame carries its
-// own place in the column, so the anchor paragraph's alignment says nothing about it: a
-// `topBottom` one is centred unless it names a side or an offset (image.ts/textBox.ts).
-// A side-wrapped frame has the caption flowing beside it, which is what a reader of the
-// exported file sees too, so nothing here can put it underneath.
-export function framePlacement(block: PMNode): { textAlign: string | null; indent: number | null } | null {
-  let frame: PMNode | null = block.attrs.wrap ? block : null;
-  if (!frame) {
-    block.descendants((node) => {
-      if (frame) return false;
-      if (node.attrs.wrap) frame = node;
-      return !frame;
+export type CaptionPlacement = { textAlign: string | null; indent: number | null; indentRight: number | null };
+
+// LibreOffice frames picture and caption together, so the caption is exactly as wide as
+// the picture and sits under it whatever the frame's wrap. A loose paragraph carries
+// that over as its own box: indented to the frame's span, which also lifts it clear of a
+// side-wrapped frame — a line with no room beside a float drops below it.
+export function captionPlacement(leftCm: number, rightCm: number): CaptionPlacement {
+  const gap = (v: number) => (v > 0.05 ? Math.round(v * 100) / 100 : null);
+  return {
+    indent: gap(leftCm),
+    indentRight: gap(rightCm),
+    // Centred in its box under a frame that is itself centred, left-flush under one set
+    // against an edge — which is how LibreOffice's own frame reads.
+    textAlign: gap(leftCm) && Math.abs(leftCm - rightCm) < 0.05 ? 'center' : null,
+  };
+}
+
+// The frame's span in the text column, in cm from each edge — measured, since a frame's
+// place comes from its wrap, its offset and the column it is in, not from one attr.
+function frameSpanCm(view: EditorView, block: PMNode, blockPos: number): { left: number; right: number } | null {
+  const host = view.dom as HTMLElement;
+  if (typeof getComputedStyle !== 'function' || !host.offsetWidth) return null;
+  let framePos: number | null = null;
+  if (block.attrs.wrap) framePos = blockPos;
+  else if (block.inlineContent) {
+    block.descendants((node, pos) => {
+      if (framePos === null && node.attrs.wrap) framePos = blockPos + 1 + pos;
+      return framePos === null;
     });
   }
-  const attrs = (frame as PMNode | null)?.attrs;
-  if (!attrs || attrs.wrap !== 'topBottom') return null;
-  if (attrs.wrapAlign) return { textAlign: String(attrs.wrapAlign), indent: null };
-  return typeof attrs.wrapOffset === 'number'
-    ? { textAlign: null, indent: attrs.wrapOffset }
-    : { textAlign: 'center', indent: null };
+  if (framePos === null) return null;
+  const dom = view.nodeDOM(framePos);
+  const frame = dom instanceof HTMLElement ? dom.querySelector('.image-rotor, .textbox-rotor') ?? dom : null;
+  if (!frame) return null;
+  const cs = getComputedStyle(host);
+  const padLeft = parseFloat(cs.paddingLeft) || 0;
+  const hostRect = host.getBoundingClientRect();
+  // The zoom transform scales the rects but not the layout, so take it back out.
+  const scale = hostRect.width / host.offsetWidth;
+  const columnLeft = hostRect.left + padLeft * scale;
+  const columnWidth = host.clientWidth - padLeft - (parseFloat(cs.paddingRight) || 0);
+  const rect = frame.getBoundingClientRect();
+  const left = (rect.left - columnLeft) / scale;
+  const right = columnWidth - (rect.right - columnLeft) / scale;
+  return { left: left / PX_PER_CM, right: right / PX_PER_CM };
 }
 
 export const SequenceField = Node.create({
@@ -139,14 +166,22 @@ export const SequenceField = Node.create({
           content.push({ type: this.name, attrs: { category, format: '1', number: 1 } });
           const tail = `${separator}${text}`;
           if (tail) content.push({ type: 'text', text: tail });
-          // A caption stands under its picture, not at the margin: LibreOffice frames the
-          // two together, and a loose paragraph carries that over as its own placement.
+          // A caption stands under its picture, not at the margin. A frame's own span in
+          // the column is the caption's box; a block without one only has its alignment.
           const block = $from.node(1);
-          const place = framePlacement(block) ?? { textAlign: block.attrs.textAlign ?? null, indent: null };
+          const span = frameSpanCm(this.editor.view, block, $from.before(1));
+          const place: CaptionPlacement = span
+            ? captionPlacement(span.left, span.right)
+            : { textAlign: block.attrs.textAlign ?? null, indent: null, indentRight: null };
           return chain()
             .insertContentAt(at, {
               type: 'paragraph',
-              attrs: { styleName: CAPTION_STYLE, textAlign: place.textAlign, indent: place.indent },
+              attrs: {
+                styleName: CAPTION_STYLE,
+                textAlign: place.textAlign,
+                indent: place.indent,
+                indentRight: place.indentRight,
+              },
               content,
             })
             .focus()
@@ -187,4 +222,65 @@ function renumberTr(state: EditorState): Transaction | null {
 
 export function sequenceFieldText(node: PMNode): string {
   return formatOrdinal(Number(node.attrs.number) || 1, (node.attrs.format as NoteNumFormat) ?? '1');
+}
+
+
+export type FrameDebugEntry = {
+  pos: number;
+  /** Every attr but `src` — a data URI is the whole file. */
+  attrs: Record<string, unknown>;
+  /** Doc px from the text column's left edge, so the two spans compare directly. */
+  columnWidth: number;
+  frame: [number, number] | null;
+  caption: { text: string; span: [number, number]; textAlign: string; indent: unknown; indentRight: unknown } | null;
+};
+
+// A frame's place in the column beside the caption's — "the caption is not under the
+// picture" is a horizontal question, and every other section of the dump is vertical.
+export function getFrameDebug(view: EditorView): FrameDebugEntry[] {
+  const host = view.dom as HTMLElement;
+  if (typeof getComputedStyle !== 'function' || !host.offsetWidth) return [];
+  const cs = getComputedStyle(host);
+  const padLeft = parseFloat(cs.paddingLeft) || 0;
+  const scale = host.getBoundingClientRect().width / host.offsetWidth;
+  const originX = host.getBoundingClientRect().left + padLeft * scale;
+  const span = (r: DOMRect): [number, number] =>
+    [Math.round((r.left - originX) / scale), Math.round((r.right - originX) / scale)];
+  const textSpan = (el: HTMLElement): DOMRect => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return range.getBoundingClientRect();
+  };
+
+  const out: FrameDebugEntry[] = [];
+  view.state.doc.descendants((node, pos) => {
+    if (!node.attrs.wrap && node.type.name !== 'image') return true;
+    const dom = view.nodeDOM(pos);
+    const rotor = dom instanceof HTMLElement ? dom.querySelector('.image-rotor, .textbox-rotor') : null;
+    const { src: _src, ...attrs } = node.attrs as Record<string, unknown>;
+    // The block after the picture's own, which is where a caption below it lands.
+    const after = view.state.doc.resolve(pos).after(1);
+    const next = after <= view.state.doc.content.size ? view.state.doc.nodeAt(after) : null;
+    const nextDOM = next ? view.nodeDOM(after) : null;
+    out.push({
+      pos,
+      attrs,
+      columnWidth: Math.round(host.clientWidth - padLeft - (parseFloat(cs.paddingRight) || 0)),
+      frame: rotor ? span(rotor.getBoundingClientRect()) : null,
+      caption: next && nextDOM instanceof HTMLElement && next.attrs.styleName === CAPTION_STYLE
+        ? {
+            // The running number is an atom, so plain textContent leaves a gap where
+            // the reader sees "Figure 1".
+            text: next.textBetween(0, next.content.size, '', (leaf) =>
+              leaf.type.name === 'sequenceField' ? sequenceFieldText(leaf) : '').slice(0, 80),
+            span: span(textSpan(nextDOM)),
+            textAlign: getComputedStyle(nextDOM).textAlign,
+            indent: next.attrs.indent,
+            indentRight: next.attrs.indentRight,
+          }
+        : null,
+    });
+    return false;
+  });
+  return out;
 }

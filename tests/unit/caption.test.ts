@@ -5,7 +5,7 @@ import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import TextAlign from '@tiptap/extension-text-align';
-import { sequenceFields, ODF_SEQ_CATEGORY, seqCategoryOf, SequenceField, framePlacement } from '../../src/lib/editor/extensions/caption';
+import { sequenceFields, ODF_SEQ_CATEGORY, seqCategoryOf, SequenceField, captionPlacement } from '../../src/lib/editor/extensions/caption';
 
 // The numbering rule both word processors apply: one counter per category, in document
 // order. A schema of its own keeps the check off the editor's full extension list.
@@ -18,11 +18,6 @@ const schema = new Schema({
       group: 'inline', inline: true, atom: true,
       attrs: { category: { default: 'figure' }, number: { default: 1 } },
       toDOM: () => ['span'],
-    },
-    image: {
-      group: 'inline', inline: true, atom: true,
-      attrs: { wrap: { default: 'inline' }, wrapAlign: { default: null }, wrapOffset: { default: null } },
-      toDOM: () => ['img'],
     },
   },
 });
@@ -52,29 +47,20 @@ describe('sequenceFields', () => {
   });
 });
 
-describe('framePlacement', () => {
-  const picture = (attrs: Record<string, unknown>) =>
-    schema.nodes.paragraph.create(null, schema.nodes.image.create(attrs));
-
-  it('centres the caption under a frame that names neither side nor offset', () => {
-    expect(framePlacement(picture({ wrap: 'topBottom' }))).toEqual({ textAlign: 'center', indent: null });
+describe('captionPlacement', () => {
+  it('boxes the caption to a centred frame, and centres it in that box', () => {
+    expect(captionPlacement(4.2, 4.2)).toEqual({ indent: 4.2, indentRight: 4.2, textAlign: 'center' });
   });
 
-  it('follows the side a frame is set against', () => {
-    expect(framePlacement(picture({ wrap: 'topBottom', wrapAlign: 'right' })))
-      .toEqual({ textAlign: 'right', indent: null });
+  it('leaves a frame against the far edge left-flush in its box', () => {
+    // The indent is what lifts the caption clear of a side-wrapped frame: its lines
+    // have no room beside the float and drop below it.
+    expect(captionPlacement(9.45, 0)).toEqual({ indent: 9.45, indentRight: null, textAlign: null });
   });
 
-  it('indents to a frame’s own offset, which no alignment can express', () => {
-    expect(framePlacement(picture({ wrap: 'topBottom', wrapOffset: 3.4 })))
-      .toEqual({ textAlign: null, indent: 3.4 });
-  });
-
-  it('leaves an inline or side-wrapped picture to the flow', () => {
-    // A side wrap has the caption beside the frame — where LibreOffice puts it too.
-    expect(framePlacement(picture({ wrap: 'inline' }))).toBeNull();
-    expect(framePlacement(picture({ wrap: 'right' }))).toBeNull();
-    expect(framePlacement(schema.nodes.paragraph.create(null, schema.text('no picture')))).toBeNull();
+  it('indents nothing for a frame that fills the column', () => {
+    expect(captionPlacement(0, 0)).toEqual({ indent: null, indentRight: null, textAlign: null });
+    expect(captionPlacement(0.02, 0.01)).toEqual({ indent: null, indentRight: null, textAlign: null });
   });
 });
 
@@ -91,6 +77,7 @@ describe('insertCaption', () => {
   const insert = (editor: Editor) =>
     editor.chain().focus().insertCaption({ category: 'figure', label: 'Figure', separator: ': ', text: 'x', above: false }).run();
 
+  // No frame here, which is the fallback leg: a block without one has only its alignment.
   it('takes the alignment of the block it captions, so it stands under the picture', () => {
     const editor = makeEditor('center');
     insert(editor);

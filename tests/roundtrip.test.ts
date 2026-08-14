@@ -1958,11 +1958,13 @@ describe('Leg 18: per-paragraph text direction', () => {
 describe('Leg 19: captions (a sequence field per category)', () => {
   const SEQ = (category: string, number: number): N =>
     ({ type: 'sequenceField', attrs: { category, format: '1', number } });
-  const CAP = (category: string, label: string, n: number, text: string, textAlign?: string): N =>
-    P({ styleName: 'Caption', ...(textAlign ? { textAlign } : {}) }, T(`${label} `), SEQ(category, n), T(`: ${text}`));
+  const CAP = (category: string, label: string, n: number, text: string, box?: N): N =>
+    P({ styleName: 'Caption', ...box }, T(`${label} `), SEQ(category, n), T(`: ${text}`));
+  // The box a caption under a centred picture gets (caption.ts): as wide as the frame,
+  // centred in it. All three have to travel, or the caption drifts back to the margin.
+  const BOX = { textAlign: 'center', indent: 4.2, indentRight: 4.2 };
   const doc: N = { type: 'doc', content: [
-    // A caption under a centred picture is centred with it, which is what has to travel.
-    CAP('figure', 'Figure', 1, 'first picture', 'center'),
+    CAP('figure', 'Figure', 1, 'first picture', BOX),
     CAP('table', 'Table', 1, 'first table'),
     CAP('figure', 'Figure', 2, 'second picture'),
   ] };
@@ -1981,7 +1983,9 @@ describe('Leg 19: captions (a sequence field per category)', () => {
     check('numbers round-trip', fields.map((f: N) => f?.attrs?.number).join() === '1,1,2',
       fields.map((f: N) => f?.attrs?.number));
     check('caption style kept', back.content[0].attrs?.styleName === 'Caption', back.content[0].attrs);
-    check('the picture’s alignment kept', back.content[0].attrs?.textAlign === 'center', back.content[0].attrs);
+    check('the picture’s box kept', back.content[0].attrs?.textAlign === 'center'
+      && back.content[0].attrs?.indent === 4.2 && back.content[0].attrs?.indentRight === 4.2,
+      back.content[0].attrs);
   });
 
   it('DOCX: a SEQ field per category, and back', async () => {
@@ -1995,7 +1999,9 @@ describe('Leg 19: captions (a sequence field per category)', () => {
       fields.map((f: N) => f?.attrs));
     check('numbers round-trip', fields.map((f: N) => f?.attrs?.number).join() === '1,1,2',
       fields.map((f: N) => f?.attrs?.number));
-    check('the picture’s alignment kept', back.content[0].attrs?.textAlign === 'center', back.content[0].attrs);
+    check('the picture’s box kept', back.content[0].attrs?.textAlign === 'center'
+      && back.content[0].attrs?.indent === 4.2 && back.content[0].attrs?.indentRight === 4.2,
+      back.content[0].attrs);
   });
 
   it('a document without captions declares no counter', async () => {

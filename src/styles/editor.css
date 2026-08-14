@@ -347,6 +347,13 @@
 .paper .tiptap .image-node.image-selected {
   z-index: 25;
 }
+/* A block after a float keeps its own box over the float — only its lines move out of
+   the way — so the block on top swallows every click meant for the frame. Nothing is
+   hidden by lifting it: text flows beside a frame, never across it. A page-anchored
+   one is excluded, since it carries its own place in the stack (image.ts). */
+.paper .tiptap .image-node[data-wrap]:not([data-anchor-page]) {
+  z-index: 1;
+}
 .paper .tiptap .image-rotor {
   position: absolute;
   left: 50%;
