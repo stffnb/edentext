@@ -731,6 +731,8 @@ const de: Messages = {
     indexEntry: 'Stichwort',
     indexEntryPrompt: 'Stichwort — das Wort, das im Verzeichnis steht:',
     indexEntryNeedsSelection: 'Markiere das Wort, das ins Stichwortverzeichnis soll',
+    thisSection: 'Dieser Abschnitt',
+    likeDocument: 'Wie das Dokument',
     citation: 'Literaturangabe',
     footnote: 'Fußnote',
     endnote: 'Endnote',

@@ -5,6 +5,7 @@ import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { dropCursor } from '@tiptap/pm/dropcursor';
 import { cmToPx } from '../../storage/pageMargins';
+import { readVerticalMargins } from './pageBreaks';
 
 // Inline, as-character image, or a floating text-wrapped frame (wrap = flow mode);
 // width/height are doc px @96dpi, rotation CW degrees. Export → cm + ODF
@@ -475,10 +476,10 @@ class ImageView {
       ? `${Math.round(cmToPx(x)) + (parseFloat(this.rotor.style.width) || 0) / 2}px` : '';
   }
 
-  // Placed from its page's top-left corner (--page-cycle is the page plus the gap), behind
-  // the text like the header layer's page background — unless the file's own run-through
-  // says otherwise (inFront). Its paragraph collapses to nothing (editor.css), so it takes
-  // no flow space either way.
+  // Placed from its page's top-left corner, behind the text like the header layer's page
+  // background — unless the file's own run-through says otherwise (inFront). Its paragraph
+  // collapses to nothing (editor.css), so it takes no flow space either way. The page top
+  // comes from the grid, since a section on its own paper makes the pages differ.
   private applyPageAnchor(page: number): void {
     const d = this.dom;
     d.dataset.anchorPage = String(page);
@@ -486,7 +487,8 @@ class ImageView {
     d.style.position = 'absolute';
     d.style.zIndex = this.node.attrs.inFront ? '1' : '-1';
     d.style.left = `${px(this.node.attrs.wrapOffset)}px`;
-    d.style.top = `calc(${page - 1} * var(--page-cycle) + ${px(this.node.attrs.wrapOffsetY)}px)`;
+    const grid = readVerticalMargins(this.editor.view.dom as HTMLElement).grid;
+    d.style.top = `${grid.topOf(page) + px(this.node.attrs.wrapOffsetY)}px`;
   }
 
   // The offset counts from the anchor paragraph's top. Where text precedes the frame

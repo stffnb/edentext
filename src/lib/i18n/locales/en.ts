@@ -733,6 +733,8 @@ const en = {
     indexEntry: 'Index entry',
     indexEntryPrompt: 'Index entry — the word the index lists:',
     indexEntryNeedsSelection: 'Select the word to file in the index',
+    thisSection: 'This section',
+    likeDocument: 'Like the document',
     citation: 'Citation',
     tocOptions: 'Levels',
     tocMaxLevel: 'Deepest level shown',

@@ -117,7 +117,7 @@ export function getPageBreakDebug(view: EditorView): PageBreakDebugSnapshot | nu
 // margins (user-adjustable) are read per pass from live CSS vars; the values below
 // are only portrait fallbacks.
 const PAGE_HEIGHT = 1123;
-const PAGE_GAP = 20;
+export const PAGE_GAP = 20;
 const DEFAULT_MARGIN_TOP = 96;
 const DEFAULT_MARGIN_BOTTOM = 96;
 // Word/LibreOffice widow-orphan control: a page break never leaves fewer than this
@@ -131,6 +131,9 @@ export type VMargins = {
   contentHeight: number;
   pageHeight: number;
   cycle: number;
+  // The page grid of the last pagination pass (Editor.svelte publishes its runs), so
+  // every consumer resolves a page number against the same one.
+  grid: PageGrid;
 };
 
 // Reads vertical page margins + page height (px) from the --user-* props the Layout
@@ -155,14 +158,94 @@ export function readVerticalMargins(dom: HTMLElement): VMargins {
     contentHeight: pageHeight - mt - mb,
     pageHeight,
     cycle: pageHeight + PAGE_GAP,
+    grid: gridFromRuns(cs.getPropertyValue('--pb-page-runs'), pageHeight),
   };
 }
 
+// "fromPage|height,…" — the runs the last pass reported (Editor.svelte publishes them).
+// A document whose sections share one paper writes none, and the grid is uniform.
+export function gridFromRuns(raw: string, pageHeight: number): PageGrid {
+  const grid = new PageGrid(pageHeight);
+  for (const part of raw.split(',')) {
+    const [from, height] = part.split('|').map(Number);
+    if (Number.isFinite(from) && Number.isFinite(height) && from > 1 && height > 0) grid.setFrom(from, height);
+  }
+  return grid;
+}
+
+// The rendered page grid. A page's top is the sum of the pages above it, so a section
+// on its own paper (a landscape page amid portrait ones) shifts every page below it —
+// the uniform document is just the one-run case. Heights are stored as runs, "every
+// page from here on is this tall", so both lookups cost one pass over the sections.
+export class PageGrid {
+  private runs: { from: number; height: number }[];
+
+  constructor(baseHeight: number) {
+    this.runs = [{ from: 1, height: baseHeight }];
+  }
+
+  /** Every page from `page` on is `height` tall, until a later section says otherwise. */
+  setFrom(page: number, height: number): void {
+    while (this.runs.length > 1 && this.runs[this.runs.length - 1].from >= page) this.runs.pop();
+    if (this.runs[this.runs.length - 1].from === page) this.runs[this.runs.length - 1].height = height;
+    else if (this.runs[this.runs.length - 1].height !== height) this.runs.push({ from: Math.max(1, page), height });
+  }
+
+  heightOf(page: number): number {
+    let h = this.runs[0].height;
+    for (const r of this.runs) if (r.from <= page) h = r.height;
+    return h;
+  }
+
+  /** Top of `page` in document px — the pages above it plus a gap each. */
+  topOf(page: number): number {
+    let top = 0;
+    for (let i = 0; i < this.runs.length; i++) {
+      const from = this.runs[i].from;
+      if (from >= page) break;
+      const until = Math.min(this.runs[i + 1]?.from ?? page, page);
+      top += (until - from) * (this.runs[i].height + PAGE_GAP);
+    }
+    return top;
+  }
+
+  bottomOf(page: number): number {
+    return this.topOf(page) + this.heightOf(page);
+  }
+
+  /** The page a document-px y falls on (its gap counts to the page above it). */
+  pageAt(y: number): number {
+    let page = 1;
+    let top = 0;
+    for (let i = 0; i < this.runs.length; i++) {
+      const step = this.runs[i].height + PAGE_GAP;
+      const pages = this.runs[i + 1] ? this.runs[i + 1].from - this.runs[i].from : Infinity;
+      const spanned = Math.floor((y - top) / step);
+      if (spanned < pages) return Math.max(1, page + Math.max(0, spanned));
+      page += pages;
+      top += pages * step;
+    }
+    return page;
+  }
+
+  /** One box per page, for the layers that paint them. */
+  boxes(count: number): { top: number; height: number }[] {
+    const out: { top: number; height: number }[] = [];
+    let top = 0;
+    for (let p = 1; p <= count; p++) {
+      const height = this.heightOf(p);
+      out.push({ top, height });
+      top += height + PAGE_GAP;
+    }
+    return out;
+  }
+}
+
 // Rendered page of an element: its offsetTop within the editor DOM (summed up the
-// offsetParent chain, spacers included) divided by the page cycle. The TOC and every
-// cross-reference resolve their page numbers with it.
-export function pageOfElement(view: EditorView, el: HTMLElement, cycle: number): number {
-  return Math.max(1, Math.floor(topInEditor(view, el) / cycle) + 1);
+// offsetParent chain, spacers included) resolved against the page grid. The TOC and
+// every cross-reference resolve their page numbers with it.
+export function pageOfElement(view: EditorView, el: HTMLElement, grid: PageGrid): number {
+  return grid.pageAt(topInEditor(view, el));
 }
 
 // An element's top in document px from the editor's own top — spacers included, since
@@ -176,16 +259,8 @@ export function topInEditor(view: EditorView, el: HTMLElement): number {
   return top;
 }
 
-function pageContentStart(page: number, marginTop: number, cycle: number): number {
-  return (page - 1) * cycle + marginTop;
-}
-
-function pageContentEnd(page: number, marginTop: number, contentHeight: number, cycle: number): number {
-  return (page - 1) * cycle + marginTop + contentHeight;
-}
-
-function getPageForY(y: number, cycle: number): number {
-  return Math.floor(y / cycle) + 1;
+function pageContentStart(page: number, marginTop: number, grid: PageGrid): number {
+  return grid.topOf(page) + marginTop;
 }
 
 // `recalc` counts forced recomputes, `edit` the document edits. Layout-only writes
@@ -1010,7 +1085,6 @@ export const PageBreaks = Extension.create({
 
           const vm = readVerticalMargins(dom);
           const CONTENT_HEIGHT = vm.contentHeight;
-          const CYCLE_PX = vm.cycle;
 
           // Side margins + page width (px) for table close/open bands. These don't
           // affect pagination (only line wrapping), so readVerticalMargins ignores
@@ -1041,6 +1115,13 @@ export const PageBreaks = Extension.create({
             .map((g) => g.split('|').map(Number))
             .filter((g) => g.length === 4 && g.every(Number.isFinite));
           const insetAt = (i: number) => inset[Math.min(i, inset.length - 1)] ?? [0, 0, 0, 0];
+          // Its own paper's height (px), where the section has one — a landscape page
+          // amid portrait ones is shorter, and every page below it moves up.
+          const paper = csRoot.getPropertyValue('--pb-section-page').split(',').map(Number);
+          const paperAt = (i: number) => {
+            const h = paper[Math.min(i, paper.length - 1)];
+            return Number.isFinite(h) && h > 0 ? h : vm.pageHeight;
+          };
           // Mirrored margins (pageMargins.ts): the padding draws the odd page's pair,
           // so an even page's blocks move right by the difference between the two.
           const mirrorRaw = parseFloat(csRoot.getPropertyValue('--user-margin-mirror'));
@@ -1069,6 +1150,10 @@ export const PageBreaks = Extension.create({
             const sectionStartPages: number[] = [];
             let sectionIndex = 0;
             let sectionFirstPage = 1;
+            // The grid this placement lays out against, grown as each section's first
+            // page becomes known. Built here, not read back, so a pass never measures
+            // its own last answer.
+            const grid = new PageGrid(paperAt(0));
             const placements: {
               docPos: number;
               height: number;
@@ -1104,22 +1189,25 @@ export const PageBreaks = Extension.create({
               }
               let effectiveTop = leaf.naturalTop + cumulativeShift;
               let effectiveBottom = effectiveTop + leaf.naturalHeight;
-              const page = getPageForY(effectiveTop, CYCLE_PX);
+              const page = grid.pageAt(effectiveTop);
               // A section's first page uses its "first" reaches, every other page its
               // "rest" ones — page 1 is section 1's first page.
               if (leaf.sectionStart) {
                 // Where the section really begins: a forced break moves its first block to
                 // the next page, and that page is the one its "first" zones belong to.
-                const prevStart = (page - 1) * CYCLE_PX + reachAt(sectionIndex)[1];
+                const prevStart = grid.topOf(page) + reachAt(sectionIndex)[1];
                 const pushed = !!leaf.forceBreakBefore && i > 0 && effectiveTop > prevStart + 0.5;
                 sectionIndex++;
                 sectionFirstPage = pushed ? page + 1 : page;
+                // Its paper governs from its first page on. Setting it here can only move
+                // pages *below* that one, so the page just resolved stays valid.
+                grid.setFrom(sectionFirstPage, paperAt(sectionIndex));
               }
               const [topFirst, topRest, bottomFirst, bottomRest] = reachAt(sectionIndex);
               const onFirst = page === sectionFirstPage;
-              const pageTop = (page - 1) * CYCLE_PX;
+              const pageTop = grid.topOf(page);
               const contentStart = pageTop + (onFirst ? topFirst : topRest);
-              const contentEnd = pageTop + vm.pageHeight - (onFirst ? bottomFirst : bottomRest)
+              const contentEnd = pageTop + grid.heightOf(page) - (onFirst ? bottomFirst : bottomRest)
                 - (reservedByPage.get(page) ?? 0);
 
 
@@ -1183,7 +1271,7 @@ export const PageBreaks = Extension.create({
                   effectiveTop,
                   effectiveBottom,
                   pageOfTop: page,
-                  pageOfBottom: getPageForY(effectiveBottom, CYCLE_PX),
+                  pageOfBottom: grid.pageAt(effectiveBottom),
                   contentStart,
                   contentEnd,
                   overflowsPageEnd: effectiveBottom > contentEnd,
@@ -1210,7 +1298,7 @@ export const PageBreaks = Extension.create({
                 // The next page's own content start: a section beginning here brings its
                 // first-page header with it.
                 const nextTop = page + 1 === sectionFirstPage ? topFirst : topRest;
-                const target = pageContentStart(page + 1, nextTop, CYCLE_PX);
+                const target = pageContentStart(page + 1, nextTop, grid);
                 const { docPos, row } = leafSpacer(leaf);
                 breaks.push({
                   height: target - effectiveTop,
@@ -1234,7 +1322,7 @@ export const PageBreaks = Extension.create({
                   naturalY: 0,
                 });
               } else if (effectiveTop >= contentEnd) {
-                const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+                const target = pageContentStart(page + 1, vm.top, grid);
                 const { docPos, row } = leafSpacer(leaf);
                 breaks.push({
                   height: target - effectiveTop,
@@ -1262,7 +1350,7 @@ export const PageBreaks = Extension.create({
                   } else if (leaf.naturalHeight <= CONTENT_HEIGHT || cf) {
                     // A columns fragment may be pushed even when taller than a page:
                     // the flow splits it again once it sits at the next page top.
-                    const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+                    const target = pageContentStart(page + 1, vm.top, grid);
                     const { docPos, row } = leafSpacer(leaf);
                     breaks.push({
                       height: target - effectiveTop,
@@ -1290,7 +1378,7 @@ export const PageBreaks = Extension.create({
                   while (boundaryNatural < leaf.naturalHeight) {
                     const split = findLineSplit(leaf.el, boundaryNatural, scale, minLines);
                     if (split === null) break;
-                    const target = pageContentStart(targetPage, vm.top, CYCLE_PX);
+                    const target = pageContentStart(targetPage, vm.top, grid);
                     const h = target - (effectiveTop + extraShift + split.naturalLineTop);
                     if (h <= 0) break;
                     breaks.push({
@@ -1307,7 +1395,7 @@ export const PageBreaks = Extension.create({
                   }
                   if (breaks.length === 0) {
                     if (leaf.naturalHeight <= CONTENT_HEIGHT) {
-                      const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+                      const target = pageContentStart(page + 1, vm.top, grid);
                       breaks.push({
                         height: target - effectiveTop,
                         docPos: preLeafDocPos(leaf.el),
@@ -1339,7 +1427,7 @@ export const PageBreaks = Extension.create({
                   ? Math.min(next.naturalHeight, CONTENT_HEIGHT)
                   : firstLinesHeight(next.el, scale, wantLines) + (parseFloat(getComputedStyle(next.el).paddingTop) || 0);
                 if (effectiveBottom + (leaf.spaceAfter ?? 0) + needed > contentEnd) {
-                  const target = pageContentStart(page + 1, vm.top, CYCLE_PX);
+                  const target = pageContentStart(page + 1, vm.top, grid);
                   const { docPos, row } = leafSpacer(leaf);
                   breaks.push({
                     height: target - effectiveTop,
@@ -1387,7 +1475,7 @@ export const PageBreaks = Extension.create({
                 effectiveTop,
                 effectiveBottom,
                 pageOfTop: page,
-                pageOfBottom: getPageForY(effectiveBottom, CYCLE_PX),
+                pageOfBottom: grid.pageAt(effectiveBottom),
                 contentStart,
                 contentEnd,
                 overflowsPageEnd: effectiveBottom > contentEnd,
@@ -1435,7 +1523,7 @@ export const PageBreaks = Extension.create({
               for (const anchor of leaf.refs ?? []) {
                 let shift = shiftAtLeafTop;
                 for (const br of applied) if (br.at <= anchor.dy + 0.5) shift += br.height;
-                anchorPages.set(anchor.id, getPageForY(leaf.naturalTop + anchor.dy + shift, CYCLE_PX));
+                anchorPages.set(anchor.id, grid.pageAt(leaf.naturalTop + anchor.dy + shift));
               }
               if (!placedAny && noPushReason !== null) {
                 placementsDebug.push({
@@ -1449,7 +1537,7 @@ export const PageBreaks = Extension.create({
               }
 
               // Read after this leaf's own spacer, so the page is the one it really lands on.
-              const landedPage = getPageForY(leaf.naturalTop + cumulativeShift, CYCLE_PX);
+              const landedPage = grid.pageAt(leaf.naturalTop + cumulativeShift);
               if (leaf.sectionStart) sectionStartPages.push(landedPage);
               const ins = insetAt(sectionIndex);
               const mir = landedPage % 2 === 0 ? mirror : 0;
@@ -1482,7 +1570,7 @@ export const PageBreaks = Extension.create({
             }
             return {
               anchorPages, maxEffectiveBottom, sectionStartPages, placements, collapsedTrailing,
-              pageTopBlocks, sectionInsets, tableBands, leavesDebug, placementsDebug,
+              pageTopBlocks, sectionInsets, tableBands, leavesDebug, placementsDebug, grid,
             };
           }
 
@@ -1535,7 +1623,7 @@ export const PageBreaks = Extension.create({
           for (const note of footnotes) {
             const page = placed.anchorPages.get(note.id);
             if (!page) continue;
-            const base = page * CYCLE_PX - PAGE_GAP - vm.bottom - (reserved.get(page) ?? 0) + sepSpace;
+            const base = placed.grid.bottomOf(page) - vm.bottom - (reserved.get(page) ?? 0) + sepSpace;
             const top = nextTop.get(page) ?? base;
             noteTops.set(note.id, top);
             nextTop.set(page, top + note.height);
@@ -1646,8 +1734,8 @@ export const PageBreaks = Extension.create({
           // maxEffectiveBottom is the lowest rendered content across all leaves,
           // including parallel cells of a too-tall row (a single last-leaf reading
           // would miss a taller sibling column).
-          const numPages = Math.max(1, getPageForY(maxEffectiveBottom, CYCLE_PX));
-          const targetHeight = numPages * CYCLE_PX - PAGE_GAP;
+          const numPages = Math.max(1, placed.grid.pageAt(maxEffectiveBottom));
+          const targetHeight = placed.grid.bottomOf(numPages);
           dom.style.minHeight = `${targetHeight}px`;
 
           // In-cell table breaks (all values in unscaled document px relative to
@@ -1678,7 +1766,7 @@ export const PageBreaks = Extension.create({
               PAGE_MARGIN_TOP: vm.top,
               PAGE_MARGIN_BOTTOM: vm.bottom,
               CONTENT_HEIGHT,
-              CYCLE: CYCLE_PX,
+              CYCLE: vm.cycle,
             },
             numPages,
             leaves: leavesDebug,

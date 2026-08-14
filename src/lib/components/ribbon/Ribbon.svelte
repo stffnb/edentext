@@ -24,7 +24,7 @@
   import { DEFAULT_MARGINS, type PageMargins } from '../../storage/pageMargins';
   import type { Orientation } from '../../storage/pageOrientation';
   import type { PageFormat } from '../../storage/pageFormat';
-  import type { HfZone } from '../../storage/headerFooter';
+  import type { HfSet, HfZone } from '../../storage/headerFooter';
   import type { DocumentLanguage } from '../../storage/documentLanguage';
   import { DEFAULT_TAB_INTERVAL_CM } from '../../storage/tabInterval';
   import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../../storage/pageNumbering';
@@ -47,6 +47,7 @@
     pageMargins = $bindable(DEFAULT_MARGINS),
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
+    extraHfSections = $bindable<HfSet[]>([]),
     hyphenate = $bindable(false),
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     pageDecor = $bindable(EMPTY_PAGE_DECOR),
@@ -81,6 +82,7 @@
     pageMargins?: PageMargins;
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
+    extraHfSections?: HfSet[];
     hyphenate?: boolean;
     pageNumbering?: PageNumbering;
     pageDecor?: PageDecor;
@@ -330,7 +332,7 @@
     {:else if tab === 'insert'}
       <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} {onEditZone} {onManageTableStyles} />
     {:else if tab === 'layout'}
-      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:hyphenate bind:pageNumbering bind:pageDecor bind:lineNumbering onParagraphDialog={() => (paragraphDialogOpen = true)} />
+      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:extraHfSections bind:hyphenate bind:pageNumbering bind:pageDecor bind:lineNumbering onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'references'}
       <ReferencesTab {editor} {tick} {hfActive} {onNoteOptions} />
     {:else if tab === 'review'}

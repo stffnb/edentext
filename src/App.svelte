@@ -984,6 +984,7 @@
       bind:pageMargins
       bind:pageOrientation
       bind:pageFormat
+      bind:extraHfSections
       bind:hyphenate
       bind:pageNumbering
       bind:pageDecor

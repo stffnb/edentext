@@ -5,7 +5,7 @@ import { MAX_HEADING_LEVEL } from '../../export/odt';
 import { seqCategoryOf, sequenceFieldText, type SeqCategory } from './caption';
 import { indexEntries, indexRows } from './indexEntry';
 import { bibliographyEntries, bibliographyRows } from './bibliographyEntry';
-import { readVerticalMargins, pageOfElement, topInEditor, FORCE_PAGE_RECALC } from './pageBreaks';
+import { readVerticalMargins, pageOfElement, topInEditor, FORCE_PAGE_RECALC, type PageGrid } from './pageBreaks';
 
 // A generated index: a block atom listing every source with its live page number — the
 // headings for a table of contents, the captions of one category for a list of figures
@@ -253,30 +253,30 @@ class TocView {
     return out;
   }
 
-  private cycle(): number {
-    return readVerticalMargins(this.editor.view.dom as HTMLElement).cycle;
+  private grid(): PageGrid {
+    return readVerticalMargins(this.editor.view.dom as HTMLElement).grid;
   }
 
-  private pageOf(pos: number, cycle: number): number {
+  private pageOf(pos: number, grid: PageGrid): number {
     const el = this.editor.view.nodeDOM(pos) as HTMLElement | null;
     if (!el || el.nodeType !== 1) return 1;
-    return pageOfElement(this.editor.view, el, cycle);
+    return pageOfElement(this.editor.view, el, grid);
   }
 
   private render(): void {
     if (this.editor.isDestroyed || !this.dom.isConnected) return;
-    const cycle = this.cycle();
+    const grid = this.grid();
     let heads = this.sources();
     let entries: TocEntry[];
     if (indexKindOf(this.node()?.attrs?.index) === 'alphabetical') {
       // A term marked five times is one row with five page numbers, and the row jumps
       // to the first of them.
-      const marks = heads.map(h => ({ ...h, page: this.pageOf(h.pos, cycle) }));
+      const marks = heads.map(h => ({ ...h, page: this.pageOf(h.pos, grid) }));
       const rows = indexRows(marks.map(m => ({ term: m.text, key1: '', page: m.page })));
       entries = rows.map(r => ({ text: r.text, level: 1, page: r.pages[0], pages: r.pages }));
       heads = rows.map(r => marks.find(m => m.text === r.text)!);
     } else {
-      entries = heads.map(h => ({ text: h.text, level: h.level, page: this.pageOf(h.pos, cycle) }));
+      entries = heads.map(h => ({ text: h.text, level: h.level, page: this.pageOf(h.pos, grid) }));
     }
     const key = JSON.stringify(entries);
     if (key !== this.lastKey) {

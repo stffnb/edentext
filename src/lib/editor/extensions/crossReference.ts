@@ -144,8 +144,8 @@ class CrossRefView {
     const at = this.editor.view.domAtPos(found.from).node;
     const el = (at.nodeType === 1 ? at : at.parentElement) as HTMLElement | null;
     if (!el) return String(node.attrs.text ?? '');
-    const { cycle } = readVerticalMargins(this.editor.view.dom as HTMLElement);
-    return String(pageOfElement(this.editor.view, el, cycle));
+    const { grid } = readVerticalMargins(this.editor.view.dom as HTMLElement);
+    return String(pageOfElement(this.editor.view, el, grid));
   }
 
   // Mirror what renderHTML would emit, so the DOM reads the same with or without the view.

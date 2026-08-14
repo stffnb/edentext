@@ -25,7 +25,8 @@
   --page-gap: 20px;
   --page-cycle: calc(var(--page-height) + var(--page-gap));
 
-  width: var(--user-page-width, 794px);
+  /* The widest section's paper, so a landscape page is not cut at the sheet edge. */
+  width: var(--pb-paper-width, var(--user-page-width, 794px));
   /* Zoom is a `transform: scale()` set inline (Editor.svelte); pin the origin so the
      page scales down/right from the top-left of its reserved footprint. */
   transform-origin: top left;
@@ -37,18 +38,9 @@
      in LibreOffice. `clip` rather than `hidden`: it must not become a scroll box. */
   overflow-x: clip;
 
-  /* The page surface (white) alternating with the gap, where .tiptap paints only the
-     borders on top of it. It sits here so a header's page background (.hf-bg-layer,
-     z-index -1) can paint between the sheet and the body text. */
-  background: repeating-linear-gradient(
-    to bottom,
-    var(--color-page-bg) 0px,
-    var(--color-page-bg) var(--page-height),
-    transparent var(--page-height),
-    transparent var(--page-cycle)
-  );
-  background-size: 100% var(--page-cycle);
-  background-repeat: repeat-y;
+  /* The sheets themselves are one box per page (PageSheetLayer), since a section on its
+     own paper makes them differ in size. They sit at z-index -2, under a header's page
+     background (.hf-bg-layer, -1) and so under the body text. */
 }
 
 /* While a freshly opened document is still finding its pagination (Editor.svelte).
@@ -82,46 +74,7 @@
   line-height: 1.15;
   color: var(--color-page-text);
 
-  /* Page borders, drawn over the sheet .paper paints */
-  background:
-    /* Left border per page */
-    repeating-linear-gradient(
-      to bottom,
-      var(--color-page-border) 0px,
-      var(--color-page-border) var(--page-height),
-      transparent var(--page-height),
-      transparent var(--page-cycle)
-    ),
-    /* Right border per page */
-    repeating-linear-gradient(
-      to bottom,
-      var(--color-page-border) 0px,
-      var(--color-page-border) var(--page-height),
-      transparent var(--page-height),
-      transparent var(--page-cycle)
-    ),
-    /* Top/bottom border lines of each page */
-    repeating-linear-gradient(
-      to bottom,
-      var(--color-page-border) 0px,
-      var(--color-page-border) 1px,
-      transparent 1px,
-      transparent calc(var(--page-height) - 1px),
-      var(--color-page-border) calc(var(--page-height) - 1px),
-      var(--color-page-border) var(--page-height),
-      transparent var(--page-height),
-      transparent var(--page-cycle)
-    );
-  background-size:
-    1px var(--page-cycle),
-    1px var(--page-cycle),
-    100% var(--page-cycle);
-  background-position:
-    left top,
-    right top,
-    left top;
-  background-repeat: repeat-y;
-
+  /* The page borders ride the sheet boxes (PageSheetLayer). */
   border: none;
 
   /* Subtle overall shadow for depth */

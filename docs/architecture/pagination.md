@@ -76,8 +76,20 @@ Horizontally `.tiptap`'s padding draws one pair for every page, so the differenc
 everything that writes a block margin (`editor.css`, `indent.ts`, `styleSheet.ts`,
 `tableView.ts`) and cleared on descendants so a nested indent can't count it twice. The page
 a block lands on is read *after* its own spacer, so a forced break onto the section's second
-page takes the "rest" pair. Not carried: the ruler, the header/footer layer and a frame's
-`COLUMN_WIDTH_CSS` stay document-wide, and both exports write one page geometry.
+page takes the "rest" pair. Not carried: the ruler and a frame's `COLUMN_WIDTH_CSS` stay document-wide.
+
+**Per-section paper.** A section's own format/orientation (`HfSet.format`/`.orientation`,
+null = the document's) makes the pages differ in size, which a repeating background
+cannot express — so the page grid is a **`PageGrid`** of height runs ("every page from
+here on is this tall") instead of one cycle, and the sheets are one box per page
+(`PageSheetLayer`). `placeLeaves` builds its own grid as each section's first page
+becomes known, so a pass never measures its own last answer; it reports the runs, and
+`Editor.svelte` publishes them as `--pb-page-runs` for every other consumer (the TOC, a
+cross-reference, a page-anchored frame) plus `--pb-section-page` for the next pass.
+`.paper` reserves the **widest** section's paper (`--pb-paper-width`) or a landscape page
+would be cut at the sheet edge, and a narrower section takes the difference as an extra
+right inset on top of its own margins. The sheets are left-aligned in that box, where
+both word processors centre each page.
 
 **Tables across page breaks:** when a single continuous table box crosses a page boundary, the plugin reports `TableBreakBand`s (doc-px geometry). `Editor.svelte` renders an overlay (`.band-layer` inside `.paper`) that masks the table borders bleeding through the page margins and paints the dark page gap as one seam-free stripe.
 

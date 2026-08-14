@@ -1,28 +1,19 @@
 <script lang="ts">
-  import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
-  import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
-  import type { Orientation } from '../storage/pageOrientation';
+  import { cmToPx, type PageMargins } from '../storage/pageMargins';
   import type { PageDecor } from '../storage/pageDecor';
 
   // The page's border and watermark, one box per page — the background itself is a
   // custom property on .paper, which already paints the sheet. Geometry is unscaled
   // document px: the layer sits inside .paper, so the zoom transform covers it.
-  let { decor, numPages, pageMargins, pageFormat, orientation }: {
+  let { decor, pageBoxes, pageMargins }: {
     decor: PageDecor;
-    numPages: number;
+    /** One box per page (Editor.svelte): a section on its own paper differs in size. */
+    pageBoxes: { top: number; height: number; width: number }[];
     pageMargins: PageMargins;
-    pageFormat: PageFormat;
-    orientation: Orientation;
   } = $props();
 
-  const PAGE_GAP = 20;
   // The watermark's aspect ratio, measured off LibreOffice's own shape.
   const WATERMARK_RATIO = 4.487;
-
-  let dims = $derived(pageDimsCm(pageFormat, orientation));
-  let pageHeightPx = $derived(dims.h * PX_PER_CM);
-  let cycle = $derived(pageHeightPx + PAGE_GAP);
-  let pages = $derived(Array.from({ length: Math.max(1, numPages) }, (_, i) => i + 1));
 
   // The border rings the text area, grown by its own padding — where ODF's fo:padding
   // and Word's w:space put it.
@@ -37,23 +28,24 @@
     });
   });
 
-  let markWidth = $derived((dims.w - pageMargins.left - pageMargins.right) * PX_PER_CM);
+  let markWidth = $derived((pageBoxes[0]?.width ?? 794) - cmToPx(pageMargins.left) - cmToPx(pageMargins.right));
 </script>
 
 <div class="page-decor-layer" aria-hidden="true">
-  {#each pages as p}
+  {#each pageBoxes as box, i}
+    {@const p = i + 1}
     {#if decor.border}
-      {@const box = inset(p)}
+      {@const ring = inset(p)}
       <div
         class="page-border"
-        style="top: {(p - 1) * cycle + box.top}px; left: {box.left}px;
-               width: {dims.w * PX_PER_CM - box.left - box.right}px;
-               height: {pageHeightPx - box.top - box.bottom}px;
+        style="top: {box.top + ring.top}px; left: {ring.left}px;
+               width: {box.width - ring.left - ring.right}px;
+               height: {box.height - ring.top - ring.bottom}px;
                border: {decor.border.widthPt}pt solid {decor.border.color};"
       ></div>
     {/if}
     {#if decor.watermark}
-      <div class="watermark" style="top: {(p - 1) * cycle}px; height: {pageHeightPx}px;">
+      <div class="watermark" style="top: {box.top}px; height: {box.height}px;">
         <!-- A fontwork shape stretches its text to the box rather than setting it at a
              size, which is what textLength does here — the box is the text width, as
              LibreOffice sizes its own watermark. -->

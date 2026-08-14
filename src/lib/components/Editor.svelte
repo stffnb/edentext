@@ -17,12 +17,13 @@
   import ContextMenu from './ContextMenu.svelte';
   import HeaderFooterLayer from './HeaderFooterLayer.svelte';
 import PageDecorLayer from './PageDecorLayer.svelte';
+import PageSheetLayer from './PageSheetLayer.svelte';
 import LineNumberLayer from './LineNumberLayer.svelte';
 import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
 import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import Ruler from './Ruler.svelte';
   import { saveDocument, loadDocument, markDocumentLoaded } from '../storage/autosave';
-  import { applyMarginVars, cmToPx, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
+  import { applyMarginVars, cmToPx, PX_PER_CM, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
   import { type Orientation } from '../storage/pageOrientation';
   import { type SpacingModel } from '../storage/spacingModel';
@@ -31,9 +32,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { applyNoteVars } from '../storage/noteSettings';
   import { noteSettings } from '../storage/notes.svelte';
   import { RESYNC_NOTES } from '../editor/extensions/notes';
-  import { applyPageSizeVars, type PageFormat } from '../storage/pageFormat';
+  import { applyPageSizeVars, pageDimsCm, type PageFormat } from '../storage/pageFormat';
   import { DEFAULT_HF_DISTANCES, hfIsEmpty, hfUsesChapterField, type HfDoc, type HfZone, type HfDistances, type HfSet } from '../storage/headerFooter';
-  import { FORCE_PAGE_RECALC, pageOfElement, readVerticalMargins, type TableBreakBand } from '../editor/extensions/pageBreaks';
+  import { FORCE_PAGE_RECALC, PAGE_GAP, pageOfElement, readVerticalMargins, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { findBookmark } from '../editor/extensions/bookmark';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
   import { wheelZoomFactor } from '../utils/zoom';
@@ -91,14 +92,14 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
 
   function collectChapterStarts(): { page: number; level: number; text: string }[] {
     if (!editor || editor.isDestroyed) return [];
-    const cycle = readVerticalMargins(editor.view.dom as HTMLElement).cycle;
+    const grid = readVerticalMargins(editor.view.dom as HTMLElement).grid;
     const out: { page: number; level: number; text: string }[] = [];
     editor.state.doc.descendants((node, pos) => {
       if (node.type.name !== 'heading') return;
       const text = node.textContent.trim();
       const el = editor!.view.nodeDOM(pos) as HTMLElement | null;
       if (!text || !el || el.nodeType !== 1) return;
-      out.push({ page: pageOfElement(editor!.view, el, cycle), level: (node.attrs.level as number) ?? 1, text });
+      out.push({ page: pageOfElement(editor!.view, el, grid), level: (node.attrs.level as number) ?? 1, text });
     });
     return out;
   }
@@ -186,23 +187,58 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     }),
   ].map((g) => g.map((n) => Math.round(n)).join('|')).join(','));
 
+  // Each section's own paper (px). A section that names neither format nor orientation
+  // is on the document's, so its entry is the document's box.
+  let sectionPaper = $derived([
+    pageDimsCm(pageFormat, orientation),
+    ...extraHfSections.map((s) => pageDimsCm(s.format ?? pageFormat, s.orientation ?? orientation)),
+  ].map((d) => ({ w: Math.round(d.w * PX_PER_CM), h: Math.round(d.h * PX_PER_CM) })));
+  // The sheet .paper reserves is the widest of them: a landscape section is wider than
+  // the portrait ones around it and would otherwise be cut at the page edge.
+  let paperWidth = $derived(Math.max(...sectionPaper.map((p) => p.w)));
+
+  // Which section each page belongs to (sectionStartPages holds the first page of every
+  // section past the first), and from it the box every per-page layer paints.
+  let pageBoxes = $derived.by(() => {
+    const out: { top: number; height: number; width: number; section: number }[] = [];
+    let top = 0;
+    let section = 0;
+    for (let p = 1; p <= Math.max(1, numPages); p++) {
+      while (section < sectionStartPages.length && sectionStartPages[section] <= p) section++;
+      const paper = sectionPaper[Math.min(section, sectionPaper.length - 1)];
+      out.push({ top, height: paper.h, width: paper.w, section });
+      top += paper.h + PAGE_GAP;
+    }
+    return out;
+  });
+
   // The same per section for the side margins, as a delta against the document's own:
   // .tiptap's padding draws those for every page, so a section that wants others has
   // its blocks inset by the difference ("leftFirst|rightFirst|leftRest|rightRest").
+  // A section narrower than the sheet (.paper reserves the widest paper) takes the whole
+  // difference on its right, so its text still ends at its own page's right margin.
   let sectionInset = $derived([
-    [0, 0, 0, 0],
-    ...extraHfSections.map((s) => {
+    [0, paperWidth - sectionPaper[0].w, 0, paperWidth - sectionPaper[0].w],
+    ...extraHfSections.map((s, i) => {
       const rest = s.margins ?? null;
       const first = s.marginsFirst ?? rest;
       const d = (m: PageMargins | null, side: 'left' | 'right') =>
         m ? Math.round(cmToPx(m[side]) - cmToPx(pageMargins[side])) : 0;
-      return [d(first, 'left'), d(first, 'right'), d(rest, 'left'), d(rest, 'right')];
+      const narrow = paperWidth - (sectionPaper[i + 1]?.w ?? paperWidth);
+      return [d(first, 'left'), d(first, 'right') + narrow, d(rest, 'left'), d(rest, 'right') + narrow];
     }),
   ].map((g) => g.join('|')).join(','));
 
   $effect(() => {
     const s = document.documentElement.style;
     s.setProperty('--pb-section-inset', sectionInset);
+    s.setProperty('--pb-section-page', sectionPaper.map((p) => p.h).join(','));
+    s.setProperty('--pb-paper-width', `${paperWidth}px`);
+    // The grid the last pass laid out, as "fromPage|height" runs, so every consumer
+    // resolves a page number against the same one pageBreaks placed against.
+    s.setProperty('--pb-page-runs', sectionStartPages
+      .map((page, i) => `${page}|${sectionPaper[Math.min(i + 1, sectionPaper.length - 1)].h}`)
+      .join(','));
     s.setProperty('--pb-content-top-rest', `${effTopRest}px`);
     s.setProperty('--pb-content-top-first', `${effTopFirst}px`);
     s.setProperty('--pb-content-bottom-rest', `${effBottomRest}px`);
@@ -1014,9 +1050,10 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
           {/each}
         </div>
       {/if}
-      <PageDecorLayer decor={pageDecor} {numPages} {pageMargins} {pageFormat} {orientation} />
+      <PageSheetLayer {pageBoxes} />
+      <PageDecorLayer decor={pageDecor} {pageBoxes} {pageMargins} />
       {#if lineNumbering.on}
-        <LineNumberLayer {editor} {tick} {lineNumbering} {numPages} {pageMargins} {pageFormat} {orientation} />
+        <LineNumberLayer {editor} {tick} {lineNumbering} {pageBoxes} {pageMargins} />
       {/if}
       <HeaderFooterLayer
         bind:headerDoc
@@ -1031,6 +1068,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         bind:hfActive
         bind:hfTick
         {numPages}
+        {pageBoxes}
         {currentPage}
         {pageMargins}
         {orientation}

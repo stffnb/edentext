@@ -8,7 +8,7 @@
   import { PAGE_FORMAT_CM, type PageFormat } from '../../../storage/pageFormat';
   import { DEFAULT_MARGINS, type PageMargins } from '../../../storage/pageMargins';
   import type { Orientation } from '../../../storage/pageOrientation';
-  import type { HfZone } from '../../../storage/headerFooter';
+  import { EMPTY_HF_SET, type HfSet, type HfZone } from '../../../storage/headerFooter';
   import { DEFAULT_PAGE_NUMBERING, PAGE_NUM_FORMATS, clampPageStart, type PageNumbering } from '../../../storage/pageNumbering';
   import { EMPTY_PAGE_DECOR, type PageDecor } from '../../../storage/pageDecor';
   import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../../../storage/lineNumbering';
@@ -22,6 +22,7 @@
     pageMargins = $bindable(DEFAULT_MARGINS),
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
+    extraHfSections = $bindable<HfSet[]>([]),
     hyphenate = $bindable(false),
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     pageDecor = $bindable(EMPTY_PAGE_DECOR),
@@ -34,6 +35,7 @@
     pageMargins?: PageMargins;
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
+    extraHfSections?: HfSet[];
     hyphenate?: boolean;
     pageNumbering?: PageNumbering;
     pageDecor?: PageDecor;
@@ -42,6 +44,33 @@
   } = $props();
 
   let decorOpen = $state(false);
+
+  // The section the cursor is in: every top-level block carrying `sectionBreak` opens
+  // the next one, so counting them up to the cursor is the index. 0 = the document's
+  // own first section, which has no HfSet of its own.
+  let currentSection = $derived.by(() => {
+    if (tick < 0 || !editor) return 0;
+    const at = editor.state.selection.from;
+    let n = 0;
+    editor.state.doc.forEach((node, pos) => {
+      if (pos < at && node.attrs?.sectionBreak === true) n++;
+    });
+    return n;
+  });
+  // Its own orientation, where it has one — else the document's.
+  let sectionOrientation = $derived(
+    currentSection > 0 ? (extraHfSections[currentSection - 1]?.orientation ?? pageOrientation) : pageOrientation,
+  );
+
+  // Word's "apply to this section": the paper rides the section's own page setup, so
+  // every other section keeps the document's.
+  function setSectionOrientation(o: Orientation | null): void {
+    if (currentSection < 1) return;
+    const out = extraHfSections.slice();
+    while (out.length < currentSection) out.push({ ...EMPTY_HF_SET });
+    out[currentSection - 1] = { ...out[currentSection - 1], orientation: o };
+    extraHfSections = out;
+  }
 
   const FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
   const EDGES = ['top', 'bottom', 'left', 'right'] as const;
@@ -127,6 +156,13 @@
         {#each (['portrait', 'landscape'] as const) as o}
           <button class:selected={pageOrientation === o} onclick={() => { closeMenu(); pageOrientation = o; }}>{t().toolbarExpanded[o]}</button>
         {/each}
+        {#if currentSection > 0}
+          <div class="rb-menu-label">{t().ribbon.thisSection}</div>
+          {#each (['portrait', 'landscape'] as const) as o}
+            <button class:selected={sectionOrientation === o} onclick={() => { closeMenu(); setSectionOrientation(o); }}>{t().toolbarExpanded[o]}</button>
+          {/each}
+          <button onclick={() => { closeMenu(); setSectionOrientation(null); }}>{t().ribbon.likeDocument}</button>
+        {/if}
       </div>
     {/if}
   </div>

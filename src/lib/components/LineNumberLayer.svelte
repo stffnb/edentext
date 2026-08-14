@@ -1,8 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
-  import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
-  import type { Orientation } from '../storage/pageOrientation';
+  import { cmToPx, type PageMargins } from '../storage/pageMargins';
   import type { LineNumbering } from '../storage/lineNumbering';
 
   // Numbers in the left margin, one per rendered line. CSS exposes no line boxes, so
@@ -12,19 +10,20 @@
   // ponytail: measures every block in the document on each settle. Fine while numbering
   // is on and the document is ordinary; a 400-page one would want a windowed pass keyed
   // to a running count per page.
-  let { editor, tick, lineNumbering, numPages, pageMargins, pageFormat, orientation }: {
+  let { editor, tick, lineNumbering, pageBoxes, pageMargins }: {
     editor: Editor | null;
     tick: number;
     lineNumbering: LineNumbering;
-    numPages: number;
+    /** One box per page (Editor.svelte): a section on its own paper differs in size. */
+    pageBoxes: { top: number; height: number; width: number }[];
     pageMargins: PageMargins;
-    pageFormat: PageFormat;
-    orientation: Orientation;
   } = $props();
 
-  const PAGE_GAP = 20;
-
-  let cycle = $derived(pageDimsCm(pageFormat, orientation).h * PX_PER_CM + PAGE_GAP);
+  // The page a document-px top falls on, against boxes that may differ in height.
+  const pageAt = (top: number) => {
+    for (let i = pageBoxes.length - 1; i >= 0; i--) if (top >= pageBoxes[i].top) return i + 1;
+    return 1;
+  };
   let left = $derived(cmToPx(pageMargins.left) - cmToPx(lineNumbering.distanceCm));
 
   let marks = $state<{ top: number; label: string }[]>([]);
@@ -42,7 +41,7 @@
     // Re-measure on every edit and on each pagination settle.
     void tick;
     void lineNumbering;
-    void numPages;
+    void pageBoxes;
     if (!lineNumbering.on) { marks = []; return; }
     schedule();
   });
@@ -87,7 +86,7 @@
       if (!/^(P|H1|H2|H3|H4|H5|H6|LI|BLOCKQUOTE)$/.test(block.tagName)) continue;
       const empty = !block.textContent?.trim();
       for (const line of lineTops(block, origin)) {
-        const linePage = Math.max(1, Math.floor(line.top / cycle) + 1);
+        const linePage = pageAt(line.top);
         if (lineNumbering.restart === 'page' && linePage !== page) { page = linePage; count = 0; }
         if (empty && !lineNumbering.countEmpty) continue;
         count += 1;

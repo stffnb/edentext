@@ -20,6 +20,7 @@
     footerEvenDoc = $bindable(),
     differentOddEven = false,
     numPages,
+    pageBoxes,
     currentPage,
     pageMargins,
     orientation,
@@ -42,6 +43,8 @@
     footerEvenDoc: HfDoc;
     differentOddEven?: boolean;
     numPages: number;
+    /** One box per page (Editor.svelte): a section on its own paper differs in size. */
+    pageBoxes: { top: number; height: number; width: number }[];
     currentPage: number;
     /** How the page-number field counts (format + start value). */
     pageNumbering?: PageNumbering;
@@ -68,12 +71,15 @@
   // .paper, so the zoom transform applies to it identically to the page background.
   let pageWidthPx = $derived(pageDimsCm(pageFormat, orientation).w * PX_PER_CM);
   let pageHeightPx = $derived(pageDimsCm(pageFormat, orientation).h * PX_PER_CM);
-  let cycle = $derived(pageHeightPx + PAGE_GAP);
+  // A section on its own paper makes the pages differ, so every box comes from the
+  // grid Editor.svelte publishes; the document's own is the fallback.
+  const boxOf = (page: number) => pageBoxes[page - 1]
+    ?? { top: (page - 1) * (pageHeightPx + PAGE_GAP), height: pageHeightPx, width: pageWidthPx };
   let mTop = $derived(cmToPx(pageMargins.top));
   let mBottom = $derived(cmToPx(pageMargins.bottom));
   let mLeft = $derived(cmToPx(pageMargins.left));
   let mRight = $derived(cmToPx(pageMargins.right));
-  let contentWidth = $derived(Math.max(0, pageWidthPx - mLeft - mRight));
+  const contentWidthOf = (page: number) => Math.max(0, boxOf(page).width - mLeft - mRight);
   // Edge→zone distance in px. The footer may sit farther from the edge than the body
   // bottom margin (Word's w:footer > w:bottom); the zone then grows up into the margin.
   let headerDistPx = $derived(Math.min(cmToPx(hfDistances.header), pageHeightPx));
@@ -84,14 +90,15 @@
   function zoneBox(zone: HfZone, page: number) {
     // Mirrored margins: an even page is the left-hand one, so the pair is swapped.
     const left = pageMargins.mirrored && page % 2 === 0 ? mRight : mLeft;
-    const width = contentWidth;
+    const width = contentWidthOf(page);
+    const box = boxOf(page);
     if (zone === 'header') {
-      const top = (page - 1) * cycle + headerDistPx;
+      const top = box.top + headerDistPx;
       return { top, left, width, height: Math.max(MIN_ZONE_PX, mTop - headerDistPx) };
     }
     // Footer anchors its bottom edge at footerDistPx from the page bottom and grows up.
     const height = Math.max(MIN_ZONE_PX, mBottom - footerDistPx);
-    const top = (page - 1) * cycle + pageHeightPx - footerDistPx - height;
+    const top = box.top + box.height - footerDistPx - height;
     return { top, left, width, height };
   }
   // The active (edited) zone grows to fit its content, keeping the anchored edge fixed
@@ -374,7 +381,7 @@
           class="hf-page-bg"
           src={bg.src}
           alt=""
-          style="top: {(p - 1) * cycle + bg.y}px; left: {bg.x}px; width: {bg.width}px; height: {bg.height}px;"
+          style="top: {boxOf(p).top + bg.y}px; left: {bg.x}px; width: {bg.width}px; height: {bg.height}px;"
         />
       {/each}
     {/each}
