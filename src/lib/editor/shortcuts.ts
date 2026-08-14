@@ -53,6 +53,8 @@ export const DEFAULT_SHORTCUTS = {
   findNext: 'F3',
   findPrevious: 'Shift-F3',
   formattingMarks: 'Mod-F10',
+  // LibreOffice's Navigator key; Word has none for its Navigation pane.
+  navigator: 'F5',
   zoomIn: 'Mod-+',
   zoomOut: 'Mod--',
   zoomReset: 'Mod-0',

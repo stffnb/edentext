@@ -11,16 +11,21 @@
     zoom = 100,
     onZoom,
     onDebugDump,
+    navigatorOpen = false,
+    onToggleNavigator,
   }: {
     showRuler?: boolean;
     showFormattingMarks?: boolean;
     zoom?: number;
     onZoom?: (value: number) => void;
     onDebugDump?: () => void;
+    navigatorOpen?: boolean;
+    onToggleNavigator?: () => void;
   } = $props();
 </script>
 
 <RibbonGroup label={t().ribbon.groups.show}>
+  <RibbonButton variant="big" icon="toc" label={t().navigator.title} title={`${t().navigator.title} (${shortcutHint('navigator')})`} active={navigatorOpen} onclick={() => onToggleNavigator?.()} />
   <div class="rb-col">
     <RibbonButton variant="small" icon="ruler" label={t().ruler.show} active={showRuler} onclick={() => (showRuler = !showRuler)} />
     <RibbonButton variant="small" icon="pilcrow" label={t().toolbarExpanded.formattingMarks} title={`${t().toolbarExpanded.formattingMarks} (${shortcutHint('formattingMarks')})`} active={showFormattingMarks} onclick={() => (showFormattingMarks = !showFormattingMarks)} />

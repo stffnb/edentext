@@ -63,6 +63,7 @@
     docxBusy = false,
     pdfBusy = false,
     onNew, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onNewComment, commentsOpen = false, onToggleComments,
+    navigatorOpen = false, onToggleNavigator,
     recentFiles = [], onOpenRecent, onForgetRecent,
   }: {
     editor: Editor | null;
@@ -113,6 +114,8 @@
     onNewComment?: () => void;
     commentsOpen?: boolean;
     onToggleComments?: () => void;
+    navigatorOpen?: boolean;
+    onToggleNavigator?: () => void;
   } = $props();
 
   const TABS = ['home', 'insert', 'layout', 'references', 'review', 'view'] as const;
@@ -329,7 +332,7 @@
     {:else if tab === 'review'}
       <ReviewTab {editor} {tick} {documentLanguage} {onLanguage} {onAutoCorrect} {onNewComment} {commentsOpen} {onToggleComments} />
     {:else if tab === 'view'}
-      <ViewTab bind:showRuler bind:showFormattingMarks {zoom} {onZoom} {onDebugDump} />
+      <ViewTab bind:showRuler bind:showFormattingMarks {zoom} {onZoom} {onDebugDump} {navigatorOpen} {onToggleNavigator} />
     {:else if tab === 'tableDesign' || tab === 'tableLayout'}
       <TableTabs {editor} {tick} which={tab === 'tableDesign' ? 'design' : 'layout'} />
     {:else if tab === 'pictureFormat' || tab === 'shapeFormat'}

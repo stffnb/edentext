@@ -48,6 +48,7 @@
   import AboutDialog from './lib/components/AboutDialog.svelte';
   import DocPropertiesDialog from './lib/components/DocPropertiesDialog.svelte';
   import CommentsPane from './lib/components/CommentsPane.svelte';
+  import NavigatorPane from './lib/components/NavigatorPane.svelte';
   import { OPEN_COMMENT_EVENT } from './lib/editor/extensions/comment';
   import AutoCorrectDialog from './lib/components/AutoCorrectDialog.svelte';
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
@@ -165,6 +166,7 @@
   let lineNumbering: LineNumbering = $state(loadLineNumbering());
   let autoCorrectOpen = $state(false);
   let commentsOpen = $state(false);
+  let navigatorOpen = $state(false);
 
   // Width of the hidden mirror span (below), so the title input grows/shrinks
   // with its text instead of sitting in a fixed-width box.
@@ -889,6 +891,7 @@
       [DEFAULT_SHORTCUTS.findNext, () => (findOpen ? editor?.commands.findNext() : openFind('find'))],
       [DEFAULT_SHORTCUTS.findPrevious, () => (findOpen ? editor?.commands.findPrevious() : openFind('find'))],
       [DEFAULT_SHORTCUTS.formattingMarks, () => (showFormattingMarks = !showFormattingMarks)],
+      [DEFAULT_SHORTCUTS.navigator, () => (navigatorOpen = !navigatorOpen)],
       [DEFAULT_SHORTCUTS.zoomIn, () => setZoom(zoom + 10)],
       [DEFAULT_SHORTCUTS.zoomOut, () => setZoom(zoom - 10)],
       [DEFAULT_SHORTCUTS.zoomReset, () => setZoom(100)],
@@ -1014,6 +1017,8 @@
       onNewComment={addComment}
       {commentsOpen}
       onToggleComments={() => (commentsOpen = !commentsOpen)}
+      {navigatorOpen}
+      onToggleNavigator={() => (navigatorOpen = !navigatorOpen)}
     />
   </div>
   {:else}
@@ -1241,6 +1246,8 @@
     {#if toolbarExpanded}
       <div class="extended-wrap" transition:expand>
         <ToolbarExpanded
+          {navigatorOpen}
+          onToggleNavigator={() => (navigatorOpen = !navigatorOpen)}
           editor={activeEditor}
           tick={activeTick}
           bind:showFormattingMarks
@@ -1312,6 +1319,9 @@
     orientation={pageOrientation}
     {pageFormat}
   />
+  {#if navigatorOpen}
+    <NavigatorPane {editor} {tick} onClose={() => (navigatorOpen = false)} />
+  {/if}
   {#if commentsOpen}
     <CommentsPane {editor} {tick} author={docProps.author} onClose={() => (commentsOpen = false)} />
   {/if}

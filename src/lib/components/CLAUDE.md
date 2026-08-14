@@ -74,6 +74,14 @@ range, edit / resolve / remove in place. `App.svelte` owns the New-comment promp
 both the Review tab and the context menu (`OPEN_COMMENT_EVENT`) fire; the author comes
 from the document properties.
 
+## Navigator (`NavigatorPane.svelte`, `editor/extensions/outline.ts`)
+
+LibreOffice's Navigator and Word's Navigation pane: the outline, click to jump, and the
+four chapter operations on hover. Docked right beside `CommentsPane`, not left where both
+reference products put it — the classic chrome's floating "Tools" chip lives there. The
+toolbar island overlays the row's top, so the pane takes a `margin-top` of
+`--toolbar-overlay-h` (`App.svelte` sets it; 0 for the ribbon, which is in flow).
+
 ## Page decoration (`PageDecorLayer.svelte`, `storage/pageDecor.ts`)
 
 Background, border and watermark, all page-level. The layer sits inside the scaled

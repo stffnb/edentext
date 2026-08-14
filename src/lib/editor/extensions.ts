@@ -58,10 +58,11 @@ import { TextBox } from './extensions/textBox';
 import { Columns } from './extensions/columns';
 import { ColumnsFlow } from './extensions/columnsFlow';
 import { TableOfContents } from './extensions/tableOfContents';
+import { Outline } from './extensions/outline';
 import { Note, NoteRef, NoteSection, Notes } from './extensions/notes';
 import { Shortcuts } from './extensions/shortcuts';
 import { AutoCorrect } from './extensions/autoCorrect';
-import { HEADING_LEVELS } from '../export/odt';
+import { HEADING_LEVELS, MAX_HEADING_LEVEL } from '../export/odt';
 import { styleSheet } from '../styles/sheet.svelte';
 import { noteSettings } from '../storage/notes.svelte';
 import { recordChanges } from '../storage/trackChanges.svelte';
@@ -127,6 +128,9 @@ export const extensions = [
   // Generated table of contents from headings; round-trips to ODF
   // <text:table-of-content> (export/odt.ts, import/odt.ts) and a DOCX TOC field.
   TableOfContents,
+  // The document's chapters for the Navigator pane, plus LibreOffice's move and
+  // promote/demote of a whole chapter.
+  Outline.configure({ maxLevel: MAX_HEADING_LEVEL }),
   // Footnotes and endnotes: the anchor rides the text, the note text lives in the one
   // noteSection at the document end. pageBreaks.ts lifts a footnote to the foot of its
   // anchor's page. Round-trips to ODF <text:note> and DOCX word/footnotes.xml.

@@ -103,6 +103,7 @@
 - Right-click context menu for text: cut / copy / paste / paste without formatting, link insert-edit-remove, clear formatting — with the spelling suggestions merged in on top. Shift+right-click keeps the browser's own menu; images, text boxes and header/footer stay with their existing UI
 - Spell check in English and German with squiggles and suggestions in the context menu (add / ignore word); selectable document language. Powered by Hunspell (WASM), so German compound words (Fußgänger, Krankenversicherung …) are recognised; dictionaries are lazy-loaded per language on demand
 - Word / character count statistics (whole document and selection)
+- Navigator pane (F5, or View ▸ Navigator): the document's chapters as an outline, click one to jump to it and the caret's own chapter stays marked. Beside each, LibreOffice's four chapter operations — move up / down and promote / demote a level, each carrying everything under the heading with it. A move swaps with the adjacent chapter at the same level and never crosses a heading above it, so a subheading stays in its own chapter. Below the outline, the tables, pictures and bookmarks LibreOffice's Navigator also lists, as jump targets
 
 **UI & theming**
 - Light / Dark / AllBlack / Auto appearance modes (settings menu in toolbar)
