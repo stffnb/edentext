@@ -317,6 +317,10 @@
     </div>
 
     <UiLanguagePicker />
+
+    <button class="rb-logo-btn" onclick={() => run(onAbout)} title={t().about.label} aria-label={t().about.label}>
+      <img src="/favicon.svg" alt="" aria-hidden="true" />
+    </button>
   </div>
 
   {#if !collapsed}
@@ -474,6 +478,22 @@
 
   /* The one place the accent is a surface rather than a line, so it has its own
      token: the accent that reads on the chrome is too light to carry white. */
+  .rb-logo-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    margin-left: 6px;
+    padding: 0;
+    border: none;
+    background: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .rb-logo-btn:hover { background: var(--w-hover); }
+  .rb-logo-btn img { height: 18px; width: auto; display: block; }
+
   .ribbon-tab-file {
     border: none;
     background: var(--w-accent-fill);
