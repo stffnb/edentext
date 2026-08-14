@@ -24,7 +24,7 @@ import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBor
 import { parseCellPadding, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { numberLocale, parseCellNumber, toWriterFormula, type CellRef, type NumberLocale } from '../utils/tableFormula';
-import { isShapeKind, odfEnhancedGeometry, type ShapeKind } from '../utils/shapes';
+import { SHAPES, arrowHeadCm, isShapeKind, isLineKind, odfEnhancedGeometry, type ShapeKind } from '../utils/shapes';
 import { normalizeLeader, parseTabStops } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
 import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, formatOrdinal, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
@@ -886,6 +886,7 @@ type TextBoxExport = {
   wrapAlign: string | null;
   paddingCm: number;
   shapeKind: ShapeKind;
+  flipV: boolean;
   fill: string | null;
   stroke: string | null;
   strokeWidthPt: number;
@@ -910,6 +911,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     wrapAlign: a.wrapAlign === 'center' || a.wrapAlign === 'right' ? a.wrapAlign : null,
     paddingCm: typeof a.paddingCm === 'number' ? round3(a.paddingCm) : TEXTBOX_PADDING_CM,
     shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
+    flipV: a.flipV === true,
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
     strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
@@ -3747,9 +3749,15 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   const grow = box.shapeKind === 'textbox'
     ? ' draw:auto-grow-height="true"'
     : ' draw:auto-grow-height="false" draw:auto-grow-width="false"';
+  // An arrow head is a named marker in ODF, defined once in styles.xml.
+  const heads = SHAPES[box.shapeKind].line;
+  const marker = (side: 'start' | 'end') =>
+    ` draw:marker-${side}="${ODF_ARROW}" draw:marker-${side}-width="${arrowHeadCm(box.strokeWidthPt)}cm"`;
+  const arrows = heads === 'end' ? marker('end')
+    : heads === 'both' ? marker('end') + marker('start') : '';
   return (
     `<style:style style:name="TbxFr${index + 1}" style:family="graphic">` +
-    `<style:graphic-properties ${fill} ${stroke} fo:padding="${box.paddingCm}cm"` +
+    `<style:graphic-properties ${fill} ${stroke}${arrows} fo:padding="${box.paddingCm}cm"` +
     `${grow} draw:textarea-vertical-align="top"${wrap}/>` +
     `</style:style>`
   );
@@ -3779,6 +3787,16 @@ function textBoxXml(box: TextBoxExport, inner: string, index: number): string {
   const common =
     ` draw:style-name="TbxFr${n}" text:anchor-type="${anchor}" draw:z-index="${index}"` +
     ` svg:width="${box.widthCm}cm"${at}`;
+  // A line is its two endpoints, so ODF gives it its own element rather than a frame
+  // with a width and a height. The blocks the schema keeps on the node are dropped:
+  // <draw:line> holds no text, and the editor draws none.
+  if (isLineKind(box.shapeKind)) {
+    const [y1, y2] = box.flipV ? [box.heightCm, 0] : [0, box.heightCm];
+    return (
+      `<draw:line draw:name="Line${n}"${common.replace(/ svg:width="[^"]*"/, '')}` +
+      ` svg:x1="0cm" svg:y1="${y1}cm" svg:x2="${box.widthCm}cm" svg:y2="${y2}cm"/>`
+    );
+  }
   if (box.shapeKind === 'textbox') {
     // svg:height for consumers without auto-grow; fo:min-height is the real semantic
     // (height = minimum, content grows the box) and wins on our own re-import.
@@ -3792,6 +3810,11 @@ function textBoxXml(box: TextBoxExport, inner: string, index: number): string {
     `${inner}${odfEnhancedGeometry(box.shapeKind) ?? ''}</draw:custom-shape>`
   );
 }
+
+// LibreOffice's own standard arrow head, name and path alike, so a file we write and
+// one it writes carry the same marker rather than two that look the same.
+const ODF_ARROW = 'Arrow';
+const ODF_ARROW_MARKER = `<draw:marker draw:name="${ODF_ARROW}" svg:viewBox="0 0 20 30" svg:d="m10 0-10 30h20z"/>`;
 
 // Resolve the text-box marker paragraphs: wrap each S{i}…E{i} region (the box's
 // hoisted, fully serialized blocks) into its drawing element inside a fresh anchor
@@ -3818,6 +3841,15 @@ function applyTextBoxes(odtBytes: Uint8Array, boxes: TextBoxExport[]): Uint8Arra
     boxes.map((b, i) => textBoxGraphicStyle(b, i) + textBoxAnchorStyle(b, i)).join(''),
   );
   files['content.xml'] = strToU8(content);
+  // An arrow head is referenced by name, so its one definition goes where LibreOffice
+  // keeps its own — office:styles in styles.xml — and only when a line asks for it.
+  const stylesBytes = files['styles.xml'];
+  if (stylesBytes && boxes.some((b) => SHAPES[b.shapeKind].line && SHAPES[b.shapeKind].line !== 'none')) {
+    const styles = ensureDrawNamespaces(strFromU8(stylesBytes));
+    if (!styles.includes(`draw:name="${ODF_ARROW}"`)) {
+      files['styles.xml'] = strToU8(styles.replace(/<office:styles(\s[^>]*)?>/, (m) => `${m}${ODF_ARROW_MARKER}`));
+    }
+  }
   return rezipOdt(files);
 }
 

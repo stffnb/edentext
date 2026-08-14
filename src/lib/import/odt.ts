@@ -11,7 +11,7 @@ import { TABLE_REGIONS, tableLookAttr, type TableLook, type TableRegion } from '
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
-import { shapeFromOdfType, type ShapeKind } from '../utils/shapes';
+import { shapeFromOdfType, lineKindFor, type ShapeKind } from '../utils/shapes';
 import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
 import { astToLatex } from '../math/latex';
 import { parseMathml } from '../math/mathml';
@@ -514,6 +514,26 @@ function convertShape(el: Element, ctx: Ctx): Node | null {
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(el.children), ctx) };
 }
 
+// draw:line → a textBox of the matching line kind: the two endpoints become the frame
+// they span, and which diagonal they run along. Which heads the graphic style declares
+// is what decides plain line / arrow / double arrow.
+function convertLine(el: Element, ctx: Ctx): Node | null {
+  const at = (name: string) => lengthToCm(el.getAttributeNS(NS.svg, name)) ?? 0;
+  const [x1, y1, x2, y2] = [at('x1'), at('y1'), at('x2'), at('y2')];
+  const gp = ctx.resolver.graphicProps(el.getAttributeNS(NS.draw, 'style-name'));
+  const kind = lineKindFor(!!gp['draw:marker-start'], !!gp['draw:marker-end']);
+  const attrs: Record<string, unknown> = {
+    shapeKind: kind,
+    width: framePx(cmToPx(Math.abs(x2 - x1))),
+    height: framePx(cmToPx(Math.abs(y2 - y1))),
+  };
+  // The editor draws a line across its frame, so only the direction is left to keep.
+  if ((y2 - y1) * (x2 - x1) < 0) attrs.flipV = true;
+  applyFrameRotationAndWrap(el, attrs, gp);
+  shapeStyleAttrs(gp, attrs, true);
+  return { type: 'textBox', attrs, content: [{ type: 'paragraph' }] };
+}
+
 // Dispatch any draw:* element: an image stays inline; a text box / shape is a block
 // node routed through ctx.pendingBlocks; everything else is dropped with a warning.
 function convertDrawElement(e: Element, ctx: Ctx): { inline?: Node; block?: Node } | null {
@@ -536,6 +556,10 @@ function convertDrawElement(e: Element, ctx: Ctx): { inline?: Node; block?: Node
     // an unreadable image already warned inside convertFrame.
     if (!hasImage) ctx.warnings.add('Drawings were removed');
     return null;
+  }
+  if (e.localName === 'line') {
+    const line = convertLine(e, ctx);
+    return line ? { block: line } : null;
   }
   if (e.localName === 'rect' || e.localName === 'ellipse' || e.localName === 'custom-shape') {
     const shape = convertShape(e, ctx);

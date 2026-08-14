@@ -1,20 +1,24 @@
 import { describe, it, expect } from 'vitest';
 import {
-  SHAPES, POLYGON_KINDS, shapePath, odfEnhancedGeometry, shapeFromOdfType, shapeFromPrst,
+  SHAPES, POLYGON_KINDS, shapePath, odfEnhancedGeometry, shapeFromOdfType, shapeFromPrst, isLineKind,
   type ShapeKind,
 } from '../../src/lib/utils/shapes';
 
 describe('shape presets', () => {
-  it('names every kind once per format', () => {
-    const kinds = Object.keys(SHAPES) as ShapeKind[];
+  // The three line kinds share their names on purpose — the arrow heads a file
+  // declares are what tells them apart (lineKindFor) — so the box shapes are the
+  // ones a name has to identify on its own.
+  it('names every box kind once per format', () => {
+    const kinds = (Object.keys(SHAPES) as ShapeKind[]).filter((k) => !isLineKind(k));
     expect(new Set(kinds.map((k) => SHAPES[k].odf)).size).toBe(kinds.length);
     expect(new Set(kinds.map((k) => SHAPES[k].prst)).size).toBe(kinds.length);
   });
 
   it('round-trips a kind through both formats', () => {
     for (const k of Object.keys(SHAPES) as ShapeKind[]) {
-      expect(shapeFromOdfType(SHAPES[k].odf)).toBe(k);
-      expect(shapeFromPrst(SHAPES[k].prst)).toBe(k);
+      const same = isLineKind(k) ? 'line' : k;
+      expect(shapeFromOdfType(SHAPES[k].odf)).toBe(same);
+      expect(shapeFromPrst(SHAPES[k].prst)).toBe(same);
     }
     // A preset we can't draw stays unknown rather than flattening to a rectangle.
     expect(shapeFromOdfType('bent-connector')).toBeNull();

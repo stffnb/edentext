@@ -650,6 +650,7 @@ type TextBoxDocx = {
   offsetYCm: number | null;
   distCm: number | null;
   shapeKind: ShapeKind;
+  flipV: boolean;
   fill: string | null;
   stroke: string | null;
   strokeWidthPt: number;
@@ -668,6 +669,7 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     offsetYCm: typeof a.wrapOffsetY === 'number' ? a.wrapOffsetY : null,
     distCm: typeof a.wrapDist === 'number' ? a.wrapDist : null,
     shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
+    flipV: a.flipV === true,
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
     strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
@@ -872,18 +874,28 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
   const fill = box.fill
     ? `<a:solidFill><a:srgbClr val="${hexColor(box.fill) ?? 'FFFFFF'}"/></a:solidFill>`
     : '<a:noFill/>';
+  // A line is only its stroke, and its heads ride the same <a:ln>.
+  const line = SHAPES[box.shapeKind].line;
+  const ends = line === 'end' ? '<a:tailEnd type="triangle"/>'
+    : line === 'both' ? '<a:headEnd type="triangle"/><a:tailEnd type="triangle"/>' : '';
   const ln = box.stroke
-    ? `<a:ln w="${Math.round(box.strokeWidthPt * EMU_PER_PT)}"><a:solidFill><a:srgbClr val="${hexColor(box.stroke) ?? '000000'}"/></a:solidFill></a:ln>`
+    ? `<a:ln w="${Math.round(box.strokeWidthPt * EMU_PER_PT)}"><a:solidFill><a:srgbClr val="${hexColor(box.stroke) ?? '000000'}"/></a:solidFill>${ends}</a:ln>`
     : '<a:ln><a:noFill/></a:ln>';
   const inset = Math.round(TEXTBOX_PADDING_CM * EMU_PER_CM);
   // Auto-grow only for plain text boxes, matching the ODT export.
   const autofit = box.shapeKind === 'textbox' ? '<a:spAutoFit/>' : '';
+  // Word draws the `line` preset down the frame's diagonal and flips it to reach the
+  // other one; a line carries no fill and no text body.
+  const flip = line && box.flipV ? ' flipV="1"' : '';
+  const body = line
+    ? ''
+    : `<wps:txbx><w:txbxContent>${txbxContentXml(box.content, parts)}</w:txbxContent></wps:txbx>`;
   const wsp =
     `<wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">` +
     `<wps:cNvSpPr txBox="1"/>` +
-    `<wps:spPr><a:xfrm${rot}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
-    `<a:prstGeom prst="${SHAPES[box.shapeKind].prst}"><a:avLst/></a:prstGeom>${fill}${ln}</wps:spPr>` +
-    `<wps:txbx><w:txbxContent>${txbxContentXml(box.content, parts)}</w:txbxContent></wps:txbx>` +
+    `<wps:spPr><a:xfrm${rot}${flip}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
+    `<a:prstGeom prst="${SHAPES[box.shapeKind].prst}"><a:avLst/></a:prstGeom>${line ? '<a:noFill/>' : fill}${ln}</wps:spPr>` +
+    body +
     `<wps:bodyPr rot="0" vert="horz" wrap="square" lIns="${inset}" tIns="${inset}" rIns="${inset}" bIns="${inset}" anchor="t">${autofit}</wps:bodyPr>` +
     `</wps:wsp>`;
   const graphic =

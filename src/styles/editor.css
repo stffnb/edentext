@@ -478,6 +478,14 @@
   overflow: visible;
   pointer-events: none;
 }
+/* A line is drawn in the frame's own pixels, so the SVG carries no stretching; it
+   still overflows, since half the stroke sits outside a frame of no height. */
+.paper .tiptap .textbox-line {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
 .paper .tiptap .textbox-content {
   cursor: text;
   min-height: 1em;

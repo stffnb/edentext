@@ -28,3 +28,28 @@ Adding a shape is one entry in `SHAPES` — no icon, no export branch, no import
 - An importer maps the file's `draw:type`/`prst` back through the same table;
   `shapeFromOdfType`/`shapeFromPrst` return **null** for a preset we can't draw, which is
   what makes the warning possible instead of flattening it to a rectangle.
+
+## Lines and arrows
+
+`line`, `lineArrow` and `lineDoubleArrow` are **two endpoints, not a box**: they hold no
+text (the paragraph the schema requires is hidden and never exported), take no fill, and
+run across the frame's diagonal — `flipV` picking which one, the single flag Word's
+`flipV` and ODF's own endpoint order both come down to. They are drawn in the frame's
+**real pixels** (`linePaths`), not the stretched 0…100 box a polygon uses: an arrow head
+has to keep its shape however flat the frame is, and the head scales with the pen
+(`arrowHeadPx`, floored so a hairline still shows one).
+
+The three share their `odf`/`prst` names, because **the heads are what tell them apart**:
+both importers read the heads a file declares and `lineKindFor` names the kind, so a
+`straightConnector1` with no heads is a plain line and a `line` preset with both is a
+double arrow.
+
+- **ODF** gives a line its own element — `<draw:line svg:x1/y1/x2/y2>`, no width or
+  height — and its heads are a **named marker**, so `applyTextBoxes` also writes the one
+  `<draw:marker draw:name="Arrow">` definition into `styles.xml`, LibreOffice's own name
+  and path. It goes in only when a line asks for it, and needs `ensureDrawNamespaces`:
+  an undeclared `draw:` prefix there makes the whole file unreadable.
+- **DOCX** keeps the frame and flips it (`<a:xfrm flipV="1">`), the heads riding the
+  shape's `<a:ln>` as `a:headEnd`/`a:tailEnd`, and writes no `wps:txbx` at all.
+- **Not covered**: connectors that attach to other shapes, and freeform curves. Both are
+  still dropped with a warning — a connector is an anchoring model, not a shape.

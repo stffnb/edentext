@@ -7,7 +7,11 @@ export type ShapeKind =
   | 'textbox' | 'roundRect' | 'ellipse'
   | 'triangle' | 'rightTriangle' | 'diamond' | 'pentagon' | 'hexagon' | 'star5'
   | 'trapezoid' | 'parallelogram'
-  | 'rightArrow' | 'leftArrow' | 'upArrow' | 'downArrow';
+  | 'rightArrow' | 'leftArrow' | 'upArrow' | 'downArrow'
+  | 'line' | 'lineArrow' | 'lineDoubleArrow';
+
+/** Which ends of a line carry an arrow head. */
+export type LineHeads = 'none' | 'end' | 'both';
 
 type Point = readonly [number, number];
 
@@ -20,6 +24,11 @@ export type ShapePreset = {
   points?: readonly Point[];
   /** Where text goes inside the outline: x0 y0 x1 y1, same 0…100 box. */
   textArea?: readonly [number, number, number, number];
+  /**
+   * Two endpoints rather than a box, so it holds no text and is stroked, not filled.
+   * The value is which ends carry an arrow head.
+   */
+  line?: LineHeads;
 };
 
 // A regular n-gon's corners on the circle around the box, first one straight up.
@@ -107,7 +116,40 @@ export const SHAPES: Record<ShapeKind, ShapePreset> = {
     points: [[25, 0], [25, 50], [0, 50], [50, 100], [100, 50], [75, 50], [75, 0]],
     textArea: [30, 5, 70, 50],
   },
+  // ODF gives a line its own element (draw:line, two endpoints), where Word draws
+  // the `line` preset across the frame and flips it to reach the other diagonal.
+  line: { odf: 'line', prst: 'line', line: 'none' },
+  lineArrow: { odf: 'line', prst: 'straightConnector1', line: 'end' },
+  lineDoubleArrow: { odf: 'line', prst: 'straightConnector1', line: 'both' },
 };
+
+export function isLineKind(kind: ShapeKind): boolean {
+  return !!SHAPES[kind].line;
+}
+
+/**
+ * How long an arrow head is, in px, for a pen of `strokeWidthPt`. Word scales the head
+ * with the line; the floor keeps a hairline's head visible, near the fixed 0.3 cm
+ * LibreOffice's own dialog offers.
+ */
+export function arrowHeadPx(strokeWidthPt: number): number {
+  return Math.max(8, strokeWidthPt * (96 / 72) * 5);
+}
+
+/** The same head as an ODF `draw:marker-*-width`, which is measured across it. */
+export function arrowHeadCm(strokeWidthPt: number): number {
+  return Math.round((arrowHeadPx(strokeWidthPt) * 0.7 * 2.54) / 96 * 1000) / 1000;
+}
+
+/** The line kinds, in the order the shape picker offers them. */
+export const LINE_KINDS = (Object.keys(SHAPES) as ShapeKind[]).filter(isLineKind);
+
+// A line's heads decide which kind it is, so a file's own arrow settings land on the
+// right one whatever preset it used.
+export function lineKindFor(start: boolean, end: boolean): ShapeKind {
+  if (start && end) return 'lineDoubleArrow';
+  return start || end ? 'lineArrow' : 'line';
+}
 
 /** The kinds drawn as a polygon — everything past the three CSS ones. */
 export const POLYGON_KINDS = (Object.keys(SHAPES) as ShapeKind[]).filter((k) => SHAPES[k].points);
@@ -117,6 +159,38 @@ export function isShapeKind(v: unknown): v is ShapeKind {
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+
+// An arrow head as a filled triangle: the tip at (x,y), pointing along the unit
+// vector (dx,dy). 0.35 of the length to each side is the proportion both word
+// processors draw a plain arrow at.
+function headPath(x: number, y: number, dx: number, dy: number, len: number): string {
+  const bx = x - dx * len;
+  const by = y - dy * len;
+  const px = -dy * len * 0.35;
+  const py = dx * len * 0.35;
+  return `M ${r2(x)},${r2(y)} L ${r2(bx + px)},${r2(by + py)} L ${r2(bx - px)},${r2(by - py)} Z`;
+}
+
+/**
+ * A line kind drawn across a `w`×`h` box: the stroked segment and its filled heads,
+ * in real pixels rather than the distorted 0…100 box a polygon uses — an arrow head
+ * has to stay proportional to the pen however flat the frame is.
+ */
+export function linePaths(kind: ShapeKind, w: number, h: number, flip: boolean, headLen: number): { line: string; heads: string[] } | null {
+  const heads = SHAPES[kind].line;
+  if (!heads) return null;
+  const [x1, y1, x2, y2] = flip ? [0, h, w, 0] : [0, 0, w, h];
+  const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+  const dx = (x2 - x1) / len;
+  const dy = (y2 - y1) / len;
+  const cap = Math.min(headLen, len / 2);
+  return {
+    line: `M ${r2(x1)},${r2(y1)} L ${r2(x2)},${r2(y2)}`,
+    heads: heads === 'none' ? []
+      : heads === 'end' ? [headPath(x2, y2, dx, dy, cap)]
+      : [headPath(x2, y2, dx, dy, cap), headPath(x1, y1, -dx, -dy, cap)],
+  };
+}
 
 /** The outline as an SVG `d`, in the 0…100 box the node view's viewBox uses. */
 export function shapePath(kind: ShapeKind): string | null {
@@ -154,8 +228,11 @@ export function odfEnhancedGeometry(kind: ShapeKind): string | null {
   return body === null ? null : `<draw:enhanced-geometry svg:viewBox="0 0 ${VB} ${VB}"${body}/>`;
 }
 
-const BY_ODF = new Map((Object.keys(SHAPES) as ShapeKind[]).map((k) => [SHAPES[k].odf, k]));
-const BY_PRST = new Map((Object.keys(SHAPES) as ShapeKind[]).map((k) => [SHAPES[k].prst, k]));
+// The three line kinds share their names, and the heads a file declares are what
+// tells them apart (lineKindFor), so only the bare one is reachable by name.
+const NAMED = (Object.keys(SHAPES) as ShapeKind[]).filter((k) => SHAPES[k].line !== 'end' && SHAPES[k].line !== 'both');
+const BY_ODF = new Map(NAMED.map((k) => [SHAPES[k].odf, k]));
+const BY_PRST = new Map([...NAMED.map((k) => [SHAPES[k].prst, k] as const), ['straightConnector1', 'line' as ShapeKind]]);
 
 // null = a preset we don't draw, which the importers report rather than flatten to a
 // rectangle. LibreOffice writes `circle` for an ellipse constrained to one.

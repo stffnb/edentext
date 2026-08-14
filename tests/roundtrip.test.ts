@@ -1303,9 +1303,9 @@ describe('Leg 7: foreign shapes/text boxes → importOdt', () => {
     const f = importOdt(foreign);
     const c = f.content.content!;
     const boxes = c.filter((n: N) => n.type === 'textBox');
-    check('4 supported shapes imported', boxes.length === 4, c.map((n: N) => n.type));
+    check('5 supported shapes imported', boxes.length === 5, c.map((n: N) => n.type));
 
-    const [floatBox, rect, ellipse, star] = boxes;
+    const [floatBox, rect, ellipse, star, line] = boxes;
     check('frame: free x/y collapses to wrap side (right)', floatBox?.attrs?.wrap === 'right', floatBox?.attrs);
     check('frame: 2in → 192px, min-height 1in → 96px', floatBox?.attrs?.width === 192 && floatBox?.attrs?.height === 96, floatBox?.attrs);
     check('frame: fill + stroke from graphic style', floatBox?.attrs?.fillColor === '#CCFFCC' && floatBox?.attrs?.strokeColor === '#003300', floatBox?.attrs);
@@ -1317,7 +1317,9 @@ describe('Leg 7: foreign shapes/text boxes → importOdt', () => {
     check('custom-shape ellipse: shapeKind + geometry', ellipse?.attrs?.shapeKind === 'ellipse' && ellipse?.attrs?.width === 192 && ellipse?.attrs?.height === 96, ellipse?.attrs);
     check('star5: preset kept', star?.attrs?.shapeKind === 'star5', star?.attrs);
     check('a preset we can\'t draw is dropped with a warning', f.warnings.includes('Unsupported shapes were removed'), f.warnings);
-    check('draw:line dropped with warning', f.warnings.includes('Drawings were removed'), f.warnings);
+    // A 5cm horizontal draw:line: two endpoints, so it arrives as a flat frame.
+    check('draw:line: a plain line, no heads declared', line?.attrs?.shapeKind === 'line', line?.attrs);
+    check('draw:line: 5cm wide and flat', line?.attrs?.width === 189 && line?.attrs?.height === 0, line?.attrs);
 
     const table = c.find((n: N) => n.type === 'table');
     const cellBlocks = table?.content?.[0]?.content?.[0]?.content ?? [];
@@ -2410,6 +2412,46 @@ describe('Leg 27: per-section page size and orientation (ODT + DOCX)', () => {
     check('the document keeps its own paper', `${res.format}/${res.orientation}` === 'A4/portrait', `${res.format}/${res.orientation}`);
     check('the landscape section round-trips', paperOf(res, 1) === '-/landscape', paperOf(res, 1));
     check('the A5 section round-trips', paperOf(res, 2) === 'A5/-', paperOf(res, 2));
+  });
+});
+
+describe('Leg 29: lines and arrows (ODT + DOCX)', () => {
+  const line = (kind: string, flipV = false): N => ({
+    type: 'textBox',
+    // strokeColor as the schema defaults it: a line with no pen is invisible, and
+    // both exports then write it as one.
+    attrs: { width: 200, height: 60, shapeKind: kind, strokeColor: '#000000', ...(flipV ? { flipV: true } : {}) },
+    content: [P(null)],
+  });
+  const doc: N = { type: 'doc', content: [P(null, T('above')), line('lineArrow', true), P(null, T('below'))] };
+  const boxOf = (res: N): N => (res.content.content ?? []).find((n: N) => n.type === 'textBox');
+
+  it('ODT: a line is two endpoints, not a frame', async () => {
+    const bytes = await buildOdt(doc, margins);
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    const el = /<draw:line\b[^>]*\/>/.exec(xml)?.[0] ?? '';
+    check('the flipped line runs bottom-left to top-right', /svg:y1="[^0][^"]*cm" svg:x2="[^"]*" svg:y2="0cm"/.test(el), el);
+    const style = /<style:style style:name="TbxFr1"[\s\S]*?\/><\/style:style>/.exec(xml)?.[0] ?? '';
+    check('and carries the arrow head at its end', /draw:marker-end="Arrow"/.test(style), style);
+    check('but not at its start', !/draw:marker-start=/.test(style), style);
+    check('the marker itself is defined once', /<draw:marker draw:name="Arrow"/.test(strFromU8(unzipSync(bytes)['styles.xml'])), 'styles.xml');
+
+    const res = importOdt(bytes);
+    check('no warnings — the line is not dropped', res.warnings.length === 0, res.warnings);
+    check('it comes back as an arrow', boxOf(res)?.attrs?.shapeKind === 'lineArrow', boxOf(res)?.attrs);
+    check('on the same diagonal', boxOf(res)?.attrs?.flipV === true, boxOf(res)?.attrs);
+  });
+
+  it('DOCX: a line is the preset Word flips across the frame', async () => {
+    const bytes = await buildDocx(doc, margins);
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    check('the frame is flipped, not the geometry', /<a:xfrm flipV="1">/.test(xml), xml.slice(xml.indexOf('<a:xfrm'), xml.indexOf('<a:xfrm') + 80));
+    check('one head, at the tail', /<a:tailEnd type="triangle"\/>/.test(xml) && !/<a:headEnd/.test(xml), 'a:ln');
+    check('and no text body on it', !/<wps:txbx>/.test(xml), 'wps:txbx');
+
+    const res = importDocx(bytes);
+    check('it comes back as an arrow', boxOf(res)?.attrs?.shapeKind === 'lineArrow', boxOf(res)?.attrs);
+    check('on the same diagonal', boxOf(res)?.attrs?.flipV === true, boxOf(res)?.attrs);
   });
 });
 

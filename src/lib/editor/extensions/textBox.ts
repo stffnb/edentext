@@ -6,7 +6,7 @@ import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { HANDLES, MIN_SIZE_PX, clamp, parsePx, frameMargins, pageContentHeightPx, type WrapMode } from './image';
-import { SHAPES, shapePath, isShapeKind, type ShapeKind } from '../../utils/shapes';
+import { SHAPES, shapePath, linePaths, arrowHeadPx, isShapeKind, isLineKind, type ShapeKind } from '../../utils/shapes';
 
 // cm attribute value → number, for the frame offsets (px ones use parsePx).
 const parseCmAttr = (v: string | null): number | null => {
@@ -30,6 +30,9 @@ const ELLIPSE_INSET_RATIO = (1 - 1 / Math.SQRT2) / 2;
 
 const DEFAULT_WIDTH_PX = 280;
 const DEFAULT_HEIGHT_PX = 96;
+// A fresh line is flat: both word processors drop one across the text, not down it.
+const DEFAULT_LINE_HEIGHT_PX = 0;
+const SVG_NS = 'http://www.w3.org/2000/svg';
 const PX_PER_PT = 96 / 72;
 
 export interface TextBoxAttrs {
@@ -43,6 +46,7 @@ export interface TextBoxAttrs {
   wrapAlign: string | null;   // 'center'/'right' = set against the middle/far end
   paddingCm: number;          // inset ring around the text (ODF fo:padding)
   shapeKind: ShapeKind;
+  flipV: boolean;             // a line runs bottom-left → top-right instead
   fillColor: string | null;
   strokeColor: string | null;
   strokeWidthPt: number;
@@ -149,6 +153,13 @@ export const TextBox = Node.create({
         },
         renderHTML: () => ({}),
       },
+      // Which diagonal of the frame a line runs along — the one flag Word's `flipV`
+      // and ODF's own endpoints both come down to.
+      flipV: {
+        default: false,
+        parseHTML: el => (el as HTMLElement).getAttribute('data-flip-v') === 'true',
+        renderHTML: () => ({}),
+      },
       fillColor: {
         default: '#FFFFFF',
         parseHTML: el => (el as HTMLElement).getAttribute('data-fill') || null,
@@ -179,9 +190,10 @@ export const TextBox = Node.create({
     const style = [
       a.width ? `width:${a.width}px` : '',
       a.height ? `min-height:${a.height}px` : '',
-      // A polygon shape paints itself, so the box behind it stays bare.
-      a.fillColor && !SHAPES[a.shapeKind]?.points ? `background:${a.fillColor}` : '',
-      a.strokeColor && !SHAPES[a.shapeKind]?.points
+      // A polygon paints itself and a line is only its stroke, so the box behind
+      // either of them stays bare.
+      a.fillColor && !SHAPES[a.shapeKind]?.points && !isLineKind(a.shapeKind) ? `background:${a.fillColor}` : '',
+      a.strokeColor && !SHAPES[a.shapeKind]?.points && !isLineKind(a.shapeKind)
         ? `border:${a.strokeWidthPt * PX_PER_PT}px solid ${a.strokeColor}` : '',
       a.shapeKind !== 'textbox' ? `border-radius:${shapeRadius(a.shapeKind)}` : '',
       a.rotation ? `transform:rotate(${a.rotation}deg)` : '',
@@ -193,6 +205,7 @@ export const TextBox = Node.create({
       ...(a.rotation ? { 'data-rotation': String(a.rotation) } : {}),
       ...(a.wrap !== 'inline' ? { 'data-wrap': a.wrap } : {}),
       ...(a.shapeKind !== 'textbox' ? { 'data-shape': a.shapeKind } : {}),
+      ...(a.flipV ? { 'data-flip-v': 'true' } : {}),
       ...(a.fillColor ? { 'data-fill': a.fillColor } : {}),
       ...(a.strokeColor ? { 'data-stroke': a.strokeColor } : {}),
       ...(a.strokeWidthPt !== 1 ? { 'data-stroke-width': String(a.strokeWidthPt) } : {}),
@@ -277,6 +290,8 @@ class TextBoxView {
   private resizing = false;
   // The polygon outline, for a shape CSS cannot draw; null for the three it can.
   private outline: SVGPathElement | null = null;
+  // The line and its arrow heads, for the kinds that are two endpoints, not a box.
+  private lineSvg: SVGSVGElement | null = null;
   // Last text-area inset applied; guards the ResizeObserver feedback loop.
   private lastInset = '';
 
@@ -339,21 +354,54 @@ class TextBoxView {
     const a = this.attrs();
     this.rotor.style.width = a.width ? `${a.width}px` : `${DEFAULT_WIDTH_PX}px`;
     this.rotor.style.minHeight = a.height ? `${a.height}px` : '';
-    // A polygon shape paints its own fill and stroke, so the box behind it stays bare.
+    // A polygon shape paints its own fill and stroke, so the box behind it stays bare;
+    // a line has no box at all, only the two endpoints it is drawn between.
     const poly = !!SHAPES[a.shapeKind]?.points;
+    const line = isLineKind(a.shapeKind);
     // The outline covers the padding box, so the frame's own ring moves to the text
     // where a polygon draws it — applyShapeInset adds it back in.
-    this.rotor.style.padding = poly ? '0' : `${paddingPx(a.paddingCm).toFixed(2)}px`;
-    this.rotor.style.background = !poly && a.fillColor ? a.fillColor : 'transparent';
-    this.rotor.style.border = !poly && a.strokeColor
+    this.rotor.style.padding = poly || line ? '0' : `${paddingPx(a.paddingCm).toFixed(2)}px`;
+    this.rotor.style.background = !poly && !line && a.fillColor ? a.fillColor : 'transparent';
+    this.rotor.style.border = !poly && !line && a.strokeColor
       ? `${a.strokeWidthPt * PX_PER_PT}px solid ${a.strokeColor}`
       : 'none';
     this.rotor.style.borderRadius = shapeRadius(a.shapeKind);
     this.rotor.style.transform = `translate(-50%, -50%) rotate(${a.rotation}deg)`;
+    // A line holds no text: the paragraph the schema requires stays in the document
+    // (and in both exports' anchor), it just takes no room.
+    this.contentDOM.style.display = line ? 'none' : '';
     this.applyOutline();
+    this.applyLine();
     this.applyWrap();
     this.applyShapeInset();
     this.fitWrapper();
+  }
+
+  // A line is drawn in real pixels, not the 0…100 box a polygon is stretched into: an
+  // arrow head has to keep its shape however flat the frame is drawn.
+  private applyLine(): void {
+    const a = this.attrs();
+    const w = a.width ?? DEFAULT_WIDTH_PX;
+    const h = a.height ?? DEFAULT_LINE_HEIGHT_PX;
+    const stroke = a.strokeWidthPt * PX_PER_PT;
+    const paths = linePaths(a.shapeKind, w, h, a.flipV, arrowHeadPx(a.strokeWidthPt));
+    if (!paths) {
+      this.lineSvg?.remove();
+      this.lineSvg = null;
+      return;
+    }
+    if (!this.lineSvg) {
+      this.lineSvg = document.createElementNS(SVG_NS, 'svg');
+      this.lineSvg.setAttribute('class', 'textbox-line');
+      this.rotor.insertBefore(this.lineSvg, this.rotor.firstChild);
+    }
+    const color = a.strokeColor ?? '#000000';
+    this.lineSvg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    this.lineSvg.setAttribute('width', `${w}`);
+    this.lineSvg.setAttribute('height', `${h}`);
+    this.lineSvg.innerHTML =
+      `<path d="${paths.line}" fill="none" stroke="${color}" stroke-width="${stroke}"/>` +
+      paths.heads.map((d) => `<path d="${d}" fill="${color}"/>`).join('');
   }
 
   // The outline of a shape CSS can't draw, behind the text. preserveAspectRatio="none"

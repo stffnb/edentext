@@ -11,7 +11,7 @@ import { tableLookAttr } from '../styles/tableStyles';
 import { formatOrdinal, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
-import { shapeFromPrst } from '../utils/shapes';
+import { shapeFromPrst, isLineKind, lineKindFor } from '../utils/shapes';
 import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -1863,6 +1863,13 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
   const stroke = ln && !nsChild(ln, A, 'noFill') ? hexColor(lnClr ?? '000000') ?? '#000000' : null;
   const lnW = intAttr(ln, '', 'w');
   setShapeStyleAttrs(attrs, fill, stroke, lnW != null ? lnW / 12700 : null);
+  // A line's heads live on its <a:ln>, and they are what tells the three kinds apart;
+  // Word reaches the frame's other diagonal by flipping it.
+  if (isLineKind(kind)) {
+    const head = (name: string) => (nsChild(ln, A, name)?.getAttribute('type') ?? 'none') !== 'none';
+    attrs.shapeKind = lineKindFor(head('headEnd'), head('tailEnd'));
+    if (nsChild(spPr, A, 'xfrm')?.getAttribute('flipV') === '1') attrs.flipV = true;
+  }
 
   const txbxContent = nsChild(nsChild(wsp, WPS, 'txbx'), W, 'txbxContent');
   const blocks = txbxContent ? convertBlocks(Array.from(txbxContent.children), ctx, 'cell') : [];

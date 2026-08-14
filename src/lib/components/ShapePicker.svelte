@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SHAPES, shapePath, type ShapeKind } from '../utils/shapes';
+  import { SHAPES, shapePath, linePaths, isLineKind, type ShapeKind } from '../utils/shapes';
   import { t } from '../i18n/i18n.svelte';
 
   // The shape gallery, shared by the floating box toolbar and the ribbon's Shape tab.
@@ -59,7 +59,14 @@
 
 {#snippet tile(k: ShapeKind)}
   <svg viewBox="0 0 100 100" fill="none" aria-hidden="true">
-    {#if k === 'ellipse'}
+    {#if isLineKind(k)}
+      <!-- The tile's box is square, so the heads keep their shape as drawn. -->
+      {@const p = linePaths(k, 76, 76, true, 26)}
+      <path d={p?.line} stroke="currentColor" stroke-width="7" transform="translate(12,12)" />
+      {#each p?.heads ?? [] as d}
+        <path {d} fill="currentColor" transform="translate(12,12)" />
+      {/each}
+    {:else if k === 'ellipse'}
       <ellipse cx="50" cy="50" rx="45" ry="35" stroke="currentColor" stroke-width="7" />
     {:else if k === 'roundRect'}
       <rect x="5" y="15" width="90" height="70" rx="18" stroke="currentColor" stroke-width="7" />
