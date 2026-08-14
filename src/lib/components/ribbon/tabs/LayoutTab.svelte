@@ -11,6 +11,7 @@
   import type { HfZone } from '../../../storage/headerFooter';
   import { DEFAULT_PAGE_NUMBERING, PAGE_NUM_FORMATS, clampPageStart, type PageNumbering } from '../../../storage/pageNumbering';
   import { EMPTY_PAGE_DECOR, type PageDecor } from '../../../storage/pageDecor';
+  import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../../../storage/lineNumbering';
   import PageDecorDialog from '../../PageDecorDialog.svelte';
   import { formatOrdinal } from '../../../utils/orderedListTypes';
   import { t } from '../../../i18n/i18n.svelte';
@@ -24,6 +25,7 @@
     hyphenate = $bindable(false),
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     pageDecor = $bindable(EMPTY_PAGE_DECOR),
+    lineNumbering = $bindable(DEFAULT_LINE_NUMBERING),
     onParagraphDialog,
   }: {
     editor: Editor | null;
@@ -35,6 +37,7 @@
     hyphenate?: boolean;
     pageNumbering?: PageNumbering;
     pageDecor?: PageDecor;
+    lineNumbering?: LineNumbering;
     onParagraphDialog?: () => void;
   } = $props();
 
@@ -242,6 +245,42 @@
     {/if}
   </div>
 
+  <div class="rb-menu-wrap" use:clickOutside={'lineNum'}>
+    <RibbonButton
+      icon="lineNumbers"
+      label={t().ribbon.lineNumbers}
+      title={t().lineNumbers.title}
+      caret
+      active={isMenuOpen('lineNum') || lineNumbering.on}
+      onclick={() => toggleMenu('lineNum')}
+    />
+    {#if isMenuOpen('lineNum')}
+      <div class="ribbon-menu" use:anchored role="menu">
+        <button class:selected={!lineNumbering.on} onclick={() => (lineNumbering = { ...lineNumbering, on: false })}>
+          {t().lineNumbers.off}
+        </button>
+        <button class:selected={lineNumbering.on && lineNumbering.restart === 'continuous'}
+          onclick={() => (lineNumbering = { ...lineNumbering, on: true, restart: 'continuous' })}>
+          {t().lineNumbers.continuous}
+        </button>
+        <button class:selected={lineNumbering.on && lineNumbering.restart === 'page'}
+          onclick={() => (lineNumbering = { ...lineNumbering, on: true, restart: 'page' })}>
+          {t().lineNumbers.perPage}
+        </button>
+        <div class="rb-menu-label">{t().lineNumbers.interval}</div>
+        <label class="num-row">
+          <input type="number" min="1" max="100" value={lineNumbering.interval}
+            onchange={(e) => (lineNumbering = { ...lineNumbering, interval: Math.max(1, Math.min(100, Number(e.currentTarget.value) || 1)) })} />
+        </label>
+        <label class="check-row">
+          <input type="checkbox" checked={lineNumbering.countEmpty}
+            onchange={(e) => (lineNumbering = { ...lineNumbering, countEmpty: e.currentTarget.checked })} />
+          {t().lineNumbers.countEmpty}
+        </label>
+      </div>
+    {/if}
+  </div>
+
   <RibbonButton
     icon="watermark"
     label={t().ribbon.pageDecor}
@@ -300,6 +339,7 @@
 <style>
   .num-row { display: flex; padding: 2px 12px 6px; }
   .num-row input { width: 84px; }
+  .check-row { display: flex; align-items: center; gap: 6px; padding: 2px 12px 6px; white-space: nowrap; }
 
   .rb-menu-wrap { position: relative; }
 

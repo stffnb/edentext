@@ -82,6 +82,14 @@ per page in unscaled document px. The watermark is an `<svg><text textLength>` b
 fontwork shape **stretches** its text to its box instead of setting it at a size — a font
 size alone makes a short word far too small and a long one overflow the page.
 
+## Line numbering (`LineNumberLayer.svelte`, `storage/lineNumbering.ts`)
+
+One number per rendered line in the left margin. There is no CSS line box to read, so
+each block's contents are Range-selected and the distinct tops of its client rects are
+its lines; the count runs from the document start (or restarts per page). Re-measured on
+each edit and each pagination settle — the whole document each time, which is the
+ceiling noted in the file.
+
 ## Debug tooling (dev only)
 
 In dev builds a **Debug** button (`App.svelte`) downloads a JSON snapshot combining `getPageBreakDebug(view)` (leaves, placements, rendered spacers, table-break bands, live overlay geometry), `getTableCellDebug(view)` (per cell: the `verticalAlign` attr beside the computed value, cell/row height, the gap above and below the content, and every block's margins/`--space-before` — cell alignment reads as broken whenever the content fills the box, so the numbers that decide that travel with it), the style sheet + spacing model, and `getColorDebug(editor)` (selection marks, text runs, document colors, DOM spans).

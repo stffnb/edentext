@@ -540,6 +540,14 @@ const en = {
     watermarkTransparency: 'Transparency (%)',
     clear: 'Remove all',
   },
+  lineNumbers: {
+    title: 'Line numbering',
+    off: 'None',
+    continuous: 'Continuous',
+    perPage: 'Restart each page',
+    interval: 'Number every nth line',
+    countEmpty: 'Count empty lines',
+  },
   notesDialog: {
     title: 'Footnotes and Endnotes',
     tabFootnotes: 'Footnotes',
@@ -677,6 +685,7 @@ const en = {
     repeatHeaderRowHint: 'Repeat the first row at the top of every page',
     pageNumberFormat: 'Page numbers',
     pageNumberStart: 'Start at',
+    lineNumbers: 'Line numbers',
     pageDecor: 'Page design',
     hyphenationHint: 'Hyphenate automatically',
     debugDump: 'Dump',

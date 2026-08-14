@@ -28,6 +28,7 @@ import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../edit
 import { ODF_SEQ_CATEGORY } from '../editor/extensions/caption';
 import type { IndexKind } from '../editor/extensions/tableOfContents';
 import { normalizePageDecor, type PageDecor } from '../storage/pageDecor';
+import { DEFAULT_LINE_NUMBERING, normalizeLineNumbering, type LineNumbering } from '../storage/lineNumbering';
 import { clampColumnGap } from '../editor/extensions/columns';
 import { astToLatex } from '../math/latex';
 import { parseOmml, OMML_NS } from '../math/omml';
@@ -238,6 +239,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     margins: withMirror(first.margins ?? sect.margins, mirrored),
     rtl: sectPrRtl(finalSectPr),
     decor: docxPageDecor(docDoc, finalSectPr, files),
+    lineNumbering: docxLineNumbering(finalSectPr),
     hyphenate: docAutoHyphenation(files),
     pageNumbering: docxPageNumbering(sectPr),
     orientation: sect.orientation,
@@ -2218,6 +2220,21 @@ function docxWatermark(files: Record<string, Uint8Array>): unknown {
 
 const decodeXml = (s: string) =>
   s.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+// <w:lnNumType> in the section: Word's line numbers. Absent = not numbered, which is
+// also ODF's meaning for a missing configuration element.
+function docxLineNumbering(sectPr: Element | null): LineNumbering {
+  const ln = fc(sectPr, 'lnNumType');
+  if (!ln) return DEFAULT_LINE_NUMBERING;
+  return normalizeLineNumbering({
+    on: true,
+    interval: intAttr(ln, W, 'countBy') ?? DEFAULT_LINE_NUMBERING.interval,
+    distanceCm: twipToCm(intAttr(ln, W, 'distance') ?? 283),
+    restart: ln.getAttributeNS(W, 'restart') === 'newPage' ? 'page' : 'continuous',
+    // Word has no "count empty lines" switch; it always does, as ODF defaults to.
+    countEmpty: true,
+  });
+}
 
 // A right-to-left section (w:bidi): the columns fill from the right, and it is the
 // direction a block inherits when it declares none of its own.

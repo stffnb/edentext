@@ -5,6 +5,7 @@ import { ODF_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { normalizeLeader, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { DEFAULT_WATERMARK, normalizePageDecor, type PageDecor, type Watermark } from '../storage/pageDecor';
+import { DEFAULT_LINE_NUMBERING, normalizeLineNumbering, type LineNumbering } from '../storage/lineNumbering';
 
 // LibreOffice's (and Word's) name for the watermark shape — what tells it apart from an
 // ordinary drawing in the header.
@@ -758,6 +759,21 @@ export class StyleResolver {
       angle: rot ? Math.round((parseFloat(rot[1]) * 180) / Math.PI) : 0,
       transparency: Number.isFinite(opacity) ? Math.round(100 - opacity) : 0,
     };
+  }
+
+  // <text:linenumbering-configuration> in office:styles: one document-wide element, and
+  // its absence is what "not numbered" means. LibreOffice omits every attribute at its
+  // ODF default, so each one falls back to that (probed).
+  lineNumbering(): LineNumbering {
+    const cfg = this.stylesDoc?.getElementsByTagNameNS(NS.text, 'linenumbering-configuration')[0] ?? null;
+    if (!cfg || cfg.getAttributeNS(NS.text, 'number-lines') === 'false') return DEFAULT_LINE_NUMBERING;
+    return normalizeLineNumbering({
+      on: true,
+      interval: Number(cfg.getAttributeNS(NS.text, 'increment')) || DEFAULT_LINE_NUMBERING.interval,
+      distanceCm: lengthToCm(cfg.getAttributeNS(NS.text, 'offset')) ?? DEFAULT_LINE_NUMBERING.distanceCm,
+      restart: cfg.getAttributeNS(NS.text, 'restart-on-page') === 'true' ? 'page' : 'continuous',
+      countEmpty: cfg.getAttributeNS(NS.text, 'count-empty-lines') !== 'false',
+    });
   }
 
   // Raw page margins (cm) = ODF's edge→zone distance, i.e. the header distance from

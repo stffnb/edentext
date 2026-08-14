@@ -536,6 +536,14 @@ const de: Messages = {
     watermarkTransparency: 'Transparenz (%)',
     clear: 'Alles entfernen',
   },
+  lineNumbers: {
+    title: 'Zeilennummerierung',
+    off: 'Keine',
+    continuous: 'Fortlaufend',
+    perPage: 'Jede Seite neu beginnen',
+    interval: 'Jede n-te Zeile nummerieren',
+    countEmpty: 'Leerzeilen mitzählen',
+  },
   notesDialog: {
     title: 'Fuß- und Endnoten',
     tabFootnotes: 'Fußnoten',
@@ -673,6 +681,7 @@ const de: Messages = {
     repeatHeaderRowHint: 'Die erste Zeile oben auf jeder Seite wiederholen',
     pageNumberFormat: 'Seitenzahlen',
     pageNumberStart: 'Beginnen bei',
+    lineNumbers: 'Zeilennummern',
     pageDecor: 'Seitengestaltung',
     hyphenationHint: 'Automatisch trennen',
     debugDump: 'Dump',

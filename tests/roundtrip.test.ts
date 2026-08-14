@@ -2104,3 +2104,40 @@ describe('Leg 21: page background, page border and watermark', () => {
       Object.keys(files));
   });
 });
+
+describe('Leg 22: line numbering', () => {
+  const ln = { on: true, interval: 5, distanceCm: 0.5, restart: 'page' as const, countEmpty: false };
+  const doc: N = { type: 'doc', content: [P(null, T('body'))] };
+
+  it('ODT: one configuration element in office:styles, and back', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', builtinStyleSheet(),
+      1.25, 'add', false, DEFAULT_NOTE_SETTINGS, undefined, false, DEFAULT_PAGE_NUMBERING, undefined, ln);
+    const styles = strFromU8(unzipSync(bytes)['styles.xml']);
+    check('emitted once', (styles.match(/<text:linenumbering-configuration/g) ?? []).length === 1,
+      styles.match(/<text:linenumbering-configuration[^>]*>/g));
+    check('every value written', /text:increment="5"/.test(styles) && /text:offset="0.5cm"/.test(styles)
+      && /text:restart-on-page="true"/.test(styles) && /text:count-empty-lines="false"/.test(styles),
+      styles.match(/<text:linenumbering-configuration[^>]*>/g));
+    const back = importOdt(bytes).lineNumbering;
+    check('round-trips', back.on && back.interval === 5 && back.distanceCm === 0.5
+      && back.restart === 'page' && back.countEmpty === false, back);
+  });
+
+  it('DOCX: w:lnNumType in the section, and back', async () => {
+    const bytes = await buildDocx(doc, margins, 'portrait', undefined, null, 'A4', builtinStyleSheet(),
+      1.25, 'add', false, DEFAULT_NOTE_SETTINGS, undefined, false, DEFAULT_PAGE_NUMBERING, undefined, ln);
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    check('emitted', /<w:lnNumType[^>]*w:countBy="5"[^>]*\/>/.test(xml), xml.match(/<w:lnNumType[^>]*>/g));
+    check('restarts per page', /w:restart="newPage"/.test(xml), xml.match(/<w:lnNumType[^>]*>/g));
+    const back = importDocx(bytes).lineNumbering;
+    // Word has no "count empty lines" switch, so it comes back at its own default.
+    check('round-trips', back.on && back.interval === 5 && back.restart === 'page'
+      && Math.abs(back.distanceCm - 0.5) < 0.02, back);
+  });
+
+  it('an unnumbered document writes nothing', async () => {
+    const styles = strFromU8(unzipSync(await buildOdt(doc, margins, 'portrait'))['styles.xml']);
+    check('no ODF configuration', !styles.includes('linenumbering-configuration'));
+    check('no w:lnNumType', !strFromU8(unzipSync(await buildDocx(doc, margins, 'portrait'))['word/document.xml']).includes('<w:lnNumType'));
+  });
+});

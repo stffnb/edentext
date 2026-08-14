@@ -27,6 +27,7 @@ import { newCommentId } from '../editor/extensions/comment';
 import { ODF_SEQ_CATEGORY } from '../editor/extensions/caption';
 import type { IndexKind } from '../editor/extensions/tableOfContents';
 import type { PageDecor } from '../storage/pageDecor';
+import type { LineNumbering } from '../storage/lineNumbering';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -57,6 +58,7 @@ export interface OdtImportResult {
   rtl: boolean;
   // Page background, page border and watermark (storage/pageDecor.ts).
   decor: PageDecor;
+  lineNumbering: LineNumbering;
   // Automatic hyphenation (ODF fo:hyphenate on the base style, Word w:autoHyphenation).
   hyphenate: boolean;
   // How the page-number field counts (ODF style:num-format + style:page-number, Word w:pgNumType).
@@ -693,6 +695,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     format: geometry?.format ?? null,
     rtl: geometry?.rtl ?? false,
     decor: resolver.pageDecor(),
+    lineNumbering: resolver.lineNumbering(),
     hyphenate: resolver.documentHyphenation(),
     pageNumbering: { format: resolver.pageNumberFormat(), start: odfPageNumberStart(resolver, body) },
     tabIntervalCm: resolver.defaultTabInterval(),

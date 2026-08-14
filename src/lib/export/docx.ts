@@ -5,7 +5,7 @@ import {
   Table, TableRow, TableCell, Header, Footer, PageNumber, SimpleField,
   CommentRangeStart, CommentRangeEnd, CommentReference,
   AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
-  WidthType, HeightRule, PageOrientation, LineRuleType, TableLayoutType, SectionType, NumberFormat,
+  WidthType, HeightRule, PageOrientation, LineRuleType, LineNumberRestartFormat, TableLayoutType, SectionType, NumberFormat,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
   TextWrappingType, TextWrappingSide, ImportedXmlComponent, TabStopType, LeaderType,
 } from 'docx';
@@ -36,6 +36,7 @@ import { normalizeColor, GENERATOR, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
 import { EMPTY_PAGE_DECOR, isEmptyPageDecor, type PageDecor, type Watermark } from '../storage/pageDecor';
+import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
 
 // The five page-number formats both word processors offer → Word's own names.
 const DOCX_PAGE_NUM_FORMAT = {
@@ -1500,6 +1501,7 @@ export async function buildDocx(
   hyphenate = false,
   pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING,
   decor: PageDecor = EMPTY_PAGE_DECOR,
+  lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
@@ -1629,6 +1631,14 @@ export async function buildDocx(
     sections: groups.map((g, i) => ({
       properties: {
         page: pagePropsFor(g.section),
+        // Word's Layout ▸ Line Numbers; ODF keeps the same five values document-wide.
+        ...(lineNumbering.on
+          ? { lineNumbers: {
+              countBy: lineNumbering.interval,
+              restart: lineNumbering.restart === 'page' ? LineNumberRestartFormat.NEW_PAGE : LineNumberRestartFormat.CONTINUOUS,
+              distance: cmToTwip(lineNumbering.distanceCm),
+            } }
+          : {}),
         ...(setAt(g.section).differentFirstPage ? { titlePage: true } : {}),
         ...(i > 0 ? { type: SectionType.CONTINUOUS } : {}),
         ...(g.columns
