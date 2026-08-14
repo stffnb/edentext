@@ -713,7 +713,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     differentOddEven,
     hfSections: [
       { header, footer, headerFirst, footerFirst, differentFirstPage, headerEven, footerEven, differentOddEven },
-      ...ctx.masterPages.map((name) => hfSetOfMasterPage(name, ctx)),
+      ...ctx.masterPages.map((name) => hfSetOfMasterPage(name, ctx, geometry)),
     ],
     headerDistanceCm: hasHeader ? edge?.top ?? null : null,
     footerDistanceCm: hasFooter ? edge?.bottom ?? null : null,
@@ -727,16 +727,26 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
 }
 
 // The zones of a named master page — what a section past the first switches to.
-function hfSetOfMasterPage(name: string, ctx: Ctx): HfSet {
+function hfSetOfMasterPage(
+  name: string, ctx: Ctx,
+  doc: { orientation: Orientation; format: PageFormat } | null,
+): HfSet {
   const hf = ctx.resolver.masterPageHF(name);
   const zone = (el: Element | null) => (el ? convertHfZone(el, ctx) : null);
   // Its page layout is the section's own geometry; where the master hands over, that
   // layout governs the first page only and the successor's the rest.
-  const own = ctx.resolver.pageGeometry(name)?.margins ?? null;
-  const rest = hf.restPage ? ctx.resolver.pageGeometry(hf.restPage)?.margins ?? own : own;
+  const geo = ctx.resolver.pageGeometry(name);
+  const own = geo?.margins ?? null;
+  const restGeo = hf.restPage ? ctx.resolver.pageGeometry(hf.restPage) : null;
+  const rest = restGeo?.margins ?? own;
+  // The paper of the layout governing the section's body. Only a section disagreeing
+  // with the document carries it — matching is inheritance, as it is for the margins.
+  const paper = restGeo ?? geo;
   return {
     margins: rest,
     marginsFirst: hf.restPage ? own : null,
+    format: paper && doc && paper.format !== doc.format ? paper.format : null,
+    orientation: paper && doc && paper.orientation !== doc.orientation ? paper.orientation : null,
     header: zone(hf.header),
     footer: zone(hf.footer),
     headerFirst: zone(hf.headerFirst),

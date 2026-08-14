@@ -19,7 +19,7 @@ import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { SHAPES, isShapeKind, type ShapeKind } from '../utils/shapes';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
-import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
+import { pageDimsCm, PAGE_FORMAT_CM, type PageFormat } from '../storage/pageFormat';
 import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
 import type { SpacingModel } from '../storage/spacingModel';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
@@ -1765,7 +1765,6 @@ export async function buildDocx(
   docFormulas = [];
   docSources = [];
   const num = new Numbering();
-  const landscape = orientation === 'landscape';
   const { w: pageWidthCm, h: pageHeightCm } = pageDimsCm(pageFormat, orientation);
   const contentWidthCm = pageWidthCm - margins.left - margins.right;
 
@@ -1815,13 +1814,19 @@ export async function buildDocx(
   const headerDist = Math.min(hf?.headerDistanceCm ?? HF_DISTANCE_CM, margins.top);
   const footerDist = Math.min(hf?.footerDistanceCm ?? HF_DISTANCE_CM, margins.bottom);
 
-  // Page geometry rides every sectPr (Word requires it per section): the size is
-  // document-wide, the margins the section's own where it has them. Fresh Header/Footer
-  // instances per section, or a later one inherits ("Link to Previous").
+  // Page geometry rides every sectPr (Word requires it per section): size and margins
+  // alike are the section's own where it has them. Fresh Header/Footer instances per
+  // section, or a later one inherits ("Link to Previous").
   const pagePropsFor = (i: number) => {
-    const m = setAt(i).margins ?? margins;
+    const s = setAt(i);
+    const m = s.margins ?? margins;
+    const sectionLandscape = (s.orientation ?? orientation) === 'landscape';
+    // The package swaps the pair itself for a landscape section, so it wants the
+    // **portrait** box — handed the swapped one it writes a portrait page merely
+    // labelled landscape, which is what LibreOffice then renders.
+    const dims = PAGE_FORMAT_CM[s.format ?? pageFormat];
     return {
-      size: { width: cmToTwip(pageWidthCm), height: cmToTwip(pageHeightCm), orientation: landscape ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT },
+      size: { width: cmToTwip(dims.w), height: cmToTwip(dims.h), orientation: sectionLandscape ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT },
       margin: {
         top: cmToTwip(m.top), bottom: cmToTwip(m.bottom),
         left: cmToTwip(m.left), right: cmToTwip(m.right),

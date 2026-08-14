@@ -225,11 +225,14 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   // Odd/even pages: a document-level setting (settings.xml), not a section property.
   const oddEven = docHasEvenOddHeaders(files);
   const mirrored = docHasMirrorMargins(files);
-  // Page size stays document-wide, from the body-final sectPr; the margins are the
-  // first section's, since that is the pair .tiptap's padding draws and every later
-  // section is measured against (Editor.svelte's --pb-section-inset).
+  // The document's own page setup is the body-final sectPr's; the margins are the first
+  // section's, since that is the pair .tiptap's padding draws and every later section is
+  // measured against (Editor.svelte's --pb-section-inset).
   const sect = parseSectPr(finalSectPr, ctx, oddEven);
-  const hfSections = sectionHfSets(groups.map((g) => g.sectPr ?? finalSectPr), ctx, oddEven);
+  // The paper is the *first* section's, as the margins are: a document whose last
+  // section is one landscape page is not a landscape document.
+  const docPaper = sectPaper(groups[0]?.sectPr ?? finalSectPr);
+  const hfSections = sectionHfSets(groups.map((g) => g.sectPr ?? finalSectPr), ctx, oddEven, docPaper);
   const first = hfSections[0];
   // A first-page/even zone reserves the header/footer band even when its default is empty;
   // the distance is document-wide, so any section having one is enough.
@@ -246,8 +249,8 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     lineNumbering: docxLineNumbering(finalSectPr),
     hyphenate: docAutoHyphenation(files),
     pageNumbering: docxPageNumbering(sectPr),
-    orientation: sect.orientation,
-    format: sect.format,
+    orientation: docPaper.orientation,
+    format: docPaper.format,
     tabIntervalCm: docTabInterval(files),
     // Word takes the larger of the two spacings, and LibreOffice follows it for a
     // Word document — its own ODF default adds them (probed).
@@ -2563,6 +2566,18 @@ function docxDocProperties(files: Record<string, Uint8Array>): DocProperties {
   };
 }
 
+// A section's paper (w:pgSz). A box wider than it is tall is landscape even where the
+// producer left the attribute off, which is how LibreOffice's own DOCX reads.
+function sectPaper(sect: Element | null): { orientation: Orientation; format: PageFormat | null } {
+  const pgSz = sect ? fc(sect, 'pgSz') : null;
+  const w = intAttr(pgSz, W, 'w');
+  const h = intAttr(pgSz, W, 'h');
+  return {
+    orientation: pgSz?.getAttributeNS(W, 'orient') === 'landscape' || (w && h && w > h) ? 'landscape' : 'portrait',
+    format: w && h ? (formatFromCm(twipToCm(w), twipToCm(h)) ?? 'A4') : null,
+  };
+}
+
 function parseSectPr(sect: Element | null, ctx: Ctx, oddEven = false): {
   margins: PageMargins | null; orientation: Orientation | null; format: PageFormat | null;
   header: HfDoc; footer: HfDoc; headerFirst: HfDoc; footerFirst: HfDoc; differentFirstPage: boolean;
@@ -2572,11 +2587,7 @@ function parseSectPr(sect: Element | null, ctx: Ctx, oddEven = false): {
   const empty = { margins: null, orientation: null, format: null, header: null, footer: null, headerFirst: null, footerFirst: null, differentFirstPage: false, headerEven: null, footerEven: null, differentOddEven: false, headerDistCm: null, footerDistCm: null };
   if (!sect) return empty;
 
-  const pgSz = fc(sect, 'pgSz');
-  const w = intAttr(pgSz, W, 'w');
-  const h = intAttr(pgSz, W, 'h');
-  const orientation: Orientation = pgSz?.getAttributeNS(W, 'orient') === 'landscape' || (w && h && w > h) ? 'landscape' : 'portrait';
-  const format: PageFormat | null = w && h ? (formatFromCm(twipToCm(w), twipToCm(h)) ?? 'A4') : null;
+  const { orientation, format } = sectPaper(sect);
 
   const pgMar = fc(sect, 'pgMar');
   const clampCm = (tw: number | null) => (tw == null ? null : Math.min(10, Math.max(0, round2(twipToCm(tw)))));
@@ -2623,7 +2634,10 @@ function sectMargins(sect: Element | null): PageMargins | null {
 // One HfSet per section, in body order, resolving Word's "Link to Previous": a section
 // that declares no reference of a type keeps the previous section's. w:titlePg is per
 // section, odd/even is document-wide (settings.xml).
-function sectionHfSets(sectPrs: (Element | null)[], ctx: Ctx, oddEven: boolean): HfSet[] {
+function sectionHfSets(
+  sectPrs: (Element | null)[], ctx: Ctx, oddEven: boolean,
+  doc: { format: PageFormat | null; orientation: Orientation | null },
+): HfSet[] {
   const out: HfSet[] = [];
   for (const sect of sectPrs) {
     const prev = out[out.length - 1] ?? EMPTY_HF_SET;
@@ -2635,8 +2649,13 @@ function sectionHfSets(sectPrs: (Element | null)[], ctx: Ctx, oddEven: boolean):
         : null;
       return ref ? convertHfPart(ref.getAttributeNS(R, 'id'), ctx) : inherited;
     };
+    // Only a section disagreeing with the document carries its own paper: matching it is
+    // inheritance, not formatting, exactly as for the margins.
+    const paper = sectPaper(sect);
     out.push({
       margins: sectMargins(sect),
+      format: paper.format && paper.format !== doc.format ? paper.format : null,
+      orientation: paper.orientation && paper.orientation !== doc.orientation ? paper.orientation : null,
       header: zone('header', 'default', prev.header),
       footer: zone('footer', 'default', prev.footer),
       headerFirst: titlePg ? zone('header', 'first', prev.headerFirst) : null,

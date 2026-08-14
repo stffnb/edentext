@@ -4329,7 +4329,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withWatermark = applyWatermarkOdf(withHf, decor.watermark);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.
-  const withSections = applySectionMasterPages(withWatermark, hf?.sections ?? [], hf?.pageCount ?? 1, margins);
+  const withSections = applySectionMasterPages(withWatermark, hf?.sections ?? [], hf?.pageCount ?? 1, margins, pageFormat, orientation);
   return applyDocProperties(applyPageNumberStart(applySpacingModel(withSections, spacingModel), pageNumbering.start), props);
 }
 
@@ -4625,7 +4625,7 @@ function masterPageXml(name: string, layoutName: string, set: HfSet, pageCount: 
 
 // Point each SEC-marked block at its section's master page (ODF's only per-section
 // header/footer), minting the master pages beside the Standard one odf-kit wrote.
-function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount: number, margins: PageMargins): Uint8Array {
+function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount: number, margins: PageMargins, format: PageFormat, orientation: Orientation): Uint8Array {
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
   const stylesBytes = files['styles.xml'];
@@ -4666,14 +4666,28 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
   const layouts: string[] = [];
   const layoutFor = (index: number, set: HfSet): string => {
     const m = set.margins;
-    if (!m || !layoutXml) return layout;
+    const paper = set.format || set.orientation ? pageDimsCm(set.format ?? format, set.orientation ?? orientation) : null;
+    if ((!m && !paper) || !layoutXml) return layout;
     const name = `${layout}Sec${index + 1}`;
     layouts.push(layoutXml
       .replace(`style:name="${layout}"`, `style:name="${name}"`)
-      .replace(/<style:page-layout-properties\b[^>]*>/, (props) =>
-        (['top', 'bottom', 'left', 'right'] as const).reduce((p, side) =>
-          p.replace(new RegExp(`fo:margin-${side}="([\\d.]+)cm"`), (_x, cm: string) =>
-            `fo:margin-${side}="${Math.max(0, Math.round((parseFloat(cm) + m[side] - margins[side]) * 1000) / 1000)}cm"`), props)));
+      .replace(/<style:page-layout-properties\b[^>]*>/, (props) => {
+        // The margins are a shift, so whatever the header/footer pass folded into them
+        // survives; the paper is set outright.
+        let p = m
+          ? (['top', 'bottom', 'left', 'right'] as const).reduce((q, side) =>
+            q.replace(new RegExp(`fo:margin-${side}="([\\d.]+)cm"`), (_x, cm: string) =>
+              `fo:margin-${side}="${Math.max(0, Math.round((parseFloat(cm) + m[side] - margins[side]) * 1000) / 1000)}cm"`), props)
+          : props;
+        if (paper) {
+          const round3 = (v: number) => Math.round(v * 1000) / 1000;
+          p = p
+            .replace(/fo:page-width="[^"]*"/, `fo:page-width="${round3(paper.w)}cm"`)
+            .replace(/fo:page-height="[^"]*"/, `fo:page-height="${round3(paper.h)}cm"`)
+            .replace(/style:print-orientation="[^"]*"/, `style:print-orientation="${paper.w > paper.h ? 'landscape' : 'portrait'}"`);
+        }
+        return p;
+      }));
     return name;
   };
   const hfStyles: string[] = [];

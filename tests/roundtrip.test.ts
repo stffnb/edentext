@@ -2360,3 +2360,55 @@ describe('Leg 26: bibliography', () => {
     check('index round-trips as a bibliography', indexKind(back) === 'bibliography', indexKind(back));
   });
 });
+
+describe('Leg 27: per-section page size and orientation (ODT + DOCX)', () => {
+  const secDoc: N = {
+    type: 'doc',
+    content: [
+      P(null, T('portrait section')),
+      P({ sectionBreak: true, breakBefore: 'page' }, T('the wide table lives here')),
+      P({ sectionBreak: true, breakBefore: 'page' }, T('portrait again')),
+    ],
+  };
+  // The common case: one landscape page amid portrait ones, plus a section on
+  // another paper entirely.
+  const sections = [
+    { ...EMPTY_HF_SET },
+    { ...EMPTY_HF_SET, orientation: 'landscape' as const },
+    { ...EMPTY_HF_SET, format: 'A5' as const },
+  ];
+  const paperOf = (res: N, i: number) =>
+    `${res.hfSections?.[i]?.format ?? '-'}/${res.hfSections?.[i]?.orientation ?? '-'}`;
+
+  it('ODT: each section gets its own page layout', async () => {
+    const bytes = await buildOdt(secDoc, margins, 'portrait', { sections, pageCount: 3 });
+    const styles = strFromU8(unzipSync(bytes)['styles.xml']);
+    const layoutOf = (n: number) => {
+      const name = new RegExp(`<style:master-page style:name="Section${n}" style:page-layout-name="([^"]*)"`).exec(styles)?.[1];
+      return name ? new RegExp(`<style:page-layout\\b[^>]*style:name="${name}"[\\s\\S]*?<style:page-layout-properties\\b[^>]*>`).exec(styles)?.[0] ?? '' : '';
+    };
+    check('the landscape section swaps the page box',
+      /fo:page-width="29.7cm"/.test(layoutOf(2)) && /fo:page-height="21cm"/.test(layoutOf(2)), layoutOf(2));
+    check('and says so on the layout', /style:print-orientation="landscape"/.test(layoutOf(2)), layoutOf(2));
+    check('the A5 section takes A5', /fo:page-width="14.8cm"/.test(layoutOf(3)) && /fo:page-height="21cm"/.test(layoutOf(3)), layoutOf(3));
+
+    const res = importOdt(bytes);
+    check('the document keeps its own paper', `${res.format}/${res.orientation}` === 'A4/portrait', `${res.format}/${res.orientation}`);
+    check('the landscape section round-trips', paperOf(res, 1) === '-/landscape', paperOf(res, 1));
+    check('the A5 section round-trips', paperOf(res, 2) === 'A5/-', paperOf(res, 2));
+  });
+
+  it('DOCX: each sectPr carries its own w:pgSz', async () => {
+    const bytes = await buildDocx(secDoc, margins, 'portrait', { sections, pageCount: 3 });
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    const sizes = xml.match(/<w:pgSz[^>]*>/g) ?? [];
+    check('three sections, three page boxes', sizes.length === 3, sizes);
+    check('the middle one is landscape', /w:orient="landscape"/.test(sizes[1] ?? '') && /w:w="16838"/.test(sizes[1] ?? ''), sizes[1]);
+    check('the last one is A5', /w:w="839[12]"/.test(sizes[2] ?? ''), sizes[2]);
+
+    const res = importDocx(bytes);
+    check('the document keeps its own paper', `${res.format}/${res.orientation}` === 'A4/portrait', `${res.format}/${res.orientation}`);
+    check('the landscape section round-trips', paperOf(res, 1) === '-/landscape', paperOf(res, 1));
+    check('the A5 section round-trips', paperOf(res, 2) === 'A5/-', paperOf(res, 2));
+  });
+});

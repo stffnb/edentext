@@ -3,6 +3,8 @@
 // page 1, 'even' overrides even pages — also their precedence. null = empty zone.
 
 import type { PageMargins } from './pageMargins';
+import type { PageFormat } from './pageFormat';
+import type { Orientation } from './pageOrientation';
 
 export type HfZone = 'header' | 'footer';
 export type HfVariant = 'default' | 'first' | 'even';
@@ -24,13 +26,18 @@ export type HfSet = {
   // The section's first page, where its page style hands over to another after it
   // (ODF style:next-style-name — the title-page idiom). null = same as `margins`.
   marginsFirst?: PageMargins | null;
+  // The section's own paper, where the file gives it one (Word's w:pgSz, ODF's page
+  // layout): a landscape page for a wide table amid portrait ones. null = the
+  // document's own.
+  format?: PageFormat | null;
+  orientation?: Orientation | null;
 };
 
 export const EMPTY_HF_SET: HfSet = {
   header: null, footer: null,
   headerFirst: null, footerFirst: null, differentFirstPage: false,
   headerEven: null, footerEven: null, differentOddEven: false,
-  margins: null, marginsFirst: null,
+  margins: null, marginsFirst: null, format: null, orientation: null,
 };
 
 export function hfSetIsEmpty(s: HfSet): boolean {
