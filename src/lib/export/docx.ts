@@ -150,6 +150,14 @@ function collectComments(node: TiptapNode): void {
 // export/odt.ts): the docx library can't emit DrawingML shapes, so buildDocx swaps
 // the marker for a hand-built <w:drawing><wps:wsp> in a zip post-processing pass.
 const TBX = '';
+// Wraps the index of a numbering definition minted for a box's list; the ids only
+// become known once the packed numbering.xml is in hand.
+const TXBX_NUM = '';
+
+const WP_NS = 'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"';
+const A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+const PIC_NS = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
+const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
 // CSS font-size string ("12pt", "16px", "1.2em") → Word half-points. em is relative
 // to the 12pt body. Returns undefined when unparseable.
@@ -692,12 +700,45 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = []): string {
   return parts.length ? `<w:rPr>${parts.join('')}</w:rPr>` : '';
 }
 
-// One paragraph/heading of a text box. markerText prefixes a literal list marker
-// (in-box lists are flattened, like ODT cell lists once were); images are dropped
-// (media/rels can't be minted from a string pass).
-function txbxParagraphXml(node: TiptapNode, indentTwip = 0, markerText = ''): string {
+// The package parts a box's content needs beyond word/document.xml: a picture is a
+// media entry plus a relationship, a list a numbering definition. applyTextBoxesDocx
+// runs after packing, so it holds the whole zip and can mint all three.
+type TxbxParts = {
+  media: { path: string; bytes: Uint8Array; rid: string; type: string }[];
+  nums: { id: number; levels: string[] }[];
+  nextRid: () => string;
+};
+
+// One picture inside a box, as an as-char <wp:inline> drawing.
+function txbxImageXml(node: TiptapNode, parts: TxbxParts): string {
+  const src = node.attrs?.src;
+  if (typeof src !== 'string') return '';
+  const decoded = decodeDataUri(src);
+  if (!decoded) return '';
+  const n = parts.media.length + 1;
+  const ext = decoded.type === 'jpg' ? 'jpeg' : decoded.type;
+  const rid = parts.nextRid();
+  parts.media.push({ path: `word/media/tbx${n}.${ext}`, bytes: decoded.bytes, rid, type: ext });
+  const cx = Math.round((typeof node.attrs?.width === 'number' && node.attrs.width > 0 ? node.attrs.width : 200) * EMU_PER_PX);
+  const cy = Math.round((typeof node.attrs?.height === 'number' && node.attrs.height > 0 ? node.attrs.height : 150) * EMU_PER_PX);
+  const alt = escapeXml(typeof node.attrs?.alt === 'string' ? node.attrs.alt : '');
+  return (
+    `<w:drawing><wp:inline ${WP_NS} distT="0" distB="0" distL="0" distR="0">` +
+    `<wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${9000 + n}" name="Picture ${n}" descr="${alt}"/>` +
+    `<a:graphic xmlns:a="${A_NS}"><a:graphicData uri="${PIC_NS}">` +
+    `<pic:pic xmlns:pic="${PIC_NS}"><pic:nvPicPr><pic:cNvPr id="${9000 + n}" name="Picture ${n}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="${rid}" xmlns:r="${R_NS}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
+    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>` +
+    `</a:graphicData></a:graphic></wp:inline></w:drawing>`
+  );
+}
+
+// One paragraph/heading of a text box. `numPr` makes it a list item of one of the
+// numbering definitions minted for the box.
+function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, numPr = ''): string {
   const attrs = node.attrs ?? {};
-  const pPr: string[] = [];
+  const pPr: string[] = [numPr];
   if (node.type === 'heading') {
     const lvl = Math.min(MAX_HEADING_LEVEL, Math.max(1, Number(attrs.level) || 1));
     pPr.push(`<w:pStyle w:val="Heading${lvl}"/>`);
@@ -706,9 +747,12 @@ function txbxParagraphXml(node: TiptapNode, indentTwip = 0, markerText = ''): st
   const ta = attrs.textAlign;
   const jc = ta === 'center' ? 'center' : ta === 'right' ? 'right' : ta === 'justify' ? 'both' : '';
   if (jc) pPr.push(`<w:jc w:val="${jc}"/>`);
-  let runs = markerText ? `<w:r><w:t xml:space="preserve">${escapeXml(markerText)}</w:t></w:r>` : '';
+  let runs = '';
   for (const child of node.content ?? []) {
-    if (child.type === 'text' && child.text) {
+    if (child.type === 'image') {
+      const drawing = txbxImageXml(child, parts);
+      if (drawing) runs += `<w:r>${drawing}</w:r>`;
+    } else if (child.type === 'text' && child.text) {
       const rPr = txbxRunPropsXml(child.marks);
       let inner = '';
       child.text.split('\t').forEach((seg, i) => {
@@ -723,40 +767,67 @@ function txbxParagraphXml(node: TiptapNode, indentTwip = 0, markerText = ''): st
   return `<w:p>${pPr.length ? `<w:pPr>${pPr.join('')}</w:pPr>` : ''}${runs}</w:p>`;
 }
 
-// In-box lists flatten to literal-marker paragraphs (real numbering would need
-// numbering.xml references, which the post-pack string pass can't mint).
-// `mlPrefix`: parent chain ("1.2.") when inside a multilevel list, else null.
-function txbxListXml(node: TiptapNode, depth: number, mlPrefix: string | null = null, cycle: OrderedCycle = ROOT_ORDERED_CYCLE): string {
+// One <w:lvl> of a numbering definition minted for a box — the same shape
+// Numbering.ensureLevel hands the package for a body list.
+function txbxLevelXml(node: TiptapNode, depth: number, chained: boolean, cycle: OrderedCycle): string {
   const ordered = node.type === 'orderedList';
   const attr = node.attrs?.listStyleType as string | null | undefined;
-  const chained = ordered && (attr === 'multilevel' || (mlPrefix !== null && !attr));
   const def = effectiveOrderedDefAt(attr === 'multilevel' ? 'decimal' : attr, cycle);
+  const fmt = ordered
+    ? (chained ? 'decimal' : String(ORDERED_FORMAT[def.numFormat] ?? 'decimal'))
+    : 'bullet';
+  const text = !ordered
+    ? bulletCharOf(node, depth)
+    : chained
+      ? Array.from({ length: depth + 1 }, (_, i) => `%${i + 1}.`).join('')
+      : `%${depth + 1}${def.numSuffix}`;
+  const start = ordered && typeof node.attrs?.start === 'number' ? node.attrs.start : 1;
+  const jc = node.attrs?.markerAlign === 'right' ? 'right' : 'left';
+  return (
+    `<w:lvl w:ilvl="${depth}"><w:start w:val="${start}"/><w:numFmt w:val="${fmt}"/>` +
+    `<w:lvlText w:val="${escapeXml(text)}"/><w:lvlJc w:val="${jc}"/>` +
+    `<w:pPr><w:ind w:left="${cmToTwip((depth + 1) * LIST_LEFT_STEP_CM)}"` +
+    ` w:hanging="${cmToTwip(LIST_HANGING_CM)}"/></w:pPr></w:lvl>`
+  );
+}
+
+// A list inside a box, as a real Word list: one numbering definition per top-level
+// list, each nesting level's format filled in when first met — as the body's
+// Numbering registry does, only written straight to XML.
+function txbxListXml(
+  node: TiptapNode, depth: number, parts: TxbxParts,
+  num: TxbxParts['nums'][number] | null = null, chainRoot = false, cycle: OrderedCycle = ROOT_ORDERED_CYCLE,
+): string {
+  const ordered = node.type === 'orderedList';
+  const attr = node.attrs?.listStyleType as string | null | undefined;
+  const chained = ordered && (attr === 'multilevel' || (chainRoot && !attr));
   const cChild = childCycle(cycle, attr, ordered);
-  let n = typeof node.attrs?.start === 'number' ? node.attrs.start : 1;
+  const def = num ?? { id: 0, levels: [] as string[] };
+  if (!num) {
+    def.id = parts.nums.length;
+    parts.nums.push(def);
+  }
+  if (!def.levels[depth]) def.levels[depth] = txbxLevelXml(node, depth, chained, cycle);
+  const numPr = `<w:numPr><w:ilvl w:val="${depth}"/><w:numId w:val="${TXBX_NUM}${def.id}${TXBX_NUM}"/></w:numPr>`;
   let out = '';
   for (const item of node.content ?? []) {
     if (item.type !== 'listItem') continue;
-    let first = true;
     for (const child of item.content ?? []) {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
-        out += txbxListXml(child, depth + 1, chained ? `${mlPrefix ?? ''}${n}.` : null, cChild);
+        out += txbxListXml(child, depth + 1, parts, def, chained, cChild);
       } else if (child.type === 'paragraph' || child.type === 'heading') {
-        const ordinal = chained ? `${mlPrefix ?? ''}${n}. ` : `${formatOrdinal(n, def.numFormat)}${def.numSuffix} `;
-        const marker = first ? (ordered ? ordinal : `${bulletCharOf(node, depth)} `) : '';
-        out += txbxParagraphXml(child, cmToTwip((depth + 1) * LIST_HANGING_CM), marker);
-        first = false;
+        out += txbxParagraphXml(child, parts, 0, numPr);
       }
     }
-    n++;
   }
   return out;
 }
 
-function txbxContentXml(blocks: TiptapNode[]): string {
+function txbxContentXml(blocks: TiptapNode[], parts: TxbxParts): string {
   let out = '';
   for (const b of blocks) {
-    if (b.type === 'paragraph' || b.type === 'heading') out += txbxParagraphXml(b);
-    else if (b.type === 'bulletList' || b.type === 'orderedList') out += txbxListXml(b, 0);
+    if (b.type === 'paragraph' || b.type === 'heading') out += txbxParagraphXml(b, parts);
+    else if (b.type === 'bulletList' || b.type === 'orderedList') out += txbxListXml(b, 0, parts);
   }
   return out || '<w:p/>';
 }
@@ -764,7 +835,7 @@ function txbxContentXml(blocks: TiptapNode[]): string {
 // The full <w:drawing> for one text box. Namespaces are declared inline on the
 // wp/a/wps elements so the output never depends on what the library declares on
 // the document root.
-function textBoxDrawingXml(box: TextBoxDocx, index: number): string {
+function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): string {
   const cx = Math.round(box.widthPx * EMU_PER_PX);
   const cy = Math.round(box.heightPx * EMU_PER_PX);
   const rot = box.rotationDeg ? ` rot="${Math.round(box.rotationDeg * 60000)}"` : '';
@@ -782,7 +853,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number): string {
     `<wps:cNvSpPr txBox="1"/>` +
     `<wps:spPr><a:xfrm${rot}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
     `<a:prstGeom prst="${SHAPES[box.shapeKind].prst}"><a:avLst/></a:prstGeom>${fill}${ln}</wps:spPr>` +
-    `<wps:txbx><w:txbxContent>${txbxContentXml(box.content)}</w:txbxContent></wps:txbx>` +
+    `<wps:txbx><w:txbxContent>${txbxContentXml(box.content, parts)}</w:txbxContent></wps:txbx>` +
     `<wps:bodyPr rot="0" vert="horz" wrap="square" lIns="${inset}" tIns="${inset}" rIns="${inset}" bIns="${inset}" anchor="t">${autofit}</wps:bodyPr>` +
     `</wps:wsp>`;
   const graphic =
@@ -790,9 +861,8 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number): string {
     `<a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">${wsp}</a:graphicData></a:graphic>`;
   const docPr = `<wp:docPr id="${9001 + index}" name="TextBox${index + 1}"/>`;
   const extent = `<wp:extent cx="${cx}" cy="${cy}"/>`;
-  const wpNs = 'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"';
   if (box.wrap === 'inline') {
-    return `<w:drawing><wp:inline ${wpNs} distT="0" distB="0" distL="0" distR="0">${extent}${docPr}${graphic}</wp:inline></w:drawing>`;
+    return `<w:drawing><wp:inline ${WP_NS} distT="0" distB="0" distL="0" distR="0">${extent}${docPr}${graphic}</wp:inline></w:drawing>`;
   }
   // wrapText names the side TEXT flows on (inverse of the box side), like ODT.
   const wrapEl = box.wrap === 'topBottom'
@@ -804,7 +874,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number): string {
     ? `<wp:posOffset>${emu(box.offsetCm)}</wp:posOffset>`
     : `<wp:align>${align}</wp:align>`;
   return (
-    `<w:drawing><wp:anchor ${wpNs} distT="0" distB="0" distL="${emu(box.distCm ?? 0)}" distR="${emu(box.distCm ?? 0)}"` +
+    `<w:drawing><wp:anchor ${WP_NS} distT="0" distB="0" distL="${emu(box.distCm ?? 0)}" distR="${emu(box.distCm ?? 0)}"` +
     ` simplePos="0" relativeHeight="${251658240 + index}" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="0">` +
     `<wp:simplePos x="0" y="0"/>` +
     `<wp:positionH relativeFrom="margin">${posH}</wp:positionH>` +
@@ -813,21 +883,63 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number): string {
   );
 }
 
+// The highest number already used by `attr` in `xml`, so a part we add gets a free one.
+function maxIdIn(xml: string, attr: RegExp): number {
+  let max = 0;
+  for (const m of xml.matchAll(attr)) max = Math.max(max, parseInt(m[1], 10) || 0);
+  return max;
+}
+
 // Post-pack pass: swap each marker paragraph in word/document.xml for its drawing.
-// The tempered pattern keeps the match inside one paragraph.
+// The tempered pattern keeps the match inside one paragraph. A box's pictures and
+// lists need parts of their own — the pass holds the whole zip, so it appends the
+// media entries, their relationships and the numbering definitions here.
 function applyTextBoxesDocx(bytes: Uint8Array, boxes: TextBoxDocx[]): Uint8Array {
   if (!boxes.length) return bytes;
   const files = unzipSync(bytes);
   const docBytes = files['word/document.xml'];
   if (!docBytes) return bytes;
   let xml = strFromU8(docBytes);
+
+  const relsPath = 'word/_rels/document.xml.rels';
+  const rels = files[relsPath] ? strFromU8(files[relsPath]) : '';
+  let nextRid = maxIdIn(rels, /Id="rId(\d+)"/g);
+  const parts: TxbxParts = { media: [], nums: [], nextRid: () => `rId${++nextRid}` };
+
   xml = xml.replace(
     new RegExp(`<w:p\\b[^>]*?>(?:(?!</w:p>)[\\s\\S])*?${TBX}(\\d+)${TBX}(?:(?!</w:p>)[\\s\\S])*?</w:p>`, 'g'),
     (_m, idx: string) => {
       const box = boxes[Number(idx)];
-      return box ? `<w:p><w:r>${textBoxDrawingXml(box, Number(idx))}</w:r></w:p>` : '';
+      return box ? `<w:p><w:r>${textBoxDrawingXml(box, Number(idx), parts)}</w:r></w:p>` : '';
     },
   );
+
+  const numPath = 'word/numbering.xml';
+  const numXml = files[numPath] ? strFromU8(files[numPath]) : '';
+  if (parts.nums.length && numXml) {
+    // Both id spaces are the package's, so one free number above its highest serves
+    // as the abstract id and the concrete one alike.
+    const base = Math.max(maxIdIn(numXml, /w:abstractNumId="(\d+)"/g), maxIdIn(numXml, /w:numId="(\d+)"/g)) + 1;
+    const abstracts = parts.nums.map((n, i) =>
+      `<w:abstractNum w:abstractNumId="${base + i}"><w:multiLevelType w:val="hybridMultilevel"/>` +
+      `${n.levels.filter(Boolean).join('')}</w:abstractNum>`).join('');
+    const concretes = parts.nums.map((_n, i) =>
+      `<w:num w:numId="${base + i}"><w:abstractNumId w:val="${base + i}"/></w:num>`).join('');
+    // w:abstractNum must precede every w:num, so both go where the first w:num is.
+    const at = numXml.indexOf('<w:num ');
+    files[numPath] = strToU8(at < 0
+      ? numXml.replace('</w:numbering>', `${abstracts}${concretes}</w:numbering>`)
+      : numXml.slice(0, at) + abstracts + concretes + numXml.slice(at));
+    xml = xml.replace(new RegExp(`${TXBX_NUM}(\\d+)${TXBX_NUM}`, 'g'), (_m, i: string) => String(base + Number(i)));
+  }
+
+  if (parts.media.length && rels) {
+    for (const m of parts.media) files[m.path] = m.bytes as Uint8Array<ArrayBuffer>;
+    files[relsPath] = strToU8(rels.replace('</Relationships>', parts.media.map((m) =>
+      `<Relationship Id="${m.rid}" Type="${R_NS}/image" Target="media/${m.path.split('/').pop()}"/>`).join('') +
+      '</Relationships>'));
+  }
+
   files['word/document.xml'] = strToU8(xml);
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
   for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];

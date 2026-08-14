@@ -1146,3 +1146,61 @@ describe('DOCX table margins (dragged outer edges)', () => {
     expect(table.attrs?.marginLeft ?? 0).toBe(0);
   });
 });
+
+describe('DOCX text box: a list inside it is a real list, a picture a real picture', () => {
+  const doc: N = { type: 'doc', content: [
+    // A body list first, so the box's numbering has to find free ids beside it.
+    { type: 'bulletList', content: [li(para('body item'))] },
+    { type: 'textBox', attrs: { width: 300, height: 200 }, content: [
+      para('box text'),
+      { type: 'bulletList', content: [
+        li(para('one')),
+        li(para('two'), { type: 'orderedList', attrs: { start: 3 }, content: [li(para('a')), li(para('b'))] }),
+      ] },
+      para([{ type: 'image', attrs: { src: PNG, width: 64, height: 64, alt: 'dot' } }]),
+    ] },
+  ] };
+
+  it('mints numbering, media and relationships of its own', async () => {
+    const files = unzipSync(await buildDocx(doc, { top: 2, bottom: 2, left: 2, right: 2 } as any, 'portrait'));
+    const xml = strFromU8(files['word/document.xml']);
+    const numbering = strFromU8(files['word/numbering.xml']);
+    const rels = strFromU8(files['word/_rels/document.xml.rels']);
+
+    const inBox = xml.slice(xml.indexOf('<w:txbxContent>'));
+    const numIds = [...inBox.matchAll(/<w:numId w:val="(\d+)"\/>/g)].map((m) => m[1]);
+    expect(numIds.length).toBe(4);
+    expect(new Set(numIds).size).toBe(1);
+    // The body's own list keeps its definition; the box's is a second one.
+    const bodyNumId = /<w:numId w:val="(\d+)"\/>/.exec(xml)![1];
+    expect(numIds[0]).not.toBe(bodyNumId);
+    for (const id of new Set([...numIds, bodyNumId])) {
+      expect(numbering).toContain(`<w:num w:numId="${id}">`);
+    }
+    // Two levels: the bullet and the ordered list nested under it, starting at 3.
+    const added = numbering.slice(numbering.lastIndexOf(`<w:abstractNum w:abstractNumId="${numIds[0]}"`));
+    expect(added).toContain('<w:numFmt w:val="bullet"/>');
+    expect(added).toContain('<w:numFmt w:val="lowerLetter"/>');
+    expect(added).toContain('<w:start w:val="3"/>');
+    // No literal markers left in the runs.
+    expect(inBox).not.toContain('<w:t xml:space="preserve">• ');
+
+    expect(Object.keys(files)).toContain('word/media/tbx1.png');
+    const rid = /<a:blip r:embed="(rId\d+)"/.exec(inBox)![1];
+    expect(rels).toContain(`<Relationship Id="${rid}" `);
+    expect(rels).toContain('Target="media/tbx1.png"');
+  });
+
+  it('round-trips the whole box', async () => {
+    const back = importDocx(await buildDocx(doc, { top: 2, bottom: 2, left: 2, right: 2 } as any, 'portrait'));
+    expect(back.warnings).toEqual([]);
+    const box = (back.content.content ?? []).find((n: N) => n.type === 'textBox')!;
+    const list = box.content!.find((n: N) => n.type === 'bulletList')!;
+    expect(list.content![1].content![1].type).toBe('orderedList');
+    expect(list.content![1].content![1].attrs.start).toBe(3);
+    const img = walk(box, 'image')[0];
+    expect(img.attrs.width).toBe(64);
+    expect(img.attrs.alt).toBe('dot');
+    expect(String(img.attrs.src).startsWith('data:image/png;base64,')).toBe(true);
+  });
+});
