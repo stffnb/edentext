@@ -647,6 +647,7 @@ const de: Messages = {
     tocOptions: 'Ebenen',
     tocMaxLevel: 'Tiefste angezeigte Ebene',
     insertCaption: 'Beschriftung',
+    indexes: { toc: 'Inhaltsverzeichnis', figures: 'Abbildungsverzeichnis', tables: 'Tabellenverzeichnis' },
     footnote: 'Fußnote',
     endnote: 'Endnote',
     noteOptions: 'Optionen',

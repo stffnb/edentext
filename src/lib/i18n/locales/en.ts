@@ -649,6 +649,7 @@ const en = {
     },
     toc: 'Table of contents',
     insertCaption: 'Caption',
+    indexes: { toc: 'Table of contents', figures: 'List of figures', tables: 'List of tables' },
     tocOptions: 'Levels',
     tocMaxLevel: 'Deepest level shown',
     footnote: 'Footnote',

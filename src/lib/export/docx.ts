@@ -24,6 +24,7 @@ import type { SpacingModel } from '../storage/spacingModel';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { DOCX_SEQ_NAME, seqCategoryOf } from '../editor/extensions/caption';
+import { indexKindOf, INDEX_TITLES } from '../editor/extensions/tableOfContents';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
@@ -1171,15 +1172,21 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       textBoxes.push(textBoxDocxDescriptor(node));
       out.push(new Paragraph({ children: [new TextRun({ text: `${TBX}${i}${TBX}` })] }));
     } else if (node.type === 'tableOfContents') {
-      // A real TOC field over the index's own heading levels, populated and linked on
-      // field update (features.updateFields). The title is a plain bold paragraph so it
-      // isn't itself listed, and is omitted where the index has none.
+      // A real TOC field, populated and linked on field update (features.updateFields).
+      // A list of figures/tables is the same field over a caption label (\c) instead of
+      // the heading levels. The title is a plain bold paragraph so it isn't itself
+      // listed, and is omitted where the index has none.
+      const kind = indexKindOf(node.attrs?.index);
       const rawTitle = node.attrs?.title;
-      const tocTitle = typeof rawTitle === 'string' ? rawTitle : 'Table of Contents';
+      const tocTitle = typeof rawTitle === 'string' ? rawTitle : INDEX_TITLES[kind];
       const depth = Number(node.attrs?.maxLevel);
       const maxLevel = depth >= 1 ? Math.min(MAX_HEADING_LEVEL, depth) : MAX_HEADING_LEVEL;
       if (tocTitle) out.push(new Paragraph({ children: [new TextRun({ text: tocTitle, bold: true, size: 32 })], spacing: { after: cmToTwip(0.3) } }));
-      out.push(new TableOfContents(tocTitle, { hyperlink: true, headingStyleRange: `1-${maxLevel}` }));
+      out.push(new TableOfContents(tocTitle, kind === 'toc'
+        ? { hyperlink: true, headingStyleRange: `1-${maxLevel}` }
+        // `\c`, not `\a`: Word's own Insert Table of Figures keeps the label and number
+        // in the entry, which is what the editor's cached entries already read.
+        : { hyperlink: true, captionLabelIncludingNumbers: DOCX_SEQ_NAME[kind === 'tables' ? 'table' : 'figure'] }));
     }
   }
   return out;

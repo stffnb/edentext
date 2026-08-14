@@ -1997,3 +1997,48 @@ describe('Leg 19: captions (a sequence field per category)', () => {
     check('no SEQ field', !strFromU8(unzipSync(await buildDocx(plain, margins, 'portrait'))['word/document.xml']).includes('SEQ '));
   });
 });
+
+describe('Leg 20: list of figures / list of tables', () => {
+  const idx = (index: string, ...entries: { text: string; level: number; page: number }[]): N =>
+    ({ type: 'tableOfContents', attrs: { index, title: null, maxLevel: 5, leader: '.', tabPosCm: null, entries } });
+  const doc: N = { type: 'doc', content: [
+    idx('figures', { text: 'Figure 1: a picture', level: 1, page: 1 }),
+    idx('tables', { text: 'Table 1: a table', level: 1, page: 2 }),
+    P(null, T('body')),
+  ] };
+
+  it('ODT: the two caption index families, and back', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('illustration index emitted', content.includes('<text:illustration-index '), content.slice(0, 200));
+    check('table index emitted', content.includes('<text:table-index '), content.slice(0, 200));
+    check('found by the counter name', content.includes('text:caption-sequence-name="Illustration"')
+      && content.includes('text:caption-sequence-name="Table"'),
+      content.match(/text:caption-sequence-name="[^"]*"/g));
+    const back = importOdt(bytes).content as N;
+    check('kinds round-trip', back.content.slice(0, 2).map((n: N) => n.attrs?.index).join() === 'figures,tables',
+      back.content.map((n: N) => [n.type, n.attrs?.index]));
+    check('entries survive', back.content[0].attrs?.entries?.[0]?.text === 'Figure 1: a picture',
+      back.content[0].attrs?.entries);
+  });
+
+  it('DOCX: a TOC field over a caption label, and back', async () => {
+    const bytes = await buildDocx(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    // The instruction is an XML attribute, so its quotes arrive escaped.
+    check('\\c switches emitted', /TOC[^<]*\\c\s+&quot;Figure&quot;/.test(xml) && /TOC[^<]*\\c\s+&quot;Table&quot;/.test(xml),
+      xml.match(/TOC[^<]*/g));
+    const back = importDocx(bytes).content as N;
+    const kinds = back.content.filter((n: N) => n.type === 'tableOfContents').map((n: N) => n.attrs?.index);
+    check('kinds round-trip', kinds.join() === 'figures,tables', kinds);
+  });
+
+  it('a plain table of contents is unchanged by the new families', async () => {
+    const plain: N = { type: 'doc', content: [idx('toc', { text: 'Heading', level: 1, page: 1 })] };
+    const content = strFromU8(unzipSync(await buildOdt(plain, margins, 'portrait'))['content.xml']);
+    check('still a table-of-content', content.includes('<text:table-of-content ')
+      && !content.includes('caption-sequence-name'), content.slice(0, 200));
+    check('reads back as toc', (importOdt(await buildOdt(plain, margins, 'portrait')).content as N)
+      .content[0].attrs?.index === 'toc');
+  });
+});

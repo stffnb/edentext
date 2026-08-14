@@ -2,18 +2,39 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { MAX_HEADING_LEVEL } from '../../export/odt';
+import { seqCategoryOf, sequenceFieldText, type SeqCategory } from './caption';
 import { readVerticalMargins, pageOfElement, topInEditor, FORCE_PAGE_RECALC } from './pageBreaks';
 
-// A generated table of contents: a block atom listing every heading (levels 1–5) with its
-// live page number. The node view regenerates entries from the headings + pagination and
-// caches them in `entries` (persisted like a Word/LO TOC field); round-trips to ODF/DOCX.
+// A generated index: a block atom listing every source with its live page number — the
+// headings for a table of contents, the captions of one category for a list of figures
+// or tables. The node view regenerates entries from the sources + pagination and caches
+// them in `entries` (persisted like a Word/LO field); round-trips to ODF/DOCX.
 
 export type TocEntry = { text: string; level: number; page: number };
 
-// The heading above the entries. An imported TOC keeps the one its file used
+// Which sources the index collects. ODF has an element per family
+// (text:table-of-content / -illustration-index / -table-index), Word the TOC field's
+// \c switch.
+export type IndexKind = 'toc' | 'figures' | 'tables';
+
+export function indexKindOf(value: unknown): IndexKind {
+  return value === 'figures' || value === 'tables' ? value : 'toc';
+}
+
+// The heading above the entries. An imported index keeps the one its file used
 // ("Inhalt", "Sommaire", …), or none at all where the file put its heading in a
 // separate paragraph (`''`); a freshly inserted one takes this.
-const TITLE = 'Table of Contents';
+export const INDEX_TITLES: Record<IndexKind, string> = {
+  toc: 'Table of Contents',
+  figures: 'List of Figures',
+  tables: 'List of Tables',
+};
+
+const EMPTY_HINT: Record<IndexKind, string> = {
+  toc: 'No headings yet — add an H1/H2/H3 to build the contents.',
+  figures: 'No figure captions yet — insert one from the References tab.',
+  tables: 'No table captions yet — insert one from the References tab.',
+};
 // Enough leader dots to cross the widest gap a page can offer; fillLeaders cuts each
 // row's back to what its own gap holds, measuring one dot with this sample.
 const LEADER_DOTS = 200;
@@ -22,7 +43,7 @@ const LEADER_PROBE = 10;
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     tableOfContents: {
-      setTableOfContents: () => ReturnType;
+      setTableOfContents: (index?: IndexKind) => ReturnType;
     };
   }
 }
@@ -73,6 +94,13 @@ export const TableOfContents = Node.create({
         },
         renderHTML: attrs => (attrs.levelStyles ? { 'data-toc-styles': JSON.stringify(attrs.levelStyles) } : {}),
       },
+      // Which family of index this is. Absent = a table of contents, so a stored
+      // document from before the other two reads as one.
+      index: {
+        default: 'toc' as IndexKind,
+        parseHTML: el => indexKindOf((el as HTMLElement).getAttribute('data-toc-index')),
+        renderHTML: attrs => (attrs.index && attrs.index !== 'toc' ? { 'data-toc-index': String(attrs.index) } : {}),
+      },
       entries: {
         default: [] as TocEntry[],
         parseHTML: el => {
@@ -89,15 +117,15 @@ export const TableOfContents = Node.create({
   },
 
   renderHTML({ HTMLAttributes, node }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-toc': 'true' }), tocTitle(node.attrs.title)];
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-toc': 'true' }), tocTitle(node.attrs.title, node.attrs.index)];
   },
 
   addCommands() {
     return {
       setTableOfContents:
-        () =>
+        (index = 'toc') =>
         ({ commands }) =>
-          commands.insertContent({ type: this.name }),
+          commands.insertContent({ type: this.name, attrs: { index } }),
     };
   },
 
@@ -107,9 +135,23 @@ export const TableOfContents = Node.create({
 });
 
 // `''` is a title the file deliberately doesn't have, so only a missing one defaults.
-const tocTitle = (title: unknown): string => (typeof title === 'string' ? title : TITLE);
+const tocTitle = (title: unknown, index: unknown): string =>
+  typeof title === 'string' ? title : INDEX_TITLES[indexKindOf(index)];
 
 type HeadingRef = { text: string; level: number; pos: number };
+
+// A block's text with its atoms spelled out: a hard break is a line of the entry (a
+// book's "Chapter 1" / title pair is two lines in LibreOffice's own index) and a
+// sequence field is its number, which is most of what a caption entry says.
+function entryText(node: PMNode): string {
+  let raw = '';
+  node.forEach((child) => {
+    raw += child.type.name === 'hardBreak' ? '\n'
+      : child.type.name === 'sequenceField' ? sequenceFieldText(child)
+      : child.textContent;
+  });
+  return raw.trim();
+}
 
 // Node view: renders the title + one clickable row per heading. Recomputes on each
 // pagination settle (pm-pagecount, caught on the .paper ancestor) and on doc change,
@@ -150,17 +192,30 @@ class TocView {
     });
   }
 
-  // Every heading with non-empty text down to the index's own level, in document order.
-  private headings(): HeadingRef[] {
-    const max = Math.min(MAX_HEADING_LEVEL, Number(this.node()?.attrs?.maxLevel) || MAX_HEADING_LEVEL);
+  // What the index lists, in document order: the headings down to its own level, or —
+  // for a list of figures/tables — every caption paragraph counting that category. A
+  // caption index has one level, as LibreOffice's does.
+  private sources(): HeadingRef[] {
+    const kind = indexKindOf(this.node()?.attrs?.index);
     const out: HeadingRef[] = [];
+    if (kind !== 'toc') {
+      const category: SeqCategory = kind === 'tables' ? 'table' : 'figure';
+      this.editor.state.doc.descendants((node, pos) => {
+        if (!node.isTextblock) return true;
+        let has = false;
+        node.forEach((child) => {
+          if (child.type.name === 'sequenceField' && seqCategoryOf(child.attrs.category as string) === category) has = true;
+        });
+        const text = has ? entryText(node) : '';
+        if (text) out.push({ text, level: 1, pos });
+        return false;
+      });
+      return out;
+    }
+    const max = Math.min(MAX_HEADING_LEVEL, Number(this.node()?.attrs?.maxLevel) || MAX_HEADING_LEVEL);
     this.editor.state.doc.descendants((node, pos) => {
       if (node.type.name === 'heading') {
-        // A hard break inside the heading is a line of the entry too — a book's
-        // "Chapter 1" / title pair is two lines in LibreOffice's own index.
-        let raw = '';
-        node.forEach((child) => { raw += child.type.name === 'hardBreak' ? '\n' : child.textContent; });
-        const text = raw.trim();
+        const text = entryText(node);
         const level = Math.min(MAX_HEADING_LEVEL, (node.attrs.level as number) ?? 1);
         if (text && level <= max) out.push({ text, level, pos });
       }
@@ -180,7 +235,7 @@ class TocView {
 
   private render(): void {
     if (this.editor.isDestroyed || !this.dom.isConnected) return;
-    const heads = this.headings();
+    const heads = this.sources();
     const cycle = this.cycle();
     const entries: TocEntry[] = heads.map(h => ({ text: h.text, level: h.level, page: this.pageOf(h.pos, cycle) }));
     const key = JSON.stringify(entries);
@@ -225,7 +280,7 @@ class TocView {
 
   private paint(entries: TocEntry[], heads: HeadingRef[]): void {
     this.dom.textContent = '';
-    const titleText = tocTitle(this.node()?.attrs?.title);
+    const titleText = tocTitle(this.node()?.attrs?.title, this.node()?.attrs?.index);
     if (titleText) {
       const title = document.createElement('div');
       title.className = 'toc-title';
@@ -236,7 +291,7 @@ class TocView {
     if (entries.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'toc-empty';
-      empty.textContent = 'No headings yet — add an H1/H2/H3 to build the contents.';
+      empty.textContent = EMPTY_HINT[indexKindOf(this.node()?.attrs?.index)];
       this.dom.appendChild(empty);
       return;
     }

@@ -3,6 +3,7 @@
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
   import CaptionDialog from '../../CaptionDialog.svelte';
+  import type { IndexKind } from '../../../editor/extensions/tableOfContents';
   import { anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
   import type { HfZone } from '../../../storage/headerFooter';
   import { t } from '../../../i18n/i18n.svelte';
@@ -16,17 +17,19 @@
     onNoteOptions?: () => void;
   } = $props();
 
+  // The levels button drives a table of contents only — a caption index has one level.
   // The document holds at most one, so the first hit is it.
   let toc = $derived.by<{ pos: number; maxLevel: number } | null>(() => {
     if (tick < 0 || !editor) return null;
     let found: { pos: number; maxLevel: number } | null = null;
     editor.state.doc.descendants((node, pos) => {
-      if (found || node.type.name !== 'tableOfContents') return;
+      if (found || node.type.name !== 'tableOfContents' || node.attrs.index !== 'toc') return;
       found = { pos, maxLevel: (node.attrs.maxLevel ?? 5) as number };
     });
     return found;
   });
   const LEVELS = HEADING_LEVELS;
+  const INDEX_KINDS: IndexKind[] = ['toc', 'figures', 'tables'];
   let captionOpen = $state(false);
 
   function setMaxLevel(level: number) {
@@ -37,14 +40,27 @@
 </script>
 
 <RibbonGroup label={t().ribbon.groups.toc}>
-  <RibbonButton
-    variant="big"
-    icon="toc"
-    label={t().ribbon.toc}
-    title={hfActive ? t().toolbarExpanded.tocNotInHf : t().toolbarExpanded.insertToc}
-    disabled={!editor || !!hfActive}
-    onclick={() => editor?.chain().focus().setTableOfContents().run()}
-  />
+  <div class="rb-menu-wrap" use:clickOutside={'indexKind'}>
+    <RibbonButton
+      variant="big"
+      icon="toc"
+      label={t().ribbon.toc}
+      title={hfActive ? t().toolbarExpanded.tocNotInHf : t().toolbarExpanded.insertToc}
+      disabled={!editor || !!hfActive}
+      caret
+      active={isMenuOpen('indexKind')}
+      onclick={() => toggleMenu('indexKind')}
+    />
+    {#if isMenuOpen('indexKind')}
+      <div class="ribbon-menu" use:anchored role="menu">
+        {#each INDEX_KINDS as k}
+          <button onclick={() => { closeMenu(); editor?.chain().focus().setTableOfContents(k).run(); }}>
+            {t().ribbon.indexes[k]}
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </div>
   <div class="rb-menu-wrap" use:clickOutside={'tocLevels'}>
     <RibbonButton
       variant="big"

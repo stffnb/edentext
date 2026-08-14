@@ -26,6 +26,7 @@ import { chartDataUrl } from './chart';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { ODF_SEQ_CATEGORY } from '../editor/extensions/caption';
+import type { IndexKind } from '../editor/extensions/tableOfContents';
 import { clampColumnGap } from '../editor/extensions/columns';
 import { astToLatex } from '../math/latex';
 import { parseOmml, OMML_NS } from '../math/omml';
@@ -327,6 +328,14 @@ function tocMaxLevel(instr: string): number {
   return n >= 1 ? Math.min(MAX_HEADING_LEVEL, n) : MAX_HEADING_LEVEL;
 }
 
+// The TOC field's \c switch names a caption label, which makes it a list of figures or
+// tables rather than a contents. Word's own labels and LibreOffice's travel alike.
+function tocIndexKind(instr: string): IndexKind {
+  const m = /\\c\s+"?([^"\\]+)/.exec(instr);
+  const cat = m ? ODF_SEQ_CATEGORY[m[1].trim()] : undefined;
+  return cat === 'table' ? 'tables' : cat === 'figure' ? 'figures' : 'toc';
+}
+
 const instrTextOf = (el: Element): string =>
   Array.from(el.getElementsByTagNameNS(W, 'instrText')).map(i => i.textContent ?? '').join('');
 
@@ -478,7 +487,8 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
       if (emit && kind === 'body') {
         flush();
         // The field carries no heading of its own — Word's sits in a separate paragraph.
-        out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', maxLevel: tocMaxLevel(instrTextOf(el)) } });
+        const instr = instrTextOf(el);
+        out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', maxLevel: tocMaxLevel(instr), index: tocIndexKind(instr) } });
       }
       if (startedInToc || emit) continue;
       const num = paragraphNum(el, ctx);
@@ -525,10 +535,12 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         // A content-control-wrapped TOC → one node (regenerated live); skip its content.
         if (kind === 'body') {
           const content = fc(el, 'sdtContent');
+          const instr = content ? instrTextOf(content) : '';
           out.push({ type: 'tableOfContents', attrs: {
             entries: [],
             title: tocHeading(content) ?? '',
-            maxLevel: tocMaxLevel(content ? instrTextOf(content) : ''),
+            maxLevel: tocMaxLevel(instr),
+            index: tocIndexKind(instr),
           } });
         }
       } else {

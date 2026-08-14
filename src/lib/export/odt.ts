@@ -25,6 +25,7 @@ import { normalizeLeader, parseTabStops } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
 import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, formatOrdinal, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { ODF_SEQ_NAME, seqCategoryOf, type SeqCategory } from '../editor/extensions/caption';
+import { indexKindOf, INDEX_TITLES, type IndexKind } from '../editor/extensions/tableOfContents';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, toTimeValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
 import { parseLatex } from '../math/latex';
@@ -869,7 +870,7 @@ function replaceColumns(doc: TiptapNode, cols: ColumnsExport[]): TiptapNode {
 // One generated table of contents, collected by replaceTableOfContents and emitted by
 // applyToc. Entries are the cached heading→page rows (the node view keeps them current).
 type TocEntry = { text: string; level: number; page: number };
-type TocExport = { entries: TocEntry[]; title: string | null; maxLevel: number; leader: string | null; tabPosCm: number | null; levelStyles: (string | null)[] | null };
+type TocExport = { kind: IndexKind; entries: TocEntry[]; title: string | null; maxLevel: number; leader: string | null; tabPosCm: number | null; levelStyles: (string | null)[] | null };
 
 // Swap each top-level tableOfContents node for a marker paragraph carrying the TOC
 // sentinel and collect its cached entries. Top-level only (like replacePageBreaks): a
@@ -890,6 +891,7 @@ function replaceTableOfContents(doc: TiptapNode, tocs: TocExport[]): TiptapNode 
       const rawTitle = child.attrs?.title;
       const depth = Number(child.attrs?.maxLevel);
       tocs.push({
+        kind: indexKindOf(child.attrs?.index),
         entries,
         title: typeof rawTitle === 'string' ? rawTitle : null,
         maxLevel: depth >= 1 ? Math.min(MAX_HEADING_LEVEL, depth) : MAX_HEADING_LEVEL,
@@ -3542,10 +3544,10 @@ function contentsEntryStyle(name: string, level: number, tabPosCm: number): stri
   );
 }
 
-// The TOC title style (bold, 16pt) — mirrors the .toc-title on screen.
-function contentsHeadingStyle(): string {
+// The index title style (bold, 16pt) — mirrors the .toc-title on screen.
+function contentsHeadingStyle(name: string): string {
   return (
-    `<style:style style:name="Contents_20_Heading" style:family="paragraph" style:parent-style-name="Standard">` +
+    `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="Standard">` +
     `<style:paragraph-properties fo:margin-top="0cm" fo:margin-bottom="0.3cm"/>` +
     `<style:text-properties fo:font-size="16pt" fo:font-weight="bold"/></style:style>`
   );
@@ -3555,42 +3557,55 @@ function contentsHeadingStyle(): string {
 // automatic Contents_20_N this export mints.
 function tocLevelStyle(toc: TocExport, level: number): string {
   const own = toc.levelStyles?.[level - 1];
-  return own ? odfStyleName(own) : `Contents_20_${level}`;
+  return own ? odfStyleName(own) : `${ODF_INDEX[toc.kind].entryStyle}${level}`;
 }
 
+// ODF has one element family per index. A caption index is single-level and finds its
+// entries by the counter's name, so its template carries no text:outline-level.
+const ODF_INDEX: Record<IndexKind, { el: string; heading: string; entryStyle: string; docName: string; seq?: string }> = {
+  toc: { el: 'table-of-content', heading: 'Contents_20_Heading', entryStyle: 'Contents_20_', docName: 'Table of Contents' },
+  figures: { el: 'illustration-index', heading: 'Illustration_20_Index_20_Heading', entryStyle: 'Illustration_20_Index_20_', docName: 'Illustration Index', seq: 'Illustration' },
+  tables: { el: 'table-index', heading: 'Table_20_Index_20_Heading', entryStyle: 'Table_20_Index_20_', docName: 'Table Index', seq: 'Table' },
+};
+
 function tocXml(toc: TocExport, index: number): string {
-  const title = toc.title ?? 'Table of Contents';
-  const name = `Table of Contents${index + 1}`;
+  const spec = ODF_INDEX[toc.kind];
+  const title = toc.title ?? INDEX_TITLES[toc.kind];
+  const name = `${spec.docName}${index + 1}`;
+  const stop =
+    `<text:index-entry-tab-stop style:type="right"` +
+    `${toc.tabPosCm ? ` style:position="${toc.tabPosCm}cm"` : ''}` +
+    `${toc.leader ? ` style:leader-char="${escapeXml(toc.leader)}"` : ''}/>`;
+  const entry = (levelAttr: string, style: string) =>
+    `<text:${spec.el}-entry-template${levelAttr} text:style-name="${style}">` +
+    `<text:index-entry-link-start/><text:index-entry-text/>${stop}` +
+    `<text:index-entry-page-number/><text:index-entry-link-end/>` +
+    `</text:${spec.el}-entry-template>`;
+  const sourceAttrs = spec.seq
+    ? ` text:use-caption="true" text:caption-sequence-name="${spec.seq}" text:caption-sequence-format="category-and-value"`
+    : ` text:outline-level="${toc.maxLevel}" text:use-index-marks="false" text:use-index-source-styles="false"`;
+  const templates = spec.seq
+    ? entry('', tocLevelStyle(toc, 1))
+    : HEADING_LEVELS.filter(l => l <= toc.maxLevel)
+        .map(l => entry(` text:outline-level="${l}"`, tocLevelStyle(toc, l)))
+        .join('');
   const source =
-    `<text:table-of-content-source text:outline-level="${toc.maxLevel}" text:use-index-marks="false" text:use-index-source-styles="false">` +
-    (title ? `<text:index-title-template text:style-name="Contents_20_Heading">${escapeXml(title)}</text:index-title-template>` : '') +
-    HEADING_LEVELS.filter(l => l <= toc.maxLevel)
-      .map(
-        l =>
-          `<text:table-of-content-entry-template text:outline-level="${l}" text:style-name="${tocLevelStyle(toc, l)}">` +
-          `<text:index-entry-link-start/>` +
-          `<text:index-entry-text/>` +
-          `<text:index-entry-tab-stop style:type="right"` +
-          `${toc.tabPosCm ? ` style:position="${toc.tabPosCm}cm"` : ''}` +
-          `${toc.leader ? ` style:leader-char="${escapeXml(toc.leader)}"` : ''}/>` +
-          `<text:index-entry-page-number/>` +
-          `<text:index-entry-link-end/>` +
-          `</text:table-of-content-entry-template>`,
-      )
-      .join('') +
-    `</text:table-of-content-source>`;
+    `<text:${spec.el}-source${sourceAttrs}>` +
+    (title ? `<text:index-title-template text:style-name="${spec.heading}">${escapeXml(title)}</text:index-title-template>` : '') +
+    templates +
+    `</text:${spec.el}-source>`;
   const body =
     `<text:index-body>` +
     (title
       ? `<text:index-title text:name="${escapeXml(name)}_Head">` +
-        `<text:p text:style-name="Contents_20_Heading">${escapeXml(title)}</text:p>` +
+        `<text:p text:style-name="${spec.heading}">${escapeXml(title)}</text:p>` +
         `</text:index-title>`
       : '') +
     toc.entries
       .map(e => `<text:p text:style-name="${tocLevelStyle(toc, e.level)}">${escapeXml(e.text).replace(/\n/g, '<text:line-break/>')}<text:tab/>${e.page}</text:p>`)
       .join('') +
     `</text:index-body>`;
-  return `<text:table-of-content text:name="${escapeXml(name)}" text:protected="true">${source}${body}</text:table-of-content>`;
+  return `<text:${spec.el} text:name="${escapeXml(name)}" text:protected="true">${source}${body}</text:${spec.el}>`;
 }
 
 // BMS/BME/XRF sentinels → <text:bookmark-start/>, <text:bookmark-end/> and
@@ -3724,9 +3739,16 @@ function applyToc(odtBytes: Uint8Array, tocs: TocExport[], contentWidthCm: numbe
   content = content.split(TOC_SENT).join('');
 
   const tabPosCm = Math.max(1, Math.round(contentWidthCm * 1000) / 1000);
-  const styles =
-    contentsHeadingStyle() +
-    HEADING_LEVELS.map(l => contentsEntryStyle(`Contents_20_${l}`, l, tabPosCm)).join('');
+  // One set of entry styles per index family actually present; a caption index has the
+  // single level its ODF template declares.
+  const styles = [...new Set(tocs.map(t => t.kind))]
+    .map((kind) => {
+      const spec = ODF_INDEX[kind];
+      const levels = kind === 'toc' ? HEADING_LEVELS : [1];
+      return contentsHeadingStyle(spec.heading)
+        + levels.map(l => contentsEntryStyle(`${spec.entryStyle}${l}`, l, tabPosCm)).join('');
+    })
+    .join('');
   content = injectAutomaticStyles(content, styles);
 
   files['content.xml'] = strToU8(content);

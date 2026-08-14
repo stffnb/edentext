@@ -25,6 +25,7 @@ import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperti
 import { clampPageStart, type PageNumbering } from '../storage/pageNumbering';
 import { newCommentId } from '../editor/extensions/comment';
 import { ODF_SEQ_CATEGORY } from '../editor/extensions/caption';
+import type { IndexKind } from '../editor/extensions/tableOfContents';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -980,9 +981,10 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         const cols = ctx.resolver.sectionColumns(el.getAttributeNS(NS.text, 'style-name'));
         if (kind === 'body' && cols) pushColumnRuns(inner, cols, out, ctx);
         else out.push(...inner);
-      } else if (el.localName === 'table-of-content' && kind === 'body') {
-        // Generated table of contents → a tableOfContents node (regenerated live).
-        out.push(convertToc(el, ctx));
+      } else if (ODF_INDEX_KIND[el.localName] && kind === 'body') {
+        // A generated contents / list of figures / list of tables → a tableOfContents
+        // node of that family (regenerated live).
+        out.push(convertToc(el, ctx, ODF_INDEX_KIND[el.localName]!));
       } else if (/-index$|^table-of-content$|^bibliography$/.test(el.localName)) {
         // Other generated indexes (bibliography, …) or a TOC nested in a cell: keep the
         // rendered text from index-body.
@@ -1026,7 +1028,11 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
 // A <text:table-of-content> → a tableOfContents node. Entries (text + level + page) are
 // parsed from the cached index-body as a starting cache; the node view recomputes page
 // numbers live after mount, so parse fidelity isn't critical.
-function convertToc(el: Element, ctx: Ctx): Node {
+const ODF_INDEX_KIND: Record<string, IndexKind | undefined> = {
+  'table-of-content': 'toc', 'illustration-index': 'figures', 'table-index': 'tables',
+};
+
+function convertToc(el: Element, ctx: Ctx, indexKind: IndexKind): Node {
   const indexBody = el.getElementsByTagNameNS(NS.text, 'index-body')[0];
   const entries: { text: string; level: number; page: number }[] = [];
   if (indexBody) {
@@ -1043,7 +1049,8 @@ function convertToc(el: Element, ctx: Ctx): Node {
   // No <text:index-title> means the index really has none — its heading is an ordinary
   // paragraph above it, and adding ours would double it.
   const title = el.getElementsByTagNameNS(NS.text, 'index-title')[0]?.textContent?.trim() ?? '';
-  const source = el.getElementsByTagNameNS(NS.text, 'table-of-content-source')[0];
+  const family = el.localName;
+  const source = el.getElementsByTagNameNS(NS.text, `${family}-source`)[0];
   const depth = Number(source?.getAttributeNS(NS.text, 'outline-level'));
   const maxLevel = depth >= 1 ? Math.min(MAX_HEADING_LEVEL, depth) : MAX_HEADING_LEVEL;
   // The fill between an entry and its page number. A template that declares the stop but
@@ -1055,7 +1062,7 @@ function convertToc(el: Element, ctx: Ctx): Node {
   // Where the page number ends: the entry template's own stop, else the right stop of
   // the paragraph style its entries use. Word and LibreOffice both put it short of the
   // text width in some templates, and the number then hangs 45mm out of place.
-  const templates = Array.from(source?.getElementsByTagNameNS(NS.text, 'table-of-content-entry-template') ?? []);
+  const templates = Array.from(source?.getElementsByTagNameNS(NS.text, `${family}-entry-template`) ?? []);
   const template = templates[0];
   const styled = ctx.resolver.tabStops(template?.getAttributeNS(NS.text, 'style-name') ?? null);
   const tabPosCm = lengthToCm(stop?.getAttributeNS(NS.style, 'position'))
@@ -1064,13 +1071,14 @@ function convertToc(el: Element, ctx: Ctx): Node {
   // stylesheet gives them the file's indent, spacing and font instead of our defaults.
   const levelStyles: (string | null)[] = [];
   for (const tpl of templates) {
-    const level = Number(tpl.getAttributeNS(NS.text, 'outline-level'));
+    // A caption index has one level and declares no text:outline-level.
+    const level = Number(tpl.getAttributeNS(NS.text, 'outline-level')) || 1;
     const named = ctx.resolver.namedAncestor(tpl.getAttributeNS(NS.text, 'style-name'));
     if (!(level >= 1) || !named) continue;
     ctx.usedStyles.add(named);
     levelStyles[level - 1] = ctx.styleNames.get(named) ?? named;
   }
-  const attrs: Record<string, unknown> = { entries, title, maxLevel, leader, tabPosCm };
+  const attrs: Record<string, unknown> = { entries, title, maxLevel, leader, tabPosCm, index: indexKind };
   if (levelStyles.some(Boolean)) attrs.levelStyles = Array.from(levelStyles, (s) => s ?? null);
   return { type: 'tableOfContents', attrs };
 }
