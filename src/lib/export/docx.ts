@@ -35,6 +35,7 @@ import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, GENERATOR, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
+import { EMPTY_PAGE_DECOR, isEmptyPageDecor, type PageDecor, type Watermark } from '../storage/pageDecor';
 
 // The five page-number formats both word processors offer → Word's own names.
 const DOCX_PAGE_NUM_FORMAT = {
@@ -839,6 +840,106 @@ function applyMirrorMarginsDocx(bytes: Uint8Array): Uint8Array {
   return zipSync(out);
 }
 
+// Post-pack pass: the page's own decoration. Word keeps the background on w:document
+// (switched on in settings.xml), the border in every w:sectPr, and the watermark as a
+// VML fontwork shape in each header part — the shapes LibreOffice writes, probed.
+function applyPageDecorDocx(bytes: Uint8Array, decor: PageDecor, widthPt: number, heightPt: number): Uint8Array {
+  const files = unzipSync(bytes);
+  const docBytes = files['word/document.xml'];
+  if (!docBytes) return bytes;
+  let doc = strFromU8(docBytes);
+
+  if (decor.background) {
+    const color = decor.background.replace('#', '').toUpperCase();
+    doc = doc.replace(/(<w:document\b[^>]*>)/, `$1<w:background w:color="${color}"/>`);
+    const setBytes = files['word/settings.xml'];
+    // Without this Word stores the colour but paints nothing.
+    if (setBytes) {
+      files['word/settings.xml'] = strToU8(
+        strFromU8(setBytes).replace(/(<w:settings\b[^>]*>)/, '$1<w:displayBackgroundShape/>'),
+      );
+    }
+  }
+
+  if (decor.border) {
+    const color = decor.border.color.replace('#', '').toUpperCase();
+    // w:sz is eighths of a point, w:space whole points from the text.
+    const sz = Math.max(2, Math.round(decor.border.widthPt * 8));
+    const space = Math.min(31, Math.round((decor.border.paddingCm / 2.54) * 72));
+    const side = (name: string) => `<w:${name} w:val="single" w:sz="${sz}" w:space="${space}" w:color="${color}"/>`;
+    const borders = `<w:pgBorders w:display="allPages" w:offsetFrom="text">`
+      + `${side('top')}${side('left')}${side('bottom')}${side('right')}</w:pgBorders>`;
+    // w:sectPr has a fixed child order and pgBorders belongs after pgMar; put ahead of
+    // the header references, Word's reader drops those instead (probed in LibreOffice).
+    doc = doc.replace(/<w:pgMar\b[^>]*\/>/g, (m) => `${m}${borders}`);
+  }
+
+  files['word/document.xml'] = strToU8(doc);
+
+  const wm = decor.watermark;
+  if (wm?.text) {
+    const shape = watermarkVml(wm, widthPt, heightPt);
+    for (const path of Object.keys(files)) {
+      if (!/^word\/header\d*\.xml$/.test(path)) continue;
+      const xml = strFromU8(files[path]);
+      if (xml.includes(WATERMARK_NAME)) continue;
+      // The shape has to sit inside a paragraph — as a child of w:hdr it is dropped
+      // without a word. An empty zone serializes as a self-closed <w:p/>.
+      files[path] = strToU8(xml.replace(/<w:p\b[^>]*\/>|(<w:p\b[^>]*>(?:<w:pPr>.*?<\/w:pPr>)?)/,
+        (m, opening: string | undefined) =>
+          opening ? `${opening}<w:r>${shape}</w:r>` : `<w:p><w:r>${shape}</w:r></w:p>`));
+    }
+  }
+
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
+const WATERMARK_NAME = 'PowerPlusWaterMarkObject';
+// The shape's aspect ratio, measured off LibreOffice's own watermark.
+const WATERMARK_RATIO = 4.487;
+
+// Word has the `_x0000_t136` WordArt preset built in; LibreOffice resolves the shape's
+// type only when the definition travels with it (probed: without this the watermark is
+// silently dropped), so it is written out the way LibreOffice writes it itself.
+const WATERMARK_SHAPETYPE =
+  '<v:shapetype id="_x0000_t136" coordsize="21600,21600" o:spt="136" adj="10800"' +
+  ' path="m@7,l@8,m@5,21600l@6,21600e"><v:formulas>' +
+  '<v:f eqn="sum #0 0 10800"/><v:f eqn="prod #0 2 1"/><v:f eqn="sum 21600 0 @1"/>' +
+  '<v:f eqn="sum 0 0 @2"/><v:f eqn="sum 21600 0 @3"/><v:f eqn="if @0 @3 0"/>' +
+  '<v:f eqn="if @0 21600 @1"/><v:f eqn="if @0 0 @2"/><v:f eqn="if @0 @4 21600"/>' +
+  '<v:f eqn="mid @5 @6"/><v:f eqn="mid @8 @5"/><v:f eqn="mid @7 @8"/>' +
+  '<v:f eqn="mid @6 @7"/><v:f eqn="sum @6 0 @5"/></v:formulas>' +
+  '<v:path textpathok="t" o:connecttype="custom" o:connectlocs="@9,0;@10,10800;@11,21600;@12,10800"' +
+  ' o:connectangles="270,180,90,0"/><v:textpath on="t" fitshape="t"/>' +
+  '<v:handles><v:h position="#0,bottomRight" xrange="6629,14971"/></v:handles>' +
+  '<o:lock v:ext="edit" text="t" shapetype="t"/></v:shapetype>';
+
+// Word's WordArt shape for a watermark: the `_x0000_t136` preset, positioned relative to
+// the margins and centred, which is what makes it sit behind the whole page.
+function watermarkVml(wm: Watermark, widthPt: number, heightPt: number): string {
+  const w = Math.round(widthPt * 10) / 10;
+  const h = Math.round((widthPt / WATERMARK_RATIO) * 10) / 10;
+  // VML counts rotation clockwise, the dialog counter-clockwise.
+  const rotation = ((-wm.angle % 360) + 360) % 360;
+  const opacity = Math.round((1 - wm.transparency / 100) * 100) / 100;
+  const style = `position:absolute;margin-left:0pt;margin-top:${Math.round((heightPt - h) / 2 * 10) / 10}pt;`
+    + `width:${w}pt;height:${h}pt;mso-wrap-style:none;v-text-anchor:middle;rotation:${rotation};`
+    + 'mso-position-horizontal:center;mso-position-horizontal-relative:margin;'
+    + 'mso-position-vertical:center;mso-position-vertical-relative:margin';
+  return '<w:pict>' + WATERMARK_SHAPETYPE
+    + `<v:shape id="${WATERMARK_NAME}" o:spid="_x0000_s2049" type="#_x0000_t136" adj="10800"`
+    + ` fillcolor="${wm.color}" stroked="f" o:allowincell="f" style="${style}">`
+    + '<v:path textpathok="t"/>'
+    + `<v:textpath on="t" fitshape="t" string="${escapeXmlAttr(wm.text)}"`
+    + ` style="font-family:&quot;${escapeXmlAttr(wm.font)}&quot;;font-size:1pt" trim="t"/>`
+    + `<v:fill type="solid" opacity="${opacity}"/><w10:wrap type="none"/></v:shape></w:pict>`;
+}
+
+const escapeXmlAttr = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
 // Word's num-format ids for the five ODF ones.
 const DOCX_NUM_FMT: Record<string, string> = {
   '1': 'decimal', a: 'lowerLetter', A: 'upperLetter', i: 'lowerRoman', I: 'upperRoman',
@@ -1398,6 +1499,7 @@ export async function buildDocx(
   props: DocProperties = EMPTY_DOC_PROPERTIES,
   hyphenate = false,
   pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING,
+  decor: PageDecor = EMPTY_PAGE_DECOR,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
@@ -1477,9 +1579,12 @@ export async function buildDocx(
   const mkHeaders = (i: number) => {
     const s = setAt(i);
     const d = para(s.header), f = s.differentFirstPage ? para(s.headerFirst) : null, e = s.differentOddEven ? para(s.headerEven) : null;
-    if (!d && !f && !e) return undefined;
+    // A watermark lives in a header part, so a document without one still needs the
+    // (empty) default header for applyPageDecorDocx to inject the shape into.
+    if (!d && !f && !e) return decor.watermark?.text ? { default: new Header({ children: [new Paragraph({})] }) } : undefined;
     const h: { default?: Header; first?: Header; even?: Header } = {};
     if (d) h.default = new Header({ children: [paragraphToDocx(d)] });
+    else if (decor.watermark?.text) h.default = new Header({ children: [new Paragraph({})] });
     if (f) h.first = new Header({ children: [paragraphToDocx(f)] });
     if (e) h.even = new Header({ children: [paragraphToDocx(e)] });
     return h;
@@ -1540,5 +1645,10 @@ export async function buildDocx(
   const packed = applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
   const withNotes = docNoteIds.size ? applyNotePrDocx(packed, notesSettings) : packed;
   const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withNotes) : withNotes;
-  return rtl ? applyBidiDocx(mirrored) : mirrored;
+  const bidi = rtl ? applyBidiDocx(mirrored) : mirrored;
+  if (isEmptyPageDecor(decor)) return bidi;
+  const dims = pageDimsCm(pageFormat, orientation);
+  const pt = (cm: number) => (cm / 2.54) * 72;
+  return applyPageDecorDocx(bidi, decor,
+    pt(dims.w - margins.left - margins.right), pt(dims.h - margins.top - margins.bottom));
 }

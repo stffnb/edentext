@@ -14,6 +14,7 @@ import { buildDocx } from '../src/lib/export/docx';
 import { importDocx } from '../src/lib/import/docx';
 import { EMPTY_HF_SET } from '../src/lib/storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS } from '../src/lib/storage/noteSettings';
+import { DEFAULT_PAGE_NUMBERING } from '../src/lib/storage/pageNumbering';
 
 type N = any;
 
@@ -2040,5 +2041,66 @@ describe('Leg 20: list of figures / list of tables', () => {
       && !content.includes('caption-sequence-name'), content.slice(0, 200));
     check('reads back as toc', (importOdt(await buildOdt(plain, margins, 'portrait')).content as N)
       .content[0].attrs?.index === 'toc');
+  });
+});
+
+describe('Leg 21: page background, page border and watermark', () => {
+  const decor = {
+    background: '#fff5c8',
+    border: { widthPt: 1, color: '#0046a0', paddingCm: 0.2 },
+    watermark: { text: 'ENTWURF', font: 'Liberation Sans', color: '#c8c8c8', angle: 45, transparency: 50 },
+  };
+  const doc: N = { type: 'doc', content: [P(null, T('body'))] };
+  const odt = () => buildOdt(doc, margins, 'portrait', undefined, null, 'A4', builtinStyleSheet(),
+    1.25, 'add', false, DEFAULT_NOTE_SETTINGS, undefined, false, DEFAULT_PAGE_NUMBERING, decor);
+  const docx = () => buildDocx(doc, margins, 'portrait', undefined, null, 'A4', builtinStyleSheet(),
+    1.25, 'add', false, DEFAULT_NOTE_SETTINGS, undefined, false, DEFAULT_PAGE_NUMBERING, decor);
+
+  it('ODT: all three on the page layout and the master page, and back', async () => {
+    const bytes = await odt();
+    const styles = strFromU8(unzipSync(bytes)['styles.xml']);
+    check('background', styles.includes('fo:background-color="#fff5c8"'), styles.slice(0, 200));
+    check('border', styles.includes('fo:border="1pt solid #0046a0"') && styles.includes('fo:padding="0.2cm"'),
+      styles.match(/fo:(border|padding)="[^"]*"/g));
+    check('watermark in the header', /<style:header>[\s\S]*PowerPlusWaterMarkObject/.test(styles));
+    // The draw: prefix has to be declared or LibreOffice drops the whole shape.
+    check('draw namespace declared', styles.includes('xmlns:draw='));
+    const back = importOdt(bytes).decor;
+    check('background round-trips', back.background === '#fff5c8', back.background);
+    check('border round-trips', back.border?.widthPt === 1 && back.border?.color === '#0046a0'
+      && back.border?.paddingCm === 0.2, back.border);
+    check('watermark round-trips', back.watermark?.text === 'ENTWURF' && back.watermark?.angle === 45
+      && back.watermark?.transparency === 50, back.watermark);
+  });
+
+  it('DOCX: background, w:pgBorders and the VML shape, and back', async () => {
+    const bytes = await docx();
+    const files = unzipSync(bytes);
+    const xml = strFromU8(files['word/document.xml']);
+    check('background', xml.includes('<w:background w:color="FFF5C8"/>'), xml.slice(0, 200));
+    check('switched on', strFromU8(files['word/settings.xml']).includes('<w:displayBackgroundShape/>'));
+    // w:sectPr has a fixed child order: pgBorders belongs after pgMar, never before
+    // the header references.
+    check('border after pgMar', /<w:pgMar\b[^>]*\/><w:pgBorders/.test(xml), xml.match(/<w:sectPr[\s\S]*?<\/w:sectPr>/)?.[0]);
+    const header = Object.keys(files).find((p) => /^word\/header\d*\.xml$/.test(p));
+    check('a header part carries the shape', !!header && strFromU8(files[header]).includes('PowerPlusWaterMarkObject'), header);
+    // Word has the WordArt preset built in, LibreOffice needs the definition to travel.
+    check('shapetype travels', !!header && strFromU8(files[header]).includes('<v:shapetype id="_x0000_t136"'));
+    const back = importDocx(bytes).decor;
+    check('background round-trips', back.background === '#fff5c8', back.background);
+    check('border round-trips', back.border?.widthPt === 1 && back.border?.color === '#0046a0', back.border);
+    check('watermark round-trips', back.watermark?.text === 'ENTWURF' && back.watermark?.angle === 45,
+      back.watermark);
+  });
+
+  it('an undecorated document writes none of it', async () => {
+    const styles = strFromU8(unzipSync(await buildOdt(doc, margins, 'portrait'))['styles.xml']);
+    check('no page background', !styles.includes('fo:background-color'), styles.match(/fo:background-color="[^"]*"/g));
+    check('no watermark', !styles.includes('PowerPlusWaterMarkObject'));
+    const files = unzipSync(await buildDocx(doc, margins, 'portrait'));
+    check('no w:background', !strFromU8(files['word/document.xml']).includes('<w:background'));
+    check('no w:pgBorders', !strFromU8(files['word/document.xml']).includes('<w:pgBorders'));
+    check('no header part minted', !Object.keys(files).some((p) => /^word\/header\d*\.xml$/.test(p)),
+      Object.keys(files));
   });
 });

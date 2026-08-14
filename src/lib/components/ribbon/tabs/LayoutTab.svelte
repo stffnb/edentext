@@ -10,6 +10,8 @@
   import type { Orientation } from '../../../storage/pageOrientation';
   import type { HfZone } from '../../../storage/headerFooter';
   import { DEFAULT_PAGE_NUMBERING, PAGE_NUM_FORMATS, clampPageStart, type PageNumbering } from '../../../storage/pageNumbering';
+  import { EMPTY_PAGE_DECOR, type PageDecor } from '../../../storage/pageDecor';
+  import PageDecorDialog from '../../PageDecorDialog.svelte';
   import { formatOrdinal } from '../../../utils/orderedListTypes';
   import { t } from '../../../i18n/i18n.svelte';
   import { shortcutHint } from '../../../editor/shortcuts';
@@ -21,6 +23,7 @@
     pageFormat = $bindable<PageFormat>('A4'),
     hyphenate = $bindable(false),
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
+    pageDecor = $bindable(EMPTY_PAGE_DECOR),
     onParagraphDialog,
   }: {
     editor: Editor | null;
@@ -31,8 +34,11 @@
     pageFormat?: PageFormat;
     hyphenate?: boolean;
     pageNumbering?: PageNumbering;
+    pageDecor?: PageDecor;
     onParagraphDialog?: () => void;
   } = $props();
+
+  let decorOpen = $state(false);
 
   const FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
   const EDGES = ['top', 'bottom', 'left', 'right'] as const;
@@ -235,7 +241,17 @@
       </div>
     {/if}
   </div>
+
+  <RibbonButton
+    icon="watermark"
+    label={t().ribbon.pageDecor}
+    title={t().pageDecor.title}
+    active={!!(pageDecor.background || pageDecor.border || pageDecor.watermark)}
+    onclick={() => (decorOpen = true)}
+  />
 </RibbonGroup>
+
+<PageDecorDialog bind:open={decorOpen} bind:decor={pageDecor} />
 
 <div class="ribbon-sep"></div>
 

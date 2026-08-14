@@ -16,6 +16,8 @@
   import { NodeSelection, TextSelection } from '@tiptap/pm/state';
   import ContextMenu from './ContextMenu.svelte';
   import HeaderFooterLayer from './HeaderFooterLayer.svelte';
+import PageDecorLayer from './PageDecorLayer.svelte';
+import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import Ruler from './Ruler.svelte';
   import { saveDocument, loadDocument, markDocumentLoaded } from '../storage/autosave';
   import { applyMarginVars, cmToPx, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
@@ -44,7 +46,7 @@
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
     zoom = 100, onZoom, showFormattingMarks = false, showRuler = true, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
-    pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', documentEpoch = 0, pageRtl = false, hyphenate = false, documentLanguage = 'en', pageNumbering = DEFAULT_PAGE_NUMBERING,
+    pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', documentEpoch = 0, pageRtl = false, hyphenate = false, documentLanguage = 'en', pageNumbering = DEFAULT_PAGE_NUMBERING, pageDecor = EMPTY_PAGE_DECOR,
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
     headerEvenDoc = $bindable(null), footerEvenDoc = $bindable(null), differentOddEven = false,
@@ -62,6 +64,8 @@
     hyphenate?: boolean; documentLanguage?: string;
     /** How the page-number field counts (format + start value). */
     pageNumbering?: PageNumbering;
+    /** Page background, page border and watermark. */
+    pageDecor?: PageDecor;
     headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
     headerFirstDoc?: HfDoc; footerFirstDoc?: HfDoc; differentFirstPage?: boolean;
     headerEvenDoc?: HfDoc; footerEvenDoc?: HfDoc; differentOddEven?: boolean;
@@ -984,7 +988,7 @@
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
   <div class="paper-scaler" style={scaledWidth ? `width: ${scaledWidth}px; height: ${scaledHeight}px;` : ''}>
-    <div bind:this={paperEl} class="paper" data-spacing-model={spacingModel} class:show-formatting-marks={showFormattingMarks} class:hf-editing={hfActive} class:settling style="transform: scale({appliedZoom / 100});">
+    <div bind:this={paperEl} class="paper" data-spacing-model={spacingModel} class:show-formatting-marks={showFormattingMarks} class:hf-editing={hfActive} class:settling style="transform: scale({appliedZoom / 100});{pageDecor.background ? ` --color-page-bg: ${pageDecor.background};` : ''}">
       <!-- Dedicated mount point that TipTap fully owns — keeping it free of Svelte
            content avoids Svelte and ProseMirror fighting over the same parent's DOM. -->
       <div bind:this={element} class="tiptap-host" dir={pageRtl ? 'rtl' : null} lang={documentLanguage === NO_LANGUAGE ? null : documentLanguage} style:hyphens={hyphenate ? 'auto' : null}></div>
@@ -1004,6 +1008,7 @@
           {/each}
         </div>
       {/if}
+      <PageDecorLayer decor={pageDecor} {numPages} {pageMargins} {pageFormat} {orientation} />
       <HeaderFooterLayer
         bind:headerDoc
         bind:footerDoc

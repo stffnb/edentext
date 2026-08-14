@@ -38,6 +38,7 @@
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { loadHyphenation, saveHyphenation } from './lib/storage/hyphenation';
   import { loadPageNumbering, savePageNumbering, DEFAULT_PAGE_NUMBERING, type PageNumbering } from './lib/storage/pageNumbering';
+  import { loadPageDecor, savePageDecor, EMPTY_PAGE_DECOR, type PageDecor } from './lib/storage/pageDecor';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { spellController } from './lib/spell/controller';
   import LanguagePicker from './lib/components/LanguagePicker.svelte';
@@ -158,6 +159,7 @@
   let docPropsOpen = $state(false);
   let hyphenate = $state(loadHyphenation());
   let pageNumbering: PageNumbering = $state(loadPageNumbering());
+  let pageDecor: PageDecor = $state(loadPageDecor());
   let autoCorrectOpen = $state(false);
   let commentsOpen = $state(false);
 
@@ -228,6 +230,7 @@
 
   $effect(() => {
     savePageNumbering(pageNumbering);
+    savePageDecor(pageDecor);
   });
 
   $effect(() => {
@@ -506,6 +509,7 @@
     documentName = '';
     hyphenate = false;
     pageNumbering = { ...DEFAULT_PAGE_NUMBERING };
+    pageDecor = { ...EMPTY_PAGE_DECOR };
     docProps = { ...EMPTY_DOC_PROPERTIES };
     saveDocProperties(docProps);
     fileHandle = null;
@@ -568,6 +572,7 @@
       pageRtl = result.rtl;
       hyphenate = result.hyphenate;
       pageNumbering = result.pageNumbering;
+      pageDecor = result.decor;
       // Adopt the document's spell-check language (the $effect switches the
       // controller + loads its dictionary). null = file declared none; keep ours.
       if (result.language) documentLanguage = result.language;
@@ -665,7 +670,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor);
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -681,7 +686,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor);
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -699,7 +704,7 @@
     try {
       const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       const { buildDocx } = await import('./lib/export/docx');
-      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering);
+      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor);
       await saveAsDocx(bytes, suggestedFilenameDocx(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -915,6 +920,7 @@
       bind:pageFormat
       bind:hyphenate
       bind:pageNumbering
+      bind:pageDecor
       {hfActive}
       onManageStyles={openStyleManager}
       onManageTableStyles={() => openStyleManager('table')}
@@ -1212,6 +1218,7 @@
     {hyphenate}
     {documentLanguage}
     {pageNumbering}
+    {pageDecor}
     bind:extraHfSections
     {zoom}
     onZoom={setZoom}

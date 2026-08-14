@@ -1,5 +1,5 @@
 import { unzipSync, strFromU8 } from 'fflate';
-import { StyleResolver, NS, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
+import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
@@ -26,6 +26,7 @@ import { clampPageStart, type PageNumbering } from '../storage/pageNumbering';
 import { newCommentId } from '../editor/extensions/comment';
 import { ODF_SEQ_CATEGORY } from '../editor/extensions/caption';
 import type { IndexKind } from '../editor/extensions/tableOfContents';
+import type { PageDecor } from '../storage/pageDecor';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -54,6 +55,8 @@ export interface OdtImportResult {
   // A right-to-left page (ODF style:writing-mode="rl-tb", Word w:bidi): the columns
   // fill from the right and the body's base direction is RTL.
   rtl: boolean;
+  // Page background, page border and watermark (storage/pageDecor.ts).
+  decor: PageDecor;
   // Automatic hyphenation (ODF fo:hyphenate on the base style, Word w:autoHyphenation).
   hyphenate: boolean;
   // How the page-number field counts (ODF style:num-format + style:page-number, Word w:pgNumType).
@@ -508,6 +511,9 @@ function convertShape(el: Element, ctx: Ctx): Node | null {
 // Dispatch any draw:* element: an image stays inline; a text box / shape is a block
 // node routed through ctx.pendingBlocks; everything else is dropped with a warning.
 function convertDrawElement(e: Element, ctx: Ctx): { inline?: Node; block?: Node } | null {
+  // The watermark is not a drawing: it rides the page decoration instead
+  // (storage/pageDecor.ts), so it must not also arrive as a shape in the header.
+  if (e.getAttributeNS(NS.draw, 'name') === WATERMARK_NAME) return null;
   if (e.localName === 'frame') {
     const textBoxEl = Array.from(e.children).find(
       c => c.namespaceURI === NS.draw && c.localName === 'text-box',
@@ -686,6 +692,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     orientation: geometry?.orientation ?? null,
     format: geometry?.format ?? null,
     rtl: geometry?.rtl ?? false,
+    decor: resolver.pageDecor(),
     hyphenate: resolver.documentHyphenation(),
     pageNumbering: { format: resolver.pageNumberFormat(), start: odfPageNumberStart(resolver, body) },
     tabIntervalCm: resolver.defaultTabInterval(),

@@ -4,6 +4,11 @@ import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { ODF_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { normalizeLeader, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
+import { DEFAULT_WATERMARK, normalizePageDecor, type PageDecor, type Watermark } from '../storage/pageDecor';
+
+// LibreOffice's (and Word's) name for the watermark shape — what tells it apart from an
+// ordinary drawing in the header.
+export const WATERMARK_NAME = 'PowerPlusWaterMarkObject';
 
 // Resolves ODF style indirection for the importer: producers (our export, LibreOffice,
 // Word) spread formatting across named/automatic styles and parent-style-name chains.
@@ -711,6 +716,48 @@ export class StyleResolver {
     // right and the text's base direction is RTL. The vertical modes are not read.
     const rtl = (props.getAttributeNS(NS.style, 'writing-mode') ?? '').startsWith('rl');
     return { margins, orientation, format, rtl };
+  }
+
+  // The page's own decoration (storage/pageDecor.ts): background and border ride the
+  // page layout, the watermark is a fontwork shape in the master page's header —
+  // exactly where LibreOffice keeps all three (probed).
+  pageDecor(pageName: string | null = null): PageDecor {
+    const props = this.pageLayoutEl(pageName)?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
+    const bg = props?.getAttributeNS(NS.fo, 'background-color') ?? null;
+    const border = props?.getAttributeNS(NS.fo, 'border')
+      ?? props?.getAttributeNS(NS.fo, 'border-top') ?? null;
+    // '<width> <style> <color>' — the same shorthand a paragraph border uses.
+    const parts = border && border !== 'none' ? border.trim().split(/\s+/) : null;
+    const widthPt = parts ? lengthToPt(parts[0]) : null;
+    return normalizePageDecor({
+      background: bg && bg !== 'transparent' ? bg : null,
+      border: parts && widthPt
+        ? { widthPt: Math.round(widthPt * 100) / 100, color: parts[2] ?? '#000000',
+            paddingCm: lengthToCm(props?.getAttributeNS(NS.fo, 'padding')) ?? 0 }
+        : null,
+      watermark: this.watermark(pageName),
+    });
+  }
+
+  private watermark(pageName: string | null): Watermark | null {
+    const master = this.masterPageEl(pageName);
+    const shapes = master?.getElementsByTagNameNS(NS.draw, 'custom-shape') ?? [];
+    const shape = Array.from(shapes).find((s) => s.getAttributeNS(NS.draw, 'name') === WATERMARK_NAME);
+    if (!shape) return null;
+    const text = (shape.textContent ?? '').trim();
+    if (!text) return null;
+    const gfx = this.graphicProps(shape.getAttributeNS(NS.draw, 'style-name'));
+    const opacity = parseFloat(String(gfx['draw:opacity'] ?? '100'));
+    // ODF stores the rotation in radians, counter-clockwise.
+    const rot = /rotate\s*\(\s*(-?[\d.eE+-]+)\s*\)/.exec(shape.getAttributeNS(NS.draw, 'transform') ?? '');
+    const font = this.merged('paragraph', shape.getAttributeNS(NS.draw, 'text-style-name') ?? '').text['fo:font-family'];
+    return {
+      text,
+      font: typeof font === 'string' ? font.replace(/^['"]|['"]$/g, '') : DEFAULT_WATERMARK.font,
+      color: String(gfx['draw:fill-color'] ?? DEFAULT_WATERMARK.color),
+      angle: rot ? Math.round((parseFloat(rot[1]) * 180) / Math.PI) : 0,
+      transparency: Number.isFinite(opacity) ? Math.round(100 - opacity) : 0,
+    };
   }
 
   // Raw page margins (cm) = ODF's edge→zone distance, i.e. the header distance from

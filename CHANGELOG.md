@@ -116,6 +116,7 @@
 - Opens `.ott` templates (OpenDocument Text Template): read like an `.odt`, but as a new untitled document — the first Save writes a fresh `.odt` and never overwrites the template (Word/LibreOffice behavior)
 - Embedded font loading: fonts embedded in an opened `.odt`/`.docx` (Word `.odttf` de-obfuscated) are registered via the FontFace API so text renders in its real face even when the font isn't installed; persisted per-document in IndexedDB so it survives a reload. Fonts the document only names but neither embeds nor installs are still flagged as substituted
 - List of figures and list of tables (References ▸ Table of contents ▸ the two caption indexes): the same generated index the table of contents is, over the captions of one category instead of the headings — single-level, with live page numbers and leader dots. Round-trips as ODF `text:illustration-index` / `text:table-index` (found by the counter's name, as LibreOffice finds them) and Word's `TOC \c "Figure"` field
+- Page design (Layout ▸ Page design): a page background colour, a border around the text area at a settable distance from it, and a text watermark with its own colour, angle and transparency — LibreOffice's Format ▸ Page Style ▸ Area/Borders and its Format ▸ Watermark. All three round-trip: ODF keeps them on the page layout and the master page's header, Word on `w:document` / `w:sectPr` / a VML shape in the header part
 - Captions (References ▸ Caption, LibreOffice's Insert ▸ Caption): a caption paragraph in the `Caption` style with a running number that counts itself — one counter per category (figure / table), in document order, renumbering as the document is edited. Round-trips as an ODF `<text:sequence>` (with LibreOffice's own `ooow:Illustration+1` formula) and a Word `SEQ Figure \* ARABIC` field
 - Word (.docx) export and import — round-trips the editor's formatting (text, fonts, lists, tables, images, headers/footers, page geometry) and opens real Word documents
 - Document properties (title, subject, author, keywords, comments) in the File menu — LibreOffice's File ▸ Properties / Word's File ▸ Info. Round-trips through ODF `meta.xml` (one `meta:keyword` per keyword) and DOCX `docProps/core.xml`
@@ -145,7 +146,6 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - Linked / chained text frames
 - Find & Replace by formatting or by style (the regular-expression half is implemented)
 - Save as template (`.ott` / `.dotx`), multi-document management, recent-files list
-- Watermark; page background and page border
 - Thesaurus, grammar check, word completion, AutoText / building blocks
 - Vertical writing modes (ODF `tb-rl`) and Asian typography (ruby)
 - Password-protected ODT/DOCX; digital signatures

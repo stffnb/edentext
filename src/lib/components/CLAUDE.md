@@ -74,6 +74,14 @@ range, edit / resolve / remove in place. `App.svelte` owns the New-comment promp
 both the Review tab and the context menu (`OPEN_COMMENT_EVENT`) fire; the author comes
 from the document properties.
 
+## Page decoration (`PageDecorLayer.svelte`, `storage/pageDecor.ts`)
+
+Background, border and watermark, all page-level. The layer sits inside the scaled
+`.paper` at `z-index: -1` like `.hf-bg-layer`, drawing one border box and one watermark
+per page in unscaled document px. The watermark is an `<svg><text textLength>` because a
+fontwork shape **stretches** its text to its box instead of setting it at a size — a font
+size alone makes a short word far too small and a long one overflow the page.
+
 ## Debug tooling (dev only)
 
 In dev builds a **Debug** button (`App.svelte`) downloads a JSON snapshot combining `getPageBreakDebug(view)` (leaves, placements, rendered spacers, table-break bands, live overlay geometry), `getTableCellDebug(view)` (per cell: the `verticalAlign` attr beside the computed value, cell/row height, the gap above and below the content, and every block's margins/`--space-before` — cell alignment reads as broken whenever the content fills the box, so the numbers that decide that travel with it), the style sheet + spacing model, and `getColorDebug(editor)` (selection marks, text runs, document colors, DOM spans).

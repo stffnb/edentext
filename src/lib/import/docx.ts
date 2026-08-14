@@ -1,6 +1,6 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, toggle as onOff, wVal, W, R, WP, A, WPS, MC, VML, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
-import { lengthToPt } from './styleResolver';
+import { lengthToPt, WATERMARK_NAME } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
@@ -27,6 +27,7 @@ import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { ODF_SEQ_CATEGORY } from '../editor/extensions/caption';
 import type { IndexKind } from '../editor/extensions/tableOfContents';
+import { normalizePageDecor, type PageDecor } from '../storage/pageDecor';
 import { clampColumnGap } from '../editor/extensions/columns';
 import { astToLatex } from '../math/latex';
 import { parseOmml, OMML_NS } from '../math/omml';
@@ -236,6 +237,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     notes: docNoteSettings(files),
     margins: withMirror(first.margins ?? sect.margins, mirrored),
     rtl: sectPrRtl(finalSectPr),
+    decor: docxPageDecor(docDoc, finalSectPr, files),
     hyphenate: docAutoHyphenation(files),
     pageNumbering: docxPageNumbering(sectPr),
     orientation: sect.orientation,
@@ -1751,6 +1753,9 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
     (c) => c.namespaceURI === VML && ['shape', 'rect', 'oval', 'roundrect'].includes(c.localName),
   );
   if (!shape) { ctx.warnings.add('Drawings were removed'); return null; }
+  // The watermark rides the page decoration (storage/pageDecor.ts), not the header's
+  // content, so it must not also arrive here as a shape.
+  if (shape.getAttribute('id') === WATERMARK_NAME) return null;
 
   const style = shape.getAttribute('style') ?? '';
   const dimPx = (key: string): number | null => {
@@ -2163,6 +2168,56 @@ function splitBodySections(children: Element[]): {
   groups.push({ els, sectPr: null });
   return { groups, midSectPrs };
 }
+
+// The page's own decoration: Word keeps the background on w:document, the border in the
+// section, and the watermark as a VML fontwork shape in a header part — the same three
+// places LibreOffice writes them (probed).
+function docxPageDecor(docDoc: Document, sectPr: Element | null, files: Record<string, Uint8Array>): PageDecor {
+  const bg = fc(docDoc.documentElement, 'background')?.getAttributeNS(W, 'color');
+  const borders = fc(sectPr, 'pgBorders');
+  const top = borders ? fc(borders, 'top') : null;
+  const sz = top ? intAttr(top, W, 'sz') : null;
+  const color = top?.getAttributeNS(W, 'color');
+  return normalizePageDecor({
+    background: bg && bg !== 'auto' ? `#${bg}` : null,
+    // w:sz is eighths of a point, w:space whole points from the text.
+    border: sz && top && wVal(top) !== 'none'
+      ? { widthPt: Math.round((sz / 8) * 100) / 100,
+          color: color && color !== 'auto' ? `#${color}` : '#000000',
+          paddingCm: Math.round(((intAttr(top, W, 'space') ?? 0) / 72) * 2.54 * 100) / 100 }
+      : null,
+    watermark: docxWatermark(files),
+  });
+}
+
+// The VML shape Word and LibreOffice both name PowerPlusWaterMarkObject, in whichever
+// header part carries it. Its text rides v:textpath, its angle the style's rotation.
+function docxWatermark(files: Record<string, Uint8Array>): unknown {
+  for (const path of Object.keys(files)) {
+    if (!/^word\/header\d*\.xml$/.test(path)) continue;
+    const xml = strFromU8(files[path]);
+    const i = xml.indexOf(WATERMARK_NAME);
+    if (i < 0) continue;
+    const shape = xml.slice(i, xml.indexOf('</v:shape>', i));
+    const text = /\bstring="([^"]*)"/.exec(shape)?.[1];
+    if (!text) continue;
+    const style = /<v:textpath[^>]*\bstyle="([^"]*)"/.exec(shape)?.[1] ?? '';
+    const rotation = Number(/rotation:\s*(-?[\d.]+)/.exec(shape)?.[1] ?? '0');
+    const opacity = Number(/<v:fill[^>]*\bopacity="([\d.]+)"/.exec(shape)?.[1] ?? '1');
+    return {
+      text: decodeXml(text),
+      font: decodeXml(/font-family:\s*&quot;?([^;&"]+)/.exec(style)?.[1] ?? '').trim() || undefined,
+      color: /\bfillcolor="([^"]*)"/.exec(shape)?.[1],
+      // VML counts clockwise, the editor (and ODF) counter-clockwise.
+      angle: -(((rotation % 360) + 360) % 360) + (rotation > 180 ? 360 : 0),
+      transparency: Math.round((1 - opacity) * 100),
+    };
+  }
+  return null;
+}
+
+const decodeXml = (s: string) =>
+  s.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
 // A right-to-left section (w:bidi): the columns fill from the right, and it is the
 // direction a block inherits when it declares none of its own.

@@ -78,6 +78,7 @@ export const STROKED = {
   toc: ['M2 3h6M2 6.5h5M2 10h6M2 13.5h4', 'M11 3h3M10 6.5h4M11 10h3M10 13.5h4'],
   tocLevels: ['M2.5 3.5h11M4.5 7h9M6.5 10.5h7M8.5 14h5'],
   caption: ['M2 2.5h12v7.5H2z', 'M2 13h7'],
+  watermark: ['M2.5 2h11v12h-11z', 'M4.5 11.5 11.5 4.5'],
   wordCount: ['M2.5 2.5h11v11h-11z', 'M5 6h6M5 9h4'],
   // A speech bubble with its tail, the shape both word processors use for a comment.
   comment: ['M2 3.25h12v7.5H7.5L4.5 13.5v-2.75H2z', 'M4.75 6h6.5M4.75 8.25h4'],

@@ -9,6 +9,7 @@ import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/he
 import { DEFAULT_NOTE_SETTINGS, NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, keywordList, type DocProperties } from '../storage/docProperties';
 import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
+import { EMPTY_PAGE_DECOR, type PageDecor, type Watermark } from '../storage/pageDecor';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
@@ -2365,7 +2366,95 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
 // Rewrite styles.xml to match the editor's preview: default font Liberation Serif →
 // Times New Roman (metric-identical; see EXPORT_FONT), and Heading_20_1/2/3 sizes &
 // margins → the editor's values (odf-kit's defaults are larger; HEADING_STYLE_OVERRIDES).
-function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, mirrored = false, rtl = false, notes: NoteSettings = DEFAULT_NOTE_SETTINGS, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING): Uint8Array {
+// LibreOffice's watermark is a fontwork shape in the master page's header, and the
+// enhanced geometry below is the "fontwork-plain-text" preset it writes verbatim.
+const WATERMARK_GEOMETRY =
+  '<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:text-areas="0 0 21600 21600"' +
+  ' draw:text-path="true" draw:type="fontwork-plain-text" draw:modifiers="10800"' +
+  ' draw:enhanced-path="M ?f3 0 L ?f5 0 N M ?f6 21600 L ?f7 21600 N">' +
+  '<draw:equation draw:name="f0" draw:formula="$0 -10800"/>' +
+  '<draw:equation draw:name="f1" draw:formula="?f0 *2"/>' +
+  '<draw:equation draw:name="f2" draw:formula="abs(?f1 )"/>' +
+  '<draw:equation draw:name="f3" draw:formula="if(?f1 ,0,?f2 )"/>' +
+  '<draw:equation draw:name="f4" draw:formula="21600-?f2 "/>' +
+  '<draw:equation draw:name="f5" draw:formula="if(?f1 ,?f4 ,21600)"/>' +
+  '<draw:equation draw:name="f6" draw:formula="if(?f1 ,?f2 ,0)"/>' +
+  '<draw:equation draw:name="f7" draw:formula="if(?f1 ,21600,?f4 )"/>' +
+  '</draw:enhanced-geometry>';
+
+// LibreOffice's own shape name; Word looks for exactly this one, so a round trip
+// through either keeps recognising the shape as a watermark rather than a drawing.
+const WATERMARK_NAME = 'PowerPlusWaterMarkObject';
+// The shape's aspect ratio, measured off LibreOffice's own output (17cm × 3.789cm).
+const WATERMARK_RATIO = 4.487;
+
+// The watermark shape plus its two automatic styles, spliced into the master page's
+// header — where both word processors keep it. A document without a header gets an
+// explicit zero-height header band, so the body's geometry is unchanged.
+function applyWatermarkOdf(odtBytes: Uint8Array, wm: Watermark | null): Uint8Array {
+  if (!wm?.text) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const stylesBytes = files['styles.xml'];
+  if (!stylesBytes) return odtBytes;
+  const styles = strFromU8(stylesBytes);
+  const round3 = (v: number) => Math.round(v * 1000) / 1000;
+  const widthCm = Math.max(1, lengthOfPageLayout(styles) );
+  const heightCm = round3(widthCm / WATERMARK_RATIO);
+  const opacity = `${round3(100 - wm.transparency)}%`;
+  const minted =
+    `<style:style style:name="Wmk1" style:family="graphic"><style:graphic-properties` +
+    ` draw:stroke="none" draw:fill="solid" draw:fill-color="${wm.color}" draw:opacity="${opacity}"` +
+    ` draw:auto-grow-height="false" draw:auto-grow-width="false"` +
+    ` fo:min-height="${heightCm}cm" fo:min-width="${round3(widthCm)}cm"` +
+    ` style:run-through="background" style:wrap="run-through" style:number-wrapped-paragraphs="no-limit"` +
+    ` style:vertical-pos="middle" style:vertical-rel="page-content"` +
+    ` style:horizontal-pos="center" style:horizontal-rel="page-content" style:flow-with-text="false"/></style:style>` +
+    `<style:style style:name="WmkP1" style:family="paragraph"><style:text-properties` +
+    ` fo:font-family="${escapeXml(`'${wm.font}'`)}" fo:font-size="1pt"/></style:style>`;
+  const shape =
+    `<draw:custom-shape text:anchor-type="char" draw:z-index="0" draw:name="${WATERMARK_NAME}"` +
+    ` draw:style-name="Wmk1" draw:text-style-name="WmkP1"` +
+    ` svg:width="${round3(widthCm)}cm" svg:height="${heightCm}cm"` +
+    ` draw:transform="rotate (${(wm.angle * Math.PI) / 180})">` +
+    `<text:p>${escapeXml(wm.text)}</text:p>${WATERMARK_GEOMETRY}</draw:custom-shape>`;
+
+  // odf-kit declares no draw: prefix in styles.xml, and an undeclared one makes
+  // LibreOffice drop the whole shape without a word.
+  let out = styles.includes('xmlns:draw=')
+    ? styles
+    : styles.replace(/<office:document-styles\b/, '<office:document-styles xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"');
+  out = injectAutomaticStyles(out, minted);
+  // Into the header the document already has — the shape is out of flow, so it changes
+  // neither the band nor the zone's text.
+  if (out.includes('<style:header>')) {
+    out = out.replace(/<style:header>(\s*<text:p[^>]*>)?/, (m) =>
+      m.includes('<text:p') ? `${m}${shape}` : `${m}<text:p text:style-name="Header">${shape}</text:p>`);
+  } else {
+    // No header: give the master page one that reserves no band of its own. LibreOffice
+    // still floors the band at 0.499cm, so the body shifts by that much — its own
+    // watermark does the same.
+    const zone = `<style:header><text:p text:style-name="Header">${shape}</text:p></style:header>`;
+    out = out.replace(/<style:header-style\s*\/>/, '<style:header-style><style:header-footer-properties fo:min-height="0cm" fo:margin-bottom="0cm"/></style:header-style>');
+    out = /<style:master-page\b[^>]*\/>/.test(out)
+      ? out.replace(/(<style:master-page\b[^>]*)\/>/, `$1>${zone}</style:master-page>`)
+      : out.replace(/(<style:master-page\b[^>]*>)/, `$1${zone}`);
+  }
+  files['styles.xml'] = strToU8(out);
+  return rezipOdt(files);
+}
+
+// The text width the page layout declares, in cm — the watermark spans it, as
+// LibreOffice's does.
+function lengthOfPageLayout(styles: string): number {
+  const num = (attr: string) => {
+    const m = new RegExp(`${attr}="([\\d.]+)cm"`).exec(styles);
+    return m ? parseFloat(m[1]) : 0;
+  };
+  const width = num('fo:page-width');
+  return width ? width - num('fo:margin-left') - num('fo:margin-right') : 17;
+}
+
+function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, mirrored = false, rtl = false, notes: NoteSettings = DEFAULT_NOTE_SETTINGS, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
   if (!stylesBytes) return odtBytes;
@@ -2389,6 +2478,17 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
   // A right-to-left page: its columns fill from the right, as the editor draws them.
   if (rtl) {
     styles = styles.replace(/<style:page-layout-properties /, '<style:page-layout-properties style:writing-mode="rl-tb" ');
+  }
+
+  // Page background and page border ride the page layout, exactly where LibreOffice
+  // keeps them (probed). The border is offset from the text area by fo:padding.
+  const decorProps = [
+    decor.border ? `fo:border="${round3(decor.border.widthPt)}pt solid ${decor.border.color}"` : '',
+    decor.border ? `fo:padding="${round3(decor.border.paddingCm)}cm"` : '',
+    decor.background ? `fo:background-color="${decor.background}"` : '',
+  ].filter(Boolean).join(' ');
+  if (decorProps) {
+    styles = styles.replace(/<style:page-layout-properties /, `<style:page-layout-properties ${decorProps} `);
   }
 
   // How the page-number field counts. ODF keeps the format on the page layout; the start
@@ -3780,7 +3880,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR): Promise<Uint8Array> {
   // Images become IMG sentinels before serialization; applyImages resolves them and writes
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
@@ -4011,11 +4111,12 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Effects first: applyCharacterStyles then clones the style that already carries them.
   const withNamedStyles = applyCharacterStyles(applyTextEffects(applyParagraphStyles(withParaBoxes)));
   const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
-  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm, margins.mirrored === true, rtl, notesSettings, hyphenate, pageNumbering);
+  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm, margins.mirrored === true, rtl, notesSettings, hyphenate, pageNumbering, decor);
   const withHf = applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
+  const withWatermark = applyWatermarkOdf(withHf, decor.watermark);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.
-  const withSections = applySectionMasterPages(withHf, hf?.sections ?? [], hf?.pageCount ?? 1, margins);
+  const withSections = applySectionMasterPages(withWatermark, hf?.sections ?? [], hf?.pageCount ?? 1, margins);
   return applyDocProperties(applyPageNumberStart(applySpacingModel(withSections, spacingModel), pageNumbering.start), props);
 }
 
