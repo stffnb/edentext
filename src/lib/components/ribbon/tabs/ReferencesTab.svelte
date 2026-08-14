@@ -122,28 +122,24 @@
 <CaptionDialog bind:open={captionOpen} {editor} />
 <BibliographyDialog bind:open={citationOpen} {editor} />
 
-<RibbonGroup label={t().ribbon.groups.notes}>
+<!-- The options sit on the group's ↘ launcher, where both word processors open their
+     footnote dialog — a fourth button beside two insert commands says nothing. -->
+<RibbonGroup label={t().ribbon.groups.notes} onLauncher={onNoteOptions} launcherTitle={t().notesDialog.title}>
   <RibbonButton
     variant="big"
     icon="footnote"
-    label={t().ribbon.footnote}
+    label={t().toolbarExpanded.insertFootnote}
     title={hfActive ? t().toolbarExpanded.noteNotInHf : `${t().toolbarExpanded.insertFootnote} (${shortcutHint('footnote')})`}
     disabled={!editor || !!hfActive}
     onclick={() => editor?.chain().focus().insertNote('footnote').run()}
   />
   <RibbonButton
+    variant="big"
     icon="endnote"
-    label={t().ribbon.endnote}
+    label={t().toolbarExpanded.insertEndnote}
     title={hfActive ? t().toolbarExpanded.noteNotInHf : `${t().toolbarExpanded.insertEndnote} (${shortcutHint('endnote')})`}
     disabled={!editor || !!hfActive}
     onclick={() => editor?.chain().focus().insertNote('endnote').run()}
-  />
-  <RibbonButton
-    icon="tocLevels"
-    label={t().ribbon.noteOptions}
-    title={t().notesDialog.title}
-    disabled={!onNoteOptions}
-    onclick={() => onNoteOptions?.()}
   />
 </RibbonGroup>
 

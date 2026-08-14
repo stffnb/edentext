@@ -1765,10 +1765,12 @@
         title={hfActive ? t().toolbarExpanded.noteNotInHf : `${t().toolbarExpanded.insertFootnote} (${shortcutHint('footnote')})`}
         aria-label={t().toolbarExpanded.insertFootnote}
       >
+        <!-- Kept in step with the ribbon's `footnote` glyph (ribbon/icons.ts). -->
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M2 2.5h12M2 5h12M2 7.5h7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-          <path d="M2 11h4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-          <path d="M2 13.5h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+          <path d="M3 1.75h10v12.5H3z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+          <path d="M5.2 4.7h5.6M5.2 7h5.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+          <path d="M5.2 10.5h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+          <path d="M5.2 12.4h5.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
         </svg>
       </button>
       <button
@@ -1778,9 +1780,9 @@
         aria-label={t().toolbarExpanded.insertEndnote}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M2 2.5h12M2 5h12M2 7.5h7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-          <path d="M2 10.5h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-          <path d="M2 13.5h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+          <path d="M10.5 4.25V1.75H2V12h3.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+          <path d="M5.5 4.25h8v10h-8z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+          <path d="M7.3 7h4.4M7.3 9.2h4.4M7.3 11.4h2.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
         </svg>
       </button>
       <button

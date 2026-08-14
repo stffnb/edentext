@@ -119,10 +119,11 @@ export const STROKED = {
   link: ['M6.6 9.4 9.4 6.6', 'M7.4 4.4 9 2.8a2.7 2.7 0 0 1 3.8 3.8l-1.6 1.6', 'M8.6 11.6 7 13.2a2.7 2.7 0 0 1-3.8-3.8l1.6-1.6'],
   bookmark: ['M4 2.25h8v11.5L8 10.5l-4 3.25z'],
   crossRef: ['M2.5 3.5h6M2.5 6.5h4M2.5 9.5h5', 'M8.5 12.5h5M11 10l2.5 2.5L11 15'],
-  // Body text over a short rule with one note line under it — the footnote area as it
-  // is drawn; the endnote's rule runs the full width, because the page ends there.
-  footnote: ['M2 2.5h12M2 5h12M2 7.5h7', 'M2 11h4.5', 'M2 13.5h9'],
-  endnote: ['M2 2.5h12M2 5h12M2 7.5h7', 'M2 10.5h12', 'M2 13.5h9'],
+  // A page with its text and, under the short separator rule, the note at its foot.
+  footnote: ['M3 1.75h10v12.5H3z', 'M5.2 4.7h5.6M5.2 7h5.6', 'M5.2 10.5h3', 'M5.2 12.4h5.6'],
+  // The notes at the end instead: a stack whose last page carries the list. The page
+  // behind is traced only where the front one does not cover it.
+  endnote: ['M10.5 4.25V1.75H2V12h3.5', 'M5.5 4.25h8v10h-8z', 'M7.3 7h4.4M7.3 9.2h4.4M7.3 11.4h2.6'],
   // The whole page with one zone filled in, so which end it is reads at a glance.
   header: ['M3.5 1.75h9v12.5h-9z', 'M5.4 7.8h5.2M5.4 9.9h5.2M5.4 12h3.1'],
   footer: ['M3.5 1.75h9v12.5h-9z', 'M5.4 4h5.2M5.4 6.1h5.2M5.4 8.2h3.1'],
