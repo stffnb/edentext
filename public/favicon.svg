@@ -1,10 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .stem { stroke: #202b36; }
+    .slate { fill: #4c6c8a; }
+    .clay { fill: #d1734f; }
+    @media (prefers-color-scheme: dark) {
+      .stem { stroke: #e7ebee; }
+      .slate { fill: #82a3c1; }
+      .clay { fill: #e6a37a; }
+    }
+  </style>
   <g transform="translate(-0.667,0.306) scale(0.5556)">
     <g transform="translate(20,4)">
-      <line x1="10" y1="44" x2="10" y2="6" stroke="#202b36" stroke-width="3" stroke-linecap="round"/>
-      <g transform="translate(10,32)"><path d="M0,0 C6,-10 18,-12 27,-6 C21,4 9,6 0,0 Z" fill="#4c6c8a"/></g>
-      <g transform="translate(10,15)"><path d="M0,0 C-6,-10 -18,-12 -27,-6 C-21,4 -9,6 0,0 Z" fill="#d1734f"/></g>
-      <circle cx="10" cy="6" r="3" fill="#d1734f"/>
+      <line class="stem" x1="10" y1="44" x2="10" y2="6" stroke-width="3" stroke-linecap="round"/>
+      <g transform="translate(10,32)"><path class="slate" d="M0,0 C6,-10 18,-12 27,-6 C21,4 9,6 0,0 Z"/></g>
+      <g transform="translate(10,15)"><path class="clay" d="M0,0 C-6,-10 -18,-12 -27,-6 C-21,4 -9,6 0,0 Z"/></g>
+      <circle class="clay" cx="10" cy="6" r="3"/>
     </g>
   </g>
 </svg>
