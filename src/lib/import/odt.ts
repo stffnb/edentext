@@ -32,6 +32,7 @@ import type { PageDecor } from '../storage/pageDecor';
 import type { LineNumbering } from '../storage/lineNumbering';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { fromWriterFormula } from '../utils/tableFormula';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { getSchema } from '@tiptap/core';
 import type { Schema } from '@tiptap/pm/model';
@@ -2382,8 +2383,13 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       // Header-shaded cells render bold by default (CSS); convert their runs like headings
       // so a baked-bold run needs no mark and only an explicitly normal run gets one.
       const blocks = convertBlocks(Array.from(cellEl.children), ctx, 'cell', backgroundColor === HEADER_SHADE);
+      // LibreOffice writes the formula in its own language behind an `ooow:` prefix;
+      // the cached result is the cell's text and needs nothing here.
+      const rawFormula = cellEl.getAttributeNS(NS.table, 'formula');
+      const formula = rawFormula ? fromWriterFormula(rawFormula) : '';
       for (let r = 0; r < repeated; r++) {
         const attrs: Record<string, unknown> = { colspan, rowspan, ...borders };
+        if (formula) attrs.formula = formula;
         if (ownPad) attrs.cellPadding = ownPad;
         if (backgroundColor) attrs.backgroundColor = backgroundColor;
         if (verticalAlign) attrs.verticalAlign = verticalAlign;

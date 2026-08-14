@@ -6,6 +6,7 @@
   import ColorPicker from './ColorPicker.svelte';
   import TableBorderPicker from './TableBorderPicker.svelte';
   import TableStylePicker from './TableStylePicker.svelte';
+  import { numberRecognition, setNumberRecognition } from '../storage/tableOptions.svelte';
   import { t } from '../i18n/i18n.svelte';
 
   let {
@@ -13,13 +14,13 @@
     top,
     left,
     tick,
-    onSplit,
+    onDialog,
   }: {
     editor: Editor | null;
     top: number;
     left: number;
     tick: number;
-    onSplit: () => void;
+    onDialog: (which: 'split' | 'sort' | 'formula') => void;
   } = $props();
 
   // Run a table command without disturbing the cell selection: preventDefault on
@@ -196,12 +197,51 @@
     class="tt-btn"
     title={t().table.splitCells}
     aria-label={t().table.splitCellsAria}
-    onclick={() => onSplit()}
+    onclick={() => onDialog('split')}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <rect x="1.5" y="3.5" width="15" height="11" rx="1" stroke="currentColor" stroke-width="1.3"/>
       <line x1="9" y1="3.5" x2="9" y2="14.5" stroke="currentColor" stroke-width="1.3"/>
       <path d="M7.5 9H3M3 9l2.2-2.2M3 9l2.2 2.2M10.5 9H15M15 9l-2.2-2.2M15 9l-2.2 2.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <span class="tt-sep"></span>
+
+  <button
+    class="tt-btn"
+    title={t().table.sort}
+    aria-label={t().table.sortAria}
+    onclick={() => onDialog('sort')}
+  >
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M3 4.5h11M3 9h7.5M3 13.5h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M15 6v8M12.6 11.6L15 14l2.4-2.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <button
+    class="tt-btn"
+    title={t().table.formula}
+    aria-label={t().table.formulaAria}
+    onclick={() => onDialog('formula')}
+  >
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M13.5 3H5l4.2 6L5 15h8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <button
+    class="tt-btn"
+    class:active={numberRecognition()}
+    title={t().table.numberRecognition}
+    aria-label={t().table.numberRecognition}
+    aria-pressed={numberRecognition()}
+    onclick={() => setNumberRecognition(!numberRecognition())}
+  >
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="15" height="15" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M7.5 5.4A1.9 1.9 0 0 1 10.6 6.9c0 1.5-3.1 2.6-3.1 5.7h3.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
 

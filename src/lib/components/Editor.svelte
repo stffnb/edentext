@@ -7,8 +7,12 @@
   import { buildContextMenu, type MenuEntry, type SpellSection } from '../editor/contextMenuItems';
   import { spellErrorAt } from '../editor/extensions/spellCheck';
   import { spellController } from '../spell/controller';
+  import { isInTable, selectedRect } from '@tiptap/pm/tables';
+  import { currentCellFormula, currentCellName, guessFormula } from '../editor/extensions/tableFormula';
   import TableToolbar from './TableToolbar.svelte';
   import TableSplitDialog from './TableSplitDialog.svelte';
+  import TableSortDialog from './TableSortDialog.svelte';
+  import TableFormulaDialog from './TableFormulaDialog.svelte';
   import ImageToolbar from './ImageToolbar.svelte';
   import TextBoxToolbar from './TextBoxToolbar.svelte';
   import type { WrapMode } from '../editor/extensions/image';
@@ -472,11 +476,26 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // Shown when the selection is inside a table; positioned just above that table.
   let tableUi = $state<{ visible: boolean; top: number; left: number }>({ visible: false, top: 0, left: 0 });
   let tableUiRaf = 0;
-  // "Split Cells…" popover, opened from the table toolbar.
-  let splitDialogOpen = $state(false);
+  // The popover the table toolbar has open, in its place. One at a time.
+  let tableDialog = $state<'split' | 'sort' | 'formula' | null>(null);
+  // What the sort and formula popovers open on: the grid around the cursor's cell.
+  const NO_TABLE = { columns: 1, column: 0, headerRow: false, cell: null as string | null, formula: '=SUM(ABOVE)' };
+  let tableGrid = $derived.by(() => {
+    const state = editor?.state;
+    if (tick < 0 || !state || !isInTable(state)) return NO_TABLE;
+    const rect = selectedRect(state);
+    return {
+      columns: rect.map.width,
+      column: rect.left,
+      headerRow: rect.table.firstChild?.firstChild?.type.name === 'tableHeader'
+        || rect.table.attrs.repeatHeader === true,
+      cell: currentCellName(state),
+      formula: currentCellFormula(state) || guessFormula(state),
+    };
+  });
   // Drop the dialog if the selection leaves the table (toolbar hidden).
   $effect(() => {
-    if (!tableUi.visible && splitDialogOpen) splitDialogOpen = false;
+    if (!tableUi.visible && tableDialog) tableDialog = null;
   });
 
   // The DOM element of the table containing the current selection, or null.
@@ -1081,25 +1100,50 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       />
     </div>
   </div>
-  {#if tableUi.visible && !splitDialogOpen}
+  {#if tableUi.visible && !tableDialog}
     <TableToolbar
       {editor}
       {tick}
       top={tableUi.top}
       left={tableUi.left}
-      onSplit={() => (splitDialogOpen = true)}
+      onDialog={(which) => (tableDialog = which)}
     />
   {/if}
-  {#if splitDialogOpen && tableUi.visible}
+  {#if tableUi.visible}
     <TableSplitDialog
-      open={splitDialogOpen}
+      open={tableDialog === 'split'}
       top={tableUi.top}
       left={tableUi.left}
       onApply={(cols, rows) => {
         editor?.chain().focus().splitCellInto(cols, rows).run();
-        splitDialogOpen = false;
+        tableDialog = null;
       }}
-      onClose={() => (splitDialogOpen = false)}
+      onClose={() => (tableDialog = null)}
+    />
+    <TableSortDialog
+      open={tableDialog === 'sort'}
+      top={tableUi.top}
+      left={tableUi.left}
+      columns={tableGrid.columns}
+      column={tableGrid.column}
+      headerRow={tableGrid.headerRow}
+      onApply={(options) => {
+        editor?.chain().focus().sortTable(options).run();
+        tableDialog = null;
+      }}
+      onClose={() => (tableDialog = null)}
+    />
+    <TableFormulaDialog
+      open={tableDialog === 'formula'}
+      top={tableUi.top}
+      left={tableUi.left}
+      cell={tableGrid.cell}
+      initial={tableGrid.formula}
+      onApply={(formula) => {
+        editor?.chain().focus().setCellFormula(formula).run();
+        tableDialog = null;
+      }}
+      onClose={() => (tableDialog = null)}
     />
   {/if}
   {#if imageUi.visible}

@@ -988,6 +988,12 @@
   background: var(--color-field-shade, rgba(0, 0, 0, 0.18));
 }
 
+/* A cell holding a formula shows its result on the field shade, since that result is
+   recomputed and typing over it does not last. Word draws the field the same way. */
+.tiptap :is(td, th)[data-formula] {
+  background-image: linear-gradient(var(--color-field-shade, rgba(0, 0, 0, 0.08)) 0 100%);
+}
+
 /* A citation is a field: it shows its text on the field shade both word processors use. */
 .tiptap .pm-citation {
   background: var(--color-field-shade, rgba(0, 0, 0, 0.08));

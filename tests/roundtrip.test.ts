@@ -2412,3 +2412,45 @@ describe('Leg 27: per-section page size and orientation (ODT + DOCX)', () => {
     check('the A5 section round-trips', paperOf(res, 2) === 'A5/-', paperOf(res, 2));
   });
 });
+
+describe('Leg 28: a cell formula (ODT + DOCX)', () => {
+  // A1..A3 hold the numbers, A4 sums them the way Word names the range.
+  const num = (text: string): N => ({ type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: [100] }, content: [P(null, T(text))] });
+  const sum: N = {
+    type: 'tableCell',
+    attrs: { colspan: 1, rowspan: 1, colwidth: [100], formula: 'SUM(ABOVE)' },
+    content: [P(null, T('19.5'))],
+  };
+  const doc: N = {
+    type: 'doc',
+    content: [
+      P(null, T('before')),
+      { type: 'table', content: [ROW(num('10')), ROW(num('2.5')), ROW(num('7')), ROW(sum)] },
+      P(null, T('after')),
+    ],
+  };
+  const formulaOf = (res: N): unknown =>
+    (res.content.content ?? []).find((n: N) => n.type === 'table')?.content?.[3]?.content?.[0]?.attrs?.formula;
+
+  it('ODT: the formula rides the cell, in LibreOffice\'s own language', async () => {
+    const bytes = await buildOdt(doc, margins);
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    const cell = /<table:table-cell[^>]*table:formula="[^"]*"[^>]*>/.exec(xml)?.[0] ?? '';
+    check('ABOVE is resolved to the range it stands for', /table:formula="ooow:sum &lt;A1:A3&gt;"/.test(cell), cell);
+    check('and the result is cached as the cell value', /office:value-type="float" office:value="19.5"/.test(cell), cell);
+
+    const res = importOdt(bytes);
+    check('it comes back as the stored formula', formulaOf(res) === 'SUM(A1:A3)', formulaOf(res));
+  });
+
+  it('DOCX: the cell holds a formula field', async () => {
+    const bytes = await buildDocx(doc, margins);
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    const field = /<w:fldSimple[^>]*w:instr="[^"]*=[^"]*"[^>]*>[\s\S]*?<\/w:fldSimple>/.exec(xml)?.[0] ?? '';
+    check('the field is the formula Word reads', /w:instr="\s*=SUM\(ABOVE\)\s*"/.test(field), field);
+    check('with the result cached in it', />19\.5</.test(field), field);
+
+    const res = importDocx(bytes);
+    check('it comes back as the stored formula', formulaOf(res) === 'SUM(ABOVE)', formulaOf(res));
+  });
+});

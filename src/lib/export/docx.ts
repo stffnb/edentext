@@ -534,6 +534,10 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
         const shown = String(node.attrs?.text || citationText(identifier));
         out.push(new SimpleField(`CITATION "${docxTag(identifier)}"`, shown));
       }
+    } else if (node.type === FORMULA_CELL) {
+      // Word keeps a table formula in a field inside the cell, where ODF puts it on
+      // the cell; `formulaCellContent` mints this node for a cell that carries one.
+      out.push(new SimpleField(`=${node.attrs?.formula ?? ''}`, String(node.attrs?.text ?? '')));
     } else if (node.type === 'formula') {
       const latex = typeof node.attrs?.latex === 'string' ? node.attrs.latex : '';
       if (latex) {
@@ -1401,6 +1405,23 @@ function docxCellBorder(attrs: Record<string, unknown> | undefined, side: Border
   return cellBorder;
 }
 
+// A synthetic inline node standing for the whole content of a formula cell; the
+// inline walker turns it into the field Word reads.
+const FORMULA_CELL = '__formula_cell__';
+
+// The cell's blocks with its first paragraph replaced by that field, or null when the
+// cell carries no formula. Everything the paragraph itself sets is kept.
+function formulaCellContent(cell: TiptapNode): TiptapNode[] | null {
+  const formula = typeof cell.attrs?.formula === 'string' ? cell.attrs.formula : '';
+  const first = (cell.content ?? [])[0];
+  if (!formula || !first || (first.type !== 'paragraph' && first.type !== 'heading')) return null;
+  const text = (first.content ?? []).map(function textOf(n: TiptapNode): string {
+    return n.type === 'text' ? n.text ?? '' : (n.content ?? []).map(textOf).join('');
+  }).join('');
+  const field: TiptapNode = { type: FORMULA_CELL, attrs: { formula, text } };
+  return [{ ...first, content: [field] }, ...(cell.content ?? []).slice(1)];
+}
+
 function cellBlocksToDocx(content: TiptapNode[] = [], force: TextProps, num: Numbering, contentWidthCm: number): (Paragraph | Table)[] {
   const out: (Paragraph | Table)[] = [];
   for (const child of content) {
@@ -1448,6 +1469,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
       col += colspan;
       // The cell's own margins (w:tcMar); absent, Word falls back to the table's.
       const ownPad = parseCellPadding(cell.attrs?.cellPadding);
+      const content = formulaCellContent(cell) ?? cell.content;
       cells.push(new TableCell({
         columnSpan: colspan > 1 ? colspan : undefined,
         rowSpan: rowspan > 1 ? rowspan : undefined,
@@ -1465,7 +1487,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
           left: docxCellBorder(cell.attrs, 'borderLeft'),
           right: docxCellBorder(cell.attrs, 'borderRight'),
         },
-        children: cellBlocksToDocx(cell.content, cellForce(tableStyle, cell, bg), num, contentWidthCm),
+        children: cellBlocksToDocx(content, cellForce(tableStyle, cell, bg), num, contentWidthCm),
       }));
     }
     return new TableRow({

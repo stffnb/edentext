@@ -42,6 +42,8 @@ import { TableView } from './extensions/tableView';
 import { TableColumnResize } from './extensions/tableColumnResize';
 import { TableRowResize } from './extensions/tableRowResize';
 import { TableSplit } from './extensions/tableSplit';
+import { TableFormula } from './extensions/tableFormula';
+import { TableSort } from './extensions/tableSort';
 import { TableCellBackground } from './extensions/tableCellBackground';
 import { TableCellAlign } from './extensions/tableCellAlign';
 import { TableCellBorders } from './extensions/tableCellBorders';
@@ -181,6 +183,8 @@ export const extensions = [
   TableRowResize,
   // "Split Cells…" (N×M); merge uses extension-table's built-in mergeCells.
   TableSplit,
+  TableFormula,
+  TableSort,
   // Cell shading: backgroundColor attr on tableCell/tableHeader (→ fo:background-color).
   TableCellBackground,
   // Cell content set against the middle/bottom of its box (→ style:vertical-align).

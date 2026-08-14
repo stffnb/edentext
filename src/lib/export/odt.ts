@@ -23,6 +23,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
+import { numberLocale, parseCellNumber, toWriterFormula, type CellRef, type NumberLocale } from '../utils/tableFormula';
 import { isShapeKind, odfEnhancedGeometry, type ShapeKind } from '../utils/shapes';
 import { normalizeLeader, parseTabStops } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
@@ -3233,12 +3234,101 @@ function tablePropsOf(node: TiptapNode, contentWidthCm: number): TableProps | nu
   return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb), keepRows, repeatHeader };
 }
 
+// A formula cell as ODF writes it: LibreOffice's own formula language behind its
+// `ooow:` prefix, plus the cached result as the cell's value.
+type CellFormulaExport = { formula: string; value: number | null };
+
+function ensureOoowNamespace(content: string): string {
+  if (content.includes('xmlns:ooow=')) return content;
+  return content.replace(/<office:document-content\b/, '<office:document-content xmlns:ooow="http://openoffice.org/2004/writer"');
+}
+
+// One entry per real cell in document order (covered cells carry no formula and never
+// match the regex), the same walk applyCellBlocks makes.
+function applyCellFormulas(odtBytes: Uint8Array, cells: (CellFormulaExport | null)[]): Uint8Array {
+  if (!cells.some(Boolean)) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let idx = 0;
+  const content = strFromU8(contentBytes).replace(
+    /<table:table-cell\b([^>]*?)(\/?)>/g,
+    (match, attrs: string, selfClose: string) => {
+      const cell = cells[idx++];
+      if (!cell) return match;
+      const value = cell.value == null ? '' : ` office:value-type="float" office:value="${cell.value}"`;
+      return `<table:table-cell${attrs} table:formula="ooow:${escapeXml(cell.formula)}"${value}${selfClose}>`;
+    },
+  );
+  // `ooow:` in the value is a namespace prefix, so the reader resolves it against the
+  // declarations: undeclared, LibreOffice reads the prefix as part of the formula and
+  // prints "Expression is faulty" (probed).
+  files['content.xml'] = strToU8(ensureOoowNamespace(content));
+  return rezipOdt(files);
+}
+
+// A table's grid: where every real cell sits and what each slot reads, merged cells
+// filling the box they span — so a formula's A1 is the cell the editor calls A1.
+type CellGridJson = {
+  at: Map<TiptapNode, CellRef>;
+  rows: number;
+  cols: number;
+  text: (ref: CellRef) => string;
+};
+
+function cellText(node: TiptapNode): string {
+  if (node.type === 'text') return node.text ?? '';
+  return (node.content ?? []).map(cellText).join('');
+}
+
+function tableGridJson(rows: TiptapNode[]): CellGridJson {
+  const slots: (string | undefined)[][] = [];
+  const at = new Map<TiptapNode, CellRef>();
+  rows.forEach((row, r) => {
+    slots[r] ??= [];
+    let c = 0;
+    for (const cell of row.content ?? []) {
+      if (cell.type !== 'tableCell' && cell.type !== 'tableHeader') continue;
+      while (slots[r][c] !== undefined) c++;
+      at.set(cell, { row: r, col: c });
+      const text = cellText(cell);
+      const colspan = (cell.attrs?.colspan as number) ?? 1;
+      const rowspan = (cell.attrs?.rowspan as number) ?? 1;
+      for (let dr = 0; dr < rowspan; dr++) {
+        slots[r + dr] ??= [];
+        for (let dc = 0; dc < colspan; dc++) slots[r + dr][c + dc] = text;
+      }
+      c += colspan;
+    }
+  });
+  return {
+    at,
+    rows: rows.length,
+    cols: Math.max(0, ...slots.map((s) => s.length)),
+    text: (ref) => slots[ref.row]?.[ref.col] ?? '',
+  };
+}
+
+// The cell's formula in LibreOffice's own language, plus the result it caches.
+function cellFormulaOf(cell: TiptapNode, grid: CellGridJson, loc: NumberLocale): CellFormulaExport | null {
+  const formula = typeof cell.attrs?.formula === 'string' ? cell.attrs.formula : '';
+  const self = grid.at.get(cell);
+  if (!formula || !self) return null;
+  const ctx = {
+    rows: grid.rows, cols: grid.cols, self,
+    valueAt: (ref: CellRef) => parseCellNumber(grid.text(ref), loc),
+  };
+  return { formula: toWriterFormula(formula, ctx), value: parseCellNumber(grid.text(self), loc) };
+}
+
 // Build an ODF table from a CUST_TABLE node, bypassing odf-kit's native walkTable to
 // pass an explicit cell border (the native path emits none → invisible). Column widths
 // come from tableColumnWidthsCm; when absent odf-kit distributes columns evenly.
-function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number, cellBlocks: CellBlock[][], tableMargins: (TableProps | null)[], tableStyleNames: (TableStyleRef | null)[]): void {
+function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number, cellBlocks: CellBlock[][], tableMargins: (TableProps | null)[], tableStyleNames: (TableStyleRef | null)[], cellFormulas: (CellFormulaExport | null)[], numberLoc: NumberLocale): void {
   const rows = (node.content ?? []).filter(r => r.type === 'tableRow');
   if (rows.length === 0) return;
+  const grid = tableGridJson(rows);
   const margins = tablePropsOf(node, contentWidthCm);
   tableMargins.push(margins);
   // The named table style, if the registry still knows it: its name goes on the table's
@@ -3285,6 +3375,7 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
           // (presentational), so bake that onto the runs for Word/LibreOffice.
           const force = regionText(tableStyle, cell.attrs?.region);
           if (bg === HEADER_SHADE) force.bold = true;
+          cellFormulas.push(cellFormulaOf(cell, grid, numberLoc));
           r.addCell((c: CellBuilder) => {
             cellBlocks.push(buildCellContent(cell, c, force));
           }, opts);
@@ -4166,6 +4257,10 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const tableMargins: (TableProps | null)[] = [];
   // The named table style + its options per table, same order — applyTableStyleNames.
   const tableStyleNames: (TableStyleRef | null)[] = [];
+  // One entry per cell, same order as cellBlocks — applyCellFormulas. A cell's number
+  // is read in the document's language, as LibreOffice reads it.
+  const cellFormulas: (CellFormulaExport | null)[] = [];
+  const numberLoc = numberLocale(language ? `${language.language}-${language.country}` : 'en');
 
   const odt = await tiptapToOdt(json, {
     // Orientation sets style:print-orientation; rewriteStylesXml overrides the exact
@@ -4185,7 +4280,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
         return;
       }
       if (node.type === CUST_TABLE) {
-        exportTable(node, doc, contentWidthCm, cellBlocks, tableMargins, tableStyleNames);
+        exportTable(node, doc, contentWidthCm, cellBlocks, tableMargins, tableStyleNames, cellFormulas, numberLoc);
         return;
       }
       const opts: {
@@ -4296,7 +4391,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
 
   // Rebuild real headings/lists/paragraphs inside table cells. Must run after
   // applyListItemStyles (cell lists don't exist yet) and before collapseRunWhitespace.
-  const styledCells = applyCellBlocks(indentedLists, cellBlocks);
+  const styledCells = applyCellFormulas(applyCellBlocks(indentedLists, cellBlocks), cellFormulas);
 
   const rowHeights: (string | null)[] = [];
   collectTableRowHeights(raw, rowHeights);

@@ -9,10 +9,14 @@
   import TableBorderPicker from '../../TableBorderPicker.svelte';
   import TableStylePicker from '../../TableStylePicker.svelte';
   import TableSplitDialog from '../../TableSplitDialog.svelte';
+  import TableSortDialog from '../../TableSortDialog.svelte';
+  import TableFormulaDialog from '../../TableFormulaDialog.svelte';
   import { captionClicks, anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
   import { isHeaderStyled } from '../../../editor/extensions/tableHeaderRow';
   import { DEFAULT_CELL_PADDING, parseCellPadding, type CellPadding } from '../../../editor/extensions/tableCellPadding';
   import type { CellVerticalAlign } from '../../../editor/extensions/tableCellAlign';
+  import { currentCellFormula, currentCellName, guessFormula } from '../../../editor/extensions/tableFormula';
+  import { numberRecognition, setNumberRecognition } from '../../../storage/tableOptions.svelte';
   import { t } from '../../../i18n/i18n.svelte';
 
   // Word splits the table's contextual tabs in two: Design paints it, Layout
@@ -23,13 +27,14 @@
     which: 'design' | 'layout';
   } = $props();
 
-  let splitOpen = $state(false);
-  let splitAt = $state({ top: 0, left: 0 });
+  // One popover at a time, opened under the button that owns it.
+  let dialog = $state<'split' | 'sort' | 'formula' | null>(null);
+  let dialogAt = $state({ top: 0, left: 0 });
 
-  function openSplit(e: MouseEvent) {
+  function openDialog(e: MouseEvent, which: 'split' | 'sort' | 'formula') {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    splitAt = { top: r.bottom + 4, left: r.left };
-    splitOpen = true;
+    dialogAt = { top: r.bottom + 4, left: r.left };
+    dialog = which;
   }
 
   function run(cmd: (chain: ChainedCommands) => ChainedCommands) {
@@ -38,6 +43,21 @@
   }
 
   const canMerge = $derived(tick >= 0 && !!editor && editor.can().mergeCells());
+  const inTable = $derived(tick >= 0 && !!editor && isInTable(editor.state));
+  // What the sort and formula popovers open on: the grid around the cursor's cell.
+  const NO_TABLE = { columns: 1, column: 0, headerRow: false, cell: null as string | null, formula: '=SUM(ABOVE)' };
+  const grid = $derived.by(() => {
+    if (!inTable || !editor) return NO_TABLE;
+    const rect = selectedRect(editor.state);
+    return {
+      columns: rect.map.width,
+      column: rect.left,
+      headerRow: rect.table.firstChild?.firstChild?.type.name === 'tableHeader'
+        || rect.table.attrs.repeatHeader === true,
+      cell: currentCellName(editor.state),
+      formula: currentCellFormula(editor.state) || guessFormula(editor.state),
+    };
+  });
   const isHeaderRow = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'row'));
   const isHeaderCol = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'column'));
   // The structural header: the first row repeated on every page the table continues on.
@@ -181,15 +201,15 @@
   <RibbonGroup label={t().ribbon.groups.merge}>
     <RibbonButton variant="big" icon="merge" label={t().table.mergeCells} disabled={!canMerge} onclick={() => run((c) => c.mergeCells())} />
     <span class="split-anchor">
-      <button class="split-trigger" onclick={openSplit} title={t().table.splitCells}>
+      <button class="split-trigger" onclick={(e) => openDialog(e, 'split')} title={t().table.splitCells}>
         <RibbonButton variant="big" icon="split" label={t().table.splitCellsAria} />
       </button>
       <TableSplitDialog
-        open={splitOpen}
-        top={splitAt.top}
-        left={splitAt.left}
-        onApply={(cols, rows) => { splitOpen = false; editor?.chain().focus().splitCellInto(cols, rows).run(); }}
-        onClose={() => (splitOpen = false)}
+        open={dialog === 'split'}
+        top={dialogAt.top}
+        left={dialogAt.left}
+        onApply={(cols, rows) => { dialog = null; editor?.chain().focus().splitCellInto(cols, rows).run(); }}
+        onClose={() => (dialog = null)}
       />
     </span>
   </RibbonGroup>
@@ -243,6 +263,48 @@
         </div>
       {/if}
     </div>
+  </RibbonGroup>
+
+  <div class="ribbon-sep"></div>
+
+  <RibbonGroup label={t().ribbon.groups.tableData}>
+    <span class="split-anchor">
+      <button class="split-trigger" onclick={(e) => openDialog(e, 'sort')} title={t().table.sort}>
+        <RibbonButton variant="big" icon="sortRows" label={t().table.sortAria} disabled={!inTable} />
+      </button>
+      <TableSortDialog
+        open={dialog === 'sort'}
+        top={dialogAt.top}
+        left={dialogAt.left}
+        columns={grid.columns}
+        column={grid.column}
+        headerRow={grid.headerRow}
+        onApply={(options) => { dialog = null; editor?.chain().focus().sortTable(options).run(); }}
+        onClose={() => (dialog = null)}
+      />
+    </span>
+    <span class="split-anchor">
+      <button class="split-trigger" onclick={(e) => openDialog(e, 'formula')} title={t().table.formula}>
+        <RibbonButton variant="big" icon="formula" label={t().table.formulaAria} disabled={!inTable} />
+      </button>
+      <TableFormulaDialog
+        open={dialog === 'formula'}
+        top={dialogAt.top}
+        left={dialogAt.left}
+        cell={grid.cell}
+        initial={grid.formula}
+        onApply={(formula) => { dialog = null; editor?.chain().focus().setCellFormula(formula).run(); }}
+        onClose={() => (dialog = null)}
+      />
+    </span>
+    <RibbonButton
+      variant="small"
+      icon="wordCount"
+      label={t().table.numberRecognition}
+      title={t().table.numberRecognitionHint}
+      active={numberRecognition()}
+      onclick={() => setNumberRecognition(!numberRecognition())}
+    />
   </RibbonGroup>
 {/if}
 

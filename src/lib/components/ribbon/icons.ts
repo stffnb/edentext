@@ -77,6 +77,9 @@ export const STROKED = {
   caption: ['M2 2.5h12v7.5H2z', 'M2 13h7'],
   // A citation as it is set: a short reference between square brackets.
   citation: ['M6 3.5H4v9h2', 'M10 3.5h2v9h-2', 'M6.5 8h3'],
+  // Lines shortening under a downward arrow, and a sigma for the formula.
+  sortRows: ['M2 3.5h8M2 8h5.5M2 12.5h3', 'M12.5 4v9M10.4 10.9 12.5 13l2.1-2.1'],
+  formula: ['M12 3H5l3.7 5.2L5 13h7'],
   watermark: ['M2.5 2h11v12h-11z', 'M4.5 11.5 11.5 4.5'],
   trackChanges: ['M2 4h12M2 8h7', 'M9.5 13.5 14 9l-1.6-1.6L7.9 12z', 'M7.9 12 7.4 14.1l2.1-.6'],
   close: ['M3.5 3.5 12.5 12.5M12.5 3.5 3.5 12.5'],
