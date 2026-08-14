@@ -1366,7 +1366,7 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
       para: ownProps(paraPropsFromOdf(resolver.paraProps(odfName)), paraPropsFromOdf(def.parent ? resolver.paraProps(def.parent) : {})),
       text: ownProps(textPropsFromOdf(resolver.paraTextProps(odfName), resolver), textPropsFromOdf(def.parent ? resolver.paraTextProps(def.parent) : {}, resolver)),
     };
-    const level = /^Heading (\d)$/.exec(name);
+    const level = /^Heading (\d+)$/.exec(name);
     if (level) style.outlineLevel = Number(level[1]);
     sheet.paragraph[name] = style;
   }

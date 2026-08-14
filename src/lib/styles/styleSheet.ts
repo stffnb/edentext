@@ -70,8 +70,9 @@ const BUILTINS: Style[] = [
     para: { spaceBefore: 0, spaceAfter: 0 }, text: { fontFamily: 'Liberation Serif', fontSizePt: 12 } },
   { name: HEADING_PARENT, parent: DEFAULT_STYLE, next: DEFAULT_STYLE, builtin: true,
     para: { spaceBefore: 12, spaceAfter: 6 }, text: { fontFamily: 'Liberation Sans', bold: true } },
-  // Sizes and the italic on 4 and 6 are LibreOffice's; the margins come from the Heading parent.
-  ...([[18], [16], [14], [13, true], [12], [12, true]] as [number, boolean?][]).map(([size, italic], i) => ({
+  // Sizes and the italic on 4 and 6 are LibreOffice's; the margins come from the Heading
+  // parent. 7–10 continue level 6 (HEADING_STYLE_OVERRIDES says why).
+  ...([[18], [16], [14], [13, true], [12], [12, true], [12], [12, true], [12], [12, true]] as [number, boolean?][]).map(([size, italic], i) => ({
     name: `Heading ${i + 1}`, parent: HEADING_PARENT, next: DEFAULT_STYLE,
     outlineLevel: i + 1, builtin: true,
     para: {}, text: italic ? { fontSizePt: size, italic: true } : { fontSizePt: size },
@@ -97,7 +98,7 @@ const CHAR_BUILTINS: Style[] = [
 
 // Bumped whenever the built-in definitions change: a stored sheet from an older version
 // keeps its user styles but takes the new factory built-ins (see mergeStoredSheet).
-export const STYLE_SHEET_VERSION = 9;
+export const STYLE_SHEET_VERSION = 10;
 
 // A persisted sheet merged onto the current built-ins. Same version: stored entries win
 // (a document's own styles, and edits to built-ins). Older: only user styles survive.

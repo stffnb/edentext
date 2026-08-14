@@ -8,7 +8,11 @@ Frames, tables and pagination have their own deep-dives in `docs/architecture/`.
 - **Headings** follow LibreOffice too (`HEADING_STYLE_OVERRIDES`): 18 / 16 / 14 / 13 / 12 / 12pt (levels 4 and 6 italic) with
   the Heading style's 0.423cm/0.212cm margins on every level, bold, and **sans** (`HEADING_FONT` = Arial; on screen the bundled
   `@font-face` maps it to Liberation Sans, metric-identical, mirroring Liberation Serif →
-  Times New Roman for the body). Levels 1–6 (`MAX_HEADING_LEVEL` = `HEADING_STYLE_OVERRIDES.length`);
+  Times New Roman for the body). Levels **7–10** continue level 6 at 12pt (alternating italic):
+  probed, LibreOffice writes those styles with no properties at all and resolves them from its
+  own pool, so there is no file value to follow. HTML stops at `h6`, so 7–10 render as unknown
+  elements that `editor.css` gives `display: block`.
+  Levels 1–10 (`MAX_HEADING_LEVEL` = `HEADING_STYLE_OVERRIDES.length`);
   both constants live in `export/odt.ts` and feed the importers, the TOC, the DOCX heading styles,
   `utils/fontSize.ts`, and `editor.css` (kept in sync by `tests/unit/font-size-display.test.ts`).
   The importers no longer override a file's own heading formatting: they only suppress values

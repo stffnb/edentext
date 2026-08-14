@@ -765,7 +765,7 @@ function styleIdOf(ppr: Element | null, ctx: Ctx): string | null {
 // LibreOffice writes styleId "Standard" with the name "Normal").
 function registryName(id: string, wordName: string, isDefault: boolean): string {
   if (isDefault || id === 'Normal' || /^normal$/i.test(wordName)) return DEFAULT_STYLE;
-  const heading = /^Heading\s?([1-9])$/i.exec(id) ?? /^heading\s?([1-9])$/i.exec(wordName);
+  const heading = /^Heading\s?(10|[1-9])$/i.exec(id) ?? /^heading\s?(10|[1-9])$/i.exec(wordName);
   if (heading) return `Heading ${heading[1]}`;
   if (/^Title$/i.test(id)) return 'Title';
   if (/^Subtitle$/i.test(id)) return 'Subtitle';
@@ -894,7 +894,7 @@ function collectStyleSheet(ctx: Ctx): StyleSheet {
       para: ownProps(stylePara(ctx, id), stylePara(ctx, parentId)),
       text: ownProps(styleText(ctx, id), styleText(ctx, parentId)),
     };
-    const level = /^Heading (\d)$/.exec(name);
+    const level = /^Heading (\d+)$/.exec(name);
     if (level) style.outlineLevel = Number(level[1]);
     sheet.paragraph[name] = style;
   }
@@ -1029,7 +1029,7 @@ function headingLevelOf(ppr: Element | null, ctx: Ctx): number | null {
   const ps = fc(ppr, 'pStyle');
   const id = ps ? wVal(ps) : null;
   if (id) {
-    const m = /^Heading\s?([1-9])$/i.exec(id);
+    const m = /^Heading\s?(10|[1-9])$/i.exec(id);
     if (m) return clamp(parseInt(m[1], 10));
     const ol = ctx.styles.styleOutlineLvl(id);
     if (ol != null && ol >= 0 && ol <= 8) return clamp(ol + 1);

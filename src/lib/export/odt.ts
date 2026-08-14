@@ -224,6 +224,12 @@ export const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTo
   { name: 'Heading_20_4', fontSize: '13pt', marginTop: '0.423cm', marginBottom: '0.212cm', italic: true },
   { name: 'Heading_20_5', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
   { name: 'Heading_20_6', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm', italic: true },
+  // 7–10 continue level 6 rather than adding a step of our own: probed, LibreOffice
+  // writes these styles with no properties at all and resolves them from its own pool.
+  { name: 'Heading_20_7', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
+  { name: 'Heading_20_8', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm', italic: true },
+  { name: 'Heading_20_9', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
+  { name: 'Heading_20_10', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm', italic: true },
 ];
 
 // Headings are sans (LibreOffice's Heading style). On screen the bundled 'Arial'

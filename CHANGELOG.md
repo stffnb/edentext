@@ -27,7 +27,7 @@
 - Font family picker (lists only fonts installed on the machine; remembers recently used fonts)
 - Font size
 - Font color and highlight color (color picker with custom colors)
-- Headings H1–H6 with LibreOffice's sizes (18/16/14/13/12/12 pt, levels 4 and 6 italic), including un-bolding a heading
+- Headings H1–H10 with LibreOffice's sizes (18/16/14/13/12/12 pt, levels 4 and 6 italic), including un-bolding a heading. Levels 7–10 continue level 6 at 12pt — probed, LibreOffice writes those styles with no properties of their own and resolves them from its style pool, so there is no file value to follow. HTML stops at `h6`, so they render as unknown elements the editor's CSS makes blocks
 
 **Styles**
 - Named paragraph styles with LibreOffice's inheritance model: a style has a parent, a follow-on style and its own properties; changing a style updates every paragraph using it. Built-ins Default text → Heading → Heading 1–6 / Title / Subtitle / Quote, with LibreOffice's values (18/16/14/13/12/12 pt headings)
@@ -152,7 +152,6 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 - One colour for every tracked change, where both word processors give each author their own — and no reviewing pane listing the revisions the way the comments pane lists comments
 - Hyphenation's zone and ladder count (`fo:hyphenation-ladder-count`, `w:hyphenationZone`) — CSS exposes neither
 - Restarting the page numbering **per section** (only the document's own format and start value exist)
-- Heading levels 7–10 (Word and LibreOffice go that far; HTML stops at `h6`)
 - A bibliography's citation style: the list is set the one way ("key: author, title, year"), where both word processors offer APA, MLA, Chicago and the rest, and numbered citations (`[1]`) instead of the source's short name
 - A section's own **page format** is set only by the file it came from — the ribbon offers the orientation per section, the paper size document-wide. Pages of different widths are left-aligned in the scroll, where both word processors centre each
 - A sort dialog's second and third key, and its choice of sort type over the detected one; a formula's own number format (LibreOffice's Number Format dialog per cell — the general format is the only one here), and a formula reaching into another table
