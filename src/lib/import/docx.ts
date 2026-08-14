@@ -1,5 +1,5 @@
 import { unzipSync, strFromU8 } from 'fflate';
-import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, toggle as onOff, wVal, W, R, WP, A, WPS, MC, VML, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
+import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, toggle as onOff, wVal, W, R, WP, A, B, WPS, MC, VML, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { lengthToPt, WATERMARK_NAME } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
@@ -28,6 +28,7 @@ import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { ODF_SEQ_CATEGORY } from '../editor/extensions/caption';
 import type { IndexKind } from '../editor/extensions/tableOfContents';
+import { bibTypeFromDocx, DOCX_BIB_FIELD, type BibSource } from '../editor/extensions/bibliographyEntry';
 import { normalizePageDecor, type PageDecor } from '../storage/pageDecor';
 import { DEFAULT_LINE_NUMBERING, normalizeLineNumbering, type LineNumbering } from '../storage/lineNumbering';
 import { clampColumnGap } from '../editor/extensions/columns';
@@ -79,6 +80,8 @@ type Ctx = {
   openComments: Map<string, Record<string, unknown>>;
   // word/comments.xml, by id.
   commentDefs: Map<string, Record<string, unknown>>;
+  // The bibliography sources of the custom-XML part, by tag; a CITATION names one.
+  bibSources: Map<string, BibSource>;
   // word/footnotes.xml and endnotes.xml by w:id, and the notes the body referenced, in
   // anchor order — the editor keeps them in one section at the document end (notes.ts).
   noteParts: Record<NoteKind, Map<string, Element>>;
@@ -130,8 +133,8 @@ function fc(el: Element | null, localName: string): Element | null {
   for (const c of Array.from(el.children)) if (c.namespaceURI === W && c.localName === localName) return c;
   return null;
 }
-function fcAll(el: Element, localName: string): Element[] {
-  return Array.from(el.children).filter((c) => c.namespaceURI === W && c.localName === localName);
+function fcAll(el: Element, localName: string, ns: string = W): Element[] {
+  return Array.from(el.children).filter((c) => c.namespaceURI === ns && c.localName === localName);
 }
 function intAttr(el: Element | null, ns: string, name: string): number | null {
   if (!el) return null;
@@ -180,7 +183,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const sectPr = fc(body, 'sectPr');
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, pageRtl: sectPrRtl(sectPr), cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), notes: [], noteParts: {
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, pageRtl: sectPrRtl(sectPr), cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), bibSources: docxSources(files), notes: [], noteParts: {
     footnote: noteParts(files, 'footnotes', 'footnote'),
     endnote: noteParts(files, 'endnotes', 'endnote'),
   } };
@@ -336,7 +339,9 @@ function tocMaxLevel(instr: string): number {
 // The TOC field's \c switch names a caption label, which makes it a list of figures or
 // tables rather than a contents. Word's own labels and LibreOffice's travel alike.
 function tocIndexKind(instr: string): IndexKind {
-  // INDEX is Word's alphabetical index; the rest are TOC fields differing by \\c.
+  // INDEX is Word's alphabetical index, BIBLIOGRAPHY its source list; the rest are TOC
+  // fields differing by \\c.
+  if (/\bBIBLIOGRAPHY\b/.test(instr)) return 'bibliography';
   if (/\bINDEX\b/.test(instr)) return 'alphabetical';
   const m = /\\c\s+"?([^"\\]+)/.exec(instr);
   const cat = m ? ODF_SEQ_CATEGORY[m[1].trim()] : undefined;
@@ -494,9 +499,10 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
       // writes, since the package has no INDEX class to spread over runs.
       const simple = Array.from(el.getElementsByTagNameNS(W, 'fldSimple'))
         .map((f) => f.getAttributeNS(W, 'instr') ?? '').join(' ');
-      if (/\bINDEX\b/.test(simple) && kind === 'body') {
+      if ((/\bINDEX\b/.test(simple) || /\bBIBLIOGRAPHY\b/.test(simple)) && kind === 'body') {
         flush();
-        out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', index: 'alphabetical' } });
+        const index = /\bBIBLIOGRAPHY\b/.test(simple) ? 'bibliography' : 'alphabetical';
+        out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', index } });
         continue;
       }
       const { emit } = scanTocField(el, tocState);
@@ -1156,9 +1162,9 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
   // A recognized body date/time field: its cached result runs are dropped and a live
   // dateTimeField node is emitted in their place when the field ends.
   let fieldDateTime: Node | null = null;
-  // Same for a REF/PAGEREF field and a caption's SEQ: the cached result runs are
-  // collected as the node's display text instead of being pushed.
-  let fieldCrossRef: Node | null = null;
+  // Same for a REF/PAGEREF field, a CITATION and a caption's SEQ: the cached result runs
+  // are collected as the node's display text instead of being pushed.
+  let fieldShown: Node | null = null;
   let fieldSeq: Node | null = null;
   let fieldResultText = '';
 
@@ -1211,7 +1217,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     const marks = runMarks(r, linkHref);
     // Hide a field's cached result: always for a hf field, and for a recognized body
     // date/time field (replaced by its live node).
-    const skipResult = () => fieldMode === 'result' && (hfFields || !!fieldDateTime || !!fieldCrossRef);
+    const skipResult = () => fieldMode === 'result' && (hfFields || !!fieldDateTime || !!fieldShown);
 
     // Route a drawing/pict result: an image is inline, a text box a block node riding
     // ctx.pendingBlocks. The one-paragraph header/footer zone takes as-char images only —
@@ -1247,29 +1253,29 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       switch (child.localName) {
         case 'fldChar': {
           const t = child.getAttributeNS(W, 'fldCharType');
-          if (t === 'begin') { fieldMode = 'instr'; fieldInstr = ''; fieldDateTime = null; fieldCrossRef = null; fieldSeq = null; fieldResultText = ''; }
+          if (t === 'begin') { fieldMode = 'instr'; fieldInstr = ''; fieldDateTime = null; fieldShown = null; fieldSeq = null; fieldResultText = ''; }
           else if (t === 'separate') {
             fieldMode = 'result';
             if (!hfFields) {
               fieldDateTime = dateTimeFieldFromInstr(fieldInstr);
               fieldSeq = fieldDateTime ? null : seqFieldFromInstr(fieldInstr);
-              fieldCrossRef = fieldDateTime || fieldSeq ? null : crossRefFromInstr(fieldInstr);
+              fieldShown = fieldDateTime || fieldSeq ? null : (crossRefFromInstr(fieldInstr) ?? citationFromInstr(fieldInstr, ctx));
               fieldResultText = '';
               // Carry the field run's marks so the atom renders in the run's font.
-              const field = fieldDateTime ?? fieldSeq ?? fieldCrossRef;
+              const field = fieldDateTime ?? fieldSeq ?? fieldShown;
               if (field && marks.length) field.marks = marks;
             }
           } else if (t === 'end') {
             // A reference Word never resolved has no w:separate and so no cached result
             // (it shows nothing until the field is updated); the node view fills it in
             // when the bookmark is still there.
-            if (!hfFields && !fieldDateTime && !fieldCrossRef && !fieldSeq) {
-              fieldCrossRef = crossRefFromInstr(fieldInstr);
-              if (fieldCrossRef && marks.length) fieldCrossRef.marks = marks;
+            if (!hfFields && !fieldDateTime && !fieldShown && !fieldSeq) {
+              fieldShown = crossRefFromInstr(fieldInstr) ?? citationFromInstr(fieldInstr, ctx);
+              if (fieldShown && marks.length) fieldShown.marks = marks;
             }
             if (fieldDateTime) out.push(fieldDateTime);
             else if (fieldSeq) out.push({ ...fieldSeq, attrs: { ...fieldSeq.attrs, number: seqNumberOf(fieldResultText) } });
-            else if (fieldCrossRef) out.push({ ...fieldCrossRef, attrs: { ...fieldCrossRef.attrs, text: fieldResultText } });
+            else if (fieldShown) out.push({ ...fieldShown, attrs: { ...fieldShown.attrs, text: fieldResultText } });
             else {
               const mark = !hfFields && indexEntryFromInstr(fieldInstr);
               if (mark) out.push(mark);
@@ -1277,7 +1283,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
             }
             fieldMode = 'none';
             fieldDateTime = null;
-            fieldCrossRef = null;
+            fieldShown = null;
             fieldSeq = null;
           }
           break;
@@ -1287,7 +1293,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
         // revision is only recorded, not applied.
         case 'delText':
         case 't':
-          if ((fieldCrossRef || fieldSeq) && fieldMode === 'result') fieldResultText += child.textContent ?? '';
+          if ((fieldShown || fieldSeq) && fieldMode === 'result') fieldResultText += child.textContent ?? '';
           else if (!skipResult()) pushText(child.textContent ?? '', marks);
           break;
         case 'tab': if (!skipResult()) pushText('\t', marks); break;
@@ -1341,6 +1347,8 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
         }
         const mark = indexEntryFromInstr(instr);
         if (mark) { out.push(mark); break; }
+        const cite = citationFromInstr(instr, ctx);
+        if (cite) { out.push({ ...cite, attrs: { ...cite.attrs, text: el.textContent ?? '' } }); break; }
         const seq = seqFieldFromInstr(instr);
         if (seq) {
           const first = fcAll(el, 'r')[0];
@@ -1411,6 +1419,61 @@ function emitField(out: Node[], instr: string, hfFields: boolean, marks: Mark[] 
     const m = /\bSTYLEREF\s+"?[^"\d]*(\d)/i.exec(instr);
     if (m) out.push({ type: 'chapterField', attrs: { level: Number(m[1]), text: '' }, ...(marks.length ? { marks } : {}) });
   }
+}
+
+// Every source Word keeps, by its tag. They live in a custom-XML part of their own —
+// which part is not fixed, so each is probed for the bibliography root.
+function docxSources(files: Record<string, Uint8Array>): Map<string, BibSource> {
+  const out = new Map<string, BibSource>();
+  for (const path of Object.keys(files)) {
+    if (!/^customXml\/item\d+\.xml$/.test(path)) continue;
+    let root: Element;
+    try { root = parseXml(strFromU8(files[path])).documentElement; } catch { continue; }
+    if (root.localName !== 'Sources') continue;
+    for (const src of Array.from(root.getElementsByTagNameNS(B, 'Source'))) {
+      const identifier = fcAll(src, 'Tag', B)[0]?.textContent?.trim() ?? '';
+      if (!identifier || out.has(identifier)) continue;
+      const fields: Record<string, string> = {};
+      for (const [odf, word] of Object.entries(DOCX_BIB_FIELD)) {
+        const v = fcAll(src, word, B)[0]?.textContent?.trim();
+        if (v) fields[odf] = v;
+      }
+      const author = bibAuthorFrom(src);
+      if (author) fields.author = author;
+      const type = fcAll(src, 'SourceType', B)[0]?.textContent?.trim() ?? '';
+      out.set(identifier, { identifier, type: bibTypeFromDocx(type), fields });
+    }
+  }
+  return out;
+}
+
+// Word's author list back to one string: persons as "Last, First", several separated by
+// a semicolon, a corporate name verbatim.
+function bibAuthorFrom(src: Element): string {
+  const holder = fcAll(src, 'Author', B)[0];
+  const inner = holder ? fcAll(holder, 'Author', B)[0] : null;
+  if (!inner) return '';
+  const corporate = fcAll(inner, 'Corporate', B)[0]?.textContent?.trim();
+  if (corporate) return corporate;
+  return Array.from(inner.getElementsByTagNameNS(B, 'Person'))
+    .map((p) => [fcAll(p, 'Last', B)[0]?.textContent?.trim(), fcAll(p, 'First', B)[0]?.textContent?.trim()]
+      .filter(Boolean).join(', '))
+    .filter(Boolean)
+    .join('; ');
+}
+
+// A CITATION field instruction → a citation, its record taken from the sources part. A
+// tag no source declares still cites: the field's cached text is what the reader saw.
+function citationFromInstr(instr: string, ctx: Ctx): Node | null {
+  const m = /^\s*CITATION\s+("[^"]+"|\S+)/i.exec(instr);
+  if (!m) return null;
+  const identifier = m[1].replace(/^"|"$/g, '').trim();
+  if (!identifier) return null;
+  const source = ctx.bibSources.get(identifier);
+  return {
+    type: 'bibliographyEntry',
+    attrs: { identifier, type: source?.type ?? 'misc', fields: source?.fields ?? {}, text: '' },
+  };
 }
 
 // An XE field instruction → an index entry. Word files the term under a key with

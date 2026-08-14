@@ -16,6 +16,8 @@ export const PKG_REL = 'http://schemas.openxmlformats.org/package/2006/relations
 export const WPS = 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape';
 export const MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006';
 export const VML = 'urn:schemas-microsoft-com:vml';
+// The bibliography sources Word keeps in a custom-XML part.
+export const B = 'http://schemas.openxmlformats.org/officeDocument/2006/bibliography';
 
 // A run's resolved character properties; only set keys are present so layers merge cleanly.
 export type RunProps = {

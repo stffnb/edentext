@@ -53,6 +53,7 @@ import { Image } from './extensions/image';
 import { DateTimeField } from './extensions/dateTimeField';
 import { SequenceField } from './extensions/caption';
 import { IndexEntry } from './extensions/indexEntry';
+import { BibliographyEntry } from './extensions/bibliographyEntry';
 import { CrossReference } from './extensions/crossReference';
 import { Formula } from './extensions/formula';
 import { TextBox } from './extensions/textBox';
@@ -115,6 +116,9 @@ export const extensions = [
   // A place marked for the alphabetical index. Round-trips to ODF
   // <text:alphabetical-index-mark> and a Word XE field.
   IndexEntry,
+  // A citation carrying its whole source record. Round-trips to ODF
+  // <text:bibliography-mark> and a Word CITATION field over a custom-XML source.
+  BibliographyEntry,
   // Inline reference to a bookmark, showing its text or its page; kept live by its
   // node view. Round-trips to ODF <text:bookmark-ref> and DOCX REF/PAGEREF fields.
   CrossReference,

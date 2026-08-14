@@ -26,6 +26,7 @@ import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/he
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { DOCX_SEQ_NAME, seqCategoryOf } from '../editor/extensions/caption';
 import { indexKindOf, INDEX_TITLES } from '../editor/extensions/tableOfContents';
+import { citationText, DOCX_BIB_FIELD, DOCX_SOURCE_TYPE, type BibSource } from '../editor/extensions/bibliographyEntry';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
@@ -115,6 +116,10 @@ const MTH = '';
 // docLangTag: inlineToRuns is reached from every block path without a collector).
 type FormulaDocx = { latex: string; display: boolean };
 let docFormulas: FormulaDocx[] = [];
+
+// The sources cited, one per tag in document order — Word keeps them in a custom-XML
+// part and the CITATION fields only name the tag. Module-level like docFormulas.
+let docSources: BibSource[] = [];
 
 // Word numbers footnotes and endnotes in separate files, so each class counts from 1.
 // Filled from the note section before the body is walked, then read by the anchor —
@@ -514,6 +519,21 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       const term = String(node.attrs?.term ?? '').trim();
       const key1 = String(node.attrs?.key1 ?? '').trim();
       if (term) out.push(new SimpleField(`XE "${(key1 ? `${key1}:${term}` : term).replace(/"/g, "'")}"`, ''));
+    } else if (node.type === 'bibliographyEntry') {
+      // Word's citation: a CITATION field naming the source's tag, its cached result the
+      // text the reader sees. applyBibliographyDocx writes the source itself.
+      const identifier = String(node.attrs?.identifier ?? '').trim();
+      if (identifier) {
+        if (!docSources.some(s => s.identifier === identifier)) {
+          docSources.push({
+            identifier,
+            type: String(node.attrs?.type ?? 'misc'),
+            fields: (node.attrs?.fields ?? {}) as Record<string, string>,
+          });
+        }
+        const shown = String(node.attrs?.text || citationText(identifier));
+        out.push(new SimpleField(`CITATION "${docxTag(identifier)}"`, shown));
+      }
     } else if (node.type === 'formula') {
       const latex = typeof node.attrs?.latex === 'string' ? node.attrs.latex : '';
       if (latex) {
@@ -947,6 +967,77 @@ function applyTextBoxesDocx(bytes: Uint8Array, boxes: TextBoxDocx[]): Uint8Array
   }
 
   files['word/document.xml'] = strToU8(xml);
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
+const B_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/bibliography';
+const DS_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/customXml';
+// The part's identity inside the package, not the document's — one fixed value serves.
+const BIB_ITEM_GUID = '{6A3C1F0E-7B12-4B4D-9E42-1B7C0D4A6F31}';
+
+// A source's author list. Word's model is a list of persons, so "Last, First" splits and
+// several are separated by a semicolon; anything else travels whole as a corporate name.
+function bibAuthorXml(value: string): string {
+  const names = value.split(';').map(s => s.trim()).filter(Boolean);
+  const people = names.map((name) => {
+    const at = name.indexOf(',');
+    return at > 0
+      ? `<b:Person><b:Last>${escapeXml(name.slice(0, at).trim())}</b:Last>`
+        + `<b:First>${escapeXml(name.slice(at + 1).trim())}</b:First></b:Person>`
+      : '';
+  });
+  const inner = people.every(Boolean) && people.length
+    ? `<b:NameList>${people.join('')}</b:NameList>`
+    : `<b:Corporate>${escapeXml(value)}</b:Corporate>`;
+  return `<b:Author><b:Author>${inner}</b:Author></b:Author>`;
+}
+
+// The tag as the CITATION instruction and the source agree on it: the instruction is a
+// quoted field argument, so a quote in the short name has nowhere to go.
+const docxTag = (identifier: string): string => identifier.replace(/"/g, '');
+
+function bibSourceXml(s: BibSource): string {
+  const fields = Object.entries(s.fields)
+    .filter(([k, v]) => k !== 'author' && DOCX_BIB_FIELD[k] && String(v ?? '').trim())
+    .map(([k, v]) => `<b:${DOCX_BIB_FIELD[k]}>${escapeXml(String(v))}</b:${DOCX_BIB_FIELD[k]}>`)
+    .join('');
+  const author = String(s.fields.author ?? '').trim();
+  return `<b:Source><b:Tag>${escapeXml(docxTag(s.identifier))}</b:Tag>`
+    + `<b:SourceType>${DOCX_SOURCE_TYPE[s.type] ?? 'Misc'}</b:SourceType>`
+    + (author ? bibAuthorXml(author) : '') + fields + '</b:Source>';
+}
+
+// Post-pack pass: the sources the CITATION fields name. Word keeps them in a custom-XML
+// part of their own, which needs its properties part, two relationships and a content
+// type — none of which the package knows about, so all four are minted here.
+function applyBibliographyDocx(bytes: Uint8Array, sources: BibSource[]): Uint8Array {
+  if (!sources.length) return bytes;
+  const files = unzipSync(bytes);
+  const relsPath = 'word/_rels/document.xml.rels';
+  const rels = files[relsPath] ? strFromU8(files[relsPath]) : '';
+  const types = files['[Content_Types].xml'] ? strFromU8(files['[Content_Types].xml']) : '';
+  if (!rels || !types) return bytes;
+
+  files['customXml/item1.xml'] = strToU8(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    + `<b:Sources xmlns:b="${B_NS}" SelectedStyle="" StyleName="">`
+    + sources.map(bibSourceXml).join('') + '</b:Sources>');
+  files['customXml/itemProps1.xml'] = strToU8(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    + `<ds:datastoreItem xmlns:ds="${DS_NS}" ds:itemID="${BIB_ITEM_GUID}">`
+    + `<ds:schemaRefs><ds:schemaRef ds:uri="${B_NS}"/></ds:schemaRefs></ds:datastoreItem>`);
+  files['customXml/_rels/item1.xml.rels'] = strToU8(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+    + `<Relationship Id="rId1" Type="${R_NS}/customXmlProps" Target="itemProps1.xml"/></Relationships>`);
+
+  files[relsPath] = strToU8(rels.replace('</Relationships>',
+    `<Relationship Id="rId${maxIdIn(rels, /Id="rId(\d+)"/g) + 1}" Type="${R_NS}/customXml" Target="../customXml/item1.xml"/></Relationships>`));
+  files['[Content_Types].xml'] = strToU8(types.replace('</Types>',
+    '<Override PartName="/customXml/itemProps1.xml" ContentType="application/vnd.openxmlformats-officedocument.customXmlProperties+xml"/></Types>'));
+
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
   for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
   return zipSync(out);
@@ -1443,6 +1534,12 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
         out.push(new Paragraph({ children: [new SimpleField('INDEX \\h "A" \\c "1" \\e "\t"', '')] }));
         continue;
       }
+      if (kind === 'bibliography') {
+        // Word's BIBLIOGRAPHY field, filled from the sources in the custom-XML part on a
+        // field update — the same contract the TOC and INDEX fields work under.
+        out.push(new Paragraph({ children: [new SimpleField('BIBLIOGRAPHY', '')] }));
+        continue;
+      }
       out.push(new TableOfContents(tocTitle, kind === 'toc'
         ? { hyperlink: true, headingStyleRange: `1-${maxLevel}` }
         // `\c`, not `\a`: Word's own Insert Table of Figures keeps the label and number
@@ -1666,6 +1763,7 @@ export async function buildDocx(
   exportSheet = styles;
   exportSpacingModel = spacingModel;
   docFormulas = [];
+  docSources = [];
   const num = new Numbering();
   const landscape = orientation === 'landscape';
   const { w: pageWidthCm, h: pageHeightCm } = pageDimsCm(pageFormat, orientation);
@@ -1813,7 +1911,8 @@ export async function buildDocx(
 
   const blob = await Packer.toBlob(doc);
   const packed = applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
-  const withNotes = docNoteIds.size ? applyNotePrDocx(packed, notesSettings) : packed;
+  const cited = applyBibliographyDocx(packed, docSources);
+  const withNotes = docNoteIds.size ? applyNotePrDocx(cited, notesSettings) : cited;
   const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withNotes) : withNotes;
   const bidi = rtl ? applyBidiDocx(mirrored) : mirrored;
   if (isEmptyPageDecor(decor)) return bidi;

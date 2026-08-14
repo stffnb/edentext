@@ -362,4 +362,50 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     check('LO notes: the note text comes back', JSON.stringify(section).includes('The footnote, with'), JSON.stringify(section)?.slice(0, 200));
     check('LO notes: bold inside the note survives', JSON.stringify(section).includes('"bold"'), JSON.stringify(section)?.slice(0, 300));
   });
+
+  it('survives a `soffice` re-save of a bibliography', { timeout: 180000 }, async () => {
+    const cite = (identifier: string, type: string, fields: Record<string, string>): N =>
+      ({ type: 'bibliographyEntry', attrs: { identifier, type, fields, text: '' } });
+    const KAF = { author: 'Kafka, Franz', title: 'Der Process', year: '1925', publisher: 'Kurt Wolff' };
+    const MEY = { author: 'Meyer, Anna', title: 'Zur Sache', year: '1999', journal: 'Zeitschrift' };
+    const doc: N = { type: 'doc', content: [
+      P(null, T('Ein Satz mit Beleg '), cite('KAF01', 'book', KAF), T('.')),
+      P(null, T('Und noch einer '), cite('MEY99', 'article', MEY), T(', wieder '), cite('KAF01', 'book', KAF), T('.')),
+      { type: 'tableOfContents', attrs: { index: 'bibliography', title: 'Literaturverzeichnis', entries: [
+        { text: 'KAF01: Kafka, Franz, Der Process, 1925', level: 1, page: 1 },
+        { text: 'MEY99: Meyer, Anna, Zur Sache, 1999', level: 1, page: 1 },
+      ] } },
+    ] };
+    mkdirSync('/tmp/lo-rt', { recursive: true });
+    writeFileSync('/tmp/lo-rt/bib.odt', await buildOdt(doc, margins, 'portrait'));
+    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/bibout /tmp/lo-rt/bib.odt', { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/bibout/bib.odt'));
+    const xml = strFromU8(unzipSync(resaved)['content.xml']);
+
+    check('LO bibliography: all three marks survive', (xml.match(/<text:bibliography-mark/g) ?? []).length === 3,
+      xml.match(/<text:bibliography-mark[^>]*>/g));
+    check('LO bibliography: a mark keeps its whole record',
+      xml.includes('text:author="Kafka, Franz"') && xml.includes('text:publisher="Kurt Wolff"') && xml.includes('text:year="1925"'),
+      xml.match(/<text:bibliography-mark[^>]*>/g)?.[0]);
+    check('LO bibliography: the index stays one', xml.includes('<text:bibliography '), xml.match(/<text:bibliography[^>-][^>]*>/g));
+
+    const res = importOdt(resaved);
+    const cites: N[] = [];
+    let index: N = null;
+    (function walk(n: N) {
+      if (n.type === 'bibliographyEntry') cites.push(n);
+      if (n.type === 'tableOfContents') index = n;
+      for (const c of n.content ?? []) walk(c);
+    })(res.content);
+    check('LO bibliography: every citation comes back',
+      cites.map((c) => c.attrs.identifier).join(',') === 'KAF01,MEY99,KAF01', cites.map((c) => c.attrs));
+    check('LO bibliography: the record comes back with it',
+      cites[0]?.attrs?.fields?.author === 'Kafka, Franz' && cites[0]?.attrs?.fields?.year === '1925', cites[0]?.attrs?.fields);
+    check('LO bibliography: the type comes back', cites[1]?.attrs?.type === 'article', cites[1]?.attrs?.type);
+    check('LO bibliography: the index comes back as one', index?.attrs?.index === 'bibliography', index?.attrs?.index);
+    check('LO bibliography: its rows come back',
+      (index?.attrs?.entries ?? []).map((e: N) => e.text).join(' | ')
+        === 'KAF01: Kafka, Franz, Der Process, 1925 | MEY99: Meyer, Anna, Zur Sache, 1999',
+      index?.attrs?.entries);
+  });
 });

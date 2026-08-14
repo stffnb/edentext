@@ -4,6 +4,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { MAX_HEADING_LEVEL } from '../../export/odt';
 import { seqCategoryOf, sequenceFieldText, type SeqCategory } from './caption';
 import { indexEntries, indexRows } from './indexEntry';
+import { bibliographyEntries, bibliographyRows } from './bibliographyEntry';
 import { readVerticalMargins, pageOfElement, topInEditor, FORCE_PAGE_RECALC } from './pageBreaks';
 
 // A generated index: a block atom listing every source with its live page number — the
@@ -22,10 +23,12 @@ export type TocEntry = {
 // Which sources the index collects. ODF has an element per family
 // (text:table-of-content / -illustration-index / -table-index), Word the TOC field's
 // \c switch.
-export type IndexKind = 'toc' | 'figures' | 'tables' | 'alphabetical';
+export type IndexKind = 'toc' | 'figures' | 'tables' | 'alphabetical' | 'bibliography';
 
 export function indexKindOf(value: unknown): IndexKind {
-  return value === 'figures' || value === 'tables' || value === 'alphabetical' ? value : 'toc';
+  return value === 'figures' || value === 'tables' || value === 'alphabetical' || value === 'bibliography'
+    ? value
+    : 'toc';
 }
 
 // The heading above the entries. An imported index keeps the one its file used
@@ -36,6 +39,7 @@ export const INDEX_TITLES: Record<IndexKind, string> = {
   figures: 'List of Figures',
   tables: 'List of Tables',
   alphabetical: 'Index',
+  bibliography: 'Bibliography',
 };
 
 const EMPTY_HINT: Record<IndexKind, string> = {
@@ -43,6 +47,7 @@ const EMPTY_HINT: Record<IndexKind, string> = {
   figures: 'No figure captions yet — insert one from the References tab.',
   tables: 'No table captions yet — insert one from the References tab.',
   alphabetical: 'No index entries yet — mark a word from the References tab.',
+  bibliography: 'No citations yet — insert one from the References tab.',
 };
 // Enough leader dots to cross the widest gap a page can offer; fillLeaders cuts each
 // row's back to what its own gap holds, measuring one dot with this sample.
@@ -214,6 +219,15 @@ class TocView {
       }
       return out;
     }
+    if (kind === 'bibliography') {
+      // One row per source cited, at its first citation — no page number, as both word
+      // processors print a bibliography.
+      const cited = bibliographyEntries(this.editor.state.doc);
+      for (const row of bibliographyRows(cited)) {
+        out.push({ text: row.text, level: 1, pos: cited.find(c => c.identifier === row.identifier)!.pos });
+      }
+      return out;
+    }
     if (kind !== 'toc') {
       const category: SeqCategory = kind === 'tables' ? 'table' : 'figure';
       this.editor.state.doc.descendants((node, pos) => {
@@ -322,7 +336,8 @@ class TocView {
       return;
     }
 
-    const fill = typeof this.node()?.attrs?.leader === 'string' ? String(this.node()!.attrs.leader) : '';
+    const noPage = indexKindOf(this.node()?.attrs?.index) === 'bibliography';
+    const fill = !noPage && typeof this.node()?.attrs?.leader === 'string' ? String(this.node()!.attrs.leader) : '';
     const levelStyles = this.node()?.attrs?.levelStyles as (string | null)[] | null | undefined;
     entries.forEach((e, i) => {
       const row = document.createElement('div');
@@ -335,15 +350,19 @@ class TocView {
         if (li) text.appendChild(document.createElement('br'));
         text.appendChild(document.createTextNode(part));
       });
-      const leader = document.createElement('span');
-      leader.className = 'toc-leader';
-      // Real fill characters, as a word processor draws them: they scale with the font
-      // and reach the PDF as text. The row clips whatever the gap has no room for.
-      leader.textContent = fill.repeat(fill ? LEADER_DOTS : 0);
-      const page = document.createElement('span');
-      page.className = 'toc-page';
-      page.textContent = e.pages ? e.pages.join(', ') : String(e.page);
-      row.append(text, leader, page);
+      if (noPage) {
+        row.append(text);
+      } else {
+        const leader = document.createElement('span');
+        leader.className = 'toc-leader';
+        // Real fill characters, as a word processor draws them: they scale with the font
+        // and reach the PDF as text. The row clips whatever the gap has no room for.
+        leader.textContent = fill.repeat(fill ? LEADER_DOTS : 0);
+        const page = document.createElement('span');
+        page.className = 'toc-page';
+        page.textContent = e.pages ? e.pages.join(', ') : String(e.page);
+        row.append(text, leader, page);
+      }
       const pos = heads[i]?.pos;
       if (pos != null) {
         row.addEventListener('mousedown', ev => {

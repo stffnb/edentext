@@ -3,6 +3,7 @@
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
   import CaptionDialog from '../../CaptionDialog.svelte';
+  import BibliographyDialog from '../../BibliographyDialog.svelte';
   import type { IndexKind } from '../../../editor/extensions/tableOfContents';
   import { anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
   import type { HfZone } from '../../../storage/headerFooter';
@@ -29,8 +30,9 @@
     return found;
   });
   const LEVELS = HEADING_LEVELS;
-  const INDEX_KINDS: IndexKind[] = ['toc', 'figures', 'tables', 'alphabetical'];
+  const INDEX_KINDS: IndexKind[] = ['toc', 'figures', 'tables', 'alphabetical', 'bibliography'];
   let captionOpen = $state(false);
+  let citationOpen = $state(false);
   let hasSelection = $derived(tick >= 0 && !!editor && !editor.state.selection.empty);
 
   // The selected text is the term unless the reader gives another — the same prompt
@@ -107,9 +109,18 @@
     disabled={!editor || !!hfActive || !hasSelection}
     onclick={markIndexEntry}
   />
+  <RibbonButton
+    variant="big"
+    icon="citation"
+    label={t().ribbon.citation}
+    title={t().bibliography.title}
+    disabled={!editor || !!hfActive}
+    onclick={() => (citationOpen = true)}
+  />
 </RibbonGroup>
 
 <CaptionDialog bind:open={captionOpen} {editor} />
+<BibliographyDialog bind:open={citationOpen} {editor} />
 
 <RibbonGroup label={t().ribbon.groups.notes}>
   <RibbonButton

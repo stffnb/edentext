@@ -29,6 +29,7 @@ import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/e
 import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, formatOrdinal, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { ODF_SEQ_NAME, seqCategoryOf, type SeqCategory } from '../editor/extensions/caption';
 import { indexKindOf, INDEX_TITLES, type IndexKind } from '../editor/extensions/tableOfContents';
+import { citationText, isBibType } from '../editor/extensions/bibliographyEntry';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, toTimeValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
 import { parseLatex } from '../math/latex';
@@ -186,6 +187,8 @@ const FNT = '\uE017';
 const SEQ = '\uE01A';
 // Sentinel wrapping an index entry's index (IXE{i}IXE); applyIndexEntries resolves it.
 const IXE = '\uE01E';
+// Sentinel wrapping a citation's index (BIB{i}BIB); applyBibEntries resolves it.
+const BIB = '\uE01F';
 
 // Sentinels for recorded revisions (trackChanges.ts): TCI{i}TCI brackets an insertion's
 // runs, TCD{i}TCD stands where a deletion's text was cut out. applyRevisions rewrites
@@ -731,6 +734,53 @@ function applyIndexEntries(odtBytes: Uint8Array, marks: IndexEntryExport[]): Uin
     if (!m) return '';
     return `<text:alphabetical-index-mark text:string-value="${escapeXml(m.term)}"`
       + (m.key1 ? ` text:key1="${escapeXml(m.key1)}"` : '') + '/>';
+  });
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+// One citation, collected by replaceBibEntries. ODF keeps the whole source record on
+// the mark, so nothing else has to travel with the document.
+type BibExport = { identifier: string; type: string; fields: Record<string, string>; text: string };
+
+function replaceBibEntries(node: TiptapNode, marks: BibExport[]): TiptapNode {
+  if (!node.content?.length) return node;
+  const content: TiptapNode[] = [];
+  for (const child of node.content) {
+    if (child.type === 'bibliographyEntry') {
+      const a = child.attrs ?? {};
+      const identifier = String(a.identifier ?? '');
+      marks.push({
+        identifier,
+        type: isBibType(a.type) ? String(a.type) : 'misc',
+        fields: (a.fields ?? {}) as Record<string, string>,
+        text: String(a.text || citationText(identifier)),
+      });
+      content.push({ type: 'text', text: `${BIB}${marks.length - 1}${BIB}`, marks: child.marks });
+      continue;
+    }
+    content.push(replaceBibEntries(child, marks));
+  }
+  return { ...node, content };
+}
+
+// BIB sentinels → <text:bibliography-mark>, which unlike an index mark wraps the text
+// the citation shows. Every field is an attribute of its own, LibreOffice's own form.
+function applyBibEntries(odtBytes: Uint8Array, marks: BibExport[]): Uint8Array {
+  if (!marks.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+  let content = strFromU8(contentBytes);
+  content = content.replace(new RegExp(`${BIB}(\\d+)${BIB}`, 'g'), (_m, idx: string) => {
+    const m = marks[Number(idx)];
+    if (!m) return '';
+    const fields = Object.entries(m.fields)
+      .filter(([, v]) => String(v ?? '').trim())
+      .map(([k, v]) => ` text:${k}="${escapeXml(String(v))}"`)
+      .join('');
+    return `<text:bibliography-mark text:identifier="${escapeXml(m.identifier)}"`
+      + ` text:bibliography-type="${m.type}"${fields}>${escapeXml(m.text)}</text:bibliography-mark>`;
   });
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
@@ -3801,9 +3851,22 @@ const ODF_INDEX: Record<IndexKind, { el: string; heading: string; entryStyle: st
   figures: { el: 'illustration-index', heading: 'Illustration_20_Index_20_Heading', entryStyle: 'Illustration_20_Index_20_', docName: 'Illustration Index', seq: 'Illustration' },
   tables: { el: 'table-index', heading: 'Table_20_Index_20_Heading', entryStyle: 'Table_20_Index_20_', docName: 'Table Index', seq: 'Table' },
   alphabetical: { el: 'alphabetical-index', heading: 'Index_20_Heading', entryStyle: 'Index_20_', docName: 'Alphabetical Index' },
+  bibliography: { el: 'bibliography', heading: 'Bibliography_20_Heading', entryStyle: 'Bibliography_20_', docName: 'Bibliography' },
 };
 
-function tocXml(toc: TocExport, index: number): string {
+// A bibliography's entry template is per source type, and LibreOffice regenerates the
+// rows from it — so it must spell out the same "key: author, title, year" the node view
+// prints. Only the types actually cited get one; the rest LibreOffice fills in itself.
+function bibEntryTemplates(style: string, types: string[]): string {
+  const field = (name: string) => `<text:index-entry-bibliography text:bibliography-data-field="${name}"/>`;
+  const body = field('identifier') + '<text:index-entry-span>: </text:index-entry-span>'
+    + [field('author'), field('title'), field('year')].join('<text:index-entry-span>, </text:index-entry-span>');
+  return (types.length ? types : ['book'])
+    .map(t => `<text:bibliography-entry-template text:bibliography-type="${t}" text:style-name="${style}">${body}</text:bibliography-entry-template>`)
+    .join('');
+}
+
+function tocXml(toc: TocExport, index: number, bibTypes: string[]): string {
   const spec = ODF_INDEX[toc.kind];
   const title = toc.title ?? INDEX_TITLES[toc.kind];
   const name = `${spec.docName}${index + 1}`;
@@ -3818,12 +3881,16 @@ function tocXml(toc: TocExport, index: number): string {
     `</text:${spec.el}-entry-template>`;
   // An alphabetical index is fed by its marks, is single-level, and merges the pages of
   // a term the reader marked more than once — LibreOffice's text:combine-entries.
-  const sourceAttrs = toc.kind === 'alphabetical'
+  const sourceAttrs = toc.kind === 'bibliography'
+    ? ''
+    : toc.kind === 'alphabetical'
     ? ' text:combine-entries="true" text:ignore-case="true"'
     : spec.seq
       ? ` text:use-caption="true" text:caption-sequence-name="${spec.seq}" text:caption-sequence-format="category-and-value"`
       : ` text:outline-level="${toc.maxLevel}" text:use-index-marks="false" text:use-index-source-styles="false"`;
-  const templates = spec.seq
+  const templates = toc.kind === 'bibliography'
+    ? bibEntryTemplates(tocLevelStyle(toc, 1), bibTypes)
+    : spec.seq
     ? entry('', tocLevelStyle(toc, 1))
     : toc.kind === 'alphabetical'
       ? entry(' text:outline-level="1"', tocLevelStyle(toc, 1))
@@ -3843,7 +3910,9 @@ function tocXml(toc: TocExport, index: number): string {
         `</text:index-title>`
       : '') +
     toc.entries
-      .map(e => `<text:p text:style-name="${tocLevelStyle(toc, e.level)}">${escapeXml(e.text).replace(/\n/g, '<text:line-break/>')}<text:tab/>${e.pages?.join(', ') ?? e.page}</text:p>`)
+      .map(e => `<text:p text:style-name="${tocLevelStyle(toc, e.level)}">${escapeXml(e.text).replace(/\n/g, '<text:line-break/>')}`
+        // A bibliography row is the source, nothing else: no tab, no page number.
+        + (toc.kind === 'bibliography' ? '' : `<text:tab/>${e.pages?.join(', ') ?? e.page}`) + '</text:p>')
       .join('') +
     `</text:index-body>`;
   return `<text:${spec.el} text:name="${escapeXml(name)}" text:protected="true">${source}${body}</text:${spec.el}>`;
@@ -3960,7 +4029,7 @@ function applyNotes(odtBytes: Uint8Array, notes: NoteExport[]): Uint8Array {
   return rezipOdt(files);
 }
 
-function applyToc(odtBytes: Uint8Array, tocs: TocExport[], contentWidthCm: number): Uint8Array {
+function applyToc(odtBytes: Uint8Array, tocs: TocExport[], contentWidthCm: number, bibTypes: string[]): Uint8Array {
   if (!tocs.length) return odtBytes;
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
@@ -3973,7 +4042,7 @@ function applyToc(odtBytes: Uint8Array, tocs: TocExport[], contentWidthCm: numbe
     new RegExp(`<text:p\\b[^>]*>${TOC_SENT}(\\d+)${TOC_SENT}</text:p>`, 'g'),
     (_m, idx: string) => {
       const toc = tocs[Number(idx)];
-      return toc ? tocXml(toc, Number(idx)) : '';
+      return toc ? tocXml(toc, Number(idx), bibTypes) : '';
     },
   );
   // Defensive: strip any sentinels not consumed above.
@@ -4039,7 +4108,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const seqFields: SequenceExport[] = [];
   const revisionList = new Map<string, RevisionExport>();
   const indexMarks: IndexEntryExport[] = [];
-  const sentinels = replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList), seqFields), revisionList), indexMarks);
+  const bibMarks: BibExport[] = [];
+  const sentinels = replaceBibEntries(replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList), seqFields), revisionList), indexMarks), bibMarks);
   const raw = markTextEffects(bakeListCharStyles(sentinels, styles));
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
@@ -4239,7 +4309,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withBreaks = applyInlineSentinels(applyTabLeaders(cleaned));
   const withImages = applyImages(withBreaks, images);
   const withDateFields = applyDateTimeFields(withImages, dateFields, language ?? null);
-  const withSequences = applyIndexEntries(applyRevisions(applySequenceFields(withDateFields, seqFields), revisionList), indexMarks);
+  const withSequences = applyBibEntries(applyIndexEntries(applyRevisions(applySequenceFields(withDateFields, seqFields), revisionList), indexMarks), bibMarks);
   const withFormulas = applyFormulas(withSequences, formulas);
   const withTextBoxes = applyTextBoxes(withFormulas, textBoxes);
   const withColumns = applyColumns(withTextBoxes, columns);
@@ -4247,7 +4317,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // After every other content.xml pass: the note's own runs are hoisted into the body,
   // so they must be fully resolved before they are cut out and moved into <text:note>.
   const withNotes = applyNotes(withBookmarks, notes);
-  const withToc = applyToc(withNotes, tocs, contentWidthCm);
+  const withToc = applyToc(withNotes, tocs, contentWidthCm, [...new Set(bibMarks.map(m => m.type))]);
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withParaBoxes = applyParagraphBoxes(withEmptyFontSizes);

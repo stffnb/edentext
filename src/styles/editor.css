@@ -1035,6 +1035,12 @@
   background: var(--color-field-shade, rgba(0, 0, 0, 0.18));
 }
 
+/* A citation is a field: it shows its text on the field shade both word processors use. */
+.tiptap .pm-citation {
+  background: var(--color-field-shade, rgba(0, 0, 0, 0.08));
+  border-radius: 2px;
+}
+
 .tiptap .pm-insertion {
   color: #b5179e;
   text-decoration: underline;

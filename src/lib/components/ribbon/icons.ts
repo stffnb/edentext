@@ -75,6 +75,8 @@ export const STROKED = {
   toc: ['M2 3h6M2 6.5h5M2 10h6M2 13.5h4', 'M11 3h3M10 6.5h4M11 10h3M10 13.5h4'],
   tocLevels: ['M2.5 3.5h11M4.5 7h9M6.5 10.5h7M8.5 14h5'],
   caption: ['M2 2.5h12v7.5H2z', 'M2 13h7'],
+  // A citation as it is set: a short reference between square brackets.
+  citation: ['M6 3.5H4v9h2', 'M10 3.5h2v9h-2', 'M6.5 8h3'],
   watermark: ['M2.5 2h11v12h-11z', 'M4.5 11.5 11.5 4.5'],
   trackChanges: ['M2 4h12M2 8h7', 'M9.5 13.5 14 9l-1.6-1.6L7.9 12z', 'M7.9 12 7.4 14.1l2.1-.6'],
   close: ['M3.5 3.5 12.5 12.5M12.5 3.5 3.5 12.5'],

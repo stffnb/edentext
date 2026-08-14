@@ -2280,3 +2280,83 @@ describe('Leg 25: alphabetical index', () => {
     check('index round-trips as alphabetical', indexKind(back) === 'alphabetical', indexKind(back));
   });
 });
+
+describe('Leg 26: bibliography', () => {
+  const cite = (identifier: string, type: string, fields: Record<string, string>): N =>
+    ({ type: 'bibliographyEntry', attrs: { identifier, type, fields, text: '' } });
+  const KAF = { author: 'Kafka, Franz', title: 'Der Process', year: '1925', publisher: 'Kurt Wolff' };
+  const MEY = { author: 'Meyer, Anna', title: 'Zur Sache', year: '1999', journal: 'Zeitschrift' };
+  const doc: N = { type: 'doc', content: [
+    P(null, T('Ein Satz mit Beleg '), cite('KAF01', 'book', KAF), T('.')),
+    P(null, T('Und noch einer '), cite('MEY99', 'article', MEY), T(', wieder '), cite('KAF01', 'book', KAF), T('.')),
+    { type: 'tableOfContents', attrs: {
+      index: 'bibliography', title: 'Literaturverzeichnis',
+      entries: [
+        { text: 'KAF01: Kafka, Franz, Der Process, 1925', level: 1, page: 1 },
+        { text: 'MEY99: Meyer, Anna, Zur Sache, 1999', level: 1, page: 1 },
+      ],
+    } },
+  ] };
+  const cites = (back: N) => {
+    const out: string[] = [];
+    const walk = (n: N): void => {
+      if (n?.type === 'bibliographyEntry') out.push(`${n.attrs.identifier}/${n.attrs.type}/${n.attrs.fields?.author ?? ''}`);
+      (n?.content ?? []).forEach(walk);
+    };
+    walk(back);
+    return out.join(' ');
+  };
+  const indexKind = (back: N) => (back.content.content ?? [])
+    .find((n: N) => n.type === 'tableOfContents')?.attrs?.index;
+  const WANT = 'KAF01/book/Kafka, Franz MEY99/article/Meyer, Anna KAF01/book/Kafka, Franz';
+
+  it('ODT: bibliography marks plus a text:bibliography, and back', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('mark carries its whole record',
+      xml.includes('<text:bibliography-mark text:identifier="KAF01" text:bibliography-type="book"')
+      && xml.includes('text:author="Kafka, Franz"') && xml.includes('text:year="1925"'),
+      xml.match(/<text:bibliography-mark[^>]*>/g));
+    check('the mark wraps the text the citation shows', xml.includes('>[KAF01]</text:bibliography-mark>'),
+      xml.match(/<text:bibliography-mark[\s\S]{0,200}?<\/text:bibliography-mark>/g));
+    check('index element emitted', xml.includes('<text:bibliography '), xml.match(/<text:bibliography[^>-][^>]*>/g));
+    check('a template per type cited',
+      xml.includes('text:bibliography-type="book" text:style-name="Bibliography_20_1"')
+      && xml.includes('text:bibliography-type="article" text:style-name="Bibliography_20_1"'),
+      xml.match(/<text:bibliography-entry-template[^>]*>/g));
+    check('a row has no tab and no page number',
+      xml.includes('>KAF01: Kafka, Franz, Der Process, 1925</text:p>'),
+      xml.match(/<text:index-body>[\s\S]*?<\/text:index-body>/)?.[0]);
+
+    const back = importOdt(bytes);
+    check('no warnings on own export', back.warnings.length === 0, back.warnings);
+    check('citations round-trip', cites(back.content as N) === WANT, cites(back.content as N));
+    check('index round-trips as a bibliography', indexKind(back) === 'bibliography', indexKind(back));
+  });
+
+  it('DOCX: CITATION fields over a custom-XML source, and back', async () => {
+    const bytes = await buildDocx(doc, margins, 'portrait');
+    const files = unzipSync(bytes);
+    const xml = strFromU8(files['word/document.xml']);
+    check('CITATION emitted', xml.includes('w:instr="CITATION &quot;KAF01&quot;"'), xml.match(/w:instr="[^"]*"/g));
+    check('BIBLIOGRAPHY field emitted', xml.includes('w:instr="BIBLIOGRAPHY"'), xml.match(/w:instr="[^"]*"/g));
+
+    const item = files['customXml/item1.xml'] ? strFromU8(files['customXml/item1.xml']) : '';
+    check('one source per tag, not per citation', (item.match(/<b:Source>/g) ?? []).length === 2,
+      item.match(/<b:Tag>[^<]*<\/b:Tag>/g));
+    check('the author splits into Word’s name list',
+      item.includes('<b:Last>Kafka</b:Last><b:First>Franz</b:First>'), item.slice(0, 600));
+    check('the type maps onto Word’s', item.includes('<b:SourceType>Book</b:SourceType>')
+      && item.includes('<b:SourceType>JournalArticle</b:SourceType>'), item.match(/<b:SourceType>[^<]*</g));
+    check('the part is declared', !!files['customXml/itemProps1.xml']
+      && !!files['customXml/_rels/item1.xml.rels'], Object.keys(files).filter(k => k.startsWith('customXml')));
+    check('the document relates to it',
+      strFromU8(files['word/_rels/document.xml.rels']).includes('../customXml/item1.xml'));
+    check('its properties part has a content type',
+      strFromU8(files['[Content_Types].xml']).includes('/customXml/itemProps1.xml'));
+
+    const back = importDocx(bytes);
+    check('citations round-trip', cites(back.content as N) === WANT, cites(back.content as N));
+    check('index round-trips as a bibliography', indexKind(back) === 'bibliography', indexKind(back));
+  });
+});

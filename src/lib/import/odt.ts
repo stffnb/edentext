@@ -27,6 +27,7 @@ import { clampPageStart, type PageNumbering } from '../storage/pageNumbering';
 import { newCommentId } from '../editor/extensions/comment';
 import { ODF_SEQ_CATEGORY } from '../editor/extensions/caption';
 import type { IndexKind } from '../editor/extensions/tableOfContents';
+import { isBibType } from '../editor/extensions/bibliographyEntry';
 import type { PageDecor } from '../storage/pageDecor';
 import type { LineNumbering } from '../storage/lineNumbering';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
@@ -1042,8 +1043,25 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
 // numbers live after mount, so parse fidelity isn't critical.
 const ODF_INDEX_KIND: Record<string, IndexKind | undefined> = {
   'table-of-content': 'toc', 'illustration-index': 'figures', 'table-index': 'tables',
-  'alphabetical-index': 'alphabetical',
+  'alphabetical-index': 'alphabetical', 'bibliography': 'bibliography',
 };
+
+// A <text:bibliography-mark> → a citation. Its non-empty text: attributes other than the
+// identifier and the type are the source's fields, whatever the file happens to name.
+function bibEntryFromMark(el: Element): Node | null {
+  const identifier = (el.getAttributeNS(NS.text, 'identifier') ?? '').trim();
+  if (!identifier) return null;
+  const fields: Record<string, string> = {};
+  for (const a of Array.from(el.attributes)) {
+    if (a.namespaceURI !== NS.text || a.localName === 'identifier' || a.localName === 'bibliography-type') continue;
+    if (a.value.trim()) fields[a.localName] = a.value;
+  }
+  const type = el.getAttributeNS(NS.text, 'bibliography-type') ?? '';
+  return {
+    type: 'bibliographyEntry',
+    attrs: { identifier, type: isBibType(type) ? type : 'misc', fields, text: el.textContent ?? '' },
+  };
+}
 
 function convertToc(el: Element, ctx: Ctx, indexKind: IndexKind): Node {
   const indexBody = el.getElementsByTagNameNS(NS.text, 'index-body')[0];
@@ -1909,6 +1927,12 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
               continue;
             }
             if (!hfFields && e.localName === 'alphabetical-index-mark-end') continue;
+            // A citation. Every field is an attribute of the mark, so the source record
+            // travels with it; the element's text is what the citation showed.
+            if (!hfFields && e.localName === 'bibliography-mark') {
+              const entry = bibEntryFromMark(e);
+              if (entry) { out.push(entry); continue; }
+            }
             // Other text fields (title, …) store their evaluated value as element
             // text — keep what the source document showed.
             if (e.textContent) pushText(e.textContent, props, linkHref);
