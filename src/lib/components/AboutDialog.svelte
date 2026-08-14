@@ -41,6 +41,8 @@
       </svg>
     </button>
 
+    <img class="icon" src="/favicon.svg" alt="" aria-hidden="true" />
+
     <img class="logo" src="/EdenText.png" alt="EdenText" />
 
     <p class="tagline">{t().about.tagline}</p>
@@ -128,10 +130,15 @@
     color: var(--color-text);
   }
 
+  .icon {
+    height: 40px;
+    width: auto;
+    margin-top: 4px;
+  }
+
   .logo {
     height: 30px;
     width: auto;
-    margin-top: 4px;
   }
 
   .tagline {
