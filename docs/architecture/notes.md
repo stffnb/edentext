@@ -65,8 +65,9 @@ break the file's own rule that a pass must not read its own last answer:
 4. The anchor's page comes from the leaf that holds it plus the breaks above it: every
    break carries the leaf offset it applies from (`naturalY`), so an anchor below a line
    split follows its half of the paragraph onto the next page.
-5. `prevPlacementsKey` includes the note tops, or a frozen layout would leave every
-   footnote on the page it used to belong to.
+5. The placements key includes each note's **doc position and top**: without the top a
+   frozen layout leaves every footnote on the page it used to belong to, without the
+   position an edit above the section leaves the decorations on a stale one.
 
 **Deliberate ceiling:** a note is never split across pages. A page whose notes outgrow its
 content area keeps one line of body text and lets them overflow. Splitting the note, as

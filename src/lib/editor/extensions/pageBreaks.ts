@@ -1618,15 +1618,22 @@ export const PageBreaks = Extension.create({
 
           // Stack each page's notes up from its content end, in anchor order. The top
           // of the block is where the separator is drawn (editor.css).
-          const noteTops = new Map<string, number>();
+          const notePlacements: { from: number; to: number; top: number; opensPage: boolean }[] = [];
           const nextTop = new Map<number, number>();
+          const notePages = new Set<number>();
           for (const note of footnotes) {
             const page = placed.anchorPages.get(note.id);
             if (!page) continue;
             const base = placed.grid.bottomOf(page) - vm.bottom - (reserved.get(page) ?? 0) + sepSpace;
             const top = nextTop.get(page) ?? base;
-            noteTops.set(note.id, top);
             nextTop.set(page, top + note.height);
+            // Resolved here, not at the decoration below: the key must watch the position
+            // too, or an edit above the section leaves the decorations on a stale one.
+            const from = docPosBeforeElement(note.el);
+            const node = from === null ? null : editorView.state.doc.nodeAt(from);
+            if (from === null || !node) continue;
+            notePlacements.push({ from, to: from + node.nodeSize, top, opensPage: !notePages.has(page) });
+            notePages.add(page);
           }
 
           // Skip the decoration rebuild + dispatch when placements are identical to the
@@ -1637,9 +1644,9 @@ export const PageBreaks = Extension.create({
             (collapsedTrailing ? `|c${collapsedTrailing.from}` : '') +
             pageTopBlocks.map((b) => `|t${b.from}`).join('') +
             Array.from(sectionInsets, ([f, s]) => `|i${f}:${s.left}:${s.right}`).join('') +
-            // The notes ride the same guard: a frozen layout whose reservation has moved
-            // on would leave every footnote on the page it used to belong to.
-            Array.from(noteTops, ([id, top]) => `|n${id}:${Math.round(top)}`).join('');
+            // The notes ride the same guard: a frozen layout would leave every footnote
+            // at the position, and on the page, it used to belong to.
+            notePlacements.map((n) => `|n${n.from}:${Math.round(n.top)}`).join('');
           const placementsChanged =
             placementsKey !== lastPlacementsKey && placementsKey !== prevPlacementsKey;
           if (placementsChanged) {
@@ -1707,19 +1714,10 @@ export const PageBreaks = Extension.create({
             }
             // Each footnote to the foot of its anchor's page; the topmost of a page also
             // carries the separator (editor.css draws it above the box).
-            const seenPages = new Set<number>();
-            for (const note of footnotes) {
-              const top = noteTops.get(note.id);
-              if (top === undefined) continue;
-              const from = docPosBeforeElement(note.el);
-              const node = from === null ? null : doc.nodeAt(from);
-              if (from === null || !node) continue;
-              const page = placed.anchorPages.get(note.id) as number;
-              const opensPage = !seenPages.has(page);
-              seenPages.add(page);
-              decoArray.push(Decoration.node(from, from + node.nodeSize, {
-                style: `top:${Math.round(top)}px`,
-                ...(opensPage ? { 'data-note-page-first': 'true' } : {}),
+            for (const n of notePlacements) {
+              decoArray.push(Decoration.node(n.from, n.to, {
+                style: `top:${Math.round(n.top)}px`,
+                ...(n.opensPage ? { 'data-note-page-first': 'true' } : {}),
               }));
             }
 
