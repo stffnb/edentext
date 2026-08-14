@@ -551,6 +551,7 @@ const en = {
     widowControl: 'Widow/orphan control',
     keepNext: 'Keep with next',
     keepLines: 'Keep lines together',
+    hyphenate: 'Automatic hyphenation',
     pageBreakBefore: 'Page break before',
     flowHint: 'These control where the paragraph may be split across pages.',
     tabsButton: 'Tabs…',

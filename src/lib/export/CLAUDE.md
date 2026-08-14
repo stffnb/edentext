@@ -58,4 +58,5 @@ U+E009 (columns), U+E00A (date/time fields), `STY` U+E00D (paragraph styles),
 `CMS`/`CME` U+E018/U+E019 (a comment's range), `SEQ` U+E01A (a caption's number),
 `TCI` U+E01B (a tracked insertion's range), `TCD` U+E01C (where a tracked deletion was),
 `TXBX_NUM` U+E01D (DOCX only: a numbering id a box's list has yet to be given),
-`IXE` U+E01E (an alphabetical-index entry), `BIB` U+E01F (a citation).
+`IXE` U+E01E (an alphabetical-index entry), `BIB` U+E01F (a citation),
+`NOHYP` U+E020 (DOCX only: a paragraph whose w:pPr must gain w:suppressAutoHyphens).

@@ -134,6 +134,12 @@
   margin-bottom: 0;
 }
 
+/* One paragraph opting out of the document's automatic hyphenation (pageBreak.ts).
+   The host carries `hyphens: auto`, so only the paragraph has to say no. */
+.paper .tiptap [data-no-hyphenation] {
+  hyphens: none;
+}
+
 /* A page-anchored frame is placed from its page corner and is out of the flow, so the
    paragraph the importer hoists it into reserves no space (image.ts). !important: several
    other paragraph rules below set their own `position: relative` (line-height shift, the

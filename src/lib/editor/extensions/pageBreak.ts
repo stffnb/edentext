@@ -66,6 +66,16 @@ export const PageBreak = Extension.create({
               return { 'data-keep-lines': 'true' };
             },
           },
+          // LibreOffice's Text Flow ▸ Hyphenation off for this paragraph, Word's
+          // w:suppressAutoHyphens. Only "off" travels: Word cannot turn hyphenation
+          // *on* for one paragraph, so the document switch is the only way in.
+          noHyphenation: {
+            default: null,
+            parseHTML: (element: HTMLElement) =>
+              element.getAttribute('data-no-hyphenation') === 'true' ? true : null,
+            renderHTML: (attributes: Record<string, unknown>) =>
+              attributes.noHyphenation === true ? { 'data-no-hyphenation': 'true' } : {},
+          },
           // First block of a new section (w:sectPr, ODF style:master-page-name): what
           // gives it its own header/footer. Ordinal, so editing can't desync an index.
           sectionBreak: {

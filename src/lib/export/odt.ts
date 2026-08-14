@@ -308,6 +308,7 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (attrs.widowControl === false) return true;
   if (attrs.keepNext === true) return true;
   if (attrs.keepLines === true) return true;
+  if (attrs.noHyphenation === true) return true;
   if (attrs.dir === 'rtl' || attrs.dir === 'ltr') return true;
   for (const s of ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'])
     if (typeof attrs[s] === 'string' && attrs[s] && attrs[s] !== 'none') return true;
@@ -1618,20 +1619,21 @@ function applyEmptyLineFontSizes(odtBytes: Uint8Array): Uint8Array {
 
 // A top-level paragraph's box spec for the PBX sentinel: bg|borderTop|Right|Bottom|Left,
 // each the raw value (canonical border '<W>pt solid #RRGGBB' is a valid fo:border) or '',
-// then a widow flag, the right indent, a keep-with-next flag and the writing mode.
-// '' when it needs none.
+// then a widow flag, the right indent, a keep-with-next flag, the writing mode and a
+// no-hyphenation flag. '' when it needs none.
 function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   const s = paraStyleFromAttrs(attrs);
   const noWidow = attrs?.widowControl === false;
   const keepNext = attrs?.keepNext === true;
   const keepLines = attrs?.keepLines === true;
+  const noHyphen = attrs?.noHyphenation === true;
   // odf-kit has a paragraph option for the left indent but none for the right one.
   const right = typeof attrs?.indentRight === 'number' && attrs.indentRight > 0 ? attrs.indentRight : 0;
   const wm = writingModeOf(s.dir);
-  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right && !keepNext && !keepLines && !wm) return '';
+  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right && !keepNext && !keepLines && !wm && !noHyphen) return '';
   return [s.background, s.borderTop, s.borderRight, s.borderBottom, s.borderLeft]
     .map((v) => v ?? '')
-    .concat(noWidow ? 'w0' : '', right ? `${right}cm` : '', keepNext ? 'k1' : '', keepLines ? 'g1' : '', wm ?? '').join('|');
+    .concat(noWidow ? 'w0' : '', right ? `${right}cm` : '', keepNext ? 'k1' : '', keepLines ? 'g1' : '', wm ?? '', noHyphen ? 'h0' : '').join('|');
 }
 
 function boxSpecToProps(spec: string): string {
@@ -1655,6 +1657,7 @@ function boxSpecToProps(spec: string): string {
 // in ODF). Mirrors cloneStyleWithFontSize but for paragraph-properties.
 function cloneStyleWithParaProps(def: string, newName: string, props: string): string {
   const s = def.replace(/style:name="[^"]*"/, `style:name="${newName}"`);
+  if (!props) return s;
   if (/<style:paragraph-properties\b[^>]*\/>/.test(s))
     return s.replace(/<style:paragraph-properties\b([^>]*?)\s*\/>/, `<style:paragraph-properties$1 ${props}/>`);
   if (/<style:paragraph-properties\b/.test(s))
@@ -1891,10 +1894,13 @@ function applyParagraphBoxes(odtBytes: Uint8Array): Uint8Array {
     nameByKey.set(key, name);
     const props = boxSpecToProps(spec);
     const def = source ? findAutoStyle(content, source) : null;
-    minted.push(def
+    let style = def
       ? cloneStyleWithParaProps(def, name, props)
-      : `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${source || 'Standard'}"><style:paragraph-properties ${props}/></style:style>`,
-    );
+      : `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${source || 'Standard'}">${props ? `<style:paragraph-properties ${props}/>` : ''}</style:style>`;
+    // ODF counts fo:hyphenate as a *text* property — in paragraph-properties LibreOffice
+    // ignores it and drops it on the next save.
+    if (spec.split('|')[10] === 'h0') style = upsertProps(style, 'text', { 'fo:hyphenate': 'false' });
+    minted.push(style);
     return name;
   };
 

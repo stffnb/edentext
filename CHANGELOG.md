@@ -105,6 +105,7 @@
 **Editing aids**
 - Word/LibreOffice keyboard shortcuts throughout: Ctrl+L/E/R/J alignment, Ctrl+Alt+1–5 headings and Ctrl+Shift+N default style, Ctrl+1/2/5 line spacing, Ctrl+Shift+P / Ctrl+Shift+B super/subscript, Ctrl+Shift+. / Ctrl+Shift+, grow/shrink font, Ctrl+Space clear formatting, Ctrl+Shift+Space non-breaking space, Ctrl+Shift+- soft hyphen, Alt+Shift+D / Alt+Shift+T date & time field, Ctrl+O open, F3 / Shift+F3 find next/previous, Ctrl+F10 formatting marks — alongside the existing Ctrl+B/I/U, Ctrl+M, Ctrl+K, Ctrl+Enter, Ctrl+F/H, Ctrl+S/P and Tab/Shift+Tab. All bindings live in one table, so tooltips stay in sync and they can be remapped later
 - Undo / Redo with a labelled history dropdown
+- A paragraph of its own can opt out of the document's automatic hyphenation (Format ▸ Paragraph ▸ Text Flow, as LibreOffice has it). Only "off" travels — Word cannot turn hyphenation *on* for one paragraph — and only under a document that hyphenates: below that switch it says what is already true. Round-trips as ODF `fo:hyphenate="false"` in the paragraph's **text** properties and Word's `w:suppressAutoHyphens`
 - Search & Replace (Ctrl+F / Ctrl+H): live match highlighting, match count, next / previous, match-case and whole-word options, replace current / replace all
   A `.*` toggle searches by regular expression, and the replacement expands `$1`…`$9` / `$&` from the match's captures (LibreOffice's syntax; Word has no equivalent)
 - Right-click context menu for text: cut / copy / paste / paste without formatting, link insert-edit-remove, clear formatting — with the spelling suggestions merged in on top. Shift+right-click keeps the browser's own menu; images, text boxes and header/footer stay with their existing UI
@@ -149,7 +150,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 
 **Missing while writing**
 - One colour for every tracked change, where both word processors give each author their own — and no reviewing pane listing the revisions the way the comments pane lists comments
-- Hyphenation beyond the document switch: a per-paragraph "don't hyphenate", and the zone / ladder count (`fo:hyphenation-ladder-count`, `w:hyphenationZone`) — CSS exposes neither
+- Hyphenation's zone and ladder count (`fo:hyphenation-ladder-count`, `w:hyphenationZone`) — CSS exposes neither
 - Restarting the page numbering **per section** (only the document's own format and start value exist)
 - Heading levels 7–10 (Word and LibreOffice go that far; HTML stops at `h6`)
 - A bibliography's citation style: the list is set the one way ("key: author, title, year"), where both word processors offer APA, MLA, Chicago and the rest, and numbered citations (`[1]`) instead of the source's short name

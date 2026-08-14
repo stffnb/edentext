@@ -41,6 +41,8 @@
   let widowControl = $derived(read<boolean | null>('widowControl', null) !== false);
   let keepNext = $derived(read<boolean | null>('keepNext', null) === true);
   let keepLines = $derived(read<boolean | null>('keepLines', null) === true);
+  // LibreOffice's Hyphenation checkbox: on unless this paragraph opted out.
+  let hyphenate = $derived(read<boolean | null>('noHyphenation', null) !== true);
 
   function read<T>(attr: string, fallback: T): T | '' {
     if (tick < 0 || !editor) return fallback;
@@ -68,6 +70,7 @@
     { attr: 'widowControl', on: () => widowControl, label: () => t().paragraphDialog.widowControl, set: (v) => setAttr('widowControl', v ? null : false) },
     { attr: 'keepNext', on: () => keepNext, label: () => t().paragraphDialog.keepNext, set: (v) => setAttr('keepNext', v || null) },
     { attr: 'keepLines', on: () => keepLines, label: () => t().paragraphDialog.keepLines, set: (v) => setAttr('keepLines', v || null) },
+    { attr: 'noHyphenation', on: () => hyphenate, label: () => t().paragraphDialog.hyphenate, set: (v) => setAttr('noHyphenation', v ? null : true) },
     { attr: 'breakBefore', on: () => breakBefore, label: () => t().paragraphDialog.pageBreakBefore, set: (v) => setAttr('breakBefore', v ? 'page' : null) },
   ];
 </script>

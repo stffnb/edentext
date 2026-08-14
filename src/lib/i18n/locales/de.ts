@@ -547,6 +547,7 @@ const de: Messages = {
     widowControl: 'Absatzkontrolle',
     keepNext: 'Nicht vom nächsten Absatz trennen',
     keepLines: 'Zeilen nicht trennen',
+    hyphenate: 'Automatische Silbentrennung',
     pageBreakBefore: 'Seitenumbruch oberhalb',
     flowHint: 'Diese Optionen bestimmen, wo der Absatz über Seiten getrennt werden darf.',
     tabsButton: 'Tabstopps…',

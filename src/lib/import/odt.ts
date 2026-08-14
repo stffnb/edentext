@@ -1480,6 +1480,9 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // paragraph carries it — otherwise every heading would accrete the producer's flag.
   if (!isHeading && paraProps['fo:keep-with-next'] === 'always') attrs.keepNext = true;
   if (!isHeading && paraProps['fo:keep-together'] === 'always') attrs.keepLines = true;
+  // "Don't hyphenate this paragraph" — only meaningful where the document hyphenates at
+  // all; below that switch it is the default and no formatting.
+  if (baseTextProps['fo:hyphenate'] === 'false' && resolver.documentHyphenation()) attrs.noHyphenation = true;
   // style:writing-mode — the block's own base direction. "page" inherits, and the mode
   // the page already has is no formatting, so only a block that differs carries it.
   const wm = paraProps['style:writing-mode'];

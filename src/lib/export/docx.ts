@@ -158,6 +158,9 @@ const TBX = '';
 // Wraps the index of a numbering definition minted for a box's list; the ids only
 // become known once the packed numbering.xml is in hand.
 const TXBX_NUM = '';
+// Marks a paragraph whose w:pPr must gain <w:suppressAutoHyphens/> — the docx package
+// has no option for it, so a post-pack pass writes it and drops this run.
+const NOHYP = '';
 
 const WP_NS = 'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"';
 const A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main';
@@ -1256,6 +1259,35 @@ function applyBidiDocx(bytes: Uint8Array): Uint8Array {
   return zipSync(out);
 }
 
+// The w:pPr children that follow w:suppressAutoHyphens in CT_PPrBase — Word's schema is
+// a sequence, so the flag goes in before the first of them.
+const AFTER_SUPPRESS_HYPHENS = /<w:(kinsoku|wordWrap|overflowPunct|topLinePunct|autoSpace|bidi|adjustRightInd|snapToGrid|spacing|ind|contextualSpacing|mirrorIndents|suppressOverlap|jc|textDirection|textAlignment|textboxTightWrap|outlineLvl|divId|cnfStyle|rPr|sectPr)\b/;
+
+// Post-pack pass: "don't hyphenate this paragraph" is <w:suppressAutoHyphens/> in w:pPr,
+// which the docx package does not expose. The paragraph carries the NOHYP run instead;
+// this drops that run and writes the flag.
+function applyNoHyphensDocx(bytes: Uint8Array): Uint8Array {
+  const files = unzipSync(bytes);
+  const docBytes = files['word/document.xml'];
+  if (!docBytes) return bytes;
+  let xml = strFromU8(docBytes);
+  if (!xml.includes(NOHYP)) return bytes;
+  xml = xml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (para) => {
+    if (!para.includes(NOHYP)) return para;
+    const p = para.replace(new RegExp(`<w:r>(?:(?!</w:r>)[\\s\\S])*${NOHYP}(?:(?!</w:r>)[\\s\\S])*</w:r>`, 'g'), '');
+    const pPr = /<w:pPr>[\s\S]*?<\/w:pPr>/.exec(p);
+    if (!pPr) return p.replace(/^(<w:p\b[^>]*>)/, '$1<w:pPr><w:suppressAutoHyphens/></w:pPr>');
+    const patched = AFTER_SUPPRESS_HYPHENS.test(pPr[0])
+      ? pPr[0].replace(AFTER_SUPPRESS_HYPHENS, '<w:suppressAutoHyphens/>$&')
+      : pPr[0].replace('</w:pPr>', '<w:suppressAutoHyphens/></w:pPr>');
+    return p.replace(pPr[0], patched);
+  });
+  files['word/document.xml'] = strToU8(xml);
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
 // ---- paragraphs ------------------------------------------------------------
 function alignOf(attrs: TiptapNode['attrs']): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
   switch (attrs?.textAlign) {
@@ -1353,7 +1385,9 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     shading: paraShadingOf(attrs),
     border: paraBordersOf(attrs),
     run: markSize || markFont ? { size: markSize, font: markFont } : undefined,
-    children: inlineToRuns(node.content, opts.force),
+    children: attrs.noHyphenation === true
+      ? [new TextRun(NOHYP), ...inlineToRuns(node.content, opts.force)]
+      : inlineToRuns(node.content, opts.force),
   });
 }
 
@@ -1963,7 +1997,7 @@ export async function buildDocx(
   const cited = applyBibliographyDocx(packed, docSources);
   const withNotes = docNoteIds.size ? applyNotePrDocx(cited, notesSettings) : cited;
   const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withNotes) : withNotes;
-  const bidi = rtl ? applyBidiDocx(mirrored) : mirrored;
+  const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);
   if (isEmptyPageDecor(decor)) return bidi;
   const dims = pageDimsCm(pageFormat, orientation);
   const pt = (cm: number) => (cm / 2.54) * 72;
