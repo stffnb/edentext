@@ -758,6 +758,7 @@ const en = {
     citation: 'Citation',
     tocOptions: 'Levels',
     tocMaxLevel: 'Deepest level shown',
+    noteOptions: 'Options',
     autoCorrect: 'AutoCorrect',
     hyphenation: 'Hyphenation',
     repeatHeaderRow: 'Repeat header',

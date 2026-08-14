@@ -119,6 +119,14 @@ export const STROKED = {
   link: ['M6.6 9.4 9.4 6.6', 'M7.4 4.4 9 2.8a2.7 2.7 0 0 1 3.8 3.8l-1.6 1.6', 'M8.6 11.6 7 13.2a2.7 2.7 0 0 1-3.8-3.8l1.6-1.6'],
   bookmark: ['M4 2.25h8v11.5L8 10.5l-4 3.25z'],
   crossRef: ['M2.5 3.5h6M2.5 6.5h4M2.5 9.5h5', 'M8.5 12.5h5M11 10l2.5 2.5L11 15'],
+  // A cogwheel: rim, hub and eight teeth on the rim. Without the rim the teeth alone
+  // read as a sun.
+  settings: [
+    'M8 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z',
+    'M8 9.9a1.9 1.9 0 1 0 0-3.8 1.9 1.9 0 0 0 0 3.8z',
+    'M8 1.5V3M8 13v1.5M1.5 8H3M13 8h1.5',
+    'M11.55 4.45 12.6 3.4M3.4 12.6l1.05-1.05M4.45 4.45 3.4 3.4M12.6 12.6l-1.05-1.05',
+  ],
   // A page with its text and, under the short separator rule, the note at its foot.
   footnote: ['M3 1.75h10v12.5H3z', 'M5.2 4.7h5.6M5.2 7h5.6', 'M5.2 10.5h3', 'M5.2 12.4h5.6'],
   // The notes at the end instead: a stack whose last page carries the list. The page

@@ -754,6 +754,7 @@ const de: Messages = {
     thisSection: 'Dieser Abschnitt',
     likeDocument: 'Wie das Dokument',
     citation: 'Literaturangabe',
+    noteOptions: 'Optionen',
     autoCorrect: 'AutoKorrektur',
     hyphenation: 'Silbentrennung',
     repeatHeaderRow: 'Kopfzeile wiederholen',

@@ -122,8 +122,8 @@
 <CaptionDialog bind:open={captionOpen} {editor} />
 <BibliographyDialog bind:open={citationOpen} {editor} />
 
-<!-- The options sit on the group's ↘ launcher, where both word processors open their
-     footnote dialog — a fourth button beside two insert commands says nothing. -->
+<!-- The options ride the group's ↘ launcher as they do in both word processors, and a
+     named button as well: the corner arrow alone is easy to miss. -->
 <RibbonGroup label={t().ribbon.groups.notes} onLauncher={onNoteOptions} launcherTitle={t().notesDialog.title}>
   <RibbonButton
     variant="big"
@@ -140,6 +140,14 @@
     title={hfActive ? t().toolbarExpanded.noteNotInHf : `${t().toolbarExpanded.insertEndnote} (${shortcutHint('endnote')})`}
     disabled={!editor || !!hfActive}
     onclick={() => editor?.chain().focus().insertNote('endnote').run()}
+  />
+  <RibbonButton
+    variant="big"
+    icon="settings"
+    label={t().ribbon.noteOptions}
+    title={t().notesDialog.title}
+    disabled={!onNoteOptions}
+    onclick={() => onNoteOptions?.()}
   />
 </RibbonGroup>
 
