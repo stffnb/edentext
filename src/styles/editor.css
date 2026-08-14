@@ -406,7 +406,7 @@
   display: block;
 }
 .paper .tiptap .image-node.image-selected .image-rotor img {
-  outline: 2px solid var(--accent, #3b82f6);
+  outline: 2px solid var(--color-primary);
   outline-offset: 1px;
 }
 .paper .tiptap .image-resize-handle {
@@ -414,7 +414,7 @@
   position: absolute;
   width: 10px;
   height: 10px;
-  background: var(--accent, #3b82f6);
+  background: var(--color-primary);
   border: 1px solid #fff;
   border-radius: 50%;
   z-index: 30;
@@ -446,8 +446,8 @@
   height: 16px;
   margin-left: -8px;
   background: #fff center / 11px 11px no-repeat
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-2.6-6.4'/%3E%3Cpath d='M21 4v5h-5'/%3E%3C/svg%3E");
-  border: 1px solid var(--accent, #3b82f6);
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2352748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-2.6-6.4'/%3E%3Cpath d='M21 4v5h-5'/%3E%3C/svg%3E");
+  border: 1px solid var(--color-primary);
   border-radius: 50%;
   cursor: grab;
   z-index: 31;
@@ -460,7 +460,7 @@
   width: 1px;
   height: 13px;
   margin-left: -0.5px;
-  background: var(--accent, #3b82f6);
+  background: var(--color-primary);
 }
 /* Live size readout while resizing. */
 .paper .tiptap .image-size-badge {
@@ -506,7 +506,7 @@
 }
 .paper .tiptap .textbox-node.textbox-selected .textbox-rotor,
 .paper .tiptap .textbox-node.textbox-active .textbox-rotor {
-  outline: 2px solid var(--accent, #3b82f6);
+  outline: 2px solid var(--color-primary);
   outline-offset: 1px;
 }
 /* Grab affordance on the frame edge (outside the text area). */
