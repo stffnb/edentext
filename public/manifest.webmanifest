@@ -15,5 +15,16 @@
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": {
+        "application/vnd.oasis.opendocument.text": [".odt"],
+        "application/vnd.oasis.opendocument.text-template": [".ott"],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.template": [".dotx"]
+      }
+    }
   ]
 }

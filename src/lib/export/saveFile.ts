@@ -21,10 +21,10 @@ const TEMPLATE_PICKER_TYPES = [
   { description: 'Word Template', accept: { [DOTX_MIME]: ['.dotx'] } },
 ];
 
-// The open picker also accepts .ott templates (read-only; saving stays .odt-only).
+// The open picker also accepts templates (read-only; saving stays .odt-only).
 const OPEN_PICKER_TYPES = [
   { description: 'OpenDocument Text', accept: { [ODT_MIME]: ['.odt'], [OTT_MIME]: ['.ott'] } },
-  ...DOCX_PICKER_TYPES,
+  { description: 'Word Document', accept: { [DOCX_MIME]: ['.docx'], [DOTX_MIME]: ['.dotx'] } },
 ];
 
 // showSaveFilePicker/showOpenFilePicker are not in lib.dom yet; reach them via casts.

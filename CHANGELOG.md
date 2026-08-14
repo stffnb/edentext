@@ -134,6 +134,7 @@
 - Captions (References ▸ Caption, LibreOffice's Insert ▸ Caption): a caption paragraph in the `Caption` style with a running number that counts itself — one counter per category (figure / table), in document order, renumbering as the document is edited. Round-trips as an ODF `<text:sequence>` (with LibreOffice's own `ooow:Illustration+1` formula) and a Word `SEQ Figure \* ARABIC` field
 - Word (.docx) export and import — round-trips the editor's formatting (text, fonts, lists, tables, images, headers/footers, page geometry) and opens real Word documents
 - Document properties (title, subject, author, keywords, comments) in the File menu — LibreOffice's File ▸ Properties / Word's File ▸ Info. Round-trips through ODF `meta.xml` (one `meta:keyword` per keyword) and DOCX `docProps/core.xml`
+- File handlers: the installed app registers for `.odt` / `.ott` / `.docx` / `.dotx`, so the OS offers it for a double-clicked document and hands the file over through `launchQueue` — with its handle, so the first Save writes that same file. Word templates (`.dotx`) open like `.ott` does: read for their content, never bound as the file to save over
 - Installable and offline (`public/manifest.webmanifest`, `public/sw.js`): nothing here talks to a server at runtime, so once the app's files are cached it is the whole working editor with the network gone — spell checker, fonts and all. The service worker reads the build's own hashed asset names out of the entry document, which precaches the shell with no build step; what the app loads lazily (a dictionary, the speller's WASM) is kept as it is asked for, so it joins from the second visit on. The document itself is network-first, or a cached one would keep naming the assets of the build it was cached with. Verified in a headless Chromium with the network cut: the app reloads, styles and all, and the manifest validates clean
 - PDF export — Raster (pixel-exact copy of the editor with a selectable text layer) and Vector (crisp, fonts embedded, via the browser print dialog)
 - Print (printer button / Ctrl+P) — opens the browser print dialog with a pixel-exact raster of the document (tables, headers/footers and page breaks intact)
@@ -162,7 +163,6 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 - Vertical writing modes (ODF `tb-rl`) and Asian typography (ruby)
 - Password-protected ODT/DOCX; digital signatures
 - Split view: two views of one document, scrolled independently
-- File handlers, so the OS can offer the installed app for a double-clicked `.odt`/`.docx` (Chrome's `file_handlers` + `launchQueue`)
 - A committed corpus of documents we author ourselves, so CI can test against real files
   (`.gitignore` excludes all of `tests/render-parity/fixtures/` today)
 

@@ -64,6 +64,11 @@
   import { registerEmbeddedFonts, clearEmbeddedFonts } from './lib/fonts/embeddedFonts';
   import { saveEmbeddedFonts, loadEmbeddedFonts, clearEmbeddedFontStore } from './lib/storage/embeddedFontStore';
 
+  // launchQueue is not in lib.dom yet; reach it through this shape.
+  type WithLaunchQueue = Window & {
+    launchQueue?: { setConsumer: (c: (p: { files: FileSystemFileHandle[] }) => void) => void };
+  };
+
   let editor: Editor | null = $state(null);
   let tick: number = $state(0);
   let currentPage: number = $state(1);
@@ -552,10 +557,11 @@
   async function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string) {
     if (!editor) return;
     try {
-      const isDocx = sourceName?.toLowerCase().endsWith('.docx');
-      // An .ott is a template: load its content but don't bind the handle, so the
-      // first Save prompts for a new .odt instead of overwriting the template.
-      const isTemplate = sourceName?.toLowerCase().endsWith('.ott');
+      const name = sourceName?.toLowerCase() ?? '';
+      const isDocx = name.endsWith('.docx') || name.endsWith('.dotx');
+      // A template is loaded for its content but never bound as the handle, so the
+      // first Save prompts for a new document instead of overwriting the template.
+      const isTemplate = name.endsWith('.ott') || name.endsWith('.dotx');
       // Pre-decode any images in a format the browser can't render (TIFF, …) to PNG.
       // Lazy: the decoder loads only when such an image is present, else this is a no-op.
       const converted = await convertUnsupportedImages(bytes);
@@ -575,7 +581,7 @@
       documentEpoch++;
       resetHistory();
       // Adopt the opened file's name as the document name (drives the save filename).
-      if (sourceName) documentName = stripOdtExtension(sourceName).replace(/\.docx$/i, '');
+      if (sourceName) documentName = stripOdtExtension(sourceName).replace(/\.do[ct]x$/i, '');
       // Adopt the document's page geometry; the $effects persist it and
       // Editor.svelte re-paginates.
       if (result.margins) pageMargins = result.margins;
@@ -654,6 +660,20 @@
     const open = () => addComment();
     window.addEventListener(OPEN_COMMENT_EVENT, open);
     return () => window.removeEventListener(OPEN_COMMENT_EVENT, open);
+  });
+
+  // A document double-clicked in the OS reaches the installed app through launchQueue
+  // (the manifest's `file_handlers`). It fires once at startup, so it waits for the
+  // editor; the handle comes with write permission, so a later Save writes that file.
+  $effect(() => {
+    const queue = (window as WithLaunchQueue).launchQueue;
+    if (!editor || !queue) return;
+    queue.setConsumer(async ({ files }) => {
+      const handle = files?.[0];
+      if (!handle) return;
+      const file = await handle.getFile();
+      await applyImport(new Uint8Array(await file.arrayBuffer()), handle, file.name);
+    });
   });
 
   async function handleOpen() {
@@ -1287,7 +1307,7 @@
   <input
     bind:this={fileInput}
     type="file"
-    accept=".odt,.ott,.docx,application/vnd.oasis.opendocument.text,application/vnd.oasis.opendocument.text-template,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    accept=".odt,.ott,.docx,.dotx,application/vnd.oasis.opendocument.text,application/vnd.oasis.opendocument.text-template,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template"
     class="file-input"
     onchange={handleImportFile}
   />
