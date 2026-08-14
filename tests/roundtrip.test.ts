@@ -2505,3 +2505,40 @@ describe('Leg 28: a cell formula (ODT + DOCX)', () => {
     check('it comes back as the stored formula', formulaOf(res) === 'SUM(ABOVE)', formulaOf(res));
   });
 });
+
+// A picture and its caption in one frame — LibreOffice's own arrangement for a
+// captioned figure, and what a caption that stays with its picture would build.
+describe('Leg 30: a figure frame (picture + caption in one box)', () => {
+  const SEQ: N = { type: 'sequenceField', attrs: { category: 'figure', format: '1', number: 1 } };
+  const frame = TBX(
+    { width: 240, height: 190, wrap: 'topBottom', wrapAlign: 'center', fillColor: null, strokeColor: null },
+    P(null, IMGN(240, 160, 'pic')),
+    P({ styleName: 'Caption' }, T('Figure '), SEQ, T(': framed')),
+  );
+  const doc: N = { type: 'doc', content: [P(null, T('body')), frame] };
+  const boxOf = (res: N): N => (res.content.content ?? []).find((n: N) => n.type === 'textBox');
+  const shapeOf = (box: N): string =>
+    (box?.content ?? []).map((b: N) => (b.content ?? []).map((c: N) => c.type).join('+')).join('|');
+
+  it('ODT: the picture rides inside the box, caption and counter with it', async () => {
+    const bytes = await buildOdt(doc, margins);
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    const box = xml.match(/<draw:text-box[\s\S]*?<\/draw:text-box>/)?.[0] ?? '';
+    check('the picture is inside the text box', box.includes('<draw:image'), box.slice(0, 200));
+    check('so is the counter', box.includes('text:name="Illustration"'), box.slice(0, 400));
+    const back = boxOf(importOdt(bytes));
+    check('box comes back whole', shapeOf(back) === 'image|text+sequenceField+text', shapeOf(back));
+  });
+
+  it('DOCX: the drawing inside the box does not swallow it', async () => {
+    const bytes = await buildDocx(doc, margins);
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    const box = xml.match(/<w:txbxContent>[\s\S]*?<\/w:txbxContent>/)?.[0] ?? '';
+    check('the picture is inside the box', box.includes('<w:drawing>'), box.slice(0, 200));
+    check('the counter stays a field', box.includes('SEQ Figure'), box.slice(0, 600));
+    // A nested drawing's own wp:inline used to be read as the outer one's root, which
+    // dropped the box and every word of the caption.
+    const back = boxOf(importDocx(bytes));
+    check('box comes back whole', shapeOf(back) === 'image|text+sequenceField+text', shapeOf(back));
+  });
+});

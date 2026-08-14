@@ -413,12 +413,17 @@ const DOCX_SEQ_SWITCH: Record<NoteNumFormat, string> = {
 
 // A caption's running number: a SEQ field whose cached result is the rank the editor
 // resolved, so Word and LibreOffice show it before anyone updates fields.
-function sequenceField(node: TiptapNode): SimpleField {
+function sequenceFieldParts(node: TiptapNode): { instr: string; text: string } {
   const a = node.attrs ?? {};
   const format = (typeof a.format === 'string' && a.format ? a.format : '1') as NoteNumFormat;
   const number = typeof a.number === 'number' && a.number > 0 ? a.number : 1;
   const name = DOCX_SEQ_NAME[seqCategoryOf(a.category as string)];
-  return new SimpleField(`SEQ ${name} \\* ${DOCX_SEQ_SWITCH[format] ?? 'ARABIC'}`, formatOrdinal(number, format));
+  return { instr: `SEQ ${name} \\* ${DOCX_SEQ_SWITCH[format] ?? 'ARABIC'}`, text: formatOrdinal(number, format) };
+}
+
+function sequenceField(node: TiptapNode): SimpleField {
+  const { instr, text } = sequenceFieldParts(node);
+  return new SimpleField(instr, text);
 }
 
 // A cross-reference: a REF/PAGEREF field with the resolved text as its cached result,
@@ -784,6 +789,11 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
     if (child.type === 'image') {
       const drawing = txbxImageXml(child, parts);
       if (drawing) runs += `<w:r>${drawing}</w:r>`;
+    } else if (child.type === 'sequenceField') {
+      // A caption inside a frame keeps its running number as a field, like any other.
+      const { instr, text } = sequenceFieldParts(child);
+      runs += `<w:fldSimple w:instr="${escapeXml(instr)}"><w:r>` +
+        `${txbxRunPropsXml(child.marks)}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:fldSimple>`;
     } else if (child.type === 'text' && child.text) {
       const rPr = txbxRunPropsXml(child.marks);
       let inner = '';

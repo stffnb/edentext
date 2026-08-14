@@ -1655,9 +1655,14 @@ function drawingIsFloating(el: Element): boolean {
 }
 
 function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
-  const anchor = drawing.getElementsByTagNameNS(WP, 'anchor')[0];
-  const root = drawing.getElementsByTagNameNS(WP, 'inline')[0] ?? anchor;
+  // The drawing's own root, as a direct child: a text box holding a picture nests a
+  // second drawing, and a subtree search finds *its* wp:inline first — the box, and
+  // the caption in it, are then read as the bare picture.
+  const root = Array.from(drawing.children).find(
+    (c) => c.namespaceURI === WP && (c.localName === 'inline' || c.localName === 'anchor'),
+  );
   if (!root) return null;
+  const anchor = root.localName === 'anchor' ? root : undefined;
   // A wordprocessingShape (text box / preset shape) has no blip — convert it first.
   const wsp = root.getElementsByTagNameNS(WPS, 'wsp')[0];
   if (wsp) return convertWpsShape(wsp, root, !!anchor, ctx);
