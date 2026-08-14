@@ -1,22 +1,17 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { t } from '../i18n/i18n.svelte';
   import { colName } from '../utils/tableFormula';
   import type { TableSortOptions } from '../editor/extensions/tableSort';
   // LibreOffice's Table ▸ Sort / Word's Layout ▸ Sort, on the one key both put
-  // first. The parent owns `open` and holds the cell selection the sort runs against.
+  // first. The parent mounts it and holds the cell selection the sort runs against.
   let {
-    open,
-    top,
-    left,
     columns,
     column = 0,
     headerRow = false,
     onApply,
     onClose,
   }: {
-    open: boolean;
-    top: number;
-    left: number;
     columns: number;
     /** The cursor's column, which is what the dialog offers first. */
     column?: number;
@@ -25,18 +20,14 @@
     onClose: () => void;
   } = $props();
 
-  let pick = $state(0);
-  let header = $state(false);
+  // Seeded from the cell the dialog opened on; from there the fields are the user's.
+  let pick = $state(untrack(() => Math.min(Math.max(0, column), Math.max(0, columns - 1))));
+  let header = $state(untrack(() => headerRow));
   let descending = $state(false);
   let firstField = $state<HTMLSelectElement | null>(null);
 
   $effect(() => {
-    if (open) {
-      pick = Math.min(Math.max(0, column), Math.max(0, columns - 1));
-      header = headerRow;
-      descending = false;
-      queueMicrotask(() => firstField?.focus());
-    }
+    queueMicrotask(() => firstField?.focus());
   });
 
   function onKeydown(e: KeyboardEvent) {
@@ -45,51 +36,38 @@
   }
 </script>
 
-{#if open}
-  <div
-    class="sort-dialog"
-    style="top: {top}px; left: {left}px;"
-    role="dialog"
-    tabindex="-1"
-    aria-label={t().table.sortDialogLabel}
-    onkeydown={onKeydown}
-  >
-    <label class="sort-row">
-      <span>{t().table.sortBy}</span>
-      <select bind:this={firstField} bind:value={pick}>
-        {#each Array.from({ length: columns }, (_, i) => i) as i}
-          <option value={i}>{colName(i)}</option>
-        {/each}
-      </select>
-    </label>
-    <div class="sort-dirs" role="radiogroup" aria-label={t().table.sortDialogLabel}>
-      {#each [{ v: false, label: t().table.sortAscending }, { v: true, label: t().table.sortDescending }] as d}
-        <label class="sort-radio">
-          <input type="radio" value={d.v} bind:group={descending} />
-          <span>{d.label}</span>
-        </label>
+<div class="sort-dialog" role="dialog" tabindex="-1" aria-label={t().table.sortDialogLabel} onkeydown={onKeydown}>
+  <label class="sort-row">
+    <span>{t().table.sortBy}</span>
+    <select bind:this={firstField} bind:value={pick}>
+      {#each Array.from({ length: columns }, (_, i) => i) as i}
+        <option value={i}>{colName(i)}</option>
       {/each}
-    </div>
-    <label class="sort-radio">
-      <input type="checkbox" bind:checked={header} />
-      <span>{t().table.sortHeaderRow}</span>
-    </label>
-    <div class="sort-actions">
-      <span class="sort-spacer"></span>
-      <button class="sort-cancel" onclick={onClose}>{t().common.cancel}</button>
-      <button class="sort-apply" onclick={() => onApply({ column: pick, descending, headerRow: header })}>
-        {t().common.ok}
-      </button>
-    </div>
+    </select>
+  </label>
+  <div class="sort-dirs" role="radiogroup" aria-label={t().table.sortDialogLabel}>
+    {#each [{ v: false, label: t().table.sortAscending }, { v: true, label: t().table.sortDescending }] as d}
+      <label class="sort-radio">
+        <input type="radio" value={d.v} bind:group={descending} />
+        <span>{d.label}</span>
+      </label>
+    {/each}
   </div>
-{/if}
+  <label class="sort-radio">
+    <input type="checkbox" bind:checked={header} />
+    <span>{t().table.sortHeaderRow}</span>
+  </label>
+  <div class="sort-actions">
+    <span class="sort-spacer"></span>
+    <button class="sort-cancel" onclick={onClose}>{t().common.cancel}</button>
+    <button class="sort-apply" onclick={() => onApply({ column: pick, descending, headerRow: header })}>
+      {t().common.ok}
+    </button>
+  </div>
+</div>
 
 <style>
   .sort-dialog {
-    position: absolute;
-    /* Sit just above the table's top-left corner, like TableToolbar. */
-    transform: translateY(calc(-100% - 6px));
-    z-index: 300;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;

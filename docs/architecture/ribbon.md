@@ -70,7 +70,9 @@ at every height. A flex row cannot reserve width in part of its height, so it mo
 - **A menu must leave the flow.** `.ribbon-body` clips its own overflow, so the `anchored` action
   (`ribbon/menu.svelte.ts`) switches a panel to `position: fixed` and pins it under its wrapper,
   clamped inside the window. Panels drop below the **whole band**, not below their own button —
-  inside it they would cover the controls and group labels underneath.
+  inside it they would cover the controls and group labels underneath. A panel has to be out of
+  the flow (`position: absolute`) *before* it mounts: in it, it stretches the wrapper `anchored`
+  measures and lands its own height too low.
 - **A reused picker anchors its panel itself**, and no prop says when it opened. `pinPanels`,
   one action on the band, watches for a mounted absolutely-positioned node and pins that; the
   ColorPicker places its own and only needs the band-aware top.

@@ -497,6 +497,16 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   $effect(() => {
     if (!tableUi.visible && tableDialog) tableDialog = null;
   });
+  // A dialog hangs above the table like the toolbar, so a table near the top of the
+  // scroller puts it outside the scroll area, where the overflow clips it. The
+  // container's padding is what the toolbar island overlays, so clear that too.
+  let tableDialogH = $state(0);
+  let tableDialogTop = $derived.by(() => {
+    const c = editorContainer;
+    if (!c || !tableDialogH) return tableUi.top;
+    const pad = parseFloat(getComputedStyle(c).paddingTop) || 0;
+    return Math.max(tableUi.top, c.scrollTop + pad + tableDialogH + 6);
+  });
 
   // The DOM element of the table containing the current selection, or null.
   // nodeDOM(before(table)) returns the wrapper div the table node view renders.
@@ -1109,42 +1119,39 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       onDialog={(which) => (tableDialog = which)}
     />
   {/if}
-  {#if tableUi.visible}
-    <TableSplitDialog
-      open={tableDialog === 'split'}
-      top={tableUi.top}
-      left={tableUi.left}
-      onApply={(cols, rows) => {
-        editor?.chain().focus().splitCellInto(cols, rows).run();
-        tableDialog = null;
-      }}
-      onClose={() => (tableDialog = null)}
-    />
-    <TableSortDialog
-      open={tableDialog === 'sort'}
-      top={tableUi.top}
-      left={tableUi.left}
-      columns={tableGrid.columns}
-      column={tableGrid.column}
-      headerRow={tableGrid.headerRow}
-      onApply={(options) => {
-        editor?.chain().focus().sortTable(options).run();
-        tableDialog = null;
-      }}
-      onClose={() => (tableDialog = null)}
-    />
-    <TableFormulaDialog
-      open={tableDialog === 'formula'}
-      top={tableUi.top}
-      left={tableUi.left}
-      cell={tableGrid.cell}
-      initial={tableGrid.formula}
-      onApply={(formula) => {
-        editor?.chain().focus().setCellFormula(formula).run();
-        tableDialog = null;
-      }}
-      onClose={() => (tableDialog = null)}
-    />
+  {#if tableUi.visible && tableDialog}
+    <div class="table-dialog" bind:clientHeight={tableDialogH} style="top: {tableDialogTop}px; left: {tableUi.left}px;">
+      {#if tableDialog === 'split'}
+        <TableSplitDialog
+          onApply={(cols, rows) => {
+            editor?.chain().focus().splitCellInto(cols, rows).run();
+            tableDialog = null;
+          }}
+          onClose={() => (tableDialog = null)}
+        />
+      {:else if tableDialog === 'sort'}
+        <TableSortDialog
+          columns={tableGrid.columns}
+          column={tableGrid.column}
+          headerRow={tableGrid.headerRow}
+          onApply={(options) => {
+            editor?.chain().focus().sortTable(options).run();
+            tableDialog = null;
+          }}
+          onClose={() => (tableDialog = null)}
+        />
+      {:else}
+        <TableFormulaDialog
+          cell={tableGrid.cell}
+          initial={tableGrid.formula}
+          onApply={(formula) => {
+            editor?.chain().focus().setCellFormula(formula).run();
+            tableDialog = null;
+          }}
+          onClose={() => (tableDialog = null)}
+        />
+      {/if}
+    </div>
   {/if}
   {#if imageUi.visible}
     <ImageToolbar {editor} top={imageUi.top} left={imageUi.left} wrap={imageUi.wrap} />
@@ -1182,6 +1189,14 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   .paper.hf-editing :global(.tiptap) {
     opacity: 0.5;
     transition: opacity 0.15s;
+  }
+
+  /* The table popovers sit above the table's top-left corner like the toolbar. The
+     wrapper is what places them, so one measurement keeps a tall one in view. */
+  .table-dialog {
+    position: absolute;
+    transform: translateY(calc(-100% - 6px));
+    z-index: 300;
   }
 
   /* Hover hint for links (Word/LibreOffice style): URL + modifier-click tip, sitting

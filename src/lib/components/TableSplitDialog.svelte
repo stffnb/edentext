@@ -1,18 +1,12 @@
 <script lang="ts">
   import { t } from '../i18n/i18n.svelte';
   // Word/LibreOffice "Split Cells…" popover: collects column + row counts. The parent
-  // owns `open` and runs the splitCellInto command against the saved cell selection
+  // mounts it and runs the splitCellInto command against the saved cell selection
   // (focus moves to the inputs, like LinkDialog/TablePicker).
   let {
-    open,
-    top,
-    left,
     onApply,
     onClose,
   }: {
-    open: boolean;
-    top: number;
-    left: number;
     onApply: (cols: number, rows: number) => void;
     onClose: () => void;
   } = $props();
@@ -24,14 +18,9 @@
   let rowsInput = $state('1');
   let firstField = $state<HTMLInputElement | null>(null);
 
-  // Reset to the defaults each time the popover opens, then focus the columns field.
   $effect(() => {
-    if (open) {
-      colsInput = '2';
-      rowsInput = '1';
-      queueMicrotask(() => firstField?.focus());
-      queueMicrotask(() => firstField?.select());
-    }
+    queueMicrotask(() => firstField?.focus());
+    queueMicrotask(() => firstField?.select());
   });
 
   function clamp(v: string): number {
@@ -50,51 +39,39 @@
   }
 </script>
 
-{#if open}
-  <div
-    class="split-dialog"
-    style="top: {top}px; left: {left}px;"
-    role="dialog"
-    tabindex="-1"
-    aria-label={t().table.splitDialogLabel}
-  >
-    <div class="split-fields">
-      <label>
-        <span>{t().table.columns}</span>
-        <input
-          bind:this={firstField}
-          bind:value={colsInput}
-          type="number"
-          min={MIN}
-          max={MAX}
-          onkeydown={onKeydown}
-        />
-      </label>
-      <label>
-        <span>{t().table.rowsField}</span>
-        <input
-          bind:value={rowsInput}
-          type="number"
-          min={MIN}
-          max={MAX}
-          onkeydown={onKeydown}
-        />
-      </label>
-    </div>
-    <div class="split-actions">
-      <span class="split-spacer"></span>
-      <button class="split-cancel" onclick={onClose}>{t().common.cancel}</button>
-      <button class="split-apply" onclick={apply}>{t().table.split}</button>
-    </div>
+<div class="split-dialog" role="dialog" tabindex="-1" aria-label={t().table.splitDialogLabel}>
+  <div class="split-fields">
+    <label>
+      <span>{t().table.columns}</span>
+      <input
+        bind:this={firstField}
+        bind:value={colsInput}
+        type="number"
+        min={MIN}
+        max={MAX}
+        onkeydown={onKeydown}
+      />
+    </label>
+    <label>
+      <span>{t().table.rowsField}</span>
+      <input
+        bind:value={rowsInput}
+        type="number"
+        min={MIN}
+        max={MAX}
+        onkeydown={onKeydown}
+      />
+    </label>
   </div>
-{/if}
+  <div class="split-actions">
+    <span class="split-spacer"></span>
+    <button class="split-cancel" onclick={onClose}>{t().common.cancel}</button>
+    <button class="split-apply" onclick={apply}>{t().table.split}</button>
+  </div>
+</div>
 
 <style>
   .split-dialog {
-    position: absolute;
-    /* Sit just above the table's top-left corner, like TableToolbar. */
-    transform: translateY(calc(-100% - 6px));
-    z-index: 300;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;

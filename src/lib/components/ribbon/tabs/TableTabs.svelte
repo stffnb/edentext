@@ -27,16 +27,6 @@
     which: 'design' | 'layout';
   } = $props();
 
-  // One popover at a time, opened under the button that owns it.
-  let dialog = $state<'split' | 'sort' | 'formula' | null>(null);
-  let dialogAt = $state({ top: 0, left: 0 });
-
-  function openDialog(e: MouseEvent, which: 'split' | 'sort' | 'formula') {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    dialogAt = { top: r.bottom + 4, left: r.left };
-    dialog = which;
-  }
-
   function run(cmd: (chain: ChainedCommands) => ChainedCommands) {
     if (!editor) return;
     cmd(editor.chain().focus()).run();
@@ -200,17 +190,18 @@
 
   <RibbonGroup label={t().ribbon.groups.merge}>
     <RibbonButton variant="big" icon="merge" label={t().table.mergeCells} disabled={!canMerge} onclick={() => run((c) => c.mergeCells())} />
-    <span class="split-anchor">
-      <button class="split-trigger" onclick={(e) => openDialog(e, 'split')} title={t().table.splitCells}>
+    <span class="rb-menu-wrap" use:clickOutside={'tableSplit'}>
+      <button class="split-trigger" onclick={() => toggleMenu('tableSplit')} title={t().table.splitCells}>
         <RibbonButton variant="big" icon="split" label={t().table.splitCellsAria} />
       </button>
-      <TableSplitDialog
-        open={dialog === 'split'}
-        top={dialogAt.top}
-        left={dialogAt.left}
-        onApply={(cols, rows) => { dialog = null; editor?.chain().focus().splitCellInto(cols, rows).run(); }}
-        onClose={() => (dialog = null)}
-      />
+      {#if isMenuOpen('tableSplit')}
+        <div class="table-dialog" use:anchored>
+          <TableSplitDialog
+            onApply={(cols, rows) => { closeMenu(); editor?.chain().focus().splitCellInto(cols, rows).run(); }}
+            onClose={closeMenu}
+          />
+        </div>
+      {/if}
     </span>
   </RibbonGroup>
 
@@ -268,34 +259,36 @@
   <div class="ribbon-sep"></div>
 
   <RibbonGroup label={t().ribbon.groups.tableData}>
-    <span class="split-anchor">
-      <button class="split-trigger" onclick={(e) => openDialog(e, 'sort')} title={t().table.sort}>
+    <span class="rb-menu-wrap" use:clickOutside={'tableSort'}>
+      <button class="split-trigger" onclick={() => toggleMenu('tableSort')} title={t().table.sort}>
         <RibbonButton variant="big" icon="sortRows" label={t().table.sortAria} disabled={!inTable} />
       </button>
-      <TableSortDialog
-        open={dialog === 'sort'}
-        top={dialogAt.top}
-        left={dialogAt.left}
-        columns={grid.columns}
-        column={grid.column}
-        headerRow={grid.headerRow}
-        onApply={(options) => { dialog = null; editor?.chain().focus().sortTable(options).run(); }}
-        onClose={() => (dialog = null)}
-      />
+      {#if isMenuOpen('tableSort') && inTable}
+        <div class="table-dialog" use:anchored>
+          <TableSortDialog
+            columns={grid.columns}
+            column={grid.column}
+            headerRow={grid.headerRow}
+            onApply={(options) => { closeMenu(); editor?.chain().focus().sortTable(options).run(); }}
+            onClose={closeMenu}
+          />
+        </div>
+      {/if}
     </span>
-    <span class="split-anchor">
-      <button class="split-trigger" onclick={(e) => openDialog(e, 'formula')} title={t().table.formula}>
+    <span class="rb-menu-wrap" use:clickOutside={'tableFormula'}>
+      <button class="split-trigger" onclick={() => toggleMenu('tableFormula')} title={t().table.formula}>
         <RibbonButton variant="big" icon="formula" label={t().table.formulaAria} disabled={!inTable} />
       </button>
-      <TableFormulaDialog
-        open={dialog === 'formula'}
-        top={dialogAt.top}
-        left={dialogAt.left}
-        cell={grid.cell}
-        initial={grid.formula}
-        onApply={(formula) => { dialog = null; editor?.chain().focus().setCellFormula(formula).run(); }}
-        onClose={() => (dialog = null)}
-      />
+      {#if isMenuOpen('tableFormula') && inTable}
+        <div class="table-dialog" use:anchored>
+          <TableFormulaDialog
+            cell={grid.cell}
+            initial={grid.formula}
+            onApply={(formula) => { closeMenu(); editor?.chain().focus().setCellFormula(formula).run(); }}
+            onClose={closeMenu}
+          />
+        </div>
+      {/if}
     </span>
     <RibbonButton
       variant="small"
@@ -341,14 +334,21 @@
 
   .inserts :global(.rb-stack-caret) { display: none; }
 
-  /* The dialog positions itself in viewport coordinates, so the trigger only has
-     to hand it the button's rect. */
+  /* A big button wrapped in the trigger the popover hangs from; `anchored` drops
+     the popover below the whole band, like every other ribbon menu. */
   .split-trigger {
     display: contents;
     border: none;
     background: none;
     padding: 0;
     cursor: pointer;
+  }
+
+  /* Out of flow before `anchored` measures, like .ribbon-menu: in flow it would
+     stretch its own anchor and land that much too low. */
+  .table-dialog {
+    position: absolute;
+    z-index: 300;
   }
   .margin-menu { min-width: 210px; }
 

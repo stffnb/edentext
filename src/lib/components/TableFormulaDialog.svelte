@@ -1,20 +1,15 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { t } from '../i18n/i18n.svelte';
   import { FORMULA_FUNCTIONS } from '../utils/tableFormula';
   // Word's Table ▸ Formula: the guessed formula, editable, plus the function list to
-  // paste from. The parent owns `open` and holds the cell the formula is set on.
+  // paste from. The parent mounts it and holds the cell the formula is set on.
   let {
-    open,
-    top,
-    left,
     cell = null,
     initial = '=SUM(ABOVE)',
     onApply,
     onClose,
   }: {
-    open: boolean;
-    top: number;
-    left: number;
     /** The cell's name (A1), which is how a formula refers to it. */
     cell?: string | null;
     initial?: string;
@@ -22,15 +17,13 @@
     onClose: () => void;
   } = $props();
 
-  let text = $state('');
+  // Seeded from the cell the dialog opened on; from there the field is the user's.
+  let text = $state(untrack(() => initial));
   let field = $state<HTMLInputElement | null>(null);
 
   $effect(() => {
-    if (open) {
-      text = initial;
-      queueMicrotask(() => field?.focus());
-      queueMicrotask(() => field?.select());
-    }
+    queueMicrotask(() => field?.focus());
+    queueMicrotask(() => field?.select());
   });
 
   // A formula the cell no longer has is an empty field, which clears it.
@@ -49,37 +42,25 @@
   }
 </script>
 
-{#if open}
-  <div
-    class="formula-dialog"
-    style="top: {top}px; left: {left}px;"
-    role="dialog"
-    tabindex="-1"
-    aria-label={t().table.formulaDialogLabel}
-  >
-    <label class="formula-row">
-      <span>{cell ? t().table.formulaCell(cell) : t().table.formulaField}</span>
-      <input bind:this={field} bind:value={text} type="text" spellcheck="false" onkeydown={onKeydown} />
-    </label>
-    <div class="formula-funcs">
-      {#each FORMULA_FUNCTIONS as fn}
-        <button class="formula-fn" onclick={() => paste(fn)}>{fn}</button>
-      {/each}
-    </div>
-    <div class="formula-actions">
-      <span class="formula-spacer"></span>
-      <button class="formula-cancel" onclick={onClose}>{t().common.cancel}</button>
-      <button class="formula-apply" onclick={apply}>{t().common.ok}</button>
-    </div>
+<div class="formula-dialog" role="dialog" tabindex="-1" aria-label={t().table.formulaDialogLabel}>
+  <label class="formula-row">
+    <span>{cell ? t().table.formulaCell(cell) : t().table.formulaField}</span>
+    <input bind:this={field} bind:value={text} type="text" spellcheck="false" onkeydown={onKeydown} />
+  </label>
+  <div class="formula-funcs">
+    {#each FORMULA_FUNCTIONS as fn}
+      <button class="formula-fn" onclick={() => paste(fn)}>{fn}</button>
+    {/each}
   </div>
-{/if}
+  <div class="formula-actions">
+    <span class="formula-spacer"></span>
+    <button class="formula-cancel" onclick={onClose}>{t().common.cancel}</button>
+    <button class="formula-apply" onclick={apply}>{t().common.ok}</button>
+  </div>
+</div>
 
 <style>
   .formula-dialog {
-    position: absolute;
-    /* Sit just above the table's top-left corner, like TableToolbar. */
-    transform: translateY(calc(-100% - 6px));
-    z-index: 300;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
