@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { Schema } from '@tiptap/pm/model';
-import { sequenceFields, ODF_SEQ_CATEGORY, seqCategoryOf } from '../../src/lib/editor/extensions/caption';
+import { Editor } from '@tiptap/core';
+import Document from '@tiptap/extension-document';
+import Paragraph from '@tiptap/extension-paragraph';
+import Text from '@tiptap/extension-text';
+import TextAlign from '@tiptap/extension-text-align';
+import { sequenceFields, ODF_SEQ_CATEGORY, seqCategoryOf, SequenceField } from '../../src/lib/editor/extensions/caption';
 
 // The numbering rule both word processors apply: one counter per category, in document
 // order. A schema of its own keeps the check off the editor's full extension list.
@@ -39,6 +44,36 @@ describe('sequenceFields', () => {
     const [only] = sequenceFields(doc);
     expect(only.number).toBe(1);
     expect(only.node.attrs.number).toBe(7);
+  });
+});
+
+describe('insertCaption', () => {
+  const makeEditor = (textAlign: string | null) => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    return new Editor({
+      element: el,
+      extensions: [Document, Paragraph, Text, SequenceField, TextAlign.configure({ types: ['paragraph'] })],
+      content: { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign }, content: [{ type: 'text', text: 'picture' }] }] },
+    });
+  };
+  const insert = (editor: Editor) =>
+    editor.chain().focus().insertCaption({ category: 'figure', label: 'Figure', separator: ': ', text: 'x', above: false }).run();
+
+  it('takes the alignment of the block it captions, so it stands under the picture', () => {
+    const editor = makeEditor('center');
+    insert(editor);
+    const [, caption] = editor.getJSON().content as any[];
+    expect(caption.attrs.textAlign).toBe('center');
+    editor.destroy();
+  });
+
+  it('leaves the caption of an unaligned block unaligned', () => {
+    const editor = makeEditor(null);
+    insert(editor);
+    const [, caption] = editor.getJSON().content as any[];
+    expect(caption.attrs.textAlign ?? null).toBe(null);
+    editor.destroy();
   });
 });
 

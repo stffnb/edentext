@@ -117,8 +117,11 @@ export const SequenceField = Node.create({
           content.push({ type: this.name, attrs: { category, format: '1', number: 1 } });
           const tail = `${separator}${text}`;
           if (tail) content.push({ type: 'text', text: tail });
+          // A caption stands under its picture, not at the margin: LibreOffice frames the
+          // two together, and the alignment is what carries that over to a loose paragraph.
+          const textAlign = $from.node(1).attrs.textAlign ?? null;
           return chain()
-            .insertContentAt(at, { type: 'paragraph', attrs: { styleName: CAPTION_STYLE }, content })
+            .insertContentAt(at, { type: 'paragraph', attrs: { styleName: CAPTION_STYLE, textAlign }, content })
             .focus()
             .run();
         },
