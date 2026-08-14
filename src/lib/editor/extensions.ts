@@ -51,6 +51,7 @@ import { TableStyle } from './extensions/tableStyle';
 import { TrailingNode } from './extensions/trailingNode';
 import { Image } from './extensions/image';
 import { DateTimeField } from './extensions/dateTimeField';
+import { SequenceField } from './extensions/caption';
 import { CrossReference } from './extensions/crossReference';
 import { Formula } from './extensions/formula';
 import { TextBox } from './extensions/textBox';
@@ -103,6 +104,9 @@ export const extensions = [
   // Inline date/time field (fixed or auto-updating); round-trips to ODF
   // <text:date>/<text:time> and DOCX DATE/TIME fields.
   DateTimeField,
+  // A caption's running number, one counter per category in document order. Round-trips
+  // to an ODF <text:sequence> and a DOCX SEQ field.
+  SequenceField,
   // Inline reference to a bookmark, showing its text or its page; kept live by its
   // node view. Round-trips to ODF <text:bookmark-ref> and DOCX REF/PAGEREF fields.
   CrossReference,

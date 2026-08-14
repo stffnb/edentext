@@ -1949,3 +1949,51 @@ describe('Leg 18: per-paragraph text direction', () => {
     check('no w:bidi', !strFromU8(unzipSync(await buildDocx(plain, margins, 'portrait'))['word/document.xml']).includes('<w:bidi'));
   });
 });
+
+describe('Leg 19: captions (a sequence field per category)', () => {
+  const SEQ = (category: string, number: number): N =>
+    ({ type: 'sequenceField', attrs: { category, format: '1', number } });
+  const CAP = (category: string, label: string, n: number, text: string): N =>
+    P({ styleName: 'Caption' }, T(`${label} `), SEQ(category, n), T(`: ${text}`));
+  const doc: N = { type: 'doc', content: [
+    CAP('figure', 'Figure', 1, 'first picture'),
+    CAP('table', 'Table', 1, 'first table'),
+    CAP('figure', 'Figure', 2, 'second picture'),
+  ] };
+
+  it('ODT: <text:sequence> per category, declared and counting', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('both counters declared', content.includes('text:name="Illustration"/>')
+      && content.includes('text:name="Table"/>'), content.match(/<text:sequence-decl[^>]*>/g));
+    check('LibreOffice’s own formula', (content.match(/text:formula="ooow:Illustration\+1"/g) ?? []).length === 2,
+      content.match(/text:formula="[^"]*"/g));
+    const back = importOdt(bytes).content as N;
+    const fields = back.content.map((p: N) => p.content?.find((c: N) => c.type === 'sequenceField'));
+    check('categories round-trip', fields.map((f: N) => f?.attrs?.category).join() === 'figure,table,figure',
+      fields.map((f: N) => f?.attrs));
+    check('numbers round-trip', fields.map((f: N) => f?.attrs?.number).join() === '1,1,2',
+      fields.map((f: N) => f?.attrs?.number));
+    check('caption style kept', back.content[0].attrs?.styleName === 'Caption', back.content[0].attrs);
+  });
+
+  it('DOCX: a SEQ field per category, and back', async () => {
+    const bytes = await buildDocx(doc, margins, 'portrait');
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    check('three SEQ fields', (xml.match(/SEQ (Figure|Table) \\\* ARABIC/g) ?? []).length === 3,
+      xml.match(/SEQ [^"]*/g));
+    const back = importDocx(bytes).content as N;
+    const fields = back.content.map((p: N) => p.content?.find((c: N) => c.type === 'sequenceField'));
+    check('categories round-trip', fields.map((f: N) => f?.attrs?.category).join() === 'figure,table,figure',
+      fields.map((f: N) => f?.attrs));
+    check('numbers round-trip', fields.map((f: N) => f?.attrs?.number).join() === '1,1,2',
+      fields.map((f: N) => f?.attrs?.number));
+  });
+
+  it('a document without captions declares no counter', async () => {
+    const plain: N = { type: 'doc', content: [P(null, T('plain'))] };
+    const content = strFromU8(unzipSync(await buildOdt(plain, margins, 'portrait'))['content.xml']);
+    check('no sequence declared', !content.includes('text:sequence-decl'), content.slice(0, 200));
+    check('no SEQ field', !strFromU8(unzipSync(await buildDocx(plain, margins, 'portrait'))['word/document.xml']).includes('SEQ '));
+  });
+});

@@ -2,6 +2,7 @@
   import type { Editor } from '@tiptap/core';
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
+  import CaptionDialog from '../../CaptionDialog.svelte';
   import { anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
   import type { HfZone } from '../../../storage/headerFooter';
   import { t } from '../../../i18n/i18n.svelte';
@@ -26,6 +27,7 @@
     return found;
   });
   const LEVELS = HEADING_LEVELS;
+  let captionOpen = $state(false);
 
   function setMaxLevel(level: number) {
     closeMenu();
@@ -63,7 +65,17 @@
       </div>
     {/if}
   </div>
+  <RibbonButton
+    variant="big"
+    icon="caption"
+    label={t().ribbon.insertCaption}
+    title={t().caption.title}
+    disabled={!editor || !!hfActive}
+    onclick={() => (captionOpen = true)}
+  />
 </RibbonGroup>
+
+<CaptionDialog bind:open={captionOpen} {editor} />
 
 <RibbonGroup label={t().ribbon.groups.notes}>
   <RibbonButton

@@ -22,7 +22,8 @@ import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
 import type { SpacingModel } from '../storage/spacingModel';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
-import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteSettings } from '../storage/noteSettings';
+import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
+import { DOCX_SEQ_NAME, seqCategoryOf } from '../editor/extensions/caption';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
@@ -347,6 +348,21 @@ function dateTimeRun(node: TiptapNode): Inline {
   return new SimpleField(`${kind === 'time' ? 'TIME' : 'DATE'} \\@ "${docxPicture(fmt)}"`, text);
 }
 
+// Word's numeric-picture switch per ODF num-format — the SEQ field's own formatting.
+const DOCX_SEQ_SWITCH: Record<NoteNumFormat, string> = {
+  '1': 'ARABIC', a: 'alphabetic', A: 'ALPHABETIC', i: 'roman', I: 'ROMAN',
+};
+
+// A caption's running number: a SEQ field whose cached result is the rank the editor
+// resolved, so Word and LibreOffice show it before anyone updates fields.
+function sequenceField(node: TiptapNode): SimpleField {
+  const a = node.attrs ?? {};
+  const format = (typeof a.format === 'string' && a.format ? a.format : '1') as NoteNumFormat;
+  const number = typeof a.number === 'number' && a.number > 0 ? a.number : 1;
+  const name = DOCX_SEQ_NAME[seqCategoryOf(a.category as string)];
+  return new SimpleField(`SEQ ${name} \\* ${DOCX_SEQ_SWITCH[format] ?? 'ARABIC'}`, formatOrdinal(number, format));
+}
+
 // A cross-reference: a REF/PAGEREF field with the resolved text as its cached result,
 // so Word and LibreOffice show it before anyone updates fields.
 function crossRefField(node: TiptapNode): SimpleField {
@@ -437,6 +453,8 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       out.push(new SimpleField(`STYLEREF "Heading ${Number(node.attrs?.level) || 1}" \\* MERGEFORMAT`, String(node.attrs?.text ?? '')));
     } else if (node.type === 'dateTimeField') {
       out.push(dateTimeRun(node));
+    } else if (node.type === 'sequenceField') {
+      out.push(sequenceField(node));
     } else if (node.type === 'formula') {
       const latex = typeof node.attrs?.latex === 'string' ? node.attrs.latex : '';
       if (latex) {

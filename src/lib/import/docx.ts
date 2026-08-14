@@ -25,6 +25,7 @@ import { applyUniformRunFont, pairAlignedFrames, sinkOffsetFrames, type OdtImpor
 import { chartDataUrl } from './chart';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { ODF_SEQ_CATEGORY } from '../editor/extensions/caption';
 import { clampColumnGap } from '../editor/extensions/columns';
 import { astToLatex } from '../math/latex';
 import { parseOmml, OMML_NS } from '../math/omml';
@@ -1127,10 +1128,11 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
   // A recognized body date/time field: its cached result runs are dropped and a live
   // dateTimeField node is emitted in their place when the field ends.
   let fieldDateTime: Node | null = null;
-  // Same for a REF/PAGEREF field: the cached result runs are collected as the node's
-  // display text instead of being pushed.
+  // Same for a REF/PAGEREF field and a caption's SEQ: the cached result runs are
+  // collected as the node's display text instead of being pushed.
   let fieldCrossRef: Node | null = null;
-  let fieldCrossRefText = '';
+  let fieldSeq: Node | null = null;
+  let fieldResultText = '';
 
   const pushText = (text: string, marks: Mark[]) => {
     if (!text) return;
@@ -1217,37 +1219,40 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       switch (child.localName) {
         case 'fldChar': {
           const t = child.getAttributeNS(W, 'fldCharType');
-          if (t === 'begin') { fieldMode = 'instr'; fieldInstr = ''; fieldDateTime = null; fieldCrossRef = null; fieldCrossRefText = ''; }
+          if (t === 'begin') { fieldMode = 'instr'; fieldInstr = ''; fieldDateTime = null; fieldCrossRef = null; fieldSeq = null; fieldResultText = ''; }
           else if (t === 'separate') {
             fieldMode = 'result';
             if (!hfFields) {
               fieldDateTime = dateTimeFieldFromInstr(fieldInstr);
-              fieldCrossRef = fieldDateTime ? null : crossRefFromInstr(fieldInstr);
-              fieldCrossRefText = '';
+              fieldSeq = fieldDateTime ? null : seqFieldFromInstr(fieldInstr);
+              fieldCrossRef = fieldDateTime || fieldSeq ? null : crossRefFromInstr(fieldInstr);
+              fieldResultText = '';
               // Carry the field run's marks so the atom renders in the run's font.
-              const field = fieldDateTime ?? fieldCrossRef;
+              const field = fieldDateTime ?? fieldSeq ?? fieldCrossRef;
               if (field && marks.length) field.marks = marks;
             }
           } else if (t === 'end') {
             // A reference Word never resolved has no w:separate and so no cached result
             // (it shows nothing until the field is updated); the node view fills it in
             // when the bookmark is still there.
-            if (!hfFields && !fieldDateTime && !fieldCrossRef) {
+            if (!hfFields && !fieldDateTime && !fieldCrossRef && !fieldSeq) {
               fieldCrossRef = crossRefFromInstr(fieldInstr);
               if (fieldCrossRef && marks.length) fieldCrossRef.marks = marks;
             }
             if (fieldDateTime) out.push(fieldDateTime);
-            else if (fieldCrossRef) out.push({ ...fieldCrossRef, attrs: { ...fieldCrossRef.attrs, text: fieldCrossRefText } });
+            else if (fieldSeq) out.push({ ...fieldSeq, attrs: { ...fieldSeq.attrs, number: seqNumberOf(fieldResultText) } });
+            else if (fieldCrossRef) out.push({ ...fieldCrossRef, attrs: { ...fieldCrossRef.attrs, text: fieldResultText } });
             else emitField(out, fieldInstr, hfFields, marks);
             fieldMode = 'none';
             fieldDateTime = null;
             fieldCrossRef = null;
+            fieldSeq = null;
           }
           break;
         }
         case 'instrText': if (fieldMode === 'instr') fieldInstr += child.textContent ?? ''; break;
         case 't':
-          if (fieldCrossRef && fieldMode === 'result') fieldCrossRefText += child.textContent ?? '';
+          if ((fieldCrossRef || fieldSeq) && fieldMode === 'result') fieldResultText += child.textContent ?? '';
           else if (!skipResult()) pushText(child.textContent ?? '', marks);
           break;
         case 'tab': if (!skipResult()) pushText('\t', marks); break;
@@ -1297,6 +1302,14 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
           const m = first ? runMarks(first) : [];
           if (m.length) xref.marks = m;
           out.push({ ...xref, attrs: { ...xref.attrs, text: el.textContent ?? '' } });
+          break;
+        }
+        const seq = seqFieldFromInstr(instr);
+        if (seq) {
+          const first = fcAll(el, 'r')[0];
+          const m = first ? runMarks(first) : [];
+          if (m.length) seq.marks = m;
+          out.push({ ...seq, attrs: { ...seq.attrs, number: seqNumberOf(el.textContent ?? '') } });
           break;
         }
         const field = dateTimeFieldFromInstr(instr);
@@ -1353,6 +1366,30 @@ function crossRefFromInstr(instr: string): Node | null {
   const m = /^\s*(PAGEREF|REF)\s+(\S+)/i.exec(instr);
   if (!m) return null;
   return { type: 'crossRef', attrs: { name: m[2], format: /^PAGEREF$/i.test(m[1]) ? 'page' : 'text', text: '' } };
+}
+
+// Word's numeric-picture switch → the ODF num-format the editor stores. Anything else
+// counts in arabic, which is what Word itself falls back to.
+const DOCX_SEQ_FORMAT: Record<string, NoteNumFormat> = {
+  alphabetic: 'a', ALPHABETIC: 'A', roman: 'i', ROMAN: 'I',
+};
+
+// `SEQ Figure \* ARABIC` → a caption's running number. A counter under a name the
+// editor doesn't count (a footnote sequence, a user's own) stays the field's text.
+function seqFieldFromInstr(instr: string): Node | null {
+  const m = /^\s*SEQ\s+("[^"]*"|\S+)/i.exec(instr);
+  if (!m) return null;
+  const category = ODF_SEQ_CATEGORY[m[1].replace(/"/g, '')];
+  if (!category) return null;
+  const sw = /\\\*\s*(\w+)/.exec(instr)?.[1] ?? '';
+  return { type: 'sequenceField', attrs: { category, format: DOCX_SEQ_FORMAT[sw] ?? '1', number: 1 } };
+}
+
+// The rank a field cached, from its result text. Only an arabic one reads back; the
+// editor's own numbering pass fixes the rest on load.
+function seqNumberOf(text: string): number {
+  const n = parseInt(text.replace(/\D/g, ''), 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 // A DATE/TIME field instruction with a picture switch we recognize → a live

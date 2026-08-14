@@ -82,6 +82,10 @@ const BUILTINS: Style[] = [
     para: { textAlign: 'center' }, text: { fontSizePt: 18 } },
   { name: 'Quotations', parent: DEFAULT_STYLE, next: DEFAULT_STYLE, builtin: true,
     para: { indent: 1, spaceAfter: 14 }, text: {} },
+  // LibreOffice's caption style (probed): 10pt italic, 0.212cm above and below, and it
+  // follows itself. Its per-category children (Figure, Table, …) only rename it.
+  { name: 'Caption', parent: DEFAULT_STYLE, next: 'Caption', builtin: true,
+    para: { spaceBefore: 6, spaceAfter: 6 }, text: { fontSizePt: 10, italic: true } },
 ];
 
 // LibreOffice's character styles (its "Emphasis"/"Strong Emphasis"/"Source Text").
@@ -93,7 +97,7 @@ const CHAR_BUILTINS: Style[] = [
 
 // Bumped whenever the built-in definitions change: a stored sheet from an older version
 // keeps its user styles but takes the new factory built-ins (see mergeStoredSheet).
-export const STYLE_SHEET_VERSION = 8;
+export const STYLE_SHEET_VERSION = 9;
 
 // A persisted sheet merged onto the current built-ins. Same version: stored entries win
 // (a document's own styles, and edits to built-ins). Older: only user styles survive.

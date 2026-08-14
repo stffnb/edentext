@@ -6,7 +6,7 @@ import type { SpacingModel } from '../storage/spacingModel';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
-import { DEFAULT_NOTE_SETTINGS, NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteSettings } from '../storage/noteSettings';
+import { DEFAULT_NOTE_SETTINGS, NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, keywordList, type DocProperties } from '../storage/docProperties';
 import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps } from '../styles/styleSheet';
@@ -23,7 +23,8 @@ import { parseCellPadding, DEFAULT_CELL_PADDING, type CellPadding } from '../edi
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { normalizeLeader, parseTabStops } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
-import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
+import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, formatOrdinal, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
+import { ODF_SEQ_NAME, seqCategoryOf, type SeqCategory } from '../editor/extensions/caption';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, toTimeValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
 import { parseLatex } from '../math/latex';
@@ -175,6 +176,10 @@ const CME = '\uE019';
 // running text, FNT B{i} FNT opens the note's own hoisted paragraph. applyNotes cuts
 // the body out and splices it into a <text:note> at the anchor. U+E017.
 const FNT = '\uE017';
+
+// Sentinel wrapping a caption's sequence-field index (SEQ{i}SEQ); applySequenceFields
+// rewrites it to <text:sequence>. U+E01A.
+const SEQ = '\uE01A';
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
@@ -539,6 +544,61 @@ function replaceDateTimeFields(node: TiptapNode, fields: DateTimeFieldExport[]):
     content.push(replaceDateTimeFields(child, fields));
   }
   return { ...node, content };
+}
+
+// One caption sequence field, collected by replaceSequenceFields and emitted by
+// applySequenceFields. `number` is the rank the editor resolved; both formats cache it.
+type SequenceExport = { category: SeqCategory; format: string; number: number };
+
+// Replace every inline `sequenceField` node with a SEQ-sentinel text run, as
+// replaceDateTimeFields does, so it rides every odf-kit path.
+function replaceSequenceFields(node: TiptapNode, fields: SequenceExport[]): TiptapNode {
+  if (!node.content?.length) return node;
+  const content: TiptapNode[] = [];
+  for (const child of node.content) {
+    if (child.type === 'sequenceField') {
+      const a = child.attrs ?? {};
+      fields.push({
+        category: seqCategoryOf(a.category as string),
+        format: typeof a.format === 'string' && a.format ? a.format : '1',
+        number: typeof a.number === 'number' && a.number > 0 ? a.number : 1,
+      });
+      content.push({ type: 'text', text: `${SEQ}${fields.length - 1}${SEQ}`, marks: child.marks });
+      continue;
+    }
+    content.push(replaceSequenceFields(child, fields));
+  }
+  return { ...node, content };
+}
+
+// Resolve SEQ sentinels into <text:sequence>. The formula is LibreOffice's own
+// "ooow:<name>+1", which is what makes its reader recount the captions on load; the
+// element text is the cached number, and text:ref-name is the anchor an index links to.
+function applySequenceFields(odtBytes: Uint8Array, fields: SequenceExport[]): Uint8Array {
+  if (!fields.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  content = content.replace(new RegExp(`${SEQ}(\\d+)${SEQ}`, 'g'), (_m, idx: string) => {
+    const f = fields[Number(idx)];
+    if (!f) return '';
+    const name = ODF_SEQ_NAME[f.category];
+    const display = escapeXml(formatOrdinal(f.number, f.format as NoteNumFormat));
+    return `<text:sequence text:ref-name="ref${name}${idx}" text:name="${name}"`
+      + ` text:formula="ooow:${name}+1" style:num-format="${f.format}">${display}</text:sequence>`;
+  });
+
+  // Every sequence needs its variable declared, as LibreOffice writes them.
+  const used = [...new Set(fields.map((f) => ODF_SEQ_NAME[f.category]))];
+  const decls = used.map((n) => `<text:sequence-decl text:display-outline-level="0" text:name="${n}"/>`).join('');
+  content = /<text:sequence-decls>/.test(content)
+    ? content.replace('<text:sequence-decls>', `<text:sequence-decls>${decls}`)
+    : content.replace('<office:text>', `<office:text><text:sequence-decls>${decls}</text:sequence-decls>`);
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
 }
 
 // One cross-reference, collected by replaceCrossRefs and emitted by applyBookmarks.
@@ -3713,7 +3773,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const crossRefs: CrossRefExport[] = [];
   const notes: NoteExport[] = [];
   const commentList: CommentExport[] = [];
-  const sentinels = replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList);
+  const seqFields: SequenceExport[] = [];
+  const sentinels = replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList), seqFields);
   const raw = markTextEffects(bakeListCharStyles(sentinels, styles));
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
@@ -3913,7 +3974,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withBreaks = applyInlineSentinels(applyTabLeaders(cleaned));
   const withImages = applyImages(withBreaks, images);
   const withDateFields = applyDateTimeFields(withImages, dateFields, language ?? null);
-  const withFormulas = applyFormulas(withDateFields, formulas);
+  const withSequences = applySequenceFields(withDateFields, seqFields);
+  const withFormulas = applyFormulas(withSequences, formulas);
   const withTextBoxes = applyTextBoxes(withFormulas, textBoxes);
   const withColumns = applyColumns(withTextBoxes, columns);
   const withBookmarks = applyComments(applyBookmarks(withColumns, crossRefs), commentList);

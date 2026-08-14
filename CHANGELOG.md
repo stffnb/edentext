@@ -115,6 +115,7 @@
 - ODT import / open existing file: parses content.xml / styles.xml directly, adopts the file's margins and orientation, and reports graceful-degradation warnings
 - Opens `.ott` templates (OpenDocument Text Template): read like an `.odt`, but as a new untitled document — the first Save writes a fresh `.odt` and never overwrites the template (Word/LibreOffice behavior)
 - Embedded font loading: fonts embedded in an opened `.odt`/`.docx` (Word `.odttf` de-obfuscated) are registered via the FontFace API so text renders in its real face even when the font isn't installed; persisted per-document in IndexedDB so it survives a reload. Fonts the document only names but neither embeds nor installs are still flagged as substituted
+- Captions (References ▸ Caption, LibreOffice's Insert ▸ Caption): a caption paragraph in the `Caption` style with a running number that counts itself — one counter per category (figure / table), in document order, renumbering as the document is edited. Round-trips as an ODF `<text:sequence>` (with LibreOffice's own `ooow:Illustration+1` formula) and a Word `SEQ Figure \* ARABIC` field
 - Word (.docx) export and import — round-trips the editor's formatting (text, fonts, lists, tables, images, headers/footers, page geometry) and opens real Word documents
 - Document properties (title, subject, author, keywords, comments) in the File menu — LibreOffice's File ▸ Properties / Word's File ▸ Info. Round-trips through ODF `meta.xml` (one `meta:keyword` per keyword) and DOCX `docProps/core.xml`
 - PDF export — Raster (pixel-exact copy of the editor with a selectable text layer) and Vector (crisp, fonts embedded, via the browser print dialog)
@@ -132,7 +133,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 
 **Missing while writing**
 - Hyphenation beyond the document switch: a per-paragraph "don't hyphenate", and the zone / ladder count (`fo:hyphenation-ladder-count`, `w:hyphenationZone`) — CSS exposes neither
-- Captions with numbered figures/tables ("Abbildung 1: …") and the lists built from them (list of figures / tables). The TOC machinery exists, the other index families do not
+- The lists built from captions (list of figures / tables). Captions themselves are implemented (see above); the TOC machinery exists, the other index families do not
 - Restarting the page numbering **per section** (only the document's own format and start value exist)
 - Heading levels 7–10 (Word and LibreOffice go that far; HTML stops at `h6`)
 - Alphabetical index and bibliography

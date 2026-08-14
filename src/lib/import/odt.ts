@@ -24,6 +24,7 @@ import type { NoteKind, NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { clampPageStart, type PageNumbering } from '../storage/pageNumbering';
 import { newCommentId } from '../editor/extensions/comment';
+import { ODF_SEQ_CATEGORY } from '../editor/extensions/caption';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
@@ -1592,6 +1593,25 @@ function convertDateTimeField(e: Element, ctx: Ctx): Node | null {
   return { type: 'dateTimeField', attrs: { kind, format, fixed, value: fieldValue(kind, raw) } };
 }
 
+// <text:sequence> → a caption's running number. The counter's name is the category
+// (LibreOffice's "Illustration"/"Table"); the element text is the file's cached value,
+// which the editor's own numbering overwrites on the first edit.
+function convertSequenceField(e: Element): Node | null {
+  const name = e.getAttributeNS(NS.text, 'name') ?? '';
+  const category = ODF_SEQ_CATEGORY[name];
+  if (!category) return null;
+  const format = e.getAttributeNS(NS.style, 'num-format');
+  const number = parseInt((e.textContent ?? '').replace(/\D/g, ''), 10);
+  return {
+    type: 'sequenceField',
+    attrs: {
+      category,
+      format: format && '1aAiI'.includes(format) ? format : '1',
+      number: Number.isFinite(number) && number > 0 ? number : 1,
+    },
+  };
+}
+
 // The note's paragraph style: the one its own <text:p> names, else the class's
 // configured default. Registered as used, or collectStyleSheet drops it.
 function noteBodyStyle(e: Element, ctx: Ctx, kind: NoteKind): string | null {
@@ -1789,6 +1809,19 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
                 // The field is an atom without inline children, so it can't inherit
                 // the surrounding run's font from a sibling span — carry the run's
                 // marks on the node so it renders in the same font/size/etc.
+                const marks = marksFor(props, ctx.resolver, defaults);
+                if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
+                if (marks.length) field.marks = marks;
+                out.push(field);
+                continue;
+              }
+            }
+            // A caption's running number (caption.ts). Only the two categories the
+            // editor counts survive as a live field; any other sequence (a user
+            // variable, a chapter counter) keeps its evaluated text.
+            if (!hfFields && e.localName === 'sequence') {
+              const field = convertSequenceField(e);
+              if (field) {
                 const marks = marksFor(props, ctx.resolver, defaults);
                 if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
                 if (marks.length) field.marks = marks;
