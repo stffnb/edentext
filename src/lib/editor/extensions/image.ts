@@ -2,10 +2,11 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
-import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import { dropCursor } from '@tiptap/pm/dropcursor';
 import { cmToPx } from '../../storage/pageMargins';
 import { readVerticalMargins } from './pageBreaks';
+import { CAPTION_STYLE, sequenceFieldText } from './caption';
 
 // Inline, as-character image, or a floating text-wrapped frame (wrap = flow mode);
 // width/height are doc px @96dpi, rotation CW degrees. Export → cm + ODF
@@ -729,4 +730,63 @@ class ImageView {
   stopEvent(event: Event): boolean {
     return event.type.startsWith('mouse');
   }
+}
+
+export type FrameDebugEntry = {
+  pos: number;
+  /** Every attr but `src` — a data URI is the whole file. */
+  attrs: Record<string, unknown>;
+  /** Doc px from the text column's left edge, so the two spans compare directly. */
+  columnWidth: number;
+  frame: [number, number] | null;
+  caption: { text: string; span: [number, number]; textAlign: string; indent: unknown } | null;
+};
+
+// A frame's place in the column beside the caption's — "the caption is not under the
+// picture" is a horizontal question, and every other section of the dump is vertical.
+export function getFrameDebug(view: EditorView): FrameDebugEntry[] {
+  const host = view.dom as HTMLElement;
+  if (typeof getComputedStyle !== 'function' || !host.offsetWidth) return [];
+  const cs = getComputedStyle(host);
+  const padLeft = parseFloat(cs.paddingLeft) || 0;
+  const scale = host.getBoundingClientRect().width / host.offsetWidth;
+  const originX = host.getBoundingClientRect().left + padLeft * scale;
+  const span = (r: DOMRect): [number, number] =>
+    [Math.round((r.left - originX) / scale), Math.round((r.right - originX) / scale)];
+  const textSpan = (el: HTMLElement): DOMRect => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return range.getBoundingClientRect();
+  };
+
+  const out: FrameDebugEntry[] = [];
+  view.state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'image') return true;
+    const dom = view.nodeDOM(pos);
+    const rotor = dom instanceof HTMLElement ? dom.querySelector('.image-rotor') : null;
+    const { src: _src, ...attrs } = node.attrs as Record<string, unknown>;
+    // The block after the picture's own, which is where a caption below it lands.
+    const after = view.state.doc.resolve(pos).after(1);
+    const next = after <= view.state.doc.content.size ? view.state.doc.nodeAt(after) : null;
+    const nextDOM = next ? view.nodeDOM(after) : null;
+    out.push({
+      pos,
+      attrs,
+      columnWidth: Math.round(host.clientWidth - padLeft - (parseFloat(cs.paddingRight) || 0)),
+      frame: rotor ? span(rotor.getBoundingClientRect()) : null,
+      caption: next && nextDOM instanceof HTMLElement && next.attrs.styleName === CAPTION_STYLE
+        ? {
+            // The running number is an atom, so plain textContent leaves a gap where
+            // the reader sees "Figure 1".
+            text: next.textBetween(0, next.content.size, '', (leaf) =>
+              leaf.type.name === 'sequenceField' ? sequenceFieldText(leaf) : '').slice(0, 80),
+            span: span(textSpan(nextDOM)),
+            textAlign: getComputedStyle(nextDOM).textAlign,
+            indent: next.attrs.indent,
+          }
+        : null,
+    });
+    return false;
+  });
+  return out;
 }

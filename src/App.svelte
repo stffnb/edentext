@@ -18,6 +18,7 @@
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
   import { getColumnsFlowDebug } from './lib/editor/extensions/columnsFlow';
   import { getTextBoxDebug } from './lib/editor/extensions/textBox';
+  import { getFrameDebug } from './lib/editor/extensions/image';
   import { getTableCellDebug } from './lib/editor/extensions/tableCellAlign';
   import { getColorDebug } from './lib/utils/colorDebug';
   import { resetHistoryLog } from './lib/utils/historyLog.svelte';
@@ -928,6 +929,9 @@
       pageBreaks: snapshot,
       columnsFlow: getColumnsFlowDebug(editor.view),
       textBoxes: getTextBoxDebug(editor.view),
+      // Where each picture sits in the column beside its caption: the rest of the dump
+      // measures the flow downwards, and a misplaced caption is a sideways question.
+      frames: getFrameDebug(editor.view),
       // Cell alignment reads as broken whenever the content fills the box, so the
       // dump carries the spacing that decides that: the sheet and the model it uses.
       tableCells: getTableCellDebug(editor.view),

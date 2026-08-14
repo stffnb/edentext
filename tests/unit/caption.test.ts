@@ -5,7 +5,7 @@ import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import TextAlign from '@tiptap/extension-text-align';
-import { sequenceFields, ODF_SEQ_CATEGORY, seqCategoryOf, SequenceField } from '../../src/lib/editor/extensions/caption';
+import { sequenceFields, ODF_SEQ_CATEGORY, seqCategoryOf, SequenceField, framePlacement } from '../../src/lib/editor/extensions/caption';
 
 // The numbering rule both word processors apply: one counter per category, in document
 // order. A schema of its own keeps the check off the editor's full extension list.
@@ -18,6 +18,11 @@ const schema = new Schema({
       group: 'inline', inline: true, atom: true,
       attrs: { category: { default: 'figure' }, number: { default: 1 } },
       toDOM: () => ['span'],
+    },
+    image: {
+      group: 'inline', inline: true, atom: true,
+      attrs: { wrap: { default: 'inline' }, wrapAlign: { default: null }, wrapOffset: { default: null } },
+      toDOM: () => ['img'],
     },
   },
 });
@@ -44,6 +49,32 @@ describe('sequenceFields', () => {
     const [only] = sequenceFields(doc);
     expect(only.number).toBe(1);
     expect(only.node.attrs.number).toBe(7);
+  });
+});
+
+describe('framePlacement', () => {
+  const picture = (attrs: Record<string, unknown>) =>
+    schema.nodes.paragraph.create(null, schema.nodes.image.create(attrs));
+
+  it('centres the caption under a frame that names neither side nor offset', () => {
+    expect(framePlacement(picture({ wrap: 'topBottom' }))).toEqual({ textAlign: 'center', indent: null });
+  });
+
+  it('follows the side a frame is set against', () => {
+    expect(framePlacement(picture({ wrap: 'topBottom', wrapAlign: 'right' })))
+      .toEqual({ textAlign: 'right', indent: null });
+  });
+
+  it('indents to a frame’s own offset, which no alignment can express', () => {
+    expect(framePlacement(picture({ wrap: 'topBottom', wrapOffset: 3.4 })))
+      .toEqual({ textAlign: null, indent: 3.4 });
+  });
+
+  it('leaves an inline or side-wrapped picture to the flow', () => {
+    // A side wrap has the caption beside the frame — where LibreOffice puts it too.
+    expect(framePlacement(picture({ wrap: 'inline' }))).toBeNull();
+    expect(framePlacement(picture({ wrap: 'right' }))).toBeNull();
+    expect(framePlacement(schema.nodes.paragraph.create(null, schema.text('no picture')))).toBeNull();
   });
 });
 

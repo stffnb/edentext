@@ -61,6 +61,28 @@ declare module '@tiptap/core' {
   }
 }
 
+// Where a caption has to stand to be under the frame it belongs to. A frame carries its
+// own place in the column, so the anchor paragraph's alignment says nothing about it: a
+// `topBottom` one is centred unless it names a side or an offset (image.ts/textBox.ts).
+// A side-wrapped frame has the caption flowing beside it, which is what a reader of the
+// exported file sees too, so nothing here can put it underneath.
+export function framePlacement(block: PMNode): { textAlign: string | null; indent: number | null } | null {
+  let frame: PMNode | null = block.attrs.wrap ? block : null;
+  if (!frame) {
+    block.descendants((node) => {
+      if (frame) return false;
+      if (node.attrs.wrap) frame = node;
+      return !frame;
+    });
+  }
+  const attrs = (frame as PMNode | null)?.attrs;
+  if (!attrs || attrs.wrap !== 'topBottom') return null;
+  if (attrs.wrapAlign) return { textAlign: String(attrs.wrapAlign), indent: null };
+  return typeof attrs.wrapOffset === 'number'
+    ? { textAlign: null, indent: attrs.wrapOffset }
+    : { textAlign: 'center', indent: null };
+}
+
 export const SequenceField = Node.create({
   name: 'sequenceField',
   group: 'inline',
@@ -118,10 +140,15 @@ export const SequenceField = Node.create({
           const tail = `${separator}${text}`;
           if (tail) content.push({ type: 'text', text: tail });
           // A caption stands under its picture, not at the margin: LibreOffice frames the
-          // two together, and the alignment is what carries that over to a loose paragraph.
-          const textAlign = $from.node(1).attrs.textAlign ?? null;
+          // two together, and a loose paragraph carries that over as its own placement.
+          const block = $from.node(1);
+          const place = framePlacement(block) ?? { textAlign: block.attrs.textAlign ?? null, indent: null };
           return chain()
-            .insertContentAt(at, { type: 'paragraph', attrs: { styleName: CAPTION_STYLE, textAlign }, content })
+            .insertContentAt(at, {
+              type: 'paragraph',
+              attrs: { styleName: CAPTION_STYLE, textAlign: place.textAlign, indent: place.indent },
+              content,
+            })
             .focus()
             .run();
         },

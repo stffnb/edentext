@@ -100,7 +100,7 @@ ceiling noted in the file.
 
 ## Debug tooling (dev only)
 
-In dev builds a **Debug** button (`App.svelte`) downloads a JSON snapshot combining `getPageBreakDebug(view)` (leaves, placements, rendered spacers, table-break bands, live overlay geometry), `getTableCellDebug(view)` (per cell: the `verticalAlign` attr beside the computed value, cell/row height, the gap above and below the content, and every block's margins/`--space-before` — cell alignment reads as broken whenever the content fills the box, so the numbers that decide that travel with it), the style sheet + spacing model, and `getColorDebug(editor)` (selection marks, text runs, document colors, DOM spans).
+In dev builds a **Debug** button (`App.svelte`) downloads a JSON snapshot combining `getPageBreakDebug(view)` (leaves, placements, rendered spacers, table-break bands, live overlay geometry), `getTableCellDebug(view)` (per cell: the `verticalAlign` attr beside the computed value, cell/row height, the gap above and below the content, and every block's margins/`--space-before` — cell alignment reads as broken whenever the content fills the box, so the numbers that decide that travel with it), `getFrameDebug(view)` (per picture: its attrs, its rendered span in the text column and its caption's — every other section measures the flow downwards, and a misplaced caption is a sideways question), the style sheet + spacing model, and `getColorDebug(editor)` (selection marks, text runs, document colors, DOM spans).
 
 ## Per-section header/footer
 
