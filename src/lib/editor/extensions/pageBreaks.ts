@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import { COLUMNS_FIT_MARGIN_PX } from './columns';
+import { RESYNC_NOTES, setNoteAnchorPages } from './notes';
 
 export type PageBreakDebugSnapshot = {
   timestamp: string;
@@ -760,8 +761,8 @@ export const PageBreaks = Extension.create({
           // so far: added back, so what is measured is the document, not the last pass's
           // answer to it. Reading the answer back is what made the layout flip-flop.
           let cumulativeDropped = 0;
-          // Only the first endnote opens a page; the rest follow it down the column.
-          let seenEndnote = false;
+          // Only the first collected note opens a page; the rest follow it down.
+          let seenCollected = false;
 
           // A leaf's border-box top within .tiptap, in document px. Summing offsetTop up
           // the offsetParent chain is unaffected by .paper's transform:scale, so it's the
@@ -914,23 +915,28 @@ export const PageBreaks = Extension.create({
                 walkTableRows(child, inTableCell);
                 continue;
               }
-              // The note section (notes.ts) is not body text: a footnote is out of the
-              // flow and placed at the foot of its anchor's page below, an endnote flows
-              // here and starts its own page, as LibreOffice collects them.
+              // The note section (notes.ts) is not body text. A note at the foot of its
+              // page is out of the flow and placed below; a collected one flows here and
+              // starts its own page, as LibreOffice collects both classes.
               if (child.classList.contains('note-section')) {
                 walk(child, inTableCell);
                 continue;
               }
               if (child.classList.contains('note')) {
-                if (child.dataset?.noteKind === 'footnote') continue;
+                // The setting reaches this through editor.css, which takes a collected
+                // footnote out of `position: absolute` — the note's own box is the truth.
+                if (getComputedStyle(child).position === 'absolute') continue;
+                // ponytail: one page for the collected notes, in anchor order. LibreOffice
+                // groups the classes onto a page each, which needs a section order that
+                // isn't the anchor order the exports read.
                 leaves.push({
                   el: child,
                   kind: 'splittable',
                   naturalTop: naturalTopOf(child),
                   naturalHeight: child.offsetHeight,
-                  forceBreakBefore: !seenEndnote,
+                  forceBreakBefore: !seenCollected,
                 });
-                seenEndnote = true;
+                seenCollected = true;
                 continue;
               }
               // The generated table of contents (tableOfContents.ts) is a block atom with
@@ -1579,6 +1585,7 @@ export const PageBreaks = Extension.create({
           // and the fixed point below only has to settle *which* page that is.
           const footnotes: FootnoteBox[] = Array
             .from(dom.querySelectorAll<HTMLElement>('.note[data-note-kind="footnote"]'))
+            .filter((el) => getComputedStyle(el).position === 'absolute')
             .map((el) => ({ id: el.dataset.noteId ?? '', el, height: el.offsetHeight }));
           // The separator's own band. The three lengths are registered (@property in
           // editor.css), so these read back in px rather than as "0.1cm".
@@ -1776,10 +1783,18 @@ export const PageBreaks = Extension.create({
 
           isUpdating = false;
 
+          // A per-page restart counts within the page each anchor landed on, which only
+          // this pass knows (notes.ts). Renumbering can rewrap, so it takes a pass of its
+          // own — on the same budget, since a label that moves its anchor never settles.
+          const notePagesMoved = setNoteAnchorPages(placed.anchorPages);
+          if (notePagesMoved && convergePasses < MAX_CONVERGE_PASSES) {
+            editorView.dispatch(editorView.state.tr.setMeta(RESYNC_NOTES, true).setMeta('addToHistory', false));
+          }
+
           // Each pass measures against the spacers present at its start, so a changed
           // result needs another pass to re-measure and settle (e.g. after an orientation
           // switch). Bounded by MAX_CONVERGE_PASSES against a two-layout ping-pong.
-          if (placementsChanged && convergePasses < MAX_CONVERGE_PASSES) {
+          if ((placementsChanged || notePagesMoved) && convergePasses < MAX_CONVERGE_PASSES) {
             convergePasses++;
             schedule();
           }

@@ -76,15 +76,17 @@
         <input type="number" min="1" max="9999" value={cls.startAt}
           onchange={(e) => { const v = num(e); if (v >= 1) patch({ startAt: Math.round(v) }); }} />
       </label>
-      <label class="row">
-        <span>{t().notesDialog.restart}</span>
-        <select value={cls.restart} onchange={(e) => patch({ restart: e.currentTarget.value as NoteRestart })}>
-          {#each RESTARTS as r}
-            <option value={r}>{r === 'page' ? t().notesDialog.restartPage : r === 'chapter' ? t().notesDialog.restartChapter : t().notesDialog.restartDocument}</option>
-          {/each}
-        </select>
-      </label>
+      <!-- Counting and position are footnote-only, as they are in LibreOffice: the
+           endnote list has no page of its own to count on, and no place to move to. -->
       {#if kind === 'footnote'}
+        <label class="row">
+          <span>{t().notesDialog.restart}</span>
+          <select value={cls.restart} onchange={(e) => patch({ restart: e.currentTarget.value as NoteRestart })}>
+            {#each RESTARTS as r}
+              <option value={r}>{r === 'page' ? t().notesDialog.restartPage : r === 'chapter' ? t().notesDialog.restartChapter : t().notesDialog.restartDocument}</option>
+            {/each}
+          </select>
+        </label>
         <label class="row">
           <span>{t().notesDialog.position}</span>
           <select value={cls.position} onchange={(e) => patch({ position: e.currentTarget.value === 'document' ? 'document' : 'page' })}>

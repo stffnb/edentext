@@ -145,4 +145,8 @@ export function applyNoteVars(s: NoteSettings): void {
   root.setProperty('--note-sep-rel-width', `${s.separator.relWidthPercent}%`);
   root.setProperty('--note-sep-color', s.separator.color);
   root.setProperty('--note-sep-align', s.separator.align);
+  // "Collect at end of document": the footnotes leave the page foot and flow with the
+  // endnote list. editor.css takes them out of `position: absolute` from this, which is
+  // also how pageBreaks.ts reads the setting.
+  document.documentElement.toggleAttribute('data-collect-footnotes', s.footnote.position === 'document');
 }

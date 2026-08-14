@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { noteLabel, noteLabels, type NoteRefInfo } from '../../src/lib/editor/extensions/notes';
 import { clampNoteSettings, DEFAULT_NOTE_SETTINGS, type NoteSettings } from '../../src/lib/storage/noteSettings';
 
-const REF = (id: string, kind: 'footnote' | 'endnote'): NoteRefInfo => ({ id, kind, pos: 0 });
+const REF = (id: string, kind: 'footnote' | 'endnote', chapter = 0): NoteRefInfo =>
+  ({ id, kind, pos: 0, chapter });
 
 const withFootnote = (over: Partial<NoteSettings['footnote']>): NoteSettings =>
   ({ ...DEFAULT_NOTE_SETTINGS, footnote: { ...DEFAULT_NOTE_SETTINGS.footnote, ...over } });
@@ -37,6 +38,25 @@ describe('note numbering', () => {
     const refs = [REF('a', 'footnote'), REF('b', 'endnote'), REF('c', 'footnote'), REF('d', 'endnote')];
     const labels = noteLabels(refs, DEFAULT_NOTE_SETTINGS);
     expect([...labels.values()]).toEqual(['1', 'i', '2', 'ii']);
+  });
+
+  // LibreOffice, probed: the count starts over on each page / at each chapter.
+  it('restarts per page, from the page each anchor landed on', () => {
+    const refs = [REF('a', 'footnote'), REF('b', 'footnote'), REF('c', 'footnote')];
+    const pages = new Map([['a', 1], ['b', 2], ['c', 2]]);
+    const labels = noteLabels(refs, withFootnote({ restart: 'page' }), pages);
+    expect([...labels.values()]).toEqual(['1', '1', '2']);
+  });
+
+  it('leaves an endnote document-wide: LibreOffice offers no per-page count for one', () => {
+    const refs = [REF('a', 'endnote'), REF('b', 'endnote')];
+    const s: NoteSettings = { ...DEFAULT_NOTE_SETTINGS, endnote: { ...DEFAULT_NOTE_SETTINGS.endnote, restart: 'page' } };
+    expect([...noteLabels(refs, s, new Map()).values()]).toEqual(['i', 'ii']);
+  });
+
+  it('restarts per chapter, off the anchor’s own chapter', () => {
+    const refs = [REF('a', 'footnote', 1), REF('b', 'footnote', 1), REF('c', 'footnote', 2)];
+    expect([...noteLabels(refs, withFootnote({ restart: 'chapter' })).values()]).toEqual(['1', '2', '1']);
   });
 });
 

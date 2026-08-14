@@ -47,16 +47,27 @@ note it was copied from; an anchor that ends up *inside* a note is dropped, and 
 one there is refused (LibreOffice and Word refuse it too). A settings change is no
 document change, so the dialog's path carries the `RESYNC_NOTES` meta.
 
+**Restarting the count.** `noteLabels` counts within a bucket: the class alone (document-wide),
+its chapter (`collectNoteRefs` counts the level-1 headings above each anchor), or its page —
+footnotes only, as in LibreOffice, since the endnote list has no page of its own. The page is
+the one thing numbering cannot see, so `pageBreaks.ts` publishes its `anchorPages` through
+`setNoteAnchorPages` and fires `RESYNC_NOTES` when the map moves; the renumber may rewrap, so
+it costs one more pass off the same `MAX_CONVERGE_PASSES` budget. The dialog shows counting
+and position on the footnote tab only, which is where LibreOffice keeps them.
+
 ## Placement (`pageBreaks.ts`)
 
 A footnote is out of the flow (`position: absolute`, `left`/`right` = the page margins)
-and `pageBreaks.ts` gives it its `top`. Endnotes stay in flow and the first one carries
-`forceBreakBefore`, because LibreOffice starts the endnote list on a new page (probed).
+and `pageBreaks.ts` gives it its `top`. A **collected** note stays in flow and the first one
+carries `forceBreakBefore`, because LibreOffice opens a new page for the list (probed).
+Which of the two a footnote is comes from `position: 'document'` → the `data-collect-footnotes`
+attribute (`applyNoteVars`) → `editor.css`, and pagination reads it back off the note's own
+computed `position` rather than the setting: the box is the truth either way.
 
 The reservation runs **inside** one pagination pass — reading it back across passes would
 break the file's own rule that a pass must not read its own last answer:
 
-1. `collectLeaves` skips footnote notes and walks the section for the endnotes.
+1. `collectLeaves` skips the notes that are out of flow and walks the section for the rest.
 2. Each footnote's height is measured once: out of flow at a fixed width, it does not
    depend on the page it lands on.
 3. `placeLeaves(reserved)` takes a per-page reservation off each `contentEnd`. A bounded
@@ -69,9 +80,11 @@ break the file's own rule that a pass must not read its own last answer:
    frozen layout leaves every footnote on the page it used to belong to, without the
    position an edit above the section leaves the decorations on a stale one.
 
-**Deliberate ceiling:** a note is never split across pages. A page whose notes outgrow its
-content area keeps one line of body text and lets them overflow. Splitting the note, as
-LibreOffice does, is the upgrade path (`ponytail:` comment at the cap).
+**Deliberate ceilings:** a note is never split across pages — a page whose notes outgrow its
+content area keeps one line of body text and lets them overflow, and splitting the note as
+LibreOffice does is the upgrade path. Collected notes take **one** page in anchor order;
+LibreOffice gives each class a page of its own, which needs a section order that is not the
+anchor order the exports read. Both carry a `ponytail:` comment at the cap.
 
 ## LibreOffice's defaults, as probed
 

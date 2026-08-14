@@ -148,21 +148,25 @@ export const NoteSection = Node.create({
   },
 });
 
-export type NoteRefInfo = { id: string; kind: NoteKind; pos: number };
+// `chapter` is the running count of top-level level-1 headings above the anchor, which
+// is what a per-chapter restart counts within.
+export type NoteRefInfo = { id: string; kind: NoteKind; pos: number; chapter: number };
 
 // Every anchor in the body, in document order. The note section is skipped: a note's
 // own text may hold an anchor, and that one numbers nothing.
 export function collectNoteRefs(doc: PMNode): NoteRefInfo[] {
   const out: NoteRefInfo[] = [];
+  let chapter = 0;
   doc.forEach((child, offset) => {
     if (child.type.name === 'noteSection') return;
+    if (child.type.name === 'heading' && child.attrs.level === 1) chapter += 1;
     child.descendants((node, pos) => {
       if (node.type.name === 'noteRef') {
-        out.push({ id: String(node.attrs.id ?? ''), kind: readKind(node.attrs.kind), pos: offset + 1 + pos });
+        out.push({ id: String(node.attrs.id ?? ''), kind: readKind(node.attrs.kind), pos: offset + 1 + pos, chapter });
       }
     });
     if (child.type.name === 'noteRef') {
-      out.push({ id: String(child.attrs.id ?? ''), kind: readKind(child.attrs.kind), pos: offset });
+      out.push({ id: String(child.attrs.id ?? ''), kind: readKind(child.attrs.kind), pos: offset, chapter });
     }
   });
   return out;
@@ -203,14 +207,35 @@ function noteEntryPos(doc: PMNode, id: string): number | null {
   return found;
 }
 
+// The page each footnote anchor landed on, published by pageBreaks.ts after every
+// pagination pass — the only place that knows it. Returns whether it moved, which is
+// what makes the plugin renumber.
+let anchorPages: ReadonlyMap<string, number> = new Map();
+
+export function setNoteAnchorPages(next: ReadonlyMap<string, number>): boolean {
+  const same = next.size === anchorPages.size
+    && Array.from(next).every(([id, page]) => anchorPages.get(id) === page);
+  anchorPages = next;
+  return !same;
+}
+
 // The label each anchor shows, keyed by note id: footnotes and endnotes count
-// separately, each from its own start value.
-export function noteLabels(refs: NoteRefInfo[], settings: NoteSettings): Map<string, string> {
-  const seen: Record<NoteKind, number> = { footnote: 0, endnote: 0 };
+// separately, each from its own start value. A restart counts within the anchor's page
+// or chapter instead — per page is a footnote-only option, as it is in LibreOffice,
+// since the endnote list has no page of its own to count on.
+export function noteLabels(
+  refs: NoteRefInfo[], settings: NoteSettings, pages: ReadonlyMap<string, number> = anchorPages,
+): Map<string, string> {
+  const seen = new Map<string, number>();
   const out = new Map<string, string>();
   for (const ref of refs) {
-    out.set(ref.id, noteLabel(seen[ref.kind], ref.kind, settings));
-    seen[ref.kind] += 1;
+    const restart = settings[ref.kind].restart;
+    const bucket = restart === 'chapter' ? `${ref.kind}:c${ref.chapter}`
+      : restart === 'page' && ref.kind === 'footnote' ? `${ref.kind}:p${pages.get(ref.id) ?? 0}`
+      : ref.kind;
+    const index = seen.get(bucket) ?? 0;
+    out.set(ref.id, noteLabel(index, ref.kind, settings));
+    seen.set(bucket, index + 1);
   }
   return out;
 }

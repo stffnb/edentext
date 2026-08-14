@@ -278,6 +278,11 @@
   left: var(--page-margin-left);
   right: var(--page-margin-right);
 }
+/* Collected at the end of the document instead (noteSettings.ts): the footnotes rejoin
+   the flow and open their own page, where the endnote list also starts. */
+:root[data-collect-footnotes] .paper .tiptap .note[data-note-kind='footnote'] {
+  position: static;
+}
 /* The separator hangs above the first note of a page, inside the band pageBreaks.ts
    already reserved for it — so it costs the note's own box no height, which is what
    keeps that height out of the reservation that produced it. A gradient, not a
