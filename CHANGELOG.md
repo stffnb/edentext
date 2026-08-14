@@ -139,7 +139,7 @@
 
 ### Not yet implemented
 
-The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
+The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 
 **Content an imported document loses**
 - Charts are **drawn** from the file (`import/chart.ts`: DrawingML `chartN.xml` and ODF `chart:chart`), but as a picture, not a chart object — a re-export carries the drawing and the numbers behind it are no longer editable. The same holds for an **EMF** metafile (`import/emf.ts`): it is drawn, but as the SVG picture it was rebuilt into, and only from the record set a plot consists of — a hatched brush, a clipping region or a rotated bitmap is skipped. **WMF/SVM** metafiles and OLE objects still keep their box and a placeholder label, and export writes that back out: WMF is a different (16-bit) record format, SVM is StarOffice-proprietary, and an OLE object cannot be rendered without its application
@@ -160,7 +160,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-08.
 - Thesaurus, grammar check, word completion, AutoText / building blocks
 - Vertical writing modes (ODF `tb-rl`) and Asian typography (ruby)
 - Password-protected ODT/DOCX; digital signatures
-- Navigator / outline view, split view
+- Split view: two views of one document, scrolled independently
 - File handlers, so the OS can offer the installed app for a double-clicked `.odt`/`.docx` (Chrome's `file_handlers` + `launchQueue`)
 - A committed corpus of documents we author ourselves, so CI can test against real files
   (`.gitignore` excludes all of `tests/render-parity/fixtures/` today)

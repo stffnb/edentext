@@ -1671,12 +1671,6 @@
     transform: none;
   }
 
-  .action-separator {
-    width: 1px;
-    height: 1.5rem;
-    background: var(--color-border);
-  }
-
   .file-action-btn {
     display: inline-flex;
     align-items: center;

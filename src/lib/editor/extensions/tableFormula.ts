@@ -107,6 +107,9 @@ type Edit = { pos: number; cell: PMNode; text: string };
 function formulaEdits(doc: PMNode, loc: NumberLocale): Edit[] {
   const edits: Edit[] = [];
   doc.descendants((node, pos) => {
+    // This runs on every edit, so the walk stops at the blocks a table cannot be in —
+    // otherwise it visits every run of the document per keystroke.
+    if (node.isTextblock) return false;
     if (node.type.name !== 'table') return;
     for (const [off, text] of evaluateTable(node, loc, t().table.formulaError)) {
       const cell = node.nodeAt(off);
