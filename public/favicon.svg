@@ -5,8 +5,6 @@
     .clay { fill: #d1734f; }
     @media (prefers-color-scheme: dark) {
       .stem { stroke: #e7ebee; }
-      .slate { fill: #82a3c1; }
-      .clay { fill: #e6a37a; }
     }
   </style>
   <g transform="translate(-0.667,0.306) scale(0.5556)">
