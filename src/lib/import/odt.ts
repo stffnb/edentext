@@ -68,6 +68,8 @@ export interface OdtImportResult {
   lineNumbering: LineNumbering;
   // Automatic hyphenation (ODF fo:hyphenate on the base style, Word w:autoHyphenation).
   hyphenate: boolean;
+  // Whether the document records revisions (ODF text:track-changes, Word w:trackRevisions).
+  recordChanges: boolean;
   // How the page-number field counts (ODF style:num-format + style:page-number, Word w:pgNumType).
   pageNumbering: PageNumbering;
   // The grid every tab past the last custom stop falls on; the format's own fallback
@@ -793,6 +795,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     decor: resolver.pageDecor(),
     lineNumbering: resolver.lineNumbering(),
     hyphenate: resolver.documentHyphenation(),
+    recordChanges: odfRecordChanges(body),
     pageNumbering: { format: resolver.pageNumberFormat(), start: odfPageNumberStart(resolver, body) },
     tabIntervalCm: resolver.defaultTabInterval(),
     spacingModel: odfSpacingModel(files),
@@ -1755,6 +1758,13 @@ function convertDateTimeField(e: Element, ctx: Ctx): Node | null {
   const fixed = e.getAttributeNS(NS.text, 'fixed') === 'true';
   const raw = e.getAttributeNS(NS.text, 'date-value') ?? e.getAttributeNS(NS.text, 'time-value');
   return { type: 'dateTimeField', attrs: { kind, format, fixed, value: fieldValue(kind, raw) } };
+}
+
+// Whether the document records revisions: the registry's own flag, which ODF defaults
+// to true where the element is there without it. No registry at all records nothing.
+function odfRecordChanges(body: Element): boolean {
+  const registry = body.getElementsByTagNameNS(NS.text, 'tracked-changes')[0];
+  return !!registry && registry.getAttributeNS(NS.text, 'track-changes') !== 'false';
 }
 
 // The <text:tracked-changes> registry: one entry per change id. A deletion carries the

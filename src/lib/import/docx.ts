@@ -255,6 +255,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     decor: docxPageDecor(docDoc, finalSectPr, files),
     lineNumbering: docxLineNumbering(finalSectPr),
     hyphenate: docAutoHyphenation(files),
+    recordChanges: docRecordsChanges(files),
     pageNumbering: docxPageNumbering(sectPr),
     orientation: docPaper.orientation,
     format: docPaper.format,
@@ -2521,6 +2522,19 @@ function tblIndIsToText(files: Record<string, Uint8Array>): boolean {
     }
   } catch { /* an unreadable settings.xml is no setting */ }
   return true;
+}
+
+// Whether the document records revisions — settings.xml, like the two below (probed:
+// LibreOffice writes and reads exactly this element for its own Record Changes).
+function docRecordsChanges(files: Record<string, Uint8Array>): boolean {
+  const bytes = files['word/settings.xml'];
+  if (!bytes) return false;
+  try {
+    const el = parseXml(strFromU8(bytes)).getElementsByTagNameNS(W, 'trackRevisions')[0];
+    return !!el && onOff(el);
+  } catch {
+    return false;
+  }
 }
 
 function docHasMirrorMargins(files: Record<string, Uint8Array>): boolean {

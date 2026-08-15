@@ -2171,7 +2171,10 @@ describe('Leg 23: recorded revisions', () => {
   it('ODT: the registry plus change-start/-end and a deletion marker, and back', async () => {
     const bytes = await buildOdt(doc, margins, 'portrait');
     const content = strFromU8(unzipSync(bytes)['content.xml']);
-    check('registry emitted', /<text:tracked-changes><text:changed-region/.test(content), content.slice(0, 200));
+    // The registry carries whether recording goes on; this document has changes but
+    // records no more, which is the pair LibreOffice writes for a stopped review.
+    check('registry emitted', /<text:tracked-changes text:track-changes="false"><text:changed-region/.test(content),
+      content.slice(0, 200));
     check('insertion bracketed', /<text:change-start text:change-id="ct1"\/>NEUER TEXT <text:change-end/.test(content),
       content.match(/<text:p[^>]*>[\s\S]*?<\/text:p>/g)?.slice(-1));
     // ODF keeps a deletion's text in the registry, never inline.

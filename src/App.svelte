@@ -34,6 +34,7 @@
   import { loadPageFormat, savePageFormat, type PageFormat } from './lib/storage/pageFormat';
   import { setStyleSheet, styleSheet } from './lib/styles/sheet.svelte';
   import { noteSettings, setNoteSettings } from './lib/storage/notes.svelte';
+  import { recordChanges, setRecordChanges } from './lib/storage/trackChanges.svelte';
   import { DEFAULT_NOTE_SETTINGS } from './lib/storage/noteSettings';
   import { builtinStyleSheet, type StyleFamily } from './lib/styles/styleSheet';
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, loadExtraHfSections, saveExtraHfSections, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
@@ -546,6 +547,8 @@
     pageNumbering = { ...DEFAULT_PAGE_NUMBERING };
     pageDecor = { ...EMPTY_PAGE_DECOR };
     lineNumbering = { ...DEFAULT_LINE_NUMBERING };
+    // Recording belongs to the document, so a new one starts off, as it does in both.
+    setRecordChanges(false);
     docProps = { ...EMPTY_DOC_PROPERTIES };
     saveDocProperties(docProps);
     fileHandle = null;
@@ -611,6 +614,8 @@
       pageNumbering = result.pageNumbering;
       pageDecor = result.decor;
       lineNumbering = result.lineNumbering;
+      // The file says whether it goes on recording; ours is not the setting that counts.
+      setRecordChanges(result.recordChanges);
       // Adopt the document's spell-check language (the $effect switches the
       // controller + loads its dictionary). null = file declared none; keep ours.
       if (result.language) documentLanguage = result.language;
@@ -723,7 +728,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges());
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
       recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
     } catch (err) {
@@ -740,7 +745,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges());
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
       recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
     } catch (err) {
@@ -759,7 +764,7 @@
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
       await saveAsTemplate(async (kind) => {
-        const args = [pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering] as const;
+        const args = [pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges()] as const;
         const { odtToOtt, docxToDotx } = await import('./lib/export/template');
         if (kind === 'dotx') {
           const { buildDocx } = await import('./lib/export/docx');
@@ -810,7 +815,7 @@
     try {
       const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       const { buildDocx } = await import('./lib/export/docx');
-      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering);
+      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges());
       await saveAsDocx(bytes, suggestedFilenameDocx(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;

@@ -1907,6 +1907,7 @@ export async function buildDocx(
   pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING,
   decor: PageDecor = EMPTY_PAGE_DECOR,
   lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING,
+  recordChanges = false,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
@@ -2028,7 +2029,11 @@ export async function buildDocx(
     // Word's Layout > Hyphenation (w:autoHyphenation in settings.xml).
     ...(hyphenate ? { hyphenation: { autoHyphenation: true } } : {}),
     ...(differentOddEven ? { evenAndOddHeaderAndFooters: true } : {}),
-    ...(hasToc ? { features: { updateFields: true } } : {}),
+    // w:updateFields and w:trackRevisions are both settings.xml flags the package
+    // takes under one key, so a document wanting both must ask for them together.
+    ...(hasToc || recordChanges
+      ? { features: { ...(hasToc ? { updateFields: true } : {}), ...(recordChanges ? { trackRevisions: true } : {}) } }
+      : {}),
     styles: buildStyles(styles, usedStyleNames(docJson, styles), language, usedTableStyles(docJson, styles)),
     numbering: { config: num.config },
     ...(Object.keys(notesByClass.footnote).length ? { footnotes: notesByClass.footnote } : {}),

@@ -408,4 +408,21 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
         === 'KAF01: Kafka, Franz, Der Process, 1925 | MEY99: Meyer, Anna, Zur Sache, 1999',
       index?.attrs?.entries);
   });
+
+  it('survives a `soffice` re-save of the record-changes flag', { timeout: 180000 }, async () => {
+    const doc: N = { type: 'doc', content: [P(null, T('Ein Satz.'))] };
+    const bytes = await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', undefined,
+      undefined, 'add', false, undefined, undefined, false, undefined, undefined, undefined, true);
+    mkdirSync('/tmp/lo-rt', { recursive: true });
+    writeFileSync('/tmp/lo-rt/rec.odt', bytes);
+    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/recout /tmp/lo-rt/rec.odt', { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/recout/rec.odt'));
+    const xml = strFromU8(unzipSync(resaved)['content.xml']);
+
+    // LibreOffice keeps the empty registry for the flag alone, which is what makes it
+    // the document's setting rather than the editor's.
+    check('LO: the flag comes back', /<text:tracked-changes[^>]*text:track-changes="true"/.test(xml),
+      xml.match(/<text:tracked-changes[^>]*>/g));
+    check('LO: and the importer reads it', importOdt(resaved).recordChanges === true);
+  });
 });

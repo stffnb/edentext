@@ -613,9 +613,11 @@ function replaceRevisions(node: TiptapNode, out: Map<string, RevisionExport>): T
   return { ...node, content };
 }
 
-// Resolve the revision sentinels and prepend the registry the body points into.
-function applyRevisions(odtBytes: Uint8Array, list: Map<string, RevisionExport>): Uint8Array {
-  if (!list.size) return odtBytes;
+// Resolve the revision sentinels and prepend the registry the body points into. The
+// registry also carries whether the document goes on recording — LibreOffice writes it
+// with no changes in it for exactly that (probed).
+function applyRevisions(odtBytes: Uint8Array, list: Map<string, RevisionExport>, recording: boolean): Uint8Array {
+  if (!list.size && !recording) return odtBytes;
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
   if (!contentBytes) return odtBytes;
@@ -648,7 +650,10 @@ function applyRevisions(odtBytes: Uint8Array, list: Map<string, RevisionExport>)
       : `<text:insertion>${info}</text:insertion>`;
     return `<text:changed-region xml:id="${ct}" text:id="${ct}">${body}</text:changed-region>`;
   }).join('');
-  content = content.replace(/(<office:text\b[^>]*>)/, `$1<text:tracked-changes>${regions}</text:tracked-changes>`);
+  content = content.replace(
+    /(<office:text\b[^>]*>)/,
+    `$1<text:tracked-changes text:track-changes="${recording}">${regions}</text:tracked-changes>`,
+  );
   content = ensureDcNamespace(content);
 
   files['content.xml'] = strToU8(content);
@@ -4363,7 +4368,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR, lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR, lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING, recordChanges = false): Promise<Uint8Array> {
   // Images become IMG sentinels before serialization; applyImages resolves them and writes
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
@@ -4588,7 +4593,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withBreaks = applyInlineSentinels(applyTabLeaders(cleaned));
   const withImages = applyImages(withBreaks, images);
   const withDateFields = applyDateTimeFields(withImages, dateFields, language ?? null);
-  const withSequences = applyRuby(applyBibEntries(applyIndexEntries(applyRevisions(applySequenceFields(withDateFields, seqFields), revisionList), indexMarks), bibMarks), rubies);
+  const withSequences = applyRuby(applyBibEntries(applyIndexEntries(applyRevisions(applySequenceFields(withDateFields, seqFields), revisionList, recordChanges), indexMarks), bibMarks), rubies);
   const withFormulas = applyFormulas(withSequences, formulas);
   const withTextBoxes = applyTextBoxes(withFormulas, textBoxes);
   const withColumns = applyColumns(withTextBoxes, columns);
