@@ -57,6 +57,10 @@
     });
     return n;
   });
+  // Its own paper, where it has one — else the document's.
+  let sectionFormat = $derived(
+    currentSection > 0 ? (extraHfSections[currentSection - 1]?.format ?? pageFormat) : pageFormat,
+  );
   // Its own orientation, where it has one — else the document's.
   let sectionOrientation = $derived(
     currentSection > 0 ? (extraHfSections[currentSection - 1]?.orientation ?? pageOrientation) : pageOrientation,
@@ -187,6 +191,15 @@
               <span class="menu-sub">{fmtCm(PAGE_FORMAT_CM[f].w)} × {fmtCm(PAGE_FORMAT_CM[f].h)} cm</span>
             </button>
           {/each}
+          {#if currentSection > 0}
+            <div class="rb-menu-label">{t().ribbon.thisSection}</div>
+            {#each FORMATS as f}
+              <button class:selected={sectionFormat === f} onclick={() => { closeMenu(); setSectionProp({ format: f }); }}>
+                {t().toolbarExpanded.pageFormats[f]}
+              </button>
+            {/each}
+            <button onclick={() => { closeMenu(); setSectionProp({ format: null }); }}>{t().ribbon.likeDocument}</button>
+          {/if}
         </div>
       </div>
     {/if}

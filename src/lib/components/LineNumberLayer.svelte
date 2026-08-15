@@ -15,7 +15,7 @@
     tick: number;
     lineNumbering: LineNumbering;
     /** One box per page (Editor.svelte): a section on its own paper differs in size. */
-    pageBoxes: { top: number; height: number; width: number }[];
+    pageBoxes: { top: number; left: number; height: number; width: number }[];
     pageMargins: PageMargins;
   } = $props();
 
@@ -24,7 +24,9 @@
     for (let i = pageBoxes.length - 1; i >= 0; i--) if (top >= pageBoxes[i].top) return i + 1;
     return 1;
   };
-  let left = $derived(cmToPx(pageMargins.left) - cmToPx(lineNumbering.distanceCm));
+  // Measured from the page's own left edge: a narrower section's page is centred.
+  const leftOf = (top: number) => (pageBoxes[pageAt(top) - 1]?.left ?? 0)
+    + cmToPx(pageMargins.left) - cmToPx(lineNumbering.distanceCm);
 
   let marks = $state<{ top: number; label: string }[]>([]);
   let host = $state<HTMLElement | null>(null);
@@ -101,7 +103,7 @@
 
 <div class="line-number-layer" bind:this={host} aria-hidden="true">
   {#each marks as m}
-    <span class="line-number" style="top: {m.top}px; right: calc(100% - {left}px);">{m.label}</span>
+    <span class="line-number" style="top: {m.top}px; right: calc(100% - {leftOf(m.top)}px);">{m.label}</span>
   {/each}
 </div>
 

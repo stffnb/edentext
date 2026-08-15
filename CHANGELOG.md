@@ -99,6 +99,7 @@
 - Page margins per section: a section's own `w:pgMar` / ODF page layout is read, rendered and written back, and an ODF page style that hands over to another (`style:next-style-name`, the title-page idiom) gives its layout to the section's first page and the successor's to the rest. The ruler and the header/footer layer still show the document's own pair
 - Headers & footers: page-number / page-count fields, configurable edge distances, and variants — different first page and different odd & even pages (edit a page's zone directly; blank first/even zones supported). Press Enter to add blank lines that grow a zone into the page while body text reflows so the page break sits above the footer / below the header, never overlapping. Inline images/logos can be inserted in a zone. Round-trips to ODF (`style:header-first`/`-left`, `draw:frame`) and DOCX (`w:titlePg`/`w:evenAndOddHeaders`, `ImageRun`)
 - Zoom (20–300 %)
+- A section's own page setup: paper size and orientation per section (Layout ▸ Size / Orientation ▸ This section), beside the document's own. Pages of different sizes are each **centred** in the scroll, as both word processors draw them — sheet, text, header/footer, page border and line numbers alike
 - Horizontal ruler above the page: click to place a tab stop of the selected type, drag to move it, drag it off to remove it; three markers set the paragraph's first-line, left and right indent. Toggle in the extended toolbar
 - Show formatting marks (spaces, tabs, paragraph marks)
 
@@ -153,7 +154,6 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 **Missing while writing**
 - Hyphenation's zone and ladder count (`fo:hyphenation-ladder-count`, `w:hyphenationZone`) — CSS exposes neither
 - A bibliography's citation style: the list is set the one way ("key: author, title, year"), where both word processors offer APA, MLA, Chicago and the rest, and numbered citations (`[1]`) instead of the source's short name
-- A section's own **page format** is set only by the file it came from — the ribbon offers the orientation per section, the paper size document-wide. Pages of different widths are left-aligned in the scroll, where both word processors centre each
 - A sort dialog's second and third key, and its choice of sort type over the detected one; a formula's own number format (LibreOffice's Number Format dialog per cell — the general format is the only one here), and a formula reaching into another table
 - A list level's own hanging indent: the marker sits at the 0.635 cm both exports write (`LIST_HANGING_CM`), so a wider *left*-set marker overflows where Word moves the text to the next list tab (a **right**-set one — `w:lvlJc`, which is what the built-in Roman numberings use — grows into the margin and is fine). Reading the value back naively also moves the markers of our own ODT exports — LibreOffice draws its own flat hanging at exactly the value odf-kit writes for level 2; see `tests/render-parity/README.md` before building on it
 - Linked / chained text frames

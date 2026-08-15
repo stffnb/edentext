@@ -204,13 +204,15 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // Which section each page belongs to (sectionStartPages holds the first page of every
   // section past the first), and from it the box every per-page layer paints.
   let pageBoxes = $derived.by(() => {
-    const out: { top: number; height: number; width: number; section: number }[] = [];
+    const out: { top: number; left: number; height: number; width: number; section: number }[] = [];
     let top = 0;
     let section = 0;
     for (let p = 1; p <= Math.max(1, numPages); p++) {
       while (section < sectionStartPages.length && sectionStartPages[section] <= p) section++;
       const paper = sectionPaper[Math.min(section, sectionPaper.length - 1)];
-      out.push({ top, height: paper.h, width: paper.w, section });
+      // A page narrower than the reserved sheet is centred in it, as both word
+      // processors centre each page of a document whose sections differ.
+      out.push({ top, left: Math.round((paperWidth - paper.w) / 2), height: paper.h, width: paper.w, section });
       top += paper.h + PAGE_GAP;
     }
     return out;
@@ -219,19 +221,22 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // The same per section for the side margins, as a delta against the document's own:
   // .tiptap's padding draws those for every page, so a section that wants others has
   // its blocks inset by the difference ("leftFirst|rightFirst|leftRest|rightRest").
-  // A section narrower than the sheet (.paper reserves the widest paper) takes the whole
-  // difference on its right, so its text still ends at its own page's right margin.
-  let sectionInset = $derived([
-    [0, paperWidth - sectionPaper[0].w, 0, paperWidth - sectionPaper[0].w],
-    ...extraHfSections.map((s, i) => {
-      const rest = s.margins ?? null;
-      const first = s.marginsFirst ?? rest;
-      const d = (m: PageMargins | null, side: 'left' | 'right') =>
-        m ? Math.round(cmToPx(m[side]) - cmToPx(pageMargins[side])) : 0;
-      const narrow = paperWidth - (sectionPaper[i + 1]?.w ?? paperWidth);
-      return [d(first, 'left'), d(first, 'right') + narrow, d(rest, 'left'), d(rest, 'right') + narrow];
-    }),
-  ].map((g) => g.join('|')).join(','));
+  // A section narrower than the sheet (.paper reserves the widest paper) splits the
+  // difference between its sides, so its text sits on the centred page it belongs to.
+  let sectionInset = $derived.by(() => {
+    const half = (i: number) => Math.round((paperWidth - (sectionPaper[i]?.w ?? paperWidth)) / 2);
+    return [
+      [half(0), half(0), half(0), half(0)],
+      ...extraHfSections.map((s, i) => {
+        const rest = s.margins ?? null;
+        const first = s.marginsFirst ?? rest;
+        const d = (m: PageMargins | null, side: 'left' | 'right') =>
+          m ? Math.round(cmToPx(m[side]) - cmToPx(pageMargins[side])) : 0;
+        const narrow = half(i + 1);
+        return [d(first, 'left') + narrow, d(first, 'right') + narrow, d(rest, 'left') + narrow, d(rest, 'right') + narrow];
+      }),
+    ].map((g) => g.join('|')).join(',');
+  });
 
   $effect(() => {
     const s = document.documentElement.style;

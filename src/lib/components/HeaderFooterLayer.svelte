@@ -44,7 +44,7 @@
     differentOddEven?: boolean;
     numPages: number;
     /** One box per page (Editor.svelte): a section on its own paper differs in size. */
-    pageBoxes: { top: number; height: number; width: number }[];
+    pageBoxes: { top: number; left: number; height: number; width: number }[];
     currentPage: number;
     /** How the page-number field counts (format + start value). */
     pageNumbering?: PageNumbering;
@@ -74,7 +74,7 @@
   // A section on its own paper makes the pages differ, so every box comes from the
   // grid Editor.svelte publishes; the document's own is the fallback.
   const boxOf = (page: number) => pageBoxes[page - 1]
-    ?? { top: (page - 1) * (pageHeightPx + PAGE_GAP), height: pageHeightPx, width: pageWidthPx };
+    ?? { top: (page - 1) * (pageHeightPx + PAGE_GAP), left: 0, height: pageHeightPx, width: pageWidthPx };
   let mTop = $derived(cmToPx(pageMargins.top));
   let mBottom = $derived(cmToPx(pageMargins.bottom));
   let mLeft = $derived(cmToPx(pageMargins.left));
@@ -89,9 +89,10 @@
 
   function zoneBox(zone: HfZone, page: number) {
     // Mirrored margins: an even page is the left-hand one, so the pair is swapped.
-    const left = pageMargins.mirrored && page % 2 === 0 ? mRight : mLeft;
-    const width = contentWidthOf(page);
     const box = boxOf(page);
+    // From the page's own left edge — a section on narrower paper is centred.
+    const left = box.left + (pageMargins.mirrored && page % 2 === 0 ? mRight : mLeft);
+    const width = contentWidthOf(page);
     if (zone === 'header') {
       const top = box.top + headerDistPx;
       return { top, left, width, height: Math.max(MIN_ZONE_PX, mTop - headerDistPx) };
@@ -387,7 +388,7 @@
           class="hf-page-bg"
           src={bg.src}
           alt=""
-          style="top: {boxOf(p).top + bg.y}px; left: {bg.x}px; width: {bg.width}px; height: {bg.height}px;"
+          style="top: {boxOf(p).top + bg.y}px; left: {boxOf(p).left + bg.x}px; width: {bg.width}px; height: {bg.height}px;"
         />
       {/each}
     {/each}

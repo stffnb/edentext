@@ -8,7 +8,7 @@
   let { decor, pageBoxes, pageMargins }: {
     decor: PageDecor;
     /** One box per page (Editor.svelte): a section on its own paper differs in size. */
-    pageBoxes: { top: number; height: number; width: number }[];
+    pageBoxes: { top: number; left: number; height: number; width: number }[];
     pageMargins: PageMargins;
   } = $props();
 
@@ -38,14 +38,14 @@
       {@const ring = inset(p)}
       <div
         class="page-border"
-        style="top: {box.top + ring.top}px; left: {ring.left}px;
+        style="top: {box.top + ring.top}px; left: {box.left + ring.left}px;
                width: {box.width - ring.left - ring.right}px;
                height: {box.height - ring.top - ring.bottom}px;
                border: {decor.border.widthPt}pt solid {decor.border.color};"
       ></div>
     {/if}
     {#if decor.watermark}
-      <div class="watermark" style="top: {box.top}px; height: {box.height}px;">
+      <div class="watermark" style="top: {box.top}px; left: {box.left}px; width: {box.width}px; height: {box.height}px;">
         <!-- A fontwork shape stretches its text to the box rather than setting it at a
              size, which is what textLength does here — the box is the text width, as
              LibreOffice sizes its own watermark. -->

@@ -87,9 +87,10 @@ becomes known, so a pass never measures its own last answer; it reports the runs
 `Editor.svelte` publishes them as `--pb-page-runs` for every other consumer (the TOC, a
 cross-reference, a page-anchored frame) plus `--pb-section-page` for the next pass.
 `.paper` reserves the **widest** section's paper (`--pb-paper-width`) or a landscape page
-would be cut at the sheet edge, and a narrower section takes the difference as an extra
-right inset on top of its own margins. The sheets are left-aligned in that box, where
-both word processors centre each page.
+would be cut at the sheet edge, and a narrower section splits the difference between its
+two insets, on top of its own margins — so each page is **centred** in that box, as both
+word processors draw one. Every per-page layer positions from the box's own `left`
+(`PageSheetLayer`, `PageDecorLayer`, `LineNumberLayer`, `HeaderFooterLayer`).
 
 **Tables across page breaks:** when a single continuous table box crosses a page boundary, the plugin reports `TableBreakBand`s (doc-px geometry). `Editor.svelte` renders an overlay (`.band-layer` inside `.paper`) that masks the table borders bleeding through the page margins and paints the dark page gap as one seam-free stripe.
 
