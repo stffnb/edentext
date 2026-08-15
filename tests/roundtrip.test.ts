@@ -7,6 +7,7 @@ import { getSchema } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
 import { buildOdt, MAX_HEADING_LEVEL } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
+import { normalize, firstDiff } from './normalize';
 import { hfExtensions } from '../src/lib/editor/extensions/headerFooter';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
 import { builtinStyleSheet } from '../src/lib/styles/styleSheet';
@@ -182,64 +183,6 @@ const fixture: N = {
     P(null, T('The end.')),
   ],
 };
-
-// ---------- normalization for comparison ----------
-const ORDERED_DEFAULTS: Record<string, unknown> = {
-  textAlign: 'left', lineHeight: null, spaceBefore: null, spaceAfter: null,
-  listStyleType: 'decimal', start: 1, rowHeight: null, colspan: 1, rowspan: 1,
-  type: null, level: undefined, rotation: 0, wrap: 'inline',
-  shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1,
-};
-
-function normalize(node: N): N {
-  const out: N = { type: node.type };
-  if (node.text != null) out.text = node.text;
-  if (node.marks?.length) {
-    out.marks = node.marks
-      .map((m: N) => {
-        const mm: N = { type: m.type };
-        const attrs = Object.fromEntries(Object.entries(m.attrs ?? {}).filter(([, v]) => v != null));
-        if (Object.keys(attrs).length) mm.attrs = attrs;
-        return mm;
-      })
-      .sort((a: N, b: N) => a.type.localeCompare(b.type));
-  }
-  const attrs: N = {};
-  for (const [k, v] of Object.entries(node.attrs ?? {})) {
-    if (v == null) continue;
-    if (k in ORDERED_DEFAULTS && ORDERED_DEFAULTS[k] === v) continue;
-    if (k === 'colwidth') { attrs.colwidth = 'CW'; continue; } // ratios compared separately
-    attrs[k] = v;
-  }
-  if (node.attrs?.level != null) attrs.level = node.attrs.level;
-  if (Object.keys(attrs).length) out.attrs = attrs;
-  if (node.content?.length) {
-    // merge adjacent identical text nodes so run-splitting differences don't matter
-    const kids: N[] = [];
-    for (const c of node.content.map(normalize)) {
-      const prev = kids[kids.length - 1];
-      if (prev && prev.type === 'text' && c.type === 'text' &&
-          JSON.stringify(prev.marks ?? null) === JSON.stringify(c.marks ?? null)) {
-        prev.text += c.text;
-      } else kids.push(c);
-    }
-    out.content = kids;
-  }
-  return out;
-}
-
-function firstDiff(a: N, b: N, path = '$'): string | null {
-  if (typeof a !== typeof b) return `${path}: type ${typeof a} vs ${typeof b}`;
-  if (typeof a !== 'object' || a === null || b === null) {
-    return Object.is(a, b) ? null : `${path}: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`;
-  }
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-  for (const k of keys) {
-    const d = firstDiff(a[k], b[k], `${path}.${k}`);
-    if (d) return d;
-  }
-  return null;
-}
 
 function collectColwidths(node: N, acc: number[][] = []): number[][] {
   if (Array.isArray(node.attrs?.colwidth)) acc.push(node.attrs.colwidth);

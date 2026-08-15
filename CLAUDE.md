@@ -26,6 +26,7 @@ Tests live in `tests/` (outside `src/`, so `svelte-check` ignores them), jsdom v
 `lo-roundtrip.test.ts` re-saves through LibreOffice and **self-skips** without `soffice`, so
 `npm test`/CI stay green; `corpus.test.ts` round-trips the committed `tests/corpus/`
 documents (authored by `render-parity/make-fixtures.mjs`, never by our own exporter);
+`fuzz-roundtrip.test.ts` round-trips seeded random documents (`fuzzDoc.ts` generator);
 `tests/unit/` holds fast helper tests. All test tooling stays a
 `devDependency`. No linter/formatter. CI (`.github/workflows/ci.yml`) runs `check` + `test`.
 
