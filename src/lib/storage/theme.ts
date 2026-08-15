@@ -10,6 +10,7 @@ const CHROME_KEY = 'edentext-chrome';
 const RIBBON_COLLAPSED_KEY = 'edentext-ribbon-collapsed';
 const FORMATTING_MARKS_KEY = 'edentext-formatting-marks';
 const RULER_KEY = 'edentext-ruler';
+const SPLIT_KEY = 'edentext-split';
 
 export function loadTheme(): ThemeMode {
     const saved = localStorage.getItem(THEME_KEY);
@@ -60,6 +61,16 @@ export function loadRuler(): boolean {
 
 export function saveRuler(enabled: boolean): void {
     localStorage.setItem(RULER_KEY, String(enabled));
+}
+
+// The split is off unless it was switched on; the divider's position is not kept,
+// as neither word processor restores one either.
+export function loadSplitView(): boolean {
+    return localStorage.getItem(SPLIT_KEY) === 'true';
+}
+
+export function saveSplitView(enabled: boolean): void {
+    localStorage.setItem(SPLIT_KEY, String(enabled));
 }
 
 function resolveMode(mode: ThemeMode): 'light' | 'dark' | 'allBlack' {

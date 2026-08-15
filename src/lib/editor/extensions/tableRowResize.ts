@@ -171,9 +171,12 @@ function rowDecorations(state: EditorState, activeRow: number, previewHeight: nu
   // One handle per cell at the row's lower edge → a continuous line across the row.
   rowNode.forEach((cell, offset) => {
     const cellPos = activeRow + 1 + offset;
-    const handle = document.createElement('div');
-    handle.className = 'row-resize-handle';
-    decos.push(Decoration.widget(cellPos + cell.nodeSize - 1, handle));
+    // Per view: a split pane draws the same handle, and one node cannot be in both.
+    decos.push(Decoration.widget(cellPos + cell.nodeSize - 1, () => {
+      const handle = document.createElement('div');
+      handle.className = 'row-resize-handle';
+      return handle;
+    }));
   });
 
   return DecorationSet.create(state.doc, decos);

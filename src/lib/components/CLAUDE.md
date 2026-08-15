@@ -48,6 +48,33 @@ prop, which `App.svelte` bumps per document it opens — never on an edit. The s
 at most `SETTLE_SAMPLES` blocks: reading every one each frame starves the layout it waits for
 (the 458-page guide then never settled at all).
 
+## Split view (`Editor.svelte`)
+
+Word's View ▸ Split (`Mod-Alt-s`, its own key): the pane column holds one `.editor`
+scroller per pane, both rendered from the same `{#snippet pane(i)}`, so every layer and
+the whole floating chrome exist per pane. The split is **horizontal only** — the panes are
+the same width, which is what lets the second one render the first one's pagination.
+
+- The second pane is a raw `EditorView` on the editor's own state (`...ed.view.props`,
+  `dispatchTransaction` routed to `ed.view`), mirrored by `secondView.updateState` in
+  `onTransaction`, and given the `tiptap` class + `dom.editor` back-reference TipTap puts
+  on its own. Only its `min-height` is set here — the pagination pass writes that on the
+  view it measures.
+- **One view measures.** `isSplitPane` (pageBreaks.ts) marks the second pane's host, and
+  `pageBreaks`/`columnsFlow`/`tabStops` return an empty plugin view for it; their
+  decorations are shared state, so a second pass would fight the first over them.
+- **A widget decoration must build its DOM in a function.** Two views render the same
+  decoration set, and one element can only sit in one document — passing a node makes each
+  view take it back from the other, forever. Fixed at all four sites (the page-break
+  spacers, both table resize handles, the word-completion offer).
+- `activePane` is set by a pointerdown on a pane and is what every coordinate here reads
+  (`paneScroller`, `paneView`). A focus arriving at the *other* pane is handed back to it —
+  a toolbar command focuses the editor's own view, which is pane 0. Each pane's
+  `handleScrollToSelection` suppresses scrolling while it is not the active one, or every
+  keystroke would drag the other pane to the caret.
+- The divider drags (`splitRatio`); only the on/off flag is persisted
+  (`edentext-split`), as neither word processor restores a split's position either.
+
 ## Zoom (`Editor.svelte`)
 
 Zoom is a CSS `transform: scale()` on `.paper` (layout and pagination always run at 100%, so they stay stable across zoom — this replaced an earlier CSS `zoom` approach that re-ran layout at every scale). A transform reserves no layout space, so `.paper-scaler` reserves the scaled footprint to drive scrollbars and horizontal centering — it's sized in the `$effect.pre`, so it reaches the DOM in the same flush as the transform and the anchor pass below measures the right geometry. The applied zoom is throttled to one DOM write per animation frame. Range 20–300% (`MIN_ZOOM`/`MAX_ZOOM`/`clampZoom` in `utils/zoom.ts`), persisted in `localStorage['edentext-zoom']`.

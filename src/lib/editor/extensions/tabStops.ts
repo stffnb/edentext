@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { EditorState } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { FORCE_PAGE_RECALC, pageBreakKey } from './pageBreaks';
+import { FORCE_PAGE_RECALC, isSplitPane, pageBreakKey } from './pageBreaks';
 import { PX_PER_CM } from '../../storage/pageMargins';
 
 // Per-paragraph tab stops. CSS only has the fixed `tab-size` grid, so a tab that
@@ -430,6 +430,7 @@ export const TabStops = Extension.create({
           },
         },
         view(view) {
+          if (isSplitPane(view)) return {};
           const calculate = () => {
             rafId = null;
             let layout: TabLayout = { widths: [], breaks: [] };

@@ -277,6 +277,13 @@ export const pageBreakKey = new PluginKey<PageBreakState>('pageBreaks');
 // pagination recompute even though the document content is unchanged.
 export const FORCE_PAGE_RECALC = 'forcePageBreakRecalc';
 
+// A split view's second pane (Editor.svelte marks its host). Both panes are the same
+// width, so it renders the decorations the first pane's pass produced; a layout pass of
+// its own would measure the same DOM twice and fight over the shared result.
+export function isSplitPane(view: EditorView): boolean {
+  return !!view.dom.closest('[data-split-pane]');
+}
+
 // A table-row spacer: the colspan bridging the row, plus the lines that close the table
 // at the break — LibreOffice draws the row separator the break falls on, or, where the
 // rows carry none, the table's own box (its top border closes, its bottom border opens).
@@ -380,6 +387,7 @@ export const PageBreaks = Extension.create({
         },
       },
       view(editorView) {
+        if (isSplitPane(editorView)) return {};
         let lastSnapshot: PageBreakDebugSnapshot | null = null;
 
         debugAccessors.set(editorView, (): PageBreakDebugSnapshot | null => {
@@ -1660,7 +1668,10 @@ export const PageBreaks = Extension.create({
             prevPlacementsKey = lastPlacementsKey;
             lastPlacementsKey = placementsKey;
             const doc = editorView.state.doc;
-            const decoArray: Decoration[] = placements.map((p) => {
+            // Every spacer is built per view: a split pane renders the same decorations,
+            // and one DOM node cannot sit in two documents at once — each would keep
+            // taking it back from the other.
+            const decoArray: Decoration[] = placements.map((p) => Decoration.widget(p.docPos, () => {
               if (p.row) {
                 // A table breaks between rows: the spacer must be a <tr> so it's
                 // valid inside <tbody> and creates a borderless gap that pushes
@@ -1692,7 +1703,7 @@ export const PageBreaks = Extension.create({
                   tdEl.appendChild(hdr);
                 }
                 trEl.appendChild(tdEl);
-                return Decoration.widget(p.docPos, trEl, { side: -1 });
+                return trEl;
               }
               const spacerEl = document.createElement('div');
               spacerEl.dataset.pageBreakSpacer = 'true';
@@ -1703,8 +1714,8 @@ export const PageBreaks = Extension.create({
               spacerEl.style.pointerEvents = 'none';
               spacerEl.style.userSelect = 'none';
               spacerEl.setAttribute('contenteditable', 'false');
-              return Decoration.widget(p.docPos, spacerEl, { side: -1 });
-            });
+              return spacerEl;
+            }, { side: -1 }));
             if (collapsedTrailing) {
               decoArray.push(Decoration.node(collapsedTrailing.from, collapsedTrailing.to, {
                 style: 'height:0;min-height:0;margin:0;overflow:hidden',

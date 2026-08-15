@@ -55,6 +55,8 @@ export const DEFAULT_SHORTCUTS = {
   formattingMarks: 'Mod-F10',
   // LibreOffice's Navigator key; Word has none for its Navigation pane.
   navigator: 'F5',
+  // Word's own key for View ▸ Split; LibreOffice's split has none.
+  splitView: 'Mod-Alt-s',
   zoomIn: 'Mod-+',
   zoomOut: 'Mod--',
   zoomReset: 'Mod-0',

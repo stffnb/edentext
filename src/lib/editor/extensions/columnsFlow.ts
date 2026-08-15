@@ -4,7 +4,7 @@ import type { Transaction } from '@tiptap/pm/state';
 import { canJoin, canSplit } from '@tiptap/pm/transform';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { readVerticalMargins, FORCE_PAGE_RECALC } from './pageBreaks';
+import { readVerticalMargins, FORCE_PAGE_RECALC, isSplitPane } from './pageBreaks';
 import { sameColumnsAttrs, COLUMNS_FIT_MARGIN_PX } from './columns';
 
 // Cross-page column flow: keeps a columns chain's fragmentation in sync with the
@@ -174,6 +174,7 @@ export const ColumnsFlow = Extension.create({
         },
       },
       view(editorView) {
+        if (isSplitPane(editorView)) return {};
         function fragments(): Fragment[] {
           const out: Fragment[] = [];
           editorView.state.doc.forEach((node, offset) => {

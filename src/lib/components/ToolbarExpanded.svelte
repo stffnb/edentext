@@ -32,8 +32,8 @@
   import { t } from '../i18n/i18n.svelte';
   import { shortcutHint, type ShortcutId } from '../editor/shortcuts';
 
-  let { editor, tick, showFormattingMarks = $bindable(), showRuler = $bindable(true), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hyphenate = $bindable(false), pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), differentOddEven = $bindable(false), hfActive = null, onEditZone, onDebugDump, onManageTableStyles, onNoteOptions, navigatorOpen = false, onToggleNavigator }:
-    { editor: Editor | null; tick: number; showFormattingMarks: boolean; showRuler?: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hyphenate?: boolean; pageNumbering?: PageNumbering; hfDistances?: HfDistances; differentFirstPage?: boolean; differentOddEven?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void; onManageTableStyles?: () => void; onNoteOptions?: () => void; navigatorOpen?: boolean; onToggleNavigator?: () => void } = $props();
+  let { editor, tick, showFormattingMarks = $bindable(), showRuler = $bindable(true), splitView = $bindable(false), pageMargins = $bindable(DEFAULT_MARGINS), pageOrientation = $bindable<Orientation>('portrait'), pageFormat = $bindable<PageFormat>('A4'), hyphenate = $bindable(false), pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING), hfDistances = $bindable(DEFAULT_HF_DISTANCES), differentFirstPage = $bindable(false), differentOddEven = $bindable(false), hfActive = null, onEditZone, onDebugDump, onManageTableStyles, onNoteOptions, navigatorOpen = false, onToggleNavigator }:
+    { editor: Editor | null; tick: number; showFormattingMarks: boolean; showRuler?: boolean; splitView?: boolean; pageMargins?: PageMargins; pageOrientation?: Orientation; pageFormat?: PageFormat; hyphenate?: boolean; pageNumbering?: PageNumbering; hfDistances?: HfDistances; differentFirstPage?: boolean; differentOddEven?: boolean; hfActive?: 'header' | 'footer' | null; onEditZone?: (zone: 'header' | 'footer') => void; onDebugDump?: () => void; onManageTableStyles?: () => void; onNoteOptions?: () => void; navigatorOpen?: boolean; onToggleNavigator?: () => void } = $props();
 
   const PAGE_FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
 
@@ -1584,6 +1584,18 @@
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <rect x="1.75" y="5.25" width="12.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
           <path d="M4.75 5.25v2M7 5.25v3M9.25 5.25v2M11.5 5.25v3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button
+        class:active={splitView}
+        onclick={() => (splitView = !splitView)}
+        title={`${t().view.split} (${shortcutHint('splitView')})`}
+        aria-pressed={splitView}
+      >
+        <!-- Two panes, one above the other -->
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="2.25" y="2.25" width="11.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+          <rect x="2.25" y="9.25" width="11.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
         </svg>
       </button>
       <button

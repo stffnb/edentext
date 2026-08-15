@@ -35,6 +35,7 @@ All keys share the `edentext-` prefix — a namespace, not a description: on Git
 - **Ribbon collapsed:** `edentext-ribbon-collapsed` — boolean string; absent = expanded.
 - **Formatting marks:** `edentext-formatting-marks` — boolean string.
 - **Ruler:** `edentext-ruler` — boolean string; absent = on.
+- **Split view:** `edentext-split` — boolean string; absent = off. The divider's position is not kept, as neither word processor restores one.
 - **Zoom:** `edentext-zoom` — integer percent.
 - **Page margins:** `edentext-page-margins` — JSON cm values.
 - **Page orientation:** `edentext-page-orientation` — `'portrait' | 'landscape'`.

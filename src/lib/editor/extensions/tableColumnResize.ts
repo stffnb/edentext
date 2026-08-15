@@ -342,8 +342,7 @@ function handleDecorations(state: EditorState, cell: number, edge: EdgeSide): De
     if (!cellNode) continue;
     // Widgets sit INSIDE the cell (which is the handle's positioning context).
     const pos = edge === 'left' ? start + cellPos + 1 : start + cellPos + cellNode.nodeSize - 1;
-    const dom = document.createElement('div');
-    dom.className = edge === 'left' ? 'column-resize-handle left' : 'column-resize-handle';
+    const cls = edge === 'left' ? 'column-resize-handle left' : 'column-resize-handle';
     if (dragging) {
       decorations.push(
         Decoration.node(start + cellPos, start + cellPos + cellNode.nodeSize, {
@@ -351,7 +350,12 @@ function handleDecorations(state: EditorState, cell: number, edge: EdgeSide): De
         }),
       );
     }
-    decorations.push(Decoration.widget(pos, dom));
+    // Per view: a split pane draws the same handle, and one node cannot be in both.
+    decorations.push(Decoration.widget(pos, () => {
+      const dom = document.createElement('div');
+      dom.className = cls;
+      return dom;
+    }));
   }
   return DecorationSet.create(state.doc, decorations);
 }

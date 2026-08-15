@@ -62,10 +62,14 @@ export const WordCompletion = Extension.create({
           decorations(state) {
             const s = key.getState(state);
             if (!s) return null;
-            const span = document.createElement('span');
-            span.className = 'word-completion';
-            span.textContent = s.text;
-            return DecorationSet.create(state.doc, [Decoration.widget(s.pos, span, { side: 1 })]);
+            // Per view: a split pane draws the same offer, and one node cannot be in both.
+            const offer = () => {
+              const span = document.createElement('span');
+              span.className = 'word-completion';
+              span.textContent = s.text;
+              return span;
+            };
+            return DecorationSet.create(state.doc, [Decoration.widget(s.pos, offer, { side: 1 })]);
           },
 
           // A word ends at the first character that is not part of one, which is where

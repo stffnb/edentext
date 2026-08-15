@@ -123,6 +123,7 @@
 - Word / character count statistics (whole document and selection)
 - Reviewing pane for tracked changes (Review ▸ Revisions), beside the comments one: every recorded change in document order — author, date, what was inserted or deleted — click to select the text, accept or reject in place. A change a paragraph boundary splits is one row and is applied whole. Each **author** draws in their own colour (LibreOffice's author palette, handed out in order of first appearance), so several reviewers stay apart on the page
 - Navigator pane (F5, or View ▸ Navigator): the document's chapters as an outline, click one to jump to it and the caret's own chapter stays marked. Beside each, LibreOffice's four chapter operations — move up / down and promote / demote a level, each carrying everything under the heading with it. A move swaps with the adjacent chapter at the same level and never crosses a heading above it, so a subheading stays in its own chapter. Below the outline, the tables, pictures and bookmarks LibreOffice's Navigator also lists, as jump targets
+- Split view (View ▸ Split, Word's own Ctrl+Alt+S): two panes onto the same document, scrolled independently and both editable — read one page while writing on another, or copy between distant parts. The panes are stacked, as both word processors split a window, so they share a width and the second renders the pagination the first measures rather than laying the document out twice. The divider drags; whichever pane you last worked in keeps the caret, the floating toolbars and the ribbon's commands, and the other one stays where you left it
 
 **UI & theming**
 - Light / Dark / AllBlack / Auto appearance modes (settings menu in toolbar)
@@ -170,7 +171,6 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-15.
 - Thesaurus and grammar check
 - A vertical writing mode for the **page** (ODF `tb-rl` on the page layout): a text box can run its text top-to-bottom, the body cannot — pagination fills a page downwards. A ruby annotation's own alignment and position are not offered either; both products' defaults are what we write
 - Password-protected ODT/DOCX; digital signatures. ODF encrypts each zip entry (AES-256-CBC, PBKDF2, the manifest carrying salt, IV and checksum), which WebCrypto can do; Word's is an OLE compound file we would have to write from scratch, so the two legs are nowhere near the same size
-- Split view: two views of one document, scrolled independently. The pagination pass measures one view's DOM (`pageBreaks.ts`), so a second live view is a change to that system rather than a second mount
 
 **Out of scope for now**
 - Mail merge, data sources, form fields

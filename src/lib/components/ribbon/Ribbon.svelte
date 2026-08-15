@@ -38,6 +38,7 @@
     documentName = $bindable(''),
     showFormattingMarks = $bindable(false),
     showRuler = $bindable(true),
+    splitView = $bindable(false),
     documentLanguage,
     onLanguage,
     zoom = 100,
@@ -73,6 +74,7 @@
     documentName?: string;
     showFormattingMarks?: boolean;
     showRuler?: boolean;
+    splitView?: boolean;
     documentLanguage: DocumentLanguage;
     onLanguage: (code: DocumentLanguage) => void;
     zoom?: number;
@@ -341,7 +343,7 @@
     {:else if tab === 'review'}
       <ReviewTab {editor} {tick} {documentLanguage} {onLanguage} {onAutoCorrect} {onNewComment} {commentsOpen} {onToggleComments} {revisionsOpen} {onToggleRevisions} />
     {:else if tab === 'view'}
-      <ViewTab bind:showRuler bind:showFormattingMarks {zoom} {onZoom} {onDebugDump} {navigatorOpen} {onToggleNavigator} />
+      <ViewTab bind:showRuler bind:showFormattingMarks bind:splitView {zoom} {onZoom} {onDebugDump} {navigatorOpen} {onToggleNavigator} />
     {:else if tab === 'tableDesign' || tab === 'tableLayout'}
       <TableTabs {editor} {tick} which={tab === 'tableDesign' ? 'design' : 'layout'} />
     {:else if tab === 'pictureFormat' || tab === 'shapeFormat'}

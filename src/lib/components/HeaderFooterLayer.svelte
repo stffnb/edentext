@@ -33,6 +33,7 @@
     sectionStartPages = [],
     chapterStarts = [],
     pageNumbering = DEFAULT_PAGE_NUMBERING,
+    interactive = true,
   }: {
     headerDoc: HfDoc;
     footerDoc: HfDoc;
@@ -58,6 +59,8 @@
     extraHfSections?: HfSet[];
     sectionStartPages?: number[];
     chapterStarts?: { page: number; level: number; text: string }[];
+    /** False in a split view's second pane: it draws the zones, it does not edit them. */
+    interactive?: boolean;
   } = $props();
 
   const PAGE_GAP = 20;
@@ -308,6 +311,9 @@
   // Mount / swap / unmount the single live editor as hfActive changes. Driven from
   // double-click (sets editingPage) or the Layout-panel buttons (use currentPage).
   $effect(() => {
+    // A split view's second layer only draws: the one live zone editor belongs to the
+    // pane that owns the bindings, or both would write the same document.
+    if (!interactive) return;
     const zone = hfActive;
     const mount = liveMount; // read unconditionally so it's always a tracked dep
     if (!zone) {
@@ -398,14 +404,14 @@
 <div class="hf-layer">
   {#each pages as p}
     {#each ['header', 'footer'] as const as zone}
-      {#if !(hfActive === zone && editingPage === p)}
+      {#if !(interactive && hfActive === zone && editingPage === p)}
         {@const html = zoneHtml(zone, p)}
         <div
           class="hf-zone hf-{zone}"
           class:hf-empty={!html}
           data-hf-label={zone === 'header' ? t().hf.addHeaderHint : t().hf.addFooterHint}
           style={boxStyle(zoneBox(zone, p))}
-          ondblclick={() => startEdit(zone, p)}
+          ondblclick={() => interactive && startEdit(zone, p)}
           role="button"
           tabindex="-1"
           use:patchFields={[p, numPages, html, chapterStarts]}
@@ -417,7 +423,7 @@
     {/each}
   {/each}
 
-  {#if hfActive}
+  {#if interactive && hfActive}
     {@const box = activeZoneBox(hfActive, editingPage)}
     {@const index = sectionOf(editingPage)}
     {@const variant = variantFor(editingPage, index)}

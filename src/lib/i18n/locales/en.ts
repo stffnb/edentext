@@ -358,6 +358,10 @@ const en = {
     label: 'Spell-check language',
     noSpellCheck: 'No spell check',
   },
+  view: {
+    split: 'Split',
+    splitTitle: 'Two panes onto this document, scrolled separately',
+  },
   ruler: {
     show: 'Ruler',
     firstLineIndent: 'First line indent',

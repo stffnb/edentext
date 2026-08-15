@@ -354,6 +354,10 @@ const de: Messages = {
     label: 'Rechtschreibsprache',
     noSpellCheck: 'Keine Rechtschreibprüfung',
   },
+  view: {
+    split: 'Teilen',
+    splitTitle: 'Zwei Ansichten dieses Dokuments, getrennt scrollbar',
+  },
   ruler: {
     show: 'Lineal',
     firstLineIndent: 'Erstzeileneinzug',

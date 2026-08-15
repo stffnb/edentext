@@ -19,6 +19,7 @@
   import type { WrapMode } from '../editor/extensions/image';
   import { findTextBox, type ShapeKind } from '../editor/extensions/textBox';
   import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+  import { EditorView } from '@tiptap/pm/view';
   import ContextMenu from './ContextMenu.svelte';
   import HeaderFooterLayer from './HeaderFooterLayer.svelte';
 import PageDecorLayer from './PageDecorLayer.svelte';
@@ -53,7 +54,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
 
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
-    zoom = 100, onZoom, showFormattingMarks = false, showRuler = true, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
+    zoom = 100, onZoom, showFormattingMarks = false, showRuler = true, splitView = false, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
     pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', documentEpoch = 0, pageRtl = false, hyphenate = false, documentLanguage = 'en', pageNumbering = DEFAULT_PAGE_NUMBERING, pageDecor = EMPTY_PAGE_DECOR, lineNumbering = DEFAULT_LINE_NUMBERING,
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
@@ -64,6 +65,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
     onZoom?: (zoom: number) => void;
     showFormattingMarks?: boolean; showRuler?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat; tabIntervalCm?: number; spacingModel?: SpacingModel;
+    /** Two panes onto this document, scrolled on their own (Word's View ▸ Split). */
+    splitView?: boolean;
     /** Bumped by App for each document it opens; re-arms the settle gate. */
     documentEpoch?: number;
     /** A right-to-left page: the body's base direction, so its columns fill from the right. */
@@ -353,22 +356,30 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     );
   }
 
-  let element: HTMLDivElement;
-  let editorContainer: HTMLDivElement;
+  // One entry per pane: [0] is the editor's own view, [1] the split view's second one.
+  // Every coordinate below is read against the pane the user is working in.
+  let hosts = $state<HTMLDivElement[]>([]);
+  let scrollers = $state<HTMLDivElement[]>([]);
+  let papers = $state<HTMLDivElement[]>([]);
+  let activePane = $state(0);
+  let secondView = $state<EditorView | null>(null);
+  const paneScroller = () => scrollers[activePane] ?? scrollers[0];
+  const paneView = (): EditorView | null =>
+    (activePane === 1 ? secondView : null) ?? editor?.view ?? null;
 
   // Zoom is a CSS `transform: scale()` on .paper (so layout and pagination stay at
   // 100%). A transform reserves no layout space, so .paper-scaler reserves the scaled
   // footprint to drive the scrollbars and horizontal centering.
-  let paperEl: HTMLDivElement;
   let docHeightDoc = $state(0); // document height, from pm-pagecount
   let scaledWidth = $state(0);
   let scaledHeight = $state(0);
 
   function recomputeScaledSize() {
-    if (!paperEl) return;
+    const paper = papers[0];
+    if (!paper) return;
     const z = appliedZoom / 100;
-    const w = paperEl.offsetWidth;                  // unscaled page width (= --user-page-width)
-    const h = docHeightDoc || paperEl.offsetHeight; // unscaled document height
+    const w = paper.offsetWidth;                  // unscaled page width (= --user-page-width)
+    const h = docHeightDoc || paper.offsetHeight; // unscaled document height
     scaledWidth = Math.round(w * z);
     scaledHeight = Math.round(h * z);
   }
@@ -386,18 +397,20 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // The misspelled range the open menu's suggestions belong to.
   let spellTarget: { from: number; to: number; word: string } | null = null;
 
-  function openContextMenu(event: MouseEvent) {
+  function openContextMenu(event: MouseEvent, pane: number) {
     const ed = editor;
+    activePane = pane;
+    const container = paneScroller();
     // Shift+right-click yields to the browser menu, whose Paste needs no clipboard
     // permission (Firefox does this for page handlers by itself). Header/footer keeps
     // the browser menu too — the schema has none of the entries below.
-    if (!ed || event.shiftKey || hfActive || !editorContainer) return;
+    if (!ed || event.shiftKey || hfActive || !container) return;
+    const view = paneView();
     const target = event.target as HTMLElement | null;
-    if (!target || !ed.view.dom.contains(target)) return;
+    if (!view || !target || !view.dom.contains(target)) return;
     if (target.closest('.image-node, .textbox-node')) return; // own floating toolbars
     event.preventDefault();
 
-    const view = ed.view;
     const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
     const sel = view.state.selection;
     // A selection the click lands inside is kept, otherwise the caret moves.
@@ -419,10 +432,10 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       };
     }
 
-    const cRect = editorContainer.getBoundingClientRect();
+    const cRect = container.getBoundingClientRect();
     ctxMenu = {
-      top: event.clientY - cRect.top + editorContainer.scrollTop,
-      left: event.clientX - cRect.left + editorContainer.scrollLeft,
+      top: event.clientY - cRect.top + container.scrollTop,
+      left: event.clientX - cRect.left + container.scrollLeft,
       items: buildContextMenu(ed, { spell }),
     };
   }
@@ -451,23 +464,25 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // --- Link hover hint (Word/LibreOffice style) ---
   // Hovering a link shows its URL + a modifier-click hint; the link only follows on
   // Ctrl/Cmd+click (handleClick in editorProps), so a plain click can edit the text.
-  let linkTip = $state<{ top: number; left: number; href: string } | null>(null);
+  let linkTip = $state<{ top: number; left: number; href: string; pane: number } | null>(null);
 
-  function showLinkTip(a: HTMLAnchorElement) {
+  function showLinkTip(a: HTMLAnchorElement, container: HTMLElement, pane: number) {
     const href = a.getAttribute('href');
-    if (!href || !editorContainer) return;
+    if (!href) return;
     const aRect = a.getBoundingClientRect();
-    const cRect = editorContainer.getBoundingClientRect();
+    const cRect = container.getBoundingClientRect();
     linkTip = {
-      top: aRect.top - cRect.top + editorContainer.scrollTop,
-      left: aRect.left - cRect.left + editorContainer.scrollLeft,
+      top: aRect.top - cRect.top + container.scrollTop,
+      left: aRect.left - cRect.left + container.scrollLeft,
       href,
+      pane,
     };
   }
 
-  function onEditorPointerOver(e: MouseEvent) {
+  function onEditorPointerOver(e: MouseEvent, pane: number) {
+    const container = scrollers[pane];
     const a = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
-    if (a && editorContainer?.contains(a)) showLinkTip(a);
+    if (a && container?.contains(a)) showLinkTip(a, container, pane);
   }
 
   function onEditorPointerOut(e: MouseEvent) {
@@ -509,7 +524,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // container's padding is what the toolbar island overlays, so clear that too.
   let tableDialogH = $state(0);
   let tableDialogTop = $derived.by(() => {
-    const c = editorContainer;
+    const c = scrollers[activePane];
     if (!c || !tableDialogH) return tableUi.top;
     const pad = parseFloat(getComputedStyle(c).paddingTop) || 0;
     return Math.max(tableUi.top, c.scrollTop + pad + tableDialogH + 6);
@@ -517,12 +532,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
 
   // The DOM element of the table containing the current selection, or null.
   // nodeDOM(before(table)) returns the wrapper div the table node view renders.
-  function activeTableDOM(ed: Editor): HTMLElement | null {
+  function activeTableDOM(ed: Editor, view: EditorView): HTMLElement | null {
     const resolved = ed.state.selection.$from;
     for (let d = resolved.depth; d > 0; d--) {
       if (resolved.node(d).type.name === 'table') {
         try {
-          const dom = ed.view.nodeDOM(resolved.before(d));
+          const dom = view.nodeDOM(resolved.before(d));
           return dom instanceof HTMLElement ? dom : null;
         } catch {
           return null;
@@ -534,11 +549,13 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
 
   function recomputeTableUi() {
     const ed = editor;
-    if (!ed || !editorContainer) {
+    const container = paneScroller();
+    const view = paneView();
+    if (!ed || !container || !view) {
       if (tableUi.visible) tableUi = { ...tableUi, visible: false };
       return;
     }
-    const dom = activeTableDOM(ed);
+    const dom = activeTableDOM(ed, view);
     if (!dom) {
       if (tableUi.visible) tableUi = { ...tableUi, visible: false };
       return;
@@ -547,22 +564,22 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     // getBoundingClientRect and scrollTop share the same zoom scale, so this stays
     // aligned across zoom; the toolbar is a non-zoomed sibling, rendered constant-size.
     const tRect = dom.getBoundingClientRect();
-    const cRect = editorContainer.getBoundingClientRect();
-    const left = tRect.left - cRect.left + editorContainer.scrollLeft;
+    const cRect = container.getBoundingClientRect();
+    const left = tRect.left - cRect.left + container.scrollLeft;
     // Default: anchor just above the table's top-left corner.
-    let top = tRect.top - cRect.top + editorContainer.scrollTop;
+    let top = tRect.top - cRect.top + container.scrollTop;
 
     // When a table spans page breaks, keep the toolbar on the cursor's page rather
     // than the table's first page. If the cursor's page differs from the table's start
     // page, re-anchor to that page's content-top so the toolbar floats in its margin.
-    const tiptap = element?.querySelector('.tiptap') as HTMLElement | null;
+    const tiptap = view.dom as HTMLElement;
     if (tiptap) {
       try {
         const z = appliedZoom / 100;
         const tiptapRect = tiptap.getBoundingClientRect();
         const cycle = getCycle();
         const tableTopDoc = (tRect.top - tiptapRect.top) / z;
-        const coords = ed.view.coordsAtPos(ed.state.selection.head);
+        const coords = view.coordsAtPos(ed.state.selection.head);
         const cursorDoc = ((coords.top + coords.bottom) / 2 - tiptapRect.top) / z;
         const tableStartPage = Math.floor(Math.max(0, tableTopDoc) / cycle);
         const cursorPage = Math.floor(Math.max(0, cursorDoc) / cycle);
@@ -570,7 +587,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
           const marginTopDoc =
             parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--user-margin-top')) || 96;
           const pageContentTopDoc = cursorPage * cycle + marginTopDoc;
-          const tiptapTopInContainer = tiptapRect.top - cRect.top + editorContainer.scrollTop;
+          const tiptapTopInContainer = tiptapRect.top - cRect.top + container.scrollTop;
           top = tiptapTopInContainer + pageContentTopDoc * z;
         }
       } catch { /* fall back to the table-top anchor */ }
@@ -585,22 +602,24 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
 
   function recomputeImageUi() {
     const ed = editor;
-    if (!ed || !editorContainer) {
+    const container = paneScroller();
+    const view = paneView();
+    if (!ed || !container || !view) {
       if (imageUi.visible) imageUi = { ...imageUi, visible: false };
       return;
     }
     const sel = ed.state.selection;
-    const dom = sel instanceof NodeSelection && sel.node.type.name === 'image' ? ed.view.nodeDOM(sel.from) : null;
+    const dom = sel instanceof NodeSelection && sel.node.type.name === 'image' ? view.nodeDOM(sel.from) : null;
     if (!(dom instanceof HTMLElement)) {
       if (imageUi.visible) imageUi = { ...imageUi, visible: false };
       return;
     }
     const r = dom.getBoundingClientRect();
-    const cRect = editorContainer.getBoundingClientRect();
+    const cRect = container.getBoundingClientRect();
     imageUi = {
       visible: true,
-      top: r.top - cRect.top + editorContainer.scrollTop,
-      left: r.left - cRect.left + editorContainer.scrollLeft,
+      top: r.top - cRect.top + container.scrollTop,
+      left: r.left - cRect.left + container.scrollLeft,
       wrap: ((sel as NodeSelection).node.attrs.wrap as WrapMode) || 'inline',
     };
   }
@@ -616,14 +635,16 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
 
   function recomputeTextBoxUi() {
     const ed = editor;
-    const found = ed && editorContainer && !imageUi.visible ? findTextBox(ed.state) : null;
-    const dom = found ? ed!.view.nodeDOM(found.pos) : null;
+    const container = paneScroller();
+    const view = paneView();
+    const found = ed && container && view && !imageUi.visible ? findTextBox(ed.state) : null;
+    const dom = found ? view!.nodeDOM(found.pos) : null;
     if (!found || !(dom instanceof HTMLElement)) {
       if (textBoxUi.visible) textBoxUi = { ...textBoxUi, visible: false };
       return;
     }
     const r = dom.getBoundingClientRect();
-    const cRect = editorContainer.getBoundingClientRect();
+    const cRect = container!.getBoundingClientRect();
     const a = found.node.attrs;
     // Anchor above the rotate grip (it protrudes above the box) so the toolbar never
     // covers it; fall back to the box top when the grip isn't rendered.
@@ -632,8 +653,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const anchorTop = gr && gr.height > 0 ? Math.min(r.top, gr.top) : r.top;
     textBoxUi = {
       visible: true,
-      top: anchorTop - cRect.top + editorContainer.scrollTop,
-      left: r.left - cRect.left + editorContainer.scrollLeft,
+      top: anchorTop - cRect.top + container!.scrollTop,
+      left: r.left - cRect.left + container!.scrollLeft,
       wrap: (a.wrap as WrapMode) || 'inline',
       shapeKind: (a.shapeKind as ShapeKind) || 'textbox',
       fillColor: (a.fillColor as string | null) ?? null,
@@ -653,7 +674,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let gapStripeStyles = $state<GapStripeStyle[]>([]);
 
   function recomputeBands() {
-    const tiptap = element?.querySelector('.tiptap') as HTMLElement | null;
+    // Page width and the bands are both document px — one measurement serves both panes.
+    const tiptap = (editor?.view.dom ?? null) as HTMLElement | null;
     if (!tiptap || tableBandsDoc.length === 0) {
       if (bandStyles.length) bandStyles = [];
       if (gapStripeStyles.length) gapStripeStyles = [];
@@ -718,18 +740,20 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // Ctrl+wheel — a touchpad two-finger zoom fires exactly this — zooms the document
   // instead of the browser. `wheel` on a plain element is non-passive, so the
   // preventDefault sticks. The pointer is the zoom anchor.
-  function onWheel(e: WheelEvent) {
+  function onWheel(e: WheelEvent, pane: number) {
     if (!e.ctrlKey || !onZoom) return;
     e.preventDefault();
-    pendingAnchor = { x: e.clientX, y: e.clientY };
+    pendingAnchor = { x: e.clientX, y: e.clientY, pane };
     onZoom(zoom * wheelZoomFactor(e.deltaY, e.deltaMode));
   }
 
   // The point held fixed across a zoom change: the pointer for a wheel zoom, else
-  // (slider, buttons, keyboard) the top of the viewport.
+  // (slider, buttons, keyboard) the top of the viewport. One per pane — a split view
+  // zooms both, and the pane the pointer is not in keeps its own top in place.
   let prevZoom = -1;
-  let pendingAnchor: { x: number; y: number } | null = null;
-  let pendingAnchorDoc: { x: number; y: number; screenX: number; screenY: number } | null = null;
+  let pendingAnchor: { x: number; y: number; pane: number } | null = null;
+  type Anchor = { x: number; y: number; screenX: number; screenY: number };
+  let pendingAnchorDoc: (Anchor | null)[] = [];
 
   $effect.pre(() => {
     const z = appliedZoom;
@@ -737,54 +761,65 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     // in the same flush as the transform — the post-effect measures against it.
     // Untracked so only a zoom change runs the anchor logic (onPageCount recomputes too).
     untrack(recomputeScaledSize);
-    if (prevZoom < 0 || !editorContainer || !paperEl || z === prevZoom) {
+    const wheel = pendingAnchor;
+    pendingAnchor = null;
+    if (prevZoom < 0 || z === prevZoom) {
       prevZoom = z;
-      pendingAnchor = null;
       return;
     }
-    const editorRect = editorContainer.getBoundingClientRect();
-    const paperRect = paperEl.getBoundingClientRect();
-    const screenX = pendingAnchor ? pendingAnchor.x : paperRect.left;
-    const screenY = pendingAnchor ? pendingAnchor.y : editorRect.top;
     const s = prevZoom / 100;
-    pendingAnchorDoc = {
-      x: (screenX - paperRect.left) / s,
-      y: (screenY - paperRect.top) / s,
-      screenX, screenY,
-    };
-    pendingAnchor = null;
     prevZoom = z;
+    pendingAnchorDoc = [0, 1].map((i) => {
+      const container = scrollers[i];
+      const paper = papers[i];
+      if (!container || !paper) return null;
+      const editorRect = container.getBoundingClientRect();
+      const paperRect = paper.getBoundingClientRect();
+      const screenX = wheel && wheel.pane === i ? wheel.x : paperRect.left;
+      const screenY = wheel && wheel.pane === i ? wheel.y : editorRect.top;
+      return {
+        x: (screenX - paperRect.left) / s,
+        y: (screenY - paperRect.top) / s,
+        screenX, screenY,
+      };
+    });
   });
 
   $effect(() => {
     appliedZoom; // track to fire after the pre-effect / DOM update
     // Zoom changes the table's rendered position — re-place the floating toolbar.
     scheduleTableUi();
-    if (pendingAnchorDoc === null || !editorContainer || !paperEl) return;
-    const anchor = pendingAnchorDoc;
-    pendingAnchorDoc = null;
-    const paperRect = paperEl.getBoundingClientRect();
+    const anchors = pendingAnchorDoc;
+    pendingAnchorDoc = [];
     const s = appliedZoom / 100;
-    // Without horizontal overflow .paper-scaler stays centred and the scrollLeft write
-    // is a no-op — the whole page is visible, so there is nothing to keep in view.
-    editorContainer.scrollLeft += paperRect.left + anchor.x * s - anchor.screenX;
-    editorContainer.scrollTop += paperRect.top + anchor.y * s - anchor.screenY;
+    for (const [i, anchor] of anchors.entries()) {
+      const container = scrollers[i];
+      const paper = papers[i];
+      if (!anchor || !container || !paper) continue;
+      const paperRect = paper.getBoundingClientRect();
+      // Without horizontal overflow .paper-scaler stays centred and the scrollLeft write
+      // is a no-op — the whole page is visible, so there is nothing to keep in view.
+      container.scrollLeft += paperRect.left + anchor.x * s - anchor.screenX;
+      container.scrollTop += paperRect.top + anchor.y * s - anchor.screenY;
+    }
   });
 
   function updateCurrentPage() {
-    const tiptap = element?.querySelector('.tiptap') as HTMLElement | null;
-    if (!tiptap || !editorContainer) return;
+    const view = paneView();
+    const container = paneScroller();
+    const tiptap = (view?.dom ?? null) as HTMLElement | null;
+    if (!tiptap || !container) return;
 
-    const editorRect = editorContainer.getBoundingClientRect();
+    const editorRect = container.getBoundingClientRect();
     const tiptapRect = tiptap.getBoundingClientRect();
     // getBoundingClientRect and coordsAtPos return zoomed viewport pixels;
     // divide by zoom factor to convert to document coordinates before comparing with the cycle.
     const zoomFactor = appliedZoom / 100;
     const cycle = getCycle();
 
-    if (editor) {
+    if (editor && view) {
       try {
-        const coords = editor.view.coordsAtPos(editor.state.selection.head);
+        const coords = view.coordsAtPos(editor.state.selection.head);
         const cursorMidY = (coords.top + coords.bottom) / 2;
         if (cursorMidY >= editorRect.top && cursorMidY <= editorRect.bottom) {
           const cursorInDoc = (cursorMidY - tiptapRect.top) / zoomFactor;
@@ -892,7 +927,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   const SETTLE_SAMPLES = 48;
 
   function layoutSignature(): string {
-    const tip = element?.querySelector('.tiptap') as HTMLElement | null;
+    // The pane that paginates; a split pane only renders what this one settles on.
+    const tip = (editor?.view.dom ?? null) as HTMLElement | null;
     if (!tip) return '';
     const kids = tip.children;
     let sig = `${tip.style.minHeight}|${kids.length}`;
@@ -938,13 +974,14 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const saved = await loadDocument();
 
     editor = new Editor({
-      element,
+      element: hosts[0],
       extensions,
       content: saved || undefined,
       editorProps: {
         // Our SpellCheck extension draws squiggles; turn off the browser's so
         // they don't double up.
         attributes: { spellcheck: 'false' },
+        handleScrollToSelection: () => splitView && activePane !== 0,
         // Ctrl/Cmd+click opens a hyperlink (a plain click just places the cursor).
         handleClick: (view, _pos, event) => {
           if (!(event.metaKey || event.ctrlKey)) return false;
@@ -991,6 +1028,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       },
       onTransaction: ({ editor: e, transaction }) => {
         tick++;
+        // The other pane shows the same state, decorations included.
+        secondView?.updateState(e.state);
         // Mirror this transaction into the labelled undo/redo log for the toolbar's
         // history dropdowns. e.state is the POST-transaction state, so the history
         // depths recordTransaction reads already reflect this transaction.
@@ -1003,10 +1042,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         // Use the editor instance passed by TipTap directly — avoids any Svelte
         // prop-reactivity timing issues. TipTap always auto-scrolls the cursor
         // into view before firing this, so no visibility check is needed here.
-        const tiptap = element?.querySelector('.tiptap') as HTMLElement | null;
+        const view = paneView() ?? e.view;
+        const tiptap = view.dom as HTMLElement | null;
         if (!tiptap) return;
         try {
-          const coords = e.view.coordsAtPos(e.state.selection.head);
+          const coords = view.coordsAtPos(e.state.selection.head);
           const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (appliedZoom / 100);
           currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / getCycle()) + 1));
         } catch { /* ignore */ }
@@ -1020,12 +1060,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       },
     });
 
-    element.addEventListener('pm-pagecount', onPageCount);
+    hosts[0].addEventListener('pm-pagecount', onPageCount);
     document.fonts?.addEventListener('loadingdone', repaginateOnFontLoad);
     document.fonts?.ready.then(repaginateOnFontLoad);
-    editorContainer.addEventListener('scroll', onEditorScroll);
-    editorContainer.addEventListener('mouseover', onEditorPointerOver);
-    editorContainer.addEventListener('mouseout', onEditorPointerOut);
     // Seed the scaled footprint before the first paint (so the page is centered, not
     // briefly left-aligned), then refine it once layout settles. The pageBreaks plugin
     // also fires pm-pagecount shortly after with the precise document height.
@@ -1036,10 +1073,89 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     requestAnimationFrame(() => requestAnimationFrame(markDocumentLoaded));
   });
 
-  function onEditorScroll() {
-    updateCurrentPage();
+  function onEditorScroll(pane: number) {
+    if (pane === activePane) updateCurrentPage();
     scheduleTableUi();
     if (linkTip) linkTip = null;
+  }
+
+  // A pane's own listeners. `scroll` does not bubble and `mouseover` needs no a11y
+  // handler pair on a scroll container, so both are attached here rather than in markup.
+  function paneEvents(node: HTMLElement, pane: number) {
+    const scroll = () => onEditorScroll(pane);
+    const over = (e: MouseEvent) => onEditorPointerOver(e, pane);
+    node.addEventListener('scroll', scroll);
+    node.addEventListener('mouseover', over);
+    node.addEventListener('mouseout', onEditorPointerOut);
+    return {
+      destroy() {
+        node.removeEventListener('scroll', scroll);
+        node.removeEventListener('mouseover', over);
+        node.removeEventListener('mouseout', onEditorPointerOut);
+      },
+    };
+  }
+
+  // --- Split view: a second live view of the same state (Word's View ▸ Split) ---
+  // Both panes are the same width, so the pagination the first pane measures is the
+  // layout of both; only its decorations reach here (pageBreaks.ts: isSplitPane).
+  $effect(() => {
+    const host = hosts[1];
+    const ed = editor;
+    if (!host || !ed) return;
+    const view = new EditorView(host, {
+      ...ed.view.props,
+      state: ed.state,
+      dispatchTransaction: (tr) => ed.view.dispatch(tr),
+      // Each pane keeps the place it was scrolled to: a caret move belongs to the pane
+      // being worked in, and without this every keystroke drags the other one along.
+      handleScrollToSelection: () => activePane !== 1,
+    });
+    // What TipTap puts on its own view: the class every editor style is written against,
+    // and the back-reference its node views look the editor up through.
+    view.dom.classList.add('tiptap');
+    (view.dom as HTMLElement & { editor?: Editor }).editor = ed;
+    secondView = view;
+    return () => {
+      secondView = null;
+      view.destroy();
+    };
+  });
+
+  // The page slots are a min-height the pagination pass writes on its own view's DOM.
+  $effect(() => {
+    if (secondView && docHeightDoc) secondView.dom.style.minHeight = `${docHeightDoc}px`;
+  });
+
+  // A ribbon command focuses the editor's own view, which is pane 0 — but the caret
+  // belongs to the pane being worked in, so hand the focus back. A click on a pane sets
+  // activePane first (pointerdown precedes focus), so it is never bounced away.
+  function onPaneFocus(pane: number) {
+    if (pane === activePane || hfActive) return;
+    (pane === 0 ? secondView : editor?.view)?.focus();
+  }
+
+  $effect(() => {
+    if (!splitView) activePane = 0;
+  });
+
+  // Where the divider sits, in percent of the pane area (both word processors drag one).
+  let splitRatio = $state(50);
+  let panesEl: HTMLDivElement;
+
+  function onSplitDrag(e: PointerEvent) {
+    const handle = e.currentTarget as HTMLElement;
+    const rect = panesEl.getBoundingClientRect();
+    handle.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      splitRatio = Math.min(85, Math.max(15, ((ev.clientY - rect.top) / rect.height) * 100));
+    };
+    const up = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
   }
 
   onDestroy(() => {
@@ -1050,15 +1166,39 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     cancelAnimationFrame(tableUiRaf);
     editor?.destroy();
     resetHistoryLog();
-    element?.removeEventListener('pm-pagecount', onPageCount);
+    hosts[0]?.removeEventListener('pm-pagecount', onPageCount);
     document.fonts?.removeEventListener('loadingdone', repaginateOnFontLoad);
-    editorContainer?.removeEventListener('scroll', onEditorScroll);
-    editorContainer?.removeEventListener('mouseover', onEditorPointerOver);
-    editorContainer?.removeEventListener('mouseout', onEditorPointerOut);
   });
 </script>
 
-<div class="editor" bind:this={editorContainer} onwheel={onWheel} oncontextmenu={openContextMenu} role="none">
+<div class="editor-panes" bind:this={panesEl}>
+  {@render pane(0)}
+  {#if splitView}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      class="split-handle"
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label={t().view.split}
+      onpointerdown={onSplitDrag}
+    ></div>
+    {@render pane(1)}
+  {/if}
+</div>
+
+{#snippet pane(i: number)}
+<div
+  class="editor"
+  class:pane-below={i > 0}
+  style:flex={splitView && i === 0 ? `0 0 ${splitRatio}%` : '1'}
+  bind:this={scrollers[i]}
+  use:paneEvents={i}
+  onwheel={(e) => onWheel(e, i)}
+  oncontextmenu={(e) => openContextMenu(e, i)}
+  onpointerdown={() => (activePane = i)}
+  onfocusin={() => onPaneFocus(i)}
+  role="none"
+>
   <!-- Hidden while a header/footer zone is active: those have no tab stops, so the
        ruler would edit the body paragraph behind the user's back. -->
   {#if showRuler && scaledWidth && !hfActive}
@@ -1067,10 +1207,10 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
   <div class="paper-scaler" style={scaledWidth ? `width: ${scaledWidth}px; height: ${scaledHeight}px;` : ''}>
-    <div bind:this={paperEl} class="paper" data-spacing-model={spacingModel} class:show-formatting-marks={showFormattingMarks} class:hf-editing={hfActive} class:settling style="transform: scale({appliedZoom / 100});{pageDecor.background ? ` --color-page-bg: ${pageDecor.background};` : ''}">
+    <div bind:this={papers[i]} class="paper" data-spacing-model={spacingModel} class:show-formatting-marks={showFormattingMarks} class:hf-editing={hfActive} class:settling style="transform: scale({appliedZoom / 100});{pageDecor.background ? ` --color-page-bg: ${pageDecor.background};` : ''}">
       <!-- Dedicated mount point that TipTap fully owns — keeping it free of Svelte
            content avoids Svelte and ProseMirror fighting over the same parent's DOM. -->
-      <div bind:this={element} class="tiptap-host" dir={pageRtl ? 'rtl' : null} lang={documentLanguage === NO_LANGUAGE ? null : documentLanguage} style:hyphens={hyphenate ? 'auto' : null}></div>
+      <div bind:this={hosts[i]} class="tiptap-host" data-split-pane={i > 0 ? '' : null} dir={pageRtl ? 'rtl' : null} lang={documentLanguage === NO_LANGUAGE ? null : documentLanguage} style:hyphens={hyphenate ? 'auto' : null}></div>
       {#if gapStripeStyles.length}
         <div class="band-layer">
           {#each bandStyles as b}
@@ -1115,9 +1255,13 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         {sectionStartPages}
         {chapterStarts}
         {pageNumbering}
+        interactive={i === 0}
       />
     </div>
   </div>
+  <!-- The floating chrome renders in the pane being worked in: it is positioned in that
+       scroller's own space, and the selection it describes is drawn there. -->
+  {#if i === activePane}
   {#if tableUi.visible && !tableDialog}
     <TableToolbar
       {editor}
@@ -1186,15 +1330,43 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       onClose={() => (ctxMenu = null)}
     />
   {/if}
-  {#if linkTip}
+  {/if}
+  {#if linkTip && linkTip.pane === i}
     <div class="link-tooltip" style="top: {linkTip.top}px; left: {linkTip.left}px;">
       <span class="link-tooltip-url">{linkTip.href}</span>
       <span class="link-tooltip-hint">{t().link.openHint(withShortcut('Ctrl'))}</span>
     </div>
   {/if}
 </div>
+{/snippet}
 
 <style>
+  /* The pane column. Unsplit it holds the one scroller and changes nothing. */
+  .editor-panes {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* The lower pane sits below the toolbar island, so it needs none of its clearance. */
+  .editor-panes :global(.editor.pane-below) {
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .split-handle {
+    flex: 0 0 6px;
+    background: var(--color-toolbar-bg);
+    border-block: 1px solid var(--color-border);
+    cursor: row-resize;
+    touch-action: none;
+  }
+
+  .split-handle:hover {
+    background: var(--color-primary);
+  }
+
   /* While editing a header/footer, dim the body so focus is on the margin zone. */
   .paper.hf-editing :global(.tiptap) {
     opacity: 0.5;

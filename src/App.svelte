@@ -24,7 +24,7 @@
   import { resetHistoryLog } from './lib/utils/historyLog.svelte';
   import { countText, type TextStats } from './lib/utils/wordCount';
   import { clampZoom, wheelZoomFactor, MIN_ZOOM, MAX_ZOOM } from './lib/utils/zoom';
-  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadChromeMode, saveChromeMode, loadFormattingMarks, saveFormattingMarks, loadRuler, saveRuler, type ThemeMode, type ChromeMode } from './lib/storage/theme';
+  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadChromeMode, saveChromeMode, loadFormattingMarks, saveFormattingMarks, loadRuler, saveRuler, loadSplitView, saveSplitView, type ThemeMode, type ChromeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadTabInterval, saveTabInterval, applyTabIntervalVar, DEFAULT_TAB_INTERVAL_CM } from './lib/storage/tabInterval';
@@ -148,6 +148,7 @@
   let chromeMode: ChromeMode = $state(loadChromeMode());
   let showFormattingMarks = $state(loadFormattingMarks());
   let showRuler = $state(loadRuler());
+  let splitView = $state(loadSplitView());
   let zoom = $state(clampZoom(parseInt(localStorage.getItem('edentext-zoom') ?? '100', 10)));
   let pageMargins: PageMargins = $state(loadPageMargins());
   let pageOrientation: Orientation = $state(loadOrientation());
@@ -212,6 +213,10 @@
 
   $effect(() => {
     saveRuler(showRuler);
+  });
+
+  $effect(() => {
+    saveSplitView(splitView);
   });
 
   $effect(() => {
@@ -920,6 +925,7 @@
       [DEFAULT_SHORTCUTS.findPrevious, () => (findOpen ? editor?.commands.findPrevious() : openFind('find'))],
       [DEFAULT_SHORTCUTS.formattingMarks, () => (showFormattingMarks = !showFormattingMarks)],
       [DEFAULT_SHORTCUTS.navigator, () => (navigatorOpen = !navigatorOpen)],
+      [DEFAULT_SHORTCUTS.splitView, () => (splitView = !splitView)],
       [DEFAULT_SHORTCUTS.zoomIn, () => setZoom(zoom + 10)],
       [DEFAULT_SHORTCUTS.zoomOut, () => setZoom(zoom - 10)],
       [DEFAULT_SHORTCUTS.zoomReset, () => setZoom(100)],
@@ -1010,6 +1016,7 @@
       bind:documentName
       bind:showFormattingMarks
       bind:showRuler
+      bind:splitView
       {documentLanguage}
       onLanguage={(code) => (documentLanguage = code)}
       {zoom}
@@ -1294,6 +1301,7 @@
           tick={activeTick}
           bind:showFormattingMarks
           bind:showRuler
+          bind:splitView
           bind:pageMargins
           bind:pageOrientation
           bind:pageFormat
@@ -1357,6 +1365,7 @@
     onZoom={setZoom}
     {showFormattingMarks}
     {showRuler}
+    {splitView}
     {pageMargins}
     orientation={pageOrientation}
     {pageFormat}

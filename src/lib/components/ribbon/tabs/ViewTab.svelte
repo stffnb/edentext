@@ -7,6 +7,7 @@
 
   let {
     showRuler = $bindable(true),
+    splitView = $bindable(false),
     showFormattingMarks = $bindable(false),
     zoom = 100,
     onZoom,
@@ -15,6 +16,7 @@
     onToggleNavigator,
   }: {
     showRuler?: boolean;
+    splitView?: boolean;
     showFormattingMarks?: boolean;
     zoom?: number;
     onZoom?: (value: number) => void;
@@ -30,6 +32,7 @@
     <RibbonButton variant="small" icon="ruler" label={t().ruler.show} active={showRuler} onclick={() => (showRuler = !showRuler)} />
     <RibbonButton variant="small" icon="pilcrow" label={t().toolbarExpanded.formattingMarks} title={`${t().toolbarExpanded.formattingMarks} (${shortcutHint('formattingMarks')})`} active={showFormattingMarks} onclick={() => (showFormattingMarks = !showFormattingMarks)} />
   </div>
+  <RibbonButton variant="big" icon="splitView" label={t().view.split} title={`${t().view.splitTitle} (${shortcutHint('splitView')})`} active={splitView} onclick={() => (splitView = !splitView)} />
 </RibbonGroup>
 
 <div class="ribbon-sep"></div>

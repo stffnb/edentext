@@ -62,6 +62,7 @@ export const STROKED = {
   deleteTable: ['M2 2.5h12v11H2z', 'M2 6h12M2 10h12M6 2.5v11M10 2.5v11', 'M3 3 13 13'],
   merge: ['M2 3h12v10H2z', 'M2 8h4M10 8h4', 'M6.5 6 8.5 8l-2 2M9.5 6 7.5 8l2 2'],
   split: ['M2 3h12v10H2z', 'M8 3v10', 'M5 6.5 3 8l2 1.5M11 6.5 13 8l-2 1.5'],
+  splitView: ['M2 2.25h12v5H2z', 'M2 8.75h12v5H2z'],
   headerRow: ['M2 3h12v10H2z', 'M2 6.25h12', 'M3.4 4.6h9.2'],
   firstColumn: ['M2 3h12v10H2z', 'M5.5 3v10', 'M3.75 5v6'],
   alignTop: ['M2 3h12', 'M8 5.5v7M5.5 8 8 5.5 10.5 8'],
