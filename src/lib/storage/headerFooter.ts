@@ -31,13 +31,16 @@ export type HfSet = {
   // document's own.
   format?: PageFormat | null;
   orientation?: Orientation | null;
+  // The page number this section restarts at (Word's w:pgNumType start, ODF's
+  // style:page-number on the paragraph that switches master page). null = it counts on.
+  pageNumberStart?: number | null;
 };
 
 export const EMPTY_HF_SET: HfSet = {
   header: null, footer: null,
   headerFirst: null, footerFirst: null, differentFirstPage: false,
   headerEven: null, footerEven: null, differentOddEven: false,
-  margins: null, marginsFirst: null, format: null, orientation: null,
+  margins: null, marginsFirst: null, format: null, orientation: null, pageNumberStart: null,
 };
 
 export function hfSetIsEmpty(s: HfSet): boolean {

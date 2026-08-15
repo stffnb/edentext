@@ -133,6 +133,9 @@ type Ctx = {
   pageRtl: boolean;
   // Master pages the body switches to, in order — one section each past the first.
   masterPages: string[];
+  // The page number each of those sections restarts at, in the same order (null = it
+  // counts on). ODF writes it on the paragraph that switches master page.
+  masterPageStarts: (number | null)[];
   // How many body blocks each of them governs: the largest count is the document's own
   // page geometry, which is not per section.
   masterBlocks: Map<string, number>;
@@ -644,7 +647,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), revisions: odfRevisions(body), openInsertions: new Map(), notes: [] };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), revisions: odfRevisions(body), openInsertions: new Map(), notes: [] };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -738,7 +741,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     differentOddEven,
     hfSections: [
       { header, footer, headerFirst, footerFirst, differentFirstPage, headerEven, footerEven, differentOddEven },
-      ...ctx.masterPages.map((name) => hfSetOfMasterPage(name, ctx, geometry)),
+      ...ctx.masterPages.map((name, i) => ({ ...hfSetOfMasterPage(name, ctx, geometry), pageNumberStart: ctx.masterPageStarts[i] ?? null })),
     ],
     headerDistanceCm: hasHeader ? edge?.top ?? null : null,
     footerDistanceCm: hasFooter ? edge?.bottom ?? null : null,
@@ -1437,6 +1440,9 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
     if (ctx.masterBlocks.size) attrs.breakBefore = 'page';
     if (ctx.masterPages[ctx.masterPages.length - 1] !== master) {
       ctx.masterPages.push(master);
+      // The same paragraph carries the number the section restarts at, if it does.
+      const restart = Number(paraProps['style:page-number']);
+      ctx.masterPageStarts.push(Number.isFinite(restart) ? clampPageStart(restart) : null);
       attrs.sectionBreak = true;
     }
   }

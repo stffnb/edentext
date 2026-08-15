@@ -65,12 +65,21 @@
   // Word's "apply to this section": the paper rides the section's own page setup, so
   // every other section keeps the document's.
   function setSectionOrientation(o: Orientation | null): void {
+    setSectionProp({ orientation: o });
+  }
+
+  function setSectionProp(props: Partial<HfSet>): void {
     if (currentSection < 1) return;
     const out = extraHfSections.slice();
     while (out.length < currentSection) out.push({ ...EMPTY_HF_SET });
-    out[currentSection - 1] = { ...out[currentSection - 1], orientation: o };
+    out[currentSection - 1] = { ...out[currentSection - 1], ...props };
     extraHfSections = out;
   }
+
+  // Where this section restarts the numbering, if it does (Word's "Start at").
+  let sectionPageStart = $derived(
+    currentSection > 0 ? extraHfSections[currentSection - 1]?.pageNumberStart ?? null : null,
+  );
 
   const FORMATS = Object.keys(PAGE_FORMAT_CM) as PageFormat[];
   const EDGES = ['top', 'bottom', 'left', 'right'] as const;
@@ -279,6 +288,20 @@
               onchange={(e) => (pageNumbering = { ...pageNumbering, start: clampPageStart(Number(e.currentTarget.value)) })}
             />
           </label>
+          {#if currentSection > 0}
+            <div class="rb-menu-label">{t().ribbon.thisSection}</div>
+            <label class="num-row">
+              <input
+                type="number"
+                min="1"
+                max="9999"
+                placeholder={t().ribbon.pageNumberContinue}
+                value={sectionPageStart ?? ''}
+                onchange={(e) => setSectionProp({ pageNumberStart: e.currentTarget.value ? clampPageStart(Number(e.currentTarget.value)) : null })}
+              />
+            </label>
+            <button onclick={() => { closeMenu(); setSectionProp({ pageNumberStart: null }); }}>{t().ribbon.pageNumberContinue}</button>
+          {/if}
         </div>
       {/if}
       </div>

@@ -231,10 +231,16 @@
     return { update: apply };
   }
 
-  // The number a page shows: its position offset by the document's start value, in the
-  // document's own format.
+  // The number a page shows, in the document's own format: counted from the nearest
+  // section at or above it that restarts numbering, else from the document's start.
   function pageLabel(page: number): string {
-    return formatOrdinal(page + pageNumbering.start - 1, pageNumbering.format);
+    let base = pageNumbering.start;
+    let from = 1;
+    for (let i = sectionOf(page); i > 0; i--) {
+      const start = sets[i]?.pageNumberStart;
+      if (start != null) { base = start; from = sectionFirstPage(i); break; }
+    }
+    return formatOrdinal(page - from + base, pageNumbering.format);
   }
 
   // Replace the placeholder text in every page-field span with the real value:

@@ -772,6 +772,7 @@ const en = {
     repeatHeaderRowHint: 'Repeat the first row at the top of every page',
     pageNumberFormat: 'Page numbers',
     pageNumberStart: 'Start at',
+    pageNumberContinue: 'Continue from the previous section',
     lineNumbers: 'Line numbers',
     pageDecor: 'Page design',
     hyphenationHint: 'Hyphenate automatically',

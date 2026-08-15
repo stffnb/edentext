@@ -1910,11 +1910,13 @@ export async function buildDocx(
         left: cmToTwip(m.left), right: cmToTwip(m.right),
         header: cmToTwip(Math.min(headerDist, m.top)), footer: cmToTwip(Math.min(footerDist, m.bottom)),
       },
-      // w:pgNumType. Word restarts numbering at every section carrying it, so only the
-      // first gets it — the rest continue.
-      ...(i === 0 && (pageNumbering.format !== '1' || pageNumbering.start !== 1)
-        ? { pageNumbers: { formatType: DOCX_PAGE_NUM_FORMAT[pageNumbering.format], ...(pageNumbering.start !== 1 ? { start: pageNumbering.start } : {}) } }
-        : {}),
+      // w:pgNumType. Word restarts numbering at every section carrying a start, so a
+      // later section gets one only where it really restarts; the rest continue.
+      ...(i === 0
+        ? (pageNumbering.format !== '1' || pageNumbering.start !== 1
+          ? { pageNumbers: { formatType: DOCX_PAGE_NUM_FORMAT[pageNumbering.format], ...(pageNumbering.start !== 1 ? { start: pageNumbering.start } : {}) } }
+          : {})
+        : (s.pageNumberStart != null ? { pageNumbers: { start: s.pageNumberStart } } : {})),
     };
   };
   // Fresh instances per section (Word's per-sectPr references, i.e. no "Link to
@@ -1968,7 +1970,9 @@ export async function buildDocx(
         })) } }
       : {}),
     // A columns group is its own section; w:type=continuous describes the break
-    // BEFORE a section, so it goes on every section but the first.
+    // BEFORE a section, so it goes on every section but the first — except one that
+    // restarts the page numbering, which both word processors only honour on a section
+    // that begins a page (probed: LibreOffice drops w:start off a continuous one).
     sections: groups.map((g, i) => ({
       properties: {
         page: pagePropsFor(g.section),
@@ -1981,7 +1985,8 @@ export async function buildDocx(
             } }
           : {}),
         ...(setAt(g.section).differentFirstPage ? { titlePage: true } : {}),
-        ...(i > 0 ? { type: SectionType.CONTINUOUS } : {}),
+        ...(i > 0 && !(setAt(g.section).pageNumberStart != null && groups.findIndex((x) => x.section === g.section) === i)
+          ? { type: SectionType.CONTINUOUS } : {}),
         ...(g.columns
           ? { column: { count: g.columns.count, space: cmToTwip(g.columns.gapCm), equalWidth: true } }
           : {}),

@@ -768,6 +768,7 @@ const de: Messages = {
     repeatHeaderRowHint: 'Die erste Zeile oben auf jeder Seite wiederholen',
     pageNumberFormat: 'Seitenzahlen',
     pageNumberStart: 'Beginnen bei',
+    pageNumberContinue: 'Vom vorherigen Abschnitt fortsetzen',
     lineNumbers: 'Zeilennummern',
     pageDecor: 'Seitengestaltung',
     hyphenationHint: 'Automatisch trennen',

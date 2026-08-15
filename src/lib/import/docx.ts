@@ -2685,8 +2685,12 @@ function sectionHfSets(
     // Only a section disagreeing with the document carries its own paper: matching it is
     // inheritance, not formatting, exactly as for the margins.
     const paper = sectPaper(sect);
+    // w:pgNumType w:start restarts the numbering at this section; without it it counts
+    // on. The first section's is the document's own start (read separately).
+    const pgStart = sect ? intAttr(fc(sect, 'pgNumType'), W, 'start') : null;
     out.push({
       margins: sectMargins(sect),
+      pageNumberStart: out.length && pgStart != null ? clampPageStart(pgStart) : null,
       format: paper.format && paper.format !== doc.format ? paper.format : null,
       orientation: paper.orientation && paper.orientation !== doc.orientation ? paper.orientation : null,
       header: zone('header', 'default', prev.header),

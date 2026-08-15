@@ -4786,9 +4786,14 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
       const def = source ? findAutoStyle(content, source) : null;
       const name = `MP${++counter}`;
       const master = ` style:master-page-name="Section${index + 1}"`;
-      minted.push(def
+      let style = def
         ? def.replace(/style:name="[^"]*"/, `style:name="${name}"`).replace(/(<style:style\b[^>]*?)(\/?>)/, `$1${master}$2`)
-        : `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${source || 'Standard'}"${master}/>`);
+        : `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${source || 'Standard'}"${master}/>`;
+      // A section restarting the numbering says so on this same paragraph — ODF has no
+      // other place for it (applyPageNumberStart writes the document's own that way).
+      const restart = sets[index]?.pageNumberStart;
+      if (restart != null) style = upsertProps(style, 'paragraph', { 'style:page-number': String(restart) });
+      minted.push(style);
       const rest = attrs.replace(/\s*text:style-name="[^"]*"/, '');
       return `<text:${tag}${rest} text:style-name="${name}">`;
     },
