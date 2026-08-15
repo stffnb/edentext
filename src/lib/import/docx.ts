@@ -940,6 +940,16 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   const attrs = blockAttrs(ppr, kind, level, directJc ? jcVal : null,
     kind === 'cell' ? ctx.styles.paragraphSpacing(styleId, ctx.cellSpacing) : {});
   applyContextualSpacing(el, ppr, ctx, styleId, attrs);
+  // The baked-in cell chain must not accrete no-op direct formatting: in a cell,
+  // unset spacing renders 0/0 (no word processor passes the default style's spacing
+  // into a cell), and single line height is only kept over a non-single default.
+  if (kind === 'cell') {
+    if (attrs.spaceBefore === 0) delete attrs.spaceBefore;
+    if (attrs.spaceAfter === 0) delete attrs.spaceAfter;
+    const def = ctx.styles.paragraphSpacing(null);
+    const defSingle = (def.line ?? 240) === 240 && (!def.lineRule || def.lineRule === 'auto');
+    if (attrs.lineHeight === '1' && defSingle) delete attrs.lineHeight;
+  }
   // Widow-orphan control has no registry home, so the resolved value rides the block.
   const directWc = fc(ppr, 'widowControl');
   if (!(directWc ? onOff(directWc) : ctx.styles.paragraphWidowControl(styleId))) {

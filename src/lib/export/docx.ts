@@ -238,6 +238,11 @@ class Numbering {
     return reference;
   }
 
+  levelKindAt(reference: string, depth: number): 'ordered' | 'bullet' | null {
+    const l = this.map.get(reference)!.find((lv) => lv.level === depth);
+    return l ? (l.format === LevelFormat.BULLET ? 'bullet' : 'ordered') : null;
+  }
+
   ensureLevel(reference: string, depth: number, node: TiptapNode, extraIndentCm: number, cycle: OrderedCycle): void {
     // A multilevel top list turns the whole reference into a "%1.%2." chain; its
     // attr-less nested lists inherit it (the top registers first — pre-order walk).
@@ -1475,7 +1480,12 @@ function listToParagraphs(
     let numberedFirst = false;
     for (const child of item.content ?? []) {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
-        listToParagraphs(child, depth + 1, reference, indentCm, num, out, cChild);
+        // A level keeps the first kind it saw, so a sibling nested list of the other
+        // kind forks its own reference (as the ODT side mints its own list style).
+        const seen = num.levelKindAt(reference, depth + 1);
+        const ref = seen && seen !== (child.type === 'orderedList' ? 'ordered' : 'bullet')
+          ? num.newReference() : reference;
+        listToParagraphs(child, depth + 1, ref, indentCm, num, out, cChild);
       } else if (child.type === 'paragraph' || child.type === 'heading') {
         if (!numberedFirst) {
           out.push(paragraphToDocx(child, { numbering: { reference, level: depth } }));

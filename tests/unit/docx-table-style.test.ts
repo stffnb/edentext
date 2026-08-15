@@ -156,6 +156,10 @@ describe('a table style’s w:pPr ranks under the paragraph style', () => {
   it('round-trips the baked values', async () => {
     const doc = { type: 'doc', content: importDocx(spacedTable()).content.content };
     const bytes = await buildDocx(doc as N, { top: 2, bottom: 2, left: 2, right: 2 });
-    expect(attrsOf(bytes)).toMatchObject({ spaceAfter: 8, lineHeight: '1' });
+    // Our own export's default line height is single again, so the re-import drops
+    // the baked '1' as default-equal; the non-default space after stays.
+    const attrs = attrsOf(bytes);
+    expect(attrs).toMatchObject({ spaceAfter: 8 });
+    expect(attrs.lineHeight).toBeUndefined();
   });
 });
