@@ -12,3 +12,6 @@ README.md
 shot.mjs
 tests/render-parity/FINDINGS.md
 tests/render-parity/fixtures
+
+# coverage output (npm run test:coverage)
+coverage/

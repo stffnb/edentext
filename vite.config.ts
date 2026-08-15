@@ -25,5 +25,10 @@ export default defineConfig({
     // A build+re-import leg runs ~10s when the whole suite competes for the CPU,
     // well past vitest's 5s default.
     testTimeout: 60000,
+    // `npm run test:coverage` — untested src files appear at 0%, which is the point.
+    coverage: {
+      include: ['src/**/*.ts', 'src/**/*.svelte'],
+      reporter: ['text-summary', 'html'],
+    },
   },
 });

@@ -19,12 +19,14 @@
     "test:watch": "vitest",
     "test:lo": "vitest run tests/lo-roundtrip.test.ts",
     "test:smoke": "node tests/smoke/run.mjs",
+    "test:coverage": "vitest run --coverage",
     "test:parity": "node tests/render-parity/run.mjs",
     "test:parity:fixtures": "node tests/render-parity/make-fixtures.mjs"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tsconfig/svelte": "^5.0.8",
+    "@vitest/coverage-v8": "^4.1.10",
     "dictionary-de": "^3.0.0",
     "dictionary-en": "^4.0.0",
     "jsdom": "^29.1.1",
