@@ -1187,12 +1187,18 @@ type ParaStyle = {
   borderLeft: string | null;
   // The block's own base direction (textDirection.ts); null inherits the page's.
   dir: 'ltr' | 'rtl' | null;
+  // Left/first-line/right indents in cm — cell blocks only: a list item's indent
+  // lives in its list style, and the importer skips paraProps indents there.
+  indent: number | null;
+  indentFirst: number | null;
+  indentRight: number | null;
 };
 
 function paraStyleIsEmpty(s: ParaStyle): boolean {
   return s.align === null && s.spaceBefore === null && s.spaceAfter === null && s.lineHeight === null
     && s.background === null && s.borderTop === null && s.borderRight === null
-    && s.borderBottom === null && s.borderLeft === null && s.dir === null;
+    && s.borderBottom === null && s.borderLeft === null && s.dir === null
+    && s.indent === null && s.indentFirst === null && s.indentRight === null;
 }
 
 // ODF writes a direction as a writing mode; the vertical ones are not ours to emit.
@@ -1202,8 +1208,9 @@ export function writingModeOf(dir: 'ltr' | 'rtl' | null | undefined): string | n
 
 // Extract the overridable paragraph properties from a node's attrs. Left
 // alignment yields null (it's the Standard-style default, so no override needed).
-function paraStyleFromAttrs(attrs: TiptapNode['attrs']): ParaStyle {
+function paraStyleFromAttrs(attrs: TiptapNode['attrs'], withIndents = true): ParaStyle {
   const ta = attrs?.textAlign as AlignValue | undefined;
+  const cm = (v: unknown) => (withIndents && typeof v === 'number' && v !== 0 ? v : null);
   const sb = attrs?.spaceBefore;
   const sa = attrs?.spaceAfter;
   const lh = attrs?.lineHeight;
@@ -1224,6 +1231,9 @@ function paraStyleFromAttrs(attrs: TiptapNode['attrs']): ParaStyle {
     borderBottom: border(attrs?.borderBottom),
     borderLeft: border(attrs?.borderLeft),
     dir: attrs?.dir === 'rtl' || attrs?.dir === 'ltr' ? attrs.dir : null,
+    indent: cm(attrs?.indent),
+    indentFirst: cm(attrs?.indentFirst),
+    indentRight: cm(attrs?.indentRight),
   };
 }
 
@@ -1234,6 +1244,9 @@ function paraStyleProps(style: ParaStyle): string[] {
   if (style.spaceBefore != null) props.push(`fo:margin-top="${style.spaceBefore}pt"`);
   if (style.spaceAfter != null) props.push(`fo:margin-bottom="${style.spaceAfter}pt"`);
   if (style.lineHeight != null) props.push(`fo:line-height="${normalizeLineHeight(style.lineHeight)}"`);
+  if (style.indent != null) props.push(`fo:margin-left="${style.indent}cm"`);
+  if (style.indentFirst != null) props.push(`fo:text-indent="${style.indentFirst}cm"`);
+  if (style.indentRight != null) props.push(`fo:margin-right="${style.indentRight}cm"`);
   if (style.background) props.push(`fo:background-color="${style.background}"`);
   // The canonical border attr ('<W>pt solid #RRGGBB') is itself a valid fo:border value.
   for (const [attr, side] of [
@@ -1267,7 +1280,7 @@ type TableProps = { ml: number; mr: number; mt: number; mb: number; keepRows: bo
 function collectListItemStyles(node: TiptapNode, result: ParaStyle[]): void {
   if (node.type === 'listItem') {
     const firstPara = node.content?.find(c => c.type === 'paragraph');
-    result.push(paraStyleFromAttrs(firstPara?.attrs));
+    result.push(paraStyleFromAttrs(firstPara?.attrs, false));
     // Recurse into nested lists only (their listItems extend the DFS sequence).
     for (const child of node.content ?? []) {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
@@ -1484,13 +1497,15 @@ function applyListItemStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Ar
   let counter = 0;
   let idx = 0;
 
-  // Each text:list-item directly contains the item's paragraph as its first child.
+  // Each text:list-item directly contains the item's paragraph as its first child;
+  // the item tag may carry attributes (applyListStartValues adds text:start-value).
   content = content.replace(
-    /(<text:list-item>\s*<text:p text:style-name=")(List_20_Bullet|List_20_Number)(")/g,
+    /(<text:list-item[^>]*>\s*<text:p text:style-name=")(List_20_Bullet|List_20_Number)(")/g,
     (_match, pre, parentStyle, post) => {
       const style = styles[idx++];
       if (!style || paraStyleIsEmpty(style)) return `${pre}${parentStyle}${post}`;
-      const key = `${parentStyle}|${style.align}|${style.spaceBefore}|${style.spaceAfter}|${style.lineHeight}`;
+      // Key on the emitted properties, so the key can never lag behind ParaStyle's fields.
+      const key = `${parentStyle}|${paraStyleProps(style).join('|')}`;
       let name = nameByKey.get(key);
       if (!name) {
         counter++;
@@ -2470,7 +2485,8 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
   let styleCounter = 0;
   const styleNameFor = (parent: string, style: ParaStyle): string => {
     if (paraStyleIsEmpty(style)) return parent;
-    const key = `${parent}|${style.align}|${style.spaceBefore}|${style.spaceAfter}|${style.lineHeight}`;
+    // Key on the emitted properties, so the key can never lag behind ParaStyle's fields.
+    const key = `${parent}|${paraStyleProps(style).join('|')}`;
     let name = nameByKey.get(key);
     if (!name) {
       styleCounter++;
@@ -3245,7 +3261,7 @@ function buildCellContent(cell: TiptapNode, c: CellBuilder, force: TextProps = {
       const firstPara = item.content?.find(x => x.type === 'paragraph');
       emitSegment(firstPara?.content); // one segment per item, in DFS order
       const nested = item.content?.find(x => x.type === 'bulletList' || x.type === 'orderedList');
-      items.push({ style: paraStyleFromAttrs(firstPara?.attrs), nested: nested ? walkList(nested) : null });
+      items.push({ style: paraStyleFromAttrs(firstPara?.attrs, false), nested: nested ? walkList(nested) : null });
     }
     // Raw attrs; applyCellBlocks resolves the depth defaults when it knows the depth.
     const listStyleType = ordered && typeof listNode.attrs?.listStyleType === 'string' ? (listNode.attrs.listStyleType as string) : null;
