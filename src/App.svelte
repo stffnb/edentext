@@ -10,7 +10,7 @@
   import FindReplaceBar from './lib/components/FindReplaceBar.svelte';
   import { buildOdt, deriveFilename } from './lib/export/odt';
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
-  import { supportsFsAccess, saveOdt, saveAsOdt, saveAsDocx, saveAsTemplate, openOdt } from './lib/export/saveFile';
+  import { supportsFsAccess, saveOdt, saveAsOdt, saveDocx, saveAsDocx, saveAsTemplate, openOdt } from './lib/export/saveFile';
   import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFiles, type RecentFile } from './lib/storage/recentFiles';
   import { importOdt } from './lib/import/odt';
   import { importDocx } from './lib/import/docx';
@@ -173,6 +173,9 @@
   // The document name (without .odt). Source of truth for the save filename;
   // set on open, editable in the header, blank → heading-derived fallback.
   let documentName: string = $state(loadDocName());
+  // The loaded file's format; drives the title's extension label and which
+  // exporter "Save" round-trips through (odt-opened saves odt, docx-opened saves docx).
+  let documentFormat: 'odt' | 'docx' = $state('odt');
   let docProps: DocProperties = $state(loadDocProperties());
   let docPropsOpen = $state(false);
   let hyphenate = $state(loadHyphenation());
@@ -560,6 +563,7 @@
     docProps = { ...EMPTY_DOC_PROPERTIES };
     saveDocProperties(docProps);
     fileHandle = null;
+    documentFormat = 'odt';
     // Styles and note settings live in the document, so a new one starts from the built-ins
     setStyleSheet(builtinStyleSheet());
     setNoteSettings(DEFAULT_NOTE_SETTINGS);
@@ -650,6 +654,7 @@
         footer: result.footerDistanceCm ?? DEFAULT_HF_DISTANCES.footer,
       };
       fileHandle = isTemplate ? null : handle;
+      documentFormat = isDocx ? 'docx' : 'odt';
       if (sourceName) recentFiles = await rememberRecentFile(sourceName, isTemplate ? null : handle);
 
       // Warn about fonts the document uses but the browser can't render, so text
@@ -743,6 +748,15 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
+      // A document opened as .docx round-trips through the same format, like both
+      // reference word processors — not silently rewritten to .odt under its old name.
+      if (documentFormat === 'docx') {
+        const { buildDocx } = await import('./lib/export/docx');
+        const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges());
+        fileHandle = await saveDocx(bytes, suggestedFilenameDocx(json), fileHandle);
+        recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilenameDocx(json), fileHandle);
+        return;
+      }
       const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges());
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
       recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
@@ -762,6 +776,7 @@
     try {
       const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges());
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
+      documentFormat = 'odt'; // Save As is odt-only, so a docx-opened document switches format here.
       recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -1043,6 +1058,7 @@
       tick={activeTick}
       bind:chromeMode
       bind:documentName
+      {documentFormat}
       bind:showFormattingMarks
       bind:showRuler
       bind:splitView
@@ -1134,7 +1150,7 @@
           onkeydown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
           onblur={() => (documentName = documentName.trim())}
         />
-        <span class="doc-name-ext">.odt</span>
+        <span class="doc-name-ext">.{documentFormat}</span>
         <svg class="doc-name-pencil" width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M11.3 2.3a1 1 0 0 1 1.4 0l1 1a1 1 0 0 1 0 1.4l-7 7-2.8.9.9-2.8 7-7.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>
         </svg>

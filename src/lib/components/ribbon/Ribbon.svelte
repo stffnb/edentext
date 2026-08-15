@@ -36,6 +36,7 @@
     tick,
     chromeMode = $bindable<ChromeMode>('ribbon'),
     documentName = $bindable(''),
+    documentFormat = 'odt',
     showFormattingMarks = $bindable(false),
     showRuler = $bindable(true),
     splitView = $bindable(false),
@@ -73,6 +74,7 @@
     tick: number;
     chromeMode?: ChromeMode;
     documentName?: string;
+    documentFormat?: 'odt' | 'docx';
     showFormattingMarks?: boolean;
     showRuler?: boolean;
     splitView?: boolean;
@@ -278,7 +280,7 @@
         onkeydown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
         onblur={() => (documentName = documentName.trim())}
       />
-      <span class="doc-name-ext">.odt</span>
+      <span class="doc-name-ext">.{documentFormat}</span>
     </div>
 
     <!-- Word puts this chevron in the band's corner. It rides the strip so the band

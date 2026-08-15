@@ -84,16 +84,26 @@ export async function saveAsOdt(
   return handle;
 }
 
-// Export a .docx: always prompt for a location (no handle is tracked — .docx is an
-// export target, like PDF, while DOCX import doesn't exist yet). Falls back to a
-// plain download. Returns null. Throws AbortError if the user cancels.
-export async function saveAsDocx(bytes: Uint8Array, suggestedName: string): Promise<void> {
+// Save to the given handle if we have one; otherwise prompt for a location. Mirrors
+// saveOdt, for a document that was opened as .docx and must round-trip as .docx.
+export async function saveDocx(
+  bytes: Uint8Array,
+  suggestedName: string,
+  handle: FileSystemFileHandle | null,
+): Promise<FileSystemFileHandle | null> {
   if (!supportsFsAccess()) {
     download(bytes, suggestedName, DOCX_MIME);
-    return;
+    return null;
   }
-  const handle = await (window as WinFs).showSaveFilePicker!({ suggestedName, types: DOCX_PICKER_TYPES });
-  await writeHandle(handle, bytes);
+  const target = handle ?? (await (window as WinFs).showSaveFilePicker!({ suggestedName, types: DOCX_PICKER_TYPES }));
+  await writeHandle(target, bytes);
+  return target;
+}
+
+// Export a .docx: always prompt for a location (no handle is tracked — this is the
+// explicit "Export" action, like PDF). Returns null. Throws AbortError if cancelled.
+export async function saveAsDocx(bytes: Uint8Array, suggestedName: string): Promise<void> {
+  await saveDocx(bytes, suggestedName, null);
 }
 
 // Save a template. The picker offers both formats, so the bytes can only be built
