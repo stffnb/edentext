@@ -6,7 +6,9 @@ import { buildOdt } from '../../src/lib/export/odt';
 import { buildDocx } from '../../src/lib/export/docx';
 import { importOdt } from '../../src/lib/import/odt';
 import { importDocx } from '../../src/lib/import/docx';
-import { formatCellValue } from '../../src/lib/utils/cellFormat';
+import { CELL_FORMATS, cellFormatCode, cellFormatFromCode, formatCellValue } from '../../src/lib/utils/cellFormat';
+import en from '../../src/lib/i18n/locales/en';
+import de from '../../src/lib/i18n/locales/de';
 
 type N = any;
 
@@ -46,7 +48,7 @@ describe('a cell number format', () => {
   it('round-trips through ODF', async () => {
     const bytes = await buildOdt(doc, margins, 'portrait');
     const xml = strFromU8(unzipSync(bytes)['content.xml']);
-    expect(xml).toContain('<number:number-style style:name="Ncell1">');
+    expect(xml).toContain('<number:number-style style:name="Ncell1" number:language="en">');
     expect(xml).toContain('number:decimal-places="2"');
     expect(xml).toContain('number:grouping="true"');
     expect(xml).toContain('style:data-style-name="Ncell1"');
@@ -75,5 +77,72 @@ describe('a cell number format', () => {
     const docxXml = strFromU8(unzipSync(await buildDocx(plain, margins, 'portrait'))['word/document.xml']);
     expect(docxXml).toContain('=SUM(ABOVE)');
     expect(docxXml).not.toContain('\\#');
+  });
+});
+
+// The currency and the date are the document language's own: the symbol where the
+// locale puts it, the short date in the locale's order and padding.
+describe('the currency and date formats', () => {
+  const DE = { language: 'de', country: 'DE' };
+  const cellDoc = (format: string): N => ({
+    type: 'doc',
+    content: [{
+      type: 'table',
+      content: [
+        { type: 'tableRow', content: [cell('1234.5')] },
+        { type: 'tableRow', content: [cell('x', { formula: 'SUM(ABOVE)', cellFormat: format })] },
+      ],
+    }],
+  });
+
+  it('prints the value in the locale that names the format', () => {
+    expect(formatCellValue(1234.5, 'currency', EN, 'en-US')).toBe('$1,234.50');
+    expect(formatCellValue(1234.5, 'currency', EN, 'de-DE')).toMatch(/^1\.234,50.€$/);
+    // LibreOffice's day 0 is 1899-12-30, so 45000 is 15 March 2023 (probed).
+    expect(formatCellValue(45000, 'date', EN, 'en-US')).toBe('3/15/23');
+    expect(formatCellValue(45000, 'date', EN, 'de-DE')).toBe('15.03.23');
+    // A number no calendar reaches stays a number.
+    expect(formatCellValue(1e12, 'date', EN, 'en-US')).toBe('1000000000000');
+  });
+
+  it('shows a sample of every format in both UI languages', () => {
+    for (const l of [en, de]) for (const f of CELL_FORMATS) expect(l.table.numberFormats[f]).toBeTruthy();
+  });
+
+  it('writes the picture switch each locale spells', () => {
+    expect(cellFormatCode('currency', 'en-US')).toBe('$#,##0.00');
+    expect(cellFormatCode('currency', 'de-DE')).toMatch(/^#,##0\.00.€$/);
+    expect(cellFormatCode('date', 'en-US')).toBe('M/d/yy');
+    expect(cellFormatCode('date', 'de-DE')).toBe('dd.MM.yy');
+    expect(cellFormatFromCode('$#,##0.00')).toBe('currency');
+    expect(cellFormatFromCode('dd.MM.yy')).toBe('date');
+  });
+
+  it('round-trips a currency through both formats', async () => {
+    const odt = await buildOdt(cellDoc('currency'), margins, 'portrait', undefined, { language: 'en', country: 'US' });
+    const xml = strFromU8(unzipSync(odt)['content.xml']);
+    // The style names the document's language, so LibreOffice prints the same
+    // separators and symbol the editor does (probed).
+    expect(xml).toContain('<number:currency-style style:name="Ncell1" number:language="en" number:country="US">');
+    expect(xml).toContain('<number:currency-symbol number:language="en" number:country="US">$</number:currency-symbol>');
+    expect(formulaCell(importOdt(odt)).attrs.cellFormat).toBe('currency');
+
+    const docx = await buildDocx(cellDoc('currency'), margins, 'portrait');
+    expect(strFromU8(unzipSync(docx)['word/document.xml'])).toContain('\\# &quot;$#,##0.00&quot;');
+    expect(formulaCell(importDocx(docx)).attrs.cellFormat).toBe('currency');
+  });
+
+  it('round-trips a date through both formats', async () => {
+    const odt = await buildOdt(cellDoc('date'), margins, 'portrait', undefined, DE);
+    const xml = strFromU8(unzipSync(odt)['content.xml']);
+    expect(xml).toContain('<number:date-style style:name="Ncell1" number:language="de" number:country="DE">'
+      + '<number:day number:style="long"/><number:text>.</number:text>'
+      + '<number:month number:style="long"/><number:text>.</number:text>'
+      + '<number:year/></number:date-style>');
+    expect(formulaCell(importOdt(odt)).attrs.cellFormat).toBe('date');
+
+    const docx = await buildDocx(cellDoc('date'), margins, 'portrait', undefined, DE);
+    expect(strFromU8(unzipSync(docx)['word/document.xml'])).toContain('\\@ &quot;dd.MM.yy&quot;');
+    expect(formulaCell(importDocx(docx)).attrs.cellFormat).toBe('date');
   });
 });

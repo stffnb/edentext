@@ -67,7 +67,8 @@
 - Tables: insert via size picker, Word-style row/column drag-resize, add / delete rows & columns, delete table, cell borders, merge cells and split cells (N×M, Word/LibreOffice-style), cell background shading, header row / first column toggles, named table styles (see Styles); a table splits cleanly across page boundaries
 - Repeat the header row: the first row is drawn again at the top of every page the table continues on, as in Word and LibreOffice. Round-trips to ODF `table:table-header-rows` and Word's `w:tblHeader`. A row that fits a page never splits anyway (the editor paginates a table between its rows), so Word's "don't allow row to break" needs nothing
 - Sort a table's rows (LibreOffice's Table ▸ Sort, Word's Layout ▸ Sort): the three keys both dialogs offer, each by any column, ascending or descending and with its own sort type — automatic (a cell that reads as a number sorts numerically, anything else by the document language's collation), numerically, or alphanumerically, which is the plain collation that puts "10" before "2". A later key decides only where the ones before it tie, rows alike in every key keep the order they were typed in, and the first row can be kept in place as a header
-- A formula cell's own number format (in the Formula dialog, as Word has it): the general format, whole numbers, two decimals, grouped thousands, and the two percentages. ODF keeps it on the cell's style as a data style LibreOffice regenerates the value from, Word on the field as its `\#` switch — LibreOffice's own DOCX filter neither reads nor writes that switch, so the format survives the ODF leg and our own DOCX round trip
+- A formula cell's own number format (in the Formula dialog, as Word has it): the general format, whole numbers, two decimals, grouped thousands, the two percentages, the document language's currency and its short date. ODF keeps it on the cell's style as a data style LibreOffice regenerates the value from, Word on the field as its `\#` switch — LibreOffice's own DOCX filter neither reads nor writes that switch, so the format survives the ODF leg and our own DOCX round trip
+- The currency symbol and the date's order come from the document's language, not from a table of locales: LibreOffice renders our file exactly as the editor does (`$1,234.00` / `3/15/23` in English, `1.234,00 €` / `15.03.23` in German). A date is a serial day count from LibreOffice's own day 0, 1899-12-30. Word's formula dialog offers no date format, so the DOCX leg carries it in the field's `\@` date picture for us to read back
 - Formulas in a cell (LibreOffice's Table ▸ Formula, Word's Layout ▸ Formula): `=SUM(ABOVE)`, `=AVERAGE(A1:A3)`, `=A1*2` — SUM, PRODUCT, AVERAGE, MIN, MAX, COUNT, ABS, INT, SIGN, MOD and ROUND over cell references, ranges and Word's directions, with arithmetic and parentheses. A formula cell shows its result on the field shade both word processors use and recomputes as the cells it reads change, a formula reading another formula included. It rides the cell as ODF's `table:formula` in LibreOffice's own language (`ooow:sum <A1:A3>`, a direction resolved to the range it stands for) with the result cached as `office:value`, and as Word's `=` field inside the cell — both re-read
 - Number recognition (LibreOffice's Table ▸ Number Recognition): with it on, a cell whose text reads as a number is rewritten in the document language's number format when the cursor leaves it — `007,50` becomes `7,5`. **Off** by default, as it is in LibreOffice, and the parsing a formula does is independent of it, exactly as there
 - Table border control (Word/LibreOffice-style): per-side cell borders with presets (all / outside / inside / single edges / none), line width and color; buttons show active states matching the current pen and toggle borders off; round-trips to ODF `fo:border-*` and DOCX `w:tcBorders`
@@ -160,7 +161,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 
 **Missing while writing**
 - Hyphenation's zone and ladder count (`fo:hyphenation-ladder-count`, `w:hyphenationZone`) — CSS exposes neither
-- A formula's own currency and date formats (the number and percentage ones are implemented), and a formula reaching into another table — LibreOffice's `<Table1.A1>` has no counterpart in Word's field language, so it could not survive the DOCX leg
+- A formula reaching into another table — LibreOffice's `<Table1.A1>` has no counterpart in Word's field language, so it could not survive the DOCX leg. A cell's number format is offered as the closed set both dialogs list, so a foreign document's own currency symbol or date order is re-spelled in the document's language rather than kept
 - A list level's own hanging indent: the marker sits at the 0.635 cm both exports write (`LIST_HANGING_CM`), so a wider *left*-set marker overflows where Word moves the text to the next list tab (a **right**-set one — `w:lvlJc`, which is what the built-in Roman numberings use — grows into the margin and is fine). Reading the value back naively also moves the markers of our own ODT exports — LibreOffice draws its own flat hanging at exactly the value odf-kit writes for level 2; see `tests/render-parity/README.md` before building on it
 - Linked / chained text frames
 - Multi-document management: one document is open at a time, so there is no window list and no side-by-side compare
@@ -204,7 +205,7 @@ merely unimplemented belongs in the list above, not here.
   paragraph's text instead. Noted 2026-08-08, revised 2026-08-09.
 - A line takes one word more or fewer than LibreOffice, for two reasons neither
   of which CSS exposes. LibreOffice **compresses** inter-word spaces to fit a
-  line (measured on the thesis: 91 of 349 full-width justified lines, up to
+  line (measured on a fixture: 91 of 349 full-width justified lines, up to
   0.83 px per space at 12 pt) where CSS justification only expands; and it
   quantizes every glyph advance where Chromium keeps it fractional, so the two
   drift apart along the line (identical word widths, 0.45 mm apart by the
@@ -236,11 +237,11 @@ merely unimplemented belongs in the list above, not here.
   choose the other ascent. Noted 2026-08-13.
 - A text box anchored inside a paragraph loses the vertical offset it was
   anchored by: it is a block node here, so the importer lifts it out and it
-  simply follows that paragraph (measured 4.7 mm on the thesis' figure page).
+  simply follows that paragraph (measured 4.7 mm on a fixture's figure page).
   It also costs flow height a word processor does not spend: Word's picture
   caption is a text box declared 0.05 pt tall that overflows its own box, so
   LibreOffice reserves nothing for it and the empty paragraph after it holds the
-  caption. Here it is a block, ~55 px — enough to push two lines off the thesis'
+  caption. Here it is a block, ~55 px — enough to push two lines off a fixture's
   page 15 and keep it one page behind through page 45. Noted 2026-08-09.
 - Line height follows the paragraph, not the line: the block's CSS strut applies
   to every line, where a word processor takes each line's own runs. A paragraph

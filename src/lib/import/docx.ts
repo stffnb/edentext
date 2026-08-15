@@ -362,7 +362,7 @@ const instrTextOf = (el: Element): string =>
   Array.from(el.getElementsByTagNameNS(W, 'instrText')).map(i => i.textContent ?? '').join('');
 
 // A cell's own formula field: `=SUM(ABOVE)`, written either way a field can be. Its
-// `\#` switch is the number format, and it is not part of the formula.
+// picture switch is the number format (`\@` for a date), not part of the formula.
 function cellFormulaOf(tc: Element): { formula: string; format: CellFormat | null } {
   const instrs = [
     instrTextOf(tc),
@@ -370,9 +370,9 @@ function cellFormulaOf(tc: Element): { formula: string; format: CellFormat | nul
   ];
   const found = instrs.find(i => /^\s*=\s*\S/.test(i));
   if (!found) return { formula: '', format: null };
-  const picture = /\\#\s*"([^"]*)"/.exec(found);
+  const picture = /\\[#@]\s*"([^"]*)"/.exec(found);
   return {
-    formula: fromWriterFormula(found.replace(/\\#\s*"[^"]*"/, '')),
+    formula: fromWriterFormula(found.replace(/\\[#@]\s*"[^"]*"/, '')),
     format: picture ? cellFormatFromCode(picture[1]) : null,
   };
 }

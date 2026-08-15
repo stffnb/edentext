@@ -17,7 +17,7 @@ import type {
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { SHAPES, isShapeKind, type ShapeKind } from '../utils/shapes';
-import { CELL_FORMAT_CODES, isCellFormat } from '../utils/cellFormat';
+import { cellFormatCode, isCellFormat } from '../utils/cellFormat';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, PAGE_FORMAT_CM, type PageFormat } from '../storage/pageFormat';
@@ -572,8 +572,11 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       // the cell; `formulaCellContent` mints this node for a cell that carries one.
       // Word's number format is the field's own `\#` switch, its picture the same one
       // its dialog shows.
-      const picture = isCellFormat(node.attrs?.format) ? CELL_FORMAT_CODES[node.attrs.format] : '';
-      const switches = picture ? ` \\# "${picture}"` : '';
+      const format = isCellFormat(node.attrs?.format) ? node.attrs.format : null;
+      const picture = format ? cellFormatCode(format, docLangTag) : '';
+      // A date is the field's date-time picture; Word's own formula dialog offers none,
+      // so that switch is ours to write and read back.
+      const switches = picture ? ` \\${format === 'date' ? '@' : '#'} "${picture}"` : '';
       out.push(new SimpleField(`=${node.attrs?.formula ?? ''}${switches}`, String(node.attrs?.text ?? '')));
     } else if (node.type === 'formula') {
       const latex = typeof node.attrs?.latex === 'string' ? node.attrs.latex : '';

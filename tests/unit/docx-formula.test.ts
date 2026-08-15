@@ -40,7 +40,7 @@ describe('DOCX formulas', () => {
     expect(found.map((f) => f.attrs.display)).toEqual([false, true]);
   });
 
-  // Sources harvested from a real Word thesis (the fixtures directory is gitignored, so
+  // Sources harvested from a real Word document (the fixtures directory is gitignored, so
   // they live here as literals). Each one broke the parser once: the n-ary swallowing the
   // enclosing \right, a literal ^ from typed-in code, a run's trailing space.
   it('re-serializes messy real-world sources unchanged', () => {

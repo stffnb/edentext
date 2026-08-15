@@ -90,7 +90,7 @@ formula in a Word document was silently dropped before this feature. `m:oMathPar
 
 ## A pasted formula is a picture, not a formula
 
-Real documents mix both: a thesis will carry OMML formulas *and* equations its author pasted
+Real documents mix both: one will carry OMML formulas *and* equations its author pasted
 as raster images. Those import as `image` nodes and offer the image toolbar's wrap options on
 click — in Word and LibreOffice too. Nothing short of OCR changes that, so a click that offers
 wrap options instead of the formula dialog is the document's doing, not a broken import.

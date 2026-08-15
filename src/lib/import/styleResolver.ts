@@ -277,7 +277,7 @@ export class StyleResolver {
         const name = el.getAttributeNS(NS.style, 'name');
         if (name) this.listStyles.set(name, el);
       } else if (el.namespaceURI === NS.number
-        && ['date-style', 'time-style', 'number-style', 'percentage-style'].includes(el.localName)) {
+        && ['date-style', 'time-style', 'number-style', 'percentage-style', 'currency-style'].includes(el.localName)) {
         const name = el.getAttributeNS(NS.style, 'name');
         if (name) this.numberStyles.set(name, el);
       }

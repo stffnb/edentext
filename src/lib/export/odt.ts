@@ -33,7 +33,7 @@ import { indexKindOf, INDEX_TITLES, type IndexKind } from '../editor/extensions/
 import { citationText, isBibType } from '../editor/extensions/bibliographyEntry';
 import { isCitationStyle, rowTemplate, type CitationStyle } from '../utils/citationStyle';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
-import { CELL_FORMAT_SPECS, isCellFormat, type CellFormat } from '../utils/cellFormat';
+import { CELL_FORMAT_SPECS, currencyParts, datePattern, isCellFormat, type CellFormat } from '../utils/cellFormat';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, toTimeValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
 import { parseLatex } from '../math/latex';
 import { mathmlDocument } from '../math/mathml';
@@ -3311,7 +3311,7 @@ function ensureOoowNamespace(content: string): string {
 
 // One entry per real cell in document order (covered cells carry no formula and never
 // match the regex), the same walk applyCellBlocks makes.
-function applyCellFormulas(odtBytes: Uint8Array, cells: (CellFormulaExport | null)[]): Uint8Array {
+function applyCellFormulas(odtBytes: Uint8Array, cells: (CellFormulaExport | null)[], lang: string): Uint8Array {
   if (!cells.some(Boolean)) return odtBytes;
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
@@ -3330,7 +3330,7 @@ function applyCellFormulas(odtBytes: Uint8Array, cells: (CellFormulaExport | nul
     const name = `Cf${derived.size + 1}`;
     const dataName = `Ncell${derived.size + 1}`;
     derived.set(key, name);
-    minted.push(odfCellNumberStyle(format, dataName));
+    minted.push(odfCellNumberStyle(format, dataName, lang));
     const props = new RegExp(`<style:style style:name="${base}" style:family="table-cell"[^>]*>([\\s\\S]*?)</style:style>`)
       .exec(source)?.[1] ?? '';
     minted.push(
@@ -3362,15 +3362,42 @@ function applyCellFormulas(odtBytes: Uint8Array, cells: (CellFormulaExport | nul
 }
 
 // The data style a formatted cell points at: how many decimals, whether the thousands
-// are grouped, and — for a percentage — the style family that appends the sign.
-function odfCellNumberStyle(format: CellFormat, name: string): string {
+// are grouped, and the style family — percentage, currency and date each have their own.
+function odfCellNumberStyle(format: CellFormat, name: string, lang: string): string {
   const spec = CELL_FORMAT_SPECS[format];
+  const [code, country] = lang.split('-');
+  // The style names the document's language: without it LibreOffice prints the
+  // separators and the symbol of its own locale, not the ones the editor shows (probed).
+  const at = `style:name="${name}" number:language="${code}"${country ? ` number:country="${country}"` : ''}`;
+  if (spec.kind === 'date') return odfDateStyle(at, lang);
   const number = `<number:number number:decimal-places="${spec.decimals}"`
     + ` number:min-decimal-places="${spec.decimals}" number:min-integer-digits="1"`
     + `${spec.grouping ? ' number:grouping="true"' : ''}/>`;
-  return spec.percent
-    ? `<number:percentage-style style:name="${name}">${number}<number:text>%</number:text></number:percentage-style>`
-    : `<number:number-style style:name="${name}">${number}</number:number-style>`;
+  if (spec.kind === 'percent') {
+    return `<number:percentage-style ${at}>${number}`
+      + `<number:text>%</number:text></number:percentage-style>`;
+  }
+  if (spec.kind === 'currency') {
+    const { symbol, before, space } = currencyParts(lang);
+    const sym = `<number:currency-symbol number:language="${code}"`
+      + `${country ? ` number:country="${country}"` : ''}>${escapeXml(symbol)}</number:currency-symbol>`;
+    const gap = space ? `<number:text>${escapeXml(space)}</number:text>` : '';
+    return `<number:currency-style ${at}>`
+      + (before ? `${sym}${gap}${number}` : `${number}${gap}${sym}`)
+      + `</number:currency-style>`;
+  }
+  return `<number:number-style ${at}>${number}</number:number-style>`;
+}
+
+// The locale's short date as ODF spells it: a `long` field is the zero-padded one, a
+// long year the four-digit one.
+function odfDateStyle(at: string, lang: string): string {
+  const body = datePattern(lang).map((f) => {
+    if (f.kind === 'literal') return `<number:text>${escapeXml(f.text)}</number:text>`;
+    const long = f.kind === 'year' ? f.digits >= 4 : f.digits >= 2;
+    return `<number:${f.kind}${long ? ' number:style="long"' : ''}/>`;
+  }).join('');
+  return `<number:date-style ${at}>${body}</number:date-style>`;
 }
 
 // A table's grid: where every real cell sits and what each slot reads, merged cells
@@ -4408,7 +4435,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // One entry per cell, same order as cellBlocks — applyCellFormulas. A cell's number
   // is read in the document's language, as LibreOffice reads it.
   const cellFormulas: (CellFormulaExport | null)[] = [];
-  const numberLoc = numberLocale(language ? `${language.language}-${language.country}` : 'en');
+  const langTag = language ? `${language.language}-${language.country}` : 'en';
+  const numberLoc = numberLocale(langTag);
 
   const odt = await tiptapToOdt(json, {
     // Orientation sets style:print-orientation; rewriteStylesXml overrides the exact
@@ -4539,7 +4567,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
 
   // Rebuild real headings/lists/paragraphs inside table cells. Must run after
   // applyListItemStyles (cell lists don't exist yet) and before collapseRunWhitespace.
-  const styledCells = applyCellFormulas(applyCellBlocks(indentedLists, cellBlocks), cellFormulas);
+  const styledCells = applyCellFormulas(applyCellBlocks(indentedLists, cellBlocks), cellFormulas, langTag);
 
   const rowHeights: (string | null)[] = [];
   collectTableRowHeights(raw, rowHeights);

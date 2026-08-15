@@ -34,7 +34,7 @@ import type { LineNumbering } from '../storage/lineNumbering';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { fromWriterFormula } from '../utils/tableFormula';
-import { cellFormatFromSpec, type CellFormat } from '../utils/cellFormat';
+import { cellFormatFromSpec, type CellFormat, type FormatKind } from '../utils/cellFormat';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { getSchema } from '@tiptap/core';
 import type { Schema } from '@tiptap/pm/model';
@@ -2401,19 +2401,25 @@ export function borderAttrFromOdf(raw: string | null | undefined, treatDefaultAs
 }
 
 // A formula cell's number format: its style points at a data style, whose shape is
-// all we keep — decimals, grouping, and whether it is a percentage.
+// all we keep — its family, the decimals and the grouping. A foreign document's own
+// currency symbol and date order give way to the ones the document's language spells.
 function cellNumberFormat(cellEl: Element, ctx: Ctx): CellFormat | null {
   const dataName = ctx.resolver.cellDataStyle(cellEl.getAttributeNS(NS.table, 'style-name'));
   const styleEl = ctx.resolver.numberStyle(dataName);
-  const kind = styleEl?.localName;
-  if (!styleEl || (kind !== 'number-style' && kind !== 'percentage-style')) return null;
+  const kind = FORMAT_KINDS[styleEl?.localName ?? ''];
+  if (!styleEl || !kind) return null;
   const num = styleEl.getElementsByTagNameNS(NS.number, 'number')[0];
   return cellFormatFromSpec({
     decimals: parseInt(num?.getAttributeNS(NS.number, 'decimal-places') ?? '0', 10) || 0,
     grouping: num?.getAttributeNS(NS.number, 'grouping') === 'true',
-    percent: kind === 'percentage-style',
+    kind,
   });
 }
+
+const FORMAT_KINDS: Record<string, FormatKind | undefined> = {
+  'number-style': 'number', 'percentage-style': 'percent',
+  'currency-style': 'currency', 'date-style': 'date',
+};
 
 function convertTable(el: Element, ctx: Ctx): Node | null {
   const weights = columnWeights(el, ctx.resolver);

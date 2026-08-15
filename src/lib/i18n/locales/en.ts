@@ -425,6 +425,7 @@ const en = {
     numberFormats: {
       general: 'General', int: '1235', dec2: '1234.57',
       group2: '1,234.57', percent: '123457%', percent2: '123456.79%',
+      currency: '$1,234.57', date: '3/15/23',
     } as Record<string, string>,
     formula: 'Formula…',
     formulaAria: 'Formula',
