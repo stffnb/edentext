@@ -485,10 +485,13 @@ const de: Messages = {
     ignoreAll: 'Alle ignorieren',
   },
   thesaurus: {
-    title: 'Thesaurus',
-    menuItem: 'Thesaurus…',
+    // "Thesaurus" heißt das Werkzeug in beiden Programmen, sagt aber nicht, was es tut:
+    // sichtbar ist überall "Synonyme", der Fachbegriff steht im Tooltip.
+    title: 'Synonyme',
+    menuItem: 'Synonyme…',
+    hint: 'Ein anderes Wort mit gleicher Bedeutung finden (Thesaurus)',
     lookUp: 'Nachschlagen',
-    word: 'Wort',
+    word: 'Wort eingeben…',
     loading: 'Wird geladen…',
     replaceHint: 'Ein Wort anklicken, um es im Dokument zu ersetzen.',
     noSynonyms: 'Keine Synonyme gefunden',

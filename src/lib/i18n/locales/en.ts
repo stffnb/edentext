@@ -489,10 +489,13 @@ const en = {
     ignoreAll: 'Ignore All',
   },
   thesaurus: {
-    title: 'Thesaurus',
-    menuItem: 'Thesaurus…',
+    // Both products call the tool "Thesaurus", which does not say what it does: the
+    // label everywhere is "Synonyms", the term of art lives in the tooltip.
+    title: 'Synonyms',
+    menuItem: 'Synonyms…',
+    hint: 'Find another word with the same meaning (thesaurus)',
     lookUp: 'Look up',
-    word: 'Word',
+    word: 'Enter a word…',
     loading: 'Loading…',
     replaceHint: 'Click a word to replace the one in the document.',
     noSynonyms: 'No synonyms found',

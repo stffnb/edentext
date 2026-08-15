@@ -1282,7 +1282,7 @@
             <button class="theme-option" onclick={() => { themeOpen = false; autoTextOpen = true; }} role="menuitem">
               <span>{t().autoText.title}</span>
             </button>
-            <button class="theme-option" onclick={() => { themeOpen = false; thesaurusOpen = true; }} role="menuitem">
+            <button class="theme-option" onclick={() => { themeOpen = false; thesaurusOpen = true; }} role="menuitem" title={t().thesaurus.hint}>
               <span>{t().thesaurus.title}</span>
               <span class="theme-option-hint">{shortcutHint('thesaurus')}</span>
             </button>

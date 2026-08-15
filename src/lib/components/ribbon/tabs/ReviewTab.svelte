@@ -53,7 +53,7 @@
     variant="big"
     icon="thesaurus"
     label={t().thesaurus.title}
-    title={`${t().thesaurus.title} (${shortcutHint('thesaurus')})`}
+    title={`${t().thesaurus.hint} — ${shortcutHint('thesaurus')}`}
     onclick={() => window.dispatchEvent(new CustomEvent(OPEN_THESAURUS_EVENT))}
   />
   <div class="rb-menu-wrap" use:clickOutside={'wordCount'}>

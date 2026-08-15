@@ -151,12 +151,17 @@ Text group, the classic chrome's Tools menu): the library, a click to insert, an
 from selection" — the selected slice serialized to HTML. `hasSelection` is derived off
 `open` because the dialog stays mounted and a modal freezes the selection it opened on.
 
-## Thesaurus (`ThesaurusDialog.svelte`, `spell/thesaurus.ts`)
+## Synonyms (`ThesaurusDialog.svelte`, `spell/thesaurus.ts`)
 
 LibreOffice's Tools ▸ Thesaurus (Ctrl+F7), reachable where Word puts it too (the ribbon's
 Review ▸ Proofing) and from the context menu: the word at the caret (`wordRangeAt`), the
 groups it appears in, click one to replace it. The box above looks up any other word,
 which is how both dialogs follow a chain.
+
+**Named "Synonyms", not "Thesaurus"** — the one place the label deviates from both
+products. The word of art names the tool without saying what it does; it stays in the
+tooltip (`thesaurus.hint`) so anyone looking for it still finds it. The i18n keys and
+the code keep the technical name.
 
 - The data is `public/thesaurus/<code>/<code>.txt`, one `;`-separated group per line,
   generated from LibreOffice's own MyThes files by `scripts/make-thesaurus.mjs` — de 3.0MB
