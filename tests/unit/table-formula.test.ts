@@ -9,7 +9,7 @@ import Text from '@tiptap/extension-text';
 import { Table, TableHeader, TableCell } from '@tiptap/extension-table';
 import { ResizableTableRow } from '../../src/lib/editor/extensions/tableRow';
 import { TableFormula, evaluateTable } from '../../src/lib/editor/extensions/tableFormula';
-import { sortedRows, canSortTable } from '../../src/lib/editor/extensions/tableSort';
+import { sortedRows, canSortTable, sortCollators, type SortType } from '../../src/lib/editor/extensions/tableSort';
 import {
   numberLocale, parseCellNumber, formatCellNumber, evalFormula,
   toWriterFormula, fromWriterFormula, colName, parseRef,
@@ -147,23 +147,28 @@ describe('evaluateTable', () => {
 });
 
 describe('sortedRows', () => {
-  const collator = new Intl.Collator('en');
+  const coll = sortCollators('en');
   const texts = (rows: N[]): string[] => rows.map((r) => r.textContent);
+  const by = (column: number, descending = false, type: SortType = 'auto'): N =>
+    ({ keys: [{ column, descending, type }], headerRow: false });
 
   it('orders a column of numbers numerically, not as text', () => {
     const t = table(...column('10', '2', '7'));
-    expect(texts(sortedRows(t, { column: 0, descending: false, headerRow: false }, EN, collator))).toEqual(['2', '7', '10']);
-    expect(texts(sortedRows(t, { column: 0, descending: true, headerRow: false }, EN, collator))).toEqual(['10', '7', '2']);
+    expect(texts(sortedRows(t, by(0), EN, coll))).toEqual(['2', '7', '10']);
+    expect(texts(sortedRows(t, by(0, true), EN, coll))).toEqual(['10', '7', '2']);
+    // Alphanumerically the same column reads as text, so "10" comes before "2".
+    expect(texts(sortedRows(t, by(0, false, 'text'), EN, coll))).toEqual(['10', '2', '7']);
   });
 
   it('orders text by the document\'s collation', () => {
     const t = table(...column('Zebra', 'ähnlich', 'Apfel'));
-    expect(texts(sortedRows(t, { column: 0, descending: false, headerRow: false }, EN, collator))).toEqual(['ähnlich', 'Apfel', 'Zebra']);
+    expect(texts(sortedRows(t, by(0), EN, coll))).toEqual(['ähnlich', 'Apfel', 'Zebra']);
   });
 
   it('keeps a header row where it is', () => {
     const t = table(...column('Name', 'Zebra', 'Apfel'));
-    expect(texts(sortedRows(t, { column: 0, descending: false, headerRow: true }, EN, collator))).toEqual(['Name', 'Apfel', 'Zebra']);
+    const opts = { keys: [{ column: 0, descending: false, type: 'auto' }], headerRow: true };
+    expect(texts(sortedRows(t, opts as N, EN, coll))).toEqual(['Name', 'Apfel', 'Zebra']);
   });
 
   it('sorts on the column it is given', () => {
@@ -171,8 +176,26 @@ describe('sortedRows', () => {
       [cell('b'), cell('2')],
       [cell('a'), cell('1')],
     );
-    const bySecond = sortedRows(t, { column: 1, descending: false, headerRow: false }, EN, collator);
+    const bySecond = sortedRows(t, by(1), EN, coll);
     expect(texts(bySecond)).toEqual(['a1', 'b2']);
+  });
+
+  it('decides a tie on the second key, and that one on the third', () => {
+    const t = table(
+      [cell('b'), cell('1'), cell('y')],
+      [cell('a'), cell('2'), cell('x')],
+      [cell('a'), cell('1'), cell('z')],
+      [cell('a'), cell('1'), cell('x')],
+    );
+    const keys = [0, 1, 2].map((column) => ({ column, descending: false, type: 'auto' as SortType }));
+    expect(texts(sortedRows(t, { keys, headerRow: false }, EN, coll))).toEqual(['a1x', 'a1z', 'a2x', 'b1y']);
+  });
+
+  it('sorts numerically past the cells that are no number', () => {
+    const t = table(...column('7', 'n/a', '10', '2'));
+    expect(texts(sortedRows(t, by(0, false, 'number'), EN, coll))).toEqual(['2', '7', '10', 'n/a']);
+    // Descending reverses the numbers, not the cells that have none.
+    expect(texts(sortedRows(t, by(0, true, 'number'), EN, coll))).toEqual(['10', '7', '2', 'n/a']);
   });
 
   it('refuses a table whose cells span rows', () => {
