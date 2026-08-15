@@ -45,6 +45,20 @@ describe('history log', () => {
     editor.destroy();
   });
 
+  it('labels feature nodes and marks', () => {
+    const editor = makeEditor();
+    editor.commands.insertContent('Hello');
+    endGroup(editor);
+    editor.commands.insertContentAt(editor.state.doc.content.size, { type: 'image', attrs: { src: 'data:,' } });
+    endGroup(editor);
+    editor.commands.insertNote('footnote');
+    endGroup(editor);
+    editor.chain().setTextSelection({ from: 1, to: 6 }).setLink({ href: 'https://example.com' }).run();
+
+    expect(undoLabels()).toEqual(['Typing: “Hello”', 'Insert image', 'Footnote', 'Link']);
+    editor.destroy();
+  });
+
   it('moves entries across on undo/redo and keeps counts at the plugin depths', () => {
     const editor = makeEditor();
     editor.commands.insertContent('one');

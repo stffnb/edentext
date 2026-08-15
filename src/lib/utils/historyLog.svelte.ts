@@ -88,6 +88,35 @@ const MARK_LABELS: Record<string, string> = {
   highlight: 'Highlight',
   subscript: 'Subscript',
   superscript: 'Superscript',
+  link: 'Link',
+  comment: 'Comment',
+  bookmark: 'Bookmark',
+  charStyle: 'Character style',
+  trackChanges: 'Tracked change',
+};
+
+// First inserted node with a label wins; nodesBetween visits parents before children,
+// so the outermost structure (a table over its paragraphs) names the entry.
+const NODE_LABELS: Record<string, string> = {
+  table: 'Insert table',
+  bulletList: 'Bullet list',
+  orderedList: 'Numbered list',
+  image: 'Insert image',
+  textBox: 'Text box',
+  formula: 'Formula',
+  pageBreak: 'Page break',
+  horizontalRule: 'Horizontal rule',
+  tableOfContents: 'Table of contents',
+  dateTimeField: 'Date field',
+  pageNumber: 'Page number',
+  pageCount: 'Page count',
+  chapterField: 'Chapter field',
+  sequenceField: 'Caption field',
+  crossRef: 'Cross-reference',
+  indexEntry: 'Index entry',
+  bibliographyEntry: 'Bibliography entry',
+  ruby: 'Ruby text',
+  columns: 'Columns',
 };
 
 function describeMark(name: string, attrs: Record<string, unknown> | undefined): string {
@@ -120,10 +149,10 @@ function describeTransaction(tr: Transaction): string {
       content.nodesBetween(0, content.size, (node) => {
         const name = node.type.name;
         if (!structural) {
-          if (name === 'table') structural = 'Insert table';
-          else if (name === 'bulletList') structural = 'Bullet list';
-          else if (name === 'orderedList') structural = 'Numbered list';
-          else if (name === 'heading') structural = `Heading ${node.attrs.level ?? ''}`.trim();
+          if (name === 'heading') structural = `Heading ${node.attrs.level ?? ''}`.trim();
+          else if (name === 'noteRef' || name === 'note')
+            structural = node.attrs.kind === 'endnote' ? 'Endnote' : 'Footnote';
+          else if (NODE_LABELS[name]) structural = NODE_LABELS[name];
           else if (step instanceof ReplaceAroundStep && name === 'paragraph') structural = 'Paragraph';
         }
         if (node.isText) {
