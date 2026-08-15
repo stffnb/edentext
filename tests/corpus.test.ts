@@ -14,8 +14,8 @@ import { importDocx } from '../src/lib/import/docx';
 type N = any;
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), 'corpus');
-// `make-fixtures.mjs` writes them; a real-world document stays out of the repo, in
-// render-parity/fixtures/, and out of this run.
+// `make-fixtures.mjs` writes them; a real-world document stays out of the repo, in the
+// gitignored parity fixture directory, and out of this run.
 const files = existsSync(FIX)
   ? readdirSync(FIX).filter((f) => /^\d\d-.+\.(docx|odt)$/.test(f)).sort()
   : [];
