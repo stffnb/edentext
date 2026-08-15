@@ -268,7 +268,7 @@ async function devServer() {
 }
 
 function corpus(args) {
-  const paths = args.length ? args : [join(HERE, 'fixtures')];
+  const paths = args.length ? args : [join(HERE, '..', 'corpus'), join(HERE, 'fixtures')];
   const out = [];
   for (const p of paths) {
     const abs = resolve(p);

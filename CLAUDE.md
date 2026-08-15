@@ -22,7 +22,9 @@ npm run test:parity  # render parity vs LibreOffice (tests/render-parity/README.
 Tests live in `tests/` (outside `src/`, so `svelte-check` ignores them), jsdom via Vitest.
 `roundtrip.test.ts` covers the ODF export↔import round trip + a foreign-doc/style-resolver leg;
 `lo-roundtrip.test.ts` re-saves through LibreOffice and **self-skips** without `soffice`, so
-`npm test`/CI stay green; `tests/unit/` holds fast helper tests. All test tooling stays a
+`npm test`/CI stay green; `corpus.test.ts` round-trips the committed `tests/corpus/`
+documents (authored by `render-parity/make-fixtures.mjs`, never by our own exporter);
+`tests/unit/` holds fast helper tests. All test tooling stays a
 `devDependency`. No linter/formatter. CI (`.github/workflows/ci.yml`) runs `check` + `test`.
 
 ## Rules

@@ -61,9 +61,12 @@ The runner starts `npm run dev` on port 5199 itself if nothing answers there.
 
 `make-fixtures.mjs` authors the baseline corpus with the `docx` lib **directly**,
 not through `src/lib/export/docx.ts` — otherwise the corpus would test our exporter
-against itself. Real-world `.docx`/`.odt` files dropped into `fixtures/` are picked
-up too. The directory is gitignored: run the generator once, and keep whatever
-real-world files you test against local.
+against itself — and converts each document to its ODT twin with LibreOffice. It
+writes them to **`tests/corpus/`, which is committed**: `tests/corpus.test.ts` reads
+them at the model level (import → our own export → import) on every `npm test`, so
+CI runs against documents this editor did not write. A run with no argument compares
+that corpus *and* `fixtures/`, which stays gitignored — keep whatever real-world
+files you test against there and local.
 
 ## Names stay local
 
@@ -73,8 +76,8 @@ that reason.
 
 Only this harness reads `fixtures/`. The directory is gitignored, so a `tests/unit/` test
 reading it fails with `ENOENT` on a fresh clone; it zips its own document instead
-(`docx-onoff.test.ts` — both importers take a `Uint8Array`, not a path). CI greps for the
-read.
+(`docx-onoff.test.ts` — both importers take a `Uint8Array`, not a path), or reads
+`tests/corpus/`, which is committed. CI greps for the read.
 
 ## Prerequisites, part two: Calibri Light
 

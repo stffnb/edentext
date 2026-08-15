@@ -1,7 +1,9 @@
 // Authors the baseline .docx corpus with the `docx` lib directly (not via
-// src/lib/export/docx.ts, so the fixtures don't test our exporter against itself).
-// Drop real-world files into fixtures/ alongside them.
-import { writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+// src/lib/export/docx.ts, so the corpus doesn't test our exporter against itself).
+// It is committed (tests/corpus/) and CI reads it; real-world files stay local,
+// in render-parity/fixtures/.
+import { writeFileSync, mkdirSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -11,7 +13,7 @@ import {
   Header, Footer, PageNumber, TabStopType,
 } from 'docx';
 
-const OUT = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
+const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'corpus');
 mkdirSync(OUT, { recursive: true });
 
 const LOREM = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.';
@@ -19,13 +21,13 @@ const LOREM = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do e
 const page = { margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } }; // 2cm
 const para = (text, o = {}) => new Paragraph({ children: [new TextRun({ text, ...o.run })], ...o.p });
 
-// Heading styles declare spacing and font explicitly: LibreOffice fills the gaps of
-// a built-in style it knows by name from its own defaults, where Word uses only what
-// the file declares — an omitted property makes the reference disagree with Word.
-const heading = (id, name, halfPt, before, after) => ({
+// Spacing, font and outline level are declared: LibreOffice fills a built-in style's
+// gaps from its own defaults where Word uses only what the file declares, and without
+// the level it converts a heading to a <text:p> merely carrying the heading's style.
+const heading = (id, name, halfPt, before, after, level) => ({
   id, name, basedOn: 'Normal', next: 'Normal', quickFormat: true,
   run: { font: 'Arial', size: halfPt, bold: true },
-  paragraph: { spacing: { before, after } },
+  paragraph: { spacing: { before, after }, outlineLevel: level },
 });
 
 async function write(name, sections, defaultRun = { font: 'Times New Roman', size: 24 }, extra = {}) {
@@ -35,8 +37,8 @@ async function write(name, sections, defaultRun = { font: 'Times New Roman', siz
       paragraphStyles: [
         // Word always writes an explicit Normal; the docx lib would emit docDefaults only.
         { id: 'Normal', name: 'Normal', run: defaultRun, paragraph: { spacing: { after: 0 } } },
-        heading('Heading1', 'Heading 1', 36, 240, 120),
-        heading('Heading2', 'Heading 2', 32, 200, 100),
+        heading('Heading1', 'Heading 1', 36, 240, 120, 0),
+        heading('Heading2', 'Heading 2', 32, 200, 100, 1),
       ],
     },
     ...extra,
@@ -199,12 +201,17 @@ await write('04-table.docx', [{
 // its own conventions (percentage font sizes, Text Body, list styles) and exercise the
 // foreign-document path our own exporter never produces.
 const docxFiles = readdirSync(OUT).filter((f) => f.endsWith('.docx'));
+// Its own profile, in a temp dir: LibreOffice writes a whole user installation into
+// it, and this one's parent is committed.
+const profile = mkdtempSync(join(tmpdir(), 'corpus-lo-'));
 try {
   execFileSync('soffice', [
-    '--headless', '--norestore', `-env:UserInstallation=file://${OUT}/.loprofile`,
+    '--headless', '--norestore', `-env:UserInstallation=file://${profile}`,
     '--convert-to', 'odt', '--outdir', OUT, ...docxFiles.map((f) => join(OUT, f)),
   ], { stdio: 'pipe', timeout: 300_000 });
   console.log(`converted ${docxFiles.length} ODT twins`);
 } catch {
   console.log('soffice missing — skipped the ODT twins');
+} finally {
+  rmSync(profile, { recursive: true, force: true });
 }

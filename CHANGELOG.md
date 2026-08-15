@@ -19,6 +19,7 @@
 - Fixed A4 paper canvas (794 × 1123 px @ 96 dpi) with CSS-simulated pagination and visual page breaks
 - LocalStorage auto-save (debounced 1 s); restores document, theme, zoom, margins, orientation, etc. on reload
 - Fully client-side / serverless; hand-coded SVG favicon
+- A committed corpus of ten documents (`tests/corpus/`) CI runs against: each is authored with the `docx` lib directly — never with our own exporter, which would test it against itself — and converted to its ODT twin by LibreOffice. `corpus.test.ts` asserts that both formats of a document read the same, and that each survives our export and import in either format
 - Placeholder text on an empty document
 
 **Text formatting**
@@ -169,8 +170,6 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 - A vertical writing mode for the **page** (ODF `tb-rl` on the page layout): a text box can run its text top-to-bottom, the body cannot — pagination fills a page downwards. A ruby annotation's own alignment and position are not offered either; both products' defaults are what we write
 - Password-protected ODT/DOCX; digital signatures
 - Split view: two views of one document, scrolled independently
-- A committed corpus of documents we author ourselves, so CI can test against real files
-  (`.gitignore` excludes all of `tests/render-parity/fixtures/` today)
 
 **Out of scope for now**
 - Mail merge, data sources, form fields
