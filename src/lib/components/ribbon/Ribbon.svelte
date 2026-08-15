@@ -63,7 +63,7 @@
     onSelectTheme,
     docxBusy = false,
     pdfBusy = false,
-    onNew, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onNewComment, commentsOpen = false, onToggleComments,
+    onNew, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onNewComment, commentsOpen = false, onToggleComments, revisionsOpen = false, onToggleRevisions,
     navigatorOpen = false, onToggleNavigator,
     recentFiles = [], onOpenRecent, onForgetRecent,
   }: {
@@ -116,6 +116,8 @@
     onNewComment?: () => void;
     commentsOpen?: boolean;
     onToggleComments?: () => void;
+    revisionsOpen?: boolean;
+    onToggleRevisions?: () => void;
     navigatorOpen?: boolean;
     onToggleNavigator?: () => void;
   } = $props();
@@ -336,7 +338,7 @@
     {:else if tab === 'references'}
       <ReferencesTab {editor} {tick} {hfActive} {onNoteOptions} />
     {:else if tab === 'review'}
-      <ReviewTab {editor} {tick} {documentLanguage} {onLanguage} {onAutoCorrect} {onNewComment} {commentsOpen} {onToggleComments} />
+      <ReviewTab {editor} {tick} {documentLanguage} {onLanguage} {onAutoCorrect} {onNewComment} {commentsOpen} {onToggleComments} {revisionsOpen} {onToggleRevisions} />
     {:else if tab === 'view'}
       <ViewTab bind:showRuler bind:showFormattingMarks {zoom} {onZoom} {onDebugDump} {navigatorOpen} {onToggleNavigator} />
     {:else if tab === 'tableDesign' || tab === 'tableLayout'}

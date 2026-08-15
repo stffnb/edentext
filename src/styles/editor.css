@@ -999,15 +999,28 @@
   border-radius: 2px;
 }
 
-.tiptap .pm-insertion {
-  color: #b5179e;
-  text-decoration: underline;
+/* A recorded revision. The mark only tints, so a DOM built without the decoration plugin
+   still shows one; the line comes from the decoration span ProseMirror nests INSIDE the
+   mark's, or an ancestor would draw it in the fallback colour instead of the author's. */
+.tiptap .pm-insertion,
+.tiptap .pm-deletion {
+  color: #c69200;
 }
 
-.tiptap .pm-deletion {
-  color: #b5179e;
-  text-decoration: line-through;
-}
+.tiptap .pm-rev-ins { text-decoration: underline; }
+.tiptap .pm-rev-del { text-decoration: line-through; }
+
+/* LibreOffice's author palette, handed out in order of first appearance (trackChanges.ts),
+   so several reviewers stay apart the way both word processors draw them. */
+.tiptap .pm-rev-a0 { color: #c69200; }
+.tiptap .pm-rev-a1 { color: #0646a2; }
+.tiptap .pm-rev-a2 { color: #579d1c; }
+.tiptap .pm-rev-a3 { color: #692b9d; }
+.tiptap .pm-rev-a4 { color: #c5000b; }
+.tiptap .pm-rev-a5 { color: #008080; }
+.tiptap .pm-rev-a6 { color: #8c8400; }
+.tiptap .pm-rev-a7 { color: #35556b; }
+.tiptap .pm-rev-a8 { color: #d17600; }
 
 /* Print styles: proper A4 pagination */
 @media print {

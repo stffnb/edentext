@@ -97,7 +97,10 @@ export function matchesEvent(e: KeyboardEvent, combo: string): boolean {
 
 // Tooltip hint: 'Mod-Alt-1' → 'Strg+Alt+1' (or '⌘+⌥+1' on Mac).
 export function shortcutHint(id: ShortcutId): string {
-  const parts = DEFAULT_SHORTCUTS[id].split(/-(?!$)/);
+  // Callers build ids from a level or a style name, so an unbound one is ordinary.
+  const combo0 = DEFAULT_SHORTCUTS[id];
+  if (!combo0) return '';
+  const parts = combo0.split(/-(?!$)/);
   const key = parts.pop() ?? '';
   const combo = [
     ...parts.map((p) => (p === 'Mod' ? 'Ctrl' : p)),

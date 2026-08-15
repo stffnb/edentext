@@ -622,6 +622,12 @@ const en = {
     rejectHint: 'Reject the change at the cursor',
     acceptAll: 'Accept all',
     rejectAll: 'Reject all',
+    pane: 'Revisions',
+    showPane: 'Show the list of recorded changes',
+    empty: 'No recorded changes.',
+    unknownAuthor: 'Unknown author',
+    inserted: 'Inserted',
+    deleted: 'Deleted',
   },
   notesDialog: {
     title: 'Footnotes and Endnotes',

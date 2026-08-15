@@ -1,6 +1,7 @@
 import { Extension, Mark, mergeAttributes } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 // Recorded revisions, as both word processors keep them: an insertion is text marked as
 // added, a deletion is text still in the document but marked as removed — nothing is
@@ -89,6 +90,21 @@ export function revisions(doc: PMNode): Revision[] {
   return out;
 }
 
+// One colour per author, as both word processors draw revisions: LibreOffice's own author
+// palette, handed out in order of first appearance. Beyond nine, authors share again.
+export const REVISION_AUTHOR_COLORS = [
+  '#c69200', '#0646a2', '#579d1c', '#692b9d', '#c5000b', '#008080', '#8c8400', '#35556b', '#d17600',
+];
+
+/** Author → palette index, in the order the document's revisions first name them. */
+export function authorColorIndex(list: Revision[]): Map<string, number> {
+  const order = new Map<string, number>();
+  for (const r of list) {
+    if (!order.has(r.author)) order.set(r.author, order.size % REVISION_AUTHOR_COLORS.length);
+  }
+  return order;
+}
+
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     trackChanges: {
@@ -96,6 +112,10 @@ declare module '@tiptap/core' {
       acceptRevisions: (all?: boolean) => ReturnType;
       /** Reject the change under the cursor, or every one when `all`. */
       rejectRevisions: (all?: boolean) => ReturnType;
+      /** Accept every range of one change, wherever the reviewing pane lists it. */
+      acceptRevision: (id: string) => ReturnType;
+      /** Reject every range of one change. */
+      rejectRevision: (id: string) => ReturnType;
     };
   }
 }
@@ -112,6 +132,15 @@ function targets(state: EditorState, all: boolean): Revision[] {
 // Applying a change is one pass from the end, so earlier positions stay valid. The
 // RECORDING meta keeps the plugin's hands off it: without it the delete below is read
 // as a fresh user deletion and marked up again instead of running.
+// One change by id — every range of it, which is what a paragraph boundary splits a
+// change into and what the pane lists as a single revision.
+function byId(state: EditorState, tr: Transaction, dispatch: unknown, id: string, accept: boolean): boolean {
+  const list = revisions(state.doc).filter((r) => r.id === id);
+  if (!list.length) return false;
+  if (dispatch) apply(state, tr, list, accept);
+  return true;
+}
+
 function apply(state: EditorState, tr: Transaction, list: Revision[], accept: boolean): void {
   const drop = accept ? 'deletion' : 'insertion';
   for (const r of [...list].sort((a, b) => b.from - a.from)) {
@@ -142,12 +171,33 @@ export const TrackChanges = Extension.create<{ recording: () => boolean; author:
         if (dispatch) apply(state, tr, list, false);
         return true;
       },
+      acceptRevision: (id) => ({ state, tr, dispatch }) => byId(state, tr, dispatch, id, true),
+      rejectRevision: (id) => ({ state, tr, dispatch }) => byId(state, tr, dispatch, id, false),
     };
   },
 
   addProseMirrorPlugins() {
     const options = this.options;
+    // The mark cannot know the document's other authors, so the colour is a decoration:
+    // one class per palette slot, keyed by where the author first appears. Cached on the
+    // doc — the walk is the whole document, and this runs on every view update.
+    let cache: { doc: PMNode; set: DecorationSet } | null = null;
     return [
+      new Plugin({
+        props: {
+          decorations(state) {
+            if (cache?.doc === state.doc) return cache.set;
+            const list = revisions(state.doc);
+            const order = authorColorIndex(list);
+            const set = DecorationSet.create(state.doc, list.map((r) =>
+              Decoration.inline(r.from, r.to, {
+                class: `pm-rev-${r.kind === 'insertion' ? 'ins' : 'del'} pm-rev-a${order.get(r.author) ?? 0}`,
+              })));
+            cache = { doc: state.doc, set };
+            return set;
+          },
+        },
+      }),
       new Plugin({
         key: RECORDING,
         // Typing is intercepted here rather than by a keymap: every path that inserts

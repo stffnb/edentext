@@ -10,7 +10,7 @@
   import { revisions } from '../../../editor/extensions/trackChanges';
   import { t } from '../../../i18n/i18n.svelte';
 
-  let { editor, tick, documentLanguage, onLanguage, onAutoCorrect, onNewComment, commentsOpen = false, onToggleComments }: {
+  let { editor, tick, documentLanguage, onLanguage, onAutoCorrect, onNewComment, commentsOpen = false, onToggleComments, revisionsOpen = false, onToggleRevisions }: {
     editor: Editor | null;
     tick: number;
     documentLanguage: DocumentLanguage;
@@ -19,6 +19,8 @@
     onNewComment?: () => void;
     commentsOpen?: boolean;
     onToggleComments?: () => void;
+    revisionsOpen?: boolean;
+    onToggleRevisions?: () => void;
   } = $props();
 
   let hasSelection = $derived(tick >= 0 && !!editor && !editor.state.selection.empty);
@@ -110,6 +112,14 @@
     title={t().revisions.recordHint}
     active={recordChanges()}
     onclick={() => setRecordChanges(!recordChanges())}
+  />
+  <RibbonButton
+    variant="big"
+    icon="comment"
+    label={t().revisions.pane}
+    title={t().revisions.showPane}
+    active={revisionsOpen}
+    onclick={() => onToggleRevisions?.()}
   />
   <!-- The one at the cursor over the whole document, so the pair reads as one column. -->
   <div class="rb-col">

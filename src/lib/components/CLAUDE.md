@@ -74,6 +74,13 @@ range, edit / resolve / remove in place. `App.svelte` owns the New-comment promp
 both the Review tab and the context menu (`OPEN_COMMENT_EVENT`) fire; the author comes
 from the document properties.
 
+## Revisions (`RevisionsPane.svelte`)
+
+The reviewing pane both word processors list revisions in, docked beside `CommentsPane`
+and built the same way: one row per change **id** (a paragraph boundary splits one change
+into several ranges), in the author's own colour, click to select the text, accept or
+reject in place through `acceptRevision`/`rejectRevision`. Opened from the Review tab.
+
 ## Navigator (`NavigatorPane.svelte`, `editor/extensions/outline.ts`)
 
 LibreOffice's Navigator and Word's Navigation pane: the outline, click to jump, and the

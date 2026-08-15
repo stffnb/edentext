@@ -111,6 +111,7 @@
 - Right-click context menu for text: cut / copy / paste / paste without formatting, link insert-edit-remove, clear formatting — with the spelling suggestions merged in on top. Shift+right-click keeps the browser's own menu; images, text boxes and header/footer stay with their existing UI
 - Spell check in English and German with squiggles and suggestions in the context menu (add / ignore word); selectable document language. Powered by Hunspell (WASM), so German compound words (Fußgänger, Krankenversicherung …) are recognised; dictionaries are lazy-loaded per language on demand
 - Word / character count statistics (whole document and selection)
+- Reviewing pane for tracked changes (Review ▸ Revisions), beside the comments one: every recorded change in document order — author, date, what was inserted or deleted — click to select the text, accept or reject in place. A change a paragraph boundary splits is one row and is applied whole. Each **author** draws in their own colour (LibreOffice's author palette, handed out in order of first appearance), so several reviewers stay apart on the page
 - Navigator pane (F5, or View ▸ Navigator): the document's chapters as an outline, click one to jump to it and the caret's own chapter stays marked. Beside each, LibreOffice's four chapter operations — move up / down and promote / demote a level, each carrying everything under the heading with it. A move swaps with the adjacent chapter at the same level and never crosses a heading above it, so a subheading stays in its own chapter. Below the outline, the tables, pictures and bookmarks LibreOffice's Navigator also lists, as jump targets
 
 **UI & theming**
@@ -149,7 +150,6 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 - Connectors that attach to other shapes, and freeform curves — a connector is an anchoring model rather than a shape, and a freeform needs a drawing tool. Rotated shape text (`w:bodyPr vert`) too. All still dropped on import with a warning
 
 **Missing while writing**
-- One colour for every tracked change, where both word processors give each author their own — and no reviewing pane listing the revisions the way the comments pane lists comments
 - Hyphenation's zone and ladder count (`fo:hyphenation-ladder-count`, `w:hyphenationZone`) — CSS exposes neither
 - Restarting the page numbering **per section** (only the document's own format and start value exist)
 - A bibliography's citation style: the list is set the one way ("key: author, title, year"), where both word processors offer APA, MLA, Chicago and the rest, and numbered citations (`[1]`) instead of the source's short name

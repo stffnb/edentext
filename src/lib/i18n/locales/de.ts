@@ -618,6 +618,12 @@ const de: Messages = {
     rejectHint: 'Die Änderung an der Einfügemarke verwerfen',
     acceptAll: 'Alle annehmen',
     rejectAll: 'Alle verwerfen',
+    pane: 'Änderungen',
+    showPane: 'Liste der aufgezeichneten Änderungen anzeigen',
+    empty: 'Keine aufgezeichneten Änderungen.',
+    unknownAuthor: 'Unbekannter Autor',
+    inserted: 'Eingefügt',
+    deleted: 'Gelöscht',
   },
   notesDialog: {
     title: 'Fuß- und Endnoten',

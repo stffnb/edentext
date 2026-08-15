@@ -50,6 +50,7 @@
   import AboutDialog from './lib/components/AboutDialog.svelte';
   import DocPropertiesDialog from './lib/components/DocPropertiesDialog.svelte';
   import CommentsPane from './lib/components/CommentsPane.svelte';
+  import RevisionsPane from './lib/components/RevisionsPane.svelte';
   import NavigatorPane from './lib/components/NavigatorPane.svelte';
   import { OPEN_COMMENT_EVENT } from './lib/editor/extensions/comment';
   import AutoCorrectDialog from './lib/components/AutoCorrectDialog.svelte';
@@ -173,6 +174,7 @@
   let lineNumbering: LineNumbering = $state(loadLineNumbering());
   let autoCorrectOpen = $state(false);
   let commentsOpen = $state(false);
+  let revisionsOpen = $state(false);
   let navigatorOpen = $state(false);
 
   // Width of the hidden mirror span (below), so the title input grows/shrinks
@@ -1045,6 +1047,8 @@
       onNewComment={addComment}
       {commentsOpen}
       onToggleComments={() => (commentsOpen = !commentsOpen)}
+      {revisionsOpen}
+      onToggleRevisions={() => (revisionsOpen = !revisionsOpen)}
       {navigatorOpen}
       onToggleNavigator={() => (navigatorOpen = !navigatorOpen)}
     />
@@ -1352,6 +1356,9 @@
   {/if}
   {#if commentsOpen}
     <CommentsPane {editor} {tick} author={docProps.author} onClose={() => (commentsOpen = false)} />
+  {/if}
+  {#if revisionsOpen}
+    <RevisionsPane {editor} {tick} author={docProps.author} onClose={() => (revisionsOpen = false)} />
   {/if}
   </div>
   {#if findOpen && editor}
