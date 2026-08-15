@@ -3,6 +3,8 @@
 import { describe, it, expect } from 'vitest';
 import { buildOdt } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
+import { buildDocx } from '../src/lib/export/docx';
+import { importDocx } from '../src/lib/import/docx';
 import { normalize, firstDiff } from './normalize';
 import { genDoc, mulberry32 } from './fuzzDoc';
 
@@ -28,6 +30,30 @@ describe('fuzz round-trip: editor → buildOdt → importOdt', () => {
       expect.soft(res.warnings, `seed ${seed}: warnings`).toEqual([]);
       const diff = firstDiff(stripFontHoist(normalize(doc)), stripFontHoist(normalize(res.content)));
       expect.soft(diff, `seed ${seed} (re-run genDoc(mulberry32(${seed})) to reproduce)`).toBeNull();
+    }
+  }, 120_000);
+
+  // ODT leaves default column widths implicit where DOCX always writes w:tcW; ignore
+  // them in the cross-format comparison (each format's own leg still covers widths).
+  function stripColwidth(node: any): any {
+    if (node.attrs?.colwidth) {
+      delete node.attrs.colwidth;
+      if (!Object.keys(node.attrs).length) delete node.attrs;
+    }
+    for (const c of node.content ?? []) stripColwidth(c);
+    return node;
+  }
+
+  // Cross-format: the same document through both pipelines must import identically —
+  // catches one exporter silently losing what the other keeps.
+  it('50 seeded documents agree between the ODT and DOCX round-trips', async () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      const doc = genDoc(mulberry32(seed));
+      const viaOdt = importOdt(await buildOdt(doc, margins, 'portrait')).content;
+      const viaDocx = importDocx(await buildDocx(doc, margins, 'portrait')).content;
+      const diff = firstDiff(stripColwidth(stripFontHoist(normalize(viaOdt))),
+        stripColwidth(stripFontHoist(normalize(viaDocx))));
+      expect.soft(diff, `seed ${seed}: ODT vs DOCX import (genDoc(mulberry32(${seed})))`).toBeNull();
     }
   }, 120_000);
 });
