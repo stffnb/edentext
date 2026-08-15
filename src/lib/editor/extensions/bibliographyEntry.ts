@@ -1,5 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { citationLabel, formatBibRow, isCitationStyle, type CitationStyle } from '../../utils/citationStyle';
 
 // One citation: an inline atom carrying the whole source record, which is what ODF
 // writes (every field is an attribute of text:bibliography-mark) and what lets the
@@ -63,6 +65,18 @@ export function isBibType(v: unknown): boolean {
 /** What the citation shows where the file names nothing else: LibreOffice's `[key]`. */
 export const citationText = (identifier: string): string => `[${identifier}]`;
 
+// The document's citation style lives on its bibliography index (tableOfContents.ts),
+// which is where both formats keep it too; a document with no bibliography cites by key.
+export function documentCitationStyle(doc: PMNode): CitationStyle {
+  let style: CitationStyle = 'key';
+  doc.descendants((node) => {
+    if (node.type.name !== 'tableOfContents' || node.attrs.index !== 'bibliography') return true;
+    if (isCitationStyle(node.attrs.citationStyle)) style = node.attrs.citationStyle;
+    return false;
+  });
+  return style;
+}
+
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     bibliographyEntry: {
@@ -117,6 +131,24 @@ export const BibliographyEntry = Node.create({
     return ['span', mergeAttributes(HTMLAttributes, { class: 'pm-citation' }), shownText(node.attrs)];
   },
 
+  // The shown text is derived from the document's style and the source's rank, so an
+  // edit that adds or moves a citation restyles them all. Off the undo stack, like the
+  // caption numbers: undoing an edit must not step back through the recount.
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('bibliographyLabels'),
+        appendTransaction: (transactions, _old, newState) =>
+          transactions.some((t) => t.docChanged) ? relabelTr(newState) : null,
+      }),
+    ];
+  },
+
+  onCreate() {
+    const tr = relabelTr(this.editor.state);
+    if (tr) this.editor.view.dispatch(tr);
+  },
+
   addCommands() {
     return {
       insertBibliographyEntry: (source) => ({ commands }) => {
@@ -133,6 +165,29 @@ export const BibliographyEntry = Node.create({
 
 const shownText = (attrs: Record<string, unknown>): string =>
   String(attrs.text || citationText(String(attrs.identifier ?? '')));
+
+// Every citation's label brought up to date, or null when they all already agree.
+function relabelTr(state: EditorState): Transaction | null {
+  const style = documentCitationStyle(state.doc);
+  const entries = bibliographyEntries(state.doc);
+  const rank = sourceRanks(entries);
+  const tr = state.tr;
+  let changed = false;
+  for (const e of entries) {
+    const label = citationLabel(e, style, rank.get(e.identifier) ?? 0);
+    if (label === e.text) continue;
+    tr.setNodeAttribute(e.pos, 'text', label);
+    changed = true;
+  }
+  return changed ? tr.setMeta('addToHistory', false) : null;
+}
+
+/** Each cited source's number: 1 upwards, in the order the document first cites it. */
+export function sourceRanks(entries: BibSource[]): Map<string, number> {
+  const rank = new Map<string, number>();
+  for (const e of entries) if (!rank.has(e.identifier)) rank.set(e.identifier, rank.size + 1);
+  return rank;
+}
 
 /** Every citation in document order, duplicates included. */
 export function bibliographyEntries(doc: PMNode): BibEntry[] {
@@ -154,18 +209,18 @@ export function bibliographyEntries(doc: PMNode): BibEntry[] {
  * a bibliography by document position rather than alphabetically. The row reads
  * "key: author, title, year", the shape LibreOffice's entry templates produce.
  */
-export function bibliographyRows(entries: BibSource[]): { identifier: string; text: string }[] {
+export function bibliographyRows(entries: BibSource[], style: CitationStyle = 'key'): { identifier: string; text: string }[] {
+  const rank = sourceRanks(entries);
   const seen = new Set<string>();
   const out: { identifier: string; text: string }[] = [];
   for (const e of entries) {
     if (seen.has(e.identifier)) continue;
     seen.add(e.identifier);
-    out.push({ identifier: e.identifier, text: bibRowText(e) });
+    out.push({ identifier: e.identifier, text: formatBibRow(e, style, rank.get(e.identifier) ?? 0) });
   }
   return out;
 }
 
-export function bibRowText(source: BibSource): string {
-  const rest = ['author', 'title', 'year'].map(f => (source.fields[f] ?? '').trim()).filter(Boolean);
-  return rest.length ? `${source.identifier}: ${rest.join(', ')}` : source.identifier;
+export function bibRowText(source: BibSource, style: CitationStyle = 'key'): string {
+  return formatBibRow(source, style, 1);
 }

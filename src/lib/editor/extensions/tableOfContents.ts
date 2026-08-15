@@ -5,6 +5,7 @@ import { MAX_HEADING_LEVEL } from '../../export/odt';
 import { seqCategoryOf, sequenceFieldText, type SeqCategory } from './caption';
 import { indexEntries, indexRows } from './indexEntry';
 import { bibliographyEntries, bibliographyRows } from './bibliographyEntry';
+import { isCitationStyle, type CitationStyle } from '../../utils/citationStyle';
 import { readVerticalMargins, pageOfElement, topInEditor, FORCE_PAGE_RECALC, type PageGrid } from './pageBreaks';
 
 // A generated index: a block atom listing every source with its live page number — the
@@ -115,6 +116,16 @@ export const TableOfContents = Node.create({
         parseHTML: el => indexKindOf((el as HTMLElement).getAttribute('data-toc-index')),
         renderHTML: attrs => (attrs.index && attrs.index !== 'toc' ? { 'data-toc-index': String(attrs.index) } : {}),
       },
+      // A bibliography's citation style: how its rows read and how a citation names a
+      // source. Both formats keep it with the index, so it rides its node.
+      citationStyle: {
+        default: 'key' as CitationStyle,
+        parseHTML: (el) => {
+          const v = (el as HTMLElement).getAttribute('data-toc-cite');
+          return isCitationStyle(v) ? v : 'key';
+        },
+        renderHTML: attrs => (attrs.citationStyle && attrs.citationStyle !== 'key' ? { 'data-toc-cite': String(attrs.citationStyle) } : {}),
+      },
       entries: {
         default: [] as TocEntry[],
         parseHTML: el => {
@@ -223,7 +234,8 @@ class TocView {
       // One row per source cited, at its first citation — no page number, as both word
       // processors print a bibliography.
       const cited = bibliographyEntries(this.editor.state.doc);
-      for (const row of bibliographyRows(cited)) {
+      const style = isCitationStyle(this.node()?.attrs?.citationStyle) ? this.node()!.attrs.citationStyle as CitationStyle : 'key';
+      for (const row of bibliographyRows(cited, style)) {
         out.push({ text: row.text, level: 1, pos: cited.find(c => c.identifier === row.identifier)!.pos });
       }
       return out;

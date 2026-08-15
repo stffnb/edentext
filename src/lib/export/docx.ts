@@ -27,6 +27,7 @@ import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSett
 import { DOCX_SEQ_NAME, seqCategoryOf } from '../editor/extensions/caption';
 import { indexKindOf, INDEX_TITLES } from '../editor/extensions/tableOfContents';
 import { citationText, DOCX_BIB_FIELD, DOCX_SOURCE_TYPE, type BibSource } from '../editor/extensions/bibliographyEntry';
+import { DOCX_STYLE_NAME, isCitationStyle, type CitationStyle } from '../utils/citationStyle';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
@@ -120,6 +121,17 @@ let docFormulas: FormulaDocx[] = [];
 // The sources cited, one per tag in document order — Word keeps them in a custom-XML
 // part and the CITATION fields only name the tag. Module-level like docFormulas.
 let docSources: BibSource[] = [];
+
+// The document's citation style: its bibliography index carries it, as in both formats.
+function docCitationStyle(node: TiptapNode): CitationStyle {
+  if (node.type === 'tableOfContents' && node.attrs?.index === 'bibliography'
+    && isCitationStyle(node.attrs?.citationStyle)) return node.attrs.citationStyle;
+  for (const child of node.content ?? []) {
+    const found = docCitationStyle(child);
+    if (found !== 'key') return found;
+  }
+  return 'key';
+}
 
 // Word numbers footnotes and endnotes in separate files, so each class counts from 1.
 // Filled from the note section before the body is walked, then read by the anchor —
@@ -1041,7 +1053,7 @@ function bibSourceXml(s: BibSource): string {
 // Post-pack pass: the sources the CITATION fields name. Word keeps them in a custom-XML
 // part of their own, which needs its properties part, two relationships and a content
 // type — none of which the package knows about, so all four are minted here.
-function applyBibliographyDocx(bytes: Uint8Array, sources: BibSource[]): Uint8Array {
+function applyBibliographyDocx(bytes: Uint8Array, sources: BibSource[], cite: CitationStyle): Uint8Array {
   if (!sources.length) return bytes;
   const files = unzipSync(bytes);
   const relsPath = 'word/_rels/document.xml.rels';
@@ -1051,7 +1063,7 @@ function applyBibliographyDocx(bytes: Uint8Array, sources: BibSource[]): Uint8Ar
 
   files['customXml/item1.xml'] = strToU8(
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
-    + `<b:Sources xmlns:b="${B_NS}" SelectedStyle="" StyleName="">`
+    + `<b:Sources xmlns:b="${B_NS}" SelectedStyle="\\${DOCX_STYLE_NAME[cite]}.XSL" StyleName="${DOCX_STYLE_NAME[cite]}">`
     + sources.map(bibSourceXml).join('') + '</b:Sources>');
   files['customXml/itemProps1.xml'] = strToU8(
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
@@ -1999,7 +2011,7 @@ export async function buildDocx(
 
   const blob = await Packer.toBlob(doc);
   const packed = applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
-  const cited = applyBibliographyDocx(packed, docSources);
+  const cited = applyBibliographyDocx(packed, docSources, docCitationStyle(docJson));
   const withNotes = docNoteIds.size ? applyNotePrDocx(cited, notesSettings) : cited;
   const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withNotes) : withNotes;
   const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);

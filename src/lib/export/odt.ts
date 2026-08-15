@@ -31,6 +31,7 @@ import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle,
 import { ODF_SEQ_NAME, seqCategoryOf, type SeqCategory } from '../editor/extensions/caption';
 import { indexKindOf, INDEX_TITLES, type IndexKind } from '../editor/extensions/tableOfContents';
 import { citationText, isBibType } from '../editor/extensions/bibliographyEntry';
+import { isCitationStyle, rowTemplate, type CitationStyle } from '../utils/citationStyle';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, toTimeValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
 import { parseLatex } from '../math/latex';
@@ -1062,7 +1063,7 @@ function replaceColumns(doc: TiptapNode, cols: ColumnsExport[]): TiptapNode {
 // One generated table of contents, collected by replaceTableOfContents and emitted by
 // applyToc. Entries are the cached heading→page rows (the node view keeps them current).
 type TocEntry = { text: string; level: number; page: number; pages?: number[] };
-type TocExport = { kind: IndexKind; entries: TocEntry[]; title: string | null; maxLevel: number; leader: string | null; tabPosCm: number | null; levelStyles: (string | null)[] | null };
+type TocExport = { kind: IndexKind; entries: TocEntry[]; title: string | null; maxLevel: number; leader: string | null; tabPosCm: number | null; levelStyles: (string | null)[] | null; citationStyle: CitationStyle };
 
 // Swap each top-level tableOfContents node for a marker paragraph carrying the TOC
 // sentinel and collect its cached entries. Top-level only (like replacePageBreaks): a
@@ -1092,6 +1093,7 @@ function replaceTableOfContents(doc: TiptapNode, tocs: TocExport[]): TiptapNode 
         leader: normalizeLeader(child.attrs?.leader),
         tabPosCm: typeof child.attrs?.tabPosCm === 'number' ? child.attrs.tabPosCm : null,
         levelStyles: Array.isArray(child.attrs?.levelStyles) ? (child.attrs!.levelStyles as (string | null)[]) : null,
+        citationStyle: isCitationStyle(child.attrs?.citationStyle) ? child.attrs!.citationStyle : 'key',
       });
       content.push({ type: 'paragraph', content: [{ type: 'text', text: `${TOC_SENT}${tocs.length - 1}${TOC_SENT}` }] });
       continue;
@@ -3990,12 +3992,13 @@ const ODF_INDEX: Record<IndexKind, { el: string; heading: string; entryStyle: st
 };
 
 // A bibliography's entry template is per source type, and LibreOffice regenerates the
-// rows from it — so it must spell out the same "key: author, title, year" the node view
-// prints. Only the types actually cited get one; the rest LibreOffice fills in itself.
-function bibEntryTemplates(style: string, types: string[]): string {
-  const field = (name: string) => `<text:index-entry-bibliography text:bibliography-data-field="${name}"/>`;
-  const body = field('identifier') + '<text:index-entry-span>: </text:index-entry-span>'
-    + [field('author'), field('title'), field('year')].join('<text:index-entry-span>, </text:index-entry-span>');
+// rows from it — so it spells out the citation style's own row, token for token (which
+// is what an ODF template is). Only the types actually cited get one; the rest
+// LibreOffice fills in itself.
+function bibEntryTemplates(style: string, types: string[], cite: CitationStyle): string {
+  const body = rowTemplate(cite).map(t => ('field' in t
+    ? `<text:index-entry-bibliography text:bibliography-data-field="${t.field}"/>`
+    : `<text:index-entry-span>${escapeXml(t.text)}</text:index-entry-span>`)).join('');
   return (types.length ? types : ['book'])
     .map(t => `<text:bibliography-entry-template text:bibliography-type="${t}" text:style-name="${style}">${body}</text:bibliography-entry-template>`)
     .join('');
@@ -4017,14 +4020,16 @@ function tocXml(toc: TocExport, index: number, bibTypes: string[]): string {
   // An alphabetical index is fed by its marks, is single-level, and merges the pages of
   // a term the reader marked more than once — LibreOffice's text:combine-entries.
   const sourceAttrs = toc.kind === 'bibliography'
-    ? ''
+    // LibreOffice's own two flags for a numbered bibliography: [1] before each row, and
+    // the rows in the order the document cites them rather than sorted.
+    ? (toc.citationStyle === 'numbered' ? ' text:numbered-entries="true" text:sort-by-position="true"' : '')
     : toc.kind === 'alphabetical'
     ? ' text:combine-entries="true" text:ignore-case="true"'
     : spec.seq
       ? ` text:use-caption="true" text:caption-sequence-name="${spec.seq}" text:caption-sequence-format="category-and-value"`
       : ` text:outline-level="${toc.maxLevel}" text:use-index-marks="false" text:use-index-source-styles="false"`;
   const templates = toc.kind === 'bibliography'
-    ? bibEntryTemplates(tocLevelStyle(toc, 1), bibTypes)
+    ? bibEntryTemplates(tocLevelStyle(toc, 1), bibTypes, toc.citationStyle)
     : spec.seq
     ? entry('', tocLevelStyle(toc, 1))
     : toc.kind === 'alphabetical'

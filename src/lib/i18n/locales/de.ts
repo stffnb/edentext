@@ -571,6 +571,9 @@ const de: Messages = {
     below: 'Unter dem Objekt',
   },
   bibliography: {
+    style: 'Zitierstil',
+    styleNeedsIndex: 'Zuerst ein Literaturverzeichnis einfügen — es trägt den Stil',
+    styles: { key: 'Kurzname [Schlüssel]', numbered: 'Nummeriert [1]', apa: 'APA', mla: 'MLA', chicago: 'Chicago' },
     title: 'Literaturangabe einfügen',
     identifier: 'Kurzname',
     type: 'Typ',

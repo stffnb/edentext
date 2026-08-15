@@ -28,6 +28,7 @@ import { newCommentId } from '../editor/extensions/comment';
 import { ODF_SEQ_CATEGORY } from '../editor/extensions/caption';
 import type { IndexKind } from '../editor/extensions/tableOfContents';
 import { isBibType } from '../editor/extensions/bibliographyEntry';
+import { citationStyleFromTemplate } from '../utils/citationStyle';
 import type { PageDecor } from '../storage/pageDecor';
 import type { LineNumbering } from '../storage/lineNumbering';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
@@ -1152,6 +1153,19 @@ function convertToc(el: Element, ctx: Ctx, indexKind: IndexKind): Node {
   }
   const attrs: Record<string, unknown> = { entries, title, maxLevel, leader, tabPosCm, index: indexKind };
   if (levelStyles.some(Boolean)) attrs.levelStyles = Array.from(levelStyles, (s) => s ?? null);
+  // A bibliography's citation style is its entry template: the fields it names, in order.
+  // A numbered index says so on the source instead, whatever its template reads.
+  if (indexKind === 'bibliography') {
+    // One template per source type, and LibreOffice fills the types the document does
+    // not cite with its own default — which is the "key" shape. So the document's style
+    // is the first template that reads as anything else.
+    const styles = templates.map((tpl) => citationStyleFromTemplate(
+      Array.from(tpl.getElementsByTagNameNS(NS.text, 'index-entry-bibliography'))
+        .map((f) => f.getAttributeNS(NS.text, 'bibliography-data-field') ?? '')));
+    attrs.citationStyle = source?.getAttributeNS(NS.text, 'numbered-entries') === 'true'
+      ? 'numbered'
+      : styles.find((st) => st && st !== 'key') ?? 'key';
+  }
   return { type: 'tableOfContents', attrs };
 }
 

@@ -22,6 +22,7 @@ import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { clampPageStart, DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
+import { citationStyleFromDocx, type CitationStyle } from '../utils/citationStyle';
 import { applyUniformRunFont, pairAlignedFrames, sinkOffsetFrames, type OdtImportResult } from './odt';
 import { chartDataUrl } from './chart';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
@@ -70,6 +71,8 @@ type Ctx = {
   pageRtl: boolean;
   // Word's document-wide automatic hyphenation: a paragraph can only turn it off.
   hyphenate: boolean;
+  // The citation style the sources part names (b:Sources StyleName).
+  citationStyle: CitationStyle;
   // The enclosing table style's w:pPr/w:spacing, applied to its cells' paragraphs.
   cellSpacing: ParaSpacing;
   // Whether w:tblInd is measured to the cell's text rather than the table's edge.
@@ -186,7 +189,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const sectPr = fc(body, 'sectPr');
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, pageRtl: sectPrRtl(sectPr), hyphenate: docAutoHyphenation(files), cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), bibSources: docxSources(files), notes: [], noteParts: {
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, pageRtl: sectPrRtl(sectPr), hyphenate: docAutoHyphenation(files), cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
     footnote: noteParts(files, 'footnotes', 'footnote'),
     endnote: noteParts(files, 'endnotes', 'endnote'),
   } };
@@ -518,7 +521,8 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
       if ((/\bINDEX\b/.test(simple) || /\bBIBLIOGRAPHY\b/.test(simple)) && kind === 'body') {
         flush();
         const index = /\bBIBLIOGRAPHY\b/.test(simple) ? 'bibliography' : 'alphabetical';
-        out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', index } });
+        out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', index,
+          ...(index === 'bibliography' ? { citationStyle: ctx.citationStyle } : {}) } });
         continue;
       }
       const { emit } = scanTocField(el, tocState);
@@ -1439,6 +1443,18 @@ function emitField(out: Node[], instr: string, hfFields: boolean, marks: Mark[] 
     const m = /\bSTYLEREF\s+"?[^"\d]*(\d)/i.exec(instr);
     if (m) out.push({ type: 'chapterField', attrs: { level: Number(m[1]), text: '' }, ...(marks.length ? { marks } : {}) });
   }
+}
+
+// The citation style the sources part names, where it names one we know.
+function docxCitationStyle(files: Record<string, Uint8Array>): CitationStyle {
+  for (const path of Object.keys(files)) {
+    if (!/^customXml\/item\d+\.xml$/.test(path)) continue;
+    let root: Element;
+    try { root = parseXml(strFromU8(files[path])).documentElement; } catch { continue; }
+    if (root.localName !== 'Sources') continue;
+    return citationStyleFromDocx(root.getAttribute('StyleName') ?? '') ?? 'key';
+  }
+  return 'key';
 }
 
 // Every source Word keeps, by its tag. They live in a custom-XML part of their own —

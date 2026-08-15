@@ -575,6 +575,9 @@ const en = {
     below: 'Below the item',
   },
   bibliography: {
+    style: 'Citation style',
+    styleNeedsIndex: 'Insert a bibliography first — it carries the style',
+    styles: { key: 'Short name [key]', numbered: 'Numbered [1]', apa: 'APA', mla: 'MLA', chicago: 'Chicago' },
     title: 'Insert Citation',
     identifier: 'Short name',
     type: 'Type',

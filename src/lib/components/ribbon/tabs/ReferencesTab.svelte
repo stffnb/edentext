@@ -10,6 +10,7 @@
   import { t } from '../../../i18n/i18n.svelte';
   import { shortcutHint } from '../../../editor/shortcuts';
   import { HEADING_LEVELS } from '../../../export/odt';
+  import { CITATION_STYLES, isCitationStyle, type CitationStyle } from '../../../utils/citationStyle';
 
   let { editor, tick, hfActive = null, onNoteOptions }: {
     editor: Editor | null;
@@ -48,6 +49,25 @@
     closeMenu();
     if (!editor || !toc) return;
     editor.chain().focus().setNodeSelection(toc.pos).updateAttributes('tableOfContents', { maxLevel: level }).run();
+  }
+
+  // The document's bibliography, whose attrs hold the citation style — both formats keep
+  // it there too, so a document without one cites by key and the button stays disabled.
+  let bibliography = $derived.by<{ pos: number; style: CitationStyle } | null>(() => {
+    if (tick < 0 || !editor) return null;
+    let found: { pos: number; style: CitationStyle } | null = null;
+    editor.state.doc.descendants((node, pos) => {
+      if (found || node.type.name !== 'tableOfContents' || node.attrs.index !== 'bibliography') return;
+      found = { pos, style: isCitationStyle(node.attrs.citationStyle) ? node.attrs.citationStyle : 'key' };
+    });
+    return found;
+  });
+
+  function setCitationStyle(style: CitationStyle) {
+    closeMenu();
+    if (!editor || !bibliography) return;
+    editor.chain().focus().setNodeSelection(bibliography.pos)
+      .updateAttributes('tableOfContents', { citationStyle: style }).run();
   }
 </script>
 
@@ -117,6 +137,27 @@
     disabled={!editor || !!hfActive}
     onclick={() => (citationOpen = true)}
   />
+  <div class="rb-menu-wrap" use:clickOutside={'citeStyle'}>
+    <RibbonButton
+      variant="small"
+      icon="citation"
+      label={t().bibliography.style}
+      title={bibliography ? t().bibliography.style : t().bibliography.styleNeedsIndex}
+      caret
+      disabled={!editor || !bibliography}
+      active={isMenuOpen('citeStyle')}
+      onclick={() => toggleMenu('citeStyle')}
+    />
+    {#if isMenuOpen('citeStyle')}
+      <div class="ribbon-menu" use:anchored role="menu">
+        {#each CITATION_STYLES as cs}
+          <button class:selected={bibliography?.style === cs} onclick={() => setCitationStyle(cs)}>
+            {t().bibliography.styles[cs]}
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </div>
 </RibbonGroup>
 
 <CaptionDialog bind:open={captionOpen} {editor} />
