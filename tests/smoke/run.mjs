@@ -35,7 +35,8 @@ async function previewServer() {
 
 const server = await previewServer();
 const browser = await chromium.launch({ executablePath: chromium.executablePath(), args: ['--no-sandbox'] });
-const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+// Fixed locale, so the UI labels the test clicks are deterministic across machines.
+const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US' });
 const pageErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
 page.on('dialog', (d) => d.accept());
@@ -71,6 +72,21 @@ try {
     null, { timeout: 30_000 });
   const pages = await page.evaluate(() => document.querySelector('.statusbar')?.textContent ?? '');
   check(/\d/.test(pages), 'ODT import renders table + statusbar page count');
+
+  // Raster-PDF export over the loaded document: the seam in export/pdf.ts hands the
+  // bytes to the sink instead of doc.save() (the download hangs in headless Chromium).
+  await page.evaluate(() => {
+    window.__edentextPdfSink = (buf) => {
+      window.__pdfHead = String.fromCharCode(...new Uint8Array(buf, 0, 5));
+      window.__pdfSize = buf.byteLength;
+    };
+  });
+  await page.click('.save-chevron');
+  await page.click('button:has-text("Raster PDF")');
+  await page.waitForFunction(() => window.__pdfSize > 0, null, { timeout: 60_000 });
+  const pdf = await page.evaluate(() => ({ head: window.__pdfHead, size: window.__pdfSize }));
+  check(pdf.head === '%PDF-' && pdf.size > 20_000,
+    `PDF export produces a PDF (${Math.round(pdf.size / 1024)} KB)`);
 } catch (err) {
   check(false, `smoke run threw: ${err.message ?? err}`);
 } finally {

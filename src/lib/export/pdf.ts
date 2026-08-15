@@ -283,7 +283,11 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
       }
     }
 
-    doc.save((opts.fileName ?? deriveFilename(opts.json)).replace(/\.(odt|pdf)$/i, '') + '.pdf');
+    // Test seam: the smoke test takes the bytes here — capturing the real doc.save()
+    // download hangs in headless Chromium (docs/headless-testing.md).
+    const sink = (window as { __edentextPdfSink?: (bytes: ArrayBuffer) => void }).__edentextPdfSink;
+    if (sink) sink(doc.output('arraybuffer'));
+    else doc.save((opts.fileName ?? deriveFilename(opts.json)).replace(/\.(odt|pdf)$/i, '') + '.pdf');
   } finally {
     cleanup();
   }
