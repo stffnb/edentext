@@ -34,6 +34,7 @@ import type { LineNumbering } from '../storage/lineNumbering';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { fromWriterFormula } from '../utils/tableFormula';
+import { cellFormatFromSpec, type CellFormat } from '../utils/cellFormat';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { getSchema } from '@tiptap/core';
 import type { Schema } from '@tiptap/pm/model';
@@ -2395,6 +2396,21 @@ export function borderAttrFromOdf(raw: string | null | undefined, treatDefaultAs
   return `${w}pt solid ${c}`;
 }
 
+// A formula cell's number format: its style points at a data style, whose shape is
+// all we keep — decimals, grouping, and whether it is a percentage.
+function cellNumberFormat(cellEl: Element, ctx: Ctx): CellFormat | null {
+  const dataName = ctx.resolver.cellDataStyle(cellEl.getAttributeNS(NS.table, 'style-name'));
+  const styleEl = ctx.resolver.numberStyle(dataName);
+  const kind = styleEl?.localName;
+  if (!styleEl || (kind !== 'number-style' && kind !== 'percentage-style')) return null;
+  const num = styleEl.getElementsByTagNameNS(NS.number, 'number')[0];
+  return cellFormatFromSpec({
+    decimals: parseInt(num?.getAttributeNS(NS.number, 'decimal-places') ?? '0', 10) || 0,
+    grouping: num?.getAttributeNS(NS.number, 'grouping') === 'true',
+    percent: kind === 'percentage-style',
+  });
+}
+
 function convertTable(el: Element, ctx: Ctx): Node | null {
   const weights = columnWeights(el, ctx.resolver);
 
@@ -2441,9 +2457,12 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       // the cached result is the cell's text and needs nothing here.
       const rawFormula = cellEl.getAttributeNS(NS.table, 'formula');
       const formula = rawFormula ? fromWriterFormula(rawFormula) : '';
+      // The number format is on the cell's style, as a reference to a data style.
+      const cellFormat = formula ? cellNumberFormat(cellEl, ctx) : null;
       for (let r = 0; r < repeated; r++) {
         const attrs: Record<string, unknown> = { colspan, rowspan, ...borders };
         if (formula) attrs.formula = formula;
+        if (cellFormat) attrs.cellFormat = cellFormat;
         if (ownPad) attrs.cellPadding = ownPad;
         if (backgroundColor) attrs.backgroundColor = backgroundColor;
         if (verticalAlign) attrs.verticalAlign = verticalAlign;

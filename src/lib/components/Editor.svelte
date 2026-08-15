@@ -8,7 +8,8 @@
   import { spellErrorAt } from '../editor/extensions/spellCheck';
   import { spellController } from '../spell/controller';
   import { isInTable, selectedRect } from '@tiptap/pm/tables';
-  import { currentCellFormula, currentCellName, guessFormula } from '../editor/extensions/tableFormula';
+  import { currentCellFormat, currentCellFormula, currentCellName, guessFormula } from '../editor/extensions/tableFormula';
+  import type { CellFormat } from '../utils/cellFormat';
   import TableToolbar from './TableToolbar.svelte';
   import TableSplitDialog from './TableSplitDialog.svelte';
   import TableSortDialog from './TableSortDialog.svelte';
@@ -484,7 +485,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // The popover the table toolbar has open, in its place. One at a time.
   let tableDialog = $state<'split' | 'sort' | 'formula' | null>(null);
   // What the sort and formula popovers open on: the grid around the cursor's cell.
-  const NO_TABLE = { columns: 1, column: 0, headerRow: false, cell: null as string | null, formula: '=SUM(ABOVE)' };
+  const NO_TABLE = { columns: 1, column: 0, headerRow: false, cell: null as string | null, formula: '=SUM(ABOVE)', format: null as CellFormat | null };
   let tableGrid = $derived.by(() => {
     const state = editor?.state;
     if (tick < 0 || !state || !isInTable(state)) return NO_TABLE;
@@ -496,6 +497,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         || rect.table.attrs.repeatHeader === true,
       cell: currentCellName(state),
       formula: currentCellFormula(state) || guessFormula(state),
+      format: currentCellFormat(state),
     };
   });
   // Drop the dialog if the selection leaves the table (toolbar hidden).
@@ -1149,8 +1151,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         <TableFormulaDialog
           cell={tableGrid.cell}
           initial={tableGrid.formula}
-          onApply={(formula) => {
-            editor?.chain().focus().setCellFormula(formula).run();
+          initialFormat={tableGrid.format}
+          onApply={(formula, format) => {
+            editor?.chain().focus().setCellFormula(formula, format).run();
             tableDialog = null;
           }}
           onClose={() => (tableDialog = null)}

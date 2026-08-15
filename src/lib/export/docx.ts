@@ -17,6 +17,7 @@ import type {
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { SHAPES, isShapeKind, type ShapeKind } from '../utils/shapes';
+import { CELL_FORMAT_CODES, isCellFormat } from '../utils/cellFormat';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { pageDimsCm, PAGE_FORMAT_CM, type PageFormat } from '../storage/pageFormat';
@@ -569,7 +570,11 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
     } else if (node.type === FORMULA_CELL) {
       // Word keeps a table formula in a field inside the cell, where ODF puts it on
       // the cell; `formulaCellContent` mints this node for a cell that carries one.
-      out.push(new SimpleField(`=${node.attrs?.formula ?? ''}`, String(node.attrs?.text ?? '')));
+      // Word's number format is the field's own `\#` switch, its picture the same one
+      // its dialog shows.
+      const picture = isCellFormat(node.attrs?.format) ? CELL_FORMAT_CODES[node.attrs.format] : '';
+      const switches = picture ? ` \\# "${picture}"` : '';
+      out.push(new SimpleField(`=${node.attrs?.formula ?? ''}${switches}`, String(node.attrs?.text ?? '')));
     } else if (node.type === 'formula') {
       const latex = typeof node.attrs?.latex === 'string' ? node.attrs.latex : '';
       if (latex) {
@@ -1526,7 +1531,8 @@ function formulaCellContent(cell: TiptapNode): TiptapNode[] | null {
   const text = (first.content ?? []).map(function textOf(n: TiptapNode): string {
     return n.type === 'text' ? n.text ?? '' : (n.content ?? []).map(textOf).join('');
   }).join('');
-  const field: TiptapNode = { type: FORMULA_CELL, attrs: { formula, text } };
+  const format = isCellFormat(cell.attrs?.cellFormat) ? cell.attrs.cellFormat : null;
+  const field: TiptapNode = { type: FORMULA_CELL, attrs: { formula, text, format } };
   return [{ ...first, content: [field] }, ...(cell.content ?? []).slice(1)];
 }
 

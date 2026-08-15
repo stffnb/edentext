@@ -420,6 +420,11 @@ const en = {
     sortAscending: 'Ascending',
     sortDescending: 'Descending',
     sortHeaderRow: 'First row is a header',
+    numberFormat: 'Number format',
+    numberFormats: {
+      general: 'General', int: '1235', dec2: '1234.57',
+      group2: '1,234.57', percent: '123457%', percent2: '123456.79%',
+    } as Record<string, string>,
     formula: 'Formula…',
     formulaAria: 'Formula',
     formulaDialogLabel: 'Table formula',

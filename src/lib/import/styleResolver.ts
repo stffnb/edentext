@@ -145,6 +145,10 @@ function entryFromStyleElement(el: Element): StyleEntry {
   collectProps(el, 'table-row-properties', entry.misc);
   collectProps(el, 'table-cell-properties', entry.misc);
   collectProps(el, 'graphic-properties', entry.misc);
+  // Not a property element but an attribute of the style itself, and it inherits along
+  // the parent chain like one — a cell's number format is a reference to a data style.
+  const dataStyle = el.getAttributeNS(NS.style, 'data-style-name');
+  if (dataStyle) entry.misc['style:data-style-name'] = dataStyle;
   return entry;
 }
 
@@ -272,7 +276,8 @@ export class StyleResolver {
       } else if (el.namespaceURI === NS.text && el.localName === 'list-style') {
         const name = el.getAttributeNS(NS.style, 'name');
         if (name) this.listStyles.set(name, el);
-      } else if (el.namespaceURI === NS.number && (el.localName === 'date-style' || el.localName === 'time-style')) {
+      } else if (el.namespaceURI === NS.number
+        && ['date-style', 'time-style', 'number-style', 'percentage-style'].includes(el.localName)) {
         const name = el.getAttributeNS(NS.style, 'name');
         if (name) this.numberStyles.set(name, el);
       }
@@ -405,6 +410,13 @@ export class StyleResolver {
     if (!styleName) return null;
     const c = this.merged('table-cell', styleName).misc['fo:background-color'];
     return c && c !== 'transparent' && c !== 'none' ? c : null;
+  }
+
+  // The data style a cell style points at (style:data-style-name), which is where a
+  // cell's number format lives — the cell element itself carries none.
+  cellDataStyle(styleName: string | null): string | null {
+    if (!styleName) return null;
+    return this.merged('table-cell', styleName).misc['style:data-style-name'] ?? null;
   }
 
   // A cell style's style:vertical-align, where it is not the ODF default (top).

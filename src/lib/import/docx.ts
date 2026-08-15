@@ -28,6 +28,7 @@ import { chartDataUrl } from './chart';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { fromWriterFormula } from '../utils/tableFormula';
+import { cellFormatFromCode, type CellFormat } from '../utils/cellFormat';
 import { ODF_SEQ_CATEGORY } from '../editor/extensions/caption';
 import type { IndexKind } from '../editor/extensions/tableOfContents';
 import { bibTypeFromDocx, DOCX_BIB_FIELD, type BibSource } from '../editor/extensions/bibliographyEntry';
@@ -360,14 +361,20 @@ function tocIndexKind(instr: string): IndexKind {
 const instrTextOf = (el: Element): string =>
   Array.from(el.getElementsByTagNameNS(W, 'instrText')).map(i => i.textContent ?? '').join('');
 
-// A cell's own formula field: `=SUM(ABOVE)`, written either way a field can be.
-function cellFormulaOf(tc: Element): string {
+// A cell's own formula field: `=SUM(ABOVE)`, written either way a field can be. Its
+// `\#` switch is the number format, and it is not part of the formula.
+function cellFormulaOf(tc: Element): { formula: string; format: CellFormat | null } {
   const instrs = [
     instrTextOf(tc),
     ...Array.from(tc.getElementsByTagNameNS(W, 'fldSimple')).map(f => f.getAttributeNS(W, 'instr') ?? ''),
   ];
   const found = instrs.find(i => /^\s*=\s*\S/.test(i));
-  return found ? fromWriterFormula(found) : '';
+  if (!found) return { formula: '', format: null };
+  const picture = /\\#\s*"([^"]*)"/.exec(found);
+  return {
+    formula: fromWriterFormula(found.replace(/\\#\s*"[^"]*"/, '')),
+    format: picture ? cellFormatFromCode(picture[1]) : null,
+  };
 }
 
 function scanTocField(p: Element, st: TocFieldState): { emit: boolean } {
@@ -2234,8 +2241,9 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
       if (useWeights) attrs.colwidth = useWeights.slice(col, col + colspan);
       // A `= …` field in the cell is Word's table formula; its cached result is already
       // the cell's text, so only the formula itself moves onto the cell.
-      const formula = cellFormulaOf(tc);
+      const { formula, format } = cellFormulaOf(tc);
       if (formula) attrs.formula = formula;
+      if (formula && format) attrs.cellFormat = format;
       const cell: Node = { type: 'tableCell', attrs, content: blocks.length ? blocks : [{ type: 'paragraph' }] };
       cells.push(cell);
       for (let c = col; c < col + colspan; c++) pending[c] = vMerge === 'restart' ? cell : null;

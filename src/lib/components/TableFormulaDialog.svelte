@@ -2,23 +2,28 @@
   import { untrack } from 'svelte';
   import { t } from '../i18n/i18n.svelte';
   import { FORMULA_FUNCTIONS } from '../utils/tableFormula';
+  import { CELL_FORMATS, type CellFormat } from '../utils/cellFormat';
   // Word's Table ▸ Formula: the guessed formula, editable, plus the function list to
-  // paste from. The parent mounts it and holds the cell the formula is set on.
+  // paste from and the number format its result is printed in (Word's own dialog has
+  // both). The parent mounts it and holds the cell the formula is set on.
   let {
     cell = null,
     initial = '=SUM(ABOVE)',
+    initialFormat = null,
     onApply,
     onClose,
   }: {
     /** The cell's name (A1), which is how a formula refers to it. */
     cell?: string | null;
     initial?: string;
-    onApply: (formula: string) => void;
+    initialFormat?: CellFormat | null;
+    onApply: (formula: string, format: CellFormat | null) => void;
     onClose: () => void;
   } = $props();
 
   // Seeded from the cell the dialog opened on; from there the field is the user's.
   let text = $state(untrack(() => initial));
+  let format = $state<CellFormat>(untrack(() => initialFormat ?? 'general'));
   let field = $state<HTMLInputElement | null>(null);
 
   $effect(() => {
@@ -28,7 +33,7 @@
 
   // A formula the cell no longer has is an empty field, which clears it.
   function apply() {
-    onApply(text.trim().replace(/^=/, ''));
+    onApply(text.trim().replace(/^=/, ''), format === 'general' ? null : format);
   }
 
   function paste(fn: string) {
@@ -46,6 +51,12 @@
   <label class="formula-row">
     <span>{cell ? t().table.formulaCell(cell) : t().table.formulaField}</span>
     <input bind:this={field} bind:value={text} type="text" spellcheck="false" onkeydown={onKeydown} />
+  </label>
+  <label class="formula-row">
+    <span>{t().table.numberFormat}</span>
+    <select bind:value={format}>
+      {#each CELL_FORMATS as f}<option value={f}>{t().table.numberFormats[f]}</option>{/each}
+    </select>
   </label>
   <div class="formula-funcs">
     {#each FORMULA_FUNCTIONS as fn}
@@ -78,6 +89,15 @@
     gap: 0.25rem;
     font-size: 0.75rem;
     color: var(--color-text);
+  }
+
+  select {
+    padding: 0.3rem 0.4rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 0.85rem;
   }
 
   input {

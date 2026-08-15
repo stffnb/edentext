@@ -33,6 +33,7 @@ import { indexKindOf, INDEX_TITLES, type IndexKind } from '../editor/extensions/
 import { citationText, isBibType } from '../editor/extensions/bibliographyEntry';
 import { isCitationStyle, rowTemplate, type CitationStyle } from '../utils/citationStyle';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
+import { CELL_FORMAT_SPECS, isCellFormat, type CellFormat } from '../utils/cellFormat';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, toTimeValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
 import { parseLatex } from '../math/latex';
 import { mathmlDocument } from '../math/mathml';
@@ -3299,7 +3300,7 @@ function tablePropsOf(node: TiptapNode, contentWidthCm: number): TableProps | nu
 
 // A formula cell as ODF writes it: LibreOffice's own formula language behind its
 // `ooow:` prefix, plus the cached result as the cell's value.
-type CellFormulaExport = { formula: string; value: number | null };
+type CellFormulaExport = { formula: string; value: number | null; format: CellFormat | null };
 
 function ensureOoowNamespace(content: string): string {
   if (content.includes('xmlns:ooow=')) return content;
@@ -3315,20 +3316,59 @@ function applyCellFormulas(odtBytes: Uint8Array, cells: (CellFormulaExport | nul
   if (!contentBytes) return odtBytes;
 
   let idx = 0;
-  const content = strFromU8(contentBytes).replace(
+  // A number format lives on the cell *style*, and odf-kit shares one style across
+  // every cell — so a formatted cell gets a copy of it carrying the data style.
+  const minted: string[] = [];
+  const derived = new Map<string, string>();
+  let source = strFromU8(contentBytes);
+  const styleFor = (base: string, format: CellFormat): string => {
+    const key = `${base}|${format}`;
+    const existing = derived.get(key);
+    if (existing) return existing;
+    const name = `Cf${derived.size + 1}`;
+    const dataName = `Ncell${derived.size + 1}`;
+    derived.set(key, name);
+    minted.push(odfCellNumberStyle(format, dataName));
+    const props = new RegExp(`<style:style style:name="${base}" style:family="table-cell"[^>]*>([\\s\\S]*?)</style:style>`)
+      .exec(source)?.[1] ?? '';
+    minted.push(
+      `<style:style style:name="${name}" style:family="table-cell" style:data-style-name="${dataName}">`
+      + `${props}</style:style>`,
+    );
+    return name;
+  };
+
+  let content = source.replace(
     /<table:table-cell\b([^>]*?)(\/?)>/g,
     (match, attrs: string, selfClose: string) => {
       const cell = cells[idx++];
       if (!cell) return match;
       const value = cell.value == null ? '' : ` office:value-type="float" office:value="${cell.value}"`;
-      return `<table:table-cell${attrs} table:formula="ooow:${escapeXml(cell.formula)}"${value}${selfClose}>`;
+      const base = /table:style-name="([^"]+)"/.exec(attrs)?.[1];
+      const styled = cell.format && base
+        ? attrs.replace(`table:style-name="${base}"`, `table:style-name="${styleFor(base, cell.format)}"`)
+        : attrs;
+      return `<table:table-cell${styled} table:formula="ooow:${escapeXml(cell.formula)}"${value}${selfClose}>`;
     },
   );
+  if (minted.length) content = ensureNumberNamespace(injectAutomaticStyles(content, minted.join('')));
   // `ooow:` in the value is a namespace prefix, so the reader resolves it against the
   // declarations: undeclared, LibreOffice reads the prefix as part of the formula and
   // prints "Expression is faulty" (probed).
   files['content.xml'] = strToU8(ensureOoowNamespace(content));
   return rezipOdt(files);
+}
+
+// The data style a formatted cell points at: how many decimals, whether the thousands
+// are grouped, and — for a percentage — the style family that appends the sign.
+function odfCellNumberStyle(format: CellFormat, name: string): string {
+  const spec = CELL_FORMAT_SPECS[format];
+  const number = `<number:number number:decimal-places="${spec.decimals}"`
+    + ` number:min-decimal-places="${spec.decimals}" number:min-integer-digits="1"`
+    + `${spec.grouping ? ' number:grouping="true"' : ''}/>`;
+  return spec.percent
+    ? `<number:percentage-style style:name="${name}">${number}<number:text>%</number:text></number:percentage-style>`
+    : `<number:number-style style:name="${name}">${number}</number:number-style>`;
 }
 
 // A table's grid: where every real cell sits and what each slot reads, merged cells
@@ -3382,7 +3422,11 @@ function cellFormulaOf(cell: TiptapNode, grid: CellGridJson, loc: NumberLocale):
     rows: grid.rows, cols: grid.cols, self,
     valueAt: (ref: CellRef) => parseCellNumber(grid.text(ref), loc),
   };
-  return { formula: toWriterFormula(formula, ctx), value: parseCellNumber(grid.text(self), loc) };
+  return {
+    formula: toWriterFormula(formula, ctx),
+    value: parseCellNumber(grid.text(self), loc),
+    format: isCellFormat(cell.attrs?.cellFormat) ? cell.attrs.cellFormat : null,
+  };
 }
 
 // Build an ODF table from a CUST_TABLE node, bypassing odf-kit's native walkTable to

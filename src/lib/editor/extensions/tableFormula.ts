@@ -8,7 +8,8 @@ import {
   evalFormula, parseCellNumber, formatCellNumber, refName,
   type CellRef, type NumberLocale,
 } from '../../utils/tableFormula';
-import { numberRecognition, tableNumberLocale } from '../../storage/tableOptions.svelte';
+import { formatCellValue, isCellFormat, type CellFormat } from '../../utils/cellFormat';
+import { numberRecognition, tableLanguage, tableNumberLocale } from '../../storage/tableOptions.svelte';
 import { t } from '../../i18n/i18n.svelte';
 
 // A cell's formula, on the cell itself — which is where ODF puts it
@@ -18,7 +19,7 @@ import { t } from '../../i18n/i18n.svelte';
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     tableFormula: {
-      setCellFormula: (formula: string | null) => ReturnType;
+      setCellFormula: (formula: string | null, format?: CellFormat | null) => ReturnType;
     };
   }
 }
@@ -50,7 +51,7 @@ export function cellGrid(table: PMNode): CellGrid {
 // Every formula cell's result text, keyed by the cell's offset in the table. A
 // reference to another formula resolves through it, so a chain settles in one pass;
 // a cycle yields the error text rather than looping.
-export function evaluateTable(table: PMNode, loc: NumberLocale, error: string): Map<number, string> {
+export function evaluateTable(table: PMNode, loc: NumberLocale, error: string, lang = 'en'): Map<number, string> {
   const grid = cellGrid(table);
   const results = new Map<number, string>();
   const cache = new Map<number, number | null>();
@@ -70,7 +71,8 @@ export function evaluateTable(table: PMNode, loc: NumberLocale, error: string): 
     });
     busy.delete(off);
     cache.set(off, value);
-    results.set(off, value == null ? error : formatCellNumber(value, loc));
+    const format = isCellFormat(node.attrs.cellFormat) ? node.attrs.cellFormat : 'general';
+    results.set(off, value == null ? error : formatCellValue(value, format, loc, lang));
     return value;
   };
 
@@ -104,14 +106,14 @@ function setCellText(tr: Transaction, cellPos: number, cell: PMNode, text: strin
 
 type Edit = { pos: number; cell: PMNode; text: string };
 
-function formulaEdits(doc: PMNode, loc: NumberLocale): Edit[] {
+function formulaEdits(doc: PMNode, loc: NumberLocale, lang: string): Edit[] {
   const edits: Edit[] = [];
   doc.descendants((node, pos) => {
     // This runs on every edit, so the walk stops at the blocks a table cannot be in —
     // otherwise it visits every run of the document per keystroke.
     if (node.isTextblock) return false;
     if (node.type.name !== 'table') return;
-    for (const [off, text] of evaluateTable(node, loc, t().table.formulaError)) {
+    for (const [off, text] of evaluateTable(node, loc, t().table.formulaError, lang)) {
       const cell = node.nodeAt(off);
       if (cell && cell.textContent !== text) edits.push({ pos: pos + 1 + off, cell, text });
     }
@@ -146,6 +148,13 @@ export const TableFormula = Extension.create({
             renderHTML: (attributes: Record<string, unknown>) =>
               attributes.formula ? { 'data-formula': attributes.formula } : {},
           },
+          // The number format the cell prints its value in; absent = the general one.
+          cellFormat: {
+            default: null,
+            parseHTML: (element: HTMLElement) => element.getAttribute('data-cell-format'),
+            renderHTML: (attributes: Record<string, unknown>) =>
+              attributes.cellFormat ? { 'data-cell-format': attributes.cellFormat } : {},
+          },
         },
       },
     ];
@@ -154,7 +163,7 @@ export const TableFormula = Extension.create({
   addCommands() {
     return {
       setCellFormula:
-        (formula: string | null) =>
+        (formula: string | null, format: CellFormat | null = null) =>
         ({ state, dispatch }: CommandProps) => {
           if (!isInTable(state)) return false;
           const rect = selectedRect(state);
@@ -164,7 +173,9 @@ export const TableFormula = Extension.create({
           const cell = state.doc.nodeAt(pos);
           if (!cell) return false;
           if (dispatch) {
-            dispatch(state.tr.setNodeMarkup(pos, undefined, { ...cell.attrs, formula: formula || null }));
+            dispatch(state.tr.setNodeMarkup(pos, undefined, {
+              ...cell.attrs, formula: formula || null, cellFormat: format,
+            }));
           }
           return true;
         },
@@ -194,7 +205,7 @@ export const TableFormula = Extension.create({
           }
           if (!recognized && !trs.some((t) => t.docChanged)) return null;
           // Descending, so an earlier edit's positions still hold for the next one.
-          for (const edit of formulaEdits(tr.doc, loc).reverse()) {
+          for (const edit of formulaEdits(tr.doc, loc, tableLanguage()).reverse()) {
             setCellText(tr, edit.pos, edit.cell, edit.text);
           }
           return tr.steps.length ? tr.setMeta('addToHistory', false) : null;
@@ -235,4 +246,12 @@ export function currentCellFormula(state: EditorState): string {
   const node = cellGrid(rect.table).nodeAt({ row: rect.top, col: rect.left });
   const formula = node?.attrs.formula;
   return typeof formula === 'string' && formula ? `=${formula}` : '';
+}
+
+/** The number format the cell prints its result in, null for the general one. */
+export function currentCellFormat(state: EditorState): CellFormat | null {
+  if (!isInTable(state)) return null;
+  const rect = selectedRect(state);
+  const node = cellGrid(rect.table).nodeAt({ row: rect.top, col: rect.left });
+  return isCellFormat(node?.attrs.cellFormat) ? node.attrs.cellFormat : null;
 }

@@ -15,7 +15,8 @@
   import { isHeaderStyled } from '../../../editor/extensions/tableHeaderRow';
   import { DEFAULT_CELL_PADDING, parseCellPadding, type CellPadding } from '../../../editor/extensions/tableCellPadding';
   import type { CellVerticalAlign } from '../../../editor/extensions/tableCellAlign';
-  import { currentCellFormula, currentCellName, guessFormula } from '../../../editor/extensions/tableFormula';
+  import { currentCellFormat, currentCellFormula, currentCellName, guessFormula } from '../../../editor/extensions/tableFormula';
+  import type { CellFormat } from '../../../utils/cellFormat';
   import { numberRecognition, setNumberRecognition } from '../../../storage/tableOptions.svelte';
   import { t } from '../../../i18n/i18n.svelte';
 
@@ -35,7 +36,7 @@
   const canMerge = $derived(tick >= 0 && !!editor && editor.can().mergeCells());
   const inTable = $derived(tick >= 0 && !!editor && isInTable(editor.state));
   // What the sort and formula popovers open on: the grid around the cursor's cell.
-  const NO_TABLE = { columns: 1, column: 0, headerRow: false, cell: null as string | null, formula: '=SUM(ABOVE)' };
+  const NO_TABLE = { columns: 1, column: 0, headerRow: false, cell: null as string | null, formula: '=SUM(ABOVE)', format: null as CellFormat | null };
   const grid = $derived.by(() => {
     if (!inTable || !editor) return NO_TABLE;
     const rect = selectedRect(editor.state);
@@ -46,6 +47,7 @@
         || rect.table.attrs.repeatHeader === true,
       cell: currentCellName(editor.state),
       formula: currentCellFormula(editor.state) || guessFormula(editor.state),
+      format: currentCellFormat(editor.state),
     };
   });
   const isHeaderRow = $derived(tick >= 0 && !!editor && isHeaderStyled(editor.state, 'row'));
@@ -284,7 +286,8 @@
           <TableFormulaDialog
             cell={grid.cell}
             initial={grid.formula}
-            onApply={(formula) => { closeMenu(); editor?.chain().focus().setCellFormula(formula).run(); }}
+            initialFormat={grid.format}
+            onApply={(formula, format) => { closeMenu(); editor?.chain().focus().setCellFormula(formula, format).run(); }}
             onClose={closeMenu}
           />
         </div>

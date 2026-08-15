@@ -416,6 +416,11 @@ const de: Messages = {
     sortAscending: 'Aufsteigend',
     sortDescending: 'Absteigend',
     sortHeaderRow: 'Erste Zeile ist eine Kopfzeile',
+    numberFormat: 'Zahlenformat',
+    numberFormats: {
+      general: 'Allgemein', int: '1235', dec2: '1234,57',
+      group2: '1.234,57', percent: '123457 %', percent2: '123456,79 %',
+    } as Record<string, string>,
     formula: 'Formel…',
     formulaAria: 'Formel',
     formulaDialogLabel: 'Tabellenformel',
