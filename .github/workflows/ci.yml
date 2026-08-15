@@ -22,8 +22,22 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      # LibreOffice is not installed here, so the lo-roundtrip suite self-skips.
+      # LibreOffice is not installed here, so the lo-roundtrip suite self-skips
+      # (the lo-roundtrip job below runs that leg).
       - run: npm test
+
+  # The re-save-through-LibreOffice leg, which self-skips everywhere soffice is absent.
+  lo-roundtrip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer fonts-liberation
+      - run: npm ci
+      - run: npm run test:lo
 
   # Production build booted in headless Chromium — catches bundling and boot
   # regressions the jsdom suite cannot see.
