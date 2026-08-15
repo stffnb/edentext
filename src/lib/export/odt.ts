@@ -2609,13 +2609,25 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
 }
 
 // Re-zip an unpacked ODF, preserving the mimetype-first uncompressed requirement.
+// Intermediate archive between two passes: stored, the next unzipSync is the only
+// reader — deflating every entry (images included) once per pass dominated buildOdt.
 function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
-  const mimetype = files['mimetype'];
+  const out: Record<string, [Uint8Array, { level: 0 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 0 }];
+  return zipSync(out);
+}
+
+// The returned .odt: mimetype first and stored (ODF requirement), already-compressed
+// picture formats stored (svg/bmp still deflate well), everything else deflated once.
+function zipFinal(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
   const out: Record<string, [Uint8Array, { level: 0 | 6 }]> = {};
+  const mimetype = files['mimetype'];
   if (mimetype) out['mimetype'] = [mimetype, { level: 0 }];
   for (const [path, data] of Object.entries(files)) {
     if (path === 'mimetype') continue;
-    out[path] = [data, { level: 6 }];
+    const stored = /^Pictures\/.*\.(png|jpg|gif|webp)$/.test(path);
+    out[path] = [data, { level: stored ? 0 : 6 }];
   }
   return zipSync(out);
 }
@@ -4614,7 +4626,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.
   const withSections = applySectionMasterPages(withWatermark, hf?.sections ?? [], hf?.pageCount ?? 1, margins, pageFormat, orientation);
-  return applyDocProperties(applyPageNumberStart(applySpacingModel(withSections, spacingModel), pageNumbering.start), props);
+  return zipFinal(applyDocProperties(applyPageNumberStart(applySpacingModel(withSections, spacingModel), pageNumbering.start), props));
 }
 
 // The document's first page number. ODF has no document-level start: LibreOffice puts
