@@ -155,7 +155,7 @@
 
 ### Not yet implemented
 
-The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
+The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-15.
 
 **Content an imported document loses**
 - Charts are **drawn** from the file (`import/chart.ts`: DrawingML `chartN.xml` and ODF `chart:chart`), but as a picture, not a chart object — a re-export carries the drawing and the numbers behind it are no longer editable. The same holds for an **EMF** metafile (`import/emf.ts`): it is drawn, but as the SVG picture it was rebuilt into, and only from the record set a plot consists of — a hatched brush, a clipping region or a rotated bitmap is skipped. **WMF/SVM** metafiles and OLE objects still keep their box and a placeholder label, and export writes that back out: WMF is a different (16-bit) record format, SVM is StarOffice-proprietary, and an OLE object cannot be rendered without its application
@@ -165,12 +165,12 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 - Hyphenation's zone and ladder count (`fo:hyphenation-ladder-count`, `w:hyphenationZone`) — CSS exposes neither
 - A formula reaching into another table — LibreOffice's `<Table1.A1>` has no counterpart in Word's field language, so it could not survive the DOCX leg. A cell's number format is offered as the closed set both dialogs list, so a foreign document's own currency symbol or date order is re-spelled in the document's language rather than kept
 - A list level's own hanging indent: the marker sits at the 0.635 cm both exports write (`LIST_HANGING_CM`), so a wider *left*-set marker overflows where Word moves the text to the next list tab (a **right**-set one — `w:lvlJc`, which is what the built-in Roman numberings use — grows into the margin and is fine). Reading the value back naively also moves the markers of our own ODT exports — LibreOffice draws its own flat hanging at exactly the value odf-kit writes for level 2; see `tests/render-parity/README.md` before building on it
-- Linked / chained text frames
+- Linked / chained text frames: text overflowing one frame continues in the next, which is a layout engine's job — CSS Regions would do it and no engine implements them
 - Multi-document management: one document is open at a time, so there is no window list and no side-by-side compare
 - Thesaurus and grammar check
 - A vertical writing mode for the **page** (ODF `tb-rl` on the page layout): a text box can run its text top-to-bottom, the body cannot — pagination fills a page downwards. A ruby annotation's own alignment and position are not offered either; both products' defaults are what we write
-- Password-protected ODT/DOCX; digital signatures
-- Split view: two views of one document, scrolled independently
+- Password-protected ODT/DOCX; digital signatures. ODF encrypts each zip entry (AES-256-CBC, PBKDF2, the manifest carrying salt, IV and checksum), which WebCrypto can do; Word's is an OLE compound file we would have to write from scratch, so the two legs are nowhere near the same size
+- Split view: two views of one document, scrolled independently. The pagination pass measures one view's DOM (`pageBreaks.ts`), so a second live view is a change to that system rather than a second mount
 
 **Out of scope for now**
 - Mail merge, data sources, form fields
