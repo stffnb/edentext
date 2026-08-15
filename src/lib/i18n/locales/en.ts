@@ -496,7 +496,6 @@ const en = {
     loading: 'Loading…',
     replaceHint: 'Click a word to replace the one in the document.',
     noSynonyms: 'No synonyms found',
-    noLanguage: 'No thesaurus for this language',
   },
   contextMenu: {
     cut: 'Cut',

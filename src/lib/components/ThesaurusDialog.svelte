@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { Editor } from '@tiptap/core';
   import { synonyms } from '../spell/thesaurus';
   import { spellController } from '../spell/controller';
   import { wordRangeAt } from '../editor/extensions/spellCheck';
-  import { NO_LANGUAGE } from '../storage/documentLanguage';
-  import { t } from '../i18n/i18n.svelte';
+  import { LANGUAGES, findLanguage, type DocumentLanguage } from '../storage/documentLanguage';
+  import { locale, t } from '../i18n/i18n.svelte';
 
   // LibreOffice's Tools ▸ Thesaurus (Ctrl+F7) / Word's Review ▸ Thesaurus: the word at
   // the caret, the groups it appears in, click one to replace it. The box above looks
@@ -18,8 +19,16 @@
   // The range the dialog opened on. A modal freezes the selection, and the term above
   // may wander off it while the replacement still belongs to this word.
   let target = $state<{ from: number; to: number } | null>(null);
+  // Which thesaurus is asked, as both dialogs show and let you switch: a word is looked
+  // up in one language, and the document's own may not be the one being typed.
+  let lang = $state<DocumentLanguage>('en');
+  let token = 0;
 
-  const language = $derived(open ? spellController.getLanguage() : NO_LANGUAGE);
+  // The document's language where it has data, else the one the app is speaking.
+  function startLanguage(): DocumentLanguage {
+    const doc = spellController.getLanguage();
+    return findLanguage(doc)?.code ?? findLanguage(locale())?.code ?? LANGUAGES[0].code;
+  }
 
   $effect(() => {
     const el = dialogEl;
@@ -28,22 +37,28 @@
     else if (!open && el.open) el.close();
   });
 
-  // Re-read on each open, as the dialog stays mounted.
+  // Re-read on each open, as the dialog stays mounted. Opening is the only dependency:
+  // the pass writes the state it reads, so tracked it would re-run on its own result
+  // and wipe every lookup the moment it arrives.
   $effect(() => {
     if (!open) return;
-    const view = editor?.view;
-    const range = view ? wordRangeAt(view.state, view.state.selection.from) : null;
-    target = range ? { from: range.from, to: range.to } : null;
-    void lookUp(range?.word ?? '');
+    untrack(() => {
+      const view = editor?.view;
+      const range = view ? wordRangeAt(view.state, view.state.selection.from) : null;
+      target = range ? { from: range.from, to: range.to } : null;
+      lang = startLanguage();
+      void lookUp(range?.word ?? '');
+    });
   });
 
   async function lookUp(word: string) {
+    const mine = ++token;
     term = word;
     groups = [];
-    if (!word.trim()) return;
-    busy = true;
-    const found = await synonyms(spellController.getLanguage(), word);
-    if (term !== word) return; // a newer lookup superseded this one
+    busy = !!word.trim();
+    if (!busy) return;
+    const found = await synonyms(lang, word);
+    if (mine !== token) return; // a newer lookup owns the state now
     groups = found;
     busy = false;
   }
@@ -79,12 +94,15 @@
         spellcheck="false"
         autocomplete="off"
       />
+      <select bind:value={lang} onchange={() => void lookUp(term)} aria-label={t().spellPicker.label}>
+        {#each LANGUAGES as l (l.code)}
+          <option value={l.code}>{l.label}</option>
+        {/each}
+      </select>
       <button class="small" onclick={() => void lookUp(term)}>{t().thesaurus.lookUp}</button>
     </div>
 
-    {#if language === NO_LANGUAGE}
-      <p class="hint">{t().thesaurus.noLanguage}</p>
-    {:else if busy}
+    {#if busy}
       <p class="hint">{t().thesaurus.loading}</p>
     {:else if groups.length}
       <p class="hint">{t().thesaurus.replaceHint}</p>
@@ -139,6 +157,14 @@
   .hint { color: var(--color-text-muted); }
 
   .lookup { display: flex; gap: 6px; }
+  select {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+    padding: 4px 6px;
+    font: inherit;
+  }
   input {
     flex: 1;
     min-width: 0;

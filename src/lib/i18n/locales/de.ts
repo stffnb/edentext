@@ -492,7 +492,6 @@ const de: Messages = {
     loading: 'Wird geladen…',
     replaceHint: 'Ein Wort anklicken, um es im Dokument zu ersetzen.',
     noSynonyms: 'Keine Synonyme gefunden',
-    noLanguage: 'Für diese Sprache gibt es keinen Thesaurus',
   },
   contextMenu: {
     cut: 'Ausschneiden',

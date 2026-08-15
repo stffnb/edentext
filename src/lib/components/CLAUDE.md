@@ -169,6 +169,11 @@ which is how both dialogs follow a chain.
   worker from then on — like a dictionary, and missing data disables the feature, not the app.
 - The groups come back ordered by where the word sits in each: a group leads with its main
   form, which is the sense LibreOffice lists first as well.
+- **The language is shown and switchable** (both dialogs have that box): a lookup asks one
+  language, and a German word in an English document otherwise just finds nothing with no
+  hint why. It opens on the document's language, or the app's where that has no data.
+- The open pass runs `untrack`ed, on `open` alone: it writes the state it reads (the term,
+  the language), so tracked it re-runs on its own result and wipes each lookup as it lands.
 
 ## Navigator (`NavigatorPane.svelte`, `editor/extensions/outline.ts`)
 
