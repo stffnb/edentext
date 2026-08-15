@@ -151,6 +151,25 @@ Text group, the classic chrome's Tools menu): the library, a click to insert, an
 from selection" — the selected slice serialized to HTML. `hasSelection` is derived off
 `open` because the dialog stays mounted and a modal freezes the selection it opened on.
 
+## Thesaurus (`ThesaurusDialog.svelte`, `spell/thesaurus.ts`)
+
+LibreOffice's Tools ▸ Thesaurus (Ctrl+F7), reachable where Word puts it too (the ribbon's
+Review ▸ Proofing) and from the context menu: the word at the caret (`wordRangeAt`), the
+groups it appears in, click one to replace it. The box above looks up any other word,
+which is how both dialogs follow a chain.
+
+- The data is `public/thesaurus/<code>/<code>.txt`, one `;`-separated group per line,
+  generated from LibreOffice's own MyThes files by `scripts/make-thesaurus.mjs` — de 3.0MB
+  / 37k groups, en 6.7MB / 143k groups. MyThes repeats every group once per member, ten
+  times the bytes for the same content.
+- **Scanned, not indexed**: a regex over the whole file is ~4ms, which a lookup started by
+  a menu click can spend, where a word→group index costs ~100MB of memory against the ~8MB
+  the text itself holds (both measured).
+- Loaded on first use, for the document's spell language only, and kept by the service
+  worker from then on — like a dictionary, and missing data disables the feature, not the app.
+- The groups come back ordered by where the word sits in each: a group leads with its main
+  form, which is the sense LibreOffice lists first as well.
+
 ## Navigator (`NavigatorPane.svelte`, `editor/extensions/outline.ts`)
 
 LibreOffice's Navigator and Word's Navigation pane: the outline, click to jump, and the

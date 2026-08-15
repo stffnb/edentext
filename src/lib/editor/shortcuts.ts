@@ -55,6 +55,8 @@ export const DEFAULT_SHORTCUTS = {
   formattingMarks: 'Mod-F10',
   // LibreOffice's Navigator key; Word has none for its Navigation pane.
   navigator: 'F5',
+  // LibreOffice's Thesaurus key; Word's Shift+F7 is free but its own find-previous is F3's.
+  thesaurus: 'Mod-F7',
   // Word's own key for View ▸ Split; LibreOffice's split has none.
   splitView: 'Mod-Alt-s',
   zoomIn: 'Mod-+',

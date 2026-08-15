@@ -43,6 +43,23 @@ export function spellErrorAt(state: EditorState, pos: number): { from: number; t
   return found.length ? { from: found[0].from, to: found[0].to } : null;
 }
 
+// The word covering `pos`, right or wrong — what the thesaurus looks up. Leaf nodes
+// are one character wide here, so the text offsets stay the document's.
+export function wordRangeAt(state: EditorState, pos: number): { from: number; to: number; word: string } | null {
+  const $pos = state.doc.resolve(pos);
+  if (!$pos.parent.isTextblock) return null;
+  const start = $pos.start();
+  const text = $pos.parent.textBetween(0, $pos.parent.content.size, undefined, '￼');
+  const offset = pos - start;
+  WORD_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = WORD_RE.exec(text)) !== null) {
+    if (m.index > offset) break;
+    if (offset <= m.index + m[0].length) return { from: start + m.index, to: start + m.index + m[0].length, word: m[0] };
+  }
+  return null;
+}
+
 export const SpellCheck = Extension.create({
   name: 'spellCheck',
 

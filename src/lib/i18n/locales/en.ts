@@ -488,6 +488,16 @@ const en = {
     addToDictionary: 'Add to Dictionary',
     ignoreAll: 'Ignore All',
   },
+  thesaurus: {
+    title: 'Thesaurus',
+    menuItem: 'Thesaurus…',
+    lookUp: 'Look up',
+    word: 'Word',
+    loading: 'Loading…',
+    replaceHint: 'Click a word to replace the one in the document.',
+    noSynonyms: 'No synonyms found',
+    noLanguage: 'No thesaurus for this language',
+  },
   contextMenu: {
     cut: 'Cut',
     copy: 'Copy',

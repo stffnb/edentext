@@ -5,8 +5,10 @@ v3.0 (see [`LICENSE`](./LICENSE)), with a separate commercial license available
 (see [`LICENSE.commercial.md`](./LICENSE.commercial.md)).
 
 It bundles and depends on third-party components that remain under **their own**
-licenses, listed below. All of these licenses are permissive and compatible with
-both the AGPL distribution and a commercial distribution of this project.
+licenses, listed below. The code dependencies and the fonts are permissive and
+compatible with both the AGPL distribution and a commercial distribution of this
+project; the bundled **language data** is a separate question — some of it is
+copyleft, see its section.
 
 ## Bundled fonts — retain their own license
 
@@ -23,6 +25,23 @@ licensed.
 > proprietary software**, provided the license file is retained and the fonts are
 > not sold by themselves. The fonts must not be redistributed under their Reserved
 > Font Names if modified.
+
+## Bundled language data — retains its own license
+
+Vendored under `public/`, each with its upstream license file beside it. None of
+it is part of this project's code: a distribution that cannot carry a copyleft
+data set may drop that folder, and the app then simply offers no dictionary or
+thesaurus for the language.
+
+| Data | License |
+|------|---------|
+| `public/dictionaries/de` — Hunspell, igerman98 | GPL-2.0 or GPL-3.0 |
+| `public/dictionaries/en` — Hunspell, from SCOWL | permissive (BSD-style) |
+| `public/thesaurus/de` — OpenThesaurus | LGPL-2.1-or-later |
+| `public/thesaurus/en` — WordNet 2.1, Princeton University | WordNet license (permissive) |
+
+Both thesaurus files are generated from LibreOffice's own MyThes data by
+`scripts/make-thesaurus.mjs`, which also fetches the license files above.
 
 ## Runtime / build dependencies
 

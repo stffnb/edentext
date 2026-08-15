@@ -57,6 +57,8 @@
   import { OPEN_COMMENT_EVENT } from './lib/editor/extensions/comment';
   import AutoCorrectDialog from './lib/components/AutoCorrectDialog.svelte';
   import AutoTextDialog from './lib/components/AutoTextDialog.svelte';
+  import ThesaurusDialog from './lib/components/ThesaurusDialog.svelte';
+  import { OPEN_THESAURUS_EVENT } from './lib/spell/thesaurus';
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
   import { t } from './lib/i18n/i18n.svelte';
@@ -179,6 +181,7 @@
   let lineNumbering: LineNumbering = $state(loadLineNumbering());
   let autoCorrectOpen = $state(false);
   let autoTextOpen = $state(false);
+  let thesaurusOpen = $state(false);
   let commentsOpen = $state(false);
   let revisionsOpen = $state(false);
   let navigatorOpen = $state(false);
@@ -689,6 +692,13 @@
     return () => window.removeEventListener(OPEN_COMMENT_EVENT, open);
   });
 
+  // The context menu and both chromes' Thesaurus entries open the one dialog here.
+  $effect(() => {
+    const open = () => (thesaurusOpen = true);
+    window.addEventListener(OPEN_THESAURUS_EVENT, open);
+    return () => window.removeEventListener(OPEN_THESAURUS_EVENT, open);
+  });
+
   // A document double-clicked in the OS reaches the installed app through launchQueue
   // (the manifest's `file_handlers`). It fires once at startup, so it waits for the
   // editor; the handle comes with write permission, so a later Save writes that file.
@@ -943,6 +953,7 @@
       [DEFAULT_SHORTCUTS.findPrevious, () => (findOpen ? editor?.commands.findPrevious() : openFind('find'))],
       [DEFAULT_SHORTCUTS.formattingMarks, () => (showFormattingMarks = !showFormattingMarks)],
       [DEFAULT_SHORTCUTS.navigator, () => (navigatorOpen = !navigatorOpen)],
+      [DEFAULT_SHORTCUTS.thesaurus, () => (thesaurusOpen = true)],
       [DEFAULT_SHORTCUTS.splitView, () => (splitView = !splitView)],
       [DEFAULT_SHORTCUTS.zoomIn, () => setZoom(zoom + 10)],
       [DEFAULT_SHORTCUTS.zoomOut, () => setZoom(zoom - 10)],
@@ -1271,6 +1282,10 @@
             <button class="theme-option" onclick={() => { themeOpen = false; autoTextOpen = true; }} role="menuitem">
               <span>{t().autoText.title}</span>
             </button>
+            <button class="theme-option" onclick={() => { themeOpen = false; thesaurusOpen = true; }} role="menuitem">
+              <span>{t().thesaurus.title}</span>
+              <span class="theme-option-hint">{shortcutHint('thesaurus')}</span>
+            </button>
             <div class="theme-heading">{t().ribbon.chrome.title}</div>
             <button
               class="theme-option"
@@ -1468,6 +1483,7 @@
   <AboutDialog bind:open={aboutOpen} />
   <AutoCorrectDialog bind:open={autoCorrectOpen} />
   <AutoTextDialog bind:open={autoTextOpen} editor={activeEditor} />
+  <ThesaurusDialog bind:open={thesaurusOpen} editor={activeEditor} />
   <DocPropertiesDialog bind:open={docPropsOpen} props={docProps} onApply={(p) => { docProps = p; saveDocProperties(p); }} />
   <!-- One instance for every entry point (styles gallery, insert-table menu): the
        callers only say which family to land on. -->

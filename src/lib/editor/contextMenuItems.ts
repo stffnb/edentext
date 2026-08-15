@@ -6,6 +6,7 @@ import { OPEN_LINK_DIALOG_EVENT } from './extensions/link';
 import { OPEN_COMMENT_EVENT } from './extensions/comment';
 import { OPEN_BOOKMARK_DIALOG_EVENT, bookmarkNames } from './extensions/bookmark';
 import { OPEN_CROSS_REF_DIALOG_EVENT } from './extensions/crossReference';
+import { OPEN_THESAURUS_EVENT } from '../spell/thesaurus';
 
 // The right-click menu's contents, the usual text menu mapped onto this editor. Pure
 // data + closures — ContextMenu.svelte only renders it.
@@ -114,6 +115,12 @@ export function buildContextMenu(editor: Editor, opts: { spell?: SpellSection } 
 
   entries.push(
     { kind: 'sep' },
+    {
+      kind: 'item',
+      label: t().thesaurus.menuItem,
+      hint: shortcutHint('thesaurus'),
+      run: () => window.dispatchEvent(new CustomEvent(OPEN_THESAURUS_EVENT)),
+    },
     {
       kind: 'item',
       label: m.clearFormatting,

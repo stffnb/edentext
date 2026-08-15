@@ -484,6 +484,16 @@ const de: Messages = {
     addToDictionary: 'Zum Wörterbuch hinzufügen',
     ignoreAll: 'Alle ignorieren',
   },
+  thesaurus: {
+    title: 'Thesaurus',
+    menuItem: 'Thesaurus…',
+    lookUp: 'Nachschlagen',
+    word: 'Wort',
+    loading: 'Wird geladen…',
+    replaceHint: 'Ein Wort anklicken, um es im Dokument zu ersetzen.',
+    noSynonyms: 'Keine Synonyme gefunden',
+    noLanguage: 'Für diese Sprache gibt es keinen Thesaurus',
+  },
   contextMenu: {
     cut: 'Ausschneiden',
     copy: 'Kopieren',

@@ -87,6 +87,8 @@ export const STROKED = {
   close: ['M3.5 3.5 12.5 12.5M12.5 3.5 3.5 12.5'],
   lineNumbers: ['M6 3h8.5M6 6.5h8.5M6 10h8.5M6 13.5h8.5', 'M2 2.2h1.1v3.3M1.6 5.5h1.9', 'M1.5 9.6c.2-.4.6-.5 1-.4.5.1.6.6.3 1L1.6 11.6h1.9'],
   wordCount: ['M2.5 2.5h11v11h-11z', 'M5 6h6M5 9h4'],
+  // An open book, the glyph both word processors give the thesaurus.
+  thesaurus: ['M8 4.5C6.5 3.4 4.4 3.1 2.2 3.3v9c2.2-.2 4.3.1 5.8 1.2 1.5-1.1 3.6-1.4 5.8-1.2v-9c-2.2-.2-4.3.1-5.8 1.2z', 'M8 4.5v9'],
   // A speech bubble with its tail, the shape both word processors use for a comment.
   comment: ['M2 3.25h12v7.5H7.5L4.5 13.5v-2.75H2z', 'M4.75 6h6.5M4.75 8.25h4'],
   // A word broken at a hyphen: two stubs with the dash between them.

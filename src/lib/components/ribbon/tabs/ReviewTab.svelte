@@ -8,6 +8,8 @@
   import type { DocumentLanguage } from '../../../storage/documentLanguage';
   import { recordChanges, setRecordChanges } from '../../../storage/trackChanges.svelte';
   import { revisions } from '../../../editor/extensions/trackChanges';
+  import { OPEN_THESAURUS_EVENT } from '../../../spell/thesaurus';
+  import { shortcutHint } from '../../../editor/shortcuts';
   import { t } from '../../../i18n/i18n.svelte';
 
   let { editor, tick, documentLanguage, onLanguage, onAutoCorrect, onNewComment, commentsOpen = false, onToggleComments, revisionsOpen = false, onToggleRevisions }: {
@@ -47,6 +49,13 @@
 </script>
 
 <RibbonGroup label={t().ribbon.groups.proofing}>
+  <RibbonButton
+    variant="big"
+    icon="thesaurus"
+    label={t().thesaurus.title}
+    title={`${t().thesaurus.title} (${shortcutHint('thesaurus')})`}
+    onclick={() => window.dispatchEvent(new CustomEvent(OPEN_THESAURUS_EVENT))}
+  />
   <div class="rb-menu-wrap" use:clickOutside={'wordCount'}>
     <RibbonButton
       variant="big"
