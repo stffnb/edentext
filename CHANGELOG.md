@@ -1,6 +1,10 @@
 # Changelog
 
-## [0.1.0] · MVP
+<!-- Newest release first. New entries go here: ## [x.y.z] — YYYY-MM-DD -->
+
+## [0.1.0] — 2026-08-16
+
+First public release, deployed on GitHub Pages.
 
 ### Stack
 - Vite + Svelte 5 (runes mode) + TypeScript
@@ -287,8 +291,3 @@ merely unimplemented belongs in the list above, not here.
   updates the index, so a document whose cache is stale disagrees with us (the
   deputy-standards fixture caches page 7 for a heading that is on page 8 in both
   renderings). Noted 2026-08-11.
-
----
-
-<!-- Add new entries above this line in the format: -->
-<!-- ## [x.y.z] — YYYY-MM-DD -->
