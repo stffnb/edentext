@@ -162,6 +162,35 @@
             <option value="">{t().findReplace.anyStyle}</option>
             {#each paraStyles as s}<option value={s.name}>{s.name}</option>{/each}
           </select>
+          <input
+            class="fb-font"
+            type="text"
+            value={spec(find).font ?? ''}
+            placeholder={t().findReplace.font}
+            aria-label={t().findReplace.font}
+            spellcheck="false"
+            onchange={(e) => setFormat(find, { font: e.currentTarget.value.trim() || undefined })}
+          />
+          <input
+            class="fb-size"
+            type="number"
+            min="1"
+            max="999"
+            value={spec(find).sizePt ?? ''}
+            placeholder={t().findReplace.sizePt}
+            aria-label={t().findReplace.sizePt}
+            onchange={(e) => setFormat(find, { sizePt: Number(e.currentTarget.value) || undefined })}
+          />
+          <input
+            class="fb-color"
+            type="color"
+            value={spec(find).color ?? '#000000'}
+            aria-label={t().findReplace.color}
+            onchange={(e) => setFormat(find, { color: e.currentTarget.value })}
+          />
+          {#if spec(find).color}
+            <button class="fb-opt" title={t().findReplace.noColor} onclick={() => setFormat(find, { color: undefined })}>×</button>
+          {/if}
         </div>
       {/each}
     {/if}
@@ -226,6 +255,15 @@
   .fb-opt { font-weight: 600; }
   .fb-fmt-italic { font-style: italic; }
   .fb-fmt-underline { text-decoration: underline; }
+
+  .fb-font { width: 6rem; }
+  .fb-size { width: 3.4rem; }
+  .fb-color {
+    width: 1.9rem;
+    height: 1.7rem;
+    padding: 1px;
+    cursor: pointer;
+  }
 
   .fb-fmt-label {
     min-width: 4.6rem;

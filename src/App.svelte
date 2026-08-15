@@ -926,6 +926,10 @@
     ];
 
     function onKeydown(e: KeyboardEvent) {
+      // The editor gets the key first: F3 expands an AutoText shortcut where the caret
+      // has one (both word processors' key for it) and only otherwise finds the next
+      // match, which is what the extension leaves unhandled.
+      if (e.defaultPrevented) return;
       for (const [combo, run] of appActions) {
         if (!matchesEvent(e, combo)) continue;
         e.preventDefault();

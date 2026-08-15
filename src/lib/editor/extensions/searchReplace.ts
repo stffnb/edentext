@@ -12,13 +12,56 @@ import type { StyleSheet } from '../../styles/styleSheet';
 // What a search asks of a match beyond its text, and what a replacement applies to it —
 // both dialogs search and replace formatting on its own (LibreOffice's Format… and its
 // Paragraph Styles box). With no search term the formatting *is* the search.
-export type FormatSpec = { bold?: boolean; italic?: boolean; underline?: boolean; style?: string };
+export type FormatSpec = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  style?: string;
+  /** The three TextStyle attrs, the rest of what LibreOffice's Format… dialog sets. */
+  font?: string;
+  sizePt?: number;
+  color?: string;
+};
 
 export const FORMAT_MARKS = ['bold', 'italic', 'underline'] as const;
 
 const markNames = (f?: FormatSpec): string[] => FORMAT_MARKS.filter((m) => f?.[m]);
 
-export const hasFormat = (f?: FormatSpec): boolean => !!f && (!!f.style || markNames(f).length > 0);
+// The TextStyle attrs a spec asks for, in the attr names the mark carries them under.
+function textStyleAttrs(f?: FormatSpec): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (f?.font) out.fontFamily = f.font;
+  if (f?.sizePt) out.fontSize = `${f.sizePt}pt`;
+  if (f?.color) out.color = f.color;
+  return out;
+}
+
+export const hasFormat = (f?: FormatSpec): boolean =>
+  !!f && (!!f.style || markNames(f).length > 0 || Object.keys(textStyleAttrs(f)).length > 0);
+
+const ptOf = (v: unknown): number | null => {
+  const m = /^(-?[\d.]+)\s*(pt|px)?$/.exec(String(v ?? '').trim());
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  return Number.isFinite(n) ? (m[2] === 'px' ? (n * 72) / 96 : n) : null;
+};
+
+const sameColor = (a: unknown, b: string): boolean =>
+  String(a ?? '').trim().toLowerCase() === b.trim().toLowerCase();
+
+// Whether one run carries everything the spec asks of it: the marks, and the TextStyle
+// attrs compared by value rather than by string (12pt and 12.0pt are one size).
+function runMatches(marks: readonly { type: { name: string }; attrs: Record<string, unknown> }[], f: FormatSpec, wanted: string[]): boolean {
+  if (!wanted.every((m) => marks.some((k) => k.type.name === m))) return false;
+  const ts = marks.find((m) => m.type.name === 'textStyle')?.attrs ?? {};
+  if (f.font && String(ts.fontFamily ?? '').toLowerCase() !== f.font.toLowerCase()) return false;
+  if (f.sizePt) {
+    const pt = ptOf(ts.fontSize);
+    if (pt == null || Math.abs(pt - f.sizePt) > 0.01) return false;
+  }
+  if (f.color && !sameColor(ts.color, f.color)) return false;
+  return true;
+}
 
 export interface SearchOptions {
   term: string;
@@ -87,7 +130,7 @@ function findMatches(doc: PmNode, re: RegExp | null, format?: FormatSpec): Match
     const map: number[] = []; // map[i] = doc position of char i
     const ok: boolean[] = []; // ok[i] = char i carries every mark the search asks for
     node.forEach((child, offset) => {
-      const marked = wanted.every((m) => child.marks.some((k) => k.type.name === m));
+      const marked = !format || runMatches(child.marks, format, wanted);
       if (child.isText) {
         const t = child.text ?? '';
         for (let k = 0; k < t.length; k++) { text += t[k]; map.push(pos + 1 + offset + k); ok.push(marked); }
@@ -102,7 +145,7 @@ function findMatches(doc: PmNode, re: RegExp | null, format?: FormatSpec): Match
         if (ok.slice(s, e).some((v) => !v)) continue;
         matches.push({ from: map[s], to: map[e - 1] + 1, groups });
       }
-    } else if (wanted.length) {
+    } else if (wanted.length || Object.keys(textStyleAttrs(format)).length) {
       for (let i = 0; i < ok.length; i++) {
         if (!ok[i]) continue;
         let j = i;
@@ -124,6 +167,23 @@ function applyFormat(tr: Transaction, schema: Schema, from: number, to: number, 
   for (const name of markNames(fmt)) {
     const type = schema.marks[name];
     if (type) tr.addMark(from, to, type.create());
+  }
+  // TextStyle carries font, size and colour together, and a mark of one type replaces
+  // the mark of that type whole — so each run's own attrs are the base of the new one.
+  const patch = textStyleAttrs(fmt);
+  const ts = schema.marks.textStyle;
+  if (ts && Object.keys(patch).length) {
+    const runs: { from: number; to: number; attrs: Record<string, unknown> }[] = [];
+    tr.doc.nodesBetween(from, to, (node, pos) => {
+      if (!node.isText) return true;
+      runs.push({
+        from: Math.max(pos, from),
+        to: Math.min(pos + node.nodeSize, to),
+        attrs: { ...(node.marks.find((m) => m.type === ts)?.attrs ?? {}), ...patch },
+      });
+      return false;
+    });
+    for (const run of runs) if (run.to > run.from) tr.addMark(run.from, run.to, ts.create(run.attrs));
   }
   if (!fmt.style) return;
   // A heading style also switches the node type, as setParagraphStyle does; anything

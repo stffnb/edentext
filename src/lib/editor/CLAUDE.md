@@ -25,6 +25,7 @@ the tooltips (via `withShortcut`, which localizes Ctrl/Shift/Alt and swaps in �
   `event.key` is layout-dependent (German AltGr+2 = `²`) and prosemirror-keymap skips its
   keyCode fallback for exactly that modifier pair. Those seven run in `addProseMirrorPlugins`
   off `event.code` (`Digit0`–`Digit6`) instead.
+- **F3 is shared**: AutoText expands a shortcut at the caret (both word processors' key), and the app's find-next runs only where it did not — the window handler bails on `defaultPrevented`, which the editor's keymap sets when a binding took the key.
 - Deliberate resolutions: `Mod-m` stays LibreOffice's *clear formatting* (Word's
   increase-indent is Tab); `Ctrl+1/2/5` are Word's **line spacing**, so headings are
   Ctrl+Alt+N only; `Mod-Shift-s` stays strikethrough, so there's no Save-As key;

@@ -10,6 +10,8 @@ import Heading from '@tiptap/extension-heading';
 import Bold from '@tiptap/extension-bold';
 import Italic from '@tiptap/extension-italic';
 import Underline from '@tiptap/extension-underline';
+import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style';
+import { FontColor } from '../../src/lib/editor/extensions/fontColor';
 import { SearchReplace, getSearchState } from '../../src/lib/editor/extensions/searchReplace';
 import { ParagraphStyle } from '../../src/lib/editor/extensions/paragraphStyle';
 import { builtinStyleSheet } from '../../src/lib/styles/styleSheet';
@@ -28,6 +30,7 @@ function makeEditor(content: N) {
     element: el,
     extensions: [
       Document, Paragraph, Text, Heading, Bold, Italic, Underline,
+      TextStyle, FontFamily, FontSize, FontColor,
       ParagraphStyle.configure({ sheet }), SearchReplace.configure({ sheet }),
     ],
     content,
@@ -71,6 +74,42 @@ describe('search by formatting', () => {
     const e = makeEditor({ ...doc, content: [...doc.content, P('Quotations')] });
     e.commands.setSearch({ term: '', matchCase: false, wholeWord: false, useRegex: false, format: { style: 'Quotations' } });
     expect(getSearchState(e.state).count).toBe(3);
+    e.destroy();
+  });
+});
+
+describe('search by font, size and colour', () => {
+  const styled = (text: string, attrs: N): N =>
+    ({ type: 'text', text, marks: [{ type: 'textStyle', attrs }] });
+  const mixed: N = {
+    type: 'doc',
+    content: [P(null,
+      styled('one', { fontSize: '18pt' }),
+      { type: 'text', text: ' two ' },
+      styled('three', { color: '#FF0000', fontFamily: 'Arial' }),
+    )],
+  };
+
+  it('finds the runs a size, a font or a colour names', () => {
+    const e = makeEditor(mixed);
+    const find = (format: N) =>
+      (e.commands.setSearch({ term: '', matchCase: false, wholeWord: false, useRegex: false, format }),
+        getSearchState(e.state).count);
+    expect(find({ sizePt: 18 })).toBe(1);
+    expect(find({ sizePt: 12 })).toBe(0);
+    expect(find({ color: '#ff0000' })).toBe(1);
+    expect(find({ font: 'arial' })).toBe(1);
+    expect(find({ font: 'Arial', color: '#0000FF' })).toBe(0);
+    e.destroy();
+  });
+
+  it('applies a colour and leaves the run\'s font alone', () => {
+    const e = makeEditor(mixed);
+    e.commands.setSearch({ term: 'three', matchCase: false, wholeWord: false, useRegex: false });
+    e.commands.replaceAll('', { color: '#0000FF' });
+    const attrs = e.state.doc.firstChild!.lastChild!.marks.find((m: N) => m.type.name === 'textStyle')?.attrs;
+    expect(attrs.color).toBe('#0000FF');
+    expect(attrs.fontFamily).toBe('Arial');
     e.destroy();
   });
 });
