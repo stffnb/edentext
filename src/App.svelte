@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick as domUpdated } from 'svelte';
   import { cubicOut } from 'svelte/easing';
-  import type { Editor } from '@tiptap/core';
+  import type { Content, Editor } from '@tiptap/core';
   import { EditorState } from '@tiptap/pm/state';
   import EditorComponent from './lib/components/Editor.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
@@ -16,6 +16,7 @@
   import { importDocx } from './lib/import/docx';
   import { convertUnsupportedImages } from './lib/import/imageFormats';
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
+  import { RECORDING } from './lib/editor/extensions/trackChanges';
   import { getColumnsFlowDebug } from './lib/editor/extensions/columnsFlow';
   import { getTextBoxDebug } from './lib/editor/extensions/textBox';
   import { getTableCellDebug } from './lib/editor/extensions/tableCellAlign';
@@ -510,10 +511,17 @@
     tick++;
   }
 
+  // Putting a document in front of the reader is not an edit: while revisions are
+  // recorded, the RECORDING meta keeps the whole file from arriving as this author's
+  // insertion. Both word processors record what is typed after an open, not the file.
+  function loadContent(content: Content): void {
+    editor?.chain().setMeta(RECORDING, true).setContent(content).run();
+  }
+
   function handleNew() {
     if (!editor) return;
     if (isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
-    editor.commands.setContent('<p></p>'); // onUpdate fires → autosave
+    loadContent('<p></p>'); // onUpdate fires → autosave
     documentEpoch++;
     resetHistory();
     // Reset everything to defaults; the $effects persist these.
@@ -586,7 +594,7 @@
       await registerEmbeddedFonts(result.fonts);
       void saveEmbeddedFonts(result.fonts);
 
-      editor.commands.setContent(result.content); // onUpdate fires → autosave
+      loadContent(result.content); // onUpdate fires → autosave
       documentEpoch++;
       resetHistory();
       // Adopt the opened file's name as the document name (drives the save filename).
