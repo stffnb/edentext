@@ -40,6 +40,11 @@ const de: Messages = {
       urls: '',
     },
   },
+  ruby: {
+    title: 'Phonetische Zeichen',
+    base: 'Basistext',
+    reading: 'Ruby-Text',
+  },
   autoText: {
     title: 'AutoText',
     empty: 'Noch keine Einträge. Text markieren und unten hinzufügen.',

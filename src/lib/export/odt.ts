@@ -191,6 +191,9 @@ const SEQ = '\uE01A';
 const IXE = '\uE01E';
 // Sentinel wrapping a citation's index (BIB{i}BIB); applyBibEntries resolves it.
 const BIB = '\uE01F';
+// Sentinel wrapping a ruby annotation's index (RBY{i}RBY); applyRuby rewrites it to
+// <text:ruby>. U+E021.
+const RBY = '\uE021';
 
 // Sentinels for recorded revisions (trackChanges.ts): TCI{i}TCI brackets an insertion's
 // runs, TCD{i}TCD stands where a deletion's text was cut out. applyRevisions rewrites
@@ -794,6 +797,50 @@ function applyBibEntries(odtBytes: Uint8Array, marks: BibExport[]): Uint8Array {
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
 }
+
+// One ruby annotation, collected by replaceRuby: the base text and the reading over it.
+type RubyExport = { base: string; text: string };
+
+function replaceRuby(node: TiptapNode, rubies: RubyExport[]): TiptapNode {
+  if (!node.content?.length) return node;
+  const content: TiptapNode[] = [];
+  for (const child of node.content) {
+    if (child.type === 'ruby') {
+      const a = child.attrs ?? {};
+      rubies.push({ base: String(a.base ?? ''), text: String(a.text ?? '') });
+      content.push({ type: 'text', text: `${RBY}${rubies.length - 1}${RBY}`, marks: child.marks });
+      continue;
+    }
+    content.push(replaceRuby(child, rubies));
+  }
+  return { ...node, content };
+}
+
+// RBY sentinels → <text:ruby>. The alignment and the position ride a ruby-family
+// automatic style, which is where LibreOffice keeps them (probed: it writes the style
+// out again unchanged, adding only its own loext: mirror of the position).
+function applyRuby(odtBytes: Uint8Array, rubies: RubyExport[]): Uint8Array {
+  if (!rubies.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+  let content = strFromU8(contentBytes);
+  content = content.replace(new RegExp(`${RBY}(\\d+)${RBY}`, 'g'), (_m, idx: string) => {
+    const r = rubies[Number(idx)];
+    if (!r) return '';
+    return `<text:ruby text:style-name="${RUBY_STYLE}"><text:ruby-base>${escapeXml(r.base)}</text:ruby-base>`
+      + `<text:ruby-text>${escapeXml(r.text)}</text:ruby-text></text:ruby>`;
+  });
+  content = injectAutomaticStyles(
+    content,
+    `<style:style style:name="${RUBY_STYLE}" style:family="ruby">`
+      + '<style:ruby-properties style:ruby-align="center" style:ruby-position="above"/></style:style>',
+  );
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+const RUBY_STYLE = 'Ru1';
 
 // One cross-reference, collected by replaceCrossRefs and emitted by applyBookmarks.
 type CrossRefExport = { name: string; format: 'text' | 'page' };
@@ -4249,7 +4296,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const revisionList = new Map<string, RevisionExport>();
   const indexMarks: IndexEntryExport[] = [];
   const bibMarks: BibExport[] = [];
-  const sentinels = replaceBibEntries(replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList), seqFields), revisionList), indexMarks), bibMarks);
+  const rubies: RubyExport[] = [];
+  const sentinels = replaceRuby(replaceBibEntries(replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList), seqFields), revisionList), indexMarks), bibMarks), rubies);
   const raw = markTextEffects(bakeListCharStyles(sentinels, styles));
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
@@ -4453,7 +4501,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withBreaks = applyInlineSentinels(applyTabLeaders(cleaned));
   const withImages = applyImages(withBreaks, images);
   const withDateFields = applyDateTimeFields(withImages, dateFields, language ?? null);
-  const withSequences = applyBibEntries(applyIndexEntries(applyRevisions(applySequenceFields(withDateFields, seqFields), revisionList), indexMarks), bibMarks);
+  const withSequences = applyRuby(applyBibEntries(applyIndexEntries(applyRevisions(applySequenceFields(withDateFields, seqFields), revisionList), indexMarks), bibMarks), rubies);
   const withFormulas = applyFormulas(withSequences, formulas);
   const withTextBoxes = applyTextBoxes(withFormulas, textBoxes);
   const withColumns = applyColumns(withTextBoxes, columns);

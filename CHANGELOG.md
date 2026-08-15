@@ -58,6 +58,7 @@
 - AutoCorrect while typing (LibreOffice's Tools ▸ AutoCorrect Options, one checkbox per rule): typographic quotes per document language (`"…"` / `„…“`), its dash matrix (`A - B` → `A – B`, `A--B` → `A—B`), its replacement table (`-->` → `→`, `(C)` → `©`, `...` → `…`), capitalize the first letter of a sentence — with an abbreviation exception list — and TWo INitial CApitals. URL recognition and auto-list ride the same switches
 - Word completion (the same dialog's own section, as LibreOffice keeps it): every word of at least eight letters is remembered as it is typed, and typing its first three letters offers the rest in grey after the caret — Enter takes the offer, Esc drops it. It is offered while typing only, so an Enter meant to split a paragraph never completes a word instead, and the offer stays outside the document until it is accepted. Minimum length, an appended space and clearing the collected words are all settable
 - AutoText (LibreOffice's Tools ▸ AutoText, Word's Insert ▸ Quick Parts): keep a selected block of text under a name and a shortcut, then insert it from the library or by typing the shortcut and pressing F3 — LibreOffice's own key. An entry keeps its formatting, and the library belongs to the app rather than to a document, as it does in both products
+- Ruby annotations (Insert ▸ Phonetic guide — LibreOffice's Format ▸ Asian Phonetic Guide, Word's Phonetic Guide): the reading printed over its base text, the selected text proposed as the base. Round-trips as ODF `text:ruby` with its ruby-family style and as Word's `w:ruby` run — verified through LibreOffice both ways, including our `.docx` converted to `.odt` by it
 - Automatic hyphenation for the whole document (Layout ▸ Hyphenation): the browser hyphenates in the document's own language, which shortens a justified paragraph the way LibreOffice does. Round-trips as ODF `fo:hyphenate` on the base style — where LibreOffice keeps it, in its *text* properties — and Word's `w:autoHyphenation`
 - Manual line breaks (Shift+Enter)
 
@@ -163,7 +164,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 - Find & Replace by font, size or colour — the weight/slant/underline and paragraph-style half is implemented, but LibreOffice's Format dialog is the whole character dialog
 - Multi-document management: one document is open at a time, so there is no window list and no side-by-side compare
 - Thesaurus and grammar check
-- Vertical writing modes (ODF `tb-rl`) and Asian typography (ruby)
+- Vertical writing modes (ODF `tb-rl`), and a ruby annotation's own alignment and position — both products' defaults are what we write
 - Password-protected ODT/DOCX; digital signatures
 - Split view: two views of one document, scrolled independently
 - A committed corpus of documents we author ourselves, so CI can test against real files

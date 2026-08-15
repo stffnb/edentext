@@ -41,6 +41,11 @@ const en = {
       urls: '',
     },
   },
+  ruby: {
+    title: 'Phonetic guide',
+    base: 'Base text',
+    reading: 'Ruby text',
+  },
   autoText: {
     title: 'AutoText',
     empty: 'No entries yet. Select some text and add it below.',

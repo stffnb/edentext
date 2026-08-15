@@ -9,6 +9,7 @@
   import BookmarkDialog from '../../BookmarkDialog.svelte';
   import CrossRefDialog from '../../CrossRefDialog.svelte';
   import FormulaDialog from '../../FormulaDialog.svelte';
+  import RubyDialog from '../../RubyDialog.svelte';
   import { captionClicks, anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
   import { OPEN_LINK_DIALOG_EVENT } from '../../../editor/extensions/link';
   import { OPEN_BOOKMARK_DIALOG_EVENT, bookmarkNames, findBookmark } from '../../../editor/extensions/bookmark';
@@ -36,6 +37,8 @@
     onManageTableStyles?: (family: StyleFamily) => void;
     onAutoText?: () => void;
   } = $props();
+
+  let rubyOpen = $state(false);
 
   let hasSelection = $derived(tick >= 0 && !!editor && !editor.state.selection.empty);
   let isLink = $derived(tick >= 0 && !!editor?.isActive('link'));
@@ -264,6 +267,14 @@
     disabled={!editor || !onAutoText}
     onclick={() => onAutoText?.()}
   />
+  <RibbonButton
+    variant="big"
+    icon="ruby"
+    label={t().ruby.title}
+    title={t().ruby.title}
+    disabled={!editor}
+    onclick={() => (rubyOpen = true)}
+  />
   <div class="rb-captioned" use:captionClicks>
     <DateTimePicker
       bind:open={dateOpen}
@@ -296,6 +307,7 @@
   onchange={onImageFile}
 />
 
+<RubyDialog bind:open={rubyOpen} {editor} />
 <FormulaDialog bind:open={formulaOpen} initialLatex={formulaLatex} initialDisplay={formulaDisplay} onApply={applyFormula} />
 
 <!-- Word's Equation button is a π, as its Symbol button beside it is an Ω. Same

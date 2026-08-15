@@ -184,6 +184,16 @@
   background: rgba(255, 145, 0, 0.8);
 }
 
+/* A ruby annotation (ruby.ts). The reading sits above its base at half its size,
+   which is what both word processors print and what `w:hps` says. */
+.paper .tiptap ruby {
+  ruby-position: over;
+}
+.paper .tiptap ruby rt {
+  font-size: 0.5em;
+  line-height: 1;
+}
+
 /* The word being offered (wordCompletion.ts): after the caret, in the text's own
    font, greyed — it is not in the document until Enter takes it. */
 .paper .tiptap .word-completion {

@@ -57,6 +57,7 @@ import { SequenceField } from './extensions/caption';
 import { IndexEntry } from './extensions/indexEntry';
 import { BibliographyEntry } from './extensions/bibliographyEntry';
 import { CrossReference } from './extensions/crossReference';
+import { Ruby } from './extensions/ruby';
 import { Formula } from './extensions/formula';
 import { TextBox } from './extensions/textBox';
 import { Columns } from './extensions/columns';
@@ -126,6 +127,8 @@ export const extensions = [
   // Inline reference to a bookmark, showing its text or its page; kept live by its
   // node view. Round-trips to ODF <text:bookmark-ref> and DOCX REF/PAGEREF fields.
   CrossReference,
+  // A reading printed over its base text; round-trips to ODF <text:ruby> and DOCX w:ruby.
+  Ruby,
   // Mathematical formula; stores LaTeX, renders native MathML, round-trips to an ODF
   // embedded formula object and DOCX OMML. See docs/architecture/formulas.md.
   Formula,

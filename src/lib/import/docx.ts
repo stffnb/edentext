@@ -1320,6 +1320,14 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
           if ((fieldShown || fieldSeq) && fieldMode === 'result') fieldResultText += child.textContent ?? '';
           else if (!skipResult()) pushText(child.textContent ?? '', marks);
           break;
+        case 'ruby': {
+          // Word nests both halves in runs of their own; the editor keeps them as one
+          // atom, so only their text is read.
+          const base = fcAll(child, 'rubyBase')[0]?.textContent ?? '';
+          const reading = fcAll(child, 'rt')[0]?.textContent ?? '';
+          if (base.trim() && !skipResult()) out.push({ type: 'ruby', attrs: { base: base.trim(), text: reading.trim() } });
+          break;
+        }
         case 'tab': if (!skipResult()) pushText('\t', marks); break;
         case 'br': out.push(child.getAttributeNS(W, 'type') === 'page' ? { type: PB_MARKER } : hardBreakNode(marks)); break;
         case 'cr': out.push(hardBreakNode(marks)); break;

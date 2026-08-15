@@ -113,10 +113,18 @@ const EMU_PER_CM = 360000;
 // matching export/odt.ts's MTH.
 const MTH = '';
 
+// Sentinel wrapping a ruby annotation's index inside its own run; the library has no
+// w:ruby, so applyRubyDocx swaps that run for one. U+E021, matching export/odt.ts.
+const RBY = '\uE021';
+
 // Formulas collected while serializing, in document order (module-level like
 // docLangTag: inlineToRuns is reached from every block path without a collector).
 type FormulaDocx = { latex: string; display: boolean };
 let docFormulas: FormulaDocx[] = [];
+
+// The ruby annotations, in the same document order their sentinels are met in.
+type RubyDocx = { base: string; text: string };
+let docRubies: RubyDocx[] = [];
 
 // The sources cited, one per tag in document order — Word keeps them in a custom-XML
 // part and the CITATION fields only name the tag. Module-level like docFormulas.
@@ -533,6 +541,10 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       out.push(dateTimeRun(node));
     } else if (node.type === 'sequenceField') {
       out.push(sequenceField(node));
+    } else if (node.type === 'ruby') {
+      // The reading over its base text; applyRubyDocx swaps this run for <w:ruby>.
+      docRubies.push({ base: String(node.attrs?.base ?? ''), text: String(node.attrs?.text ?? '') });
+      out.push(new TextRun({ text: `${RBY}${docRubies.length - 1}${RBY}` }));
     } else if (node.type === 'indexEntry') {
       // Word's index entry: a hidden XE field, its term in the instruction. A key files
       // the term under it, "key:term", exactly as LibreOffice's text:key1 does.
@@ -1101,6 +1113,34 @@ function applyFormulasDocx(bytes: Uint8Array, formulas: FormulaDocx[]): Uint8Arr
       if (!f) return '';
       const omath = ommlDocument(parseLatex(f.latex));
       return f.display ? `<m:oMathPara xmlns:m="${OMML_NS}">${omath}</m:oMathPara>` : omath;
+    },
+  );
+  files['word/document.xml'] = strToU8(xml);
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
+// Post-pack pass: swap each sentinel run for a <w:ruby>. The sizes are half-points of
+// the body default (12pt): Word wants the base size and the reading's, and recomputes
+// neither — LibreOffice's own export writes the same four properties.
+function applyRubyDocx(bytes: Uint8Array, rubies: RubyDocx[]): Uint8Array {
+  if (!rubies.length) return bytes;
+  const files = unzipSync(bytes);
+  const docBytes = files['word/document.xml'];
+  if (!docBytes) return bytes;
+  let xml = strFromU8(docBytes);
+  xml = xml.replace(
+    new RegExp(`<w:r\\b[^>]*?>(?:(?!</w:r>)[\\s\\S])*?${RBY}(\\d+)${RBY}(?:(?!</w:r>)[\\s\\S])*?</w:r>`, 'g'),
+    (_m, idx: string) => {
+      const r = rubies[Number(idx)];
+      if (!r) return '';
+      const run = (text: string, size = 0) =>
+        `<w:r>${size ? `<w:rPr><w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr>` : ''}`
+        + `<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
+      return '<w:r><w:ruby><w:rubyPr><w:rubyAlign w:val="center"/><w:hps w:val="12"/>'
+        + `<w:hpsRaise w:val="24"/><w:hpsBaseText w:val="24"/><w:lid w:val="${docLangTag}"/></w:rubyPr>`
+        + `<w:rt>${run(r.text, 12)}</w:rt><w:rubyBase>${run(r.base)}</w:rubyBase></w:ruby></w:r>`;
     },
   );
   files['word/document.xml'] = strToU8(xml);
@@ -1853,6 +1893,7 @@ export async function buildDocx(
   exportSheet = styles;
   exportSpacingModel = spacingModel;
   docFormulas = [];
+  docRubies = [];
   docSources = [];
   const num = new Numbering();
   const { w: pageWidthCm, h: pageHeightCm } = pageDimsCm(pageFormat, orientation);
@@ -2011,7 +2052,7 @@ export async function buildDocx(
 
   const blob = await Packer.toBlob(doc);
   const packed = applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
-  const cited = applyBibliographyDocx(packed, docSources, docCitationStyle(docJson));
+  const cited = applyBibliographyDocx(applyRubyDocx(packed, docRubies), docSources, docCitationStyle(docJson));
   const withNotes = docNoteIds.size ? applyNotePrDocx(cited, notesSettings) : cited;
   const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withNotes) : withNotes;
   const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);

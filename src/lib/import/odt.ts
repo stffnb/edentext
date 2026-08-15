@@ -1864,6 +1864,13 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
             walk(e, props, href || linkHref);
             continue;
           }
+          case 'ruby': {
+            // Both halves are elements of their own; the editor keeps them as one atom.
+            const base = e.getElementsByTagNameNS(NS.text, 'ruby-base')[0]?.textContent ?? '';
+            const reading = e.getElementsByTagNameNS(NS.text, 'ruby-text')[0]?.textContent ?? '';
+            if (base.trim()) out.push({ type: 'ruby', attrs: { base: base.trim(), text: reading.trim() } });
+            continue;
+          }
           case 'note': {
             const note = convertNote(e, ctx, defaults);
             if (note) out.push(note);
