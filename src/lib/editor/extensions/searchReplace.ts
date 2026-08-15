@@ -2,12 +2,31 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
-import type { Node as PmNode } from '@tiptap/pm/model';
+import type { Node as PmNode, Schema } from '@tiptap/pm/model';
+import { blockStyleName } from './paragraphStyle';
+import type { StyleSheet } from '../../styles/styleSheet';
 
 // Find & Replace: highlights all matches via decorations, navigates/replaces via commands.
 // Pure editor feature — never touches the document model beyond the actual replacements.
 
-export interface SearchOptions { term: string; matchCase: boolean; wholeWord: boolean; useRegex: boolean; }
+// What a search asks of a match beyond its text, and what a replacement applies to it —
+// both dialogs search and replace formatting on its own (LibreOffice's Format… and its
+// Paragraph Styles box). With no search term the formatting *is* the search.
+export type FormatSpec = { bold?: boolean; italic?: boolean; underline?: boolean; style?: string };
+
+export const FORMAT_MARKS = ['bold', 'italic', 'underline'] as const;
+
+const markNames = (f?: FormatSpec): string[] => FORMAT_MARKS.filter((m) => f?.[m]);
+
+export const hasFormat = (f?: FormatSpec): boolean => !!f && (!!f.style || markNames(f).length > 0);
+
+export interface SearchOptions {
+  term: string;
+  matchCase: boolean;
+  wholeWord: boolean;
+  useRegex: boolean;
+  format?: FormatSpec;
+}
 // `groups` is the match's captures, so a regex replacement can expand $1…$9 (LibreOffice's
 // syntax; Word has no such thing).
 interface Match { from: number; to: number; groups: string[] }
@@ -55,26 +74,71 @@ export function regexRanges(text: string, re: RegExp): [number, number, string[]
 
 // Matches within each textblock, mapped to doc positions. Matches span runs/marks but
 // never block boundaries (each textblock is searched on its own concatenated text).
-function findMatches(doc: PmNode, re: RegExp | null): Match[] {
-  if (!re) return [];
+// A format narrows a text search to the runs carrying it; without a term, those runs —
+// or, where only a style is asked for, the whole paragraph — are the matches.
+function findMatches(doc: PmNode, re: RegExp | null, format?: FormatSpec): Match[] {
+  const wanted = markNames(format);
+  if (!re && !hasFormat(format)) return [];
   const matches: Match[] = [];
   doc.descendants((node, pos) => {
     if (!node.isTextblock) return true;
+    if (format?.style && blockStyleName(node) !== format.style) return false;
     let text = '';
     const map: number[] = []; // map[i] = doc position of char i
+    const ok: boolean[] = []; // ok[i] = char i carries every mark the search asks for
     node.forEach((child, offset) => {
+      const marked = wanted.every((m) => child.marks.some((k) => k.type.name === m));
       if (child.isText) {
         const t = child.text ?? '';
-        for (let k = 0; k < t.length; k++) { text += t[k]; map.push(pos + 1 + offset + k); }
+        for (let k = 0; k < t.length; k++) { text += t[k]; map.push(pos + 1 + offset + k); ok.push(marked); }
       } else {
         text += '￿'; // inline atom (image/hardBreak): one non-matching slot
         map.push(pos + 1 + offset);
+        ok.push(false);
       }
     });
-    for (const [s, e, groups] of regexRanges(text, re)) matches.push({ from: map[s], to: map[e - 1] + 1, groups });
+    if (re) {
+      for (const [s, e, groups] of regexRanges(text, re)) {
+        if (ok.slice(s, e).some((v) => !v)) continue;
+        matches.push({ from: map[s], to: map[e - 1] + 1, groups });
+      }
+    } else if (wanted.length) {
+      for (let i = 0; i < ok.length; i++) {
+        if (!ok[i]) continue;
+        let j = i;
+        while (j < ok.length && ok[j]) j++;
+        matches.push({ from: map[i], to: map[j - 1] + 1, groups: [text.slice(i, j)] });
+        i = j;
+      }
+    } else {
+      // Style alone: the paragraph itself is the match, empty ones included.
+      matches.push({ from: pos + 1, to: pos + 1 + node.content.size, groups: [text] });
+    }
     return false;
   });
   return matches;
+}
+
+// A replacement's own formatting, applied over the range it landed in.
+function applyFormat(tr: Transaction, schema: Schema, from: number, to: number, fmt: FormatSpec, sheet: StyleSheet): void {
+  for (const name of markNames(fmt)) {
+    const type = schema.marks[name];
+    if (type) tr.addMark(from, to, type.create());
+  }
+  if (!fmt.style) return;
+  // A heading style also switches the node type, as setParagraphStyle does; anything
+  // else turns a heading back into a paragraph.
+  const level = sheet.paragraph[fmt.style]?.outlineLevel;
+  const type = level && schema.nodes.heading ? schema.nodes.heading : schema.nodes.paragraph;
+  const blocks: { pos: number; node: PmNode }[] = [];
+  tr.doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isTextblock) return true;
+    if (node.type.name === 'paragraph' || node.type.name === 'heading') blocks.push({ pos, node });
+    return false;
+  });
+  for (const b of blocks) {
+    tr.setNodeMarkup(b.pos, type, { ...b.node.attrs, styleName: fmt.style, ...(level ? { level } : {}) });
+  }
 }
 
 function buildDeco(doc: PmNode, matches: Match[], current: number): DecorationSet {
@@ -91,7 +155,7 @@ function pickCurrent(matches: Match[], selFrom: number): number {
   return i === -1 ? 0 : i;
 }
 
-const EMPTY: SearchState = { term: '', matchCase: false, wholeWord: false, useRegex: false, matches: [], current: -1, deco: DecorationSet.empty };
+const EMPTY: SearchState = { term: '', matchCase: false, wholeWord: false, useRegex: false, format: {}, matches: [], current: -1, deco: DecorationSet.empty };
 
 // Match count + current index for the toolbar UI (FindReplaceBar.svelte).
 export function getSearchState(state: EditorState): { count: number; current: number; term: string } {
@@ -114,6 +178,32 @@ function moveCurrent(state: EditorState, dispatch: ((tr: Transaction) => void) |
   return true;
 }
 
+// One match rewritten in `tr`, returning the position the replacement ends at. An empty
+// replacement text with a format keeps the text: that is how both dialogs reformat a
+// document without retyping it.
+function replaceOne(
+  tr: Transaction,
+  state: EditorState,
+  m: Match,
+  text: string,
+  useRegex: boolean,
+  format: FormatSpec | undefined,
+  sheet: StyleSheet,
+): number {
+  const out = useRegex ? expandGroups(text, m.groups) : text;
+  let to = m.to;
+  if (out || !hasFormat(format)) {
+    // Marks of the first matched char (resolving at m.from would read the
+    // boundary before the match, i.e. the preceding run's formatting).
+    const marks = state.doc.resolve(Math.min(m.from + 1, m.to)).marks();
+    if (out) tr.replaceWith(m.from, m.to, state.schema.text(out, marks));
+    else tr.delete(m.from, m.to);
+    to = m.from + out.length;
+  }
+  if (format) applyFormat(tr, state.schema, m.from, to, format, sheet);
+  return to;
+}
+
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     searchReplace: {
@@ -121,15 +211,19 @@ declare module '@tiptap/core' {
       findNext: () => ReturnType;
       findPrevious: () => ReturnType;
       scrollToCurrent: () => ReturnType;
-      replaceCurrent: (text: string) => ReturnType;
-      replaceAll: (text: string) => ReturnType;
+      replaceCurrent: (text: string, format?: FormatSpec) => ReturnType;
+      replaceAll: (text: string, format?: FormatSpec) => ReturnType;
       clearSearch: () => ReturnType;
     };
   }
 }
 
-export const SearchReplace = Extension.create({
+export const SearchReplace = Extension.create<{ sheet: () => StyleSheet }>({
   name: 'searchReplace',
+
+  addOptions() {
+    return { sheet: () => ({ paragraph: {}, character: {}, table: {} }) };
+  },
 
   addProseMirrorPlugins() {
     return [
@@ -140,14 +234,14 @@ export const SearchReplace = Extension.create({
           apply(tr: Transaction, old: SearchState, _oldState: EditorState, newState: EditorState): SearchState {
             const set = tr.getMeta(SET_SEARCH) as SearchOptions | undefined;
             if (set) {
-              const matches = findMatches(newState.doc, buildSearchRegex(set.term, set.matchCase, set.wholeWord, set.useRegex));
+              const matches = findMatches(newState.doc, buildSearchRegex(set.term, set.matchCase, set.wholeWord, set.useRegex), set.format);
               const current = pickCurrent(matches, newState.selection.from);
               return { ...set, matches, current, deco: buildDeco(newState.doc, matches, current) };
             }
             const cur = tr.getMeta(SET_CURRENT) as number | undefined;
             if (cur !== undefined) return { ...old, current: cur, deco: buildDeco(newState.doc, old.matches, cur) };
-            if (tr.docChanged && old.term) {
-              const matches = findMatches(newState.doc, buildSearchRegex(old.term, old.matchCase, old.wholeWord, old.useRegex));
+            if (tr.docChanged && (old.term || hasFormat(old.format))) {
+              const matches = findMatches(newState.doc, buildSearchRegex(old.term, old.matchCase, old.wholeWord, old.useRegex), old.format);
               const current = pickCurrent(matches, newState.selection.from);
               return { ...old, matches, current, deco: buildDeco(newState.doc, matches, current) };
             }
@@ -176,37 +270,28 @@ export const SearchReplace = Extension.create({
         if (dispatch) dispatch(state.tr.setSelection(TextSelection.create(state.doc, m.from, m.to)).scrollIntoView());
         return true;
       },
-      replaceCurrent: (text: string) => ({ state, dispatch }) => {
+      replaceCurrent: (text: string, format?: FormatSpec) => ({ state, dispatch }) => {
         const s = searchKey.getState(state);
         if (!s || s.current < 0 || !s.matches.length) return false;
         const m = s.matches[s.current];
         if (dispatch) {
-          // Marks of the first matched char (resolving at m.from would read the
-          // boundary before the match, i.e. the preceding run's formatting).
-          const marks = state.doc.resolve(m.from + 1).marks();
-          const out = s.useRegex ? expandGroups(text, m.groups) : text;
           const tr = state.tr;
-          if (out) tr.replaceWith(m.from, m.to, state.schema.text(out, marks));
-          else tr.delete(m.from, m.to);
+          const end = replaceOne(tr, state, m, text, s.useRegex, format, this.options.sheet());
           // Land the cursor after the replacement so the recompute picks the next match.
-          tr.setSelection(TextSelection.create(tr.doc, m.from + out.length));
+          tr.setSelection(TextSelection.create(tr.doc, end));
           tr.scrollIntoView();
           dispatch(tr);
         }
         return true;
       },
-      replaceAll: (text: string) => ({ state, dispatch }) => {
+      replaceAll: (text: string, format?: FormatSpec) => ({ state, dispatch }) => {
         const s = searchKey.getState(state);
         if (!s || !s.matches.length) return false;
         if (dispatch) {
           const tr = state.tr;
           // Reverse order so earlier positions stay valid as we splice.
           for (let i = s.matches.length - 1; i >= 0; i--) {
-            const m = s.matches[i];
-            const marks = state.doc.resolve(m.from + 1).marks();
-            const out = s.useRegex ? expandGroups(text, m.groups) : text;
-            if (out) tr.replaceWith(m.from, m.to, state.schema.text(out, marks));
-            else tr.delete(m.from, m.to);
+            replaceOne(tr, state, s.matches[i], text, s.useRegex, format, this.options.sheet());
           }
           dispatch(tr);
         }

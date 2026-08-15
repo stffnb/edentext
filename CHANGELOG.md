@@ -109,6 +109,7 @@
 - A paragraph of its own can opt out of the document's automatic hyphenation (Format ▸ Paragraph ▸ Text Flow, as LibreOffice has it). Only "off" travels — Word cannot turn hyphenation *on* for one paragraph — and only under a document that hyphenates: below that switch it says what is already true. Round-trips as ODF `fo:hyphenate="false"` in the paragraph's **text** properties and Word's `w:suppressAutoHyphens`
 - Search & Replace (Ctrl+F / Ctrl+H): live match highlighting, match count, next / previous, match-case and whole-word options, replace current / replace all
   A `.*` toggle searches by regular expression, and the replacement expands `$1`…`$9` / `$&` from the match's captures (LibreOffice's syntax; Word has no equivalent)
+  A `¶` toggle searches and replaces **formatting**, as LibreOffice's Format… and its Paragraph Styles box do: bold / italic / underline and a paragraph style, on the search side and on the replacement side. A format narrows a text search to the runs carrying it, and with the search field empty the formatting is the search — every such run, or every paragraph in that style. A replacement with no text only reformats, so a whole document can be restyled without retyping it, and a heading style switches the block over as the style gallery does
 - Right-click context menu for text: cut / copy / paste / paste without formatting, link insert-edit-remove, clear formatting — with the spelling suggestions merged in on top. Shift+right-click keeps the browser's own menu; images, text boxes and header/footer stay with their existing UI
 - Spell check in English and German with squiggles and suggestions in the context menu (add / ignore word); selectable document language. Powered by Hunspell (WASM), so German compound words (Fußgänger, Krankenversicherung …) are recognised; dictionaries are lazy-loaded per language on demand
 - Word / character count statistics (whole document and selection)
@@ -157,7 +158,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 - A formula's own number format (LibreOffice's Number Format dialog per cell — the general format is the only one here), and a formula reaching into another table
 - A list level's own hanging indent: the marker sits at the 0.635 cm both exports write (`LIST_HANGING_CM`), so a wider *left*-set marker overflows where Word moves the text to the next list tab (a **right**-set one — `w:lvlJc`, which is what the built-in Roman numberings use — grows into the margin and is fine). Reading the value back naively also moves the markers of our own ODT exports — LibreOffice draws its own flat hanging at exactly the value odf-kit writes for level 2; see `tests/render-parity/README.md` before building on it
 - Linked / chained text frames
-- Find & Replace by formatting or by style (the regular-expression half is implemented)
+- Find & Replace by font, size or colour — the weight/slant/underline and paragraph-style half is implemented, but LibreOffice's Format dialog is the whole character dialog
 - Multi-document management: one document is open at a time, so there is no window list and no side-by-side compare
 - Thesaurus, grammar check, word completion, AutoText / building blocks
 - Vertical writing modes (ODF `tb-rl`) and Asian typography (ruby)

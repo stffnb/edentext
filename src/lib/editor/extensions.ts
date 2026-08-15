@@ -220,7 +220,7 @@ export const extensions = [
   Deletion,
   TrackChanges.configure({ recording: recordChanges, author: () => loadDocProperties().author.trim() }),
   AutoCorrect,
-  SearchReplace,
+  SearchReplace.configure({ sheet: styleSheet }),
   // Word/LibreOffice key bindings that aren't TipTap defaults; body:true adds the
   // ones the header/footer schema has no commands for (headings, line spacing, fields).
   Shortcuts.configure({ body: true }),

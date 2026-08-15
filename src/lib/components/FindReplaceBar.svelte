@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { onMount } from 'svelte';
-  import { getSearchState } from '../editor/extensions/searchReplace';
+  import { FORMAT_MARKS, getSearchState, type FormatSpec } from '../editor/extensions/searchReplace';
+  import { styleOrder } from '../styles/styleSheet';
+  import { styleSheet } from '../styles/sheet.svelte';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
 
@@ -14,7 +16,15 @@
   let wholeWord = $state(false);
   let useRegex = $state(false);
   let showReplace = $state(false); // set from `mode` in the focusNonce effect below
+  let showFormat = $state(false);
+  let findFormat = $state<FormatSpec>({});
+  let replaceFormat = $state<FormatSpec>({});
   let findInput = $state<HTMLInputElement | null>(null);
+
+  let paraStyles = $derived(styleOrder(styleSheet()));
+  const markLabel: Record<string, () => string> = {
+    bold: () => t().toolbar.bold, italic: () => t().toolbar.italic, underline: () => t().toolbar.underline,
+  };
 
   // Live match count / current index, recomputed on every editor transaction.
   let results = $derived.by(() => {
@@ -23,14 +33,21 @@
   });
 
   function applySearch() {
-    editor?.commands.setSearch({ term: findText, matchCase, wholeWord, useRegex });
+    editor?.commands.setSearch({ term: findText, matchCase, wholeWord, useRegex, format: { ...findFormat } });
     editor?.commands.scrollToCurrent();
   }
 
   function next() { editor?.commands.findNext(); }
   function prev() { editor?.commands.findPrevious(); }
-  function replaceOne() { editor?.commands.replaceCurrent(replaceText); }
-  function replaceEvery() { editor?.commands.replaceAll(replaceText); }
+  function replaceOne() { editor?.commands.replaceCurrent(replaceText, { ...replaceFormat }); }
+  function replaceEvery() { editor?.commands.replaceAll(replaceText, { ...replaceFormat }); }
+
+  function setFormat(find: boolean, patch: FormatSpec) {
+    if (find) { findFormat = { ...findFormat, ...patch }; applySearch(); }
+    else replaceFormat = { ...replaceFormat, ...patch };
+  }
+
+  const spec = (find: boolean): FormatSpec => (find ? findFormat : replaceFormat);
 
   function onFindKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') { e.preventDefault(); e.shiftKey ? prev() : next(); }
@@ -95,6 +112,7 @@
         <span>W</span>
       </button>
       <button class="fb-opt" class:on={useRegex} onclick={toggleRegex} title={t().findReplace.regex} aria-pressed={useRegex}>.*</button>
+      <button class="fb-opt" class:on={showFormat} onclick={() => (showFormat = !showFormat)} title={t().findReplace.format} aria-pressed={showFormat}>¶</button>
       <button class="fb-nav" onclick={prev} disabled={!results.count} title={`${t().findReplace.previous} (${withShortcut('Shift+Enter')})`} aria-label={t().findReplace.previousAria}>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 7.5L6 4l3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
@@ -119,6 +137,33 @@
         <button class="fb-text-btn" onclick={replaceOne} disabled={!results.count} title={t().findReplace.replaceCurrent}>{t().findReplace.replace}</button>
         <button class="fb-text-btn" onclick={replaceEvery} disabled={!results.count} title={t().findReplace.replaceAllTitle}>{t().findReplace.all}</button>
       </div>
+    {/if}
+
+    <!-- The formatting a match must carry, and the one a replacement applies. With no
+         search text the formatting is the search, as it is in LibreOffice. -->
+    {#if showFormat}
+      {#each showReplace ? [true, false] : [true] as find}
+        <div class="fb-row">
+          <span class="fb-fmt-label">{find ? t().findReplace.formatFind : t().findReplace.formatReplace}</span>
+          {#each FORMAT_MARKS as mark}
+            <button
+              class="fb-opt fb-fmt-{mark}"
+              class:on={spec(find)[mark]}
+              onclick={() => setFormat(find, { [mark]: spec(find)[mark] ? undefined : true })}
+              title={markLabel[mark]()}
+              aria-pressed={!!spec(find)[mark]}
+            >{markLabel[mark]().slice(0, 1)}</button>
+          {/each}
+          <select
+            value={spec(find).style ?? ''}
+            onchange={(e) => setFormat(find, { style: e.currentTarget.value || undefined })}
+            aria-label={t().findReplace.paragraphStyle}
+          >
+            <option value="">{t().findReplace.anyStyle}</option>
+            {#each paraStyles as s}<option value={s.name}>{s.name}</option>{/each}
+          </select>
+        </div>
+      {/each}
     {/if}
   </div>
 </div>
@@ -179,6 +224,25 @@
   button:disabled { opacity: 0.4; cursor: default; }
   .fb-opt.on { background: var(--color-primary); color: #fff; }
   .fb-opt { font-weight: 600; }
+  .fb-fmt-italic { font-style: italic; }
+  .fb-fmt-underline { text-decoration: underline; }
+
+  .fb-fmt-label {
+    min-width: 4.6rem;
+    font-size: 0.72rem;
+    color: var(--color-text-muted, #6b7280);
+  }
+
+  select {
+    height: 1.7rem;
+    max-width: 9rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 0.76rem;
+  }
+
   .fb-word span { text-decoration: underline; }
   .fb-text-btn { min-width: auto; padding: 0 0.6rem; border-color: var(--color-border); }
   .fb-expand { min-width: 1.2rem; width: 1.2rem; align-self: center; }
