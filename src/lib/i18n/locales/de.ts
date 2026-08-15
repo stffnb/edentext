@@ -40,6 +40,15 @@ const de: Messages = {
       urls: '',
     },
   },
+  wordCompletion: {
+    title: 'Wortergänzung',
+    enabled: 'Wörter während der Eingabe ergänzen',
+    hint: 'Eingabetaste übernimmt, Esc verwirft',
+    appendSpace: 'Leerzeichen anhängen',
+    minLength: 'Mindestwortlänge',
+    clear: 'Gesammelte Wörter löschen',
+    collected: (n) => `${n} ${n === 1 ? 'Wort' : 'Wörter'} gesammelt`,
+  },
   navigator: {
     title: 'Navigator',
     empty: 'Noch keine Überschriften. Gib einem Absatz eine Überschriftenvorlage, dann erscheint er hier.',

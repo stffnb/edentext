@@ -1,9 +1,12 @@
 <script lang="ts">
   import { AUTOCORRECT_KEYS, DEFAULT_AUTOCORRECT, type AutoCorrectOptions } from '../storage/autoCorrect';
   import { autoCorrect, setAutoCorrect } from '../storage/autoCorrect.svelte';
+  import { DEFAULT_WORD_COMPLETION } from '../storage/wordCompletion';
+  import { wordCompletion, setWordCompletion } from '../storage/wordCompletion.svelte';
   import { t } from '../i18n/i18n.svelte';
 
   // LibreOffice's Tools ▸ AutoCorrect Options: one checkbox per rule, applied while typing.
+  // Word Completion is its own tab there and its own section here.
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
   let dialogEl = $state<HTMLDialogElement | null>(null);
@@ -39,8 +42,51 @@
       </label>
     {/each}
 
+    <h3>{t().wordCompletion.title}</h3>
+    <label class="row">
+      <input
+        type="checkbox"
+        checked={wordCompletion().enabled}
+        onchange={(e) => setWordCompletion({ ...wordCompletion(), enabled: e.currentTarget.checked })}
+      />
+      <span>{t().wordCompletion.enabled}<em>{t().wordCompletion.hint}</em></span>
+    </label>
+    <label class="row">
+      <input
+        type="checkbox"
+        checked={wordCompletion().appendSpace}
+        onchange={(e) => setWordCompletion({ ...wordCompletion(), appendSpace: e.currentTarget.checked })}
+      />
+      <span>{t().wordCompletion.appendSpace}</span>
+    </label>
+    <label class="row">
+      <input
+        class="num"
+        type="number"
+        min="5"
+        max="20"
+        value={wordCompletion().minLength}
+        onchange={(e) => setWordCompletion({ ...wordCompletion(), minLength: Number(e.currentTarget.value) })}
+      />
+      <span>{t().wordCompletion.minLength}</span>
+    </label>
+    <div class="row">
+      <button
+        class="link"
+        disabled={!wordCompletion().words.length}
+        onclick={() => setWordCompletion({ ...wordCompletion(), words: [] })}
+      >{t().wordCompletion.clear}</button>
+      <em>{t().wordCompletion.collected(wordCompletion().words.length)}</em>
+    </div>
+
     <div class="actions">
-      <button class="reset" onclick={() => setAutoCorrect({ ...DEFAULT_AUTOCORRECT })}>{t().autoCorrect.reset}</button>
+      <button
+        class="reset"
+        onclick={() => {
+          setAutoCorrect({ ...DEFAULT_AUTOCORRECT });
+          setWordCompletion({ ...DEFAULT_WORD_COMPLETION, words: wordCompletion().words });
+        }}
+      >{t().autoCorrect.reset}</button>
       <span class="spacer"></span>
       <button class="primary" onclick={() => (open = false)}>{t().common.close}</button>
     </div>
@@ -75,9 +121,31 @@
   }
 
   h2 { font-size: 1rem; }
+  h3 { font-size: 0.85rem; padding-top: 8px; border-top: 1px solid var(--color-border); }
 
   .row { display: flex; align-items: baseline; gap: 8px; cursor: pointer; }
   .row em { color: var(--color-text-muted); font-style: normal; }
+
+  .num {
+    width: 3.4rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+    padding: 2px 4px;
+    font: inherit;
+  }
+
+  .link {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--color-text);
+    padding: 2px 8px;
+    font: inherit;
+    cursor: pointer;
+  }
+  .link:disabled { opacity: 0.5; cursor: default; }
 
   .actions { display: flex; align-items: center; gap: 8px; padding-top: 6px; }
   .spacer { flex: 1; }

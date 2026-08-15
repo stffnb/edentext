@@ -184,6 +184,13 @@
   background: rgba(255, 145, 0, 0.8);
 }
 
+/* The word being offered (wordCompletion.ts): after the caret, in the text's own
+   font, greyed — it is not in the document until Enter takes it. */
+.paper .tiptap .word-completion {
+  opacity: 0.45;
+  user-select: none;
+}
+
 /* Generated table of contents (tableOfContents.ts). A non-editable block listing
    headings with dot leaders to their live page number; entries are clickable. */
 .paper .tiptap .toc {

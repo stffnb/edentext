@@ -41,6 +41,15 @@ const en = {
       urls: '',
     },
   },
+  wordCompletion: {
+    title: 'Word completion',
+    enabled: 'Complete words while typing',
+    hint: 'Enter accepts, Esc dismisses',
+    appendSpace: 'Append a space',
+    minLength: 'Minimum word length',
+    clear: 'Delete collected words',
+    collected: (n: number) => `${n} word${n === 1 ? '' : 's'} collected`,
+  },
   navigator: {
     title: 'Navigator',
     empty: 'No headings yet. Give a paragraph a heading style and it shows up here.',
