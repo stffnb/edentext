@@ -51,8 +51,6 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { withShortcut } from '../i18n/shortcut';
   import '../../styles/editor.css';
 
-  const DEFAULT_EDITOR_FONT = 'Georgia'; // must match ToolbarExpanded.svelte
-
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
     zoom = 100, onZoom, showFormattingMarks = false, showRuler = true, splitView = false, pageColumns = 1, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
@@ -1056,8 +1054,10 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
           const textStyleType = view.state.schema.marks.textStyle;
           if (!textStyleType) return slice;
           const cursorMarks = view.state.storedMarks ?? view.state.selection.$head.marks();
-          const cursorFont = cursorMarks.find(m => m.type === textStyleType)?.attrs.fontFamily as string | undefined;
-          const font = cursorFont ?? DEFAULT_EDITOR_FONT;
+          // Only an explicit font at the caret is carried over: with none, the pasted
+          // text inherits the paragraph's style, as it does in both word processors.
+          const font = cursorMarks.find(m => m.type === textStyleType)?.attrs.fontFamily as string | undefined;
+          if (!font) return slice;
           return new Slice(applyFontToFragment(slice.content, textStyleType, font), slice.openStart, slice.openEnd);
         },
       },
