@@ -81,6 +81,13 @@ and built the same way: one row per change **id** (a paragraph boundary splits o
 into several ranges), in the author's own colour, click to select the text, accept or
 reject in place through `acceptRevision`/`rejectRevision`. Opened from the Review tab.
 
+## AutoText (`AutoTextDialog.svelte`, `editor/extensions/autoText.ts`)
+
+LibreOffice's Tools ▸ AutoText, reachable where Word puts it too (the ribbon's Insert ▸
+Text group, the classic chrome's Tools menu): the library, a click to insert, and "new
+from selection" — the selected slice serialized to HTML. `hasSelection` is derived off
+`open` because the dialog stays mounted and a modal freezes the selection it opened on.
+
 ## Navigator (`NavigatorPane.svelte`, `editor/extensions/outline.ts`)
 
 LibreOffice's Navigator and Word's Navigation pane: the outline, click to jump, and the

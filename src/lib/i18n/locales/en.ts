@@ -41,6 +41,16 @@ const en = {
       urls: '',
     },
   },
+  autoText: {
+    title: 'AutoText',
+    empty: 'No entries yet. Select some text and add it below.',
+    newEntry: 'New from selection',
+    name: 'Name',
+    shortcut: 'Shortcut',
+    insertEntry: 'Insert this entry',
+    needsSelection: 'Select the text to keep first',
+    f3Hint: 'Type a shortcut and press F3 to insert its entry.',
+  },
   wordCompletion: {
     title: 'Word completion',
     enabled: 'Complete words while typing',

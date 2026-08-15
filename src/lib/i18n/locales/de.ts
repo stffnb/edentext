@@ -40,6 +40,16 @@ const de: Messages = {
       urls: '',
     },
   },
+  autoText: {
+    title: 'AutoText',
+    empty: 'Noch keine Einträge. Text markieren und unten hinzufügen.',
+    newEntry: 'Neu aus Auswahl',
+    name: 'Name',
+    shortcut: 'Kürzel',
+    insertEntry: 'Diesen Eintrag einfügen',
+    needsSelection: 'Zuerst den zu sichernden Text markieren',
+    f3Hint: 'Kürzel tippen und F3 drücken, um den Eintrag einzufügen.',
+  },
   wordCompletion: {
     title: 'Wortergänzung',
     enabled: 'Wörter während der Eingabe ergänzen',

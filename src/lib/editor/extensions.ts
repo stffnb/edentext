@@ -67,6 +67,7 @@ import { Note, NoteRef, NoteSection, Notes } from './extensions/notes';
 import { Shortcuts } from './extensions/shortcuts';
 import { AutoCorrect } from './extensions/autoCorrect';
 import { WordCompletion } from './extensions/wordCompletion';
+import { AutoText } from './extensions/autoText';
 import { HEADING_LEVELS, MAX_HEADING_LEVEL } from '../export/odt';
 import { styleSheet } from '../styles/sheet.svelte';
 import { noteSettings } from '../storage/notes.svelte';
@@ -222,6 +223,8 @@ export const extensions = [
   TrackChanges.configure({ recording: recordChanges, author: () => loadDocProperties().author.trim() }),
   AutoCorrect,
   WordCompletion,
+  // Named blocks of text kept beside the documents; F3 expands a typed shortcut.
+  AutoText,
   SearchReplace.configure({ sheet: styleSheet }),
   // Word/LibreOffice key bindings that aren't TipTap defaults; body:true adds the
   // ones the header/footer schema has no commands for (headings, line spacing, fields).

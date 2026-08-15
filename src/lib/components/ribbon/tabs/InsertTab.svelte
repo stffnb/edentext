@@ -24,7 +24,7 @@
 
   let {
     editor, tick, hfActive = null, pageMargins, pageOrientation, pageFormat,
-    onEditZone, onManageTableStyles,
+    onEditZone, onManageTableStyles, onAutoText,
   }: {
     editor: Editor | null;
     tick: number;
@@ -34,6 +34,7 @@
     pageFormat: PageFormat;
     onEditZone?: (zone: HfZone) => void;
     onManageTableStyles?: (family: StyleFamily) => void;
+    onAutoText?: () => void;
   } = $props();
 
   let hasSelection = $derived(tick >= 0 && !!editor && !editor.state.selection.empty);
@@ -255,6 +256,14 @@
 <div class="ribbon-sep"></div>
 
 <RibbonGroup label={t().ribbon.groups.text}>
+  <RibbonButton
+    variant="big"
+    icon="quickParts"
+    label={t().autoText.title}
+    title={t().autoText.title}
+    disabled={!editor || !onAutoText}
+    onclick={() => onAutoText?.()}
+  />
   <div class="rb-captioned" use:captionClicks>
     <DateTimePicker
       bind:open={dateOpen}

@@ -54,6 +54,7 @@
   import NavigatorPane from './lib/components/NavigatorPane.svelte';
   import { OPEN_COMMENT_EVENT } from './lib/editor/extensions/comment';
   import AutoCorrectDialog from './lib/components/AutoCorrectDialog.svelte';
+  import AutoTextDialog from './lib/components/AutoTextDialog.svelte';
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
   import { t } from './lib/i18n/i18n.svelte';
@@ -173,6 +174,7 @@
   let pageDecor: PageDecor = $state(loadPageDecor());
   let lineNumbering: LineNumbering = $state(loadLineNumbering());
   let autoCorrectOpen = $state(false);
+  let autoTextOpen = $state(false);
   let commentsOpen = $state(false);
   let revisionsOpen = $state(false);
   let navigatorOpen = $state(false);
@@ -1044,6 +1046,7 @@
       onAbout={() => (aboutOpen = true)}
       onDocProperties={() => (docPropsOpen = true)}
       onAutoCorrect={() => (autoCorrectOpen = true)}
+      onAutoText={() => (autoTextOpen = true)}
       onNewComment={addComment}
       {commentsOpen}
       onToggleComments={() => (commentsOpen = !commentsOpen)}
@@ -1234,6 +1237,9 @@
             <div class="theme-heading">{t().autoCorrect.title}</div>
             <button class="theme-option" onclick={() => { themeOpen = false; autoCorrectOpen = true; }} role="menuitem">
               <span>{t().ribbon.autoCorrect}</span>
+            </button>
+            <button class="theme-option" onclick={() => { themeOpen = false; autoTextOpen = true; }} role="menuitem">
+              <span>{t().autoText.title}</span>
             </button>
             <div class="theme-heading">{t().ribbon.chrome.title}</div>
             <button
@@ -1427,6 +1433,7 @@
 
   <AboutDialog bind:open={aboutOpen} />
   <AutoCorrectDialog bind:open={autoCorrectOpen} />
+  <AutoTextDialog bind:open={autoTextOpen} editor={activeEditor} />
   <DocPropertiesDialog bind:open={docPropsOpen} props={docProps} onApply={(p) => { docProps = p; saveDocProperties(p); }} />
   <!-- One instance for every entry point (styles gallery, insert-table menu): the
        callers only say which family to land on. -->

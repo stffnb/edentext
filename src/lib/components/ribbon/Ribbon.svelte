@@ -63,7 +63,7 @@
     onSelectTheme,
     docxBusy = false,
     pdfBusy = false,
-    onNew, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onNewComment, commentsOpen = false, onToggleComments, revisionsOpen = false, onToggleRevisions,
+    onNew, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onAutoText, onNewComment, commentsOpen = false, onToggleComments, revisionsOpen = false, onToggleRevisions,
     navigatorOpen = false, onToggleNavigator,
     recentFiles = [], onOpenRecent, onForgetRecent,
   }: {
@@ -113,6 +113,7 @@
     onAbout?: () => void;
     onDocProperties?: () => void;
     onAutoCorrect?: () => void;
+    onAutoText?: () => void;
     onNewComment?: () => void;
     commentsOpen?: boolean;
     onToggleComments?: () => void;
@@ -332,7 +333,7 @@
     {#if tab === 'home'}
       <HomeTab {editor} {tick} bind:showFormattingMarks {onManageStyles} {onFind} onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'insert'}
-      <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} {onEditZone} {onManageTableStyles} />
+      <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} {onEditZone} {onManageTableStyles} {onAutoText} />
     {:else if tab === 'layout'}
       <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:extraHfSections bind:hyphenate bind:pageNumbering bind:pageDecor bind:lineNumbering onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'references'}

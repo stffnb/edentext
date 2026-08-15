@@ -57,6 +57,7 @@
 - Paragraph borders and shading: per-side borders with presets (all / single edges / none), width and color, plus a background fill, on paragraphs and headings; typing `---`, `___` or `===` on a line of its own turns it into a rule line (Word/LibreOffice AutoCorrect). Round-trips to ODF `fo:border-*`/`fo:background-color` and DOCX `w:pBdr`/`w:shd`
 - AutoCorrect while typing (LibreOffice's Tools ▸ AutoCorrect Options, one checkbox per rule): typographic quotes per document language (`"…"` / `„…“`), its dash matrix (`A - B` → `A – B`, `A--B` → `A—B`), its replacement table (`-->` → `→`, `(C)` → `©`, `...` → `…`), capitalize the first letter of a sentence — with an abbreviation exception list — and TWo INitial CApitals. URL recognition and auto-list ride the same switches
 - Word completion (the same dialog's own section, as LibreOffice keeps it): every word of at least eight letters is remembered as it is typed, and typing its first three letters offers the rest in grey after the caret — Enter takes the offer, Esc drops it. It is offered while typing only, so an Enter meant to split a paragraph never completes a word instead, and the offer stays outside the document until it is accepted. Minimum length, an appended space and clearing the collected words are all settable
+- AutoText (LibreOffice's Tools ▸ AutoText, Word's Insert ▸ Quick Parts): keep a selected block of text under a name and a shortcut, then insert it from the library or by typing the shortcut and pressing F3 — LibreOffice's own key. An entry keeps its formatting, and the library belongs to the app rather than to a document, as it does in both products
 - Automatic hyphenation for the whole document (Layout ▸ Hyphenation): the browser hyphenates in the document's own language, which shortens a justified paragraph the way LibreOffice does. Round-trips as ODF `fo:hyphenate` on the base style — where LibreOffice keeps it, in its *text* properties — and Word's `w:autoHyphenation`
 - Manual line breaks (Shift+Enter)
 
@@ -161,7 +162,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 - Linked / chained text frames
 - Find & Replace by font, size or colour — the weight/slant/underline and paragraph-style half is implemented, but LibreOffice's Format dialog is the whole character dialog
 - Multi-document management: one document is open at a time, so there is no window list and no side-by-side compare
-- Thesaurus, grammar check, AutoText / building blocks
+- Thesaurus and grammar check
 - Vertical writing modes (ODF `tb-rl`) and Asian typography (ruby)
 - Password-protected ODT/DOCX; digital signatures
 - Split view: two views of one document, scrolled independently
