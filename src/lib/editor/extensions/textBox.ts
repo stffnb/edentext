@@ -46,6 +46,7 @@ export interface TextBoxAttrs {
   wrapAlign: string | null;   // 'center'/'right' = set against the middle/far end
   paddingCm: number;          // inset ring around the text (ODF fo:padding)
   shapeKind: ShapeKind;
+  shapePath: string | null;   // a freeform's own outline, in the 0…100 box
   flipV: boolean;             // a line runs bottom-left → top-right instead
   textVertical: boolean;      // text runs top-to-bottom, right-to-left
   fillColor: string | null;
@@ -79,6 +80,12 @@ export function findTextBox(state: EditorState): { pos: number; node: PMNode } |
 
 function shapeRadius(kind: ShapeKind): string {
   return kind === 'ellipse' ? '50%' : kind === 'roundRect' ? '8px' : '0';
+}
+
+// A box that paints its own outline — a preset polygon, a freeform, or a line, which
+// is only its stroke. The box behind any of them stays bare.
+function isDrawnShape(a: TextBoxAttrs): boolean {
+  return !!SHAPES[a.shapeKind]?.points || !!a.shapePath || isLineKind(a.shapeKind);
 }
 
 export const TextBox = Node.create({
@@ -154,6 +161,13 @@ export const TextBox = Node.create({
         },
         renderHTML: () => ({}),
       },
+      // A drawing this editor cannot author (a polygon, a curve, a connector's elbow):
+      // the file's own outline, in the same 0…100 box a preset's points live in.
+      shapePath: {
+        default: null,
+        parseHTML: el => (el as HTMLElement).getAttribute('data-shape-path') || null,
+        renderHTML: () => ({}),
+      },
       // Which diagonal of the frame a line runs along — the one flag Word's `flipV`
       // and ODF's own endpoints both come down to.
       flipV: {
@@ -200,8 +214,8 @@ export const TextBox = Node.create({
       a.height ? `min-height:${a.height}px` : '',
       // A polygon paints itself and a line is only its stroke, so the box behind
       // either of them stays bare.
-      a.fillColor && !SHAPES[a.shapeKind]?.points && !isLineKind(a.shapeKind) ? `background:${a.fillColor}` : '',
-      a.strokeColor && !SHAPES[a.shapeKind]?.points && !isLineKind(a.shapeKind)
+      a.fillColor && !isDrawnShape(a) ? `background:${a.fillColor}` : '',
+      a.strokeColor && !isDrawnShape(a)
         ? `border:${a.strokeWidthPt * PX_PER_PT}px solid ${a.strokeColor}` : '',
       a.shapeKind !== 'textbox' ? `border-radius:${shapeRadius(a.shapeKind)}` : '',
       a.rotation ? `transform:rotate(${a.rotation}deg)` : '',
@@ -213,6 +227,7 @@ export const TextBox = Node.create({
       ...(a.rotation ? { 'data-rotation': String(a.rotation) } : {}),
       ...(a.wrap !== 'inline' ? { 'data-wrap': a.wrap } : {}),
       ...(a.shapeKind !== 'textbox' ? { 'data-shape': a.shapeKind } : {}),
+      ...(a.shapePath ? { 'data-shape-path': a.shapePath } : {}),
       ...(a.flipV ? { 'data-flip-v': 'true' } : {}),
       ...(a.textVertical ? { 'data-text-vertical': 'true' } : {}),
       ...(a.fillColor ? { 'data-fill': a.fillColor } : {}),
@@ -365,7 +380,7 @@ class TextBoxView {
     this.rotor.style.minHeight = a.height ? `${a.height}px` : '';
     // A polygon shape paints its own fill and stroke, so the box behind it stays bare;
     // a line has no box at all, only the two endpoints it is drawn between.
-    const poly = !!SHAPES[a.shapeKind]?.points;
+    const poly = !!SHAPES[a.shapeKind]?.points || !!a.shapePath;
     const line = isLineKind(a.shapeKind);
     // The outline covers the padding box, so the frame's own ring moves to the text
     // where a polygon draws it — applyShapeInset adds it back in.
@@ -420,7 +435,7 @@ class TextBoxView {
   // width under that distortion.
   private applyOutline(): void {
     const a = this.attrs();
-    const d = shapePath(a.shapeKind);
+    const d = shapePath(a.shapeKind, a.shapePath);
     if (!d) {
       this.outline?.parentElement?.remove();
       this.outline = null;
@@ -437,7 +452,9 @@ class TextBoxView {
       this.rotor.insertBefore(svg, this.rotor.firstChild);
     }
     this.outline.setAttribute('d', d);
-    this.outline.setAttribute('fill', a.fillColor ?? 'none');
+    // An outline that never closes is stroked only, whatever fill its style declares —
+    // which is how both products draw a polyline.
+    this.outline.setAttribute('fill', d.trimEnd().endsWith('Z') ? a.fillColor ?? 'none' : 'none');
     this.outline.setAttribute('stroke', a.strokeColor ?? 'none');
     this.outline.setAttribute('stroke-width', String(a.strokeWidthPt * PX_PER_PT));
   }

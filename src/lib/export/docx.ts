@@ -16,7 +16,7 @@ import type {
 } from 'docx';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
-import { SHAPES, isShapeKind, type ShapeKind } from '../utils/shapes';
+import { SHAPES, isShapeKind, drawingMlPath, type ShapeKind } from '../utils/shapes';
 import { cellFormatCode, isCellFormat } from '../utils/cellFormat';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -690,6 +690,7 @@ type TextBoxDocx = {
   offsetYCm: number | null;
   distCm: number | null;
   shapeKind: ShapeKind;
+  shapePath: string | null;
   flipV: boolean;
   textVertical: boolean;
   fill: string | null;
@@ -710,6 +711,7 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     offsetYCm: typeof a.wrapOffsetY === 'number' ? a.wrapOffsetY : null,
     distCm: typeof a.wrapDist === 'number' ? a.wrapDist : null,
     shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
+    shapePath: typeof a.shapePath === 'string' && a.shapePath ? a.shapePath : null,
     flipV: a.flipV === true,
     textVertical: a.textVertical === true,
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
@@ -930,7 +932,12 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     : '<a:ln><a:noFill/></a:ln>';
   const inset = Math.round(TEXTBOX_PADDING_CM * EMU_PER_CM);
   // Auto-grow only for plain text boxes, matching the ODT export.
-  const autofit = box.shapeKind === 'textbox' ? '<a:spAutoFit/>' : '';
+  const autofit = box.shapeKind === 'textbox' && !box.shapePath ? '<a:spAutoFit/>' : '';
+  // A freeform is its own outline: custGeom over the same 0…100 box, in the shape's
+  // own EMU extent so the path needs no second scale.
+  const geom = box.shapePath
+    ? `<a:custGeom><a:avLst/><a:pathLst>${drawingMlPath(box.shapePath, cx, cy)}</a:pathLst></a:custGeom>`
+    : `<a:prstGeom prst="${SHAPES[box.shapeKind].prst}"><a:avLst/></a:prstGeom>`;
   // Word draws the `line` preset down the frame's diagonal and flips it to reach the
   // other one; a line carries no fill and no text body.
   const flip = line && box.flipV ? ' flipV="1"' : '';
@@ -941,7 +948,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     `<wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">` +
     `<wps:cNvSpPr txBox="1"/>` +
     `<wps:spPr><a:xfrm${rot}${flip}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
-    `<a:prstGeom prst="${SHAPES[box.shapeKind].prst}"><a:avLst/></a:prstGeom>${line ? '<a:noFill/>' : fill}${ln}</wps:spPr>` +
+    `${geom}${line ? '<a:noFill/>' : fill}${ln}</wps:spPr>` +
     body +
     `<wps:bodyPr rot="0" vert="${box.textVertical ? 'vert' : 'horz'}" wrap="square"` +
     ` lIns="${inset}" tIns="${inset}" rIns="${inset}" bIns="${inset}" anchor="t">${autofit}</wps:bodyPr>` +

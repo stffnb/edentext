@@ -11,7 +11,7 @@ import { tableLookAttr } from '../styles/tableStyles';
 import { formatOrdinal, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
-import { shapeFromPrst, isLineKind, lineKindFor } from '../utils/shapes';
+import { shapeFromPrst, isLineKind, lineKindFor, parseSvgPath, parseVmlPath, fitPath } from '../utils/shapes';
 import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -1873,16 +1873,36 @@ function setShapeStyleAttrs(attrs: Record<string, unknown>, fill: string | null,
   }
 }
 
-// A DrawingML <wps:wsp> (text box or preset shape) → a textBox node. A preset
-// `utils/shapes.ts` can't draw (a connector, a freeform) is dropped with a warning. All property
-// lookups are scoped to spPr so a nested image's fill/xfrm can't leak in.
+// <a:custGeom> read as the shape's own outline, in the coordinate space its path
+// declares. A segment no outline can hold (an arc) leaves the shape unsupported.
+function custGeomPath(spPr: Element | null): string {
+  const path = nsChild(nsChild(nsChild(spPr, A, 'custGeom'), A, 'pathLst'), A, 'path');
+  const w = intAttr(path, '', 'w') ?? 0;
+  const h = intAttr(path, '', 'h') ?? 0;
+  if (!path || w <= 0 || h <= 0) return '';
+  const parts: string[] = [];
+  for (const seg of Array.from(path.children)) {
+    const pts = Array.from(seg.getElementsByTagNameNS(A, 'pt'))
+      .map((p) => `${p.getAttribute('x') ?? 0} ${p.getAttribute('y') ?? 0}`).join(' ');
+    const cmd = { moveTo: 'M', lnTo: 'L', cubicBezTo: 'C', quadBezTo: 'Q', close: 'Z' }[seg.localName];
+    if (!cmd) return '';
+    parts.push(`${cmd} ${pts}`);
+  }
+  return fitPath(parseSvgPath(parts.join(' ')), w, h);
+}
+
+// A DrawingML <wps:wsp> (text box, preset shape or freeform) → a textBox node. A preset
+// `utils/shapes.ts` can't draw and has no path of its own (a connector) is dropped with a
+// warning. All property lookups are scoped to spPr so a nested image's fill/xfrm can't leak in.
 function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ctx): Node | null {
   const spPr = nsChild(wsp, WPS, 'spPr');
-  const kind = shapeFromPrst(nsChild(spPr, A, 'prstGeom')?.getAttribute('prst') ?? 'rect');
+  const outline = custGeomPath(spPr);
+  const kind = outline ? 'textbox' : shapeFromPrst(nsChild(spPr, A, 'prstGeom')?.getAttribute('prst') ?? 'rect');
   if (!kind) { ctx.warnings.add('Unsupported shapes were removed'); return null; }
 
   const attrs: Record<string, unknown> = {};
   if (kind !== 'textbox') attrs.shapeKind = kind;
+  if (outline) attrs.shapePath = outline;
   const extent = root.getElementsByTagNameNS(WP, 'extent')[0];
   const cx = intAttr(extent, '', 'cx');
   const cy = intAttr(extent, '', 'cy');
@@ -1966,9 +1986,15 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
 
   const textbox = shape.getElementsByTagNameNS(VML, 'textbox')[0] ?? null;
   const txbxContent = nsChild(textbox, W, 'txbxContent');
-  if (!txbxContent) { ctx.warnings.add('Drawings were removed'); return null; }
+  // A freeform is a v:shape drawn by its own path over a declared coordinate space,
+  // and it holds no text box — LibreOffice's .docx filter writes one that way.
+  const coord = (shape.getAttribute('coordsize') ?? '').split(',').map(Number);
+  const outline = coord.length === 2 && coord[0] > 0 && coord[1] > 0 && shape.getAttribute('path')
+    ? fitPath(parseVmlPath(shape.getAttribute('path') ?? ''), coord[0], coord[1]) : '';
+  if (!txbxContent && !outline) { ctx.warnings.add('Drawings were removed'); return null; }
 
   const attrs: Record<string, unknown> = {};
+  if (outline) attrs.shapePath = outline;
   // VML says vertical text in the box's own style, as `layout-flow:vertical`.
   if (/layout-flow\s*:\s*vertical/.test(textbox?.getAttribute('style') ?? '')) attrs.textVertical = true;
   const kind = shape.localName === 'oval' ? 'ellipse' : shape.localName === 'roundrect' ? 'roundRect' : 'textbox';
@@ -1985,7 +2011,7 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
   const swm = /^([\d.]+)\s*(pt)?$/.exec(shape.getAttribute('strokeweight') ?? '');
   setShapeStyleAttrs(attrs, fill, stroke, swm ? parseFloat(swm[1]) : null);
 
-  const blocks = convertBlocks(Array.from(txbxContent.children), ctx, 'cell');
+  const blocks = txbxContent ? convertBlocks(Array.from(txbxContent.children), ctx, 'cell') : [];
   return { type: 'textBox', attrs, content: blocks.length ? blocks : [{ type: 'paragraph' }] };
 }
 

@@ -24,7 +24,7 @@ import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBor
 import { parseCellPadding, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { numberLocale, parseCellNumber, toWriterFormula, type CellRef, type NumberLocale } from '../utils/tableFormula';
-import { SHAPES, arrowHeadCm, isShapeKind, isLineKind, odfEnhancedGeometry, type ShapeKind } from '../utils/shapes';
+import { SHAPES, arrowHeadCm, isShapeKind, isLineKind, odfEnhancedGeometry, odfEnhancedPath, type ShapeKind } from '../utils/shapes';
 import { normalizeLeader, parseTabStops } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
 import { orderedTypeDef, effectiveOrderedDef, effectiveOrderedDefAt, childCycle, formatOrdinal, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
@@ -942,6 +942,7 @@ type TextBoxExport = {
   wrapAlign: string | null;
   paddingCm: number;
   shapeKind: ShapeKind;
+  shapePath: string | null;
   flipV: boolean;
   textVertical: boolean;
   fill: string | null;
@@ -968,6 +969,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     wrapAlign: a.wrapAlign === 'center' || a.wrapAlign === 'right' ? a.wrapAlign : null,
     paddingCm: typeof a.paddingCm === 'number' ? round3(a.paddingCm) : TEXTBOX_PADDING_CM,
     shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
+    shapePath: typeof a.shapePath === 'string' && a.shapePath ? a.shapePath : null,
     flipV: a.flipV === true,
     textVertical: a.textVertical === true,
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
@@ -3880,7 +3882,7 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
       ` style:vertical-pos="${box.wrapOffsetYCm != null ? 'from-top' : 'top'}" style:vertical-rel="paragraph"`;
   // auto-grow only for plain text boxes; a custom-shape needs both explicitly
   // false, or LibreOffice's shape autofit shrinks it to its text.
-  const grow = box.shapeKind === 'textbox'
+  const grow = box.shapeKind === 'textbox' && !box.shapePath
     ? ' draw:auto-grow-height="true"'
     : ' draw:auto-grow-height="false" draw:auto-grow-width="false"';
   // An arrow head is a named marker in ODF, defined once in styles.xml.
@@ -3936,7 +3938,7 @@ function textBoxXml(box: TextBoxExport, inner: string, index: number): string {
       ` svg:x1="0cm" svg:y1="${y1}cm" svg:x2="${box.widthCm}cm" svg:y2="${y2}cm"/>`
     );
   }
-  if (box.shapeKind === 'textbox') {
+  if (box.shapeKind === 'textbox' && !box.shapePath) {
     // svg:height for consumers without auto-grow; fo:min-height is the real semantic
     // (height = minimum, content grows the box) and wins on our own re-import.
     return (
@@ -3944,9 +3946,15 @@ function textBoxXml(box: TextBoxExport, inner: string, index: number): string {
       `<draw:text-box fo:min-height="${box.heightCm}cm">${inner}</draw:text-box></draw:frame>`
     );
   }
+  // A freeform is its own outline rather than a preset's: `non-primitive` plus the
+  // path, which is what LibreOffice writes back out unchanged (probed).
+  const geometry = box.shapePath
+    ? `<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="non-primitive"`
+      + ` draw:enhanced-path="${odfEnhancedPath(box.shapePath)}"/>`
+    : odfEnhancedGeometry(box.shapeKind) ?? '';
   return (
     `<draw:custom-shape draw:name="Shape${n}"${common} svg:height="${box.heightCm}cm"${transform}>` +
-    `${inner}${odfEnhancedGeometry(box.shapeKind) ?? ''}</draw:custom-shape>`
+    `${inner}${geometry}</draw:custom-shape>`
   );
 }
 

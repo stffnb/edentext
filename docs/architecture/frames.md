@@ -60,5 +60,26 @@ double arrow.
   an undeclared `draw:` prefix there makes the whole file unreadable.
 - **DOCX** keeps the frame and flips it (`<a:xfrm flipV="1">`), the heads riding the
   shape's `<a:ln>` as `a:headEnd`/`a:tailEnd`, and writes no `wps:txbx` at all.
-- **Not covered**: connectors that attach to other shapes, and freeform curves. Both are
-  still dropped with a warning — a connector is an anchoring model, not a shape.
+## Freeform outlines (`shapePath`)
+
+A drawing this editor offers no tool to author — a polygon, a polyline, a bezier curve,
+a connector's elbow — still has to survive being opened and saved. The box keeps the
+file's own outline in `shapePath`, an SVG `d` in the same **0…100 box** a preset's
+points live in (`utils/shapes.ts`), and its presence is what makes the box draw itself.
+An outline that never closes is **stroked only**, whatever fill its style declares,
+which is how both products draw a polyline.
+
+- **Reading** takes four path dialects, all through `parseSvgPath`, which resolves the
+  relative commands both products write into absolute `M`/`L`/`C`/`Z`: ODF's
+  `draw:points` (polygon closed, polyline open), its `svg:d` (`draw:path`, and a
+  `draw:connector`, which carries the resolved elbow beside its endpoints), a
+  `non-primitive` `draw:enhanced-path`, DrawingML's `a:custGeom` path list, and VML's
+  `path` — whose cases are SVG's the other way round (`parseVmlPath`).
+- A geometry whose commands are **modifier formulas** (`?f0`) or an arc is not an
+  outline we can draw, so the shape stays unsupported and is dropped with the warning,
+  as before. So is a Word connector preset (`bentConnector3`), which is a geometry
+  Word resolves and does not write down.
+- **Writing** goes back out as the shape's own geometry: ODF a `non-primitive`
+  `<draw:enhanced-geometry>` in its 21600 viewBox (probed: LibreOffice writes that
+  straight back out unchanged), DOCX an `<a:custGeom>` path list in the shape's EMU
+  extent. Both render in LibreOffice exactly as the editor draws them.

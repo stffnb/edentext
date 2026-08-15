@@ -193,7 +193,8 @@ export function linePaths(kind: ShapeKind, w: number, h: number, flip: boolean, 
 }
 
 /** The outline as an SVG `d`, in the 0…100 box the node view's viewBox uses. */
-export function shapePath(kind: ShapeKind): string | null {
+export function shapePath(kind: ShapeKind, own?: string | null): string | null {
+  if (own) return own;
   const pts = SHAPES[kind].points;
   if (!pts) return null;
   return `M ${pts.map(([x, y]) => `${r2(x)},${r2(y)}`).join(' L ')} Z`;
@@ -226,6 +227,127 @@ export function odfEnhancedGeometry(kind: ShapeKind): string | null {
       `${preset.points.slice(1).map(([x, y]) => `${s(x)} ${s(y)}`).join(' ')} Z N"`
     : null);
   return body === null ? null : `<draw:enhanced-geometry svg:viewBox="0 0 ${VB} ${VB}"${body}/>`;
+}
+
+// ---- freeform outlines -----------------------------------------------------
+// A drawing this editor cannot author but must not drop: a polygon, a polyline, a
+// bezier curve or a connector's elbow, kept as its own outline in the same 0…100 box
+// a preset's points live in. An open path is stroked only, as both products draw one.
+
+export type PathCmd =
+  | { c: 'M' | 'L'; p: number[] }
+  | { c: 'C'; p: number[] }
+  | { c: 'Z' };
+
+/** The `<letter> <numbers…>` groups of a path, whatever dialect wrote it. */
+function pathTokens(d: string): { cmd: string; n: number[] }[] {
+  const out: { cmd: string; n: number[] }[] = [];
+  for (const m of d.matchAll(/([A-Za-z])([^A-Za-z]*)/g)) {
+    const n = (m[2].match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? []).map(Number);
+    out.push({ cmd: m[1], n });
+  }
+  return out;
+}
+
+const PATH_ARITY: Record<string, number> = { M: 2, L: 2, T: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, A: 7, Z: 0 };
+
+/**
+ * SVG path data as absolute M/L/C/Z. A quadratic is raised to a cubic and a smooth
+ * curve takes its own start as the first control point; an arc is joined by a line —
+ * none of the three is what either product writes for a freeform.
+ */
+export function parseSvgPath(d: string): PathCmd[] {
+  const out: PathCmd[] = [];
+  let x = 0, y = 0, sx = 0, sy = 0;
+  for (const { cmd, n } of pathTokens(d)) {
+    const rel = cmd === cmd.toLowerCase();
+    const k = cmd.toUpperCase();
+    const step = PATH_ARITY[k];
+    if (step === undefined) continue;
+    if (k === 'Z') { out.push({ c: 'Z' }); [x, y] = [sx, sy]; continue; }
+    // A repeated group continues the command, and the one after an M is an L.
+    for (let i = 0; i + step <= n.length; i += step) {
+      const a = n.slice(i, i + step);
+      const at = (dx: number, dy: number): [number, number] => rel ? [x + dx, y + dy] : [dx, dy];
+      if (k === 'M' || k === 'L' || k === 'T') {
+        const [px, py] = at(a[0], a[1]);
+        out.push({ c: k === 'M' && i === 0 ? 'M' : 'L', p: [px, py] });
+        if (k === 'M' && i === 0) [sx, sy] = [px, py];
+        [x, y] = [px, py];
+      } else if (k === 'H' || k === 'V') {
+        const [px, py] = k === 'H' ? [rel ? x + a[0] : a[0], y] : [x, rel ? y + a[0] : a[0]];
+        out.push({ c: 'L', p: [px, py] });
+        [x, y] = [px, py];
+      } else if (k === 'A') {
+        const [px, py] = at(a[5], a[6]);
+        out.push({ c: 'L', p: [px, py] });
+        [x, y] = [px, py];
+      } else {
+        const pts: number[] = [];
+        for (let j = 0; j + 1 < step; j += 2) pts.push(...at(a[j], a[j + 1]));
+        const [ex, ey] = [pts[pts.length - 2], pts[pts.length - 1]];
+        const p = k === 'C' ? pts
+          : k === 'S' ? [x, y, ...pts]
+          : [x + (2 / 3) * (pts[0] - x), y + (2 / 3) * (pts[1] - y),
+             ex + (2 / 3) * (pts[0] - ex), ey + (2 / 3) * (pts[1] - ey), ex, ey];
+        out.push({ c: 'C', p });
+        [x, y] = [ex, ey];
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * VML's path language, which is SVG's with the cases swapped: `m l c x` are the
+ * absolute commands and `t r v` their relative twins, `e` ends the path.
+ */
+export function parseVmlPath(d: string): PathCmd[] {
+  const svg = d.replace(/[a-z]/g, (c) => ({ m: 'M', l: 'L', c: 'C', x: 'Z', t: 'm', r: 'l', v: 'c', e: '', n: '', f: '', s: '' }[c] ?? ''));
+  return parseSvgPath(svg);
+}
+
+/** `draw:points="0,0 4001,1000"` — ODF's polygon and polyline outline. */
+export function parseOdfPoints(points: string, closed: boolean): PathCmd[] {
+  const nums = (points.match(/-?[\d.]+/g) ?? []).map(Number);
+  const out: PathCmd[] = [];
+  for (let i = 0; i + 1 < nums.length; i += 2) out.push({ c: i ? 'L' : 'M', p: [nums[i], nums[i + 1]] });
+  if (closed && out.length) out.push({ c: 'Z' });
+  return out;
+}
+
+const r3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/** The outline mapped from its own viewBox into the 0…100 box the editor draws in. */
+export function fitPath(cmds: PathCmd[], vbW: number, vbH: number, vbX = 0, vbY = 0): string {
+  if (!cmds.length || vbW <= 0 || vbH <= 0) return '';
+  const parts = cmds.map((c) => {
+    if (c.c === 'Z') return 'Z';
+    const nums = c.p.map((v, i) => r3(((v - (i % 2 ? vbY : vbX)) * 100) / (i % 2 ? vbH : vbW)));
+    return `${c.c} ${nums.join(' ')}`;
+  });
+  return parts.join(' ');
+}
+
+/** ODF's `draw:enhanced-path` for an outline the editor holds in its 0…100 box. */
+export function odfEnhancedPath(path: string): string {
+  const body = parseSvgPath(path).map((c) => (c.c === 'Z' ? 'Z'
+    : `${c.c} ${c.p.map((v) => Math.round((v * VB) / 100)).join(' ')}`)).join(' ');
+  return `${body} N`;
+}
+
+/** DrawingML's `<a:path>` for the same outline, in a `w`×`h` coordinate space. */
+export function drawingMlPath(path: string, w: number, h: number): string {
+  const pt = (x: number, y: number) => `<a:pt x="${Math.round((x * w) / 100)}" y="${Math.round((y * h) / 100)}"/>`;
+  const body = parseSvgPath(path).map((c) => {
+    if (c.c === 'Z') return '<a:close/>';
+    const pts = [];
+    for (let i = 0; i + 1 < c.p.length; i += 2) pts.push(pt(c.p[i], c.p[i + 1]));
+    return c.c === 'M' ? `<a:moveTo>${pts[0]}</a:moveTo>`
+      : c.c === 'L' ? `<a:lnTo>${pts[0]}</a:lnTo>`
+      : `<a:cubicBezTo>${pts.join('')}</a:cubicBezTo>`;
+  }).join('');
+  return `<a:path w="${w}" h="${h}">${body}</a:path>`;
 }
 
 // The three line kinds share their names, and the heads a file declares are what

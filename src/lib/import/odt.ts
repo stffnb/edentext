@@ -11,7 +11,9 @@ import { TABLE_REGIONS, tableLookAttr, type TableLook, type TableRegion } from '
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
-import { shapeFromOdfType, lineKindFor, type ShapeKind } from '../utils/shapes';
+import {
+  shapeFromOdfType, lineKindFor, parseSvgPath, parseOdfPoints, fitPath, type ShapeKind,
+} from '../utils/shapes';
 import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
 import { astToLatex } from '../math/latex';
 import { parseMathml } from '../math/mathml';
@@ -501,11 +503,18 @@ function loadObjectDoc(href: string | null, ctx: Ctx): Document | null {
 // can't draw (a connector, a freeform) is dropped with a warning.
 function convertShape(el: Element, ctx: Ctx): Node | null {
   let kind: ShapeKind | null = null;
+  let path = '';
   if (el.localName === 'rect') kind = 'textbox';
   else if (el.localName === 'ellipse') kind = 'ellipse';
   else {
     const geo = el.getElementsByTagNameNS(NS.draw, 'enhanced-geometry')[0];
     kind = shapeFromOdfType(geo?.getAttributeNS(NS.draw, 'type'));
+    // A shape no preset covers still draws, as long as its own outline is one:
+    // LibreOffice writes a freeform as `non-primitive` plus the path itself.
+    if (!kind && geo) {
+      path = enhancedPathOutline(geo);
+      if (path) kind = 'textbox';
+    }
   }
   if (!kind) {
     ctx.warnings.add('Unsupported shapes were removed');
@@ -513,6 +522,7 @@ function convertShape(el: Element, ctx: Ctx): Node | null {
   }
   const attrs: Record<string, unknown> = {};
   if (kind !== 'textbox') attrs.shapeKind = kind;
+  if (path) attrs.shapePath = path;
   const wCm = lengthToCm(el.getAttributeNS(NS.svg, 'width'));
   const hCm = lengthToCm(el.getAttributeNS(NS.svg, 'height'));
   if (wCm != null) attrs.width = framePx(cmToPx(wCm));
@@ -521,6 +531,50 @@ function convertShape(el: Element, ctx: Ctx): Node | null {
   applyFrameRotationAndWrap(el, attrs, gp);
   shapeStyleAttrs(gp, attrs, true);
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(el.children), ctx) };
+}
+
+// A `<draw:enhanced-geometry>` no preset matches, read as its own outline: only the
+// four commands a freeform is drawn with, so a shape with modifier formulas (`?f0`)
+// or an arc segment stays unsupported rather than drawing wrong.
+function enhancedPathOutline(geo: Element): string {
+  const raw = geo.getAttributeNS(NS.draw, 'enhanced-path') ?? '';
+  if (!raw || !/^[\sMLCZN\d.,+-]+$/.test(raw)) return '';
+  const vb = (geo.getAttributeNS(NS.svg, 'viewBox') ?? '').split(/\s+/).map(Number);
+  if (vb.length !== 4 || !(vb[2] > 0) || !(vb[3] > 0)) return '';
+  return fitPath(parseSvgPath(raw.replace(/N/g, '')), vb[2], vb[3], vb[0], vb[1]);
+}
+
+// draw:polygon / draw:polyline / draw:path / draw:connector → a box drawing the file's
+// own outline. The frame is the shape's box, or — a connector declaring none — the one
+// its two endpoints span.
+function convertFreeform(el: Element, ctx: Ctx): Node | null {
+  const num = (ns: string, name: string) => lengthToCm(el.getAttributeNS(ns, name));
+  const vb = (el.getAttributeNS(NS.svg, 'viewBox') ?? '').split(/\s+/).map(Number);
+  const points = el.getAttributeNS(NS.draw, 'points');
+  const d = el.getAttributeNS(NS.svg, 'd');
+  const cmds = d ? parseSvgPath(d)
+    : points ? parseOdfPoints(points, el.localName === 'polygon')
+    : [];
+  let wCm = num(NS.svg, 'width');
+  let hCm = num(NS.svg, 'height');
+  if (wCm == null || hCm == null) {
+    const [x1, y1, x2, y2] = ['x1', 'y1', 'x2', 'y2'].map((a) => num(NS.svg, a) ?? 0);
+    wCm = Math.abs(x2 - x1);
+    hCm = Math.abs(y2 - y1);
+  }
+  const path = cmds.length && vb.length === 4 && vb[2] > 0 && vb[3] > 0
+    ? fitPath(cmds, vb[2], vb[3], vb[0], vb[1]) : '';
+  if (!path || !wCm || !hCm) {
+    ctx.warnings.add('Unsupported shapes were removed');
+    return null;
+  }
+  const attrs: Record<string, unknown> = {
+    shapePath: path, width: framePx(cmToPx(wCm)), height: framePx(cmToPx(hCm)),
+  };
+  const gp = ctx.resolver.graphicProps(el.getAttributeNS(NS.draw, 'style-name'));
+  applyFrameRotationAndWrap(el, attrs, gp);
+  shapeStyleAttrs(gp, attrs, true);
+  return { type: 'textBox', attrs, content: [{ type: 'paragraph' }] };
 }
 
 // draw:line → a textBox of the matching line kind: the two endpoints become the frame
@@ -572,6 +626,11 @@ function convertDrawElement(e: Element, ctx: Ctx): { inline?: Node; block?: Node
   }
   if (e.localName === 'rect' || e.localName === 'ellipse' || e.localName === 'custom-shape') {
     const shape = convertShape(e, ctx);
+    return shape ? { block: shape } : null;
+  }
+  if (e.localName === 'polygon' || e.localName === 'polyline' || e.localName === 'path'
+    || e.localName === 'connector') {
+    const shape = convertFreeform(e, ctx);
     return shape ? { block: shape } : null;
   }
   if (e.localName === 'a') {
