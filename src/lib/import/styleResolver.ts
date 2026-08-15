@@ -340,6 +340,12 @@ export class StyleResolver {
     return styleName ? this.merged('graphic', styleName).misc : {};
   }
 
+  // A frame style's own paragraph properties, which is where its writing mode lives
+  // (probed: in the graphic properties LibreOffice drops it).
+  graphicParaProps(styleName: string | null): PropMap {
+    return styleName ? this.merged('graphic', styleName).para : {};
+  }
+
   // The document's default spell-check language, read from the base Standard
   // paragraph style (falls back to the paragraph default-style). null when unset.
   documentLanguage(): { language: string; country: string } | null {

@@ -688,6 +688,7 @@ type TextBoxDocx = {
   distCm: number | null;
   shapeKind: ShapeKind;
   flipV: boolean;
+  textVertical: boolean;
   fill: string | null;
   stroke: string | null;
   strokeWidthPt: number;
@@ -707,6 +708,7 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     distCm: typeof a.wrapDist === 'number' ? a.wrapDist : null,
     shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
     flipV: a.flipV === true,
+    textVertical: a.textVertical === true,
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
     strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
@@ -938,7 +940,8 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     `<wps:spPr><a:xfrm${rot}${flip}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
     `<a:prstGeom prst="${SHAPES[box.shapeKind].prst}"><a:avLst/></a:prstGeom>${line ? '<a:noFill/>' : fill}${ln}</wps:spPr>` +
     body +
-    `<wps:bodyPr rot="0" vert="horz" wrap="square" lIns="${inset}" tIns="${inset}" rIns="${inset}" bIns="${inset}" anchor="t">${autofit}</wps:bodyPr>` +
+    `<wps:bodyPr rot="0" vert="${box.textVertical ? 'vert' : 'horz'}" wrap="square"` +
+    ` lIns="${inset}" tIns="${inset}" rIns="${inset}" bIns="${inset}" anchor="t">${autofit}</wps:bodyPr>` +
     `</wps:wsp>`;
   const graphic =
     `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +

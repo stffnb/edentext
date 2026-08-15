@@ -943,6 +943,7 @@ type TextBoxExport = {
   paddingCm: number;
   shapeKind: ShapeKind;
   flipV: boolean;
+  textVertical: boolean;
   fill: string | null;
   stroke: string | null;
   strokeWidthPt: number;
@@ -968,6 +969,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     paddingCm: typeof a.paddingCm === 'number' ? round3(a.paddingCm) : TEXTBOX_PADDING_CM,
     shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
     flipV: a.flipV === true,
+    textVertical: a.textVertical === true,
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
     strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
@@ -3860,10 +3862,15 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
     ` draw:marker-${side}="${ODF_ARROW}" draw:marker-${side}-width="${arrowHeadCm(box.strokeWidthPt)}cm"`;
   const arrows = heads === 'end' ? marker('end')
     : heads === 'both' ? marker('end') + marker('start') : '';
+  // Vertical text is a *paragraph* property of the frame's style — probed: in the
+  // graphic properties LibreOffice drops it, here it keeps it and lays the box out.
+  const vertical = box.textVertical
+    ? '<style:paragraph-properties style:writing-mode="tb-rl"/>'
+    : '';
   return (
     `<style:style style:name="TbxFr${index + 1}" style:family="graphic">` +
     `<style:graphic-properties ${fill} ${stroke}${arrows} fo:padding="${box.paddingCm}cm"` +
-    `${grow} draw:textarea-vertical-align="top"${wrap}/>` +
+    `${grow} draw:textarea-vertical-align="top"${wrap}/>${vertical}` +
     `</style:style>`
   );
 }

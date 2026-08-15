@@ -330,6 +330,7 @@ const en = {
       lineArrow: 'Arrow',
       lineDoubleArrow: 'Double arrow',
     },
+    verticalText: 'Vertical text',
     fillColor: 'Fill color',
     chooseFillColor: 'Choose fill color',
     noFill: 'No fill',

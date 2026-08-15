@@ -47,6 +47,7 @@ export interface TextBoxAttrs {
   paddingCm: number;          // inset ring around the text (ODF fo:padding)
   shapeKind: ShapeKind;
   flipV: boolean;             // a line runs bottom-left → top-right instead
+  textVertical: boolean;      // text runs top-to-bottom, right-to-left
   fillColor: string | null;
   strokeColor: string | null;
   strokeWidthPt: number;
@@ -160,6 +161,13 @@ export const TextBox = Node.create({
         parseHTML: el => (el as HTMLElement).getAttribute('data-flip-v') === 'true',
         renderHTML: () => ({}),
       },
+      // The text runs top-to-bottom, right-to-left instead of across (Word's
+      // `w:bodyPr vert`, ODF's tb-rl writing mode on the frame's style).
+      textVertical: {
+        default: false,
+        parseHTML: el => (el as HTMLElement).getAttribute('data-text-vertical') === 'true',
+        renderHTML: () => ({}),
+      },
       fillColor: {
         default: '#FFFFFF',
         parseHTML: el => (el as HTMLElement).getAttribute('data-fill') || null,
@@ -206,6 +214,7 @@ export const TextBox = Node.create({
       ...(a.wrap !== 'inline' ? { 'data-wrap': a.wrap } : {}),
       ...(a.shapeKind !== 'textbox' ? { 'data-shape': a.shapeKind } : {}),
       ...(a.flipV ? { 'data-flip-v': 'true' } : {}),
+      ...(a.textVertical ? { 'data-text-vertical': 'true' } : {}),
       ...(a.fillColor ? { 'data-fill': a.fillColor } : {}),
       ...(a.strokeColor ? { 'data-stroke': a.strokeColor } : {}),
       ...(a.strokeWidthPt !== 1 ? { 'data-stroke-width': String(a.strokeWidthPt) } : {}),
@@ -370,6 +379,8 @@ class TextBoxView {
     // A line holds no text: the paragraph the schema requires stays in the document
     // (and in both exports' anchor), it just takes no room.
     this.contentDOM.style.display = line ? 'none' : '';
+    // Vertical text: the browser flows it, so the box needs nothing but the mode.
+    this.contentDOM.style.writingMode = a.textVertical ? 'vertical-rl' : '';
     this.applyOutline();
     this.applyLine();
     this.applyWrap();

@@ -1913,6 +1913,11 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
     if (nsChild(spPr, A, 'xfrm')?.getAttribute('flipV') === '1') attrs.flipV = true;
   }
 
+  // Vertical text: every one of Word's top-to-bottom flows, the editor having the one
+  // direction the browser lays out (`vert270` reads bottom-to-top and is not one).
+  const vert = nsChild(wsp, WPS, 'bodyPr')?.getAttribute('vert') ?? 'horz';
+  if (['vert', 'eaVert', 'mongolianVert', 'wordArtVert'].includes(vert)) attrs.textVertical = true;
+
   const txbxContent = nsChild(nsChild(wsp, WPS, 'txbx'), W, 'txbxContent');
   const blocks = txbxContent ? convertBlocks(Array.from(txbxContent.children), ctx, 'cell') : [];
   return { type: 'textBox', attrs, content: blocks.length ? blocks : [{ type: 'paragraph' }] };
@@ -1959,10 +1964,13 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
     return { type: 'image', attrs: imgAttrs };
   }
 
-  const txbxContent = nsChild(shape.getElementsByTagNameNS(VML, 'textbox')[0] ?? null, W, 'txbxContent');
+  const textbox = shape.getElementsByTagNameNS(VML, 'textbox')[0] ?? null;
+  const txbxContent = nsChild(textbox, W, 'txbxContent');
   if (!txbxContent) { ctx.warnings.add('Drawings were removed'); return null; }
 
   const attrs: Record<string, unknown> = {};
+  // VML says vertical text in the box's own style, as `layout-flow:vertical`.
+  if (/layout-flow\s*:\s*vertical/.test(textbox?.getAttribute('style') ?? '')) attrs.textVertical = true;
   const kind = shape.localName === 'oval' ? 'ellipse' : shape.localName === 'roundrect' ? 'roundRect' : 'textbox';
   if (kind !== 'textbox') attrs.shapeKind = kind;
   if (w) attrs.width = w;

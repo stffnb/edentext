@@ -59,6 +59,7 @@
 - Word completion (the same dialog's own section, as LibreOffice keeps it): every word of at least eight letters is remembered as it is typed, and typing its first three letters offers the rest in grey after the caret — Enter takes the offer, Esc drops it. It is offered while typing only, so an Enter meant to split a paragraph never completes a word instead, and the offer stays outside the document until it is accepted. Minimum length, an appended space and clearing the collected words are all settable
 - AutoText (LibreOffice's Tools ▸ AutoText, Word's Insert ▸ Quick Parts): keep a selected block of text under a name and a shortcut, then insert it from the library or by typing the shortcut and pressing F3 — LibreOffice's own key. An entry keeps its formatting, and the library belongs to the app rather than to a document, as it does in both products
 - Ruby annotations (Insert ▸ Phonetic guide — LibreOffice's Format ▸ Asian Phonetic Guide, Word's Phonetic Guide): the reading printed over its base text, the selected text proposed as the base. Round-trips as ODF `text:ruby` with its ruby-family style and as Word's `w:ruby` run — verified through LibreOffice both ways, including our `.docx` converted to `.odt` by it
+- A text box can run its text top-to-bottom (its toolbar's ⇊ button — LibreOffice's Format ▸ Text Attributes ▸ Text direction, Word's Text Direction): the browser lays the vertical flow out itself. Round-trips as the frame style's own writing mode in ODF — its *paragraph* properties, probed: in the graphic properties LibreOffice drops it — and as Word's `w:bodyPr vert`, with the VML fallback's `layout-flow:vertical` read too. Both verified through a LibreOffice re-save; converting our `.docx` to `.odt` LibreOffice itself loses the direction
 - Automatic hyphenation for the whole document (Layout ▸ Hyphenation): the browser hyphenates in the document's own language, which shortens a justified paragraph the way LibreOffice does. Round-trips as ODF `fo:hyphenate` on the base style — where LibreOffice keeps it, in its *text* properties — and Word's `w:autoHyphenation`
 - Manual line breaks (Shift+Enter)
 
@@ -155,7 +156,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 
 **Content an imported document loses**
 - Charts are **drawn** from the file (`import/chart.ts`: DrawingML `chartN.xml` and ODF `chart:chart`), but as a picture, not a chart object — a re-export carries the drawing and the numbers behind it are no longer editable. The same holds for an **EMF** metafile (`import/emf.ts`): it is drawn, but as the SVG picture it was rebuilt into, and only from the record set a plot consists of — a hatched brush, a clipping region or a rotated bitmap is skipped. **WMF/SVM** metafiles and OLE objects still keep their box and a placeholder label, and export writes that back out: WMF is a different (16-bit) record format, SVM is StarOffice-proprietary, and an OLE object cannot be rendered without its application
-- Connectors that attach to other shapes, and freeform curves — a connector is an anchoring model rather than a shape, and a freeform needs a drawing tool. Rotated shape text (`w:bodyPr vert`) too. All still dropped on import with a warning
+- Connectors that attach to other shapes, and freeform curves — a connector is an anchoring model rather than a shape, and a freeform needs a drawing tool. Both still dropped on import with a warning
 
 **Missing while writing**
 - Hyphenation's zone and ladder count (`fo:hyphenation-ladder-count`, `w:hyphenationZone`) — CSS exposes neither
@@ -165,7 +166,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-14.
 - Find & Replace by font, size or colour — the weight/slant/underline and paragraph-style half is implemented, but LibreOffice's Format dialog is the whole character dialog
 - Multi-document management: one document is open at a time, so there is no window list and no side-by-side compare
 - Thesaurus and grammar check
-- Vertical writing modes (ODF `tb-rl`), and a ruby annotation's own alignment and position — both products' defaults are what we write
+- A vertical writing mode for the **page** (ODF `tb-rl` on the page layout): a text box can run its text top-to-bottom, the body cannot — pagination fills a page downwards. A ruby annotation's own alignment and position are not offered either; both products' defaults are what we write
 - Password-protected ODT/DOCX; digital signatures
 - Split view: two views of one document, scrolled independently
 - A committed corpus of documents we author ourselves, so CI can test against real files

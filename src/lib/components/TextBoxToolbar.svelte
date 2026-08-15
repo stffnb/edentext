@@ -15,6 +15,7 @@
     fillColor,
     strokeColor,
     strokeWidthPt,
+    textVertical,
   }: {
     editor: Editor | null;
     top: number;
@@ -24,6 +25,7 @@
     fillColor: string | null;
     strokeColor: string | null;
     strokeWidthPt: number;
+    textVertical: boolean;
   } = $props();
 
   let fillOpen = $state(false);
@@ -99,6 +101,19 @@
   {/each}
 
   <span class="tb-sep"></span>
+
+  <button
+    class="tb-btn"
+    class:on={textVertical}
+    title={t().textBox.verticalText}
+    aria-pressed={textVertical}
+    onclick={() => set({ textVertical: !textVertical })}
+  >
+    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M6.5 3.5h5M9 3.5v11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+      <path d="M14.5 6.5v5M12.6 9.6 14.5 11.5l1.9-1.9" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  </button>
 
   <ShapePicker value={shapeKind} onPick={(k) => set({ shapeKind: k })} compact />
 

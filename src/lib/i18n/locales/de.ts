@@ -326,6 +326,7 @@ const de: Messages = {
       lineArrow: 'Pfeil',
       lineDoubleArrow: 'Doppelpfeil',
     },
+    verticalText: 'Senkrechter Text',
     fillColor: 'Füllfarbe',
     chooseFillColor: 'Füllfarbe wählen',
     noFill: 'Keine Füllung',

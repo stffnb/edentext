@@ -611,8 +611,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let textBoxUi = $state<{
     visible: boolean; top: number; left: number;
     wrap: WrapMode; shapeKind: ShapeKind; fillColor: string | null;
-    strokeColor: string | null; strokeWidthPt: number;
-  }>({ visible: false, top: 0, left: 0, wrap: 'inline', shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 });
+    strokeColor: string | null; strokeWidthPt: number; textVertical: boolean;
+  }>({ visible: false, top: 0, left: 0, wrap: 'inline', shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1, textVertical: false });
 
   function recomputeTextBoxUi() {
     const ed = editor;
@@ -639,6 +639,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       fillColor: (a.fillColor as string | null) ?? null,
       strokeColor: (a.strokeColor as string | null) ?? null,
       strokeWidthPt: (a.strokeWidthPt as number) ?? 1,
+      textVertical: a.textVertical === true,
     };
   }
 
@@ -1174,6 +1175,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       fillColor={textBoxUi.fillColor}
       strokeColor={textBoxUi.strokeColor}
       strokeWidthPt={textBoxUi.strokeWidthPt}
+      textVertical={textBoxUi.textVertical}
     />
   {/if}
   {#if ctxMenu}

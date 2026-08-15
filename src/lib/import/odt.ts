@@ -420,6 +420,10 @@ function convertTextBoxFrame(frame: Element, textBoxEl: Element, ctx: Ctx): Node
   const padCm = lengthToCm(gp['fo:padding']);
   if (padCm != null && Math.abs(padCm - TEXTBOX_PADDING_CM) > 0.01) attrs.paddingCm = Math.round(padCm * 1000) / 1000;
   shapeStyleAttrs(gp, attrs, false);
+  // Vertical text: the frame style's writing mode, both of ODF's top-to-bottom modes
+  // (the editor has the one direction the browser lays out).
+  const mode = ctx.resolver.graphicParaProps(frame.getAttributeNS(NS.draw, 'style-name'))['style:writing-mode'];
+  if (mode === 'tb-rl' || mode === 'tb-lr' || mode === 'tb') attrs.textVertical = true;
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(textBoxEl.children), ctx) };
 }
 
