@@ -1,13 +1,16 @@
 <script lang="ts">
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
+  import { anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
   import { MIN_ZOOM, MAX_ZOOM } from '../../../utils/zoom';
+  import { MAX_PAGE_COLUMNS } from '../../../storage/theme';
   import { t } from '../../../i18n/i18n.svelte';
   import { shortcutHint } from '../../../editor/shortcuts';
 
   let {
     showRuler = $bindable(true),
     splitView = $bindable(false),
+    pageColumns = $bindable(1),
     showFormattingMarks = $bindable(false),
     zoom = 100,
     onZoom,
@@ -17,6 +20,7 @@
   }: {
     showRuler?: boolean;
     splitView?: boolean;
+    pageColumns?: number;
     showFormattingMarks?: boolean;
     zoom?: number;
     onZoom?: (value: number) => void;
@@ -24,6 +28,19 @@
     navigatorOpen?: boolean;
     onToggleNavigator?: () => void;
   } = $props();
+
+  const COLUMN_CHOICES = Array.from({ length: MAX_PAGE_COLUMNS }, (_, i) => i + 1);
+
+  // The panes are one layout, in one direction: turning either on ends the other.
+  function setColumns(n: number) {
+    pageColumns = n;
+    if (n > 1) splitView = false;
+  }
+
+  function toggleSplit() {
+    splitView = !splitView;
+    if (splitView) pageColumns = 1;
+  }
 </script>
 
 <RibbonGroup label={t().ribbon.groups.show}>
@@ -32,7 +49,27 @@
     <RibbonButton variant="small" icon="ruler" label={t().ruler.show} active={showRuler} onclick={() => (showRuler = !showRuler)} />
     <RibbonButton variant="small" icon="pilcrow" label={t().toolbarExpanded.formattingMarks} title={`${t().toolbarExpanded.formattingMarks} (${shortcutHint('formattingMarks')})`} active={showFormattingMarks} onclick={() => (showFormattingMarks = !showFormattingMarks)} />
   </div>
-  <RibbonButton variant="big" icon="splitView" label={t().view.split} title={`${t().view.splitTitle} (${shortcutHint('splitView')})`} active={splitView} onclick={() => (splitView = !splitView)} />
+  <RibbonButton variant="big" icon="splitView" label={t().view.split} title={`${t().view.splitTitle} (${shortcutHint('splitView')})`} active={splitView} onclick={toggleSplit} />
+  <div class="rb-menu-wrap" use:clickOutside={'pageColumns'}>
+    <RibbonButton
+      variant="big"
+      icon="pagesAcross"
+      label={t().view.pagesAcross}
+      title={t().view.pagesAcrossTitle}
+      caret
+      active={pageColumns > 1}
+      onclick={() => toggleMenu('pageColumns')}
+    />
+    {#if isMenuOpen('pageColumns')}
+      <div class="ribbon-menu" use:anchored role="menu">
+        {#each COLUMN_CHOICES as n}
+          <button class:selected={pageColumns === n} onclick={() => { closeMenu(); setColumns(n); }}>
+            {t().view.pagesCount(n)}
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </div>
 </RibbonGroup>
 
 <div class="ribbon-sep"></div>
@@ -58,4 +95,6 @@
     gap: 2px;
     height: 100%;
   }
+
+  .rb-menu-wrap { position: relative; }
 </style>

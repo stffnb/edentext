@@ -39,11 +39,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { noteSettings } from '../storage/notes.svelte';
   import { RESYNC_NOTES } from '../editor/extensions/notes';
   import { applyPageSizeVars, pageDimsCm, type PageFormat } from '../storage/pageFormat';
+  import { MAX_PAGE_COLUMNS } from '../storage/theme';
   import { DEFAULT_HF_DISTANCES, hfIsEmpty, hfUsesChapterField, type HfDoc, type HfZone, type HfDistances, type HfSet } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, PAGE_GAP, pageOfElement, readVerticalMargins, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { findBookmark } from '../editor/extensions/bookmark';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
-  import { wheelZoomFactor } from '../utils/zoom';
+  import { fitPagesZoom, wheelZoomFactor } from '../utils/zoom';
   import { styleCss, singleLineHeight } from '../styles/styleSheet';
   import { styleSheet } from '../styles/sheet.svelte';
   import { t } from '../i18n/i18n.svelte';
@@ -54,7 +55,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
 
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
-    zoom = 100, onZoom, showFormattingMarks = false, showRuler = true, splitView = false, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
+    zoom = 100, onZoom, showFormattingMarks = false, showRuler = true, splitView = false, pageColumns = 1, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
     pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', documentEpoch = 0, pageRtl = false, hyphenate = false, documentLanguage = 'en', pageNumbering = DEFAULT_PAGE_NUMBERING, pageDecor = EMPTY_PAGE_DECOR, lineNumbering = DEFAULT_LINE_NUMBERING,
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
@@ -67,6 +68,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     showFormattingMarks?: boolean; showRuler?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat; tabIntervalCm?: number; spacingModel?: SpacingModel;
     /** Two panes onto this document, scrolled on their own (Word's View ▸ Split). */
     splitView?: boolean;
+    /** How many pages sit side by side (LibreOffice's View layout ▸ Columns); 1 = off. */
+    pageColumns?: number;
     /** Bumped by App for each document it opens; re-arms the settle gate. */
     documentEpoch?: number;
     /** A right-to-left page: the body's base direction, so its columns fill from the right. */
@@ -222,6 +225,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     return out;
   });
 
+  // What one grid cell is worth in document px, across and down. Sections of differing
+  // paper make the later pages differ; the grid is laid out on the first page's, and
+  // each cell then places its own page box inside its box.
+  let firstCycle = $derived((pageBoxes[0]?.height ?? 1123) + PAGE_GAP);
+  let pageStride = $derived(paperWidth + PAGE_GAP);
+
   // The same per section for the side margins, as a delta against the document's own:
   // .tiptap's padding draws those for every page, so a section that wants others has
   // its blocks inset by the difference ("leftFirst|rightFirst|leftRest|rightRest").
@@ -356,16 +365,27 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     );
   }
 
-  // One entry per pane: [0] is the editor's own view, [1] the split view's second one.
-  // Every coordinate below is read against the pane the user is working in.
+  // One entry per pane: [0] is the editor's own view, the rest are extra views of the
+  // same state. Every coordinate below is read against the pane the user is working in.
   let hosts = $state<HTMLDivElement[]>([]);
   let scrollers = $state<HTMLDivElement[]>([]);
   let papers = $state<HTMLDivElement[]>([]);
   let activePane = $state(0);
-  let secondView = $state<EditorView | null>(null);
-  const paneScroller = () => scrollers[activePane] ?? scrollers[0];
-  const paneView = (): EditorView | null =>
-    (activePane === 1 ? secondView : null) ?? editor?.view ?? null;
+  let paneViews = $state<(EditorView | null)[]>([]);
+  // The split stacks two panes with their own scroll; the page grid lays a pane per
+  // grid cell in one scroller. Only one of the two layouts is on.
+  let gridCols = $derived(splitView ? 1 : Math.min(MAX_PAGE_COLUMNS, Math.max(1, pageColumns)));
+  let multiPage = $derived(gridCols > 1);
+  // Two rows of cells: a scroll shows the foot of one row above the head of the next,
+  // and the pair is recycled as it passes, so no view is built for a row off screen.
+  let paneCount = $derived(multiPage ? gridCols * 2 : splitView ? 2 : 1);
+  let extraPanes = $derived(Array.from({ length: paneCount - 1 }, (_, k) => k + 1));
+  // One scroller for the whole grid, so every floating layer keeps measuring against
+  // the one scroll space it is positioned in.
+  const paneScroller = () => scrollers[multiPage ? 0 : activePane] ?? scrollers[0];
+  const viewOf = (pane: number): EditorView | null =>
+    (pane === 0 ? editor?.view : paneViews[pane]) ?? null;
+  const paneView = (): EditorView | null => viewOf(activePane) ?? editor?.view ?? null;
 
   // Zoom is a CSS `transform: scale()` on .paper (so layout and pagination stay at
   // 100%). A transform reserves no layout space, so .paper-scaler reserves the scaled
@@ -769,7 +789,10 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     }
     const s = prevZoom / 100;
     prevZoom = z;
-    pendingAnchorDoc = [0, 1].map((i) => {
+    // The grid re-lays out around its rows, so the row at the top is the anchor —
+    // held in the post-effect, where the new geometry is on the DOM.
+    if (multiPage) return;
+    pendingAnchorDoc = Array.from({ length: paneCount }, (_, i) => i).map((i) => {
       const container = scrollers[i];
       const paper = papers[i];
       if (!container || !paper) return null;
@@ -789,6 +812,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     appliedZoom; // track to fire after the pre-effect / DOM update
     // Zoom changes the table's rendered position — re-place the floating toolbar.
     scheduleTableUi();
+    // Untracked: the scroll this writes comes back as a firstRow change, and an
+    // effect that reads what its own scroll writes never stops.
+    if (multiPage) {
+      untrack(() => scrollGridToPage(firstRow * gridCols + 1));
+      return;
+    }
     const anchors = pendingAnchorDoc;
     pendingAnchorDoc = [];
     const s = appliedZoom / 100;
@@ -805,6 +834,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   });
 
   function updateCurrentPage() {
+    // In the grid a view's own scroll position says nothing — the row at the top of
+    // the canvas is the page being read. A caret move reports its own page instead.
+    if (multiPage) {
+      currentPage = Math.max(1, Math.min(numPages, firstRow * gridCols + 1));
+      return;
+    }
     const view = paneView();
     const container = paneScroller();
     const tiptap = (view?.dom ?? null) as HTMLElement | null;
@@ -981,7 +1016,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         // Our SpellCheck extension draws squiggles; turn off the browser's so
         // they don't double up.
         attributes: { spellcheck: 'false' },
-        handleScrollToSelection: () => splitView && activePane !== 0,
+        handleScrollToSelection: () => multiPage || (paneCount > 1 && activePane !== 0),
         // Ctrl/Cmd+click opens a hyperlink (a plain click just places the cursor).
         handleClick: (view, _pos, event) => {
           if (!(event.metaKey || event.ctrlKey)) return false;
@@ -1029,7 +1064,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       onTransaction: ({ editor: e, transaction }) => {
         tick++;
         // The other pane shows the same state, decorations included.
-        secondView?.updateState(e.state);
+        for (const view of paneViews) view?.updateState(e.state);
         // Mirror this transaction into the labelled undo/redo log for the toolbar's
         // history dropdowns. e.state is the POST-transaction state, so the history
         // depths recordTransaction reads already reflect this transaction.
@@ -1049,6 +1084,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
           const coords = view.coordsAtPos(e.state.selection.head);
           const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (appliedZoom / 100);
           currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / getCycle()) + 1));
+          followCaret(currentPage);
         } catch { /* ignore */ }
       },
       onUpdate: ({ editor: e }) => {
@@ -1074,9 +1110,82 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   });
 
   function onEditorScroll(pane: number) {
-    if (pane === activePane) updateCurrentPage();
+    if (multiPage) readFirstRow();
+    // The grid's one scroller carries every cell, whichever of them is being worked in.
+    if (multiPage || pane === activePane) updateCurrentPage();
     scheduleTableUi();
     if (linkTip) linkTip = null;
+  }
+
+  // --- The page grid ---
+  // Rows of `gridCols` pages, filled left to right, scrolling as one canvas. A cell
+  // is a window of exactly one page: pane index = slot * gridCols + column, and the
+  // two slots take turns being the upper row, so a scroll only re-aims the views.
+  let gridRows = $derived(Math.ceil(Math.max(1, numPages) / gridCols));
+  let firstRow = $state(0);
+  let canvasEl = $state<HTMLDivElement | null>(null);
+  const rowOfSlot = (slot: number) => firstRow + ((slot - firstRow) & 1);
+  const pageOfPane = (pane: number) => rowOfSlot(Math.floor(pane / gridCols)) * gridCols + (pane % gridCols) + 1;
+  let cells = $derived(
+    !multiPage ? [] : Array.from({ length: paneCount }, (_, pane) => {
+      const z = appliedZoom / 100;
+      const page = pageOfPane(pane);
+      const box = pageBoxes[page - 1];
+      return {
+        pane, page, live: page <= numPages,
+        left: (pane % gridCols) * pageStride * z,
+        top: rowOfSlot(Math.floor(pane / gridCols)) * firstCycle * z,
+        width: (box?.width ?? paperWidth) * z,
+        height: (box?.height ?? firstCycle - PAGE_GAP) * z,
+        // Where the document sits inside the cell: its own page box, at the top left.
+        paperTop: -(box?.top ?? 0) * z,
+        paperLeft: -(box?.left ?? 0) * z,
+      };
+    }),
+  );
+
+  // Scroll position of the canvas top, with the floating toolbar's overlay left free:
+  // a row scrolled to the scroller's own top would sit behind the island.
+  function gridOrigin(el: HTMLElement): number {
+    // Inherited from the app shell, which is where the floating chrome measures itself.
+    const overlay = parseFloat(getComputedStyle(el).getPropertyValue('--toolbar-overlay-h')) || 0;
+    return (canvasEl?.offsetTop ?? 0) - overlay;
+  }
+
+  function readFirstRow() {
+    const el = scrollers[0];
+    if (!el || !canvasEl) return;
+    // A scroll written for a row lands a fraction of a pixel short of it, so a whole
+    // page of slack decides nothing here but the row a boundary belongs to.
+    const top = (el.scrollTop - gridOrigin(el)) / (appliedZoom / 100) + 1;
+    firstRow = Math.max(0, Math.min(gridRows - 1, Math.floor(top / firstCycle)));
+  }
+
+  // Scrolls the grid so `page`'s row is the top one — what a caret leaving the screen
+  // and a jump from elsewhere in the app both need.
+  function scrollGridToPage(page: number) {
+    const el = scrollers[0];
+    if (!el || !canvasEl) return;
+    const row = Math.max(0, Math.min(gridRows - 1, Math.floor((Math.max(1, page) - 1) / gridCols)));
+    // Written here rather than awaited from the scroll event: the caller reads the
+    // cells back in the same tick to find the page it just scrolled to.
+    firstRow = row;
+    el.scrollTop = gridOrigin(el) + row * firstCycle * (appliedZoom / 100);
+  }
+
+  // The caret is drawn by whichever view holds the focus, so it has to be the one
+  // whose cell shows the caret's page — otherwise it blinks on a clipped page.
+  function followCaret(page: number) {
+    if (!multiPage || hfActive) return;
+    // The two rows on screen, in page numbers — the slots alternate, so pane 0 is not
+    // reliably the first of them.
+    const top = firstRow * gridCols + 1;
+    if (page < top || page >= top + 2 * gridCols) scrollGridToPage(page);
+    const focused = paneViews.some((v) => v?.hasFocus()) || editor?.view.hasFocus();
+    const pane = cells.find((c) => c.page === page)?.pane;
+    if (!focused || pane === undefined || pane === activePane) return;
+    activePane = pane;
+    viewOf(pane)?.focus();
   }
 
   // A pane's own listeners. `scroll` does not bubble and `mouseover` needs no a11y
@@ -1096,35 +1205,52 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     };
   }
 
-  // --- Split view: a second live view of the same state (Word's View ▸ Split) ---
-  // Both panes are the same width, so the pagination the first pane measures is the
-  // layout of both; only its decorations reach here (pageBreaks.ts: isSplitPane).
+  // The editor is built into pane 0's host once, and switching the pane layout replaces
+  // that element — so its view moves to the new host rather than being rebuilt.
   $effect(() => {
-    const host = hosts[1];
+    const host = hosts[0];
+    const view = editor?.view;
+    if (host && view && view.dom.parentElement !== host) host.appendChild(view.dom);
+  });
+
+  // --- Extra panes: more live views of the same state (Word's View ▸ Split, and
+  // the page columns). Every pane is the same width, so the pagination the first one
+  // measures is the layout of all; only its decorations reach here (isSplitPane).
+  $effect(() => {
     const ed = editor;
-    if (!host || !ed) return;
-    const view = new EditorView(host, {
-      ...ed.view.props,
-      state: ed.state,
-      dispatchTransaction: (tr) => ed.view.dispatch(tr),
-      // Each pane keeps the place it was scrolled to: a caret move belongs to the pane
-      // being worked in, and without this every keystroke drags the other one along.
-      handleScrollToSelection: () => activePane !== 1,
+    const mounted = extraPanes.filter((i) => hosts[i]);
+    if (!ed || !mounted.length) return;
+    const made = mounted.map((i) => {
+      const view = new EditorView(hosts[i], {
+        ...ed.view.props,
+        state: ed.state,
+        // A pane shows the document, it does not measure one: a plugin deriving state
+        // from its own viewport (the placeholder's does) would otherwise fight every
+        // other pane over that state, one transaction each, forever.
+        dispatchTransaction: (tr) => {
+          if (tr.docChanged || tr.selectionSet || tr.storedMarksSet) ed.view.dispatch(tr);
+        },
+        // Each pane keeps the place it was scrolled to: a caret move belongs to the pane
+        // being worked in, and without this every keystroke drags the others along.
+        handleScrollToSelection: () => multiPage || activePane !== i,
+      });
+      // What TipTap puts on its own view: the class every editor style is written against,
+      // and the back-reference its node views look the editor up through.
+      view.dom.classList.add('tiptap');
+      (view.dom as HTMLElement & { editor?: Editor }).editor = ed;
+      paneViews[i] = view;
+      return view;
     });
-    // What TipTap puts on its own view: the class every editor style is written against,
-    // and the back-reference its node views look the editor up through.
-    view.dom.classList.add('tiptap');
-    (view.dom as HTMLElement & { editor?: Editor }).editor = ed;
-    secondView = view;
     return () => {
-      secondView = null;
-      view.destroy();
+      for (const i of mounted) paneViews[i] = null;
+      for (const view of made) view.destroy();
     };
   });
 
   // The page slots are a min-height the pagination pass writes on its own view's DOM.
   $effect(() => {
-    if (secondView && docHeightDoc) secondView.dom.style.minHeight = `${docHeightDoc}px`;
+    if (!docHeightDoc) return;
+    for (const view of paneViews) if (view) view.dom.style.minHeight = `${docHeightDoc}px`;
   });
 
   // A ribbon command focuses the editor's own view, which is pane 0 — but the caret
@@ -1132,11 +1258,33 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // activePane first (pointerdown precedes focus), so it is never bounced away.
   function onPaneFocus(pane: number) {
     if (pane === activePane || hfActive) return;
-    (pane === 0 ? secondView : editor?.view)?.focus();
+    viewOf(activePane)?.focus();
   }
 
   $effect(() => {
-    if (!splitView) activePane = 0;
+    if (activePane >= paneCount) activePane = 0;
+  });
+
+  // A grid is only a grid at a zoom where a whole row of pages fits it, so switching
+  // the count fits it, as both word processors re-zoom for this view. A later
+  // resize does not: from then on the reader's own zoom stands.
+  let fittedColumns = 0;
+  $effect(() => {
+    const n = multiPage ? gridCols : 0;
+    if (n === fittedColumns) return;
+    if (!n) {
+      fittedColumns = 0;
+      return;
+    }
+    const box = panesEl, pane = scrollers[0];
+    if (!box || !pane || !onZoom) return;
+    const pad = (side: string) => parseFloat(getComputedStyle(pane).getPropertyValue(`padding-${side}`)) || 0;
+    fittedColumns = n;
+    onZoom(fitPagesZoom(
+      { width: box.clientWidth - pad('left') - pad('right'), height: box.clientHeight - pad('top') },
+      { width: pageStride, cycle: firstCycle },
+      n,
+    ));
   });
 
   // Where the divider sits, in percent of the pane area (both word processors drag one).
@@ -1171,25 +1319,58 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   });
 </script>
 
-<div class="editor-panes" bind:this={panesEl}>
-  {@render pane(0)}
-  {#if splitView}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div class="editor-panes" class:grid={multiPage} bind:this={panesEl}>
+  {#if multiPage}
+    <!-- One scroller for the whole grid; the cells are its canvas, each a window of
+         one page onto its own view of the document. -->
     <div
-      class="split-handle"
-      role="separator"
-      aria-orientation="horizontal"
-      aria-label={t().view.split}
-      onpointerdown={onSplitDrag}
-    ></div>
-    {@render pane(1)}
+      class="editor"
+      bind:this={scrollers[0]}
+      use:paneEvents={0}
+      onwheel={(e) => onWheel(e, 0)}
+      role="none"
+    >
+      <div
+        class="paper-scaler grid-canvas"
+        bind:this={canvasEl}
+        style="width: {Math.round(gridCols * pageStride * appliedZoom / 100 - PAGE_GAP * appliedZoom / 100)}px; height: {Math.round(gridRows * firstCycle * appliedZoom / 100)}px;"
+      >
+        {#each cells as cell (cell.pane)}
+          <div
+            class="page-cell"
+            class:empty={!cell.live}
+            style="left: {cell.left}px; top: {cell.top}px; width: {cell.width}px; height: {cell.height}px;"
+            oncontextmenu={(e) => openContextMenu(e, cell.pane)}
+            onpointerdown={() => (activePane = cell.pane)}
+            onfocusin={() => onPaneFocus(cell.pane)}
+            role="none"
+          >
+            {@render paper(cell.pane, cell.paperTop, cell.paperLeft)}
+          </div>
+        {/each}
+      </div>
+      {@render chrome(activePane)}
+    </div>
+  {:else}
+    {@render pane(0)}
+    {#if splitView}
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div
+        class="split-handle"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label={t().view.split}
+        onpointerdown={onSplitDrag}
+      ></div>
+      {@render pane(1)}
+    {/if}
   {/if}
 </div>
 
 {#snippet pane(i: number)}
 <div
   class="editor"
-  class:pane-below={i > 0}
+  class:pane-below={splitView && i > 0}
   style:flex={splitView && i === 0 ? `0 0 ${splitRatio}%` : '1'}
   bind:this={scrollers[i]}
   use:paneEvents={i}
@@ -1207,7 +1388,14 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
   <div class="paper-scaler" style={scaledWidth ? `width: ${scaledWidth}px; height: ${scaledHeight}px;` : ''}>
-    <div bind:this={papers[i]} class="paper" data-spacing-model={spacingModel} class:show-formatting-marks={showFormattingMarks} class:hf-editing={hfActive} class:settling style="transform: scale({appliedZoom / 100});{pageDecor.background ? ` --color-page-bg: ${pageDecor.background};` : ''}">
+    {@render paper(i, 0, 0)}
+  </div>
+  {@render chrome(i)}
+</div>
+{/snippet}
+
+{#snippet paper(i: number, offsetTop: number, offsetLeft: number)}
+    <div bind:this={papers[i]} class="paper" style:position={offsetTop || offsetLeft ? 'absolute' : null} style:top={offsetTop ? `${offsetTop}px` : null} style:left={offsetLeft ? `${offsetLeft}px` : null} data-spacing-model={spacingModel} class:show-formatting-marks={showFormattingMarks} class:hf-editing={hfActive} class:settling style="transform: scale({appliedZoom / 100});{pageDecor.background ? ` --color-page-bg: ${pageDecor.background};` : ''}">
       <!-- Dedicated mount point that TipTap fully owns — keeping it free of Svelte
            content avoids Svelte and ProseMirror fighting over the same parent's DOM. -->
       <div bind:this={hosts[i]} class="tiptap-host" data-split-pane={i > 0 ? '' : null} dir={pageRtl ? 'rtl' : null} lang={documentLanguage === NO_LANGUAGE ? null : documentLanguage} style:hyphens={hyphenate ? 'auto' : null}></div>
@@ -1258,9 +1446,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         interactive={i === 0}
       />
     </div>
-  </div>
-  <!-- The floating chrome renders in the pane being worked in: it is positioned in that
-       scroller's own space, and the selection it describes is drawn there. -->
+{/snippet}
+
+<!-- The floating chrome renders in the pane being worked in: it is positioned in that
+     scroller's own space, and the selection it describes is drawn there. -->
+{#snippet chrome(i: number)}
   {#if i === activePane}
   {#if tableUi.visible && !tableDialog}
     <TableToolbar
@@ -1331,13 +1521,13 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     />
   {/if}
   {/if}
-  {#if linkTip && linkTip.pane === i}
+  <!-- The grid has one scroller, so its hint is placed there whichever cell it is over. -->
+  {#if linkTip && (multiPage || linkTip.pane === i)}
     <div class="link-tooltip" style="top: {linkTip.top}px; left: {linkTip.left}px;">
       <span class="link-tooltip-url">{linkTip.href}</span>
       <span class="link-tooltip-hint">{t().link.openHint(withShortcut('Ctrl'))}</span>
     </div>
   {/if}
-</div>
 {/snippet}
 
 <style>
@@ -1353,6 +1543,32 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   .editor-panes :global(.editor.pane-below) {
     padding-top: 1.25rem;
     border-top: 1px solid var(--color-border);
+  }
+
+  /* The page grid: one scroller holding a canvas of page cells. `min-width: 0` lets
+     it be narrower than its canvas — a flex item's automatic minimum is its content,
+     so without it the grid widens the whole app instead of scrolling. */
+  .editor-panes.grid {
+    min-width: 0;
+  }
+
+  .editor-panes.grid :global(.editor) {
+    min-width: 0;
+  }
+
+  /* A cell is a window of exactly one page onto its own view of the document. */
+  .grid-canvas {
+    position: relative;
+  }
+
+  .page-cell {
+    position: absolute;
+    overflow: hidden;
+  }
+
+  /* Past the last page the row is short; its cell stays as the grid's empty slot. */
+  .page-cell.empty {
+    visibility: hidden;
   }
 
   .split-handle {

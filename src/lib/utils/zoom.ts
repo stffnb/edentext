@@ -8,6 +8,18 @@ export function clampZoom(value: number): number {
   return Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value)));
 }
 
+// The zoom at which a row of `columns` whole pages fills the window. Both word
+// processors re-zoom when the view layout changes. `page` is one grid cell in document
+// px, gaps included: the width to the next column, the cycle to the next row.
+export function fitPagesZoom(
+  box: { width: number; height: number },
+  page: { width: number; cycle: number },
+  columns: number,
+): number {
+  const n = Math.max(1, columns);
+  return clampZoom(Math.floor(Math.min(box.width / n / page.width, box.height / page.cycle) * 100));
+}
+
 // Gesture feel, tune here: sensitivity per wheel unit and the per-event cap that
 // keeps one mouse notch (deltaY ±100) from jumping several hundred percent.
 const SENSITIVITY = 1 / 200;

@@ -75,6 +75,42 @@ the same width, which is what lets the second one render the first one's paginat
 - The divider drags (`splitRatio`); only the on/off flag is persisted
   (`edentext-split`), as neither word processor restores a split's position either.
 
+## The page grid (`Editor.svelte`)
+
+LibreOffice's View layout ▸ Columns and Word's Multiple Pages — neither stops at two,
+so `pageColumns` runs 1–`MAX_PAGE_COLUMNS`. Rows of `gridCols` pages filled left to
+right, scrolling as one canvas, every page editable. Only one pane layout is on at a
+time: the buttons in both chromes clear the other, and `gridCols` is 1 while split.
+
+**A cell is a window of one page onto its own view.** A pane can only show a
+*contiguous* slice of the document, and a grid column is not one (pages 1, 3, 5 with
+two columns) — so the pane is a cell, not a column: `.page-cell` clips to one page and
+the `.paper` inside is offset to that page's box. **Two rows** of cells exist, because
+a scroll shows the foot of one row above the head of the next; the two slots take turns
+being the upper row (`rowOfSlot`), so scrolling only re-aims the views it already has.
+Pane index = `slot * gridCols + column`. Cost: `gridCols × 2` live views, each holding
+the whole document's DOM — measured at ~94k nodes and ~16ms per keystroke *per view* on
+a 177-page document. Word and LibreOffice draw only the visible pages; we can't.
+
+- **One scroller** (`scrollers[0]`) carries the canvas, so every floating layer keeps
+  measuring against the one scroll space it is positioned in. `readFirstRow` turns its
+  scrollTop into the top row; `scrollGridToPage` is the reverse and writes `firstRow`
+  itself, since the caller reads the cells back in the same tick.
+- **The caret must be drawn by the cell that shows its page** (`followCaret`): only the
+  focused view draws one, and every other cell clips that page away. It scrolls the row
+  into view first if the caret left the screen.
+- **The zoom fits a whole row** on a change of count (`fitPagesZoom`, `utils/zoom.ts`),
+  as both word processors re-zoom for this view. Leaving it keeps that zoom.
+- **A pane may only dispatch what the user did in it** (doc, selection or stored-marks
+  change). A plugin that derives state from its own viewport — TipTap's placeholder
+  does — otherwise has every pane fighting the others over it, one transaction each,
+  forever; with one shared scroller that loop never settles.
+- The editor's own view **moves** to pane 0's new host when the layout changes
+  (`$effect` on `hosts[0]`), rather than being rebuilt from the document.
+- `min-width: 0` on the row and its scroller: a flex item's automatic minimum is its
+  content, so without it the grid widens the whole app instead of scrolling.
+- No ruler here: it would repeat per column and eat into the page's own box.
+
 ## Zoom (`Editor.svelte`)
 
 Zoom is a CSS `transform: scale()` on `.paper` (layout and pagination always run at 100%, so they stay stable across zoom — this replaced an earlier CSS `zoom` approach that re-ran layout at every scale). A transform reserves no layout space, so `.paper-scaler` reserves the scaled footprint to drive scrollbars and horizontal centering — it's sized in the `$effect.pre`, so it reaches the DOM in the same flush as the transform and the anchor pass below measures the right geometry. The applied zoom is throttled to one DOM write per animation frame. Range 20–300% (`MIN_ZOOM`/`MAX_ZOOM`/`clampZoom` in `utils/zoom.ts`), persisted in `localStorage['edentext-zoom']`.

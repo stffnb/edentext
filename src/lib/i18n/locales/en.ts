@@ -361,6 +361,9 @@ const en = {
   view: {
     split: 'Split',
     splitTitle: 'Two panes onto this document, scrolled separately',
+    pagesAcross: 'Multiple Pages',
+    pagesAcrossTitle: 'Show multiple pages side by side',
+    pagesCount: (n: number) => (n === 1 ? 'Single page' : `${n} pages`),
   },
   ruler: {
     show: 'Ruler',

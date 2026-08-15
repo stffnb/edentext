@@ -11,6 +11,11 @@ const RIBBON_COLLAPSED_KEY = 'edentext-ribbon-collapsed';
 const FORMATTING_MARKS_KEY = 'edentext-formatting-marks';
 const RULER_KEY = 'edentext-ruler';
 const SPLIT_KEY = 'edentext-split';
+const PAGE_COLUMNS_KEY = 'edentext-page-columns';
+
+// Pages side by side. Each column is a live view of the whole document, so the
+// count is capped — LibreOffice's own spinner goes further.
+export const MAX_PAGE_COLUMNS = 4;
 
 export function loadTheme(): ThemeMode {
     const saved = localStorage.getItem(THEME_KEY);
@@ -71,6 +76,15 @@ export function loadSplitView(): boolean {
 
 export function saveSplitView(enabled: boolean): void {
     localStorage.setItem(SPLIT_KEY, String(enabled));
+}
+
+export function loadPageColumns(): number {
+    const n = parseInt(localStorage.getItem(PAGE_COLUMNS_KEY) ?? '1', 10);
+  return Number.isFinite(n) ? Math.min(MAX_PAGE_COLUMNS, Math.max(1, n)) : 1;
+}
+
+export function savePageColumns(columns: number): void {
+    localStorage.setItem(PAGE_COLUMNS_KEY, String(columns));
 }
 
 function resolveMode(mode: ThemeMode): 'light' | 'dark' | 'allBlack' {

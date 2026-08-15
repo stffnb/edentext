@@ -357,6 +357,9 @@ const de: Messages = {
   view: {
     split: 'Teilen',
     splitTitle: 'Zwei Ansichten dieses Dokuments, getrennt scrollbar',
+    pagesAcross: 'Mehrere Seiten',
+    pagesAcrossTitle: 'Mehrere Seiten nebeneinander anzeigen',
+    pagesCount: (n) => (n === 1 ? 'Eine Seite' : `${n} Seiten`),
   },
   ruler: {
     show: 'Lineal',

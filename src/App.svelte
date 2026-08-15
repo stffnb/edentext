@@ -25,7 +25,7 @@
   import { resetHistoryLog } from './lib/utils/historyLog.svelte';
   import { countText, type TextStats } from './lib/utils/wordCount';
   import { clampZoom, wheelZoomFactor, MIN_ZOOM, MAX_ZOOM } from './lib/utils/zoom';
-  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadChromeMode, saveChromeMode, loadFormattingMarks, saveFormattingMarks, loadRuler, saveRuler, loadSplitView, saveSplitView, type ThemeMode, type ChromeMode } from './lib/storage/theme';
+  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadChromeMode, saveChromeMode, loadFormattingMarks, saveFormattingMarks, loadRuler, saveRuler, loadSplitView, saveSplitView, loadPageColumns, savePageColumns, type ThemeMode, type ChromeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadTabInterval, saveTabInterval, applyTabIntervalVar, DEFAULT_TAB_INTERVAL_CM } from './lib/storage/tabInterval';
@@ -151,6 +151,7 @@
   let showFormattingMarks = $state(loadFormattingMarks());
   let showRuler = $state(loadRuler());
   let splitView = $state(loadSplitView());
+  let pageColumns = $state(loadPageColumns());
   let zoom = $state(clampZoom(parseInt(localStorage.getItem('edentext-zoom') ?? '100', 10)));
   let pageMargins: PageMargins = $state(loadPageMargins());
   let pageOrientation: Orientation = $state(loadOrientation());
@@ -219,6 +220,10 @@
 
   $effect(() => {
     saveSplitView(splitView);
+  });
+
+  $effect(() => {
+    savePageColumns(pageColumns);
   });
 
   $effect(() => {
@@ -1030,6 +1035,7 @@
       bind:showFormattingMarks
       bind:showRuler
       bind:splitView
+      bind:pageColumns
       {documentLanguage}
       onLanguage={(code) => (documentLanguage = code)}
       {zoom}
@@ -1315,6 +1321,7 @@
           bind:showFormattingMarks
           bind:showRuler
           bind:splitView
+          bind:pageColumns
           bind:pageMargins
           bind:pageOrientation
           bind:pageFormat
@@ -1379,6 +1386,7 @@
     {showFormattingMarks}
     {showRuler}
     {splitView}
+    {pageColumns}
     {pageMargins}
     orientation={pageOrientation}
     {pageFormat}
