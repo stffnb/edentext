@@ -24,3 +24,18 @@ jobs:
       - run: npm run check
       # LibreOffice is not installed here, so the lo-roundtrip suite self-skips.
       - run: npm test
+
+  # Production build booted in headless Chromium — catches bundling and boot
+  # regressions the jsdom suite cannot see.
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install chromium
+      - run: npm run build
+      - run: npm run test:smoke

@@ -16,6 +16,7 @@ npm run check    # svelte-check type-check (svelte + ts)
 npm test         # Vitest suite once (tests/**/*.test.ts)
 npm run test:watch   # Vitest in watch mode
 npm run test:lo      # LibreOffice round-trip leg only (needs `soffice` on PATH)
+npm run test:smoke   # boots the dist/ build in headless Chromium (tests/smoke/run.mjs)
 npm run test:parity  # render parity vs LibreOffice (tests/render-parity/README.md)
 node scripts/make-thesaurus.mjs   # re-vendor public/thesaurus/ from LibreOffice's MyThes data
 ```
