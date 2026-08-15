@@ -337,8 +337,10 @@
       content: (zoneDoc(editingIndex, zone, editingVariant) ?? emptyDoc()) as Content,
       // No autofocus: its scrollIntoView nudges the page so the just-clicked zone
       // appears to jump. Focus the zone explicitly without scrolling instead.
+      // Deferred: leaving a zone removes this DOM mid-render, and the blur ProseMirror
+      // dispatches then would tick state while Svelte is still flushing.
       onTransaction: () => {
-        hfTick++;
+        queueMicrotask(() => hfTick++);
       },
       onUpdate: ({ editor }) => {
         writeZone(editingIndex, zone, editingVariant, editor.getJSON() as HfDoc);
