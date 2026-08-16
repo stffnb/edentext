@@ -209,6 +209,16 @@ function applyInlineVAlign(el: Element, attrs: Record<string, unknown>, gp: Prop
   else if (pos === 'top' && area) attrs.vAlign = 'text-top';
 }
 
+// A box is a block of its own, so a figure frame's centring — which its as-char anchor
+// would otherwise give it — rides the box. Never at a side float (horizontal-pos is the
+// float's side there); the image band-pairing left/right mapping is not a box's either.
+function boxWrapAlign(gp: PropMap, attrs: Record<string, unknown>): void {
+  delete attrs.wrapAlign;
+  const hpos = gp['style:horizontal-pos'];
+  if ((hpos === 'center' || hpos === 'right') && attrs.wrapOffset == null
+      && attrs.wrap !== 'left' && attrs.wrap !== 'right') attrs.wrapAlign = hpos;
+}
+
 function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap): void {
   const deg = frameRotationDeg(el);
   if (deg) attrs.rotation = deg;
@@ -417,10 +427,7 @@ function convertTextBoxFrame(frame: Element, textBoxEl: Element, ctx: Ctx): Node
   if (hCm != null) attrs.height = framePx(cmToPx(hCm));
   const gp = ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
   applyFrameRotationAndWrap(frame, attrs, gp);
-  // A box is a block of its own here, so the centring of a figure frame — which its
-  // as-char anchor paragraph would otherwise give it — has to ride the box itself.
-  // An image needs none: with no side to float to it is centred anyway.
-  if (gp['style:horizontal-pos'] === 'center' && attrs.wrapOffset == null) attrs.wrapAlign = 'center';
+  boxWrapAlign(gp, attrs);
   const padCm = lengthToCm(gp['fo:padding']);
   if (padCm != null && Math.abs(padCm - TEXTBOX_PADDING_CM) > 0.01) attrs.paddingCm = Math.round(padCm * 1000) / 1000;
   shapeStyleAttrs(gp, attrs, false);
@@ -533,6 +540,7 @@ function convertShape(el: Element, ctx: Ctx): Node | null {
   if (hCm != null) attrs.height = framePx(cmToPx(hCm));
   const gp = ctx.resolver.graphicProps(el.getAttributeNS(NS.draw, 'style-name'));
   applyFrameRotationAndWrap(el, attrs, gp);
+  boxWrapAlign(gp, attrs);
   shapeStyleAttrs(gp, attrs, true);
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(el.children), ctx) };
 }
@@ -577,6 +585,7 @@ function convertFreeform(el: Element, ctx: Ctx): Node | null {
   };
   const gp = ctx.resolver.graphicProps(el.getAttributeNS(NS.draw, 'style-name'));
   applyFrameRotationAndWrap(el, attrs, gp);
+  boxWrapAlign(gp, attrs);
   shapeStyleAttrs(gp, attrs, true);
   return { type: 'textBox', attrs, content: [{ type: 'paragraph' }] };
 }
@@ -597,6 +606,7 @@ function convertLine(el: Element, ctx: Ctx): Node | null {
   // The editor draws a line across its frame, so only the direction is left to keep.
   if ((y2 - y1) * (x2 - x1) < 0) attrs.flipV = true;
   applyFrameRotationAndWrap(el, attrs, gp);
+  boxWrapAlign(gp, attrs);
   shapeStyleAttrs(gp, attrs, true);
   return { type: 'textBox', attrs, content: [{ type: 'paragraph' }] };
 }
@@ -1267,6 +1277,10 @@ type BlockDefaults = {
   // The named style's line spacing as an ODF factor; a block declaring the same one adds
   // nothing, but a block that declares 100% under a 115% style is direct formatting.
   lineHeight: number;
+  // The style's own alignment and flow flags (Title centres, Heading keeps with next).
+  textAlign: string | null;
+  keepNext: boolean;
+  keepLines: boolean;
   boldByDefault: boolean;
   fonts: Set<string>;
   color: string;
@@ -1294,6 +1308,14 @@ function linePercent(lh: string | undefined): number | null {
   return Number.isFinite(p) ? Math.round(p) / 100 : null;
 }
 
+// fo:text-align → the editor's four values (start/end read as an LTR page), or null.
+function odfTextAlign(ta: string | undefined): string | null {
+  if (ta === 'center' || ta === 'justify') return ta;
+  if (ta === 'right' || ta === 'end') return 'right';
+  if (ta === 'left' || ta === 'start') return 'left';
+  return null;
+}
+
 function blockDefaults(resolver: StyleResolver, named: string | null, headingLevel: number | null, boldByDefault: boolean): BlockDefaults {
   const hdef = headingLevel != null ? HEADING_DEFAULTS[headingLevel - 1] : null;
   const fallback: BlockDefaults = {
@@ -1302,6 +1324,9 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     marginBottomPt: hdef ? hdef.marginBottomPt : 0,
     indentPt: 0,
     lineHeight: 1,
+    textAlign: null,
+    keepNext: false,
+    keepLines: false,
     boldByDefault: headingLevel != null || boldByDefault,
     fonts: new Set(headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS),
     color: '#000000',
@@ -1327,6 +1352,9 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     marginBottomPt: lengthToPt(para['fo:margin-bottom']) ?? 0,
     indentPt: lengthToPt(para['fo:margin-left']) ?? 0,
     lineHeight: linePercent(para['fo:line-height']) ?? 1,
+    textAlign: odfTextAlign(para['fo:text-align']),
+    keepNext: para['fo:keep-with-next'] === 'always',
+    keepLines: para['fo:keep-together'] === 'always',
     boldByDefault: weight ? weight === 'bold' || parseInt(weight, 10) >= 600 : fallback.boldByDefault,
     fonts,
     color: (text['fo:color'] && normalizeColor(text['fo:color'])) || fallback.color,
@@ -1565,10 +1593,10 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // paragraph-mark size), or text smaller than the style keeps the taller strut.
   const markSize = lengthToPt(baseTextProps['fo:font-size']);
   if (markSize != null && Math.abs(markSize - defaults.fontSizePt) > 0.05) attrs.fontSize = formatPt(markSize);
-  // Keep with next: a heading does that anyway (pageBreaks.ts), so only a plain
-  // paragraph carries it — otherwise every heading would accrete the producer's flag.
-  if (!isHeading && paraProps['fo:keep-with-next'] === 'always') attrs.keepNext = true;
-  if (!isHeading && paraProps['fo:keep-together'] === 'always') attrs.keepLines = true;
+  // Keep with next: a heading does that anyway (pageBreaks.ts), and what the block's
+  // own style supplies (Title keeps with next) is not direct formatting either.
+  if (!isHeading && !defaults.keepNext && paraProps['fo:keep-with-next'] === 'always') attrs.keepNext = true;
+  if (!isHeading && !defaults.keepLines && paraProps['fo:keep-together'] === 'always') attrs.keepLines = true;
   // "Don't hyphenate this paragraph" — only meaningful where the document hyphenates at
   // all; below that switch it is the default and no formatting.
   if (baseTextProps['fo:hyphenate'] === 'false' && resolver.documentHyphenation()) attrs.noHyphenation = true;
@@ -1601,9 +1629,10 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
 function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefaults, kind: BlockKind): Record<string, unknown> {
   const attrs: Record<string, unknown> = {};
 
-  const ta = paraProps['fo:text-align'];
-  if (ta === 'center' || ta === 'justify') attrs.textAlign = ta;
-  else if (ta === 'right' || ta === 'end') attrs.textAlign = 'right';
+  // Measured against the named style's own alignment: what the style supplies is not
+  // direct formatting, and a block overriding it back to left needs the attr to win.
+  const ta = odfTextAlign(paraProps['fo:text-align']);
+  if (ta !== null && ta !== (defaults.textAlign ?? 'left')) attrs.textAlign = ta;
 
   const lh = paraProps['fo:line-height'];
   if (lh && lh !== 'normal') {
@@ -2662,7 +2691,7 @@ function odfTableLook(el: Element): string | null {
 
 // A table narrower than the text width → the editor's marginLeft/marginRight attrs.
 // LibreOffice states the width plus one margin (per table:align), the other follows.
-function tableMargins(el: Element, ctx: Ctx): { marginLeft: number; marginRight: number } | null {
+function tableMargins(el: Element, ctx: Ctx): { marginLeft?: number; marginRight?: number } | null {
   const props = ctx.resolver.tableProps(el.getAttributeNS(NS.table, 'style-name'));
   const content = ctx.contentWidthCm;
   const rel = parseFloat(props['style:rel-width'] ?? '');
@@ -2682,7 +2711,9 @@ function tableMargins(el: Element, ctx: Ctx): { marginLeft: number; marginRight:
   if (Math.abs(left) < 0.05 && Math.abs(right) < 0.05) return null;
   if (left + right > content - 1) return null;
   const round2 = (v: number) => Math.round(v * 100) / 100;
-  return { marginLeft: round2(left), marginRight: round2(right) };
+  const l = round2(left), r = round2(right);
+  // A zero side is the attr's default (null); rounding may also leave a -0 behind.
+  return { ...(Math.abs(l) >= 0.005 ? { marginLeft: l } : {}), ...(Math.abs(r) >= 0.005 ? { marginRight: r } : {}) };
 }
 
 // The space a table's own style puts above and below it (fo:margin-top/-bottom on

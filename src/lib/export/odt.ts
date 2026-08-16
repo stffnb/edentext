@@ -3053,7 +3053,7 @@ function charFormatting(sheet: StyleSheet, name: string): Record<string, unknown
 
 // Prefix the sentinel on every run carrying such an effect, wherever it sits — odf-kit
 // reads marks itself on its native paths, so the pre-pass is what reaches all of them.
-function markTextEffects(node: TiptapNode, baseSizePt = DEFAULT_FONT_SIZE_PT): TiptapNode {
+function markTextEffects(node: TiptapNode, baseSizePt = DEFAULT_FONT_SIZE_PT, sheet?: StyleSheet): TiptapNode {
   if (node.type === 'text') {
     const extra = odfExtraTextProps(node.marks, baseSizePt);
     // The empty trailing pair marks where the run ends: a bare run following would
@@ -3061,10 +3061,14 @@ function markTextEffects(node: TiptapNode, baseSizePt = DEFAULT_FONT_SIZE_PT): T
     return extra ? { ...node, text: `${TEF}${extra}${TEF}${node.text ?? ''}${TEF}${TEF}` } : node;
   }
   if (!node.content?.length) return node;
+  // A named style's size is the reference for a raised run's percentage (a Title's
+  // -2pt is a smaller share of its 28pt); import resolves against the same chain.
+  const named = sheet && typeof node.attrs?.styleName === 'string'
+    ? resolveStyle(sheet, node.attrs.styleName, 'paragraph').text.fontSizePt : null;
   const base = node.type === 'heading' || node.type === CUST_H
     ? parseFloat(HEADING_STYLE_OVERRIDES[Math.min(Math.max(Number(node.attrs?.level) || 1, 1), HEADING_STYLE_OVERRIDES.length) - 1].fontSize)
-    : baseSizePt;
-  return { ...node, content: node.content.map((c) => markTextEffects(c, base)) };
+    : named ?? baseSizePt;
+  return { ...node, content: node.content.map((c) => markTextEffects(c, base, sheet)) };
 }
 
 // odf-kit's list builder reads a run's marks itself and knows nothing about charStyle,
@@ -3670,15 +3674,16 @@ function imageTransform(img: ImageExport): string {
 }
 
 // ODF style:wrap is the side TEXT flows on (inverse of the image side); horizontal-pos
-// places the frame on that side. topBottom ⇒ no wrap, centred.
-// An offset frame is placed by coordinate instead (svg:x on the frame).
-function imageWrapProps(wrap: WrapMode, offset: number | null, align?: string | null, distCm?: number | null): string {
+// places the frame on that side. topBottom ⇒ no wrap, placed at noneAlign — centred
+// for an image, but a box with no align of its own sits at the left, as the editor
+// draws it. An offset frame is placed by coordinate instead (svg:x on the frame).
+function imageWrapProps(wrap: WrapMode, offset: number | null, align?: string | null, distCm?: number | null, noneAlign = 'center'): string {
   const pos = offset != null ? 'from-left' : null;
   // Only the text side is written; the frame's own offset covers the other one.
   const gap = distCm ? ` fo:margin-${wrap === 'right' ? 'left' : 'right'}="${distCm}cm"` : '';
   if (wrap === 'left') return `style:wrap="right" style:horizontal-pos="${pos ?? 'left'}"${gap}`;
   if (wrap === 'right') return `style:wrap="left" style:horizontal-pos="${pos ?? 'right'}"${gap}`;
-  return `style:wrap="none" style:horizontal-pos="${align ?? pos ?? 'center'}"`;
+  return `style:wrap="none" style:horizontal-pos="${align ?? pos ?? noneAlign}"`;
 }
 
 // The inverse of the importer's as-char alignment map (import/odt.ts): a frame with no
@@ -3949,7 +3954,7 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   // frame, and the anchor paragraph this export mints carries no alignment.
   const wrap = box.wrap === 'inline'
     ? (box.wrapAlign ? ` style:horizontal-pos="${box.wrapAlign}" style:horizontal-rel="paragraph-content"` : '')
-    : ` ${imageWrapProps(box.wrap, box.wrapOffsetCm, box.wrapAlign, box.wrapDistCm)} style:number-wrapped-paragraphs="no-limit"` +
+    : ` ${imageWrapProps(box.wrap, box.wrapOffsetCm, box.wrapAlign, box.wrapDistCm, 'left')} style:number-wrapped-paragraphs="no-limit"` +
       ` style:horizontal-rel="paragraph-content"` +
       ` style:vertical-pos="${box.wrapOffsetYCm != null ? 'from-top' : 'top'}" style:vertical-rel="paragraph"`;
   // auto-grow only for plain text boxes; a custom-shape needs both explicitly
@@ -4458,7 +4463,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const bibMarks: BibExport[] = [];
   const rubies: RubyExport[] = [];
   const sentinels = replaceRuby(replaceBibEntries(replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList), seqFields), revisionList), indexMarks), bibMarks), rubies);
-  const raw = markTextEffects(bakeListCharStyles(sentinels, styles));
+  const raw = markTextEffects(bakeListCharStyles(sentinels, styles), DEFAULT_FONT_SIZE_PT, styles);
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Different first page (ODF header-first): page 1 gets its own zone content.
