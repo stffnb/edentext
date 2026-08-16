@@ -238,9 +238,29 @@ class Numbering {
     return reference;
   }
 
-  levelKindAt(reference: string, depth: number): 'ordered' | 'bullet' | null {
-    const l = this.map.get(reference)!.find((lv) => lv.level === depth);
-    return l ? (l.format === LevelFormat.BULLET ? 'bullet' : 'ordered') : null;
+  // A level keeps the first format it saw, so a sibling nested list of another kind,
+  // number format or bullet char forks its own reference (the ODT side mints its own
+  // list style). The fork copies the shallower levels so the importer's cycle walk
+  // (listBaseCycle) still sees the ancestry.
+  forkFor(reference: string, depth: number, node: TiptapNode, cycle: OrderedCycle): string {
+    const levels = this.map.get(reference)!;
+    const l = levels.find((lv) => lv.level === depth);
+    if (!l) return reference;
+    let format: string, text: string;
+    if (node.type === 'orderedList') {
+      const attr = node.attrs?.listStyleType as string | null | undefined;
+      const def = effectiveOrderedDefAt(attr === 'multilevel' ? 'decimal' : attr, cycle);
+      format = ORDERED_FORMAT[def.numFormat] ?? LevelFormat.DECIMAL;
+      text = `%${depth + 1}${def.numSuffix}`;
+      if (this.mlRefs.has(reference) && !attr) return reference; // chain member inherits
+    } else {
+      format = LevelFormat.BULLET;
+      text = bulletCharOf(node, depth);
+    }
+    if (l.format === format && l.text === text) return reference;
+    const fork = this.newReference();
+    this.map.get(fork)!.push(...levels.filter((lv) => lv.level < depth));
+    return fork;
   }
 
   ensureLevel(reference: string, depth: number, node: TiptapNode, extraIndentCm: number, cycle: OrderedCycle): void {
@@ -1480,11 +1500,7 @@ function listToParagraphs(
     let numberedFirst = false;
     for (const child of item.content ?? []) {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
-        // A level keeps the first kind it saw, so a sibling nested list of the other
-        // kind forks its own reference (as the ODT side mints its own list style).
-        const seen = num.levelKindAt(reference, depth + 1);
-        const ref = seen && seen !== (child.type === 'orderedList' ? 'ordered' : 'bullet')
-          ? num.newReference() : reference;
+        const ref = num.forkFor(reference, depth + 1, child, cChild);
         listToParagraphs(child, depth + 1, ref, indentCm, num, out, cChild);
       } else if (child.type === 'paragraph' || child.type === 'heading') {
         if (!numberedFirst) {
