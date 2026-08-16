@@ -1141,7 +1141,7 @@ function replaceColumns(doc: TiptapNode, cols: ColumnsExport[]): TiptapNode {
 // One generated table of contents, collected by replaceTableOfContents and emitted by
 // applyToc. Entries are the cached heading→page rows (the node view keeps them current).
 type TocEntry = { text: string; level: number; page: number; pages?: number[] };
-type TocExport = { kind: IndexKind; entries: TocEntry[]; title: string | null; maxLevel: number; leader: string | null; tabPosCm: number | null; levelStyles: (string | null)[] | null; citationStyle: CitationStyle };
+type TocExport = { kind: IndexKind; entries: TocEntry[]; title: string | null; maxLevel: number; leader: string | null; tabPosCm: number | null; pageNumbers: boolean; levelStyles: (string | null)[] | null; citationStyle: CitationStyle };
 
 // Swap each top-level tableOfContents node for a marker paragraph carrying the TOC
 // sentinel and collect its cached entries. Top-level only (like replacePageBreaks): a
@@ -1170,6 +1170,7 @@ function replaceTableOfContents(doc: TiptapNode, tocs: TocExport[]): TiptapNode 
         maxLevel: depth >= 1 ? Math.min(MAX_HEADING_LEVEL, depth) : MAX_HEADING_LEVEL,
         leader: normalizeLeader(child.attrs?.leader),
         tabPosCm: typeof child.attrs?.tabPosCm === 'number' ? child.attrs.tabPosCm : null,
+        pageNumbers: child.attrs?.pageNumbers !== false,
         levelStyles: Array.isArray(child.attrs?.levelStyles) ? (child.attrs!.levelStyles as (string | null)[]) : null,
         citationStyle: isCitationStyle(child.attrs?.citationStyle) ? child.attrs!.citationStyle : 'key',
       });
@@ -4227,10 +4228,13 @@ function tocXml(toc: TocExport, index: number, bibTypes: string[]): string {
     `<text:index-entry-tab-stop style:type="right"` +
     `${toc.tabPosCm ? ` style:position="${toc.tabPosCm}cm"` : ''}` +
     `${toc.leader ? ` style:leader-char="${escapeXml(toc.leader)}"` : ''}/>`;
+  // An index with no page numbers has nothing to lead to either, so the stop goes with
+  // them — that pair is what LibreOffice's own dialog switches off together.
+  const pageCol = toc.pageNumbers ? `${stop}<text:index-entry-page-number/>` : '';
   const entry = (levelAttr: string, style: string) =>
     `<text:${spec.el}-entry-template${levelAttr} text:style-name="${style}">` +
-    `<text:index-entry-link-start/><text:index-entry-text/>${stop}` +
-    `<text:index-entry-page-number/><text:index-entry-link-end/>` +
+    `<text:index-entry-link-start/><text:index-entry-text/>${pageCol}` +
+    `<text:index-entry-link-end/>` +
     `</text:${spec.el}-entry-template>`;
   // An alphabetical index is fed by its marks, is single-level, and merges the pages of
   // a term the reader marked more than once — LibreOffice's text:combine-entries.
@@ -4266,8 +4270,9 @@ function tocXml(toc: TocExport, index: number, bibTypes: string[]): string {
       : '') +
     toc.entries
       .map(e => `<text:p text:style-name="${tocLevelStyle(toc, e.level)}">${escapeXml(e.text).replace(/\n/g, '<text:line-break/>')}`
-        // A bibliography row is the source, nothing else: no tab, no page number.
-        + (toc.kind === 'bibliography' ? '' : `<text:tab/>${e.pages?.join(', ') ?? e.page}`) + '</text:p>')
+        // A bibliography row is the source, nothing else: no tab, no page number. An
+        // index switched to text alone says the same about its rows.
+        + (toc.kind === 'bibliography' || !toc.pageNumbers ? '' : `<text:tab/>${e.pages?.join(', ') ?? e.page}`) + '</text:p>')
       .join('') +
     `</text:index-body>`;
   return `<text:${spec.el} text:name="${escapeXml(name)}" text:protected="true">${source}${body}</text:${spec.el}>`;

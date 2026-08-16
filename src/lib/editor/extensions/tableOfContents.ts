@@ -98,6 +98,13 @@ export const TableOfContents = Node.create({
         parseHTML: el => Number((el as HTMLElement).getAttribute('data-toc-tab')) || null,
         renderHTML: attrs => (attrs.tabPosCm ? { 'data-toc-tab': String(attrs.tabPosCm) } : {}),
       },
+      // Whether the rows carry a page number at all: Word's `TOC \n`, an ODF entry
+      // template naming no <text:index-entry-page-number/>. false = the text alone.
+      pageNumbers: {
+        default: true,
+        parseHTML: el => (el as HTMLElement).getAttribute('data-toc-pages') !== 'off',
+        renderHTML: attrs => (attrs.pageNumbers === false ? { 'data-toc-pages': 'off' } : {}),
+      },
       // The named paragraph style of each level's entries (ODF's per-level entry
       // template). The rows carry it as data-style, so the document stylesheet gives
       // them the file's own indent, spacing and font.
@@ -348,7 +355,8 @@ class TocView {
       return;
     }
 
-    const noPage = indexKindOf(this.node()?.attrs?.index) === 'bibliography';
+    const noPage = indexKindOf(this.node()?.attrs?.index) === 'bibliography'
+      || this.node()?.attrs?.pageNumbers === false;
     const fill = !noPage && typeof this.node()?.attrs?.leader === 'string' ? String(this.node()!.attrs.leader) : '';
     const levelStyles = this.node()?.attrs?.levelStyles as (string | null)[] | null | undefined;
     entries.forEach((e, i) => {

@@ -355,6 +355,12 @@ function tocMaxLevel(instr: string): number {
   return n >= 1 ? Math.min(MAX_HEADING_LEVEL, n) : MAX_HEADING_LEVEL;
 }
 
+// `\n` drops the page numbers. Word names a level range with it; the editor's index is
+// all-or-nothing, so any range reads as an index of text alone. Only the off state is
+// carried, as on the ODF side, where it is the entry template's missing page number.
+const tocPageNumbers = (instr: string): { pageNumbers?: false } =>
+  (/\\n\b/.test(instr) ? { pageNumbers: false } : {});
+
 // The TOC field's \c switch names a caption label, which makes it a list of figures or
 // tables rather than a contents. Word's own labels and LibreOffice's travel alike.
 function tocIndexKind(instr: string): IndexKind {
@@ -546,7 +552,7 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         flush();
         // The field carries no heading of its own — Word's sits in a separate paragraph.
         const instr = instrTextOf(el);
-        out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', maxLevel: tocMaxLevel(instr), index: tocIndexKind(instr) } });
+        out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', maxLevel: tocMaxLevel(instr), index: tocIndexKind(instr), ...tocPageNumbers(instr) } });
       }
       if (startedInToc || emit) continue;
       const num = paragraphNum(el, ctx);
@@ -599,6 +605,7 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
             title: tocHeading(content) ?? '',
             maxLevel: tocMaxLevel(instr),
             index: tocIndexKind(instr),
+            ...tocPageNumbers(instr),
           } });
         }
       } else {

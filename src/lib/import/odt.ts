@@ -1244,6 +1244,12 @@ function convertToc(el: Element, ctx: Ctx, indexKind: IndexKind): Node {
     levelStyles[level - 1] = display;
   }
   const attrs: Record<string, unknown> = { entries, title, maxLevel, leader, tabPosCm, index: indexKind };
+  // A template that names no page number is an index of text alone (Word's TOC \n). A
+  // bibliography row never has one, so its own template says nothing about this.
+  if (indexKind !== 'bibliography' && template
+    && !template.getElementsByTagNameNS(NS.text, 'index-entry-page-number')[0]) {
+    attrs.pageNumbers = false;
+  }
   if (levelStyles.some(Boolean)) attrs.levelStyles = Array.from(levelStyles, (s) => s ?? null);
   // A bibliography's citation style is its entry template: the fields it names, in order.
   // A numbered index says so on the source instead, whatever its template reads.

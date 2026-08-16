@@ -1936,11 +1936,15 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
         out.push(new Paragraph({ children: [new SimpleField('BIBLIOGRAPHY', '')] }));
         continue;
       }
+      // `\n` over the whole range: Word's switch takes levels, the editor's index is
+      // all-or-nothing.
+      const noPages = node.attrs?.pageNumbers === false
+        ? { pageNumbersEntryLevelsRange: `1-${maxLevel}` } : {};
       out.push(new TableOfContents(tocTitle, kind === 'toc'
-        ? { hyperlink: true, headingStyleRange: `1-${maxLevel}` }
+        ? { hyperlink: true, headingStyleRange: `1-${maxLevel}`, ...noPages }
         // `\c`, not `\a`: Word's own Insert Table of Figures keeps the label and number
         // in the entry, which is what the editor's cached entries already read.
-        : { hyperlink: true, captionLabelIncludingNumbers: DOCX_SEQ_NAME[kind === 'tables' ? 'table' : 'figure'] }));
+        : { hyperlink: true, captionLabelIncludingNumbers: DOCX_SEQ_NAME[kind === 'tables' ? 'table' : 'figure'], ...noPages }));
     }
   }
   return out;
