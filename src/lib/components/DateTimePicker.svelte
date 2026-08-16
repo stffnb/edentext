@@ -61,11 +61,10 @@
     open = false;
   }
 
+  // On both the trigger and the dropdown: opening leaves the focus on the trigger,
+  // which sits outside the dropdown and never delivers the key to it.
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      open = false;
-      (e.currentTarget as HTMLElement).blur();
-    }
+    if (e.key === 'Escape') open = false;
   }
 
   function dtPickerClickOutside(node: HTMLElement) {
@@ -78,7 +77,7 @@
 </script>
 
 <div class="dt-picker" use:dtPickerClickOutside>
-  <button class="dt-trigger" onclick={openPicker} title={t().dateTime.insert} aria-pressed={open} aria-label={t().dateTime.insert}>
+  <button class="dt-trigger" onclick={openPicker} onkeydown={onKeydown} title={t().dateTime.insert} aria-pressed={open} aria-label={t().dateTime.insert}>
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <rect x="1.75" y="2.75" width="12.5" height="11.5" rx="1.5" stroke="currentColor" />
       <path d="M1.75 5.5h12.5M4.5 1.5v2.5M11.5 1.5v2.5" stroke="currentColor" stroke-linecap="round" />
@@ -88,7 +87,7 @@
   </button>
 
   {#if open}
-    <div class="dt-dropdown" role="dialog" aria-label={t().dateTime.insert} tabindex="-1" onkeydown={onKeydown}>
+    <div class="dt-dropdown" role="dialog" onkeydown={onKeydown} aria-label={t().dateTime.insert} tabindex="-1">
       <div class="dt-columns">
         <div class="dt-col">
           <div class="dt-section-label">{t().dateTime.dateHeading}</div>
