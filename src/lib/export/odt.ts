@@ -2988,7 +2988,7 @@ const ODF_LINE_STYLE: Record<string, string> = { dotted: 'dotted', dashed: 'dash
 
 // The effects ODF carries but odf-kit's run formatting has no field for. Returned as
 // the <style:text-properties> attributes applyTextEffects folds into the run's style.
-export function odfExtraTextProps(marks: TiptapNode['marks'] = []): string {
+export function odfExtraTextProps(marks: TiptapNode['marks'] = [], baseSizePt = DEFAULT_FONT_SIZE_PT): string {
   const a: string[] = [];
   const caps = marks.find(m => m.type === 'textStyle')?.attrs?.caps;
   if (caps === 'smallCaps') a.push('fo:font-variant="small-caps"');
@@ -3008,16 +3008,17 @@ export function odfExtraTextProps(marks: TiptapNode['marks'] = []): string {
   // ODF places a raised run in percent of its font size, Word and the editor in pt.
   const pos = marks.find(m => m.type === 'textStyle')?.attrs?.textPosition;
   if (typeof pos === 'number' && pos) {
-    a.push(`style:text-position="${Math.round((pos / runSizePt(marks)) * 10000) / 100}% 100%"`);
+    a.push(`style:text-position="${Math.round((pos / runSizePt(marks, baseSizePt)) * 10000) / 100}% 100%"`);
   }
   return a.join(' ');
 }
 
-// The run's own size where it declares one — the reference for the percentage above.
-function runSizePt(marks: TiptapNode['marks']): number {
+// The run's own size where it declares one, else the block's (a heading run resolves to
+// the level's size) — the reference for the percentage above; import mirrors this.
+function runSizePt(marks: TiptapNode['marks'], baseSizePt: number): number {
   const size = marks?.find(m => m.type === 'textStyle')?.attrs?.fontSize;
   const pt = size ? parseFloat(String(size)) : NaN;
-  return Number.isFinite(pt) && pt > 0 ? pt : DEFAULT_FONT_SIZE_PT;
+  return Number.isFinite(pt) && pt > 0 ? pt : baseSizePt;
 }
 
 function charStyleOf(marks: TiptapNode['marks']): string | null {
@@ -3033,13 +3034,18 @@ function charFormatting(sheet: StyleSheet, name: string): Record<string, unknown
 
 // Prefix the sentinel on every run carrying such an effect, wherever it sits — odf-kit
 // reads marks itself on its native paths, so the pre-pass is what reaches all of them.
-function markTextEffects(node: TiptapNode): TiptapNode {
+function markTextEffects(node: TiptapNode, baseSizePt = DEFAULT_FONT_SIZE_PT): TiptapNode {
   if (node.type === 'text') {
-    const extra = odfExtraTextProps(node.marks);
-    return extra ? { ...node, text: `${TEF}${extra}${TEF}${node.text ?? ''}` } : node;
+    const extra = odfExtraTextProps(node.marks, baseSizePt);
+    // The empty trailing pair marks where the run ends: a bare run following would
+    // otherwise be indistinguishable from the run's own text and get wrapped with it.
+    return extra ? { ...node, text: `${TEF}${extra}${TEF}${node.text ?? ''}${TEF}${TEF}` } : node;
   }
   if (!node.content?.length) return node;
-  return { ...node, content: node.content.map(markTextEffects) };
+  const base = node.type === 'heading' || node.type === CUST_H
+    ? parseFloat(HEADING_STYLE_OVERRIDES[Math.min(Math.max(Number(node.attrs?.level) || 1, 1), HEADING_STYLE_OVERRIDES.length) - 1].fontSize)
+    : baseSizePt;
+  return { ...node, content: node.content.map((c) => markTextEffects(c, base)) };
 }
 
 // odf-kit's list builder reads a run's marks itself and knows nothing about charStyle,
@@ -3185,12 +3191,14 @@ function resolveTextEffects(xml: string, mint: (styleXml: string) => void, prefi
     },
   );
   // A run whose only formatting is such an effect never got a span: give it one, up to
-  // the next element (a tab or line break carries no visible effect anyway).
+  // the next real element — a tab/line-break/space inside the run rides along, or the
+  // text behind it would fall out of the span and lose the effect.
   out = out.replace(
-    new RegExp(`${TEF}([^${TEF}]*)${TEF}([^<${TEF}]*)`, 'g'),
+    new RegExp(`${TEF}([^${TEF}]+)${TEF}((?:[^<${TEF}]|<text:(?:tab|line-break|s)\\b[^>]*/>)*)(?:${TEF}${TEF})?`, 'g'),
     (_m, extra: string, text: string) => `<text:span text:style-name="${styleFor('', extra)}">${text}</text:span>`,
   );
-  return out;
+  // Drop any sentinels not consumed above (defensive — never legitimate text).
+  return out.split(TEF).join('');
 }
 
 function applyTextEffects(odtBytes: Uint8Array): Uint8Array {
