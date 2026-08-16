@@ -7,6 +7,7 @@ const ORDERED_DEFAULTS: Record<string, unknown> = {
   listStyleType: 'decimal', start: 1, rowHeight: null, colspan: 1, rowspan: 1,
   type: null, level: undefined, rotation: 0, wrap: 'inline',
   shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1,
+  fixed: false, key1: '',
 };
 
 // Mark-attr defaults dropped like ORDERED_DEFAULTS is for node attrs.
@@ -14,20 +15,33 @@ const MARK_DEFAULTS: Record<string, unknown> = {
   plain: false, // link.ts default; the DOCX importer writes it out explicitly
 };
 
-// Note and comment ids are importer-generated (ftn1/footnote1/…, c1 vs w0); remap them
-// to their order of appearance so only the pairing is compared, not the naming scheme.
+// Note, comment and revision ids are importer-generated (ftn1/footnote1/…, c1 vs w0,
+// Word's numeric w:id); remap them to their order of appearance so only the pairing is
+// compared, not the naming scheme. Sequence numbers are recounted the way the editor
+// does on load (per category, document order) — the DOCX field carries no cached rank.
 function canonNoteIds(doc: N): void {
   const map = new Map<string, string>();
   const comments = new Map<string, string>();
+  const revs = new Map<string, string>();
+  const seq: Record<string, number> = {};
   (function walk(n: N) {
     if ((n.type === 'noteRef' || n.type === 'note') && n.attrs?.id != null) {
       if (!map.has(n.attrs.id)) map.set(n.attrs.id, `n${map.size + 1}`);
       n.attrs = { ...n.attrs, id: map.get(n.attrs.id) };
     }
+    if (n.type === 'sequenceField' && n.attrs) {
+      const c = String(n.attrs.category ?? 'figure');
+      seq[c] = (seq[c] ?? 0) + 1;
+      n.attrs = { ...n.attrs, number: seq[c] };
+    }
     for (const m of n.marks ?? []) {
       if (m.type === 'comment' && m.attrs?.id != null) {
         if (!comments.has(m.attrs.id)) comments.set(m.attrs.id, `c${comments.size + 1}`);
         m.attrs = { ...m.attrs, id: comments.get(m.attrs.id) };
+      }
+      if ((m.type === 'insertion' || m.type === 'deletion') && m.attrs?.id != null) {
+        if (!revs.has(m.attrs.id)) revs.set(m.attrs.id, `rv${revs.size + 1}`);
+        m.attrs = { ...m.attrs, id: revs.get(m.attrs.id) };
       }
     }
     for (const c of n.content ?? []) walk(c);
@@ -44,9 +58,10 @@ export function normalize(node: N): N {
         const mm: N = { type: m.type };
         const attrs = Object.fromEntries(Object.entries(m.attrs ?? {})
           .filter(([k, v]) => v != null && MARK_DEFAULTS[k] !== v));
-        // ODF keeps the authored (naive local) comment date, DOCX re-serializes the same
-        // instant as UTC — compare the instant.
-        if (m.type === 'comment' && typeof attrs.date === 'string') {
+        // ODF keeps the authored (naive local) comment/revision date, DOCX re-serializes
+        // the same instant as UTC — compare the instant.
+        if ((m.type === 'comment' || m.type === 'insertion' || m.type === 'deletion')
+            && typeof attrs.date === 'string') {
           const t = Date.parse(attrs.date);
           if (!Number.isNaN(t)) attrs.date = t;
         }
@@ -56,9 +71,15 @@ export function normalize(node: N): N {
       .sort((a: N, b: N) => a.type.localeCompare(b.type));
   }
   const attrs: N = {};
+  // An auto date/time field re-evaluates on load (the DOCX importer stamps "now"), so
+  // its cached value is presentational; a citation's text label is derived the same way.
+  const volatileKey = (k: string) =>
+    (node.type === 'dateTimeField' && k === 'value' && node.attrs?.fixed !== true)
+    || (node.type === 'bibliographyEntry' && k === 'text');
   for (const [k, v] of Object.entries(node.attrs ?? {})) {
     if (v == null) continue;
     if (k in ORDERED_DEFAULTS && ORDERED_DEFAULTS[k] === v) continue;
+    if (volatileKey(k)) continue;
     if (k === 'colwidth') { attrs.colwidth = 'CW'; continue; } // ratios compared separately
     // The DOCX importer keeps the OMML serializer's trailing space on purpose
     // (re-serialize-to-itself); the ODT annotation is the authored string. Same formula.

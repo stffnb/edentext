@@ -55,6 +55,15 @@ function marks(r: Rng, heading = false): N[] | undefined {
     if (!shifted && maybe(r, 0.15)) attrs.textPosition = pick(r, [3, -2]);
     if (Object.keys(attrs).length) out.push({ type: 'textStyle', attrs });
   }
+  if (!heading && maybe(r, 0.06)) {
+    const name = pick(r, ['Emphasis', 'Strong Emphasis', 'Source Text']);
+    // a direct mark equal to what the style supplies is suppressed on import (same
+    // rule as the heading defaults), so it can't ride beside the style
+    const redundant = name === 'Emphasis' ? 'italic' : name === 'Strong Emphasis' ? 'bold' : '';
+    const i = out.findIndex((m) => m.type === redundant);
+    if (i >= 0) out.splice(i, 1);
+    out.push({ type: 'charStyle', attrs: { name } });
+  }
   return out.length ? out : undefined;
 }
 
@@ -102,6 +111,8 @@ function paraAttrs(r: Rng, indents: boolean, top: boolean): N | null {
 // Doc-level state for cross-linked features (bookmark names, comment ids); genDoc resets it.
 let bmNames: string[] = [];
 let commentSeq = 0;
+let revSeq = 0;
+let seqCounters: Record<string, number> = {};
 
 const LATEX = ['x^{2}+1', '\\frac{a}{b}', '\\sqrt{x+1}', '\\alpha \\cdot \\beta'] as const;
 
@@ -133,6 +144,38 @@ function paragraph(r: Rng, indents = true, top = false): N {
       { type: 'comment', attrs: { id: `c${++commentSeq}`, author: 'Fuzz Author',
         date: '2026-03-04T05:06:07', text: 'Check & <this> "here"', resolved: maybe(r, 0.3) } }];
   }
+  if (maybe(r, 0.06)) {
+    const run = content[int(r, 0, content.length - 1)];
+    run.marks = [...(run.marks ?? []), { type: pick(r, ['insertion', 'deletion']),
+      attrs: { id: `rv${++revSeq}`, author: 'Rev Author', date: '2026-05-06T07:08:09' } }];
+  }
+  if (maybe(r, 0.04)) {
+    const category = pick(r, ['figure', 'table'] as const);
+    seqCounters[category] = (seqCounters[category] ?? 0) + 1;
+    body.push({ type: 'sequenceField',
+      attrs: { category, format: pick(r, ['1', 'a', 'A', 'i', 'I']), number: seqCounters[category] } });
+  }
+  if (maybe(r, 0.04)) {
+    body.push({ type: 'indexEntry',
+      attrs: { term: 'Größe & <term>', key1: maybe(r, 0.4) ? 'Key "1"' : '' } });
+  }
+  // fields limited to the ones Word has a b:Source slot for (DOCX_BIB_FIELD); the rest
+  // survive only the ODF leg. text is derived on load — normalize drops it. The type is
+  // keyed to the identifier: one identifier is one source record (Word stores it once).
+  if (maybe(r, 0.04)) {
+    const src = int(r, 1, 3);
+    body.push({ type: 'bibliographyEntry', attrs: {
+      identifier: `src${src}`, type: ['book', 'article', 'www'][src - 1],
+      fields: { author: 'Knuth, Donald', title: 'Art & <of> "CS"', year: '1986' }, text: '' } });
+  }
+  // fixed=false only: Word has no fixed-date field, the DOCX exporter writes plain text.
+  if (maybe(r, 0.04)) {
+    const kind = pick(r, ['date', 'time'] as const);
+    body.push({ type: 'dateTimeField', attrs: { kind,
+      format: kind === 'date' ? pick(r, ['iso', 'dmy_dots', 'mdy_long', 'weekday_dmy'])
+        : pick(r, ['hm24', 'hms12']),
+      fixed: false, value: '2026-08-16T10:30:00' } });
+  }
   if (maybe(r, 0.04)) body.push({ type: 'ruby', attrs: { base: '漢字', text: 'かんじ' } });
   // display=false only: ODF has no display flag, the importer derives it from the formula
   // owning its line (aloneInParagraph) — a display formula is its own paragraph (genDoc).
@@ -143,6 +186,14 @@ function paragraph(r: Rng, indents = true, top = false): N {
     const img: N = { src: PNG, width: int(r, 40, 200), height: int(r, 30, 120) };
     if (maybe(r, 0.3)) img.alt = 'a & "b" <c>';
     if (maybe(r, 0.2)) img.rotation = pick(r, [90, 180]);
+    // floating at top level only; offsets in whole hundredth-cm (import rounds to 2)
+    if (top && maybe(r, 0.25)) {
+      img.wrap = pick(r, ['left', 'right', 'topBottom']);
+      if (maybe(r, 0.5)) img.wrapOffset = pick(r, [1.5, 2.25]);
+      // dist only beside a side wrap: with text only above/below there is no side
+      // gap to keep, and the ODT graphic style carries none
+      if (img.wrap !== 'topBottom' && maybe(r, 0.3)) img.wrapDist = 0.5;
+    }
     body.push({ type: 'image', attrs: img });
   }
   return { type: 'paragraph', ...(attrs ? { attrs } : {}), content: body };
@@ -219,6 +270,8 @@ const ROMAN = ['i', 'ii', 'iii', 'iv', 'v'] as const;
 export function genDoc(r: Rng): N {
   bmNames = [];
   commentSeq = 0;
+  revSeq = 0;
+  seqCounters = {};
   const blocks: N[] = [];
   const notes: N[] = [];
   let prev = '';
