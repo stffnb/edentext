@@ -2679,23 +2679,44 @@ function docAutoHyphenation(files: Record<string, Uint8Array>): boolean {
   }
 }
 
-// word/comments.xml → the comment mark's attrs, by Word's numeric id.
+const W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
+const W15 = 'http://schemas.microsoft.com/office/word/2012/wordml';
+
+// word/commentsExtended.xml → the w14:paraId set of resolved (w15:done) comments.
+function docxResolvedParaIds(files: Record<string, Uint8Array>): Set<string> {
+  const out = new Set<string>();
+  const bytes = files['word/commentsExtended.xml'];
+  if (!bytes) return out;
+  let doc: Document;
+  try { doc = parseXml(strFromU8(bytes)); } catch { return out; }
+  for (const ex of Array.from(doc.getElementsByTagNameNS(W15, 'commentEx'))) {
+    const done = ex.getAttributeNS(W15, 'done');
+    const pid = ex.getAttributeNS(W15, 'paraId');
+    if (pid && (done === '1' || done === 'true')) out.add(pid);
+  }
+  return out;
+}
+
+// word/comments.xml → the comment mark's attrs, by Word's numeric id. Whether it is
+// resolved lives in commentsExtended.xml, keyed by the last body paragraph's w14:paraId.
 function docxComments(files: Record<string, Uint8Array>): Map<string, Record<string, unknown>> {
   const out = new Map<string, Record<string, unknown>>();
   const bytes = files['word/comments.xml'];
   if (!bytes) return out;
   let doc: Document;
   try { doc = parseXml(strFromU8(bytes)); } catch { return out; }
+  const done = docxResolvedParaIds(files);
   for (const c of Array.from(doc.getElementsByTagNameNS(W, 'comment'))) {
     const id = c.getAttributeNS(W, 'id');
     if (!id) continue;
+    const paras = fcAll(c, 'p');
+    const lastPid = paras.length ? paras[paras.length - 1].getAttributeNS(W14, 'paraId') : null;
     out.set(id, {
       id: `w${id}`,
       author: c.getAttributeNS(W, 'author') ?? '',
       date: c.getAttributeNS(W, 'date') ?? '',
-      text: fcAll(c, 'p').map((p) => p.textContent ?? '').join('\n').trim(),
-      // Word 365 marks a resolved comment in commentsExtended.xml; not read.
-      resolved: false,
+      text: paras.map((p) => p.textContent ?? '').join('\n').trim(),
+      resolved: lastPid != null && done.has(lastPid),
     });
   }
   return out;

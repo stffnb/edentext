@@ -149,7 +149,7 @@ let docNoteIds = new Map<string, { id: number; kind: NoteKind; label: string | n
 
 // Comments, numbered in document order before the runs are built — Word's ids are
 // integers and word/comments.xml has to exist before the Document is constructed.
-type CommentDocx = { id: number; author: string; date: Date; text: string };
+type CommentDocx = { id: number; author: string; date: Date; text: string; resolved: boolean };
 let docComments: CommentDocx[] = [];
 let docCommentIds = new Map<string, number>();
 
@@ -166,6 +166,7 @@ function collectComments(node: TiptapNode): void {
         author: String(mark!.attrs?.author ?? ''),
         date: Number.isNaN(date.getTime()) ? new Date() : date,
         text: String(mark!.attrs?.text ?? ''),
+        resolved: mark!.attrs?.resolved === true,
       });
     }
     if (!id) collectComments(child);
@@ -1291,6 +1292,47 @@ function applyRubyDocx(bytes: Uint8Array, rubies: RubyDocx[]): Uint8Array {
   return zipSync(out);
 }
 
+const W14_NS = 'http://schemas.microsoft.com/office/word/2010/wordml';
+const W15_NS = 'http://schemas.microsoft.com/office/word/2012/wordml';
+
+// Post-pack pass: a resolved comment is w15:done in word/commentsExtended.xml, keyed by
+// the w14:paraId of the comment body's last paragraph — the package knows neither part.
+function applyCommentsResolvedDocx(bytes: Uint8Array): Uint8Array {
+  const resolved = docComments.filter((c) => c.resolved);
+  if (!resolved.length) return bytes;
+  const files = unzipSync(bytes);
+  const relsPath = 'word/_rels/document.xml.rels';
+  const comments = files['word/comments.xml'] ? strFromU8(files['word/comments.xml']) : '';
+  const rels = files[relsPath] ? strFromU8(files[relsPath]) : '';
+  const types = files['[Content_Types].xml'] ? strFromU8(files['[Content_Types].xml']) : '';
+  if (!comments || !rels || !types) return bytes;
+
+  const paraId = (id: number) => (0x10000000 + id).toString(16).toUpperCase().padStart(8, '0');
+  let xml = comments.replace(/<w:comments\b(?![^>]*xmlns:w14=)/, `<w:comments xmlns:w14="${W14_NS}"`);
+  for (const c of resolved) {
+    // Stamp the comment's last body paragraph (Word keys the whole comment off it);
+    // the greedy tempered scan ends at the last <w:p before </w:comment>.
+    xml = xml.replace(
+      new RegExp(`(<w:comment w:id="${c.id}"(?:(?!</w:comment>)[\\s\\S])*)<w:p\\b`),
+      `$1<w:p w14:paraId="${paraId(c.id)}"`,
+    );
+  }
+  files['word/comments.xml'] = strToU8(xml);
+  files['word/commentsExtended.xml'] = strToU8(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    + `<w15:commentsEx xmlns:w15="${W15_NS}">`
+    + resolved.map((c) => `<w15:commentEx w15:paraId="${paraId(c.id)}" w15:done="1"/>`).join('')
+    + '</w15:commentsEx>');
+  files[relsPath] = strToU8(rels.replace('</Relationships>',
+    `<Relationship Id="rId${maxIdIn(rels, /Id="rId(\d+)"/g) + 1}" Type="http://schemas.microsoft.com/office/2011/relationships/commentsExtended" Target="commentsExtended.xml"/></Relationships>`));
+  files['[Content_Types].xml'] = strToU8(types.replace('</Types>',
+    '<Override PartName="/word/commentsExtended.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"/></Types>'));
+
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
 // Post-pack pass: Word's mirror margins are a document setting (w:mirrorMargins in
 // word/settings.xml); the docx lib writes only the per-section w:pgMar, where left and
 // right are already the inner/outer pair the editor holds.
@@ -2228,7 +2270,8 @@ export async function buildDocx(
   const packed = applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
   const cited = applyBibliographyDocx(applyRubyDocx(packed, docRubies), docSources, docCitationStyle(docJson));
   const withNotes = docNoteIds.size ? applyNoteMarksDocx(applyNotePrDocx(cited, notesSettings)) : cited;
-  const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withNotes) : withNotes;
+  const withResolved = applyCommentsResolvedDocx(withNotes);
+  const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withResolved) : withResolved;
   const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);
   if (isEmptyPageDecor(decor)) return bidi;
   const dims = pageDimsCm(pageFormat, orientation);
