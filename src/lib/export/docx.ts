@@ -612,6 +612,7 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
     }
   }
   closeComment();
+  flush(); // a bookmark still open at the paragraph's end would drop its runs
   return out;
 }
 
@@ -791,6 +792,11 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = []): string {
     const line = wordUnderline(u.attrs);
     parts.push(`<w:u w:val="${line.type}"${line.color ? ` w:color="${line.color}"` : ''}/>`);
   }
+  // Visible hyperlink styling, as runPropsFromMarks paints it for the body.
+  if (marks.some((m) => m.type === 'link' && !m.attrs?.plain)) {
+    if (!col) parts.push('<w:color w:val="0563C1"/>');
+    if (!u) parts.push('<w:u w:val="single"/>');
+  }
   const hl = marks.find((m) => m.type === 'highlight');
   if (hl?.attrs?.color) {
     const h = hexColor(String(hl.attrs.color));
@@ -807,7 +813,11 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = []): string {
 type TxbxParts = {
   media: { path: string; bytes: Uint8Array; rid: string; type: string }[];
   nums: { id: number; levels: string[] }[];
+  // External hyperlink targets of box runs, each a relationship to mint.
+  links: { rid: string; href: string }[];
   nextRid: () => string;
+  // w:bookmarkStart ids minted for box content — offset clear of the package's own.
+  nextBookmarkId: () => number;
 };
 
 // One picture inside a box, as an as-char <wp:inline> drawing.
@@ -829,27 +839,82 @@ function txbxImageXml(node: TiptapNode, parts: TxbxParts): string {
     `<a:graphic xmlns:a="${A_NS}"><a:graphicData uri="${PIC_NS}">` +
     `<pic:pic xmlns:pic="${PIC_NS}"><pic:nvPicPr><pic:cNvPr id="${9000 + n}" name="Picture ${n}"/><pic:cNvPicPr/></pic:nvPicPr>` +
     `<pic:blipFill><a:blip r:embed="${rid}" xmlns:r="${R_NS}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
-    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
+    `<pic:spPr><a:xfrm${typeof node.attrs?.rotation === 'number' && node.attrs.rotation ? ` rot="${Math.round(node.attrs.rotation * 60000)}"` : ''}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
     `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>` +
     `</a:graphicData></a:graphic></wp:inline></w:drawing>`
   );
+}
+
+// The box paragraph's own formatting, hand-serialized in CT_PPr child order
+// (pBdr, shd, bidi, spacing, ind, jc) — mirrors what paragraphToDocx hands the package.
+function txbxPPrXml(attrs: TiptapNode['attrs'], indentTwip: number): string {
+  const out: string[] = [];
+  const borders = paraBordersOf(attrs);
+  if (borders) {
+    const side = (name: string, b?: IBorderOptions) =>
+      b ? `<w:${name} w:val="single" w:sz="${b.size}" w:space="1" w:color="${b.color}"/>` : '';
+    out.push(`<w:pBdr>${side('top', borders.top)}${side('left', borders.left)}${side('bottom', borders.bottom)}${side('right', borders.right)}</w:pBdr>`);
+  }
+  const shd = paraShadingOf(attrs);
+  if (shd) out.push(`<w:shd w:val="clear" w:fill="${shd.fill}"/>`);
+  if (attrs?.dir === 'rtl') out.push('<w:bidi/>');
+  const s = spacingOf(attrs);
+  if (s) {
+    out.push(`<w:spacing${s.before != null ? ` w:before="${s.before}"` : ''}`
+      + `${s.after != null ? ` w:after="${s.after}"` : ''}`
+      + `${s.line != null ? ` w:line="${s.line}" w:lineRule="${s.lineRule === LineRuleType.EXACT ? 'exact' : 'auto'}"` : ''}/>`);
+  }
+  const ind: string[] = [];
+  if (typeof attrs?.indent === 'number' && attrs.indent > 0) ind.push(` w:left="${cmToTwip(attrs.indent)}"`);
+  else if (indentTwip) ind.push(` w:left="${indentTwip}"`);
+  if (typeof attrs?.indentRight === 'number' && attrs.indentRight > 0) ind.push(` w:right="${cmToTwip(attrs.indentRight)}"`);
+  if (typeof attrs?.indentFirst === 'number' && attrs.indentFirst !== 0) {
+    ind.push(attrs.indentFirst < 0 ? ` w:hanging="${cmToTwip(-attrs.indentFirst)}"` : ` w:firstLine="${cmToTwip(attrs.indentFirst)}"`);
+  }
+  if (ind.length) out.push(`<w:ind${ind.join('')}/>`);
+  const ta = attrs?.textAlign;
+  const jc = ta === 'center' ? 'center' : ta === 'right' ? 'right' : ta === 'justify' ? 'both' : '';
+  if (jc) out.push(`<w:jc w:val="${jc}"/>`);
+  return out.join('');
 }
 
 // One paragraph/heading of a text box. `numPr` makes it a list item of one of the
 // numbering definitions minted for the box.
 function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, numPr = ''): string {
   const attrs = node.attrs ?? {};
-  const pPr: string[] = [numPr];
+  const pPr: string[] = [];
   if (node.type === 'heading') {
     const lvl = Math.min(MAX_HEADING_LEVEL, Math.max(1, Number(attrs.level) || 1));
     pPr.push(`<w:pStyle w:val="Heading${lvl}"/>`);
   }
-  if (indentTwip) pPr.push(`<w:ind w:left="${indentTwip}"/>`);
-  const ta = attrs.textAlign;
-  const jc = ta === 'center' ? 'center' : ta === 'right' ? 'right' : ta === 'justify' ? 'both' : '';
-  if (jc) pPr.push(`<w:jc w:val="${jc}"/>`);
+  pPr.push(numPr, txbxPPrXml(attrs, indentTwip));
   let runs = '';
+  // Comment ranges and bookmarks bracket consecutive runs sharing the mark, as
+  // inlineToRuns does for the body; the reference run is what Word draws the bubble from.
+  let openComment: number | null = null;
+  const closeComment = () => {
+    if (openComment === null) return;
+    runs += `<w:commentRangeEnd w:id="${openComment}"/><w:r><w:commentReference w:id="${openComment}"/></w:r>`;
+    openComment = null;
+  };
+  let openBookmarkName: string | null = null;
+  let openBookmarkId = 0;
+  const closeBookmark = () => {
+    if (openBookmarkName === null) return;
+    runs += `<w:bookmarkEnd w:id="${openBookmarkId}"/>`;
+    openBookmarkName = null;
+  };
   for (const child of node.content ?? []) {
+    const cid = commentIdOf(child);
+    if (cid !== openComment) { closeBookmark(); closeComment(); }
+    const bm = bookmarkNameOf(child);
+    if (bm !== openBookmarkName) closeBookmark();
+    if (cid !== null && cid !== openComment) { runs += `<w:commentRangeStart w:id="${cid}"/>`; openComment = cid; }
+    if (bm && openBookmarkName === null) {
+      openBookmarkName = bm;
+      openBookmarkId = parts.nextBookmarkId();
+      runs += `<w:bookmarkStart w:id="${openBookmarkId}" w:name="${escapeXml(bm)}"/>`;
+    }
     if (child.type === 'image') {
       const drawing = txbxImageXml(child, parts);
       if (drawing) runs += `<w:r>${drawing}</w:r>`;
@@ -858,6 +923,20 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
       const { instr, text } = sequenceFieldParts(child);
       runs += `<w:fldSimple w:instr="${escapeXml(instr)}"><w:r>` +
         `${txbxRunPropsXml(child.marks)}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:fldSimple>`;
+    } else if (child.type === 'crossRef') {
+      const verb = child.attrs?.format === 'page' ? 'PAGEREF' : 'REF';
+      runs += `<w:fldSimple w:instr="${escapeXml(`${verb} ${String(child.attrs?.name ?? '')} \\h`)}">` +
+        `<w:r><w:t xml:space="preserve">${escapeXml(String(child.attrs?.text ?? ''))}</w:t></w:r></w:fldSimple>`;
+    } else if (child.type === 'formula') {
+      // A sentinel run, resolved by applyFormulasDocx — it runs after the boxes are packed.
+      const latex = typeof child.attrs?.latex === 'string' ? child.attrs.latex : '';
+      if (latex) {
+        docFormulas.push({ latex, display: child.attrs?.display === true });
+        runs += `<w:r><w:t xml:space="preserve">${MTH}${docFormulas.length - 1}${MTH}</w:t></w:r>`;
+      }
+    } else if (child.type === 'ruby') {
+      docRubies.push({ base: String(child.attrs?.base ?? ''), text: String(child.attrs?.text ?? '') });
+      runs += `<w:r><w:t xml:space="preserve">${RBY}${docRubies.length - 1}${RBY}</w:t></w:r>`;
     } else if (child.type === 'text' && child.text) {
       const rPr = txbxRunPropsXml(child.marks);
       let inner = '';
@@ -865,11 +944,24 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
         if (i > 0) inner += '<w:tab/>';
         if (seg) inner += `<w:t xml:space="preserve">${escapeXml(seg)}</w:t>`;
       });
-      runs += `<w:r>${rPr}${inner}</w:r>`;
+      const run = `<w:r>${rPr}${inner}</w:r>`;
+      const href = child.marks?.find((m) => m.type === 'link')?.attrs?.href;
+      const link = href ? String(href) : '';
+      if (link.startsWith('#')) {
+        runs += `<w:hyperlink w:anchor="${escapeXml(link.slice(1))}">${run}</w:hyperlink>`;
+      } else if (link) {
+        const rid = parts.nextRid();
+        parts.links.push({ rid, href: link });
+        runs += `<w:hyperlink r:id="${rid}">${run}</w:hyperlink>`;
+      } else {
+        runs += run;
+      }
     } else if (child.type === 'hardBreak') {
       runs += `<w:r>${txbxRunPropsXml(child.marks)}<w:br/></w:r>`;
     }
   }
+  closeBookmark();
+  closeComment();
   return `<w:p>${pPr.length ? `<w:pPr>${pPr.join('')}</w:pPr>` : ''}${runs}</w:p>`;
 }
 
@@ -1026,7 +1118,8 @@ function applyTextBoxesDocx(bytes: Uint8Array, boxes: TextBoxDocx[]): Uint8Array
   const relsPath = 'word/_rels/document.xml.rels';
   const rels = files[relsPath] ? strFromU8(files[relsPath]) : '';
   let nextRid = maxIdIn(rels, /Id="rId(\d+)"/g);
-  const parts: TxbxParts = { media: [], nums: [], nextRid: () => `rId${++nextRid}` };
+  let nextBm = 8000;
+  const parts: TxbxParts = { media: [], nums: [], links: [], nextRid: () => `rId${++nextRid}`, nextBookmarkId: () => ++nextBm };
 
   xml = xml.replace(
     new RegExp(`<w:p\\b[^>]*?>(?:(?!</w:p>)[\\s\\S])*?${TBX}(\\d+)${TBX}(?:(?!</w:p>)[\\s\\S])*?</w:p>`, 'g'),
@@ -1055,10 +1148,12 @@ function applyTextBoxesDocx(bytes: Uint8Array, boxes: TextBoxDocx[]): Uint8Array
     xml = xml.replace(new RegExp(`${TXBX_NUM}(\\d+)${TXBX_NUM}`, 'g'), (_m, i: string) => String(base + Number(i)));
   }
 
-  if (parts.media.length && rels) {
+  if ((parts.media.length || parts.links.length) && rels) {
     for (const m of parts.media) files[m.path] = m.bytes as Uint8Array<ArrayBuffer>;
     files[relsPath] = strToU8(rels.replace('</Relationships>', parts.media.map((m) =>
       `<Relationship Id="${m.rid}" Type="${R_NS}/image" Target="media/${m.path.split('/').pop()}"/>`).join('') +
+      parts.links.map((l) =>
+        `<Relationship Id="${l.rid}" Type="${R_NS}/hyperlink" Target="${escapeXml(l.href)}" TargetMode="External"/>`).join('') +
       '</Relationships>'));
   }
 
@@ -1148,9 +1243,11 @@ function applyFormulasDocx(bytes: Uint8Array, formulas: FormulaDocx[]): Uint8Arr
   const docBytes = files['word/document.xml'];
   if (!docBytes) return bytes;
   let xml = strFromU8(docBytes);
-  // Tempered pattern: the match stays inside the one run that holds the sentinel.
+  // Tempered pattern: the match stays inside the one run that holds the sentinel — it
+  // may cross neither </w:r> nor a nested <w:r> (a box's drawing run wraps whole
+  // paragraphs, so matching from it would swallow the box preamble).
   xml = xml.replace(
-    new RegExp(`<w:r\\b[^>]*?>(?:(?!</w:r>)[\\s\\S])*?${MTH}(\\d+)${MTH}(?:(?!</w:r>)[\\s\\S])*?</w:r>`, 'g'),
+    new RegExp(`<w:r\\b[^>]*?>(?:(?!</?w:r[\\s>])[\\s\\S])*?${MTH}(\\d+)${MTH}(?:(?!</?w:r[\\s>])[\\s\\S])*?</w:r>`, 'g'),
     (_m, idx: string) => {
       const f = formulas[Number(idx)];
       if (!f) return '';
@@ -1173,8 +1270,10 @@ function applyRubyDocx(bytes: Uint8Array, rubies: RubyDocx[]): Uint8Array {
   const docBytes = files['word/document.xml'];
   if (!docBytes) return bytes;
   let xml = strFromU8(docBytes);
+  // Tempered like the formula pass: crossing a nested <w:r> would let a match starting
+  // at a box's drawing run swallow the box preamble.
   xml = xml.replace(
-    new RegExp(`<w:r\\b[^>]*?>(?:(?!</w:r>)[\\s\\S])*?${RBY}(\\d+)${RBY}(?:(?!</w:r>)[\\s\\S])*?</w:r>`, 'g'),
+    new RegExp(`<w:r\\b[^>]*?>(?:(?!</?w:r[\\s>])[\\s\\S])*?${RBY}(\\d+)${RBY}(?:(?!</?w:r[\\s>])[\\s\\S])*?</w:r>`, 'g'),
     (_m, idx: string) => {
       const r = rubies[Number(idx)];
       if (!r) return '';
