@@ -11,6 +11,7 @@ const en = {
     close: 'Close',
     apply: 'Apply',
     insert: 'Insert',
+    add: 'Add',
     remove: 'Remove',
   },
   docProps: {

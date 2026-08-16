@@ -76,7 +76,7 @@
         <option value="">{t().tabsDialog.noLeader}</option>
         {#each LEADER_CHARS as c}<option value={c}>{c.repeat(6)}</option>{/each}
       </select>
-      <button class="add" onclick={add}>{t().common.insert}</button>
+      <button class="add" onclick={add}>{t().common.add}</button>
     </div>
 
     <label class="row">

@@ -67,7 +67,8 @@
     <div class="new-row">
       <input bind:value={name} placeholder={t().autoText.name} disabled={!hasSelection} />
       <input class="key" bind:value={shortcut} placeholder={t().autoText.shortcut} disabled={!hasSelection} />
-      <button class="small" onclick={add} disabled={!hasSelection || !name.trim()}>{t().common.insert}</button>
+      <!-- Adds to the library; the entries above are what inserts into the document. -->
+      <button class="small" onclick={add} disabled={!hasSelection || !name.trim()}>{t().common.add}</button>
     </div>
     {#if !hasSelection}<p class="hint">{t().autoText.needsSelection}</p>{/if}
 

@@ -10,6 +10,7 @@ const de: Messages = {
     close: 'Schließen',
     apply: 'Übernehmen',
     insert: 'Einfügen',
+    add: 'Hinzufügen',
     remove: 'Entfernen',
   },
   docProps: {
