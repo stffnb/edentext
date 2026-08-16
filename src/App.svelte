@@ -590,14 +590,25 @@
     if (!editor) return;
     try {
       const name = sourceName?.toLowerCase() ?? '';
-      const isDocx = name.endsWith('.docx') || name.endsWith('.dotx');
+      let isDocx = name.endsWith('.docx') || name.endsWith('.dotx');
       // A template is loaded for its content but never bound as the handle, so the
       // first Save prompts for a new document instead of overwriting the template.
       const isTemplate = name.endsWith('.ott') || name.endsWith('.dotx');
       // Pre-decode any images in a format the browser can't render (TIFF, …) to PNG.
       // Lazy: the decoder loads only when such an image is present, else this is a no-op.
       const converted = await convertUnsupportedImages(bytes);
-      const result = isDocx ? importDocx(bytes, converted) : importOdt(bytes, converted);
+      // An extension can be wrong (a renamed or mis-saved file) and both word processors
+      // go by content, so the other format is tried before the file is called broken —
+      // a file that is neither reports the error for the extension it carries.
+      let result;
+      try {
+        result = isDocx ? importDocx(bytes, converted) : importOdt(bytes, converted);
+      } catch (err) {
+        try {
+          result = isDocx ? importOdt(bytes, converted) : importDocx(bytes, converted);
+          isDocx = !isDocx;
+        } catch { throw err; }
+      }
 
       const hasContent = editor.state.doc.textContent.length > 0 || editor.state.doc.childCount > 1;
       if (hasContent && !confirm(t().dialogs.confirmReplace)) {
