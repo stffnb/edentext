@@ -145,7 +145,7 @@ function docCitationStyle(node: TiptapNode): CitationStyle {
 // Word numbers footnotes and endnotes in separate files, so each class counts from 1.
 // Filled from the note section before the body is walked, then read by the anchor —
 // module-level for the same reason as docFormulas.
-let docNoteIds = new Map<string, { id: number; kind: NoteKind }>();
+let docNoteIds = new Map<string, { id: number; kind: NoteKind; label: string | null }>();
 
 // Comments, numbered in document order before the runs are built — Word's ids are
 // integers and word/comments.xml has to exist before the Document is constructed.
@@ -1340,6 +1340,30 @@ function applyNotePrDocx(bytes: Uint8Array, notes: NoteSettings): Uint8Array {
   return zipSync(out);
 }
 
+// Post-pack pass: a custom note mark (w:customMarkFollows), which the docx package
+// cannot express. The anchor's reference gains the flag plus the literal character,
+// and the note text shows the same character where <w:footnoteRef/> always sits.
+function applyNoteMarksDocx(bytes: Uint8Array): Uint8Array {
+  const marked = [...docNoteIds.values()].filter((n) => n.label);
+  if (!marked.length) return bytes;
+  const files = unzipSync(bytes);
+  const patch = (path: string, from: RegExp, to: string) => {
+    if (files[path]) files[path] = strToU8(strFromU8(files[path]).replace(from, to));
+  };
+  for (const n of marked) {
+    const mark = `<w:t>${escapeXml(n.label!)}</w:t>`;
+    patch('word/document.xml',
+      new RegExp(`<w:${n.kind}Reference w:id="${n.id}"/>`),
+      `<w:${n.kind}Reference w:customMarkFollows="1" w:id="${n.id}"/>${mark}`);
+    patch(`word/${n.kind}s.xml`,
+      new RegExp(`(<w:${n.kind} w:id="${n.id}">(?:(?!</w:${n.kind}>)[\\s\\S])*?)<w:${n.kind}Ref/>`),
+      `$1${mark}`);
+  }
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
 // Post-pack pass: a right-to-left section is <w:bidi/> in every w:sectPr, which the
 // docx package does not expose (it has the paragraph-level flag only).
 function applyBidiDocx(bytes: Uint8Array): Uint8Array {
@@ -1960,7 +1984,8 @@ export async function buildDocx(
   for (const note of noteBlocks) {
     const kind: NoteKind = note.attrs?.kind === 'endnote' ? 'endnote' : 'footnote';
     const id = Object.keys(notesByClass[kind]).length + 1;
-    docNoteIds.set(String(note.attrs?.id ?? ''), { id, kind });
+    const label = typeof note.attrs?.label === 'string' && note.attrs.label ? note.attrs.label : null;
+    docNoteIds.set(String(note.attrs?.id ?? ''), { id, kind, label });
     notesByClass[kind][String(id)] = {
       children: [new Paragraph({ style: kind === 'endnote' ? 'EndnoteText' : 'FootnoteText', children: inlineToRuns(note.content ?? []) })],
     };
@@ -2103,7 +2128,7 @@ export async function buildDocx(
   const blob = await Packer.toBlob(doc);
   const packed = applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
   const cited = applyBibliographyDocx(applyRubyDocx(packed, docRubies), docSources, docCitationStyle(docJson));
-  const withNotes = docNoteIds.size ? applyNotePrDocx(cited, notesSettings) : cited;
+  const withNotes = docNoteIds.size ? applyNoteMarksDocx(applyNotePrDocx(cited, notesSettings)) : cited;
   const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withNotes) : withNotes;
   const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);
   if (isEmptyPageDecor(decor)) return bidi;

@@ -92,7 +92,7 @@ type Ctx = {
   // word/footnotes.xml and endnotes.xml by w:id, and the notes the body referenced, in
   // anchor order — the editor keeps them in one section at the document end (notes.ts).
   noteParts: Record<NoteKind, Map<string, Element>>;
-  notes: { id: string; kind: NoteKind; text: string; content: Node[]; styleName: string | null }[];
+  notes: { id: string; kind: NoteKind; label: string | null; text: string; content: Node[]; styleName: string | null }[];
 };
 
 // The real notes of a part, by w:id: Word's own separator entries carry a w:type and
@@ -224,7 +224,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   if (ctx.notes.length) {
     blocks.push({ type: 'noteSection', content: ctx.notes.map((n) => ({
       type: 'note',
-      attrs: { id: n.id, kind: n.kind, label: null, text: n.text, styleName: n.styleName },
+      attrs: { id: n.id, kind: n.kind, label: n.label, text: n.text, styleName: n.styleName },
       ...(n.content.length ? { content: n.content } : {}),
     })) });
   }
@@ -1166,7 +1166,7 @@ function inlineChildren(el: Element): Element[] {
 // A w:footnoteReference → the anchor node, with the note's own paragraphs collected
 // into ctx for the section the document end gets. Word's numbering is implicit, so the
 // citation is counted here; several paragraphs flatten to hard breaks.
-function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunProps, defaults: BlockDefaults): Node | null {
+function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunProps, defaults: BlockDefaults, label: string | null = null): Node | null {
   const note = wid == null ? null : ctx.noteParts[kind].get(wid);
   if (!note) return null;
   const content: Node[] = [];
@@ -1184,7 +1184,14 @@ function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunP
     if (!first.text) content.shift();
   }
   const seen = ctx.notes.filter((n) => n.kind === kind).length;
-  const text = formatOrdinal(seen + 1, kind === 'endnote' ? 'i' : '1');
+  const text = label ?? formatOrdinal(seen + 1, kind === 'endnote' ? 'i' : '1');
+  // A custom-marked note repeats the literal character where <w:footnoteRef/> would
+  // sit; the editor draws the mark itself, so strip it off the body.
+  const bodyFirst = content[0];
+  if (label && bodyFirst?.type === 'text' && typeof bodyFirst.text === 'string' && bodyFirst.text.startsWith(label)) {
+    bodyFirst.text = bodyFirst.text.slice(label.length).replace(/^\t+/, '');
+    if (!bodyFirst.text) content.shift();
+  }
   const id = `${kind}${wid}`;
   // The note renders at the file's own size and indent: its first paragraph names the
   // style (Word's FootnoteText), and collectStyleSheet only keeps a style in use.
@@ -1195,7 +1202,7 @@ function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunP
   const styleId = pStyle ? wVal(pStyle) : null;
   const styleName = styleId && !isStockNoteStyle(ctx, styleId) ? ctx.styleNames.get(styleId) ?? null : null;
   if (styleId && styleName) ctx.usedStyles.add(styleId);
-  ctx.notes.push({ id, kind, text, content, styleName });
+  ctx.notes.push({ id, kind, label, text, content, styleName });
   return { type: 'noteRef', attrs: { id, kind, text } };
 }
 
@@ -1289,6 +1296,9 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       ctx.pendingBlocks.push(n);
     };
 
+    // Set when this run's w:footnoteReference declares a custom mark: the run's own
+    // w:t is the mark, consumed by the anchor rather than pushed as text.
+    let customMark: string | null = null;
     for (const child of Array.from(r.children)) {
       // Word wraps every shape in mc:AlternateContent; use only the mc:Choice branch
       // (the mc:Fallback VML duplicates it and would double-import).
@@ -1349,6 +1359,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
         // revision is only recorded, not applied.
         case 'delText':
         case 't':
+          if (customMark !== null && (child.textContent ?? '') === customMark) { customMark = null; break; }
           if ((fieldShown || fieldSeq) && fieldMode === 'result') fieldResultText += child.textContent ?? '';
           else if (!skipResult()) pushText(child.textContent ?? '', marks);
           break;
@@ -1370,7 +1381,14 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
           // The zone schema has no notes, and Word's own separator notes are referenced
           // by nothing — only a real anchor reaches here.
           const kind: NoteKind = child.localName === 'endnoteReference' ? 'endnote' : 'footnote';
-          const ref = hfFields ? null : noteRefNode(child.getAttributeNS(W, 'id'), kind, ctx, baseRun, defaults);
+          // w:customMarkFollows: the literal mark is the rest of this run's text, part
+          // of the anchor rather than body text.
+          let label: string | null = null;
+          if (child.getAttributeNS(W, 'customMarkFollows') === '1' || child.getAttributeNS(W, 'customMarkFollows') === 'true') {
+            label = (child.parentElement?.getElementsByTagNameNS(W, 't')[0]?.textContent ?? '') || null;
+            if (label) customMark = label;
+          }
+          const ref = hfFields ? null : noteRefNode(child.getAttributeNS(W, 'id'), kind, ctx, baseRun, defaults, label);
           if (ref) out.push(ref);
           break;
         }
