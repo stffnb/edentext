@@ -16,6 +16,8 @@ export const PKG_REL = 'http://schemas.openxmlformats.org/package/2006/relations
 export const WPS = 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape';
 export const MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006';
 export const VML = 'urn:schemas-microsoft-com:vml';
+// VML's Office extensions (o:hr, o:hralign, …).
+export const O = 'urn:schemas-microsoft-com:office:office';
 // The bibliography sources Word keeps in a custom-XML part.
 export const B = 'http://schemas.openxmlformats.org/officeDocument/2006/bibliography';
 

@@ -166,6 +166,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-15.
 
 **Content an imported document loses**
 - Charts are **drawn** from the file (`import/chart.ts`: DrawingML `chartN.xml` and ODF `chart:chart`), but as a picture, not a chart object — a re-export carries the drawing and the numbers behind it are no longer editable. The same holds for an **EMF** metafile (`import/emf.ts`): it is drawn, but as the SVG picture it was rebuilt into, and only from the record set a plot consists of — a hatched brush, a clipping region or a rotated bitmap is skipped. **WMF/SVM** metafiles and OLE objects still keep their box and a placeholder label, and export writes that back out: WMF is a different (16-bit) record format, SVM is StarOffice-proprietary, and an OLE object cannot be rendered without its application
+- Two drawings still drop with the "Drawings were removed" warning: a **text box in the header/footer** (the zone is a one-paragraph document, so no block node fits in it — whatever the box carried, a letterhead logo included, goes with it) and a **shape group** (ODF `draw:g`: unwrapping it would anchor every child on its own, and a box cannot be put at a free point — see the limitation below)
 - A drawing tool: a freeform, a polygon or a connector **imports, draws and saves** (see below), but there is no way to author one here. A Word connector preset (`bentConnector3`) is also still dropped — Word resolves that geometry and writes no path for it
 
 **Missing while writing**

@@ -1,5 +1,5 @@
 import { unzipSync, strFromU8 } from 'fflate';
-import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, toggle as onOff, wVal, W, R, WP, A, B, WPS, MC, VML, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
+import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, toggle as onOff, wVal, W, R, WP, A, B, WPS, MC, VML, O, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { lengthToPt, WATERMARK_NAME } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
@@ -948,6 +948,10 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   const attrs = blockAttrs(ppr, kind, level, directJc ? jcVal : null,
     kind === 'cell' ? ctx.styles.paragraphSpacing(styleId, ctx.cellSpacing) : {});
   applyContextualSpacing(el, ppr, ctx, styleId, attrs);
+  // The editor has no rule node, so Word's horizontal line becomes its paragraph's own
+  // bottom rule — a real w:pBdr keeps precedence, only one line can be drawn.
+  const hr = hrBorderAttr(el);
+  if (hr) attrs.borderBottom ??= hr;
   // The baked-in cell chain must not accrete no-op direct formatting: in a cell,
   // unset spacing renders 0/0 (no word processor passes the default style's spacing
   // into a cell), and single line height is only kept over a non-single default.
@@ -1152,6 +1156,21 @@ function paraBorderAttr(b: Element | null): string | null {
   const widthPt = sz != null ? Math.round((sz / 8) * 100) / 100 : 0.5;
   return `${widthPt}pt solid ${hexColor(b.getAttributeNS(W, 'color')) ?? '#000000'}`;
 }
+
+// Word's horizontal line (Insert ▸ Horizontal Line, or the `---` autoformat) is a VML
+// rect flagged o:hr, alone in its paragraph — height and fill are the line it draws.
+// Its own width and alignment are dropped: a paragraph rule spans the text width.
+function hrBorderAttr(p: Element): string | null {
+  const rect = Array.from(p.getElementsByTagNameNS(VML, 'rect')).find(isHrRect);
+  if (!rect) return null;
+  const h = /height:\s*([\d.]+\s*[a-z]*)/.exec(rect.getAttribute('style') ?? '')?.[1];
+  const pt = lengthToPt(h?.replace(/\s+/g, '')) ?? 1.5;
+  // Word's own default for a line with no fill colour.
+  const color = normalizeColor(rect.getAttribute('fillcolor') ?? '') ?? '#A0A0A0';
+  return `${Math.round(pt * 100) / 100}pt solid ${color}`;
+}
+
+const isHrRect = (el: Element): boolean => (el.getAttributeNS(O, 'hr') ?? 'f') !== 'f';
 
 function snapPt(v: number): number {
   const r = Math.round(v * 100) / 100;
@@ -2011,6 +2030,8 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
   // The watermark rides the page decoration (storage/pageDecor.ts), not the header's
   // content, so it must not also arrive here as a shape.
   if (shape.getAttribute('id') === WATERMARK_NAME) return null;
+  // A horizontal line rides its paragraph as a bottom rule (convertParagraph), not a shape.
+  if (isHrRect(shape)) return null;
 
   const style = shape.getAttribute('style') ?? '';
   const dimPx = (key: string): number | null => {
