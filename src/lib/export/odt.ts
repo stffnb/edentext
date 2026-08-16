@@ -1581,7 +1581,9 @@ function applyPageBreaks(odtBytes: Uint8Array): Uint8Array {
   const breakStyleFor = (source: string): string => {
     const existing = nameBySource.get(source);
     if (existing) return existing;
-    const name = `PB${++counter}`;
+    // PBK, not PB: applyParagraphBoxes mints PB names, and a duplicate style:name
+    // makes the importer resolve both paragraphs to whichever definition it finds.
+    const name = `PBK${++counter}`;
     nameBySource.set(source, name);
     const def = source ? findAutoStyle(content, source) : null;
     minted.push(def
@@ -1591,15 +1593,18 @@ function applyPageBreaks(odtBytes: Uint8Array): Uint8Array {
     return name;
   };
 
+  // The sentinel sits anywhere in the block: a custom paragraph's serialized text
+  // starts with the FSZ/STY/PBX payloads (their passes run later), then the PGB.
   content = content.replace(
-    new RegExp(`<text:(p|h)\\b([^>]*)>${PGB}`, 'g'),
-    (_m, tag: string, attrs: string) => {
+    new RegExp(`<text:(p|h)\\b([^>]*)>([\\s\\S]*?)</text:\\1>`, 'g'),
+    (m, tag: string, attrs: string, inner: string) => {
+      if (!inner.includes(PGB)) return m;
       const sm = /text:style-name="([^"]*)"/.exec(attrs);
       const name = breakStyleFor(sm ? sm[1] : '');
       const newAttrs = sm
         ? attrs.replace(/text:style-name="[^"]*"/, `text:style-name="${name}"`)
         : ` text:style-name="${name}"${attrs}`;
-      return `<text:${tag}${newAttrs}>`;
+      return `<text:${tag}${newAttrs}>${inner.split(PGB).join('')}</text:${tag}>`;
     },
   );
   // Drop any sentinels not consumed above (defensive — never legitimate text).
