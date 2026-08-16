@@ -21,12 +21,12 @@
 
   // The levels button drives a table of contents only — a caption index has one level.
   // The document holds at most one, so the first hit is it.
-  let toc = $derived.by<{ pos: number; maxLevel: number } | null>(() => {
+  let toc = $derived.by<{ pos: number; maxLevel: number; pageNumbers: boolean } | null>(() => {
     if (tick < 0 || !editor) return null;
-    let found: { pos: number; maxLevel: number } | null = null;
+    let found: { pos: number; maxLevel: number; pageNumbers: boolean } | null = null;
     editor.state.doc.descendants((node, pos) => {
       if (found || node.type.name !== 'tableOfContents' || node.attrs.index !== 'toc') return;
-      found = { pos, maxLevel: (node.attrs.maxLevel ?? 5) as number };
+      found = { pos, maxLevel: (node.attrs.maxLevel ?? 5) as number, pageNumbers: node.attrs.pageNumbers !== false };
     });
     return found;
   });
@@ -49,6 +49,14 @@
     closeMenu();
     if (!editor || !toc) return;
     editor.chain().focus().setNodeSelection(toc.pos).updateAttributes('tableOfContents', { maxLevel: level }).run();
+  }
+
+  // Word's "Show page numbers" — and what a file's own TOC \n switches off. The menu
+  // stays open, as it does for the Layout tab's checkboxes.
+  function setPageNumbers(on: boolean) {
+    if (!editor || !toc) return;
+    editor.chain().focus().setNodeSelection(toc.pos)
+      .updateAttributes('tableOfContents', { pageNumbers: on }).run();
   }
 
   // The document's bibliography, whose attrs hold the citation style — both formats keep
@@ -110,6 +118,11 @@
         {#each LEVELS as l}
           <button class:selected={toc?.maxLevel === l} onclick={() => setMaxLevel(l)}>{l}</button>
         {/each}
+        <label class="check-row">
+          <input type="checkbox" checked={toc?.pageNumbers}
+            onchange={(e) => setPageNumbers(e.currentTarget.checked)} />
+          {t().ribbon.tocPageNumbers}
+        </label>
       </div>
     {/if}
   </div>
@@ -194,4 +207,6 @@
 
 <style>
   .rb-menu-wrap { position: relative; }
+  /* A toggle among the menu's rows of buttons, as in the Layout tab's own menus. */
+  .check-row { display: flex; align-items: center; gap: 6px; padding: 6px 12px; white-space: nowrap; font-size: 13px; }
 </style>

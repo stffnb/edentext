@@ -297,7 +297,11 @@ class TocView {
     } else {
       entries = heads.map(h => ({ text: h.text, level: h.level, page: this.pageOf(h.pos, grid) }));
     }
-    const key = JSON.stringify(entries);
+    // Repaint on anything a row is drawn from: the entries, and the index's own look
+    // (leader, page numbers, title, level styles). Its cached entries are what syncAttr
+    // writes back, so keying on them too would chase this pass's own result.
+    const { entries: _cached, ...look } = this.node()?.attrs ?? {};
+    const key = JSON.stringify([entries, look]);
     if (key !== this.lastKey) {
       this.lastKey = key;
       this.paint(entries, heads);

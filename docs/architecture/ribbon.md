@@ -121,7 +121,8 @@ back to Home.
 
 The ribbon surfaces a good deal the engine already carried with nothing to reach it: change case,
 underline and strikethrough line styles, Find and Replace as buttons, the page break, section
-breaks, absolute left/right indent, the table-of-contents depth, cell margins, Save As.
+breaks, absolute left/right indent, the table-of-contents depth and its page numbers, cell
+margins, Save As.
 
 ## Dialogs
 
