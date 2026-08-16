@@ -79,7 +79,12 @@ import { Insertion, Deletion, TrackChanges } from './extensions/trackChanges';
 export const extensions = [
   // textBox and columns have their own groups so only the document (not
   // cells/lists/boxes) admits them; the note section is last or nowhere.
-  Document.extend({ content: '(block | textBox | columns)+ noteSection?' }),
+  // Spelled as an alternation, not `… + noteSection?`: with the trailing optional the
+  // match state after the first block offers noteSection first, and that is the type
+  // TipTap's clearNodes converts a block into (`contentMatchAt(i).defaultType`).
+  Document.extend({
+    content: '((block | textBox | columns)+ noteSection) | (block | textBox | columns)+',
+  }),
   Paragraph,
   Text,
   Bold,
