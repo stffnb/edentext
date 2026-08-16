@@ -219,6 +219,13 @@ function boxWrapAlign(gp: PropMap, attrs: Record<string, unknown>): void {
       && attrs.wrap !== 'left' && attrs.wrap !== 'right') attrs.wrapAlign = hpos;
 }
 
+// Vertical text in any box shape: the frame style's writing mode, both of ODF's
+// top-to-bottom modes (the editor has the one direction the browser lays out).
+function boxTextVertical(el: Element, ctx: Ctx, attrs: Record<string, unknown>): void {
+  const mode = ctx.resolver.graphicParaProps(el.getAttributeNS(NS.draw, 'style-name'))['style:writing-mode'];
+  if (mode === 'tb-rl' || mode === 'tb-lr' || mode === 'tb') attrs.textVertical = true;
+}
+
 function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap): void {
   const deg = frameRotationDeg(el);
   if (deg) attrs.rotation = deg;
@@ -431,10 +438,7 @@ function convertTextBoxFrame(frame: Element, textBoxEl: Element, ctx: Ctx): Node
   const padCm = lengthToCm(gp['fo:padding']);
   if (padCm != null && Math.abs(padCm - TEXTBOX_PADDING_CM) > 0.01) attrs.paddingCm = Math.round(padCm * 1000) / 1000;
   shapeStyleAttrs(gp, attrs, false);
-  // Vertical text: the frame style's writing mode, both of ODF's top-to-bottom modes
-  // (the editor has the one direction the browser lays out).
-  const mode = ctx.resolver.graphicParaProps(frame.getAttributeNS(NS.draw, 'style-name'))['style:writing-mode'];
-  if (mode === 'tb-rl' || mode === 'tb-lr' || mode === 'tb') attrs.textVertical = true;
+  boxTextVertical(frame, ctx, attrs);
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(textBoxEl.children), ctx) };
 }
 
@@ -542,6 +546,7 @@ function convertShape(el: Element, ctx: Ctx): Node | null {
   applyFrameRotationAndWrap(el, attrs, gp);
   boxWrapAlign(gp, attrs);
   shapeStyleAttrs(gp, attrs, true);
+  boxTextVertical(el, ctx, attrs);
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(el.children), ctx) };
 }
 
@@ -1217,8 +1222,10 @@ function convertToc(el: Element, ctx: Ctx, indexKind: IndexKind): Node {
   const templates = Array.from(source?.getElementsByTagNameNS(NS.text, `${family}-entry-template`) ?? []);
   const template = templates[0];
   const styled = ctx.resolver.tabStops(template?.getAttributeNS(NS.text, 'style-name') ?? null);
-  const tabPosCm = lengthToCm(stop?.getAttributeNS(NS.style, 'position'))
+  let tabPosCm = lengthToCm(stop?.getAttributeNS(NS.style, 'position'))
     ?? [...styled].reverse().find(t => t.align === 'right')?.pos ?? null;
+  // A stop at the column's end is the attr's own default (null = the text width).
+  if (tabPosCm != null && Math.abs(tabPosCm - ctx.contentWidthCm) < 0.05) tabPosCm = null;
   // Each level's own paragraph style: the entry rows carry its name, so the document
   // stylesheet gives them the file's indent, spacing and font instead of our defaults.
   const levelStyles: (string | null)[] = [];
@@ -1227,8 +1234,11 @@ function convertToc(el: Element, ctx: Ctx, indexKind: IndexKind): Node {
     const level = Number(tpl.getAttributeNS(NS.text, 'outline-level')) || 1;
     const named = ctx.resolver.namedAncestor(tpl.getAttributeNS(NS.text, 'style-name'));
     if (!(level >= 1) || !named) continue;
+    const display = ctx.styleNames.get(named) ?? named;
+    // An entry template resolving to the default style names no style of its own.
+    if (display === DEFAULT_STYLE) continue;
     ctx.usedStyles.add(named);
-    levelStyles[level - 1] = ctx.styleNames.get(named) ?? named;
+    levelStyles[level - 1] = display;
   }
   const attrs: Record<string, unknown> = { entries, title, maxLevel, leader, tabPosCm, index: indexKind };
   if (levelStyles.some(Boolean)) attrs.levelStyles = Array.from(levelStyles, (s) => s ?? null);
@@ -2665,8 +2675,9 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
     attrs.tableStyle = displayStyleName(named);
     // Which conditional areas the table opts into (ODF's table template attributes).
     // Absent ⇒ leave the attr null, so parseTableLook falls back to the default.
+    // '' is a declared all-off look — dropping it would revert to the default look.
     const look = odfTableLook(el);
-    if (look) attrs.tableLook = look;
+    if (look != null) attrs.tableLook = look;
   }
   return Object.keys(attrs).length ? { type: 'table', attrs, content: rows } : { type: 'table', content: rows };
 }
