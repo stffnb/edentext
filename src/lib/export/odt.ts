@@ -1596,7 +1596,7 @@ function applyPageBreaks(odtBytes: Uint8Array): Uint8Array {
   // The sentinel sits anywhere in the block: a custom paragraph's serialized text
   // starts with the FSZ/STY/PBX payloads (their passes run later), then the PGB.
   content = content.replace(
-    new RegExp(`<text:(p|h)\\b([^>]*)>([\\s\\S]*?)</text:\\1>`, 'g'),
+    new RegExp(`<text:(p|h)\\b((?:[^>]*[^/>])?)>([\\s\\S]*?)</text:\\1>`, 'g'),
     (m, tag: string, attrs: string, inner: string) => {
       if (!inner.includes(PGB)) return m;
       const sm = /text:style-name="([^"]*)"/.exec(attrs);
@@ -1933,7 +1933,7 @@ function applyParagraphStyles(odtBytes: Uint8Array): Uint8Array {
 
   const styRe = new RegExp(`${STY}([^${STY}]*)${STY}`);
   content = content.replace(
-    new RegExp(`<text:(p|h)\\b([^>]*)>([\\s\\S]*?)</text:\\1>`, 'g'),
+    new RegExp(`<text:(p|h)\\b((?:[^>]*[^/>])?)>([\\s\\S]*?)</text:\\1>`, 'g'),
     (m, tag: string, attrs: string, inner: string) => {
       const sm = styRe.exec(inner);
       if (!sm) return m;
@@ -1991,7 +1991,7 @@ function applyParagraphBoxes(odtBytes: Uint8Array): Uint8Array {
 
   const pbxRe = new RegExp(`${PBX}([^${PBX}]*)${PBX}`);
   content = content.replace(
-    new RegExp(`<text:(p|h)\\b([^>]*)>([\\s\\S]*?)</text:\\1>`, 'g'),
+    new RegExp(`<text:(p|h)\\b((?:[^>]*[^/>])?)>([\\s\\S]*?)</text:\\1>`, 'g'),
     (m, tag: string, attrs: string, inner: string) => {
       const sm = pbxRe.exec(inner);
       if (!sm) return m;
@@ -3123,7 +3123,7 @@ function applyCharacterStyles(odtBytes: Uint8Array): Uint8Array {
 
   const cstRe = new RegExp(`${CST}([^${CST}]*)${CST}`);
   content = content.replace(
-    new RegExp(`<text:span\\b([^>]*)>([\\s\\S]*?)</text:span>`, 'g'),
+    new RegExp(`<text:span\\b((?:[^>]*[^/>])?)>([\\s\\S]*?)</text:span>`, 'g'),
     (m, attrs: string, inner: string) => {
       const sm = cstRe.exec(inner);
       if (!sm) return m;
@@ -3172,7 +3172,7 @@ function resolveTextEffects(xml: string, mint: (styleXml: string) => void, prefi
 
   const tefRe = new RegExp(`${TEF}([^${TEF}]*)${TEF}`);
   let out = xml.replace(
-    new RegExp(`<text:span\\b([^>]*)>([\\s\\S]*?)</text:span>`, 'g'),
+    new RegExp(`<text:span\\b((?:[^>]*[^/>])?)>([\\s\\S]*?)</text:span>`, 'g'),
     (m, attrs: string, inner: string) => {
       const sm = tefRe.exec(inner);
       if (!sm) return m;
@@ -3571,7 +3571,7 @@ function collapseRunWhitespace(odtBytes: Uint8Array): Uint8Array {
 
   let content = strFromU8(contentBytes);
   content = content.replace(
-    /<text:(p|h)\b[^>]*>[\s\S]*?<\/text:\1>/g,
+    /<text:(p|h)\b(?:[^>]*[^/>])?>[\s\S]*?<\/text:\1>/g,
     (block) => block.replace(/\n/g, ''),
   );
 
