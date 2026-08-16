@@ -1,4 +1,8 @@
 // Seeded random-document generator for the fuzz round-trip leg (fuzz-roundtrip.test.ts).
+import {
+  DEFAULT_TABLE_LOOK, TABLE_REGIONS, builtinTableStyles, resolveTableCell, tableLookAttr,
+} from '../src/lib/styles/tableStyles';
+
 type N = any;
 type Rng = () => number;
 
@@ -113,6 +117,7 @@ let bmNames: string[] = [];
 let commentSeq = 0;
 let revSeq = 0;
 let seqCounters: Record<string, number> = {};
+let bibIndex = false;
 
 const LATEX = ['x^{2}+1', '\\frac{a}{b}', '\\sqrt{x+1}', '\\alpha \\cdot \\beta'] as const;
 
@@ -210,6 +215,7 @@ function textBox(r: Rng): N {
     attrs.strokeColor = '#0070C0';
     if (maybe(r, 0.5)) attrs.strokeWidthPt = 2;
   }
+  if (maybe(r, 0.12)) attrs.textVertical = true;
   // floats like an image; dist beside a side wrap only (as there)
   if (maybe(r, 0.3)) {
     attrs.wrap = pick(r, ['left', 'right', 'topBottom']);
@@ -219,6 +225,38 @@ function textBox(r: Rng): N {
   }
   const kids = Array.from({ length: int(r, 1, 2) }, () => paragraph(r));
   return { type: 'textBox', attrs, content: kids };
+}
+
+// A generated index. Both importers return an empty entry cache (the node view refills
+// it live), no own title and the default leader — so that is what an authored one holds.
+function tocBlock(r: Rng): N {
+  let kind = pick(r, ['toc', 'toc', 'figures', 'tables', 'alphabetical', 'bibliography'] as const);
+  if (kind === 'bibliography' && bibIndex) kind = 'toc';
+  // maxLevel rides only the TOC family (ODF text:outline-level, Word's \o range).
+  const attrs: N = { entries: [], title: '', index: kind,
+    leader: '.', tabPosCm: null, maxLevel: kind === 'toc' ? pick(r, [3, 5, 10]) : 10 };
+  // One bibliography per doc with a Word-nameable style: DOCX keeps a single document
+  // citation style (b:Sources StyleName), and it has no name for LibreOffice's
+  // cite-by-key (the export writes APA for it), so 'key' survives only the ODT leg.
+  if (kind === 'bibliography') {
+    bibIndex = true;
+    attrs.citationStyle = pick(r, ['numbered', 'apa', 'mla', 'chicago']);
+  }
+  return { type: 'tableOfContents', attrs };
+}
+
+// Two topBottom images set against opposite band ends share the band side by side; only
+// such a pair keeps its wrapAlign on import (pairAlignedFrames — a lone aligned frame
+// reserves the whole band). No wrapOffset: the export writes the alignment as the x.
+function framePair(r: Rng): N {
+  const img = (side: string): N => {
+    const a: N = { src: PNG, width: int(r, 40, 200), height: int(r, 30, 120),
+      wrap: 'topBottom', wrapAlign: side };
+    if (maybe(r, 0.3)) a.wrapOffsetY = 1.5;
+    return { type: 'image', attrs: a };
+  };
+  const flip = maybe(r, 0.5);
+  return { type: 'paragraph', content: [img(flip ? 'right' : 'left'), img(flip ? 'left' : 'right')] };
 }
 
 // Adjacent equal-attr sections merge on export (a columnsFlow page split looks the
@@ -259,9 +297,34 @@ function list(r: Rng, kind: 'bulletList' | 'orderedList', depth: number): N {
 // A tiny valid PNG; only its bytes matter for the round-trip (no image decoding).
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
+// A styled table as the editor authors it: name + look on the table, the style's fill
+// and borders materialized onto the cells (paintTable). `region` stays off — the app
+// re-derives it from the registry on load, and its baked region text is not clean yet.
+const TABLE_STYLE_PICK = ['Simple Grid', 'Simple List Shaded', 'Plain Table',
+  'Box List Blue', 'Grid Table Accent', 'Academic'] as const;
+
+function styledTable(r: Rng, name: string, cols: number, nRows: number): N {
+  const style = builtinTableStyles()[name];
+  const look = { ...DEFAULT_TABLE_LOOK, ...(style.look ?? {}) };
+  if (maybe(r, 0.3)) look[pick(r, TABLE_REGIONS)] = maybe(r, 0.5);
+  const rows = Array.from({ length: nRows }, (_, ri) => ({
+    type: 'tableRow',
+    content: Array.from({ length: cols }, (_, ci) => {
+      const paint = resolveTableCell(style, { row: ri, col: ci, rows: nRows, cols }, look);
+      const attrs: N = { colspan: 1, rowspan: 1, colwidth: null };
+      if (paint.fill) attrs.backgroundColor = paint.fill;
+      for (const [k, v] of Object.entries(paint.borders)) if (v !== null) attrs[k] = v;
+      // heading-safe runs: a #F2F2F2 header cell reads bold as presentational
+      return { type: 'tableCell', attrs, content: [{ type: 'paragraph', content: runs(r, true) }] };
+    }),
+  }));
+  return { type: 'table', attrs: { tableStyle: name, tableLook: tableLookAttr(look) }, content: rows };
+}
+
 function table(r: Rng): N {
   const cols = int(r, 1, 3);
   const nRows = int(r, 1, 3);
+  if (maybe(r, 0.18)) return styledTable(r, pick(r, TABLE_STYLE_PICK), cols, nRows);
   // vertical merge: cell (0,0) spans rows 0-1, so row 1 starts one cell short.
   // cols >= 2 keeps row 1 non-empty — a row of only covered cells is not a document
   // the editor can author (the importer clamps such a file's spans instead).
@@ -310,6 +373,7 @@ export function genDoc(r: Rng): N {
   commentSeq = 0;
   revSeq = 0;
   seqCounters = {};
+  bibIndex = false;
   const blocks: N[] = [];
   const notes: N[] = [];
   let prev = '';
@@ -330,18 +394,26 @@ export function genDoc(r: Rng): N {
       // direct value equal to the style's own is suppressed on import — a styled
       // block carries heading-safe runs and no paragraph attrs of its own.
       block = maybe(r, 0.07)
-        ? { type: 'paragraph', attrs: { styleName: pick(r, ['Title', 'Subtitle', 'Quotations']) },
+        ? { type: 'paragraph', attrs: { styleName: pick(r, ['Title', 'Subtitle', 'Quotations', 'Caption']) },
             content: runs(r, true) }
         : paragraph(r, true, true);
       // not beside a lone display formula: company would cost it its own line (= display)
       if (block.content && block.content[0]?.type !== 'formula' && maybe(r, 0.15)) {
-        block.content.push(noteRef(pick(r, ['footnote', 'endnote'])));
+        // ahead of a trailing sunk frame: a topBottom image set below the paragraph
+        // top sinks behind the text on import (sinkOffsetFrames)
+        const c = block.content;
+        const last = c[c.length - 1];
+        const at = last?.type === 'image' && last.attrs?.wrap === 'topBottom'
+          && last.attrs?.wrapOffsetY > 0 ? c.length - 1 : c.length;
+        c.splice(at, 0, noteRef(pick(r, ['footnote', 'endnote'])));
       }
     }
     else if (roll < 0.55) block = { type: 'heading', attrs: { level: int(r, 1, 8) }, content: runs(r, true) };
     else if (roll < 0.72) block = list(r, pick(r, ['bulletList', 'orderedList']), 0);
     else if (roll < 0.77) block = textBox(r);
     else if (roll < 0.84) block = columnsBlock(r);
+    else if (roll < 0.87) block = tocBlock(r);
+    else if (roll < 0.9) block = framePair(r);
     else block = table(r);
     // adjacent same-type lists merge on import (and columns fragments on export);
     // keep them apart so identity holds

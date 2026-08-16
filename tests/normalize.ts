@@ -1,5 +1,7 @@
 // Shared round-trip comparison: reduce editor JSON to a canonical shape (defaults
 // dropped, marks sorted, adjacent identical runs merged) and report the first diff.
+import { MAX_HEADING_LEVEL } from '../src/lib/export/odt';
+
 type N = any;
 
 const ORDERED_DEFAULTS: Record<string, unknown> = {
@@ -8,6 +10,8 @@ const ORDERED_DEFAULTS: Record<string, unknown> = {
   type: null, level: undefined, rotation: 0, wrap: 'inline',
   shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1,
   fixed: false, key1: '',
+  // index attrs the DOCX TOC field has no switch for come back at their defaults
+  maxLevel: MAX_HEADING_LEVEL, leader: '.', citationStyle: 'key',
 };
 
 // Mark-attr defaults dropped like ORDERED_DEFAULTS is for node attrs.
