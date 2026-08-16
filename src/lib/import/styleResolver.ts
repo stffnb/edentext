@@ -206,6 +206,12 @@ export class StyleResolver {
     return out;
   }
 
+  // A style's own style:parent-style-name — the parent the registry gives it in place of
+  // the built-in's (collectStyleSheet). Null where the file declares neither.
+  styleParent(styleName: string | null, family: 'paragraph' | 'text' = 'paragraph'): string | null {
+    return (styleName && this.styles.get(`${family}\0${styleName}`)?.parent) ?? null;
+  }
+
   // The nearest named style in a style's parent chain (an automatic style is direct
   // formatting layered on top of it); null when the chain reaches none.
   namedAncestor(styleName: string | null | undefined, family: 'paragraph' | 'text' | 'table' = 'paragraph'): string | null {

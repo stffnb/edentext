@@ -753,8 +753,9 @@ const FONT_TWINS: Record<string, string[]> = {
 };
 
 // baseRun = docDefaults ← the paragraph style's basedOn chain, i.e. exactly what the
-// style gives its runs.
-function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDefault: boolean): BlockDefaults {
+// style gives its runs. `headingBold` is false where the registry renders the heading
+// with the file's own style, which inherits Standard rather than the bold built-in.
+function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDefault: boolean, headingBold = true): BlockDefaults {
   const fonts = new Set(headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS);
   const family = baseRun.font?.toLowerCase();
   if (family) {
@@ -764,7 +765,7 @@ function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDef
   return {
     fontSizePt: baseRun.sizeHalfPt != null ? baseRun.sizeHalfPt / 2
       : headingLevel != null ? HEADING_SIZES[headingLevel - 1] : BODY_FONT_SIZE_PT,
-    boldByDefault: baseRun.bold ?? (headingLevel != null || boldByDefault),
+    boldByDefault: baseRun.bold ?? ((headingLevel != null && headingBold) || boldByDefault),
     fonts,
     color: hexColor(baseRun.color) ?? '#000000',
     italic: baseRun.italic ?? (headingLevel != null && HEADING_ITALIC[headingLevel - 1]),
@@ -989,7 +990,10 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // A block that cannot carry its style's name — one in a cell or a text box — has to
   // carry the formatting instead, so it is measured against the default style: the only
   // thing re-applied on import. A caption's italic and colour live nowhere else.
-  const defaults = blockDefaults(name ? baseRun : ctx.styles.paragraphRun(ctx.styles.defaultParagraphStyle()), level, boldByDefault);
+  // A heading the file gives its own style is rendered by that style, and a style based
+  // on another one inherits Standard — so its runs' bold is formatting, not the default.
+  const headingBold = !ctx.styles.styleBasedOn(styleId);
+  const defaults = blockDefaults(name ? baseRun : ctx.styles.paragraphRun(ctx.styles.defaultParagraphStyle()), level, boldByDefault, headingBold);
   // A run inherits the block's own size, not the default style's, so that is what it is
   // measured against — else a size the block overrides is suppressed and lost (odt.ts).
   const ownSizePt = blockDefaults(baseRun, level, boldByDefault).fontSizePt;

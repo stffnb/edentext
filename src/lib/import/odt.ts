@@ -1340,7 +1340,9 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     textAlign: null,
     keepNext: false,
     keepLines: false,
-    boldByDefault: headingLevel != null || boldByDefault,
+    // A heading is bold by default only where the registry keeps the bold built-in: a
+    // file that declares its own heading style re-parents it, so bold is formatting.
+    boldByDefault: (headingLevel != null && !resolver.styleParent(named)) || boldByDefault,
     fonts: new Set(headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS),
     color: '#000000',
     italic: hdef ? hdef.italic : false,

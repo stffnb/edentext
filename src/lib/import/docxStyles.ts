@@ -306,6 +306,12 @@ export class DocxStyles {
     return out;
   }
 
+  // The style's own w:basedOn, i.e. the parent the registry gives it in place of the
+  // built-in's (collectStyleSheet). Null where the file declares neither.
+  styleBasedOn(styleId: string | null): string | null {
+    return (styleId && this.basedOn.get(styleId)) ?? null;
+  }
+
   // Character styles defined in the file (w:type="character"), for the style registry.
   namedCharacterStyles(): Map<string, string> {
     return new Map(this.charStyleNames);
