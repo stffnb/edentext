@@ -1,6 +1,7 @@
 import { Extension, Mark, mergeAttributes } from '@tiptap/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
-import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
+import type { Node as PMNode, Slice } from '@tiptap/pm/model';
+import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { ReplaceStep } from '@tiptap/pm/transform';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 // Recorded revisions, as both word processors keep them: an insertion is text marked as
@@ -238,9 +239,14 @@ export const TrackChanges = Extension.create<{ recording: () => boolean; author:
         // what both word processors do.
         filterTransaction: (tr, state) => {
           if (!options.recording() || tr.getMeta(RECORDING)) return true;
-          if (!tr.docChanged || !isPureDelete(tr, state)) return true;
+          if (!tr.docChanged) return true;
+          // A replacement — typing or pasting over a selection — is a deletion and an
+          // insertion at once; without this its half of the text would just be dropped.
+          const swap = replacedRange(tr);
+          if (!isPureDelete(tr, state) && !swap) return true;
           const ranges: [number, number][] = [];
-          for (const step of tr.steps) {
+          if (swap) ranges.push([swap.from, swap.to]);
+          else for (const step of tr.steps) {
             const map = step.getMap();
             map.forEach((oldStart, oldEnd) => { if (oldEnd > oldStart) ranges.push([oldStart, oldEnd]); });
           }
@@ -255,6 +261,16 @@ export const TrackChanges = Extension.create<{ recording: () => boolean; author:
             }
             // The author's own unaccepted insertion goes for real.
             for (const own of [...ownInsertions(state, from, to)].reverse()) marked.delete(own[0], own[1]);
+          }
+          if (swap) {
+            // The new content lands after the text it replaces, which stays struck out.
+            const at = marked.mapping.map(swap.to);
+            const before = marked.doc.content.size;
+            marked.replace(at, at, swap.slice);
+            const end = at + (marked.doc.content.size - before);
+            marked.addMark(at, end, state.schema.marks.insertion.create({ ...attrs, id: newRevisionId() }));
+            marked.setSelection(TextSelection.near(marked.doc.resolve(end)));
+            any = true;
           }
           if (!any && !marked.docChanged) return true;
           queueMicrotask(() => this.editor.view.dispatch(marked.setMeta(RECORDING, true)));
@@ -272,6 +288,15 @@ function adjacentInsertion(state: EditorState, pos: number, author: string): Rec
   const mark = before?.marks.find((m) => m.type.name === 'insertion');
   if (!mark || String(mark.attrs.author ?? '') !== author) return null;
   return { id: String(mark.attrs.id), author, date: String(mark.attrs.date) };
+}
+
+// The one step that replaces a range with new content (typing or pasting over a
+// selection). Anything more involved is left to run as it is.
+function replacedRange(tr: Transaction): { from: number; to: number; slice: Slice } | null {
+  if (tr.steps.length !== 1) return null;
+  const step = tr.steps[0];
+  if (!(step instanceof ReplaceStep) || step.to <= step.from || step.slice.size === 0) return null;
+  return { from: step.from, to: step.to, slice: step.slice };
 }
 
 // A transaction that only removes content (backspace, delete, cut) — a replacement

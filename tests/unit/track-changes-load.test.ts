@@ -37,10 +37,13 @@ describe('loading a document while recording', () => {
     editor.destroy();
   });
 
-  it('records a bare setContent, so the load has to say it is one', () => {
+  it('records a bare setContent, so the load has to say it is one', async () => {
     const editor = recordingEditor();
     editor.commands.setContent('<p>a file full of text</p>');
-    expect(revisions(editor.state.doc)).toHaveLength(1);
+    // A replacement: rejected and re-dispatched a microtask later as both halves —
+    // the document it replaced, struck out, and the new text.
+    await Promise.resolve();
+    expect(revisions(editor.state.doc).map((r) => r.kind)).toEqual(['deletion', 'insertion']);
     editor.destroy();
   });
 });
