@@ -14,14 +14,21 @@ const MARK_DEFAULTS: Record<string, unknown> = {
   plain: false, // link.ts default; the DOCX importer writes it out explicitly
 };
 
-// Note ids are importer-generated (ftn1/footnote1/…); remap them to their order of
-// appearance so only the ref↔note pairing is compared, not the naming scheme.
+// Note and comment ids are importer-generated (ftn1/footnote1/…, c1 vs w0); remap them
+// to their order of appearance so only the pairing is compared, not the naming scheme.
 function canonNoteIds(doc: N): void {
   const map = new Map<string, string>();
+  const comments = new Map<string, string>();
   (function walk(n: N) {
     if ((n.type === 'noteRef' || n.type === 'note') && n.attrs?.id != null) {
       if (!map.has(n.attrs.id)) map.set(n.attrs.id, `n${map.size + 1}`);
       n.attrs = { ...n.attrs, id: map.get(n.attrs.id) };
+    }
+    for (const m of n.marks ?? []) {
+      if (m.type === 'comment' && m.attrs?.id != null) {
+        if (!comments.has(m.attrs.id)) comments.set(m.attrs.id, `c${comments.size + 1}`);
+        m.attrs = { ...m.attrs, id: comments.get(m.attrs.id) };
+      }
     }
     for (const c of n.content ?? []) walk(c);
   })(doc);
@@ -37,6 +44,12 @@ export function normalize(node: N): N {
         const mm: N = { type: m.type };
         const attrs = Object.fromEntries(Object.entries(m.attrs ?? {})
           .filter(([k, v]) => v != null && MARK_DEFAULTS[k] !== v));
+        // ODF keeps the authored (naive local) comment date, DOCX re-serializes the same
+        // instant as UTC — compare the instant.
+        if (m.type === 'comment' && typeof attrs.date === 'string') {
+          const t = Date.parse(attrs.date);
+          if (!Number.isNaN(t)) attrs.date = t;
+        }
         if (Object.keys(attrs).length) mm.attrs = attrs;
         return mm;
       })
@@ -47,6 +60,9 @@ export function normalize(node: N): N {
     if (v == null) continue;
     if (k in ORDERED_DEFAULTS && ORDERED_DEFAULTS[k] === v) continue;
     if (k === 'colwidth') { attrs.colwidth = 'CW'; continue; } // ratios compared separately
+    // The DOCX importer keeps the OMML serializer's trailing space on purpose
+    // (re-serialize-to-itself); the ODT annotation is the authored string. Same formula.
+    if (k === 'latex') { attrs.latex = String(v).trim(); continue; }
     attrs[k] = v;
   }
   if (node.attrs?.level != null) attrs.level = node.attrs.level;

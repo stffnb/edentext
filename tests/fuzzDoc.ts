@@ -1,5 +1,4 @@
 // Seeded random-document generator for the fuzz round-trip leg (fuzz-roundtrip.test.ts).
-// ponytail: no boxes/images/formulas yet; widen when the current pool holds.
 type N = any;
 type Rng = () => number;
 
@@ -100,14 +99,45 @@ function paraAttrs(r: Rng, indents: boolean, top: boolean): N | null {
   return Object.keys(attrs).length ? attrs : null;
 }
 
+// Doc-level state for cross-linked features (bookmark names, comment ids); genDoc resets it.
+let bmNames: string[] = [];
+let commentSeq = 0;
+
+const LATEX = ['x^{2}+1', '\\frac{a}{b}', '\\sqrt{x+1}', '\\alpha \\cdot \\beta'] as const;
+
 function paragraph(r: Rng, indents = true, top = false): N {
   if (maybe(r, 0.08)) return { type: 'paragraph' }; // empty line
+  if (maybe(r, 0.03)) { // a display formula owns its line — that is what makes it display
+    return { type: 'paragraph',
+      content: [{ type: 'formula', attrs: { latex: pick(r, LATEX), display: true } }] };
+  }
   const attrs = paraAttrs(r, indents, top);
   const content = runs(r);
   const body: N[] = [];
   for (const run of content) {
     body.push(run);
     if (maybe(r, 0.1)) body.push({ type: 'hardBreak' });
+  }
+  if (maybe(r, 0.05)) {
+    const name = `bm${bmNames.length + 1}`;
+    bmNames.push(name);
+    content[0].marks = [...(content[0].marks ?? []), { type: 'bookmark', attrs: { name } }];
+  }
+  if (bmNames.length && maybe(r, 0.05)) {
+    const format = pick(r, ['text', 'page'] as const);
+    body.push({ type: 'crossRef', attrs: {
+      name: pick(r, bmNames), format, text: format === 'page' ? '1' : 'Lorem ipsum' } });
+  }
+  if (maybe(r, 0.05)) {
+    content[content.length - 1].marks = [...(content[content.length - 1].marks ?? []),
+      { type: 'comment', attrs: { id: `c${++commentSeq}`, author: 'Fuzz Author',
+        date: '2026-03-04T05:06:07', text: 'Check & <this> "here"', resolved: maybe(r, 0.3) } }];
+  }
+  if (maybe(r, 0.04)) body.push({ type: 'ruby', attrs: { base: '漢字', text: 'かんじ' } });
+  // display=false only: ODF has no display flag, the importer derives it from the formula
+  // owning its line (aloneInParagraph) — a display formula is its own paragraph (genDoc).
+  if (maybe(r, 0.05)) {
+    body.push({ type: 'formula', attrs: { latex: pick(r, LATEX), display: false } });
   }
   if (maybe(r, 0.06)) {
     const img: N = { src: PNG, width: int(r, 40, 200), height: int(r, 30, 120) };
@@ -116,6 +146,20 @@ function paragraph(r: Rng, indents = true, top = false): N {
     body.push({ type: 'image', attrs: img });
   }
   return { type: 'paragraph', ...(attrs ? { attrs } : {}), content: body };
+}
+
+// px multiples of 48 map to whole-hundredth cm and back without rounding drift.
+function textBox(r: Rng): N {
+  const attrs: N = { width: 48 * int(r, 3, 7), height: 48 * int(r, 2, 4) };
+  if (maybe(r, 0.3)) attrs.shapeKind = pick(r, ['roundRect', 'ellipse', 'diamond']);
+  if (maybe(r, 0.3)) attrs.fillColor = pick(r, ['#FFE0A0', '#DDEEFF']);
+  // width only beside a stroke color: with no stroke drawn the width is meaningless
+  if (maybe(r, 0.25)) {
+    attrs.strokeColor = '#0070C0';
+    if (maybe(r, 0.5)) attrs.strokeWidthPt = 2;
+  }
+  const kids = Array.from({ length: int(r, 1, 2) }, () => paragraph(r));
+  return { type: 'textBox', attrs, content: kids };
 }
 
 function list(r: Rng, kind: 'bulletList' | 'orderedList', depth: number): N {
@@ -145,11 +189,19 @@ const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
 
 function table(r: Rng): N {
   const cols = int(r, 1, 3);
-  const rows = Array.from({ length: int(r, 1, 3) }, () => {
-    // one two-column merge per row at most, so the grid stays consistent
-    const merge = cols >= 2 && maybe(r, 0.15);
-    const cells = Array.from({ length: merge ? cols - 1 : cols }, (_, i) => {
-      const attrs: N = { colspan: merge && i === 0 ? 2 : 1, rowspan: 1, colwidth: null };
+  const nRows = int(r, 1, 3);
+  // vertical merge: cell (0,0) spans rows 0-1, so row 1 starts one cell short.
+  // cols >= 2 keeps row 1 non-empty — a row of only covered cells is not a document
+  // the editor can author (the importer clamps such a file's spans instead).
+  const vMerge = cols >= 2 && nRows >= 2 && maybe(r, 0.15);
+  const rows = Array.from({ length: nRows }, (_, ri) => {
+    // one two-column merge per row at most (never beside the vertical merge),
+    // so the grid stays consistent
+    const merge = cols >= 2 && maybe(r, 0.15) && !(vMerge && ri <= 1);
+    const skip = vMerge && ri === 1 ? 1 : 0;
+    const cells = Array.from({ length: (merge ? cols - 1 : cols) - skip }, (_, i) => {
+      const attrs: N = { colspan: merge && i === 0 ? 2 : 1,
+        rowspan: vMerge && ri === 0 && i === 0 ? 2 : 1, colwidth: null };
       // not #F2F2F2: that exact shade is HEADER_SHADE, whose bold is presentational
       if (maybe(r, 0.15)) attrs.backgroundColor = pick(r, ['#FFFF00', '#DDEEFF']);
       if (maybe(r, 0.1)) attrs.verticalAlign = pick(r, ['middle', 'bottom']);
@@ -165,6 +217,8 @@ function table(r: Rng): N {
 const ROMAN = ['i', 'ii', 'iii', 'iv', 'v'] as const;
 
 export function genDoc(r: Rng): N {
+  bmNames = [];
+  commentSeq = 0;
   const blocks: N[] = [];
   const notes: N[] = [];
   let prev = '';
@@ -182,10 +236,14 @@ export function genDoc(r: Rng): N {
     let block: N;
     if (roll < 0.45) {
       block = paragraph(r, true, true);
-      if (block.content && maybe(r, 0.15)) block.content.push(noteRef(pick(r, ['footnote', 'endnote'])));
+      // not beside a lone display formula: company would cost it its own line (= display)
+      if (block.content && block.content[0]?.type !== 'formula' && maybe(r, 0.15)) {
+        block.content.push(noteRef(pick(r, ['footnote', 'endnote'])));
+      }
     }
     else if (roll < 0.55) block = { type: 'heading', attrs: { level: int(r, 1, 8) }, content: runs(r, true) };
-    else if (roll < 0.75) block = list(r, pick(r, ['bulletList', 'orderedList']), 0);
+    else if (roll < 0.72) block = list(r, pick(r, ['bulletList', 'orderedList']), 0);
+    else if (roll < 0.79) block = textBox(r);
     else block = table(r);
     // adjacent same-type lists merge on import; keep them apart so identity holds
     if (block.type.endsWith('List') && block.type === prev) blocks.push({ type: 'paragraph' });
