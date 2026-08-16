@@ -1137,7 +1137,8 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     : `<wp:wrapSquare wrapText="${box.wrap === 'right' ? 'left' : 'right'}"/>`;
   const align = box.wrap === 'right' ? 'right' : 'left';
   const emu = (cm: number) => Math.round(cm * 360000);
-  const posH = box.offsetCm != null && box.wrap !== 'topBottom'
+  // The x rides topBottom too: it moves the frame within its full-width band.
+  const posH = box.offsetCm != null
     ? `<wp:posOffset>${emu(box.offsetCm)}</wp:posOffset>`
     : `<wp:align>${align}</wp:align>`;
   return (

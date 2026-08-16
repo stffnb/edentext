@@ -201,18 +201,25 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const { groups, midSectPrs } = splitBodySections(Array.from(body.children));
   const finalSectPr = fc(body, 'sectPr');
   const blocks: Node[] = [];
+  const groupCols = groups.map((g) => sectPrColumns(g.sectPr ?? finalSectPr, ctx));
+  // A continuous break where the column setup changes only encodes a columns region
+  // (the export splits there without opening a section): no section break, and the
+  // group shares the previous one's header/footer set.
+  const colsOnly = groups.map((g, gi) => gi > 0
+    && !sectionStartsNewPage(g.sectPr ?? finalSectPr)
+    && JSON.stringify(groupCols[gi]) !== JSON.stringify(groupCols[gi - 1]));
   groups.forEach((g, gi) => {
     const inner = convertBlocks(g.els, ctx, 'body');
     // A section's own w:type says how it begins: a page-starting break (nextPage/odd/even,
     // or the default) puts its first block on a new page; continuous/nextColumn flow on.
-    if (gi > 0 && inner.length) {
+    if (gi > 0 && !colsOnly[gi] && inner.length) {
       const first = inner[0];
       if (first.type === 'paragraph' || first.type === 'heading') {
         first.attrs = { ...(first.attrs ?? {}), sectionBreak: true };
         if (sectionStartsNewPage(g.sectPr ?? finalSectPr)) first.attrs.breakBefore = 'page';
       }
     }
-    const cols = sectPrColumns(g.sectPr ?? finalSectPr, ctx);
+    const cols = groupCols[gi];
     if (cols) pushColumnRuns(inner, cols, blocks, ctx);
     else blocks.push(...inner);
   });
@@ -239,7 +246,8 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   // The paper is the *first* section's, as the margins are: a document whose last
   // section is one landscape page is not a landscape document.
   const docPaper = sectPaper(groups[0]?.sectPr ?? finalSectPr);
-  const hfSections = sectionHfSets(groups.map((g) => g.sectPr ?? finalSectPr), ctx, oddEven, docPaper);
+  const hfSections = sectionHfSets(
+    groups.filter((_, gi) => !colsOnly[gi]).map((g) => g.sectPr ?? finalSectPr), ctx, oddEven, docPaper);
   const first = hfSections[0];
   // A first-page/even zone reserves the header/footer band even when its default is empty;
   // the distance is document-wide, so any section having one is enough.
@@ -2215,6 +2223,7 @@ function convertTable(tbl: Element, ctx: Ctx): Node | null {
 
 // A w:tblCellMar / w:tcMar's four sides in cm, taking the first element that declares
 // each. w:type="nil" is an explicit zero; a side nobody declares comes back null.
+// Hundredth-cm: a twip is 0.0018cm, so an authored round2 value reads back exactly.
 function cellMarginsCm(els: (Element | null)[]): (number | null)[] {
   return [['top'], ['right', 'end'], ['bottom'], ['left', 'start']].map((names) => {
     for (const el of els) {
@@ -2223,7 +2232,7 @@ function cellMarginsCm(els: (Element | null)[]): (number | null)[] {
         if (!s) continue;
         if (s.getAttributeNS(W, 'type') === 'nil') return 0;
         const w = intAttr(s, W, 'w');
-        if (w != null) return twipToCm(w);
+        if (w != null) return round2(twipToCm(w));
       }
     }
     return null;
@@ -2371,7 +2380,7 @@ function docxTableLook(tblPr: Element | null): string | null {
 // w:tblW) its width — the rest becomes the editor's right margin. Under the older
 // compatibility mode the indent is measured to the cell's *text*, so the table hangs its
 // left cell margin into the page margin (tblIndIsToText).
-function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx, leftPadCm: number): { marginLeft: number; marginRight: number } | null {
+function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx, leftPadCm: number): { marginLeft?: number; marginRight?: number } | null {
   const tblPr = fc(tbl, 'tblPr');
   const content = ctx.contentWidthCm;
   const dxa = (el: Element | null) => (el?.getAttributeNS(W, 'type') ?? 'dxa') === 'dxa' ? intAttr(el, W, 'w') : null;
@@ -2385,7 +2394,9 @@ function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx, leftPadC
   if (Math.abs(left) < 0.05 && Math.abs(right) < 0.05) return null;
   if (left + right > content - 1) return null;
   const round2 = (v: number) => Math.round(v * 100) / 100;
-  return { marginLeft: round2(left), marginRight: round2(right) };
+  const l = round2(left), r = round2(right);
+  // A zero side is the attr's default (null); rounding may also leave a -0 behind.
+  return { ...(Math.abs(l) >= 0.005 ? { marginLeft: l } : {}), ...(Math.abs(r) >= 0.005 ? { marginRight: r } : {}) };
 }
 
 function flattenTable(tbl: Element, ctx: Ctx): Node[] {
