@@ -82,6 +82,21 @@ function paraAttrs(r: Rng, indents: boolean, top: boolean): N | null {
   if (indents && maybe(r, 0.1)) attrs.indentFirst = pick(r, [0.75, -0.75]);
   if (indents && maybe(r, 0.1)) attrs.indentRight = 1.5;
   if (top && maybe(r, 0.05)) attrs.breakBefore = 'page';
+  if (maybe(r, 0.05)) attrs.dir = 'rtl';
+  // Paragraph box: shading and/or rule lines (ParaStyle carries them into cells/lists).
+  if (maybe(r, 0.08)) {
+    if (maybe(r, 0.6)) attrs.backgroundColor = pick(r, ['#CCFFFF', '#FFE0E0']);
+    if (maybe(r, 0.5)) attrs.borderBottom = '2pt solid #FF0000';
+    if (maybe(r, 0.3)) attrs.borderTop = '1pt solid #00B050';
+    if (maybe(r, 0.25)) { attrs.borderLeft = '1pt solid #00B050'; attrs.borderRight = '1pt solid #00B050'; }
+  }
+  // The flow/pagination flags and tab stops ride the top-level PBX spec only.
+  if (top && maybe(r, 0.05)) attrs.keepNext = true;
+  if (top && maybe(r, 0.05)) attrs.keepLines = true;
+  if (top && maybe(r, 0.04)) attrs.widowControl = false;
+  // no noHyphenation: without the document-wide hyphenate flag (a buildOdt parameter
+  // the round trip doesn't pass) the importers suppress it as meaningless.
+  if (top && maybe(r, 0.06)) attrs.tabStops = pick(r, ['6l;12r', '3c.;9r_', '5d']);
   return Object.keys(attrs).length ? attrs : null;
 }
 
@@ -95,7 +110,10 @@ function paragraph(r: Rng, indents = true, top = false): N {
     if (maybe(r, 0.1)) body.push({ type: 'hardBreak' });
   }
   if (maybe(r, 0.06)) {
-    body.push({ type: 'image', attrs: { src: PNG, width: int(r, 40, 200), height: int(r, 30, 120) } });
+    const img: N = { src: PNG, width: int(r, 40, 200), height: int(r, 30, 120) };
+    if (maybe(r, 0.3)) img.alt = 'a & "b" <c>';
+    if (maybe(r, 0.2)) img.rotation = pick(r, [90, 180]);
+    body.push({ type: 'image', attrs: img });
   }
   return { type: 'paragraph', ...(attrs ? { attrs } : {}), content: body };
 }
@@ -117,6 +135,8 @@ function list(r: Rng, kind: 'bulletList' | 'orderedList', depth: number): N {
       ? pick(r, ['lower-alpha', 'upper-roman', 'lower-alpha-paren'])
       : pick(r, ['upper-roman', 'upper-alpha-paren']);
   }
+  // Never a depth-default bullet (•/◦/▪), which the importers suppress to null.
+  if (kind === 'bulletList' && maybe(r, 0.2)) attrs.bulletChar = pick(r, ['❖', '✓', '➢']);
   return { type: kind, ...(Object.keys(attrs).length ? { attrs } : {}), content: items };
 }
 
@@ -135,7 +155,8 @@ function table(r: Rng): N {
       if (maybe(r, 0.1)) attrs.verticalAlign = pick(r, ['middle', 'bottom']);
       return { type: 'tableCell', attrs, content: [paragraph(r)] };
     });
-    return { type: 'tableRow', content: cells };
+    const rowAttrs: N | null = maybe(r, 0.1) ? { rowHeight: pick(r, [40, 64]) } : null;
+    return { type: 'tableRow', ...(rowAttrs ? { attrs: rowAttrs } : {}), content: cells };
   });
   return { type: 'table', content: rows };
 }
@@ -149,9 +170,10 @@ export function genDoc(r: Rng): N {
   let prev = '';
   const noteRef = (kind: 'footnote' | 'endnote'): N => {
     const n = notes.filter(x => x.attrs.kind === kind).length + 1;
-    const text = kind === 'footnote' ? String(n) : ROMAN[n - 1];
+    const label = maybe(r, 0.15) ? '*' : null;
+    const text = label ?? (kind === 'footnote' ? String(n) : ROMAN[n - 1]);
     const id = `${kind[0]}${n}`;
-    notes.push({ type: 'note', attrs: { id, kind, label: null, text },
+    notes.push({ type: 'note', attrs: { id, kind, label, text },
       content: [{ type: 'text', text: `Note body ${id}` }] });
     return { type: 'noteRef', attrs: { id, kind, text } };
   };
@@ -162,7 +184,7 @@ export function genDoc(r: Rng): N {
       block = paragraph(r, true, true);
       if (block.content && maybe(r, 0.15)) block.content.push(noteRef(pick(r, ['footnote', 'endnote'])));
     }
-    else if (roll < 0.55) block = { type: 'heading', attrs: { level: int(r, 1, 6) }, content: runs(r, true) };
+    else if (roll < 0.55) block = { type: 'heading', attrs: { level: int(r, 1, 8) }, content: runs(r, true) };
     else if (roll < 0.75) block = list(r, pick(r, ['bulletList', 'orderedList']), 0);
     else block = table(r);
     // adjacent same-type lists merge on import; keep them apart so identity holds
