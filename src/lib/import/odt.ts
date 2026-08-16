@@ -152,7 +152,7 @@ type Ctx = {
   openComments: Map<string, Record<string, unknown>>;
   // Recorded revisions: the <text:tracked-changes> registry by change id, and the
   // insertions whose <text:change-start> has been seen but not their end.
-  revisions: Map<string, { kind: 'insertion' | 'deletion'; author: string; date: string; text: string }>;
+  revisions: Map<string, { kind: 'insertion' | 'deletion'; author: string; date: string; text: string; paras: Element[] }>;
   openInsertions: Map<string, Record<string, unknown>>;
   // Footnotes/endnotes in anchor order: the file stores each note's text at its anchor,
   // the editor keeps them in one section at the document end (notes.ts).
@@ -476,6 +476,8 @@ function aloneInParagraph(frame: Element): boolean {
   const p = frame.parentElement;
   if (!p || p.namespaceURI !== NS.text || (p.localName !== 'p' && p.localName !== 'h')) return false;
   if ((p.textContent ?? '').trim()) return false;
+  // A deletion's point marker counts: rejecting it restores text beside the formula.
+  if (p.getElementsByTagNameNS(NS.text, 'change')[0]) return false;
   return Array.from(p.children).filter(c => c.namespaceURI === NS.draw).length === 1;
 }
 
@@ -1769,20 +1771,21 @@ function odfRecordChanges(body: Element): boolean {
 
 // The <text:tracked-changes> registry: one entry per change id. A deletion carries the
 // text it removed (the body has only a point marker), an insertion only who and when.
-function odfRevisions(body: Element): Map<string, { kind: 'insertion' | 'deletion'; author: string; date: string; text: string }> {
-  const out = new Map<string, { kind: 'insertion' | 'deletion'; author: string; date: string; text: string }>();
+function odfRevisions(body: Element): Map<string, { kind: 'insertion' | 'deletion'; author: string; date: string; text: string; paras: Element[] }> {
+  const out = new Map<string, { kind: 'insertion' | 'deletion'; author: string; date: string; text: string; paras: Element[] }>();
   const registry = body.getElementsByTagNameNS(NS.text, 'tracked-changes')[0];
   for (const region of Array.from(registry?.children ?? [])) {
     const id = region.getAttributeNS(NS.text, 'id') ?? region.getAttribute('xml:id');
     const kindEl = Array.from(region.children).find((c) => c.localName === 'insertion' || c.localName === 'deletion');
     if (!id || !kindEl) continue;
     const info = kindEl.getElementsByTagNameNS(NS.office, 'change-info')[0];
-    const paras = Array.from(kindEl.children).filter((c) => c.namespaceURI === NS.text && c.localName === 'p');
+    const paras = Array.from(kindEl.children).filter((c): c is Element => c.namespaceURI === NS.text && c.localName === 'p');
     out.set(id, {
       kind: kindEl.localName === 'deletion' ? 'deletion' : 'insertion',
       author: info?.getElementsByTagNameNS(NS.dc, 'creator')[0]?.textContent?.trim() ?? '',
       date: info?.getElementsByTagNameNS(NS.dc, 'date')[0]?.textContent?.trim() ?? '',
       text: paras.map((n) => n.textContent ?? '').join('\n'),
+      paras,
     });
   }
   return out;
@@ -2015,13 +2018,23 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
           }
           case 'change': {
             // A deletion is a point marker: its text lives only in the registry, and the
-            // editor keeps it in the document marked as removed.
+            // editor keeps it in the document marked as removed. The registry paragraphs
+            // are real styled runs, so they convert like any inline content.
             const id = e.getAttributeNS(NS.text, 'change-id');
             const rev = id ? ctx.revisions.get(id) : undefined;
-            if (!hfFields && id && rev?.kind === 'deletion' && rev.text) {
-              const marks = marksFor(props, ctx.resolver, defaults);
-              marks.push({ type: 'deletion', attrs: { id, author: rev.author, date: rev.date } });
-              out.push({ type: 'text', text: rev.text, marks });
+            if (!hfFields && id && rev?.kind === 'deletion' && (rev.paras.length || rev.text)) {
+              const del = { type: 'deletion', attrs: { id, author: rev.author, date: rev.date } };
+              if (!rev.paras.length) {
+                out.push({ type: 'text', text: rev.text, marks: [...marksFor(props, ctx.resolver, defaults), del] });
+                continue;
+              }
+              rev.paras.forEach((p, i) => {
+                if (i) out.push({ type: 'text', text: '\n', marks: [del] });
+                for (const n of convertInline(p, ctx, props, defaults)) {
+                  if (n.type === 'text') n.marks = [...(n.marks ?? []), del];
+                  out.push(n);
+                }
+              });
             }
             continue;
           }

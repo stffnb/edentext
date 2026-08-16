@@ -576,10 +576,13 @@ function replaceDateTimeFields(node: TiptapNode, fields: DateTimeFieldExport[]):
 
 // One recorded revision. Runs of the same change share an id, so the registry holds one
 // entry per id and a deletion's text is the concatenation of its runs.
-type RevisionExport = { kind: 'insertion' | 'deletion'; id: string; author: string; date: string; text: string };
+type RevisionExport = { kind: 'insertion' | 'deletion'; id: string; author: string; date: string; text: string; nodes: TiptapNode[] };
 
 // Bracket every insertion run with TCI sentinels and cut every deletion run out, leaving
 // a TCD sentinel where it was — ODF keeps a deletion's text in the registry, not inline.
+// The deleted runs are hoisted into a marker paragraph at document end so they ride every
+// serialization pass (styles, tabs, effects); applyRevisions splices them into the
+// registry, which is how the deleted text keeps its formatting (LibreOffice does the same).
 function replaceRevisions(node: TiptapNode, out: Map<string, RevisionExport>): TiptapNode {
   if (!node.content?.length) return node;
   const content: TiptapNode[] = [];
@@ -591,11 +594,12 @@ function replaceRevisions(node: TiptapNode, out: Map<string, RevisionExport>): T
     const a = mark.attrs ?? {};
     const id = String(a.id ?? '');
     const kind = mark.type as 'insertion' | 'deletion';
+    const known = out.has(id);
     const entry = out.get(id) ?? {
       kind, id,
       author: String(a.author ?? '') || GENERATOR,
       date: typeof a.date === 'string' && a.date ? a.date : new Date().toISOString(),
-      text: '',
+      text: '', nodes: [],
     };
     entry.text += child.text ?? '';
     out.set(id, entry);
@@ -603,12 +607,21 @@ function replaceRevisions(node: TiptapNode, out: Map<string, RevisionExport>): T
     // would otherwise split the paragraph's runs around it.
     const rest = child.marks?.filter((m) => m !== mark);
     if (kind === 'deletion') {
-      content.push({ type: 'text', text: `${TCD}${id}${TCD}` });
+      entry.nodes.push({ ...child, ...(rest?.length ? { marks: rest } : { marks: undefined }) });
+      // One point marker per change: its registry region holds every fragment.
+      if (!known) content.push({ type: 'text', text: `${TCD}${id}${TCD}` });
       continue;
     }
     content.push({ type: 'text', text: `${TCI}${id}${TCI}` });
     content.push({ ...child, ...(rest?.length ? { marks: rest } : { marks: undefined }) });
     content.push({ type: 'text', text: `${TCI}${id}${TCI}` });
+  }
+  if (node.type === 'doc') {
+    for (const entry of out.values()) {
+      if (entry.kind !== 'deletion' || !entry.nodes.length) continue;
+      content.push({ type: 'paragraph',
+        content: [{ type: 'text', text: `${TCD}#${entry.id}${TCD}` }, ...entry.nodes] });
+    }
   }
   return { ...node, content };
 }
@@ -625,6 +638,13 @@ function applyRevisions(odtBytes: Uint8Array, list: Map<string, RevisionExport>,
   let content = strFromU8(contentBytes);
   // ODF ids are per document; the editor's are opaque strings.
   const odfId = new Map([...list.keys()].map((id, i) => [id, `ct${i + 1}`]));
+  // Cut the hoisted deletion paragraphs (before the point-marker pass, whose regex would
+  // eat their markers) and keep their serialized runs for the registry.
+  const hoisted = new Map<string, string>();
+  content = content.replace(
+    new RegExp(`<text:p\\b[^>]*>\\s*${TCD}#([^${TCD}]*)${TCD}([\\s\\S]*?)</text:p>`, 'g'),
+    (_m, id: string, inner: string) => { hoisted.set(id, inner); return ''; },
+  );
   let open = new Map<string, boolean>();
   content = content
     .replace(new RegExp(`${TCI}([^${TCI}]*)${TCI}`, 'g'), (_m, id: string) => {
@@ -645,8 +665,9 @@ function applyRevisions(odtBytes: Uint8Array, list: Map<string, RevisionExport>,
     const ct = odfId.get(r.id)!;
     const info = `<office:change-info><dc:creator>${escapeXml(r.author)}</dc:creator>`
       + `<dc:date>${escapeXml(r.date.replace(/\.\d+Z?$/, ''))}</dc:date></office:change-info>`;
+    const runs = hoisted.get(r.id) ?? escapeXml(r.text);
     const body = r.kind === 'deletion'
-      ? `<text:deletion>${info}<text:p text:style-name="Standard">${escapeXml(r.text)}</text:p></text:deletion>`
+      ? `<text:deletion>${info}<text:p text:style-name="Standard">${runs}</text:p></text:deletion>`
       : `<text:insertion>${info}</text:insertion>`;
     return `<text:changed-region xml:id="${ct}" text:id="${ct}">${body}</text:changed-region>`;
   }).join('');
@@ -4294,12 +4315,14 @@ function applyComments(odtBytes: Uint8Array, list: CommentExport[]): Uint8Array 
     .replace(new RegExp(`${CME}(\\d+)${CME}`, 'g'), (_m, idx: string) => {
       const c = list[Number(idx)];
       return c ? `<office:annotation-end office:name="${escapeXml(c.name)}"/>` : '';
-    })
-    .replace(
-      '<office:document-content ',
-      '<office:document-content xmlns:dc="http://purl.org/dc/elements/1.1/"'
-      + ' xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0" ',
-    );
+    });
+
+  // applyRevisions may already have declared dc:; declaring either twice is invalid XML.
+  content = ensureDcNamespace(content);
+  if (!content.includes('xmlns:loext=')) {
+    content = content.replace('<office:document-content ',
+      '<office:document-content xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0" ');
+  }
 
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
