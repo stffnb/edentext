@@ -106,7 +106,7 @@
       variant="big"
       icon="tocLevels"
       label={t().ribbon.tocOptions}
-      title={t().ribbon.tocOptions}
+      title={`${t().ribbon.indexes.toc} – ${t().ribbon.tocOptions}`}
       disabled={!toc}
       caret
       active={isMenuOpen('tocLevels')}
@@ -114,10 +114,13 @@
     />
     {#if isMenuOpen('tocLevels')}
       <div class="ribbon-menu" use:anchored role="menu">
-        <div class="rb-menu-label">{t().ribbon.tocMaxLevel}</div>
-        {#each LEVELS as l}
-          <button class:selected={toc?.maxLevel === l} onclick={() => setMaxLevel(l)}>{l}</button>
-        {/each}
+        <div class="rb-menu-label">{t().ribbon.indexes.toc}</div>
+        <div class="field-label">{t().ribbon.tocMaxLevel}</div>
+        <div class="levels">
+          {#each LEVELS as l}
+            <button class="lvl" class:selected={toc?.maxLevel === l} onclick={() => setMaxLevel(l)}>{l}</button>
+          {/each}
+        </div>
         <label class="check-row">
           <input type="checkbox" checked={toc?.pageNumbers}
             onchange={(e) => setPageNumbers(e.currentTarget.checked)} />
@@ -126,22 +129,42 @@
       </div>
     {/if}
   </div>
+</RibbonGroup>
+
+<div class="ribbon-sep"></div>
+
+<!-- The options ride the group's ↘ launcher as they do in both word processors, and a
+     named button as well: the corner arrow alone is easy to miss. -->
+<RibbonGroup label={t().ribbon.groups.notes} onLauncher={onNoteOptions} launcherTitle={t().notesDialog.title}>
   <RibbonButton
     variant="big"
-    icon="caption"
-    label={t().ribbon.insertCaption}
-    title={t().caption.title}
+    icon="footnote"
+    label={t().toolbarExpanded.insertFootnote}
+    title={hfActive ? t().toolbarExpanded.noteNotInHf : `${t().toolbarExpanded.insertFootnote} (${shortcutHint('footnote')})`}
     disabled={!editor || !!hfActive}
-    onclick={() => (captionOpen = true)}
+    onclick={() => editor?.chain().focus().insertNote('footnote').run()}
   />
   <RibbonButton
     variant="big"
-    icon="bookmark"
-    label={t().ribbon.indexEntry}
-    title={hasSelection ? t().ribbon.indexEntry : t().ribbon.indexEntryNeedsSelection}
-    disabled={!editor || !!hfActive || !hasSelection}
-    onclick={markIndexEntry}
+    icon="endnote"
+    label={t().toolbarExpanded.insertEndnote}
+    title={hfActive ? t().toolbarExpanded.noteNotInHf : `${t().toolbarExpanded.insertEndnote} (${shortcutHint('endnote')})`}
+    disabled={!editor || !!hfActive}
+    onclick={() => editor?.chain().focus().insertNote('endnote').run()}
   />
+  <RibbonButton
+    variant="big"
+    icon="settings"
+    label={t().ribbon.noteOptions}
+    title={t().notesDialog.title}
+    disabled={!onNoteOptions}
+    onclick={() => onNoteOptions?.()}
+  />
+</RibbonGroup>
+
+<div class="ribbon-sep"></div>
+
+<RibbonGroup label={t().ribbon.groups.citations}>
   <RibbonButton
     variant="big"
     icon="citation"
@@ -173,40 +196,41 @@
   </div>
 </RibbonGroup>
 
-<CaptionDialog bind:open={captionOpen} {editor} />
-<BibliographyDialog bind:open={citationOpen} {editor} />
+<div class="ribbon-sep"></div>
 
-<!-- The options ride the group's ↘ launcher as they do in both word processors, and a
-     named button as well: the corner arrow alone is easy to miss. -->
-<RibbonGroup label={t().ribbon.groups.notes} onLauncher={onNoteOptions} launcherTitle={t().notesDialog.title}>
+<RibbonGroup label={t().ribbon.groups.captions}>
   <RibbonButton
     variant="big"
-    icon="footnote"
-    label={t().toolbarExpanded.insertFootnote}
-    title={hfActive ? t().toolbarExpanded.noteNotInHf : `${t().toolbarExpanded.insertFootnote} (${shortcutHint('footnote')})`}
+    icon="caption"
+    label={t().ribbon.insertCaption}
+    title={t().caption.title}
     disabled={!editor || !!hfActive}
-    onclick={() => editor?.chain().focus().insertNote('footnote').run()}
-  />
-  <RibbonButton
-    variant="big"
-    icon="endnote"
-    label={t().toolbarExpanded.insertEndnote}
-    title={hfActive ? t().toolbarExpanded.noteNotInHf : `${t().toolbarExpanded.insertEndnote} (${shortcutHint('endnote')})`}
-    disabled={!editor || !!hfActive}
-    onclick={() => editor?.chain().focus().insertNote('endnote').run()}
-  />
-  <RibbonButton
-    variant="big"
-    icon="settings"
-    label={t().ribbon.noteOptions}
-    title={t().notesDialog.title}
-    disabled={!onNoteOptions}
-    onclick={() => onNoteOptions?.()}
+    onclick={() => (captionOpen = true)}
   />
 </RibbonGroup>
+
+<div class="ribbon-sep"></div>
+
+<RibbonGroup label={t().ribbon.groups.index}>
+  <RibbonButton
+    variant="big"
+    icon="bookmark"
+    label={t().ribbon.indexEntry}
+    title={hasSelection ? t().ribbon.indexEntry : t().ribbon.indexEntryNeedsSelection}
+    disabled={!editor || !!hfActive || !hasSelection}
+    onclick={markIndexEntry}
+  />
+</RibbonGroup>
+
+<CaptionDialog bind:open={captionOpen} {editor} />
+<BibliographyDialog bind:open={citationOpen} {editor} />
 
 <style>
   .rb-menu-wrap { position: relative; }
   /* A toggle among the menu's rows of buttons, as in the Layout tab's own menus. */
   .check-row { display: flex; align-items: center; gap: 6px; padding: 6px 12px; white-space: nowrap; font-size: 13px; }
+  .field-label { padding: 2px 12px; font-size: 13px; white-space: nowrap; }
+  /* Ten levels as one strip of keys: as rows they were the whole menu. */
+  .levels { display: flex; gap: 2px; padding: 2px 10px 4px; }
+  .levels .lvl { width: 24px; height: 24px; padding: 0; justify-content: center; }
 </style>

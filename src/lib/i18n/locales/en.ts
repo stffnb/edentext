@@ -765,6 +765,8 @@ const en = {
       pageSetup: 'Page Setup',
       toc: 'Table of Contents',
       notes: 'Footnotes',
+      citations: 'Citations & Bibliography',
+      index: 'Index',
       revisions: 'Tracking',
       proofing: 'Proofing',
       language: 'Language',

@@ -759,6 +759,8 @@ const de: Messages = {
       pageSetup: 'Seite einrichten',
       toc: 'Inhaltsverzeichnis',
       notes: 'Fußnoten',
+      citations: 'Zitate und Literaturverzeichnis',
+      index: 'Index',
       revisions: 'Nachverfolgung',
       proofing: 'Rechtschreibung',
       language: 'Sprache',
