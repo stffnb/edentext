@@ -193,6 +193,7 @@ function paragraph(r: Rng, indents = true, top = false): N {
       // dist only beside a side wrap: with text only above/below there is no side
       // gap to keep, and the ODT graphic style carries none
       if (img.wrap !== 'topBottom' && maybe(r, 0.3)) img.wrapDist = 0.5;
+      if (img.wrap === 'topBottom' && maybe(r, 0.3)) img.wrapOffsetY = 1.5;
     }
     body.push({ type: 'image', attrs: img });
   }
@@ -209,8 +210,28 @@ function textBox(r: Rng): N {
     attrs.strokeColor = '#0070C0';
     if (maybe(r, 0.5)) attrs.strokeWidthPt = 2;
   }
+  // floats like an image; dist beside a side wrap only (as there)
+  if (maybe(r, 0.3)) {
+    attrs.wrap = pick(r, ['left', 'right', 'topBottom']);
+    if (maybe(r, 0.5)) attrs.wrapOffset = pick(r, [1.5, 2.25]);
+    if (attrs.wrap !== 'topBottom' && maybe(r, 0.3)) attrs.wrapDist = 0.5;
+    if (attrs.wrap === 'topBottom' && maybe(r, 0.3)) attrs.wrapOffsetY = 1.5;
+  }
   const kids = Array.from({ length: int(r, 1, 2) }, () => paragraph(r));
   return { type: 'textBox', attrs, content: kids };
+}
+
+// Adjacent equal-attr sections merge on export (a columnsFlow page split looks the
+// same), so genDoc keeps columns blocks apart like same-type lists.
+function columnsBlock(r: Rng): N {
+  const attrs: N = { count: int(r, 2, 3), gapCm: pick(r, [0.5, 1]) };
+  const kids = Array.from({ length: int(r, 1, 3) }, () => {
+    const roll = r();
+    if (roll < 0.15) return { type: 'heading', attrs: { level: int(r, 1, 8) }, content: runs(r, true) };
+    if (roll < 0.3) return list(r, pick(r, ['bulletList', 'orderedList']), 0);
+    return paragraph(r); // top=false: breaks, flow flags and tab stops are top-level-only
+  });
+  return { type: 'columns', attrs, content: kids };
 }
 
 function list(r: Rng, kind: 'bulletList' | 'orderedList', depth: number): N {
@@ -256,12 +277,29 @@ function table(r: Rng): N {
       // not #F2F2F2: that exact shade is HEADER_SHADE, whose bold is presentational
       if (maybe(r, 0.15)) attrs.backgroundColor = pick(r, ['#FFFF00', '#DDEEFF']);
       if (maybe(r, 0.1)) attrs.verticalAlign = pick(r, ['middle', 'bottom']);
+      if (maybe(r, 0.1)) attrs.borderBottom = pick(r, ['2pt solid #FF0000', 'none']);
+      if (maybe(r, 0.06)) attrs.borderTop = '0.5pt solid #000080';
+      // never the table's first cell: ODF has no table-level cell margin, so the
+      // importer reads the first cell's padding as the table's
+      if ((ri > 0 || i > 0) && maybe(r, 0.06)) attrs.cellPadding = [0, 0.5, 0, 0.5];
+      // the DOCX leg swaps the first paragraph for the field and caches its flat
+      // text, so a formula cell holds one plain run that reads as a number
+      if (maybe(r, 0.06)) {
+        attrs.formula = pick(r, ['SUM(A1:A2)', 'A1*2', '2+3']);
+        if (maybe(r, 0.4)) attrs.cellFormat = pick(r, ['int', 'dec2', 'percent']);
+        return { type: 'tableCell', attrs,
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: String(int(r, 1, 99)) }] }] };
+      }
       return { type: 'tableCell', attrs, content: [paragraph(r)] };
     });
     const rowAttrs: N | null = maybe(r, 0.1) ? { rowHeight: pick(r, [40, 64]) } : null;
     return { type: 'tableRow', ...(rowAttrs ? { attrs: rowAttrs } : {}), content: cells };
   });
-  return { type: 'table', content: rows };
+  const attrs: N = {};
+  if (maybe(r, 0.12)) attrs.marginLeft = pick(r, [1.5, 2.25]);
+  if (maybe(r, 0.12)) attrs.marginRight = 1.5;
+  if (maybe(r, 0.1)) attrs.cellPadding = [0.1, 0.3, 0.1, 0.3];
+  return { type: 'table', ...(Object.keys(attrs).length ? { attrs } : {}), content: rows };
 }
 
 // Roman labels for endnotes match the importer's default numbering.
@@ -288,7 +326,13 @@ export function genDoc(r: Rng): N {
     const roll = r();
     let block: N;
     if (roll < 0.45) {
-      block = paragraph(r, true, true);
+      // Title/Subtitle centre + size and Quotations' indent live in the style, and a
+      // direct value equal to the style's own is suppressed on import — a styled
+      // block carries heading-safe runs and no paragraph attrs of its own.
+      block = maybe(r, 0.07)
+        ? { type: 'paragraph', attrs: { styleName: pick(r, ['Title', 'Subtitle', 'Quotations']) },
+            content: runs(r, true) }
+        : paragraph(r, true, true);
       // not beside a lone display formula: company would cost it its own line (= display)
       if (block.content && block.content[0]?.type !== 'formula' && maybe(r, 0.15)) {
         block.content.push(noteRef(pick(r, ['footnote', 'endnote'])));
@@ -296,10 +340,14 @@ export function genDoc(r: Rng): N {
     }
     else if (roll < 0.55) block = { type: 'heading', attrs: { level: int(r, 1, 8) }, content: runs(r, true) };
     else if (roll < 0.72) block = list(r, pick(r, ['bulletList', 'orderedList']), 0);
-    else if (roll < 0.79) block = textBox(r);
+    else if (roll < 0.77) block = textBox(r);
+    else if (roll < 0.84) block = columnsBlock(r);
     else block = table(r);
-    // adjacent same-type lists merge on import; keep them apart so identity holds
-    if (block.type.endsWith('List') && block.type === prev) blocks.push({ type: 'paragraph' });
+    // adjacent same-type lists merge on import (and columns fragments on export);
+    // keep them apart so identity holds
+    if ((block.type.endsWith('List') || block.type === 'columns') && block.type === prev) {
+      blocks.push({ type: 'paragraph' });
+    }
     blocks.push(block);
     prev = block.type;
   }
