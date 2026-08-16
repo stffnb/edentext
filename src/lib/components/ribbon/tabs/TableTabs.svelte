@@ -11,6 +11,7 @@
   import TableSplitDialog from '../../TableSplitDialog.svelte';
   import TableSortDialog from '../../TableSortDialog.svelte';
   import TableFormulaDialog from '../../TableFormulaDialog.svelte';
+  import CaptionDialog from '../../CaptionDialog.svelte';
   import { captionClicks, anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
   import { isHeaderStyled } from '../../../editor/extensions/tableHeaderRow';
   import { DEFAULT_CELL_PADDING, parseCellPadding, type CellPadding } from '../../../editor/extensions/tableCellPadding';
@@ -27,6 +28,8 @@
     tick: number;
     which: 'design' | 'layout';
   } = $props();
+
+  let captionOpen = $state(false);
 
   function run(cmd: (chain: ChainedCommands) => ChainedCommands) {
     if (!editor) return;
@@ -302,7 +305,24 @@
       onclick={() => setNumberRecognition(!numberRecognition())}
     />
   </RibbonGroup>
+
+  <div class="ribbon-sep"></div>
+
+  <!-- Also in the References tab, where both products keep it — but that is a tab away
+       from the table it captions, and this one only shows while the caret is in one. -->
+  <RibbonGroup label={t().ribbon.groups.captions}>
+    <RibbonButton
+      variant="big"
+      icon="caption"
+      label={t().ribbon.insertCaption}
+      title={t().caption.title}
+      disabled={!inTable}
+      onclick={() => (captionOpen = true)}
+    />
+  </RibbonGroup>
 {/if}
+
+<CaptionDialog bind:open={captionOpen} {editor} />
 
 {#snippet shadeIcon()}<span class="shade-glyph"></span>{/snippet}
 

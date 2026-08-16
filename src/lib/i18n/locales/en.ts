@@ -779,6 +779,7 @@ const en = {
       arrange: 'Arrange',
       shapeStyles: 'Shape Styles',
       accessibility: 'Accessibility',
+      captions: 'Captions',
       editing: 'Editing',
     },
     case: {

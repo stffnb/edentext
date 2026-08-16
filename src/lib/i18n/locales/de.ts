@@ -773,6 +773,7 @@ const de: Messages = {
       arrange: 'Anordnen',
       shapeStyles: 'Formenarten',
       accessibility: 'Barrierefreiheit',
+      captions: 'Beschriftungen',
       editing: 'Bearbeiten',
     },
     case: {

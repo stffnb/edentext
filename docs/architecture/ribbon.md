@@ -84,6 +84,10 @@ at every height. A flex row cannot reserve width in part of its height, so it mo
 - **A reused picker anchors its panel itself**, and no prop says when it opened. `pinPanels`,
   one action on the band, watches for a mounted absolutely-positioned node and pins that; the
   ColorPicker places its own and only needs the band-aware top.
+- **Insert caption sits in three tabs**: References, where both products keep it, plus the
+  picture/shape and Table Layout contextual tabs, which are open anyway when you caption
+  something. Each mounts its own `CaptionDialog`; it reads the caret for its category, so the
+  copies need no props of their own.
 - **Each wrapper names the menu it owns.** One shared open-menu id means every `clickOutside`
   sees every mousedown; without the id each wrapper would close a sibling's open menu, and the
   click on one of its rows would never land.

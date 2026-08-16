@@ -5,6 +5,7 @@
   import RibbonButton from '../RibbonButton.svelte';
   import ColorPicker from '../../ColorPicker.svelte';
   import ShapePicker from '../../ShapePicker.svelte';
+  import CaptionDialog from '../../CaptionDialog.svelte';
   import type { WrapMode } from '../../../editor/extensions/image';
   import type { ShapeKind } from '../../../editor/extensions/textBox';
   import { t } from '../../../i18n/i18n.svelte';
@@ -29,6 +30,8 @@
     { key: 'topBottom', icon: 'wrapTopBottom', label: () => t().image.wrapTopBottom },
   ];
 
+  let captionOpen = $state(false);
+
   function setWrap(w: WrapMode) {
     if (which === 'picture') editor?.chain().focus().setImageWrap(w).run();
     else editor?.chain().focus().setTextBoxAttrs({ wrap: w }).run();
@@ -39,6 +42,21 @@
   {#each WRAPS as w}
     <RibbonButton variant="big" icon={w.icon} label={w.label()} title={w.label()} active={wrap === w.key} onclick={() => setWrap(w.key)} />
   {/each}
+</RibbonGroup>
+
+<div class="ribbon-sep"></div>
+
+<!-- Also in the References tab, where both products keep it — but that is a tab away
+     from the object it captions, and this one only shows while that object is selected. -->
+<RibbonGroup label={t().ribbon.groups.captions}>
+  <RibbonButton
+    variant="big"
+    icon="caption"
+    label={t().ribbon.insertCaption}
+    title={t().caption.title}
+    disabled={!editor}
+    onclick={() => (captionOpen = true)}
+  />
 </RibbonGroup>
 
 {#if which === 'picture'}
@@ -112,6 +130,8 @@
     </label>
   </RibbonGroup>
 {/if}
+
+<CaptionDialog bind:open={captionOpen} {editor} />
 
 {#snippet fillIcon()}<span class="swatch" style="background: {fillColor ?? 'transparent'}"></span>{/snippet}
 {#snippet strokeIcon()}<span class="swatch outline" style="border-color: {strokeColor ?? 'currentColor'}"></span>{/snippet}
