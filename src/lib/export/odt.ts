@@ -2984,6 +2984,11 @@ function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []
       const direct = { ...fmt };
       Object.assign(fmt, forced, direct);
       if (!direct.bold && fmt.fontWeight === 'normal') delete fmt.bold;
+      // A link keeps its own paint: LibreOffice's Internet Link style and the editor's
+      // a-rule both outrank the region color, so the bake must not override it.
+      if (!direct.color && node.marks?.some((m) => m.type === 'link' && !m.attrs?.plain)) {
+        delete fmt.color;
+      }
     }
     // A named character style: bake its resolved formatting (so odf-kit always mints a
     // span) and mark the run, so applyCharacterStyles can re-point that span at the style.
