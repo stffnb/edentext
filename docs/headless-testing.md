@@ -8,3 +8,26 @@ With no test suite, the way to verify rendering, layout, or interaction is to dr
 Then load `npm run dev`, inject a document into `localStorage['edentext-doc']`, reload, and read live DOM geometry (`getBoundingClientRect`, `Range.getClientRects`) or screenshot. This is the only way to exercise the editor's live ProseMirror NodeViews (e.g. the image node), which `generateHTML` can't reproduce. The `debug/pagebreak-debug-*.json` snapshots carry the live `doc` JSON, handy to inject.
 
 For PDF-export repros specifically: replicate `pdf.ts`'s clone + `html2canvas(...)` inside `page.evaluate` and read the canvas back as a PNG — capturing the real jsPDF `doc.save()` download tends to hang in headless. Inspect output PDFs with poppler-utils (`apt-get install -y poppler-utils`: `pdftoppm`, `pdfimages`, `pdftotext`).
+
+## Hunting for bugs the suite cannot see
+
+`npm run test:coverage` says where to look: the logic modules are dense with tests,
+`src/lib/components/**` and `App.svelte` are at **0%** — every bug found this way so far
+lived there. Give each probe a `pageerror` + `console.error` collector; that alone reports
+faults nobody predicted (two of six were found by clicking controls and reading the console).
+
+Four passes, cheapest first:
+
+1. **Edges** — junk in every `edentext-*` key, truncated/renamed/empty archives, a full localStorage, no IndexedDB, page-tall images, 400-section documents.
+2. **Breadth** — click every control of every tab, watch only for uncaught errors.
+3. **Semantics** — not "does it crash" but "is the answer right": reject a tracked change and compare against the original, TOC page numbers against the measured page of each heading, a numeric sort against 3/10/25. The worst bug found (a reject that ate the original text) crashes nothing.
+4. **Invariants** — snapshot → act → undo → compare; page count stable over reloads; save → reopen; `.docx` and `.odt` of one corpus fixture giving identical counts.
+
+Then repro minimally and take a stack trace off the **dev** server (sourcemaps) with
+`Error.stackTraceLimit = 300` — the default ten frames stop above the cause.
+
+**Budget for false alarms.** Three of four striking signals were the probe's own fault:
+`Range.getClientRects` also returns container rects (a layout checker built on it is noise),
+a stale button index reads as a dead control, and clicking `.tiptap > p` by index hits a
+different block once an edit has reflowed the document. Reproduce deterministically before
+touching any code.
