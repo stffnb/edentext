@@ -7,7 +7,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage, framePx } from '../editor/extensions/image';
 import { formatTabStops } from '../editor/extensions/tabStops';
 import type { CapsMode, LineStyle } from '../editor/extensions/textEffects';
-import { tableLookAttr } from '../styles/tableStyles';
+import { builtinTableStyles, parseTableLook, resolveTableCell, tableLookAttr } from '../styles/tableStyles';
 import { formatOrdinal, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
@@ -2186,6 +2186,22 @@ function condPaint(areas: CondArea[]): { fill?: string; run: RunProps } {
   return { fill, run };
 }
 
+// The export bakes a region's color onto every run (it is CSS in the editor); a run
+// matching the region's own color carries the style, not direct formatting. Bold rides
+// the boldByDefault channel instead, so an explicitly normal run keeps its override.
+function unbakeRegionColor(nodes: Node[], color: string): void {
+  for (const n of nodes) {
+    if (n.content) unbakeRegionColor(n.content, color);
+    const ts = (n.marks ?? []).find((m) => m.type === 'textStyle');
+    if (ts?.attrs?.color !== color) continue;
+    delete ts.attrs.color;
+    if (Object.keys(ts.attrs).length === 0) {
+      n.marks = n.marks!.filter((m) => m !== ts);
+      if (n.marks.length === 0) delete n.marks;
+    }
+  }
+}
+
 // A conditional area's bold/italic/colour as real marks on the cell's text, skipping what
 // a run already declares — the file's own formatting outranks its table style.
 function bakeCellRuns(nodes: Node[], props: RunProps): void {
@@ -2269,6 +2285,12 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   const conds = ctx.styles.tableConditional(styleId);
   const flags = docxLookFlags(fc(tbl, 'tblPr'));
   const band = ctx.styles.tableBandSize(styleId);
+  // A registry style instead is name-only (our own export): its regions are re-derived
+  // per cell from name + look + grid position. A file carrying w:tblStylePr wins above.
+  const named = ctx.styles.tableStyleName(styleId);
+  const look = docxTableLook(fc(tbl, 'tblPr'));
+  const regStyle = !conds.size && named ? builtinTableStyles()[named] : undefined;
+  const regLook = parseTableLook(look);
   const gridCols = useWeights?.length
     ?? Math.max(1, ...trs.map((tr) => fcAll(tr, 'tc').reduce((n, tc) => n + (intAttr(fc(fc(tc, 'tcPr'), 'gridSpan'), W, 'val') ?? 1), 0)));
   for (let ri = 0; ri < trs.length; ri++) {
@@ -2290,11 +2312,19 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
       const box: GridBox = { row: ri, col, rowEnd, colEnd: col + colspan };
       const areas = conds.size ? condAreasFor(conds, flags, band, box, trs.length, gridCols) : [];
       const paint = condPaint(areas);
+      const styled = regStyle ? resolveTableCell(regStyle, {
+        row: ri, col, rowSpan: rowEnd - ri, colSpan: colspan, rows: trs.length, cols: gridCols,
+      }, regLook) : null;
       const fill = fc(tcPr, 'shd')?.getAttributeNS(W, 'fill');
       const bg = fill ? hexColor(fill) : paint.fill;
-      const blocks = convertBlocks(Array.from(tc.children), ctx, 'cell', bg === HEADER_SHADE);
+      // Header-shaded cells and a bold region render bold by default (CSS); a baked-bold
+      // run needs no mark, only an explicitly normal one gets fontWeight:normal.
+      const blocks = convertBlocks(Array.from(tc.children), ctx, 'cell',
+        bg === HEADER_SHADE || styled?.text.bold === true);
       bakeCellRuns(blocks, paint.run);
+      if (styled?.text.color) unbakeRegionColor(blocks, styled.text.color);
       const attrs: Record<string, unknown> = { colspan, rowspan: 1 };
+      if (styled?.regions.length) attrs.region = styled.regions.join(' ');
       if (bg) attrs.backgroundColor = bg;
       // w:vAlign — Word's "center" is the editor's "middle"; "top"/"both" stay the default.
       const vAlignEl = fc(tcPr, 'vAlign');
@@ -2349,7 +2379,6 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
     rows.push(row);
   }
   if (rows.length === 0) return null;
-  const named = ctx.styles.tableStyleName(styleId);
   const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx, padBase[3]) ?? {}) };
   if (pad) attrs.cellPadding = pad;
   // w:tblHeader on the first row: Word repeats it at the top of every page the table
@@ -2360,7 +2389,6 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   if (named) {
     attrs.tableStyle = named;
     // '' is a declared all-off look — dropping it would revert to the default look.
-    const look = docxTableLook(fc(tbl, 'tblPr'));
     if (look != null) attrs.tableLook = look;
   }
   return Object.keys(attrs).length ? { type: 'table', attrs, content: rows } : { type: 'table', content: rows };

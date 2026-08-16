@@ -7,7 +7,10 @@ import { fitInlineImage, framePx } from '../editor/extensions/image';
 import { odfChartDataUrl } from './chart';
 import { formatTabStops, normalizeLeader } from '../editor/extensions/tabStops';
 import type { CapsMode, LineStyle } from '../editor/extensions/textEffects';
-import { TABLE_REGIONS, tableLookAttr, type TableLook, type TableRegion } from '../styles/tableStyles';
+import {
+  TABLE_REGIONS, builtinTableStyles, parseTableLook, resolveTableCell, tableLookAttr,
+  type TableLook, type TableRegion,
+} from '../styles/tableStyles';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
@@ -2561,8 +2564,57 @@ const FORMAT_KINDS: Record<string, FormatKind | undefined> = {
   'currency-style': 'currency', 'date-style': 'date',
 };
 
+// The export bakes a region's color onto every run (it is CSS in the editor); a run
+// matching the region's own color carries the style, not direct formatting. Bold rides
+// the boldByDefault channel instead, so an explicitly normal run keeps its override.
+function unbakeRegionColor(nodes: Node[], color: string): void {
+  for (const n of nodes) {
+    if (n.content) unbakeRegionColor(n.content, color);
+    const ts = (n.marks ?? []).find((m) => m.type === 'textStyle');
+    if (ts?.attrs?.color !== color) continue;
+    delete ts.attrs.color;
+    if (Object.keys(ts.attrs).length === 0) {
+      n.marks = n.marks!.filter((m) => m !== ts);
+      if (n.marks.length === 0) delete n.marks;
+    }
+  }
+}
+
 function convertTable(el: Element, ctx: Ctx): Node | null {
   const weights = columnWeights(el, ctx.resolver);
+
+  // The named table style behind the automatic one, hoisted: a registry style's regions
+  // are re-derived per cell from name + look + grid position, as the editor paints them.
+  const named = ctx.resolver.namedAncestor(el.getAttributeNS(NS.table, 'style-name'), 'table');
+  const styleName = named ? displayStyleName(named) : null;
+  const look = odfTableLook(el);
+  const regStyle = styleName ? builtinTableStyles()[styleName] : undefined;
+  const regLook = parseTableLook(look);
+
+  const rowEls: { el: Element; header: boolean }[] = [];
+  for (const child of Array.from(el.children)) {
+    if (child.namespaceURI !== NS.table) continue;
+    if (child.localName === 'table-row') rowEls.push({ el: child, header: false });
+    else if (child.localName === 'table-header-rows' || child.localName === 'table-rows') {
+      const header = child.localName === 'table-header-rows';
+      for (const rowEl of Array.from(child.children)) {
+        if (rowEl.namespaceURI === NS.table && rowEl.localName === 'table-row') rowEls.push({ el: rowEl, header });
+      }
+    }
+  }
+  // Grid extent up front — resolveTableCell needs the totals (lastRow, banding).
+  const gridRows = rowEls.length;
+  let gridCols = weights?.length ?? 0;
+  if (!gridCols && rowEls[0]) {
+    for (const c of Array.from(rowEls[0].el.children)) {
+      if (c.namespaceURI !== NS.table) continue;
+      const rep = Math.min(256, parseInt(c.getAttributeNS(NS.table, 'number-columns-repeated') ?? '1', 10) || 1);
+      if (c.localName === 'covered-table-cell') gridCols += rep;
+      else if (c.localName === 'table-cell') {
+        gridCols += rep * (parseInt(c.getAttributeNS(NS.table, 'number-columns-spanned') ?? '1', 10) || 1);
+      }
+    }
+  }
 
   const rows: Node[] = [];
   // Source-row bookkeeping: a row of only covered cells is dropped (the editor cannot
@@ -2606,9 +2658,15 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
         const v = borderAttrFromOdf(rawBorders[side]);
         if (v !== null) borders[attr] = v;
       }
-      // Header-shaded cells render bold by default (CSS); convert their runs like headings
-      // so a baked-bold run needs no mark and only an explicitly normal run gets one.
-      const blocks = convertBlocks(Array.from(cellEl.children), ctx, 'cell', backgroundColor === HEADER_SHADE);
+      // Header-shaded cells and a bold region render bold by default (CSS); convert their
+      // runs like headings, so a baked-bold run needs no mark and only a normal run gets one.
+      const paint = regStyle ? resolveTableCell(regStyle, {
+        row: rowIdx, col: colIndex, rowSpan: rowspan, colSpan: colspan,
+        rows: gridRows, cols: gridCols,
+      }, regLook) : null;
+      const blocks = convertBlocks(Array.from(cellEl.children), ctx, 'cell',
+        backgroundColor === HEADER_SHADE || paint?.text.bold === true);
+      if (paint?.text.color) unbakeRegionColor(blocks, paint.text.color);
       // LibreOffice writes the formula in its own language behind an `ooow:` prefix;
       // the cached result is the cell's text and needs nothing here.
       const rawFormula = cellEl.getAttributeNS(NS.table, 'formula');
@@ -2617,6 +2675,7 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       const cellFormat = formula ? cellNumberFormat(cellEl, ctx) : null;
       for (let r = 0; r < repeated; r++) {
         const attrs: Record<string, unknown> = { colspan, rowspan, ...borders };
+        if (paint?.regions.length) attrs.region = paint.regions.join(' ');
         if (rowspan > 1) placed.push({ attrs, row: rowIdx, span: rowspan });
         if (formula) attrs.formula = formula;
         if (cellFormat) attrs.cellFormat = cellFormat;
@@ -2640,26 +2699,13 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
     rows.push(row);
   };
 
-  for (const child of Array.from(el.children)) {
-    if (child.namespaceURI !== NS.table) continue;
-    if (child.localName === 'table-row') addRow(child, false);
-    else if (child.localName === 'table-header-rows' || child.localName === 'table-rows') {
-      const header = child.localName === 'table-header-rows';
-      for (const rowEl of Array.from(child.children)) {
-        if (rowEl.namespaceURI === NS.table && rowEl.localName === 'table-row') addRow(rowEl, header);
-      }
-    }
-  }
+  for (const { el: rowEl, header } of rowEls) addRow(rowEl, header);
 
   if (rows.length === 0) return null;
   if (dropped.length) for (const p of placed) {
     const cut = dropped.filter((d) => d > p.row && d < p.row + p.span).length;
     if (cut) p.attrs.rowspan = p.span - cut;
   }
-  // The named table style behind the automatic one. ODF stores no banding, so only the
-  // name comes back — the look rides on the cell attrs above, and the editor re-derives
-  // the regions from the registry (refreshTableStyles).
-  const named = ctx.resolver.namedAncestor(el.getAttributeNS(NS.table, 'style-name'), 'table');
   const attrs: Record<string, unknown> = { ...(tableMargins(el, ctx) ?? {}), ...tableSpacing(el, ctx) };
   if (cellPad) attrs.cellPadding = cellPad;
   // The default is to allow a break, so only the explicit "no" is worth an attr.
@@ -2671,12 +2717,11 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   if (Array.from(el.children).some(c => c.namespaceURI === NS.table && c.localName === 'table-header-rows')) {
     attrs.repeatHeader = true;
   }
-  if (named) {
-    attrs.tableStyle = displayStyleName(named);
+  if (styleName) {
+    attrs.tableStyle = styleName;
     // Which conditional areas the table opts into (ODF's table template attributes).
     // Absent ⇒ leave the attr null, so parseTableLook falls back to the default.
     // '' is a declared all-off look — dropping it would revert to the default look.
-    const look = odfTableLook(el);
     if (look != null) attrs.tableLook = look;
   }
   return Object.keys(attrs).length ? { type: 'table', attrs, content: rows } : { type: 'table', content: rows };
