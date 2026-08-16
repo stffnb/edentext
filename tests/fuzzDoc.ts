@@ -94,6 +94,9 @@ function paragraph(r: Rng, indents = true, top = false): N {
     body.push(run);
     if (maybe(r, 0.1)) body.push({ type: 'hardBreak' });
   }
+  if (maybe(r, 0.06)) {
+    body.push({ type: 'image', attrs: { src: PNG, width: int(r, 40, 200), height: int(r, 30, 120) } });
+  }
   return { type: 'paragraph', ...(attrs ? { attrs } : {}), content: body };
 }
 
@@ -105,22 +108,35 @@ function list(r: Rng, kind: 'bulletList' | 'orderedList', depth: number): N {
   });
   // start only at the top level: applyListStartValues writes text:start-value for
   // top-level lists only, a nested list's start does not round-trip.
-  const attrs: N = kind === 'orderedList' && depth === 0 && maybe(r, 0.2) ? { start: 3 } : null;
-  return { type: kind, ...(attrs ? { attrs } : {}), content: items };
+  const attrs: N = {};
+  if (kind === 'orderedList' && depth === 0 && maybe(r, 0.2)) attrs.start = 3;
+  // Nested lists get only upper-* types: those are never the depth default, which the
+  // importers suppress to null (defaultOrderedTypeAt yields lower/decimal forms only).
+  if (kind === 'orderedList' && maybe(r, 0.25)) {
+    attrs.listStyleType = depth === 0
+      ? pick(r, ['lower-alpha', 'upper-roman', 'lower-alpha-paren'])
+      : pick(r, ['upper-roman', 'upper-alpha-paren']);
+  }
+  return { type: kind, ...(Object.keys(attrs).length ? { attrs } : {}), content: items };
 }
+
+// A tiny valid PNG; only its bytes matter for the round-trip (no image decoding).
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
 function table(r: Rng): N {
   const cols = int(r, 1, 3);
-  const rows = Array.from({ length: int(r, 1, 3) }, () => ({
-    type: 'tableRow',
-    content: Array.from({ length: cols }, () => {
-      const attrs: N = { colspan: 1, rowspan: 1, colwidth: null };
+  const rows = Array.from({ length: int(r, 1, 3) }, () => {
+    // one two-column merge per row at most, so the grid stays consistent
+    const merge = cols >= 2 && maybe(r, 0.15);
+    const cells = Array.from({ length: merge ? cols - 1 : cols }, (_, i) => {
+      const attrs: N = { colspan: merge && i === 0 ? 2 : 1, rowspan: 1, colwidth: null };
       // not #F2F2F2: that exact shade is HEADER_SHADE, whose bold is presentational
       if (maybe(r, 0.15)) attrs.backgroundColor = pick(r, ['#FFFF00', '#DDEEFF']);
       if (maybe(r, 0.1)) attrs.verticalAlign = pick(r, ['middle', 'bottom']);
       return { type: 'tableCell', attrs, content: [paragraph(r)] };
-    }),
-  }));
+    });
+    return { type: 'tableRow', content: cells };
+  });
   return { type: 'table', content: rows };
 }
 
