@@ -1,11 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- One stem colour for every background: an <img> cannot see the app's theme, and
+       an ink stem disappears on the dark chrome. Slate holds 3.5:1 on both ends. -->
   <style>
-    .stem { stroke: #202b36; }
+    .stem { stroke: #4c6c8a; }
     .slate { fill: #4c6c8a; }
     .clay { fill: #d1734f; }
-    @media (prefers-color-scheme: dark) {
-      .stem { stroke: #e7ebee; }
-    }
   </style>
   <g transform="translate(-0.667,0.306) scale(0.5556)">
     <g transform="translate(20,4)">
