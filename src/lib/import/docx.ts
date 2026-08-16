@@ -1276,6 +1276,25 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     return marks;
   };
 
+  // A recorded revision (w:ins/w:del). Its runs keep their formatting and take the
+  // mark; a deletion's text sits in w:delText, which handleRun reads as ordinary text.
+  const handleRevision = (el: Element, linkHref?: string) => {
+    const kind = el.localName === 'del' ? 'deletion' : 'insertion';
+    const attrs = {
+      id: el.getAttributeNS(W, 'id') ?? '',
+      author: el.getAttributeNS(W, 'author') ?? '',
+      date: el.getAttributeNS(W, 'date') ?? '',
+    };
+    const before = out.length;
+    for (const r of fcAll(el, 'r')) handleRun(r, linkHref);
+    if (!hfFields) {
+      for (let i = before; i < out.length; i++) {
+        if (out[i].type !== 'text') continue;
+        out[i].marks = [...(out[i].marks ?? []), { type: kind, attrs }];
+      }
+    }
+  };
+
   const handleRun = (r: Element, linkHref?: string) => {
     const marks = runMarks(r, linkHref);
     // Hide a field's cached result: always for a hf field, and for a recognized body
@@ -1413,7 +1432,11 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
         // No relationship id: an internal link to a bookmark in this document.
         const anchor = el.getAttributeNS(W, 'anchor');
         const href = rid ? ctx.rels.get(rid)?.target : anchor ? `#${anchor}` : undefined;
-        for (const r of fcAll(el, 'r')) handleRun(r, href);
+        // A revision wraps its runs inside the link element, so walk both shapes.
+        for (const child of Array.from(el.children)) {
+          if (child.localName === 'r') handleRun(child, href);
+          else if (child.localName === 'ins' || child.localName === 'del') handleRevision(child, href);
+        }
         break;
       }
       case 'fldSimple': {
@@ -1451,25 +1474,9 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
         break;
       }
       case 'ins':
-      case 'del': {
-        // A recorded revision. Its runs keep their formatting and take the mark; a
-        // deletion's text sits in w:delText, which handleRun reads as ordinary text.
-        const kind = el.localName === 'del' ? 'deletion' : 'insertion';
-        const attrs = {
-          id: el.getAttributeNS(W, 'id') ?? '',
-          author: el.getAttributeNS(W, 'author') ?? '',
-          date: el.getAttributeNS(W, 'date') ?? '',
-        };
-        const before = out.length;
-        for (const r of fcAll(el, 'r')) handleRun(r);
-        if (!hfFields) {
-          for (let i = before; i < out.length; i++) {
-            if (out[i].type !== 'text') continue;
-            out[i].marks = [...(out[i].marks ?? []), { type: kind, attrs }];
-          }
-        }
+      case 'del':
+        handleRevision(el);
         break;
-      }
       case 'smartTag':
         for (const r of fcAll(el, 'r')) handleRun(r);
         break;

@@ -442,18 +442,35 @@ type Inline = TextRun | ImageRun | ExternalHyperlink | InternalHyperlink | Simpl
 
 // A date/time field. A fixed field is plain text (Word has no fixed-date field); an
 // auto field is a DATE/TIME field with the picture switch and a cached value.
-function dateTimeRun(node: TiptapNode): Inline {
+function dateTimeFieldParts(node: TiptapNode): { fixed: boolean; instr: string; text: string } {
   const a = node.attrs ?? {};
   const kind = a.kind === 'time' ? 'time' : 'date';
   const fmt = findFormat(String(a.format ?? ''))
     ?? findFormat(kind === 'time' ? DEFAULT_TIME_FORMAT : DEFAULT_DATE_FORMAT)!;
   const parsed = a.fixed && typeof a.value === 'string' && a.value ? new Date(a.value) : new Date();
   const when = isNaN(parsed.getTime()) ? new Date() : parsed;
-  const text = renderFormat(fmt, when, docLangTag);
+  return {
+    fixed: a.fixed === true,
+    instr: `${kind === 'time' ? 'TIME' : 'DATE'} \\@ "${docxPicture(fmt)}"`,
+    text: renderFormat(fmt, when, docLangTag),
+  };
+}
+
+function dateTimeRun(node: TiptapNode): Inline {
+  const { fixed, instr, text } = dateTimeFieldParts(node);
   // A fixed field is a plain run, so carry its font/size/etc.; SimpleField takes no
   // run props, so an auto field inherits the paragraph font (Word recomputes it).
-  if (a.fixed) return new TextRun({ text, ...runPropsFromMarks(node.marks) });
-  return new SimpleField(`${kind === 'time' ? 'TIME' : 'DATE'} \\@ "${docxPicture(fmt)}"`, text);
+  if (fixed) return new TextRun({ text, ...runPropsFromMarks(node.marks) });
+  return new SimpleField(instr, text);
+}
+
+// The XE field instruction; a literal quote is backslash-escaped, as Word writes it,
+// and indexEntryFromInstr (import) unescapes the same way.
+function xeInstr(attrs: Record<string, unknown> | undefined): string | null {
+  const term = String(attrs?.term ?? '').trim();
+  const key1 = String(attrs?.key1 ?? '').trim();
+  if (!term) return null;
+  return `XE "${(key1 ? `${key1}:${term}` : term).replace(/([\\"])/g, '\\$1')}"`;
 }
 
 // Word's numeric-picture switch per ODF num-format — the SEQ field's own formatting.
@@ -575,9 +592,8 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
     } else if (node.type === 'indexEntry') {
       // Word's index entry: a hidden XE field, its term in the instruction. A key files
       // the term under it, "key:term", exactly as LibreOffice's text:key1 does.
-      const term = String(node.attrs?.term ?? '').trim();
-      const key1 = String(node.attrs?.key1 ?? '').trim();
-      if (term) out.push(new SimpleField(`XE "${(key1 ? `${key1}:${term}` : term).replace(/"/g, "'")}"`, ''));
+      const instr = xeInstr(node.attrs);
+      if (instr) out.push(new SimpleField(instr, ''));
     } else if (node.type === 'bibliographyEntry') {
       // Word's citation: a CITATION field naming the source's tag, its cached result the
       // text the reader sees. applyBibliographyDocx writes the source itself.
@@ -757,6 +773,9 @@ function escapeXml(s: string): string {
 function txbxRunPropsXml(marks: TiptapNode['marks'] = []): string {
   const ts = marks.find((m) => m.type === 'textStyle');
   const parts: string[] = [];
+  // w:rStyle leads w:rPr; the run's own properties below still win, as in the body.
+  const cs = marks.find((m) => m.type === 'charStyle')?.attrs?.name;
+  if (typeof cs === 'string' && cs) parts.push(`<w:rStyle w:val="${escapeXml(docxStyleId(cs))}"/>`);
   const ff = ts?.attrs?.fontFamily;
   if (ff) {
     const f = escapeXml(String(ff) === SCREEN_FONT ? DOC_FONT : String(ff));
@@ -928,6 +947,31 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
       const verb = child.attrs?.format === 'page' ? 'PAGEREF' : 'REF';
       runs += `<w:fldSimple w:instr="${escapeXml(`${verb} ${String(child.attrs?.name ?? '')} \\h`)}">` +
         `<w:r><w:t xml:space="preserve">${escapeXml(String(child.attrs?.text ?? ''))}</w:t></w:r></w:fldSimple>`;
+    } else if (child.type === 'indexEntry') {
+      const instr = xeInstr(child.attrs);
+      if (instr) runs += `<w:fldSimple w:instr="${escapeXml(instr)}"/>`;
+    } else if (child.type === 'bibliographyEntry') {
+      // Same CITATION field as the body; the source record joins docSources, which
+      // applyBibliographyDocx (running after the boxes are packed) writes out.
+      const identifier = String(child.attrs?.identifier ?? '').trim();
+      if (identifier) {
+        if (!docSources.some(s => s.identifier === identifier)) {
+          docSources.push({
+            identifier,
+            type: String(child.attrs?.type ?? 'misc'),
+            fields: (child.attrs?.fields ?? {}) as Record<string, string>,
+          });
+        }
+        const shown = String(child.attrs?.text || citationText(identifier));
+        runs += `<w:fldSimple w:instr="${escapeXml(`CITATION "${docxTag(identifier)}"`)}"><w:r>` +
+          `${txbxRunPropsXml(child.marks)}<w:t xml:space="preserve">${escapeXml(shown)}</w:t></w:r></w:fldSimple>`;
+      }
+    } else if (child.type === 'dateTimeField') {
+      const { fixed, instr, text } = dateTimeFieldParts(child);
+      runs += fixed
+        ? `<w:r>${txbxRunPropsXml(child.marks)}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`
+        : `<w:fldSimple w:instr="${escapeXml(instr)}"><w:r>` +
+          `<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:fldSimple>`;
     } else if (child.type === 'formula') {
       // A sentinel run, resolved by applyFormulasDocx — it runs after the boxes are packed.
       const latex = typeof child.attrs?.latex === 'string' ? child.attrs.latex : '';
@@ -940,12 +984,20 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
       runs += `<w:r><w:t xml:space="preserve">${RBY}${docRubies.length - 1}${RBY}</w:t></w:r>`;
     } else if (child.type === 'text' && child.text) {
       const rPr = txbxRunPropsXml(child.marks);
+      // A recorded revision wraps the run; a deletion's text sits in w:delText.
+      const rev = revisionOf(child);
+      const tag = rev?.kind === 'deletion' ? 'w:delText' : 'w:t';
       let inner = '';
       child.text.split('\t').forEach((seg, i) => {
         if (i > 0) inner += '<w:tab/>';
-        if (seg) inner += `<w:t xml:space="preserve">${escapeXml(seg)}</w:t>`;
+        if (seg) inner += `<${tag} xml:space="preserve">${escapeXml(seg)}</${tag}>`;
       });
-      const run = `<w:r>${rPr}${inner}</w:r>`;
+      let run = `<w:r>${rPr}${inner}</w:r>`;
+      if (rev) {
+        const el = rev.kind === 'insertion' ? 'w:ins' : 'w:del';
+        run = `<${el} w:id="${docRevisionId(rev.attrs.id)}" w:author="${escapeXml(rev.attrs.author)}"` +
+          ` w:date="${escapeXml(rev.attrs.date)}">${run}</${el}>`;
+      }
       const href = child.marks?.find((m) => m.type === 'link')?.attrs?.href;
       const link = href ? String(href) : '';
       if (link.startsWith('#')) {
