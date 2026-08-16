@@ -1188,13 +1188,27 @@ function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunP
   const id = `${kind}${wid}`;
   // The note renders at the file's own size and indent: its first paragraph names the
   // style (Word's FootnoteText), and collectStyleSheet only keeps a style in use.
+  // A style that only re-states the stock look (10pt, nothing else changed against the
+  // default) equals a styleName-less note and is suppressed like any default-equal value.
   const firstPara = Array.from(note.children).find((c) => c.namespaceURI === W && c.localName === 'p');
   const pStyle = fc(fc(firstPara ?? null, 'pPr'), 'pStyle');
   const styleId = pStyle ? wVal(pStyle) : null;
-  const styleName = styleId ? ctx.styleNames.get(styleId) ?? null : null;
+  const styleName = styleId && !isStockNoteStyle(ctx, styleId) ? ctx.styleNames.get(styleId) ?? null : null;
   if (styleId && styleName) ctx.usedStyles.add(styleId);
   ctx.notes.push({ id, kind, text, content, styleName });
   return { type: 'noteRef', attrs: { id, kind, text } };
+}
+
+// A note style is "stock" when it resolves to 10pt over the default style with nothing
+// else of its own — the look a styleName-less note already renders.
+function isStockNoteStyle(ctx: Ctx, styleId: string): boolean {
+  const run = ctx.styles.paragraphRun(styleId), base = ctx.styles.paragraphRun(null);
+  if (run.sizeHalfPt !== 20) return false;
+  const keys = ['bold', 'italic', 'underline', 'strike', 'color', 'font', 'fontTheme', 'highlightFill', 'caps'] as const;
+  if (!keys.every((k) => (run[k] ?? null) === (base[k] ?? null))) return false;
+  if (ctx.styles.paragraphAlign(styleId) !== ctx.styles.paragraphAlign(null)) return false;
+  const sp = ctx.styles.paragraphSpacing(styleId);
+  return !sp.before && !sp.after && (ctx.styles.styleIndentTwip(styleId) ?? 0) === 0;
 }
 
 function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockDefaults, hfFields: boolean): Node[] {

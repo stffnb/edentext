@@ -23,7 +23,7 @@ import type { SpacingModel } from '../storage/spacingModel';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import type { HfDoc, HfSet } from '../storage/headerFooter';
-import type { NoteKind, NoteSettings } from '../storage/noteSettings';
+import { NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { clampPageStart, type PageNumbering } from '../storage/pageNumbering';
 import { newCommentId } from '../editor/extensions/comment';
@@ -1807,6 +1807,25 @@ function convertSequenceField(e: Element): Node | null {
   };
 }
 
+// A note style that only re-states the stock look (10pt, the hanging indent, nothing
+// else changed against the default style) equals a styleName-less note; suppress it,
+// as every other default-equal value is on import.
+function isStockNoteStyle(resolver: StyleResolver, name: string): boolean {
+  // Measured against Standard (the stock styles' parent), so inherited values match.
+  const text = resolver.paraTextProps(name), baseT = resolver.paraTextProps('Standard');
+  const para = resolver.paraProps(name), baseP = resolver.paraProps('Standard');
+  const cm = (v?: string) => lengthToCm(v ?? null) ?? 0;
+  if (Math.abs((lengthToPt(text['fo:font-size']) ?? 0) - NOTE_FONT_SIZE_PT) > 0.3) return false;
+  if (Math.abs(cm(para['fo:margin-left']) - NOTE_INDENT_CM) > 0.03) return false;
+  if (Math.abs(cm(para['fo:text-indent']) + NOTE_INDENT_CM) > 0.03) return false;
+  const sameT = (k: string) => (text[k] ?? '') === (baseT[k] ?? '');
+  const sameP = (k: string) => (para[k] ?? '') === (baseP[k] ?? '');
+  const sameCm = (k: string) => Math.abs(cm(para[k]) - cm(baseP[k])) < 0.03;
+  return ['fo:font-family', 'style:font-name', 'fo:font-style', 'fo:font-weight', 'fo:color', 'fo:background-color', 'style:text-underline-style'].every(sameT)
+    && ['fo:text-align', 'fo:line-height'].every(sameP)
+    && ['fo:margin-top', 'fo:margin-bottom', 'fo:margin-right'].every(sameCm);
+}
+
 // The note's paragraph style: the one its own <text:p> names, else the class's
 // configured default. Registered as used, or collectStyleSheet drops it.
 function noteBodyStyle(e: Element, ctx: Ctx, kind: NoteKind): string | null {
@@ -1815,7 +1834,7 @@ function noteBodyStyle(e: Element, ctx: Ctx, kind: NoteKind): string | null {
   const raw = own?.getAttributeNS(NS.text, 'style-name')
     ?? ctx.resolver.noteSettings()[kind].bodyStyle.replace(/ /g, '_20_');
   const named = ctx.resolver.namedAncestor(raw, 'paragraph');
-  if (!named) return null;
+  if (!named || isStockNoteStyle(ctx.resolver, named)) return null;
   ctx.usedStyles.add(named);
   return ctx.styleNames.get(named) ?? named.replace(/_20_/g, ' ');
 }
