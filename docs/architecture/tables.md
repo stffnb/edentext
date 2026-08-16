@@ -84,11 +84,17 @@ We deliberately keep TipTap's `resizable: false` (so its own columnResizing plug
   `applyTableMargins`); DOCX writes `w:tblStyle` plus a name-only `w:style w:type="table"` through
   the docx lib's `importedStyles` (it has no `tableStyles` option, and `w:tblStylePr` is not
   emitted). The region's text is **baked** onto the runs on both exports (the `forceBold` channel
-  widened to `TextProps`). Import reads the name back (`namedAncestor(…, 'table')` /
-  `w:tblStyle` → `DocxStyles.tableStyleName`); the regions are then re-derived by
-  `refreshTableStyles`, and `App.svelte` keeps `sheet.table` across an import because the file
-  never carried it. Baked bold is only suppressed for `HEADER_SHADE` cells (the existing
-  `boldByDefault` path) — a foreign style's bold survives as direct formatting.
+  widened to `TextProps`) — except onto a non-plain **link's** color: the editor's a-rule and
+  LibreOffice's Internet Link style outrank the region CSS, so the link keeps its own paint.
+  Import reads the name back (`namedAncestor(…, 'table')` / `w:tblStyle` →
+  `DocxStyles.tableStyleName`) and, for a style in the registry (`builtinTableStyles`),
+  re-derives each cell's regions itself from name + look + grid position through the same
+  `resolveTableCell`: the `region` attr comes back, a bold region's runs convert like headings
+  (the `boldByDefault` path `HEADER_SHADE` cells already use) and a run matching the region's
+  color loses that mark (`unbakeRegionColor`) — the baked region text is the style's own
+  again, not direct formatting. `refreshTableStyles` still repaints on load, and `App.svelte`
+  keeps `sheet.table` across an import because the file never carried the definitions; a
+  name the registry doesn't know keeps its bake as direct formatting.
   A **Word** file's own table style does carry its areas (`w:tblStylePr`), and the registry has
   no entry to re-derive them from, so the DOCX importer bakes those into the cells instead —
   fill, borders and run marks alike (`src/lib/import/CLAUDE.md` for the area rules). What is
