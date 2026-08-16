@@ -34,7 +34,9 @@ readable (the clay itself is 3.3:1 on white). Both brand tokens are defined once
 `.ribbon` remaps the app's own tokens onto that palette (`--color-surface`, `--color-primary`,
 `--toolbar-btn-size`, …). Custom properties inherit, so every reused picker — `ColorPicker`,
 `HistoryButton`, `TablePicker`, `TableStylePicker`, the border pickers — adopts the ribbon's look
-with no edit of its own, while the classic toolbar keeps the themed set.
+with no edit of its own, while the classic toolbar keeps the themed set. The **status bar** takes
+the same remap while the ribbon is mounted (`.statusbar.w-chrome`, `App.svelte`) — it closes the
+frame the chrome opens, and the app's dark neutrals are bluer than Word's.
 
 **Dark** flips only the colours — every metric holds, so it is the same ribbon. The neutrals are
 Word's dark mode: Fluent's dark neutrals, chrome `#1f1f1f` on surface `#292929`; both brand tones

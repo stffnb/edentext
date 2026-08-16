@@ -588,7 +588,7 @@
   --color-border: #e2e8f0;
   --color-text: #1e293b;
   --color-text-muted: #94a3b8;
-  --color-primary: #52748b;
+  --color-primary: var(--brand-slate);
   --color-toolbar-bg: #ffffff;
   --color-btn-hover: #cbd5e1;
   --color-page-bg: #ffffff;
@@ -605,7 +605,7 @@
     --color-border: #30363d;
     --color-text: #f2e6f3;
     --color-text-muted: #7d8590;
-    --color-primary: #52748b;
+    --color-primary: var(--brand-slate);
     --color-toolbar-bg: #161b22;
     --color-btn-hover: #3b4350;
     --color-page-bg: #ffffff;
@@ -622,7 +622,7 @@
   --color-border: #30363d;
   --color-text: #e6edf3;
   --color-text-muted: #7d8590;
-  --color-primary: #52748b;
+  --color-primary: var(--brand-slate);
   --color-toolbar-bg: #161b22;
   --color-btn-hover: #3b4350;
   --color-page-bg: #161b22;

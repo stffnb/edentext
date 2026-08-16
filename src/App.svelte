@@ -1448,7 +1448,7 @@
       <FindReplaceBar {editor} {tick} mode={findMode} focusNonce={findNonce} onClose={closeFind} />
     </div>
   {/if}
-  <footer class="statusbar">
+  <footer class="statusbar" class:w-chrome={chromeMode === 'ribbon'}>
     <div class="sb-left">
       <span>{t().status.pageOf(currentPage, numPages)}</span>
       <div class="wordcount-wrap" use:wordCountClickOutside>
@@ -2079,6 +2079,23 @@
     color: var(--color-text);
     user-select: none;
     z-index: 50;
+  }
+
+  /* The bar closes the frame the chrome above it opens, so under the ribbon it takes
+     the ribbon's palette — the same token remap .ribbon does for its pickers, which
+     is what the popup and the language picker inside here read too. */
+  .statusbar.w-chrome {
+    --color-toolbar-bg: var(--w-chrome);
+    --color-surface: var(--w-surface);
+    --color-border: var(--w-border);
+    --color-text: var(--w-text);
+    --color-text-muted: var(--w-text-dim);
+    --color-primary: var(--w-accent);
+    --color-btn-hover: var(--w-hover);
+    --font-sans: var(--w-font);
+    --radius: 3px;
+
+    border-top-color: var(--w-border-strong);
   }
 
   /* Three zones: page count left, language picker centered, zoom right. The
