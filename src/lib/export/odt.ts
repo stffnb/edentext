@@ -1931,19 +1931,18 @@ function applyParagraphStyles(odtBytes: Uint8Array): Uint8Array {
     return name;
   };
 
-  const styRe = new RegExp(`${STY}([^${STY}]*)${STY}`);
+  // Anchored right after the opening tag (where the sentinel is emitted): a scan to the
+  // closing tag would start at a text box's anchor paragraph and steal the first box
+  // child's sentinel — nested <text:p> (box children, note bodies) make spans unsafe.
   content = content.replace(
-    new RegExp(`<text:(p|h)\\b((?:[^>]*[^/>])?)>([\\s\\S]*?)</text:\\1>`, 'g'),
-    (m, tag: string, attrs: string, inner: string) => {
-      const sm = styRe.exec(inner);
-      if (!sm) return m;
-      const cleaned = inner.replace(styRe, '');
+    new RegExp(`<text:(p|h)\\b((?:[^>]*[^/>])?)>${STY}([^${STY}]*)${STY}`, 'g'),
+    (_m, tag: string, attrs: string, styleName: string) => {
       const srcM = /text:style-name="([^"]*)"/.exec(attrs);
-      const name = styleFor(srcM ? srcM[1] : '', sm[1]);
+      const name = styleFor(srcM ? srcM[1] : '', styleName);
       const newAttrs = srcM
         ? attrs.replace(/text:style-name="[^"]*"/, `text:style-name="${name}"`)
         : ` text:style-name="${name}"${attrs}`;
-      return `<text:${tag}${newAttrs}>${cleaned}</text:${tag}>`;
+      return `<text:${tag}${newAttrs}>`;
     },
   );
   content = content.replace(new RegExp(`${STY}[^${STY}]*${STY}`, 'g'), '');
@@ -1989,19 +1988,18 @@ function applyParagraphBoxes(odtBytes: Uint8Array): Uint8Array {
     return name;
   };
 
-  const pbxRe = new RegExp(`${PBX}([^${PBX}]*)${PBX}`);
+  // Anchored right after the opening tag, over an optional STY run (its pass runs later;
+  // emission order is FSZ STY PBX). A scan to the closing tag would start at a text box's
+  // anchor paragraph and steal the first box child's sentinel.
   content = content.replace(
-    new RegExp(`<text:(p|h)\\b((?:[^>]*[^/>])?)>([\\s\\S]*?)</text:\\1>`, 'g'),
-    (m, tag: string, attrs: string, inner: string) => {
-      const sm = pbxRe.exec(inner);
-      if (!sm) return m;
-      const cleaned = inner.replace(pbxRe, '');
+    new RegExp(`<text:(p|h)\\b((?:[^>]*[^/>])?)>((?:${STY}[^${STY}]*${STY})?)${PBX}([^${PBX}]*)${PBX}`, 'g'),
+    (_m, tag: string, attrs: string, sty: string, spec: string) => {
       const srcM = /text:style-name="([^"]*)"/.exec(attrs);
-      const name = boxStyleFor(srcM ? srcM[1] : '', sm[1]);
+      const name = boxStyleFor(srcM ? srcM[1] : '', spec);
       const newAttrs = srcM
         ? attrs.replace(/text:style-name="[^"]*"/, `text:style-name="${name}"`)
         : ` text:style-name="${name}"${attrs}`;
-      return `<text:${tag}${newAttrs}>${cleaned}</text:${tag}>`;
+      return `<text:${tag}${newAttrs}>${sty}`;
     },
   );
   // Drop any sentinels not consumed above (defensive — never legitimate text).
@@ -3191,10 +3189,17 @@ function resolveTextEffects(xml: string, mint: (styleXml: string) => void, prefi
     },
   );
   // A run whose only formatting is such an effect never got a span: give it one, up to
-  // the next real element — a tab/line-break/space inside the run rides along, or the
-  // text behind it would fall out of the span and lose the effect.
+  // the next real element — a tab/line-break/space, a bookmark marker or a comment's
+  // annotation inside the run rides along, or the text behind it would fall out of the
+  // span and lose the effect.
+  // The annotation block is tempered to its first close tag, and (?=[\s>]) keeps it off
+  // <office:annotation-end (\b sits before the hyphen) — either slip would stretch one
+  // annotation across the next one's body and misplace the minted span's close.
+  const inline = `<text:(?:tab|line-break|s|bookmark-start|bookmark-end)\\b[^>]*/>`
+    + `|<office:annotation(?=[\\s>])(?:(?!</office:annotation>)[\\s\\S])*</office:annotation>`
+    + `|<office:annotation-end\\b[^>]*/>`;
   out = out.replace(
-    new RegExp(`${TEF}([^${TEF}]+)${TEF}((?:[^<${TEF}]|<text:(?:tab|line-break|s)\\b[^>]*/>)*)(?:${TEF}${TEF})?`, 'g'),
+    new RegExp(`${TEF}([^${TEF}]+)${TEF}((?:[^<${TEF}]|${inline})*)(?:${TEF}${TEF})?`, 'g'),
     (_m, extra: string, text: string) => `<text:span text:style-name="${styleFor('', extra)}">${text}</text:span>`,
   );
   // Drop any sentinels not consumed above (defensive — never legitimate text).
