@@ -42,9 +42,9 @@ const de: Messages = {
     },
   },
   ruby: {
-    title: 'Phonetische Zeichen',
+    title: 'Ruby-Text',
     base: 'Basistext',
-    reading: 'Ruby-Text',
+    reading: 'Lesung',
   },
   autoText: {
     title: 'AutoText',

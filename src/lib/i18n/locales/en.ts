@@ -42,10 +42,12 @@ const en = {
       urls: '',
     },
   },
+  // Word and LibreOffice call this the (Asian) phonetic guide and hide it unless an
+  // East Asian language is on. Ours is always there, so it says what it inserts.
   ruby: {
-    title: 'Phonetic guide',
+    title: 'Ruby text',
     base: 'Base text',
-    reading: 'Ruby text',
+    reading: 'Reading',
   },
   autoText: {
     title: 'AutoText',
