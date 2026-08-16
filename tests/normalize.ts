@@ -9,14 +9,34 @@ const ORDERED_DEFAULTS: Record<string, unknown> = {
   shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1,
 };
 
+// Mark-attr defaults dropped like ORDERED_DEFAULTS is for node attrs.
+const MARK_DEFAULTS: Record<string, unknown> = {
+  plain: false, // link.ts default; the DOCX importer writes it out explicitly
+};
+
+// Note ids are importer-generated (ftn1/footnote1/…); remap them to their order of
+// appearance so only the ref↔note pairing is compared, not the naming scheme.
+function canonNoteIds(doc: N): void {
+  const map = new Map<string, string>();
+  (function walk(n: N) {
+    if ((n.type === 'noteRef' || n.type === 'note') && n.attrs?.id != null) {
+      if (!map.has(n.attrs.id)) map.set(n.attrs.id, `n${map.size + 1}`);
+      n.attrs = { ...n.attrs, id: map.get(n.attrs.id) };
+    }
+    for (const c of n.content ?? []) walk(c);
+  })(doc);
+}
+
 export function normalize(node: N): N {
+  if (node.type === 'doc') canonNoteIds(node);
   const out: N = { type: node.type };
   if (node.text != null) out.text = node.text;
   if (node.marks?.length) {
     out.marks = node.marks
       .map((m: N) => {
         const mm: N = { type: m.type };
-        const attrs = Object.fromEntries(Object.entries(m.attrs ?? {}).filter(([, v]) => v != null));
+        const attrs = Object.fromEntries(Object.entries(m.attrs ?? {})
+          .filter(([k, v]) => v != null && MARK_DEFAULTS[k] !== v));
         if (Object.keys(attrs).length) mm.attrs = attrs;
         return mm;
       })

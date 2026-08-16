@@ -17,7 +17,7 @@ describe('ODF page break export', () => {
   it('mints the break style even with no automatic styles section', async () => {
     const bytes = await buildOdt(doc as never, undefined, 'portrait');
     const content = strFromU8(unzipSync(bytes)['content.xml']);
-    const name = /style:name="(PB\d+)"[^>]*>\s*<style:paragraph-properties fo:break-before="page"/.exec(content)?.[1];
+    const name = /style:name="(PBK\d+)"[^>]*>\s*<style:paragraph-properties fo:break-before="page"/.exec(content)?.[1];
     expect(name).toBeTruthy();
     expect(content).toContain(`<text:p text:style-name="${name}">two`);
   });

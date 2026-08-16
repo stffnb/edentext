@@ -1,5 +1,5 @@
 // Seeded random-document generator for the fuzz round-trip leg (fuzz-roundtrip.test.ts).
-// ponytail: conservative node pool (no spans, notes, boxes); widen when it holds.
+// ponytail: no boxes/images/formulas yet; widen when the current pool holds.
 type N = any;
 type Rng = () => number;
 
@@ -28,14 +28,32 @@ function marks(r: Rng, heading = false): N[] | undefined {
   const out: N[] = [];
   if (!heading && maybe(r, 0.25)) out.push({ type: 'bold' });
   if (!heading && maybe(r, 0.2)) out.push({ type: 'italic' });
-  if (maybe(r, 0.1)) out.push({ type: 'underline' });
-  if (maybe(r, 0.1)) out.push({ type: 'strike' });
+  // A link excludes color/underline effects: the DOCX importer tells an editor link from
+  // a styled foreign one by exactly that styling (link.ts `plain`), so it can't survive.
+  if (maybe(r, 0.08)) {
+    out.push({ type: 'link', attrs: { href: 'https://example.com/x?a=1&b=2' } });
+    return out;
+  }
+  if (maybe(r, 0.1)) {
+    const attrs: N = {};
+    if (maybe(r, 0.3)) attrs.lineStyle = pick(r, ['dotted', 'double', 'dashed']);
+    if (maybe(r, 0.2)) attrs.lineColor = '#FF0000';
+    out.push({ type: 'underline', ...(Object.keys(attrs).length ? { attrs } : {}) });
+  }
+  if (maybe(r, 0.1)) {
+    out.push(maybe(r, 0.25) ? { type: 'strike', attrs: { lineStyle: 'double' } } : { type: 'strike' });
+  }
+  const shifted = maybe(r, 0.08);
+  if (shifted) out.push({ type: pick(r, ['superscript', 'subscript']) });
   if (maybe(r, 0.1)) out.push({ type: 'highlight', attrs: { color: pick(r, ['#FFFF00', '#00FF00']) } });
-  if (maybe(r, 0.2)) {
+  if (maybe(r, 0.25)) {
     const attrs: N = {};
     if (maybe(r, 0.5)) attrs.color = pick(r, ['#C00000', '#0070C0']);
     if (!heading && maybe(r, 0.4)) attrs.fontFamily = 'Arial';
     if (!heading && maybe(r, 0.4)) attrs.fontSize = pick(r, ['10pt', '14pt', '18pt']);
+    if (maybe(r, 0.2)) attrs.caps = pick(r, ['uppercase', 'smallCaps']);
+    // sub/superscript and a free raise share ODF's one text-position attribute
+    if (!shifted && maybe(r, 0.15)) attrs.textPosition = pick(r, [3, -2]);
     if (Object.keys(attrs).length) out.push({ type: 'textStyle', attrs });
   }
   return out.length ? out : undefined;
@@ -53,7 +71,8 @@ function runs(r: Rng, heading = false): N[] {
 
 // indents=false inside list items: a list paragraph's indent lives in the list style
 // and does not round-trip as direct formatting (import/odt.ts skips it there).
-function paraAttrs(r: Rng, indents: boolean): N | null {
+// top=false in cells/lists: the page-break sentinel rides top-level blocks only.
+function paraAttrs(r: Rng, indents: boolean, top: boolean): N | null {
   const attrs: N = {};
   if (maybe(r, 0.3)) attrs.textAlign = pick(r, ['left', 'center', 'right', 'justify']);
   if (maybe(r, 0.2)) attrs.lineHeight = pick(r, ['1.5', '2']);
@@ -62,12 +81,13 @@ function paraAttrs(r: Rng, indents: boolean): N | null {
   if (indents && maybe(r, 0.15)) attrs.indent = pick(r, [1.25, 2.5]);
   if (indents && maybe(r, 0.1)) attrs.indentFirst = pick(r, [0.75, -0.75]);
   if (indents && maybe(r, 0.1)) attrs.indentRight = 1.5;
+  if (top && maybe(r, 0.05)) attrs.breakBefore = 'page';
   return Object.keys(attrs).length ? attrs : null;
 }
 
-function paragraph(r: Rng, indents = true): N {
+function paragraph(r: Rng, indents = true, top = false): N {
   if (maybe(r, 0.08)) return { type: 'paragraph' }; // empty line
-  const attrs = paraAttrs(r, indents);
+  const attrs = paraAttrs(r, indents, top);
   const content = runs(r);
   const body: N[] = [];
   for (const run of content) {
@@ -93,22 +113,39 @@ function table(r: Rng): N {
   const cols = int(r, 1, 3);
   const rows = Array.from({ length: int(r, 1, 3) }, () => ({
     type: 'tableRow',
-    content: Array.from({ length: cols }, () => ({
-      type: 'tableCell',
-      attrs: { colspan: 1, rowspan: 1, colwidth: null },
-      content: [paragraph(r)],
-    })),
+    content: Array.from({ length: cols }, () => {
+      const attrs: N = { colspan: 1, rowspan: 1, colwidth: null };
+      // not #F2F2F2: that exact shade is HEADER_SHADE, whose bold is presentational
+      if (maybe(r, 0.15)) attrs.backgroundColor = pick(r, ['#FFFF00', '#DDEEFF']);
+      if (maybe(r, 0.1)) attrs.verticalAlign = pick(r, ['middle', 'bottom']);
+      return { type: 'tableCell', attrs, content: [paragraph(r)] };
+    }),
   }));
   return { type: 'table', content: rows };
 }
 
+// Roman labels for endnotes match the importer's default numbering.
+const ROMAN = ['i', 'ii', 'iii', 'iv', 'v'] as const;
+
 export function genDoc(r: Rng): N {
   const blocks: N[] = [];
+  const notes: N[] = [];
   let prev = '';
+  const noteRef = (kind: 'footnote' | 'endnote'): N => {
+    const n = notes.filter(x => x.attrs.kind === kind).length + 1;
+    const text = kind === 'footnote' ? String(n) : ROMAN[n - 1];
+    const id = `${kind[0]}${n}`;
+    notes.push({ type: 'note', attrs: { id, kind, label: null, text },
+      content: [{ type: 'text', text: `Note body ${id}` }] });
+    return { type: 'noteRef', attrs: { id, kind, text } };
+  };
   for (let i = int(r, 1, 6); i > 0; i--) {
     const roll = r();
     let block: N;
-    if (roll < 0.45) block = paragraph(r);
+    if (roll < 0.45) {
+      block = paragraph(r, true, true);
+      if (block.content && maybe(r, 0.15)) block.content.push(noteRef(pick(r, ['footnote', 'endnote'])));
+    }
     else if (roll < 0.55) block = { type: 'heading', attrs: { level: int(r, 1, 6) }, content: runs(r, true) };
     else if (roll < 0.75) block = list(r, pick(r, ['bulletList', 'orderedList']), 0);
     else block = table(r);
@@ -117,5 +154,6 @@ export function genDoc(r: Rng): N {
     blocks.push(block);
     prev = block.type;
   }
+  if (notes.length) blocks.push({ type: 'noteSection', content: notes });
   return { type: 'doc', content: blocks };
 }

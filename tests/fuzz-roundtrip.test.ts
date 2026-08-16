@@ -9,6 +9,7 @@ import { normalize, firstDiff } from './normalize';
 import { genDoc, mulberry32 } from './fuzzDoc';
 
 const margins = { top: 2, bottom: 2, left: 2, right: 2 };
+const SEEDS = Number(process.env.FUZZ_SEEDS ?? 50); // FUZZ_SEEDS=500 for a wide sweep
 
 // A paragraph whose runs share one font legitimately comes back with that font also
 // on its attrs (the empty-line-height feature hoists it); ignore it on both sides.
@@ -23,15 +24,15 @@ function stripFontHoist(node: any): any {
 }
 
 describe('fuzz round-trip: editor → buildOdt → importOdt', () => {
-  it('50 seeded random documents come back identical', async () => {
-    for (let seed = 1; seed <= 50; seed++) {
+  it(`${SEEDS} seeded random documents come back identical`, async () => {
+    for (let seed = 1; seed <= SEEDS; seed++) {
       const doc = genDoc(mulberry32(seed));
       const res = importOdt(await buildOdt(doc, margins, 'portrait'));
       expect.soft(res.warnings, `seed ${seed}: warnings`).toEqual([]);
       const diff = firstDiff(stripFontHoist(normalize(doc)), stripFontHoist(normalize(res.content)));
       expect.soft(diff, `seed ${seed} (re-run genDoc(mulberry32(${seed})) to reproduce)`).toBeNull();
     }
-  }, 120_000);
+  }, 600_000);
 
   // ODT leaves default column widths implicit where DOCX always writes w:tcW; ignore
   // them in the cross-format comparison (each format's own leg still covers widths).
@@ -46,8 +47,8 @@ describe('fuzz round-trip: editor → buildOdt → importOdt', () => {
 
   // Cross-format: the same document through both pipelines must import identically —
   // catches one exporter silently losing what the other keeps.
-  it('50 seeded documents agree between the ODT and DOCX round-trips', async () => {
-    for (let seed = 1; seed <= 50; seed++) {
+  it(`${SEEDS} seeded documents agree between the ODT and DOCX round-trips`, async () => {
+    for (let seed = 1; seed <= SEEDS; seed++) {
       const doc = genDoc(mulberry32(seed));
       const viaOdt = importOdt(await buildOdt(doc, margins, 'portrait')).content;
       const viaDocx = importDocx(await buildDocx(doc, margins, 'portrait')).content;
@@ -55,5 +56,5 @@ describe('fuzz round-trip: editor → buildOdt → importOdt', () => {
         stripColwidth(stripFontHoist(normalize(viaDocx))));
       expect.soft(diff, `seed ${seed}: ODT vs DOCX import (genDoc(mulberry32(${seed})))`).toBeNull();
     }
-  }, 120_000);
+  }, 600_000);
 });
