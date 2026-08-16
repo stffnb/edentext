@@ -297,9 +297,9 @@ function list(r: Rng, kind: 'bulletList' | 'orderedList', depth: number): N {
 // A tiny valid PNG; only its bytes matter for the round-trip (no image decoding).
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
-// A styled table as the editor authors it: name + look on the table, the style's fill
-// and borders materialized onto the cells (paintTable). `region` stays off — the app
-// re-derives it from the registry on load, and its baked region text is not clean yet.
+// A styled table as the editor authors it: name + look on the table, the style's fill,
+// borders and `region` materialized onto the cells (paintTable). Both importers
+// re-derive the regions and suppress the baked region text against them.
 const TABLE_STYLE_PICK = ['Simple Grid', 'Simple List Shaded', 'Plain Table',
   'Box List Blue', 'Grid Table Accent', 'Academic'] as const;
 
@@ -314,8 +314,15 @@ function styledTable(r: Rng, name: string, cols: number, nRows: number): N {
       const attrs: N = { colspan: 1, rowspan: 1, colwidth: null };
       if (paint.fill) attrs.backgroundColor = paint.fill;
       for (const [k, v] of Object.entries(paint.borders)) if (v !== null) attrs[k] = v;
-      // heading-safe runs: a #F2F2F2 header cell reads bold as presentational
-      return { type: 'tableCell', attrs, content: [{ type: 'paragraph', content: runs(r, true) }] };
+      if (paint.regions.length) attrs.region = paint.regions.join(' ');
+      // a bold region's runs read like a heading's: bold is the style's, not a mark
+      const content = [{ type: 'paragraph', content: runs(r, paint.text.bold === true) }];
+      // direct overrides over the paint (cell shading / border picker); never #F2F2F2,
+      // that exact shade is HEADER_SHADE, whose bold is presentational
+      if (maybe(r, 0.12)) attrs.backgroundColor = pick(r, ['#FFD700', '#E0F0E0']);
+      else if (attrs.backgroundColor && maybe(r, 0.08)) delete attrs.backgroundColor; // cleared shading
+      if (maybe(r, 0.08)) attrs.borderBottom = pick(r, ['2pt solid #FF0000', 'none']);
+      return { type: 'tableCell', attrs, content };
     }),
   }));
   return { type: 'table', attrs: { tableStyle: name, tableLook: tableLookAttr(look) }, content: rows };
