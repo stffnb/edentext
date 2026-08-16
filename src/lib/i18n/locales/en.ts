@@ -155,6 +155,7 @@ const en = {
   styles: {
     title: 'Styles',
     manage: 'Manage styles…',
+    showAll: 'Show all styles',
     characterStyles: 'Character styles',
     paragraphStyles: 'Paragraph styles',
     newStyle: 'New',

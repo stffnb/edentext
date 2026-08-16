@@ -9,9 +9,9 @@
   import { cellRegionText } from '../editor/extensions/tableStyle';
   import { blockStyleName } from '../editor/extensions/paragraphStyle';
   import { activeCharacterStyle } from '../editor/extensions/characterStyle';
-  import { DEFAULT_STYLE, headingStyleName, resolveStyle, styleOrder, type StyleFamily } from '../styles/styleSheet';
+  import { DEFAULT_STYLE, headingStyleName, resolveStyle, visibleStyles, type StyleFamily } from '../styles/styleSheet';
   import { MAX_HEADING_LEVEL } from '../export/odt';
-  import { styleSheet } from '../styles/sheet.svelte';
+  import { showAllStyles, styleSheet, toggleAllStyles } from '../styles/sheet.svelte';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
   import { shortcutHint, type ShortcutId } from '../editor/shortcuts';
@@ -31,7 +31,6 @@
   // The document's named paragraph styles (LibreOffice model): the gallery lists the
   // registry, assigning one only sets the style — hard formatting stays, as in Word/LO.
   let sheet = $derived(styleSheet());
-  let galleryStyles = $derived(styleOrder(sheet));
   // Character styles apply to the selected run, not the block (LibreOffice's second family).
   let charStyles = $derived(Object.values(sheet.character ?? {}));
   let currentCharStyle = $derived.by<string | null>(() => {
@@ -74,6 +73,8 @@
     if (tick < 0 || !editor) return DEFAULT_STYLE;
     return blockStyleName(editor.state.selection.$from.parent as never);
   });
+
+  let galleryStyles = $derived(visibleStyles(sheet, showAllStyles(), currentStyle));
 
   // Only the styles the Shortcuts extension binds carry a hint.
   function styleShortcut(name: string): string | undefined {
@@ -247,6 +248,14 @@
                   {styleLabel(s.name)}
                 </button>
               {/each}
+              <button
+                class="ol-option style-option show-all"
+                class:active={showAllStyles()}
+                onclick={toggleAllStyles}
+                aria-pressed={showAllStyles()}
+              >
+                {t().styles.showAll}
+              </button>
               {#if charStyles.length}
                 <div class="ol-section-label char-label">{t().styles.characterStyles}</div>
                 {#each charStyles as c}
@@ -501,6 +510,11 @@
   .style-dropdown {
     max-height: 360px;
     overflow: hidden;
+  }
+
+  .show-all {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
   }
 
   .char-label {

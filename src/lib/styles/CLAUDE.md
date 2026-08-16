@@ -29,6 +29,9 @@ holds it as a reactive singleton persisted to `edentext-styles` (same shape as `
   `clearDirectFormatting()` (Ctrl+M, also the ToolbarExpanded eraser button) drops marks and the
   style-governed block attrs but keeps the style and hyperlinks. `blockStyleName(node)` resolves a
   block's style (own → heading level → Standard).
+- **The gallery lists `visibleStyles`, not `styleOrder`**: both reference products define ten
+  heading levels but offer the first `GALLERY_HEADING_LEVELS` (5); the rest need the menu's "show
+  all styles" (`showAllStyles`/`toggleAllStyles`, session-only) or a block already using them.
 - **Rendering**: `Editor.svelte` writes `styleCss(sheet)` into a `#document-styles` element on every
   change (then a `FORCE_PAGE_RECALC` so pagination re-measures). One rule per style keyed by
   `data-style`, plus `hN:not([data-style])` fallbacks for imported headings, plus a **text-only

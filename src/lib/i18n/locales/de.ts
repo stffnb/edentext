@@ -151,6 +151,7 @@ const de: Messages = {
   styles: {
     title: 'Formatvorlagen',
     manage: 'Vorlagen verwalten…',
+    showAll: 'Alle Formatvorlagen anzeigen',
     characterStyles: 'Zeichenvorlagen',
     paragraphStyles: 'Absatzvorlagen',
     newStyle: 'Neu',

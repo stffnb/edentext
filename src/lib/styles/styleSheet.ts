@@ -164,6 +164,18 @@ export function styleOrder(sheet: StyleSheet, withAbstract = false, family: Styl
   return out;
 }
 
+// Both reference products define ten heading levels but list only the first five in
+// their gallery; the rest wait behind "show all styles" (the manager always has them).
+export const GALLERY_HEADING_LEVELS = 5;
+
+// The gallery's slice of styleOrder. A deeper heading the document already uses stays
+// listed, or the block under the caret would show no active style.
+export function visibleStyles(sheet: StyleSheet, showAll = false, current?: string): Style[] {
+  return styleOrder(sheet).filter(
+    (s) => showAll || !s.outlineLevel || s.outlineLevel <= GALLERY_HEADING_LEVELS || s.name === current,
+  );
+}
+
 // Styles that exist only to be inherited from.
 export function isAbstractStyle(name: string): boolean {
   return name === HEADING_PARENT;

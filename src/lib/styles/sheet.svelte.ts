@@ -28,6 +28,17 @@ export function setStyleSheet(next: StyleSheet): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: STYLE_SHEET_VERSION, ...next }));
 }
 
+// Gallery-only, not persisted: whether it lists the deep heading levels too.
+let allStyles = $state(false);
+
+export function showAllStyles(): boolean {
+  return allStyles;
+}
+
+export function toggleAllStyles(): void {
+  allStyles = !allStyles;
+}
+
 // Replace one style (add or edit) — everything using it re-renders via styleCss.
 export function putStyle(style: Style, family: StyleFamily = 'paragraph'): void {
   const key = family === 'table' ? 'paragraph' : family;

@@ -4,9 +4,9 @@
   import { anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
   import { blockStyleName } from '../../../editor/extensions/paragraphStyle';
   import { activeCharacterStyle } from '../../../editor/extensions/characterStyle';
-  import { DEFAULT_STYLE, headingStyleName, resolveStyle, styleOrder, type StyleFamily } from '../../../styles/styleSheet';
+  import { DEFAULT_STYLE, headingStyleName, resolveStyle, visibleStyles, type StyleFamily } from '../../../styles/styleSheet';
   import { MAX_HEADING_LEVEL } from '../../../export/odt';
-  import { styleSheet } from '../../../styles/sheet.svelte';
+  import { showAllStyles, styleSheet, toggleAllStyles } from '../../../styles/sheet.svelte';
   import { t } from '../../../i18n/i18n.svelte';
   import { shortcutHint, type ShortcutId } from '../../../editor/shortcuts';
 
@@ -19,13 +19,14 @@
   const ID = 'styleGallery';
 
   let sheet = $derived(styleSheet());
-  let paraStyles = $derived(styleOrder(sheet));
   let charStyles = $derived(Object.values(sheet.character ?? {}));
 
   let current = $derived.by<string>(() => {
     if (tick < 0 || !editor) return DEFAULT_STYLE;
     return blockStyleName(editor.state.selection.$from.parent as never);
   });
+
+  let paraStyles = $derived(visibleStyles(sheet, showAllStyles(), current));
 
   let currentChar = $derived.by<string | null>(() => {
     if (tick < 0 || !editor) return null;
@@ -113,6 +114,9 @@
               {#if styleShortcut(s.name)}<span class="menu-key">{styleShortcut(s.name)}</span>{/if}
             </button>
           {/each}
+          <button class="show-all" class:selected={showAllStyles()} aria-pressed={showAllStyles()} onclick={toggleAllStyles}>
+            {t().styles.showAll}
+          </button>
           {#if charStyles.length}
             <div class="rb-menu-label">{t().styles.characterStyles}</div>
             {#each charStyles as c}
@@ -212,6 +216,11 @@
   }
 
   .gallery-more:hover { background: var(--w-hover); }
+
+  .show-all {
+    color: var(--w-text-dim);
+    font-size: 11px;
+  }
 
   .gallery-menu {
     max-height: 380px;

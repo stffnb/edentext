@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  builtinStyleSheet, mergeStoredSheet, resolveStyle, styleCss, styleOrder, DEFAULT_STYLE,
+  builtinStyleSheet, mergeStoredSheet, resolveStyle, styleCss, styleOrder, visibleStyles, DEFAULT_STYLE,
   STYLE_SHEET_VERSION, type StyleSheet,
 } from '../../src/lib/styles/styleSheet';
 import { HEADING_STYLE_OVERRIDES } from '../../src/lib/export/odt';
@@ -101,6 +101,15 @@ describe('persisted style sheet', () => {
       Heading: { name: 'Heading', parent: 'Standard', next: 'Standard', builtin: true, para: {}, text: { fontFamily: 'Georgia' } },
     } };
     expect(mergeStoredSheet(edited).paragraph['Heading'].text.fontFamily).toBe('Georgia');
+  });
+
+  it('lists headings 1–5 in the gallery, the rest only on request or in use', () => {
+    const sheet = builtinStyleSheet();
+    const names = (styles: { name: string }[]) => styles.map((s) => s.name);
+    expect(names(visibleStyles(sheet))).toContain('Heading 5');
+    expect(names(visibleStyles(sheet))).not.toContain('Heading 6');
+    expect(names(visibleStyles(sheet, true))).toContain('Heading 10');
+    expect(names(visibleStyles(sheet, false, 'Heading 7'))).toContain('Heading 7');
   });
 
   it('falls back to the built-ins for junk', () => {
