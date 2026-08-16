@@ -254,19 +254,25 @@
     /* Headings are sans, like LibreOffice's Heading style ('Arial' is the bundled
        Liberation Sans; see HEADING_FONT in export/odt.ts). */
     --font-heading: 'Arial', 'Liberation Sans', sans-serif;
-    /* Brand accents: the primary slate + the logo's warm coral; the gradient is
-       the app's signature (island hairline). */
-    --accent-warm: #d96b4a;
+    /* The logo's two colours (favicon.svg: .slate / .clay), one source of truth for
+       both chromes. The gradient is the app's signature (island hairline). */
+    --brand-slate: #4c6c8a;
+    --brand-clay: #d1734f;
+    --accent-warm: var(--brand-clay);
     --brand-gradient: linear-gradient(90deg, var(--color-primary), var(--accent-warm));
   }
 
-/* The ribbon's palette: Word's own greys and accent. Its own token set rather than
-   the app's, so the two chromes can look nothing alike while sharing a theme. */
+/* The ribbon's palette: Word's own greys, our own accent — the logo's slate, which
+   carries white and clears 4.5:1 on the chrome. Its own token set rather than the
+   app's, so the two chromes can look nothing alike while sharing a theme. */
 :root {
-  --w-accent: #185abd;
-  --w-accent-dark: #124a9e;
-  --w-accent-fill: #185abd;
-  --w-accent-fill-open: #124a9e;
+  --w-accent: var(--brand-slate);
+  --w-accent-dark: #3a5570;
+  --w-accent-fill: var(--brand-slate);
+  --w-accent-fill-open: #3a5570;
+  /* The logo's other colour, on the tabs that only exist for the selected object.
+     Darkened for the label; the bar above it takes the brand tone itself. */
+  --w-contextual: #a85a3a;
   --w-chrome: #ffffff;
   --w-surface: #ffffff;
   --w-border: #e3e6ea;
@@ -277,7 +283,7 @@
   --w-hover: #f3f2f1;
   --w-pressed: #edebe9;
   --w-active: #e2e0de;
-  --w-accent-soft: #e8f1fb;
+  --w-accent-soft: #eaeff4;
   --w-menu-shadow: 0 8px 24px rgb(0 0 0 / 18%);
   --w-font: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   /* Body height: three control rows plus the group-label row, and a big button's
@@ -285,14 +291,15 @@
   --w-ribbon-h: 84px;
 }
 
-/* Word's dark mode: the Fluent dark neutrals, and the accent lightened because
-   #185abd on a dark chrome is unreadable. Only the colours flip — every metric
-   above holds, so the two modes are the same ribbon. */
+/* Word's dark mode: the Fluent dark neutrals, and both brand tones lightened
+   because they are unreadable on a dark chrome. Only the colours flip — every
+   metric above holds, so the two modes are the same ribbon. */
 [data-theme='dark'], [data-theme='allBlack'] {
-  --w-accent: #479ef5;
-  --w-accent-dark: #2886de;
-  --w-accent-fill: #115ea3;
-  --w-accent-fill-open: #0f6cbd;
+  --w-accent: #8fb3cd;
+  --w-accent-dark: #6e93b0;
+  --w-accent-fill: #3c586f;
+  --w-accent-fill-open: #4c6c8a;
+  --w-contextual: #e2916f;
   --w-chrome: #1f1f1f;
   --w-surface: #292929;
   --w-border: #383838;
@@ -303,7 +310,7 @@
   --w-hover: #3d3d3d;
   --w-pressed: #333333;
   --w-active: #4a4a4a;
-  --w-accent-soft: #10395f;
+  --w-accent-soft: #2b3b49;
   --w-menu-shadow: 0 8px 24px rgb(0 0 0 / 45%);
 }
 
@@ -317,7 +324,7 @@
   --w-hover: #2e2e2e;
   --w-pressed: #262626;
   --w-active: #3d3d3d;
-  --w-accent-soft: #0d2d4d;
+  --w-accent-soft: #212e39;
 }
 
 /* Signature micro-interactions, shared across all toolbar components. */

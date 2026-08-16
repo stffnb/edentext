@@ -459,15 +459,16 @@
   .ribbon-tab:hover { color: var(--w-accent); }
 
   /* Word tints a contextual tab so it reads as belonging to the selected object
-     rather than to the document. */
-  .ribbon-tab.contextual { color: var(--w-accent-dark); }
+     rather than to the document. Ours takes the logo's second colour, so the pair
+     appears where the two tab kinds sit side by side. */
+  .ribbon-tab.contextual { color: var(--w-contextual); }
   .ribbon-tab.contextual::before {
     content: '';
     position: absolute;
     inset: 2px 4px auto;
     height: 2px;
     border-radius: 1px;
-    background: var(--w-accent-soft);
+    background: var(--brand-clay);
   }
   .ribbon-tab.active { color: var(--w-accent); }
 
