@@ -2513,8 +2513,14 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   const weights = columnWeights(el, ctx.resolver);
 
   const rows: Node[] = [];
+  // Source-row bookkeeping: a row of only covered cells is dropped (the editor cannot
+  // hold a cell-less row), so every span reaching over it must shrink by one.
+  const placed: { attrs: Record<string, unknown>; row: number; span: number }[] = [];
+  const dropped: number[] = [];
+  let srcRow = 0;
   let cellPad: CellPadding | null | undefined;
   const addRow = (rowEl: Element, header: boolean) => {
+    const rowIdx = srcRow++;
     const cells: Node[] = [];
     let colIndex = 0;
     for (const cellEl of Array.from(rowEl.children)) {
@@ -2559,6 +2565,7 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       const cellFormat = formula ? cellNumberFormat(cellEl, ctx) : null;
       for (let r = 0; r < repeated; r++) {
         const attrs: Record<string, unknown> = { colspan, rowspan, ...borders };
+        if (rowspan > 1) placed.push({ attrs, row: rowIdx, span: rowspan });
         if (formula) attrs.formula = formula;
         if (cellFormat) attrs.cellFormat = cellFormat;
         if (ownPad) attrs.cellPadding = ownPad;
@@ -2573,7 +2580,7 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
         colIndex += colspan;
       }
     }
-    if (cells.length === 0) return;
+    if (cells.length === 0) { dropped.push(rowIdx); return; }
 
     const row: Node = { type: 'tableRow', content: cells };
     const heightCm = ctx.resolver.rowMinHeightCm(rowEl.getAttributeNS(NS.table, 'style-name'));
@@ -2593,6 +2600,10 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   }
 
   if (rows.length === 0) return null;
+  if (dropped.length) for (const p of placed) {
+    const cut = dropped.filter((d) => d > p.row && d < p.row + p.span).length;
+    if (cut) p.attrs.rowspan = p.span - cut;
+  }
   // The named table style behind the automatic one. ODF stores no banding, so only the
   // name comes back — the look rides on the cell attrs above, and the editor re-derives
   // the regions from the registry (refreshTableStyles).
