@@ -1258,7 +1258,9 @@ function bibSourceXml(s: BibSource): string {
 // part of their own, which needs its properties part, two relationships and a content
 // type — none of which the package knows about, so all four are minted here.
 function applyBibliographyDocx(bytes: Uint8Array, sources: BibSource[], cite: CitationStyle): Uint8Array {
-  if (!sources.length) return bytes;
+  // The part is also the citation style's only carrier (its StyleName attribute), so a
+  // non-default style still writes it with no sources in it.
+  if (!sources.length && cite === 'key') return bytes;
   const files = unzipSync(bytes);
   const relsPath = 'word/_rels/document.xml.rels';
   const rels = files[relsPath] ? strFromU8(files[relsPath]) : '';

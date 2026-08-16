@@ -2359,8 +2359,9 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   if (hdr && onOff(hdr)) attrs.repeatHeader = true;
   if (named) {
     attrs.tableStyle = named;
+    // '' is a declared all-off look — dropping it would revert to the default look.
     const look = docxTableLook(fc(tbl, 'tblPr'));
-    if (look) attrs.tableLook = look;
+    if (look != null) attrs.tableLook = look;
   }
   return Object.keys(attrs).length ? { type: 'table', attrs, content: rows } : { type: 'table', content: rows };
 }
