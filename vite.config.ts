@@ -4,6 +4,9 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import pkg from './package.json' with { type: 'json' };
 
 export default defineConfig({
+  // Relative asset URLs, so the same build works at the domain root and under a
+  // subpath (GitHub Pages project site). sw.js and the manifest are relative too.
+  base: './',
   plugins: [svelte()],
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   // hunspell-asm's ESM chain calls CJS/UMD deps as functions that a bundler

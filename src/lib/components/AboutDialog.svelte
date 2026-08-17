@@ -40,9 +40,9 @@
       </svg>
     </button>
 
-    <img class="icon" src="/favicon.svg" alt="" aria-hidden="true" />
+    <img class="icon" src="favicon.svg" alt="" aria-hidden="true" />
 
-    <img class="logo" src="/EdenText.png" alt="EdenText" />
+    <img class="logo" src="EdenText.png" alt="EdenText" />
 
     <p class="tagline">{t().about.tagline}</p>
 

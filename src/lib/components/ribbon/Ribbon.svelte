@@ -330,7 +330,7 @@
     <UiLanguagePicker />
 
     <button class="rb-logo-btn" onclick={() => run(onAbout)} title={t().about.label} aria-label={t().about.label}>
-      <img src="/favicon.svg" alt="" aria-hidden="true" />
+      <img src="favicon.svg" alt="" aria-hidden="true" />
     </button>
   </div>
 

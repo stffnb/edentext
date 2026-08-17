@@ -1130,7 +1130,7 @@
       <div class="toolbar-stack" bind:this={toolbarStackEl} style="transform: translateX(-{tbScroll}px);">
   <header class:expanded={toolbarExpanded}>
     <button class="logo-btn" onclick={() => (aboutOpen = true)} aria-label={t().about.label} title={t().about.label}>
-      <img src="/EdenText.png" alt="EdenText" class="app-logo" />
+      <img src="EdenText.png" alt="EdenText" class="app-logo" />
     </button>
     <Toolbar editor={activeEditor} tick={activeTick} onManageStyles={openStyleManager} />
     <div class="header-actions">

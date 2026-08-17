@@ -3,8 +3,9 @@
 // fonts and the WASM speller included, each kept the first time it is asked for.
 
 const CACHE = 'edentext-v1';
-// The entry document under one key, whichever path asked for it.
-const SHELL = '/';
+// The entry document under one key, whichever path asked for it. Relative, so it
+// resolves against this script's own directory — the app root under any base path.
+const SHELL = './';
 
 // The build's asset names carry a content hash, and the entry document is the only
 // place they are written down — so reading them out of it precaches the shell with no
@@ -15,8 +16,8 @@ async function precache(cache) {
   const response = await fetch(SHELL, { cache: 'reload' });
   await cache.put(SHELL, response.clone());
   const html = await response.text();
-  const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((m) => m[1]);
-  await cache.addAll([...new Set(assets), '/favicon.svg', '/manifest.webmanifest']);
+  const assets = [...html.matchAll(/(?:src|href)="(\.?\/assets\/[^"]+)"/g)].map((m) => m[1]);
+  await cache.addAll([...new Set(assets), './favicon.svg', './manifest.webmanifest']);
 }
 
 self.addEventListener('install', (event) => {
