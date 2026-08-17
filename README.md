@@ -15,6 +15,7 @@
   <a href="https://github.com/stffnb/edentext/actions/workflows/ci.yml"><img src="https://github.com/stffnb/edentext/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
   <a href="CHANGELOG.md"><img src="https://img.shields.io/github/package-json/v/stffnb/edentext" alt="Version"></a>
+  <img src="https://img.shields.io/badge/status-beta-orange" alt="Status: beta">
 </p>
 
 <p align="center">
@@ -24,6 +25,12 @@
 ---
 
 EdenText is a web-based, powerful word processor for everything from quick notes to full-length books. No server, no account — processing runs locally and your documents never leave your computer. Just one URL away, or completely offline as a slim browser app — only ~1 MB[^1].
+
+> [!NOTE]
+> EdenText is young, in **beta** and actively developed — more features are on
+> the way. It is tested — the full suite plus LibreOffice round-trip checks run
+> on every commit — but expect occasional bugs, and keep backups of documents
+> you care about.
 
 ## Features
 
