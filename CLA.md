@@ -1,7 +1,7 @@
 # Contributor License Agreement (CLA)
 
 **Project:** EdenText
-**Maintainer / Licensor:** Steffen Becker &lt;your-contact-email&gt; (the "Maintainer")
+**Maintainer / Licensor:** Steffen Becker &lt;stffn.becker@gmail.com&gt; (the "Maintainer")
 
 > ⚠️ **Note:** This is a plain-language template adapted from common individual CLAs
 > (in the spirit of the Apache Individual CLA). It has **not** been reviewed by a
