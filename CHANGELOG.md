@@ -132,7 +132,7 @@ First public release, deployed on GitHub Pages.
 
 **UI & theming**
 - Light / Dark / AllBlack / Auto appearance modes (settings menu in toolbar)
-- Primary toolbar plus an expandable extended toolbar (horizontal scroll on narrow windows)
+- Two switchable chromes: the tabbed ribbon (default — File/Home/Insert/… tabs plus contextual table/picture/shape tabs, collapsible band), and the "Modern" floating toolbar with an expandable extended row (horizontal scroll on narrow windows)
 - Status bar with page number, word count, language and zoom controls
 - About dialog
 - UI internationalization (English / German): language picker, auto-detects the browser
