@@ -514,7 +514,8 @@ const de: Messages = {
   },
   about: {
     label: 'Über EdenText',
-    tagline: 'Ein privater Editor für OpenDocument-Dateien — läuft vollständig im Browser.',
+    tagline: 'Textverarbeitung — nur eine URL entfernt.',
+    points: ['Free · Open Source · Private by Design'],
     version: (v) => `Version ${v}`,
     viewOnGitHub: 'Auf GitHub ansehen',
   },

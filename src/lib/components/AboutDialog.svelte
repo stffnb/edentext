@@ -1,7 +1,6 @@
 <script lang="ts">
   import { t } from '../i18n/i18n.svelte';
-  // Placeholder until the project's repository is public; swap the URL when known.
-  const REPO_URL = 'https://github.com/your-org/edentext';
+  const REPO_URL = 'https://github.com/stffnb/edentext';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -46,6 +45,12 @@
     <img class="logo" src="/EdenText.png" alt="EdenText" />
 
     <p class="tagline">{t().about.tagline}</p>
+
+    <ul class="points">
+      {#each t().about.points as point}
+        <li>{point}</li>
+      {/each}
+    </ul>
 
     <p class="version">{t().about.version(__APP_VERSION__)}</p>
 
@@ -146,6 +151,19 @@
     font-size: 0.85rem;
     line-height: 1.45;
     color: var(--color-text-muted);
+  }
+
+  .points {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    text-align: center;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .version {

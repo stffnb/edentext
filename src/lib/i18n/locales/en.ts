@@ -520,7 +520,8 @@ const en = {
   },
   about: {
     label: 'About EdenText',
-    tagline: 'A private editor for OpenDocument files — runs entirely in your browser.',
+    tagline: 'Powerful word processor — just one URL away.',
+    points: ['Free · Open Source · Private by Design'],
     version: (v: string) => `Version ${v}`,
     viewOnGitHub: 'View on GitHub',
   },
