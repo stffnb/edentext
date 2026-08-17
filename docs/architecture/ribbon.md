@@ -7,7 +7,7 @@ compared. Everything the ribbon drives is the same editor, through the same comm
 ## The mode switch
 
 `chromeMode: 'classic' | 'ribbon'` lives in `storage/theme.ts` beside the other UI-chrome prefs
-(`edentext-chrome`, default `'classic'`). `App.svelte` forks on it: the ribbon docks as a plain
+(`edentext-chrome`, default `'ribbon'`). `App.svelte` forks on it: the ribbon docks as a plain
 flex child, the island keeps its absolute overlay. Reachable from both sides — the theme dropdown
 in classic, the strip's appearance menu in the ribbon.
 

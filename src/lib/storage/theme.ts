@@ -36,7 +36,7 @@ export function saveToolbarExpanded(expanded: boolean): void {
 }
 
 export function loadChromeMode(): ChromeMode {
-    return localStorage.getItem(CHROME_KEY) === 'ribbon' ? 'ribbon' : 'classic';
+    return localStorage.getItem(CHROME_KEY) === 'classic' ? 'classic' : 'ribbon';
 }
 
 export function saveChromeMode(mode: ChromeMode): void {
