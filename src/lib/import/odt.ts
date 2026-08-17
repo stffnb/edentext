@@ -1558,8 +1558,14 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   const named = resolver.namedAncestor(styleName);
   // Only a body block carries its style's name (below); anywhere else — a cell, a text
   // box — the formatting has to become direct, so it is measured against the default
-  // style instead: the only one re-applied on import.
-  const defaults = blockDefaults(resolver, kind === 'body' ? named : null, isHeading ? level : null, boldByDefault);
+  // style instead: the one `p:not([data-style])` re-applies (styleSheet.ts). A heading
+  // keeps its level's yardstick, which is what `hN:not([data-style])` re-applies.
+  const yardstick = kind === 'body' ? named : isHeading ? null : DEFAULT_STYLE;
+  const defaults = blockDefaults(resolver, yardstick, isHeading ? level : null, boldByDefault);
+  // A cell paragraph's spacing is the exception: editor.css zeroes it whatever the default
+  // style declares (only that rule outranks the style's — not the `li p` one, and not for a
+  // heading), so the file's own margins there are direct formatting.
+  if (kind === 'cell' && !isHeading) { defaults.marginTopPt = 0; defaults.marginBottomPt = 0; }
 
   const attrs = blockAttrs(paraProps, baseTextProps, defaults, kind);
   // A style:master-page-name switches the page master, which is how ODF gives a section
