@@ -4,14 +4,11 @@
 .github/prompts
 .vite
 debug
+coverage
 dist
 docs/others
 node_modules
 probe.mjs
-README.md
 shot.mjs
 tests/render-parity/FINDINGS.md
 tests/render-parity/fixtures
-
-# coverage output (npm run test:coverage)
-coverage/
