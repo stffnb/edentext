@@ -110,6 +110,9 @@ a 177-page document. Word and LibreOffice draw only the visible pages; we can't.
 - `min-width: 0` on the row and its scroller: a flex item's automatic minimum is its
   content, so without it the grid widens the whole app instead of scrolling.
 - No ruler here: it would repeat per column and eat into the page's own box.
+- **`sectionPaper` stays unrounded.** `pageBreaks` builds its grid from the height this
+  publishes as `--pb-section-page`, so rounding A4's 1122.52px to 1123 ran every page
+  0.127mm long — 6mm of drift by page 48, against a reference page that never moves.
 
 ## Zoom (`Editor.svelte`)
 

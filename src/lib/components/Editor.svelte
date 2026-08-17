@@ -197,11 +197,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   ].map((g) => g.map((n) => Math.round(n)).join('|')).join(','));
 
   // Each section's own paper (px). A section that names neither format nor orientation
-  // is on the document's, so its entry is the document's box.
+  // is on the document's, so its entry is the document's box. Unrounded: this is the
+  // grid pageBreaks places against, and half a pixel per page accumulates down the document.
   let sectionPaper = $derived([
     pageDimsCm(pageFormat, orientation),
     ...extraHfSections.map((s) => pageDimsCm(s.format ?? pageFormat, s.orientation ?? orientation)),
-  ].map((d) => ({ w: Math.round(d.w * PX_PER_CM), h: Math.round(d.h * PX_PER_CM) })));
+  ].map((d) => ({ w: d.w * PX_PER_CM, h: d.h * PX_PER_CM })));
   // The sheet .paper reserves is the widest of them: a landscape section is wider than
   // the portrait ones around it and would otherwise be cut at the page edge.
   let paperWidth = $derived(Math.max(...sectionPaper.map((p) => p.w)));
