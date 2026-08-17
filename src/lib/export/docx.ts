@@ -661,7 +661,7 @@ function decodeDataUri(src: string): { bytes: Uint8Array; type: 'png' | 'jpg' | 
 
 // offsetCm places the frame in the text column (Word's posOffset); without one it is
 // flush to its side. offsetYCm is how far below the anchor paragraph it sits.
-function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | null, alignH?: string | null, distCm?: number | null): IFloating | undefined {
+function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | null, alignH?: string | null, distCm?: number | null, inFront?: boolean): IFloating | undefined {
   if (wrap === 'inline') return undefined;
   // The gap beside the frame, on both sides as Word writes it; none above or below.
   const margins = distCm ? { left: Math.round(distCm * 360000), right: Math.round(distCm * 360000) } : undefined;
@@ -669,6 +669,19 @@ function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | 
     relative: VerticalPositionRelativeFrom.PARAGRAPH,
     offset: offsetYCm != null ? Math.round(offsetYCm * 360000) : 0,
   };
+  if (wrap === 'through') {
+    // Word's in-front-of / behind-text: no wrap at all, and behindDoc names which side
+    // of the text the frame lands on. It overlaps by definition, so allowOverlap holds.
+    return {
+      horizontalPosition: offsetCm != null
+        ? { relative: HorizontalPositionRelativeFrom.MARGIN, offset: Math.round(offsetCm * 360000) }
+        : { relative: HorizontalPositionRelativeFrom.MARGIN, align: HorizontalPositionAlign.LEFT },
+      verticalPosition,
+      wrap: { type: TextWrappingType.NONE },
+      behindDocument: !inFront,
+      allowOverlap: true,
+    };
+  }
   if (wrap === 'topBottom') {
     // A frame sharing its band with another is set against one end of it, and the two
     // may overlap vertically — that is what puts them side by side.
@@ -718,7 +731,7 @@ function imageRun(node: TiptapNode): ImageRun | null {
     data: decoded.bytes,
     altText: typeof node.attrs?.alt === 'string' && node.attrs.alt ? { name: node.attrs.alt, title: node.attrs.alt, description: node.attrs.alt } : undefined,
     transformation: { width, height, rotation: rotation || undefined },
-    floating: floatingFor(wrap, offsetCm, offsetYCm, node.attrs?.wrapAlign as string | null, distCm),
+    floating: floatingFor(wrap, offsetCm, offsetYCm, node.attrs?.wrapAlign as string | null, distCm, node.attrs?.inFront === true),
   });
 }
 
@@ -729,7 +742,7 @@ type TextBoxDocx = {
   widthPx: number;
   heightPx: number;
   rotationDeg: number;
-  wrap: 'inline' | 'left' | 'right' | 'topBottom';
+  wrap: 'inline' | 'left' | 'right' | 'topBottom' | 'through';
   offsetCm: number | null;
   offsetYCm: number | null;
   distCm: number | null;
@@ -750,7 +763,7 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     widthPx: typeof a.width === 'number' && a.width > 0 ? Math.round(a.width) : 280,
     heightPx: typeof a.height === 'number' && a.height > 0 ? Math.round(a.height) : 96,
     rotationDeg: typeof a.rotation === 'number' ? a.rotation : 0,
-    wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' ? wrapAttr : 'inline',
+    wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' || wrapAttr === 'through' ? wrapAttr : 'inline',
     offsetCm: typeof a.wrapOffset === 'number' ? a.wrapOffset : null,
     offsetYCm: typeof a.wrapOffsetY === 'number' ? a.wrapOffsetY : null,
     distCm: typeof a.wrapDist === 'number' ? a.wrapDist : null,
@@ -1133,8 +1146,8 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     return `<w:drawing><wp:inline ${WP_NS} distT="0" distB="0" distL="0" distR="0">${extent}${docPr}${graphic}</wp:inline></w:drawing>`;
   }
   // wrapText names the side TEXT flows on (inverse of the box side), like ODT.
-  const wrapEl = box.wrap === 'topBottom'
-    ? '<wp:wrapTopAndBottom/>'
+  const wrapEl = box.wrap === 'through' ? '<wp:wrapNone/>'
+    : box.wrap === 'topBottom' ? '<wp:wrapTopAndBottom/>'
     : `<wp:wrapSquare wrapText="${box.wrap === 'right' ? 'left' : 'right'}"/>`;
   const align = box.wrap === 'right' ? 'right' : 'left';
   const emu = (cm: number) => Math.round(cm * 360000);
@@ -1144,7 +1157,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     : `<wp:align>${align}</wp:align>`;
   return (
     `<w:drawing><wp:anchor ${WP_NS} distT="0" distB="0" distL="${emu(box.distCm ?? 0)}" distR="${emu(box.distCm ?? 0)}"` +
-    ` simplePos="0" relativeHeight="${251658240 + index}" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="0">` +
+    ` simplePos="0" relativeHeight="${251658240 + index}" behindDoc="${box.wrap === 'through' ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="${box.wrap === 'through' ? 1 : 0}">` +
     `<wp:simplePos x="0" y="0"/>` +
     `<wp:positionH relativeFrom="margin">${posH}</wp:positionH>` +
     `<wp:positionV relativeFrom="paragraph"><wp:posOffset>${emu(box.offsetYCm ?? 0)}</wp:posOffset></wp:positionV>` +

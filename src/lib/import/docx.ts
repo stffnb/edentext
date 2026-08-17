@@ -1851,6 +1851,7 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
     if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
     if (distCm != null) attrs.wrapDist = distCm;
     if (alignH && wrap === 'topBottom') attrs.wrapAlign = alignH;
+    if (wrap === 'through') attrs.inFront = anchor.getAttribute('behindDoc') !== '1';
   } else {
     fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
   }
@@ -1887,6 +1888,7 @@ function frameNode(src: string, box: { w: number; h: number }, label: string, an
     if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
     if (distCm != null) attrs.wrapDist = distCm;
     if (alignH && wrap === 'topBottom') attrs.wrapAlign = alignH;
+    if (wrap === 'through') attrs.inFront = anchor.getAttribute('behindDoc') !== '1';
   } else {
     fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
   }
@@ -1919,7 +1921,7 @@ function anchorOffsetX(anchor: Element, ctx: Ctx): number | null {
 // Wrap mode and place are independent: the mode is what the file's wrap element says,
 // the place its position offsets. Only where neither names a side does the frame's own
 // x decide which half of the column it fills (text flows on one side of a CSS float).
-function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom'; offsetCm: number | null; offsetYCm: number | null; alignH: 'left' | 'right' | null; distCm: number | null } {
+function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom' | 'through'; offsetCm: number | null; offsetYCm: number | null; alignH: 'left' | 'right' | null; distCm: number | null } {
   const offsetYCm = anchorOffsetY(anchor);
   const offsetCm = anchorOffsetX(anchor, ctx);
   const align = anchor.getElementsByTagNameNS(WP, 'positionH')[0]
@@ -1931,7 +1933,10 @@ function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topB
     const emu = parseInt(anchor.getAttribute(wrap === 'right' ? 'distL' : 'distR') ?? '', 10);
     return Number.isFinite(emu) && emu > 0 ? round2(emu / 360000) : null;
   };
-  const at = (wrap: 'left' | 'right' | 'topBottom') => ({ wrap, offsetCm, offsetYCm, alignH, distCm: distOf(wrap) });
+  const at = (wrap: 'left' | 'right' | 'topBottom' | 'through') => ({ wrap, offsetCm, offsetYCm, alignH, distCm: distOf(wrap) });
+  // wrapNone is Word's in-front-of / behind-text: the text runs through the frame, so it
+  // reserves neither width nor height. behindDoc picks the side of the text it lands on.
+  if (anchor.getElementsByTagNameNS(WP, 'wrapNone')[0]) return at('through');
   if (anchor.getElementsByTagNameNS(WP, 'wrapTopAndBottom')[0]) return at('topBottom');
   const wt = anchor.getElementsByTagNameNS(WP, 'wrapSquare')[0]?.getAttribute('wrapText');
   if (wt === 'right') return at('left'); // text on right ⇒ image on left

@@ -430,8 +430,8 @@ function replaceSectionBreaks(doc: TiptapNode): TiptapNode {
 
 // One embedded picture, collected by replaceImages and emitted by applyImages.
 // bytes is ArrayBuffer-backed to match fflate's zip entry map. rotationDeg is CW;
-// wrap floats the frame at its anchor paragraph (left/right/top-bottom).
-type WrapMode = 'inline' | 'left' | 'right' | 'topBottom';
+// wrap floats the frame at its anchor paragraph (left/right/top-bottom/run-through).
+type WrapMode = 'inline' | 'left' | 'right' | 'topBottom' | 'through';
 type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number; wrap: WrapMode; wrapOffsetCm: number | null; wrapOffsetYCm: number | null; wrapDistCm: number | null; wrapAlign: string | null; anchorPage: number | null; vAlign: string | null; inFront: boolean };
 
 function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
@@ -463,7 +463,7 @@ function imageDescriptor(node: TiptapNode, index: number, namePrefix = 'image'):
   const w = typeof node.attrs?.width === 'number' ? node.attrs.width : 0;
   const h = typeof node.attrs?.height === 'number' ? node.attrs.height : 0;
   const wrapAttr = node.attrs?.wrap;
-  const wrap: WrapMode = wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' ? wrapAttr : 'inline';
+  const wrap: WrapMode = wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' || wrapAttr === 'through' ? wrapAttr : 'inline';
   return {
     path: `Pictures/${namePrefix}${index + 1}.${EXT_BY_MIME[mimeType] ?? 'png'}`,
     bytes,
@@ -988,7 +988,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     widthCm: pxToCm(typeof a.width === 'number' && a.width > 0 ? a.width : 280),
     heightCm: pxToCm(typeof a.height === 'number' && a.height > 0 ? a.height : 96),
     rotationDeg: typeof a.rotation === 'number' ? a.rotation : 0,
-    wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' ? wrapAttr : 'inline',
+    wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' || wrapAttr === 'through' ? wrapAttr : 'inline',
     wrapOffsetCm: typeof a.wrapOffset === 'number' ? round3(a.wrapOffset) : null,
     wrapOffsetYCm: typeof a.wrapOffsetY === 'number' ? round3(a.wrapOffsetY) : null,
     wrapDistCm: typeof a.wrapDist === 'number' ? round3(a.wrapDist) : null,
@@ -3687,6 +3687,9 @@ function imageWrapProps(wrap: WrapMode, offset: number | null, align?: string | 
   const pos = offset != null ? 'from-left' : null;
   // Only the text side is written; the frame's own offset covers the other one.
   const gap = distCm ? ` fo:margin-${wrap === 'right' ? 'left' : 'right'}="${distCm}cm"` : '';
+  // run-through reserves nothing; without style:run-through it sits behind the text,
+  // which is LibreOffice's own default for a frame in that mode.
+  if (wrap === 'through') return `style:wrap="run-through" style:horizontal-pos="${pos ?? 'left'}"`;
   if (wrap === 'left') return `style:wrap="right" style:horizontal-pos="${pos ?? 'left'}"${gap}`;
   if (wrap === 'right') return `style:wrap="left" style:horizontal-pos="${pos ?? 'right'}"${gap}`;
   return `style:wrap="none" style:horizontal-pos="${align ?? pos ?? noneAlign}"`;
@@ -3712,6 +3715,14 @@ function imageGraphicStyle(img: ImageExport, index: number): string {
       `<style:graphic-properties style:wrap="run-through" style:run-through="${img.inFront ? 'foreground' : 'background'}"` +
       ` style:horizontal-rel="page" style:horizontal-pos="from-left"` +
       ` style:vertical-rel="page" style:vertical-pos="from-top"/></style:style>`
+    );
+  }
+  if (img.wrap === 'through') {
+    return (
+      `<style:style style:name="ImgFr${index + 1}" style:family="graphic">` +
+      `<style:graphic-properties style:wrap="run-through" style:run-through="${img.inFront ? 'foreground' : 'background'}"` +
+      ` style:horizontal-rel="paragraph-content" style:horizontal-pos="${img.wrapOffsetCm != null ? 'from-left' : 'left'}"` +
+      ` style:vertical-rel="paragraph" style:vertical-pos="${img.wrapOffsetYCm != null ? 'from-top' : 'top'}"/></style:style>`
     );
   }
   if (img.wrap === 'inline') {

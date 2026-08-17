@@ -180,7 +180,10 @@ function loadImageDataUrl(href: string, ctx: Ctx): string | null {
 
 // ODF style:wrap names the side TEXT flows on (inverse of the image side); pick a
 // side from horizontal-pos when the value doesn't name one (parallel/dynamic/…).
-function wrapModeFromOdf(wrapVal: string | undefined, hpos: string | undefined): 'left' | 'right' | 'topBottom' {
+function wrapModeFromOdf(wrapVal: string | undefined, hpos: string | undefined): 'left' | 'right' | 'topBottom' | 'through' {
+  // run-through is the text running over or under the frame (style:run-through picks
+  // which), so it reserves nothing — ODF's `none` is the one that means above-and-below.
+  if (wrapVal === 'run-through') return 'through';
   if (wrapVal === 'none') return 'topBottom';
   if (wrapVal === 'left') return 'right'; // text on left ⇒ image on the right
   if (wrapVal === 'right') return 'left'; // text on right ⇒ image on the left
@@ -241,6 +244,8 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   if (anchor || wrapVal) {
     attrs.wrap = wrapModeFromOdf(wrapVal, gp['style:horizontal-pos']);
   }
+  // "background" (LibreOffice's default) sits behind the text, "foreground" in front.
+  if (attrs.wrap === 'through' && gp['style:run-through'] === 'foreground') attrs.inFront = true;
   // Only the text side of the gap is drawn — the other one is the frame's own offset.
   if (attrs.wrap === 'left' || attrs.wrap === 'right') {
     const side = attrs.wrap === 'right' ? 'fo:margin-left' : 'fo:margin-right';

@@ -5,7 +5,7 @@ import { NodeSelection, TextSelection, Plugin } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
-import { HANDLES, MIN_SIZE_PX, clamp, parsePx, frameMargins, pageContentHeightPx, type WrapMode } from './image';
+import { HANDLES, MIN_SIZE_PX, clamp, parsePx, frameMargins, pageContentHeightPx, applyRunThrough, type WrapMode } from './image';
 import { SHAPES, shapePath, linePaths, arrowHeadPx, isShapeKind, isLineKind, type ShapeKind } from '../../utils/shapes';
 
 // cm attribute value → number, for the frame offsets (px ones use parsePx).
@@ -507,12 +507,17 @@ class TextBoxView {
     const a = this.attrs();
     d.style.float = '';
     d.style.clear = '';
+    d.style.position = '';
+    d.style.zIndex = '';
     d.style.margin = frameMargins('topBottom', a.wrap === 'topBottom' ? a.wrapOffset : null, 0);
     if (a.wrap === 'left' || a.wrap === 'right') {
       d.style.float = a.wrap;
       d.style.margin = frameMargins(a.wrap, a.wrapOffset, parseFloat(d.style.width) || 0, null, a.wrapDist);
     } else if (a.wrap === 'topBottom') {
       d.style.clear = 'both';
+    } else if (a.wrap === 'through') {
+      // Behind the text, which is what a shape with no run-through of its own exports as.
+      applyRunThrough(d, a.wrapOffset, a.wrapOffsetY, false);
     }
     // The anchor paragraph's spacing, which a lifted box stands in for: space above as
     // padding so it adds to the block above (editor.css), space below as the margin the

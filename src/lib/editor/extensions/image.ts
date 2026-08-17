@@ -12,8 +12,9 @@ import { readVerticalMargins } from './pageBreaks';
 // draw:transform/style:wrap. A floating image floats at its anchor; drag re-anchors it.
 
 // 'inline' = as-character; 'left'/'right' = square wrap (text on the open side);
-// 'topBottom' = no side wrap (text only above/below).
-export type WrapMode = 'inline' | 'left' | 'right' | 'topBottom';
+// 'topBottom' = no side wrap (text only above/below); 'through' = the text runs over
+// or under it (`inFront` picks which), so the frame reserves nothing at all.
+export type WrapMode = 'inline' | 'left' | 'right' | 'topBottom' | 'through';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -96,6 +97,16 @@ export function frameMargins(wrap: WrapMode, offsetCm: unknown, boxWidthPx: numb
   if (wrap === 'left') return `0 ${gap} 0 ${near ?? '0'}`;
   const far = near == null ? '0' : `calc(${COLUMN_WIDTH_CSS} - ${near} - ${boxWidthPx}px)`;
   return `0 ${far} 0 ${gap}`;
+}
+
+// Word's behind-text / in-front-of-text, ODF run-through: the text runs over or under
+// the frame, so it reserves nothing. Absolute with no offsets keeps the static position
+// it was anchored at; the file's own offsets ride as margins from there.
+export function applyRunThrough(el: HTMLElement, offsetCm: unknown, offsetYCm: unknown, inFront: boolean): void {
+  const px = (cm: unknown) => (typeof cm === 'number' ? Math.round(cmToPx(cm)) : 0);
+  el.style.position = 'absolute';
+  el.style.margin = `${px(offsetYCm)}px 0 0 ${px(offsetCm)}px`;
+  el.style.zIndex = inFront ? '1' : '-1';
 }
 
 // Where an as-char frame sits against the line (ODF style:vertical-pos/-rel, probed
@@ -396,7 +407,7 @@ class ImageView {
   private attrW(): number | null { const w = this.node.attrs.width; return typeof w === 'number' ? w : null; }
   private attrH(): number | null { const h = this.node.attrs.height; return typeof h === 'number' ? h : null; }
   private attrRot(): number { return (this.node.attrs.rotation as number) || 0; }
-  private attrWrap(): WrapMode { const w = this.node.attrs.wrap; return w === 'left' || w === 'right' || w === 'topBottom' ? w : 'inline'; }
+  private attrWrap(): WrapMode { const w = this.node.attrs.wrap; return w === 'left' || w === 'right' || w === 'topBottom' || w === 'through' ? w : 'inline'; }
   // The wrapper's reserved (rotated) width, which applyLayout has just written.
   private boxWidth(): number { return parseFloat(this.dom.style.width) || this.attrW() || 0; }
 
@@ -443,12 +454,17 @@ class ImageView {
     d.style.zIndex = '';
     d.style.top = '';
     d.style.left = '';
+    this.rotor.style.top = '';
     const a = this.node.attrs;
     if (typeof a.anchorPage === 'number' && a.anchorPage > 0) {
       this.applyPageAnchor(a.anchorPage);
       return;
     }
     delete d.dataset.anchorPage;
+    if (wrap === 'through') {
+      applyRunThrough(d, a.wrapOffset, a.wrapOffsetY, a.inFront === true);
+      return;
+    }
     if (wrap === 'left' || wrap === 'right') {
       d.style.float = wrap;
       d.style.margin = frameMargins(wrap, a.wrapOffset, this.boxWidth(), null, a.wrapDist);
