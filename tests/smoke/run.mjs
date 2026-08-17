@@ -81,7 +81,7 @@ try {
       window.__pdfSize = buf.byteLength;
     };
   });
-  await page.click('.save-chevron');
+  await page.click('.ribbon-tab-file');
   await page.click('button:has-text("Raster PDF")');
   await page.waitForFunction(() => window.__pdfSize > 0, null, { timeout: 60_000 });
   const pdf = await page.evaluate(() => ({ head: window.__pdfHead, size: window.__pdfSize }));
