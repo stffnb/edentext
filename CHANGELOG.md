@@ -236,6 +236,18 @@ merely unimplemented belongs in the list above, not here.
   was tried and reverted: it fixes the line it was measured on and breaks
   another two tables on, so the real offset is under 0.2 mm — the same engine
   rounding as above. See `tests/render-parity/README.md`. Noted 2026-08-13.
+- A block ending within about half a millimetre of the page's bottom may fall on
+  the other side of the break from LibreOffice, which moves every line of the
+  page after it. Root cause: the fit test at a page boundary is a step function
+  on our block chain, and that chain is not identical to LibreOffice's — each
+  block agrees to well under the millimetre the harness tolerates, but the sum
+  decides a whole page. Measured on a fixture: an empty paragraph whose flow box
+  ends **0.62 mm** past the content end is pushed over, where LibreOffice keeps
+  it, and the heading behind it then draws its space-before in full — 14.8 mm on
+  every line of that page. A tolerance on the fit test was tried and reverted
+  (corpus 1074 → 1085): the error carries no sign, so the slack that fixes one
+  fixture keeps two lines another one's reference pushes. See
+  `tests/render-parity/README.md`. Noted 2026-08-17.
 - The **first line of a page** sits slightly lower than LibreOffice's. Root cause:
   a font carries two ascents, and the two engines pick different ones to place
   the first baseline against the text-area top — LibreOffice the OS/2 typo
