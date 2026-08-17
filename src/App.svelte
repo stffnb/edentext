@@ -1038,7 +1038,7 @@
   }
 </script>
 
-<!-- The ribbon docks in flow, so only the classic island needs the editor's top
+<!-- The ribbon docks in flow, so only the modern island needs the editor's top
      padding to clear an overlay. -->
 <main style="--toolbar-overlay-h: {chromeMode === 'ribbon' ? 0 : toolbarRegionH}px">
   {#snippet toolbarScrollbar()}

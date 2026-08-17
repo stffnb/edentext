@@ -31,7 +31,7 @@ All keys share the `edentext-` prefix — a namespace, not a description: on Git
 - **Recent files:** `edentext-recent-files` — `{id, name, at}` per entry, newest first, eight kept (`recentFiles.ts`). Only the label lives here: the `FileSystemFileHandle` that reopens one is structured-cloneable but not JSON, so it sits in the `edentext-recent` IndexedDB store under the same id, and each write sweeps the handles no entry names. Two handles compare only through `isSameEntry`, which is async — hence the walk when recording a file already in the list. Reopening re-asks for permission (the API drops it on reload); a refusal, a moved file or a browser with no picker leaves the entry unopenable, and it is dropped with a message instead of failing again.
 - **Theme:** `edentext-theme` — `'light' | 'dark' | 'allBlack' | 'auto'`.
 - **Toolbar expanded:** `edentext-toolbar-expanded` — boolean string.
-- **Chrome:** `edentext-chrome` — `'classic' | 'ribbon'`; absent = ribbon.
+- **Chrome:** `edentext-chrome` — `'modern' | 'ribbon'` ('classic' read as the modern island's legacy stored name); absent = ribbon.
 - **Ribbon collapsed:** `edentext-ribbon-collapsed` — boolean string; absent = expanded.
 - **Formatting marks:** `edentext-formatting-marks` — boolean string.
 - **Ruler:** `edentext-ruler` — boolean string; absent = on.

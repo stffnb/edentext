@@ -858,14 +858,12 @@ const en = {
     cellMargins: 'Cell margins',
     altText: 'Alt text',
     altTextHint: 'Describe the image',
-    // Keyed by the mode id, which names the shape: the ribbon is the look users
-    // know as classic, the floating island the modern one.
     chrome: {
       title: 'Toolbar style',
       ribbon: 'Classic',
       ribbonHint: 'Tabbed, like Word',
-      classic: 'Modern (beta)',
-      classicHint: 'One floating toolbar',
+      modern: 'Modern (beta)',
+      modernHint: 'One floating toolbar',
     },
   },
   app: {

@@ -2,7 +2,7 @@ export type ThemeMode = 'light' | 'dark' | 'allBlack' | 'auto';
 
 // Which chrome mounts above the document: the floating command island, or the
 // Word-style ribbon. Both drive the same editor; only one is mounted at a time.
-export type ChromeMode = 'classic' | 'ribbon';
+export type ChromeMode = 'modern' | 'ribbon';
 
 const THEME_KEY = 'edentext-theme';
 const TOOLBAR_KEY = 'edentext-toolbar-expanded';
@@ -36,7 +36,9 @@ export function saveToolbarExpanded(expanded: boolean): void {
 }
 
 export function loadChromeMode(): ChromeMode {
-    return localStorage.getItem(CHROME_KEY) === 'classic' ? 'classic' : 'ribbon';
+    const stored = localStorage.getItem(CHROME_KEY);
+    // 'classic' is the floating island's legacy stored name, kept readable.
+    return stored === 'modern' || stored === 'classic' ? 'modern' : 'ribbon';
 }
 
 export function saveChromeMode(mode: ChromeMode): void {

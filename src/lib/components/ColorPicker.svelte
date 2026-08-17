@@ -94,7 +94,7 @@
     const anchor = split?.getBoundingClientRect();
     if (!anchor) return;
     // A ribbon panel drops below the whole band, or it would cover the controls
-    // under it. The classic toolbar has no band, so this finds nothing there.
+    // under it. The modern toolbar has no band, so this finds nothing there.
     const band = split?.closest('.ribbon-body')?.getBoundingClientRect();
     pos = { top: Math.max(anchor.bottom, band?.bottom ?? 0) + 3, left: anchor.left };
     await tick();

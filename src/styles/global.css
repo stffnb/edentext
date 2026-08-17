@@ -346,7 +346,7 @@
    contents from a caller's snippet, which Svelte scopes to that caller. */
 /* `anchored` (menu.svelte.ts) switches this to position: fixed and pins it under
    the trigger — the ribbon band clips its own overflow, so a panel has to leave
-   the flow to be seen. z-index clears the classic island (200) and the editor's
+   the flow to be seen. z-index clears the modern island (200) and the editor's
    own overlays. */
 .ribbon-menu {
   position: absolute;
@@ -432,7 +432,7 @@
   margin: 0 4px;
 }
 
-/* The reused pickers style their trigger for the classic toolbar's tinted island:
+/* The reused pickers style their trigger for the modern toolbar's tinted island:
    a frame on hover, the accent as the open state. Beside a row of ribbon buttons
    that reads as a different control, so both become the ribbon's own tints. */
 .ribbon .table-trigger:hover,

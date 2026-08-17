@@ -852,14 +852,12 @@ const de: Messages = {
     cellMargins: 'Zellenränder',
     altText: 'Alternativtext',
     altTextHint: 'Das Bild beschreiben',
-    // Keyed by the mode id, which names the shape: the ribbon is the look users
-    // know as classic, the floating island the modern one.
     chrome: {
       title: 'Symbolleisten-Stil',
       ribbon: 'Klassisch',
       ribbonHint: 'Mit Registerkarten, wie in Word',
-      classic: 'Modern (beta)',
-      classicHint: 'Eine schwebende Symbolleiste',
+      modern: 'Modern (beta)',
+      modernHint: 'Eine schwebende Symbolleiste',
     },
   },
   app: {

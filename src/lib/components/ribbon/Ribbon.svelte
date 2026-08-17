@@ -312,8 +312,8 @@
           <button class:selected={chromeMode === 'ribbon'} onclick={() => { chromeMode = 'ribbon'; closeMenu(); }}>
             {t().ribbon.chrome.ribbon}<span class="menu-sub">{t().ribbon.chrome.ribbonHint}</span>
           </button>
-          <button class:selected={chromeMode === 'classic'} onclick={() => { chromeMode = 'classic'; closeMenu(); }}>
-            {t().ribbon.chrome.classic}<span class="menu-sub">{t().ribbon.chrome.classicHint}</span>
+          <button class:selected={chromeMode === 'modern'} onclick={() => { chromeMode = 'modern'; closeMenu(); }}>
+            {t().ribbon.chrome.modern}<span class="menu-sub">{t().ribbon.chrome.modernHint}</span>
           </button>
           <hr />
           <div class="rb-menu-label">{t().appearance.title}</div>
@@ -373,7 +373,7 @@
   /* Word's palette reaches the reused pickers (ColorPicker, HistoryButton, the
      table pickers …) by remapping the app's own tokens here: custom properties
      inherit, so those components adopt the ribbon's look with no edits, and the
-     classic toolbar keeps the themed set. */
+     modern toolbar keeps the themed set. */
   .ribbon {
     --color-surface: var(--w-surface);
     --color-toolbar-bg: var(--w-chrome);
@@ -400,7 +400,7 @@
   .rb-collapse :global(svg) { transition: transform 0.12s ease; }
   .rb-collapse-up :global(svg) { transform: rotate(180deg); }
 
-  /* Those pickers frame their trigger for the classic toolbar's tinted island. A
+  /* Those pickers frame their trigger for the modern toolbar's tinted island. A
      ribbon row is borderless icon buttons, so the frame comes off and the hover
      tint takes over — same 30px box as .rb-icon, so a row reads as one strip. */
   .ribbon :global(.color-split) {

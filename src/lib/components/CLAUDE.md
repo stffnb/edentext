@@ -150,7 +150,7 @@ reject in place through `acceptRevision`/`rejectRevision`. Opened from the Revie
 ## AutoText (`AutoTextDialog.svelte`, `editor/extensions/autoText.ts`)
 
 LibreOffice's Tools ▸ AutoText, reachable where Word puts it too (the ribbon's Insert ▸
-Text group, the classic chrome's Tools menu): the library, a click to insert, and "new
+Text group, the modern chrome's Tools menu): the library, a click to insert, and "new
 from selection" — the selected slice serialized to HTML. `hasSelection` is derived off
 `open` because the dialog stays mounted and a modal freezes the selection it opened on.
 
@@ -187,7 +187,7 @@ the code keep the technical name.
 
 LibreOffice's Navigator and Word's Navigation pane: the outline, click to jump, and the
 four chapter operations on hover. Docked right beside `CommentsPane`, not left where both
-reference products put it — the classic chrome's floating "Tools" chip lives there. The
+reference products put it — the modern chrome's floating "Tools" chip lives there. The
 toolbar island overlays the row's top, so the pane takes a `margin-top` of
 `--toolbar-overlay-h` (`App.svelte` sets it; 0 for the ribbon, which is in flow).
 

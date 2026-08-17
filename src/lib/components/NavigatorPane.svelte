@@ -110,7 +110,7 @@
     background: var(--color-surface);
     font-family: var(--font-sans);
     font-size: 0.8rem;
-    /* The classic chrome's toolbar island overlays the top of the row; a margin, not
+    /* The modern chrome's toolbar island overlays the top of the row; a margin, not
        padding, or the sticky header would scroll up under it. The ribbon sets the
        variable to 0, being in flow. */
     margin-top: var(--toolbar-overlay-h, 0px);

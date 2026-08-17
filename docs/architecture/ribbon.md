@@ -6,16 +6,16 @@ compared. Everything the ribbon drives is the same editor, through the same comm
 
 ## The mode switch
 
-`chromeMode: 'classic' | 'ribbon'` lives in `storage/theme.ts` beside the other UI-chrome prefs
+`chromeMode: 'modern' | 'ribbon'` lives in `storage/theme.ts` beside the other UI-chrome prefs
 (`edentext-chrome`, default `'ribbon'`). `App.svelte` forks on it: the ribbon docks as a plain
 flex child, the island keeps its absolute overlay. Reachable from both sides — the theme dropdown
-in classic, the strip's appearance menu in the ribbon.
+in the modern chrome, the strip's appearance menu in the ribbon.
 
-`--toolbar-overlay-h` is written **only** in classic mode. `editor.css` reads it as
+`--toolbar-overlay-h` is written **only** in modern mode. `editor.css` reads it as
 `var(--toolbar-overlay-h, 0px)`, so the ribbon's docked layout needs no second rule.
 
-**Classic is the baseline the ribbon is measured against, so it stays untouched.** Where a shared
-helper would improve both, the ribbon takes it and classic keeps its copy; where a dialog is
+**The modern chrome is the baseline the ribbon is measured against, so it stays untouched.** Where a shared
+helper would improve both, the ribbon takes it and the modern chrome keeps its copy; where a dialog is
 mounted inside `ToolbarExpanded`, the ribbon mounts its own rather than hoisting it. Only one
 chrome is mounted at a time, so the two sets never coexist.
 
@@ -29,12 +29,12 @@ active underline is 2.5px **inset 13px from each side**, not a full-width border
 The logo's other colour, `--brand-clay`, marks the **contextual tabs** — the ones that exist only
 for the selected object — as their 2px bar, over a `--w-contextual` label darkened to stay
 readable (the clay itself is 3.3:1 on white). Both brand tokens are defined once, from
-`favicon.svg`; the classic chrome's island hairline already gradients between the same pair.
+`favicon.svg`; the modern chrome's island hairline already gradients between the same pair.
 
 `.ribbon` remaps the app's own tokens onto that palette (`--color-surface`, `--color-primary`,
 `--toolbar-btn-size`, …). Custom properties inherit, so every reused picker — `ColorPicker`,
 `HistoryButton`, `TablePicker`, `TableStylePicker`, the border pickers — adopts the ribbon's look
-with no edit of its own, while the classic toolbar keeps the themed set. The **status bar** takes
+with no edit of its own, while the modern toolbar keeps the themed set. The **status bar** takes
 the same remap while the ribbon is mounted (`.statusbar.w-chrome`, `App.svelte`) — it closes the
 frame the chrome opens, and the app's dark neutrals are bluer than Word's.
 
@@ -127,7 +127,7 @@ margins, Save As.
 ## Dialogs
 
 `ParagraphDialog` and `TabsDialog` open from Word's ↘ launcher in a group's corner. They are
-chrome-agnostic, so classic could gain launchers of its own at no cost.
+chrome-agnostic, so the modern chrome could gain launchers of its own at no cost.
 
 There is **no Font dialog**: the Home tab already carries change case and the underline and
 strikethrough line styles, and the two things left over — `letterSpacingPt` and `kerning` — live
@@ -135,7 +135,7 @@ on a named style, not on a run. Setting them as direct formatting would mean a n
 and export work on both formats, which is more than a chrome rebuild. The style manager is where
 they belong.
 
-## What retiring classic would free
+## What retiring the modern chrome would free
 
 Recorded so the option stays visible, not as a plan: `Toolbar.svelte` and
 `ToolbarExpanded.svelte` (~3200 lines), the overlay island and its hand-rolled horizontal
