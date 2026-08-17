@@ -198,13 +198,15 @@ merely unimplemented belongs in the list above, not here.
   1 cm on paper ≈ 1 cm on screen. Possible future fix: add a user-side
   calibration (DPI value or visual ruler) that scales the `zoom` factor.
   Decided 2026-05-26 not worth the effort for now.
-- An image or text box cannot be dropped at a free point on the page. It is
-  anchored to a text position: inline, or floating left / right / top-bottom,
-  and dragging it re-anchors it to the paragraph under the cursor rather than
-  placing it. Root cause: `float` is the only way to make browser text wrap
-  around a box. CSS Exclusions, which would wrap around a freely placed one,
-  are unimplemented in every engine, and `position: absolute` takes the frame
-  out of flow so text runs underneath it.
+- An image or text box cannot be dropped at a free point on the page **and have
+  text wrap around it**. It is anchored to a text position: inline, or floating
+  left / right / top-bottom, and dragging it re-anchors it to the paragraph
+  under the cursor rather than placing it. Root cause: `float` is the only way
+  to make browser text wrap around a box, and CSS Exclusions, which would wrap
+  around a freely placed one, are unimplemented in every engine. A frame the
+  text is *meant* to run through — Word's in-front-of / behind-text, ODF
+  run-through — is placed absolutely for exactly that reason and does keep its
+  own offsets; it just cannot push text aside.
   A file's own offsets are drawn: both round-trip (`wrapOffset`/`wrapOffsetY` =
   `svg:x`/`svg:y`, `positionH`/`positionV`) and both place the frame, the vertical
   one for top-and-bottom wrap, where no text sits beside it. What stays out of
