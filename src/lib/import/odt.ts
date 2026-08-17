@@ -1568,6 +1568,7 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   if (kind === 'cell' && !isHeading) { defaults.marginTopPt = 0; defaults.marginBottomPt = 0; }
 
   const attrs = blockAttrs(paraProps, baseTextProps, defaults, kind);
+  if (paraProps['style:contextual-spacing'] === 'true') applyContextualSpacing(el, styleName, attrs);
   // A style:master-page-name switches the page master, which is how ODF gives a section
   // its own header/footer; the block that does it opens that section.
   const master = kind === 'body' ? resolver.masterPageOf(styleName) : null;
@@ -1718,6 +1719,30 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefau
   Object.assign(attrs, paraBoxAttrs(paraProps));
 
   return attrs;
+}
+
+// style:contextual-spacing drops a paragraph's own spacing towards a neighbour of the
+// same style — LibreOffice's List styles carry it. The editor has no such mode, so the
+// suppressed side becomes an explicit 0, as the docx path does for w:contextualSpacing.
+function applyContextualSpacing(el: Element, styleName: string | null, attrs: Record<string, unknown>): void {
+  const same = (sib: Element | null) => !!sib && sib.getAttributeNS(NS.text, 'style-name') === styleName;
+  if (same(flowSibling(el, 'previous'))) attrs.spaceBefore = 0;
+  if (same(flowSibling(el, 'next'))) attrs.spaceAfter = 0;
+}
+
+// The paragraph before or after this one in the flow: its own sibling, or — in a list,
+// where each item wraps its paragraphs — the neighbouring item's nearest one.
+function flowSibling(el: Element, dir: 'previous' | 'next'): Element | null {
+  const isPara = (e: Element) => e.namespaceURI === NS.text && (e.localName === 'p' || e.localName === 'h');
+  const step = (e: Element) => (dir === 'previous' ? e.previousElementSibling : e.nextElementSibling);
+  for (let s = step(el); s; s = step(s)) if (isPara(s)) return s;
+  const item = el.parentElement;
+  if (!item || item.namespaceURI !== NS.text || item.localName !== 'list-item') return null;
+  for (let s = step(item); s; s = step(s)) {
+    const kids = Array.from(s.children).filter(isPara);
+    if (kids.length) return dir === 'previous' ? kids[kids.length - 1] : kids[0];
+  }
+  return null;
 }
 
 // Paragraph background + per-side border attrs (paragraphBox.ts) from resolved paraProps.
