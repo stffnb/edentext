@@ -2,7 +2,7 @@
 
 <!-- Newest release first. New entries go here: ## [x.y.z] — YYYY-MM-DD -->
 
-## [0.1.0] — 2026-08-16
+## [0.1.0] — 2026-08-17
 
 First public release, deployed on GitHub Pages.
 
