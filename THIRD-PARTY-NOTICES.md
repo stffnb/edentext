@@ -12,19 +12,25 @@ copyleft, see its section.
 
 ## Bundled fonts — retain their own license
 
-The **Liberation** fonts (`src/assets/fonts/LiberationSerif-*.ttf`) are **not**
-covered by this project's license. They are licensed under the **SIL Open Font
-License, Version 1.1 (OFL-1.1)** and remain so regardless of how this project is
-licensed.
+The fonts in `src/assets/fonts/` are **not** covered by this project's license and
+remain under their own regardless of how this project is licensed. Their license
+texts live in [`public/font-licenses/`](./public/font-licenses/) — that folder is
+copied verbatim into the build, so the licenses ship wherever the fonts do.
 
-- Copyright (c) 2010 Google Corporation (with Reserved Font Name Arimo, Tinos and Cousine)
-- Copyright (c) 2012 Red Hat, Inc. (with Reserved Font Name "Liberation")
-- Full license text: [`src/assets/fonts/LICENSE-LiberationFonts.txt`](./src/assets/fonts/LICENSE-LiberationFonts.txt)
+| Font | License | Copyright |
+|------|---------|-----------|
+| Liberation Mono/Sans/Serif | OFL-1.1 | (c) 2010 Google Corporation; (c) 2012 Red Hat, Inc. (Reserved Font Name "Liberation") |
+| Carlito | OFL-1.1 | (c) 2013 The Carlito Project Authors (Reserved Font Name "Carlito") |
+| Caladea | OFL-1.1 | (c) 2012 The Caladea Project Authors |
+| STIX Two Math | OFL-1.1 | (c) 2001–2021 The STIX Fonts Project Authors |
+| `EdenSymbols.woff2` — bullet glyphs subset from DejaVu Sans | Bitstream Vera | (c) 2003 Bitstream, Inc. |
 
 > OFL-1.1 permits bundling the fonts in any software, **including commercial and
 > proprietary software**, provided the license file is retained and the fonts are
 > not sold by themselves. The fonts must not be redistributed under their Reserved
-> Font Names if modified.
+> Font Names if modified. The Bitstream Vera license likewise permits bundling and
+> requires the notice to travel with the font; the subset is renamed accordingly,
+> as that license requires of a derivative.
 
 ## Bundled language data — retains its own license
 
@@ -50,6 +56,10 @@ Both thesaurus files are generated from LibreOffice's own MyThes data by
 | Svelte | MIT |
 | TipTap (`@tiptap/*`) and ProseMirror (`@tiptap/pm`) | MIT |
 | `fflate` | MIT |
+| `docx` — DOCX export | MIT |
+| `jspdf` and `html2canvas` — PDF export | MIT |
+| `hunspell-asm` — spell checker | MIT |
+| `utif2` — TIFF decoding | MIT |
 | `odf-kit` | Apache-2.0 |
 | Vite, TypeScript, `@sveltejs/vite-plugin-svelte`, `@tsconfig/svelte` (dev) | MIT / Apache-2.0 |
 

@@ -64,8 +64,11 @@ requires a signed [CLA](CLA.md), checked automatically on every pull request.
 
 ## License
 
+Copyright © 2026 Steffen Becker.
+
 [AGPL-3.0](LICENSE). A [commercial license](LICENSE.commercial.md) is available
-for use cases the AGPL does not fit.
+for use cases the AGPL does not fit. Bundled fonts and language data keep their
+own licenses — see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 *EdenText is an independent project, not affiliated with Microsoft or The
 Document Foundation. `.docx` and `.odt` are supported for interoperability.*

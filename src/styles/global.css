@@ -10,7 +10,7 @@
    font the exported .odt uses. odf-kit emits Liberation Serif as the document
    default, and LibreOffice ships the identical file; this keeps the on-screen
    preview pixel-faithful to the export. (SIL Open Font License — see
-   src/assets/fonts/LICENSE-LiberationFonts.txt.) */
+   public/font-licenses/LICENSE-LiberationFonts.txt.) */
 @font-face {
   font-family: 'Liberation Serif';
   font-style: normal;
@@ -43,7 +43,7 @@
 /* Bullet-marker symbols Liberation Serif lacks (❖ ➢ ⇨ ✓ ▸ ◆), subset from DejaVu
    Sans so markers render compact and identical on every platform. First in the
    ::marker/picker stacks; per-glyph fallback keeps all other chars in the text
-   font. (Bitstream Vera license — see src/assets/fonts/LICENSE-DejaVu.txt.) */
+   font. (Bitstream Vera license — see public/font-licenses/LICENSE-DejaVu.txt.) */
 @font-face {
   font-family: 'EdenText Symbols';
   font-style: normal;
@@ -55,7 +55,7 @@
 /* STIX Two Math — a font with an OpenType MATH table is what makes MathML typeset:
    without one Chromium drops ∑ and ϕ entirely and leaves brackets glyph-height next
    to a fraction. Word uses Cambria Math for the same job. (OFL — see
-   src/assets/fonts/LICENSE-STIX.txt.) */
+   public/font-licenses/LICENSE-STIX.txt.) */
 @font-face {
   font-family: 'STIX Two Math';
   font-style: normal;
@@ -68,7 +68,7 @@
    .odt files reference. Each face is keyed to the MS name but prefers a real
    local copy, then a system twin, then the bundled open-source twin — so text
    renders with matching metrics (like LibreOffice) instead of dropping to the
-   browser's default serif. (OFL — see src/assets/fonts/LICENSE-*.) */
+   browser's default serif. (OFL — see public/font-licenses/LICENSE-*.) */
 
 /* Calibri → Carlito */
 @font-face {
