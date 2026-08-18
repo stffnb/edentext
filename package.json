@@ -4,11 +4,11 @@
   "type": "module",
   "description": "A fully client-side, serverless rich-text editor that saves documents as .odt",
   "license": "AGPL-3.0-only",
-  "author": "Steffen Becker <your-contact-email>",
-  "homepage": "https://github.com/",
+  "author": "Steffen Becker <stffn.becker@gmail.com>",
+  "homepage": "https://stffnb.github.io/edentext/",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/stffnb/edentext.git"
   },
   "scripts": {
     "dev": "vite --host",
