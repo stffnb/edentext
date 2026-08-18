@@ -741,6 +741,7 @@ const de: Messages = {
       shapeFormat: 'Formformat',
     },
     saveAs: 'Speichern unter…',
+    saveAsHint: 'In den Download-Einstellungen des Browsers aktivieren: „Immer nachfragen, wo Dateien gespeichert werden sollen“.',
     collapse: 'Menüband minimieren',
     expand: 'Menüband erweitern',
     export: 'Exportieren',
@@ -910,6 +911,7 @@ const de: Messages = {
     openedWithLimitations: (list) => `Mit Einschränkungen geöffnet:\n• ${list}`,
     couldNotOpen: 'Diese Datei konnte nicht geöffnet werden.',
     couldNotSave: 'Diese Datei konnte nicht gespeichert werden.',
+    scriptBlocked: 'Ein Teil der App konnte nicht geladen werden — ein Skript-Blocker (uBlock Origin, NoScript, strenger Schutzmodus) verhindert das. Erlaube diese Seite und versuche es erneut.',
     couldNotExportDocx: 'Export nach Word (.docx) nicht möglich.',
     couldNotExportPdf: 'PDF-Export nicht möglich.',
     recentUnavailable: (name) =>

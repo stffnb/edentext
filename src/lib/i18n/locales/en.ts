@@ -747,6 +747,7 @@ const en = {
       shapeFormat: 'Shape Format',
     },
     saveAs: 'Save as…',
+    saveAsHint: 'Turn this on in the browser\'s download settings: "Always ask you where to save files".',
     collapse: 'Collapse the ribbon',
     expand: 'Expand the ribbon',
     export: 'Export',
@@ -916,6 +917,7 @@ const en = {
     openedWithLimitations: (list: string) => `Opened with limitations:\n• ${list}`,
     couldNotOpen: 'Could not open this file.',
     couldNotSave: 'Could not save this file.',
+    scriptBlocked: 'Part of the app could not be loaded — a script blocker (uBlock Origin, NoScript, strict privacy mode) is blocking it. Allow this site and try again.',
     couldNotExportDocx: 'Could not export to Word (.docx).',
     couldNotExportPdf: 'Could not export to PDF.',
     recentUnavailable: (name: string) =>

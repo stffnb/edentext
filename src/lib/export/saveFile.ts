@@ -1,6 +1,12 @@
 // File System Access API helpers for saving/opening .odt files. Falls back to a
 // plain browser download / no-op where the API is unavailable (Firefox/Safari).
 
+import { t } from '../i18n/i18n.svelte';
+
+// Shown once per browser, at the first save that goes the download route — the
+// moment the missing save dialog is actually felt.
+const HINT_KEY = 'edentext-download-hint';
+
 const ODT_MIME = 'application/vnd.oasis.opendocument.text';
 const OTT_MIME = 'application/vnd.oasis.opendocument.text-template';
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -37,14 +43,24 @@ export function supportsFsAccess(): boolean {
   return typeof (window as WinFs).showSaveFilePicker === 'function';
 }
 
+// Where the browser saves is the browser's business (its download folder, or its own
+// dialog where that is switched on). Gecko needs the anchor in the document and the
+// blob URL alive past the click.
 function download(bytes: Uint8Array, name: string, mime: string = ODT_MIME): void {
+  // Before the click: the browser's own save dialog would open on top of it.
+  if (!localStorage.getItem(HINT_KEY)) {
+    localStorage.setItem(HINT_KEY, '1');
+    alert(t().ribbon.saveAsHint);
+  }
   const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = name;
+  document.body.append(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 async function writeHandle(handle: FileSystemFileHandle, bytes: Uint8Array): Promise<void> {

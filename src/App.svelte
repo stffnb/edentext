@@ -754,6 +754,14 @@
     await applyImport(new Uint8Array(await file.arrayBuffer()), null, file.name);
   }
 
+  // The reason belongs in the message: a failure on someone else's browser is
+  // otherwise unreportable. A lazy chunk a script blocker ate says so in plain words.
+  function failed(what: string, err: unknown): void {
+    const detail = (err as Error)?.message ?? String(err);
+    const blocked = /dynamically imported module|Importing a module script failed/i.test(detail);
+    alert(`${what}\n\n${blocked ? t().dialogs.scriptBlocked : detail}`);
+  }
+
   async function handleSave() {
     if (!editor) return;
     exportMenuOpen = false;
@@ -776,7 +784,7 @@
       // A stored handle may have lost permission; re-prompt via Save As.
       if (fileHandle) { fileHandle = null; await handleSaveAs(); return; }
       console.error('[save] Failed to save file:', err);
-      alert(t().dialogs.couldNotSave);
+      failed(t().dialogs.couldNotSave, err);
     }
   }
 
@@ -792,7 +800,7 @@
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save file:', err);
-      alert(t().dialogs.couldNotSave);
+      failed(t().dialogs.couldNotSave, err);
     }
   }
 
@@ -816,7 +824,7 @@
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save template:', err);
-      alert(t().dialogs.couldNotSave);
+      failed(t().dialogs.couldNotSave, err);
     }
   }
 
@@ -861,7 +869,7 @@
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[docx] Export failed:', err);
-      alert(t().dialogs.couldNotExportDocx);
+      failed(t().dialogs.couldNotExportDocx, err);
     } finally {
       docxBusy = false;
     }
@@ -885,7 +893,7 @@
       });
     } catch (err) {
       console.error('[pdf] Export failed:', err);
-      alert(t().dialogs.couldNotExportPdf);
+      failed(t().dialogs.couldNotExportPdf, err);
     } finally {
       pdfBusy = false;
     }
@@ -910,7 +918,7 @@
       });
     } catch (err) {
       console.error('[pdf] Print failed:', err);
-      alert(t().dialogs.couldNotPrint);
+      failed(t().dialogs.couldNotPrint, err);
     } finally {
       pdfBusy = false;
     }
@@ -940,7 +948,7 @@
       });
     } catch (err) {
       console.error('[pdf] Print failed:', err);
-      alert(t().dialogs.couldNotPrintPdf);
+      failed(t().dialogs.couldNotPrintPdf, err);
     }
   }
 

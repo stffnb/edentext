@@ -43,6 +43,7 @@ All keys share the `edentext-` prefix — a namespace, not a description: on Git
 - **Tab interval:** `edentext-tab-interval` — cm as a decimal string.
 - **Spacing model:** `edentext-spacing-model` — `'add' | 'max'`.
 - **Recent fonts:** `edentext-recent-fonts` — JSON string array (ToolbarExpanded).
+- **Download hint shown:** `edentext-download-hint` — set by the first fallback download (`export/saveFile.ts`); the one-time "always ask where to save" hint.
 - **Header/footer:** `edentext-header` / `-footer` (HfDoc), `edentext-hf-distances`.
 - **Styles:** `edentext-styles` — the style registry (`styles/sheet.svelte.ts`).
 - **Document properties:** `edentext-doc-properties` — title/subject/author/keywords/comments (`docProperties.ts`); the key is removed when every field is empty, so a fresh document writes nothing into `meta.xml`.

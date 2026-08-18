@@ -28,8 +28,10 @@ export function loadRecentFiles(): RecentFile[] {
 }
 
 function write(list: RecentFile[]): void {
-  if (list.length) localStorage.setItem(KEY, JSON.stringify(list));
-  else localStorage.removeItem(KEY);
+  try {
+    if (list.length) localStorage.setItem(KEY, JSON.stringify(list));
+    else localStorage.removeItem(KEY);
+  } catch { /* a full or blocked localStorage costs the list, not the save */ }
 }
 
 /**

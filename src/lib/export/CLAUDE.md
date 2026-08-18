@@ -3,6 +3,11 @@
 `odt.ts` (ODF), `docx.ts` (Word), `pdf.ts` (html2canvas + jsPDF), `saveFile.ts`.
 Frames, tables and pagination have their own deep-dives in `docs/architecture/`.
 
+`saveFile.ts` picks the path: `showSaveFilePicker` where there is one, else a download —
+Gecko has none and Brave disables the whole File System Access API by default. The first
+fallback download shows a one-time hint (`edentext-download-hint`) that the browser's
+"always ask where to save" setting picks the location.
+
 ## Heading defaults (`HEADING_STYLE_OVERRIDES`, `export/odt.ts`)
 
 - **Headings** follow LibreOffice too (`HEADING_STYLE_OVERRIDES`): 18 / 16 / 14 / 13 / 12 / 12pt (levels 4 and 6 italic) with
