@@ -3,11 +3,6 @@
 **Project:** EdenText
 **Maintainer / Licensor:** Steffen Becker &lt;stffn.becker@gmail.com&gt; (the "Maintainer")
 
-> ⚠️ **Note:** This is a plain-language template adapted from common individual CLAs
-> (in the spirit of the Apache Individual CLA). It has **not** been reviewed by a
-> lawyer. Before relying on it commercially, have it reviewed by qualified legal
-> counsel in your jurisdiction.
-
 By submitting a Contribution to this project (for example, via a pull request,
 patch, or commit), You agree to the following terms for any past and future
 Contributions submitted to the project.
@@ -84,8 +79,8 @@ kind**, either express or implied.
 ---
 
 **Agreement.** By submitting a Contribution to the project, You indicate Your
-acceptance of this CLA. Where a signature is requested, add to Your pull request:
+acceptance of this CLA. To record the signature, comment on Your pull request:
 
 ```
-I have read and agree to the CLA. — <Full Name>, <email>, <date>
+I have read the CLA Document and I hereby sign the CLA
 ```

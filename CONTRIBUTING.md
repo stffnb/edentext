@@ -53,15 +53,15 @@ You keep the copyright to your contribution — you are only granting a license.
 
 ### How to sign
 
-> **Recommended:** set up [CLA Assistant](https://github.com/cla-assistant/cla-assistant)
-> so the agreement is presented and recorded automatically on each pull request.
-
-Until that is in place, sign by adding the following line to your pull request
-description (replacing the placeholders):
+A bot asks on your first pull request and records the signature. To sign, post
+this as a **comment on the pull request** — the exact wording, nothing added:
 
 ```
-I have read and agree to the CLA. — <Full Name>, <email>, <date>
+I have read the CLA Document and I hereby sign the CLA
 ```
+
+Comment `recheck` if the check does not pick it up. You sign once; later pull
+requests are recognised automatically.
 
 ## Reporting bugs / requesting features
 
