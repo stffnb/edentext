@@ -12,9 +12,21 @@ npm run build    # production build → dist/
 npm run preview  # serve the dist/ build locally
 ```
 
-There is currently no test suite or linter configured. Please keep changes
-focused, match the surrounding code style, and describe what you changed and why
-in your pull request.
+## Tests
+
+```bash
+npm run check    # svelte-check type-check
+npm test         # Vitest suite (tests/**/*.test.ts, jsdom)
+npm run test:lo  # LibreOffice round-trip leg — self-skips without `soffice`
+npm run test:smoke   # boots the dist/ build in headless Chromium
+```
+
+CI runs `check` + `test` on every pull request, plus the LibreOffice round-trip
+and the headless smoke test in separate jobs. Please make sure `npm run check`
+and `npm test` pass locally before opening a PR.
+
+There is no linter or formatter — match the surrounding code style, keep changes
+focused, and describe what you changed and why in your pull request.
 
 ## License of the project
 
