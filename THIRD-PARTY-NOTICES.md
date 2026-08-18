@@ -63,14 +63,22 @@ Both thesaurus files are generated from LibreOffice's own MyThes data by
 | `odf-kit` | Apache-2.0 |
 | Vite, TypeScript, `@sveltejs/vite-plugin-svelte`, `@tsconfig/svelte` (dev) | MIT / Apache-2.0 |
 
-The authoritative license for each dependency is the one shipped in its package
-inside `node_modules/<pkg>/`. This table is a convenience summary and may need
-updating when dependencies change.
+The table above is a convenience summary of the direct dependencies. The
+authoritative text — every bundled package including transitive ones, quoted in
+full — is [`public/licenses.txt`](./public/licenses.txt), which ships with the
+build and is what MIT and Apache-2.0 require to reach a recipient: the minifier
+strips the license comments the source files carry.
 
 ## Regenerating this list
 
-When dependencies change, you can regenerate an up-to-date overview with a tool
-such as [`license-checker`](https://www.npmjs.com/package/license-checker):
+Regenerate `public/licenses.txt` after any dependency change:
+
+```bash
+node scripts/collect-licenses.mjs
+```
+
+For an overview of the license *kinds* in the tree, a tool such as
+[`license-checker`](https://www.npmjs.com/package/license-checker) works:
 
 ```bash
 npx license-checker --summary

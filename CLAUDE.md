@@ -20,6 +20,7 @@ npm run test:smoke   # boots the dist/ build in headless Chromium (tests/smoke/r
 npm run test:coverage  # vitest + v8 coverage over src/ → coverage/index.html
 npm run test:parity  # render parity vs LibreOffice (tests/render-parity/README.md)
 node scripts/make-thesaurus.mjs   # re-vendor public/thesaurus/ from LibreOffice's MyThes data
+node scripts/collect-licenses.mjs # regenerate public/licenses.txt after a dependency change
 ```
 
 Tests live in `tests/` (outside `src/`, so `svelte-check` ignores them), jsdom via Vitest.
