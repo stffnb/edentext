@@ -62,6 +62,18 @@ Built with Svelte 5, TypeScript, Vite and TipTap 3 (ProseMirror).
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Merging
 requires a signed [CLA](CLA.md), checked automatically on every pull request.
 
+### Contributors
+
+Thanks to everyone who helped — with ideas, bug reports, testing
+and feedback:
+
+- Patrick R. — alpha tester
+- [@Deleh](https://github.com/Deleh) — beta tester
+
+<!-- Add a line per person: name or [@handle](https://github.com/handle), then
+     " — " and what they contributed. -->
+
+
 ## License
 
 Copyright © 2026 Steffen Becker.
