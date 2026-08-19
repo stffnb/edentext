@@ -25,7 +25,12 @@ holds it as a reactive singleton persisted to `edentext-styles` (same shape as `
 
 - **Assignment**: the `ParagraphStyle` extension adds a global `styleName` attr on paragraph/heading,
   rendered as `data-style`. `setParagraphStyle(name)` switches the node type when the style has an
-  `outlineLevel` (heading) and **keeps hard formatting**, as in Word/LibreOffice;
+  `outlineLevel` (heading) and **keeps hard formatting**, as in Word/LibreOffice. The name rides
+  along with that type switch: `setNode` copies the block's own attrs, and a following
+  `updateAttributes` would look for the new type in the pre-chain state and set nothing — a
+  paragraph left carrying a heading's name looks like a heading and is none (no outline entry).
+  The heading's `styleName` is the one attr **not** kept on split, so Enter at the end of one
+  starts a body paragraph;
   `clearDirectFormatting()` (Ctrl+M, also the ToolbarExpanded eraser button) drops marks and the
   style-governed block attrs but keeps the style and hyperlinks. `blockStyleName(node)` resolves a
   block's style (own → heading level → Standard).

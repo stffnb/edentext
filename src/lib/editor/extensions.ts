@@ -175,7 +175,10 @@ export const extensions = [
   TextDirection,
   Indent,
   TabStops,
-  Heading.configure({ levels: HEADING_LEVELS as Level[] }),
+  // Its own Mod-Alt-N is dropped: a keymap plugin runs ahead of every plugin from
+  // addProseMirrorPlugins, so it would beat the code-based binding in shortcuts.ts
+  // and set the level without the heading's named style.
+  Heading.extend({ addKeyboardShortcuts: () => ({}) }).configure({ levels: HEADING_LEVELS as Level[] }),
   BulletList,
   OrderedList,
   ListItem,

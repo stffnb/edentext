@@ -35,18 +35,18 @@ export const ParagraphStyle = Extension.create<{ types: string[]; sheet: () => S
   },
 
   addGlobalAttributes() {
+    const styleName = {
+      default: null,
+      parseHTML: (element: HTMLElement) => element.getAttribute('data-style') || null,
+      renderHTML: (attributes: Record<string, unknown>) =>
+        attributes.styleName ? { 'data-style': String(attributes.styleName) } : {},
+    };
     return [
-      {
-        types: this.options.types,
-        attributes: {
-          styleName: {
-            default: null,
-            parseHTML: (element: HTMLElement) => element.getAttribute('data-style') || null,
-            renderHTML: (attributes: Record<string, unknown>) =>
-              attributes.styleName ? { 'data-style': String(attributes.styleName) } : {},
-          },
-        },
-      },
+      { types: this.options.types.filter((t) => t !== 'heading'), attributes: { styleName } },
+      // Enter at the end of a heading starts a body paragraph, as in both word
+      // processors — carrying the name over would leave a paragraph that looks like a
+      // heading and is none (no outline entry, no text:h on export).
+      { types: ['heading'], attributes: { styleName: { ...styleName, keepOnSplit: false } } },
     ];
   },
 
@@ -54,13 +54,16 @@ export const ParagraphStyle = Extension.create<{ types: string[]; sheet: () => S
     return {
       // A heading style also switches the node type (its outline level); any other
       // style turns a heading back into a paragraph.
+      // The name rides along with the type switch: setNode copies the block's own attrs,
+      // and a later updateAttributes looks for the *new* type in the pre-chain state,
+      // where the block still has the old one — leaving the previous name in place.
       setParagraphStyle: (name: string) => ({ editor, chain }) => {
-        const style = this.options.sheet().paragraph[name];
-        const level = style?.outlineLevel;
-        const run = chain().focus();
-        if (level && editor.schema.nodes.heading) run.setNode('heading', { level });
-        else if (!level) run.setNode('paragraph');
-        return run.updateAttributes(level ? 'heading' : 'paragraph', { styleName: name }).run();
+        const level = this.options.sheet().paragraph[name]?.outlineLevel;
+        const heading = !!level && !!editor.schema.nodes.heading;
+        return chain()
+          .focus()
+          .setNode(heading ? 'heading' : 'paragraph', heading ? { level, styleName: name } : { styleName: name })
+          .run();
       },
 
       // Word/LibreOffice Ctrl+M: drop hard formatting, keep the style assignment.

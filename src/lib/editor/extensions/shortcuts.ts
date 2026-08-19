@@ -4,12 +4,10 @@ import type { Mark } from '@tiptap/pm/model';
 import { DEFAULT_SHORTCUTS, type ShortcutId } from '../shortcuts';
 import { FONT_SIZES, blockFontSize, coversWholeBlock } from '../../utils/fontSize';
 import { headingStyleName } from '../../styles/styleSheet';
-import { MAX_HEADING_LEVEL } from '../../export/odt';
 import { DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../../utils/dateTime';
 
 // The Word/LibreOffice shortcuts that aren't already a TipTap default, bound from
-// the central table. priority 1000 so Mod-Alt-N beats Heading's toggleHeading and
-// Mod-Shift-b beats Bold's Mod-B alias.
+// the central table. priority 1000 so Mod-Shift-b beats Bold's Mod-B alias.
 
 type Binding = (editor: Editor) => boolean;
 
@@ -105,7 +103,8 @@ export const Shortcuts = Extension.create<{ body: boolean }>({
           // skips its keyCode fallback for exactly this combination.
           handleKeyDown(_view, event) {
             if (!(event.ctrlKey || event.metaKey) || !event.altKey || event.shiftKey) return false;
-            const digit = new RegExp(`^Digit([0-${MAX_HEADING_LEVEL}])$`).exec(event.code);
+            // Digit0–Digit6: 0 is Standard, 1–6 the levels both word processors bind.
+            const digit = /^Digit([0-6])$/.exec(event.code);
             if (!digit) return false;
             const level = Number(digit[1]);
             event.preventDefault();

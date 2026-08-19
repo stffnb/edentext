@@ -24,7 +24,9 @@ the tooltips (via `withShortcut`, which localizes Ctrl/Shift/Alt and swaps in �
 - **`Mod-Alt-<digit>` can't go through the keymap**: Windows reads Ctrl+Alt as AltGr, so
   `event.key` is layout-dependent (German AltGr+2 = `²`) and prosemirror-keymap skips its
   keyCode fallback for exactly that modifier pair. Those seven run in `addProseMirrorPlugins`
-  off `event.code` (`Digit0`–`Digit6`) instead.
+  off `event.code` (`Digit0`–`Digit6`) instead — and **Heading's own `Mod-Alt-N` is dropped**
+  (`extensions.ts`): every keymap plugin runs ahead of every `addProseMirrorPlugins` one, whatever
+  the extension priority, and `toggleHeading` sets the level without the heading's named style.
 - **F3 is shared**: AutoText expands a shortcut at the caret (both word processors' key), and the app's find-next runs only where it did not — the window handler bails on `defaultPrevented`, which the editor's keymap sets when a binding took the key.
 - Deliberate resolutions: `Mod-m` stays LibreOffice's *clear formatting* (Word's
   increase-indent is Tab); `Ctrl+1/2/5` are Word's **line spacing**, so headings are
