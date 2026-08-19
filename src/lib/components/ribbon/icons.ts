@@ -70,10 +70,13 @@ export const STROKED = {
   alignMiddle: ['M2 8h12', 'M8 2.5v3M8 10.5v3'],
   alignBottom: ['M2 13h12', 'M8 3.5v7M5.5 8 8 10.5 10.5 8'],
   cellMargins: ['M2 2.5h12v11H2z', 'M4.5 5h7v6h-7z'],
-  wrapInline: ['M2 4h12M2 8h12M2 12h12'],
+  // The box sits on the text baseline, a line running to it from either side.
+  wrapInline: ['M2 3h12', 'M6 5.5h4.5v5.5H6z', 'M2 11h3.5M11 11h3', 'M2 13.5h12'],
   wrapLeft: ['M2 3.5h6v9H2z', 'M9.5 4.5h4.5M9.5 7h4.5M9.5 9.5h4.5M9.5 12h4.5'],
   wrapRight: ['M8 3.5h6v9H8z', 'M2 4.5h4.5M2 7h4.5M2 9.5h4.5M2 12h4.5'],
   wrapTopBottom: ['M4 6.5h8v3H4z', 'M2 3h12M2 13h12'],
+  // A capital T beside an arrow running down: the text sets vertically.
+  textDirection: ['M3 3.75h6M6 3.75v8.5', 'M12.5 4v7.5M10.9 10l1.6 1.6 1.6-1.6'],
   toc: ['M2 3h6M2 6.5h5M2 10h6M2 13.5h4', 'M11 3h3M10 6.5h4M11 10h3M10 13.5h4'],
   tocLevels: ['M2.5 3.5h11M4.5 7h9M6.5 10.5h7M8.5 14h5'],
   caption: ['M2 2.5h12v7.5H2z', 'M2 13h7'],
