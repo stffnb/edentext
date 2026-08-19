@@ -12,7 +12,7 @@
 
   // Word's Picture Format and Shape Format: the same wrap modes, plus a shape's
   // own fill, outline and kind.
-  let { editor, which, wrap, alt = '', shapeKind, fillColor, strokeColor, strokeWidthPt }: {
+  let { editor, which, wrap, alt = '', shapeKind, fillColor, strokeColor, strokeWidthPt, textVertical = false }: {
     editor: Editor | null;
     which: 'picture' | 'shape';
     wrap: WrapMode;
@@ -21,6 +21,7 @@
     fillColor?: string | null;
     strokeColor?: string | null;
     strokeWidthPt?: number;
+    textVertical?: boolean;
   } = $props();
 
   const WRAPS: { key: WrapMode; icon: 'wrapInline' | 'wrapLeft' | 'wrapRight' | 'wrapTopBottom'; label: () => string }[] = [
@@ -128,6 +129,19 @@
         }}
       />
     </label>
+  </RibbonGroup>
+
+  <div class="ribbon-sep"></div>
+
+  <RibbonGroup label={t().ribbon.groups.text}>
+    <RibbonButton
+      variant="big"
+      icon="textDirection"
+      label={t().textBox.verticalText}
+      title={t().textBox.verticalText}
+      active={textVertical}
+      onclick={() => editor?.chain().focus().setTextBoxAttrs({ textVertical: !textVertical }).run()}
+    />
   </RibbonGroup>
 {/if}
 

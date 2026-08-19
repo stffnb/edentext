@@ -19,6 +19,7 @@
   import { t } from '../../i18n/i18n.svelte';
   import { withShortcut } from '../../i18n/shortcut';
   import { shortcutHint } from '../../editor/shortcuts';
+  import { findTextBox } from '../../editor/extensions/textBox';
   import { loadRibbonCollapsed, saveRibbonCollapsed, type ChromeMode, type ThemeMode } from '../../storage/theme';
   import type { StyleFamily } from '../../styles/styleSheet';
   import { DEFAULT_MARGINS, type PageMargins } from '../../storage/pageMargins';
@@ -146,17 +147,23 @@
     return sel instanceof NodeSelection ? sel.node.type.name : null;
   });
 
+  // A text box is worked on with the caret inside it just as often as with the box
+  // selected, so the tab follows the caret — the floating toolbar reads the same box.
+  let textBox = $derived.by(() => (tick >= 0 && editor ? findTextBox(editor.state) : null));
+  let inTextBox = $derived(!!textBox && selectedNode !== 'image');
+
   let frameAttrs = $derived.by<Record<string, unknown> | null>(() => {
     if (tick < 0 || !editor) return null;
     const sel = editor.state.selection;
-    return sel instanceof NodeSelection ? sel.node.attrs : null;
+    if (sel instanceof NodeSelection && !inTextBox) return sel.node.attrs;
+    return textBox?.node.attrs ?? null;
   });
 
   let shown = $derived([
     ...TABS,
     ...(inTable ? (['tableDesign', 'tableLayout'] as const) : []),
     ...(selectedNode === 'image' ? (['pictureFormat'] as const) : []),
-    ...(selectedNode === 'textBox' ? (['shapeFormat'] as const) : []),
+    ...(inTextBox ? (['shapeFormat'] as const) : []),
   ] as Tab[]);
 
   $effect(() => {
@@ -360,6 +367,7 @@
         fillColor={frameAttrs?.fillColor as string | null}
         strokeColor={frameAttrs?.strokeColor as string | null}
         strokeWidthPt={frameAttrs?.strokeWidthPt as number}
+        textVertical={frameAttrs?.textVertical === true}
       />
     {/if}
   </div>
