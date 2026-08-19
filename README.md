@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <a href="https://stffnb.github.io/edentext/"><strong>▶ Open EdenText</strong></a>
+  <a href="https://edentext.app"><strong>▶ Open EdenText</strong></a>
 </p>
 
 ---
