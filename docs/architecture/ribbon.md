@@ -9,7 +9,9 @@ compared. Everything the ribbon drives is the same editor, through the same comm
 `chromeMode: 'modern' | 'ribbon'` lives in `storage/theme.ts` beside the other UI-chrome prefs
 (`edentext-chrome`, default `'ribbon'`). `App.svelte` forks on it: the ribbon docks as a plain
 flex child, the island keeps its absolute overlay. Reachable from both sides — the theme dropdown
-in the modern chrome, the strip's appearance menu in the ribbon.
+in the modern chrome, the strip's appearance menu in the ribbon. The ribbon's menu entry for the
+island is behind `import.meta.env.DEV` until the island catches up — a production build offers no
+way in, but a stored `'modern'` pref still loads it.
 
 `--toolbar-overlay-h` is written **only** in modern mode. `editor.css` reads it as
 `var(--toolbar-overlay-h, 0px)`, so the ribbon's docked layout needs no second rule.

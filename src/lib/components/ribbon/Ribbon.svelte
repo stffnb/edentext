@@ -319,9 +319,11 @@
           <button class:selected={chromeMode === 'ribbon'} onclick={() => { chromeMode = 'ribbon'; closeMenu(); }}>
             {t().ribbon.chrome.ribbon}<span class="menu-sub">{t().ribbon.chrome.ribbonHint}</span>
           </button>
-          <button class:selected={chromeMode === 'modern'} onclick={() => { chromeMode = 'modern'; closeMenu(); }}>
-            {t().ribbon.chrome.modern}<span class="menu-sub">{t().ribbon.chrome.modernHint}</span>
-          </button>
+          {#if import.meta.env.DEV}
+            <button class:selected={chromeMode === 'modern'} onclick={() => { chromeMode = 'modern'; closeMenu(); }}>
+              {t().ribbon.chrome.modern}<span class="menu-sub">{t().ribbon.chrome.modernHint}</span>
+            </button>
+          {/if}
           <hr />
           <div class="rb-menu-label">{t().appearance.title}</div>
           {#each (['light', 'dark', 'allBlack', 'auto'] as const) as m}
