@@ -32,6 +32,9 @@ EdenText is a web-based, powerful word processor for everything from quick notes
 > on every commit — but expect occasional bugs, and keep backups of documents
 > you care about.
 
+[![EdenText editing a multi-column document](docs/screenshot.png)](https://edentext.app)
+Sample File from https://sample-files.com/
+
 ## Features
 
 - **Real page layout** — A4/Letter pages, margins, headers & footers, footnotes,
