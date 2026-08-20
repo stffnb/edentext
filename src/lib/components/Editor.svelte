@@ -788,9 +788,22 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     }
     const s = prevZoom / 100;
     prevZoom = z;
-    // The grid re-lays out around its rows, so the row at the top is the anchor —
-    // held in the post-effect, where the new geometry is on the DOM.
-    if (multiPage) return;
+    // The grid scrolls as one canvas, so the anchor lives in canvas space: the
+    // pointer for a wheel zoom, else the top of the viewport, like a single pane.
+    if (multiPage) {
+      const container = scrollers[0];
+      if (!container || !canvasEl) { pendingAnchorDoc = []; return; }
+      const editorRect = container.getBoundingClientRect();
+      const canvasRect = canvasEl.getBoundingClientRect();
+      const screenX = wheel ? wheel.x : canvasRect.left;
+      const screenY = wheel ? wheel.y : editorRect.top;
+      pendingAnchorDoc = [{
+        x: (screenX - canvasRect.left) / s,
+        y: (screenY - canvasRect.top) / s,
+        screenX, screenY,
+      }];
+      return;
+    }
     pendingAnchorDoc = Array.from({ length: paneCount }, (_, i) => i).map((i) => {
       const container = scrollers[i];
       const paper = papers[i];
@@ -814,7 +827,16 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     // Untracked: the scroll this writes comes back as a firstRow change, and an
     // effect that reads what its own scroll writes never stops.
     if (multiPage) {
-      untrack(() => scrollGridToPage(firstRow * gridCols + 1));
+      const anchor = pendingAnchorDoc[0];
+      pendingAnchorDoc = [];
+      const container = scrollers[0];
+      if (anchor && container && canvasEl) {
+        const z = appliedZoom / 100;
+        const rect = canvasEl.getBoundingClientRect();
+        container.scrollLeft += rect.left + anchor.x * z - anchor.screenX;
+        container.scrollTop += rect.top + anchor.y * z - anchor.screenY;
+        untrack(readFirstRow);
+      }
       return;
     }
     const anchors = pendingAnchorDoc;
