@@ -2,6 +2,8 @@
 // localStorage and round-tripped through the .odt (fo:language/fo:country on
 // the default paragraph style). 'none' disables checking.
 
+import { resolveBrowserLocale } from '../i18n/config';
+
 export const NO_LANGUAGE = 'none';
 
 export type DocumentLanguage = string;
@@ -20,8 +22,6 @@ export const LANGUAGES: LanguageDef[] = [
   { code: 'de', label: 'Deutsch', odf: { language: 'de', country: 'DE' } },
 ];
 
-export const DEFAULT_LANGUAGE: DocumentLanguage = 'en';
-
 const KEY = 'edentext-doc-language';
 
 export function findLanguage(code: DocumentLanguage): LanguageDef | undefined {
@@ -32,9 +32,10 @@ function isValid(code: string): boolean {
   return code === NO_LANGUAGE || !!findLanguage(code);
 }
 
+// First run follows the browser language; its en/de codes match the dictionaries.
 export function loadDocumentLanguage(): DocumentLanguage {
   const code = localStorage.getItem(KEY);
-  return code && isValid(code) ? code : DEFAULT_LANGUAGE;
+  return code && isValid(code) ? code : resolveBrowserLocale();
 }
 
 export function saveDocumentLanguage(code: DocumentLanguage): void {
