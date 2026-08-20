@@ -1063,7 +1063,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         },
       },
       onTransaction: ({ editor: e, transaction }) => {
-        tick++;
+        // Deferred: a blur tr arrives synchronously when a pane-layout switch tears
+        // down the focused DOM — inside Svelte's flush, where a $state write throws.
+        queueMicrotask(() => tick++);
         // The other pane shows the same state, decorations included.
         for (const view of paneViews) view?.updateState(e.state);
         // Mirror this transaction into the labelled undo/redo log for the toolbar's
