@@ -1097,7 +1097,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       },
     });
 
-    hosts[0].addEventListener('pm-pagecount', onPageCount);
+    // On the view's own DOM, not hosts[0]: switching the pane layout replaces the
+    // host element, and a listener there would go down with it.
+    editor.view.dom.addEventListener('pm-pagecount', onPageCount);
     document.fonts?.addEventListener('loadingdone', repaginateOnFontLoad);
     document.fonts?.ready.then(repaginateOnFontLoad);
     // Seed the scaled footprint before the first paint (so the page is centered, not
@@ -1313,9 +1315,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     cancelAnimationFrame(marginRecalcRaf);
     cancelAnimationFrame(marksRecalcRaf);
     cancelAnimationFrame(tableUiRaf);
+    editor?.view.dom.removeEventListener('pm-pagecount', onPageCount);
     editor?.destroy();
     resetHistoryLog();
-    hosts[0]?.removeEventListener('pm-pagecount', onPageCount);
     document.fonts?.removeEventListener('loadingdone', repaginateOnFontLoad);
   });
 </script>
