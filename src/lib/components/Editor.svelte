@@ -514,7 +514,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
 
   // --- Floating table-editing toolbar ---
   // Shown when the selection is inside a table; positioned just above that table.
-  let tableUi = $state<{ visible: boolean; top: number; left: number }>({ visible: false, top: 0, left: 0 });
+  let tableUi = $state<{ visible: boolean; top: number; left: number; bottom: number }>({ visible: false, top: 0, left: 0, bottom: 0 });
   let tableUiRaf = 0;
   // The popover the table toolbar has open, in its place. One at a time.
   let tableDialog = $state<'split' | 'sort' | 'formula' | null>(null);
@@ -546,7 +546,13 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const c = scrollers[activePane];
     if (!c || !tableDialogH) return tableUi.top;
     const pad = parseFloat(getComputedStyle(c).paddingTop) || 0;
-    return Math.max(tableUi.top, c.scrollTop + pad + tableDialogH + 6);
+    const clamped = c.scrollTop + pad + tableDialogH + 6;
+    if (clamped <= tableUi.top) return tableUi.top;
+    // No room above: flip below the table when that stays in view (the +dialogH+12
+    // cancels the hang-above transform); else the clamp, covering the table.
+    if (tableUi.bottom + 6 + tableDialogH <= c.scrollTop + c.clientHeight)
+      return tableUi.bottom + tableDialogH + 12;
+    return clamped;
   });
 
   // The DOM element of the table containing the current selection, or null.
@@ -612,7 +618,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       } catch { /* fall back to the table-top anchor */ }
     }
 
-    tableUi = { visible: true, top, left };
+    tableUi = { visible: true, top, left, bottom: tRect.bottom - cRect.top + container.scrollTop };
   }
 
   // --- Floating image wrap toolbar ---
