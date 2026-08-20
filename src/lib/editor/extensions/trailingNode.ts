@@ -12,6 +12,32 @@ const NEEDS_TRAILING_AFTER = new Set(['table', 'textBox', 'columns']);
 export const TrailingNode = Extension.create({
   name: 'trailingNode',
 
+  // The trap mirrored at the start: nothing can sit before a leading table, so Enter
+  // at the table's very first position inserts a paragraph above it and moves the
+  // caret there — the only way to get text before such a table.
+  addKeyboardShortcuts() {
+    return {
+      Enter: ({ editor }) => {
+        const { $from, empty } = editor.state.selection;
+        if (!empty || $from.parentOffset !== 0) return false;
+        let depth = 0;
+        for (let d = $from.depth; d > 0 && !depth; d--) {
+          if ($from.node(d).type.name === 'table') depth = d;
+        }
+        if (!depth) return false;
+        // First row, first cell, first block — anything else is a normal Enter.
+        for (let d = depth; d < $from.depth; d++) if ($from.index(d) !== 0) return false;
+        const tablePos = $from.before(depth);
+        if (editor.state.doc.resolve(tablePos).index() !== 0) return false;
+        return editor
+          .chain()
+          .insertContentAt(tablePos, { type: 'paragraph' })
+          .setTextSelection(tablePos + 1)
+          .run();
+      },
+    };
+  },
+
   addProseMirrorPlugins() {
     return [
       new Plugin({
