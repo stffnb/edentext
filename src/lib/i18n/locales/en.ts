@@ -524,6 +524,7 @@ const en = {
     points: ['Free · Open Source · Private by Design'],
     version: (v: string) => `Version ${v}`,
     viewOnGitHub: 'View on GitHub',
+    licenses: 'Third-party licenses',
   },
   findReplace: {
     dialogLabel: 'Find and replace',

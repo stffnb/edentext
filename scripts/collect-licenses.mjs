@@ -32,13 +32,30 @@ async function resolveTree(names, seen = new Set()) {
   return seen;
 }
 
+// Some packages carry their notice only in the README's License section; accept
+// it as a fallback, but only when it contains an actual copyright line.
+async function readmeLicense(name) {
+  const md = await readFile(`node_modules/${name}/README.md`, 'utf8').catch(() => '');
+  const start = md.search(/^#{1,6} *licen[cs]e\b/im);
+  if (start < 0) return null;
+  const body = md.slice(md.indexOf('\n', start) + 1);
+  const next = body.search(/^#{1,6} /m);
+  const text = (next < 0 ? body : body.slice(0, next))
+    .trim()
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+  return /copyright/i.test(text) ? text : null;
+}
+
 async function entry(name) {
   const pkg = await manifest(name);
   const file = (await readdir(`node_modules/${name}`)).find((f) => LICENSE_FILE.test(f));
-  if (!file) return null;
-  const text = await readFile(`node_modules/${name}/${file}`, 'utf8');
+  const text = file
+    ? (await readFile(`node_modules/${name}/${file}`, 'utf8')).trim()
+    : await readmeLicense(name);
+  if (!text) return null;
   const who = typeof pkg.author === 'string' ? pkg.author : pkg.author?.name;
-  return { name, license: pkg.license, who, text: text.trim() };
+  return { name, license: pkg.license, who, text };
 }
 
 const found = [];
@@ -73,7 +90,7 @@ const declared = await Promise.all(
   missing.map(async (name) => `  ${name} — ${(await manifest(name))?.license ?? 'unknown'}`),
 );
 const tail = declared.length
-  ? `\n${'-'.repeat(78)}\nDeclared in package metadata, no license file shipped upstream\n${'-'.repeat(78)}\n\n${declared.join('\n')}\n`
+  ? `\n${'-'.repeat(78)}\nDeclared in package metadata, no license text shipped upstream\n${'-'.repeat(78)}\n\n${declared.join('\n')}\n`
   : '';
 
 await writeFile('public/licenses.txt', `${header}\n${body}${tail}`);

@@ -60,6 +60,8 @@
       </svg>
       <span>{t().about.viewOnGitHub}</span>
     </a>
+
+    <a class="licenses" href="licenses.txt" target="_blank" rel="noopener">{t().about.licenses}</a>
   </div>
 </dialog>
 
@@ -191,5 +193,13 @@
     background: var(--color-primary);
     border-color: var(--color-primary);
     color: #fff;
+  }
+
+  .licenses {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+  }
+  .licenses:hover {
+    color: var(--color-text);
   }
 </style>

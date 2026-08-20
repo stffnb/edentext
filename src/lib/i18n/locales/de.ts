@@ -518,6 +518,7 @@ const de: Messages = {
     points: ['Free · Open Source · Private by Design'],
     version: (v) => `Version ${v}`,
     viewOnGitHub: 'Auf GitHub ansehen',
+    licenses: 'Lizenzen Dritter',
   },
   findReplace: {
     dialogLabel: 'Suchen und ersetzen',
