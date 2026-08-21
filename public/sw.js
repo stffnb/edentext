@@ -2,7 +2,7 @@
 // localStorage/IndexedDB — so a cached shell is the whole working editor: dictionaries,
 // fonts and the WASM speller included, each kept the first time it is asked for.
 
-const CACHE = 'edentext-v1';
+const CACHE = 'edentext-v2';
 // The entry document under one key, whichever path asked for it. Relative, so it
 // resolves against this script's own directory — the app root under any base path.
 const SHELL = './';

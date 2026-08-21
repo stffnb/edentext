@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <line x1="6" y1="31" x2="26" y2="31" stroke="#202b36" stroke-width="1.5" opacity="0.6"/>
-  <path transform="translate(11,31)" d="M0,0 C-3.895,-9.912 -2.832,-19.824 0,-25.488 C2.832,-19.824 3.895,-9.912 0,0 Z" fill="#4c6c8a"/>
-  <path transform="translate(21,31)" d="M0,0 C-4.583,-11.667 -3.333,-23.333 0,-29.167 C3.333,-23.333 4.583,-11.667 0,0 Z" fill="#d1734f"/>
-</svg>
