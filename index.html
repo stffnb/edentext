@@ -27,7 +27,19 @@
     <meta name="theme-color" content="#2f2f31" media="(prefers-color-scheme: dark)" />
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- Static copy for crawlers and noscript; removed in main.ts before the app mounts. -->
+      <div id="static-intro">
+        <h1>EdenText — free word processor in your browser</h1>
+        <p>
+          EdenText is a web-based, powerful word processor for everything from quick notes to
+          full-length books. No server, no account — your documents never leave your computer.
+          It opens and saves real <code>.odt</code> and <code>.docx</code> files, works offline
+          as a slim browser app, and is free and open source.
+        </p>
+        <p><a href="https://github.com/stffnb/edentext">Source code on GitHub</a></p>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

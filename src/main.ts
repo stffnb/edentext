@@ -23,6 +23,9 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     });
 }
 
+// Drop the static crawler copy (index.html) — mount() appends instead of replacing
+document.getElementById('static-intro')?.remove();
+
 const app = mount(App, { target: document.getElementById('app')! });
 
 export default app;
