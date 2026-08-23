@@ -11,7 +11,7 @@
   import { buildOdt, deriveFilename } from './lib/export/odt';
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
   import { supportsFsAccess, saveOdt, saveAsOdt, saveDocx, saveAsDocx, saveAsTemplate, openOdt } from './lib/export/saveFile';
-  import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFiles, type RecentFile } from './lib/storage/recentFiles';
+  import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFile, forgetRecentFiles, pruneRecentFiles, type RecentFile } from './lib/storage/recentFiles';
   import { importOdt } from './lib/import/odt';
   import { importDocx } from './lib/import/docx';
   import { convertUnsupportedImages } from './lib/import/imageFormats';
@@ -474,10 +474,12 @@
   // The file the document is saved to (File System Access API). Session-only: a
   // reload restores the doc from localStorage but the first Save re-prompts.
   let fileHandle: FileSystemFileHandle | null = $state(null);
-  // Word's and LibreOffice's recent-documents list; a click reopens the file itself
-  // where the browser can hand back its handle.
-  let recentFiles: RecentFile[] = $state(loadRecentFiles());
+  // Word's and LibreOffice's recent-documents list; a click reopens the file itself.
+  // Only a browser with the File System Access API has handles to reopen from, so
+  // elsewhere the list stays empty; a startup prune drops entries whose handle is gone.
   const fsSupported = supportsFsAccess();
+  let recentFiles: RecentFile[] = $state(fsSupported ? loadRecentFiles() : []);
+  if (fsSupported) void pruneRecentFiles().then((list) => (recentFiles = list));
   let fileInput: HTMLInputElement | null = $state(null);
   let pdfBusy = $state(false);
   let docxBusy = $state(false);
@@ -828,17 +830,19 @@
     }
   }
 
-  // Reopen a file from the recent list. The File System Access API re-prompts for
-  // permission after a reload, and a file that has moved or been deleted is gone —
-  // either way the entry is dropped rather than left to fail again.
+  // Reopen a file from the recent list. Only a file that is really gone drops the
+  // entry; a permission prompt declined or dismissed keeps it for the next try.
   async function handleOpenRecent(entry: RecentFile) {
     exportMenuOpen = false;
     try {
       const r = await readRecentFile(entry.id);
-      if (!r) {
+      if (r === 'gone') {
         alert(t().dialogs.recentUnavailable(entry.name));
-        recentFiles = recentFiles.filter((f) => f.id !== entry.id);
-        localStorage.setItem('edentext-recent-files', JSON.stringify(recentFiles));
+        recentFiles = forgetRecentFile(entry.id);
+        return;
+      }
+      if (r === 'denied') {
+        alert(t().dialogs.recentDenied(entry.name));
         return;
       }
       await applyImport(r.bytes, r.handle, r.name);

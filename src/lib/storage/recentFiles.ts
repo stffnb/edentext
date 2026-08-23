@@ -1,10 +1,8 @@
 import { openDb, idbRequest } from './idb';
 
-// The files this browser has opened or saved, most recent first. The name and time
-// go in localStorage so the menu can be drawn synchronously; the FileSystemFileHandle
-// that actually reopens one is structured-cloneable but not JSON, so it lives in
-// IndexedDB beside it. A browser without the File System Access API keeps the names
-// only — there is nothing to reopen from, and the entry says so.
+// The files this browser can reopen, most recent first. Name and time go in
+// localStorage so the menu draws synchronously; the FileSystemFileHandle that reopens
+// one is structured-cloneable but not JSON, so it lives in IndexedDB beside it.
 const KEY = 'edentext-recent-files';
 const DB_NAME = 'edentext-recent';
 const STORE = 'handles';
@@ -35,24 +33,42 @@ function write(list: RecentFile[]): void {
 }
 
 /**
- * Record a file as just used. A handle already in the list keeps its id — the same
- * file opened twice is one entry, moved to the top — and one without a handle is
- * matched on its name, which is all a browser with no picker gives us.
+ * Record a file as just used. Without a handle nothing can ever reopen the entry
+ * (no File System Access API, or a template), so none is recorded. A handle already
+ * in the list keeps its id — the same file opened twice is one entry, moved to the top.
  */
 export async function rememberRecentFile(name: string, handle: FileSystemFileHandle | null): Promise<RecentFile[]> {
   const list = loadRecentFiles();
-  const existing = handle ? await findByHandle(list, handle) : list.find((f) => f.name === name);
+  if (!handle) return list;
+  const existing = (await findByHandle(list, handle)) ?? list.find((f) => f.name === name);
   const id = existing?.id ?? `f${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
   const next = [{ id, name, at: Date.now() }, ...list.filter((f) => f.id !== id)].slice(0, MAX);
   write(next);
-  if (handle) await putHandle(id, handle);
+  await putHandle(id, handle);
   await sweepHandles(next);
+  return next;
+}
+
+/** Drop one entry (a dead one, on a failed reopen) and its stored handle. */
+export function forgetRecentFile(id: string): RecentFile[] {
+  const next = loadRecentFiles().filter((f) => f.id !== id);
+  write(next);
+  void sweepHandles(next);
   return next;
 }
 
 export function forgetRecentFiles(): void {
   write([]);
   void sweepHandles([]);
+}
+
+/** Drop every entry with no stored handle — nothing can reopen those. Run at startup. */
+export async function pruneRecentFiles(): Promise<RecentFile[]> {
+  const list = loadRecentFiles();
+  const kept: RecentFile[] = [];
+  for (const f of list) if (await getHandle(f.id)) kept.push(f);
+  if (kept.length !== list.length) write(kept);
+  return kept;
 }
 
 // isSameEntry is the only way to compare two handles; it is async, so this walks.
@@ -98,21 +114,26 @@ async function sweepHandles(list: RecentFile[]): Promise<void> {
 }
 
 /**
- * The bytes of a recent file, or null when it can't be reopened — the browser has no
- * handle for it, the file is gone, or the user declined the permission prompt the
- * File System Access API requires after a reload.
+ * The bytes of a recent file. 'gone' = no handle, or the file no longer exists — the
+ * entry is dead; 'denied' = read permission (re-asked after a reload) was not granted
+ * this time — the entry stays. Opening needs only 'read'; Save re-prompts on its own.
  */
-export async function readRecentFile(id: string): Promise<{ bytes: Uint8Array; handle: FileSystemFileHandle; name: string } | null> {
+export async function readRecentFile(id: string): Promise<{ bytes: Uint8Array; handle: FileSystemFileHandle; name: string } | 'gone' | 'denied'> {
   const handle = await getHandle(id);
-  if (!handle) return null;
+  if (!handle) return 'gone';
   type Permissioned = FileSystemFileHandle & {
     queryPermission?: (d: { mode: string }) => Promise<PermissionState>;
     requestPermission?: (d: { mode: string }) => Promise<PermissionState>;
   };
   const h = handle as Permissioned;
-  let state = (await h.queryPermission?.({ mode: 'readwrite' })) ?? 'granted';
-  if (state === 'prompt') state = (await h.requestPermission?.({ mode: 'readwrite' })) ?? 'denied';
-  if (state !== 'granted') return null;
-  const file = await handle.getFile();
-  return { bytes: new Uint8Array(await file.arrayBuffer()), handle, name: file.name };
+  let state = (await h.queryPermission?.({ mode: 'read' })) ?? 'granted';
+  if (state === 'prompt') state = (await h.requestPermission?.({ mode: 'read' })) ?? 'denied';
+  if (state !== 'granted') return 'denied';
+  try {
+    const file = await handle.getFile();
+    return { bytes: new Uint8Array(await file.arrayBuffer()), handle, name: file.name };
+  } catch (err) {
+    if ((err as DOMException)?.name === 'NotFoundError') return 'gone';
+    throw err;
+  }
 }

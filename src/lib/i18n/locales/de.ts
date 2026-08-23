@@ -916,7 +916,9 @@ const de: Messages = {
     couldNotExportDocx: 'Export nach Word (.docx) nicht möglich.',
     couldNotExportPdf: 'PDF-Export nicht möglich.',
     recentUnavailable: (name) =>
-      `„${name}“ konnte nicht erneut geöffnet werden — die Datei wurde vielleicht verschoben, oder der Browser hat keine Berechtigung mehr dafür. Öffne sie stattdessen über den Dateidialog.`,
+      `„${name}“ konnte nicht erneut geöffnet werden — die Datei wurde offenbar verschoben oder gelöscht. Öffne sie stattdessen über den Dateidialog.`,
+    recentDenied: (name) =>
+      `Der Browser hat das Lesen von „${name}“ nicht erlaubt. Erlaube den Zugriff im Berechtigungsdialog, oder öffne die Datei über den Dateidialog.`,
     couldNotPrint: 'Drucken nicht möglich.',
     couldNotPrintPdf: 'Druck als PDF nicht möglich.',
     autosaveQuota:

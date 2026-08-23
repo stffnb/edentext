@@ -922,7 +922,9 @@ const en = {
     couldNotExportDocx: 'Could not export to Word (.docx).',
     couldNotExportPdf: 'Could not export to PDF.',
     recentUnavailable: (name: string) =>
-      `"${name}" could not be opened again — it may have moved, or the browser no longer has permission for it. Open it from the file picker instead.`,
+      `"${name}" could not be opened again — the file seems to have been moved or deleted. Open it from the file picker instead.`,
+    recentDenied: (name: string) =>
+      `The browser did not allow reading "${name}". Allow access in its permission prompt, or open the file from the file picker.`,
     couldNotPrint: 'Could not print.',
     couldNotPrintPdf: 'Could not print to PDF.',
     autosaveQuota:
