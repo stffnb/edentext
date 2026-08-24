@@ -182,6 +182,10 @@ function paragraph(r: Rng, indents = true, top = false): N {
       fixed: false, value: '2026-08-16T10:30:00' } });
   }
   if (maybe(r, 0.04)) body.push({ type: 'ruby', attrs: { base: '漢字', text: 'かんじ' } });
+  // label without leading/trailing space: both importers trim the shown text.
+  if (maybe(r, 0.04)) {
+    body.push({ type: 'placeholderField', attrs: { text: pick(r, ['Empfängername', 'Straße & <Nr>', 'Datum "heute"']) } });
+  }
   // display=false only: ODF has no display flag, the importer derives it from the formula
   // owning its line (aloneInParagraph) — a display formula is its own paragraph (genDoc).
   if (maybe(r, 0.05)) {

@@ -2488,3 +2488,50 @@ describe('Leg 30: a figure frame (picture + caption in one box)', () => {
     check('box comes back whole', shapeOf(back) === 'image|text+sequenceField+text', shapeOf(back));
   });
 });
+
+describe('Leg 31: placeholder fields (ODT + DOCX)', () => {
+  const PLF = (text: string, marks?: N[]): N =>
+    ({ type: 'placeholderField', attrs: { text }, ...(marks ? { marks } : {}) });
+  const BOLD = { type: 'bold' };
+  const doc: N = {
+    type: 'doc',
+    content: [
+      P(null, T('Sehr geehrte '), PLF('Empfängername'), T(',')),
+      P(null, PLF('Betreff & <Zeichen>', [BOLD])),
+    ],
+  };
+  const fieldsOf = (res: N): N[] => {
+    const out: N[] = [];
+    (function walk(n: N) { if (n.type === 'placeholderField') out.push(n); for (const c of n.content ?? []) walk(c); })(res.content);
+    return out;
+  };
+
+  it('ODT: exports <text:placeholder> and re-imports label + marks', async () => {
+    const bytes = await buildOdt(doc, margins);
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('emits text:placeholder', content.includes('<text:placeholder text:placeholder-type="text">'), content.slice(0, 200));
+    check('label carries LibreOffice-style brackets', content.includes('&lt;Empfängername&gt;'));
+    check('no leftover sentinel', !content.includes(''));
+    const fields = fieldsOf(importOdt(bytes));
+    check('both fields imported', fields.length === 2, fields);
+    check('label round-trips', fields[0]?.attrs?.text === 'Empfängername', fields[0]?.attrs);
+    check('special characters survive', fields[1]?.attrs?.text === 'Betreff & <Zeichen>', fields[1]?.attrs);
+    check('bold mark survives', (fields[1]?.marks ?? []).some((m: N) => m.type === 'bold'), fields[1]?.marks);
+  });
+
+  it('DOCX: exports a tagged <w:sdt> and re-imports it as a field', async () => {
+    const bytes = await buildDocx(doc, margins);
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    check('emits a content control', xml.includes('<w:sdt>'), xml.slice(0, 200));
+    check('tagged as ours', xml.includes('w:tag w:val="edentext-placeholder"'));
+    check('gray placeholder color', xml.includes('<w:color w:val="808080"/>'));
+    check('no leftover sentinel', !xml.includes(''));
+    const fields = fieldsOf(importDocx(bytes));
+    check('both fields imported', fields.length === 2, fields);
+    check('label round-trips', fields[0]?.attrs?.text === 'Empfängername', fields[0]?.attrs);
+    check('special characters survive', fields[1]?.attrs?.text === 'Betreff & <Zeichen>', fields[1]?.attrs);
+    check('bold mark survives', (fields[1]?.marks ?? []).some((m: N) => m.type === 'bold'), fields[1]?.marks);
+    check('the gray does not come back as a color mark',
+      !fields.some((f) => (f.marks ?? []).some((m: N) => m.type === 'textStyle' && m.attrs?.color)), fields);
+  });
+});

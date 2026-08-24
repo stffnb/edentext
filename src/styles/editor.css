@@ -885,6 +885,16 @@
   height: 0;
 }
 
+/* A template placeholder field: gray until replaced, as LibreOffice draws its own.
+   The sheet keeps its own colors through every theme, so the gray is fixed too. */
+.paper .tiptap span[data-placeholder-field] {
+  color: #808080;
+}
+.paper .tiptap span[data-placeholder-field].ProseMirror-selectednode {
+  background: color-mix(in srgb, var(--color-primary) 25%, transparent);
+  outline: none;
+}
+
 /* Paragraph mark (¶). Out of flow at its static position — after the last character,
    but invisible to line breaking, so a line-end space still hangs into the margin and
    the mark can never be pushed onto a line of its own. The toggle only recolors it. */

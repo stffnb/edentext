@@ -53,6 +53,7 @@ import { TableStyle } from './extensions/tableStyle';
 import { TrailingNode } from './extensions/trailingNode';
 import { Image } from './extensions/image';
 import { DateTimeField } from './extensions/dateTimeField';
+import { PlaceholderField } from './extensions/placeholderField';
 import { SequenceField } from './extensions/caption';
 import { IndexEntry } from './extensions/indexEntry';
 import { BibliographyEntry } from './extensions/bibliographyEntry';
@@ -120,6 +121,9 @@ export const extensions = [
   // Inline date/time field (fixed or auto-updating); round-trips to ODF
   // <text:date>/<text:time> and DOCX DATE/TIME fields.
   DateTimeField,
+  // A template placeholder the user clicks and types over; round-trips to ODF
+  // <text:placeholder> and a tagged DOCX content control.
+  PlaceholderField,
   // A caption's running number, one counter per category in document order. Round-trips
   // to an ODF <text:sequence> and a DOCX SEQ field.
   SequenceField,

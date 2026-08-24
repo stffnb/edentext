@@ -118,6 +118,11 @@ const MTH = '';
 // w:ruby, so applyRubyDocx swaps that run for one. U+E021, matching export/odt.ts.
 const RBY = '\uE021';
 
+// A placeholder field becomes a tagged <w:sdt> content control the package can't emit;
+// applyPlaceholdersDocx swaps the sentinel run for one. U+E022, matching export/odt.ts.
+const PLH = '\uE022';
+export const PLACEHOLDER_SDT_TAG = 'edentext-placeholder';
+
 // Formulas collected while serializing, in document order (module-level like
 // docLangTag: inlineToRuns is reached from every block path without a collector).
 type FormulaDocx = { latex: string; display: boolean };
@@ -126,6 +131,7 @@ let docFormulas: FormulaDocx[] = [];
 // The ruby annotations, in the same document order their sentinels are met in.
 type RubyDocx = { base: string; text: string };
 let docRubies: RubyDocx[] = [];
+let docPlaceholders: string[] = [];
 
 // The sources cited, one per tag in document order — Word keeps them in a custom-XML
 // part and the CITATION fields only name the tag. Module-level like docFormulas.
@@ -590,6 +596,10 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       // The reading over its base text; applyRubyDocx swaps this run for <w:ruby>.
       docRubies.push({ base: String(node.attrs?.base ?? ''), text: String(node.attrs?.text ?? '') });
       out.push(new TextRun({ text: `${RBY}${docRubies.length - 1}${RBY}` }));
+    } else if (node.type === 'placeholderField') {
+      // applyPlaceholdersDocx swaps this run for a tagged <w:sdt> content control.
+      docPlaceholders.push(String(node.attrs?.text ?? ''));
+      out.push(new TextRun({ text: `${PLH}${docPlaceholders.length - 1}${PLH}`, ...runPropsFromMarks(node.marks) }));
     } else if (node.type === 'indexEntry') {
       // Word's index entry: a hidden XE field, its term in the instruction. A key files
       // the term under it, "key:term", exactly as LibreOffice's text:key1 does.
@@ -996,6 +1006,9 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
     } else if (child.type === 'ruby') {
       docRubies.push({ base: String(child.attrs?.base ?? ''), text: String(child.attrs?.text ?? '') });
       runs += `<w:r><w:t xml:space="preserve">${RBY}${docRubies.length - 1}${RBY}</w:t></w:r>`;
+    } else if (child.type === 'placeholderField') {
+      docPlaceholders.push(String(child.attrs?.text ?? ''));
+      runs += `<w:r>${txbxRunPropsXml(child.marks)}<w:t xml:space="preserve">${PLH}${docPlaceholders.length - 1}${PLH}</w:t></w:r>`;
     } else if (child.type === 'text' && child.text) {
       const rPr = txbxRunPropsXml(child.marks);
       // A recorded revision wraps the run; a deletion's text sits in w:delText.
@@ -1353,6 +1366,33 @@ function applyRubyDocx(bytes: Uint8Array, rubies: RubyDocx[]): Uint8Array {
       return '<w:r><w:ruby><w:rubyPr><w:rubyAlign w:val="center"/><w:hps w:val="12"/>'
         + `<w:hpsRaise w:val="24"/><w:hpsBaseText w:val="24"/><w:lid w:val="${docLangTag}"/></w:rubyPr>`
         + `<w:rt>${run(r.text, 12)}</w:rt><w:rubyBase>${run(r.base)}</w:rubyBase></w:ruby></w:r>`;
+    },
+  );
+  files['word/document.xml'] = strToU8(xml);
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
+// Post-pack pass: swap each PLH sentinel run for a tagged inline <w:sdt> content
+// control. w:temporary makes Word drop the control once the user types over it; the
+// run keeps its own <w:rPr> and gains placeholder gray unless it has a color already.
+function applyPlaceholdersDocx(bytes: Uint8Array, placeholders: string[]): Uint8Array {
+  if (!placeholders.length) return bytes;
+  const files = unzipSync(bytes);
+  const docBytes = files['word/document.xml'];
+  if (!docBytes) return bytes;
+  let xml = strFromU8(docBytes);
+  xml = xml.replace(
+    new RegExp(`<w:r\\b[^>]*?>(?:(?!</?w:r[\\s>])[\\s\\S])*?${PLH}(\\d+)${PLH}(?:(?!</?w:r[\\s>])[\\s\\S])*?</w:r>`, 'g'),
+    (m, idx: string) => {
+      const label = placeholders[Number(idx)];
+      if (label === undefined) return '';
+      let rpr = /<w:rPr>[\s\S]*?<\/w:rPr>/.exec(m)?.[0] ?? '<w:rPr></w:rPr>';
+      if (!rpr.includes('<w:color')) rpr = rpr.replace('<w:rPr>', '<w:rPr><w:color w:val="808080"/>');
+      return `<w:sdt><w:sdtPr><w:alias w:val="${escapeXml(label)}"/><w:tag w:val="${PLACEHOLDER_SDT_TAG}"/>`
+        + '<w:temporary/><w:text/></w:sdtPr><w:sdtContent>'
+        + `<w:r>${rpr}<w:t xml:space="preserve">${escapeXml(label)}</w:t></w:r></w:sdtContent></w:sdt>`;
     },
   );
   files['word/document.xml'] = strToU8(xml);
@@ -2178,6 +2218,7 @@ export async function buildDocx(
   exportSpacingModel = spacingModel;
   docFormulas = [];
   docRubies = [];
+  docPlaceholders = [];
   docSources = [];
   const num = new Numbering();
   const { w: pageWidthCm, h: pageHeightCm } = pageDimsCm(pageFormat, orientation);
@@ -2341,7 +2382,7 @@ export async function buildDocx(
 
   const blob = await Packer.toBlob(doc);
   const packed = applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
-  const cited = applyBibliographyDocx(applyRubyDocx(packed, docRubies), docSources, docCitationStyle(docJson));
+  const cited = applyBibliographyDocx(applyPlaceholdersDocx(applyRubyDocx(packed, docRubies), docPlaceholders), docSources, docCitationStyle(docJson));
   const withNotes = docNoteIds.size ? applyNoteMarksDocx(applyNotePrDocx(cited, notesSettings)) : cited;
   const withResolved = applyCommentsResolvedDocx(withNotes);
   const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withResolved) : withResolved;

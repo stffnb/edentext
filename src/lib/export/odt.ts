@@ -196,6 +196,10 @@ const BIB = '\uE01F';
 // <text:ruby>. U+E021.
 const RBY = '\uE021';
 
+// Sentinel wrapping a placeholder field's index (PLH{i}PLH); applyPlaceholderFields
+// rewrites it to <text:placeholder>. U+E022.
+const PLH = '\uE022';
+
 // Sentinels for recorded revisions (trackChanges.ts): TCI{i}TCI brackets an insertion's
 // runs, TCD{i}TCD stands where a deletion's text was cut out. applyRevisions rewrites
 // both and builds the <text:tracked-changes> registry. U+E01B/U+E01C.
@@ -570,6 +574,22 @@ function replaceDateTimeFields(node: TiptapNode, fields: DateTimeFieldExport[]):
       continue;
     }
     content.push(replaceDateTimeFields(child, fields));
+  }
+  return { ...node, content };
+}
+
+// Replace every inline `placeholderField` node with a PLH-sentinel text run and
+// collect its label, mirroring replaceDateTimeFields.
+function replacePlaceholderFields(node: TiptapNode, labels: string[]): TiptapNode {
+  if (!node.content?.length) return node;
+  const content: TiptapNode[] = [];
+  for (const child of node.content) {
+    if (child.type === 'placeholderField') {
+      labels.push(typeof child.attrs?.text === 'string' ? child.attrs.text : '');
+      content.push({ type: 'text', text: `${PLH}${labels.length - 1}${PLH}`, marks: child.marks });
+      continue;
+    }
+    content.push(replacePlaceholderFields(child, labels));
   }
   return { ...node, content };
 }
@@ -3957,6 +3977,23 @@ function applyDateTimeFields(odtBytes: Uint8Array, fields: DateTimeFieldExport[]
   return rezipOdt(files);
 }
 
+// Rewrite each PLH sentinel to <text:placeholder>. The display text carries ASCII
+// angle brackets, which is what LibreOffice writes for its own placeholder fields.
+function applyPlaceholderFields(odtBytes: Uint8Array, labels: string[]): Uint8Array {
+  if (!labels.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+  let content = strFromU8(contentBytes);
+  content = content.replace(new RegExp(`${PLH}(\\d+)${PLH}`, 'g'), (_m, idx: string) => {
+    const label = labels[Number(idx)];
+    if (label === undefined) return '';
+    return `<text:placeholder text:placeholder-type="text">${escapeXml(`<${label}>`)}</text:placeholder>`;
+  });
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
 // Graphic style for a text box / shape: fill, stroke, text padding, auto-grow, and —
 // for floating boxes — the same wrap/position props as floating images.
 function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
@@ -4474,6 +4511,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const textBoxes: TextBoxExport[] = [];
   const columns: ColumnsExport[] = [];
   const dateFields: DateTimeFieldExport[] = [];
+  const placeholderLabels: string[] = [];
   const formulas: FormulaExport[] = [];
   const crossRefs: CrossRefExport[] = [];
   const notes: NoteExport[] = [];
@@ -4483,7 +4521,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const indexMarks: IndexEntryExport[] = [];
   const bibMarks: BibExport[] = [];
   const rubies: RubyExport[] = [];
-  const sentinels = replaceRuby(replaceBibEntries(replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), formulas), crossRefs), commentList), seqFields), revisionList), indexMarks), bibMarks), rubies);
+  const sentinels = replaceRuby(replaceBibEntries(replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replacePlaceholderFields(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), placeholderLabels), formulas), crossRefs), commentList), seqFields), revisionList), indexMarks), bibMarks), rubies);
   const raw = markTextEffects(bakeListCharStyles(sentinels, styles), DEFAULT_FONT_SIZE_PT, styles);
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
@@ -4688,7 +4726,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withBreaks = applyInlineSentinels(applyTabLeaders(cleaned));
   const withImages = applyImages(withBreaks, images);
   const withDateFields = applyDateTimeFields(withImages, dateFields, language ?? null);
-  const withSequences = applyRuby(applyBibEntries(applyIndexEntries(applyRevisions(applySequenceFields(withDateFields, seqFields), revisionList, recordChanges), indexMarks), bibMarks), rubies);
+  const withPlaceholders = applyPlaceholderFields(withDateFields, placeholderLabels);
+  const withSequences = applyRuby(applyBibEntries(applyIndexEntries(applyRevisions(applySequenceFields(withPlaceholders, seqFields), revisionList, recordChanges), indexMarks), bibMarks), rubies);
   const withFormulas = applyFormulas(withSequences, formulas);
   const withTextBoxes = applyTextBoxes(withFormulas, textBoxes);
   const withColumns = applyColumns(withTextBoxes, columns);

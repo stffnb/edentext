@@ -2,6 +2,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, toggle as onOff, wVal, W, R, WP, A, B, WPS, MC, VML, O, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { lengthToPt, WATERMARK_NAME } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
+import { PLACEHOLDER_SDT_TAG } from '../export/docx';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage, framePx } from '../editor/extensions/image';
@@ -1192,12 +1193,29 @@ function snapPt(v: number): number {
 // ---- inline conversion (runs, marks, fields, images) -----------------------
 
 // Word wraps a citation or any content control in a w:sdt holding ordinary inline
-// content — walk through the wrapper, or those runs never reach the paragraph.
+// content — walk through the wrapper, or those runs never reach the paragraph. Our
+// own placeholder control is the exception: it survives whole and becomes a field.
 function inlineChildren(el: Element): Element[] {
   return Array.from(el.children).flatMap((c) => {
     if (c.namespaceURI !== W || c.localName !== 'sdt') return [c];
+    if (sdtIsPlaceholder(c)) return [c];
     const content = fc(c, 'sdtContent');
     return content ? inlineChildren(content) : [];
+  });
+}
+
+function sdtIsPlaceholder(sdt: Element): boolean {
+  const pr = fc(sdt, 'sdtPr');
+  return !!pr && fc(pr, 'tag')?.getAttributeNS(W, 'val') === PLACEHOLDER_SDT_TAG;
+}
+
+// The export paints the control's run gray; that gray is presentation, not the
+// author's formatting, so it must not come back as a color mark.
+function stripPlaceholderGray(marks: Mark[]): Mark[] {
+  return marks.flatMap((m) => {
+    if (m.type !== 'textStyle' || String(m.attrs?.color ?? '').toLowerCase() !== '#808080') return [m];
+    const { color: _color, ...rest } = m.attrs ?? {};
+    return Object.keys(rest).length ? [{ type: m.type, attrs: rest }] : [];
   });
 }
 
@@ -1465,6 +1483,21 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     if (trackBookmark(el, ctx) || trackComment(el, ctx)) continue;
     switch (el.localName) {
       case 'r': handleRun(el); break;
+      case 'sdt': {
+        // Only a placeholder-tagged control gets here (inlineChildren unwraps the
+        // rest): a field in the body, its plain runs in a header/footer zone.
+        const content = fc(el, 'sdtContent');
+        if (hfFields) { if (content) for (const r of fcAll(content, 'r')) handleRun(r); break; }
+        const pr = fc(el, 'sdtPr');
+        const alias = pr ? fc(pr, 'alias')?.getAttributeNS(W, 'val') : null;
+        const shown = (content?.textContent ?? '').trim().replace(/^[<‹]/, '').replace(/[>›]$/, '');
+        const field: Node = { type: 'placeholderField', attrs: { text: (alias || shown).trim() } };
+        const first = content ? fcAll(content, 'r')[0] : undefined;
+        const m = first ? stripPlaceholderGray(runMarks(first)) : [];
+        if (m.length) field.marks = m;
+        out.push(field);
+        break;
+      }
       case 'hyperlink': {
         const rid = el.getAttributeNS(R, 'id');
         // No relationship id: an internal link to a bookmark in this document.

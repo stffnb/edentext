@@ -70,4 +70,5 @@ U+E009 (columns), U+E00A (date/time fields), `STY` U+E00D (paragraph styles),
 `TXBX_NUM` U+E01D (DOCX only: a numbering id a box's list has yet to be given),
 `IXE` U+E01E (an alphabetical-index entry), `BIB` U+E01F (a citation),
 `NOHYP` U+E020 (DOCX only: a paragraph whose w:pPr must gain w:suppressAutoHyphens),
-`RBY` U+E021 (a ruby annotation).
+`RBY` U+E021 (a ruby annotation), `PLH` U+E022 (a placeholder field — ODF
+`<text:placeholder>`, DOCX a `w:sdt` content control tagged `edentext-placeholder`).

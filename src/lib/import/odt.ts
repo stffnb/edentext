@@ -2160,6 +2160,17 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
                 continue;
               }
             }
+            // A placeholder field (Insert ▸ Field ▸ Placeholder): the label is the
+            // shown text without the <>/‹› brackets either producer draws around it.
+            if (!hfFields && e.localName === 'placeholder') {
+              const label = (e.textContent ?? '').trim().replace(/^[<‹]/, '').replace(/[>›]$/, '');
+              const field: Node = { type: 'placeholderField', attrs: { text: label } };
+              const marks = marksFor(props, ctx.resolver, defaults);
+              if (linkHref) marks.push({ type: 'link', attrs: { href: linkHref } });
+              if (marks.length) field.marks = marks;
+              out.push(field);
+              continue;
+            }
             // A caption's running number (caption.ts). Only the two categories the
             // editor counts survive as a live field; any other sequence (a user
             // variable, a chapter counter) keeps its evaluated text.
