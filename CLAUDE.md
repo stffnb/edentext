@@ -92,6 +92,7 @@ src/
                               orderedListTypes, historyLog, colorDebug)
     math/                   – formula AST: LaTeX parser/serializer, MathML, OMML
     export/ import/ spell/ storage/ styles/  – ODF+DOCX I/O, spell-check, persistence, named styles
+    templates/              – built-in document templates: registry + one localized module each
   styles/                   – global.css + editor.css
 ```
 

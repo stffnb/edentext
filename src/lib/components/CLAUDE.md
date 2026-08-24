@@ -199,6 +199,15 @@ per page in unscaled document px. The watermark is an `<svg><text textLength>` b
 fontwork shape **stretches** its text to its box instead of setting it at a size — a font
 size alone makes a short word far too small and a long one overflow the page.
 
+## Built-in templates (`TemplateGalleryDialog.svelte`, `lib/templates/`)
+
+"New from template" in both chromes opens the gallery; a card applies its entry via
+`App.svelte`'s `applyTemplate` — `resetDocumentState()` (the extracted body of New),
+then the template's content, margins, styles and fold marks. `documentName` becomes the
+localized template name and no file handle is bound, so the first Save asks where. The
+DIN letter's mm positions were verified headlessly (45mm address field, 125mm info
+column); its module documents the arithmetic.
+
 ## Fold marks (`FoldMarkLayer.svelte`, `storage/foldMarks.ts`)
 
 Fold + punch marks at the DIN 5008 positions, drawn per page in the left margin from

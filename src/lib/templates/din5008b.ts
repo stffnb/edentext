@@ -25,8 +25,12 @@ const BOLD = { type: 'bold' };
 
 function buildLetter(): TemplateData {
   const L = t().templates.letter;
+  // An info line with no address half indents to the column instead of leading with
+  // a tab (a tab with nothing before it stays on the default grid).
   const addressRow = (attrs: N | null, addr: N[], info: N[]): N =>
-    P({ ...(attrs ?? {}), tabStops: INFO_TAB }, ...addr, T('\t'), ...info);
+    addr.length
+      ? P({ ...(attrs ?? {}), tabStops: INFO_TAB }, ...addr, T('\t'), ...info)
+      : P({ ...(attrs ?? {}), indent: 10 }, ...info);
   const date: N = { type: 'dateTimeField', attrs: { kind: 'date', format: DEFAULT_DATE_FORMAT, fixed: true, value: toDateValue(new Date()) } };
   return {
     margins: { top: 2, bottom: 2, left: 2.5, right: 2 },
@@ -36,7 +40,8 @@ function buildLetter(): TemplateData {
       content: [
         P(null, PLH(L.companyName, BOLD)),
         // The one-line return address opens the address field at 45mm from the top.
-        P({ spaceBefore: RETURN_SPACE_BEFORE_PT, spaceAfter: RETURN_SPACE_AFTER_PT }, PLH(L.returnAddress, SMALL)),
+        // fontSize also shrinks the paragraph mark, so the line box is 8pt tall.
+        P({ spaceBefore: RETURN_SPACE_BEFORE_PT, spaceAfter: RETURN_SPACE_AFTER_PT, fontSize: '8pt' }, PLH(L.returnAddress, SMALL)),
         addressRow(null, [PLH(L.recipientCompany)], [T(L.yourRef), PLH(L.reference)]),
         addressRow(null, [PLH(L.recipientName)], [T(L.yourMessage), PLH(L.date)]),
         addressRow(null, [PLH(L.recipientStreet)], [T(L.ourRef), PLH(L.reference)]),
