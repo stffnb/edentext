@@ -1518,18 +1518,22 @@ function applyPageDecorDocx(bytes: Uint8Array, decor: PageDecor, widthPt: number
 
 // Post-pack pass: fold + punch marks as named VML lines in every header part — the one
 // place that repeats on every page — positioned from the page corner like the watermark.
-function applyFoldMarksDocx(bytes: Uint8Array, on: boolean): Uint8Array {
+function applyFoldMarksDocx(bytes: Uint8Array, on: boolean, pageWidthMm: number): Uint8Array {
   if (!on) return bytes;
   const files = unzipSync(bytes);
   const pt = (mm: number) => Math.round((mm / 25.4) * 72 * 100) / 100;
-  const line = (id: string, mm: number, lenMm: number) =>
+  const line = (id: string, xMm: number, mm: number, lenMm: number) =>
     `<v:line id="${id}" o:allowincell="f"` +
     ` style="position:absolute;mso-position-horizontal-relative:page;mso-position-vertical-relative:page;mso-wrap-style:none"` +
-    ` from="${pt(MARK_START_MM)}pt,${pt(mm)}pt" to="${pt(MARK_START_MM + lenMm)}pt,${pt(mm)}pt"` +
+    ` from="${pt(xMm)}pt,${pt(mm)}pt" to="${pt(xMm + lenMm)}pt,${pt(mm)}pt"` +
     ` strokecolor="black" strokeweight=".72pt"><w10:wrap type="none"/></v:line>`;
+  // Fold marks on both edges; the punch mark only left, where the pages are filed.
+  const rightX = pageWidthMm - MARK_START_MM - FOLD_MARK_LEN_MM;
   const shapes = '<w:pict>'
-    + FOLD_MARK_MM.map((mm, i) => line(`${FOLD_MARK_NAME}${i + 1}`, mm, FOLD_MARK_LEN_MM)).join('')
-    + line(`${FOLD_MARK_NAME}Punch`, PUNCH_MARK_MM, PUNCH_MARK_LEN_MM) + '</w:pict>';
+    + FOLD_MARK_MM.map((mm, i) =>
+      line(`${FOLD_MARK_NAME}${i + 1}`, MARK_START_MM, mm, FOLD_MARK_LEN_MM)
+      + line(`${FOLD_MARK_NAME}${i + 1}R`, rightX, mm, FOLD_MARK_LEN_MM)).join('')
+    + line(`${FOLD_MARK_NAME}Punch`, MARK_START_MM, PUNCH_MARK_MM, PUNCH_MARK_LEN_MM) + '</w:pict>';
   let changed = false;
   for (const path of Object.keys(files)) {
     if (!/^word\/header\d*\.xml$/.test(path)) continue;
@@ -2420,9 +2424,9 @@ export async function buildDocx(
   const withResolved = applyCommentsResolvedDocx(withNotes);
   const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withResolved) : withResolved;
   const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);
-  const marked = applyFoldMarksDocx(bidi, foldMarks);
-  if (isEmptyPageDecor(decor)) return marked;
   const dims = pageDimsCm(pageFormat, orientation);
+  const marked = applyFoldMarksDocx(bidi, foldMarks, dims.w * 10);
+  if (isEmptyPageDecor(decor)) return marked;
   const pt = (cm: number) => (cm / 2.54) * 72;
   return applyPageDecorDocx(marked, decor,
     pt(dims.w - margins.left - margins.right), pt(dims.h - margins.top - margins.bottom));

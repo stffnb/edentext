@@ -2549,7 +2549,8 @@ describe('Leg 32: fold marks (ODT + DOCX)', () => {
   it('ODT: named header lines carry the flag both ways', async () => {
     const bytes = await buildOdt(doc, margins, 'portrait', ...commonTail);
     const styles = strFromU8(unzipSync(bytes)['styles.xml']);
-    check('three named lines in the header', (styles.match(new RegExp(FOLD_MARK_NAME, 'g')) ?? []).length === 3, styles.slice(0, 200));
+    check('five named lines in the header (folds both edges + punch)', (styles.match(new RegExp(FOLD_MARK_NAME, 'g')) ?? []).length === 5, styles.slice(0, 200));
+    check('a right-edge fold mark', styles.includes(`${FOLD_MARK_NAME}1R`));
     check('page-relative position', styles.includes('style:vertical-rel="page"'));
     const res = importOdt(bytes);
     check('flag comes back', res.foldMarks === true);
@@ -2567,6 +2568,7 @@ describe('Leg 32: fold marks (ODT + DOCX)', () => {
     const headers = Object.keys(files).filter((p) => /^word\/header\d*\.xml$/.test(p));
     check('a header part exists for the lines', headers.length > 0, Object.keys(files));
     check('the lines ride a header', headers.some((p) => strFromU8(files[p]).includes(FOLD_MARK_NAME)));
+    check('a right-edge fold mark', headers.some((p) => strFromU8(files[p]).includes(`${FOLD_MARK_NAME}1R`)));
     const res = importDocx(bytes);
     check('flag comes back', res.foldMarks === true);
     check('no shape leaks into the header zone', res.header === null, res.header);

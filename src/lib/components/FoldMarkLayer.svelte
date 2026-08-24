@@ -9,9 +9,11 @@
   } = $props();
 
   const mmToPx = (mm: number) => (mm / 10) * PX_PER_CM;
+  // Fold marks sit on both edges (both hands find the crease); the punch mark only on
+  // the left, where the pages are filed.
   const marks = [
-    ...FOLD_MARK_MM.map((mm) => ({ mm, len: FOLD_MARK_LEN_MM })),
-    { mm: PUNCH_MARK_MM, len: PUNCH_MARK_LEN_MM },
+    ...FOLD_MARK_MM.map((mm) => ({ mm, len: FOLD_MARK_LEN_MM, mirror: true })),
+    { mm: PUNCH_MARK_MM, len: PUNCH_MARK_LEN_MM, mirror: false },
   ];
 </script>
 
@@ -22,6 +24,12 @@
         class="fold-mark"
         style="top: {box.top + mmToPx(m.mm)}px; left: {box.left + mmToPx(MARK_START_MM)}px; width: {mmToPx(m.len)}px;"
       ></span>
+      {#if m.mirror}
+        <span
+          class="fold-mark"
+          style="top: {box.top + mmToPx(m.mm)}px; left: {box.left + box.width - mmToPx(MARK_START_MM + m.len)}px; width: {mmToPx(m.len)}px;"
+        ></span>
+      {/if}
     {/each}
   {/each}
 </div>

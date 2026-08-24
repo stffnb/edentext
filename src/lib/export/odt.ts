@@ -2791,11 +2791,16 @@ function applyFoldMarksOdf(odtBytes: Uint8Array, on: boolean): Uint8Array {
     ` style:vertical-pos="from-top" style:vertical-rel="page"` +
     ` style:horizontal-pos="from-left" style:horizontal-rel="page" style:flow-with-text="false"/></style:style>`;
   const cm = (mm: number) => Math.round(mm * 10) / 100;
-  const line = (name: string, mm: number, lenMm: number) =>
+  const line = (name: string, x1Cm: number, mm: number, lenMm: number) =>
     `<draw:line text:anchor-type="paragraph" draw:z-index="1" draw:name="${name}" draw:style-name="FoldMark"` +
-    ` svg:x1="${cm(MARK_START_MM)}cm" svg:y1="${cm(mm)}cm" svg:x2="${cm(MARK_START_MM + lenMm)}cm" svg:y2="${cm(mm)}cm"/>`;
-  const shapes = FOLD_MARK_MM.map((mm, i) => line(`${FOLD_MARK_NAME}${i + 1}`, mm, FOLD_MARK_LEN_MM)).join('')
-    + line(`${FOLD_MARK_NAME}Punch`, PUNCH_MARK_MM, PUNCH_MARK_LEN_MM);
+    ` svg:x1="${x1Cm}cm" svg:y1="${cm(mm)}cm" svg:x2="${Math.round((x1Cm + cm(lenMm)) * 1000) / 1000}cm" svg:y2="${cm(mm)}cm"/>`;
+  // Fold marks on both edges; the punch mark only left, where the pages are filed.
+  const pageWidthCm = parseFloat(/fo:page-width="([\d.]+)cm"/.exec(styles)?.[1] ?? '21');
+  const rightX = Math.round((pageWidthCm - cm(MARK_START_MM + FOLD_MARK_LEN_MM)) * 1000) / 1000;
+  const shapes = FOLD_MARK_MM.map((mm, i) =>
+    line(`${FOLD_MARK_NAME}${i + 1}`, cm(MARK_START_MM), mm, FOLD_MARK_LEN_MM)
+    + line(`${FOLD_MARK_NAME}${i + 1}R`, rightX, mm, FOLD_MARK_LEN_MM)).join('')
+    + line(`${FOLD_MARK_NAME}Punch`, cm(MARK_START_MM), PUNCH_MARK_MM, PUNCH_MARK_LEN_MM);
 
   // Same splice as the watermark: declare draw:, mint the style, ride the header —
   // or give the master page a zero-height one.
