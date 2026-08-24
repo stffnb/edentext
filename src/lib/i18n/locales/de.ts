@@ -680,6 +680,10 @@ const de: Messages = {
       name: 'Brief nach DIN 5008',
       description: 'Geschäftsbrief (Form B): Anschriftfeld fürs Fensterkuvert, Infoblock, Falzmarken.',
     },
+    privateLetter: {
+      name: 'Privatbrief',
+      description: 'Privater Brief auf derselben Geometrie: Anschriftfeld fürs Fensterkuvert, Ort/Datum-Zeile, Falzmarken.',
+    },
     letter: {
       companyName: 'Firmenname',
       returnAddress: 'Absender · Straße · PLZ Ort',
@@ -697,6 +701,7 @@ const de: Messages = {
       date: 'Datum',
       phoneNumber: 'Nummer',
       emailAddress: 'Adresse',
+      place: 'Ort',
       subject: 'Betreff',
       salutation: 'Anrede',
       bodyText: 'Brieftext',

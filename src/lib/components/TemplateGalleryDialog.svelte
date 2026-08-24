@@ -42,10 +42,14 @@
     <div class="grid">
       {#each TEMPLATES as entry (entry.id)}
         <button class="tpl" onclick={() => pick(entry)}>
-          <!-- A stylized letter page: address block, info column, body lines. -->
+          <!-- A stylized letter page: address block, info column or date line, body lines. -->
           <span class="thumb" aria-hidden="true">
             <span class="addr"></span>
-            <span class="info"></span>
+            {#if entry.id === 'din5008b'}
+              <span class="info"></span>
+            {:else}
+              <span class="date"></span>
+            {/if}
             <span class="line l1"></span>
             <span class="line l2"></span>
             <span class="line l3"></span>
@@ -155,6 +159,7 @@
   }
   .addr { top: 26px; left: 12px; width: 28px; height: 16px; }
   .info { top: 26px; left: 52px; width: 22px; height: 16px; }
+  .date { top: 48px; right: 12px; width: 20px; height: 3px; }
   .line { left: 12px; height: 3px; }
   .l1 { top: 56px; width: 40px; background: #8a94a0; }
   .l2 { top: 66px; width: 60px; }

@@ -686,6 +686,10 @@ const en = {
       name: 'DIN 5008 letter',
       description: 'Business letter (Form B): address field for a window envelope, info block, fold marks.',
     },
+    privateLetter: {
+      name: 'Personal letter',
+      description: 'Private letter on the same geometry: window envelope address field, place and date line, fold marks.',
+    },
     letter: {
       companyName: 'Company name',
       returnAddress: 'Sender · Street · Postal code City',
@@ -703,6 +707,7 @@ const en = {
       date: 'Date',
       phoneNumber: 'Number',
       emailAddress: 'Address',
+      place: 'Place',
       subject: 'Subject',
       salutation: 'Salutation',
       bodyText: 'Letter text',
