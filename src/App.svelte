@@ -51,6 +51,8 @@
   import LanguagePicker from './lib/components/LanguagePicker.svelte';
   import UiLanguagePicker from './lib/components/UiLanguagePicker.svelte';
   import AboutDialog from './lib/components/AboutDialog.svelte';
+  import TemplateGalleryDialog from './lib/components/TemplateGalleryDialog.svelte';
+  import type { TemplateEntry } from './lib/templates/types';
   import DocPropertiesDialog from './lib/components/DocPropertiesDialog.svelte';
   import CommentsPane from './lib/components/CommentsPane.svelte';
   import RevisionsPane from './lib/components/RevisionsPane.svelte';
@@ -184,6 +186,7 @@
   let pageDecor: PageDecor = $state(loadPageDecor());
   let lineNumbering: LineNumbering = $state(loadLineNumbering());
   let foldMarks = $state(loadFoldMarks());
+  let templateGalleryOpen = $state(false);
   let autoCorrectOpen = $state(false);
   let autoTextOpen = $state(false);
   let thesaurusOpen = $state(false);
@@ -535,13 +538,9 @@
     editor?.chain().setMeta(RECORDING, true).setContent(content).run();
   }
 
-  function handleNew() {
-    if (!editor) return;
-    if (isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
-    loadContent('<p></p>'); // onUpdate fires → autosave
-    documentEpoch++;
-    resetHistory();
-    // Reset everything to defaults; the $effects persist these.
+  // Reset every document side-car to its default; the $effects persist these.
+  // Shared by New and New-from-template, which then assigns the template's own values.
+  function resetDocumentState() {
     hfActive = null;
     headerDoc = null;
     footerDoc = null;
@@ -575,6 +574,37 @@
     setNoteSettings(DEFAULT_NOTE_SETTINGS);
     clearEmbeddedFonts();
     void clearEmbeddedFontStore();
+  }
+
+  function handleNew() {
+    if (!editor) return;
+    if (isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
+    loadContent('<p></p>'); // onUpdate fires → autosave
+    documentEpoch++;
+    resetHistory();
+    resetDocumentState();
+    editor.commands.focus();
+  }
+
+  // A built-in template: a full reset, then the template's content and side-cars —
+  // the same set an .ott import adopts. No file handle, so the first Save asks where.
+  function applyTemplate(entry: TemplateEntry) {
+    if (!editor) return;
+    if (isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
+    const data = entry.build();
+    loadContent(data.content);
+    documentEpoch++;
+    resetHistory();
+    resetDocumentState();
+    if (data.margins) pageMargins = { ...data.margins };
+    if (data.styles?.length) {
+      const sheet = styleSheet();
+      const paragraph = { ...sheet.paragraph };
+      for (const s of data.styles) paragraph[s.name] = s;
+      setStyleSheet({ ...sheet, paragraph });
+    }
+    foldMarks = data.foldMarks === true;
+    documentName = entry.name();
     editor.commands.focus();
   }
 
@@ -1118,6 +1148,7 @@
       {docxBusy}
       {pdfBusy}
       onNew={handleNew}
+      onNewFromTemplate={() => (templateGalleryOpen = true)}
       onOpen={handleOpen}
       onSave={handleSave}
       onSaveAs={handleSaveAs}
@@ -1191,6 +1222,14 @@
             <path d="M9 1.75H4.5A1.25 1.25 0 0 0 3.25 3v10A1.25 1.25 0 0 0 4.5 14.25h7A1.25 1.25 0 0 0 12.75 13V5.5L9 1.75z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
             <path d="M9 1.75V5.5h3.75" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
             <path d="M8 8v3.5M6.25 9.75h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button class="file-action-btn" onclick={() => (templateGalleryOpen = true)} disabled={!editor} title={t().templates.title}>
+          <!-- Page with folded corner + text lines: new from template -->
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M9 1.75H4.5A1.25 1.25 0 0 0 3.25 3v10A1.25 1.25 0 0 0 4.5 14.25h7A1.25 1.25 0 0 0 12.75 13V5.5L9 1.75z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M9 1.75V5.5h3.75" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M5.5 8.5h5M5.5 10.5h5M5.5 12.5h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
         </button>
         <button class="file-action-btn" onclick={handleOpen} disabled={!editor} title={`${t().app.open} (${shortcutHint('open')})`}>
@@ -1527,6 +1566,7 @@
   </footer>
 
   <AboutDialog bind:open={aboutOpen} />
+  <TemplateGalleryDialog bind:open={templateGalleryOpen} onPick={applyTemplate} />
   <AutoCorrectDialog bind:open={autoCorrectOpen} />
   <AutoTextDialog bind:open={autoTextOpen} editor={activeEditor} />
   <ThesaurusDialog bind:open={thesaurusOpen} editor={activeEditor} />

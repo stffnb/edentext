@@ -68,7 +68,7 @@
     onSelectTheme,
     docxBusy = false,
     pdfBusy = false,
-    onNew, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onAutoText, onNewComment, commentsOpen = false, onToggleComments, revisionsOpen = false, onToggleRevisions,
+    onNew, onNewFromTemplate, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onAutoText, onNewComment, commentsOpen = false, onToggleComments, revisionsOpen = false, onToggleRevisions,
     navigatorOpen = false, onToggleNavigator,
     recentFiles = [], onOpenRecent, onForgetRecent,
   }: {
@@ -108,6 +108,7 @@
     docxBusy?: boolean;
     pdfBusy?: boolean;
     onNew?: () => void;
+    onNewFromTemplate?: () => void;
     onOpen?: () => void;
     onSave?: () => void;
     onSaveAs?: () => void;
@@ -201,6 +202,9 @@
         <RibbonMenu minWidth={230}>
           <button onclick={() => run(onNew)} disabled={!editor}>
             <Icon name="newDoc" size={16} />{t().app.newDocument}
+          </button>
+          <button onclick={() => run(onNewFromTemplate)} disabled={!editor}>
+            <Icon name="foldMarks" size={16} />{t().templates.title}
           </button>
           <button onclick={() => run(onOpen)} disabled={!editor}>
             <Icon name="folder" size={16} />{t().app.open}
