@@ -27,6 +27,7 @@
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     pageDecor = $bindable(EMPTY_PAGE_DECOR),
     lineNumbering = $bindable(DEFAULT_LINE_NUMBERING),
+    foldMarks = $bindable(false),
     onParagraphDialog,
   }: {
     editor: Editor | null;
@@ -40,6 +41,7 @@
     pageNumbering?: PageNumbering;
     pageDecor?: PageDecor;
     lineNumbering?: LineNumbering;
+    foldMarks?: boolean;
     onParagraphDialog?: () => void;
   } = $props();
 
@@ -364,6 +366,14 @@
       title={t().pageDecor.title}
       active={!!(pageDecor.background || pageDecor.border || pageDecor.watermark)}
       onclick={() => (decorOpen = true)}
+    />
+    <RibbonButton
+      variant="small"
+      icon="foldMarks"
+      label={t().ribbon.foldMarks}
+      title={t().ribbon.foldMarksHint}
+      active={foldMarks}
+      onclick={() => (foldMarks = !foldMarks)}
     />
   </div>
 </RibbonGroup>

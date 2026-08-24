@@ -10,6 +10,7 @@ import { DEFAULT_NOTE_SETTINGS, NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind
 import { EMPTY_DOC_PROPERTIES, keywordList, type DocProperties } from '../storage/docProperties';
 import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
 import { EMPTY_PAGE_DECOR, type PageDecor, type Watermark } from '../storage/pageDecor';
+import { FOLD_MARK_MM, PUNCH_MARK_MM, MARK_START_MM, FOLD_MARK_LEN_MM, PUNCH_MARK_LEN_MM, FOLD_MARK_NAME } from '../storage/foldMarks';
 import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import {
@@ -2773,6 +2774,49 @@ function applyWatermarkOdf(odtBytes: Uint8Array, wm: Watermark | null): Uint8Arr
   return rezipOdt(files);
 }
 
+// Fold + punch marks as named <draw:line>s in the master page's header — the one place
+// that repeats on every page, where LibreOffice's own DIN letter templates keep them.
+// Page-relative position (from-top/from-left against "page"), out of flow like the
+// watermark; the importers read the EdenFoldMark names back into the flag.
+function applyFoldMarksOdf(odtBytes: Uint8Array, on: boolean): Uint8Array {
+  if (!on) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const stylesBytes = files['styles.xml'];
+  if (!stylesBytes) return odtBytes;
+  const styles = strFromU8(stylesBytes);
+  const minted =
+    `<style:style style:name="FoldMark" style:family="graphic"><style:graphic-properties` +
+    ` draw:stroke="solid" svg:stroke-color="#000000" svg:stroke-width="0.026cm" draw:fill="none"` +
+    ` style:run-through="background" style:wrap="run-through" style:number-wrapped-paragraphs="no-limit"` +
+    ` style:vertical-pos="from-top" style:vertical-rel="page"` +
+    ` style:horizontal-pos="from-left" style:horizontal-rel="page" style:flow-with-text="false"/></style:style>`;
+  const cm = (mm: number) => Math.round(mm * 10) / 100;
+  const line = (name: string, mm: number, lenMm: number) =>
+    `<draw:line text:anchor-type="paragraph" draw:z-index="1" draw:name="${name}" draw:style-name="FoldMark"` +
+    ` svg:x1="${cm(MARK_START_MM)}cm" svg:y1="${cm(mm)}cm" svg:x2="${cm(MARK_START_MM + lenMm)}cm" svg:y2="${cm(mm)}cm"/>`;
+  const shapes = FOLD_MARK_MM.map((mm, i) => line(`${FOLD_MARK_NAME}${i + 1}`, mm, FOLD_MARK_LEN_MM)).join('')
+    + line(`${FOLD_MARK_NAME}Punch`, PUNCH_MARK_MM, PUNCH_MARK_LEN_MM);
+
+  // Same splice as the watermark: declare draw:, mint the style, ride the header —
+  // or give the master page a zero-height one.
+  let out = styles.includes('xmlns:draw=')
+    ? styles
+    : styles.replace(/<office:document-styles\b/, '<office:document-styles xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"');
+  out = injectAutomaticStyles(out, minted);
+  if (out.includes('<style:header>')) {
+    out = out.replace(/<style:header>(\s*<text:p[^>]*>)?/, (m) =>
+      m.includes('<text:p') ? `${m}${shapes}` : `${m}<text:p text:style-name="Header">${shapes}</text:p>`);
+  } else {
+    const zone = `<style:header><text:p text:style-name="Header">${shapes}</text:p></style:header>`;
+    out = out.replace(/<style:header-style\s*\/>/, '<style:header-style><style:header-footer-properties fo:min-height="0cm" fo:margin-bottom="0cm"/></style:header-style>');
+    out = /<style:master-page\b[^>]*\/>/.test(out)
+      ? out.replace(/(<style:master-page\b[^>]*)\/>/, `$1>${zone}</style:master-page>`)
+      : out.replace(/(<style:master-page\b[^>]*>)/, `$1${zone}`);
+  }
+  files['styles.xml'] = strToU8(out);
+  return rezipOdt(files);
+}
+
 // The text width the page layout declares, in cm — the watermark spans it, as
 // LibreOffice's does.
 function lengthOfPageLayout(styles: string): number {
@@ -4500,7 +4544,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR, lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING, recordChanges = false): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR, lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING, recordChanges = false, foldMarks = false): Promise<Uint8Array> {
   // Images become IMG sentinels before serialization; applyImages resolves them and writes
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
@@ -4744,7 +4788,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
   const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm, margins.mirrored === true, rtl, notesSettings, hyphenate, pageNumbering, decor, lineNumbering);
   const withHf = applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
-  const withWatermark = applyWatermarkOdf(withHf, decor.watermark);
+  const withWatermark = applyFoldMarksOdf(applyWatermarkOdf(withHf, decor.watermark), foldMarks);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.
   const withSections = applySectionMasterPages(withWatermark, hf?.sections ?? [], hf?.pageCount ?? 1, margins, pageFormat, orientation);

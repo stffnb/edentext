@@ -16,6 +16,10 @@ import { importDocx } from '../src/lib/import/docx';
 import { EMPTY_HF_SET } from '../src/lib/storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS } from '../src/lib/storage/noteSettings';
 import { DEFAULT_PAGE_NUMBERING } from '../src/lib/storage/pageNumbering';
+import { EMPTY_PAGE_DECOR } from '../src/lib/storage/pageDecor';
+import { DEFAULT_LINE_NUMBERING } from '../src/lib/storage/lineNumbering';
+import { EMPTY_DOC_PROPERTIES } from '../src/lib/storage/docProperties';
+import { FOLD_MARK_NAME } from '../src/lib/storage/foldMarks';
 
 type N = any;
 
@@ -2533,5 +2537,41 @@ describe('Leg 31: placeholder fields (ODT + DOCX)', () => {
     check('bold mark survives', (fields[1]?.marks ?? []).some((m: N) => m.type === 'bold'), fields[1]?.marks);
     check('the gray does not come back as a color mark',
       !fields.some((f) => (f.marks ?? []).some((m: N) => m.type === 'textStyle' && m.attrs?.color)), fields);
+  });
+});
+
+describe('Leg 32: fold marks (ODT + DOCX)', () => {
+  const doc: N = { type: 'doc', content: [P(null, T('Brieftext'))] };
+  const commonTail = [undefined, undefined, 'A4', builtinStyleSheet(), 1.25, 'add', false,
+    DEFAULT_NOTE_SETTINGS, EMPTY_DOC_PROPERTIES, false, DEFAULT_PAGE_NUMBERING,
+    EMPTY_PAGE_DECOR, DEFAULT_LINE_NUMBERING, false, true] as const;
+
+  it('ODT: named header lines carry the flag both ways', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait', ...commonTail);
+    const styles = strFromU8(unzipSync(bytes)['styles.xml']);
+    check('three named lines in the header', (styles.match(new RegExp(FOLD_MARK_NAME, 'g')) ?? []).length === 3, styles.slice(0, 200));
+    check('page-relative position', styles.includes('style:vertical-rel="page"'));
+    const res = importOdt(bytes);
+    check('flag comes back', res.foldMarks === true);
+    check('no shape leaks into the header zone', res.header === null, res.header);
+    check('no warning for the dropped lines', res.warnings.length === 0, res.warnings);
+    // Off exports nothing and imports off.
+    const plain = await buildOdt(doc, margins, 'portrait');
+    check('off writes no lines', !strFromU8(unzipSync(plain)['styles.xml']).includes(FOLD_MARK_NAME));
+    check('off imports off', importOdt(plain).foldMarks === false);
+  });
+
+  it('DOCX: named VML lines carry the flag both ways', async () => {
+    const bytes = await buildDocx(doc, margins, 'portrait', ...commonTail);
+    const files = unzipSync(bytes);
+    const headers = Object.keys(files).filter((p) => /^word\/header\d*\.xml$/.test(p));
+    check('a header part exists for the lines', headers.length > 0, Object.keys(files));
+    check('the lines ride a header', headers.some((p) => strFromU8(files[p]).includes(FOLD_MARK_NAME)));
+    const res = importDocx(bytes);
+    check('flag comes back', res.foldMarks === true);
+    check('no shape leaks into the header zone', res.header === null, res.header);
+    check('no warning for the dropped lines', res.warnings.length === 0, res.warnings);
+    const plain = await buildDocx(doc, margins, 'portrait');
+    check('off imports off', importDocx(plain).foldMarks === false);
   });
 });

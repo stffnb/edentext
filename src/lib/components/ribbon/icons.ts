@@ -89,6 +89,7 @@ export const STROKED = {
   trackChanges: ['M2 4h12M2 8h7', 'M9.5 13.5 14 9l-1.6-1.6L7.9 12z', 'M7.9 12 7.4 14.1l2.1-.6'],
   close: ['M3.5 3.5 12.5 12.5M12.5 3.5 3.5 12.5'],
   lineNumbers: ['M6 3h8.5M6 6.5h8.5M6 10h8.5M6 13.5h8.5', 'M2 2.2h1.1v3.3M1.6 5.5h1.9', 'M1.5 9.6c.2-.4.6-.5 1-.4.5.1.6.6.3 1L1.6 11.6h1.9'],
+  foldMarks: ['M4.5 2h9v12h-9z', 'M1.5 5h2M1.5 8.2h2.8M1.5 11.4h2'],
   wordCount: ['M2.5 2.5h11v11h-11z', 'M5 6h6M5 9h4'],
   // An open book, the glyph both word processors give the thesaurus.
   thesaurus: ['M8 4.5C6.5 3.4 4.4 3.1 2.2 3.3v9c2.2-.2 4.3.1 5.8 1.2 1.5-1.1 3.6-1.4 5.8-1.2v-9c-2.2-.2-4.3.1-5.8 1.2z', 'M8 4.5v9'],

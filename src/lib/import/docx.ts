@@ -3,6 +3,7 @@ import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, togg
 import { lengthToPt, WATERMARK_NAME } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
 import { PLACEHOLDER_SDT_TAG } from '../export/docx';
+import { FOLD_MARK_NAME } from '../storage/foldMarks';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage, framePx } from '../editor/extensions/image';
@@ -263,6 +264,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     rtl: sectPrRtl(finalSectPr),
     decor: docxPageDecor(docDoc, finalSectPr, files),
     lineNumbering: docxLineNumbering(finalSectPr),
+    foldMarks: docxFoldMarks(files),
     hyphenate: docAutoHyphenation(files),
     recordChanges: docRecordsChanges(files),
     pageNumbering: docxPageNumbering(sectPr),
@@ -2075,6 +2077,9 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
   const shape = Array.from(pict.children).find(
     (c) => c.namespaceURI === VML && ['shape', 'rect', 'oval', 'roundrect'].includes(c.localName),
   );
+  // Fold-mark lines ride the flag (storage/foldMarks.ts), never the zone's content.
+  const vmlLine = Array.from(pict.children).find((c) => c.namespaceURI === VML && c.localName === 'line');
+  if (vmlLine?.getAttribute('id')?.startsWith(FOLD_MARK_NAME)) return null;
   if (!shape) { ctx.warnings.add('Drawings were removed'); return null; }
   // The watermark rides the page decoration (storage/pageDecor.ts), not the header's
   // content, so it must not also arrive here as a shape.
@@ -2559,6 +2564,12 @@ function docxPageDecor(docDoc: Document, sectPr: Element | null, files: Record<s
       : null,
     watermark: docxWatermark(files),
   });
+}
+
+// The export's named fold-mark lines, in whichever header part carries them.
+function docxFoldMarks(files: Record<string, Uint8Array>): boolean {
+  return Object.keys(files).some((path) =>
+    /^word\/header\d*\.xml$/.test(path) && strFromU8(files[path]).includes(FOLD_MARK_NAME));
 }
 
 // The VML shape Word and LibreOffice both name PowerPlusWaterMarkObject, in whichever

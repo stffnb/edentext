@@ -56,6 +56,7 @@
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     pageDecor = $bindable(EMPTY_PAGE_DECOR),
     lineNumbering = $bindable(DEFAULT_LINE_NUMBERING),
+    foldMarks = $bindable(false),
     hfActive = null,
     onManageStyles,
     onManageTableStyles,
@@ -94,6 +95,7 @@
     pageNumbering?: PageNumbering;
     pageDecor?: PageDecor;
     lineNumbering?: LineNumbering;
+    foldMarks?: boolean;
     hfActive?: HfZone | null;
     onManageStyles?: (family: StyleFamily) => void;
     onManageTableStyles?: (family: StyleFamily) => void;
@@ -350,7 +352,7 @@
     {:else if tab === 'insert'}
       <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} {onEditZone} {onManageTableStyles} {onAutoText} />
     {:else if tab === 'layout'}
-      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:extraHfSections bind:hyphenate bind:pageNumbering bind:pageDecor bind:lineNumbering onParagraphDialog={() => (paragraphDialogOpen = true)} />
+      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:extraHfSections bind:hyphenate bind:pageNumbering bind:pageDecor bind:lineNumbering bind:foldMarks onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'references'}
       <ReferencesTab {editor} {tick} {hfActive} {onNoteOptions} />
     {:else if tab === 'review'}

@@ -40,6 +40,7 @@ import { normalizeColor, GENERATOR, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
 import { EMPTY_PAGE_DECOR, isEmptyPageDecor, type PageDecor, type Watermark } from '../storage/pageDecor';
+import { FOLD_MARK_MM, PUNCH_MARK_MM, MARK_START_MM, FOLD_MARK_LEN_MM, PUNCH_MARK_LEN_MM, FOLD_MARK_NAME } from '../storage/foldMarks';
 import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
 
 // The five page-number formats both word processors offer → Word's own names.
@@ -1515,6 +1516,37 @@ function applyPageDecorDocx(bytes: Uint8Array, decor: PageDecor, widthPt: number
   return zipSync(out);
 }
 
+// Post-pack pass: fold + punch marks as named VML lines in every header part — the one
+// place that repeats on every page — positioned from the page corner like the watermark.
+function applyFoldMarksDocx(bytes: Uint8Array, on: boolean): Uint8Array {
+  if (!on) return bytes;
+  const files = unzipSync(bytes);
+  const pt = (mm: number) => Math.round((mm / 25.4) * 72 * 100) / 100;
+  const line = (id: string, mm: number, lenMm: number) =>
+    `<v:line id="${id}" o:allowincell="f"` +
+    ` style="position:absolute;mso-position-horizontal-relative:page;mso-position-vertical-relative:page;mso-wrap-style:none"` +
+    ` from="${pt(MARK_START_MM)}pt,${pt(mm)}pt" to="${pt(MARK_START_MM + lenMm)}pt,${pt(mm)}pt"` +
+    ` strokecolor="black" strokeweight=".72pt"><w10:wrap type="none"/></v:line>`;
+  const shapes = '<w:pict>'
+    + FOLD_MARK_MM.map((mm, i) => line(`${FOLD_MARK_NAME}${i + 1}`, mm, FOLD_MARK_LEN_MM)).join('')
+    + line(`${FOLD_MARK_NAME}Punch`, PUNCH_MARK_MM, PUNCH_MARK_LEN_MM) + '</w:pict>';
+  let changed = false;
+  for (const path of Object.keys(files)) {
+    if (!/^word\/header\d*\.xml$/.test(path)) continue;
+    const xml = strFromU8(files[path]);
+    if (xml.includes(FOLD_MARK_NAME)) continue;
+    // Inside a paragraph, like the watermark: as a child of w:hdr the pict is dropped.
+    files[path] = strToU8(xml.replace(/<w:p\b[^>]*\/>|(<w:p\b[^>]*>(?:<w:pPr>.*?<\/w:pPr>)?)/,
+      (m, opening: string | undefined) =>
+        opening ? `${opening}<w:r>${shapes}</w:r>` : `<w:p><w:r>${shapes}</w:r></w:p>`));
+    changed = true;
+  }
+  if (!changed) return bytes;
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
 const WATERMARK_NAME = 'PowerPlusWaterMarkObject';
 // The shape's aspect ratio, measured off LibreOffice's own watermark.
 const WATERMARK_RATIO = 4.487;
@@ -2212,6 +2244,7 @@ export async function buildDocx(
   decor: PageDecor = EMPTY_PAGE_DECOR,
   lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING,
   recordChanges = false,
+  foldMarks = false,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
@@ -2303,12 +2336,12 @@ export async function buildDocx(
   const mkHeaders = (i: number) => {
     const s = setAt(i);
     const d = para(s.header), f = s.differentFirstPage ? para(s.headerFirst) : null, e = s.differentOddEven ? para(s.headerEven) : null;
-    // A watermark lives in a header part, so a document without one still needs the
-    // (empty) default header for applyPageDecorDocx to inject the shape into.
-    if (!d && !f && !e) return decor.watermark?.text ? { default: new Header({ children: [new Paragraph({})] }) } : undefined;
+    // A watermark (and the fold marks) lives in a header part, so a document without
+    // one still needs the (empty) default header the post-passes inject into.
+    if (!d && !f && !e) return decor.watermark?.text || foldMarks ? { default: new Header({ children: [new Paragraph({})] }) } : undefined;
     const h: { default?: Header; first?: Header; even?: Header } = {};
     if (d) h.default = new Header({ children: [paragraphToDocx(d)] });
-    else if (decor.watermark?.text) h.default = new Header({ children: [new Paragraph({})] });
+    else if (decor.watermark?.text || foldMarks) h.default = new Header({ children: [new Paragraph({})] });
     if (f) h.first = new Header({ children: [paragraphToDocx(f)] });
     if (e) h.even = new Header({ children: [paragraphToDocx(e)] });
     return h;
@@ -2387,9 +2420,10 @@ export async function buildDocx(
   const withResolved = applyCommentsResolvedDocx(withNotes);
   const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withResolved) : withResolved;
   const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);
-  if (isEmptyPageDecor(decor)) return bidi;
+  const marked = applyFoldMarksDocx(bidi, foldMarks);
+  if (isEmptyPageDecor(decor)) return marked;
   const dims = pageDimsCm(pageFormat, orientation);
   const pt = (cm: number) => (cm / 2.54) * 72;
-  return applyPageDecorDocx(bidi, decor,
+  return applyPageDecorDocx(marked, decor,
     pt(dims.w - margins.left - margins.right), pt(dims.h - margins.top - margins.bottom));
 }

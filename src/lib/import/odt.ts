@@ -35,6 +35,7 @@ import type { IndexKind } from '../editor/extensions/tableOfContents';
 import { isBibType } from '../editor/extensions/bibliographyEntry';
 import { citationStyleFromTemplate } from '../utils/citationStyle';
 import type { PageDecor } from '../storage/pageDecor';
+import { FOLD_MARK_NAME } from '../storage/foldMarks';
 import type { LineNumbering } from '../storage/lineNumbering';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
@@ -69,6 +70,8 @@ export interface OdtImportResult {
   // Page background, page border and watermark (storage/pageDecor.ts).
   decor: PageDecor;
   lineNumbering: LineNumbering;
+  // Fold + punch marks in the left margin (the export's named header lines).
+  foldMarks: boolean;
   // Automatic hyphenation (ODF fo:hyphenate on the base style, Word w:autoHyphenation).
   hyphenate: boolean;
   // Whether the document records revisions (ODF text:track-changes, Word w:trackRevisions).
@@ -160,6 +163,8 @@ type Ctx = {
   // Footnotes/endnotes in anchor order: the file stores each note's text at its anchor,
   // the editor keeps them in one section at the document end (notes.ts).
   notes: { id: string; kind: NoteKind; label: string | null; text: string; content: Node[]; styleName: string | null }[];
+  // Set when a header carries the export's named fold-mark lines (storage/foldMarks.ts).
+  foldMarks: boolean;
 };
 
 // Read a Pictures/ entry into a base64 data-URI; null when it's missing or in a format
@@ -630,6 +635,11 @@ function convertDrawElement(e: Element, ctx: Ctx): { inline?: Node; block?: Node
   // The watermark is not a drawing: it rides the page decoration instead
   // (storage/pageDecor.ts), so it must not also arrive as a shape in the header.
   if (e.getAttributeNS(NS.draw, 'name') === WATERMARK_NAME) return null;
+  // Fold marks ride the flag (storage/foldMarks.ts), not the document, same rule.
+  if (e.getAttributeNS(NS.draw, 'name')?.startsWith(FOLD_MARK_NAME)) {
+    ctx.foldMarks = true;
+    return null;
+  }
   if (e.localName === 'frame') {
     const textBoxEl = Array.from(e.children).find(
       c => c.namespaceURI === NS.draw && c.localName === 'text-box',
@@ -739,7 +749,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), revisions: odfRevisions(body), openInsertions: new Map(), notes: [] };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -819,6 +829,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     rtl: geometry?.rtl ?? false,
     decor: resolver.pageDecor(),
     lineNumbering: resolver.lineNumbering(),
+    foldMarks: ctx.foldMarks,
     hyphenate: resolver.documentHyphenation(),
     recordChanges: odfRecordChanges(body),
     pageNumbering: { format: resolver.pageNumberFormat(), start: odfPageNumberStart(resolver, body) },

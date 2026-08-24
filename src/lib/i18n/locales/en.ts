@@ -855,6 +855,8 @@ const en = {
     pageNumberContinue: 'Continue from the previous section',
     lineNumbers: 'Line numbers',
     pageDecor: 'Page design',
+    foldMarks: 'Fold marks',
+    foldMarksHint: 'Fold and punch marks in the left margin (DIN 5008)',
     hyphenationHint: 'Hyphenate automatically',
     debugDump: 'Dump',
     cellMargins: 'Cell margins',

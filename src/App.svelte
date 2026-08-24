@@ -44,6 +44,7 @@
   import { loadPageNumbering, savePageNumbering, DEFAULT_PAGE_NUMBERING, type PageNumbering } from './lib/storage/pageNumbering';
   import { loadPageDecor, savePageDecor, EMPTY_PAGE_DECOR, type PageDecor } from './lib/storage/pageDecor';
   import { loadLineNumbering, saveLineNumbering, DEFAULT_LINE_NUMBERING, type LineNumbering } from './lib/storage/lineNumbering';
+  import { loadFoldMarks, saveFoldMarks } from './lib/storage/foldMarks';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { setTableLanguage } from './lib/storage/tableOptions.svelte';
   import { spellController } from './lib/spell/controller';
@@ -182,6 +183,7 @@
   let pageNumbering: PageNumbering = $state(loadPageNumbering());
   let pageDecor: PageDecor = $state(loadPageDecor());
   let lineNumbering: LineNumbering = $state(loadLineNumbering());
+  let foldMarks = $state(loadFoldMarks());
   let autoCorrectOpen = $state(false);
   let autoTextOpen = $state(false);
   let thesaurusOpen = $state(false);
@@ -266,6 +268,7 @@
     savePageNumbering(pageNumbering);
     savePageDecor(pageDecor);
     saveLineNumbering(lineNumbering);
+    saveFoldMarks(foldMarks);
   });
 
   $effect(() => {
@@ -560,6 +563,7 @@
     pageNumbering = { ...DEFAULT_PAGE_NUMBERING };
     pageDecor = { ...EMPTY_PAGE_DECOR };
     lineNumbering = { ...DEFAULT_LINE_NUMBERING };
+    foldMarks = false;
     // Recording belongs to the document, so a new one starts off, as it does in both.
     setRecordChanges(false);
     docProps = { ...EMPTY_DOC_PROPERTIES };
@@ -639,6 +643,7 @@
       pageNumbering = result.pageNumbering;
       pageDecor = result.decor;
       lineNumbering = result.lineNumbering;
+      foldMarks = result.foldMarks === true;
       // The file says whether it goes on recording; ours is not the setting that counts.
       setRecordChanges(result.recordChanges);
       // Adopt the document's spell-check language (the $effect switches the
@@ -773,12 +778,12 @@
       // reference word processors — not silently rewritten to .odt under its old name.
       if (documentFormat === 'docx') {
         const { buildDocx } = await import('./lib/export/docx');
-        const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges());
+        const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks);
         fileHandle = await saveDocx(bytes, suggestedFilenameDocx(json), fileHandle);
         recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilenameDocx(json), fileHandle);
         return;
       }
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges());
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks);
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
       recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
     } catch (err) {
@@ -795,7 +800,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges());
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks);
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
       documentFormat = 'odt'; // Save As is odt-only, so a docx-opened document switches format here.
       recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
@@ -815,7 +820,7 @@
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
       await saveAsTemplate(async (kind) => {
-        const args = [pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges()] as const;
+        const args = [pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks] as const;
         const { odtToOtt, docxToDotx } = await import('./lib/export/template');
         if (kind === 'dotx') {
           const { buildDocx } = await import('./lib/export/docx');
@@ -868,7 +873,7 @@
     try {
       const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       const { buildDocx } = await import('./lib/export/docx');
-      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges());
+      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks);
       await saveAsDocx(bytes, suggestedFilenameDocx(json));
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -1100,6 +1105,7 @@
       bind:pageNumbering
       bind:pageDecor
       bind:lineNumbering
+      bind:foldMarks
       {hfActive}
       onManageStyles={openStyleManager}
       onManageTableStyles={() => openStyleManager('table')}
@@ -1434,6 +1440,7 @@
     {pageNumbering}
     {pageDecor}
     {lineNumbering}
+    {foldMarks}
     bind:extraHfSections
     {zoom}
     onZoom={setZoom}

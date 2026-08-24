@@ -849,6 +849,8 @@ const de: Messages = {
     pageNumberContinue: 'Vom vorherigen Abschnitt fortsetzen',
     lineNumbers: 'Zeilennummern',
     pageDecor: 'Seitengestaltung',
+    foldMarks: 'Falzmarken',
+    foldMarksHint: 'Falz- und Lochmarken am linken Rand (DIN 5008)',
     hyphenationHint: 'Automatisch trennen',
     debugDump: 'Dump',
     cellMargins: 'Zellenränder',

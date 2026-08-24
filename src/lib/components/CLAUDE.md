@@ -199,6 +199,12 @@ per page in unscaled document px. The watermark is an `<svg><text textLength>` b
 fontwork shape **stretches** its text to its box instead of setting it at a size — a font
 size alone makes a short word far too small and a long one overflow the page.
 
+## Fold marks (`FoldMarkLayer.svelte`, `storage/foldMarks.ts`)
+
+Fold + punch marks at the DIN 5008 positions, drawn per page in the left margin from
+`pageBoxes`. Inside the scaled `.paper`, so print and the PDF raster include them; the
+Layout tab's toggle flips the flag.
+
 ## Line numbering (`LineNumberLayer.svelte`, `storage/lineNumbering.ts`)
 
 One number per rendered line in the left margin. There is no CSS line box to read, so
