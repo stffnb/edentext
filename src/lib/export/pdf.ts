@@ -71,6 +71,9 @@ function buildClone(paper: HTMLElement, pageW: number): { holder: HTMLElement; c
 [data-pdf-export] .paper .tiptap { background:none !important; }
 [data-pdf-export] .column-resize-handle, [data-pdf-export] .row-resize-handle { display:none !important; }
 [data-pdf-export] .selectedCell::after { display:none !important; }
+/* No selection highlight in the output — and its color-mix background computes to a
+   color() value html2canvas cannot parse, which aborted the whole capture. */
+[data-pdf-export] .ProseMirror-selectednode { background:none !important; outline:none !important; box-shadow:none !important; }
 [data-pdf-export] .tiptap .is-editor-empty::before { content:none !important; }
 [data-pdf-export] .hf-bar { display:none !important; }
 [data-pdf-export] .tiptap [data-color] { color:var(--font-color, currentColor) !important; }
