@@ -1204,3 +1204,116 @@ describe('DOCX text box: a list inside it is a real list, a picture a real pictu
     expect(String(img.attrs.src).startsWith('data:image/png;base64,')).toBe(true);
   });
 });
+
+describe('DOCX named list styles', () => {
+  const sheet = builtinStyleSheet();
+  sheet.list['Prüfliste'] = {
+    name: 'Prüfliste',
+    levels: [
+      { kind: 'number', numType: 'upper-roman-paren', markerAlign: 'right', indentCm: 0.5 },
+      { kind: 'bullet', bulletChar: '✓' },
+      { kind: 'number', numType: 'lower-alpha' },
+    ],
+  };
+  const fixture = {
+    type: 'doc',
+    content: [
+      { type: 'orderedList', attrs: { listStyleName: 'Prüfliste' }, content: [
+        li(para('one'), { type: 'bulletList', content: [li(para('sub'))] }),
+        li(para('two')),
+      ] },
+      para('between'),
+      // A second list in the same style: its own instance, so it restarts at 1.
+      { type: 'orderedList', attrs: { listStyleName: 'Prüfliste' }, content: [li(para('restart'))] },
+      { type: 'bulletList', attrs: { listStyleName: 'List 2' }, content: [li(para('dash'))] },
+    ],
+  };
+
+  it('links the shared abstract via w:styleLink and the numbering style', async () => {
+    const bytes = await buildDocx(fixture as any, undefined, undefined, undefined, undefined, undefined, sheet);
+    const files = unzipSync(bytes);
+    const numbering = strFromU8(files['word/numbering.xml']);
+    const styles = strFromU8(files['word/styles.xml']);
+
+    const abstract = numbering.match(/<w:abstractNum [^>]*>(?:(?!<\/w:abstractNum>)[\s\S])*w:styleLink w:val="Prfliste"[\s\S]*?<\/w:abstractNum>/)?.[0] ?? '';
+    expect(abstract, 'the style abstract carries w:styleLink').toBeTruthy();
+    expect(abstract).toContain('<w:numFmt w:val="upperRoman"/>');
+    expect(abstract).toContain('<w:lvlText w:val="%1)"/>');
+    expect(abstract).toContain('<w:lvlJc w:val="right"/>');
+    expect(abstract).toContain('<w:lvlText w:val="✓"/>');
+    const absId = /w:abstractNumId="(\d+)"/.exec(abstract)![1];
+    // Two lists in one style → two concrete nums over the one abstract (each restarts).
+    const nums = numbering.match(new RegExp(`<w:num w:numId="\\d+"[^>]*>\\s*<w:abstractNumId w:val="${absId}"/>`, 'g')) ?? [];
+    expect(nums.length, 'one instance per list').toBe(2);
+    const style = styles.match(/<w:style w:type="numbering" w:styleId="Prfliste">[\s\S]*?<\/w:style>/)?.[0] ?? '';
+    expect(style).toContain('<w:name w:val="Prüfliste"/>');
+    expect(/<w:numId w:val="[1-9]\d*"\/>/.test(style), 'placeholder numId resolved').toBe(true);
+    expect(styles).toContain('w:styleId="List2"');
+  });
+
+  it('round-trips the assignment and the definition', async () => {
+    const bytes = await buildDocx(fixture as any, undefined, undefined, undefined, undefined, undefined, sheet);
+    const result = importDocx(bytes);
+    const doc = result.content as N;
+    const lists = (doc.content ?? []).filter((n) => n.type === 'orderedList' || n.type === 'bulletList');
+    expect(lists[0]?.attrs?.listStyleName).toBe('Prüfliste');
+    expect(lists[0]?.attrs?.listStyleType).toBeUndefined();
+    expect(lists[0]?.attrs?.indent).toBeUndefined();
+    const nested = walk(lists[0], 'bulletList')[0];
+    expect(nested?.attrs ?? null, 'nested list stays attr-free').toBeNull();
+    expect(lists[1]?.attrs?.listStyleName).toBe('Prüfliste');
+    expect(lists[2]?.attrs?.listStyleName).toBe('List 2');
+    const imported = result.styles.list['Prüfliste'];
+    expect(imported?.levels[0]).toMatchObject({ kind: 'number', numType: 'upper-roman-paren', markerAlign: 'right', indentCm: 0.5 });
+    expect(imported?.levels[1]).toMatchObject({ kind: 'bullet', bulletChar: '✓' });
+    expect(imported?.levels[2]).toMatchObject({ kind: 'number', numType: 'lower-alpha' });
+  });
+
+  it('an overridden list keeps a private, fully resolved numbering and drops the name', async () => {
+    const doc = { type: 'doc', content: [
+      { type: 'orderedList', attrs: { listStyleName: 'Numbering ABC', listStyleType: 'lower-roman' }, content: [li(para('broken out'))] },
+    ] };
+    const bytes = await buildDocx(doc as any, undefined, undefined, undefined, undefined, undefined, sheet);
+    const numbering = strFromU8(unzipSync(bytes)['word/numbering.xml']);
+    expect(numbering).not.toContain('w:styleLink');
+    expect(numbering).toContain('<w:numFmt w:val="lowerRoman"/>');
+    const list = (importDocx(bytes).content as N).content!.find((n) => n.type === 'orderedList');
+    expect(list?.attrs?.listStyleType).toBe('lower-roman');
+    expect(list?.attrs?.listStyleName).toBeUndefined();
+  });
+
+  it('follows w:numStyleLink in a foreign file (a linked list is numbers, not bullets)', () => {
+    const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+      <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>linked one</w:t></w:r></w:p>
+      <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>linked two</w:t></w:r></w:p>
+    </w:body></w:document>`;
+    const stylesXml = `<?xml version="1.0"?><w:styles ${W}>
+      <w:style w:type="paragraph" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
+      <w:style w:type="numbering" w:styleId="MyNum"><w:name w:val="My Numbering"/>
+        <w:pPr><w:numPr><w:numId w:val="2"/></w:numPr></w:pPr></w:style>
+    </w:styles>`;
+    // Word's indirection: the document's abstract 1 carries only w:numStyleLink; the
+    // style's own numbering (num 2 → abstract 0, carrying w:styleLink) has the levels.
+    const numberingXml = `<?xml version="1.0"?><w:numbering ${W}>
+      <w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="multilevel"/><w:styleLink w:val="MyNum"/>
+        <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperLetter"/><w:lvlText w:val="%1)"/><w:pPr><w:ind w:left="1134" w:hanging="360"/></w:pPr></w:lvl>
+      </w:abstractNum>
+      <w:abstractNum w:abstractNumId="1"><w:numStyleLink w:val="MyNum"/></w:abstractNum>
+      <w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num>
+      <w:num w:numId="2"><w:abstractNumId w:val="0"/></w:num>
+    </w:numbering>`;
+    const result = importDocx(zipSync({
+      'word/document.xml': strToU8(documentXml),
+      'word/styles.xml': strToU8(stylesXml),
+      'word/numbering.xml': strToU8(numberingXml),
+    }));
+    const doc = result.content as N;
+    const list = doc.content!.find((n) => n.type === 'orderedList');
+    expect(list, 'the linked list resolves to numbers, not the bullet fallback').toBeTruthy();
+    expect(list!.attrs?.listStyleName).toBe('My Numbering');
+    const imported = result.styles.list['My Numbering'];
+    expect(imported?.levels[0]).toMatchObject({ kind: 'number', numType: 'upper-alpha-paren' });
+    expect(imported?.levels[0]?.indentCm).toBeCloseTo(0.73, 2); // 1134 twips = 2cm → +0.73
+  });
+});

@@ -5,6 +5,7 @@ import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../e
 import { PLACEHOLDER_SDT_TAG } from '../export/docx';
 import { FOLD_MARK_NAME } from '../storage/foldMarks';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
+import { MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage, framePx } from '../editor/extensions/image';
 import { formatTabStops } from '../editor/extensions/tabStops';
@@ -65,6 +66,7 @@ type Ctx = {
   convertedImages: ConvertedImages;
   pendingBlocks: Node[];
   listCounters: Map<number, Map<number, number>>; // numId → ilvl → last number used
+  usedListStyles: Map<number, string>; // numId → the named numbering style it links to
   // Text width (cm) of the file's page setup; a table's margins are relative to it.
   contentWidthCm: number;
   // Left page margin (cm), the origin a page-relative frame offset is measured against.
@@ -192,7 +194,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const sectPr = fc(body, 'sectPr');
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), contentWidthCm, leftMarginCm, pageRtl: sectPrRtl(sectPr), hyphenate: docAutoHyphenation(files), cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, pageRtl: sectPrRtl(sectPr), hyphenate: docAutoHyphenation(files), cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
     footnote: noteParts(files, 'footnotes', 'footnote'),
     endnote: noteParts(files, 'endnotes', 'endnote'),
   } };
@@ -662,6 +664,15 @@ function listBaseCycle(ctx: Ctx, numId: number, ilvl: number): OrderedCycle {
 function makeListNode(ctx: Ctx, numId: number, ilvl: number): Node {
   const def = ctx.styles.level(numId, ilvl);
   const bullet = !def.numFmt || def.numFmt === 'bullet' || def.numFmt === 'none';
+  // A linked numbering style travels as `listStyleName` on the outermost list; its
+  // levels stay in the registry, so no per-level attrs are derived.
+  const styleName = ctx.styles.numberingStyleOf(numId);
+  if (styleName) {
+    ctx.usedListStyles.set(numId, styleName);
+    const node: Node = { type: bullet ? 'bulletList' : 'orderedList', content: [] };
+    if (ilvl === 0) node.attrs = { listStyleName: styleName };
+    return node;
+  }
   const attrs: Record<string, unknown> = {};
   if (bullet) {
     const ch = bulletCharAttr(bulletCharFromDocx(def.lvlText, def.bulletFont), ilvl);
@@ -941,7 +952,43 @@ function collectStyleSheet(ctx: Ctx): StyleSheet {
       para: {}, text: styleText(ctx, id, true),
     };
   }
+  for (const [numId, name] of ctx.usedListStyles) {
+    sheet.list[name] = listStyleFromDocx(name, ctx, numId, sheet.list[name]?.builtin);
+  }
   return sheet;
+}
+
+// A linked numbering's levels → the registry's shape, mirroring makeListNode's math
+// (Word writes 9 levels; each indentCm is the margin step past the 1.27cm base).
+function listStyleFromDocx(name: string, ctx: Ctx, numId: number, builtin?: boolean): ListStyle {
+  const levels: ListLevelStyle[] = [];
+  let multilevel = false;
+  let prevLeftCm = 0;
+  for (let l = 0; l < MAX_LIST_LEVELS; l++) {
+    const def = ctx.styles.level(numId, l);
+    if (!Object.keys(def).length) break;
+    const bullet = !def.numFmt || def.numFmt === 'bullet' || def.numFmt === 'none';
+    const level: ListLevelStyle = { kind: bullet ? 'bullet' : 'number' };
+    const leftCm = def.leftTwip != null ? twipToCm(def.leftTwip) : prevLeftCm + LIST_LEFT_STEP_CM;
+    const extra = round2(leftCm - prevLeftCm - LIST_LEFT_STEP_CM);
+    if (extra) level.indentCm = extra;
+    prevLeftCm = leftCm;
+    if (def.rightAligned) level.markerAlign = 'right';
+    if (bullet) {
+      const ch = bulletCharFromDocx(def.lvlText, def.bulletFont);
+      if (ch) level.bulletChar = ch;
+    } else {
+      if (((def.lvlText ?? '').match(/%\d/g) ?? []).length > 1) multilevel = true;
+      const key = orderedTypeFromFormat(wordFmtChar(def.numFmt), lvlSuffix(def.lvlText));
+      level.numType = key === 'multilevel' ? 'decimal' : key;
+      if (def.start != null && def.start > 1) level.startAt = def.start;
+    }
+    levels.push(level);
+  }
+  const style: ListStyle = { name, levels };
+  if (builtin) style.builtin = true;
+  if (multilevel) style.multilevel = true;
+  return style;
 }
 
 function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault: boolean): Node {

@@ -88,6 +88,12 @@ a producer writing EMU there (360000 = 1cm in EMU, 635cm read as twips) would ot
 leave columns of no width. Under that width LibreOffice lays the declared gap out literally
 — probed to 10.16cm on a 15.24cm text — so only the unholdable value is dropped.
 
+**A `w:numStyleLink` abstract carries no levels** — it defers to its numbering style's own
+numbering, so `DocxStyles.level()` resolves through the link (style → its `w:numPr` → the
+`w:styleLink` abstract); unresolved it read as `{}` and every linked list silently imported
+as a bullet list. A linked numId's list gets `listStyleName` (the style's `w:name`), no
+per-level attrs, and its definition lands in `sheet.list` (`listStyleFromDocx`).
+
 Body text with no resolved font falls back to the *document's own theme minor font*
 (`docx.ts` `runMarks`), not the editor default — Word's implicit body default. Headings don't
 (they keep the editor heading default); DOCX page margins default to Word's 2.54cm.

@@ -34,7 +34,8 @@ import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCell
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
 import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat } from '../editor/extensions/listMarker';
-import { effectiveOrderedDefAt, formatOrdinal, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
+import { effectiveOrderedDefAt, formatOrdinal, childCycle, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
+import { effectiveListLevel, listStyleMarginCm, listStyleOverridden, type ListStyle as ListStyleDef } from '../styles/listStyles';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, GENERATOR, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
@@ -73,10 +74,29 @@ type Writable<T> = { -readonly [P in keyof T]: T[P] };
 const SCREEN_FONT = 'Liberation Serif';
 const DOC_FONT = 'Times New Roman';
 
-// Effective bullet glyph of a list node: its bulletChar attr, else the default cycle.
-function bulletCharOf(node: TiptapNode, depth0: number): string {
-  const ch = node.attrs?.bulletChar;
-  return typeof ch === 'string' && ch ? ch : defaultBulletChar(depth0);
+// Effective bullet glyph of a list node: its bulletChar attr, else its named list
+// style's level, else the default cycle.
+function bulletCharOf(node: TiptapNode, depth0: number, style: ListStyleDef | null = null): string {
+  const ch = effectiveListLevel(node.attrs ?? {}, false, style, depth0 + 1).bulletChar;
+  return ch ?? defaultBulletChar(depth0);
+}
+
+// The named list style governing a top-level list (null = none, or an unknown name).
+function listStyleOf(node: TiptapNode): ListStyleDef | null {
+  const name = node.attrs?.listStyleName;
+  return typeof name === 'string' && name ? exportSheet.list?.[name] ?? null : null;
+}
+
+// The list's numbering key after its style (node attr ?? style level ?? null).
+function effOrderedKey(node: TiptapNode, style: ListStyleDef | null, depth0: number): string | null {
+  return effectiveListLevel(node.attrs ?? {}, node.type === 'orderedList', style, depth0 + 1).listStyleType;
+}
+
+// A `start` attr anywhere means a numbering continued across a split — only a private
+// reference can carry that; the style's shared abstract starts every instance at 1.
+function subtreeHasStart(node: TiptapNode): boolean {
+  if (typeof node.attrs?.start === 'number' && node.attrs.start > 1) return true;
+  return (node.content ?? []).some(subtreeHasStart);
 }
 
 // List geometry: 0.5in left step per level, 0.25in hanging for the marker (Word defaults).
@@ -237,6 +257,7 @@ class Numbering {
   private map = new Map<string, ILevelsOptions[]>();
   private mlRefs = new Set<string>();
   private counter = 0;
+  private styleRefs = new Map<string, { reference: string; configIndex: number; instances: number }>();
 
   newReference(): string {
     const reference = `num-${this.counter++}`;
@@ -246,24 +267,69 @@ class Numbering {
     return reference;
   }
 
+  // One shared reference per named list style, all 9 levels pre-filled from its
+  // definition; each list gets its own instance, so every one restarts at the style's
+  // start (the library writes one w:num with a startOverride per instance).
+  refForStyle(style: ListStyleDef): { reference: string; instance: number } {
+    let entry = this.styleRefs.get(style.name);
+    if (!entry) {
+      const reference = `num-style-${this.styleRefs.size}`;
+      const levels: ILevelsOptions[] = [];
+      for (let l = 0; l < 9; l++) {
+        const def = style.levels[l];
+        const indent: IIndentAttributesProperties = {
+          left: cmToTwip(listStyleMarginCm(style, l + 1)), hanging: cmToTwip(LIST_HANGING_CM),
+        };
+        const alignment = def?.markerAlign === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT;
+        if (def?.kind === 'bullet') {
+          levels.push({
+            level: l, format: LevelFormat.BULLET, text: def.bulletChar ?? defaultBulletChar(l),
+            alignment, style: { paragraph: { indent } },
+          });
+        } else {
+          const t = orderedTypeDef(style.multilevel ? 'decimal' : def?.numType ?? 'decimal');
+          levels.push({
+            level: l,
+            format: ORDERED_FORMAT[t.numFormat] ?? LevelFormat.DECIMAL,
+            text: style.multilevel ? Array.from({ length: l + 1 }, (_, i) => `%${i + 1}.`).join('') : `%${l + 1}${t.numSuffix}`,
+            alignment, start: def?.startAt ?? 1,
+            style: { paragraph: { indent } },
+          });
+        }
+      }
+      this.map.set(reference, levels);
+      if (style.multilevel) this.mlRefs.add(reference);
+      entry = { reference, configIndex: this.config.length, instances: 0 };
+      this.config.push({ reference, levels });
+      this.styleRefs.set(style.name, entry);
+    }
+    return { reference: entry.reference, instance: entry.instances++ };
+  }
+
+  // The styles whose shared abstract the post-pack pass links (w:styleLink); the
+  // config index locates it in numbering.xml behind the library's default abstract.
+  styleLinks(): { name: string; configIndex: number }[] {
+    return [...this.styleRefs.entries()].map(([name, e]) => ({ name, configIndex: e.configIndex }));
+  }
+
   // A level keeps the first format it saw, so a sibling nested list of another kind,
   // number format or bullet char forks its own reference (the ODT side mints its own
   // list style). The fork copies the shallower levels so the importer's cycle walk
   // (listBaseCycle) still sees the ancestry.
-  forkFor(reference: string, depth: number, node: TiptapNode, cycle: OrderedCycle): string {
+  forkFor(reference: string, depth: number, node: TiptapNode, cycle: OrderedCycle, style: ListStyleDef | null = null): string {
     const levels = this.map.get(reference)!;
     const l = levels.find((lv) => lv.level === depth);
     if (!l) return reference;
     let format: string, text: string;
     if (node.type === 'orderedList') {
-      const attr = node.attrs?.listStyleType as string | null | undefined;
+      const attr = effOrderedKey(node, style, depth);
       const def = effectiveOrderedDefAt(attr === 'multilevel' ? 'decimal' : attr, cycle);
       format = ORDERED_FORMAT[def.numFormat] ?? LevelFormat.DECIMAL;
       text = `%${depth + 1}${def.numSuffix}`;
-      if (this.mlRefs.has(reference) && !attr) return reference; // chain member inherits
+      if (this.mlRefs.has(reference) && !node.attrs?.listStyleType) return reference; // chain member inherits
     } else {
       format = LevelFormat.BULLET;
-      text = bulletCharOf(node, depth);
+      text = bulletCharOf(node, depth, style);
     }
     if (l.format === format && l.text === text) return reference;
     const fork = this.newReference();
@@ -271,10 +337,10 @@ class Numbering {
     return fork;
   }
 
-  ensureLevel(reference: string, depth: number, node: TiptapNode, extraIndentCm: number, cycle: OrderedCycle): void {
+  ensureLevel(reference: string, depth: number, node: TiptapNode, extraIndentCm: number, cycle: OrderedCycle, style: ListStyleDef | null = null): void {
     // A multilevel top list turns the whole reference into a "%1.%2." chain; its
     // attr-less nested lists inherit it (the top registers first — pre-order walk).
-    if (depth === 0 && node.attrs?.listStyleType === 'multilevel') this.mlRefs.add(reference);
+    if (depth === 0 && effOrderedKey(node, style, 0) === 'multilevel') this.mlRefs.add(reference);
     const levels = this.map.get(reference)!;
     if (levels.some((l) => l.level === depth)) return;
     const indent: IIndentAttributesProperties = {
@@ -282,10 +348,11 @@ class Numbering {
       hanging: cmToTwip(LIST_HANGING_CM),
     };
     // w:lvlJc: which end of the hanging indent the label is set against.
-    const alignment = node.attrs?.markerAlign === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT;
+    const eff = effectiveListLevel(node.attrs ?? {}, node.type === 'orderedList', style, depth + 1);
+    const alignment = eff.markerAlign === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT;
     if (node.type === 'orderedList') {
-      const attr = node.attrs?.listStyleType as string | null | undefined;
-      const chained = this.mlRefs.has(reference) && (depth === 0 || !attr);
+      const attr = eff.listStyleType;
+      const chained = this.mlRefs.has(reference) && (depth === 0 || !attr || attr === 'multilevel');
       const def = effectiveOrderedDefAt(attr === 'multilevel' ? 'decimal' : attr, cycle);
       levels.push({
         level: depth,
@@ -294,7 +361,7 @@ class Numbering {
           ? Array.from({ length: depth + 1 }, (_, i) => `%${i + 1}.`).join('')
           : `%${depth + 1}${def.numSuffix}`,
         alignment,
-        start: typeof node.attrs?.start === 'number' ? node.attrs.start : 1,
+        start: typeof node.attrs?.start === 'number' ? node.attrs.start : eff.startAt ?? 1,
         style: { paragraph: { indent }, run: markerRunProps(node) },
       });
     } else {
@@ -303,7 +370,7 @@ class Numbering {
         format: LevelFormat.BULLET,
         // The Unicode char goes into w:lvlText literally; Word renders it in the
         // paragraph font (no Wingdings/Symbol rFonts needed).
-        text: bulletCharOf(node, depth),
+        text: bulletCharOf(node, depth, style),
         alignment,
         style: { paragraph: { indent }, run: markerRunProps(node) },
       });
@@ -1245,6 +1312,42 @@ function applyTextBoxesDocx(bytes: Uint8Array, boxes: TextBoxDocx[]): Uint8Array
   return zipSync(out);
 }
 
+// Link each named list style to its shared abstract numbering: the library cannot
+// express w:styleLink, so the pass injects it and points the numbering style's
+// placeholder w:numId at the first concrete num over that abstract.
+function applyListStylesDocx(bytes: Uint8Array, links: { name: string; configIndex: number }[]): Uint8Array {
+  if (!links.length) return bytes;
+  const files = unzipSync(bytes);
+  const numberingBytes = files['word/numbering.xml'];
+  const stylesBytes = files['word/styles.xml'];
+  if (!numberingBytes || !stylesBytes) return bytes;
+
+  let numbering = strFromU8(numberingBytes);
+  let stylesXml = strFromU8(stylesBytes);
+  // Abstract definitions in document order: the library's own default bullet abstract
+  // first, then one per config entry — configIndex + 1 is the style's.
+  const abstracts = numbering.match(/<w:abstractNum [\s\S]*?<\/w:abstractNum>/g) ?? [];
+  for (const { name, configIndex } of links) {
+    const abstract = abstracts[configIndex + 1];
+    const absId = abstract && /w:abstractNumId="(\d+)"/.exec(abstract)?.[1];
+    if (absId == null) continue;
+    const styleId = docxStyleId(name);
+    numbering = numbering.replace(abstract!,
+      abstract!.replace(/(<w:multiLevelType[^>]*\/>)/, `$1<w:styleLink w:val="${styleId}"/>`));
+    const numId = new RegExp(`<w:num w:numId="(\\d+)"[^>]*>\\s*<w:abstractNumId w:val="${absId}"/>`).exec(numbering)?.[1];
+    if (!numId) continue;
+    stylesXml = stylesXml.replace(
+      new RegExp(`(<w:style w:type="numbering" w:styleId="${styleId}">[\\s\\S]*?<w:numId w:val=")0("/>)`),
+      `$1${numId}$2`);
+  }
+
+  files['word/numbering.xml'] = strToU8(numbering);
+  files['word/styles.xml'] = strToU8(stylesXml);
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
 const B_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/bibliography';
 const DS_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/customXml';
 // The part's identity inside the package, not the document's — one fixed value serves.
@@ -1734,7 +1837,7 @@ function spacingOf(attrs: TiptapNode['attrs']): ISpacingProperties | undefined {
 }
 
 
-type ParaOpts = { numbering?: { reference: string; level: number }; indentLeftTwip?: number; force?: TextProps; inCell?: boolean };
+type ParaOpts = { numbering?: { reference: string; level: number; instance?: number }; indentLeftTwip?: number; force?: TextProps; inCell?: boolean };
 
 // Paragraph background ("colored field") → w:shd; per-side borders ("rule line") → w:pBdr.
 function paraShadingOf(attrs: TiptapNode['attrs']) {
@@ -1800,27 +1903,41 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
 function listToParagraphs(
   node: TiptapNode, depth: number, reference: string, extraIndentCm: number,
   num: Numbering, out: (Paragraph | Table | TableOfContents)[], cycle: OrderedCycle = ROOT_ORDERED_CYCLE,
+  style: ListStyleDef | null = null, instance = 0,
 ): void {
-  const indentCm = extraIndentCm + (typeof node.attrs?.indent === 'number' ? node.attrs.indent : 0);
-  num.ensureLevel(reference, depth, node, indentCm, cycle);
+  const eff = effectiveListLevel(node.attrs ?? {}, node.type === 'orderedList', style, depth + 1);
+  const indentCm = extraIndentCm + eff.indent;
+  num.ensureLevel(reference, depth, node, indentCm, cycle, style);
   const levelLeftTwip = cmToTwip((depth + 1) * LIST_LEFT_STEP_CM + indentCm);
-  const cChild = childCycle(cycle, node.attrs?.listStyleType as string | null | undefined, node.type === 'orderedList');
+  const cChild = childCycle(cycle, eff.listStyleType, node.type === 'orderedList');
   for (const item of node.content ?? []) {
     if (item.type !== 'listItem') continue;
     let numberedFirst = false;
     for (const child of item.content ?? []) {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
-        const ref = num.forkFor(reference, depth + 1, child, cChild);
-        listToParagraphs(child, depth + 1, ref, indentCm, num, out, cChild);
+        const ref = num.forkFor(reference, depth + 1, child, cChild, style);
+        listToParagraphs(child, depth + 1, ref, indentCm, num, out, cChild, style, ref === reference ? instance : 0);
       } else if (child.type === 'paragraph' || child.type === 'heading') {
         if (!numberedFirst) {
-          out.push(paragraphToDocx(child, { numbering: { reference, level: depth } }));
+          out.push(paragraphToDocx(child, { numbering: { reference, level: depth, instance } }));
           numberedFirst = true;
         } else {
           out.push(paragraphToDocx(child, { indentLeftTwip: levelLeftTwip }));
         }
       }
     }
+  }
+}
+
+// A list carrying an unoverridden named list style shares the style's numbering
+// definition (its own instance); anything else keeps a private, fully resolved one.
+function listEntryToDocx(node: TiptapNode, num: Numbering, out: (Paragraph | Table | TableOfContents)[]): void {
+  const style = listStyleOf(node);
+  if (style && !listStyleOverridden(node) && !subtreeHasStart(node)) {
+    const { reference, instance } = num.refForStyle(style);
+    listToParagraphs(node, 0, reference, 0, num, out, ROOT_ORDERED_CYCLE, style, instance);
+  } else {
+    listToParagraphs(node, 0, num.newReference(), 0, num, out, ROOT_ORDERED_CYCLE, style);
   }
 }
 
@@ -1889,7 +2006,7 @@ function cellBlocksToDocx(content: TiptapNode[] = [], force: TextProps, num: Num
   const out: (Paragraph | Table)[] = [];
   for (const child of content) {
     if (child.type === 'bulletList' || child.type === 'orderedList') {
-      listToParagraphs(child, 0, num.newReference(), 0, num, out);
+      listEntryToDocx(child, num, out);
     } else if (child.type === 'table') {
       out.push(tableToDocx(child, contentWidthCm, num));
     } else if (child.type === 'paragraph' || child.type === 'heading') {
@@ -1992,7 +2109,7 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
     if (node.type === 'paragraph' || node.type === 'heading') {
       out.push(paragraphToDocx(node));
     } else if (node.type === 'bulletList' || node.type === 'orderedList') {
-      listToParagraphs(node, 0, num.newReference(), 0, num, out);
+      listEntryToDocx(node, num, out);
     } else if (node.type === 'table') {
       out.push(tableToDocx(node, contentWidthCm, num));
     } else if (node.type === 'image') {
@@ -2215,7 +2332,18 @@ function usedTableStyles(doc: TiptapNode, sheet: StyleSheet): string[] {
   return [...names];
 }
 
-function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language: string; country: string } | null, usedTables: string[] = []) {
+// Word needs a referenced numbering style to exist; its w:numId placeholder (0) is
+// rewritten by applyListStylesDocx once the packed numbering ids are known.
+function numberingStyleXml(name: string): ImportedXmlComponent {
+  return ImportedXmlComponent.fromXmlString(
+    `<w:style w:type="numbering" w:styleId="${docxStyleId(name)}">`
+    + `<w:name w:val="${escapeXml(name)}"/><w:uiPriority w:val="99"/>`
+    + '<w:pPr><w:numPr><w:numId w:val="0"/></w:numPr></w:pPr>'
+    + '</w:style>',
+  );
+}
+
+function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language: string; country: string } | null, usedTables: string[] = [], usedLists: string[] = []) {
   const run: Writable<IRunStylePropertiesOptions> = { font: DOC_FONT, size: 24 };
   if (language) run.language = { value: `${language.language}-${language.country}` };
   return {
@@ -2225,7 +2353,9 @@ function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language
     // The document's named styles, chain intact — Word shows them in its style list.
     paragraphStyles: Object.values(sheet.paragraph).filter(st => used.has(st.name)).map(paragraphStyleOf),
     characterStyles: Object.values(sheet.character ?? {}).map(characterStyleOf),
-    ...(usedTables.length ? { importedStyles: usedTables.map(tableStyleXml) } : {}),
+    ...(usedTables.length || usedLists.length
+      ? { importedStyles: [...usedTables.map(tableStyleXml), ...usedLists.map(numberingStyleXml)] }
+      : {}),
   };
 }
 
@@ -2377,7 +2507,7 @@ export async function buildDocx(
     ...(hasToc || recordChanges
       ? { features: { ...(hasToc ? { updateFields: true } : {}), ...(recordChanges ? { trackRevisions: true } : {}) } }
       : {}),
-    styles: buildStyles(styles, usedStyleNames(docJson, styles), language, usedTableStyles(docJson, styles)),
+    styles: buildStyles(styles, usedStyleNames(docJson, styles), language, usedTableStyles(docJson, styles), num.styleLinks().map((l) => l.name)),
     numbering: { config: num.config },
     ...(Object.keys(notesByClass.footnote).length ? { footnotes: notesByClass.footnote } : {}),
     ...(Object.keys(notesByClass.endnote).length ? { endnotes: notesByClass.endnote } : {}),
@@ -2418,7 +2548,8 @@ export async function buildDocx(
   });
 
   const blob = await Packer.toBlob(doc);
-  const packed = applyFormulasDocx(applyTextBoxesDocx(new Uint8Array(await blob.arrayBuffer()), textBoxes), docFormulas);
+  const linked = applyListStylesDocx(new Uint8Array(await blob.arrayBuffer()), num.styleLinks());
+  const packed = applyFormulasDocx(applyTextBoxesDocx(linked, textBoxes), docFormulas);
   const cited = applyBibliographyDocx(applyPlaceholdersDocx(applyRubyDocx(packed, docRubies), docPlaceholders), docSources, docCitationStyle(docJson));
   const withNotes = docNoteIds.size ? applyNoteMarksDocx(applyNotePrDocx(cited, notesSettings)) : cited;
   const withResolved = applyCommentsResolvedDocx(withNotes);

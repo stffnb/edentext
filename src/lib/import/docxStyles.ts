@@ -193,6 +193,9 @@ export class DocxStyles {
   private defaultsWidow: boolean | null = null; // docDefaults w:pPrDefault/w:widowControl
   private numToAbstract = new Map<string, string>();
   private abstractLevels = new Map<string, Map<number, LevelDef>>();
+  private numStyleNames = new Map<string, string>(); // numbering styleId → display name
+  private abstractStyleLink = new Map<string, string>();    // abstract → its own numbering style (w:styleLink)
+  private abstractNumStyleLink = new Map<string, string>(); // abstract → the style it defers to (w:numStyleLink)
   private minorFont?: string; // theme1.xml body font (e.g. Calibri)
   private majorFont?: string; // theme1.xml heading font (e.g. Calibri Light)
 
@@ -289,11 +292,12 @@ export class DocxStyles {
       const rowBand = bandSize('tblStyleRowBandSize'), colBand = bandSize('tblStyleColBandSize');
       if (rowBand || colBand) this.ownBandSize.set(id, { row: rowBand, col: colBand });
       const kind = style.getAttributeNS(W, 'type');
-      if (kind === 'paragraph' || kind === 'character' || kind === 'table') {
+      if (kind === 'paragraph' || kind === 'character' || kind === 'table' || kind === 'numbering') {
         const nameEl = firstChild(style, 'name');
         const name = (nameEl && wVal(nameEl)) || id;
         if (kind === 'paragraph') this.paraStyleNames.set(id, name);
         else if (kind === 'table') this.tableStyleNames.set(id, name);
+        else if (kind === 'numbering') this.numStyleNames.set(id, name);
         else this.charStyleNames.set(id, name);
       }
     }
@@ -358,6 +362,10 @@ export class DocxStyles {
         levels.set(ilvl, def);
       }
       this.abstractLevels.set(id, levels);
+      const sl = firstChild(abs, 'styleLink');
+      if (sl) { const v = wVal(sl); if (v) this.abstractStyleLink.set(id, v); }
+      const nsl = firstChild(abs, 'numStyleLink');
+      if (nsl) { const v = wVal(nsl); if (v) this.abstractNumStyleLink.set(id, v); }
     }
     for (const num of Array.from(doc.getElementsByTagNameNS(W, 'num'))) {
       const numId = num.getAttributeNS(W, 'numId');
@@ -567,10 +575,31 @@ export class DocxStyles {
     return { row: own?.row || base.row, col: own?.col || base.col };
   }
 
+  // The abstract a numId's levels really live in: a w:numStyleLink abstract carries no
+  // levels itself — it defers to the linked numbering style's own numbering.
+  private resolvedAbstract(numId: number, seen = new Set<string>()): string | null {
+    const abs = this.numToAbstract.get(String(numId)) ?? null;
+    if (!abs || seen.has(abs)) return abs;
+    seen.add(abs);
+    const linked = this.abstractNumStyleLink.get(abs);
+    const np = linked ? this.styleNum.get(linked) : null;
+    if (!np) return abs;
+    return this.resolvedAbstract(np.numId, seen) ?? abs;
+  }
+
   level(numId: number, ilvl: number): LevelDef {
-    const abs = this.numToAbstract.get(String(numId));
+    const abs = this.resolvedAbstract(numId);
     if (!abs) return {};
     return this.abstractLevels.get(abs)?.get(ilvl) ?? {};
+  }
+
+  // The named numbering style a numId's abstract belongs to (its own w:styleLink, or
+  // the one it defers to via w:numStyleLink); null for a private numbering.
+  numberingStyleOf(numId: number): string | null {
+    const abs = this.numToAbstract.get(String(numId));
+    if (!abs) return null;
+    const styleId = this.abstractNumStyleLink.get(abs) ?? this.abstractStyleLink.get(abs);
+    return styleId ? this.numStyleNames.get(styleId) ?? styleId : null;
   }
 }
 
