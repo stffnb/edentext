@@ -1670,6 +1670,121 @@ describe('Leg 13: named character styles (ODF)', () => {
   });
 });
 
+describe('Leg 14: named list styles (ODF)', () => {
+  const sheet = builtinStyleSheet();
+  sheet.list['Prüfliste'] = {
+    name: 'Prüfliste',
+    levels: [
+      { kind: 'number', numType: 'upper-roman-paren', markerAlign: 'right', indentCm: 0.5 },
+      { kind: 'bullet', bulletChar: '✓' },
+      { kind: 'number', numType: 'lower-alpha' },
+    ],
+  };
+
+  // Two clean assignments (user style with a nested level, a built-in) — these
+  // round-trip byte-for-byte. The overridden list is asserted separately.
+  const cleanDoc: N = { type: 'doc', content: [
+    P(null, T('before')),
+    { type: 'orderedList', attrs: { listStyleName: 'Prüfliste' }, content: [
+      LI(P(null, T('one')), { type: 'bulletList', content: [LI(P(null, T('sub')))] }),
+      LI(P(null, T('two'))),
+    ] },
+    P(null, T('between')),
+    { type: 'bulletList', attrs: { listStyleName: 'List 2' }, content: [LI(P(null, T('dash')))] },
+  ] };
+
+  it('writes named text:list-style definitions and round-trips the assignment', async () => {
+    const bytes = await buildOdt(cleanDoc, margins, 'portrait', undefined, null, 'A4', sheet);
+    const files = unzipSync(bytes);
+    const styles = strFromU8(files['styles.xml']);
+    const content = strFromU8(files['content.xml']);
+
+    const def = styles.match(/<text:list-style style:name="Prüfliste"[\s\S]*?<\/text:list-style>/)?.[0] ?? '';
+    check('mints the named definition with its display name', def.includes('style:display-name="Prüfliste"'), styles.slice(0, 300));
+    check('level 1 carries the numbering and the right-set label',
+      /text:level="1" style:num-format="I" style:num-suffix="\)"/.test(def) && def.includes('fo:text-align="end"'), def);
+    check('level 2 is the bullet level', /text:level="2" text:bullet-char="✓"/.test(def), def);
+    check('level 1 margin carries the extra step (1.77cm)', def.includes('fo:margin-left="1.770cm"'), def);
+    check('all ten levels are written', (def.match(/text:level="/g) ?? []).length === 10, def);
+    check('the built-in List 2 is minted too', /<text:list-style style:name="List_20_2" style:display-name="List 2">/.test(styles));
+    check('the list references the named style', content.includes('<text:list text:style-name="Prüfliste">'), content.match(/<text:list [^>]*>/g));
+    check('the bullet list references List 2', content.includes('<text:list text:style-name="List_20_2">'));
+    check('nested lists stay bare (they inherit the style)', /<text:list>\s*<text:list-item>/.test(content), content.match(/<text:list[^>]*>/g));
+
+    const res = importOdt(bytes);
+    check('no warnings on own export', res.warnings.length === 0, res.warnings);
+    const diff = firstDiff(normalize(cleanDoc), normalize(res.content));
+    check('document JSON round-trips without accreted attrs', diff === null, diff);
+
+    const imported = res.styles.list['Prüfliste'];
+    check('the style itself round-trips', !!imported, Object.keys(res.styles.list));
+    check('level 1 survives whole', imported?.levels[0]?.numType === 'upper-roman-paren'
+      && imported?.levels[0]?.markerAlign === 'right' && imported?.levels[0]?.indentCm === 0.5, imported?.levels[0]);
+    check('level 2 keeps its bullet', imported?.levels[1]?.bulletChar === '✓', imported?.levels[1]);
+    expect.soft(res.styles.list['List 2'], 'the built-in comes back as itself').toEqual(sheet.list['List 2']);
+  });
+
+  it('an overridden list keeps the resolved automatic clone and drops the name', async () => {
+    const doc: N = { type: 'doc', content: [
+      { type: 'orderedList', attrs: { listStyleName: 'Numbering ABC', listStyleType: 'lower-roman' }, content: [LI(P(null, T('broken out')))] },
+    ] };
+    const bytes = await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', sheet);
+    const files = unzipSync(bytes);
+    const content = strFromU8(files['content.xml']);
+
+    check('the list keeps its automatic style', content.includes('<text:list text:style-name="L1">'), content.match(/<text:list [^>]*>/g));
+    check('no named definition is written', !strFromU8(files['styles.xml']).includes('Numbering_20_ABC'));
+    check('the clone resolves the override', /<text:list-style style:name="L1">[\s\S]*?text:level="1" style:num-format="i" style:num-suffix="\."/.test(content), content.match(/<text:list-style[\s\S]*?<\/text:list-style>/)?.[0]);
+
+    const list = (importOdt(bytes).content.content ?? []).find((n: N) => n.type === 'orderedList');
+    check('the look survives as direct formatting', list?.attrs?.listStyleType === 'lower-roman', list?.attrs);
+    check('the name is gone', !list?.attrs?.listStyleName, list?.attrs);
+  });
+
+  it('a foreign named list style is read back (display name decoded)', async () => {
+    const stylesXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" office:version="1.2">
+ <office:styles>
+  <text:list-style style:name="Foreign_20_List" style:display-name="Foreign List">
+   <text:list-level-style-number text:level="1" style:num-format="A" style:num-suffix=")" text:start-value="5">
+    <style:list-level-properties text:list-level-position-and-space-mode="label-alignment">
+     <style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="2cm" fo:text-indent="-0.635cm" fo:margin-left="2cm"/>
+    </style:list-level-properties>
+   </text:list-level-style-number>
+   <text:list-level-style-bullet text:level="2" text:bullet-char="◦">
+    <style:list-level-properties text:list-level-position-and-space-mode="label-alignment">
+     <style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="3cm" fo:text-indent="-0.635cm" fo:margin-left="3cm"/>
+    </style:list-level-properties>
+   </text:list-level-style-bullet>
+  </text:list-style>
+ </office:styles>
+</office:document-styles>`;
+    const contentXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" office:version="1.2">
+ <office:body><office:text>
+  <text:list text:style-name="Foreign_20_List">
+   <text:list-item><text:p>alpha</text:p>
+    <text:list><text:list-item><text:p>circle</text:p></text:list-item></text:list>
+   </text:list-item>
+  </text:list>
+ </office:text></office:body>
+</office:document-content>`;
+    const bytes = zipSync({
+      mimetype: strToU8('application/vnd.oasis.opendocument.text'),
+      'content.xml': strToU8(contentXml),
+      'styles.xml': strToU8(stylesXml),
+    });
+    const res = importOdt(bytes);
+    const list = (res.content.content ?? []).find((n: N) => n.type === 'orderedList');
+    check('the list references the decoded display name', list?.attrs?.listStyleName === 'Foreign List', list?.attrs);
+    check('no per-level attrs accrete on the nested list', !list?.content?.[0]?.content?.[1]?.attrs, list?.content?.[0]?.content?.[1]);
+    const imported = res.styles.list['Foreign List'];
+    check('the definition lands in the registry', imported?.levels[0]?.numType === 'upper-alpha-paren'
+      && imported?.levels[0]?.startAt === 5 && imported?.levels[1]?.kind === 'bullet', imported);
+    check('the level indent derives from the margin step (2cm → +0.73)', imported?.levels[0]?.indentCm === 0.73, imported?.levels[0]);
+  });
+});
+
 describe('Leg 12: per-section page margins (ODT + DOCX)', () => {
   const secDoc: N = {
     type: 'doc',

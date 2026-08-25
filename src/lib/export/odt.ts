@@ -16,6 +16,7 @@ import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type T
 import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
 } from '../styles/tableStyles';
+import { effectiveListLevel, listStyleMarginCm, listStyleOverridden, MAX_LIST_LEVELS, type ListStyle } from '../styles/listStyles';
 
 // A table's named style plus the conditional areas it opts into (Word's Table Style
 // Options), collected by exportTable in document order.
@@ -1894,7 +1895,7 @@ function stripManagedProps(block: string): string {
 // Write the document's named paragraph styles into styles.xml: merge into the blocks
 // odf-kit already emits (Standard, Heading, Heading_20_N), append the rest. The parent
 // chain is preserved, so LibreOffice/Word show them as real, inheriting styles.
-function applyNamedStyles(styles: string, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set()): string {
+function applyNamedStyles(styles: string, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), usedLists: Set<string> = new Set()): string {
   const added: string[] = [];
   // Table styles: ODF's table family carries no banding, so the name is all that travels
   // (the look is baked into the cells). An empty style block is enough to make it real.
@@ -1904,6 +1905,13 @@ function applyNamedStyles(styles: string, sheet: StyleSheet, used: Set<string>, 
     added.push(setTagAttrs('<style:style/>', {
       'style:name': odfName, 'style:family': 'table', 'style:display-name': name,
     }));
+  }
+  // List styles are their own element, not a style:style family; the referenced ones
+  // get their full 10-level definition (there is no parent chain to lean on).
+  for (const name of usedLists) {
+    const style = sheet.list?.[name];
+    if (!style || styles.includes(`<text:list-style style:name="${escapeXml(odfStyleName(name))}"`)) continue;
+    added.push(buildNamedListStyleXml(style));
   }
   // Character styles are the same shape, family "text" and text props only.
   for (const style of Object.values(sheet.character ?? {})) {
@@ -2071,24 +2079,35 @@ const MULTILEVEL_FMTS: OrderedFmt[] = Array.from({ length: 6 }, () => ({ numForm
 // Effective numbering of an ordered list at a cycle position: its attr, else the
 // cycle default (re-anchoring slot + suffix at explicit styles; 'multilevel' handled
 // by the callers).
-function effOrderedFmt(list: TiptapNode, cycle: OrderedCycle): OrderedFmt {
-  const key = list.attrs?.listStyleType as string | null | undefined;
+// The named list style governing a top-level list (null = none, or an unknown name).
+function listStyleOf(list: TiptapNode): ListStyle | null {
+  const name = list.attrs?.listStyleName;
+  return typeof name === 'string' && name ? exportSheet.list?.[name] ?? null : null;
+}
+
+// The list's numbering key after its style: node attr ?? style level ?? null.
+function effOrderedKey(list: TiptapNode, style: ListStyle | null, depth: number): string | null {
+  return effectiveListLevel(list.attrs ?? {}, list.type === 'orderedList', style, depth).listStyleType;
+}
+
+function effOrderedFmt(list: TiptapNode, cycle: OrderedCycle, style: ListStyle | null = null, depth = 0): OrderedFmt {
+  const key = effOrderedKey(list, style, depth);
   const def = effectiveOrderedDefAt(key === 'multilevel' ? 'decimal' : key, cycle);
   return { numFormat: def.numFormat, numSuffix: def.numSuffix };
 }
 
 // Per-level numbering for a list subtree — same DFS-first model as bulletCharVector,
 // threading each list's cycle position down so nested defaults advance past their parent.
-function orderedFmtVector(list: TiptapNode, startDepth: number, base: OrderedFmt[], startCycle: OrderedCycle): OrderedFmt[] {
+function orderedFmtVector(list: TiptapNode, startDepth: number, base: OrderedFmt[], startCycle: OrderedCycle, style: ListStyle | null = null): OrderedFmt[] {
   const vec = [...base];
   const seen = new Set<number>();
   const walk = (node: TiptapNode, depth: number, cycle: OrderedCycle) => {
     if (depth > vec.length) return;
     if (node.type === 'orderedList' && !seen.has(depth)) {
       seen.add(depth);
-      vec[depth - 1] = effOrderedFmt(node, cycle);
+      vec[depth - 1] = effOrderedFmt(node, cycle, style, depth);
     }
-    const cChild = childCycle(cycle, node.attrs?.listStyleType as string | null | undefined, node.type === 'orderedList');
+    const cChild = childCycle(cycle, effOrderedKey(node, style, depth), node.type === 'orderedList');
     for (const item of node.content ?? []) {
       if (item.type !== 'listItem') continue;
       for (const child of item.content ?? []) {
@@ -2105,10 +2124,11 @@ function collectOrderedListFormats(node: TiptapNode, result: (OlStyleFix | null)
     if (child.type === 'bulletList') {
       result.push(null);
     } else if (child.type === 'orderedList') {
-      if (child.attrs?.listStyleType === 'multilevel') {
+      const style = listStyleOf(child);
+      if (effOrderedKey(child, style, 1) === 'multilevel') {
         result.push({ fmts: MULTILEVEL_FMTS, multilevel: true });
       } else {
-        const vec = orderedFmtVector(child, 1, DEFAULT_ORDERED_FMTS, ROOT_ORDERED_CYCLE);
+        const vec = orderedFmtVector(child, 1, DEFAULT_ORDERED_FMTS, ROOT_ORDERED_CYCLE, style);
         // odf-kit's own output is all-decimal; only an all-"1." vector needs no rewrite.
         result.push(vec.every(f => f.numFormat === '1' && f.numSuffix === '.') ? null : { fmts: vec, multilevel: false });
       }
@@ -2181,22 +2201,22 @@ function applyListStartValues(odtBytes: Uint8Array, starts: (number | null)[]): 
 
 // Effective marker char of a bullet list at a 1-based depth: its bulletChar attr,
 // else the default cycle.
-function effBulletChar(list: TiptapNode, depth: number): string {
-  const ch = list.attrs?.bulletChar;
-  return typeof ch === 'string' && ch ? ch : defaultBulletChar(depth - 1);
+function effBulletChar(list: TiptapNode, depth: number, style: ListStyle | null = null): string {
+  const ch = effectiveListLevel(list.attrs ?? {}, false, style, depth).bulletChar;
+  return ch ?? defaultBulletChar(depth - 1);
 }
 
 // Per-level marker chars for a list subtree: slot d-1 = the DFS-first bullet list
 // at depth d (one list style governs the whole tree, so the first list met at a depth
 // defines that level; differing siblings get NL mints; unvisited depths keep `base`).
-function bulletCharVector(list: TiptapNode, startDepth: number, base: string[]): string[] {
+function bulletCharVector(list: TiptapNode, startDepth: number, base: string[], style: ListStyle | null = null): string[] {
   const vec = [...base];
   const seen = new Set<number>();
   const walk = (node: TiptapNode, depth: number) => {
     if (depth > vec.length) return;
     if (node.type === 'bulletList' && !seen.has(depth)) {
       seen.add(depth);
-      vec[depth - 1] = effBulletChar(node, depth);
+      vec[depth - 1] = effBulletChar(node, depth, style);
     }
     for (const item of node.content ?? []) {
       if (item.type !== 'listItem') continue;
@@ -2217,7 +2237,7 @@ function collectBulletListChars(node: TiptapNode, result: (string[] | null)[]): 
     if (child.type === 'orderedList') {
       result.push(null);
     } else if (child.type === 'bulletList') {
-      const vec = bulletCharVector(child, 1, DEFAULT_BULLET_CYCLE);
+      const vec = bulletCharVector(child, 1, DEFAULT_BULLET_CYCLE, listStyleOf(child));
       result.push(vec.every((c, i) => c === DEFAULT_BULLET_CYCLE[i]) ? null : vec);
     }
   }
@@ -2257,11 +2277,12 @@ type ListLevelProps = { indent: number; right: boolean };
 function collectListLevelProps(node: TiptapNode, result: ListLevelProps[][]): void {
   for (const child of node.content ?? []) {
     if (child.type !== 'bulletList' && child.type !== 'orderedList') continue;
+    const style = listStyleOf(child);
     const levels: ListLevelProps[] = [];
     const visit = (list: TiptapNode, depth: number) => {
-      const ind = list.attrs?.indent;
       if (levels[depth - 1] === undefined) {
-        levels[depth - 1] = { indent: typeof ind === 'number' ? ind : 0, right: list.attrs?.markerAlign === 'right' };
+        const eff = effectiveListLevel(list.attrs ?? {}, list.type === 'orderedList', style, depth);
+        levels[depth - 1] = { indent: eff.indent, right: eff.markerAlign === 'right' };
       }
       for (const item of list.content ?? []) {
         for (const block of item.content ?? []) {
@@ -2388,20 +2409,22 @@ function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | n
 // 6-level list style (same pattern applyCellBlocks uses for cell lists).
 type ListDef = { ordered: boolean; multilevel: boolean; fmts: OrderedFmt[]; bulletChars: string[] };
 
-function listDefOf(node: TiptapNode, depth: number, cycle: OrderedCycle, baseChars: string[], baseFmts: OrderedFmt[]): ListDef {
-  const multilevel = node.attrs?.listStyleType === 'multilevel';
+function listDefOf(node: TiptapNode, depth: number, cycle: OrderedCycle, baseChars: string[], baseFmts: OrderedFmt[], style: ListStyle | null = null): ListDef {
+  const multilevel = effOrderedKey(node, style, depth) === 'multilevel';
   return {
     ordered: node.type === 'orderedList',
     multilevel,
-    fmts: multilevel ? MULTILEVEL_FMTS : orderedFmtVector(node, depth, baseFmts, cycle),
-    bulletChars: bulletCharVector(node, depth, baseChars),
+    fmts: multilevel ? MULTILEVEL_FMTS : orderedFmtVector(node, depth, baseFmts, cycle, style),
+    bulletChars: bulletCharVector(node, depth, baseChars, style),
   };
 }
 
 // One entry per nested <text:list> in DFS order (null = inherits its governing
 // style correctly). Only walks top-level lists — cell lists never emit bare tags.
-function collectNestedListFixes(doc: TiptapNode, result: (ListDef | null)[]): void {
-  const walkList = (list: TiptapNode, governing: ListDef, isTop: boolean, depth: number, cycle: OrderedCycle) => {
+// `repoints` marks lists later pointed at their named list style: their nested tags
+// must stay bare, so the whole 10-level named definition governs every depth.
+function collectNestedListFixes(doc: TiptapNode, result: (ListDef | null)[], repoints: (string | null)[] = []): void {
+  const walkList = (list: TiptapNode, governing: ListDef, isTop: boolean, depth: number, cycle: OrderedCycle, style: ListStyle | null) => {
     let gov = governing;
     if (!isTop) {
       const ordered = list.type === 'orderedList';
@@ -2409,31 +2432,41 @@ function collectNestedListFixes(doc: TiptapNode, result: (ListDef | null)[]): vo
       if (ordered !== governing.ordered) {
         differs = true;
       } else if (!ordered) {
-        differs = effBulletChar(list, depth) !== governing.bulletChars[(depth - 1) % governing.bulletChars.length];
+        differs = effBulletChar(list, depth, style) !== governing.bulletChars[(depth - 1) % governing.bulletChars.length];
       } else if (governing.multilevel) {
         // Attr-less lists inherit the chain; only an explicit style breaks out.
-        const attr = list.attrs?.listStyleType;
+        const attr = effOrderedKey(list, style, depth);
         differs = !!attr && attr !== 'multilevel';
       } else {
-        const f = effOrderedFmt(list, cycle);
+        const f = effOrderedFmt(list, cycle, style, depth);
         const g = governing.fmts[(depth - 1) % governing.fmts.length];
         differs = f.numFormat !== g.numFormat || f.numSuffix !== g.numSuffix;
       }
-      const def = differs ? listDefOf(list, depth, cycle, governing.bulletChars, governing.fmts) : null;
+      const def = differs ? listDefOf(list, depth, cycle, governing.bulletChars, governing.fmts, style) : null;
       result.push(def);
       if (def) gov = def; // restyled list governs its own descendants
     }
-    const cChild = childCycle(cycle, list.attrs?.listStyleType as string | null | undefined, list.type === 'orderedList');
+    const cChild = childCycle(cycle, effOrderedKey(list, style, depth), list.type === 'orderedList');
     for (const item of list.content ?? []) {
       if (item.type !== 'listItem') continue;
       for (const child of item.content ?? []) {
-        if (child.type === 'bulletList' || child.type === 'orderedList') walkList(child, gov, false, depth + 1, cChild);
+        if (child.type === 'bulletList' || child.type === 'orderedList') walkList(child, gov, false, depth + 1, cChild, style);
       }
     }
   };
+  const skipNested = (list: TiptapNode) => {
+    for (const item of list.content ?? []) {
+      for (const child of item.content ?? []) {
+        if (child.type === 'bulletList' || child.type === 'orderedList') { result.push(null); skipNested(child); }
+      }
+    }
+  };
+  let listIdx = 0;
   for (const child of doc.content ?? []) {
     if (child.type === 'bulletList' || child.type === 'orderedList') {
-      walkList(child, listDefOf(child, 1, ROOT_ORDERED_CYCLE, DEFAULT_BULLET_CYCLE, DEFAULT_ORDERED_FMTS), true, 1, ROOT_ORDERED_CYCLE);
+      if (repoints[listIdx++]) { skipNested(child); continue; }
+      const style = listStyleOf(child);
+      walkList(child, listDefOf(child, 1, ROOT_ORDERED_CYCLE, DEFAULT_BULLET_CYCLE, DEFAULT_ORDERED_FMTS, style), true, 1, ROOT_ORDERED_CYCLE, style);
     }
   }
 }
@@ -2473,6 +2506,59 @@ function applyNestedListTypes(odtBytes: Uint8Array, fixes: (ListDef | null)[]): 
   }
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
+}
+
+// One candidate per top-level list: its named list style when nothing in the subtree
+// overrides it — ODF list styles have no parent chain, so an overridden list keeps
+// its fully resolved automatic clone (which the passes above produce) and no name.
+function collectListStyleCandidates(doc: TiptapNode, result: (string | null)[]): void {
+  for (const child of doc.content ?? []) {
+    if (child.type !== 'bulletList' && child.type !== 'orderedList') continue;
+    const style = listStyleOf(child);
+    result.push(style && !listStyleOverridden(child) ? style.name : null);
+  }
+}
+
+// Point each candidate's <text:list> at the named style applyNamedStyles writes into
+// styles.xml. Runs after every pass keyed on the L# block names.
+function applyListStyleNames(odtBytes: Uint8Array, names: (string | null)[]): Uint8Array {
+  if (names.every(n => n === null)) return odtBytes;
+
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  names.forEach((name, i) => {
+    if (!name) return;
+    content = content.replace(`<text:list text:style-name="L${i + 1}">`, `<text:list text:style-name="${escapeXml(odfStyleName(name))}">`);
+  });
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
+}
+
+// The full 10-level definition of a named list style for styles.xml. Undefined levels
+// fall back to decimal, as LibreOffice fills them in (probed); the hanging indent is
+// the flat 0.635cm every list export uses.
+function buildNamedListStyleXml(style: ListStyle): string {
+  let levels = '';
+  for (let level = 1; level <= MAX_LIST_LEVELS; level++) {
+    const def = style.levels[level - 1];
+    const margin = `${listStyleMarginCm(style, level).toFixed(3)}cm`;
+    const right = def?.markerAlign === 'right' ? ' fo:text-align="end"' : '';
+    const labelAlign = `<style:list-level-properties text:list-level-position-and-space-mode="label-alignment"${right}><style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="${margin}" fo:text-indent="-0.635cm" fo:margin-left="${margin}"/></style:list-level-properties>`;
+    if (def?.kind === 'bullet') {
+      const ch = escapeXml(def.bulletChar ?? defaultBulletChar(level - 1));
+      levels += `<text:list-level-style-bullet text:level="${level}" text:bullet-char="${ch}">${labelAlign}</text:list-level-style-bullet>`;
+    } else {
+      const t = orderedTypeDef(style.multilevel ? 'decimal' : def?.numType ?? 'decimal');
+      const disp = style.multilevel && level > 1 ? ` text:display-levels="${level}"` : '';
+      const start = def?.startAt && def.startAt !== 1 ? ` text:start-value="${def.startAt}"` : '';
+      levels += `<text:list-level-style-number text:level="${level}" style:num-format="${t.numFormat}" style:num-suffix="${t.numSuffix}"${disp}${start}>${labelAlign}</text:list-level-style-number>`;
+    }
+  }
+  return `<text:list-style style:name="${escapeXml(odfStyleName(style.name))}" style:display-name="${escapeXml(style.name)}">${levels}</text:list-style>`;
 }
 
 // Mirror odf-kit's buildListStyle (content.js) for the automatic list style our
@@ -2833,7 +2919,7 @@ function lengthOfPageLayout(styles: string): number {
   return width ? width - num('fo:margin-left') - num('fo:margin-right') : 17;
 }
 
-function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, mirrored = false, rtl = false, notes: NoteSettings = DEFAULT_NOTE_SETTINGS, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR, lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING): Uint8Array {
+function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), usedLists: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, mirrored = false, rtl = false, notes: NoteSettings = DEFAULT_NOTE_SETTINGS, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR, lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
   if (!stylesBytes) return odtBytes;
@@ -2952,7 +3038,7 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
 
   // The document's named paragraph styles (Standard, Heading, Heading_20_N, Title, …)
   // with their parent chain: merged into odf-kit's own blocks, appended when new.
-  styles = applyNamedStyles(styles, sheet, used, usedTables);
+  styles = applyNamedStyles(styles, sheet, used, usedTables, usedLists);
 
   files['styles.xml'] = strToU8(styles);
   return rezipOdt(files);
@@ -4742,8 +4828,16 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   collectBulletListChars(raw, blChars);
   numberedOdt = applyBulletListChars(numberedOdt, blChars);
 
+  // Which lists point at their named list style: unoverridden, and without a marker
+  // format (that rides the L# levels, so such a list keeps the automatic clone).
+  const markerFormats: (MarkerFormat | null)[][] = [];
+  collectListMarkerFormats(raw, markerFormats);
+  const styleCandidates: (string | null)[] = [];
+  collectListStyleCandidates(raw, styleCandidates);
+  const listStyleRepoints = styleCandidates.map((n, i) => (n && !markerFormats[i]?.some(Boolean) ? n : null));
+
   const nestedFixes: (ListDef | null)[] = [];
-  collectNestedListFixes(raw, nestedFixes);
+  collectNestedListFixes(raw, nestedFixes, listStyleRepoints);
   numberedOdt = applyNestedListTypes(numberedOdt, nestedFixes);
 
   const listStyles: ParaStyle[] = [];
@@ -4756,9 +4850,11 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   let indentedLists = applyListLevelProps(styledLists, listLevels);
 
   // Marker formatting → a minted character style on each L# level definition.
-  const markerFormats: (MarkerFormat | null)[][] = [];
-  collectListMarkerFormats(raw, markerFormats);
   indentedLists = applyListMarkerFormats(indentedLists, markerFormats);
+
+  // Point the unoverridden styled lists at the named list styles rewriteStylesXml
+  // writes; runs after every pass keyed on the L# names.
+  indentedLists = applyListStyleNames(indentedLists, listStyleRepoints);
 
   // Rebuild real headings/lists/paragraphs inside table cells. Must run after
   // applyListItemStyles (cell lists don't exist yet) and before collapseRunWhitespace.
@@ -4791,7 +4887,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Effects first: applyCharacterStyles then clones the style that already carries them.
   const withNamedStyles = applyCharacterStyles(applyTextEffects(applyParagraphStyles(withParaBoxes)));
   const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
-  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, tabIntervalCm, margins.mirrored === true, rtl, notesSettings, hyphenate, pageNumbering, decor, lineNumbering);
+  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, new Set(listStyleRepoints.filter((n): n is string => !!n)), tabIntervalCm, margins.mirrored === true, rtl, notesSettings, hyphenate, pageNumbering, decor, lineNumbering);
   const withHf = applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
   const withWatermark = applyFoldMarksOdf(applyWatermarkOdf(withHf, decor.watermark), foldMarks);
   // Sections past the first get their own master page, which is where ODF keeps a

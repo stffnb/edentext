@@ -1,8 +1,26 @@
 # `src/lib/styles/` — named styles
 
-Three families: paragraph and character styles here, **table styles in
+Four families: paragraph and character styles here, **table styles in
 `docs/architecture/tables.md`** (model in `tableStyles.ts`, editor half in
-`editor/extensions/tableStyle.ts`).
+`editor/extensions/tableStyle.ts`), **list styles below**.
+
+## List styles (`listStyles.ts`, `editor/extensions/listStyle.ts`)
+
+LibreOffice's Listenformatvorlagen: a flat family of up-to-10-level definitions
+(`ListLevelStyle` — bullet/number kind, marker, relative `indentCm`, `markerAlign`,
+`startAt`; `multilevel` is style-wide). Assignment is `listStyleName` on the **outermost**
+list only — nested lists inherit, as an ODF `<text:list>` does. Precedence per level:
+node attr > style level > depth-cycle default, resolved by `effectiveListLevel` — the one
+source the decoration walk (`listStyleDecos`, which also owns `data-eff-list-style` for
+plain lists) and both exporters share. The five built-ins are **probed LibreOffice
+definitions** (List 1/2, Numbering 123/ABC/IVX; their margins are LO's own metric values).
+Export writes the full named `<text:list-style>` into styles.xml and points the list at it
+**only when nothing overrides** — ODF list styles have no parent chain, so an overridden
+list keeps the fully resolved automatic clone and drops the name (marker formats count as
+an override: they ride the L# levels). Probed: LibreOffice keeps a named reference on
+`<text:list>` across a re-save, preserves `style:display-name`, normalizes `style:name` to
+the `_20_`-encoded display name, and fills undefined levels with decimal — so the export
+always writes all 10 levels.
 
 ## Paragraph styles (`styleSheet.ts`, `sheet.svelte.ts`, `editor/extensions/paragraphStyle.ts`)
 

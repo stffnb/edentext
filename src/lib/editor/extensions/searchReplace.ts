@@ -282,7 +282,7 @@ export const SearchReplace = Extension.create<{ sheet: () => StyleSheet }>({
   name: 'searchReplace',
 
   addOptions() {
-    return { sheet: () => ({ paragraph: {}, character: {}, table: {} }) };
+    return { sheet: () => ({ paragraph: {}, character: {}, table: {}, list: {} }) };
   },
 
   addProseMirrorPlugins() {

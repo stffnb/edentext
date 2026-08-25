@@ -2,6 +2,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
+import { LIST_LEVEL_STEP_CM, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage, framePx } from '../editor/extensions/image';
 import { odfChartDataUrl } from './chart';
@@ -133,6 +134,8 @@ type Ctx = {
   usedStyles: Set<string>;
   charStyleNames: Map<string, string>;
   usedCharStyles: Set<string>;
+  // Named list styles (Listenformatvorlagen) lists reference, by ODF name.
+  usedListStyles: Set<string>;
   warnings: Set<string>;
   files: Record<string, Uint8Array>;
   imageCache: Map<string, string>;
@@ -749,7 +752,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -1529,7 +1532,47 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
       para: {}, text: textPropsFromOdf(resolver.spanTextProps(odfName), resolver),
     };
   }
+  for (const odfName of ctx.usedListStyles) {
+    const el = resolver.listStyle(odfName);
+    if (!el) continue;
+    const name = displayStyleName(odfName, resolver.listStyleDisplayName(odfName));
+    sheet.list[name] = listStyleFromOdf(name, el, sheet.list[name]?.builtin);
+  }
   return sheet;
+}
+
+// A named <text:list-style> element → the registry's shape. Each level's indentCm is
+// its margin step past the level above minus the 1.27cm base (the export's inverse).
+function listStyleFromOdf(name: string, el: Element, builtin?: boolean): ListStyle {
+  const levels: ListLevelStyle[] = [];
+  let multilevel = false;
+  let prevMargin = 0;
+  for (let d = 1; d <= MAX_LIST_LEVELS; d++) {
+    const def = listLevelDef(el, d);
+    if (!def) break;
+    const ordered = def.localName === 'list-level-style-number';
+    const level: ListLevelStyle = { kind: ordered ? 'number' : 'bullet' };
+    const margin = listLevelMarginLeftCm(def) ?? prevMargin + LIST_LEVEL_STEP_CM;
+    const extra = Math.round((margin - prevMargin - LIST_LEVEL_STEP_CM) * 100) / 100;
+    if (extra) level.indentCm = extra;
+    prevMargin = margin;
+    if (listLevelRightAligned(def)) level.markerAlign = 'right';
+    if (ordered) {
+      if (parseInt(def.getAttributeNS(NS.text, 'display-levels') ?? '1', 10) > 1) multilevel = true;
+      const key = orderedTypeFromFormat(def.getAttributeNS(NS.style, 'num-format'), def.getAttributeNS(NS.style, 'num-suffix'));
+      level.numType = key === 'multilevel' ? 'decimal' : key;
+      const sv = parseInt(def.getAttributeNS(NS.text, 'start-value') ?? '', 10);
+      if (Number.isFinite(sv) && sv > 1) level.startAt = sv;
+    } else {
+      const ch = bulletCharFromOdf(def.getAttributeNS(NS.text, 'bullet-char'), listLevelFontName(def));
+      if (ch) level.bulletChar = ch;
+    }
+    levels.push(level);
+  }
+  const style: ListStyle = { name, levels };
+  if (builtin) style.builtin = true;
+  if (multilevel) style.multilevel = true;
+  return style;
 }
 
 // The block's yardstick plus what the run's character style provides.
@@ -2453,6 +2496,10 @@ function outlineHeadingEls(listEl: Element): Element[] | null {
 // display-levels chain, so an explicit numbering here is never suppressed (null = rejoin).
 function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, depth: number, govMultilevel = false, baseCycle: OrderedCycle = ROOT_ORDERED_CYCLE): Node | null {
   const styleName = el.getAttributeNS(NS.text, 'style-name') ?? inheritedStyleName;
+  // A named list style travels as `listStyleName` on the outermost list; everything the
+  // style's levels say stays in the registry, so no per-level attrs are derived.
+  const named = ctx.resolver.isNamedListStyle(styleName);
+  if (named && depth === 1) ctx.usedListStyles.add(styleName!);
   const levelDef = listLevelDef(ctx.resolver.listStyle(styleName), depth);
   const ordered = levelDef?.localName === 'list-level-style-number';
   const displayLevels = parseInt(levelDef?.getAttributeNS(NS.text, 'display-levels') ?? '1', 10);
@@ -2507,12 +2554,16 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
   }
 
   if (!ordered) {
-    const raw = levelDef?.getAttributeNS(NS.text, 'bullet-char') ?? null;
-    const bulletChar = bulletCharAttr(bulletCharFromOdf(raw, listLevelFontName(levelDef)), depth - 1);
     const attrs: Record<string, unknown> = {};
-    if (bulletChar) attrs.bulletChar = bulletChar;
-    if (indent != null) attrs.indent = indent;
-    if (listLevelRightAligned(levelDef)) attrs.markerAlign = 'right';
+    if (named) {
+      if (depth === 1) attrs.listStyleName = displayStyleName(styleName!, ctx.resolver.listStyleDisplayName(styleName!));
+    } else {
+      const raw = levelDef?.getAttributeNS(NS.text, 'bullet-char') ?? null;
+      const bulletChar = bulletCharAttr(bulletCharFromOdf(raw, listLevelFontName(levelDef)), depth - 1);
+      if (bulletChar) attrs.bulletChar = bulletChar;
+      if (indent != null) attrs.indent = indent;
+      if (listLevelRightAligned(levelDef)) attrs.markerAlign = 'right';
+    }
     const node: Node = { type: 'bulletList', content: items };
     if (Object.keys(attrs).length) node.attrs = attrs;
     return node;
@@ -2531,9 +2582,13 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
   }
   const attrs: Record<string, unknown> = {};
   if (start != null) attrs.start = start;
-  if (listStyleType) attrs.listStyleType = listStyleType;
-  if (indent != null) attrs.indent = indent;
-  if (listLevelRightAligned(levelDef)) attrs.markerAlign = 'right';
+  if (named) {
+    if (depth === 1) attrs.listStyleName = displayStyleName(styleName!, ctx.resolver.listStyleDisplayName(styleName!));
+  } else {
+    if (listStyleType) attrs.listStyleType = listStyleType;
+    if (indent != null) attrs.indent = indent;
+    if (listLevelRightAligned(levelDef)) attrs.markerAlign = 'right';
+  }
   const node: Node = { type: 'orderedList', content: items };
   if (Object.keys(attrs).length) node.attrs = attrs;
   return node;

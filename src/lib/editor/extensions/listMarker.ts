@@ -103,7 +103,7 @@ export const ListMarker = Extension.create<{ sheet: () => StyleSheet }>({
   name: 'listMarker',
 
   addOptions() {
-    return { sheet: () => ({ paragraph: {}, character: {}, table: {} }) };
+    return { sheet: () => ({ paragraph: {}, character: {}, table: {}, list: {} }) };
   },
 
   // Which end of the hanging indent the label is set against (Word's w:lvlJc, ODF's

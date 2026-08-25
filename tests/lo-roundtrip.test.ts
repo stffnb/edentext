@@ -409,6 +409,52 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
       index?.attrs?.entries);
   });
 
+  it('survives a `soffice` re-save of named list styles', { timeout: 180000 }, async () => {
+    const { builtinStyleSheet } = await import('../src/lib/styles/styleSheet');
+    const sheet = builtinStyleSheet();
+    sheet.list['Prüfliste'] = {
+      name: 'Prüfliste',
+      levels: [
+        { kind: 'number', numType: 'upper-roman-paren', markerAlign: 'right', indentCm: 0.5 },
+        { kind: 'bullet', bulletChar: '✓' },
+        { kind: 'number', numType: 'lower-alpha' },
+      ],
+    };
+    const doc: N = { type: 'doc', content: [
+      { type: 'orderedList', attrs: { listStyleName: 'Prüfliste' }, content: [
+        LI(P(null, T('one')), { type: 'bulletList', content: [LI(P(null, T('sub')))] }),
+        LI(P(null, T('two'))),
+      ] },
+      P(null, T('between')),
+      { type: 'bulletList', attrs: { listStyleName: 'List 2' }, content: [LI(P(null, T('dash')))] },
+    ] };
+    mkdirSync('/tmp/lo-rt', { recursive: true });
+    writeFileSync('/tmp/lo-rt/ls.odt', await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', sheet));
+    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/lsout /tmp/lo-rt/ls.odt', { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/lsout/ls.odt'));
+    const files = unzipSync(resaved);
+    const xml = strFromU8(files['content.xml']);
+    const stylesXml = strFromU8(files['styles.xml']);
+
+    // LibreOffice keeps the named reference and the definition (probed) — this is
+    // the assignment surviving a real editor, not just our own reader.
+    check('LO lists: the definition stays named in styles.xml',
+      /<text:list-style style:name="Prüfliste"/.test(stylesXml), stylesXml.match(/<text:list-style[^>]*>/g));
+    check('LO lists: the list still references it', xml.includes('text:style-name="Prüfliste"'), xml.match(/<text:list [^>]*>/g));
+
+    const res = importOdt(resaved);
+    const lists = (res.content.content ?? []).filter((n: N) => n.type === 'orderedList' || n.type === 'bulletList');
+    check('LO lists: the assignment comes back', lists[0]?.attrs?.listStyleName === 'Prüfliste', lists[0]?.attrs);
+    check('LO lists: the built-in assignment comes back', lists[1]?.attrs?.listStyleName === 'List 2', lists[1]?.attrs);
+    check('LO lists: no per-level attrs accrete',
+      !lists[0]?.attrs?.listStyleType && !lists[0]?.attrs?.indent && !lists[0]?.attrs?.markerAlign, lists[0]?.attrs);
+    const imported = res.styles.list['Prüfliste'];
+    check('LO lists: the definition comes back', imported?.levels[0]?.numType === 'upper-roman-paren'
+      && imported?.levels[0]?.markerAlign === 'right' && imported?.levels[1]?.bulletChar === '✓', imported?.levels?.slice(0, 2));
+    check('LO lists: the level indent survives the unit round-trip',
+      Math.abs((imported?.levels[0]?.indentCm ?? 0) - 0.5) < 0.02, imported?.levels[0]);
+  });
+
   it('survives a `soffice` re-save of the record-changes flag', { timeout: 180000 }, async () => {
     const doc: N = { type: 'doc', content: [P(null, T('Ein Satz.'))] };
     const bytes = await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', undefined,

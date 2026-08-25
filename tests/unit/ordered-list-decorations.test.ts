@@ -5,8 +5,10 @@ import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import ListItem from '@tiptap/extension-list-item';
-import { OrderedList, orderedListStyleDecos } from '../../src/lib/editor/extensions/orderedList';
+import { OrderedList } from '../../src/lib/editor/extensions/orderedList';
 import { BulletList } from '../../src/lib/editor/extensions/bulletList';
+import { listStyleDecos } from '../../src/lib/editor/extensions/listStyle';
+import { builtinStyleSheet } from '../../src/lib/styles/styleSheet';
 
 const schema = getSchema([Document, Paragraph, Text, ListItem, OrderedList, BulletList]);
 
@@ -18,7 +20,7 @@ const doc = (...content: PmNode[]) => schema.nodes.doc.create(null, content);
 
 // The effective data-eff-list-style the plugin tags each <ol> with, in document order.
 function effStyles(d: PmNode): (string | null)[] {
-  const set = orderedListStyleDecos(d);
+  const set = listStyleDecos(d, builtinStyleSheet());
   const out: (string | null)[] = [];
   d.descendants((node, pos) => {
     if (node.type.name !== 'orderedList') return;

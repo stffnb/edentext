@@ -3,6 +3,7 @@
 // formatting on the block or run still overrides the result.
 
 import { builtinTableStyles, tableStyleCss, type TableStyle } from './tableStyles';
+import { builtinListStyles, type ListStyle } from './listStyles';
 import type { CapsMode } from '../editor/extensions/textEffects';
 
 export type ParaProps = {
@@ -49,14 +50,15 @@ export type Style = {
   text: TextProps;
 };
 
-// Three families, as in LibreOffice/Word: paragraph styles govern whole blocks, character
+// Four families, as in LibreOffice/Word: paragraph styles govern whole blocks, character
 // styles a run of text inside one (same Style shape; a character style only uses `text`),
-// table styles a whole table (their own shape, no inheritance — see tableStyles.ts).
-export type StyleFamily = 'paragraph' | 'character' | 'table';
+// table and list styles their own whole node (own shapes, no inheritance).
+export type StyleFamily = 'paragraph' | 'character' | 'table' | 'list';
 export type StyleSheet = {
   paragraph: Record<string, Style>;
   character: Record<string, Style>;
   table: Record<string, TableStyle>;
+  list: Record<string, ListStyle>;
 };
 
 export const DEFAULT_STYLE = 'Standard';
@@ -98,14 +100,15 @@ const CHAR_BUILTINS: Style[] = [
 
 // Bumped whenever the built-in definitions change: a stored sheet from an older version
 // keeps its user styles but takes the new factory built-ins (see mergeStoredSheet).
-export const STYLE_SHEET_VERSION = 10;
+export const STYLE_SHEET_VERSION = 11;
 
 // A persisted sheet merged onto the current built-ins. Same version: stored entries win
 // (a document's own styles, and edits to built-ins). Older: only user styles survive.
 export function mergeStoredSheet(stored: unknown): StyleSheet {
   const sheet = builtinStyleSheet();
   const data = stored as
-    | { v?: number; paragraph?: Record<string, Style>; character?: Record<string, Style>; table?: Record<string, TableStyle> }
+    | { v?: number; paragraph?: Record<string, Style>; character?: Record<string, Style>;
+        table?: Record<string, TableStyle>; list?: Record<string, ListStyle> }
     | null;
   if (!data?.paragraph || typeof data.paragraph !== 'object') return sheet;
   const current = data.v === STYLE_SHEET_VERSION;
@@ -116,11 +119,13 @@ export function mergeStoredSheet(stored: unknown): StyleSheet {
       sheet[family][name] = style;
     }
   }
-  // Table styles have their own shape, so they merge separately.
-  for (const [name, style] of Object.entries(data.table ?? {})) {
-    if (!style || typeof style !== 'object') continue;
-    if (!current && style.builtin) continue;
-    sheet.table[name] = style;
+  // Table and list styles have their own shapes, so they merge separately.
+  for (const family of ['table', 'list'] as const) {
+    for (const [name, style] of Object.entries(data[family] ?? {})) {
+      if (!style || typeof style !== 'object') continue;
+      if (!current && style.builtin) continue;
+      (sheet[family] as Record<string, TableStyle | ListStyle>)[name] = style;
+    }
   }
   return sheet;
 }
@@ -130,14 +135,14 @@ export function builtinStyleSheet(): StyleSheet {
   for (const s of BUILTINS) paragraph[s.name] = structuredClone(s);
   const character: Record<string, Style> = {};
   for (const s of CHAR_BUILTINS) character[s.name] = structuredClone(s);
-  return { paragraph, character, table: builtinTableStyles() };
+  return { paragraph, character, table: builtinTableStyles(), list: builtinListStyles() };
 }
 
 // Inheritance order: every style directly followed by its own children, so the manager's
 // indent matches the tree. Siblings sort built-ins first (as listed above), then by name.
 // `Heading` is abstract (never assignable), so only withAbstract callers see it.
 export function styleOrder(sheet: StyleSheet, withAbstract = false, family: StyleFamily = 'paragraph'): Style[] {
-  if (family === 'table') return []; // table styles have no inheritance — listed flat
+  if (family === 'table' || family === 'list') return []; // no inheritance — listed flat
   const styles = family === 'character' ? sheet.character : sheet.paragraph;
   const rank = new Map((family === 'character' ? CHAR_BUILTINS : BUILTINS).map((b, i) => [b.name, i]));
   const order = (a: string, b: string) => (rank.get(a) ?? 1e9) - (rank.get(b) ?? 1e9) || a.localeCompare(b);

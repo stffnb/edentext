@@ -19,6 +19,7 @@ import { BulletList } from './extensions/bulletList';
 import { OrderedList } from './extensions/orderedList';
 import ListItem from '@tiptap/extension-list-item';
 import { ListMarker } from './extensions/listMarker';
+import { ListStyle } from './extensions/listStyle';
 import { Table, TableHeader, TableCell } from '@tiptap/extension-table';
 import { ResizableTableRow } from './extensions/tableRow';
 import History from '@tiptap/extension-history';
@@ -189,6 +190,9 @@ export const extensions = [
   // Bullet/number formatting: it follows the item's first text portion, as in
   // LibreOffice (the sheet resolves a character style on that portion).
   ListMarker.configure({ sheet: styleSheet }),
+  // Named list style on the outermost list (LibreOffice Listenformatvorlage / Word
+  // numbering style); also owns the effective-marker walk both list types render by.
+  ListStyle.configure({ sheet: styleSheet }),
   // resizable:false keeps TipTap's columnResizing plugin off; TableView, the two
   // resize plugins, and ResizableTableRow supply the drag handling instead. Table
   // (unlike TableKit) doesn't auto-add children, so ResizableTableRow is listed here.

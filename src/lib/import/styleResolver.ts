@@ -175,6 +175,7 @@ export class StyleResolver {
   private namedParagraphNames = new Set<string>();
   private namedTextNames = new Set<string>();
   private namedTableNames = new Set<string>();
+  private namedListNames = new Set<string>();
   private displayNames = new Map<string, string>();
 
   constructor(contentDoc: Document, stylesDoc: Document | null) {
@@ -282,6 +283,13 @@ export class StyleResolver {
       } else if (el.namespaceURI === NS.text && el.localName === 'list-style') {
         const name = el.getAttributeNS(NS.style, 'name');
         if (name) this.listStyles.set(name, el);
+        // A list style in <office:styles> is a named one (an automatic style is the
+        // direct formatting of one list); its display name decodes like the others'.
+        if (name && named) {
+          this.namedListNames.add(name);
+          const display = el.getAttributeNS(NS.style, 'display-name');
+          if (display) this.displayNames.set(name, display);
+        }
       } else if (el.namespaceURI === NS.number
         && ['date-style', 'time-style', 'number-style', 'percentage-style', 'currency-style'].includes(el.localName)) {
         const name = el.getAttributeNS(NS.style, 'name');
@@ -465,6 +473,18 @@ export class StyleResolver {
 
   listStyle(name: string | null): Element | null {
     return name ? this.listStyles.get(name) ?? null : null;
+  }
+
+  // Whether a list style came from <office:styles> — a named Listenformatvorlage
+  // rather than one list's direct formatting.
+  isNamedListStyle(name: string | null): boolean {
+    return !!name && this.namedListNames.has(name);
+  }
+
+  // Its display name ("List_20_Number" → the file's own "List Number"), decoded like
+  // the paragraph families' — the caller decodes _20_ itself when the file names none.
+  listStyleDisplayName(name: string): string | undefined {
+    return this.displayNames.get(name);
   }
 
   // The <number:date-style>/<number:time-style> element a date/time field references.
