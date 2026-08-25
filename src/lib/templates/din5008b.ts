@@ -42,12 +42,14 @@ function buildLetter(): TemplateData {
         // The one-line return address opens the address field at 45mm from the top.
         // fontSize also shrinks the paragraph mark, so the line box is 8pt tall.
         P({ spaceBefore: RETURN_SPACE_BEFORE_PT, spaceAfter: RETURN_SPACE_AFTER_PT, fontSize: '8pt' }, PLH(L.returnAddress, SMALL)),
-        addressRow(null, [PLH(L.recipientCompany)], [T(L.yourRef), PLH(L.reference)]),
-        addressRow(null, [PLH(L.recipientName)], [T(L.yourMessage), PLH(L.date)]),
-        addressRow(null, [PLH(L.recipientStreet)], [T(L.ourRef), PLH(L.reference)]),
-        addressRow(null, [PLH(L.recipientCity)], [T(L.phone), PLH(L.phoneNumber)]),
-        addressRow(null, [], [T(L.email), PLH(L.emailAddress)]),
-        addressRow(null, [], [T(L.dateLabel), date]),
+        // Two notation lines above the address (DIN's Zusatz- und Vermerkzone, filled
+        // bottom-up), sharing their rows with the top of the info block.
+        addressRow(null, [], [T(L.yourRef), PLH(L.reference)]),
+        addressRow(null, [PLH(L.remark)], [T(L.yourMessage), PLH(L.date)]),
+        addressRow(null, [PLH(L.recipientCompany)], [T(L.ourRef), PLH(L.reference)]),
+        addressRow(null, [PLH(L.recipientName)], [T(L.phone), PLH(L.phoneNumber)]),
+        addressRow(null, [PLH(L.recipientStreet)], [T(L.email), PLH(L.emailAddress)]),
+        addressRow(null, [PLH(L.recipientCity)], [T(L.dateLabel), date]),
         P(null),
         P(null),
         P(null, PLH(L.subject, BOLD)),

@@ -708,6 +708,7 @@ const en = {
       phoneNumber: 'Number',
       emailAddress: 'Address',
       place: 'Place',
+      remark: 'Notation (e.g. registered mail)',
       subject: 'Subject',
       salutation: 'Salutation',
       bodyText: 'Letter text',

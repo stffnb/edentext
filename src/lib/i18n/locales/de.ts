@@ -702,6 +702,7 @@ const de: Messages = {
       phoneNumber: 'Nummer',
       emailAddress: 'Adresse',
       place: 'Ort',
+      remark: 'Vermerk (z. B. Einschreiben)',
       subject: 'Betreff',
       salutation: 'Anrede',
       bodyText: 'Brieftext',
