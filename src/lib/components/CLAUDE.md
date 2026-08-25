@@ -206,7 +206,9 @@ size alone makes a short word far too small and a long one overflow the page.
 then the template's content, margins, styles and fold marks. `documentName` becomes the
 localized template name and no file handle is bound, so the first Save asks where. The
 DIN letter's mm positions were verified headlessly (45mm address field, 125mm info
-column); its module documents the arithmetic.
+column); its module documents the arithmetic. The letter-family templates share that
+geometry (and the JSON builders) via `templates/builders.ts`; `tests/unit/templates.test.ts`
+schema-checks every entry in both locales.
 
 ## Fold marks (`FoldMarkLayer.svelte`, `storage/foldMarks.ts`)
 

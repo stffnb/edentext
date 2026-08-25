@@ -42,19 +42,43 @@
     <div class="grid">
       {#each TEMPLATES as entry (entry.id)}
         <button class="tpl" onclick={() => pick(entry)}>
-          <!-- A stylized letter page: address block, info column or date line, body lines. -->
+          <!-- A stylized page per template: letters get an address block, the CV and
+               minutes a heading, the invoice and minutes a small table sketch. -->
           <span class="thumb" aria-hidden="true">
-            <span class="addr"></span>
-            {#if entry.id === 'din5008b'}
+            {#if entry.id === 'cv'}
+              <span class="h1"></span>
+              <span class="sect s1"></span>
+              <span class="pair pa r1"></span><span class="pair pb r1"></span>
+              <span class="pair pa r2"></span><span class="pair pb r2"></span>
+              <span class="sect s2"></span>
+              <span class="pair pa r3"></span><span class="pair pb r3"></span>
+            {:else if entry.id === 'minutes'}
+              <span class="h1"></span>
+              <span class="tbl"></span>
+              <span class="line l2"></span>
+              <span class="line l3"></span>
+            {:else if entry.id === 'invoice'}
+              <span class="addr"></span>
               <span class="info"></span>
+              <span class="tbl low"></span>
+              <span class="fold f1"></span>
+              <span class="fold f2"></span>
             {:else}
-              <span class="date"></span>
+              <span class="addr"></span>
+              {#if entry.id === 'din5008b'}
+                <span class="info"></span>
+              {:else}
+                <span class="date"></span>
+              {/if}
+              <span class="line l1"></span>
+              <span class="line l2"></span>
+              <span class="line l3"></span>
+              {#if entry.id === 'coverLetter'}
+                <span class="line l4"></span>
+              {/if}
+              <span class="fold f1"></span>
+              <span class="fold f2"></span>
             {/if}
-            <span class="line l1"></span>
-            <span class="line l2"></span>
-            <span class="line l3"></span>
-            <span class="fold f1"></span>
-            <span class="fold f2"></span>
           </span>
           <span class="name">{entry.name()}</span>
           <span class="desc">{entry.description()}</span>
@@ -164,9 +188,27 @@
   .l1 { top: 56px; width: 40px; background: #8a94a0; }
   .l2 { top: 66px; width: 60px; }
   .l3 { top: 73px; width: 55px; }
+  .l4 { top: 96px; width: 30px; }
   .fold { left: 2px; width: 5px; height: 1px; background: #8a94a0; }
   .f1 { top: 36px; }
   .f2 { top: 80px; }
+  .h1 { top: 10px; left: 12px; width: 44px; height: 5px; background: #8a94a0; }
+  .sect { left: 12px; width: 30px; height: 4px; background: #8a94a0; }
+  .s1 { top: 32px; }
+  .s2 { top: 72px; }
+  .pair { height: 3px; }
+  .pa { left: 12px; width: 14px; }
+  .pb { left: 32px; width: 40px; }
+  .r1 { top: 42px; }
+  .r2 { top: 52px; }
+  .r3 { top: 82px; }
+  /* A gridded box: repeated hairlines inside a border stand in for table rows. */
+  .thumb > .tbl {
+    top: 26px; left: 12px; width: 60px; height: 27px;
+    border: 1px solid #8a94a0;
+    background: repeating-linear-gradient(to bottom, transparent 0 7px, #b9c2cc 7px 8px);
+  }
+  .thumb > .tbl.low { top: 56px; height: 31px; }
 
   .name {
     font-size: 0.85rem;
