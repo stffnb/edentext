@@ -136,8 +136,6 @@
     return formatOrdinal(def?.startAt ?? 1, type.numFormat) + type.numSuffix;
   }
 
-  const PREVIEW_LEVELS = 3;
-
   const BORDER_WIDTHS = ['none', '0.5', '0.75', '1', '1.5', '2.25'];
   // The three border controls; the inner ones fall back to the shared innerBorder.
   type BorderKey = 'border' | 'innerBorderH' | 'innerBorderV';
@@ -527,9 +525,9 @@
 
       <div class="fields">
         {#if isList}
-          <!-- Three nested sample levels, markers and indents from the definition. -->
+          <!-- One sample line per defined level; the box scrolls past six of them. -->
           <div class="preview list-preview">
-            {#each Array(PREVIEW_LEVELS) as _, d}
+            {#each lStyle.levels as _, d}
               <div class="lp-line" style="margin-left: {Math.max(0, listStyleMarginCm(lStyle, d + 1)) * 0.28}rem">
                 <span class="lp-marker" class:right={lStyle.levels[d]?.markerAlign === 'right'}>{levelMarker(lStyle, d + 1)}</span>
                 <i class="lp-text"></i>
@@ -855,7 +853,11 @@
 </dialog>
 
 <style>
-  .list-preview { display: flex; flex-direction: column; justify-content: center; gap: 0.45rem; }
+  /* .preview.list-preview outranks .preview's overflow: hidden below. */
+  .preview.list-preview {
+    display: flex; flex-direction: column; gap: 0.45rem;
+    max-height: 8.75rem; overflow-y: auto; flex-shrink: 0;
+  }
   .lp-line { display: flex; align-items: center; gap: 0.5rem; }
   .lp-marker { min-width: 1.6rem; font-size: 0.85rem; }
   .lp-marker.right { text-align: right; }

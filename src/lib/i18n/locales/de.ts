@@ -189,7 +189,7 @@ const de: Messages = {
     indentStep: 'Einzugsschritt (cm)',
     markerRight: 'Nummer rechtsbündig',
     startAt: 'Beginnen mit',
-    multilevelAll: 'Alle Ebenen anzeigen (1.2.3)',
+    multilevelAll: 'Mehrstufige Nummerierung (1, 1.1, 1.2.1)',
     addLevel: 'Ebene hinzufügen',
     removeLevel: 'Letzte Ebene entfernen',
     region: 'Bereich',

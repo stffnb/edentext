@@ -195,7 +195,7 @@ const en = {
     indentStep: 'Indent step (cm)',
     markerRight: 'Right-align label',
     startAt: 'Start at',
-    multilevelAll: 'Show all levels (1.2.3)',
+    multilevelAll: 'Multilevel numbering (1, 1.1, 1.2.1)',
     addLevel: 'Add level',
     removeLevel: 'Remove last level',
     region: 'Area',
