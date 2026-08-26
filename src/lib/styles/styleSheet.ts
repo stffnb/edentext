@@ -100,7 +100,7 @@ const CHAR_BUILTINS: Style[] = [
 
 // Bumped whenever the built-in definitions change: a stored sheet from an older version
 // keeps its user styles but takes the new factory built-ins (see mergeStoredSheet).
-export const STYLE_SHEET_VERSION = 11;
+export const STYLE_SHEET_VERSION = 12;
 
 // A persisted sheet merged onto the current built-ins. Same version: stored entries win
 // (a document's own styles, and edits to built-ins). Older: only user styles survive.

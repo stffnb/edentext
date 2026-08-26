@@ -85,20 +85,29 @@ describe('listStyleOverridden', () => {
   });
 });
 
-describe('the built-ins (probed LibreOffice definitions)', () => {
+describe('the built-ins (the preset gallery)', () => {
   const builtins = builtinListStyles();
-  it('ship LibreOffice\'s five, ten levels each', () => {
-    expect(Object.keys(builtins).sort()).toEqual(['List 1', 'List 2', 'Numbering 123', 'Numbering ABC', 'Numbering IVX']);
-    for (const s of Object.values(builtins)) expect(s.levels).toHaveLength(MAX_LIST_LEVELS);
+  it('ship five presets, ten levels each, none uniform across its levels', () => {
+    expect(Object.keys(builtins).sort()).toEqual(
+      ['Checklist', 'Diamond Bullets', 'Numbering with Bullets', 'Outline A.I.1', 'Outline I.A.1']);
+    for (const s of Object.values(builtins)) {
+      expect(s.levels).toHaveLength(MAX_LIST_LEVELS);
+      const markers = new Set(s.levels.map((l) => `${l.kind}:${l.bulletChar ?? l.numType}`));
+      expect(markers.size, `${s.name} must differ across levels`).toBeGreaterThan(1);
+    }
   });
-  it('carry LibreOffice\'s level geometry', () => {
-    // List 1: 0.4cm per level; Numbering 123: 1.33cm then 0.7cm steps.
-    expect(listStyleMarginCm(builtins['List 1'], 1)).toBeCloseTo(0.4, 3);
-    expect(listStyleMarginCm(builtins['List 1'], 2)).toBeCloseTo(0.8, 3);
-    expect(listStyleMarginCm(builtins['Numbering 123'], 1)).toBeCloseTo(1.33, 3);
-    expect(listStyleMarginCm(builtins['Numbering 123'], 2)).toBeCloseTo(2.03, 3);
+  it('keep the plain 1.27cm step per level', () => {
+    expect(listStyleMarginCm(builtins['Outline I.A.1'], 1)).toBeCloseTo(1.27, 3);
+    expect(listStyleMarginCm(builtins['Diamond Bullets'], 3)).toBeCloseTo(3.81, 3);
   });
-  it('Numbering IVX sets its wide labels against the right edge', () => {
-    expect(builtins['Numbering IVX'].levels[0]).toMatchObject({ kind: 'number', numType: 'upper-roman', markerAlign: 'right' });
+  it('Outline I.A.1 runs I. A. 1. a) i) with the wide roman labels right-set', () => {
+    expect(builtins['Outline I.A.1'].levels.slice(0, 5).map((l) => l.numType)).toEqual(
+      ['upper-roman', 'upper-alpha', 'decimal', 'lower-alpha-paren', 'lower-roman-paren']);
+    expect(builtins['Outline I.A.1'].levels[0].markerAlign).toBe('right');
+  });
+  it('Numbering with Bullets numbers level 1 and dashes the levels below', () => {
+    expect(builtins['Numbering with Bullets'].levels[0]).toMatchObject({ kind: 'number', numType: 'decimal' });
+    expect(builtins['Numbering with Bullets'].levels[1]).toMatchObject({ kind: 'bullet', bulletChar: '–' });
+    expect(builtins['Checklist'].levels[0]).toMatchObject({ kind: 'bullet', bulletChar: '✓' });
   });
 });

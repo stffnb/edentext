@@ -1225,7 +1225,7 @@ describe('DOCX named list styles', () => {
       para('between'),
       // A second list in the same style: its own instance, so it restarts at 1.
       { type: 'orderedList', attrs: { listStyleName: 'Prüfliste' }, content: [li(para('restart'))] },
-      { type: 'bulletList', attrs: { listStyleName: 'List 2' }, content: [li(para('dash'))] },
+      { type: 'bulletList', attrs: { listStyleName: 'Diamond Bullets' }, content: [li(para('dash'))] },
     ],
   };
 
@@ -1248,7 +1248,7 @@ describe('DOCX named list styles', () => {
     const style = styles.match(/<w:style w:type="numbering" w:styleId="Prfliste">[\s\S]*?<\/w:style>/)?.[0] ?? '';
     expect(style).toContain('<w:name w:val="Prüfliste"/>');
     expect(/<w:numId w:val="[1-9]\d*"\/>/.test(style), 'placeholder numId resolved').toBe(true);
-    expect(styles).toContain('w:styleId="List2"');
+    expect(styles).toContain('w:styleId="DiamondBullets"');
   });
 
   it('round-trips the assignment and the definition', async () => {
@@ -1262,7 +1262,7 @@ describe('DOCX named list styles', () => {
     const nested = walk(lists[0], 'bulletList')[0];
     expect(nested?.attrs ?? null, 'nested list stays attr-free').toBeNull();
     expect(lists[1]?.attrs?.listStyleName).toBe('Prüfliste');
-    expect(lists[2]?.attrs?.listStyleName).toBe('List 2');
+    expect(lists[2]?.attrs?.listStyleName).toBe('Diamond Bullets');
     const imported = result.styles.list['Prüfliste'];
     expect(imported?.levels[0]).toMatchObject({ kind: 'number', numType: 'upper-roman-paren', markerAlign: 'right', indentCm: 0.5 });
     expect(imported?.levels[1]).toMatchObject({ kind: 'bullet', bulletChar: '✓' });
@@ -1301,7 +1301,7 @@ describe('DOCX named list styles', () => {
 
   it('an overridden list keeps a private, fully resolved numbering and drops the name', async () => {
     const doc = { type: 'doc', content: [
-      { type: 'orderedList', attrs: { listStyleName: 'Numbering ABC', listStyleType: 'lower-roman' }, content: [li(para('broken out'))] },
+      { type: 'orderedList', attrs: { listStyleName: 'Outline A.I.1', listStyleType: 'lower-roman' }, content: [li(para('broken out'))] },
     ] };
     const bytes = await buildDocx(doc as any, undefined, undefined, undefined, undefined, undefined, sheet);
     const numbering = strFromU8(unzipSync(bytes)['word/numbering.xml']);

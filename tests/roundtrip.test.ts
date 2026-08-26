@@ -1690,7 +1690,7 @@ describe('Leg 14: named list styles (ODF)', () => {
       LI(P(null, T('two'))),
     ] },
     P(null, T('between')),
-    { type: 'bulletList', attrs: { listStyleName: 'List 2' }, content: [LI(P(null, T('dash')))] },
+    { type: 'bulletList', attrs: { listStyleName: 'Diamond Bullets' }, content: [LI(P(null, T('dash')))] },
   ] };
 
   it('writes named text:list-style definitions and round-trips the assignment', async () => {
@@ -1706,9 +1706,9 @@ describe('Leg 14: named list styles (ODF)', () => {
     check('level 2 is the bullet level', /text:level="2" text:bullet-char="✓"/.test(def), def);
     check('level 1 margin carries the extra step (1.77cm)', def.includes('fo:margin-left="1.770cm"'), def);
     check('all ten levels are written', (def.match(/text:level="/g) ?? []).length === 10, def);
-    check('the built-in List 2 is minted too', /<text:list-style style:name="List_20_2" style:display-name="List 2">/.test(styles));
+    check('the built-in Diamond Bullets is minted too', /<text:list-style style:name="Diamond_20_Bullets" style:display-name="Diamond Bullets">/.test(styles));
     check('the list references the named style', content.includes('<text:list text:style-name="Prüfliste">'), content.match(/<text:list [^>]*>/g));
-    check('the bullet list references List 2', content.includes('<text:list text:style-name="List_20_2">'));
+    check('the bullet list references Diamond Bullets', content.includes('<text:list text:style-name="Diamond_20_Bullets">'));
     check('nested lists stay bare (they inherit the style)', /<text:list>\s*<text:list-item>/.test(content), content.match(/<text:list[^>]*>/g));
 
     const res = importOdt(bytes);
@@ -1721,19 +1721,19 @@ describe('Leg 14: named list styles (ODF)', () => {
     check('level 1 survives whole', imported?.levels[0]?.numType === 'upper-roman-paren'
       && imported?.levels[0]?.markerAlign === 'right' && imported?.levels[0]?.indentCm === 0.5, imported?.levels[0]);
     check('level 2 keeps its bullet', imported?.levels[1]?.bulletChar === '✓', imported?.levels[1]);
-    expect.soft(res.styles.list['List 2'], 'the built-in comes back as itself').toEqual(sheet.list['List 2']);
+    expect.soft(res.styles.list['Diamond Bullets'], 'the built-in comes back as itself').toEqual(sheet.list['Diamond Bullets']);
   });
 
   it('an overridden list keeps the resolved automatic clone and drops the name', async () => {
     const doc: N = { type: 'doc', content: [
-      { type: 'orderedList', attrs: { listStyleName: 'Numbering ABC', listStyleType: 'lower-roman' }, content: [LI(P(null, T('broken out')))] },
+      { type: 'orderedList', attrs: { listStyleName: 'Outline A.I.1', listStyleType: 'lower-roman' }, content: [LI(P(null, T('broken out')))] },
     ] };
     const bytes = await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', sheet);
     const files = unzipSync(bytes);
     const content = strFromU8(files['content.xml']);
 
     check('the list keeps its automatic style', content.includes('<text:list text:style-name="L1">'), content.match(/<text:list [^>]*>/g));
-    check('no named definition is written', !strFromU8(files['styles.xml']).includes('Numbering_20_ABC'));
+    check('no named definition is written', !strFromU8(files['styles.xml']).includes('Outline_20_A.I.1'));
     check('the clone resolves the override', /<text:list-style style:name="L1">[\s\S]*?text:level="1" style:num-format="i" style:num-suffix="\."/.test(content), content.match(/<text:list-style[\s\S]*?<\/text:list-style>/)?.[0]);
 
     const list = (importOdt(bytes).content.content ?? []).find((n: N) => n.type === 'orderedList');

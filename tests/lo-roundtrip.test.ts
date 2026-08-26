@@ -426,7 +426,7 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
         LI(P(null, T('two'))),
       ] },
       P(null, T('between')),
-      { type: 'bulletList', attrs: { listStyleName: 'List 2' }, content: [LI(P(null, T('dash')))] },
+      { type: 'bulletList', attrs: { listStyleName: 'Diamond Bullets' }, content: [LI(P(null, T('dash')))] },
       // A bullet tree under the same style: level 1 is a number level, so the style
       // decides the kind and LibreOffice must render (and keep) the numbering.
       { type: 'bulletList', attrs: { listStyleName: 'Prüfliste' }, content: [
@@ -450,7 +450,7 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     const res = importOdt(resaved);
     const lists = (res.content.content ?? []).filter((n: N) => n.type === 'orderedList' || n.type === 'bulletList');
     check('LO lists: the assignment comes back', lists[0]?.attrs?.listStyleName === 'Prüfliste', lists[0]?.attrs);
-    check('LO lists: the built-in assignment comes back', lists[1]?.attrs?.listStyleName === 'List 2', lists[1]?.attrs);
+    check('LO lists: the built-in assignment comes back', lists[1]?.attrs?.listStyleName === 'Diamond Bullets', lists[1]?.attrs);
     check('LO lists: no per-level attrs accrete',
       !lists[0]?.attrs?.listStyleType && !lists[0]?.attrs?.indent && !lists[0]?.attrs?.markerAlign, lists[0]?.attrs);
     const imported = res.styles.list['Prüfliste'];

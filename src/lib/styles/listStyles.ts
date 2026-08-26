@@ -115,21 +115,29 @@ export function builtinListStyles(): Record<string, ListStyle> {
   return out;
 }
 
-const levels = (n: number, make: (i: number) => ListLevelStyle): ListLevelStyle[] =>
-  Array.from({ length: n }, (_, i) => make(i));
+const num = (numType: Exclude<OrderedListType, 'multilevel'>, markerAlign?: 'right'): ListLevelStyle =>
+  markerAlign ? { kind: 'number', numType, markerAlign } : { kind: 'number', numType };
+const bul = (bulletChar: string): ListLevelStyle => ({ kind: 'bullet', bulletChar });
 
-// LibreOffice's own list styles (probed from a 25.2 save; margins are its round metric
-// values — List 1/2 step 0.4/0.3cm, the numberings 1.33cm then 0.7cm per level, IVX
-// 1.33cm throughout with a right-set label). indentCm = the step minus the 1.27 base.
+// `head` levels first, then `tail` repeated until MAX_LIST_LEVELS are filled.
+const ladder = (head: ListLevelStyle[], tail: ListLevelStyle[]): ListLevelStyle[] =>
+  Array.from({ length: MAX_LIST_LEVELS }, (_, i) =>
+    structuredClone(i < head.length ? head[i] : tail[(i - head.length) % tail.length]));
+
+// The gallery: presets the depth cycle can't produce on its own — uppercase outline
+// chains, levels mixing numbers with bullets, a decorative bullet ladder. All keep the
+// plain 1.27cm step per level (no indentCm), the geometry an unstyled list gets.
 const LIST_BUILTINS: ListStyle[] = [
-  { name: 'List 1', builtin: true,
-    levels: levels(MAX_LIST_LEVELS, () => ({ kind: 'bullet', bulletChar: '•', indentCm: -0.87 })) },
-  { name: 'List 2', builtin: true,
-    levels: levels(MAX_LIST_LEVELS, () => ({ kind: 'bullet', bulletChar: '–', indentCm: -0.97 })) },
-  { name: 'Numbering 123', builtin: true,
-    levels: levels(MAX_LIST_LEVELS, (i) => ({ kind: 'number', numType: 'decimal', indentCm: i === 0 ? 0.06 : -0.57 })) },
-  { name: 'Numbering ABC', builtin: true,
-    levels: levels(MAX_LIST_LEVELS, (i) => ({ kind: 'number', numType: 'upper-alpha', indentCm: i === 0 ? 0.06 : -0.57 })) },
-  { name: 'Numbering IVX', builtin: true,
-    levels: levels(MAX_LIST_LEVELS, () => ({ kind: 'number', numType: 'upper-roman', markerAlign: 'right', indentCm: 0.06 })) },
+  { name: 'Outline I.A.1', builtin: true,
+    levels: ladder([num('upper-roman', 'right'), num('upper-alpha')],
+      [num('decimal'), num('lower-alpha-paren'), num('lower-roman-paren')]) },
+  { name: 'Outline A.I.1', builtin: true,
+    levels: ladder([num('upper-alpha'), num('upper-roman', 'right')],
+      [num('decimal'), num('lower-alpha-paren'), num('lower-roman-paren')]) },
+  { name: 'Numbering with Bullets', builtin: true,
+    levels: ladder([num('decimal')], [bul('–'), bul('◦'), bul('▪')]) },
+  { name: 'Diamond Bullets', builtin: true,
+    levels: ladder([], [bul('❖'), bul('➢'), bul('▪')]) },
+  { name: 'Checklist', builtin: true,
+    levels: ladder([bul('✓')], [bul('–'), bul('◦')]) },
 ];
