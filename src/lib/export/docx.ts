@@ -2312,10 +2312,17 @@ function characterStyleOf(style: Style): ICharacterStyleOptions {
   return { id: docxStyleId(style.name), name: style.name, quickFormat: true, run };
 }
 
+// fromXmlString returns a nameless wrapper around the parsed root that would serialize
+// as a literal <undefined> element — LibreOffice skips it, Word rejects the whole part.
+function styleXmlComponent(xml: string): ImportedXmlComponent {
+  const wrapped = ImportedXmlComponent.fromXmlString(xml);
+  return (wrapped as unknown as { root: ImportedXmlComponent[] }).root[0];
+}
+
 // Word needs a referenced table style to exist. ODF/our model hold the banding, and the
 // look is baked into the cells, so a name-only definition is enough (no w:tblStylePr).
 function tableStyleXml(name: string): ImportedXmlComponent {
-  return ImportedXmlComponent.fromXmlString(
+  return styleXmlComponent(
     `<w:style w:type="table" w:styleId="${docxStyleId(name)}">`
     + `<w:name w:val="${escapeXml(name)}"/><w:basedOn w:val="TableNormal"/><w:uiPriority w:val="59"/>`
     + '</w:style>',
@@ -2337,7 +2344,7 @@ function usedTableStyles(doc: TiptapNode, sheet: StyleSheet): string[] {
 // Word needs a referenced numbering style to exist; its w:numId placeholder (0) is
 // rewritten by applyListStylesDocx once the packed numbering ids are known.
 function numberingStyleXml(name: string): ImportedXmlComponent {
-  return ImportedXmlComponent.fromXmlString(
+  return styleXmlComponent(
     `<w:style w:type="numbering" w:styleId="${docxStyleId(name)}">`
     + `<w:name w:val="${escapeXml(name)}"/><w:uiPriority w:val="99"/>`
     + '<w:pPr><w:numPr><w:numId w:val="0"/></w:numPr></w:pPr>'

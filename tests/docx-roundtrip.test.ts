@@ -150,6 +150,7 @@ describe('DOCX export → import round trip', () => {
     const stylesXml = strFromU8(files['word/styles.xml']);
     expect(xml).toContain('<w:tblStyle w:val="BoxListBlue"');
     expect(stylesXml).toContain('w:type="table"');
+    expect(stylesXml, 'the imported style is a direct w:styles child').not.toContain('<undefined');
     // The header region's white bold is presentational in the editor, baked here.
     expect(xml).toContain('<w:color w:val="FFFFFF"');
 
@@ -1249,6 +1250,8 @@ describe('DOCX named list styles', () => {
     expect(style).toContain('<w:name w:val="Prüfliste"/>');
     expect(/<w:numId w:val="[1-9]\d*"\/>/.test(style), 'placeholder numId resolved').toBe(true);
     expect(styles).toContain('w:styleId="DiamondBullets"');
+    // fromXmlString's nameless wrapper would serialize as <undefined> — Word refuses that.
+    expect(styles).not.toContain('<undefined');
   });
 
   it('round-trips the assignment and the definition', async () => {
