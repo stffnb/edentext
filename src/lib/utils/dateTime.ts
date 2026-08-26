@@ -112,10 +112,6 @@ export function toDateValue(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
-export function toTimeValue(d: Date): string {
-  return `PT${pad2(d.getHours())}H${pad2(d.getMinutes())}M${pad2(d.getSeconds())}S`;
-}
-
 // --- ODF number style --------------------------------------------------------
 
 function escNumberText(s: string): string {

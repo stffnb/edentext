@@ -1527,7 +1527,8 @@ describe('Leg 10: date/time fields (text:date / text:time)', () => {
     check('fixed date carries text:fixed=true', /<text:date[^>]*text:fixed="true"/.test(content));
     check('auto date carries text:fixed=false', /<text:date[^>]*text:fixed="false"/.test(content));
     check('date-value present', content.includes('text:date-value="2026-07-08T14:30:45"'));
-    check('time-value present', content.includes('text:time-value="PT14H30M45S"'));
+    // xsd dateTime, as LibreOffice writes it — a PT…S duration is a schema violation.
+    check('time-value present', content.includes('text:time-value="2026-07-08T14:30:45"'));
     check('mints a number:date-style', content.includes('<number:date-style '));
     check('mints a number:time-style', content.includes('<number:time-style '));
     check('declares number namespace', content.includes('xmlns:number='));

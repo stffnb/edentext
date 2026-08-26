@@ -36,7 +36,7 @@ import { citationText, isBibType } from '../editor/extensions/bibliographyEntry'
 import { isCitationStyle, rowTemplate, type CitationStyle } from '../utils/citationStyle';
 import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
 import { CELL_FORMAT_SPECS, currencyParts, datePattern, isCellFormat, type CellFormat } from '../utils/cellFormat';
-import { findFormat, renderFormat, odfNumberStyle, toDateValue, toTimeValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
+import { findFormat, renderFormat, odfNumberStyle, toDateValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
 import { parseLatex } from '../math/latex';
 import { mathmlDocument } from '../math/mathml';
 
@@ -4015,7 +4015,7 @@ function imageFrameXml(img: ImageExport, index: number): string {
     (img.widthCm ? ` svg:width="${img.widthCm}cm"` : '') +
     (img.heightCm ? ` svg:height="${img.heightCm}cm"` : '');
   const title = img.alt ? `<svg:title>${escapeXml(img.alt)}</svg:title>` : '';
-  const inner = `<draw:image xlink:href="${img.path}"/>${title}`;
+  const inner = `<draw:image xlink:href="${img.path}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/>${title}`;
   const floats = img.anchorPage != null || img.wrap !== 'inline';
   const anchor = img.anchorPage != null
     ? ` text:anchor-type="page" text:anchor-page-number="${img.anchorPage}"`
@@ -4047,7 +4047,7 @@ function hfImageFrameXml(img: ImageExport, index: number): string {
         ` svg:x="${img.wrapOffsetCm ?? 0}cm" svg:y="${img.wrapOffsetYCm ?? 0}cm"`;
   return (
     `<draw:frame draw:name="HfImage${index + 1}" ${anchor} draw:z-index="${index}"${dims}>` +
-    `<draw:image xlink:href="${img.path}"/>${title}</draw:frame>`
+    `<draw:image xlink:href="${img.path}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/>${title}</draw:frame>`
   );
 }
 
@@ -4211,7 +4211,9 @@ function applyDateTimeFields(odtBytes: Uint8Array, fields: DateTimeFieldExport[]
     const styleName = styleFor(fmt);
     const fixedAttr = ` text:fixed="${field.fixed ? 'true' : 'false'}"`;
     if (fmt.kind === 'time') {
-      return `<text:time text:time-value="${toTimeValue(when)}"${fixedAttr} style:data-style-name="${styleName}">${display}</text:time>`;
+      // text:time-value is xsd:time/dateTime — LibreOffice writes the full dateTime;
+      // a PT…S duration here is a schema violation.
+      return `<text:time text:time-value="${toDateValue(when)}"${fixedAttr} style:data-style-name="${styleName}">${display}</text:time>`;
     }
     return `<text:date text:date-value="${toDateValue(when)}"${fixedAttr} style:data-style-name="${styleName}">${display}</text:date>`;
   });
@@ -4377,13 +4379,13 @@ function applyTextBoxes(odtBytes: Uint8Array, boxes: TextBoxExport[]): Uint8Arra
 }
 
 // Section style for a multi-column region: balanced columns with a uniform gap.
-// text:dont-balance-text-columns sits on <style:columns> (not section-properties).
+// text:dont-balance-text-columns sits on <style:section-properties> — the only place
+// the schema admits it, and where LibreOffice reads and re-writes it (probed).
 function columnsSectionStyle(cols: ColumnsExport, index: number): string {
   return (
     `<style:style style:name="ColSec${index + 1}" style:family="section">` +
-    `<style:section-properties style:editable="false">` +
-    `<style:columns fo:column-count="${cols.count}" fo:column-gap="${cols.gapCm}cm"` +
-    ` text:dont-balance-text-columns="false"/>` +
+    `<style:section-properties style:editable="false" text:dont-balance-text-columns="false">` +
+    `<style:columns fo:column-count="${cols.count}" fo:column-gap="${cols.gapCm}cm"/>` +
     `</style:section-properties></style:style>`
   );
 }
@@ -4524,10 +4526,13 @@ function tocXml(toc: TocExport, index: number, bibTypes: string[]): string {
   // An index with no page numbers has nothing to lead to either, so the stop goes with
   // them — that pair is what LibreOffice's own dialog switches off together.
   const pageCol = toc.pageNumbers ? `${stop}<text:index-entry-page-number/>` : '';
+  // index-entry-link-start/-end are admitted in table-of-content templates only —
+  // in the figure/table/alphabetical templates they are a schema violation.
+  const links = toc.kind === 'toc';
   const entry = (levelAttr: string, style: string) =>
     `<text:${spec.el}-entry-template${levelAttr} text:style-name="${style}">` +
-    `<text:index-entry-link-start/><text:index-entry-text/>${pageCol}` +
-    `<text:index-entry-link-end/>` +
+    `${links ? '<text:index-entry-link-start/>' : ''}<text:index-entry-text/>${pageCol}` +
+    `${links ? '<text:index-entry-link-end/>' : ''}` +
     `</text:${spec.el}-entry-template>`;
   // An alphabetical index is fed by its marks, is single-level, and merges the pages of
   // a term the reader marked more than once — LibreOffice's text:combine-entries.
@@ -5010,7 +5015,19 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.
   const withSections = applySectionMasterPages(withWatermark, hf?.sections ?? [], hf?.pageCount ?? 1, margins, pageFormat, orientation);
-  return zipFinal(applyDocProperties(applyPageNumberStart(applySpacingModel(withSections, spacingModel), pageNumbering.start), props));
+  return zipFinal(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withSections, spacingModel), pageNumbering.start), props)));
+}
+
+// The package declares ODF 1.3 in every part — the version LibreOffice writes, and
+// the first with style:header-first/-footer-first. odf-kit stamps 1.2.
+function applyOdfVersion(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  for (const name of ['content.xml', 'styles.xml', 'meta.xml', 'settings.xml', 'META-INF/manifest.xml']) {
+    const bytes = files[name];
+    if (!bytes) continue;
+    files[name] = strToU8(strFromU8(bytes).replace(/((?:office|manifest):version=")1\.2(")/, '$11.3$2'));
+  }
+  return rezipOdt(files);
 }
 
 // The document's first page number. ODF has no document-level start: LibreOffice puts

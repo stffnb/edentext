@@ -1524,6 +1524,12 @@ function applyCommentsResolvedDocx(bytes: Uint8Array): Uint8Array {
 
   const paraId = (id: number) => (0x10000000 + id).toString(16).toUpperCase().padStart(8, '0');
   let xml = comments.replace(/<w:comments\b(?![^>]*xmlns:w14=)/, `<w:comments xmlns:w14="${W14_NS}"`);
+  // w14:paraId needs w14 declared mc:Ignorable, or a strict reader rejects the part.
+  xml = xml.replace(/<w:comments\b(?![^>]*xmlns:mc=)/,
+    '<w:comments xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"');
+  xml = /<w:comments\b[^>]*\bmc:Ignorable="/.test(xml)
+    ? xml.replace(/(<w:comments\b[^>]*\bmc:Ignorable=")((?:(?!w14\b)[^"])*")/, '$1w14 $2')
+    : xml.replace(/<w:comments\b/, '<w:comments mc:Ignorable="w14"');
   for (const c of resolved) {
     // Stamp the comment's last body paragraph (Word keys the whole comment off it);
     // the greedy tempered scan ends at the last <w:p before </w:comment>.
@@ -1543,6 +1549,60 @@ function applyCommentsResolvedDocx(bytes: Uint8Array): Uint8Array {
   files['[Content_Types].xml'] = strToU8(types.replace('</Types>',
     '<Override PartName="/word/commentsExtended.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"/></Types>'));
 
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
+// CT_Settings fixes its children's sequence (extracted from wml.xsd); several passes
+// prepend into word/settings.xml, so the final pass re-sorts the part into this order.
+const SETTINGS_ORDER = ['writeProtection', 'view', 'zoom', 'removePersonalInformation',
+  'removeDateAndTime', 'doNotDisplayPageBoundaries', 'displayBackgroundShape',
+  'printPostScriptOverText', 'printFractionalCharacterWidth', 'printFormsData',
+  'embedTrueTypeFonts', 'embedSystemFonts', 'saveSubsetFonts', 'saveFormsData',
+  'mirrorMargins', 'alignBordersAndEdges', 'bordersDoNotSurroundHeader',
+  'bordersDoNotSurroundFooter', 'gutterAtTop', 'hideSpellingErrors',
+  'hideGrammaticalErrors', 'activeWritingStyle', 'proofState', 'formsDesign',
+  'attachedTemplate', 'linkStyles', 'stylePaneFormatFilter', 'stylePaneSortMethod',
+  'documentType', 'mailMerge', 'revisionView', 'trackRevisions', 'doNotTrackMoves',
+  'doNotTrackFormatting', 'documentProtection', 'autoFormatOverride', 'styleLockTheme',
+  'styleLockQFSet', 'defaultTabStop', 'autoHyphenation', 'consecutiveHyphenLimit',
+  'hyphenationZone', 'doNotHyphenateCaps', 'showEnvelope', 'summaryLength',
+  'clickAndTypeStyle', 'defaultTableStyle', 'evenAndOddHeaders', 'bookFoldRevPrinting',
+  'bookFoldPrinting', 'bookFoldPrintingSheets', 'drawingGridHorizontalSpacing',
+  'drawingGridVerticalSpacing', 'displayHorizontalDrawingGridEvery',
+  'displayVerticalDrawingGridEvery', 'doNotUseMarginsForDrawingGridOrigin',
+  'drawingGridHorizontalOrigin', 'drawingGridVerticalOrigin', 'doNotShadeFormData',
+  'noPunctuationKerning', 'characterSpacingControl', 'printTwoOnOne',
+  'strictFirstAndLastChars', 'noLineBreaksAfter', 'noLineBreaksBefore',
+  'savePreviewPicture', 'doNotValidateAgainstSchema', 'saveInvalidXml',
+  'ignoreMixedContent', 'alwaysShowPlaceholderText', 'doNotDemarcateInvalidXml',
+  'saveXmlDataOnly', 'useXSLTWhenSaving', 'saveThroughXslt', 'showXMLTags',
+  'alwaysMergeEmptyNamespace', 'updateFields', 'hdrShapeDefaults', 'footnotePr',
+  'endnotePr', 'compat', 'docVars', 'rsids', 'mathPr', 'attachedSchema',
+  'themeFontLang', 'clrSchemeMapping', 'doNotIncludeSubdocsInStats',
+  'doNotAutoCompressPictures', 'forceUpgrade', 'captions', 'readModeInkLockDown',
+  'smartTagType', 'shapeDefaults', 'doNotEmbedSmartTags', 'decimalSymbol',
+  'listSeparator'];
+
+// Post-pack pass (runs last): sort w:settings children into the schema sequence.
+function orderDocxSettings(bytes: Uint8Array): Uint8Array {
+  const files = unzipSync(bytes);
+  const setBytes = files['word/settings.xml'];
+  if (!setBytes) return bytes;
+  const xml = strFromU8(setBytes);
+  const m = /(<w:settings\b[^>]*>)([\s\S]*)(<\/w:settings>)/.exec(xml);
+  if (!m) return bytes;
+  const children = m[2].match(/<((?:w|m):\w+)\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/\1>)/g) ?? [];
+  // Only reorder what the tokenizer accounted for completely.
+  if (children.join('') !== m[2]) return bytes;
+  const rank = (c: string) => {
+    const i = SETTINGS_ORDER.indexOf(/^<[wm]+:(\w+)/.exec(c)?.[1] ?? '');
+    return i < 0 ? SETTINGS_ORDER.length : i;
+  };
+  const sorted = [...children].sort((a, b) => rank(a) - rank(b));
+  if (sorted.join('') === m[2]) return bytes;
+  files['word/settings.xml'] = strToU8(xml.replace(m[0], m[1] + sorted.join('') + m[3]));
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
   for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
   return zipSync(out);
@@ -2566,8 +2626,8 @@ export async function buildDocx(
   const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);
   const dims = pageDimsCm(pageFormat, orientation);
   const marked = applyFoldMarksDocx(bidi, foldMarks, dims.w * 10);
-  if (isEmptyPageDecor(decor)) return marked;
+  if (isEmptyPageDecor(decor)) return orderDocxSettings(marked);
   const pt = (cm: number) => (cm / 2.54) * 72;
-  return applyPageDecorDocx(marked, decor,
-    pt(dims.w - margins.left - margins.right), pt(dims.h - margins.top - margins.bottom));
+  return orderDocxSettings(applyPageDecorDocx(marked, decor,
+    pt(dims.w - margins.left - margins.right), pt(dims.h - margins.top - margins.bottom)));
 }

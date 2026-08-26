@@ -1872,18 +1872,17 @@ function parseNumberStyleTokens(styleEl: Element): Token[] {
   return toks;
 }
 
-// ISO local datetime for the node's `value`: a date-value is kept; a time-value
-// (PThHmMsS) is placed on today's date (only its time part is rendered).
+// ISO local datetime for the node's `value`: a date-value or dateTime time-value is
+// kept; a legacy PThHmMsS time-value is placed on today's date (only its time renders).
 function fieldValue(kind: 'date' | 'time', raw: string | null): string {
-  if (kind === 'date') {
-    const d = raw ? new Date(raw) : null;
-    return d && !isNaN(d.getTime()) ? raw! : '';
+  const m = kind === 'time' && raw ? /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(raw) : null;
+  if (m) {
+    const now = new Date();
+    now.setHours(Number(m[1] ?? 0), Number(m[2] ?? 0), Number(m[3] ?? 0), 0);
+    return toDateValue(now);
   }
-  const m = raw ? /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(raw) : null;
-  if (!m) return '';
-  const now = new Date();
-  now.setHours(Number(m[1] ?? 0), Number(m[2] ?? 0), Number(m[3] ?? 0), 0);
-  return toDateValue(now);
+  const d = raw ? new Date(raw) : null;
+  return d && !isNaN(d.getTime()) ? raw! : '';
 }
 
 // A <text:date>/<text:time> whose data style matches a known format → a live field
