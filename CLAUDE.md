@@ -29,7 +29,8 @@ Tests live in `tests/` (outside `src/`, so `svelte-check` ignores them), jsdom v
 `npm test`/CI stay green; `corpus.test.ts` round-trips the committed `tests/corpus/`
 documents (authored by `render-parity/make-fixtures.mjs`, never by our own exporter);
 `fuzz-roundtrip.test.ts` round-trips seeded random documents (`fuzzDoc.ts` generator);
-`tests/unit/` holds fast helper tests. All test tooling stays a
+`schema-validation.test.ts` validates the `kitchenSink.ts` exports against the vendored
+schemas in `tests/schemas/` (self-skips without `xmllint`); `tests/unit/` holds fast helper tests. All test tooling stays a
 `devDependency`. No linter/formatter. CI (`.github/workflows/ci.yml`) runs `check` + `test`.
 
 ## Rules
