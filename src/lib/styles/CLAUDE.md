@@ -17,11 +17,12 @@ plain lists) and both exporters share. **The style level decides the depth's kin
 ODF the list style alone says what a depth renders, the editor's node species doesn't
 travel. `setListStyle` retypes the subtree to the levels' kinds; a Tab-nested list of
 the other species still renders (and exports) what the level says, and both importers
-build the species from the level, so a round trip normalizes it. The five built-ins are a **preset gallery of
+build the species from the level, so a round trip normalizes it. The six built-ins are a **preset gallery of
 patterns the depth cycle can't produce** — the outline chains Outline I.A.1 / A.I.1, the
 kind-mixing Numbering with Bullets and Checklist, and the Diamond Bullets ladder — all on
-the plain 1.27cm step (no indentCm), so a preset that only restates a dropdown format plus
-the default nesting has no place in it.
+the plain 1.27cm step (no indentCm). The one deliberate exception is Numbering 1.a.i, the
+default cycle captured as a style so a style switch can lead back to it; any further
+preset that only restates a dropdown format plus the default nesting has no place here.
 Export writes the full named `<text:list-style>` into styles.xml and points the list at it
 **only when nothing overrides** — ODF list styles have no parent chain, so an overridden
 list keeps the fully resolved automatic clone and drops the name (marker formats count as

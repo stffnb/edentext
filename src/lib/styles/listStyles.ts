@@ -124,9 +124,9 @@ const ladder = (head: ListLevelStyle[], tail: ListLevelStyle[]): ListLevelStyle[
   Array.from({ length: MAX_LIST_LEVELS }, (_, i) =>
     structuredClone(i < head.length ? head[i] : tail[(i - head.length) % tail.length]));
 
-// The gallery: presets the depth cycle can't produce on its own — uppercase outline
-// chains, levels mixing numbers with bullets, a decorative bullet ladder. All keep the
-// plain 1.27cm step per level (no indentCm), the geometry an unstyled list gets.
+// The gallery: outline chains, kind mixes and a bullet ladder the depth cycle can't
+// produce — plus that cycle itself as Numbering 1.a.i, the way back after a switch.
+// All keep the plain 1.27cm step per level (no indentCm), like an unstyled list.
 const LIST_BUILTINS: ListStyle[] = [
   { name: 'Outline I.A.1', builtin: true,
     levels: ladder([num('upper-roman', 'right'), num('upper-alpha')],
@@ -134,6 +134,8 @@ const LIST_BUILTINS: ListStyle[] = [
   { name: 'Outline A.I.1', builtin: true,
     levels: ladder([num('upper-alpha'), num('upper-roman', 'right')],
       [num('decimal'), num('lower-alpha-paren'), num('lower-roman-paren')]) },
+  { name: 'Numbering 1.a.i', builtin: true,
+    levels: ladder([], [num('decimal'), num('lower-alpha'), num('lower-roman')]) },
   { name: 'Numbering with Bullets', builtin: true,
     levels: ladder([num('decimal')], [bul('–'), bul('◦'), bul('▪')]) },
   { name: 'Diamond Bullets', builtin: true,

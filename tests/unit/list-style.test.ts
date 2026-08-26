@@ -87,9 +87,9 @@ describe('listStyleOverridden', () => {
 
 describe('the built-ins (the preset gallery)', () => {
   const builtins = builtinListStyles();
-  it('ship five presets, ten levels each, none uniform across its levels', () => {
+  it('ship six presets, ten levels each, none uniform across its levels', () => {
     expect(Object.keys(builtins).sort()).toEqual(
-      ['Checklist', 'Diamond Bullets', 'Numbering with Bullets', 'Outline A.I.1', 'Outline I.A.1']);
+      ['Checklist', 'Diamond Bullets', 'Numbering 1.a.i', 'Numbering with Bullets', 'Outline A.I.1', 'Outline I.A.1']);
     for (const s of Object.values(builtins)) {
       expect(s.levels).toHaveLength(MAX_LIST_LEVELS);
       const markers = new Set(s.levels.map((l) => `${l.kind}:${l.bulletChar ?? l.numType}`));
@@ -104,6 +104,10 @@ describe('the built-ins (the preset gallery)', () => {
     expect(builtins['Outline I.A.1'].levels.slice(0, 5).map((l) => l.numType)).toEqual(
       ['upper-roman', 'upper-alpha', 'decimal', 'lower-alpha-paren', 'lower-roman-paren']);
     expect(builtins['Outline I.A.1'].levels[0].markerAlign).toBe('right');
+  });
+  it('Numbering 1.a.i captures the default cycle, so a style switch can lead back', () => {
+    expect(builtins['Numbering 1.a.i'].levels.slice(0, 4).map((l) => l.numType)).toEqual(
+      ['decimal', 'lower-alpha', 'lower-roman', 'decimal']);
   });
   it('Numbering with Bullets numbers level 1 and dashes the levels below', () => {
     expect(builtins['Numbering with Bullets'].levels[0]).toMatchObject({ kind: 'number', numType: 'decimal' });
