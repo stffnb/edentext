@@ -6,9 +6,13 @@
     styleOrder, uniqueStyleName, type Style, type StyleFamily,
   } from '../styles/styleSheet';
   import {
-    deleteCharacterStyle, deleteStyle, deleteTableStyle, putStyle, putTableStyle,
-    renameStyle, resetStyle, styleSheet,
+    deleteCharacterStyle, deleteListStyle, deleteStyle, deleteTableStyle, putListStyle,
+    putStyle, putTableStyle, renameStyle, resetStyle, styleSheet,
   } from '../styles/sheet.svelte';
+  import { listStyleMarginCm, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
+  import { listStyleNameAt } from '../editor/extensions/listStyle';
+  import { formatOrdinal, orderedTypeDef, ORDERED_LIST_TYPES } from '../utils/orderedListTypes';
+  import { BULLET_TYPES } from '../utils/bulletListTypes';
   import {
     TABLE_REGIONS, previewCellCss, previewTextCss,
     type TableLook, type TableRegion, type TableRegionProps, type TableStyle,
@@ -39,6 +43,9 @@
   let selected = $state(DEFAULT_STYLE);
   let selectedChar = $state('');
   let selectedTable = $state('');
+  let selectedList = $state('');
+  // The level of the list style being edited (0-based index into its levels).
+  let level = $state(0);
   // Which conditional area of a table style is being edited.
   let region = $state<TableRegion | 'wholeTable'>('wholeTable');
   // The fonts installed on this machine, detected once the dialog is first opened
@@ -48,10 +55,11 @@
   let sheet = $derived(styleSheet());
   let isChar = $derived(family === 'character');
   let isTable = $derived(family === 'table');
+  let isList = $derived(family === 'list');
   let styles = $derived(isChar ? sheet.character : sheet.paragraph);
   // Indented by inheritance depth, so the chain is visible.
   let rows = $derived(styleOrder(sheet, true, family).map((s) => ({ style: s, depth: depthOf(s) })));
-  let current = $derived(isTable ? selectedTable : isChar ? selectedChar : selected);
+  let current = $derived(isTable ? selectedTable : isList ? selectedList : isChar ? selectedChar : selected);
   let style = $derived(styles[current] ?? Object.values(styles)[0]);
   let resolved = $derived(resolveStyle(sheet, style?.name, family));
   // A style can't inherit from itself or from one of its own descendants.
@@ -61,6 +69,7 @@
 
   function select(name: string) {
     if (isTable) selectedTable = name;
+    else if (isList) { selectedList = name; level = 0; }
     else if (isChar) selectedChar = name;
     else selected = name;
   }
@@ -90,6 +99,43 @@
     putTableStyle({ name, border: null, innerBorder: null, regions: {} });
     selectedTable = name;
   }
+
+  // ---- list styles: a flat family of per-level definitions (listStyles.ts).
+  let listList = $derived(Object.values(sheet.list ?? {}));
+  let lStyle = $derived(sheet.list?.[selectedList] ?? listList[0]);
+  let levelIdx = $derived(Math.min(level, Math.max(0, (lStyle?.levels.length ?? 1) - 1)));
+  let lLevel = $derived<ListLevelStyle>(lStyle?.levels[levelIdx] ?? { kind: 'bullet' });
+
+  function editList(patch: Partial<ListStyle>) {
+    if (lStyle) putListStyle({ ...lStyle, ...patch });
+  }
+
+  // An undefined patch value clears the level's own property.
+  function editLevel(patch: Partial<ListLevelStyle>) {
+    const next = { ...lLevel, ...patch };
+    for (const key of Object.keys(patch) as (keyof ListLevelStyle)[]) {
+      if (patch[key] === undefined) delete next[key];
+    }
+    editList({ levels: lStyle.levels.map((lv, i) => (i === levelIdx ? next : lv)) });
+  }
+
+  function newListStyle() {
+    const name = uniqueStyleName(sheet, t().styles.newName, 'list');
+    putListStyle({ name, levels: Array.from({ length: MAX_LIST_LEVELS }, () => ({ kind: 'number', numType: 'decimal' })) });
+    selectedList = name;
+    level = 0;
+  }
+
+  // The marker one item of a level shows — the preview's and the level picker's label.
+  function levelMarker(s: ListStyle, depth: number): string {
+    const def = s.levels[depth - 1];
+    if (def?.kind === 'bullet') return def.bulletChar ?? '•';
+    if (s.multilevel) return `${Array.from({ length: depth }, () => '1').join('.')}.`;
+    const type = orderedTypeDef(def?.numType ?? 'decimal');
+    return formatOrdinal(def?.startAt ?? 1, type.numFormat) + type.numSuffix;
+  }
+
+  const PREVIEW_LEVELS = 3;
 
   const BORDER_WIDTHS = ['none', '0.5', '0.75', '1', '1.5', '2.25'];
   // The three border controls; the inner ones fall back to the shared innerBorder.
@@ -155,6 +201,7 @@
     selected = blockStyleName(editor.state.selection.$from.parent as never);
     selectedChar = activeCharacterStyle(editor.state as never) ?? Object.keys(sheet.character)[0] ?? '';
     selectedTable = activeTableStyle(editor.state as never) ?? Object.keys(sheet.table ?? {})[0] ?? '';
+    selectedList = listStyleNameAt(editor.state as never) ?? Object.keys(sheet.list ?? {})[0] ?? '';
   });
 
   // An undefined patch value clears the style's own property, so it inherits again.
@@ -287,7 +334,7 @@
   function commitRename(from: string, next: string) {
     editingName = null;
     next = next.trim();
-    if (!next || next === from || (isTable ? sheet.table[next] : styles[next])) return;
+    if (!next || next === from || (isTable ? sheet.table[next] : isList ? sheet.list[next] : styles[next])) return;
     renameStyle(from, next, family);
     // Retag every block that referenced the old name.
     retag(from, next);
@@ -310,6 +357,8 @@
           if (to) tr.addMark(pos, pos + node.nodeSize, mark.type.create({ name: to }));
         } else if (isTable) {
           if (node.attrs?.tableStyle === from) tr.setNodeAttribute(pos, 'tableStyle', to);
+        } else if (isList) {
+          if (node.attrs?.listStyleName === from) tr.setNodeAttribute(pos, 'listStyleName', to);
         } else if (node.attrs?.styleName === from && to) {
           tr.setNodeAttribute(pos, 'styleName', to);
         }
@@ -320,12 +369,19 @@
   }
 
   function remove() {
-    const gone = isTable ? tStyle.name : style.name;
+    const gone = isTable ? tStyle.name : isList ? lStyle.name : style.name;
     if (isTable) {
       deleteTableStyle(gone);
       // The link goes, the painted cells stay — as when a LibreOffice AutoFormat is gone.
       retag(gone, null);
       selectedTable = Object.keys(sheet.table)[0] ?? '';
+      return;
+    }
+    if (isList) {
+      deleteListStyle(gone);
+      // The reference goes; the lists fall back to the default cycle.
+      retag(gone, null);
+      selectedList = Object.keys(sheet.list)[0] ?? '';
       return;
     }
     if (isChar) {
@@ -364,8 +420,40 @@
           <button class:active={family === 'paragraph'} onclick={() => (family = 'paragraph')}>{t().styles.tabs.paragraph}</button>
           <button class:active={isChar} onclick={() => (family = 'character')}>{t().styles.tabs.character}</button>
           <button class:active={isTable} onclick={() => (family = 'table')}>{t().styles.tabs.table}</button>
+          <button class:active={isList} onclick={() => (family = 'list')}>{t().styles.tabs.list}</button>
         </div>
       <ul class="list">
+        {#if isList}
+          {#each listList as s (s.name)}
+            <li>
+              {#if editingName === s.name}
+                <input
+                  class="entry rename"
+                  style="padding-left: {indentRem(0)}rem"
+                  value={s.name}
+                  use:focusSelect
+                  onblur={(e) => editingName === s.name && commitRename(s.name, e.currentTarget.value)}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    else if (e.key === 'Escape') { e.preventDefault(); editingName = null; }
+                  }}
+                />
+              {:else}
+                <button
+                  class="entry"
+                  class:active={current === s.name}
+                  style="padding-left: {indentRem(0)}rem"
+                  title={s.name}
+                  onclick={() => select(s.name)}
+                  ondblclick={() => { if (!s.builtin) editingName = s.name; }}
+                >
+                  <span class="name">{s.name}</span>
+                  {#if !s.builtin}<span class="badge">{t().styles.custom}</span>{/if}
+                </button>
+              {/if}
+            </li>
+          {/each}
+        {/if}
         {#if isTable}
           {#each tableList as s (s.name)}
             <li>
@@ -432,6 +520,97 @@
       </div>
 
       <div class="fields">
+        {#if isList}
+          <!-- Three nested sample levels, markers and indents from the definition. -->
+          <div class="preview list-preview">
+            {#each Array(PREVIEW_LEVELS) as _, d}
+              <div class="lp-line" style="margin-left: {Math.max(0, listStyleMarginCm(lStyle, d + 1)) * 0.28}rem">
+                <span class="lp-marker" class:right={lStyle.levels[d]?.markerAlign === 'right'}>{levelMarker(lStyle, d + 1)}</span>
+                <i class="lp-text"></i>
+              </div>
+            {/each}
+          </div>
+
+          <label class="check"><input type="checkbox" checked={!!lStyle.multilevel}
+            onchange={(e) => editList({ multilevel: e.currentTarget.checked || undefined })} />{t().styles.multilevelAll}</label>
+
+          <div class="row">
+            <label>{t().styles.level}
+              <select value={String(levelIdx)} onchange={(e) => (level = Number(e.currentTarget.value))}>
+                {#each lStyle.levels as lv, i}
+                  <option value={String(i)}>{i + 1} — {levelMarker(lStyle, i + 1)}</option>
+                {/each}
+              </select>
+            </label>
+            <label>{t().styles.levelKind.bullet} / {t().styles.levelKind.number}
+              <select
+                value={lLevel.kind}
+                onchange={(e) => editLevel(e.currentTarget.value === 'bullet'
+                  ? { kind: 'bullet', numType: undefined, startAt: undefined }
+                  : { kind: 'number', bulletChar: undefined })}
+              >
+                <option value="bullet">{t().styles.levelKind.bullet}</option>
+                <option value="number">{t().styles.levelKind.number}</option>
+              </select>
+            </label>
+          </div>
+
+          {#if lLevel.kind === 'bullet'}
+            <div class="field">
+              <span class="field-label">{t().styles.bulletChar}</span>
+              <div class="lp-bullets">
+                {#each BULLET_TYPES as b}
+                  <button
+                    class="lp-tile"
+                    class:active={(lLevel.bulletChar ?? '•') === b.char}
+                    onclick={() => editLevel({ bulletChar: b.char })}
+                    title={b.label}
+                  >{b.char}</button>
+                {/each}
+              </div>
+            </div>
+          {:else}
+            <div class="row">
+              <label>{t().styles.numbering}
+                <select
+                  value={lLevel.numType ?? 'decimal'}
+                  disabled={!!lStyle.multilevel}
+                  onchange={(e) => editLevel({ numType: e.currentTarget.value as ListLevelStyle['numType'] })}
+                >
+                  {#each ORDERED_LIST_TYPES.filter((o) => !o.multilevel) as o}
+                    <option value={o.key}>{o.preview} — {o.label}</option>
+                  {/each}
+                </select>
+              </label>
+              <label>{t().styles.startAt}
+                <input type="number" min="1" max="9999" step="1" value={lLevel.startAt ?? ''}
+                  placeholder="1"
+                  onchange={(e) => editLevel({ startAt: num(e.currentTarget.value) })} />
+              </label>
+            </div>
+          {/if}
+
+          <div class="row">
+            <label>{t().styles.indentStep}
+              <input type="number" min="-1.27" max="10" step="0.05" value={lLevel.indentCm ?? ''}
+                placeholder="0"
+                onchange={(e) => editLevel({ indentCm: num(e.currentTarget.value) })} />
+            </label>
+            <label class="check"><input type="checkbox" checked={lLevel.markerAlign === 'right'}
+              onchange={(e) => editLevel({ markerAlign: e.currentTarget.checked ? 'right' : undefined })} />{t().styles.markerRight}</label>
+          </div>
+
+          <div class="row">
+            <button
+              disabled={lStyle.levels.length >= MAX_LIST_LEVELS}
+              onclick={() => { editList({ levels: [...lStyle.levels, { ...lLevel }] }); level = lStyle.levels.length; }}
+            >{t().styles.addLevel}</button>
+            <button
+              disabled={lStyle.levels.length <= 1}
+              onclick={() => { editList({ levels: lStyle.levels.slice(0, -1) }); level = Math.min(level, lStyle.levels.length - 2); }}
+            >{t().styles.removeLevel}</button>
+          </div>
+        {:else}
         {#if isTable}
           <!-- The same grid the toolbar gallery shows, from the same resolver. -->
           <div class="preview table-preview">
@@ -630,11 +809,21 @@
           </label>
         </div>
         {/if}
+        {/if}
       </div>
     </div>
 
     <footer>
-      {#if isTable}
+      {#if isList}
+        <button onclick={newListStyle}>{t().styles.newStyle}</button>
+        <span class="spacer"></span>
+        {#if lStyle?.builtin}
+          <button onclick={() => resetStyle(lStyle.name, 'list')}>{t().styles.reset}</button>
+        {:else}
+          <button onclick={() => (editingName = lStyle.name)}>{t().styles.rename}</button>
+          <button class="danger" onclick={remove}>{t().common.remove}</button>
+        {/if}
+      {:else if isTable}
         <button onclick={newTableStyle}>{t().styles.newStyle}</button>
         <span class="spacer"></span>
         {#if tStyle?.builtin}
@@ -660,6 +849,18 @@
 </dialog>
 
 <style>
+  .list-preview { display: flex; flex-direction: column; justify-content: center; gap: 0.45rem; }
+  .lp-line { display: flex; align-items: center; gap: 0.5rem; }
+  .lp-marker { min-width: 1.6rem; font-size: 0.85rem; }
+  .lp-marker.right { text-align: right; }
+  .lp-text { display: block; flex: 1; height: 2px; background: currentColor; opacity: 0.35; }
+  .lp-bullets { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+  .lp-tile {
+    width: 1.9rem; height: 1.9rem; border: 1px solid var(--color-border);
+    border-radius: 4px; background: none; color: inherit; cursor: pointer;
+  }
+  .lp-tile.active { outline: 2px solid var(--color-primary); }
+
   .table-preview { display: flex; align-items: center; justify-content: center; }
   .table-preview table {
     width: 12rem;

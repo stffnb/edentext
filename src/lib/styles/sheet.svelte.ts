@@ -4,6 +4,7 @@
 
 import { builtinStyleSheet, DEFAULT_STYLE, mergeStoredSheet, STYLE_SHEET_VERSION, type Style, type StyleFamily, type StyleSheet } from './styleSheet';
 import type { TableStyle } from './tableStyles';
+import type { ListStyle } from './listStyles';
 
 const STORAGE_KEY = 'edentext-styles';
 
@@ -41,7 +42,7 @@ export function toggleAllStyles(): void {
 
 // Replace one style (add or edit) — everything using it re-renders via styleCss.
 export function putStyle(style: Style, family: StyleFamily = 'paragraph'): void {
-  const key = family === 'table' ? 'paragraph' : family;
+  const key = family === 'table' || family === 'list' ? 'paragraph' : family;
   setStyleSheet({ ...current, [key]: { ...current[key], [style.name]: style } });
 }
 
@@ -66,10 +67,32 @@ export function renameTableStyle(from: string, to: string): void {
   setStyleSheet({ ...current, table });
 }
 
+// List styles likewise: flat family, own shape (listStyles.ts).
+export function putListStyle(style: ListStyle): void {
+  setStyleSheet({ ...current, list: { ...current.list, [style.name]: style } });
+}
+
+export function deleteListStyle(name: string): void {
+  if (current.list[name]?.builtin) return;
+  const list = { ...current.list };
+  delete list[name];
+  setStyleSheet({ ...current, list });
+}
+
+export function renameListStyle(from: string, to: string): void {
+  const style = current.list[from];
+  if (!style || from === to || current.list[to]) return;
+  const list = { ...current.list };
+  delete list[from];
+  list[to] = { ...style, name: to, builtin: undefined };
+  setStyleSheet({ ...current, list });
+}
+
 // Rename a style and re-point everything that referenced it (children, next-styles).
 // Blocks keep their own `styleName`; the caller retags them.
 export function renameStyle(from: string, to: string, family: StyleFamily = 'paragraph'): void {
   if (family === 'table') return renameTableStyle(from, to);
+  if (family === 'list') return renameListStyle(from, to);
   if (family === 'character') return renameCharacterStyle(from, to);
   const style = current.paragraph[from];
   if (!style || from === to || current.paragraph[to]) return;
@@ -104,6 +127,11 @@ export function resetStyle(name: string, family: StyleFamily = 'paragraph'): voi
   if (family === 'table') {
     const factory = base.table[name];
     if (factory) putTableStyle(factory);
+    return;
+  }
+  if (family === 'list') {
+    const factory = base.list[name];
+    if (factory) putListStyle(factory);
     return;
   }
   const factory = (family === 'character' ? base.character : base.paragraph)[name];

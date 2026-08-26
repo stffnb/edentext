@@ -20,7 +20,11 @@ list keeps the fully resolved automatic clone and drops the name (marker formats
 an override: they ride the L# levels). Probed: LibreOffice keeps a named reference on
 `<text:list>` across a re-save, preserves `style:display-name`, normalizes `style:name` to
 the `_20_`-encoded display name, and fills undefined levels with decimal — so the export
-always writes all 10 levels.
+always writes all 10 levels. **UI**: `setListStyle` (outermost list; assigning clears the
+subtree's direct marker attrs, as applying a Listenformatvorlage does) via a "List styles"
+section in both chromes' bullet/numbering dropdowns, split by the style's level-1 kind;
+the manager's fourth tab edits per level (level picker, kind, marker, indent step,
+right-set label, start-at, style-wide multilevel).
 
 ## Paragraph styles (`styleSheet.ts`, `sheet.svelte.ts`, `editor/extensions/paragraphStyle.ts`)
 

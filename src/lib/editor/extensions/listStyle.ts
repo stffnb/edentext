@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { childCycle, defaultOrderedTypeAt, ROOT_ORDERED_CYCLE, type OrderedCycle, type OrderedListType } from '../../utils/orderedListTypes';
@@ -43,6 +43,8 @@ export function listStyleDecos(doc: ProseMirrorNode, sheet: StyleSheet): Decorat
         if (eff.startAt != null && eff.startAt !== 1 && (node.attrs.start ?? 1) === 1) attrs.start = String(eff.startAt);
         nextMultilevel = type === 'multilevel';
       } else if (!node.attrs.bulletChar && eff.bulletChar) {
+        // data-bullet too: editor.css keys the var()-reading marker rule on it.
+        attrs['data-bullet'] = eff.bulletChar;
         css.push(`--bullet: "${eff.bulletChar}"`);
       }
       if (!node.attrs.markerAlign && eff.markerAlign) attrs['data-marker-align'] = eff.markerAlign;
@@ -70,6 +72,28 @@ export function listStyleDecos(doc: ProseMirrorNode, sheet: StyleSheet): Decorat
 
 const listStyleKey = new PluginKey<DecorationSet>('listStyleEff');
 
+// The named style governing the cursor's list (the outermost list's), for the
+// dropdowns' active state; null = none or not in a list.
+export function listStyleNameAt(state: EditorState): string | null {
+  const { $from } = state.selection;
+  for (let d = 1; d <= $from.depth; d++) {
+    const node = $from.node(d);
+    if (node.type.name === 'bulletList' || node.type.name === 'orderedList') {
+      return (node.attrs.listStyleName as string | null) ?? null;
+    }
+  }
+  return null;
+}
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    listStyle: {
+      /** Assign a named list style to the outermost list at the cursor (null = none). */
+      setListStyle: (name: string | null) => ReturnType;
+    };
+  }
+}
+
 // The named list style, the fourth style family: `listStyleName` on the outermost list
 // (LibreOffice's Listenformatvorlagen / Word's numbering styles).
 export const ListStyle = Extension.create<{ sheet: () => StyleSheet }>({
@@ -93,6 +117,38 @@ export const ListStyle = Extension.create<{ sheet: () => StyleSheet }>({
         },
       },
     ];
+  },
+
+  addCommands() {
+    return {
+      // The style goes on the outermost list (nested ones inherit); the subtree's own
+      // marker attrs are cleared so the style shows — assigning one replaces the
+      // list's direct numbering, as in LibreOffice.
+      setListStyle:
+        (name) =>
+        ({ state, tr, dispatch }) => {
+          const { $from } = state.selection;
+          let outer = -1;
+          for (let d = 1; d <= $from.depth; d++) {
+            const n = $from.node(d).type.name;
+            if (n === 'bulletList' || n === 'orderedList') { outer = d; break; }
+          }
+          if (outer === -1) return false;
+          if (dispatch) {
+            const pos = $from.before(outer);
+            const node = $from.node(outer);
+            const clear = (attrs: Record<string, unknown>) =>
+              ({ ...attrs, bulletChar: null, listStyleType: null, markerAlign: null, indent: null });
+            tr.setNodeMarkup(pos, undefined, { ...clear(node.attrs), listStyleName: name });
+            node.descendants((child, offset) => {
+              if (child.type.name === 'bulletList' || child.type.name === 'orderedList') {
+                tr.setNodeMarkup(tr.mapping.map(pos + 1 + offset), undefined, { ...clear(child.attrs), listStyleName: null });
+              }
+            });
+          }
+          return true;
+        },
+    };
   },
 
   addProseMirrorPlugins() {

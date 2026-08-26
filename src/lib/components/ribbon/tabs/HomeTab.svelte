@@ -14,8 +14,10 @@
 
   import { clipboardCommand, readClipboard } from '../../../editor/contextMenuItems';
   import { BULLET_TYPES } from '../../../utils/bulletListTypes';
-  import { ORDERED_LIST_TYPES, type OrderedListType } from '../../../utils/orderedListTypes';
+  import { formatOrdinal, orderedTypeDef, ORDERED_LIST_TYPES, type OrderedListType } from '../../../utils/orderedListTypes';
   import { effectiveOrderedTypeAt } from '../../../editor/extensions/orderedList';
+  import { listStyleNameAt } from '../../../editor/extensions/listStyle';
+  import type { ListStyle } from '../../../styles/listStyles';
   import { isInHeaderCell } from '../../../editor/extensions/tableHeaderRow';
   import { cellRegionText } from '../../../editor/extensions/tableStyle';
   import { styleSheet } from '../../../styles/sheet.svelte';
@@ -151,6 +153,33 @@
   function bulletName(char: string): string {
     return (t().toolbar.bullets as Record<string, string>)[char] ?? char;
   }
+
+  // Named list styles, split by their first level's kind (same split as Toolbar.svelte).
+  let bulletListStyles = $derived(Object.values(sheet.list ?? {}).filter((s) => s.levels[0]?.kind === 'bullet'));
+  let orderedListStyles = $derived(Object.values(sheet.list ?? {}).filter((s) => s.levels[0]?.kind !== 'bullet'));
+  let currentListStyle = $derived.by<string | null>(() => {
+    if (tick < 0 || !editor) return null;
+    return listStyleNameAt(editor.state as never);
+  });
+
+  function listStylePreview(s: ListStyle): string {
+    const def = s.levels[0];
+    if (def?.kind === 'bullet') return def.bulletChar ?? '•';
+    if (s.multilevel) return '1.1.';
+    const type = orderedTypeDef(def?.numType ?? 'decimal');
+    return formatOrdinal(def?.startAt ?? 1, type.numFormat) + type.numSuffix;
+  }
+
+  function applyListStyle(s: ListStyle, kind: 'bulletList' | 'orderedList') {
+    closeMenu();
+    if (!editor) return;
+    const chain = editor.chain().focus();
+    if (!editor.isActive('bulletList') && !editor.isActive('orderedList')) {
+      if (kind === 'bulletList') chain.toggleBulletList();
+      else chain.toggleOrderedList();
+    }
+    chain.setListStyle(currentListStyle === s.name ? null : s.name).run();
+  }
 </script>
 
 <RibbonGroup label={t().ribbon.groups.clipboard}>
@@ -279,6 +308,15 @@
                 <button class="bullet-tile" class:selected={currentBulletChar === b.char} title={bulletName(b.char)} onclick={() => applyBulletChar(b.char)}>{b.char}</button>
               {/each}
             </div>
+            {#if bulletListStyles.length}
+              <div class="rb-menu-label">{t().styles.listStyles}</div>
+              {#each bulletListStyles as s (s.name)}
+                <button class:selected={currentListStyle === s.name} onclick={() => applyListStyle(s, 'bulletList')}>
+                  <span class="marker">{listStylePreview(s)}</span>{s.name}
+                </button>
+              {/each}
+            {/if}
+            <button onclick={() => { closeMenu(); onManageStyles?.('list'); }}>{t().styles.manageListStyles}</button>
           </div>
         {/if}
       </div>
@@ -292,6 +330,15 @@
                 <span class="marker">{o.preview}</span>{o.label}
               </button>
             {/each}
+            {#if orderedListStyles.length}
+              <div class="rb-menu-label">{t().styles.listStyles}</div>
+              {#each orderedListStyles as s (s.name)}
+                <button class:selected={currentListStyle === s.name} onclick={() => applyListStyle(s, 'orderedList')}>
+                  <span class="marker">{listStylePreview(s)}</span>{s.name}
+                </button>
+              {/each}
+            {/if}
+            <button onclick={() => { closeMenu(); onManageStyles?.('list'); }}>{t().styles.manageListStyles}</button>
           </div>
         {/if}
       </div>

@@ -5,6 +5,9 @@
   import { ORDERED_LIST_TYPES, type OrderedListType } from '../utils/orderedListTypes';
   import { BULLET_TYPES } from '../utils/bulletListTypes';
   import { effectiveOrderedTypeAt } from '../editor/extensions/orderedList';
+  import { listStyleNameAt } from '../editor/extensions/listStyle';
+  import { formatOrdinal, orderedTypeDef } from '../utils/orderedListTypes';
+  import type { ListStyle } from '../styles/listStyles';
   import { isInHeaderCell } from '../editor/extensions/tableHeaderRow';
   import { cellRegionText } from '../editor/extensions/tableStyle';
   import { blockStyleName } from '../editor/extensions/paragraphStyle';
@@ -121,6 +124,43 @@
 
   let olMenuOpen = $state(false);
   let blMenuOpen = $state(false);
+
+  // Named list styles, split by their first level's kind so each dropdown lists its own.
+  let bulletListStyles = $derived(Object.values(sheet.list ?? {}).filter((s) => s.levels[0]?.kind === 'bullet'));
+  let orderedListStyles = $derived(Object.values(sheet.list ?? {}).filter((s) => s.levels[0]?.kind !== 'bullet'));
+  let currentListStyle = $derived.by<string | null>(() => {
+    if (tick < 0 || !editor) return null;
+    return listStyleNameAt(editor.state as never);
+  });
+
+  // The style's level-1 marker as the menu preview.
+  function listStylePreview(s: ListStyle): string {
+    const def = s.levels[0];
+    if (def?.kind === 'bullet') return def.bulletChar ?? '•';
+    if (s.multilevel) return '1.1.';
+    const type = orderedTypeDef(def?.numType ?? 'decimal');
+    return formatOrdinal(def?.startAt ?? 1, type.numFormat) + type.numSuffix;
+  }
+
+  // Assign a named list style (clicking the active one clears it); creates the list
+  // first if the selection isn't in one.
+  function applyListStyle(s: ListStyle, kind: 'bulletList' | 'orderedList') {
+    if (!editor) return;
+    blMenuOpen = false;
+    olMenuOpen = false;
+    const chain = editor.chain().focus();
+    if (!editor.isActive('bulletList') && !editor.isActive('orderedList')) {
+      if (kind === 'bulletList') chain.toggleBulletList();
+      else chain.toggleOrderedList();
+    }
+    chain.setListStyle(currentListStyle === s.name ? null : s.name).run();
+  }
+
+  function manageListStyles() {
+    blMenuOpen = false;
+    olMenuOpen = false;
+    onManageStyles?.('list');
+  }
 
   // Marker char of the innermost bullet list at the cursor (null = default cycle
   // or not in a bullet list).
@@ -345,6 +385,24 @@
                 >{b.char}</button>
               {/each}
             </div>
+            {#if bulletListStyles.length}
+              <div class="ol-section-label">{t().styles.listStyles}</div>
+              {#each bulletListStyles as s (s.name)}
+                <button
+                  class="ol-option"
+                  class:active={currentListStyle === s.name}
+                  onclick={() => applyListStyle(s, 'bulletList')}
+                  role="menuitemradio"
+                  aria-checked={currentListStyle === s.name}
+                >
+                  <span class="ol-option-preview">{listStylePreview(s)}</span>
+                  <span class="ol-option-label">{s.name}</span>
+                </button>
+              {/each}
+            {/if}
+            <button class="ol-option" onclick={manageListStyles} role="menuitem">
+              <span class="ol-option-label">{t().styles.manageListStyles}</span>
+            </button>
           </div>
         {/if}
       </div>
@@ -394,6 +452,24 @@
                 <span class="ol-option-label">{o.label}</span>
               </button>
             {/each}
+            {#if orderedListStyles.length}
+              <div class="ol-section-label">{t().styles.listStyles}</div>
+              {#each orderedListStyles as s (s.name)}
+                <button
+                  class="ol-option"
+                  class:active={currentListStyle === s.name}
+                  onclick={() => applyListStyle(s, 'orderedList')}
+                  role="menuitemradio"
+                  aria-checked={currentListStyle === s.name}
+                >
+                  <span class="ol-option-preview">{listStylePreview(s)}</span>
+                  <span class="ol-option-label">{s.name}</span>
+                </button>
+              {/each}
+            {/if}
+            <button class="ol-option" onclick={manageListStyles} role="menuitem">
+              <span class="ol-option-label">{t().styles.manageListStyles}</span>
+            </button>
           </div>
         {/if}
       </div>
