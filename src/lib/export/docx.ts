@@ -77,7 +77,7 @@ const DOC_FONT = 'Times New Roman';
 // Effective bullet glyph of a list node: its bulletChar attr, else its named list
 // style's level, else the default cycle.
 function bulletCharOf(node: TiptapNode, depth0: number, style: ListStyleDef | null = null): string {
-  const ch = effectiveListLevel(node.attrs ?? {}, false, style, depth0 + 1).bulletChar;
+  const ch = effectiveListLevel(node.attrs ?? {}, node.type === 'orderedList', style, depth0 + 1).bulletChar;
   return ch ?? defaultBulletChar(depth0);
 }
 
@@ -320,9 +320,11 @@ class Numbering {
     const levels = this.map.get(reference)!;
     const l = levels.find((lv) => lv.level === depth);
     if (!l) return reference;
+    // The style level's kind decides what the depth renders, whatever the node species.
+    const eff = effectiveListLevel(node.attrs ?? {}, node.type === 'orderedList', style, depth + 1);
     let format: string, text: string;
-    if (node.type === 'orderedList') {
-      const attr = effOrderedKey(node, style, depth);
+    if (eff.kind === 'number') {
+      const attr = eff.listStyleType;
       const def = effectiveOrderedDefAt(attr === 'multilevel' ? 'decimal' : attr, cycle);
       format = ORDERED_FORMAT[def.numFormat] ?? LevelFormat.DECIMAL;
       text = `%${depth + 1}${def.numSuffix}`;
@@ -350,7 +352,7 @@ class Numbering {
     // w:lvlJc: which end of the hanging indent the label is set against.
     const eff = effectiveListLevel(node.attrs ?? {}, node.type === 'orderedList', style, depth + 1);
     const alignment = eff.markerAlign === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT;
-    if (node.type === 'orderedList') {
+    if (eff.kind === 'number') {
       const attr = eff.listStyleType;
       const chained = this.mlRefs.has(reference) && (depth === 0 || !attr || attr === 'multilevel');
       const def = effectiveOrderedDefAt(attr === 'multilevel' ? 'decimal' : attr, cycle);
@@ -1909,7 +1911,7 @@ function listToParagraphs(
   const indentCm = extraIndentCm + eff.indent;
   num.ensureLevel(reference, depth, node, indentCm, cycle, style);
   const levelLeftTwip = cmToTwip((depth + 1) * LIST_LEFT_STEP_CM + indentCm);
-  const cChild = childCycle(cycle, eff.listStyleType, node.type === 'orderedList');
+  const cChild = childCycle(cycle, eff.listStyleType, eff.kind === 'number');
   for (const item of node.content ?? []) {
     if (item.type !== 'listItem') continue;
     let numberedFirst = false;

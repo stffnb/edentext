@@ -2096,6 +2096,13 @@ function effOrderedFmt(list: TiptapNode, cycle: OrderedCycle, style: ListStyle |
   return { numFormat: def.numFormat, numSuffix: def.numSuffix };
 }
 
+// What a list node at a depth renders under its style — the style's level decides the
+// kind (a number level numbers a <ul>); only past the levels the species does.
+type LevelKind = 'bullet' | 'number';
+function effListKind(list: TiptapNode, style: ListStyle | null, depth: number): LevelKind {
+  return effectiveListLevel(list.attrs ?? {}, list.type === 'orderedList', style, depth).kind;
+}
+
 // Per-level numbering for a list subtree — same DFS-first model as bulletCharVector,
 // threading each list's cycle position down so nested defaults advance past their parent.
 function orderedFmtVector(list: TiptapNode, startDepth: number, base: OrderedFmt[], startCycle: OrderedCycle, style: ListStyle | null = null): OrderedFmt[] {
@@ -2103,11 +2110,11 @@ function orderedFmtVector(list: TiptapNode, startDepth: number, base: OrderedFmt
   const seen = new Set<number>();
   const walk = (node: TiptapNode, depth: number, cycle: OrderedCycle) => {
     if (depth > vec.length) return;
-    if (node.type === 'orderedList' && !seen.has(depth)) {
+    if (effListKind(node, style, depth) === 'number' && !seen.has(depth)) {
       seen.add(depth);
       vec[depth - 1] = effOrderedFmt(node, cycle, style, depth);
     }
-    const cChild = childCycle(cycle, effOrderedKey(node, style, depth), node.type === 'orderedList');
+    const cChild = childCycle(cycle, effOrderedKey(node, style, depth), effListKind(node, style, depth) === 'number');
     for (const item of node.content ?? []) {
       if (item.type !== 'listItem') continue;
       for (const child of item.content ?? []) {
@@ -2117,6 +2124,84 @@ function orderedFmtVector(list: TiptapNode, startDepth: number, base: OrderedFmt
   };
   walk(list, startDepth, startCycle);
   return vec;
+}
+
+// A named style's level of the other kind than the L# clone's element (a <ul> whose
+// depth the style numbers, or the reverse): that level element must switch species,
+// with the effective format/char baked in — the passes below only patch matching kinds.
+type LevelKindFix = { kind: LevelKind; fmt: OrderedFmt; char: string; displayLevels: number };
+
+function collectListLevelKinds(doc: TiptapNode, result: (LevelKindFix | null)[][]): void {
+  for (const child of doc.content ?? []) {
+    if (child.type !== 'bulletList' && child.type !== 'orderedList') continue;
+    const style = listStyleOf(child);
+    const fixes: (LevelKindFix | null)[] = [];
+    if (style) {
+      const topOrdered = child.type === 'orderedList';
+      const fixAt = (kind: LevelKind, fmt: OrderedFmt, char: string, displayLevels: number): LevelKindFix | null =>
+        (kind === 'number') === topOrdered ? null : { kind, fmt, char, displayLevels };
+      const walk = (list: TiptapNode, depth: number, cycle: OrderedCycle) => {
+        if (depth > 6) return;
+        if (fixes[depth - 1] === undefined) {
+          const eff = effectiveListLevel(list.attrs ?? {}, list.type === 'orderedList', style, depth);
+          fixes[depth - 1] = fixAt(eff.kind, effOrderedFmt(list, cycle, style, depth), effBulletChar(list, depth, style),
+            eff.listStyleType === 'multilevel' && depth > 1 ? depth : 1);
+        }
+        const cChild = childCycle(cycle, effOrderedKey(list, style, depth), effListKind(list, style, depth) === 'number');
+        for (const item of list.content ?? []) {
+          if (item.type !== 'listItem') continue;
+          for (const inner of item.content ?? []) {
+            if (inner.type === 'bulletList' || inner.type === 'orderedList') walk(inner, depth + 1, cChild);
+          }
+        }
+      };
+      walk(child, 1, ROOT_ORDERED_CYCLE);
+      // Depths the document never reaches still follow the style, so the clone stays
+      // the full definition.
+      for (let d = 1; d <= 6; d++) {
+        if (fixes[d - 1] !== undefined) continue;
+        const lv = style.levels[d - 1];
+        if (!lv) { fixes[d - 1] = null; continue; }
+        const def = effectiveOrderedDefAt(style.multilevel ? 'decimal' : lv.numType ?? 'decimal', ROOT_ORDERED_CYCLE);
+        fixes[d - 1] = fixAt(lv.kind, { numFormat: def.numFormat, numSuffix: def.numSuffix }, lv.bulletChar ?? '•',
+          style.multilevel && lv.kind === 'number' && d > 1 ? d : 1);
+      }
+    }
+    result.push(fixes);
+  }
+}
+
+function applyListLevelKinds(odtBytes: Uint8Array, kinds: (LevelKindFix | null)[][]): Uint8Array {
+  if (kinds.every(fs => fs.every(f => f == null))) return odtBytes;
+
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+
+  let content = strFromU8(contentBytes);
+  kinds.forEach((fixes, i) => {
+    if (!fixes.some(Boolean)) return;
+    const re = new RegExp(`(<text:list-style style:name="L${i + 1}">)([\\s\\S]*?)(</text:list-style>)`);
+    content = content.replace(re, (_m, open: string, body: string, close: string) =>
+      open +
+      body.replace(
+        /<text:list-level-style-(bullet|number)( text:level="(\d)")[^>]*>([\s\S]*?)<\/text:list-level-style-\1>/g,
+        (m, _kind: string, lvlAttr: string, lvl: string, inner: string) => {
+          const fix = fixes[+lvl - 1];
+          if (!fix) return m;
+          if (fix.kind === 'number') {
+            const disp = fix.displayLevels > 1 ? ` text:display-levels="${fix.displayLevels}"` : '';
+            return `<text:list-level-style-number${lvlAttr} style:num-format="${fix.fmt.numFormat}" style:num-suffix="${escapeXml(fix.fmt.numSuffix)}"${disp}>${inner}</text:list-level-style-number>`;
+          }
+          return `<text:list-level-style-bullet${lvlAttr} text:bullet-char="${escapeXml(fix.char)}">${inner}</text:list-level-style-bullet>`;
+        },
+      ) +
+      close,
+    );
+  });
+
+  files['content.xml'] = strToU8(content);
+  return rezipOdt(files);
 }
 
 function collectOrderedListFormats(node: TiptapNode, result: (OlStyleFix | null)[]): void {
@@ -2199,10 +2284,10 @@ function applyListStartValues(odtBytes: Uint8Array, starts: (number | null)[]): 
   return rezipOdt(files);
 }
 
-// Effective marker char of a bullet list at a 1-based depth: its bulletChar attr,
-// else the default cycle.
+// Effective marker char of a list at a 1-based depth: its bulletChar attr, else its
+// style level's char, else the default cycle.
 function effBulletChar(list: TiptapNode, depth: number, style: ListStyle | null = null): string {
-  const ch = effectiveListLevel(list.attrs ?? {}, false, style, depth).bulletChar;
+  const ch = effectiveListLevel(list.attrs ?? {}, list.type === 'orderedList', style, depth).bulletChar;
   return ch ?? defaultBulletChar(depth - 1);
 }
 
@@ -2214,7 +2299,7 @@ function bulletCharVector(list: TiptapNode, startDepth: number, base: string[], 
   const seen = new Set<number>();
   const walk = (node: TiptapNode, depth: number) => {
     if (depth > vec.length) return;
-    if (node.type === 'bulletList' && !seen.has(depth)) {
+    if (effListKind(node, style, depth) === 'bullet' && !seen.has(depth)) {
       seen.add(depth);
       vec[depth - 1] = effBulletChar(node, depth, style);
     }
@@ -2407,12 +2492,39 @@ function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | n
 // odf-kit emits nested lists as bare <text:list> sharing the top-level L# style, so a
 // nested list of a different kind/format/marker loses its look. Mint it its own
 // 6-level list style (same pattern applyCellBlocks uses for cell lists).
-type ListDef = { ordered: boolean; multilevel: boolean; fmts: OrderedFmt[]; bulletChars: string[] };
+type ListDef = { kinds: LevelKind[]; multilevel: boolean; fmts: OrderedFmt[]; bulletChars: string[] };
 
-function listDefOf(node: TiptapNode, depth: number, cycle: OrderedCycle, baseChars: string[], baseFmts: OrderedFmt[], style: ListStyle | null = null): ListDef {
+// Per-level kind for a list subtree, same DFS-first model as the char/format vectors.
+function kindVector(list: TiptapNode, startDepth: number, base: LevelKind[], style: ListStyle | null): LevelKind[] {
+  const vec = [...base];
+  const seen = new Set<number>();
+  const walk = (node: TiptapNode, depth: number) => {
+    if (depth > vec.length) return;
+    if (!seen.has(depth)) {
+      seen.add(depth);
+      vec[depth - 1] = effListKind(node, style, depth);
+    }
+    for (const item of node.content ?? []) {
+      if (item.type !== 'listItem') continue;
+      for (const child of item.content ?? []) {
+        if (child.type === 'bulletList' || child.type === 'orderedList') walk(child, depth + 1);
+      }
+    }
+  };
+  walk(list, startDepth);
+  return vec;
+}
+
+function listDefOf(node: TiptapNode, depth: number, cycle: OrderedCycle, baseChars: string[], baseFmts: OrderedFmt[], style: ListStyle | null = null, baseKinds?: LevelKind[]): ListDef {
   const multilevel = effOrderedKey(node, style, depth) === 'multilevel';
+  const species: LevelKind = node.type === 'orderedList' ? 'number' : 'bullet';
+  // The top def mirrors its L# levels: homogeneous by species, unless a style made
+  // applyListLevelKinds convert them (then: visited eff kind, unvisited style kind).
+  const kinds = !baseKinds && !style
+    ? Array.from({ length: 6 }, () => species)
+    : kindVector(node, depth, baseKinds ?? Array.from({ length: 6 }, (_, i): LevelKind => style?.levels[i]?.kind ?? species), style);
   return {
-    ordered: node.type === 'orderedList',
+    kinds,
     multilevel,
     fmts: multilevel ? MULTILEVEL_FMTS : orderedFmtVector(node, depth, baseFmts, cycle, style),
     bulletChars: bulletCharVector(node, depth, baseChars, style),
@@ -2427,11 +2539,11 @@ function collectNestedListFixes(doc: TiptapNode, result: (ListDef | null)[], rep
   const walkList = (list: TiptapNode, governing: ListDef, isTop: boolean, depth: number, cycle: OrderedCycle, style: ListStyle | null) => {
     let gov = governing;
     if (!isTop) {
-      const ordered = list.type === 'orderedList';
+      const kind = effListKind(list, style, depth);
       let differs: boolean;
-      if (ordered !== governing.ordered) {
+      if (kind !== governing.kinds[(depth - 1) % governing.kinds.length]) {
         differs = true;
-      } else if (!ordered) {
+      } else if (kind === 'bullet') {
         differs = effBulletChar(list, depth, style) !== governing.bulletChars[(depth - 1) % governing.bulletChars.length];
       } else if (governing.multilevel) {
         // Attr-less lists inherit the chain; only an explicit style breaks out.
@@ -2442,11 +2554,11 @@ function collectNestedListFixes(doc: TiptapNode, result: (ListDef | null)[], rep
         const g = governing.fmts[(depth - 1) % governing.fmts.length];
         differs = f.numFormat !== g.numFormat || f.numSuffix !== g.numSuffix;
       }
-      const def = differs ? listDefOf(list, depth, cycle, governing.bulletChars, governing.fmts, style) : null;
+      const def = differs ? listDefOf(list, depth, cycle, governing.bulletChars, governing.fmts, style, governing.kinds) : null;
       result.push(def);
       if (def) gov = def; // restyled list governs its own descendants
     }
-    const cChild = childCycle(cycle, effOrderedKey(list, style, depth), list.type === 'orderedList');
+    const cChild = childCycle(cycle, effOrderedKey(list, style, depth), effListKind(list, style, depth) === 'number');
     for (const item of list.content ?? []) {
       if (item.type !== 'listItem') continue;
       for (const child of item.content ?? []) {
@@ -2482,14 +2594,12 @@ function applyNestedListTypes(odtBytes: Uint8Array, fixes: (ListDef | null)[]): 
   const minted: string[] = [];
   const nameByKey = new Map<string, string>();
   const styleFor = (fix: ListDef): string => {
-    const key = fix.ordered
-      ? `o|${fix.multilevel ? 'M' : ''}|${fix.fmts.map(f => f.numFormat + f.numSuffix).join('')}`
-      : `b|${fix.bulletChars.join('')}`;
+    const key = `${fix.kinds.map(k => k[0]).join('')}|${fix.multilevel ? 'M' : ''}|${fix.fmts.map(f => f.numFormat + f.numSuffix).join('')}|${fix.bulletChars.join('')}`;
     let name = nameByKey.get(key);
     if (!name) {
       name = `NL${nameByKey.size + 1}`;
       nameByKey.set(key, name);
-      minted.push(buildCellListStyle(name, fix.ordered, { fmts: fix.fmts, multilevel: fix.multilevel, bulletChars: fix.bulletChars }));
+      minted.push(buildCellListStyle(name, fix.kinds[0] === 'number', { fmts: fix.fmts, multilevel: fix.multilevel, bulletChars: fix.bulletChars, kinds: fix.kinds }));
     }
     return name;
   };
@@ -2567,7 +2677,7 @@ function buildNamedListStyleXml(style: ListStyle): string {
 function buildCellListStyle(
   styleName: string,
   ordered: boolean,
-  opts: { fmts?: OrderedFmt[]; multilevel?: boolean; bulletChars?: string[] } = {},
+  opts: { fmts?: OrderedFmt[]; multilevel?: boolean; bulletChars?: string[]; kinds?: LevelKind[] } = {},
 ): string {
   const fmts = opts.multilevel ? MULTILEVEL_FMTS : opts.fmts ?? MULTILEVEL_FMTS;
   const bulletChars = opts.bulletChars ?? DEFAULT_BULLET_CYCLE;
@@ -2577,7 +2687,7 @@ function buildCellListStyle(
     const marginLeft = `${(indent * 2).toFixed(3)}cm`;
     const textIndent = `-${indent.toFixed(3)}cm`;
     const labelAlign = `<style:list-level-properties text:list-level-position-and-space-mode="label-alignment"><style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="${marginLeft}" fo:text-indent="${textIndent}" fo:margin-left="${marginLeft}"/></style:list-level-properties>`;
-    if (ordered) {
+    if (opts.kinds ? opts.kinds[(level - 1) % opts.kinds.length] === 'number' : ordered) {
       const f = fmts[(level - 1) % fmts.length];
       const disp = opts.multilevel && level > 1 ? ` text:display-levels="${level}"` : '';
       levels += `<text:list-level-style-number text:level="${level}" style:num-format="${f.numFormat}" style:num-suffix="${f.numSuffix}"${disp}>${labelAlign}</text:list-level-style-number>`;
@@ -4810,12 +4920,19 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
     },
   });
 
+  // Where a named style's level is of the other species than its L# clone's element
+  // (a <ul> the style numbers), switch those level elements first, so the format/char
+  // passes below patch elements of the right kind.
+  const levelKinds: (LevelKindFix | null)[][] = [];
+  collectListLevelKinds(raw, levelKinds);
+  let numberedOdt = applyListLevelKinds(odt as Uint8Array, levelKinds);
+
   // Rewrite odf-kit's default numbering (1.) into per-level formats (depth cycle,
   // explicit types, multilevel chains). Runs before applyListItemStyles, which only
   // touches <text:p> styles, not the <text:list-style> definitions.
   const olFormats: (OlStyleFix | null)[] = [];
   collectOrderedListFormats(raw, olFormats);
-  let numberedOdt = applyOrderedListFormats(odt as Uint8Array, olFormats);
+  numberedOdt = applyOrderedListFormats(numberedOdt, olFormats);
 
   // A Word list continued across an intervening paragraph splits into separate nodes with
   // a `start` attr; odf-kit drops it, so emit text:start-value on each such list's first item.

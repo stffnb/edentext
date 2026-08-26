@@ -688,24 +688,31 @@
 }
 
 /* Ordered numbering, keyed by data-eff-list-style — the effective numbering
-   orderedList.ts's plugin resolves per <ol> from its attr + ancestor chain. The
-   undecorated <ol> is the plain decimal fallback and must come first. */
+   listStyle.ts's plugin resolves per list from its attr + style + ancestor chain. A <ul>
+   carries it too where a named style's level numbers that depth. The undecorated <ol>
+   is the plain decimal fallback and must come first. */
 .paper .tiptap ol > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before                                { content: counter(list-item, decimal) ". "; }
-.paper .tiptap ol[data-eff-list-style="decimal"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before  { content: counter(list-item, decimal) ". "; }
-.paper .tiptap ol[data-eff-list-style="decimal-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before     { content: counter(list-item, decimal) ") "; }
-.paper .tiptap ol[data-eff-list-style="lower-alpha"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before       { content: counter(list-item, lower-alpha) ". "; }
-.paper .tiptap ol[data-eff-list-style="lower-alpha-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, lower-alpha) ") "; }
-.paper .tiptap ol[data-eff-list-style="upper-alpha"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before       { content: counter(list-item, upper-alpha) ". "; }
-.paper .tiptap ol[data-eff-list-style="upper-alpha-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, upper-alpha) ") "; }
-.paper .tiptap ol[data-eff-list-style="lower-roman"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before       { content: counter(list-item, lower-roman) ". "; }
-.paper .tiptap ol[data-eff-list-style="lower-roman-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, lower-roman) ") "; }
-.paper .tiptap ol[data-eff-list-style="upper-roman"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before       { content: counter(list-item, upper-roman) ". "; }
-.paper .tiptap ol[data-eff-list-style="upper-roman-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, upper-roman) ") "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="decimal"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before  { content: counter(list-item, decimal) ". "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="decimal-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before     { content: counter(list-item, decimal) ") "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="lower-alpha"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before       { content: counter(list-item, lower-alpha) ". "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="lower-alpha-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, lower-alpha) ") "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="upper-alpha"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before       { content: counter(list-item, upper-alpha) ". "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="upper-alpha-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, upper-alpha) ") "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="lower-roman"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before       { content: counter(list-item, lower-roman) ". "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="lower-roman-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, lower-roman) ") "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="upper-roman"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before       { content: counter(list-item, upper-roman) ". "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="upper-roman-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, upper-roman) ") "; }
 
 /* Legal/outline numbering (1., 1.1., 1.2.1. …): the plugin tags the multilevel list and
    every attr-less member of its chain with data-eff-list-style="multilevel". */
-.paper .tiptap ol[data-eff-list-style="multilevel"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {
+.paper .tiptap :is(ol, ul)[data-eff-list-style="multilevel"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {
   content: counters(list-item, ".") ". ";
+}
+
+/* A numbered <ul> depth keeps the ordered markers' font (the symbol-shim rule below
+   would set the digits in the serif fallback instead of the item's own font). */
+.paper .tiptap ul[data-eff-list-style] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {
+  font-family: var(--marker-family, inherit);
 }
 
 /* Default bullet markers per nesting depth — the same cycle the ODT/DOCX export writes
@@ -724,9 +731,11 @@
 
 /* A list's own `bulletChar` beats the cycle at any depth — an attribute outranks the
    descendant chain. A nested list without one keeps its depth's char, which is what both
-   exports write, even though --bullet inherits into it. */
-.paper .tiptap ul[data-bullet] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {
+   exports write, even though --bullet inherits into it. An <ol> carries data-bullet where
+   a named style's level bullets that depth; the shim font rides along for its glyphs. */
+.paper .tiptap :is(ul, ol)[data-bullet] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {
   content: var(--bullet) ' ';
+  font-family: 'EdenText Symbols', var(--marker-family, var(--font-serif)), serif;
 }
 
 /* The PDF clone (the .paper itself) replaces every marker with a real span (pdf.ts). */

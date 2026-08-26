@@ -427,6 +427,11 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
       ] },
       P(null, T('between')),
       { type: 'bulletList', attrs: { listStyleName: 'List 2' }, content: [LI(P(null, T('dash')))] },
+      // A bullet tree under the same style: level 1 is a number level, so the style
+      // decides the kind and LibreOffice must render (and keep) the numbering.
+      { type: 'bulletList', attrs: { listStyleName: 'Prüfliste' }, content: [
+        LI(P(null, T('mix')), { type: 'bulletList', content: [LI(P(null, T('mixsub')))] }),
+      ] },
     ] };
     mkdirSync('/tmp/lo-rt', { recursive: true });
     writeFileSync('/tmp/lo-rt/ls.odt', await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', sheet));
@@ -453,6 +458,10 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
       && imported?.levels[0]?.markerAlign === 'right' && imported?.levels[1]?.bulletChar === '✓', imported?.levels?.slice(0, 2));
     check('LO lists: the level indent survives the unit round-trip',
       Math.abs((imported?.levels[0]?.indentCm ?? 0) - 0.5) < 0.02, imported?.levels[0]);
+    check('LO lists: the species-mismatched tree keeps the style',
+      lists[2]?.attrs?.listStyleName === 'Prüfliste', lists[2]?.attrs);
+    check('LO lists: its kinds come back as the levels say (number, then bullet)',
+      lists[2]?.type === 'orderedList' && lists[2]?.content?.[0]?.content?.[1]?.type === 'bulletList', lists[2]);
   });
 
   it('survives a `soffice` re-save of the record-changes flag', { timeout: 180000 }, async () => {

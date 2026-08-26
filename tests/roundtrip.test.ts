@@ -1741,6 +1741,40 @@ describe('Leg 14: named list styles (ODF)', () => {
     check('the name is gone', !list?.attrs?.listStyleName, list?.attrs);
   });
 
+  it('the style level decides a depth\'s kind, whatever species the editor holds', async () => {
+    sheet.list['Tab Test'] = { name: 'Tab Test', levels: [
+      { kind: 'bullet', bulletChar: '–' },
+      ...Array.from({ length: 9 }, () => ({ kind: 'number' as const, numType: 'decimal' as const })),
+    ] };
+    // A Tab-nested tree is bullet lists all the way down; the style numbers depth 2+.
+    const tree = (attrs: N | null): N => ({ type: 'bulletList', ...(attrs ? { attrs } : {}), content: [
+      LI(P(null, T('one')), { type: 'bulletList', content: [LI(P(null, T('two')))] }),
+    ] });
+
+    const clean = await buildOdt({ type: 'doc', content: [tree({ listStyleName: 'Tab Test' })] },
+      margins, 'portrait', undefined, null, 'A4', sheet);
+    const res = importOdt(clean);
+    const top = (res.content.content ?? []).find((n: N) => n.type === 'bulletList');
+    check('the clean list references the named style', top?.attrs?.listStyleName === 'Tab Test', top?.attrs);
+    const nested = top?.content?.[0]?.content?.[1];
+    check('the nested list comes back as the number level says', nested?.type === 'orderedList', nested);
+    check('without accreted attrs', !nested?.attrs, nested?.attrs);
+
+    // Overridden: the automatic clone's level 2 must switch species too.
+    const dirty = await buildOdt({ type: 'doc', content: [tree({ listStyleName: 'Tab Test', bulletChar: '➢' })] },
+      margins, 'portrait', undefined, null, 'A4', sheet);
+    const content = strFromU8(unzipSync(dirty)['content.xml']);
+    const clone = content.match(/<text:list-style style:name="L1">[\s\S]*?<\/text:list-style>/)?.[0] ?? '';
+    check('the clone keeps the bullet level 1', /text:level="1" text:bullet-char="➢"/.test(clone), clone);
+    check('the clone numbers level 2', /<text:list-level-style-number text:level="2" style:num-format="1"/.test(clone), clone);
+    const dirtyTop = (importOdt(dirty).content.content ?? []).find((n: N) => n.type === 'bulletList');
+    check('the overridden look survives without the name',
+      dirtyTop?.attrs?.bulletChar === '➢' && !dirtyTop?.attrs?.listStyleName, dirtyTop?.attrs);
+    check('its nested list is numbered', dirtyTop?.content?.[0]?.content?.[1]?.type === 'orderedList',
+      dirtyTop?.content?.[0]?.content?.[1]);
+    delete sheet.list['Tab Test'];
+  });
+
   it('a foreign named list style is read back (display name decoded)', async () => {
     const stylesXml = `<?xml version="1.0" encoding="UTF-8"?>
 <office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" office:version="1.2">

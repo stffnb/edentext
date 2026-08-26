@@ -36,11 +36,17 @@ export function listStyleDecos(doc: ProseMirrorNode, sheet: StyleSheet): Decorat
       const eff = effectiveListLevel(node.attrs, name === 'orderedList', nextStyle, nextDepth);
       const attrs: Record<string, string> = {};
       const css: string[] = [];
-      if (name === 'orderedList') {
+      // eff.kind decides what the depth renders — a style's number level numbers a <ul>
+      // (and a bullet level bullets an <ol>), as the same file would render in LibreOffice.
+      if (eff.kind === 'number') {
         const own = eff.listStyleType;
         const type = own === 'multilevel' || (listMultilevel && !own) ? 'multilevel' : own ?? defaultOrderedTypeAt(listCycle);
         attrs['data-eff-list-style'] = type;
-        if (eff.startAt != null && eff.startAt !== 1 && (node.attrs.start ?? 1) === 1) attrs.start = String(eff.startAt);
+        if (eff.startAt != null && eff.startAt !== 1 && (node.attrs.start ?? 1) === 1) {
+          // A <ul> ignores the start attribute, so its offset rides the counter itself.
+          if (name === 'orderedList') attrs.start = String(eff.startAt);
+          else css.push(`counter-reset: list-item ${eff.startAt - 1}`);
+        }
         nextMultilevel = type === 'multilevel';
       } else if (!node.attrs.bulletChar && eff.bulletChar) {
         // data-bullet too: editor.css keys the var()-reading marker rule on it.
@@ -51,7 +57,7 @@ export function listStyleDecos(doc: ProseMirrorNode, sheet: StyleSheet): Decorat
       if (node.attrs.indent == null && eff.indent) css.push(`margin-left: calc(var(--sec-inset-left, 0px) + ${eff.indent}cm)`);
       if (css.length) attrs.style = css.join(';');
       if (Object.keys(attrs).length) decos.push(Decoration.node(pos, pos + node.nodeSize, attrs));
-      nextCycle = childCycle(listCycle, eff.listStyleType as OrderedListType | null, name === 'orderedList');
+      nextCycle = childCycle(listCycle, eff.listStyleType as OrderedListType | null, eff.kind === 'number');
       nextInList = true;
     } else if (name === 'listItem') {
       nextCycle = cycle;
@@ -123,7 +129,8 @@ export const ListStyle = Extension.create<{ sheet: () => StyleSheet }>({
     return {
       // The style goes on the outermost list (nested ones inherit); the subtree's own
       // marker attrs are cleared so the style shows — assigning one replaces the
-      // list's direct numbering, as in LibreOffice.
+      // list's direct numbering, as in LibreOffice — and each list node is retyped to
+      // its level's kind, so the document matches what an import of it would build.
       setListStyle:
         (name) =>
         ({ state, tr, dispatch }) => {
@@ -135,16 +142,26 @@ export const ListStyle = Extension.create<{ sheet: () => StyleSheet }>({
           }
           if (outer === -1) return false;
           if (dispatch) {
-            const pos = $from.before(outer);
-            const node = $from.node(outer);
+            const style = name ? this.options.sheet().list[name] ?? null : null;
+            const typeFor = (node: ProseMirrorNode, depth: number) => {
+              const kind = style?.levels[depth - 1]?.kind;
+              return kind ? state.schema.nodes[kind === 'number' ? 'orderedList' : 'bulletList'] : node.type;
+            };
             const clear = (attrs: Record<string, unknown>) =>
               ({ ...attrs, bulletChar: null, listStyleType: null, markerAlign: null, indent: null });
-            tr.setNodeMarkup(pos, undefined, { ...clear(node.attrs), listStyleName: name });
-            node.descendants((child, offset) => {
-              if (child.type.name === 'bulletList' || child.type.name === 'orderedList') {
-                tr.setNodeMarkup(tr.mapping.map(pos + 1 + offset), undefined, { ...clear(child.attrs), listStyleName: null });
-              }
-            });
+            const pos = $from.before(outer);
+            const node = $from.node(outer);
+            tr.setNodeMarkup(pos, typeFor(node, 1), { ...clear(node.attrs), listStyleName: name });
+            const walk = (parent: ProseMirrorNode, base: number, depth: number) => {
+              parent.forEach((child, offset) => {
+                const isList = child.type.name === 'bulletList' || child.type.name === 'orderedList';
+                if (isList) {
+                  tr.setNodeMarkup(tr.mapping.map(base + offset), typeFor(child, depth + 1), { ...clear(child.attrs), listStyleName: null });
+                }
+                walk(child, base + offset + 1, isList ? depth + 1 : depth);
+              });
+            };
+            walk(node, pos + 1, 1);
           }
           return true;
         },

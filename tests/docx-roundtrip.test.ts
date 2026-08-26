@@ -1269,6 +1269,36 @@ describe('DOCX named list styles', () => {
     expect(imported?.levels[2]).toMatchObject({ kind: 'number', numType: 'lower-alpha' });
   });
 
+  it('the style level decides a depth\'s kind — a species-mismatched nest keeps the shared abstract', async () => {
+    sheet.list['Tab Test'] = { name: 'Tab Test', levels: [
+      { kind: 'bullet', bulletChar: '–' },
+      ...Array.from({ length: 8 }, () => ({ kind: 'number' as const, numType: 'decimal' as const })),
+    ] };
+    // A Tab-nested tree is bullet lists all the way down; the style numbers depth 2+.
+    const doc = { type: 'doc', content: [
+      { type: 'bulletList', attrs: { listStyleName: 'Tab Test' }, content: [
+        li(para('one'), { type: 'bulletList', content: [li(para('two'))] }),
+      ] },
+    ] };
+    const bytes = await buildDocx(doc as any, undefined, undefined, undefined, undefined, undefined, sheet);
+    const numbering = strFromU8(unzipSync(bytes)['word/numbering.xml']);
+    const abstract = numbering.match(/<w:abstractNum [^>]*>(?:(?!<\/w:abstractNum>)[\s\S])*w:styleLink w:val="TabTest"[\s\S]*?<\/w:abstractNum>/)?.[0] ?? '';
+    expect(abstract, 'the style abstract carries w:styleLink').toBeTruthy();
+    // The nested <ul> did not fork away from the style reference: exactly one num over
+    // the style abstract, and no third abstract beyond the library's default bullet.
+    const absId = /w:abstractNumId="(\d+)"/.exec(abstract)![1];
+    const nums = numbering.match(new RegExp(`<w:num w:numId="\\d+"[^>]*>\\s*<w:abstractNumId w:val="${absId}"/>`, 'g')) ?? [];
+    expect(nums.length, 'one instance for the one list').toBe(1);
+    expect((numbering.match(/<w:abstractNum /g) ?? []).length, 'no forked abstract').toBe(2);
+    const result = importDocx(bytes);
+    const top = (result.content as N).content!.find((n) => n.type === 'bulletList');
+    expect(top?.attrs?.listStyleName).toBe('Tab Test');
+    const nested = top?.content?.[0]?.content?.[1];
+    expect(nested?.type, 'the nested list comes back numbered').toBe('orderedList');
+    expect(nested?.attrs ?? null).toBeNull();
+    delete sheet.list['Tab Test'];
+  });
+
   it('an overridden list keeps a private, fully resolved numbering and drops the name', async () => {
     const doc = { type: 'doc', content: [
       { type: 'orderedList', attrs: { listStyleName: 'Numbering ABC', listStyleType: 'lower-roman' }, content: [li(para('broken out'))] },

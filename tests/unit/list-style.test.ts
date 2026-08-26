@@ -28,11 +28,30 @@ describe('effectiveListLevel (attr ?? style level ?? cycle default)', () => {
     expect(eff.markerAlign).toBe('right'); // untouched channel still comes from the style
   });
 
-  it('serves the bullet level to a bullet node only', () => {
+  it('the level kind wins over the node species (a number level numbers a <ul>)', () => {
     expect(effectiveListLevel({}, false, style, 2).bulletChar).toBe('✓');
-    // An ordered node over the bullet level keeps the cycle default (null).
-    expect(effectiveListLevel({}, true, style, 2).listStyleType).toBeNull();
-    expect(effectiveListLevel({}, false, style, 1).bulletChar).toBeNull();
+    // An ordered node over the bullet level renders that bullet, not a numbering.
+    const overBullet = effectiveListLevel({}, true, style, 2);
+    expect(overBullet.kind).toBe('bullet');
+    expect(overBullet.bulletChar).toBe('✓');
+    expect(overBullet.listStyleType).toBeNull();
+    // A bullet node over a number level renders the numbering — start value included.
+    const overNumber = effectiveListLevel({}, false, style, 1);
+    expect(overNumber.kind).toBe('number');
+    expect(overNumber.listStyleType).toBe('upper-roman-paren');
+    expect(overNumber.bulletChar).toBeNull();
+    expect(effectiveListLevel({}, false, style, 3).startAt).toBe(3);
+  });
+
+  it('a sparse level still names its marker, as the manager preview shows it', () => {
+    const sparse: ListStyle = { name: 'S', levels: [{ kind: 'bullet' }, { kind: 'number' }] };
+    expect(effectiveListLevel({}, false, sparse, 1).bulletChar).toBe('•');
+    expect(effectiveListLevel({}, true, sparse, 2).listStyleType).toBe('decimal');
+  });
+
+  it('a node marker attr keeps its own species over the level', () => {
+    expect(effectiveListLevel({ bulletChar: '❖' }, false, style, 1)).toMatchObject({ kind: 'bullet', bulletChar: '❖' });
+    expect(effectiveListLevel({ listStyleType: 'decimal' }, true, style, 2)).toMatchObject({ kind: 'number', listStyleType: 'decimal' });
   });
 
   it('falls back to the cycle default past the defined levels and without a style', () => {

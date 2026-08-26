@@ -36,8 +36,12 @@ export function listLevelOf(style: ListStyle | null | undefined, depth: number):
 // style level ?? null (= the depth-cycle default the walk resolves). Single source of
 // truth for the decoration walk, both exporters and both importers' suppression.
 export type EffectiveListLevel = {
-  bulletChar: string | null;
-  listStyleType: OrderedListType | null;
+  // What this depth renders. The node's own marker attr keeps its species; otherwise a
+  // defined style level decides — in ODF the list style alone says what a depth shows,
+  // whichever element the editor holds. Past the levels, the species' own cycle.
+  kind: 'bullet' | 'number';
+  bulletChar: string | null; // set only for kind 'bullet'; null = the depth-cycle char
+  listStyleType: OrderedListType | null; // set only for kind 'number'; null = cycle
   indent: number;
   markerAlign: 'right' | null;
   startAt: number | null;
@@ -50,18 +54,28 @@ export function effectiveListLevel(
   depth: number,
 ): EffectiveListLevel {
   const level = listLevelOf(style, depth);
-  // A level only speaks for its own kind: an ordered node over a bullet level (or the
-  // reverse) keeps the cycle default rather than a marker of the wrong species.
-  const matches = level != null && (level.kind === 'number') === ordered;
-  const own = (key: string): unknown => (attrs ?? {})[key] ?? null;
+  const a = attrs ?? {};
+  const own = (ordered ? a.listStyleType : a.bulletChar) as string | null | undefined;
+  const kind: 'bullet' | 'number' = own || !level ? (ordered ? 'number' : 'bullet') : level.kind;
+  const styled = !own && level != null; // the style level governs this depth
+  let bulletChar: string | null = null;
+  let listStyleType: OrderedListType | null = null;
+  if (kind === 'bullet') {
+    bulletChar = own ? (own as string) : styled ? level?.bulletChar ?? '•' : null;
+  } else if (own) {
+    listStyleType = own as OrderedListType;
+  } else if (style?.multilevel) {
+    listStyleType = 'multilevel';
+  } else if (styled) {
+    listStyleType = level?.numType ?? 'decimal';
+  }
   return {
-    bulletChar: !ordered ? (own('bulletChar') as string | null) ?? (matches ? level.bulletChar ?? null : null) : null,
-    listStyleType: ordered
-      ? (own('listStyleType') as OrderedListType | null) ?? (style?.multilevel ? 'multilevel' : matches ? level.numType ?? null : null)
-      : null,
-    indent: typeof attrs?.indent === 'number' ? attrs.indent : (level?.indentCm ?? 0),
-    markerAlign: (own('markerAlign') as 'right' | null) ?? (level?.markerAlign ?? null),
-    startAt: matches && ordered ? level.startAt ?? null : null,
+    kind,
+    bulletChar,
+    listStyleType,
+    indent: typeof a.indent === 'number' ? a.indent : (level?.indentCm ?? 0),
+    markerAlign: (a.markerAlign as 'right' | null) ?? (level?.markerAlign ?? null),
+    startAt: kind === 'number' && styled ? level?.startAt ?? null : null,
   };
 }
 

@@ -12,7 +12,12 @@ LibreOffice's Listenformatvorlagen: a flat family of up-to-10-level definitions
 list only — nested lists inherit, as an ODF `<text:list>` does. Precedence per level:
 node attr > style level > depth-cycle default, resolved by `effectiveListLevel` — the one
 source the decoration walk (`listStyleDecos`, which also owns `data-eff-list-style` for
-plain lists) and both exporters share. The five built-ins are **probed LibreOffice
+plain lists) and both exporters share. **The style level decides the depth's kind**
+(`eff.kind`): a number level numbers a `<ul>` and a bullet level bullets an `<ol>` — in
+ODF the list style alone says what a depth renders, the editor's node species doesn't
+travel. `setListStyle` retypes the subtree to the levels' kinds; a Tab-nested list of
+the other species still renders (and exports) what the level says, and both importers
+build the species from the level, so a round trip normalizes it. The five built-ins are **probed LibreOffice
 definitions** (List 1/2, Numbering 123/ABC/IVX; their margins are LO's own metric values).
 Export writes the full named `<text:list-style>` into styles.xml and points the list at it
 **only when nothing overrides** — ODF list styles have no parent chain, so an overridden
