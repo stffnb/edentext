@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { Editor } from '@tiptap/core';
   import { t } from '../i18n/i18n.svelte';
   import {
@@ -196,12 +197,17 @@
   });
 
   // Follow the cursor's style when the dialog opens (LibreOffice preselects it too).
+  // Untracked past the `open` guard: an edit replaces the sheet and pokes the editor
+  // (FORCE_PAGE_RECALC), and either would otherwise reset the selection mid-session.
   $effect(() => {
-    if (!open || !editor) return;
-    selected = blockStyleName(editor.state.selection.$from.parent as never);
-    selectedChar = activeCharacterStyle(editor.state as never) ?? Object.keys(sheet.character)[0] ?? '';
-    selectedTable = activeTableStyle(editor.state as never) ?? Object.keys(sheet.table ?? {})[0] ?? '';
-    selectedList = listStyleNameAt(editor.state as never) ?? Object.keys(sheet.list ?? {})[0] ?? '';
+    if (!open) return;
+    untrack(() => {
+      if (!editor) return;
+      selected = blockStyleName(editor.state.selection.$from.parent as never);
+      selectedChar = activeCharacterStyle(editor.state as never) ?? Object.keys(sheet.character)[0] ?? '';
+      selectedTable = activeTableStyle(editor.state as never) ?? Object.keys(sheet.table ?? {})[0] ?? '';
+      selectedList = listStyleNameAt(editor.state as never) ?? Object.keys(sheet.list ?? {})[0] ?? '';
+    });
   });
 
   // An undefined patch value clears the style's own property, so it inherits again.
