@@ -2,6 +2,21 @@
 
 <!-- Newest release first. New entries go here: ## [x.y.z] — YYYY-MM-DD -->
 
+## [Unreleased]
+
+### Added
+- Named list styles ("Listenformatvorlagen") as the fourth style family: up to ten levels per style, bullet and numbered levels mixed, edited in the style manager's own tab and assigned from the two list dropdowns. Built-ins List Bullet / List Number / Numbering 123 / Numbering 1.a.i plus a level-varied preset gallery. Round-trips as ODF `<text:list-style>` and as a Word numbering style (`w:styleLink`/`w:numStyleLink` — a linked abstract used to import as a plain bullet list)
+- Letter templates (File ▸ New): a template gallery offering a DIN 5008 Form B business letter (address window, info block, notation zone, mm-pinned geometry) and a personal letter; four further drafts (cover letter, CV, invoice, minutes) are built and tested but shelved out of the gallery for now. Placeholder fields mark what to fill in ("Empfängername") and round-trip as ODF `<text:placeholder>` and a Word content control
+- Fold and punch marks (Falzmarken/Lochmarke, DIN 5008), drawn at the page edge and round-tripped in both formats
+
+### Fixed
+- Word reported "unreadable content" on exported `.docx` files carrying a table or list style and rebuilt them with its own defaults (oversized list spacing): the style XML was wrapped in an invalid element only Word rejects. Both exports are now validated against the ECMA-376 and ODF 1.3 schemas in CI, which also fixed the declared ODF version, `w:settings` child order, `draw:image` xlink attributes and the `text:time-value` datatype
+- Headings and the Title of an exported `.docx` rendered serif, regular and mis-sized in Word and LibreOffice: styles.xml defined Title/Heading1–6 twice (the docx library's own defaults beside ours), and both consumers then dropped the inheritance chain that carries the sans font and bold
+- PDF/print export no longer fails while a placeholder field is selected
+
+### Design notes
+- The bundled fonts and the exported font names are **metric twin pairs**: the editor renders the free Liberation faces, the saved file declares the Microsoft counterpart each was designed to replace glyph-width for glyph-width — Liberation Serif ↔ Times New Roman (body), Liberation Sans ↔ Arial (headings), Liberation Mono ↔ Courier New (Source Text) — and import maps the names back. Every Word installation renders the file with identical line breaks and no substitution surprises, no fonts need embedding, and LibreOffice performs the same pairing itself on systems without the Microsoft faces
+
 ## [0.1.0] — 2026-08-17
 
 First public release, deployed on GitHub Pages.
