@@ -54,6 +54,8 @@ fallback download shows a one-time hint (`edentext-download-hint`) that the brow
 - **`normalizeColor`** — coerces colors to `#RRGGBB` (ODF requirement; rejects/normalizes `rgb()` and short hex).
 - **Schema conformance** (guarded by `tests/schema-validation.test.ts`; LibreOffice forgives all of this, Word's strict reader does not): `applyOdfVersion` stamps every ODF part **1.3** — the version LibreOffice writes, and the first with `style:header-first` — over odf-kit's 1.2. `draw:image` carries the `xlink:type/show/actuate` trio (`xlink:type` is mandatory beside `xlink:href`); `text:time-value` is an xsd dateTime, never a `PT…S` duration (the ODT importer still reads the legacy duration); `index-entry-link-start/-end` only in TOC entry templates; `text:dont-balance-text-columns` on `style:section-properties`. DOCX: `orderDocxSettings` (last pass) re-sorts `w:settings` children into the fixed CT_Settings sequence the prepend-passes scramble; `w14:paraId` in comments.xml requires `mc:Ignorable="w14"` on the root; `styleXmlComponent` unwraps `ImportedXmlComponent.fromXmlString`'s nameless wrapper, which would serialize as a literal `<undefined>` element.
 
+- **Factory style slots** (`FACTORY_SLOTS`, `buildStyles`): the `docx` package always writes its own Title/Heading1–6 into styles.xml, so the registry's versions ride `styles.default.title/headingN` instead of `paragraphStyles` — a second definition under the same `w:styleId` makes Word **and** LibreOffice drop the `basedOn` chain (headings lose their sans/bold).
+
 The filename is derived from the first non-empty heading (max 50 chars, sanitized), falling back to `document.odt`.
 
 ## Header/footer export

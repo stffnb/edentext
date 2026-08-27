@@ -2412,15 +2412,33 @@ function numberingStyleXml(name: string): ImportedXmlComponent {
   );
 }
 
+// Styles the library always writes itself; ours must ride its override slots — a second
+// definition under the same styleId makes Word and LibreOffice drop the basedOn chain.
+const FACTORY_SLOTS: Record<string, string> = {
+  Title: 'title', Heading1: 'heading1', Heading2: 'heading2', Heading3: 'heading3',
+  Heading4: 'heading4', Heading5: 'heading5', Heading6: 'heading6',
+};
+
 function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language: string; country: string } | null, usedTables: string[] = [], usedLists: string[] = []) {
   const run: Writable<IRunStylePropertiesOptions> = { font: DOC_FONT, size: 24 };
   if (language) run.language = { value: `${language.language}-${language.country}` };
+  const slotted: Record<string, Omit<IParagraphStyleOptions, 'id' | 'name'>> = {};
+  const paragraphStyles = Object.values(sheet.paragraph)
+    .filter(st => used.has(st.name)).map(paragraphStyleOf)
+    .filter((st) => {
+      const slot = FACTORY_SLOTS[st.id];
+      if (!slot) return true;
+      const { id: _id, name: _name, ...rest } = st;
+      slotted[slot] = rest;
+      return false;
+    });
   return {
     default: {
       document: { run, paragraph: { spacing: { after: 0, line: 240, lineRule: LineRuleType.AUTO } } },
+      ...slotted,
     },
     // The document's named styles, chain intact — Word shows them in its style list.
-    paragraphStyles: Object.values(sheet.paragraph).filter(st => used.has(st.name)).map(paragraphStyleOf),
+    paragraphStyles,
     characterStyles: Object.values(sheet.character ?? {}).map(characterStyleOf),
     ...(usedTables.length || usedLists.length
       ? { importedStyles: [...usedTables.map(tableStyleXml), ...usedLists.map(numberingStyleXml)] }

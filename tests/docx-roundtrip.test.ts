@@ -160,6 +160,16 @@ describe('DOCX export → import round trip', () => {
     expect(table.content![0].content![0].attrs.backgroundColor).toBe('#4A7EBB');
   });
 
+  it('defines Title and Heading1-6 exactly once, chain intact', async () => {
+    const doc = { type: 'doc', content: [heading(1, 'Kapitel'), para('Text')] } as any;
+    const files = unzipSync(await buildDocx(doc));
+    const stylesXml = strFromU8(files['word/styles.xml']);
+    const ids = [...stylesXml.matchAll(/w:styleId="([^"]+)"/g)].map((m) => m[1]);
+    // A second definition under the same id makes Word and LO drop the basedOn chain.
+    expect(ids.length).toBe(new Set(ids).size);
+    expect(stylesXml).toMatch(/w:styleId="Heading1"><w:name w:val="Heading 1"\/><w:basedOn w:val="Heading"\/>/);
+  });
+
   it('round-trips the table style options as w:tblLook', async () => {
     const cell = (t: string): N => ({
       type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: null }, content: [para(t)],
