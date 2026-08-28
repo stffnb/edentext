@@ -1994,7 +1994,11 @@ function anchorOffsetY(anchor: Element): number | null {
   const from = posV?.getAttribute('relativeFrom');
   if (from !== 'paragraph' && from !== 'line') return null;
   const off = parseInt(posV?.getElementsByTagNameNS(WP, 'posOffset')[0]?.textContent ?? '', 10);
-  return Number.isFinite(off) && off > 0 ? round2(off / 360000) : null;
+  if (!Number.isFinite(off)) return null;
+  // The exporter floors this offset at one twip (LO derails on 0); sub-visible
+  // remainders round back to none, not to a 0 that would accrete as an attribute.
+  const cm = round2(off / 360000);
+  return cm > 0 ? cm : null;
 }
 
 // The frame's own x in the text column, cm from its left edge. null where the file

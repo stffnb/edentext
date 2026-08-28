@@ -52,9 +52,9 @@ describe.skipIf(!has('soffice') || !has('pdftoppm'))('ODT and DOCX render alike 
     const docxPages = renderPages('doc.docx', 'docx');
     expect(docxPages.length, 'both formats paginate to the same page count').toBe(odtPages.length);
 
-    // Ratchet thresholds over the measured status quo (7.6/10.8/4.4/0.3/0.2% on
-    // 2026-08-28; the page-2 cluster is floating frames + the styled table's row
-    // split) — tighten them as the cross-format deviations get fixed.
+    // Ratchet thresholds over the measured status quo (7.6/11.5/4.1/0.3/0.2% on
+    // 2026-08-28). The page-2 rest is LibreOffice-only: it paints a custom-shape's
+    // text at the line's pre-wrap position, and it drops OMML formulas headless.
     const perPage: number[] = [];
     for (let i = 0; i < odtPages.length; i++) {
       const a = pgm(odtPages[i]);

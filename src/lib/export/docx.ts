@@ -739,6 +739,14 @@ function decodeDataUri(src: string): { bytes: Uint8Array; type: 'png' | 'jpg' | 
   }
 }
 
+// A frame sitting exactly on its paragraph's top edge derails LibreOffice's wrap
+// layout around a neighbouring inline box (text paints outside the box, probed);
+// LO itself never writes a paragraph offset below one twip.
+function paraOffsetEmu(cm: number): number {
+  const emu = Math.round(cm * 360000);
+  return emu >= 0 && emu < 635 ? 635 : emu;
+}
+
 // offsetCm places the frame in the text column (Word's posOffset); without one it is
 // flush to its side. offsetYCm is how far below the anchor paragraph it sits.
 function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | null, alignH?: string | null, distCm?: number | null, inFront?: boolean): IFloating | undefined {
@@ -747,7 +755,7 @@ function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | 
   const margins = distCm ? { left: Math.round(distCm * 360000), right: Math.round(distCm * 360000) } : undefined;
   const verticalPosition = {
     relative: VerticalPositionRelativeFrom.PARAGRAPH,
-    offset: offsetYCm != null ? Math.round(offsetYCm * 360000) : 0,
+    offset: paraOffsetEmu(offsetYCm ?? 0),
   };
   if (wrap === 'through') {
     // Word's in-front-of / behind-text: no wrap at all, and behindDoc names which side
@@ -1243,7 +1251,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     ` simplePos="0" relativeHeight="${251658240 + index}" behindDoc="${box.wrap === 'through' ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="${box.wrap === 'through' ? 1 : 0}">` +
     `<wp:simplePos x="0" y="0"/>` +
     `<wp:positionH relativeFrom="margin">${posH}</wp:positionH>` +
-    `<wp:positionV relativeFrom="paragraph"><wp:posOffset>${emu(box.offsetYCm ?? 0)}</wp:posOffset></wp:positionV>` +
+    `<wp:positionV relativeFrom="paragraph"><wp:posOffset>${paraOffsetEmu(box.offsetYCm ?? 0)}</wp:posOffset></wp:positionV>` +
     `${extent}${wrapEl}${docPr}${graphic}</wp:anchor></w:drawing>`
   );
 }

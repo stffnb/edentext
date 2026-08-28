@@ -60,6 +60,9 @@ double arrow.
   an undeclared `draw:` prefix there makes the whole file unreadable.
 - **DOCX** keeps the frame and flips it (`<a:xfrm flipV="1">`), the heads riding the
   shape's `<a:ln>` as `a:headEnd`/`a:tailEnd`, and writes no `wps:txbx` at all.
+- An anchored frame's DOCX `positionV` posOffset is floored at one twip: on exactly 0,
+  LibreOffice's wrap layout paints a neighbouring inline box's text outside its shape
+  (probed; LO never writes less itself). The importer reads the twip back as no offset.
 ## Freeform outlines (`shapePath`)
 
 A drawing this editor offers no tool to author — a polygon, a polyline, a bezier curve,
