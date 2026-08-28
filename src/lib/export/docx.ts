@@ -2664,9 +2664,11 @@ export async function buildDocx(
             } }
           : {}),
         // Word blanks a titlePg section's first page when no w:type="first" header is
-        // referenced, and every section restarts that logic — so a section merely
-        // reusing the last set through the clamp must not repeat titlePg.
-        ...(setAt(g.section).differentFirstPage && g.section < hfSets.length ? { titlePage: true } : {}),
+        // referenced, and every section restarts that logic — even a continuous one
+        // that a page break pushes onto a fresh page. So only the group that begins
+        // its header set carries titlePg; later groups of the set must not repeat it.
+        ...(setAt(g.section).differentFirstPage && g.section < hfSets.length
+          && groups.findIndex((x) => x.section === g.section) === i ? { titlePage: true } : {}),
         ...(i > 0 && !(setAt(g.section).pageNumberStart != null && groups.findIndex((x) => x.section === g.section) === i)
           ? { type: SectionType.CONTINUOUS } : {}),
         ...(g.columns
