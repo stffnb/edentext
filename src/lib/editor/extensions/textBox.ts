@@ -364,6 +364,8 @@ class TextBoxView {
     this.observer = new ResizeObserver(() => {
       this.applyShapeInset();
       this.fitWrapper();
+      // A right float's margin is computed from the wrapper width just set.
+      this.applyWrap();
     });
     this.observer.observe(this.rotor);
 
@@ -487,6 +489,18 @@ class TextBoxView {
     this.contentDOM.style.padding = inset;
   }
 
+  // The wrapper's width before the ResizeObserver has measured the mounted rotor:
+  // the attr size through the same rotation math (a construction-time margin computed
+  // with 0 shoved a right float its whole width off the column).
+  private wrapperWidth(): number {
+    const set = parseFloat(this.dom.style.width);
+    if (set) return set;
+    const a = this.attrs();
+    const rad = (a.rotation * Math.PI) / 180;
+    const w = a.width || DEFAULT_WIDTH_PX;
+    return Math.abs(w * Math.cos(rad)) + Math.abs((a.height || 0) * Math.sin(rad));
+  }
+
   // Size the wrapper to the rotor's rotated bounding box so surrounding text
   // reserves the right space (same math as ImageView.applyLayout).
   private fitWrapper(): void {
@@ -512,7 +526,7 @@ class TextBoxView {
     d.style.margin = frameMargins('topBottom', a.wrap === 'topBottom' ? a.wrapOffset : null, 0);
     if (a.wrap === 'left' || a.wrap === 'right') {
       d.style.float = a.wrap;
-      d.style.margin = frameMargins(a.wrap, a.wrapOffset, parseFloat(d.style.width) || 0, null, a.wrapDist);
+      d.style.margin = frameMargins(a.wrap, a.wrapOffset, this.wrapperWidth(), null, a.wrapDist);
     } else if (a.wrap === 'topBottom') {
       d.style.clear = 'both';
     } else if (a.wrap === 'through') {
