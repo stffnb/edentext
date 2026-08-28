@@ -4637,6 +4637,15 @@ function applyComments(odtBytes: Uint8Array, list: CommentExport[]): Uint8Array 
       '<office:document-content xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0" ');
   }
 
+  // The referenced pool style, spelled the way LibreOffice re-writes it (probed) —
+  // so the package resolves on consumers without LibreOffice's pool too.
+  const stylesXml = files['styles.xml'] && strFromU8(files['styles.xml']);
+  if (stylesXml && !/<style:style style:name="Comment"/.test(stylesXml)) {
+    files['styles.xml'] = strToU8(stylesXml.replace('</office:styles>',
+      '<style:style style:name="Comment" style:family="paragraph"'
+      + ' style:parent-style-name="Standard" style:class="extra"/></office:styles>'));
+  }
+
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
 }
@@ -5338,6 +5347,10 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
     new RegExp(`<text:(p|h)\\b([^>]*)>${SEC}(\\d+)${SEC}`, 'g'),
     (_m, tag: string, attrs: string, idx: string) => {
       const index = Number(idx);
+      // A break with no page setup of its own encodes nothing: a master-page reference
+      // would force a page break the editor does not make (ODF cannot switch masters
+      // mid-page), and a dangling name is dropped by LibreOffice (probed).
+      if (!sets[index]) return `<text:${tag}${attrs}>`;
       used.add(index);
       const sm = /text:style-name="([^"]*)"/.exec(attrs);
       const source = sm?.[1] ?? '';
