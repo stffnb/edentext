@@ -2039,11 +2039,13 @@ function cellForce(style: TableStyle | undefined, cell: TiptapNode, bg: unknown)
   return force;
 }
 
-function docxCellBorder(attrs: Record<string, unknown> | undefined, side: BorderSide): IBorderOptions {
+const noneBorder: IBorderOptions = { style: BorderStyle.NONE, size: 0, color: 'auto' };
+
+function docxCellBorder(attrs: Record<string, unknown> | undefined, side: BorderSide, fallback: IBorderOptions = cellBorder): IBorderOptions {
   const b = parseBorderAttr(attrs?.[side] as string | null);
-  if (b === 'none') return { style: BorderStyle.NONE, size: 0, color: 'auto' };
+  if (b === 'none') return noneBorder;
   if (b) return { style: BorderStyle.SINGLE, size: Math.max(2, Math.round(b.widthPt * 8)), color: hexColor(b.color) ?? '000000' };
-  return cellBorder;
+  return fallback;
 }
 
 // A synthetic inline node standing for the whole content of a formula cell; the
@@ -2097,6 +2099,10 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
 
   // w:tblHeader on the first row is what makes Word repeat it on every page.
   const repeatHeader = node.attrs?.repeatHeader === true;
+  // Every cell writes all four sides itself, so the table level adds nothing — and on a
+  // styled table its black default shows in Word, whose table borders beat a cell's
+  // "none" (only "nil" loses). The editor's base grid still arrives via the cell fallback.
+  const tableBorder = tableStyle ? noneBorder : cellBorder;
   const tableRows = rows.map((row, rowIndex) => {
     const rh = row.attrs?.rowHeight;
     let col = 0;
@@ -2158,8 +2164,8 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
     layout: TableLayoutType.FIXED,
     margins: { marginUnitType: WidthType.DXA, top: cmToTwip(pad[0]), right: cmToTwip(pad[1]), bottom: cmToTwip(pad[2]), left: cmToTwip(pad[3]) },
     borders: {
-      top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder,
-      insideHorizontal: cellBorder, insideVertical: cellBorder,
+      top: tableBorder, bottom: tableBorder, left: tableBorder, right: tableBorder,
+      insideHorizontal: tableBorder, insideVertical: tableBorder,
     },
   });
 }

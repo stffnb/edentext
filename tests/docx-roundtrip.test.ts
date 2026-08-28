@@ -153,6 +153,10 @@ describe('DOCX export → import round trip', () => {
     expect(stylesXml, 'the imported style is a direct w:styles child').not.toContain('<undefined');
     // The header region's white bold is presentational in the editor, baked here.
     expect(xml).toContain('<w:color w:val="FFFFFF"');
+    // The style paints every border via the cells; a black table-level default would
+    // show in Word, whose table borders beat a cell's "none" (only "nil" loses).
+    const tblPr = /<w:tblPr>[\s\S]*?<\/w:tblPr>/.exec(xml)![0];
+    expect(tblPr).not.toContain('w:val="single"');
 
     const res = importDocx(bytes).content as N;
     const table = walk(res, 'table')[0];
