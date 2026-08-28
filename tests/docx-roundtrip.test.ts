@@ -160,14 +160,21 @@ describe('DOCX export → import round trip', () => {
     expect(table.content![0].content![0].attrs.backgroundColor).toBe('#4A7EBB');
   });
 
-  it('defines Title and Heading1-6 exactly once, chain intact', async () => {
-    const doc = { type: 'doc', content: [heading(1, 'Kapitel'), para('Text')] } as any;
+  it('defines Title and Heading1-6 exactly once, chain intact, defaults kept', async () => {
+    // The table forces a spliced table style — which used to replace the library's
+    // whole factory set, w:docDefaults (default font/size/language) included.
+    const doc = { type: 'doc', content: [heading(1, 'Kapitel'), para('Text'), {
+      type: 'table', attrs: { tableStyle: 'Box List Blue' },
+      content: [{ type: 'tableRow', content: [cell('Zelle')] }],
+    }] } as any;
     const files = unzipSync(await buildDocx(doc));
     const stylesXml = strFromU8(files['word/styles.xml']);
     const ids = [...stylesXml.matchAll(/w:styleId="([^"]+)"/g)].map((m) => m[1]);
     // A second definition under the same id makes Word and LO drop the basedOn chain.
     expect(ids.length).toBe(new Set(ids).size);
     expect(stylesXml).toMatch(/w:styleId="Heading1"><w:name w:val="Heading 1"\/><w:basedOn w:val="Heading"\/>/);
+    expect(stylesXml).toContain('<w:docDefaults>');
+    expect(stylesXml).toContain('w:styleId="BoxListBlue"');
   });
 
   it('round-trips the table style options as w:tblLook', async () => {

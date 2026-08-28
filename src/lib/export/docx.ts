@@ -7,7 +7,7 @@ import {
   AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
   WidthType, HeightRule, PageOrientation, LineRuleType, LineNumberRestartFormat, TableLayoutType, SectionType, NumberFormat,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
-  TextWrappingType, TextWrappingSide, ImportedXmlComponent, TabStopType, LeaderType,
+  TextWrappingType, TextWrappingSide, TabStopType, LeaderType,
 } from 'docx';
 import type { TiptapNode } from 'odf-kit';
 import type {
@@ -2372,21 +2372,12 @@ function characterStyleOf(style: Style): ICharacterStyleOptions {
   return { id: docxStyleId(style.name), name: style.name, quickFormat: true, run };
 }
 
-// fromXmlString returns a nameless wrapper around the parsed root that would serialize
-// as a literal <undefined> element — LibreOffice skips it, Word rejects the whole part.
-function styleXmlComponent(xml: string): ImportedXmlComponent {
-  const wrapped = ImportedXmlComponent.fromXmlString(xml);
-  return (wrapped as unknown as { root: ImportedXmlComponent[] }).root[0];
-}
-
 // Word needs a referenced table style to exist. ODF/our model hold the banding, and the
 // look is baked into the cells, so a name-only definition is enough (no w:tblStylePr).
-function tableStyleXml(name: string): ImportedXmlComponent {
-  return styleXmlComponent(
-    `<w:style w:type="table" w:styleId="${docxStyleId(name)}">`
+function tableStyleXml(name: string): string {
+  return `<w:style w:type="table" w:styleId="${docxStyleId(name)}">`
     + `<w:name w:val="${escapeXml(name)}"/><w:basedOn w:val="TableNormal"/><w:uiPriority w:val="59"/>`
-    + '</w:style>',
-  );
+    + '</w:style>';
 }
 
 // The table styles the document actually references, and the registry still defines.
@@ -2403,13 +2394,23 @@ function usedTableStyles(doc: TiptapNode, sheet: StyleSheet): string[] {
 
 // Word needs a referenced numbering style to exist; its w:numId placeholder (0) is
 // rewritten by applyListStylesDocx once the packed numbering ids are known.
-function numberingStyleXml(name: string): ImportedXmlComponent {
-  return styleXmlComponent(
-    `<w:style w:type="numbering" w:styleId="${docxStyleId(name)}">`
+function numberingStyleXml(name: string): string {
+  return `<w:style w:type="numbering" w:styleId="${docxStyleId(name)}">`
     + `<w:name w:val="${escapeXml(name)}"/><w:uiPriority w:val="99"/>`
     + '<w:pPr><w:numPr><w:numId w:val="0"/></w:numPr></w:pPr>'
-    + '</w:style>',
-  );
+    + '</w:style>';
+}
+
+// Table and numbering styles are spliced post-pack: handing them to the library as
+// importedStyles makes its Styles merge drop the factory set — w:docDefaults included.
+function applyRawStylesDocx(bytes: Uint8Array, snippets: string[]): Uint8Array {
+  if (!snippets.length) return bytes;
+  const files = unzipSync(bytes);
+  const stylesXml = strFromU8(files['word/styles.xml']);
+  files['word/styles.xml'] = strToU8(stylesXml.replace('</w:styles>', snippets.join('') + '</w:styles>'));
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
 }
 
 // Styles the library always writes itself; ours must ride its override slots — a second
@@ -2419,7 +2420,7 @@ const FACTORY_SLOTS: Record<string, string> = {
   Heading4: 'heading4', Heading5: 'heading5', Heading6: 'heading6',
 };
 
-function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language: string; country: string } | null, usedTables: string[] = [], usedLists: string[] = []) {
+function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language: string; country: string } | null) {
   const run: Writable<IRunStylePropertiesOptions> = { font: DOC_FONT, size: 24 };
   if (language) run.language = { value: `${language.language}-${language.country}` };
   const slotted: Record<string, Omit<IParagraphStyleOptions, 'id' | 'name'>> = {};
@@ -2440,9 +2441,6 @@ function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language
     // The document's named styles, chain intact — Word shows them in its style list.
     paragraphStyles,
     characterStyles: Object.values(sheet.character ?? {}).map(characterStyleOf),
-    ...(usedTables.length || usedLists.length
-      ? { importedStyles: [...usedTables.map(tableStyleXml), ...usedLists.map(numberingStyleXml)] }
-      : {}),
   };
 }
 
@@ -2594,7 +2592,7 @@ export async function buildDocx(
     ...(hasToc || recordChanges
       ? { features: { ...(hasToc ? { updateFields: true } : {}), ...(recordChanges ? { trackRevisions: true } : {}) } }
       : {}),
-    styles: buildStyles(styles, usedStyleNames(docJson, styles), language, usedTableStyles(docJson, styles), num.styleLinks().map((l) => l.name)),
+    styles: buildStyles(styles, usedStyleNames(docJson, styles), language),
     numbering: { config: num.config },
     ...(Object.keys(notesByClass.footnote).length ? { footnotes: notesByClass.footnote } : {}),
     ...(Object.keys(notesByClass.endnote).length ? { endnotes: notesByClass.endnote } : {}),
@@ -2635,7 +2633,11 @@ export async function buildDocx(
   });
 
   const blob = await Packer.toBlob(doc);
-  const linked = applyListStylesDocx(new Uint8Array(await blob.arrayBuffer()), num.styleLinks());
+  const styled = applyRawStylesDocx(new Uint8Array(await blob.arrayBuffer()), [
+    ...usedTableStyles(docJson, styles).map(tableStyleXml),
+    ...num.styleLinks().map((l) => numberingStyleXml(l.name)),
+  ]);
+  const linked = applyListStylesDocx(styled, num.styleLinks());
   const packed = applyFormulasDocx(applyTextBoxesDocx(linked, textBoxes), docFormulas);
   const cited = applyBibliographyDocx(applyPlaceholdersDocx(applyRubyDocx(packed, docRubies), docPlaceholders), docSources, docCitationStyle(docJson));
   const withNotes = docNoteIds.size ? applyNoteMarksDocx(applyNotePrDocx(cited, notesSettings)) : cited;
