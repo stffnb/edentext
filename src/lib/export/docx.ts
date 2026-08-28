@@ -674,7 +674,7 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       // Word's index entry: a hidden XE field, its term in the instruction. A key files
       // the term under it, "key:term", exactly as LibreOffice's text:key1 does.
       const instr = xeInstr(node.attrs);
-      if (instr) out.push(new SimpleField(instr, ''));
+      if (instr) out.push(new SimpleField(instr));
     } else if (node.type === 'bibliographyEntry') {
       // Word's citation: a CITATION field naming the source's tag, its cached result the
       // text the reader sees. applyBibliographyDocx writes the source itself.
@@ -2211,13 +2211,13 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       if (kind === 'alphabetical') {
         // Word's INDEX field, which it fills from the XE entries on a field update —
         // the same contract the TOC field above works under.
-        out.push(new Paragraph({ children: [new SimpleField('INDEX \\h "A" \\c "1" \\e "\t"', '')] }));
+        out.push(new Paragraph({ children: [new SimpleField('INDEX \\h "A" \\c "1" \\e "\t"')] }));
         continue;
       }
       if (kind === 'bibliography') {
         // Word's BIBLIOGRAPHY field, filled from the sources in the custom-XML part on a
         // field update — the same contract the TOC and INDEX fields work under.
-        out.push(new Paragraph({ children: [new SimpleField('BIBLIOGRAPHY', '')] }));
+        out.push(new Paragraph({ children: [new SimpleField('BIBLIOGRAPHY')] }));
         continue;
       }
       // `\n` over the whole range: Word's switch takes levels, the editor's index is
@@ -2648,7 +2648,10 @@ export async function buildDocx(
               distance: cmToTwip(lineNumbering.distanceCm),
             } }
           : {}),
-        ...(setAt(g.section).differentFirstPage ? { titlePage: true } : {}),
+        // Word blanks a titlePg section's first page when no w:type="first" header is
+        // referenced, and every section restarts that logic — so a section merely
+        // reusing the last set through the clamp must not repeat titlePg.
+        ...(setAt(g.section).differentFirstPage && g.section < hfSets.length ? { titlePage: true } : {}),
         ...(i > 0 && !(setAt(g.section).pageNumberStart != null && groups.findIndex((x) => x.section === g.section) === i)
           ? { type: SectionType.CONTINUOUS } : {}),
         ...(g.columns
