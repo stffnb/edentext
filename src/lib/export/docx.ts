@@ -2039,7 +2039,9 @@ function cellForce(style: TableStyle | undefined, cell: TiptapNode, bg: unknown)
   return force;
 }
 
-const noneBorder: IBorderOptions = { style: BorderStyle.NONE, size: 0, color: 'auto' };
+// "nil" is the explicit absence that wins every border-conflict rule in Word — a cell's
+// "none" can still lose against table-level borders there; LibreOffice reads both alike.
+const noneBorder: IBorderOptions = { style: BorderStyle.NIL, size: 0, color: 'auto' };
 
 function docxCellBorder(attrs: Record<string, unknown> | undefined, side: BorderSide, fallback: IBorderOptions = cellBorder): IBorderOptions {
   const b = parseBorderAttr(attrs?.[side] as string | null);
