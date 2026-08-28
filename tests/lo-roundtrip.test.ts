@@ -464,6 +464,49 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
       lists[2]?.type === 'orderedList' && lists[2]?.content?.[0]?.content?.[1]?.type === 'bulletList', lists[2]);
   });
 
+  // The one leg where a foreign consumer resolves our styles instead of our own
+  // importer: duplicate or dangling definitions surface here, not in the round trips.
+  it('resolves the DOCX style chain as the editor does (soffice → fodt)', { timeout: 180000 }, async () => {
+    const { buildDocx } = await import('../src/lib/export/docx');
+    const doc: N = { type: 'doc', content: [
+      P({ styleName: 'Title' }, T('Der Titel')),
+      { type: 'heading', attrs: { level: 1 }, content: [T('Kapitel')] },
+      { type: 'heading', attrs: { level: 2 }, content: [T('Abschnitt')] },
+      P(null, T('Fließtext.')),
+      // The table style used to make the library drop its factory set, w:docDefaults
+      // (default font, size, language) included — keep one in this fixture forever.
+      { type: 'table', attrs: { tableStyle: 'Box List Blue' }, content: [
+        { type: 'tableRow', content: [
+          { type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: null }, content: [P(null, T('Zelle'))] },
+        ] },
+      ] },
+    ] };
+    mkdirSync('/tmp/lo-rt', { recursive: true });
+    writeFileSync('/tmp/lo-rt/res.docx', await buildDocx(doc));
+    execSync('soffice --headless --convert-to fodt --outdir /tmp/lo-rt/resout /tmp/lo-rt/res.docx', { stdio: 'pipe', timeout: 120000 });
+    const fodt = readFileSync('/tmp/lo-rt/resout/res.fodt', 'utf8');
+    const style = (name: string) =>
+      new RegExp(`<style:style style:name="${name}"[^>]*>[\\s\\S]*?</style:style>`).exec(fodt)?.[0] ?? '';
+
+    // The chain: Heading carries the sans font and bold, the levels size it.
+    const heading = style('Heading');
+    check('LO resolve: Heading is Arial', /style:font-name="Arial"|fo:font-family="[^"]*Arial/.test(heading), heading);
+    check('LO resolve: Heading is bold', /fo:font-weight="bold"/.test(heading), heading);
+    const h1 = style('Heading_20_1');
+    check('LO resolve: Heading 1 inherits from Heading', /style:parent-style-name="Heading"/.test(h1), h1);
+    check('LO resolve: Heading 1 is 18pt', /fo:font-size="18pt"/.test(h1), h1);
+    const h2 = style('Heading_20_2');
+    check('LO resolve: Heading 2 inherits from Heading', /style:parent-style-name="Heading"/.test(h2), h2);
+    check('LO resolve: Heading 2 is 16pt', /fo:font-size="16pt"/.test(h2), h2);
+    const title = style('Title');
+    check('LO resolve: Title inherits from Heading', /style:parent-style-name="Heading"/.test(title), title);
+    check('LO resolve: Title is 28pt', /fo:font-size="28pt"/.test(title), title);
+    // w:docDefaults arrives as the style LibreOffice mints for Word's defaults.
+    const defaults = style('Standard_20__28_WW_29_');
+    check('LO resolve: the default font arrives', /Times New Roman/.test(defaults), defaults);
+    check('LO resolve: the default size arrives', /fo:font-size="12pt"/.test(defaults), defaults);
+  });
+
   it('survives a `soffice` re-save of the record-changes flag', { timeout: 180000 }, async () => {
     const doc: N = { type: 'doc', content: [P(null, T('Ein Satz.'))] };
     const bytes = await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', undefined,

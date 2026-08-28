@@ -15,7 +15,7 @@ npm run preview  # serve the dist/ build locally
 npm run check    # svelte-check type-check (svelte + ts)
 npm test         # Vitest suite once (tests/**/*.test.ts)
 npm run test:watch   # Vitest in watch mode
-npm run test:lo      # LibreOffice round-trip leg only (needs `soffice` on PATH)
+npm run test:lo      # LibreOffice legs: round trip + ODT/DOCX render consistency (needs `soffice`)
 npm run test:smoke   # boots the dist/ build in headless Chromium (tests/smoke/run.mjs)
 npm run test:coverage  # vitest + v8 coverage over src/ → coverage/index.html
 npm run test:parity  # render parity vs LibreOffice (tests/render-parity/README.md)
@@ -30,7 +30,7 @@ Tests live in `tests/` (outside `src/`, so `svelte-check` ignores them), jsdom v
 documents (authored by `render-parity/make-fixtures.mjs`, never by our own exporter);
 `fuzz-roundtrip.test.ts` round-trips seeded random documents (`fuzzDoc.ts` generator);
 `schema-validation.test.ts` validates the `kitchenSink.ts` exports against the vendored
-schemas in `tests/schemas/` (self-skips without `xmllint`); `tests/unit/` holds fast helper tests. All test tooling stays a
+schemas in `tests/schemas/` (self-skips without `xmllint`); `package-lint.test.ts` checks the semantic invariants schemas can't express (unique ids, dangling references); `tests/unit/` holds fast helper tests. All test tooling stays a
 `devDependency`. No linter/formatter. CI (`.github/workflows/ci.yml`) runs `check` + `test`.
 
 ## Rules
