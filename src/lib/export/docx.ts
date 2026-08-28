@@ -2,7 +2,7 @@ import {
   Document, Packer, Paragraph, TextRun, ImageRun, ExternalHyperlink, InternalHyperlink, Bookmark, Tab,
   FootnoteReferenceRun, EndnoteReferenceRun,
   TableOfContents,
-  Table, TableRow, TableCell, Header, Footer, PageNumber, SimpleField,
+  Table, TableRow, TableCell, Header, Footer, PageNumber, SimpleField, ImportedXmlComponent,
   CommentRangeStart, CommentRangeEnd, CommentReference, InsertedTextRun, DeletedTextRun,
   AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
   WidthType, HeightRule, PageOrientation, LineRuleType, LineNumberRestartFormat, TableLayoutType, SectionType, NumberFormat,
@@ -550,6 +550,20 @@ function xeInstr(attrs: Record<string, unknown> | undefined): string | null {
   return `XE "${(key1 ? `${key1}:${term}` : term).replace(/([\\"])/g, '\\$1')}"`;
 }
 
+// A marker field must be a complex field, as Word writes it: updating an INDEX over
+// a result-less fldSimple XE makes Word splice the document apart at the field.
+function markerFieldXml(instr: string): string {
+  return '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+    + `<w:r><w:instrText xml:space="preserve"> ${escapeXml(instr)} </w:instrText></w:r>`
+    + '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+}
+
+function markerFieldRuns(instr: string): Inline[] {
+  // `root` is typed protected; the run components sit under the parsed wrapper element.
+  const xml = `<w:root>${markerFieldXml(instr)}</w:root>`;
+  return (ImportedXmlComponent.fromXmlString(xml) as any).root[0].root as Inline[];
+}
+
 // Word's numeric-picture switch per ODF num-format — the SEQ field's own formatting.
 const DOCX_SEQ_SWITCH: Record<NoteNumFormat, string> = {
   '1': 'ARABIC', a: 'alphabetic', A: 'ALPHABETIC', i: 'roman', I: 'ROMAN',
@@ -674,7 +688,7 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       // Word's index entry: a hidden XE field, its term in the instruction. A key files
       // the term under it, "key:term", exactly as LibreOffice's text:key1 does.
       const instr = xeInstr(node.attrs);
-      if (instr) out.push(new SimpleField(instr));
+      if (instr) out.push(...markerFieldRuns(instr));
     } else if (node.type === 'bibliographyEntry') {
       // Word's citation: a CITATION field naming the source's tag, its cached result the
       // text the reader sees. applyBibliographyDocx writes the source itself.
@@ -1051,7 +1065,7 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
         `<w:r><w:t xml:space="preserve">${escapeXml(String(child.attrs?.text ?? ''))}</w:t></w:r></w:fldSimple>`;
     } else if (child.type === 'indexEntry') {
       const instr = xeInstr(child.attrs);
-      if (instr) runs += `<w:fldSimple w:instr="${escapeXml(instr)}"/>`;
+      if (instr) runs += markerFieldXml(instr);
     } else if (child.type === 'bibliographyEntry') {
       // Same CITATION field as the body; the source record joins docSources, which
       // applyBibliographyDocx (running after the boxes are packed) writes out.
