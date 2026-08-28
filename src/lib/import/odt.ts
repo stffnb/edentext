@@ -1718,8 +1718,11 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefau
 
   // Measured against the named style's own alignment: what the style supplies is not
   // direct formatting, and a block overriding it back to left needs the attr to win.
+  // An RTL block renders right by default — LibreOffice pairs the mode with
+  // fo:text-align="end" for exactly that look, which is no direct formatting either.
   const ta = odfTextAlign(paraProps['fo:text-align']);
-  if (ta !== null && ta !== (defaults.textAlign ?? 'left')) attrs.textAlign = ta;
+  const base = paraProps['style:writing-mode'] === 'rl-tb' ? 'right' : defaults.textAlign ?? 'left';
+  if (ta !== null && ta !== base) attrs.textAlign = ta;
 
   const lh = paraProps['fo:line-height'];
   if (lh && lh !== 'normal') {

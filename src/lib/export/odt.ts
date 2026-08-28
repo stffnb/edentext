@@ -1301,6 +1301,8 @@ function paraStyleProps(style: ParaStyle): string[] {
   }
   const wm = writingModeOf(style.dir);
   if (wm) props.push(`style:writing-mode="${wm}"`);
+  // The pair LibreOffice writes: the mode alone leaves the block left-aligned (probed).
+  if (style.dir === 'rtl' && !style.align) props.push('fo:text-align="end"');
   return props;
 }
 
@@ -2035,6 +2037,11 @@ function applyParagraphBoxes(odtBytes: Uint8Array): Uint8Array {
     // ODF counts fo:hyphenate as a *text* property — in paragraph-properties LibreOffice
     // ignores it and drops it on the next save.
     if (spec.split('|')[10] === 'h0') style = upsertProps(style, 'text', { 'fo:hyphenate': 'false' });
+    // An RTL block with no alignment of its own gets the fo:text-align="end" LibreOffice
+    // pairs with the mode — the mode alone leaves it left-aligned (probed).
+    if (spec.split('|')[9] === 'rl-tb' && !/fo:text-align=/.test(style)) {
+      style = upsertProps(style, 'paragraph', { 'fo:text-align': 'end' });
+    }
     minted.push(style);
     return name;
   };
