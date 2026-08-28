@@ -930,6 +930,17 @@
   color: var(--color-primary);
 }
 
+/* In a columns section the mark stays in flow: an out-of-flow pseudo whose containing
+   block sits inside a multicol makes Chromium give up balancing it (probed) — the whole
+   section then fills like one column. Zero width, so line breaking is unchanged. */
+.paper .tiptap .columns-node :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::after {
+  position: static;
+}
+/* Past a trailing BR an in-flow mark would open a second line and grow the block. */
+.paper .tiptap .columns-node :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10):has(> br.ProseMirror-trailingBreak)::after {
+  content: none;
+}
+
 /* After an inline atom ProseMirror's trailing-break BR adds a line the block has not
    got, so a paragraph holding an image renders one too tall. Kept where the block really
    does end in a break — bare, or wrapped in the mark spans of the run that carried it. */
