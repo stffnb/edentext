@@ -1660,11 +1660,15 @@ function applyPageDecorDocx(bytes: Uint8Array, decor: PageDecor, widthPt: number
     const color = decor.background.replace('#', '').toUpperCase();
     doc = doc.replace(/(<w:document\b[^>]*>)/, `$1<w:background w:color="${color}"/>`);
     const setBytes = files['word/settings.xml'];
-    // Without this Word stores the colour but paints nothing.
+    // Without this Word stores the colour but paints nothing. The docx package already
+    // writes one; a duplicate breaks the CT_Settings sequence and Word repairs the file.
     if (setBytes) {
-      files['word/settings.xml'] = strToU8(
-        strFromU8(setBytes).replace(/(<w:settings\b[^>]*>)/, '$1<w:displayBackgroundShape/>'),
-      );
+      const settings = strFromU8(setBytes);
+      if (!settings.includes('<w:displayBackgroundShape')) {
+        files['word/settings.xml'] = strToU8(
+          settings.replace(/(<w:settings\b[^>]*>)/, '$1<w:displayBackgroundShape/>'),
+        );
+      }
     }
   }
 

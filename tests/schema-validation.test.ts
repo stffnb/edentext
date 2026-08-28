@@ -116,7 +116,8 @@ describe.skipIf(!hasXmllint)('exported XML validates against the format schemas'
       sheet, undefined, 'add', false, opts.notesSettings, opts.props, true,
       opts.pageNumbering, opts.decor, opts.lineNumbering, true, true));
     docx = unzipSync(await buildDocx(doc, undefined, 'portrait', opts.hf, opts.language, 'A4',
-      sheet, undefined, 'add', false, opts.notesSettings, opts.props, true, opts.pageNumbering));
+      sheet, undefined, 'add', false, opts.notesSettings, opts.props, true,
+      opts.pageNumbering, opts.decor, opts.lineNumbering, true, true));
   });
 
   it('every ODF part is schema-valid (foreign namespaces stripped, as extended conformance allows)', () => {
