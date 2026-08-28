@@ -1283,19 +1283,24 @@ function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunP
   }
   // Word opens the note with its own marker run and a tab; the editor draws both from
   // the note's own indent, so the leading tab would be a second one.
-  const first = content[0];
-  if (first?.type === 'text' && typeof first.text === 'string') {
-    first.text = first.text.replace(/^\t+/, '');
-    if (!first.text) content.shift();
-  }
+  const stripLeadingTabs = () => {
+    const first = content[0];
+    if (first?.type === 'text' && typeof first.text === 'string') {
+      first.text = first.text.replace(/^\t+/, '');
+      if (!first.text) content.shift();
+    }
+  };
+  stripLeadingTabs();
   const seen = ctx.notes.filter((n) => n.kind === kind).length;
   const text = label ?? formatOrdinal(seen + 1, kind === 'endnote' ? 'i' : '1');
   // A custom-marked note repeats the literal character where <w:footnoteRef/> would
-  // sit; the editor draws the mark itself, so strip it off the body.
+  // sit; the editor draws the mark itself, so strip it off the body — and the tab
+  // again, which may ride a run of its own behind the mark.
   const bodyFirst = content[0];
   if (label && bodyFirst?.type === 'text' && typeof bodyFirst.text === 'string' && bodyFirst.text.startsWith(label)) {
-    bodyFirst.text = bodyFirst.text.slice(label.length).replace(/^\t+/, '');
+    bodyFirst.text = bodyFirst.text.slice(label.length);
     if (!bodyFirst.text) content.shift();
+    stripLeadingTabs();
   }
   const id = `${kind}${wid}`;
   // The note renders at the file's own size and indent: its first paragraph names the
@@ -1320,7 +1325,11 @@ function isStockNoteStyle(ctx: Ctx, styleId: string): boolean {
   if (!keys.every((k) => (run[k] ?? null) === (base[k] ?? null))) return false;
   if (ctx.styles.paragraphAlign(styleId) !== ctx.styles.paragraphAlign(null)) return false;
   const sp = ctx.styles.paragraphSpacing(styleId);
-  return !sp.before && !sp.after && (ctx.styles.styleIndentTwip(styleId) ?? 0) === 0;
+  if (sp.before || sp.after) return false;
+  // LibreOffice's stock hanging pair (0.6cm both ways, the marker tab's jump) nets to
+  // zero: the editor draws that indent itself.
+  const ind = ctx.styles.styleIndentTwip(styleId) ?? 0;
+  return ind === 0 || ind === (ctx.styles.styleHangingTwip(styleId) ?? 0);
 }
 
 function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockDefaults, hfFields: boolean): Node[] {

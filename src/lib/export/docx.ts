@@ -2441,9 +2441,17 @@ function buildStyles(sheet: StyleSheet, used: Set<string>, language?: { language
       slotted[slot] = rest;
       return false;
     });
+  // LibreOffice's note-text look (probed off its own DOCX export): 10pt plus the 0.6cm
+  // hanging pair the marker's tab jumps into. The slot merge is shallow, so the factory's
+  // spacing must ride along inside the replaced paragraph block.
+  const noteText = {
+    paragraph: { spacing: { after: 0, line: 240, lineRule: LineRuleType.AUTO }, indent: { start: 340, hanging: 340 } },
+    run: { size: 20 },
+  };
   return {
     default: {
       document: { run, paragraph: { spacing: { after: 0, line: 240, lineRule: LineRuleType.AUTO } } },
+      footnoteText: noteText, endnoteText: noteText,
       ...slotted,
     },
     // The document's named styles, chain intact — Word shows them in its style list.
@@ -2502,7 +2510,12 @@ export async function buildDocx(
     const label = typeof note.attrs?.label === 'string' && note.attrs.label ? note.attrs.label : null;
     docNoteIds.set(String(note.attrs?.id ?? ''), { id, kind, label });
     notesByClass[kind][String(id)] = {
-      children: [new Paragraph({ style: kind === 'endnote' ? 'EndnoteText' : 'FootnoteText', children: inlineToRuns(note.content ?? []) })],
+      // The tab after the marker jumps to the note style's hanging indent (the gap the
+      // editor draws itself); the importer strips it back off.
+      children: [new Paragraph({
+        style: kind === 'endnote' ? 'EndnoteText' : 'FootnoteText',
+        children: [new TextRun({ children: [new Tab()] }), ...inlineToRuns(note.content ?? [])],
+      })],
     };
   }
   const body = (docJson.content ?? []).filter((n) => n.type !== 'noteSection');
