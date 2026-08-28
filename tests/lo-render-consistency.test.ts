@@ -24,7 +24,8 @@ function pgm(path: string): { w: number; h: number; pixels: Uint8Array } {
 }
 
 function renderPages(file: string, prefix: string): string[] {
-  execSync(`soffice --headless --convert-to pdf --outdir ${DIR}/${prefix} ${DIR}/${file}`, { stdio: 'pipe', timeout: 120000 });
+  // Own user profile: a parallel lo-roundtrip soffice would otherwise hold the lock.
+  execSync(`soffice -env:UserInstallation=file://${DIR}/profile --headless --convert-to pdf --outdir ${DIR}/${prefix} ${DIR}/${file}`, { stdio: 'pipe', timeout: 120000 });
   const pdf = `${DIR}/${prefix}/${file.replace(/\.\w+$/, '.pdf')}`;
   execSync(`pdftoppm -gray -r 60 ${pdf} ${DIR}/${prefix}/page`, { stdio: 'pipe', timeout: 120000 });
   return readdirSync(`${DIR}/${prefix}`).filter((f) => f.endsWith('.pgm')).sort()
