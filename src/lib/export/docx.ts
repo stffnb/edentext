@@ -2224,8 +2224,9 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       if (tocTitle) out.push(new Paragraph({ children: [new TextRun({ text: tocTitle, bold: true, size: 32 })], spacing: { after: cmToTwip(0.3) } }));
       if (kind === 'alphabetical') {
         // Word's INDEX field, which it fills from the XE entries on a field update —
-        // the same contract the TOC field above works under.
-        out.push(new Paragraph({ children: [new SimpleField('INDEX \\h "A" \\c "1" \\e "\t"')] }));
+        // the same contract the TOC field above works under. No \h: a letter heading
+        // between the entries is a row the editor's index never draws.
+        out.push(new Paragraph({ children: [new SimpleField('INDEX \\c "1" \\e "\t"')] }));
         continue;
       }
       if (kind === 'bibliography') {
