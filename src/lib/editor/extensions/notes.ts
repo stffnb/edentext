@@ -25,10 +25,13 @@ export function newNoteId(): string {
 
 // The label a note shows: its own custom mark where a file gave it one, else the
 // running number in the class's own format, wrapped in the configured prefix/suffix.
-export function noteLabel(index: number, kind: NoteKind, settings: NoteSettings, custom?: string | null): string {
+// The affixes belong to the note area only — the anchor stays the bare number, which
+// is where LibreOffice draws its Before/After text too (probed).
+export function noteLabel(index: number, kind: NoteKind, settings: NoteSettings, custom?: string | null, affixes = true): string {
   if (custom) return custom;
   const s = settings[kind];
-  return `${s.prefix}${formatOrdinal(s.startAt + index, s.numFormat)}${s.suffix}`;
+  const num = formatOrdinal(s.startAt + index, s.numFormat);
+  return affixes ? `${s.prefix}${num}${s.suffix}` : num;
 }
 
 declare module '@tiptap/core' {
@@ -225,6 +228,7 @@ export function setNoteAnchorPages(next: ReadonlyMap<string, number>): boolean {
 // since the endnote list has no page of its own to count on.
 export function noteLabels(
   refs: NoteRefInfo[], settings: NoteSettings, pages: ReadonlyMap<string, number> = anchorPages,
+  affixes = true,
 ): Map<string, string> {
   const seen = new Map<string, number>();
   const out = new Map<string, string>();
@@ -234,7 +238,7 @@ export function noteLabels(
       : restart === 'page' && ref.kind === 'footnote' ? `${ref.kind}:p${pages.get(ref.id) ?? 0}`
       : ref.kind;
     const index = seen.get(bucket) ?? 0;
-    out.set(ref.id, noteLabel(index, ref.kind, settings));
+    out.set(ref.id, noteLabel(index, ref.kind, settings, null, affixes));
     seen.set(bucket, index + 1);
   }
   return out;
@@ -427,17 +431,21 @@ function syncStructure(state: EditorState): Transaction | null {
 function syncNumbers(state: EditorState, settings: NoteSettings): Transaction | null {
   const refs = collectNoteRefs(state.doc);
   const labels = noteLabels(refs, settings);
+  // The anchor shows the bare number: the prefix/suffix are note-area text only.
+  const anchorLabels = noteLabels(refs, settings, anchorPages, false);
   const section = findNoteSection(state.doc);
   // A note the file numbered by hand keeps its own mark, and the anchor shows the same
   // one — the two are one mark drawn twice, not two.
   section?.node.forEach((child) => {
-    if (child.attrs.label) labels.set(String(child.attrs.id ?? ''), String(child.attrs.label));
+    if (!child.attrs.label) return;
+    labels.set(String(child.attrs.id ?? ''), String(child.attrs.label));
+    anchorLabels.set(String(child.attrs.id ?? ''), String(child.attrs.label));
   });
   const tr = state.tr;
   let changed = false;
 
   for (const ref of refs) {
-    const label = labels.get(ref.id) ?? '';
+    const label = anchorLabels.get(ref.id) ?? '';
     if (state.doc.nodeAt(ref.pos)?.attrs.text === label) continue;
     tr.setNodeAttribute(ref.pos, 'text', label);
     changed = true;

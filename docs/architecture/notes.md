@@ -47,6 +47,11 @@ note it was copied from; an anchor that ends up *inside* a note is dropped, and 
 one there is refused (LibreOffice and Word refuse it too). A settings change is no
 document change, so the dialog's path carries the `RESYNC_NOTES` meta.
 
+**The affixes stay in the note area.** A configured prefix/suffix wraps the number in
+the note's own `text` only — the anchor keeps the bare number, which is where
+LibreOffice draws its Before/After text too (probed; Word has no such setting, so the
+DOCX carries none anywhere).
+
 **Restarting the count.** `noteLabels` counts within a bucket: the class alone (document-wide),
 its chapter (`collectNoteRefs` counts the level-1 headings above each anchor), or its page —
 footnotes only, as in LibreOffice, since the endnote list has no page of its own. The page is
