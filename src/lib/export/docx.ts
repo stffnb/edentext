@@ -670,8 +670,10 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
     } else if (node.type === 'pageCount') {
       out.push(new TextRun({ children: [PageNumber.TOTAL_PAGES], ...runPropsFromMarks(node.marks) }));
     } else if (node.type === 'chapterField') {
-      // Word's running head: STYLEREF picks the heading of that level in force on the page.
-      out.push(new SimpleField(`STYLEREF "Heading ${Number(node.attrs?.level) || 1}" \\* MERGEFORMAT`, String(node.attrs?.text ?? '')));
+      // Word's running head: STYLEREF picks the heading of that level in force on the
+      // page. The numeric form means outline level; a style name would be looked up
+      // localized ("Heading 1" errors in a German Word, which wants "Überschrift 1").
+      out.push(new SimpleField(`STYLEREF ${Number(node.attrs?.level) || 1} \\* MERGEFORMAT`, String(node.attrs?.text ?? '')));
     } else if (node.type === 'dateTimeField') {
       out.push(dateTimeRun(node));
     } else if (node.type === 'sequenceField') {

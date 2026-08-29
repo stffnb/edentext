@@ -36,6 +36,10 @@ describe('chapter field', () => {
 
   it('round-trips through DOCX as a STYLEREF field', async () => {
     const bytes = await buildDocx(doc, margins, 'portrait', hf);
+    // The numeric form (outline level) — Word resolves a quoted style name against the
+    // localized name, so "Heading 1" errors in any non-English Word.
+    const ftr = strFromU8(unzipSync(bytes)['word/footer1.xml']);
+    expect(ftr).toContain('w:instr="STYLEREF 1 \\* MERGEFORMAT"');
     const back = importDocx(bytes);
     // Word caches the shown name in the field result, which the import drops — the
     // level is what the live field needs.
