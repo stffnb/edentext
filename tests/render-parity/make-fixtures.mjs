@@ -12,7 +12,7 @@ import {
   Table, TableRow, TableCell, WidthType, convertMillimetersToTwip,
   Header, Footer, PageNumber, TabStopType,
   FootnoteReferenceRun, ImageRun, ExternalHyperlink, UnderlineType,
-  Math as DocxMath, MathRun, MathFraction, MathNumerator, MathDenominator, MathRadical,
+  Math as DocxMath, MathRun, MathFraction, MathRadical,
 } from 'docx';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'corpus');
@@ -265,9 +265,11 @@ await write('13-images.docx', [{
 }]);
 
 // 14. OMML formulas: one inline in the sentence, one alone on its line.
+// numerator/denominator take the runs directly — the lib mints m:num/m:den itself,
+// and a hand-wrapped MathNumerator doubles the element, which Word refuses to open.
 const frac = () => new MathFraction({
-  numerator: [new MathNumerator([new MathRun('a')])],
-  denominator: [new MathDenominator([new MathRun('b')])],
+  numerator: [new MathRun('a')],
+  denominator: [new MathRun('b')],
 });
 await write('14-formulas.docx', [{
   properties: { page },
@@ -278,7 +280,7 @@ await write('14-formulas.docx', [{
       new TextRun(' in the sentence.'),
     ] }),
     new Paragraph({ children: [new DocxMath({ children: [
-      new MathRadical({ children: [new MathRun('x')], degree: [] }), new MathRun('+1'),
+      new MathRadical({ children: [new MathRun('x')], degree: [new MathRun('3')] }), new MathRun('+1'),
     ] })] }),
     para(LOREM),
   ],

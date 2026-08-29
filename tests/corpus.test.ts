@@ -58,6 +58,23 @@ describe.skipIf(!files.length)('the authored corpus', () => {
     });
   }
 
+  // Word re-saves of the same documents (tests/corpus/word/): Word rewrites the file
+  // in its own dialect — rsids, proofErr, separator notes, theme docDefaults — which
+  // neither the docx lib nor LibreOffice produce, so this is the third author here.
+  const WORD = join(FIX, 'word');
+  const wordFiles = existsSync(WORD)
+    ? readdirSync(WORD).filter((f) => /^\d\d-.+\.docx$/.test(f)).sort()
+    : [];
+  for (const f of wordFiles) {
+    it(`word/${f} reads like the original and survives the round trip`, async () => {
+      const doc = importDocx(new Uint8Array(readFileSync(join(WORD, f)))).content as N;
+      expect(outline(doc), 'matches the docx-lib original').toEqual(outline(importAny(f, load(f))));
+      const margins = { top: 2, bottom: 2, left: 2, right: 2 };
+      const again = importDocx(await buildDocx(doc, margins, 'portrait'));
+      expect(outline(again.content)).toEqual(outline(doc));
+    });
+  }
+
   // The same document in both formats, and each one exported as the other: the four
   // legs a document takes through this editor have to agree on what it says.
   for (const name of files.filter((f) => f.endsWith('.docx')).map((f) => f.slice(0, -5))) {

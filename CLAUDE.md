@@ -27,7 +27,7 @@ Tests live in `tests/` (outside `src/`, so `svelte-check` ignores them), jsdom v
 `roundtrip.test.ts` covers the ODF export↔import round trip + a foreign-doc/style-resolver leg;
 `lo-roundtrip.test.ts` re-saves through LibreOffice and **self-skips** without `soffice`, so
 `npm test`/CI stay green; `corpus.test.ts` round-trips the committed `tests/corpus/`
-documents (authored by `render-parity/make-fixtures.mjs`, never by our own exporter);
+documents (by `make-fixtures.mjs` + Word re-saves in `corpus/word/`, never our exporter);
 `fuzz-roundtrip.test.ts` round-trips seeded random documents (`fuzzDoc.ts` generator);
 `schema-validation.test.ts` validates the `kitchenSink.ts` exports against the vendored
 schemas in `tests/schemas/` (self-skips without `xmllint`); `package-lint.test.ts` checks the semantic invariants schemas can't express (unique ids, dangling references); `tests/unit/` holds fast helper tests. All test tooling stays a
