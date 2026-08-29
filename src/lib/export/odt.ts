@@ -3079,6 +3079,16 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
     styles = styles.replace(/<style:page-layout-properties /, `<style:page-layout-properties ${decorProps} `);
   }
 
+  // The base style a plain text box chains to (textBoxGraphicStyle). Only the built-in
+  // defaults that would leak are pinned: LibreOffice's own Frame carries 2mm outer
+  // margins and a hairline border, which the editor's boxes don't have.
+  const frameStyle = '<style:style style:name="Frame" style:family="graphic">'
+    + '<style:graphic-properties fo:margin-left="0cm" fo:margin-right="0cm" fo:margin-top="0cm" fo:margin-bottom="0cm"'
+    + ' fo:padding="0cm" fo:border="none"/></style:style>';
+  styles = styles.includes('</office:styles>')
+    ? styles.replace('</office:styles>', `${frameStyle}</office:styles>`)
+    : styles.replace(/<office:automatic-styles\b/, `<office:styles>${frameStyle}</office:styles><office:automatic-styles`);
+
   // Line numbering is one document-wide element in office:styles (probed). LibreOffice
   // writes only what differs from the ODF defaults, so an unnumbered document has none.
   if (lineNumbering.on) {
@@ -4256,14 +4266,24 @@ function applyPlaceholderFields(odtBytes: Uint8Array, labels: string[]): Uint8Ar
 
 // Graphic style for a text box / shape: fill, stroke, text padding, auto-grow, and —
 // for floating boxes — the same wrap/position props as floating images.
+// A plain text box must chain to the Frame style: that parent is what makes it a
+// text *frame* (lists, nested images, borders); without it it is a drawing object
+// whose text loses both (probed on a re-save). Frames take fo:background-color and
+// fo:border — draw:stroke is ignored there — so those carry the look.
 function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   const r3 = (v: number) => Math.round(v * 1000) / 1000;
-  const fill = box.fill
+  const isFrame = box.shapeKind === 'textbox' && !box.shapePath;
+  const fill = (box.fill
     ? `draw:fill="solid" draw:fill-color="${normalizeColor(box.fill) ?? '#FFFFFF'}"`
-    : 'draw:fill="none"';
-  const stroke = box.stroke
-    ? `draw:stroke="solid" svg:stroke-color="${normalizeColor(box.stroke) ?? '#000000'}" svg:stroke-width="${r3(box.strokeWidthPt)}pt"`
-    : 'draw:stroke="none"';
+    : 'draw:fill="none"')
+    + (isFrame ? ` fo:background-color="${box.fill ? normalizeColor(box.fill) ?? '#FFFFFF' : 'transparent'}"` : '');
+  const stroke = isFrame
+    ? (box.stroke
+      ? `fo:border="${r3(box.strokeWidthPt)}pt solid ${normalizeColor(box.stroke) ?? '#000000'}"`
+      : 'fo:border="none"')
+    : (box.stroke
+      ? `draw:stroke="solid" svg:stroke-color="${normalizeColor(box.stroke) ?? '#000000'}" svg:stroke-width="${r3(box.strokeWidthPt)}pt"`
+      : 'draw:stroke="none"');
   // An as-char frame keeps only its horizontal-pos: that is what centres a figure
   // frame, and the anchor paragraph this export mints carries no alignment.
   const wrap = box.wrap === 'inline'
@@ -4282,26 +4302,34 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
     ` draw:marker-${side}="${ODF_ARROW}" draw:marker-${side}-width="${arrowHeadCm(box.strokeWidthPt)}cm"`;
   const arrows = heads === 'end' ? marker('end')
     : heads === 'both' ? marker('end') + marker('start') : '';
-  // Vertical text is a *paragraph* property of the frame's style — probed: in the
-  // graphic properties LibreOffice drops it, here it keeps it and lays the box out.
-  const vertical = box.textVertical
+  // Vertical text: a frame takes style:writing-mode in its graphic properties (where
+  // LibreOffice writes it); a drawing shape drops it there and needs the *paragraph*
+  // properties of its style instead (both probed).
+  const vertMode = box.textVertical && isFrame ? ' style:writing-mode="tb-rl"' : '';
+  const vertical = box.textVertical && !isFrame
     ? '<style:paragraph-properties style:writing-mode="tb-rl"/>'
     : '';
+  const parent = isFrame ? ' style:parent-style-name="Frame"' : '';
   return (
-    `<style:style style:name="TbxFr${index + 1}" style:family="graphic">` +
+    `<style:style style:name="TbxFr${index + 1}" style:family="graphic"${parent}>` +
     `<style:graphic-properties ${fill} ${stroke}${arrows} fo:padding="${box.paddingCm}cm"` +
-    `${grow} draw:textarea-vertical-align="top"${wrap}/>${vertical}` +
+    `${grow} draw:textarea-vertical-align="top"${vertMode}${wrap}/>${vertical}` +
     `</style:style>`
   );
 }
 
 // The anchor paragraph carries the spacing the box stands in for (import/odt.ts hands a
-// lifted box its anchor's margins); nothing to mint when it has none.
+// lifted box its anchor's margins) — and, for an inline box, its alignment: an as-char
+// frame has no horizontal-pos of its own, the paragraph centres it (how LibreOffice
+// does it, and what the import reads back). Nothing to mint when it has neither.
 function textBoxAnchorStyle(box: TextBoxExport, index: number): string {
-  if (!box.spaceBeforePt && !box.spaceAfterPt) return '';
+  const align = box.wrap === 'inline' && box.wrapAlign
+    ? ` fo:text-align="${box.wrapAlign === 'right' ? 'end' : 'center'}"`
+    : '';
+  if (!box.spaceBeforePt && !box.spaceAfterPt && !align) return '';
   return (
     `<style:style style:name="TbxP${index + 1}" style:family="paragraph" style:parent-style-name="Standard">` +
-    `<style:paragraph-properties fo:margin-top="${box.spaceBeforePt}pt" fo:margin-bottom="${box.spaceAfterPt}pt"/>` +
+    `<style:paragraph-properties fo:margin-top="${box.spaceBeforePt}pt" fo:margin-bottom="${box.spaceAfterPt}pt"${align}/>` +
     `</style:style>`
   );
 }
@@ -4370,7 +4398,7 @@ function applyTextBoxes(odtBytes: Uint8Array, boxes: TextBoxExport[]): Uint8Arra
       const i = Number(idx);
       const box = boxes[i];
       if (!box) return '';
-      const style = box.spaceBeforePt || box.spaceAfterPt ? `TbxP${i + 1}` : 'Standard';
+      const style = textBoxAnchorStyle(box, i) ? `TbxP${i + 1}` : 'Standard';
       return `<text:p text:style-name="${style}">${textBoxXml(box, inner, i)}</text:p>`;
     },
   );

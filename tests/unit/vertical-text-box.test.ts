@@ -1,6 +1,6 @@
-// A text box whose text runs top-to-bottom. ODF keeps it as the frame style's own
-// writing mode (in its *paragraph* properties — probed: in the graphic properties
-// LibreOffice drops it), Word as the shape body's `vert`.
+// A text box whose text runs top-to-bottom. ODF keeps it as the style's own writing
+// mode — a text frame in its graphic properties (where LibreOffice writes it), a
+// drawing shape in its style's paragraph properties (probed both) — Word as `vert`.
 import { describe, it, expect } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
 import { buildOdt } from '../../src/lib/export/odt';
@@ -27,8 +27,15 @@ describe('a text box with vertical text', () => {
   it('round-trips through ODF', async () => {
     const bytes = await buildOdt(doc, margins, 'portrait');
     const xml = strFromU8(unzipSync(bytes)['content.xml']);
-    expect(xml).toContain('<style:paragraph-properties style:writing-mode="tb-rl"/>');
+    expect(xml).toMatch(/<style:graphic-properties [^>]*style:writing-mode="tb-rl"/);
     expect(boxOf(importOdt(bytes))?.attrs.textVertical).toBe(true);
+  });
+
+  it('keeps the writing mode of a shape in its paragraph properties', async () => {
+    const shaped: N = { ...doc, content: [doc.content[0], box({ textVertical: true, shapeKind: 'roundRect' })] };
+    const xml = strFromU8(unzipSync(await buildOdt(shaped, margins, 'portrait'))['content.xml']);
+    expect(xml).toContain('<style:paragraph-properties style:writing-mode="tb-rl"/>');
+    expect(boxOf(importOdt(await buildOdt(shaped, margins, 'portrait')))?.attrs.textVertical).toBe(true);
   });
 
   it('round-trips through DOCX', async () => {

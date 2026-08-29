@@ -216,6 +216,9 @@ function applyInlineVAlign(el: Element, attrs: Record<string, unknown>, gp: Prop
   if (pos === 'from-top') {
     const y = lengthToCm(el.getAttributeNS(NS.svg, 'y'));
     if (y == null) return;
+    // `from-top` with no relation and y 0 is how LibreOffice re-spells a frame that
+    // declared no vertical alignment at all — the default, not an offset (probed).
+    if (rel === undefined && y === 0) return;
     attrs.vAlign = 'offset';
     attrs.wrapOffsetY = Math.round(y * 1000) / 1000;
   } else if (pos === 'middle') attrs.vAlign = area ? 'text-middle' : 'middle';
@@ -233,10 +236,13 @@ function boxWrapAlign(gp: PropMap, attrs: Record<string, unknown>): void {
       && attrs.wrap !== 'left' && attrs.wrap !== 'right') attrs.wrapAlign = hpos;
 }
 
-// Vertical text in any box shape: the frame style's writing mode, both of ODF's
-// top-to-bottom modes (the editor has the one direction the browser lays out).
+// Vertical text in any box shape: the style's writing mode, both of ODF's top-to-bottom
+// modes (the editor has the one direction the browser lays out). A text frame carries it
+// in the graphic properties, a drawing shape in its style's paragraph properties.
 function boxTextVertical(el: Element, ctx: Ctx, attrs: Record<string, unknown>): void {
-  const mode = ctx.resolver.graphicParaProps(el.getAttributeNS(NS.draw, 'style-name'))['style:writing-mode'];
+  const name = el.getAttributeNS(NS.draw, 'style-name');
+  const mode = ctx.resolver.graphicProps(name)['style:writing-mode']
+    ?? ctx.resolver.graphicParaProps(name)['style:writing-mode'];
   if (mode === 'tb-rl' || mode === 'tb-lr' || mode === 'tb') attrs.textVertical = true;
 }
 
