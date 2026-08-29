@@ -111,11 +111,23 @@ describe('the currency and date formats', () => {
 
   it('writes the picture switch each locale spells', () => {
     expect(cellFormatCode('currency', 'en-US')).toBe('$#,##0.00');
-    expect(cellFormatCode('currency', 'de-DE')).toMatch(/^#,##0\.00.€$/);
+    // Word reads the picture with the regional separators, so German swaps them.
+    expect(cellFormatCode('currency', 'de-DE')).toMatch(/^#\.##0,00.€$/);
+    expect(cellFormatCode('dec2', 'de-DE')).toBe('0,00');
+    expect(cellFormatCode('group2', 'de-DE')).toBe('#.##0,00');
     expect(cellFormatCode('date', 'en-US')).toBe('M/d/yy');
     expect(cellFormatCode('date', 'de-DE')).toBe('dd.MM.yy');
     expect(cellFormatFromCode('$#,##0.00')).toBe('currency');
     expect(cellFormatFromCode('dd.MM.yy')).toBe('date');
+  });
+
+  it('reads a picture by its shape, whichever locale wrote it', () => {
+    expect(cellFormatFromCode('0,00')).toBe('dec2');
+    expect(cellFormatFromCode('#.##0,00')).toBe('group2');
+    expect(cellFormatFromCode('# ##0,00')).toBe('group2');
+    expect(cellFormatFromCode('0,00%')).toBe('percent2');
+    expect(cellFormatFromCode('#.##0,00 €')).toBe('currency');
+    expect(cellFormatFromCode('0')).toBe('int');
   });
 
   it('round-trips a currency through both formats', async () => {

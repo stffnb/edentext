@@ -10,32 +10,48 @@ export type CellFormat =
 export const CELL_FORMATS: CellFormat[] =
   ['general', 'int', 'dec2', 'group2', 'percent', 'percent2', 'currency', 'date'];
 
-// Word's picture for the formats whose code is the same everywhere; the currency and
-// date ones are the locale's, built below.
-const FIXED_CODES: Record<string, string> = {
-  general: '', int: '0', dec2: '0.00', group2: '#,##0.00', percent: '0%', percent2: '0.00%',
-};
+// Word reads a `\#` picture with the *reader's* regional separators (a German Word takes
+// `.` as grouping, so "0.00" prints 84 as "084") — write the document language's own.
+function numberSeparators(lang: string): { group: string; decimal: string } {
+  const parts = new Intl.NumberFormat(lang || 'en').formatToParts(1234.5);
+  const pick = (t: string, fb: string) => parts.find((p) => p.type === t)?.value ?? fb;
+  // Any spacing group char (a no-break space) becomes the plain space Word's dialog writes.
+  return { group: pick('group', ',').replace(/\s/gu, ' '), decimal: pick('decimal', '.') };
+}
 
-/** Word's picture switch for a format, as its own dialog writes it. */
+/** Word's picture switch for a format, as its own dialog writes it in that locale. */
 export function cellFormatCode(format: CellFormat, lang: string): string {
+  const { group, decimal } = numberSeparators(lang);
   if (format === 'currency') {
     const { symbol, before, space } = currencyParts(lang);
-    return before ? `${symbol}${space}#,##0.00` : `#,##0.00${space}${symbol}`;
+    const body = `#${group}##0${decimal}00`;
+    return before ? `${symbol}${space}${body}` : `${body}${space}${symbol}`;
   }
   if (format === 'date') {
     return datePattern(lang)
       .map((f) => (f.kind === 'literal' ? f.text : f.kind[0].replace('m', 'M').repeat(f.digits)))
       .join('');
   }
-  return FIXED_CODES[format] ?? '';
+  const codes: Record<string, string> = {
+    general: '', int: '0', dec2: `0${decimal}00`, group2: `#${group}##0${decimal}00`,
+    percent: '0%', percent2: `0${decimal}00%`,
+  };
+  return codes[format] ?? '';
 }
 
+// Read by shape, not by string match: the producer's locale decides which of `.`/`,`
+// is the decimal (it is the one closing the digit picture), the other one is grouping.
 export function cellFormatFromCode(code: string): CellFormat | null {
   const key = code.trim();
-  const fixed = CELL_FORMATS.find((f) => FIXED_CODES[f] === key);
-  if (fixed) return fixed;
+  if (key === '') return 'general';
   if (!/[#0]/.test(key) && /[yMd]/.test(key)) return 'date';
-  return /[^#0.,;()%\s+-]/.test(key) ? 'currency' : null;
+  if (/[^#0.,;()%\s+-]/u.test(key)) return 'currency';
+  const tail = /([.,])([0#]+)%?\s*$/.exec(key);
+  const decimals = tail ? tail[2].length : 0;
+  const grouping = /[0#][\s.,][0#]/u.test(tail ? key.slice(0, tail.index) : key);
+  if (key.includes('%')) return decimals >= 2 ? 'percent2' : 'percent';
+  if (grouping) return 'group2';
+  return decimals >= 2 ? 'dec2' : 'int';
 }
 
 export function isCellFormat(v: unknown): v is CellFormat {
