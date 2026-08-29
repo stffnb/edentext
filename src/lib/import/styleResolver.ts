@@ -787,7 +787,7 @@ export class StyleResolver {
   private watermark(pageName: string | null): Watermark | null {
     const master = this.masterPageEl(pageName);
     const shapes = master?.getElementsByTagNameNS(NS.draw, 'custom-shape') ?? [];
-    const shape = Array.from(shapes).find((s) => s.getAttributeNS(NS.draw, 'name') === WATERMARK_NAME);
+    const shape = Array.from(shapes).find((s) => s.getAttributeNS(NS.draw, 'name')?.startsWith(WATERMARK_NAME));
     if (!shape) return null;
     const text = (shape.textContent ?? '').trim();
     if (!text) return null;

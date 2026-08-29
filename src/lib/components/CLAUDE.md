@@ -195,7 +195,9 @@ toolbar island overlays the row's top, so the pane takes a `margin-top` of
 
 Background, border and watermark, all page-level. The layer sits inside the scaled
 `.paper` at `z-index: -1` like `.hf-bg-layer`, drawing one border box and one watermark
-per page in unscaled document px. The watermark is an `<svg><text textLength>` because a
+per page in unscaled document px. The border wraps the header/footer band (both word
+processors draw it so): where any section has a zone, `hfInsets` replaces the page
+margin with the zone's edge distance. The watermark is an `<svg><text textLength>` because a
 fontwork shape **stretches** its text to its box instead of setting it at a size — a font
 size alone makes a short word far too small and a long one overflow the page.
 

@@ -637,7 +637,7 @@ function convertLine(el: Element, ctx: Ctx): Node | null {
 function convertDrawElement(e: Element, ctx: Ctx): { inline?: Node; block?: Node } | null {
   // The watermark is not a drawing: it rides the page decoration instead
   // (storage/pageDecor.ts), so it must not also arrive as a shape in the header.
-  if (e.getAttributeNS(NS.draw, 'name') === WATERMARK_NAME) return null;
+  if (e.getAttributeNS(NS.draw, 'name')?.startsWith(WATERMARK_NAME)) return null;
   // Fold marks ride the flag (storage/foldMarks.ts), not the document, same rule.
   if (e.getAttributeNS(NS.draw, 'name')?.startsWith(FOLD_MARK_NAME)) {
     ctx.foldMarks = true;

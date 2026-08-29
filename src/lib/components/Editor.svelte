@@ -122,6 +122,17 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     chapterStarts = wantsChapters ? collectChapterStarts() : [];
   });
 
+  // The page border wraps the header/footer band too (both word processors draw it
+  // so), starting at the zone's edge distance wherever any section has a zone.
+  let decorHfInsets = $derived({
+    headerCm: [headerDoc, headerFirstDoc, headerEvenDoc,
+      ...extraHfSections.flatMap((s) => [s.header, s.headerFirst, s.headerEven])]
+      .some((d) => d && !hfIsEmpty(d)) ? (hfDistances ?? DEFAULT_HF_DISTANCES).header : null,
+    footerCm: [footerDoc, footerFirstDoc, footerEvenDoc,
+      ...extraHfSections.flatMap((s) => [s.footer, s.footerFirst, s.footerEven])]
+      .some((d) => d && !hfIsEmpty(d)) ? (hfDistances ?? DEFAULT_HF_DISTANCES).footer : null,
+  });
+
   // Apply the page margins + orientation to the :root CSS vars (visual padding,
   // page dimensions, and pagination all read these). DOM-only, safe in effects.
   $effect(() => {
@@ -1452,7 +1463,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         </div>
       {/if}
       <PageSheetLayer {pageBoxes} />
-      <PageDecorLayer decor={pageDecor} {pageBoxes} {pageMargins} />
+      <PageDecorLayer decor={pageDecor} {pageBoxes} {pageMargins} hfInsets={decorHfInsets} />
       {#if foldMarks}
         <FoldMarkLayer {pageBoxes} />
       {/if}

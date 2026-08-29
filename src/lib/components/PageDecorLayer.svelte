@@ -5,24 +5,27 @@
   // The page's border and watermark, one box per page — the background itself is a
   // custom property on .paper, which already paints the sheet. Geometry is unscaled
   // document px: the layer sits inside .paper, so the zoom transform covers it.
-  let { decor, pageBoxes, pageMargins }: {
+  let { decor, pageBoxes, pageMargins, hfInsets = { headerCm: null, footerCm: null } }: {
     decor: PageDecor;
     /** One box per page (Editor.svelte): a section on its own paper differs in size. */
     pageBoxes: { top: number; left: number; height: number; width: number }[];
     pageMargins: PageMargins;
+    /** Zone edge distances where a header/footer exists — the border wraps the band. */
+    hfInsets?: { headerCm: number | null; footerCm: number | null };
   } = $props();
 
   // The watermark's aspect ratio, measured off LibreOffice's own shape.
   const WATERMARK_RATIO = 4.487;
 
   // The border rings the text area, grown by its own padding — where ODF's fo:padding
-  // and Word's w:space put it.
+  // and Word's w:space put it. A header/footer band sits inside the border (both word
+  // processors wrap it), so its edge distance replaces the margin there.
   let inset = $derived.by(() => {
     const pad = cmToPx(decor.border?.paddingCm ?? 0);
     const swap = (page: number) => pageMargins.mirrored === true && page % 2 === 0;
     return (page: number) => ({
-      top: cmToPx(pageMargins.top) - pad,
-      bottom: cmToPx(pageMargins.bottom) - pad,
+      top: cmToPx(hfInsets.headerCm ?? pageMargins.top) - pad,
+      bottom: cmToPx(hfInsets.footerCm ?? pageMargins.bottom) - pad,
       left: cmToPx(swap(page) ? pageMargins.right : pageMargins.left) - pad,
       right: cmToPx(swap(page) ? pageMargins.left : pageMargins.right) - pad,
     });

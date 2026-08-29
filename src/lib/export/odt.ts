@@ -2958,23 +2958,29 @@ function applyWatermarkOdf(odtBytes: Uint8Array, wm: Watermark | null): Uint8Arr
     ? styles
     : styles.replace(/<office:document-styles\b/, '<office:document-styles xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"');
   out = injectAutomaticStyles(out, minted);
-  // Into the header the document already has — the shape is out of flow, so it changes
-  // neither the band nor the zone's text.
-  if (out.includes('<style:header>')) {
-    out = out.replace(/<style:header>(\s*<text:p[^>]*>)?/, (m) =>
-      m.includes('<text:p') ? `${m}${shape}` : `${m}<text:p text:style-name="Header">${shape}</text:p>`);
-  } else {
-    // No header: give the master page one that reserves no band of its own. LibreOffice
-    // still floors the band at 0.499cm, so the body shifts by that much — its own
-    // watermark does the same.
-    const zone = `<style:header><text:p text:style-name="Header">${shape}</text:p></style:header>`;
-    out = out.replace(/<style:header-style\s*\/>/, '<style:header-style><style:header-footer-properties fo:min-height="0cm" fo:margin-bottom="0cm"/></style:header-style>');
-    out = /<style:master-page\b[^>]*\/>/.test(out)
+  files['styles.xml'] = strToU8(injectIntoHeaderZones(out, shape));
+  return rezipOdt(files);
+}
+
+// Splice out-of-flow decor shapes into EVERY header zone of the master page — the
+// first-page and even-page variants show them too, so a zone left out would blank the
+// decor on those pages. A document with no header gets one that reserves no band of
+// its own (LibreOffice still floors the band at 0.499cm, as for its own watermark).
+function injectIntoHeaderZones(styles: string, shapes: string): string {
+  if (!/<style:header[\s/>]/.test(styles)) {
+    const zone = `<style:header><text:p text:style-name="Header">${shapes}</text:p></style:header>`;
+    const out = styles.replace(/<style:header-style\s*\/>/, '<style:header-style><style:header-footer-properties fo:min-height="0cm" fo:margin-bottom="0cm"/></style:header-style>');
+    return /<style:master-page\b[^>]*\/>/.test(out)
       ? out.replace(/(<style:master-page\b[^>]*)\/>/, `$1>${zone}</style:master-page>`)
       : out.replace(/(<style:master-page\b[^>]*>)/, `$1${zone}`);
   }
-  files['styles.xml'] = strToU8(out);
-  return rezipOdt(files);
+  return styles.replace(/<style:header(-first|-left)?\s*\/>|<style:header(?:-first|-left)?>(\s*<text:p[^>]*>)?/g, (m) => {
+    if (m.endsWith('/>')) {
+      const tag = /style:header(?:-first|-left)?/.exec(m)![0];
+      return `<${tag}><text:p text:style-name="Header">${shapes}</text:p></${tag}>`;
+    }
+    return m.includes('<text:p') ? `${m}${shapes}` : `${m}<text:p text:style-name="Header">${shapes}</text:p>`;
+  });
 }
 
 // Fold + punch marks as named <draw:line>s in the master page's header — the one place
@@ -3005,23 +3011,13 @@ function applyFoldMarksOdf(odtBytes: Uint8Array, on: boolean): Uint8Array {
     + line(`${FOLD_MARK_NAME}${i + 1}R`, rightX, mm, FOLD_MARK_LEN_MM)).join('')
     + line(`${FOLD_MARK_NAME}Punch`, cm(MARK_START_MM), PUNCH_MARK_MM, PUNCH_MARK_LEN_MM);
 
-  // Same splice as the watermark: declare draw:, mint the style, ride the header —
+  // Same splice as the watermark: declare draw:, mint the style, ride every header zone —
   // or give the master page a zero-height one.
   let out = styles.includes('xmlns:draw=')
     ? styles
     : styles.replace(/<office:document-styles\b/, '<office:document-styles xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"');
   out = injectAutomaticStyles(out, minted);
-  if (out.includes('<style:header>')) {
-    out = out.replace(/<style:header>(\s*<text:p[^>]*>)?/, (m) =>
-      m.includes('<text:p') ? `${m}${shapes}` : `${m}<text:p text:style-name="Header">${shapes}</text:p>`);
-  } else {
-    const zone = `<style:header><text:p text:style-name="Header">${shapes}</text:p></style:header>`;
-    out = out.replace(/<style:header-style\s*\/>/, '<style:header-style><style:header-footer-properties fo:min-height="0cm" fo:margin-bottom="0cm"/></style:header-style>');
-    out = /<style:master-page\b[^>]*\/>/.test(out)
-      ? out.replace(/(<style:master-page\b[^>]*)\/>/, `$1>${zone}</style:master-page>`)
-      : out.replace(/(<style:master-page\b[^>]*>)/, `$1${zone}`);
-  }
-  files['styles.xml'] = strToU8(out);
+  files['styles.xml'] = strToU8(injectIntoHeaderZones(out, shapes));
   return rezipOdt(files);
 }
 

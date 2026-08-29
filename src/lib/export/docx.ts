@@ -2605,15 +2605,18 @@ export async function buildDocx(
   const mkHeaders = (i: number) => {
     const s = setAt(i);
     const d = para(s.header), f = s.differentFirstPage ? para(s.headerFirst) : null, e = s.differentOddEven ? para(s.headerEven) : null;
-    // A watermark (and the fold marks) lives in a header part, so a document without
-    // one still needs the (empty) default header the post-passes inject into.
-    if (!d && !f && !e) return decor.watermark?.text || foldMarks ? { default: new Header({ children: [new Paragraph({})] }) } : undefined;
+    // A watermark (and the fold marks) lives in a header part, so every page variant
+    // needs one — empty where the zone has no text — for the post-passes to inject
+    // into; a variant without its own part would blank the decor on those pages.
+    const decorated = Boolean(decor.watermark?.text) || foldMarks;
     const h: { default?: Header; first?: Header; even?: Header } = {};
     if (d) h.default = new Header({ children: [paragraphToDocx(d)] });
-    else if (decor.watermark?.text || foldMarks) h.default = new Header({ children: [new Paragraph({})] });
+    else if (decorated) h.default = new Header({ children: [new Paragraph({})] });
     if (f) h.first = new Header({ children: [paragraphToDocx(f)] });
+    else if (s.differentFirstPage && decorated) h.first = new Header({ children: [new Paragraph({})] });
     if (e) h.even = new Header({ children: [paragraphToDocx(e)] });
-    return h;
+    else if (s.differentOddEven && decorated) h.even = new Header({ children: [new Paragraph({})] });
+    return Object.keys(h).length ? h : undefined;
   };
   const mkFooters = (i: number) => {
     const s = setAt(i);
