@@ -56,8 +56,9 @@
     return () => paper?.removeEventListener('pm-pagecount', schedule);
   });
 
-  // The tops of the lines a block renders, in document px relative to .tiptap.
-  function lineTops(block: Element, origin: number): { top: number; height: number }[] {
+  // The tops of the lines a block renders, in document px relative to .tiptap. Client
+  // rects are in zoom-scaled screen space; `scale` converts back to document px.
+  function lineTops(block: Element, origin: number, scale: number): { top: number; height: number }[] {
     const range = document.createRange();
     range.selectNodeContents(block);
     let rects = Array.from(range.getClientRects()).filter((r) => r.height > 0);
@@ -71,7 +72,7 @@
     }
     if (!rects.length) {
       const r = block.getBoundingClientRect();
-      return r.height > 0 ? [{ top: r.top - origin, height: r.height }] : [];
+      return r.height > 0 ? [{ top: (r.top - origin) / scale, height: r.height / scale }] : [];
     }
     // One rect per run per line. A run shifted off the baseline (super/subscript, a
     // formula, a rotated char) still overlaps its line's span, so rects merge into one
@@ -87,13 +88,18 @@
         lines.push({ top: r.top, bottom: r.bottom });
       }
     }
-    return lines.map((l) => ({ top: l.top - origin, height: l.bottom - l.top }));
+    return lines.map((l) => ({ top: (l.top - origin) / scale, height: (l.bottom - l.top) / scale }));
   }
 
   function measure(): void {
     const view = editor?.view;
     if (!view || !lineNumbering.on || !host?.isConnected) { marks = []; return; }
-    const origin = view.dom.getBoundingClientRect().top;
+    const dom = view.dom as HTMLElement;
+    const rect = dom.getBoundingClientRect();
+    // The zoom transform scales every measured rect; page boxes and the layer's own
+    // coordinates are unscaled document px, so divide the scale back out.
+    const scale = dom.offsetWidth ? rect.width / dom.offsetWidth : 1;
+    const origin = rect.top;
     const out: { top: number; label: string }[] = [];
     let count = 0;
     let page = 1;
@@ -111,8 +117,8 @@
       const anchor = block.classList.contains('textbox-node');
       const empty = anchor || !block.textContent?.trim();
       const lines = anchor
-        ? [{ top: block.getBoundingClientRect().top - origin, height: 18 }]
-        : lineTops(block, origin);
+        ? [{ top: (block.getBoundingClientRect().top - origin) / scale, height: 18 }]
+        : lineTops(block, origin, scale);
       for (const line of lines) {
         const linePage = pageAt(line.top);
         if (lineNumbering.restart === 'page' && linePage !== page) { page = linePage; count = 0; }
