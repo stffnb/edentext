@@ -11,10 +11,17 @@ import {
   Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LevelFormat,
   Table, TableRow, TableCell, WidthType, convertMillimetersToTwip,
   Header, Footer, PageNumber, TabStopType,
+  FootnoteReferenceRun, ImageRun, ExternalHyperlink, UnderlineType,
+  Math as DocxMath, MathRun, MathFraction, MathNumerator, MathDenominator, MathRadical,
 } from 'docx';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'corpus');
 mkdirSync(OUT, { recursive: true });
+
+// An optional regex argument regenerates matching files only (and converts only
+// their ODT twins), so extending the corpus leaves the committed rest untouched.
+const only = process.argv[2] ? new RegExp(process.argv[2]) : null;
+const written = [];
 
 const LOREM = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.';
 
@@ -31,6 +38,7 @@ const heading = (id, name, halfPt, before, after, level) => ({
 });
 
 async function write(name, sections, defaultRun = { font: 'Times New Roman', size: 24 }, extra = {}) {
+  if (only && !only.test(name)) return;
   const doc = new Document({
     styles: {
       default: { document: { run: defaultRun } },
@@ -45,6 +53,7 @@ async function write(name, sections, defaultRun = { font: 'Times New Roman', siz
     sections,
   });
   writeFileSync(join(OUT, name), await Packer.toBuffer(doc));
+  written.push(name);
   console.log('wrote', name);
 }
 
@@ -197,10 +206,88 @@ await write('04-table.docx', [{
   ],
 }]);
 
+// 11. Run formatting beyond bold/italic, plus a link — the marks the import maps.
+await write('11-marks.docx', [{
+  properties: { page },
+  children: [
+    new Paragraph({ children: [
+      new TextRun({ text: 'underlined ', underline: { type: UnderlineType.SINGLE } }),
+      new TextRun({ text: 'struck ', strike: true }),
+      new TextRun({ text: 'highlighted ', highlight: 'yellow' }),
+      new TextRun({ text: 'colored ', color: 'C00000' }),
+      new TextRun({ text: 'super', superScript: true }),
+      new TextRun({ text: ' and ' }),
+      new TextRun({ text: 'sub', subScript: true }),
+    ] }),
+    new Paragraph({ children: [
+      new TextRun('A '),
+      new ExternalHyperlink({ link: 'https://example.org/', children: [
+        new TextRun({ text: 'link to example.org', style: 'Hyperlink' }),
+      ] }),
+      new TextRun(' in running text.'),
+    ] }),
+    para(LOREM),
+  ],
+}]);
+
+// 12. Footnotes: two anchors in flowing text, each with its own body.
+await write('12-notes.docx', [{
+  properties: { page },
+  children: [
+    new Paragraph({ children: [
+      new TextRun('A claim'), new FootnoteReferenceRun(1),
+      new TextRun(' and another'), new FootnoteReferenceRun(2),
+      new TextRun(' in one paragraph.'),
+    ] }),
+    para(LOREM),
+  ],
+}], undefined, {
+  footnotes: {
+    1: { children: [para('The first footnote body.')] },
+    2: { children: [para('The second footnote body.')] },
+  },
+});
+
+// 13. Images: an inline picture in the line, sized in EMU by the lib.
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64');
+await write('13-images.docx', [{
+  properties: { page },
+  children: [
+    new Paragraph({ children: [
+      new TextRun('Before '),
+      new ImageRun({ type: 'png', data: PNG, transformation: { width: 96, height: 48 } }),
+      new TextRun(' after.'),
+    ] }),
+    para(LOREM),
+  ],
+}]);
+
+// 14. OMML formulas: one inline in the sentence, one alone on its line.
+const frac = () => new MathFraction({
+  numerator: [new MathNumerator([new MathRun('a')])],
+  denominator: [new MathDenominator([new MathRun('b')])],
+});
+await write('14-formulas.docx', [{
+  properties: { page },
+  children: [
+    new Paragraph({ children: [
+      new TextRun('Inline '),
+      new DocxMath({ children: [frac()] }),
+      new TextRun(' in the sentence.'),
+    ] }),
+    new Paragraph({ children: [new DocxMath({ children: [
+      new MathRadical({ children: [new MathRun('x')], degree: [] }), new MathRun('+1'),
+    ] })] }),
+    para(LOREM),
+  ],
+}]);
+
 // ODT twins, written by LibreOffice itself — the dominant ODT producer, so they carry
 // its own conventions (percentage font sizes, Text Body, list styles) and exercise the
 // foreign-document path our own exporter never produces.
-const docxFiles = readdirSync(OUT).filter((f) => f.endsWith('.docx'));
+const docxFiles = written;
 // Its own profile, in a temp dir: LibreOffice writes a whole user installation into
 // it, and this one's parent is committed.
 const profile = mkdtempSync(join(tmpdir(), 'corpus-lo-'));
