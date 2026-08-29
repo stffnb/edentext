@@ -5,7 +5,7 @@
 
   // Numbers in the left margin, one per rendered line. CSS exposes no line boxes, so
   // every line has to be measured: a Range over each block yields one client rect per
-  // run per line, and the distinct tops are the lines.
+  // run per line, and rects merged by vertical overlap are the lines.
   //
   // ponytail: measures every block in the document on each settle. Fine while numbering
   // is on and the document is ordinary; a 400-page one would want a windowed pass keyed
@@ -65,14 +65,21 @@
       const r = block.getBoundingClientRect();
       return r.height > 0 ? [{ top: r.top - origin, height: r.height }] : [];
     }
-    // One rect per run per line; the distinct tops are the lines.
-    const byTop = new Map<number, { top: number; height: number }>();
-    for (const r of rects) {
-      const key = Math.round(r.top);
-      const seen = byTop.get(key);
-      if (!seen || r.height > seen.height) byTop.set(key, { top: r.top - origin, height: r.height });
+    // One rect per run per line. A run shifted off the baseline (super/subscript, a
+    // formula, a rotated char) still overlaps its line's span, so rects merge into one
+    // line while a rect mostly below the span (even at squeezed spacing) opens the next.
+    const lines: { top: number; bottom: number }[] = [];
+    for (const r of rects.slice().sort((a, b) => a.top - b.top)) {
+      const cur = lines[lines.length - 1];
+      const overlap = cur ? Math.min(cur.bottom, r.bottom) - Math.max(cur.top, r.top) : 0;
+      if (cur && overlap > r.height / 2) {
+        cur.top = Math.min(cur.top, r.top);
+        cur.bottom = Math.max(cur.bottom, r.bottom);
+      } else {
+        lines.push({ top: r.top, bottom: r.bottom });
+      }
     }
-    return [...byTop.values()].sort((a, b) => a.top - b.top);
+    return lines.map((l) => ({ top: l.top - origin, height: l.bottom - l.top }));
   }
 
   function measure(): void {
@@ -82,14 +89,22 @@
     const out: { top: number; label: string }[] = [];
     let count = 0;
     let page = 1;
-    for (const block of Array.from(view.dom.children)) {
-      // A table, an image frame or an index is not a numbered line in either word
-      // processor; only text blocks count.
-      if (!/^(P|H1|H2|H3|H4|H5|H6|LI|BLOCKQUOTE)$/.test(block.tagName)) continue;
+    // Text blocks count — list items and column lines too, as in both word processors;
+    // a table, an image frame or an index is not a numbered line in either.
+    const blocks = view.dom.querySelectorAll(
+      ':scope > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, blockquote),'
+      + ' :scope > :is(ul, ol) li > p,'
+      + ' :scope > .columns-node :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)');
+    for (const block of Array.from(blocks)) {
+      if (block.closest('table')) continue;
       const empty = !block.textContent?.trim();
       for (const line of lineTops(block, origin)) {
         const linePage = pageAt(line.top);
         if (lineNumbering.restart === 'page' && linePage !== page) { page = linePage; count = 0; }
+        // A trailing block pushed past the page surface (into the gap) is no line of
+        // either page; numbering it would print into the gap.
+        const box = pageBoxes[linePage - 1];
+        if (box && line.top > box.top + box.height) continue;
         if (empty && !lineNumbering.countEmpty) continue;
         count += 1;
         if (count % lineNumbering.interval === 0) {
