@@ -86,7 +86,12 @@ function runs(r: Rng, heading = false): N[] {
 // top=false in cells/lists: the page-break sentinel rides top-level blocks only.
 function paraAttrs(r: Rng, indents: boolean, top: boolean): N | null {
   const attrs: N = {};
-  if (maybe(r, 0.3)) attrs.textAlign = pick(r, ['left', 'center', 'right', 'justify']);
+  // The base direction first: the alignment pick must avoid the direction's default
+  // edge (rtl right), which both importers suppress as unset.
+  if (maybe(r, 0.05)) attrs.dir = 'rtl';
+  if (maybe(r, 0.3)) {
+    attrs.textAlign = pick(r, attrs.dir ? ['left', 'center', 'justify'] : ['left', 'center', 'right', 'justify']);
+  }
   if (maybe(r, 0.2)) attrs.lineHeight = pick(r, ['1.5', '2']);
   if (maybe(r, 0.15)) attrs.spaceBefore = pick(r, [6, 12]);
   if (maybe(r, 0.15)) attrs.spaceAfter = pick(r, [12, 18]);
@@ -94,7 +99,6 @@ function paraAttrs(r: Rng, indents: boolean, top: boolean): N | null {
   if (indents && maybe(r, 0.1)) attrs.indentFirst = pick(r, [0.75, -0.75]);
   if (indents && maybe(r, 0.1)) attrs.indentRight = 1.5;
   if (top && maybe(r, 0.05)) attrs.breakBefore = 'page';
-  if (maybe(r, 0.05)) attrs.dir = 'rtl';
   // Paragraph box: shading and/or rule lines (ParaStyle carries them into cells/lists).
   if (maybe(r, 0.08)) {
     if (maybe(r, 0.6)) attrs.backgroundColor = pick(r, ['#CCFFFF', '#FFE0E0']);
@@ -276,25 +280,59 @@ function columnsBlock(r: Rng): N {
   return { type: 'columns', attrs, content: kids };
 }
 
-function list(r: Rng, kind: 'bulletList' | 'orderedList', depth: number): N {
+// Built-ins the generator can follow: the node species per depth mirrors the style's
+// level kinds, so the import (which derives the species from the style) agrees.
+const LIST_STYLE_KINDS: Record<string, readonly ('bulletList' | 'orderedList')[]> = {
+  'Outline I.A.1': ['orderedList', 'orderedList', 'orderedList'],
+  'Outline A.I.1': ['orderedList', 'orderedList', 'orderedList'],
+  'Numbering 1.a.i': ['orderedList', 'orderedList', 'orderedList'],
+  'Numbering with Bullets': ['orderedList', 'bulletList', 'bulletList'],
+  'Diamond Bullets': ['bulletList', 'bulletList', 'bulletList'],
+  'Checklist': ['bulletList', 'bulletList', 'bulletList'],
+};
+
+function list(r: Rng, kind: 'bulletList' | 'orderedList', depth: number,
+  styleKinds?: readonly ('bulletList' | 'orderedList')[]): N {
+  // A named style may govern the tree. It then stays override- and start-free: an
+  // override drops the name on export, a start keeps a private DOCX clone without
+  // the name (export/CLAUDE.md) — either would diff against the ODT reading.
+  let styleName: string | undefined;
+  if (depth === 0 && maybe(r, 0.25)) {
+    const names = Object.keys(LIST_STYLE_KINDS).filter((n) => LIST_STYLE_KINDS[n][0] === kind);
+    styleName = pick(r, names);
+    styleKinds = LIST_STYLE_KINDS[styleName];
+  }
   const items = Array.from({ length: int(r, 1, 3) }, () => {
     const kids: N[] = [paragraph(r, false)];
-    if (depth < 2 && maybe(r, 0.25)) kids.push(list(r, pick(r, ['bulletList', 'orderedList']), depth + 1));
+    if (depth < 2 && maybe(r, 0.25)) {
+      const nested = styleKinds ? styleKinds[depth + 1] : pick(r, ['bulletList', 'orderedList'] as const);
+      kids.push(list(r, nested, depth + 1, styleKinds));
+    }
     return { type: 'listItem', content: kids };
   });
-  // start only at the top level: applyListStartValues writes text:start-value for
-  // top-level lists only, a nested list's start does not round-trip.
-  const attrs: N = {};
-  if (kind === 'orderedList' && depth === 0 && maybe(r, 0.2)) attrs.start = 3;
-  // Nested lists get only upper-* types: those are never the depth default, which the
-  // importers suppress to null (defaultOrderedTypeAt yields lower/decimal forms only).
-  if (kind === 'orderedList' && maybe(r, 0.25)) {
-    attrs.listStyleType = depth === 0
-      ? pick(r, ['lower-alpha', 'upper-roman', 'lower-alpha-paren'])
-      : pick(r, ['upper-roman', 'upper-alpha-paren']);
+  // A common marker format also drops the name (the one <text:list> reference carries
+  // either it or the named style) — one unformatted lead run breaks the commonality.
+  if (styleKinds) {
+    const p = items[0].content[0];
+    if (p.content?.[0]?.type === 'text') delete p.content[0].marks;
+    if (p.attrs) delete p.attrs.fontSize;
   }
-  // Never a depth-default bullet (•/◦/▪), which the importers suppress to null.
-  if (kind === 'bulletList' && maybe(r, 0.2)) attrs.bulletChar = pick(r, ['❖', '✓', '➢']);
+  const attrs: N = {};
+  if (styleName) attrs.listStyleName = styleName;
+  if (!styleKinds) {
+    // start only at the top level: applyListStartValues writes text:start-value for
+    // top-level lists only, a nested list's start does not round-trip.
+    if (kind === 'orderedList' && depth === 0 && maybe(r, 0.2)) attrs.start = 3;
+    // Nested lists get only upper-* types: those are never the depth default, which the
+    // importers suppress to null (defaultOrderedTypeAt yields lower/decimal forms only).
+    if (kind === 'orderedList' && maybe(r, 0.25)) {
+      attrs.listStyleType = depth === 0
+        ? pick(r, ['lower-alpha', 'upper-roman', 'lower-alpha-paren'])
+        : pick(r, ['upper-roman', 'upper-alpha-paren']);
+    }
+    // Never a depth-default bullet (•/◦/▪), which the importers suppress to null.
+    if (kind === 'bulletList' && maybe(r, 0.2)) attrs.bulletChar = pick(r, ['❖', '✓', '➢']);
+  }
   return { type: kind, ...(Object.keys(attrs).length ? { attrs } : {}), content: items };
 }
 
