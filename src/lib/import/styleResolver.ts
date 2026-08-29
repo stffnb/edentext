@@ -737,10 +737,14 @@ export class StyleResolver {
     if (!props) return null;
 
     const hf = this.masterPageHF(pageName);
+    // A page border + its fo:padding sit inside the margin and push the text in; the
+    // editor keeps text at the margin (like w:pgBorders offsetFrom="text"), so the
+    // shrunken ODF margins are read back grown by that inset (inverse of the export).
+    const inset = this.decorInsetCm(props);
     const cm = (attr: string, fallback: number, extra = 0) => {
       const v = lengthToCm(props.getAttributeNS(NS.fo, attr));
       if (v == null) return fallback;
-      return Math.min(10, Math.max(0, Math.round((v + extra) * 100) / 100));
+      return Math.min(10, Math.max(0, Math.round((v + extra + inset) * 100) / 100));
     };
     const margins: PageMargins = {
       top: cm('margin-top', 2.54, hf.header ? hf.headerExtraCm : 0),
@@ -825,10 +829,20 @@ export class StyleResolver {
   edgeDistancesCm(): { top: number; bottom: number } | null {
     const props = this.pageLayoutEl()?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
     if (!props) return null;
+    const inset = this.decorInsetCm(props);
     const cm = (attr: string) => {
       const v = lengthToCm(props.getAttributeNS(NS.fo, attr));
-      return v == null ? null : Math.min(10, Math.max(0, Math.round(v * 100) / 100));
+      return v == null ? null : Math.min(10, Math.max(0, Math.round((v + inset) * 100) / 100));
     };
     return { top: cm('margin-top') ?? 1.25, bottom: cm('margin-bottom') ?? 1.25 };
+  }
+
+  // Border width + fo:padding of the page's own border, 0 without one — the amount ODF
+  // pushed the text in past the declared margin (pageGeometry adds it back).
+  private decorInsetCm(props: Element): number {
+    const border = props.getAttributeNS(NS.fo, 'border') ?? props.getAttributeNS(NS.fo, 'border-top');
+    if (!border || border === 'none') return 0;
+    const widthPt = lengthToPt(border.trim().split(/\s+/)[0]) ?? 0;
+    return (lengthToCm(props.getAttributeNS(NS.fo, 'padding')) ?? 0) + (widthPt * 2.54) / 72;
   }
 }

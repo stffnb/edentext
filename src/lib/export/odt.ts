@@ -3058,6 +3058,16 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
     styles = styles.replace(/<style:page-layout-properties /, '<style:page-layout-properties style:writing-mode="rl-tb" ');
   }
 
+  // ODF lays border and padding out *inside* the page margin, shrinking the text area;
+  // the editor and Word (w:pgBorders offsetFrom="text") keep the text at the margins and
+  // push the border out. Shrink the margins by border + padding so the text stays put.
+  if (decor.border) {
+    const inset = decor.border.paddingCm + (decor.border.widthPt * 2.54) / 72;
+    styles = styles.replace(/<style:page-layout-properties [^>]*/, (m) =>
+      m.replace(/fo:margin-(top|bottom|left|right)="([\d.]+)cm"/g, (_a, side, v) =>
+        `fo:margin-${side}="${Math.max(0, round3(Number(v) - inset))}cm"`));
+  }
+
   // Page background and page border ride the page layout, exactly where LibreOffice
   // keeps them (probed). The border is offset from the text area by fo:padding.
   const decorProps = [
