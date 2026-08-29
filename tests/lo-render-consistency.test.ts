@@ -23,13 +23,29 @@ function pgm(path: string): { w: number; h: number; pixels: Uint8Array } {
   return { w: Number(m[1]), h: Number(m[2]), pixels: new Uint8Array(bytes.subarray(m[0].length)) };
 }
 
-function renderPages(file: string, prefix: string): string[] {
+function toPdf(file: string, prefix: string): string {
   // Own user profile: a parallel lo-roundtrip soffice would otherwise hold the lock.
   execSync(`soffice -env:UserInstallation=file://${DIR}/profile --headless --convert-to pdf --outdir ${DIR}/${prefix} ${DIR}/${file}`, { stdio: 'pipe', timeout: 120000 });
-  const pdf = `${DIR}/${prefix}/${file.replace(/\.\w+$/, '.pdf')}`;
+  return `${DIR}/${prefix}/${file.replace(/\.\w+$/, '.pdf')}`;
+}
+
+function renderPages(file: string, prefix: string): string[] {
+  const pdf = toPdf(file, prefix);
   execSync(`pdftoppm -gray -r 60 ${pdf} ${DIR}/${prefix}/page`, { stdio: 'pipe', timeout: 120000 });
   return readdirSync(`${DIR}/${prefix}`).filter((f) => f.endsWith('.pgm')).sort()
     .map((f) => `${DIR}/${prefix}/${f}`);
+}
+
+// Word boxes (pt, per page) out of `pdftotext -bbox` — the text layout, colors aside.
+function wordBoxes(pdf: string): { page: number; x: number; y: number; text: string }[] {
+  const html = execSync(`pdftotext -bbox ${pdf} -`, { stdio: 'pipe', timeout: 120000 }).toString();
+  const out: { page: number; x: number; y: number; text: string }[] = [];
+  let page = 0;
+  for (const m of html.matchAll(/<page |<word xMin="([\d.]+)" yMin="([\d.]+)"[^>]*>([^<]*)<\/word>/g)) {
+    if (m[0] === '<page ') page++;
+    else out.push({ page, x: Number(m[1]), y: Number(m[2]), text: m[3] });
+  }
+  return out;
 }
 
 describe.skipIf(!has('soffice') || !has('pdftoppm'))('ODT and DOCX render alike in LibreOffice', () => {
@@ -68,5 +84,34 @@ describe.skipIf(!has('soffice') || !has('pdftoppm'))('ODT and DOCX render alike 
     for (let i = 0; i < perPage.length; i++) expect(perPage[i], `page ${i + 1} diff %`).toBeLessThan(12);
     const mean = perPage.reduce((s, d) => s + d, 0) / perPage.length;
     expect(mean, 'mean diff %').toBeLessThan(6);
+  });
+
+  // ODF lays a page border + padding inside the margin; the export carves them out of
+  // fo:margin-*, so the border must move no word and add no page in the render.
+  it.skipIf(!has('pdftotext'))('a page border leaves the rendered text in place', { timeout: 300000 }, async () => {
+    const doc = { type: 'doc', content: Array.from({ length: 90 }, (_, i) => ({
+      type: 'paragraph',
+      content: [{ type: 'text', text: `Absatz ${i + 1}: Wasser fließt den Berg hinab und sammelt sich unten im Tal.` }],
+    })) };
+    const decor = { border: { widthPt: 1, color: '#000000', paddingCm: 0.2 } };
+    const args = (d?: object) => [doc, undefined, 'portrait', undefined, null, 'A4', undefined,
+      undefined, 'add', false, undefined, undefined, false, undefined, d] as const;
+    mkdirSync(DIR, { recursive: true });
+    writeFileSync(`${DIR}/plain.odt`, await buildOdt(...(args() as any)));
+    writeFileSync(`${DIR}/decor.odt`, await buildOdt(...(args(decor) as any)));
+
+    const plain = wordBoxes(toPdf('plain.odt', 'plain'));
+    const decorated = wordBoxes(toPdf('decor.odt', 'decor'));
+    expect(decorated.length, 'same word count').toBe(plain.length);
+    expect(decorated[decorated.length - 1].page, 'same page count').toBe(plain[plain.length - 1].page);
+    for (let i = 0; i < plain.length; i++) {
+      const a = plain[i];
+      const b = decorated[i];
+      expect(b.text, `word ${i}`).toBe(a.text);
+      expect(b.page, `page of "${a.text}"`).toBe(a.page);
+      if (Math.abs(b.x - a.x) > 1 || Math.abs(b.y - a.y) > 1) {
+        expect.fail(`"${a.text}" moved: ${a.x},${a.y} -> ${b.x},${b.y} (page ${a.page})`);
+      }
+    }
   });
 });
