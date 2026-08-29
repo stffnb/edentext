@@ -63,3 +63,31 @@ describe('a right-to-left page', () => {
     expect(importDocx(bytes).rtl).toBe(false);
   });
 });
+
+// The alignment default follows the base direction: an unset rtl paragraph sits at the
+// right edge, so that edge is suppressed on import and the off-edge kept.
+describe('paragraph alignment under w:bidi', () => {
+  const P = (attrs: object) => ({ type: 'paragraph', attrs, content: [{ type: 'text', text: 'שלום' }] });
+
+  it('suppresses the rtl default edge, keeps the off-edge', async () => {
+    const doc: any = { type: 'doc', content: [
+      P({ dir: 'rtl', textAlign: 'right' }), P({ dir: 'rtl', textAlign: 'left' }), P({ textAlign: 'right' }),
+    ] };
+    const back = (importDocx(await buildDocx(doc)).content as any).content;
+    expect(back[0].attrs?.textAlign ?? null).toBeNull();
+    expect(back[0].attrs?.dir).toBe('rtl');
+    expect(back[1].attrs?.textAlign).toBe('left');
+    expect(back[2].attrs?.textAlign).toBe('right');
+  });
+
+  // LibreOffice spells an rtl paragraph's physical left as w:jc="start" (probed).
+  it('reads w:jc="start" as the physical left edge', async () => {
+    const doc: any = { type: 'doc', content: [P({ dir: 'rtl', textAlign: 'left' })] };
+    const files = unzipSync(await buildDocx(doc));
+    files['word/document.xml'] = strToU8(strFromU8(files['word/document.xml'])
+      .replace('<w:jc w:val="left"/>', '<w:jc w:val="start"/>'));
+    const back = (importDocx(zipSync(files)).content as any).content;
+    expect(back[0].attrs?.textAlign).toBe('left');
+    expect(back[0].attrs?.dir).toBe('rtl');
+  });
+});

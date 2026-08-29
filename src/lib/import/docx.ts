@@ -1005,11 +1005,15 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   const directJc = fc(ppr, 'jc');
   const jcVal = directJc ? wVal(directJc) : ctx.styles.paragraphAlign(pStyle ? wVal(pStyle) : null);
   const styleId = styleIdOf(ppr, ctx);
+  // w:bidi — the block's own base direction; resolved first, alignment suppression
+  // depends on it (the base direction decides which edge is the unset default).
+  const directBidi = fc(ppr, 'bidi');
+  const bidi = directBidi ? onOff(directBidi) : ctx.styles.paragraphBidi(styleId);
   // Only DIRECT w:pPr counts as formatting on the block; the style's own lives in the
   // registry — except in a cell, which carries no style name, so its chain is baked in
   // over the table style's w:pPr (probed: that ranks *below* the paragraph style).
   const attrs = blockAttrs(ppr, kind, level, directJc ? jcVal : null,
-    kind === 'cell' ? ctx.styles.paragraphSpacing(styleId, ctx.cellSpacing) : {});
+    kind === 'cell' ? ctx.styles.paragraphSpacing(styleId, ctx.cellSpacing) : {}, bidi ?? ctx.pageRtl);
   applyContextualSpacing(el, ppr, ctx, styleId, attrs);
   // The editor has no rule node, so Word's horizontal line becomes its paragraph's own
   // bottom rule — a real w:pBdr keeps precedence, only one line can be drawn.
@@ -1038,10 +1042,8 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // at all; below that switch it says what is already true.
   const directSah = fc(ppr, 'suppressAutoHyphens');
   if (ctx.hyphenate && directSah && onOff(directSah)) attrs.noHyphenation = true;
-  // w:bidi — the block's own base direction; the section's own is inheritance, not
-  // formatting, so only a block that differs from it carries the attr.
-  const directBidi = fc(ppr, 'bidi');
-  const bidi = directBidi ? onOff(directBidi) : ctx.styles.paragraphBidi(styleId);
+  // The section's own base direction is inheritance, not formatting, so only a block
+  // that differs from it carries the attr.
   if (bidi != null && bidi !== ctx.pageRtl) attrs.dir = bidi ? 'rtl' : 'ltr';
   // Tab stops: a direct w:tabs replaces the style's, which the resolver walks for.
   const directTabs = fc(ppr, 'tabs');
@@ -1143,12 +1145,18 @@ function headingLevelOf(ppr: Element | null, ctx: Ctx): number | null {
 // Spacing = the style chain's w:spacing (styleSpacing, resolved by the caller) overridden
 // per-attribute by DIRECT w:pPr; indent comes from direct w:pPr only. jcVal is resolved
 // through the chain by the caller.
-function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number | null, jcVal: string | null, styleSpacing: ParaSpacing): Record<string, unknown> {
+function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number | null, jcVal: string | null, styleSpacing: ParaSpacing, rtl = false): Record<string, unknown> {
   const attrs: Record<string, unknown> = {};
 
   if (jcVal === 'center') attrs.textAlign = 'center';
   else if (jcVal === 'both' || jcVal === 'distribute') attrs.textAlign = 'justify';
-  else if (jcVal === 'right' || jcVal === 'end') attrs.textAlign = 'right';
+  else {
+    // start/end are physical like left/right: LibreOffice writes an rtl paragraph's
+    // physical left as w:jc="start" (probed). The direction's own edge stays unset.
+    const align = jcVal === 'right' || jcVal === 'end' ? 'right'
+      : jcVal === 'left' || jcVal === 'start' ? 'left' : null;
+    if (align && align !== (rtl ? 'right' : 'left')) attrs.textAlign = align;
+  }
 
   const sp = ppr ? fc(ppr, 'spacing') : null;
   const before = (sp ? intAttr(sp, W, 'before') : null) ?? styleSpacing.before ?? null;
