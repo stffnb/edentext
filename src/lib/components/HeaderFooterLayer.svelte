@@ -8,6 +8,7 @@
   import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
   import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
   import { formatOrdinal } from '../utils/orderedListTypes';
+  import { chapterOn, type ChapterStart } from '../utils/chapterField';
   import { t } from '../i18n/i18n.svelte';
 
   let {
@@ -58,7 +59,7 @@
     hfTick: number;
     extraHfSections?: HfSet[];
     sectionStartPages?: number[];
-    chapterStarts?: { page: number; level: number; text: string; atTop?: boolean }[];
+    chapterStarts?: ChapterStart[];
     /** False in a split view's second pane: it draws the zones, it does not edit them. */
     interactive?: boolean;
   } = $props();
@@ -216,18 +217,6 @@
   // actions below re-run on (the map's identity changes with each pagination pass).
   type ZoneParams = [number, number, string, unknown, HfZone];
 
-  // The chapter a page runs under (ODF text:chapter, probed): the header shows the
-  // chapter in force at the page's top — a heading counts there only once it opens a
-  // page — while the footer shows the last one begun on the page.
-  function chapterOn(page: number, level: number, zone: HfZone): string {
-    let text = '';
-    for (const c of chapterStarts) {
-      if (c.page > page || (zone === 'header' && c.page === page && !c.atTop)) continue;
-      if (c.level <= level) text = c.text;
-    }
-    return text;
-  }
-
   // The zone's tabs: static HTML no ProseMirror plugin reaches. The advances are layout
   // px, so only a content change invalidates them — not the zoom transform.
   function layOutTabs(node: HTMLElement, _params: ZoneParams) {
@@ -254,7 +243,7 @@
     const apply = ([page, total, , , zone]: ZoneParams) => {
       for (const el of Array.from(node.querySelectorAll('[data-page-field]'))) {
         const kind = el.getAttribute('data-page-field');
-        if (kind === 'chapter') el.textContent = chapterOn(page, Number(el.getAttribute('data-level')) || 1, zone);
+        if (kind === 'chapter') el.textContent = chapterOn(chapterStarts, page, Number(el.getAttribute('data-level')) || 1, zone);
         // The count stays decimal, as the field LibreOffice and Word write does.
         else el.textContent = kind === 'count' ? String(total) : pageLabel(page);
       }
@@ -368,7 +357,7 @@
     if (!liveMount) return;
     for (const el of Array.from(liveMount.querySelectorAll('[data-page-field]'))) {
       const kind = el.getAttribute('data-page-field');
-      if (kind === 'chapter') el.textContent = chapterOn(editingPage, Number(el.getAttribute('data-level')) || 1, hfActive ?? 'header');
+      if (kind === 'chapter') el.textContent = chapterOn(chapterStarts, editingPage, Number(el.getAttribute('data-level')) || 1, hfActive ?? 'header');
       else el.textContent = kind === 'count' ? String(numPages) : pageLabel(editingPage);
     }
     // Content height (unscaled by the zoom transform) drives the active zone's frame.

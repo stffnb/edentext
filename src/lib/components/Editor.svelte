@@ -10,6 +10,7 @@
   import { isInTable, selectedRect } from '@tiptap/pm/tables';
   import { currentCellFormat, currentCellFormula, currentCellName, guessFormula } from '../editor/extensions/tableFormula';
   import type { CellFormat } from '../utils/cellFormat';
+  import type { ChapterStart } from '../utils/chapterField';
   import TableToolbar from './TableToolbar.svelte';
   import TableSplitDialog from './TableSplitDialog.svelte';
   import TableSortDialog from './TableSortDialog.svelte';
@@ -95,17 +96,17 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let sectionStartPages = $state<number[]>([]);
   // Where each heading starts, for the running head's chapter field. Only collected
   // when a zone actually shows one — it costs a layout read per heading.
-  let chapterStarts = $state<{ page: number; level: number; text: string; atTop: boolean }[]>([]);
+  let chapterStarts = $state<ChapterStart[]>([]);
   let wantsChapters = $derived(hfUsesChapterField([
     { header: headerDoc, footer: footerDoc, headerFirst: headerFirstDoc, footerFirst: footerFirstDoc,
       differentFirstPage, headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven },
     ...extraHfSections,
   ]));
 
-  function collectChapterStarts(): { page: number; level: number; text: string; atTop: boolean }[] {
+  function collectChapterStarts(): ChapterStart[] {
     if (!editor || editor.isDestroyed) return [];
     const vm = readVerticalMargins(editor.view.dom as HTMLElement);
-    const out: { page: number; level: number; text: string; atTop: boolean }[] = [];
+    const out: ChapterStart[] = [];
     editor.state.doc.descendants((node, pos) => {
       if (node.type.name !== 'heading') return;
       const text = node.textContent.trim();
