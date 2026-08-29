@@ -382,6 +382,13 @@
 .paper .tiptap .image-node[data-wrap]:not([data-anchor-page]) {
   z-index: 1;
 }
+/* No text beside a topBottom band means the next block too: a short one would slot
+   into the clearance gap above the sunk float. A spacer already starts a new page,
+   and a block holding the band-sharing partner frame (wrapAlign pair) must not clear. */
+.paper .tiptap :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, blockquote):has(.image-node[data-wrap='topBottom']:not([data-anchor-page]))
+  + :not([data-page-break-spacer], :has(.image-node[data-wrap='topBottom'])) {
+  clear: both;
+}
 .paper .tiptap .image-rotor {
   position: absolute;
   left: 50%;
