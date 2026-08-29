@@ -412,7 +412,7 @@ function scanTocField(p: Element, st: TocFieldState): { emit: boolean } {
         }
       } else if (c.localName === 'instrText' && st.fieldDepth > 0) {
         st.instr[st.fieldDepth] += c.textContent ?? '';
-        if (st.tocDepth < 0 && /\b(TOC|INDEX)\b/.test(st.instr[st.fieldDepth])) {
+        if (st.tocDepth < 0 && /\b(TOC|INDEX|BIBLIOGRAPHY)\b/.test(st.instr[st.fieldDepth])) {
           st.tocDepth = st.fieldDepth;
           emit = true;
         }
@@ -557,7 +557,12 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         flush();
         // The field carries no heading of its own — Word's sits in a separate paragraph.
         const instr = instrTextOf(el);
-        out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', maxLevel: tocMaxLevel(instr), index: tocIndexKind(instr), ...tocPageNumbers(instr) } });
+        const index = tocIndexKind(instr);
+        // maxLevel only where the field has levels — the ODF side sets none for the
+        // alphabetical index or the bibliography either.
+        out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', index, ...tocPageNumbers(instr),
+          ...(index === 'alphabetical' || index === 'bibliography' ? {} : { maxLevel: tocMaxLevel(instr) }),
+          ...(index === 'bibliography' ? { citationStyle: ctx.citationStyle } : {}) } });
       }
       if (startedInToc || emit) continue;
       const num = paragraphNum(el, ctx);

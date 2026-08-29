@@ -2384,7 +2384,7 @@ describe('Leg 25: alphabetical index', () => {
     const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
     check('XE emitted', xml.includes('XE &quot;Kaffee&quot;'), xml.match(/w:instr="[^"]*XE[^"]*"/g));
     check('a key rides the term', xml.includes('XE &quot;Kaffee:Bohne&quot;'), xml.match(/w:instr="[^"]*XE[^"]*"/g));
-    check('INDEX field emitted', /w:instr="INDEX[^"]*"/.test(xml), xml.match(/w:instr="[^"]*"/g));
+    check('INDEX field emitted', /<w:instrText[^>]*>\s*INDEX\b/.test(xml), xml.match(/<w:instrText[^>]*>[^<]*/g));
 
     const back = importDocx(bytes);
     check('marks round-trip', terms(back as N) === 'Kaffee Kaffee:Bohne Kaffee', terms(back as N));
@@ -2450,7 +2450,7 @@ describe('Leg 26: bibliography', () => {
     const files = unzipSync(bytes);
     const xml = strFromU8(files['word/document.xml']);
     check('CITATION emitted', xml.includes('w:instr="CITATION &quot;KAF01&quot;"'), xml.match(/w:instr="[^"]*"/g));
-    check('BIBLIOGRAPHY field emitted', xml.includes('w:instr="BIBLIOGRAPHY"'), xml.match(/w:instr="[^"]*"/g));
+    check('BIBLIOGRAPHY field emitted', /<w:instrText[^>]*>\s*BIBLIOGRAPHY\b/.test(xml), xml.match(/<w:instrText[^>]*>[^<]*/g));
 
     const item = files['customXml/item1.xml'] ? strFromU8(files['customXml/item1.xml']) : '';
     check('one source per tag, not per citation', (item.match(/<b:Source>/g) ?? []).length === 2,

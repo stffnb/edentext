@@ -26,7 +26,7 @@ import type { SpacingModel } from '../storage/spacingModel';
 import { HF_DISTANCE_CM, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { DOCX_SEQ_NAME, seqCategoryOf } from '../editor/extensions/caption';
-import { indexKindOf, INDEX_TITLES } from '../editor/extensions/tableOfContents';
+import { indexKindOf, INDEX_TITLES, type IndexKind } from '../editor/extensions/tableOfContents';
 import { citationText, DOCX_BIB_FIELD, DOCX_SOURCE_TYPE, type BibSource } from '../editor/extensions/bibliographyEntry';
 import { DOCX_STYLE_NAME, isCitationStyle, type CitationStyle } from '../utils/citationStyle';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
@@ -558,11 +558,12 @@ function markerFieldXml(instr: string): string {
     + '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
 }
 
-function markerFieldRuns(instr: string): Inline[] {
+function runsFromXml(xml: string): Inline[] {
   // `root` is typed protected; the run components sit under the parsed wrapper element.
-  const xml = `<w:root>${markerFieldXml(instr)}</w:root>`;
-  return (ImportedXmlComponent.fromXmlString(xml) as any).root[0].root as Inline[];
+  return (ImportedXmlComponent.fromXmlString(`<w:root>${xml}</w:root>`) as any).root[0].root as Inline[];
 }
+
+const markerFieldRuns = (instr: string): Inline[] => runsFromXml(markerFieldXml(instr));
 
 // Word's numeric-picture switch per ODF num-format — the SEQ field's own formatting.
 const DOCX_SEQ_SWITCH: Record<NoteNumFormat, string> = {
@@ -2200,6 +2201,49 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
   });
 }
 
+// An index (TOC/INDEX/BIBLIOGRAPHY) as a complex field whose result is the editor's
+// cached rows: Word shows them as saved — Word for Mac never updates fields on open —
+// and a field update regenerates them.
+function indexFieldParagraphs(node: TiptapNode, kind: IndexKind, maxLevel: number, contentWidthCm: number): Paragraph[] {
+  const a = node.attrs ?? {};
+  const noPages = a.pageNumbers === false;
+  const instr =
+    kind === 'alphabetical' ? 'INDEX \\c "1" \\e "\t"'
+    : kind === 'bibliography' ? 'BIBLIOGRAPHY'
+    // `\n` over the whole range: Word's switch takes levels, the editor's index is
+    // all-or-nothing.
+    : kind === 'toc' ? `TOC \\h \\o "1-${maxLevel}"${noPages ? ` \\n 1-${maxLevel}` : ''}`
+    // `\c`, not `\a`: Word's own Insert Table of Figures keeps the label and number
+    // in the entry, which is what the editor's cached entries already read.
+    : `TOC \\h \\c "${DOCX_SEQ_NAME[kind === 'tables' ? 'table' : 'figure']}"${noPages ? ' \\n' : ''}`;
+  const raw = Array.isArray(a.entries) ? (a.entries as { text?: unknown; level?: unknown; page?: unknown; pages?: unknown }[]) : [];
+  const entries = raw.map((e) => ({
+    text: typeof e.text === 'string' ? e.text : '',
+    level: typeof e.level === 'number' && e.level >= 1 ? Math.round(e.level) : 1,
+    pages: Array.isArray(e.pages) && e.pages.length ? e.pages.join(', ') : String(typeof e.page === 'number' ? e.page : 1),
+  }));
+  const noPage = kind === 'bibliography' || noPages;
+  const leader = DOCX_LEADER[String(a.leader ?? '')];
+  const tabCm = typeof a.tabPosCm === 'number' && a.tabPosCm > 0 ? a.tabPosCm : contentWidthCm;
+  const open = runsFromXml(
+    '<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r>'
+    + `<w:r><w:instrText xml:space="preserve"> ${escapeXml(instr)} </w:instrText></w:r>`
+    + '<w:r><w:fldChar w:fldCharType="separate"/></w:r>');
+  const close = runsFromXml('<w:r><w:fldChar w:fldCharType="end"/></w:r>');
+  if (!entries.length) return [new Paragraph({ children: [...open, ...close] })];
+  return entries.map((e, i) => new Paragraph({
+    // One level = 0.5cm, the indent the editor draws (LibreOffice's own Contents 1…5).
+    indent: e.level > 1 ? { left: cmToTwip(0.5 * (e.level - 1)) } : undefined,
+    tabStops: noPage ? undefined : [{ type: TabStopType.RIGHT, position: cmToTwip(tabCm), ...(leader ? { leader } : {}) }],
+    children: [
+      ...(i === 0 ? open : []),
+      ...e.text.split('\n').map((part, li) => new TextRun(li ? { text: part, break: 1 } : { text: part })),
+      ...(noPage ? [] : runsFromXml(`<w:r><w:tab/></w:r><w:r><w:t xml:space="preserve">${escapeXml(e.pages)}</w:t></w:r>`)),
+      ...(i === entries.length - 1 ? close : []),
+    ],
+  }));
+}
+
 // ---- top-level walk --------------------------------------------------------
 function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: number, textBoxes: TextBoxDocx[]): (Paragraph | Table | TableOfContents)[] {
   const out: (Paragraph | Table | TableOfContents)[] = [];
@@ -2218,7 +2262,7 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       textBoxes.push(textBoxDocxDescriptor(node));
       out.push(new Paragraph({ children: [new TextRun({ text: `${TBX}${i}${TBX}` })] }));
     } else if (node.type === 'tableOfContents') {
-      // A real TOC field, populated and linked on field update (features.updateFields).
+      // A real field (TOC/INDEX/BIBLIOGRAPHY) whose result is the editor's cached rows.
       // A list of figures/tables is the same field over a caption label (\c) instead of
       // the heading levels. The title is a plain bold paragraph so it isn't itself
       // listed, and is omitted where the index has none.
@@ -2228,28 +2272,7 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       const depth = Number(node.attrs?.maxLevel);
       const maxLevel = depth >= 1 ? Math.min(MAX_HEADING_LEVEL, depth) : MAX_HEADING_LEVEL;
       if (tocTitle) out.push(new Paragraph({ children: [new TextRun({ text: tocTitle, bold: true, size: 32 })], spacing: { after: cmToTwip(0.3) } }));
-      if (kind === 'alphabetical') {
-        // Word's INDEX field, which it fills from the XE entries on a field update —
-        // the same contract the TOC field above works under. No \h: a letter heading
-        // between the entries is a row the editor's index never draws.
-        out.push(new Paragraph({ children: [new SimpleField('INDEX \\c "1" \\e "\t"')] }));
-        continue;
-      }
-      if (kind === 'bibliography') {
-        // Word's BIBLIOGRAPHY field, filled from the sources in the custom-XML part on a
-        // field update — the same contract the TOC and INDEX fields work under.
-        out.push(new Paragraph({ children: [new SimpleField('BIBLIOGRAPHY')] }));
-        continue;
-      }
-      // `\n` over the whole range: Word's switch takes levels, the editor's index is
-      // all-or-nothing.
-      const noPages = node.attrs?.pageNumbers === false
-        ? { pageNumbersEntryLevelsRange: `1-${maxLevel}` } : {};
-      out.push(new TableOfContents(tocTitle, kind === 'toc'
-        ? { hyperlink: true, headingStyleRange: `1-${maxLevel}`, ...noPages }
-        // `\c`, not `\a`: Word's own Insert Table of Figures keeps the label and number
-        // in the entry, which is what the editor's cached entries already read.
-        : { hyperlink: true, captionLabelIncludingNumbers: DOCX_SEQ_NAME[kind === 'tables' ? 'table' : 'figure'], ...noPages }));
+      out.push(...indexFieldParagraphs(node, kind, maxLevel, contentWidthCm));
     }
   }
   return out;
@@ -2550,8 +2573,8 @@ export async function buildDocx(
   const body = (docJson.content ?? []).filter((n) => n.type !== 'noteSection');
   const groups = bodyGroups(body, num, contentWidthCm, textBoxes);
 
-  // A TOC field is empty until its field is calculated; ask the reader to update fields
-  // on open so Word/LibreOffice populate + hyperlink it (standard for TOC fields).
+  // The index fields carry the editor's rows as their cached result; still ask the
+  // reader to update fields on open, so a capable one repaginates + hyperlinks them.
   const hasToc = (docJson.content ?? []).some(n => n.type === 'tableOfContents');
 
   // One set per section; a document with no section breaks has exactly one. The flat
