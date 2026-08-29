@@ -89,8 +89,12 @@ const fixture: N = {
         { type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: [240], borderTop: 'none', borderRight: '2.25pt solid #FF0000' }, content: [P(null, T('B2'))] },
       ] },
     ] },
+    // A list and a nested image survive only in a Writer text frame — a drawing-object
+    // text box flattens both, so this guards the Frame-parent discriminator.
     TBX({ width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 },
-      P(null, T('box text')), P(null, T('second para'))),
+      P(null, T('box text')),
+      { type: 'bulletList', content: [LI(P(null, T('box bullet')))] },
+      P(null, T('second para'), IMGN(40, 20))),
     TBX({ width: 192, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 },
       P(null, T('in ellipse'))),
     P(null, T('The end.')),
@@ -199,7 +203,9 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     check('LO: both text boxes survive', boxes.length === 2, (res.content.content ?? []).map((n: N) => n.type));
     const [plain, ellipse] = boxes;
     check('LO: box geometry survives (288×96)', Math.abs((plain?.attrs?.width ?? 0) - 288) <= 3 && Math.abs((plain?.attrs?.height ?? 0) - 96) <= 3, plain?.attrs);
-    check('LO: box paragraphs survive', plain?.content?.length === 2, plain?.content);
+    check('LO: box content survives (para, list, para)', plain?.content?.length === 3
+      && plain?.content?.[1]?.type === 'bulletList', plain?.content?.map((n: N) => n.type));
+    check('LO: box keeps its nested image', JSON.stringify(plain).includes('"image"'), plain?.content);
     check('LO: ellipse kind + fill survive', ellipse?.attrs?.shapeKind === 'ellipse' && String(ellipse?.attrs?.fillColor).toUpperCase() === '#FFEE00', ellipse?.attrs);
     const brot = ellipse?.attrs?.rotation ?? 0;
     check('LO: ellipse rotation survives (~30°)', Math.abs(brot - 30) <= 2 || Math.abs(brot - 330) <= 2, brot);

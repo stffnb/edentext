@@ -30,6 +30,15 @@ describe('note numbering', () => {
     expect([0, 1].map((i) => noteLabel(i, 'footnote', s))).toEqual(['[4]', '[5]']);
   });
 
+  // The affixes are note-area text: LibreOffice keeps the anchor a bare number (probed).
+  it('keeps the prefix/suffix off the anchor', () => {
+    const s = withFootnote({ prefix: '(', suffix: ')' });
+    expect(noteLabel(0, 'footnote', s, undefined, false)).toBe('1');
+    const refs = [REF('a', 'footnote'), REF('b', 'footnote')];
+    expect([...noteLabels(refs, s, undefined, false).values()]).toEqual(['1', '2']);
+    expect([...noteLabels(refs, s).values()]).toEqual(['(1)', '(2)']);
+  });
+
   it('keeps a note the file numbered by hand', () => {
     expect(noteLabel(0, 'footnote', DEFAULT_NOTE_SETTINGS, '*')).toBe('*');
   });

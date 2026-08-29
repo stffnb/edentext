@@ -2203,6 +2203,18 @@ describe('Leg 21: page background, page border and watermark', () => {
       back.watermark);
   });
 
+  it('ODT: border and padding are carved out of the margins, and grown back', async () => {
+    // ODF lays the border + fo:padding inside fo:margin-*; the text area must stay
+    // at the configured margins, so the export shrinks them by 0.2cm + 1pt (0.035cm).
+    const styles = strFromU8(unzipSync(await odt())['styles.xml']);
+    check('top margin shrunk', styles.includes('fo:margin-top="2.765cm"'),
+      styles.match(/<style:page-layout-properties[^>]*/)?.[0]);
+    check('left margin shrunk', styles.includes('fo:margin-left="2.265cm"'));
+    const back = importOdt(await odt()).margins;
+    check('margins reconstructed', !!back && Math.abs(back.top - 3) < 0.01
+      && Math.abs(back.left - 2.5) < 0.01 && Math.abs(back.right - 1.5) < 0.01, back);
+  });
+
   it('an undecorated document writes none of it', async () => {
     const styles = strFromU8(unzipSync(await buildOdt(doc, margins, 'portrait'))['styles.xml']);
     check('no page background', !styles.includes('fo:background-color'), styles.match(/fo:background-color="[^"]*"/g));
