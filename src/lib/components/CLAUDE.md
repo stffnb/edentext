@@ -224,7 +224,9 @@ One number per rendered line in the left margin. There is no CSS line box to rea
 each block's contents are Range-selected and its client rects merged by vertical overlap
 are its lines (a super/subscript or formula run must not open a phantom line); the count
 runs from the document start (or restarts per page), covering list and column lines like
-both word processors but not tables, frames or indexes. A line past the page surface is
+both word processors but not tables, frames or indexes — though a top-level text box
+counts as the one empty anchor-paragraph line the file gives it (probed in Word), and a
+floating frame's band is no line of its anchor paragraph. A line past the page surface is
 skipped, or its number would print into the page gap. Re-measured on each edit and each
 pagination settle — the whole document each time, which is the ceiling noted in the file.
 

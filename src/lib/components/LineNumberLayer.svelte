@@ -60,7 +60,15 @@
   function lineTops(block: Element, origin: number): { top: number; height: number }[] {
     const range = document.createRange();
     range.selectNodeContents(block);
-    const rects = Array.from(range.getClientRects()).filter((r) => r.height > 0);
+    let rects = Array.from(range.getClientRects()).filter((r) => r.height > 0);
+    // A frame floated out of the flow (wrapped image, text box) is no text line of its
+    // anchor paragraph — its band would otherwise count as an extra line.
+    const frames = block.querySelectorAll('.image-node[data-wrap], .textbox-node');
+    if (frames.length) {
+      const fr = Array.from(frames, (f) => f.getBoundingClientRect());
+      rects = rects.filter((r) => !fr.some((f) =>
+        r.top >= f.top - 1 && r.bottom <= f.bottom + 1 && r.left >= f.left - 1 && r.right <= f.right + 1));
+    }
     if (!rects.length) {
       const r = block.getBoundingClientRect();
       return r.height > 0 ? [{ top: r.top - origin, height: r.height }] : [];
@@ -72,7 +80,7 @@
     for (const r of rects.slice().sort((a, b) => a.top - b.top)) {
       const cur = lines[lines.length - 1];
       const overlap = cur ? Math.min(cur.bottom, r.bottom) - Math.max(cur.top, r.top) : 0;
-      if (cur && overlap > r.height / 2) {
+      if (cur && overlap > Math.min(cur.bottom - cur.top, r.height) / 2) {
         cur.top = Math.min(cur.top, r.top);
         cur.bottom = Math.max(cur.bottom, r.bottom);
       } else {
@@ -90,15 +98,22 @@
     let count = 0;
     let page = 1;
     // Text blocks count — list items and column lines too, as in both word processors;
-    // a table, an image frame or an index is not a numbered line in either.
+    // a table, an image frame or an index is not a numbered line in either. A top-level
+    // text box counts as one empty line: in the file it hangs off an empty anchor
+    // paragraph, and both word processors count that line (probed in Word).
     const blocks = view.dom.querySelectorAll(
       ':scope > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, blockquote),'
+      + ' :scope > .textbox-node,'
       + ' :scope > :is(ul, ol) li > p,'
       + ' :scope > .columns-node :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)');
     for (const block of Array.from(blocks)) {
       if (block.closest('table')) continue;
-      const empty = !block.textContent?.trim();
-      for (const line of lineTops(block, origin)) {
+      const anchor = block.classList.contains('textbox-node');
+      const empty = anchor || !block.textContent?.trim();
+      const lines = anchor
+        ? [{ top: block.getBoundingClientRect().top - origin, height: 18 }]
+        : lineTops(block, origin);
+      for (const line of lines) {
         const linePage = pageAt(line.top);
         if (lineNumbering.restart === 'page' && linePage !== page) { page = linePage; count = 0; }
         // A trailing block pushed past the page surface (into the gap) is no line of
