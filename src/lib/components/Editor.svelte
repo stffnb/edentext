@@ -42,7 +42,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { applyPageSizeVars, pageDimsCm, type PageFormat } from '../storage/pageFormat';
   import { MAX_PAGE_COLUMNS } from '../storage/theme';
   import { DEFAULT_HF_DISTANCES, hfIsEmpty, hfUsesChapterField, type HfDoc, type HfZone, type HfDistances, type HfSet } from '../storage/headerFooter';
-  import { FORCE_PAGE_RECALC, PAGE_GAP, pageOfElement, readVerticalMargins, type TableBreakBand } from '../editor/extensions/pageBreaks';
+  import { FORCE_PAGE_RECALC, PAGE_GAP, pageOfElement, readVerticalMargins, topInEditor, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { findBookmark } from '../editor/extensions/bookmark';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
   import { fitPagesZoom, wheelZoomFactor } from '../utils/zoom';
@@ -95,23 +95,28 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let sectionStartPages = $state<number[]>([]);
   // Where each heading starts, for the running head's chapter field. Only collected
   // when a zone actually shows one — it costs a layout read per heading.
-  let chapterStarts = $state<{ page: number; level: number; text: string }[]>([]);
+  let chapterStarts = $state<{ page: number; level: number; text: string; atTop: boolean }[]>([]);
   let wantsChapters = $derived(hfUsesChapterField([
     { header: headerDoc, footer: footerDoc, headerFirst: headerFirstDoc, footerFirst: footerFirstDoc,
       differentFirstPage, headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven },
     ...extraHfSections,
   ]));
 
-  function collectChapterStarts(): { page: number; level: number; text: string }[] {
+  function collectChapterStarts(): { page: number; level: number; text: string; atTop: boolean }[] {
     if (!editor || editor.isDestroyed) return [];
-    const grid = readVerticalMargins(editor.view.dom as HTMLElement).grid;
-    const out: { page: number; level: number; text: string }[] = [];
+    const vm = readVerticalMargins(editor.view.dom as HTMLElement);
+    const out: { page: number; level: number; text: string; atTop: boolean }[] = [];
     editor.state.doc.descendants((node, pos) => {
       if (node.type.name !== 'heading') return;
       const text = node.textContent.trim();
       const el = editor!.view.nodeDOM(pos) as HTMLElement | null;
       if (!text || !el || el.nodeType !== 1) return;
-      out.push({ page: pageOfElement(editor!.view, el, grid), level: (node.attrs.level as number) ?? 1, text });
+      const top = topInEditor(editor!.view, el);
+      const page = vm.grid.pageAt(top);
+      // Nothing above the heading on its page (within half a line): the page's running
+      // head counts it, a heading below other content only counts from the next page.
+      const atTop = top - (vm.grid.topOf(page) + vm.top) < 10;
+      out.push({ page, level: (node.attrs.level as number) ?? 1, text, atTop });
     });
     return out;
   }

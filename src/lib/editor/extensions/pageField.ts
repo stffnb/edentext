@@ -24,9 +24,9 @@ function pageFieldNode(name: string, kind: 'number' | 'count') {
 export const PageNumber = pageFieldNode('pageNumber', 'number');
 export const PageCount = pageFieldNode('pageCount', 'count');
 
-// The chapter heading in force on the page — the running head every manual has. The
-// same per-page patching applies; `text` is the file's cached name, shown until the
-// layer resolves the page's own. Round-trips to ODF <text:chapter>.
+// The chapter heading in force on the page — the running head every manual has (in a
+// header the chapter at the page's top, in a footer the last begun on it, as
+// LibreOffice resolves its <text:chapter>); `text` is the file's cached name.
 export const ChapterField = Node.create({
   name: 'chapterField',
   group: 'inline',
