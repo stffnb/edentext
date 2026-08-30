@@ -439,7 +439,11 @@ export const TabStops = Extension.create({
             try { layout = measure(view); } catch { return; }
             const { widths, breaks } = layout;
             const next = widths.map((w) => `${w.pos}:${w.width}:${w.leader ?? ''}`).join(',') + `|${breaks.join(',')}`;
-            if (next === key) return;
+            // Replacing the document maps every decoration away, so a layout identical to
+            // the last one — the two forms of one letter template — has to be dispatched
+            // again rather than recognised as already applied.
+            const live = tabStopsKey.getState(view.state)?.find().length ?? 0;
+            if (next === key && live === widths.length + breaks.length) return;
             key = next;
             const decos: Decoration[] = widths.map((w) =>
               // margin-LEFT: the gap is the tab's own advance, so a caret placed after
