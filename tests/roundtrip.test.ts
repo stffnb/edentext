@@ -48,6 +48,14 @@ const IMGN = (width: number, height: number, alt?: string, rotation?: number, wr
     ...(wrapOffsetY ? { wrapOffsetY } : {}),
   } });
 const TBX = (attrs: N, ...content: N[]): N => ({ type: 'textBox', attrs, content });
+// A box is inline, so it rides a paragraph; most fixtures give it one of its own.
+const PBX = (attrs: N, ...content: N[]): N => P(null, TBX(attrs, ...content));
+// Every text box in a document, at whatever depth.
+const boxesIn = (n: N, out: N[] = []): N[] => {
+  if (n?.type === 'textBox') out.push(n);
+  for (const c of n?.content ?? []) boxesIn(c, out);
+  return out;
+};
 const COLS = (attrs: N, ...content: N[]): N => ({ type: 'columns', attrs, content });
 
 const margins = { top: 3, bottom: 2, left: 2.5, right: 1.5 };
@@ -96,8 +104,8 @@ const fixture: N = {
     P(null, T('rotated: '), IMGN(120, 80, 'Rotated', 30)),
     P(null, T('wrapped left '), IMGN(90, 60, 'Float', 0, 'left', 2.5), T(' text flows beside it')),
     P(null, T('top/bottom '), IMGN(70, 50, 'Banner', 0, 'topBottom')),
-    TBX({ width: 288, height: 96 }, P(null, T('box para one')), P(null, T('box '), T('bold', { type: 'bold' }))),
-    TBX({ width: 192, height: 80, wrap: 'right', wrapOffset: 6, wrapOffsetY: 1.5, shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, P(null, T('in ellipse'))),
+    PBX({ width: 288, height: 96 }, P(null, T('box para one')), P(null, T('box '), T('bold', { type: 'bold' }))),
+    PBX({ width: 192, height: 80, wrap: 'right', wrapOffset: 6, wrapOffsetY: 1.5, shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, P(null, T('in ellipse'))),
     COLS({ count: 2, gapCm: 0.5 }, P(null, T('newspaper column text one')), P(null, T('newspaper column text two'))),
     { type: 'bulletList', content: [
       LI(P(null, T('bullet one'))),
@@ -1167,18 +1175,15 @@ describe('Leg 6: text boxes / shapes (ODT)', () => {
     type: 'doc',
     content: [
       P(null, T('before')),
-      TBX({ width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 },
+      PBX({ width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 },
         P(null, T('plain box')),
         P(null, T('with '), T('marks', { type: 'italic' })),
       ),
-      TBX({ width: 192, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 },
+      PBX({ width: 192, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 },
         P(null, T('in ellipse')),
       ),
-      TBX({ width: 192, height: 80, wrap: 'left', shapeKind: 'roundRect', fillColor: null, strokeColor: null },
+      PBX({ width: 192, height: 80, wrap: 'left', shapeKind: 'roundRect', fillColor: null, strokeColor: null },
         P(null, T('transparent round')),
-      ),
-      TBX({ width: 192, height: 96, spaceBefore: 6, spaceAfter: 8 },
-        P(null, T('spaced box')),
       ),
       P(null, T('after')),
     ],
@@ -1197,13 +1202,10 @@ describe('Leg 6: text boxes / shapes (ODT)', () => {
 
     const res = importOdt(bytes);
     check('no warnings on own export', res.warnings.length === 0, res.warnings);
-    const boxes = (res.content.content ?? []).filter((n: N) => n.type === 'textBox');
-    check('all 4 boxes round-trip', boxes.length === 4, (res.content.content ?? []).map((n: N) => n.type));
+    const boxes = boxesIn(res.content);
+    check('all 3 boxes round-trip', boxes.length === 3, (res.content.content ?? []).map((n: N) => n.type));
 
-    const [plain, ellipse, round, spaced] = boxes;
-    check('anchor paragraph carries the box spacing',
-      xml.includes('style:name="TbxP4"') && xml.includes('fo:margin-top="6pt" fo:margin-bottom="8pt"'), xml.slice(0, 0));
-    check('box spacing round-trips', spaced?.attrs?.spaceBefore === 6 && spaced?.attrs?.spaceAfter === 8, spaced?.attrs);
+    const [plain, ellipse, round] = boxes;
     check('plain box: size 288×96, defaults suppressed', plain?.attrs?.width === 288 && plain?.attrs?.height === 96 &&
       plain?.attrs?.fillColor === undefined && plain?.attrs?.strokeColor === undefined && plain?.attrs?.shapeKind === undefined, plain?.attrs);
     check('plain box: both paragraphs + marks survive',
@@ -1249,16 +1251,17 @@ describe('Leg 7: foreign shapes/text boxes → importOdt', () => {
 
     const f = importOdt(foreign);
     const c = f.content.content!;
-    const boxes = c.filter((n: N) => n.type === 'textBox');
-    check('5 supported shapes imported', boxes.length === 5, c.map((n: N) => n.type));
+    const boxes = boxesIn(f.content);
+    check('6 supported shapes imported', boxes.length === 6, c.map((n: N) => n.type));
 
-    const [floatBox, rect, ellipse, star, line] = boxes;
+    const [floatBox, rect, ellipse, star, line, inCell] = boxes;
     check('frame: free x/y collapses to wrap side (right)', floatBox?.attrs?.wrap === 'right', floatBox?.attrs);
     check('frame: 2in → 192px, min-height 1in → 96px', floatBox?.attrs?.width === 192 && floatBox?.attrs?.height === 96, floatBox?.attrs);
     check('frame: fill + stroke from graphic style', floatBox?.attrs?.fillColor === '#CCFFCC' && floatBox?.attrs?.strokeColor === '#003300', floatBox?.attrs);
     check('frame: stroke width 0.0292in → ≈2.1pt', Math.abs((floatBox?.attrs?.strokeWidthPt ?? 0) - 2.1) < 0.05, floatBox?.attrs);
     check('frame: both paragraphs kept', floatBox?.content?.length === 2, floatBox?.content);
-    check('frame: anchor paragraph text kept', c[0]?.content?.map((n: N) => n.text).join('') === 'anchor text continues', c[0]);
+    check('frame: the text around it is kept, the box between the two runs',
+      c[0]?.content?.map((n: N) => n.text ?? `[${n.type}]`).join('') === 'anchor [textBox]text continues', c[0]);
     check('rect: imports as plain textbox, transparent', rect?.attrs?.shapeKind === undefined && rect?.attrs?.fillColor === null && rect?.attrs?.strokeColor === null, rect?.attrs);
     check('rect: text preserved', rect?.content?.[0]?.content?.[0]?.text === 'rect text', rect?.content);
     check('custom-shape ellipse: shapeKind + geometry', ellipse?.attrs?.shapeKind === 'ellipse' && ellipse?.attrs?.width === 192 && ellipse?.attrs?.height === 96, ellipse?.attrs);
@@ -1268,10 +1271,9 @@ describe('Leg 7: foreign shapes/text boxes → importOdt', () => {
     check('draw:line: a plain line, no heads declared', line?.attrs?.shapeKind === 'line', line?.attrs);
     check('draw:line: 5cm wide and flat', line?.attrs?.width === 189 && line?.attrs?.height === 0, line?.attrs);
 
-    const table = c.find((n: N) => n.type === 'table');
-    const cellBlocks = table?.content?.[0]?.content?.[0]?.content ?? [];
-    check('box in cell flattened into the cell', cellBlocks.some((b: N) => b.content?.some((t: N) => t.text === 'box in cell')), cellBlocks);
-    check('cell flatten warning reported', f.warnings.includes('Text boxes nested in table cells or other text boxes were flattened'), f.warnings);
+    // A box reaches a cell through the cell's paragraph, as it does in Word.
+    check('box in cell kept as a box', inCell?.content?.[0]?.content?.[0]?.text === 'box in cell', inCell);
+    check('no flatten warning', !f.warnings.some(w => /nested in table cells/.test(w)), f.warnings);
   });
 });
 
@@ -2318,12 +2320,11 @@ describe('Leg 23: recorded revisions', () => {
 
 describe('Leg 24: preset shapes beyond rect / round-rect / ellipse', () => {
   const shape = (kind: string, text: string): N =>
-    TBX({ width: 200, height: 120, shapeKind: kind }, P(null, T(text)));
+    PBX({ width: 200, height: 120, shapeKind: kind }, P(null, T(text)));
   const doc: N = { type: 'doc', content: [
     shape('triangle', 'tri'), shape('star5', 'star'), shape('rightArrow', 'arrow'),
   ] };
-  const kinds = (back: N) => (back.content.content ?? [])
-    .filter((n: N) => n.type === 'textBox').map((n: N) => n.attrs?.shapeKind).join(',');
+  const kinds = (back: N) => boxesIn(back.content).map((n: N) => n.attrs?.shapeKind).join(',');
 
   it('ODT: each preset gets its draw:type, its own path and its text area', async () => {
     const bytes = await buildOdt(doc, margins, 'portrait');
@@ -2544,8 +2545,8 @@ describe('Leg 29: lines and arrows (ODT + DOCX)', () => {
     attrs: { width: 200, height: 60, shapeKind: kind, strokeColor: '#000000', ...(flipV ? { flipV: true } : {}) },
     content: [P(null)],
   });
-  const doc: N = { type: 'doc', content: [P(null, T('above')), line('lineArrow', true), P(null, T('below'))] };
-  const boxOf = (res: N): N => (res.content.content ?? []).find((n: N) => n.type === 'textBox');
+  const doc: N = { type: 'doc', content: [P(null, T('above')), P(null, line('lineArrow', true)), P(null, T('below'))] };
+  const boxOf = (res: N): N => boxesIn(res.content)[0];
 
   it('ODT: a line is two endpoints, not a frame', async () => {
     const bytes = await buildOdt(doc, margins);
@@ -2622,13 +2623,13 @@ describe('Leg 28: a cell formula (ODT + DOCX)', () => {
 // captioned figure, and what a caption that stays with its picture would build.
 describe('Leg 30: a figure frame (picture + caption in one box)', () => {
   const SEQ: N = { type: 'sequenceField', attrs: { category: 'figure', format: '1', number: 1 } };
-  const frame = TBX(
+  const frame = PBX(
     { width: 240, height: 190, wrap: 'topBottom', wrapAlign: 'center', fillColor: null, strokeColor: null },
     P(null, IMGN(240, 160, 'pic')),
     P({ styleName: 'Caption' }, T('Figure '), SEQ, T(': framed')),
   );
   const doc: N = { type: 'doc', content: [P(null, T('body')), frame] };
-  const boxOf = (res: N): N => (res.content.content ?? []).find((n: N) => n.type === 'textBox');
+  const boxOf = (res: N): N => boxesIn(res.content)[0];
   const shapeOf = (box: N): string =>
     (box?.content ?? []).map((b: N) => (b.content ?? []).map((c: N) => c.type).join('+')).join('|');
 
@@ -2741,25 +2742,49 @@ describe('Leg 32: fold marks (ODT + DOCX)', () => {
 });
 
 describe('Leg 33: where a box sits across the column (ODT + DOCX)', () => {
-  const box = (wrap: string, wrapAlign: string | null): N =>
-    TBX({ width: 200, height: 90, wrap, ...(wrapAlign ? { wrapAlign } : {}) }, P(null, T('Kasten')));
-  const doc = (wrap: string, wrapAlign: string | null): N =>
-    ({ type: 'doc', content: [P(null, T('above')), box(wrap, wrapAlign), P(null, T('below'))] });
-  const alignOf = (res: N): unknown =>
-    (res.content.content ?? []).find((n: N) => n.type === 'textBox')?.attrs?.wrapAlign ?? null;
+  // A box in the line is a character: the paragraph it sits in aligns it, and that is
+  // what both formats write (fo:text-align / w:jc). A band-wrapped box has a place of
+  // its own across the column instead, which is what wrapAlign is.
+  const inlineDoc = (align: string | null): N => ({
+    type: 'doc',
+    content: [
+      P(null, T('above')),
+      P(align ? { textAlign: align } : null, TBX({ width: 200, height: 90 }, P(null, T('Kasten')))),
+      P(null, T('below')),
+    ],
+  });
+  const bandDoc = (wrapAlign: string | null): N => ({
+    type: 'doc',
+    content: [
+      P(null, T('above')),
+      PBX({ width: 200, height: 90, wrap: 'topBottom', ...(wrapAlign ? { wrapAlign } : {}) }, P(null, T('Kasten'))),
+      P(null, T('below')),
+    ],
+  });
+  const alignOf = (res: N): unknown => boxesIn(res.content)[0]?.attrs?.wrapAlign ?? null;
+  const paraAlignOf = (res: N): unknown =>
+    (res.content.content ?? []).find((n: N) => boxesIn(n).length)?.attrs?.textAlign ?? null;
 
-  for (const [wrap, align] of [['inline', 'center'], ['inline', 'right'], ['topBottom', 'center'], ['topBottom', 'right'], ['topBottom', null]] as const) {
-    it(`ODT: ${wrap} ${align ?? 'left'} comes back`, async () => {
-      const bytes = await buildOdt(doc(wrap, align), margins);
+  for (const align of ['center', 'right', null] as const) {
+    it(`ODT: an in-line box takes its paragraph's ${align ?? 'left'} alignment`, async () => {
+      const bytes = await buildOdt(inlineDoc(align), margins);
+      check('the alignment survives', paraAlignOf(importOdt(bytes)) === align, paraAlignOf(importOdt(bytes)));
+    });
+
+    it(`DOCX: an in-line box takes its paragraph's ${align ?? 'left'} alignment`, async () => {
+      const bytes = await buildDocx(inlineDoc(align), margins);
+      check('the alignment survives', paraAlignOf(importDocx(bytes)) === align, paraAlignOf(importDocx(bytes)));
+    });
+
+    it(`ODT: a band-wrapped box keeps ${align ?? 'left'}`, async () => {
+      const bytes = await buildOdt(bandDoc(align), margins);
       check('the alignment survives', alignOf(importOdt(bytes)) === align, alignOf(importOdt(bytes)));
     });
 
-    it(`DOCX: ${wrap} ${align ?? 'left'} comes back`, async () => {
-      const bytes = await buildDocx(doc(wrap, align), margins);
+    it(`DOCX: a band-wrapped box keeps ${align ?? 'left'}`, async () => {
+      const bytes = await buildDocx(bandDoc(align), margins);
       const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
-      if (wrap === 'topBottom') {
-        check('the band position is written', xml.includes(`<wp:align>${align ?? 'left'}</wp:align>`), /<wp:positionH[\s\S]*?<\/wp:positionH>/.exec(xml)?.[0]);
-      }
+      check('the band position is written', xml.includes(`<wp:align>${align ?? 'left'}</wp:align>`), /<wp:positionH[\s\S]*?<\/wp:positionH>/.exec(xml)?.[0]);
       check('the alignment survives', alignOf(importDocx(bytes)) === align, alignOf(importDocx(bytes)));
     });
   }
@@ -2768,7 +2793,7 @@ describe('Leg 33: where a box sits across the column (ODT + DOCX)', () => {
 describe('Leg 34: a box keeps the height it declares (DOCX)', () => {
   const doc: N = {
     type: 'doc',
-    content: [P(null, T('above')), TBX({ width: 200, height: 90, wrap: 'topBottom' }, P(null, T('inside'))), P(null, T('below'))],
+    content: [P(null, T('above')), PBX({ width: 200, height: 90, wrap: 'topBottom' }, P(null, T('inside'))), P(null, T('below'))],
   };
 
   it('the shape body does not autofit to its text', async () => {
@@ -2779,5 +2804,93 @@ describe('Leg 34: a box keeps the height it declares (DOCX)', () => {
     check('noAutofit, as LibreOffice writes for the same frame', xml.includes('<a:noAutofit/>'), 'wps:bodyPr');
     check('never spAutoFit', !xml.includes('<a:spAutoFit/>'), 'wps:bodyPr');
     check('the declared height still rides the extent', xml.includes('cy="857250"'), 'wp:extent');
+  });
+});
+
+// A box is a character now, so what has to survive is its place in the run and the
+// places the old block model could not reach at all.
+describe('Leg 35: an in-line box keeps its place in the paragraph (ODT + DOCX)', () => {
+  const doc: N = {
+    type: 'doc',
+    content: [P(null, T('vor '), TBX({ width: 160, height: 60 }, P(null, T('Kasten'))), T(' nach'))],
+  };
+  // The paragraph's content types, so a box that slipped out of the run shows up.
+  const shape = (res: N): string =>
+    ((res.content.content ?? [])[0]?.content ?? []).map((n: N) => n.type).join('+');
+
+  it('ODT: an as-char frame between the two runs', async () => {
+    const bytes = await buildOdt(doc, margins);
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('one paragraph holds text, frame and text', /<text:p[^>]*>vor <draw:frame[\s\S]*?<\/draw:frame> nach<\/text:p>/.test(xml),
+      /<text:p[^>]*>vor [\s\S]{0,120}/.exec(xml)?.[0]);
+    check('anchored as-char', xml.includes('text:anchor-type="as-char"'), 'anchor');
+    // The Frame parent hangs a frame naming no vertical position below the line.
+    check('standing on the baseline', xml.includes('style:vertical-pos="top" style:vertical-rel="baseline"'), 'TbxFr1');
+    check('it comes back between the two runs', shape(importOdt(bytes)) === 'text+textBox+text', shape(importOdt(bytes)));
+  });
+
+  it('DOCX: a wp:inline drawing between the two runs', async () => {
+    const bytes = await buildDocx(doc, margins);
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    check('inline, not anchored', xml.includes('<wp:inline') && !xml.includes('<wp:anchor'), 'wp');
+    check('the surrounding runs are kept', xml.includes('vor ') && xml.includes(' nach'), 'runs');
+    check('it comes back between the two runs', shape(importDocx(bytes)) === 'text+textBox+text', shape(importDocx(bytes)));
+  });
+});
+
+describe('Leg 36: a box in a table cell (ODT + DOCX)', () => {
+  const doc: N = {
+    type: 'doc',
+    content: [
+      P(null, T('vor der Tabelle')),
+      { type: 'table', content: [ROW(
+        CELL([6], P(null, T('zelle '), TBX({ width: 120, height: 50 }, P(null, T('im Kasten'))))),
+        CELL([6], P(null, T('b'))),
+      )] },
+    ],
+  };
+  const inCell = (res: N): N => {
+    const table = (res.content.content ?? []).find((n: N) => n.type === 'table');
+    return boxesIn(table)[0];
+  };
+
+  it('ODT: the frame rides the cell paragraph', async () => {
+    const bytes = await buildOdt(doc, margins);
+    const xml = strFromU8(unzipSync(bytes)['content.xml']);
+    check('the frame is inside the cell', /<table:table-cell[\s\S]*?<draw:frame[\s\S]*?<\/table:table-cell>/.test(xml), 'cell');
+    const res = importOdt(bytes);
+    check('no warnings', res.warnings.length === 0, res.warnings);
+    check('the box survives with its text', inCell(res)?.content?.[0]?.content?.[0]?.text === 'im Kasten', inCell(res));
+  });
+
+  it('DOCX: the drawing rides the cell paragraph', async () => {
+    const bytes = await buildDocx(doc, margins);
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    check('the drawing is inside the cell', /<w:tc>[\s\S]*?<wps:wsp[\s\S]*?<\/w:tc>/.test(xml), 'w:tc');
+    const res = importDocx(bytes);
+    check('the box survives with its text', inCell(res)?.content?.[0]?.content?.[0]?.text === 'im Kasten', inCell(res));
+  });
+});
+
+// The editor bars a box inside a box (both word processors do), so a file carrying one
+// has to arrive without it — a rejected load would drop the whole document.
+describe('Leg 37: a box inside a box is unwrapped on import (ODT)', () => {
+  it('keeps its blocks in the outer box, with a warning', () => {
+    const contentXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0">
+ <office:body><office:text>
+  <text:p><draw:frame text:anchor-type="as-char" svg:width="8cm"><draw:text-box><text:p>aussen</text:p><text:p><draw:frame text:anchor-type="as-char" svg:width="3cm"><draw:text-box><text:p>innen</text:p></draw:text-box></draw:frame></text:p></draw:text-box></draw:frame></text:p>
+ </office:text></office:body>
+</office:document-content>`;
+    const foreign = zipSync({
+      mimetype: [strToU8('application/vnd.oasis.opendocument.text'), { level: 0 }],
+      'content.xml': [strToU8(contentXml), { level: 6 }],
+    } as any);
+    const f = importOdt(foreign);
+    const boxes = boxesIn(f.content);
+    check('only the outer box survives', boxes.length === 1, boxes.map((b: N) => b.attrs));
+    check('the inner box\'s text is kept in it',
+      JSON.stringify(boxes[0]?.content).includes('innen'), boxes[0]?.content);
+    check('and it is reported', f.warnings.some((w: string) => /nested in other text boxes/.test(w)), f.warnings);
   });
 });

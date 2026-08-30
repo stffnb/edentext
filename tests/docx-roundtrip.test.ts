@@ -58,11 +58,11 @@ describe('DOCX export → import round trip', () => {
         li(para('ml two')),
       ] },
       para([{ type: 'image', attrs: { src: PNG, width: 100, height: 80, wrap: 'left', wrapOffsetY: 2.5, alt: 'pic' } }]),
-      { type: 'textBox', attrs: { width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 }, content: [
+      para([{ type: 'textBox', attrs: { width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 }, content: [
         para('box text'),
         para([text('bold in box', [{ type: 'bold' }])]),
-      ] },
-      { type: 'textBox', attrs: { width: 192, height: 96, wrap: 'right', wrapOffset: 6, wrapOffsetY: 1.5, shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, content: [para('ellipse text')] },
+      ] }]),
+      para([{ type: 'textBox', attrs: { width: 192, height: 96, wrap: 'right', wrapOffset: 6, wrapOffsetY: 1.5, shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, content: [para('ellipse text')] }]),
       { type: 'columns', attrs: { count: 2, gapCm: 0.8 }, content: [para('newspaper one'), para('newspaper two')] },
       { type: 'table', content: [
         { type: 'tableRow', content: [headerCell('Name', { colwidth: [6] }), headerCell('Qty', { colwidth: [3] })] },
@@ -1173,14 +1173,14 @@ describe('DOCX text box: a list inside it is a real list, a picture a real pictu
   const doc: N = { type: 'doc', content: [
     // A body list first, so the box's numbering has to find free ids beside it.
     { type: 'bulletList', content: [li(para('body item'))] },
-    { type: 'textBox', attrs: { width: 300, height: 200 }, content: [
+    para([{ type: 'textBox', attrs: { width: 300, height: 200 }, content: [
       para('box text'),
       { type: 'bulletList', content: [
         li(para('one')),
         li(para('two'), { type: 'orderedList', attrs: { start: 3 }, content: [li(para('a')), li(para('b'))] }),
       ] },
       para([{ type: 'image', attrs: { src: PNG, width: 64, height: 64, alt: 'dot' } }]),
-    ] },
+    ] }]),
   ] };
 
   it('mints numbering, media and relationships of its own', async () => {
@@ -1216,7 +1216,7 @@ describe('DOCX text box: a list inside it is a real list, a picture a real pictu
   it('round-trips the whole box', async () => {
     const back = importDocx(await buildDocx(doc, { top: 2, bottom: 2, left: 2, right: 2 } as any, 'portrait'));
     expect(back.warnings).toEqual([]);
-    const box = (back.content.content ?? []).find((n: N) => n.type === 'textBox')!;
+    const box = walk(back.content as N, 'textBox')[0];
     const list = box.content!.find((n: N) => n.type === 'bulletList')!;
     expect(list.content![1].content![1].type).toBe('orderedList');
     expect(list.content![1].content![1].attrs.start).toBe(3);

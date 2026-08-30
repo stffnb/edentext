@@ -26,7 +26,7 @@ import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSett
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { clampPageStart, DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
 import { citationStyleFromDocx, type CitationStyle } from '../utils/citationStyle';
-import { applyUniformRunFont, pairAlignedFrames, sinkOffsetFrames, type OdtImportResult } from './odt';
+import { applyUniformRunFont, pairAlignedFrames, sinkOffsetFrames, unnestBoxes, type OdtImportResult } from './odt';
 import { chartDataUrl } from './chart';
 import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
@@ -50,8 +50,6 @@ type Node = { type: string; attrs?: Record<string, unknown>; content?: Node[]; m
 type BlockKind = 'body' | 'list' | 'cell';
 
 type RelInfo = { target: string; external: boolean };
-// pendingBlocks: text boxes/shapes found inside runs — block nodes that convertBlocks
-// flushes after the anchor paragraph (mirrors import/odt.ts).
 type Ctx = {
   styles: DocxStyles;
   // Word styleId → registry name, and the ids blocks actually reference.
@@ -64,7 +62,6 @@ type Ctx = {
   rels: Map<string, RelInfo>;
   imageCache: Map<string, string>;
   convertedImages: ConvertedImages;
-  pendingBlocks: Node[];
   listCounters: Map<number, Map<number, number>>; // numId → ilvl → last number used
   usedListStyles: Map<number, string>; // numId → the named numbering style it links to
   // Text width (cm) of the file's page setup; a table's margins are relative to it.
@@ -194,7 +191,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const sectPr = fc(body, 'sectPr');
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, pendingBlocks: [], listCounters: new Map(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, pageRtl: sectPrRtl(sectPr), hyphenate: docAutoHyphenation(files), cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, listCounters: new Map(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, pageRtl: sectPrRtl(sectPr), hyphenate: docAutoHyphenation(files), cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
     footnote: noteParts(files, 'footnotes', 'footnote'),
     endnote: noteParts(files, 'endnotes', 'endnote'),
   } };
@@ -519,30 +516,6 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
   };
   const flush = () => { while (stack.length) closeTop(); };
 
-  // Emit an anchor paragraph, then any text boxes found inside it. In the body they
-  // follow the anchor at top level — and an empty anchor (our own export's wrapper
-  // paragraph) is dropped; elsewhere their blocks are unwrapped in place.
-  const pushWithPending = (anchor: Node | null) => {
-    const pending = ctx.pendingBlocks.splice(0);
-    const anchorIsEmpty = anchor?.type === 'paragraph' && !anchor.content?.length;
-    if (anchor && !(pending.length && anchorIsEmpty)) out.push(anchor);
-    if (!pending.length) return;
-    if (kind === 'body') {
-      // A box lifted out of its anchor paragraph keeps the alignment that paragraph gave
-      // it: an as-char frame is set against the middle of the column by the paragraph it
-      // sits in, not by anything of its own.
-      const align = anchor?.attrs?.textAlign;
-      if (align === 'center' || align === 'right')
-        for (const b of pending)
-          if (b.type === 'textBox' && b.attrs && b.attrs.wrapOffset == null && !b.attrs.wrapAlign)
-            b.attrs.wrapAlign = align;
-      out.push(...pending);
-    } else {
-      ctx.warnings.add('Text boxes nested in table cells or other text boxes were flattened');
-      for (const box of pending) out.push(...(box.content ?? [{ type: 'paragraph' }]));
-    }
-  };
-
   for (const el of children) {
     if (el.namespaceURI !== W) continue;
     if (trackBookmark(el, ctx) || trackComment(el, ctx)) continue;
@@ -597,7 +570,7 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         flush();
         const { blocks, trailingBreak } = splitParaAtPageBreaks(convertParagraph(el, ctx, kind, boldByDefault), kind);
         if (breakPending) { applyBreakBefore(blocks[0]); breakPending = false; }
-        for (const b of blocks) pushWithPending(b);
+        out.push(...blocks);
         breakPending = trailingBreak;
       }
     } else if (el.localName === 'tbl') {
@@ -633,8 +606,6 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
     }
   }
   flush();
-  // Boxes anchored inside list items land after the whole list.
-  pushWithPending(null);
   return out;
 }
 
@@ -1436,9 +1407,9 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     // date/time field (replaced by its live node).
     const skipResult = () => fieldMode === 'result' && (hfFields || !!fieldDateTime || !!fieldShown);
 
-    // Route a drawing/pict result: an image is inline, a text box a block node riding
-    // ctx.pendingBlocks. The one-paragraph header/footer zone takes as-char images only —
-    // boxes and floating page-sized drawings (backgrounds, watermarks) are dropped there.
+    // Route a drawing/pict result: both a picture and a text box are inline and stay
+    // where the drawing sits. The one-paragraph header/footer zone takes as-char images
+    // only — boxes and floating page-sized drawings (backgrounds, watermarks) go.
     const pushDrawn = (n: Node | null, floating: boolean) => {
       if (!n) return;
       if (hfFields) {
@@ -1446,8 +1417,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
         ctx.warnings.add('Drawings were removed');
         return;
       }
-      if (n.type !== 'textBox') { out.push(n); return; }
-      ctx.pendingBlocks.push(n);
+      out.push(n);
     };
 
     // Set when this run's w:footnoteReference declares a custom mark: the run's own
@@ -2154,7 +2124,7 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
   if (['vert', 'eaVert', 'mongolianVert', 'wordArtVert'].includes(vert)) attrs.textVertical = true;
 
   const txbxContent = nsChild(nsChild(wsp, WPS, 'txbx'), W, 'txbxContent');
-  const blocks = txbxContent ? convertBlocks(Array.from(txbxContent.children), ctx, 'cell') : [];
+  const blocks = txbxContent ? unnestBoxes(convertBlocks(Array.from(txbxContent.children), ctx, 'cell'), ctx) : [];
   return { type: 'textBox', attrs, content: blocks.length ? blocks : [{ type: 'paragraph' }] };
 }
 
@@ -2231,7 +2201,7 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
   const swm = /^([\d.]+)\s*(pt)?$/.exec(shape.getAttribute('strokeweight') ?? '');
   setShapeStyleAttrs(attrs, fill, stroke, swm ? parseFloat(swm[1]) : null);
 
-  const blocks = txbxContent ? convertBlocks(Array.from(txbxContent.children), ctx, 'cell') : [];
+  const blocks = txbxContent ? unnestBoxes(convertBlocks(Array.from(txbxContent.children), ctx, 'cell'), ctx) : [];
   return { type: 'textBox', attrs, content: blocks.length ? blocks : [{ type: 'paragraph' }] };
 }
 

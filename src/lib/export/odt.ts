@@ -996,9 +996,6 @@ type TextBoxExport = {
   fill: string | null;
   stroke: string | null;
   strokeWidthPt: number;
-  // The anchor paragraph's own spacing in pt, which the box stands in for.
-  spaceBeforePt: number;
-  spaceAfterPt: number;
 };
 
 function textBoxDescriptor(node: TiptapNode): TextBoxExport {
@@ -1023,29 +1020,41 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
     strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
-    spaceBeforePt: typeof a.spaceBefore === 'number' ? round3(a.spaceBefore) : 0,
-    spaceAfterPt: typeof a.spaceAfter === 'number' ? round3(a.spaceAfter) : 0,
   };
 }
 
-// Swap each top-level textBox for a pair of marker paragraphs bracketing its child blocks,
-// hoisted to top level so they ride every existing export pass unchanged (custom attrs,
-// list styles, inline sentinels, images); applyTextBoxes re-wraps the serialized region.
+// A text box becomes two things: a P{i} sentinel where it sits in its paragraph's run —
+// which rides every odf-kit path, cells included, as the image sentinel does — and a
+// staging region at top level, its own blocks bracketed by S{i}…E{i} marker paragraphs so
+// they ride every existing export pass unchanged (custom attrs, list styles, inline
+// sentinels, images). applyTextBoxes lifts the serialized region back out and sets the
+// frame at the sentinel. The staging is only a place to serialize in: where a box really
+// sits and where its content is written out are no longer the same spot.
 function replaceTextBoxes(doc: TiptapNode, boxes: TextBoxExport[]): TiptapNode {
-  if (!doc.content?.length) return doc;
-  const content: TiptapNode[] = [];
-  for (const child of doc.content) {
-    if (child.type === 'textBox') {
-      const i = boxes.length;
-      boxes.push(textBoxDescriptor(child));
-      content.push({ type: 'paragraph', content: [{ type: 'text', text: `${TBX}S${i}${TBX}` }] });
-      content.push(...(child.content ?? []));
-      content.push({ type: 'paragraph', content: [{ type: 'text', text: `${TBX}E${i}${TBX}` }] });
-      continue;
+  const staged: TiptapNode[] = [];
+  const walk = (node: TiptapNode): TiptapNode => {
+    if (!node.content?.length) return node;
+    const content: TiptapNode[] = [];
+    for (const child of node.content) {
+      if (child.type === 'textBox') {
+        const i = boxes.length;
+        boxes.push(textBoxDescriptor(child));
+        content.push({ type: 'text', text: `${TBX}P${i}${TBX}` });
+        staged.push({ type: 'paragraph', content: [{ type: 'text', text: `${TBX}S${i}${TBX}` }] });
+        staged.push(...(child.content ?? []).map(walk));
+        staged.push({ type: 'paragraph', content: [{ type: 'text', text: `${TBX}E${i}${TBX}` }] });
+        continue;
+      }
+      content.push(walk(child));
     }
-    content.push(child);
-  }
-  return { ...doc, content };
+    return { ...node, content };
+  };
+  const out = walk(doc);
+  if (!staged.length) return out;
+  // Ahead of the note section, which is the document's last block or nowhere.
+  const body = out.content ?? [];
+  const cut = body.length && body[body.length - 1].type === 'noteSection' ? body.length - 1 : body.length;
+  return { ...out, content: [...body.slice(0, cut), ...staged, ...body.slice(cut)] };
 }
 
 // One footnote/endnote, collected by replaceNotes and emitted by applyNotes.
@@ -4284,10 +4293,12 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
     : (box.stroke
       ? `draw:stroke="solid" svg:stroke-color="${normalizeColor(box.stroke) ?? '#000000'}" svg:stroke-width="${r3(box.strokeWidthPt)}pt"`
       : 'draw:stroke="none"');
-  // An as-char frame keeps only its horizontal-pos: that is what centres a figure
-  // frame, and the anchor paragraph this export mints carries no alignment.
+  // An as-char frame has no horizontal position of its own: the paragraph it sits in
+  // places it, which is where its alignment lives too. It does need the baseline pair
+  // spelled out — the `Frame` parent hangs a frame that names none below the line,
+  // where a style-less as-char frame (an image) stands on it (probed).
   const wrap = box.wrap === 'inline'
-    ? (box.wrapAlign ? ` style:horizontal-pos="${box.wrapAlign}" style:horizontal-rel="paragraph-content"` : '')
+    ? ' style:vertical-pos="top" style:vertical-rel="baseline"'
     : ` ${imageWrapProps(box.wrap, box.wrapOffsetCm, box.wrapAlign, box.wrapDistCm, 'left')} style:number-wrapped-paragraphs="no-limit"` +
       ` style:horizontal-rel="paragraph-content"` +
       ` style:vertical-pos="${box.wrapOffsetYCm != null ? 'from-top' : 'top'}" style:vertical-rel="paragraph"`;
@@ -4314,22 +4325,6 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
     `<style:style style:name="TbxFr${index + 1}" style:family="graphic"${parent}>` +
     `<style:graphic-properties ${fill} ${stroke}${arrows} fo:padding="${box.paddingCm}cm"` +
     `${grow} draw:textarea-vertical-align="top"${vertMode}${wrap}/>${vertical}` +
-    `</style:style>`
-  );
-}
-
-// The anchor paragraph carries the spacing the box stands in for (import/odt.ts hands a
-// lifted box its anchor's margins) — and, for an inline box, its alignment: an as-char
-// frame has no horizontal-pos of its own, the paragraph centres it (how LibreOffice
-// does it, and what the import reads back). Nothing to mint when it has neither.
-function textBoxAnchorStyle(box: TextBoxExport, index: number): string {
-  const align = box.wrap === 'inline' && box.wrapAlign
-    ? ` fo:text-align="${box.wrapAlign === 'right' ? 'end' : 'center'}"`
-    : '';
-  if (!box.spaceBeforePt && !box.spaceAfterPt && !align) return '';
-  return (
-    `<style:style style:name="TbxP${index + 1}" style:family="paragraph" style:parent-style-name="Standard">` +
-    `<style:paragraph-properties fo:margin-top="${box.spaceBeforePt}pt" fo:margin-bottom="${box.spaceAfterPt}pt"${align}/>` +
     `</style:style>`
   );
 }
@@ -4382,9 +4377,9 @@ function textBoxXml(box: TextBoxExport, inner: string, index: number): string {
 const ODF_ARROW = 'Arrow';
 const ODF_ARROW_MARKER = `<draw:marker draw:name="${ODF_ARROW}" svg:viewBox="0 0 20 30" svg:d="m10 0-10 30h20z"/>`;
 
-// Resolve the text-box marker paragraphs: wrap each S{i}…E{i} region (the box's
-// hoisted, fully serialized blocks) into its drawing element inside a fresh anchor
-// paragraph, and inject the minted graphic styles.
+// Resolve the text boxes in two steps: cut each S{i}…E{i} staging region out and keep the
+// serialized blocks it holds, then write the drawing element over the P{i} sentinel — in
+// whatever <text:p> the box really sits in, the way applyImages places a picture.
 function applyTextBoxes(odtBytes: Uint8Array, boxes: TextBoxExport[]): Uint8Array {
   if (!boxes.length) return odtBytes;
   const files = unzipSync(odtBytes);
@@ -4392,20 +4387,20 @@ function applyTextBoxes(odtBytes: Uint8Array, boxes: TextBoxExport[]): Uint8Arra
   if (!contentBytes) return odtBytes;
 
   let content = strFromU8(contentBytes);
+  const inners = new Map<number, string>();
   content = content.replace(
     new RegExp(`<text:p\\b[^>]*>${TBX}S(\\d+)${TBX}</text:p>([\\s\\S]*?)<text:p\\b[^>]*>${TBX}E\\1${TBX}</text:p>`, 'g'),
     (_m, idx: string, inner: string) => {
-      const i = Number(idx);
-      const box = boxes[i];
-      if (!box) return '';
-      const style = textBoxAnchorStyle(box, i) ? `TbxP${i + 1}` : 'Standard';
-      return `<text:p text:style-name="${style}">${textBoxXml(box, inner, i)}</text:p>`;
+      inners.set(Number(idx), inner);
+      return '';
     },
   );
-  content = injectAutomaticStyles(
-    content,
-    boxes.map((b, i) => textBoxGraphicStyle(b, i) + textBoxAnchorStyle(b, i)).join(''),
-  );
+  content = content.replace(new RegExp(`${TBX}P(\\d+)${TBX}`, 'g'), (_m, idx: string) => {
+    const i = Number(idx);
+    const box = boxes[i];
+    return box ? textBoxXml(box, inners.get(i) ?? '', i) : '';
+  });
+  content = injectAutomaticStyles(content, boxes.map((b, i) => textBoxGraphicStyle(b, i)).join(''));
   files['content.xml'] = strToU8(content);
   // An arrow head is referenced by name, so its one definition goes where LibreOffice
   // keeps its own — office:styles in styles.xml — and only when a line asks for it.

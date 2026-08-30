@@ -85,9 +85,9 @@ export function captionPlacement(leftCm: number, rightCm: number): CaptionPlacem
 function frameSpanCm(view: EditorView, block: PMNode, blockPos: number): { left: number; right: number } | null {
   const host = view.dom as HTMLElement;
   if (typeof getComputedStyle !== 'function' || !host.offsetWidth) return null;
+  // Every frame is inline — a picture or a text box in the block's own content.
   let framePos: number | null = null;
-  if (block.attrs.wrap) framePos = blockPos;
-  else if (block.inlineContent) {
+  if (block.inlineContent) {
     block.descendants((node, pos) => {
       if (framePos === null && node.attrs.wrap) framePos = blockPos + 1 + pos;
       return framePos === null;

@@ -232,7 +232,8 @@ function textBox(r: Rng): N {
     if (attrs.wrap === 'topBottom' && maybe(r, 0.3)) attrs.wrapOffsetY = 1.5;
   }
   const kids = Array.from({ length: int(r, 1, 2) }, () => paragraph(r));
-  return { type: 'textBox', attrs, content: kids };
+  // A box is inline, so it rides a paragraph of its own.
+  return { type: 'paragraph', content: [{ type: 'textBox', attrs, content: kids }] };
 }
 
 // A generated index. Both importers return an empty entry cache (the node view refills

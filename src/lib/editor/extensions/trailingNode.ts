@@ -7,7 +7,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 const trailingNodeKey = new PluginKey('trailingNode');
 
 // Block types that can't sit at the document end without trapping the cursor.
-const NEEDS_TRAILING_AFTER = new Set(['table', 'textBox', 'columns']);
+const NEEDS_TRAILING_AFTER = new Set(['table', 'columns']);
 
 export const TrailingNode = Extension.create({
   name: 'trailingNode',

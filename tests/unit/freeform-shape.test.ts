@@ -38,7 +38,10 @@ const docx = (body: string): Uint8Array => zipSync({
     + `<w:body>${body}</w:body></w:document>`),
 });
 
-const shape = (r: N): N => ((r.content as N).content ?? []).find((n: N) => n.type === 'textBox');
+const shape = (r: N): N => {
+  const find = (n: N): N => n?.type === 'textBox' ? n : (n?.content ?? []).map(find).find(Boolean);
+  return find((r.content as N));
+};
 const margins = { top: 2, bottom: 2, left: 2, right: 2 };
 
 describe('a freeform drawing', () => {
@@ -80,11 +83,11 @@ describe('a freeform drawing', () => {
       type: 'doc',
       content: [
         { type: 'paragraph', content: [{ type: 'text', text: 'before' }] },
-        {
+        { type: 'paragraph', content: [{
           type: 'textBox',
           attrs: { width: 200, height: 150, shapePath: 'M 0 0 C 25 0 75 100 100 50 L 0 100 Z' },
           content: [{ type: 'paragraph' }],
-        },
+        }] },
       ],
     };
     const bytes = await buildOdt(doc, margins, 'portrait');
@@ -99,11 +102,11 @@ describe('a freeform drawing', () => {
       type: 'doc',
       content: [
         { type: 'paragraph', content: [{ type: 'text', text: 'before' }] },
-        {
+        { type: 'paragraph', content: [{
           type: 'textBox',
           attrs: { width: 200, height: 100, shapePath: 'M 0 0 L 100 50 L 0 100 Z' },
           content: [{ type: 'paragraph' }],
-        },
+        }] },
       ],
     };
     const bytes = await buildDocx(doc, margins, 'portrait');

@@ -1006,27 +1006,6 @@ export const PageBreaks = Extension.create({
                 });
                 continue;
               }
-              // A text box paginates atomically: a line-split spacer can't render
-              // sanely inside a rotated/floated node view.
-              if (child.classList.contains('textbox-node')) {
-                // Its anchor paragraph's spacing rides the box (textBox.ts): space above
-                // as padding, which a page top drops, space below as the margin.
-                const boxCs = getComputedStyle(child);
-                const spaceAbove = parseFloat(boxCs.getPropertyValue('--space-before')) || 0;
-                const dropped = spaceAbove > 0.5 && !inTableCell && parseFloat(boxCs.paddingTop) < 0.5
-                  ? spaceAbove : 0;
-                leaves.push({
-                  el: child,
-                  kind: 'atomic',
-                  naturalTop: naturalTopOf(child),
-                  naturalHeight: child.offsetHeight + dropped,
-                  spaceAfter: inTableCell ? 0 : parseFloat(boxCs.marginBottom) || 0,
-                  spaceAbove,
-                  inTableCell,
-                });
-                cumulativeDropped += dropped;
-                continue;
-              }
               // A multi-column section fragment: also atomic for spacer purposes (a
               // spacer inside a multicol container rebalances around it), but the
               // placement logic defers overflow to columnsFlow.ts via columnsFragment.
@@ -1051,12 +1030,13 @@ export const PageBreaks = Extension.create({
                 });
                 continue;
               }
-              // A paragraph holding a floated image paginates atomically: a line-split
-              // spacer beside the float is dropped by ProseMirror. As-character images
-              // are ordinary line boxes, so their paragraph breaks between lines.
+              // A paragraph holding a floated frame — a picture or a text box —
+              // paginates atomically: a line-split spacer beside the float is dropped by
+              // ProseMirror. An as-character frame is an ordinary line box, so its
+              // paragraph breaks between lines like any other.
               const splittableTag = SPLITTABLE_TAGS.has(tag);
-              const floats = Array.from(child.querySelectorAll<HTMLElement>('.image-node'))
-                .filter((img) => !!img.style.float);
+              const floats = Array.from(child.querySelectorAll<HTMLElement>('.image-node, .textbox-node'))
+                .filter((f) => !!f.style.float);
               const hasImage = splittableTag && floats.length > 0;
               // Keep lines together (w:keepLines, fo:keep-together): the block moves
               // whole. One taller than a page still splits — as it does in Word.
@@ -1773,8 +1753,7 @@ export const PageBreaks = Extension.create({
               }));
             }
             for (const b of pageTopBlocks) {
-              // --space-top: a text box draws its own space above from it (textBox.ts).
-              decoArray.push(Decoration.node(b.from, b.to, { style: 'padding-top:0;margin-top:0;--space-top:0px' }));
+              decoArray.push(Decoration.node(b.from, b.to, { style: 'padding-top:0;margin-top:0' }));
             }
             // Each footnote to the foot of its anchor's page; the topmost of a page also
             // carries the separator (editor.css draws it above the box).

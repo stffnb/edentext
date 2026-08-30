@@ -12,6 +12,7 @@
     left,
     wrap,
     wrapAlign,
+    paraAlign,
     shapeKind,
     fillColor,
     strokeColor,
@@ -23,6 +24,7 @@
     left: number;
     wrap: WrapMode;
     wrapAlign: string | null;
+    paraAlign: string | null;
     shapeKind: ShapeKind;
     fillColor: string | null;
     strokeColor: string | null;
@@ -46,9 +48,12 @@
   }
 
   // Where the box sits across the column. A side wrap has no such choice — the wrap
-  // names the side — so the buttons show for the two modes that leave the box in flow.
+  // names the side — so the buttons show for the two modes that leave it in flow.
   const alignModes = ['left', 'center', 'right'] as const;
   const alignable = $derived(wrap === 'inline' || wrap === 'topBottom');
+  // A box in the line is a character: its paragraph places it, and that is what both
+  // formats write. A band-wrapped box has a place of its own across the column.
+  const current = $derived(wrap === 'inline' ? paraAlign ?? 'left' : wrapAlign ?? 'left');
   function alignTitle(a: (typeof alignModes)[number]): string {
     return a === 'left' ? t().textBox.alignLeft
       : a === 'center' ? t().textBox.alignCenter
@@ -57,7 +62,8 @@
   // An imported box placed by coordinate keeps that x over any alignment, so picking
   // one drops it.
   function setAlign(a: (typeof alignModes)[number]) {
-    set({ wrapAlign: a === 'left' ? null : a, wrapOffset: null });
+    if (wrap === 'inline') editor?.chain().focus().setTextBoxAlign(a === 'left' ? null : a).run();
+    else set({ wrapAlign: a === 'left' ? null : a, wrapOffset: null });
   }
 
   const strokeWidths = [0.5, 1, 2.25];
@@ -123,10 +129,10 @@
     {#each alignModes as a}
       <button
         class="tb-btn"
-        class:active={(wrapAlign ?? 'left') === a}
+        class:active={current === a}
         title={alignTitle(a)}
         aria-label={alignTitle(a)}
-        aria-pressed={(wrapAlign ?? 'left') === a}
+        aria-pressed={current === a}
         onclick={() => setAlign(a)}
       >
         <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">

@@ -17,11 +17,15 @@ const box = (attrs: N): N => ({
 });
 const doc: N = {
   type: 'doc',
-  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'davor' }] }, box({ textVertical: true })],
+  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'davor' }] },
+    { type: 'paragraph', content: [box({ textVertical: true })] }],
 };
 const margins = { top: 2, bottom: 2, left: 2, right: 2 };
 
-const boxOf = (r: N): N => ((r.content as N).content ?? []).find((n: N) => n.type === 'textBox');
+const boxOf = (r: N): N => {
+  const find = (n: N): N => n?.type === 'textBox' ? n : (n?.content ?? []).map(find).find(Boolean);
+  return find((r.content as N));
+};
 
 describe('a text box with vertical text', () => {
   it('round-trips through ODF', async () => {
@@ -32,7 +36,7 @@ describe('a text box with vertical text', () => {
   });
 
   it('keeps the writing mode of a shape in its paragraph properties', async () => {
-    const shaped: N = { ...doc, content: [doc.content[0], box({ textVertical: true, shapeKind: 'roundRect' })] };
+    const shaped: N = { ...doc, content: [doc.content[0], { type: 'paragraph', content: [box({ textVertical: true, shapeKind: 'roundRect' })] }] };
     const xml = strFromU8(unzipSync(await buildOdt(shaped, margins, 'portrait'))['content.xml']);
     expect(xml).toContain('<style:paragraph-properties style:writing-mode="tb-rl"/>');
     expect(boxOf(importOdt(await buildOdt(shaped, margins, 'portrait')))?.attrs.textVertical).toBe(true);
@@ -46,7 +50,7 @@ describe('a text box with vertical text', () => {
   });
 
   it('leaves a horizontal box alone', async () => {
-    const flat: N = { ...doc, content: [doc.content[0], box({})] };
+    const flat: N = { ...doc, content: [doc.content[0], { type: 'paragraph', content: [box({})] }] };
     const odt = strFromU8(unzipSync(await buildOdt(flat, margins, 'portrait'))['content.xml']);
     expect(odt).not.toContain('writing-mode="tb-rl"');
     const docx = strFromU8(unzipSync(await buildDocx(flat, margins, 'portrait'))['word/document.xml']);

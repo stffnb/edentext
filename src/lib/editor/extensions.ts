@@ -79,13 +79,13 @@ import { loadDocProperties } from '../storage/docProperties';
 import { Insertion, Deletion, TrackChanges } from './extensions/trackChanges';
 
 export const extensions = [
-  // textBox and columns have their own groups so only the document (not
-  // cells/lists/boxes) admits them; the note section is last or nowhere.
+  // columns has its own group so only the document (not cells/lists) admits it; the
+  // note section is last or nowhere. A text box is inline and rides a paragraph.
   // Spelled as an alternation, not `… + noteSection?`: with the trailing optional the
   // match state after the first block offers noteSection first, and that is the type
   // TipTap's clearNodes converts a block into (`contentMatchAt(i).defaultType`).
   Document.extend({
-    content: '((block | textBox | columns)+ noteSection) | (block | textBox | columns)+',
+    content: '((block | columns)+ noteSection) | (block | columns)+',
   }),
   Paragraph,
   Text,
@@ -142,7 +142,7 @@ export const extensions = [
   // Mathematical formula; stores LaTeX, renders native MathML, round-trips to an ODF
   // embedded formula object and DOCX OMML. See docs/architecture/formulas.md.
   Formula,
-  // Block-level text box / basic shape with editable content; round-trips to ODF
+  // Inline text box / basic shape with editable block content; round-trips to ODF
   // draw:frame/draw:text-box + draw:custom-shape and DOCX wps:wsp/wps:txbx.
   TextBox,
   // Multi-column (newspaper) section; round-trips to ODF <text:section> +

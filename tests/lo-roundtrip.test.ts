@@ -30,6 +30,13 @@ const IMGN = (width: number, height: number, alt?: string, rotation?: number, wr
     ...(alt ? { alt } : {}), ...(rotation ? { rotation } : {}), ...(wrap ? { wrap } : {}),
   } });
 const TBX = (attrs: N, ...content: N[]): N => ({ type: 'textBox', attrs, content });
+// A box is inline, so it rides a paragraph of its own.
+const PBX = (attrs: N, ...content: N[]): N => ({ type: 'paragraph', content: [TBX(attrs, ...content)] });
+const boxesIn = (n: N, out: N[] = []): N[] => {
+  if (n?.type === 'textBox') out.push(n);
+  for (const c of n?.content ?? []) boxesIn(c, out);
+  return out;
+};
 
 const margins = { top: 3, bottom: 2, left: 2.5, right: 1.5 };
 
@@ -91,11 +98,11 @@ const fixture: N = {
     ] },
     // A list and a nested image survive only in a Writer text frame — a drawing-object
     // text box flattens both, so this guards the Frame-parent discriminator.
-    TBX({ width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 },
+    PBX({ width: 288, height: 96, fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1 },
       P(null, T('box text')),
       { type: 'bulletList', content: [LI(P(null, T('box bullet')))] },
       P(null, T('second para'), IMGN(40, 20))),
-    TBX({ width: 192, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 },
+    PBX({ width: 192, height: 96, wrap: 'right', shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 },
       P(null, T('in ellipse'))),
     P(null, T('The end.')),
   ],
@@ -199,7 +206,7 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     check('LO: image text-wrap survives', !!floated, imgs.map((i: N) => i.attrs?.wrap));
 
     // Text boxes: geometry, colors and shape kind must survive the LO re-save.
-    const boxes = (res.content.content ?? []).filter((n: N) => n.type === 'textBox');
+    const boxes = boxesIn(res.content);
     check('LO: both text boxes survive', boxes.length === 2, (res.content.content ?? []).map((n: N) => n.type));
     const [plain, ellipse] = boxes;
     check('LO: box geometry survives (288×96)', Math.abs((plain?.attrs?.width ?? 0) - 288) <= 3 && Math.abs((plain?.attrs?.height ?? 0) - 96) <= 3, plain?.attrs);

@@ -62,8 +62,9 @@
     const range = document.createRange();
     range.selectNodeContents(block);
     let rects = Array.from(range.getClientRects()).filter((r) => r.height > 0);
-    // A frame floated out of the flow (wrapped image, text box) is no text line of its
-    // anchor paragraph — its band would otherwise count as an extra line.
+    // A frame is no text line of its paragraph: a floated one's band would count as an
+    // extra line, an in-line one's box as a second line beside the text it shares.
+    // A paragraph left with no rect at all falls back to its own box — one line.
     const frames = block.querySelectorAll('.image-node[data-wrap], .textbox-node');
     if (frames.length) {
       const fr = Array.from(frames, (f) => f.getBoundingClientRect());
@@ -104,21 +105,16 @@
     let count = 0;
     let page = 1;
     // Text blocks count — list items and column lines too, as in both word processors;
-    // a table, an image frame or an index is not a numbered line in either. A top-level
-    // text box counts as one empty line: in the file it hangs off an empty anchor
-    // paragraph, and both word processors count that line (probed in Word).
+    // a table, a frame or an index is not a numbered line in either. A text box rides a
+    // paragraph, and that paragraph's own line is what counts.
     const blocks = view.dom.querySelectorAll(
       ':scope > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, blockquote),'
-      + ' :scope > .textbox-node,'
       + ' :scope > :is(ul, ol) li > p,'
       + ' :scope > .columns-node :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)');
     for (const block of Array.from(blocks)) {
       if (block.closest('table')) continue;
-      const anchor = block.classList.contains('textbox-node');
-      const empty = anchor || !block.textContent?.trim();
-      const lines = anchor
-        ? [{ top: (block.getBoundingClientRect().top - origin) / scale, height: 18 }]
-        : lineTops(block, origin, scale);
+      const empty = !block.textContent?.trim();
+      const lines = lineTops(block, origin, scale);
       for (const line of lines) {
         const linePage = pageAt(line.top);
         if (lineNumbering.restart === 'page' && linePage !== page) { page = linePage; count = 0; }

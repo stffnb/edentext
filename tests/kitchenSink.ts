@@ -136,17 +136,17 @@ export function kitchenSinkDoc(): N {
       t('Bild über dem Text.')]),
 
     h(1, 'Textrahmen und Formen'),
-    { type: 'textBox', attrs: { width: 240, height: 96, fillColor: '#FFE0A0', strokeColor: '#0070C0', strokeWidthPt: 2 }, content: [
+    p([{ type: 'textBox', attrs: { width: 240, height: 96, fillColor: '#FFE0A0', strokeColor: '#0070C0', strokeWidthPt: 2 }, content: [
       p([t('Ein Rahmen mit Liste und Bild:')]),
       { type: 'bulletList', content: [li(p([t('Punkt im Rahmen')]))] },
       p([{ type: 'image', attrs: { src: PNG, width: 48, height: 24 } }]),
-    ] },
-    { type: 'textBox', attrs: { width: 192, height: 96, shapeKind: 'roundRect', fillColor: '#DDEEFF', wrap: 'right', wrapOffset: 1.5 }, content: [
+    ] }]),
+    p([{ type: 'textBox', attrs: { width: 192, height: 96, shapeKind: 'roundRect', fillColor: '#DDEEFF', wrap: 'right', wrapOffset: 1.5 }, content: [
       p([t('Form mit Text')]),
-    ] },
-    { type: 'textBox', attrs: { width: 96, height: 144, textVertical: true }, content: [
+    ] }]),
+    p([{ type: 'textBox', attrs: { width: 96, height: 144, textVertical: true }, content: [
       p([t('senkrecht')]),
-    ] },
+    ] }]),
 
     h(1, 'Formeln'),
     p([t('Inline: '), { type: 'formula', attrs: { latex: 'x^{2}+1', display: false } }, t(' im Satz.')]),

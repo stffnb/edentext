@@ -124,8 +124,7 @@ export interface OdtImportResult {
 type BlockKind = 'body' | 'list' | 'cell';
 
 // `files` is the full unzipped archive so image converters can read Pictures/ binaries;
-// imageCache dedupes repeated hrefs into one data-URI. pendingBlocks is the side channel
-// for text boxes found in inline content — convertBlocks flushes them after the anchor.
+// imageCache dedupes repeated hrefs into one data-URI.
 type Ctx = {
   resolver: StyleResolver;
   // ODF style name → display name, and the names blocks actually reference: the
@@ -140,7 +139,6 @@ type Ctx = {
   files: Record<string, Uint8Array>;
   imageCache: Map<string, string>;
   convertedImages: ConvertedImages;
-  pendingBlocks: Node[];
   // Text width (cm) of the file's page setup; a table's margins are relative to it.
   contentWidthCm: number;
   // The page's own direction: a block declaring the same one is inheriting, not
@@ -320,16 +318,18 @@ export function applyUniformRunFont(attrs: Record<string, unknown>, content: { t
 // text the offset can only be drawn as the lines standing above the frame.
 export function sinkOffsetFrames(content: { type: string; text?: string; attrs?: Record<string, unknown> }[]): void {
   const sinks = (n: { type: string; attrs?: Record<string, unknown> }) =>
-    n.type === 'image' && n.attrs?.wrap === 'topBottom' && (n.attrs.wrapOffsetY as number) > 0;
+    (n.type === 'image' || n.type === 'textBox')
+    && n.attrs?.wrap === 'topBottom' && (n.attrs.wrapOffsetY as number) > 0;
   if (!content.some(sinks) || !content.some(n => n.type === 'text' && n.text?.trim())) return;
   const frames = content.filter(sinks);
   for (const f of frames) content.splice(content.indexOf(f), 1);
   content.push(...frames);
 }
 
-// Two top-and-bottom frames set against opposite ends of nearby paragraphs share one
+// Two top-and-bottom pictures set against opposite ends of nearby paragraphs share one
 // band and sit side by side, as they do in LibreOffice and Word. Only such a pair keeps
-// its wrapAlign: a lone frame reserves the whole band, which is what the wrap means.
+// its wrapAlign: a lone picture reserves the whole band, which is what the wrap means.
+// Text boxes are left out — a box's place across its band is one the editor offers.
 export function pairAlignedFrames(blocks: { content?: { type: string; attrs?: Record<string, unknown> }[] }[], columnPx: number): void {
   const found: { attrs: Record<string, unknown>; at: number }[] = [];
   blocks.forEach((b, i) => {
@@ -440,8 +440,23 @@ function shapeStyleAttrs(gp: PropMap, attrs: Record<string, unknown>, defaultSol
 // (which flattens whatever the box schema can't hold), at least one paragraph.
 function textBoxContent(children: Element[], ctx: Ctx): Node[] {
   const textChildren = children.filter(c => c.namespaceURI === NS.text);
-  const blocks = convertBlocks(textChildren, ctx, 'cell');
+  const blocks = unnestBoxes(convertBlocks(textChildren, ctx, 'cell'), ctx);
   return blocks.length ? blocks : [{ type: 'paragraph' }];
+}
+
+// A box inside a box has nowhere to go — both word processors refuse one and the editor
+// bars it — so its blocks take its place in the outer box. Bottom-up, so one pass does.
+export function unnestBoxes(blocks: Node[], ctx: { warnings: Set<string> }): Node[] {
+  const out: Node[] = [];
+  for (const block of blocks) {
+    const boxes = (block.content ?? []).filter(n => n.type === 'textBox');
+    if (!boxes.length) { out.push(block); continue; }
+    ctx.warnings.add('Text boxes nested in other text boxes were flattened');
+    block.content = block.content!.filter(n => n.type !== 'textBox');
+    if (block.content.length) out.push(block);
+    for (const b of boxes) out.push(...(b.content ?? [{ type: 'paragraph' }]));
+  }
+  return out;
 }
 
 // A <draw:frame><draw:text-box> → a textBox node. The height is the text-box's
@@ -639,7 +654,7 @@ function convertLine(el: Element, ctx: Ctx): Node | null {
 }
 
 // Dispatch any draw:* element: an image stays inline; a text box / shape is a block
-// node routed through ctx.pendingBlocks; everything else is dropped with a warning.
+// node; everything else is dropped with a warning.
 function convertDrawElement(e: Element, ctx: Ctx): { inline?: Node; block?: Node } | null {
   // The watermark is not a drawing: it rides the page decoration instead
   // (storage/pageDecor.ts), so it must not also arrive as a shape in the header.
@@ -758,7 +773,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, pendingBlocks: [], contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -1082,33 +1097,6 @@ function hiddenParagraph(el: Element, ctx: Ctx): boolean {
 function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDefault = false): Node[] {
   const out: Node[] = [];
 
-  // Emit an anchor block, then any text boxes found inside it (block nodes riding
-  // ctx.pendingBlocks). In the body they follow the anchor at top level, and an empty
-  // anchor (our export's wrapper) is dropped; in cells/boxes they unwrap in place.
-  const pushWithPending = (anchor: Node | null) => {
-    const pending = ctx.pendingBlocks.splice(0);
-    const anchorIsEmpty = anchor?.type === 'paragraph' && !anchor.content?.length;
-    if (anchor && !(pending.length && anchorIsEmpty)) out.push(anchor);
-    if (!pending.length) return;
-    if (kind === 'body') {
-      // A box lifted out of its anchor paragraph keeps the alignment that paragraph gave
-      // it: an as-char figure frame is set against the middle of the column by the
-      // paragraph it sits in, not by anything of its own.
-      const align = anchor?.attrs?.textAlign;
-      if (align === 'center' || align === 'right') {
-        for (const b of pending) {
-          if (b.type === 'textBox' && b.attrs && b.attrs.wrapOffset == null && !b.attrs.wrapAlign) {
-            b.attrs.wrapAlign = align;
-          }
-        }
-      }
-      out.push(...pending);
-    } else {
-      ctx.warnings.add('Text boxes nested in table cells or other text boxes were flattened');
-      for (const box of pending) out.push(...(box.content ?? [{ type: 'paragraph' }]));
-    }
-  };
-
   // A page-anchored frame is out of the text flow: it rides a paragraph of its own,
   // which collapses to nothing (editor.css). In a cell there is no page corner to place
   // it from, so it stays the ordinary floating frame the wrap rules made of it.
@@ -1128,7 +1116,8 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
     if (el.namespaceURI === NS.text) {
       if (el.localName === 'p' || el.localName === 'h') {
         if (hiddenParagraph(el, ctx)) continue;
-        pushWithPending(hoistPageFrames(convertParaLike(el, ctx, kind, boldByDefault)));
+        const block = hoistPageFrames(convertParaLike(el, ctx, kind, boldByDefault));
+        if (block) out.push(block);
       } else if (el.localName === 'list') {
         // A list wrapping only headings is ODF outline (chapter) numbering, not a real
         // list — unwrap it to plain headings instead of empty nested list levels.
@@ -1139,7 +1128,6 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
           const list = convertList(el, ctx, null, 1);
           if (list) out.push(list);
         }
-        pushWithPending(null);
       } else if (el.localName === 'section') {
         const inner = convertBlocks(Array.from(el.children), ctx, kind, boldByDefault);
         const cols = ctx.resolver.sectionColumns(el.getAttributeNS(NS.text, 'style-name'));
@@ -1167,12 +1155,10 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
       }
     } else if (el.namespaceURI === NS.draw) {
       const conv = convertDrawElement(el, ctx);
-      // An image at block level (rare) → wrapped in a paragraph.
-      if (conv?.inline) out.push({ type: 'paragraph', content: [conv.inline] });
-      else if (conv?.block) {
-        ctx.pendingBlocks.push(conv.block);
-        pushWithPending(null);
-      }
+      // A frame at block level (rare — ODF allows one straight under office:text)
+      // → wrapped in a paragraph, which is where an inline node has to live.
+      const frame = conv?.inline ?? conv?.block;
+      if (frame) out.push({ type: 'paragraph', content: [frame] });
     }
   }
   // A block's own "break after" becomes the next block's break before — the same page
@@ -1665,21 +1651,6 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
     ? { ...defaults, fontSizePt: markSizePt }
     : defaults;
   const content = convertInline(el, ctx, baseTextProps, runDefaults, false);
-
-  // A box lifted out of a paragraph that held nothing else replaces it in the flow, so
-  // it takes that paragraph's own space above and below — resolved, not the direct half:
-  // the box carries no style name to inherit the rest from.
-  if (kind === 'body' && !content.length && ctx.pendingBlocks.length) {
-    const mt = snapPt(lengthToPt(paraProps['fo:margin-top']) ?? 0);
-    const mb = snapPt(lengthToPt(paraProps['fo:margin-bottom']) ?? 0);
-    for (const b of ctx.pendingBlocks) {
-      // A floating box is out of the flow and placed by its own offsets instead.
-      const wrap = b.attrs?.wrap;
-      if (b.type !== 'textBox' || wrap === 'left' || wrap === 'right') continue;
-      if (mt) b.attrs!.spaceBefore = mt;
-      if (mb) b.attrs!.spaceAfter = mb;
-    }
-  }
 
   // The paragraph style's own font size is the block's line-height floor on every
   // line, not only on an empty one; carry it as a block attr (mirrors the docx
@@ -2285,8 +2256,9 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
           } else if (conv) ctx.warnings.add('Drawings were removed');
           continue;
         }
+        // A box is inline like a picture, so it stays exactly where the frame sits.
         if (conv?.inline) out.push(conv.inline);
-        else if (conv?.block) ctx.pendingBlocks.push(conv.block);
+        else if (conv?.block) out.push(conv.block);
         continue;
       }
       if (e.namespaceURI === NS.office && (e.localName === 'annotation' || e.localName === 'annotation-end')) {

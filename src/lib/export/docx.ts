@@ -173,6 +173,10 @@ function docCitationStyle(node: TiptapNode): CitationStyle {
 // Filled from the note section before the body is walked, then read by the anchor —
 // module-level for the same reason as docFormulas.
 let docNoteIds = new Map<string, { id: number; kind: NoteKind; label: string | null }>();
+// The boxes inlineToRuns met, in document order; applyTextBoxesDocx writes them. A
+// module-level collector like docNoteIds: a box sits in a run, and the run builder is
+// reached from every paragraph path there is.
+let docTextBoxes: TextBoxDocx[] = [];
 
 // Comments, numbered in document order before the runs are built — Word's ids are
 // integers and word/comments.xml has to exist before the Document is constructed.
@@ -666,6 +670,11 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
     } else if (node.type === 'image') {
       const img = imageRun(node);
       if (img) out.push(img);
+    } else if (node.type === 'textBox') {
+      // A marker run; applyTextBoxesDocx swaps it for the DrawingML shape, which the
+      // `docx` package has no API for.
+      docTextBoxes.push(textBoxDocxDescriptor(node));
+      out.push(new TextRun({ text: `${TBX}${docTextBoxes.length - 1}${TBX}` }));
     } else if (node.type === 'pageNumber') {
       out.push(new TextRun({ children: [PageNumber.CURRENT], ...runPropsFromMarks(node.marks) }));
     } else if (node.type === 'pageCount') {
@@ -1303,16 +1312,13 @@ function applyTextBoxesDocx(bytes: Uint8Array, boxes: TextBoxDocx[]): Uint8Array
   let nextBm = 8000;
   const parts: TxbxParts = { media: [], nums: [], links: [], nextRid: () => `rId${++nextRid}`, nextBookmarkId: () => ++nextBm };
 
+  // Only the marker run is rebuilt — the paragraph around it keeps its own properties
+  // and whatever text stands beside the box. Tempered so a match can't span two runs.
   xml = xml.replace(
-    new RegExp(`<w:p\\b[^>]*?>(?:(?!</w:p>)[\\s\\S])*?${TBX}(\\d+)${TBX}(?:(?!</w:p>)[\\s\\S])*?</w:p>`, 'g'),
+    new RegExp(`<w:r\\b[^>]*?>(?:(?!</w:r>)[\\s\\S])*?${TBX}(\\d+)${TBX}(?:(?!</w:r>)[\\s\\S])*?</w:r>`, 'g'),
     (_m, idx: string) => {
       const box = boxes[Number(idx)];
-      if (!box) return '';
-      // The marker paragraph is rebuilt, so an as-char box's alignment — which is the
-      // paragraph's, a frame in the line having none of its own — is written here.
-      const pPr = box.wrap === 'inline' && box.alignH
-        ? `<w:pPr><w:jc w:val="${box.alignH}"/></w:pPr>` : '';
-      return `<w:p>${pPr}<w:r>${textBoxDrawingXml(box, Number(idx), parts)}</w:r></w:p>`;
+      return box ? `<w:r>${textBoxDrawingXml(box, Number(idx), parts)}</w:r>` : '';
     },
   );
 
@@ -2256,7 +2262,7 @@ function indexFieldParagraphs(node: TiptapNode, kind: IndexKind, maxLevel: numbe
 }
 
 // ---- top-level walk --------------------------------------------------------
-function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: number, textBoxes: TextBoxDocx[]): (Paragraph | Table | TableOfContents)[] {
+function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: number): (Paragraph | Table | TableOfContents)[] {
   const out: (Paragraph | Table | TableOfContents)[] = [];
   for (const node of content) {
     if (node.type === 'paragraph' || node.type === 'heading') {
@@ -2267,11 +2273,6 @@ function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: num
       out.push(tableToDocx(node, contentWidthCm, num));
     } else if (node.type === 'image') {
       out.push(new Paragraph({ children: inlineToRuns([node]) }));
-    } else if (node.type === 'textBox') {
-      // Marker paragraph; applyTextBoxesDocx swaps it for the DrawingML shape.
-      const i = textBoxes.length;
-      textBoxes.push(textBoxDocxDescriptor(node));
-      out.push(new Paragraph({ children: [new TextRun({ text: `${TBX}${i}${TBX}` })] }));
     } else if (node.type === 'tableOfContents') {
       // A real field (TOC/INDEX/BIBLIOGRAPHY) whose result is the editor's cached rows.
       // A list of figures/tables is the same field over a caption label (\c) instead of
@@ -2306,7 +2307,7 @@ function startsSection(node: TiptapNode): boolean {
   return node.type === 'columns' && node.content?.[0]?.attrs?.sectionBreak === true;
 }
 
-function bodyGroups(content: TiptapNode[], num: Numbering, contentWidthCm: number, textBoxes: TextBoxDocx[]): BodyGroup[] {
+function bodyGroups(content: TiptapNode[], num: Numbering, contentWidthCm: number): BodyGroup[] {
   const groups: BodyGroup[] = [];
   let section = 0;
   let plain: TiptapNode[] = [];
@@ -2315,7 +2316,7 @@ function bodyGroups(content: TiptapNode[], num: Numbering, contentWidthCm: numbe
   let cols: { count: number; gapCm: number; blocks: TiptapNode[] } | null = null;
   const flushPlain = () => {
     if (!plain.length) return;
-    groups.push({ section, columns: null, children: blocksToDocx(plain, num, contentWidthCm, textBoxes) });
+    groups.push({ section, columns: null, children: blocksToDocx(plain, num, contentWidthCm) });
     plain = [];
   };
   const flushCols = () => {
@@ -2323,7 +2324,7 @@ function bodyGroups(content: TiptapNode[], num: Numbering, contentWidthCm: numbe
     groups.push({
       section,
       columns: { count: cols.count, gapCm: cols.gapCm },
-      children: blocksToDocx(mergeJoinedParagraphsJson(cols.blocks), num, contentWidthCm, textBoxes),
+      children: blocksToDocx(mergeJoinedParagraphsJson(cols.blocks), num, contentWidthCm),
     });
     cols = null;
   };
@@ -2555,13 +2556,13 @@ export async function buildDocx(
   const { w: pageWidthCm, h: pageHeightCm } = pageDimsCm(pageFormat, orientation);
   const contentWidthCm = pageWidthCm - margins.left - margins.right;
 
-  const textBoxes: TextBoxDocx[] = [];
   // The note section holds the notes in anchor order (notes.ts), which is the order
   // Word numbers them in; each class counts from 1 because each has its own part.
   // Numbered before the body is walked, so an anchor already knows its id.
   const noteBlocks = (docJson.content ?? []).filter((n) => n.type === 'noteSection')
     .flatMap((n) => n.content ?? []);
   docNoteIds = new Map();
+  docTextBoxes = [];
   docComments = [];
   docCommentIds = new Map();
   docRevisionIds = new Map();
@@ -2582,7 +2583,7 @@ export async function buildDocx(
     };
   }
   const body = (docJson.content ?? []).filter((n) => n.type !== 'noteSection');
-  const groups = bodyGroups(body, num, contentWidthCm, textBoxes);
+  const groups = bodyGroups(body, num, contentWidthCm);
 
   // The index fields carry the editor's rows as their cached result; still ask the
   // reader to update fields on open, so a capable one repaginates + hyperlinks them.
@@ -2730,7 +2731,7 @@ export async function buildDocx(
     ...num.styleLinks().map((l) => numberingStyleXml(l.name)),
   ]);
   const linked = applyListStylesDocx(styled, num.styleLinks());
-  const packed = applyFormulasDocx(applyTextBoxesDocx(linked, textBoxes), docFormulas);
+  const packed = applyFormulasDocx(applyTextBoxesDocx(linked, docTextBoxes), docFormulas);
   const cited = applyBibliographyDocx(applyPlaceholdersDocx(applyRubyDocx(packed, docRubies), docPlaceholders), docSources, docCitationStyle(docJson));
   const withNotes = docNoteIds.size ? applyNoteMarksDocx(applyNotePrDocx(cited, notesSettings)) : cited;
   const withResolved = applyCommentsResolvedDocx(withNotes);

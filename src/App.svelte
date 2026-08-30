@@ -535,7 +535,18 @@
   // recorded, the RECORDING meta keeps the whole file from arriving as this author's
   // insertion. Both word processors record what is typed after an open, not the file.
   function loadContent(content: Content): void {
-    editor?.chain().setMeta(RECORDING, true).setContent(content).run();
+    editor?.chain().setMeta(RECORDING, true).setContent(wrapLooseTextBoxes(content)).run();
+  }
+
+  // A text box used to be a block of its own; it is inline now, so a document written
+  // before that (an autosave, a recent file) would lose every box it holds to the
+  // schema. Give each one the paragraph it now needs.
+  function wrapLooseTextBoxes(content: Content): Content {
+    if (!content || typeof content !== 'object' || Array.isArray(content)) return content;
+    const doc = content as { content?: { type?: string }[] };
+    if (!doc.content?.some(n => n?.type === 'textBox')) return content;
+    return { ...doc, content: doc.content.map(n =>
+      n?.type === 'textBox' ? { type: 'paragraph', content: [n] } : n) } as Content;
   }
 
   // Reset every document side-car to its default; the $effects persist these.

@@ -1,12 +1,13 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Node as PMNode, Slice } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection, Plugin } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { HANDLES, MIN_SIZE_PX, clamp, parsePx, frameMargins, pageContentHeightPx, applyRunThrough, type WrapMode } from './image';
 import { SHAPES, shapePath, linePaths, arrowHeadPx, isShapeKind, isLineKind, type ShapeKind } from '../../utils/shapes';
+import { cmToPx } from '../../storage/pageMargins';
 
 // cm attribute value → number, for the frame offsets (px ones use parsePx).
 const parseCmAttr = (v: string | null): number | null => {
@@ -59,6 +60,7 @@ declare module '@tiptap/core' {
     textBox: {
       insertTextBox: () => ReturnType;
       setTextBoxAttrs: (attrs: Partial<TextBoxAttrs>) => ReturnType;
+      setTextBoxAlign: (align: string | null) => ReturnType;
     };
   }
 }
@@ -78,6 +80,26 @@ export function findTextBox(state: EditorState): { pos: number; node: PMNode } |
   return null;
 }
 
+// The depth of the text box a position sits in, or -1. The box is inline, so every
+// ancestor from depth 1 has to be asked.
+function boxDepthAt($p: { depth: number; node: (d: number) => PMNode }): number {
+  for (let d = 1; d <= $p.depth; d++) if ($p.node(d).type.name === 'textBox') return d;
+  return -1;
+}
+
+// Whether any text box in the fragment sits inside another. Both word processors refuse
+// a box in a box, and neither format's writer has a place to put one.
+function nestsBox(node: PMNode, inBox = false): boolean {
+  let bad = false;
+  node.forEach(child => {
+    if (bad) return;
+    const isBox = child.type.name === 'textBox';
+    if (isBox && inBox) bad = true;
+    else if (nestsBox(child, inBox || isBox)) bad = true;
+  });
+  return bad;
+}
+
 function shapeRadius(kind: ShapeKind): string {
   return kind === 'ellipse' ? '50%' : kind === 'roundRect' ? '8px' : '0';
 }
@@ -90,9 +112,11 @@ function isDrawnShape(a: TextBoxAttrs): boolean {
 
 export const TextBox = Node.create({
   name: 'textBox',
-  // Own group (not `block`): only the doc admits it, so it can't nest in table
-  // cells, list items, or other text boxes.
-  group: 'textBox',
+  // An inline node carrying block content, like the frame both formats write: it rides
+  // a paragraph's content, so `inline` really is in the line and a box reaches a cell
+  // or a list item through their paragraphs. A box inside a box is barred by a plugin.
+  group: 'inline',
+  inline: true,
   content: '(paragraph | heading | bulletList | orderedList)+',
   isolating: true,
   defining: true,
@@ -239,20 +263,41 @@ export const TextBox = Node.create({
 
   addCommands() {
     return {
-      // Insert a fresh text box after the current top-level block, cursor inside.
+      // Insert a fresh text box at the cursor, cursor inside. A box is a character, so
+      // it goes where the caret is — except inside a box, where it would nest: there it
+      // follows the block that holds that box, in a paragraph of its own.
       insertTextBox:
         () =>
         ({ state, dispatch }) => {
           const type = state.schema.nodes.textBox;
-          const para = state.schema.nodes.paragraph?.createAndFill();
-          if (!type || !para) return false;
+          const paraType = state.schema.nodes.paragraph;
+          const para = paraType?.createAndFill();
+          if (!type || !paraType || !para) return false;
           const { $from } = state.selection;
-          const pos = $from.depth >= 1 ? $from.after(1) : state.selection.from;
+          const nested = boxDepthAt($from) >= 0 && $from.depth >= 1;
+          const at = nested ? $from.after(1) : state.selection.from;
           if (dispatch) {
             const box = type.create({ width: DEFAULT_WIDTH_PX, height: DEFAULT_HEIGHT_PX }, para);
-            const tr = state.tr.insert(pos, box);
-            tr.setSelection(TextSelection.create(tr.doc, pos + 2));
+            const tr = state.tr.insert(at, nested ? paraType.create(null, box) : box);
+            // The box's own first text position: one more where a paragraph wraps it.
+            tr.setSelection(TextSelection.create(tr.doc, at + (nested ? 3 : 2)));
             dispatch(tr.scrollIntoView());
+          }
+          return true;
+        },
+
+      // The alignment of the paragraph an in-line box sits in — which is what places it,
+      // and what both formats write. Its own command because the caret is usually inside
+      // the box, where the generic one would align the box's own paragraph instead.
+      setTextBoxAlign:
+        (align: string | null) =>
+        ({ state, dispatch }) => {
+          const found = findTextBox(state);
+          if (!found) return false;
+          const $box = state.doc.resolve(found.pos);
+          if (!$box.parent.type.spec.attrs?.textAlign) return false;
+          if (dispatch) {
+            dispatch(state.tr.setNodeMarkup($box.before(), undefined, { ...$box.parent.attrs, textAlign: align }));
           }
           return true;
         },
@@ -280,6 +325,37 @@ export const TextBox = Node.create({
   addProseMirrorPlugins() {
     return [
       new Plugin({
+        // A selection may not end inside a box it did not start in: deleting one
+        // dissolves the frame and spills its text into the body. Grown to the box's
+        // own bounds, the same delete takes the whole box, which is what both word
+        // processors do.
+        appendTransaction: (_trs, _old, state) => {
+          const sel = state.selection;
+          if (!(sel instanceof TextSelection) || sel.empty) return null;
+          const { $from, $to } = sel;
+          const df = boxDepthAt($from);
+          const dt = boxDepthAt($to);
+          if (df === dt && (df < 0 || $from.start(df) === $to.start(df))) return null;
+          const from = df < 0 ? sel.from : $from.before(df);
+          const to = dt < 0 ? sel.to : $to.after(dt);
+          return state.tr.setSelection(TextSelection.create(state.doc, from, to));
+        },
+        // A box in a box has nowhere to go in either format, so it never enters the
+        // document. Only a step that carries one is worth the walk.
+        filterTransaction: tr => {
+          if (!tr.docChanged) return true;
+          const carriesBox = tr.steps.some(step => {
+            const slice = (step as unknown as { slice?: Slice }).slice;
+            if (!slice) return false;
+            let found = false;
+            slice.content.descendants(n => {
+              if (n.type.name === 'textBox') found = true;
+              return !found;
+            });
+            return found;
+          });
+          return !carriesBox || !nestsBox(tr.doc);
+        },
         props: {
           decorations(state) {
             const { from, to } = state.selection;
@@ -510,12 +586,16 @@ class TextBoxView {
     const rad = (this.attrs().rotation * Math.PI) / 180;
     const bw = Math.abs(w * Math.cos(rad)) + Math.abs(h * Math.sin(rad));
     const bh = Math.abs(w * Math.sin(rad)) + Math.abs(h * Math.cos(rad));
-    this.dom.style.width = `${bw}px`;
+    // A band-wrapped frame spans the column instead (applyWrap), which is what keeps
+    // text off its sides; only its height is the frame's.
+    const band = this.attrs().wrap === 'topBottom';
+    this.dom.style.width = band ? '100%' : `${bw}px`;
     this.dom.style.height = `${bh}px`;
+    if (band) this.placeInBand(this.attrs());
   }
 
-  // Float per wrap mode, exactly like ImageView.applyWrap. 'inline' and 'topBottom'
-  // both render in-flow for a block-level box (they differ only in export anchoring).
+  // Float per wrap mode, exactly like ImageView.applyWrap: an inline node leaves the
+  // line by floating, never by becoming a block box.
   private applyWrap(): void {
     const d = this.dom;
     const a = this.attrs();
@@ -523,36 +603,43 @@ class TextBoxView {
     d.style.clear = '';
     d.style.position = '';
     d.style.zIndex = '';
-    d.style.margin = frameMargins('topBottom', a.wrap === 'topBottom' ? a.wrapOffset : null, 0);
+    d.style.display = '';
+    d.style.verticalAlign = '';
+    d.style.margin = '';
+    this.rotor.style.left = '';
     if (a.wrap === 'left' || a.wrap === 'right') {
       d.style.float = a.wrap;
       d.style.margin = frameMargins(a.wrap, a.wrapOffset, this.wrapperWidth(), null, a.wrapDist);
     } else if (a.wrap === 'through') {
       // Behind the text, which is what a shape with no run-through of its own exports as.
       applyRunThrough(d, a.wrapOffset, a.wrapOffsetY, false);
-    } else {
-      // In flow: the frame is a block box, and CSS lays one over a float rather than
-      // beside it (only line boxes shorten), so it takes the next free line instead.
+    } else if (a.wrap === 'topBottom') {
+      // A full-width float, as on an image: text may only flow above and below it, and
+      // a block box on an inline node view splits the paragraph's inline content into
+      // anonymous ones, which loses the following page-break spacer.
+      d.style.float = 'left';
       d.style.clear = 'both';
+      d.style.width = '100%';
+      d.style.margin = frameMargins('topBottom', null, 0, a.wrapOffsetY);
+      this.placeInBand(a);
+    } else {
+      // In the line: a box is a character. inline-block keeps ProseMirror's inline view
+      // intact where a block box would not.
+      d.style.display = 'inline-block';
+      d.style.verticalAlign = 'bottom';
     }
-    // The anchor paragraph's spacing, which a lifted box stands in for: space above as
-    // padding so it adds to the block above (editor.css), space below as the margin the
-    // frame distance already is.
-    const before = this.node.attrs.spaceBefore as number | null;
-    const after = this.node.attrs.spaceAfter as number | null;
-    // --space-top is the same value the rotor can inherit (--space-before is registered
-    // non-inheriting), and it is what pageBreaks.ts zeroes at a page top.
-    for (const prop of ['--space-before', '--space-top']) {
-      if (before != null) d.style.setProperty(prop, `${before}pt`);
-      else d.style.removeProperty(prop);
-    }
-    if (after != null) d.style.marginBottom = `${after}pt`;
-    // Set against the middle or the far end of the column, unless the file placed the
-    // box by coordinate.
-    if ((a.wrapAlign === 'center' || a.wrapAlign === 'right')
-        && a.wrapOffset == null && a.wrap !== 'left' && a.wrap !== 'right') {
-      d.style.marginLeft = 'auto';
-      if (a.wrapAlign === 'center') d.style.marginRight = 'auto';
+  }
+
+  // Where the frame sits across a band it spans: the wrapper is the whole column, so
+  // this moves the rotor, which CSS centres in it — which is already `center`.
+  private placeInBand(a: TextBoxAttrs): void {
+    const half = (parseFloat(this.rotor.style.width) || 0) / 2;
+    if (typeof a.wrapOffset === 'number') {
+      this.rotor.style.left = `${Math.round(cmToPx(a.wrapOffset)) + half}px`;
+    } else if (a.wrapAlign === 'right') {
+      this.rotor.style.left = `calc(100% - ${half}px)`;
+    } else if (a.wrapAlign !== 'center') {
+      this.rotor.style.left = `${half}px`;
     }
   }
 

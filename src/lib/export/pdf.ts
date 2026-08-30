@@ -383,11 +383,37 @@ function weightsFromRow(row: Json): (number | null)[] {
   return w;
 }
 
+// A text box is an inline node carrying blocks, and no <p> can hold those: the parser
+// breaks the paragraph open around it, so the text after the box would print as a
+// paragraph of its own. Give each box a paragraph of its own first — the split then
+// leaves the box a block between two whole paragraphs, which is how it prints.
+export function hoistTextBoxes(json: Json): Json {
+  const walk = (node: Json): Json => {
+    if (!node?.content?.length) return node;
+    const out: Json[] = [];
+    for (const child of node.content) {
+      const boxes = (child.content ?? []).filter((n: Json) => n.type === 'textBox');
+      if (!boxes.length) { out.push(walk(child)); continue; }
+      out.push({ ...child, content: child.content!.filter((n: Json) => n.type !== 'textBox') });
+      for (const b of boxes) out.push({ type: 'paragraph', content: [b] });
+    }
+    return { ...node, content: out };
+  };
+  return walk(json);
+}
+
 // JSON → clean HTML, re-inserting the percentage <colgroup>s the table node view
 // builds at runtime but generateHTML omits (matches the editor's column widths).
-function buildBodyHtml(json: Json): string {
+export function buildBodyHtml(json: Json): string {
   const host = document.createElement('div');
-  host.innerHTML = generateHTML(json, extensions);
+  host.innerHTML = generateHTML(hoistTextBoxes(json), extensions);
+  // The two empty paragraphs the split above leaves around each box. A blank line the
+  // reader wrote sits one further out, so immediate adjacency picks only the artifacts.
+  for (const box of Array.from(host.querySelectorAll('div[data-textbox]'))) {
+    for (const p of [box.previousElementSibling, box.nextElementSibling]) {
+      if (p?.tagName === 'P' && !p.firstChild && !p.attributes.length) p.remove();
+    }
+  }
   const percents: number[][] = [];
   (function walk(n: Json) {
     if (!n) return;
