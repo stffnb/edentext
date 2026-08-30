@@ -107,7 +107,9 @@ defaults — an editor-only default would land in every imported file as direct 
 
 Rendered geometry from the same probe: the footnote area is carved out of the **bottom of
 the content area**, above the bottom margin; the endnote list starts at the content top of
-a fresh page.
+a fresh page. **Word appends the list to the last page instead**, so it ends a document
+with endnotes one page earlier than LibreOffice and than we do — measured by rendering one
+`.docx` in both, identical body text on every page before the notes.
 
 **The separator is drawn a pixel wider than it measures.** 0.5pt is 0.66px, which Chromium
 rounds away to nothing, so `editor.css` paints it at `max(1px, …)`. The reservation still
