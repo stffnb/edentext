@@ -156,3 +156,61 @@ describe('aligning a selected box', () => {
     ed.destroy();
   });
 });
+
+// The frame holds editable blocks, so at its own first and last text position the
+// browser has no neighbouring one to walk to; without a step out the caret is stuck.
+describe('leaving a box that is alone in its paragraph', () => {
+  const press = (ed: Editor, key: string): void => {
+    const ev = new KeyboardEvent('keydown', { key, bubbles: true });
+    ed.view.someProp('handleKeyDown', f => f(ed.view, ev));
+  };
+  const alone = (): N[] => [{ type: 'paragraph', content: [box('KASTEN')] }];
+
+  it('steps before the box on ArrowLeft at its start', () => {
+    const ed = makeEditor(...alone());
+    ed.commands.setTextSelection(boxPos(ed) + 2);
+    press(ed, 'ArrowLeft');
+    expect(ed.state.selection.from).toBe(boxPos(ed));
+    expect(boxDepth(ed)).toBe(0);
+    ed.destroy();
+  });
+
+  it('steps after the box on ArrowRight at its end', () => {
+    const ed = makeEditor(...alone());
+    const pos = boxPos(ed);
+    ed.commands.setTextSelection(pos + 2 + 'KASTEN'.length);
+    press(ed, 'ArrowRight');
+    expect(ed.state.selection.from).toBe(pos + ed.state.doc.nodeAt(pos)!.nodeSize);
+    expect(boxDepth(ed)).toBe(0);
+    ed.destroy();
+  });
+
+  it('leaves the caret alone inside the text', () => {
+    const ed = makeEditor(...alone());
+    ed.commands.setTextSelection(boxPos(ed) + 4);
+    press(ed, 'ArrowLeft');
+    expect(ed.state.selection.from).toBe(boxPos(ed) + 4);
+    ed.destroy();
+  });
+});
+
+// A box that starts its paragraph has no text position beside it, so an editable frame
+// swallows the caret meant for the box's own place in the line.
+describe('the frame as an atom', () => {
+  const frame = (ed: Editor): HTMLElement => ed.view.dom.querySelector('.textbox-node')!;
+
+  it('is not editable while nobody edits it', () => {
+    const ed = makeEditor(...doc());
+    ed.commands.setTextSelection(1);
+    expect(frame(ed).getAttribute('contenteditable')).toBe('false');
+    ed.destroy();
+  });
+
+  it('turns editable, and shows its frame, with the caret in its text', () => {
+    const ed = makeEditor(...doc());
+    ed.commands.setTextSelection(boxPos(ed) + 2);
+    expect(frame(ed).getAttribute('contenteditable')).toBeNull();
+    expect(frame(ed).classList.contains('textbox-active')).toBe(true);
+    ed.destroy();
+  });
+});

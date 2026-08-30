@@ -3,7 +3,7 @@ import type { CommandProps } from '@tiptap/core';
 import TextAlign from '@tiptap/extension-text-align';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode, Slice } from '@tiptap/pm/model';
-import { NodeSelection, TextSelection, Plugin } from '@tiptap/pm/state';
+import { NodeSelection, Selection, TextSelection, Plugin } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
@@ -318,6 +318,24 @@ export const TextBox = Node.create({
     };
   },
 
+  // The frame holds editable blocks, so at its own first or last text position there is
+  // no neighbouring one for the browser to walk to and the caret sits stuck. Step out to
+  // the position the box occupies in its paragraph, which is where a character would be.
+  addKeyboardShortcuts() {
+    const escape = (dir: -1 | 1) => () => {
+      const sel = this.editor.state.selection;
+      if (!(sel instanceof TextSelection) || !sel.empty) return false;
+      const $c = sel.$from;
+      const d = boxDepthAt($c);
+      if (d < 0) return false;
+      const box = $c.node(d);
+      const edge = dir < 0 ? Selection.atStart(box).from : Selection.atEnd(box).to;
+      if (sel.from !== $c.start(d) + edge) return false;
+      return this.editor.commands.setTextSelection(dir < 0 ? $c.before(d) : $c.after(d));
+    };
+    return { ArrowLeft: escape(-1), ArrowRight: escape(1) };
+  },
+
   addNodeView() {
     return ({ node, editor, getPos }) => new TextBoxView(node as PMNode, editor, getPos as () => number);
   },
@@ -362,11 +380,18 @@ export const TextBox = Node.create({
           decorations(state) {
             const { from, to } = state.selection;
             const decos: Decoration[] = [];
+            // A box rides a paragraph's inline content, so the walk has to enter blocks.
             state.doc.descendants((node, pos) => {
-              if (node.type.name !== 'textBox') return false;
-              if (from >= pos && to <= pos + node.nodeSize) {
-                decos.push(Decoration.node(pos, pos + node.nodeSize, { class: 'textbox-active' }));
-              }
+              if (node.type.name !== 'textBox') return node.isBlock;
+              const end = pos + node.nodeSize;
+              const attrs: Record<string, string> = {};
+              if (from >= pos && to <= end) attrs.class = 'textbox-active';
+              // A frame nobody is editing is an atom to the browser. Left editable it
+              // swallows the caret meant for the box's own place in the line — there is
+              // no text position beside a box that starts its paragraph — and what is
+              // typed there lands inside the frame.
+              if (!(from > pos && to < end)) attrs.contenteditable = 'false';
+              decos.push(Decoration.node(pos, end, attrs));
               return false;
             });
             return DecorationSet.create(state.doc, decos);
@@ -676,6 +701,13 @@ class TextBoxView {
     return inside && nearEdge;
   }
 
+  // Whether the caret sits in this box's text — the one state in which the frame is
+  // editable, and so the one in which the browser places a caret in it by itself.
+  private editing(state: EditorState): boolean {
+    const pos = this.getPos();
+    return typeof pos === 'number' && state.selection.from > pos && state.selection.to < pos + this.node.nodeSize;
+  }
+
   private onFrameMouseDown(e: MouseEvent): void {
     if (this.isOwnUi(e.target)) return;
     const pos = this.getPos();
@@ -688,9 +720,9 @@ class TextBoxView {
       // draggable, so a later ring drag still moves it natively.
       view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
       if (!already) { e.preventDefault(); view.focus(); }
-    } else if (already) {
-      // Body click on an object-selected (draggable) box: the browser won't place a
-      // caret, so do it ourselves at the click point to enter text editing.
+    } else if (!this.editing(view.state)) {
+      // Body click on a box nobody is editing: the frame is not editable yet, so the
+      // browser places no caret in it. Do it ourselves at the click point.
       e.preventDefault();
       const from = pos + 1, to = pos + this.node.nodeSize - 1;
       const hit = view.posAtCoords({ left: e.clientX, top: e.clientY })?.pos;
@@ -843,7 +875,9 @@ class TextBoxView {
   stopEvent(event: Event): boolean {
     if (!event.type.startsWith('mouse')) return false;
     if (this.isOwnUi(event.target)) return true;
-    return this.isFrameHit(event as MouseEvent);
+    // Every mouse event on a frame nobody is editing is ours: onFrameMouseDown has
+    // placed the selection already, and ProseMirror would put it somewhere else.
+    return this.isFrameHit(event as MouseEvent) || !this.editing(this.editor.state);
   }
 
   destroy(): void {
