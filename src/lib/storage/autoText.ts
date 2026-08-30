@@ -3,24 +3,33 @@
 // their own (`.bau`, a `.dotx`); here they live in localStorage, so they outlive the
 // document that made them.
 
+import type { JSONContent } from '@tiptap/core';
+
 export type AutoTextEntry = {
   name: string;
   /** Typed in the text, then F3 — LibreOffice's shortcut, case-insensitive. */
   shortcut: string;
-  /** The entry's content as HTML, parsed back through the schema on insert. */
-  html: string;
+  /** The entry's nodes, or the HTML an entry stored before they were kept as JSON. */
+  content: JSONContent[] | string;
 };
 
 const KEY = 'edentext-autotext';
+
+/** The entry's content, taking an older entry's `html` as the string it already is. */
+function contentOf(e: AutoTextEntry & { html?: unknown }): AutoTextEntry['content'] | null {
+  if (Array.isArray(e.content) || typeof e.content === 'string') return e.content;
+  return typeof e.html === 'string' ? e.html : null;
+}
 
 export function loadAutoText(): AutoTextEntry[] {
   try {
     const raw = localStorage.getItem(KEY);
     const data = raw ? (JSON.parse(raw) as AutoTextEntry[]) : [];
-    return Array.isArray(data)
-      ? data.filter((e) => e && typeof e.name === 'string' && typeof e.html === 'string')
-          .map((e) => ({ name: e.name, shortcut: String(e.shortcut ?? ''), html: e.html }))
-      : [];
+    if (!Array.isArray(data)) return [];
+    return data.flatMap((e) => {
+      const content = e && typeof e.name === 'string' ? contentOf(e) : null;
+      return content === null ? [] : [{ name: e.name, shortcut: String(e.shortcut ?? ''), content }];
+    });
   } catch {
     return [];
   }

@@ -151,7 +151,7 @@ reject in place through `acceptRevision`/`rejectRevision`. Opened from the Revie
 
 LibreOffice's Tools ▸ AutoText, reachable where Word puts it too (the ribbon's Insert ▸
 Text group, the modern chrome's Tools menu): the library, a click to insert, and "new
-from selection" — the selected slice serialized to HTML. `hasSelection` is derived off
+from selection" — the selected slice's nodes as JSON. `hasSelection` is derived off
 `open` because the dialog stays mounted and a modal freezes the selection it opened on.
 
 ## Synonyms (`ThesaurusDialog.svelte`, `spell/thesaurus.ts`)

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { getHTMLFromFragment, type Editor } from '@tiptap/core';
+  import type { Editor, JSONContent } from '@tiptap/core';
+  import type { AutoTextEntry } from '../storage/autoText';
   import { autoTextEntries, putAutoText, removeAutoText } from '../storage/autoText.svelte';
   import { t } from '../i18n/i18n.svelte';
 
@@ -25,14 +26,16 @@
   function add() {
     const slice = editor?.state.selection.content();
     if (!editor || !slice || !name.trim()) return;
-    const html = getHTMLFromFragment(slice.content, editor.schema);
-    putAutoText({ name: name.trim(), shortcut: shortcut.trim(), html });
+    // The nodes themselves, not HTML: a text box holds blocks, and in an HTML string
+    // any block tag inside a <p> closes it, so the frame would not survive the trip.
+    const content = (slice.content.toJSON() ?? []) as JSONContent[];
+    putAutoText({ name: name.trim(), shortcut: shortcut.trim(), content });
     name = '';
     shortcut = '';
   }
 
-  function insert(html: string) {
-    editor?.chain().focus().insertContent(html).run();
+  function insert(content: AutoTextEntry['content']) {
+    editor?.chain().focus().insertContent(content).run();
     open = false;
   }
 </script>
@@ -50,7 +53,7 @@
       <ul>
         {#each autoTextEntries() as entry (entry.name)}
           <li>
-            <button class="entry" onclick={() => insert(entry.html)} title={t().autoText.insertEntry}>
+            <button class="entry" onclick={() => insert(entry.content)} title={t().autoText.insertEntry}>
               <span class="entry-name">{entry.name}</span>
               {#if entry.shortcut}<span class="entry-key">{entry.shortcut}</span>{/if}
             </button>

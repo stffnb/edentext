@@ -30,11 +30,11 @@ export const AutoText = Extension.create({
 
   addCommands() {
     return {
-      insertAutoText: (entry) => ({ commands }) => commands.insertContent(entry.html),
+      insertAutoText: (entry) => ({ commands }) => commands.insertContent(entry.content),
       expandAutoText: () => ({ editor, chain }) => {
         const hit = shortcutAt(editor);
         if (!hit) return false;
-        return chain().focus().deleteRange({ from: hit.from, to: hit.to }).insertContent(hit.entry.html).run();
+        return chain().focus().deleteRange({ from: hit.from, to: hit.to }).insertContent(hit.entry.content).run();
       },
     };
   },
