@@ -2248,9 +2248,16 @@ function indexFieldParagraphs(node: TiptapNode, kind: IndexKind, maxLevel: numbe
     + '<w:r><w:fldChar w:fldCharType="separate"/></w:r>');
   const close = runsFromXml('<w:r><w:fldChar w:fldCharType="end"/></w:r>');
   if (!entries.length) return [new Paragraph({ children: [...open, ...close] })];
+  const levelStyles = Array.isArray(a.levelStyles) ? (a.levelStyles as unknown[]) : [];
+  // A level's own style where the file named one, else one level = 0.5cm — the indent the
+  // editor draws (LibreOffice's own Contents 1…5).
+  const own = (level: number): string | null => {
+    const name = levelStyles[level - 1];
+    return typeof name === 'string' && name ? name : null;
+  };
   return entries.map((e, i) => new Paragraph({
-    // One level = 0.5cm, the indent the editor draws (LibreOffice's own Contents 1…5).
-    indent: e.level > 1 ? { left: cmToTwip(0.5 * (e.level - 1)) } : undefined,
+    style: own(e.level) ? docxStyleId(own(e.level)!) : undefined,
+    indent: own(e.level) || e.level === 1 ? undefined : { left: cmToTwip(0.5 * (e.level - 1)) },
     tabStops: noPage ? undefined : [{ type: TabStopType.RIGHT, position: cmToTwip(tabCm), ...(leader ? { leader } : {}) }],
     children: [
       ...(i === 0 ? open : []),
@@ -2377,6 +2384,10 @@ function usedStyleNames(doc: TiptapNode, sheet: StyleSheet): Set<string> {
   for (const style of Object.values(sheet.paragraph)) if (style.builtin) addChain(style.name);
   const walk = (node: TiptapNode) => {
     if (node.type === 'paragraph' || node.type === 'heading') addChain(styleOf(node));
+    // An index's rows are generated, but the styles their levels name are the file's own.
+    if (node.type === 'tableOfContents' && Array.isArray(node.attrs?.levelStyles)) {
+      for (const name of node.attrs.levelStyles as unknown[]) if (typeof name === 'string') addChain(name);
+    }
     node.content?.forEach(walk);
   };
   walk(doc);

@@ -541,8 +541,11 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         const index = tocIndexKind(instr);
         // maxLevel only where the field has levels — the ODF side sets none for the
         // alphabetical index or the bibliography either.
+        const levels = index === 'alphabetical' || index === 'bibliography' ? null : tocMaxLevel(instr);
+        const levelStyles = levels == null ? null : tocLevelStyles(ctx, levels);
         out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', index, ...tocPageNumbers(instr),
-          ...(index === 'alphabetical' || index === 'bibliography' ? {} : { maxLevel: tocMaxLevel(instr) }),
+          ...(levels == null ? {} : { maxLevel: levels }),
+          ...(levelStyles ? { levelStyles } : {}),
           ...(index === 'bibliography' ? { citationStyle: ctx.citationStyle } : {}) } });
       }
       if (startedInToc || emit) continue;
@@ -595,12 +598,15 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         if (kind === 'body') {
           const content = fc(el, 'sdtContent');
           const instr = content ? instrTextOf(content) : '';
+          const maxLevel = tocMaxLevel(instr);
+          const levelStyles = tocLevelStyles(ctx, maxLevel);
           out.push({ type: 'tableOfContents', attrs: {
             entries: [],
             title: tocHeading(content) ?? '',
-            maxLevel: tocMaxLevel(instr),
+            maxLevel,
             index: tocIndexKind(instr),
             ...tocPageNumbers(instr),
+            ...(levelStyles ? { levelStyles } : {}),
           } });
         }
       } else {
@@ -800,7 +806,25 @@ function registryName(id: string, wordName: string, isDefault: boolean): string 
   if (/^Title$/i.test(id)) return 'Title';
   if (/^Subtitle$/i.test(id)) return 'Subtitle';
   if (/^Quote$/i.test(id) || /^Quotations?$/i.test(id)) return 'Quotations';
+  // The index entry styles: LibreOffice calls them Contents 1…10, and naming them that
+  // keeps one document's ODF and DOCX legs pointing at the same registry entry.
+  const toc = /^toc\s?(10|[1-9])$/i.exec(wordName);
+  if (toc) return `Contents ${toc[1]}`;
   return wordName || id;
+}
+
+// The paragraph styles a TOC field regenerates its rows from, by level. Naming them
+// gives the index the file's own indent and spacing instead of the editor's fallback.
+function tocLevelStyles(ctx: Ctx, maxLevel: number): (string | null)[] | null {
+  const out: (string | null)[] = [];
+  for (const id of ctx.styles.namedParagraphStyles().keys()) {
+    const name = ctx.styleNames.get(id) ?? '';
+    const level = Number(/^Contents (10|[1-9])$/.exec(name)?.[1]);
+    if (!level || level > maxLevel) continue;
+    ctx.usedStyles.add(id);
+    out[level - 1] = name;
+  }
+  return out.some(Boolean) ? Array.from(out, (s) => s ?? null) : null;
 }
 
 // What a style declares itself: its resolved props minus the parent's.

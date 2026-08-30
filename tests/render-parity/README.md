@@ -94,3 +94,12 @@ editor (`global.css`), so give LibreOffice the same answer:
 </match>
 ```
 
+## What a `lineBreak` run usually is
+
+Both word processors **shrink** the spaces of a justified line to pull one more word
+onto it; CSS `text-align: justify` only stretches. Probed on one paragraph: justified,
+LibreOffice keeps a word the browser drops, and the same paragraph left-aligned breaks
+in both engines at the same word. So a long justified document reports a `lineBreak`
+every dozen pages with no defect behind it — the browser simply fits marginally less
+per line, worth about a quarter page over fifty. Left-align a passage before believing
+a break difference is ours.
