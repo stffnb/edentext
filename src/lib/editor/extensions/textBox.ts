@@ -2,7 +2,8 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import type { CommandProps } from '@tiptap/core';
 import TextAlign from '@tiptap/extension-text-align';
 import type { Editor } from '@tiptap/core';
-import type { Node as PMNode, Slice } from '@tiptap/pm/model';
+import { DOMSerializer, Fragment } from '@tiptap/pm/model';
+import type { DOMOutputSpec, Node as PMNode, Schema, Slice } from '@tiptap/pm/model';
 import { NodeSelection, Selection, TextSelection, Plugin } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
@@ -110,6 +111,33 @@ function shapeRadius(kind: ShapeKind): string {
 // is only its stroke. The box behind any of them stays bare.
 function isDrawnShape(a: TextBoxAttrs): boolean {
   return !!SHAPES[a.shapeKind]?.points || !!a.shapePath || isLineKind(a.shapeKind);
+}
+
+// The blocks a copied box carries, read back off the span the clipboard form is.
+function clipboardContent(dom: HTMLElement, schema: Schema): Fragment {
+  try {
+    return Fragment.fromJSON(schema, JSON.parse(dom.getAttribute('data-tbx') || 'null'));
+  } catch {
+    return Fragment.empty;
+  }
+}
+
+// A box holds blocks, and in an HTML string any block tag inside a `<p>` closes it — so
+// a box copied to another window would arrive as loose paragraphs. It goes on the
+// clipboard as an inline span instead, its blocks in an attribute as JSON, its text
+// beside them for every reader that cannot take those back.
+function boxClipboardSerializer(schema: Schema): DOMSerializer {
+  const base = DOMSerializer.fromSchema(schema);
+  const box = base.nodes.textBox;
+  const nodes = {
+    ...base.nodes,
+    textBox: (node: PMNode) => {
+      const [, attrs] = box(node) as [string, Record<string, string>, 0];
+      return ['span', { ...attrs, 'data-tbx': JSON.stringify(node.content.toJSON()) },
+        node.textBetween(0, node.content.size, ' ')] as DOMOutputSpec;
+    },
+  };
+  return new DOMSerializer(nodes, base.marks);
 }
 
 export const TextBox = Node.create({
@@ -230,7 +258,12 @@ export const TextBox = Node.create({
   },
 
   parseHTML() {
-    return [{ tag: 'div[data-textbox]' }];
+    return [
+      { tag: 'div[data-textbox]' },
+      // The clipboard's inline form, whose blocks ride an attribute (see
+      // boxClipboardSerializer); its own text is what the attribute already holds.
+      { tag: 'span[data-tbx]', getContent: (dom, schema) => clipboardContent(dom as HTMLElement, schema) },
+    ];
   },
 
   renderHTML({ HTMLAttributes, node }) {
@@ -343,6 +376,7 @@ export const TextBox = Node.create({
   // Show the resize frame + handles (via .textbox-active) whenever the caret sits
   // inside a box, so a plain click into it reveals the editing frame like an image.
   addProseMirrorPlugins() {
+    const clipboardSerializer = boxClipboardSerializer(this.editor.schema);
     return [
       new Plugin({
         // A selection may not end inside a box it did not start in: deleting one
@@ -377,6 +411,7 @@ export const TextBox = Node.create({
           return !carriesBox || !nestsBox(tr.doc);
         },
         props: {
+          clipboardSerializer,
           decorations(state) {
             const { from, to } = state.selection;
             const decos: Decoration[] = [];

@@ -16,8 +16,12 @@ path reads the live DOM. The **vector print path** (`export/pdf.ts`) handles it:
 `hoistTextBoxes` gives each box a paragraph of its own before serializing, and
 `buildBodyHtml` drops the two empty paragraphs the split then leaves around it — so the
 box prints as a block between whole paragraphs, which is how it printed as one.
-An **AutoText** entry holding a box keeps the box's text and loses the frame; so does a
-paste from another window.
+The **clipboard** handles it the other way: `boxClipboardSerializer` (a
+`clipboardSerializer` prop) writes each box as an inline `<span data-tbx>` carrying its
+blocks as JSON, and the `span[data-tbx]` parse rule's `getContent` reads them back — so a
+paste into another window keeps the box where it stood in the line, while a program that
+cannot read the attribute still gets the span's plain text. An **AutoText** entry stores
+the slice's nodes for the same reason (`storage/autoText.ts`).
 
 ## Clicking a float
 

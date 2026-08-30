@@ -4,6 +4,7 @@
 // spill its text into the body).
 import { describe, it, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
+import { __parseFromClipboard } from 'prosemirror-view';
 import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
@@ -212,5 +213,47 @@ describe('the frame as an atom', () => {
     expect(frame(ed).getAttribute('contenteditable')).toBeNull();
     expect(frame(ed).classList.contains('textbox-active')).toBe(true);
     ed.destroy();
+  });
+});
+
+// Copying to another window goes through an HTML string, where any block tag inside a
+// <p> closes it — so the box travels as an inline span carrying its blocks as JSON.
+describe('a box on the clipboard', () => {
+  const copyPaste = (src: Editor, dst: Editor): void => {
+    const html = (src.view.serializeForClipboard(src.state.doc.slice(0, src.state.doc.content.size)) as
+      { dom: HTMLElement }).dom.innerHTML;
+    const slice = __parseFromClipboard(dst.view, '', html, false, dst.state.doc.resolve(1));
+    if (slice) dst.view.dispatch(dst.state.tr.replaceSelection(slice));
+  };
+
+  it('arrives in another editor as a box in the line', () => {
+    const src = makeEditor(...doc());
+    const dst = makeEditor({ type: 'paragraph' });
+    copyPaste(src, dst);
+    expect(dst.state.doc.childCount).toBe(1);
+    const para = dst.state.doc.child(0);
+    expect(para.content.child(1).type.name).toBe('textBox');
+    expect(para.content.child(1).textContent).toBe('KASTEN');
+    expect(para.textContent).toBe('vor AAA KASTEN nach BBB');
+    src.destroy();
+    dst.destroy();
+  });
+
+  it('keeps the frame\u2019s own size', () => {
+    const src = makeEditor(...doc());
+    const dst = makeEditor({ type: 'paragraph' });
+    copyPaste(src, dst);
+    expect(dst.state.doc.child(0).content.child(1).attrs).toMatchObject({ width: 160, height: 60 });
+    src.destroy();
+    dst.destroy();
+  });
+
+  it('reads as its plain text where the attribute cannot be taken back', () => {
+    const src = makeEditor(...doc());
+    const html = (src.view.serializeForClipboard(src.state.doc.slice(0, src.state.doc.content.size)) as
+      { dom: HTMLElement }).dom.innerHTML;
+    expect(html).toContain('KASTEN</span>');
+    expect(html).not.toContain('<div');
+    src.destroy();
   });
 });
