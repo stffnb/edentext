@@ -161,6 +161,14 @@
   padding: 0.04cm 0.08cm;
 }
 
+/* Both exporters write style:text-position="super 58%": that size, and a zero line
+   height so the raised run stays out of the line box, as it does in LibreOffice. On
+   the paper, not the body — a header/footer zone carries the marks and is reserved. */
+.paper :is(sup, sub) {
+  font-size: 58%;
+  line-height: 0;
+}
+
 /* Hyperlinks (link.ts). Ctrl/Cmd+click opens them (Editor.svelte). */
 /* The browser's own link colour is off first: a link Word left unstyled is drawn like the
    text around it, since there the blue is a character style, not a property of being a
