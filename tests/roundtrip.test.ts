@@ -2739,3 +2739,28 @@ describe('Leg 32: fold marks (ODT + DOCX)', () => {
     check('off imports off', importDocx(plain).foldMarks === false);
   });
 });
+
+describe('Leg 33: where a box sits across the column (ODT + DOCX)', () => {
+  const box = (wrap: string, wrapAlign: string | null): N =>
+    TBX({ width: 200, height: 90, wrap, ...(wrapAlign ? { wrapAlign } : {}) }, P(null, T('Kasten')));
+  const doc = (wrap: string, wrapAlign: string | null): N =>
+    ({ type: 'doc', content: [P(null, T('above')), box(wrap, wrapAlign), P(null, T('below'))] });
+  const alignOf = (res: N): unknown =>
+    (res.content.content ?? []).find((n: N) => n.type === 'textBox')?.attrs?.wrapAlign ?? null;
+
+  for (const [wrap, align] of [['inline', 'center'], ['inline', 'right'], ['topBottom', 'center'], ['topBottom', 'right'], ['topBottom', null]] as const) {
+    it(`ODT: ${wrap} ${align ?? 'left'} comes back`, async () => {
+      const bytes = await buildOdt(doc(wrap, align), margins);
+      check('the alignment survives', alignOf(importOdt(bytes)) === align, alignOf(importOdt(bytes)));
+    });
+
+    it(`DOCX: ${wrap} ${align ?? 'left'} comes back`, async () => {
+      const bytes = await buildDocx(doc(wrap, align), margins);
+      const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+      if (wrap === 'topBottom') {
+        check('the band position is written', xml.includes(`<wp:align>${align ?? 'left'}</wp:align>`), /<wp:positionH[\s\S]*?<\/wp:positionH>/.exec(xml)?.[0]);
+      }
+      check('the alignment survives', alignOf(importDocx(bytes)) === align, alignOf(importDocx(bytes)));
+    });
+  }
+});

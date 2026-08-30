@@ -318,6 +318,9 @@ const de: Messages = {
     wrapLeft: 'Textumbruch — Feld links',
     wrapRight: 'Textumbruch — Feld rechts',
     wrapTopBottom: 'Oben und unten',
+    alignLeft: 'Linksbündig in der Spalte',
+    alignCenter: 'Zentriert in der Spalte',
+    alignRight: 'Rechtsbündig in der Spalte',
     shape: 'Form',
     chooseShape: 'Form auswählen',
     shapes: {

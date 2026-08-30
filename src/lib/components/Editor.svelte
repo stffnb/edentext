@@ -674,9 +674,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // just above it. Hidden while the image toolbar shows (an image inside a box).
   let textBoxUi = $state<{
     visible: boolean; top: number; left: number;
-    wrap: WrapMode; shapeKind: ShapeKind; fillColor: string | null;
+    wrap: WrapMode; wrapAlign: string | null; shapeKind: ShapeKind; fillColor: string | null;
     strokeColor: string | null; strokeWidthPt: number; textVertical: boolean;
-  }>({ visible: false, top: 0, left: 0, wrap: 'inline', shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1, textVertical: false });
+  }>({ visible: false, top: 0, left: 0, wrap: 'inline', wrapAlign: null, shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1, textVertical: false });
 
   function recomputeTextBoxUi() {
     const ed = editor;
@@ -701,6 +701,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       top: anchorTop - cRect.top + container!.scrollTop,
       left: r.left - cRect.left + container!.scrollLeft,
       wrap: (a.wrap as WrapMode) || 'inline',
+      wrapAlign: (a.wrapAlign as string | null) ?? null,
       shapeKind: (a.shapeKind as ShapeKind) || 'textbox',
       fillColor: (a.fillColor as string | null) ?? null,
       strokeColor: (a.strokeColor as string | null) ?? null,
@@ -1561,6 +1562,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       top={textBoxUi.top}
       left={textBoxUi.left}
       wrap={textBoxUi.wrap}
+      wrapAlign={textBoxUi.wrapAlign}
       shapeKind={textBoxUi.shapeKind}
       fillColor={textBoxUi.fillColor}
       strokeColor={textBoxUi.strokeColor}

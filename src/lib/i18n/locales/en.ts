@@ -324,6 +324,9 @@ const en = {
     wrapLeft: 'Wrap text — box left',
     wrapRight: 'Wrap text — box right',
     wrapTopBottom: 'Top and bottom',
+    alignLeft: 'Align left in the column',
+    alignCenter: 'Centre in the column',
+    alignRight: 'Align right in the column',
     shape: 'Shape',
     chooseShape: 'Choose a shape',
     shapes: {

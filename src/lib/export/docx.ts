@@ -851,6 +851,7 @@ type TextBoxDocx = {
   offsetCm: number | null;
   offsetYCm: number | null;
   distCm: number | null;
+  alignH: string | null;
   shapeKind: ShapeKind;
   shapePath: string | null;
   flipV: boolean;
@@ -872,6 +873,7 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     offsetCm: typeof a.wrapOffset === 'number' ? a.wrapOffset : null,
     offsetYCm: typeof a.wrapOffsetY === 'number' ? a.wrapOffsetY : null,
     distCm: typeof a.wrapDist === 'number' ? a.wrapDist : null,
+    alignH: a.wrapAlign === 'center' || a.wrapAlign === 'right' || a.wrapAlign === 'left' ? a.wrapAlign : null,
     shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
     shapePath: typeof a.shapePath === 'string' && a.shapePath ? a.shapePath : null,
     flipV: a.flipV === true,
@@ -1257,7 +1259,9 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
   const wrapEl = box.wrap === 'through' ? '<wp:wrapNone/>'
     : box.wrap === 'topBottom' ? '<wp:wrapTopAndBottom/>'
     : `<wp:wrapSquare wrapText="${box.wrap === 'right' ? 'left' : 'right'}"/>`;
-  const align = box.wrap === 'right' ? 'right' : 'left';
+  // A side wrap names the side itself; only a band-wrapped box has a place to choose.
+  const align = box.wrap === 'right' ? 'right'
+    : box.wrap === 'topBottom' ? box.alignH ?? 'left' : 'left';
   const emu = (cm: number) => Math.round(cm * 360000);
   // The x rides topBottom too: it moves the frame within its full-width band.
   const posH = box.offsetCm != null
@@ -1301,7 +1305,12 @@ function applyTextBoxesDocx(bytes: Uint8Array, boxes: TextBoxDocx[]): Uint8Array
     new RegExp(`<w:p\\b[^>]*?>(?:(?!</w:p>)[\\s\\S])*?${TBX}(\\d+)${TBX}(?:(?!</w:p>)[\\s\\S])*?</w:p>`, 'g'),
     (_m, idx: string) => {
       const box = boxes[Number(idx)];
-      return box ? `<w:p><w:r>${textBoxDrawingXml(box, Number(idx), parts)}</w:r></w:p>` : '';
+      if (!box) return '';
+      // The marker paragraph is rebuilt, so an as-char box's alignment — which is the
+      // paragraph's, a frame in the line having none of its own — is written here.
+      const pPr = box.wrap === 'inline' && box.alignH
+        ? `<w:pPr><w:jc w:val="${box.alignH}"/></w:pPr>` : '';
+      return `<w:p>${pPr}<w:r>${textBoxDrawingXml(box, Number(idx), parts)}</w:r></w:p>`;
     },
   );
 

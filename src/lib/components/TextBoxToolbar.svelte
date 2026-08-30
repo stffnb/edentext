@@ -11,6 +11,7 @@
     top,
     left,
     wrap,
+    wrapAlign,
     shapeKind,
     fillColor,
     strokeColor,
@@ -21,6 +22,7 @@
     top: number;
     left: number;
     wrap: WrapMode;
+    wrapAlign: string | null;
     shapeKind: ShapeKind;
     fillColor: string | null;
     strokeColor: string | null;
@@ -41,6 +43,21 @@
       : m === 'left' ? t().textBox.wrapLeft
       : m === 'right' ? t().textBox.wrapRight
       : t().textBox.wrapTopBottom;
+  }
+
+  // Where the box sits across the column. A side wrap has no such choice — the wrap
+  // names the side — so the buttons show for the two modes that leave the box in flow.
+  const alignModes = ['left', 'center', 'right'] as const;
+  const alignable = $derived(wrap === 'inline' || wrap === 'topBottom');
+  function alignTitle(a: (typeof alignModes)[number]): string {
+    return a === 'left' ? t().textBox.alignLeft
+      : a === 'center' ? t().textBox.alignCenter
+      : t().textBox.alignRight;
+  }
+  // An imported box placed by coordinate keeps that x over any alignment, so picking
+  // one drops it.
+  function setAlign(a: (typeof alignModes)[number]) {
+    set({ wrapAlign: a === 'left' ? null : a, wrapOffset: null });
   }
 
   const strokeWidths = [0.5, 1, 2.25];
@@ -99,6 +116,27 @@
       {/if}
     </button>
   {/each}
+
+  {#if alignable}
+    <span class="tb-sep"></span>
+
+    {#each alignModes as a}
+      <button
+        class="tb-btn"
+        class:active={(wrapAlign ?? 'left') === a}
+        title={alignTitle(a)}
+        aria-label={alignTitle(a)}
+        aria-pressed={(wrapAlign ?? 'left') === a}
+        onclick={() => setAlign(a)}
+      >
+        <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <line x1="2.5" y1="3" x2="15.5" y2="3" stroke="currentColor" stroke-width="1.2" />
+          <rect x={a === 'left' ? 2.5 : a === 'center' ? 6 : 9.5} y="6" width="6" height="6" rx="1" fill="currentColor" />
+          <line x1="2.5" y1="15" x2="15.5" y2="15" stroke="currentColor" stroke-width="1.2" />
+        </svg>
+      </button>
+    {/each}
+  {/if}
 
   <span class="tb-sep"></span>
 

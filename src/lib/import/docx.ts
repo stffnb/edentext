@@ -528,6 +528,14 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
     if (anchor && !(pending.length && anchorIsEmpty)) out.push(anchor);
     if (!pending.length) return;
     if (kind === 'body') {
+      // A box lifted out of its anchor paragraph keeps the alignment that paragraph gave
+      // it: an as-char frame is set against the middle of the column by the paragraph it
+      // sits in, not by anything of its own.
+      const align = anchor?.attrs?.textAlign;
+      if (align === 'center' || align === 'right')
+        for (const b of pending)
+          if (b.type === 'textBox' && b.attrs && b.attrs.wrapOffset == null && !b.attrs.wrapAlign)
+            b.attrs.wrapAlign = align;
       out.push(...pending);
     } else {
       ctx.warnings.add('Text boxes nested in table cells or other text boxes were flattened');
@@ -2117,6 +2125,12 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
     if (offsetCm != null) attrs.wrapOffset = offsetCm;
     if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
     if (distCm != null) attrs.wrapDist = distCm;
+    // Where the box sits across its band. A box is a block, so it takes the middle and
+    // the far end that an image reads as one half of a side-by-side pair.
+    const align = root.getElementsByTagNameNS(WP, 'positionH')[0]
+      ?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
+    if (wrap === 'topBottom' && offsetCm == null && (align === 'center' || align === 'right'))
+      attrs.wrapAlign = align;
   }
 
   const fillClr = nsChild(nsChild(spPr, A, 'solidFill'), A, 'srgbClr')?.getAttribute('val');
