@@ -7,6 +7,7 @@
   import { countText, type TextStats } from '../../../utils/wordCount';
   import type { DocumentLanguage } from '../../../storage/documentLanguage';
   import { recordChanges, setRecordChanges } from '../../../storage/trackChanges.svelte';
+  import { printMarkup, setPrintMarkup } from '../../../storage/printMarkup.svelte';
   import { revisions } from '../../../editor/extensions/trackChanges';
   import { OPEN_THESAURUS_EVENT } from '../../../spell/thesaurus';
   import { shortcutHint } from '../../../editor/shortcuts';
@@ -165,6 +166,14 @@
       onclick={() => editor?.chain().focus().rejectRevisions(true).run()}
     />
   </div>
+  <RibbonButton
+    variant="small"
+    icon="print"
+    label={t().revisions.printMarkup}
+    title={t().revisions.printMarkupHint}
+    active={printMarkup()}
+    onclick={() => setPrintMarkup(!printMarkup())}
+  />
 </RibbonGroup>
 
 <div class="ribbon-sep"></div>

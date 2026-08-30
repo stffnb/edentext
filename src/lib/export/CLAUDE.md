@@ -66,7 +66,9 @@ A printed document says what the screen says: a bar in the margin beside every c
 commented block, and the comment bodies as a list after the document. The list is not a
 nicety — a comment's text is nowhere on the page, so a bar alone could only say that one
 exists. A resolved comment prints nowhere, and a document with no markup prints exactly as
-before (no list, no CSS, no margin shift). There is no on/off switch; both products have one.
+before (no list, no CSS, no margin shift). The Review tab's **Print markup** toggle
+(`storage/printMarkup.svelte.ts`) turns the whole thing off, as both products offer;
+`printPdf` rebuilds its options field by field, so a new one has to be copied there too.
 
 - **The margin strip is paid for.** The print engine clips to the page area, so a bar at a
   negative offset is silently dropped — measured, not assumed. `printPdf` takes

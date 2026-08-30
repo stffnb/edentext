@@ -31,6 +31,8 @@ export interface PdfOptions {
   numPages?: number;
   /** Heading of the printed comment list; no comments, no extra pages. */
   commentsHeading?: string;
+  /** Whether the review markup prints at all (`storage/printMarkup`); default on. */
+  printMarkup?: boolean;
 }
 
 type Run = { str: string; x: number; y: number; h: number }; // doc px, relative to .paper top-left
@@ -42,13 +44,14 @@ function pageDims(format: PageFormat, orientation: Orientation): { pageW: number
 
 // Off-screen, scale-1, theme-neutral copy of the live .paper. Rendered identically to
 // the editor (no print re-layout), so the raster + measured text positions agree.
-function buildClone(paper: HTMLElement, pageW: number): { holder: HTMLElement; clone: HTMLElement; style: HTMLStyleElement } {
+function buildClone(paper: HTMLElement, pageW: number, markup: boolean): { holder: HTMLElement; clone: HTMLElement; style: HTMLStyleElement } {
   const clone = paper.cloneNode(true) as HTMLElement;
   clone.style.transform = 'none';
   clone.style.width = `${pageW}px`; // pin width so capture geometry can't drift on var inheritance
   clone.classList.remove('show-formatting-marks', 'hf-editing');
   // The margin bar prints at one weight: which one the caret is on is an editing state.
-  clone.querySelectorAll('.change-bar.active').forEach((el) => el.classList.remove('active'));
+  if (markup) clone.querySelectorAll('.change-bar.active').forEach((el) => el.classList.remove('active'));
+  else clone.querySelectorAll('.change-bar-layer').forEach((el) => el.remove());
 
   // html2canvas paints an inline background from one bounding rect, so a wrapped
   // highlight covers the bold term preceding it on the first line. Lift bold-and-
@@ -223,7 +226,7 @@ export async function renderPaperToCanvas(opts: PdfOptions, scale = 2): Promise<
   const { pageW, pageH } = pageDims(opts.pageFormat ?? 'A4', orientation);
   const cycle = pageH + PAGE_GAP;
 
-  const { holder, clone, style } = buildClone(paper, pageW);
+  const { holder, clone, style } = buildClone(paper, pageW, opts.printMarkup !== false);
   document.head.appendChild(style);
   document.body.appendChild(holder);
   const cleanup = () => { holder.remove(); style.remove(); };
@@ -324,7 +327,7 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
   const landscape = (opts.orientation ?? 'portrait') === 'landscape';
   try {
     const runs = collectRuns(clone);
-    const comments = printedComments(opts.source);
+    const comments = opts.printMarkup === false ? [] : printedComments(opts.source);
     const extra = comments.length
       ? await renderCommentPages(opts, comments, pageW, pageH, scale)
       : { images: [], runs: [] };
@@ -380,7 +383,7 @@ export async function printRaster(opts: PdfOptions): Promise<void> {
   } finally {
     cleanup();
   }
-  const comments = printedComments(opts.source);
+  const comments = opts.printMarkup === false ? [] : printedComments(opts.source);
   if (comments.length) imgs = imgs.concat((await renderCommentPages(opts, comments, pageW, pageH, scale)).images);
 
   const title = (opts.fileName ?? deriveFilename(opts.json)).replace(/\.(odt|pdf)$/i, '');
@@ -445,6 +448,8 @@ export interface PrintPdfOptions {
   differentOddEven?: boolean;
   /** Heading of the printed comment list; no comments, no list. */
   commentsHeading?: string;
+  /** Whether the review markup prints at all (`storage/printMarkup`); default on. */
+  printMarkup?: boolean;
 }
 
 // First-row column weights from table JSON (honours colspan); mirrors tableView.
@@ -617,14 +622,17 @@ export function printPdf(opts: PrintPdfOptions): void {
     headerEvenDoc: opts.headerEvenDoc ?? null,
     footerEvenDoc: opts.footerEvenDoc ?? null,
     differentOddEven: opts.differentOddEven ?? false,
+    commentsHeading: opts.commentsHeading,
+    printMarkup: opts.printMarkup,
   };
   const title = (o.fileName ?? deriveFilename(o.json)).replace(/\.(odt|pdf)$/i, '');
   // The layers are Svelte DOM and generateHTML knows nothing of them, so this path
   // rebuilds the review markup from the marks the document itself carries.
   const host = document.createElement('div');
   host.innerHTML = buildBodyHtml(o.json);
-  const comments = printedComments(host);
-  const review = markReviewBlocks(host);
+  const markup = o.printMarkup !== false;
+  const comments = markup ? printedComments(host) : [];
+  const review = markup && markReviewBlocks(host);
   const list = comments.length ? commentListHtml(comments, o.commentsHeading ?? 'Comments') : '';
 
   const iframe = document.createElement('iframe');

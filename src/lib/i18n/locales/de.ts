@@ -827,6 +827,8 @@ const de: Messages = {
   },
   revisions: {
     record: 'Änderungen verfolgen',
+    printMarkup: 'Markup drucken',
+    printMarkupHint: 'Randbalken und Kommentarliste mitdrucken',
     recordHint: 'Jede Bearbeitung als Änderung aufzeichnen',
     accept: 'Annehmen',
     acceptHint: 'Die Änderung an der Einfügemarke annehmen',

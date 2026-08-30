@@ -833,6 +833,8 @@ const en = {
   },
   revisions: {
     record: 'Track changes',
+    printMarkup: 'Print markup',
+    printMarkupHint: 'Print the margin bar and the comment list',
     recordHint: 'Record every edit as a revision',
     accept: 'Accept',
     acceptHint: 'Accept the change at the cursor',

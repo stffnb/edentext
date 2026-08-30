@@ -45,6 +45,7 @@
   import { loadPageDecor, savePageDecor, EMPTY_PAGE_DECOR, type PageDecor } from './lib/storage/pageDecor';
   import { loadLineNumbering, saveLineNumbering, DEFAULT_LINE_NUMBERING, type LineNumbering } from './lib/storage/lineNumbering';
   import { loadFoldMarks, saveFoldMarks } from './lib/storage/foldMarks';
+  import { printMarkup } from './lib/storage/printMarkup.svelte';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { setTableLanguage } from './lib/storage/tableOptions.svelte';
   import { spellController } from './lib/spell/controller';
@@ -942,6 +943,7 @@
         pageFormat,
         numPages,
         commentsHeading: t().comments.title,
+        printMarkup: printMarkup(),
       });
     } catch (err) {
       console.error('[pdf] Export failed:', err);
@@ -968,6 +970,7 @@
         pageFormat,
         numPages,
         commentsHeading: t().comments.title,
+        printMarkup: printMarkup(),
       });
     } catch (err) {
       console.error('[pdf] Print failed:', err);
@@ -999,6 +1002,7 @@
         footerEvenDoc,
         differentOddEven,
         commentsHeading: t().comments.title,
+        printMarkup: printMarkup(),
       });
     } catch (err) {
       console.error('[pdf] Print failed:', err);
