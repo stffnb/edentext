@@ -12,7 +12,6 @@
     left,
     wrap,
     wrapAlign,
-    paraAlign,
     shapeKind,
     fillColor,
     strokeColor,
@@ -24,7 +23,6 @@
     left: number;
     wrap: WrapMode;
     wrapAlign: string | null;
-    paraAlign: string | null;
     shapeKind: ShapeKind;
     fillColor: string | null;
     strokeColor: string | null;
@@ -47,13 +45,13 @@
       : t().textBox.wrapTopBottom;
   }
 
-  // Where the box sits across the column. A side wrap has no such choice — the wrap
-  // names the side — so the buttons show for the two modes that leave it in flow.
+  // Where the box sits across the band it spans. Only a band-wrapped box has such a
+  // choice of its own: a side wrap names the side, and a box in the line is a character
+  // its paragraph places — there the ordinary paragraph alignment does it, as on a
+  // picture, so a second control here would only be the same thing under a frame icon.
   const alignModes = ['left', 'center', 'right'] as const;
-  const alignable = $derived(wrap === 'inline' || wrap === 'topBottom');
-  // A box in the line is a character: its paragraph places it, and that is what both
-  // formats write. A band-wrapped box has a place of its own across the column.
-  const current = $derived(wrap === 'inline' ? paraAlign ?? 'left' : wrapAlign ?? 'left');
+  const alignable = $derived(wrap === 'topBottom');
+  const current = $derived(wrapAlign ?? 'left');
   function alignTitle(a: (typeof alignModes)[number]): string {
     return a === 'left' ? t().textBox.alignLeft
       : a === 'center' ? t().textBox.alignCenter
@@ -62,8 +60,7 @@
   // An imported box placed by coordinate keeps that x over any alignment, so picking
   // one drops it.
   function setAlign(a: (typeof alignModes)[number]) {
-    if (wrap === 'inline') editor?.chain().focus().setTextBoxAlign(a === 'left' ? null : a).run();
-    else set({ wrapAlign: a === 'left' ? null : a, wrapOffset: null });
+    set({ wrapAlign: a === 'left' ? null : a, wrapOffset: null });
   }
 
   const strokeWidths = [0.5, 1, 2.25];

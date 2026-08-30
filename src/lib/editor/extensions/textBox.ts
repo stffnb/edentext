@@ -1,4 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core';
+import type { CommandProps } from '@tiptap/core';
+import TextAlign from '@tiptap/extension-text-align';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode, Slice } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection, Plugin } from '@tiptap/pm/state';
@@ -881,3 +883,24 @@ export function getTextBoxDebug(view: EditorView): TextBoxDebugEntry[] {
   });
   return out;
 }
+
+// A selected text box is one node whose range covers its own paragraphs, so the command
+// would align the box's contents along with the block holding it — moving the frame and
+// re-setting its text in one keystroke. With the frame selected only the block it sits
+// in is meant; the caret inside the box still aligns that text.
+export const TextAlignInFrames = TextAlign.extend({
+  addCommands() {
+    const base = this.parent?.() ?? {};
+    const onBox = (align: string | null) => (props: CommandProps) =>
+      props.state.selection instanceof NodeSelection
+      && props.state.selection.node.type.name === 'textBox'
+      && props.chain().setTextBoxAlign(align).run();
+    return {
+      ...base,
+      setTextAlign: (align: string) => (props: CommandProps) =>
+        onBox(align)(props) || base.setTextAlign!(align)(props),
+      unsetTextAlign: () => (props: CommandProps) =>
+        onBox(null)(props) || base.unsetTextAlign!()(props),
+    };
+  },
+});

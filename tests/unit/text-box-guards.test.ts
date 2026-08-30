@@ -11,7 +11,7 @@ import Heading from '@tiptap/extension-heading';
 import { BulletList } from '../../src/lib/editor/extensions/bulletList';
 import { OrderedList } from '../../src/lib/editor/extensions/orderedList';
 import ListItem from '@tiptap/extension-list-item';
-import { TextBox } from '../../src/lib/editor/extensions/textBox';
+import { TextBox, TextAlignInFrames } from '../../src/lib/editor/extensions/textBox';
 
 type N = any;
 
@@ -33,7 +33,8 @@ function makeEditor(...content: N[]) {
   document.body.appendChild(el);
   return new Editor({
     element: el,
-    extensions: [Document, Paragraph, Text, Heading, BulletList, OrderedList, ListItem, TextBox],
+    extensions: [Document, Paragraph, Text, Heading, BulletList, OrderedList, ListItem, TextBox,
+      TextAlignInFrames.configure({ types: ['paragraph', 'heading'] })],
     content: { type: 'doc', content },
   });
 }
@@ -129,6 +130,29 @@ describe('inserting a text box', () => {
     // The new box rides a paragraph of its own, next to the one holding the first.
     expect(ed.state.doc.childCount).toBe(2);
     expect(ed.state.doc.child(1).content.child(0).type.name).toBe('textBox');
+    ed.destroy();
+  });
+});
+
+describe('aligning a selected box', () => {
+  it('moves the block it sits in, not the text inside it', () => {
+    const ed = makeEditor(...doc());
+    ed.commands.setNodeSelection(boxPos(ed));
+    ed.commands.setTextAlign('right');
+    const outer = ed.state.doc.child(0);
+    const inner = outer.content.child(1).content.child(0);
+    expect(outer.attrs.textAlign).toBe('right');
+    expect(inner.attrs.textAlign).toBeNull();
+    ed.destroy();
+  });
+
+  it('aligns the text inside when the caret is in the box', () => {
+    const ed = makeEditor(...doc());
+    ed.commands.setTextSelection(boxPos(ed) + 2);
+    ed.commands.setTextAlign('center');
+    const outer = ed.state.doc.child(0);
+    expect(outer.attrs.textAlign).toBeNull();
+    expect(outer.content.child(1).content.child(0).attrs.textAlign).toBe('center');
     ed.destroy();
   });
 });

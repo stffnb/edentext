@@ -24,7 +24,7 @@ import { Table, TableHeader, TableCell } from '@tiptap/extension-table';
 import { ResizableTableRow } from './extensions/tableRow';
 import History from '@tiptap/extension-history';
 import Placeholder from '@tiptap/extension-placeholder';
-import TextAlign from '@tiptap/extension-text-align';
+
 import { PageBreaks } from './extensions/pageBreaks';
 import { LineHeight } from './extensions/lineHeight';
 import { ParagraphSpacing } from './extensions/paragraphSpacing';
@@ -61,7 +61,7 @@ import { BibliographyEntry } from './extensions/bibliographyEntry';
 import { CrossReference } from './extensions/crossReference';
 import { Ruby } from './extensions/ruby';
 import { Formula } from './extensions/formula';
-import { TextBox } from './extensions/textBox';
+import { TextBox, TextAlignInFrames } from './extensions/textBox';
 import { Columns } from './extensions/columns';
 import { ColumnsFlow } from './extensions/columnsFlow';
 import { TableOfContents } from './extensions/tableOfContents';
@@ -227,7 +227,8 @@ export const extensions = [
   // No defaultAlignment: it would put textAlign:'left' on every block, and that inline
   // style beats the paragraph style's alignment. Unset = follow the style; an explicit
   // 'left' stays direct formatting that overrides it, as in Word/LibreOffice.
-  TextAlign.configure({
+  // Taught that a selected box means the block it sits in (textBox.ts).
+  TextAlignInFrames.configure({
     types: ['paragraph', 'heading'],
     alignments: ['left', 'center', 'right', 'justify'],
   }),
