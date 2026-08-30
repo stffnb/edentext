@@ -2764,3 +2764,20 @@ describe('Leg 33: where a box sits across the column (ODT + DOCX)', () => {
     });
   }
 });
+
+describe('Leg 34: a box keeps the height it declares (DOCX)', () => {
+  const doc: N = {
+    type: 'doc',
+    content: [P(null, T('above')), TBX({ width: 200, height: 90, wrap: 'topBottom' }, P(null, T('inside'))), P(null, T('below'))],
+  };
+
+  it('the shape body does not autofit to its text', async () => {
+    const bytes = await buildDocx(doc, margins);
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    // Read as spAutoFit, LibreOffice gives the frame min-height 0 and lays its text
+    // out detached from the shape, over whatever follows (probed).
+    check('noAutofit, as LibreOffice writes for the same frame', xml.includes('<a:noAutofit/>'), 'wps:bodyPr');
+    check('never spAutoFit', !xml.includes('<a:spAutoFit/>'), 'wps:bodyPr');
+    check('the declared height still rides the extent', xml.includes('cy="857250"'), 'wp:extent');
+  });
+});

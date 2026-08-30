@@ -1225,8 +1225,10 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     ? `<a:ln w="${Math.round(box.strokeWidthPt * EMU_PER_PT)}"><a:solidFill><a:srgbClr val="${hexColor(box.stroke) ?? '000000'}"/></a:solidFill>${ends}</a:ln>`
     : '<a:ln><a:noFill/></a:ln>';
   const inset = Math.round(TEXTBOX_PADDING_CM * EMU_PER_CM);
-  // Auto-grow only for plain text boxes, matching the ODT export.
-  const autofit = box.shapeKind === 'textbox' && !box.shapePath ? '<a:spAutoFit/>' : '';
+  // The box keeps the height it declares — LibreOffice's own DOCX export writes this for
+  // the same frame, and read as spAutoFit it lays the text out detached from the shape
+  // (probed: the text lands in the body, over whatever follows).
+  const autofit = '<a:noAutofit/>';
   // A freeform is its own outline: custGeom over the same 0…100 box, in the shape's
   // own EMU extent so the path needs no second scale.
   const geom = box.shapePath
