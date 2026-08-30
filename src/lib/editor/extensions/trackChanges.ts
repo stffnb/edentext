@@ -97,6 +97,14 @@ export const REVISION_AUTHOR_COLORS = [
   '#c69200', '#0646a2', '#579d1c', '#692b9d', '#c5000b', '#008080', '#8c8400', '#35556b', '#d17600',
 ];
 
+/** The change the selection lies within — what the pane highlights and the bar thickens. */
+export function revisionIdAt(state: EditorState, list?: Revision[]): string | null {
+  const { from, to } = state.selection;
+  // By range, not by the marks at the caret: both marks are non-inclusive, so a selection
+  // over the whole change — what a click on the pane's card makes — carries none.
+  return (list ?? revisions(state.doc)).find((r) => r.from <= from && to <= r.to)?.id ?? null;
+}
+
 /** Author → palette index, in the order the document's revisions first name them. */
 export function authorColorIndex(list: Revision[]): Map<string, number> {
   const order = new Map<string, number>();

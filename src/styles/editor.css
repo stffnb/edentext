@@ -1022,6 +1022,12 @@
   border-bottom: 1px solid rgba(200, 140, 0, 0.7);
 }
 
+/* The one the caret sits in (comment.ts): a heavier tint, so the pane's highlighted
+   card and the annotated text name each other. */
+.tiptap .pm-comment-active {
+  background: rgba(255, 200, 60, 0.5);
+}
+
 .tiptap .pm-comment[data-comment-resolved='true'] {
   background: none;
   border-bottom-color: rgba(140, 140, 140, 0.6);

@@ -1,5 +1,7 @@
 import { Mark, mergeAttributes } from '@tiptap/core';
 import type { Node as PMNode, Mark as PMMark } from '@tiptap/pm/model';
+import { Plugin, type EditorState } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 // A comment: an annotation on a range of text. A mark, like `bookmark` — both formats
 // store a range (ODF office:annotation + office:annotation-end, DOCX
@@ -33,6 +35,14 @@ function commentIdOf(marks: readonly PMMark[]): string | null {
 
 export function commentMarkAt(marks: readonly PMMark[]): PMMark | null {
   return marks.find((m) => m.type.name === 'comment') ?? null;
+}
+
+/** The comment the selection lies within — what the pane highlights and the bar thickens. */
+export function commentIdAt(state: EditorState, ranges?: CommentRange[]): string | null {
+  const { from, to } = state.selection;
+  // By range, not by the marks at the caret: the mark is non-inclusive, so a selection
+  // over the whole comment — what a click on the pane's card makes — carries none.
+  return (ranges ?? commentRanges(state.doc)).find((c) => c.from <= from && to <= c.to)?.id ?? null;
 }
 
 // Every comment range in document order. Adjacent text nodes sharing an id merge into
@@ -149,5 +159,24 @@ export const Comment = Mark.create({
           return true;
         },
     };
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          // The comment the selection lies in, tinted heavier — the document half of
+          // the pairing the pane draws on its card. A handled one stays grey.
+          decorations(state) {
+            const ranges = commentRanges(state.doc);
+            const id = commentIdAt(state, ranges);
+            const hit = id ? ranges.filter((c) => c.id === id) : [];
+            if (!hit.length || hit[0].resolved) return null;
+            return DecorationSet.create(state.doc,
+              hit.map((c) => Decoration.inline(c.from, c.to, { class: 'pm-comment-active' })));
+          },
+        },
+      }),
+    ];
   },
 });

@@ -138,7 +138,9 @@ pane beside it (`.editor-row` in `App.svelte`) keeps the sheet at its true width
 `comments(editor.state.doc)` in document order — click a card to select the annotated
 range, edit / resolve / remove in place. `App.svelte` owns the New-comment prompt, which
 both the Review tab and the context menu (`OPEN_COMMENT_EVENT`) fire; the author comes
-from the document properties.
+from the document properties. The card of the comment the selection lies within (`commentIdAt`)
+is marked and scrolled into view, the pane half of the pairing `pm-comment-active`,
+`ChangeBarLayer` and `ConnectorLayer` draw on the text.
 
 ## Revisions (`RevisionsPane.svelte`)
 
@@ -146,6 +148,8 @@ The reviewing pane both word processors list revisions in, docked beside `Commen
 and built the same way: one row per change **id** (a paragraph boundary splits one change
 into several ranges), in the author's own colour, click to select the text, accept or
 reject in place through `acceptRevision`/`rejectRevision`. Opened from the Review tab.
+The row of the change the selection lies within (`revisionIdAt`) is marked with an inset accent in the
+author's colour — the same colour its margin bar takes — and scrolled into view.
 
 ## AutoText (`AutoTextDialog.svelte`, `editor/extensions/autoText.ts`)
 
@@ -234,6 +238,30 @@ counts as the one empty anchor-paragraph line the file gives it (probed in Word)
 floating frame's band is no line of its anchor paragraph. A line past the page surface is
 skipped, or its number would print into the page gap. Re-measured on each edit and each
 pagination settle — the whole document each time, which is the ceiling noted in the file.
+
+## Change bars (`ChangeBarLayer.svelte`)
+
+The changed-lines bar both word processors draw in the margin: a stroke beside every line
+a recorded change or an unresolved comment covers, in the revision author's colour or the
+comment amber, so a pane entry can be found in the text. Each range's ends give it
+(`coordsAtPos`), clipped to every page's text area — a range crossing a page break strokes
+once per page instead of through the gap. Inside the scaled `.paper` like the other
+layers, and inside the line numbers, which sit further out. The change or comment at the
+caret is drawn heavier and last, or a neighbour on the same line would cover it. Always
+mounted: with nothing marked it renders nothing.
+
+## Reviewing leader (`ConnectorLayer.svelte`)
+
+The dashed leader both word processors draw from an annotated range to its balloon, here
+from the text out to the reviewing pane's card: a stub along the anchor's line, then a
+diagonal onto the card's head. Only for the comment and the change **at the caret** — a
+line per comment would cross the whole page, and one is what pairs card and text. It sits
+in `.editor-row` (hence that row's `position: relative`), the one box spanning the
+scroller and the panes both, and reads the active card straight off the DOM
+(`li.active`), so nothing has to be threaded through `App.svelte`. Redrawn on every
+scroller (a capturing `scroll` listener), on resize and on each edit; dropped when the
+anchor scrolls out of the page view, and when a *second* pane is docked between the text
+and the target card — the card is still marked and the margin bar still names the line.
 
 ## Debug tooling (dev only)
 

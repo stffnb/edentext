@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { TextSelection } from '@tiptap/pm/state';
-  import { comments, type CommentRange } from '../editor/extensions/comment';
+  import { comments, commentIdAt, type CommentRange } from '../editor/extensions/comment';
   import { t } from '../i18n/i18n.svelte';
 
   // Word's Reviewing Pane: every comment in document order, click to jump to the text it
@@ -17,6 +17,18 @@
   let list = $derived.by<CommentRange[]>(() => {
     if (tick < 0 || !editor) return [];
     return comments(editor.state.doc);
+  });
+
+  // The comment the caret sits in: its card is marked and pulled into view, the other
+  // half of the heavier tint the document draws on the annotated text.
+  let activeId = $derived.by<string | null>(() => {
+    if (tick < 0 || !editor) return null;
+    return commentIdAt(editor.state);
+  });
+
+  let cards: Record<string, HTMLElement | null> = {};
+  $effect(() => {
+    if (activeId) cards[activeId]?.scrollIntoView({ block: 'nearest' });
   });
 
   let editingId = $state<string | null>(null);
@@ -62,7 +74,7 @@
 
   <ul>
     {#each list as c (c.id)}
-      <li class:resolved={c.resolved}>
+      <li bind:this={cards[c.id]} class:resolved={c.resolved} class:active={c.id === activeId}>
         <button class="card" onclick={() => jumpTo(c)}>
           <div class="meta">
             <b>{c.author || author}</b>
@@ -141,6 +153,7 @@
     border-bottom: 1px solid var(--color-border);
   }
   li.resolved { opacity: 0.55; }
+  li.active { background: var(--color-btn-hover); box-shadow: inset 3px 0 0 rgba(200, 140, 0, 0.9); }
 
   .card {
     display: block;

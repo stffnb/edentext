@@ -56,6 +56,7 @@
   import DocPropertiesDialog from './lib/components/DocPropertiesDialog.svelte';
   import CommentsPane from './lib/components/CommentsPane.svelte';
   import RevisionsPane from './lib/components/RevisionsPane.svelte';
+  import ConnectorLayer from './lib/components/ConnectorLayer.svelte';
   import NavigatorPane from './lib/components/NavigatorPane.svelte';
   import { OPEN_COMMENT_EVENT } from './lib/editor/extensions/comment';
   import AutoCorrectDialog from './lib/components/AutoCorrectDialog.svelte';
@@ -1511,6 +1512,9 @@
   {#if revisionsOpen}
     <RevisionsPane {editor} {tick} author={docProps.author} onClose={() => (revisionsOpen = false)} />
   {/if}
+  {#if commentsOpen || revisionsOpen}
+    <ConnectorLayer {editor} {tick} />
+  {/if}
   </div>
   {#if findOpen && editor}
     <div class="find-bar-anchor" style="top: {toolbarRegionH + 8}px;">
@@ -1602,6 +1606,8 @@
     display: flex;
     flex: 1;
     min-height: 0;
+    /* The origin ConnectorLayer draws in — it spans the scroller and the panes. */
+    position: relative;
   }
 
   /* Find & Replace bar: floats at the top-right of the editing area, just under the

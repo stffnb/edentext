@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { TextSelection } from '@tiptap/pm/state';
-  import { revisions, authorColorIndex, REVISION_AUTHOR_COLORS, type Revision } from '../editor/extensions/trackChanges';
+  import { revisions, revisionIdAt, authorColorIndex, REVISION_AUTHOR_COLORS, type Revision } from '../editor/extensions/trackChanges';
   import { t } from '../i18n/i18n.svelte';
 
   // The reviewing pane both word processors list revisions in, beside the comments one:
@@ -21,6 +21,18 @@
   });
 
   let colors = $derived(authorColorIndex(list));
+
+  // The change the caret sits in: its card is marked and pulled into view, so the
+  // margin bar beside the text and the row here name each other.
+  let activeId = $derived.by<string | null>(() => {
+    if (tick < 0 || !editor) return null;
+    return revisionIdAt(editor.state);
+  });
+
+  let cards: Record<string, HTMLElement | null> = {};
+  $effect(() => {
+    if (activeId) cards[activeId]?.scrollIntoView({ block: 'nearest' });
+  });
 
   function colorOf(r: Revision): string {
     return REVISION_AUTHOR_COLORS[colors.get(r.author) ?? 0];
@@ -55,7 +67,7 @@
 
   <ul>
     {#each list as r (r.id)}
-      <li>
+      <li bind:this={cards[r.id]} class:active={r.id === activeId} style:box-shadow={r.id === activeId ? `inset 3px 0 0 ${colorOf(r)}` : null}>
         <button class="card" onclick={() => jumpTo(r)}>
           <div class="meta">
             <b style:color={colorOf(r)}>{r.author || author || t().revisions.unknownAuthor}</b>
@@ -117,6 +129,8 @@
     padding: 8px 10px;
     border-bottom: 1px solid var(--color-border);
   }
+  /* The accent is the author's colour, set inline — the same one the margin bar takes. */
+  li.active { background: var(--color-btn-hover); }
 
   .card {
     display: block;

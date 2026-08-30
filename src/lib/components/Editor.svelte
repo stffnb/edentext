@@ -27,6 +27,7 @@ import PageDecorLayer from './PageDecorLayer.svelte';
 import PageSheetLayer from './PageSheetLayer.svelte';
 import LineNumberLayer from './LineNumberLayer.svelte';
 import FoldMarkLayer from './FoldMarkLayer.svelte';
+import ChangeBarLayer from './ChangeBarLayer.svelte';
 import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
 import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import Ruler from './Ruler.svelte';
@@ -1477,6 +1478,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       {#if lineNumbering.on}
         <LineNumberLayer {editor} {tick} {lineNumbering} {pageBoxes} {pageMargins} />
       {/if}
+      <ChangeBarLayer {editor} {tick} {pageBoxes} {pageMargins} />
       <HeaderFooterLayer
         bind:headerDoc
         bind:footerDoc
