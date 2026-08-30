@@ -22,7 +22,7 @@ export const DOCX_STYLE_NAME: Record<CitationStyle, string> = {
 
 const FROM_DOCX_STYLE: Record<string, CitationStyle> = {
   APA: 'apa', MLA: 'mla', Chicago: 'chicago', ChicagoAuthorDate: 'chicago',
-  ISO690Numerical: 'numbered', IEEE2006: 'numbered',
+  ISO690Numerical: 'numbered', IEEE: 'numbered', IEEE2006: 'numbered',
 };
 
 export function citationStyleFromDocx(name: string): CitationStyle | null {

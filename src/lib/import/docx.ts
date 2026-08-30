@@ -573,6 +573,10 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         out.push(...blocks);
         breakPending = trailingBreak;
       }
+    } else if (tocState.tocDepth >= 0) {
+      // Still inside an open TOC/INDEX/BIBLIOGRAPHY field: whatever carries its cached
+      // result is skipped, the paragraphs above and a bibliography's table alike.
+      continue;
     } else if (el.localName === 'tbl') {
       breakPending = false; // a break before a table can't be modeled; drop it
       flush();
