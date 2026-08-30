@@ -60,6 +60,31 @@ fallback download shows a one-time hint (`edentext-download-hint`) that the brow
 
 The filename is derived from the first non-empty heading (max 50 chars, sanitized), falling back to `document.odt`.
 
+## Printing the review markup (`reviewPrint.ts`)
+
+A printed document says what the screen says: a bar in the margin beside every changed or
+commented block, and the comment bodies as a list after the document. The list is not a
+nicety — a comment's text is nowhere on the page, so a bar alone could only say that one
+exists. A resolved comment prints nowhere, and a document with no markup prints exactly as
+before (no list, no CSS, no margin shift). There is no on/off switch; both products have one.
+
+- **The margin strip is paid for.** The print engine clips to the page area, so a bar at a
+  negative offset is silently dropped — measured, not assumed. `printPdf` takes
+  `BAR_STRIP_CM` out of the left `@page` margin and gives it back as `.paper` padding,
+  which leaves the text column exactly where it was.
+- **The two paths differ in resolution.** The raster paths (`exportPdf`, `printRaster`)
+  clone the live `.paper`, so they get `ChangeBarLayer`'s own per-range bars for free —
+  `buildClone` only drops the `.active` weight, an editing state. `printPdf` rebuilds from
+  `generateHTML`, where no layout exists yet: `markReviewBlocks` marks whole top-level
+  blocks (CSS has no line box to hang a bar on, and only a top-level block's left edge is
+  the text column's), so a long paragraph with a small change is marked whole.
+- **The list is a page, not a flow, in the raster paths.** The live `.paper` is an already
+  paginated layout nothing can flow into, so `renderCommentPages` lays the list out and
+  rasters it on its own; a page starts at an entry boundary, since a raster sliced mid-line
+  cuts the text in half. One entry taller than a page is clipped. The vector path just
+  appends the section next to `.tiptap` — a sibling, or the editor's own heading and list
+  rules would restyle it — and lets the browser paginate.
+
 ## Header/footer export
 
 - **Export:** a synthetic `__cust_hf__` node routes to `unknownNodeHandler`, which calls odf-kit's `setHeader`/`setFooter` (`applyHfRuns`); `hardBreak`→`LBR`, `pageNumber`→`addPageNumber`, `pageCount`→`PGC` sentinel. A zone image is an as-char `<draw:frame>`, or — floating — a page-anchored one plus a minted `HfBg*` graphic style (`run-through` behind the text, positioned from the page corner). `applyHfPostProcess` (on styles.xml) rewrites the sentinels to `<text:line-break/>`/`<text:page-count>`, applies the paragraph alignment to the `Header`/`Footer` styles, and converts geometry to Word's model: page margin = the zone's edge distance (`headerDistanceCm`/`footerDistanceCm`), header/footer `min-height` = body margin − distance, so the **body** still starts at the editor's margin.

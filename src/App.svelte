@@ -941,6 +941,7 @@
         orientation: pageOrientation,
         pageFormat,
         numPages,
+        commentsHeading: t().comments.title,
       });
     } catch (err) {
       console.error('[pdf] Export failed:', err);
@@ -966,6 +967,7 @@
         orientation: pageOrientation,
         pageFormat,
         numPages,
+        commentsHeading: t().comments.title,
       });
     } catch (err) {
       console.error('[pdf] Print failed:', err);
@@ -996,6 +998,7 @@
         headerEvenDoc,
         footerEvenDoc,
         differentOddEven,
+        commentsHeading: t().comments.title,
       });
     } catch (err) {
       console.error('[pdf] Print failed:', err);

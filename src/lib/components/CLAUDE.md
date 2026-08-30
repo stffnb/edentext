@@ -248,7 +248,9 @@ comment amber, so a pane entry can be found in the text. Each range's ends give 
 once per page instead of through the gap. Inside the scaled `.paper` like the other
 layers, and inside the line numbers, which sit further out. The change or comment at the
 caret is drawn heavier and last, or a neighbour on the same line would cover it. Always
-mounted: with nothing marked it renders nothing.
+mounted: with nothing marked it renders nothing. It sits inside `.paper`, so the raster
+export and print paths clone it and the bar prints — see `export/reviewPrint.ts` for what
+the vector path has to rebuild instead.
 
 ## Reviewing leader (`ConnectorLayer.svelte`)
 

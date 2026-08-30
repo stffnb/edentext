@@ -12,6 +12,7 @@ import { columnPercents } from '../editor/extensions/tableView';
 import { effectiveOrderedDef, formatOrdinal } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { deriveFilename } from './odt';
+import { BAR_STRIP_CM, commentListHtml, markReviewBlocks, printedComments, reviewPrintCss, type PrintedComment } from './reviewPrint';
 import globalCss from '../../styles/global.css?inline';
 import editorCss from '../../styles/editor.css?inline';
 
@@ -28,6 +29,8 @@ export interface PdfOptions {
   orientation?: Orientation;
   pageFormat?: PageFormat;
   numPages?: number;
+  /** Heading of the printed comment list; no comments, no extra pages. */
+  commentsHeading?: string;
 }
 
 type Run = { str: string; x: number; y: number; h: number }; // doc px, relative to .paper top-left
@@ -44,6 +47,8 @@ function buildClone(paper: HTMLElement, pageW: number): { holder: HTMLElement; c
   clone.style.transform = 'none';
   clone.style.width = `${pageW}px`; // pin width so capture geometry can't drift on var inheritance
   clone.classList.remove('show-formatting-marks', 'hf-editing');
+  // The margin bar prints at one weight: which one the caret is on is an editing state.
+  clone.querySelectorAll('.change-bar.active').forEach((el) => el.classList.remove('active'));
 
   // html2canvas paints an inline background from one bounding rect, so a wrapped
   // highlight covers the bold term preceding it on the first line. Lift bold-and-
@@ -261,12 +266,68 @@ function cropPageDataUrl(
   return tmp.toDataURL(mime, quality);
 }
 
+// The comment list as whole extra pages. The live .paper is an already paginated
+// layout the list cannot flow into, so it is laid out and rastered on its own; a page
+// starts at an entry boundary, because a raster sliced mid-line cuts the text in half.
+async function renderCommentPages(
+  opts: PdfOptions, list: PrintedComment[], pageW: number, pageH: number, scale: number,
+): Promise<{ images: string[]; runs: Run[][] }> {
+  const cs = getComputedStyle(opts.source);
+  // .tiptap's padding is the page margins; PdfOptions carries the live DOM, not them.
+  const [mT, mR, mB, mL] = [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].map(parseFloat);
+  const contentW = Math.max(50, pageW - mL - mR);
+  const usableH = Math.max(50, pageH - mT - mB);
+
+  const holder = document.createElement('div');
+  holder.setAttribute('data-pdf-export', '');
+  holder.style.cssText = `position:fixed; left:-100000px; top:0; width:${contentW}px; background:#fff; color:#000;`;
+  holder.innerHTML = `<style>${reviewPrintCss()}\n.comment-list { break-before: auto; }</style>`
+    + commentListHtml(list, opts.commentsHeading ?? 'Comments');
+  document.body.appendChild(holder);
+  try {
+    await document.fonts.ready;
+    const starts = [0];
+    for (const li of Array.from(holder.querySelectorAll('li')) as HTMLElement[]) {
+      if (li.offsetTop + li.offsetHeight - starts[starts.length - 1] > usableH) starts.push(li.offsetTop);
+    }
+    const total = holder.scrollHeight;
+    const html2canvas = (await import('html2canvas')).default;
+    const canvas = await html2canvas(holder, {
+      scale, backgroundColor: '#ffffff', width: contentW, height: total, windowWidth: contentW, logging: false,
+    });
+    const all = collectRuns(holder);
+    const images: string[] = [];
+    const runs: Run[][] = [];
+    for (const start of starts) {
+      const tmp = document.createElement('canvas');
+      tmp.width = Math.round(pageW * scale);
+      tmp.height = Math.round(pageH * scale);
+      const ctx = tmp.getContext('2d')!;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, tmp.width, tmp.height);
+      const h = Math.min(usableH, total - start);
+      ctx.drawImage(canvas, 0, start * scale, contentW * scale, h * scale,
+        mL * scale, mT * scale, contentW * scale, h * scale);
+      images.push(tmp.toDataURL('image/jpeg', 0.92));
+      runs.push(all.filter((r) => r.y >= start && r.y < start + usableH)
+        .map((r) => ({ ...r, x: r.x + mL, y: r.y - start + mT })));
+    }
+    return { images, runs };
+  } finally {
+    holder.remove();
+  }
+}
+
 // Render the document to A4 pages (raster + invisible text) and download the PDF.
 export async function exportPdf(opts: PdfOptions): Promise<void> {
   const { canvas, clone, pages, pageW, pageH, cycle, scale, cleanup } = await renderPaperToCanvas(opts);
   const landscape = (opts.orientation ?? 'portrait') === 'landscape';
   try {
     const runs = collectRuns(clone);
+    const comments = printedComments(opts.source);
+    const extra = comments.length
+      ? await renderCommentPages(opts, comments, pageW, pageH, scale)
+      : { images: [], runs: [] };
     const { jsPDF } = await import('jspdf');
     const fmt: [number, number] = [pageW * PT, pageH * PT];
     // compress: Flate the streams (e.g. the text layer); page images are JPEG.
@@ -283,6 +344,16 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
         const fs = Math.max(1, r.h * PT);
         doc.setFontSize(fs);
         doc.text(r.str, r.x * PT, (r.y - top) * PT + fs * 0.8, { renderingMode: 'invisible', baseline: 'alphabetic' });
+      }
+    }
+
+    for (let i = 0; i < extra.images.length; i++) {
+      doc.addPage(fmt, landscape ? 'l' : 'p');
+      doc.addImage(extra.images[i], 'JPEG', 0, 0, pageW * PT, pageH * PT);
+      for (const r of extra.runs[i]) {
+        const fs = Math.max(1, r.h * PT);
+        doc.setFontSize(fs);
+        doc.text(r.str, r.x * PT, r.y * PT + fs * 0.8, { renderingMode: 'invisible', baseline: 'alphabetic' });
       }
     }
 
@@ -309,6 +380,8 @@ export async function printRaster(opts: PdfOptions): Promise<void> {
   } finally {
     cleanup();
   }
+  const comments = printedComments(opts.source);
+  if (comments.length) imgs = imgs.concat((await renderCommentPages(opts, comments, pageW, pageH, scale)).images);
 
   const title = (opts.fileName ?? deriveFilename(opts.json)).replace(/\.(odt|pdf)$/i, '');
   // Explicit cm size (orientation baked into w/h) works for any format, unlike a CSS
@@ -370,6 +443,8 @@ export interface PrintPdfOptions {
   headerEvenDoc?: HfDoc;
   footerEvenDoc?: HfDoc;
   differentOddEven?: boolean;
+  /** Heading of the printed comment list; no comments, no list. */
+  commentsHeading?: string;
 }
 
 // First-row column weights from table JSON (honours colspan); mirrors tableView.
@@ -492,23 +567,28 @@ function marginBoxesFirst(headerDoc: HfDoc, footerDoc: HfDoc): string {
   return edge('top', headerDoc) + '\n' + edge('bottom', footerDoc);
 }
 
-function printCss(o: PrintPdfOptions): string {
+function printCss(o: PrintPdfOptions, review: boolean): string {
   const m = o.margins;
   // Explicit cm size (orientation baked into w/h) works for any format, unlike a CSS
   // size keyword such as A4/letter.
   const d = pageDimsCm(o.pageFormat ?? 'A4', o.orientation);
   const size = `${d.w}cm ${d.h}cm`;
+  // The margin bar has to be paid for: the print engine clips to the page area, so a
+  // strip comes out of the left page margin and the text gets it back as padding —
+  // which leaves the text column exactly where it was. Measured, not assumed.
+  const strip = review ? Math.min(BAR_STRIP_CM, m.left) : 0;
   return `
 @page {
   size: ${size};
-  margin: ${m.top}cm ${m.right}cm ${m.bottom}cm ${m.left}cm;
+  margin: ${m.top}cm ${m.right}cm ${m.bottom}cm ${m.left - strip}cm;
   ${marginBoxes(o.headerDoc, o.footerDoc)}
 }
 ${o.differentOddEven ? `@page :left {\n  ${marginBoxesFirst(o.headerEvenDoc ?? null, o.footerEvenDoc ?? null)}\n}` : ''}
 ${o.differentFirstPage ? `@page :first {\n  ${marginBoxesFirst(o.headerFirstDoc ?? null, o.footerFirstDoc ?? null)}\n}` : ''}
 html, body { margin: 0; padding: 0; background: #fff; }
-.paper { width: auto !important; transform: none !important; box-shadow: none !important; background: #fff !important; }
+.paper { width: auto !important; padding-left: ${strip}cm !important; transform: none !important; box-shadow: none !important; background: #fff !important; }
 .paper .tiptap { padding: 0 !important; min-height: 0 !important; background: none !important; box-shadow: none !important; color: #000 !important; }
+${review ? reviewPrintCss() : ''}
 /* generateHTML drops TipTap's .tableWrapper; mirror its (zero) margin. */
 .paper .tiptap table { margin: 0; }
 .paper .tiptap tr { break-inside: avoid; }
@@ -539,7 +619,13 @@ export function printPdf(opts: PrintPdfOptions): void {
     differentOddEven: opts.differentOddEven ?? false,
   };
   const title = (o.fileName ?? deriveFilename(o.json)).replace(/\.(odt|pdf)$/i, '');
-  const body = buildBodyHtml(o.json);
+  // The layers are Svelte DOM and generateHTML knows nothing of them, so this path
+  // rebuilds the review markup from the marks the document itself carries.
+  const host = document.createElement('div');
+  host.innerHTML = buildBodyHtml(o.json);
+  const comments = printedComments(host);
+  const review = markReviewBlocks(host);
+  const list = comments.length ? commentListHtml(comments, o.commentsHeading ?? 'Comments') : '';
 
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
@@ -550,8 +636,8 @@ export function printPdf(opts: PrintPdfOptions): void {
   idoc.open();
   idoc.write(
     `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${title}</title>` +
-    `<style>${globalCss}\n${editorCss}\n${printCss(o)}</style></head>` +
-    `<body><div class="paper"><div class="tiptap">${body}</div></div></body></html>`,
+    `<style>${globalCss}\n${editorCss}\n${printCss(o, review)}</style></head>` +
+    `<body><div class="paper"><div class="tiptap">${host.innerHTML}</div>${list}</div></body></html>`,
   );
   idoc.close();
 
