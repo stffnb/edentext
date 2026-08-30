@@ -695,8 +695,12 @@ const en = {
   templates: {
     title: 'New from template',
     din5008b: {
-      name: 'DIN 5008 letter',
-      description: 'Business letter (Form B): address field for a window envelope, info block, fold marks.',
+      name: 'DIN 5008 letter (Form B)',
+      description: 'Business letter with a full letterhead: address field for a window envelope from 45 mm, info block, fold marks.',
+    },
+    din5008a: {
+      name: 'DIN 5008 letter (Form A)',
+      description: 'Business letter with a one-line letterhead: address field from 27 mm, info block, fold marks — 18 mm more text on page 1.',
     },
     privateLetter: {
       name: 'Personal letter',

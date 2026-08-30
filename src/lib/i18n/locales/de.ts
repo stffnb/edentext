@@ -689,8 +689,12 @@ const de: Messages = {
   templates: {
     title: 'Neu aus Vorlage',
     din5008b: {
-      name: 'Brief nach DIN 5008',
-      description: 'Geschäftsbrief (Form B): Anschriftfeld fürs Fensterkuvert, Infoblock, Falzmarken.',
+      name: 'Brief nach DIN 5008 (Form B)',
+      description: 'Geschäftsbrief mit vollem Briefkopf: Anschriftfeld fürs Fensterkuvert ab 45 mm, Infoblock, Falzmarken.',
+    },
+    din5008a: {
+      name: 'Brief nach DIN 5008 (Form A)',
+      description: 'Geschäftsbrief mit einzeiligem Briefkopf: Anschriftfeld ab 27 mm, Infoblock, Falzmarken — 18 mm mehr Text auf Seite 1.',
     },
     privateLetter: {
       name: 'Privatbrief',

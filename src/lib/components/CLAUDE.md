@@ -207,10 +207,15 @@ size alone makes a short word far too small and a long one overflow the page.
 `App.svelte`'s `applyTemplate` — `resetDocumentState()` (the extracted body of New),
 then the template's content, margins, styles and fold marks. `documentName` becomes the
 localized template name and no file handle is bound, so the first Save asks where. The
-DIN letter's mm positions were verified headlessly (45mm address field, 125mm info
-column); its module documents the arithmetic. The letter-family templates share that
-geometry (and the JSON builders) via `templates/builders.ts`; `tests/unit/templates.test.ts`
-schema-checks every entry in both locales.
+norm's two DIN letter forms come out of one builder in `din5008.ts`, parameterized by
+where the address field opens; both were verified headlessly — Form B 44.97mm, Form A
+26.98mm, their info blocks 49.98/31.99mm, the info column 124.99mm. The letter-family
+templates share that geometry (and the JSON builders) via `templates/builders.ts`;
+`tests/unit/templates.test.ts` schema-checks every entry in both locales.
+
+A block's rect starts **above** its own first line — the spacing model puts space-before
+inside the box — so a probe measuring these positions must range-select the text, not
+read `getBoundingClientRect()` on the paragraph.
 
 ## Fold marks (`FoldMarkLayer.svelte`, `storage/foldMarks.ts`)
 

@@ -64,9 +64,11 @@
               <span class="fold f1"></span>
               <span class="fold f2"></span>
             {:else}
-              <span class="addr"></span>
-              {#if entry.id === 'din5008b'}
-                <span class="info"></span>
+              <!-- Form A opens its address field 18mm higher, which is the only thing
+                   telling the two DIN cards apart. -->
+              <span class="addr" class:high={entry.id === 'din5008a'}></span>
+              {#if entry.id.startsWith('din5008')}
+                <span class="info" class:high={entry.id === 'din5008a'}></span>
               {:else}
                 <span class="date"></span>
               {/if}
@@ -183,6 +185,7 @@
   }
   .addr { top: 26px; left: 12px; width: 28px; height: 16px; }
   .info { top: 26px; left: 52px; width: 22px; height: 16px; }
+  .addr.high, .info.high { top: 15px; }
   .date { top: 48px; right: 12px; width: 20px; height: 3px; }
   .line { left: 12px; height: 3px; }
   .l1 { top: 56px; width: 40px; background: #8a94a0; }
