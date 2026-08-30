@@ -163,6 +163,28 @@ export function readVerticalMargins(dom: HTMLElement): VMargins {
   };
 }
 
+// Rows a cell spans move as one: that cell is a single box, so a break between them
+// would stretch it across the gap instead of splitting it. Returns each row's group
+// leader; a group too tall for a page cannot be kept whole and leads itself.
+export function rowSpanGroups(
+  rows: { spans: number[]; top: number; height: number }[], contentHeight: number,
+): number[] {
+  const leader = rows.map((_, i) => i);
+  for (let i = 0; i < rows.length; ) {
+    let end = i;
+    for (let j = i; j <= end; j++) {
+      for (const span of rows[j].spans) {
+        if (span > 1) end = Math.min(rows.length - 1, Math.max(end, j + span - 1));
+      }
+    }
+    if (end > i && rows[end].top + rows[end].height - rows[i].top <= contentHeight) {
+      for (let j = i; j <= end; j++) leader[j] = i;
+    }
+    i = end + 1;
+  }
+  return leader;
+}
+
 // "fromPage|height,…" — the runs the last pass reported (Editor.svelte publishes them).
 // A document whose sections share one paper writes none, and the grid is uniform.
 export function gridFromRuns(raw: string, pageHeight: number): PageGrid {
@@ -848,7 +870,20 @@ export const PageBreaks = Extension.create({
             }
             const colgroup = tableEl?.querySelector('colgroup');
             const columns = colgroup?.children.length || realRows[0].children.length || 1;
+            const leaderIdx = rowSpanGroups(realRows.map((r) => ({
+              spans: (Array.from(r.children) as HTMLElement[])
+                .map((c) => (c as HTMLTableCellElement).rowSpan || 1),
+              top: naturalTopOf(r),
+              height: r.offsetHeight,
+            })), contentHeight);
+            const groupLeader = new Map<HTMLElement, HTMLElement>();
+            leaderIdx.forEach((li, i) => {
+              if (li === i) return;
+              groupLeader.set(realRows[i], realRows[li]);
+              groupLeader.set(realRows[li], realRows[li]);
+            });
             let seenRealRow = false;
+            let openGroup: Leaf | null = null;
             for (const tr of rowEls) {
               if (tr.dataset?.pageBreakSpacer) {
                 cumulativeSpacerHeight += tr.offsetHeight;
@@ -856,15 +891,26 @@ export const PageBreaks = Extension.create({
               }
               if (tr.tagName !== 'TR') continue;
               const rowHeight = tr.offsetHeight;
+              const leader = groupLeader.get(tr);
+              if (openGroup && leader && leader !== tr) {
+                // A row its leader's cell spans into: it grows that leaf rather than
+                // opening a break candidate of its own.
+                openGroup.naturalHeight = naturalTopOf(tr) + rowHeight - openGroup.naturalTop;
+                seenRealRow = true;
+                continue;
+              }
+              openGroup = null;
               if (rowHeight <= contentHeight) {
                 // Row fits on a page → atomic leaf; the table breaks between rows.
-                leaves.push({
+                const rowLeaf: Leaf = {
                   el: tr,
                   kind: 'atomic',
                   naturalTop: naturalTopOf(tr),
                   naturalHeight: rowHeight,
                   tableRow: { columns, wrapperEl, isFirstRow: !seenRealRow },
-                });
+                };
+                leaves.push(rowLeaf);
+                if (leader === tr) openGroup = rowLeaf;
               } else {
                 // Row taller than a page: each cell is an independent flow from the row
                 // top, breaking in its own column. Walk every cell, resetting the spacer

@@ -527,11 +527,13 @@ class TextBoxView {
     if (a.wrap === 'left' || a.wrap === 'right') {
       d.style.float = a.wrap;
       d.style.margin = frameMargins(a.wrap, a.wrapOffset, this.wrapperWidth(), null, a.wrapDist);
-    } else if (a.wrap === 'topBottom') {
-      d.style.clear = 'both';
     } else if (a.wrap === 'through') {
       // Behind the text, which is what a shape with no run-through of its own exports as.
       applyRunThrough(d, a.wrapOffset, a.wrapOffsetY, false);
+    } else {
+      // In flow: the frame is a block box, and CSS lays one over a float rather than
+      // beside it (only line boxes shorten), so it takes the next free line instead.
+      d.style.clear = 'both';
     }
     // The anchor paragraph's spacing, which a lifted box stands in for: space above as
     // padding so it adds to the block above (editor.css), space below as the margin the
