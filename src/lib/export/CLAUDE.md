@@ -80,6 +80,12 @@ before (no list, no CSS, no margin shift). The Review tab's **Print markup** tog
   `generateHTML`, where no layout exists yet: `markReviewBlocks` marks whole top-level
   blocks (CSS has no line box to hang a bar on, and only a top-level block's left edge is
   the text column's), so a long paragraph with a small change is marked whole.
+- **An entry names its page**, which with the quoted text is what makes it findable in a
+  printout nobody can click — the format LibreOffice prints its own end-of-document
+  comments in. Only the raster paths can say it (`withAnchorPages`): they print the
+  editor's own pagination, while the vector path re-paginates in the browser and its entry
+  simply has no page. The page comes off one `cycle`, so mixed section paper is out — the
+  same limitation `Editor.svelte`'s own current-page readout has.
 - **The list is a page, not a flow, in the raster paths.** The live `.paper` is an already
   paginated layout nothing can flow into, so `renderCommentPages` lays the list out and
   rasters it on its own; a page starts at an entry boundary, since a raster sliced mid-line

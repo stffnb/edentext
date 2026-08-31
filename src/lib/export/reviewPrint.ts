@@ -11,7 +11,14 @@ export const BAR_STRIP_CM = 0.32;
 
 const COMMENT_COLOR = '#c88c00';
 
-export type PrintedComment = { id: string; n: number; author: string; date: string; text: string; quote: string };
+export type PrintedComment = {
+  id: string; n: number; author: string; date: string; text: string; quote: string;
+  /** The page the anchor sits on, where the caller knows it (the raster paths do). */
+  page?: number;
+};
+
+/** The labels the list is printed with; this module has no i18n of its own. */
+export type CommentLabels = { heading: string; onPage: (n: number) => string };
 
 const OPEN_COMMENT = '[data-comment]:not([data-comment-resolved="true"])';
 const MARKED = `${OPEN_COMMENT}, [data-insertion], [data-deletion]`;
@@ -81,12 +88,17 @@ function when(iso: string): string {
 }
 
 /** The comment bodies, after the document: what the margin bar cannot carry. */
-export function commentListHtml(list: PrintedComment[], heading: string): string {
-  const rows = list.map((c) => `<li>`
-    + `<span class="cl-meta">${esc(c.author)}${c.date ? ` · ${esc(when(c.date))}` : ''}</span>`
-    + (c.quote.trim() ? `<span class="cl-quote">${esc(c.quote)}</span>` : '')
-    + `<span class="cl-text">${esc(c.text)}</span></li>`).join('');
-  return `<section class="comment-list"><h2>${esc(heading)}</h2><ol>${rows}</ol></section>`;
+export function commentListHtml(list: PrintedComment[], labels: CommentLabels): string {
+  const rows = list.map((c) => {
+    // Page first, as LibreOffice prints its own end-of-document comments: with the
+    // quote it is what makes an entry findable in a printout nobody can click.
+    const meta = [c.page ? labels.onPage(c.page) : '', c.author, c.date ? when(c.date) : '']
+      .filter(Boolean).map(esc).join(' · ');
+    return `<li><span class="cl-meta">${meta}</span>`
+      + (c.quote.trim() ? `<span class="cl-quote">${esc(c.quote)}</span>` : '')
+      + `<span class="cl-text">${esc(c.text)}</span></li>`;
+  }).join('');
+  return `<section class="comment-list"><h2>${esc(labels.heading)}</h2><ol>${rows}</ol></section>`;
 }
 
 /** The rules both print paths draw the bar and the list with. */

@@ -81,6 +81,7 @@ const de: Messages = {
   },
   comments: {
     title: 'Kommentare',
+    onPage: (n: number) => `Seite ${n}`,
     empty: 'Noch keine Kommentare. Text markieren und einen hinzufügen.',
     edit: 'Bearbeiten',
     resolve: 'Erledigt',

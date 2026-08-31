@@ -942,7 +942,7 @@
         orientation: pageOrientation,
         pageFormat,
         numPages,
-        commentsHeading: t().comments.title,
+        commentLabels: { heading: t().comments.title, onPage: t().comments.onPage },
         printMarkup: printMarkup(),
       });
     } catch (err) {
@@ -969,7 +969,7 @@
         orientation: pageOrientation,
         pageFormat,
         numPages,
-        commentsHeading: t().comments.title,
+        commentLabels: { heading: t().comments.title, onPage: t().comments.onPage },
         printMarkup: printMarkup(),
       });
     } catch (err) {
@@ -1001,7 +1001,7 @@
         headerEvenDoc,
         footerEvenDoc,
         differentOddEven,
-        commentsHeading: t().comments.title,
+        commentLabels: { heading: t().comments.title, onPage: t().comments.onPage },
         printMarkup: printMarkup(),
       });
     } catch (err) {

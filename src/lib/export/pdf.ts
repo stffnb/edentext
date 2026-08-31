@@ -12,7 +12,9 @@ import { columnPercents } from '../editor/extensions/tableView';
 import { effectiveOrderedDef, formatOrdinal } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { deriveFilename } from './odt';
-import { BAR_STRIP_CM, commentListHtml, markReviewBlocks, printedComments, reviewPrintCss, type PrintedComment } from './reviewPrint';
+import { BAR_STRIP_CM, commentListHtml, markReviewBlocks, printedComments, reviewPrintCss, type CommentLabels, type PrintedComment } from './reviewPrint';
+
+const DEFAULT_COMMENT_LABELS: CommentLabels = { heading: 'Comments', onPage: (n) => `Page ${n}` };
 import globalCss from '../../styles/global.css?inline';
 import editorCss from '../../styles/editor.css?inline';
 
@@ -29,8 +31,8 @@ export interface PdfOptions {
   orientation?: Orientation;
   pageFormat?: PageFormat;
   numPages?: number;
-  /** Heading of the printed comment list; no comments, no extra pages. */
-  commentsHeading?: string;
+  /** Labels of the printed comment list; this module has no i18n of its own. */
+  commentLabels?: CommentLabels;
   /** Whether the review markup prints at all (`storage/printMarkup`); default on. */
   printMarkup?: boolean;
 }
@@ -269,6 +271,19 @@ function cropPageDataUrl(
   return tmp.toDataURL(mime, quality);
 }
 
+// The page each comment sits on. Only the raster paths can say: they print the editor's
+// own pagination, while the vector path re-paginates in the browser.
+function withAnchorPages(list: PrintedComment[], source: HTMLElement, cycle: number): PrintedComment[] {
+  const base = source.getBoundingClientRect();
+  const scale = source.offsetWidth ? base.width / source.offsetWidth : 1;
+  return list.map((c) => {
+    const el = source.querySelector(`[data-comment="${CSS.escape(c.id)}"]`);
+    if (!el) return c;
+    const top = (el.getBoundingClientRect().top - base.top) / scale;
+    return { ...c, page: Math.max(1, Math.floor(top / cycle) + 1) };
+  });
+}
+
 // The comment list as whole extra pages. The live .paper is an already paginated
 // layout the list cannot flow into, so it is laid out and rastered on its own; a page
 // starts at an entry boundary, because a raster sliced mid-line cuts the text in half.
@@ -285,7 +300,7 @@ async function renderCommentPages(
   holder.setAttribute('data-pdf-export', '');
   holder.style.cssText = `position:fixed; left:-100000px; top:0; width:${contentW}px; background:#fff; color:#000;`;
   holder.innerHTML = `<style>${reviewPrintCss()}\n.comment-list { break-before: auto; }</style>`
-    + commentListHtml(list, opts.commentsHeading ?? 'Comments');
+    + commentListHtml(list, opts.commentLabels ?? DEFAULT_COMMENT_LABELS);
   document.body.appendChild(holder);
   try {
     await document.fonts.ready;
@@ -327,7 +342,8 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
   const landscape = (opts.orientation ?? 'portrait') === 'landscape';
   try {
     const runs = collectRuns(clone);
-    const comments = opts.printMarkup === false ? [] : printedComments(opts.source);
+    const comments = opts.printMarkup === false
+      ? [] : withAnchorPages(printedComments(opts.source), opts.source, cycle);
     const extra = comments.length
       ? await renderCommentPages(opts, comments, pageW, pageH, scale)
       : { images: [], runs: [] };
@@ -383,7 +399,8 @@ export async function printRaster(opts: PdfOptions): Promise<void> {
   } finally {
     cleanup();
   }
-  const comments = opts.printMarkup === false ? [] : printedComments(opts.source);
+  const comments = opts.printMarkup === false
+    ? [] : withAnchorPages(printedComments(opts.source), opts.source, cycle);
   if (comments.length) imgs = imgs.concat((await renderCommentPages(opts, comments, pageW, pageH, scale)).images);
 
   const title = (opts.fileName ?? deriveFilename(opts.json)).replace(/\.(odt|pdf)$/i, '');
@@ -446,8 +463,8 @@ export interface PrintPdfOptions {
   headerEvenDoc?: HfDoc;
   footerEvenDoc?: HfDoc;
   differentOddEven?: boolean;
-  /** Heading of the printed comment list; no comments, no list. */
-  commentsHeading?: string;
+  /** Labels of the printed comment list; this module has no i18n of its own. */
+  commentLabels?: CommentLabels;
   /** Whether the review markup prints at all (`storage/printMarkup`); default on. */
   printMarkup?: boolean;
 }
@@ -622,7 +639,7 @@ export function printPdf(opts: PrintPdfOptions): void {
     headerEvenDoc: opts.headerEvenDoc ?? null,
     footerEvenDoc: opts.footerEvenDoc ?? null,
     differentOddEven: opts.differentOddEven ?? false,
-    commentsHeading: opts.commentsHeading,
+    commentLabels: opts.commentLabels,
     printMarkup: opts.printMarkup,
   };
   const title = (o.fileName ?? deriveFilename(o.json)).replace(/\.(odt|pdf)$/i, '');
@@ -633,7 +650,7 @@ export function printPdf(opts: PrintPdfOptions): void {
   const markup = o.printMarkup !== false;
   const comments = markup ? printedComments(host) : [];
   const review = markup && markReviewBlocks(host);
-  const list = comments.length ? commentListHtml(comments, o.commentsHeading ?? 'Comments') : '';
+  const list = comments.length ? commentListHtml(comments, o.commentLabels ?? DEFAULT_COMMENT_LABELS) : '';
 
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
