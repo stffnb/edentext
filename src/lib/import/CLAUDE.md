@@ -2,6 +2,8 @@
 
 `odt.ts` + `styleResolver.ts` (ODF), `docx.ts` + `docxStyles.ts` (Word),
 `imageFormats.ts` (shared). The DOCX importer mirrors the ODF one section for section.
+A password-protected file is decrypted before either importer sees it — see
+`docs/architecture/encryption.md`.
 
 ## ODF import (`odt.ts`, `styleResolver.ts`)
 

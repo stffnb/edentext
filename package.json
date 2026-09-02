@@ -17,7 +17,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:lo": "vitest run tests/lo-roundtrip.test.ts tests/lo-render-consistency.test.ts",
+    "test:lo": "vitest run tests/lo-roundtrip.test.ts tests/lo-render-consistency.test.ts tests/lo-password.test.ts",
     "test:smoke": "node tests/smoke/run.mjs",
     "test:coverage": "vitest run --coverage",
     "test:parity": "node tests/render-parity/run.mjs",

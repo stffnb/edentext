@@ -89,10 +89,9 @@ src/
     editor/
       extensions.ts         – the TipTap extension registry
       extensions/           – the custom TipTap/ProseMirror extensions, one file per feature
-    utils/                  – framework-free helpers (fontDetect, specialChars, wordCount,
-                              orderedListTypes, historyLog, colorDebug)
+    utils/                  – framework-free helpers (fontDetect, specialChars, wordCount, orderedListTypes, historyLog, colorDebug)
     math/                   – formula AST: LaTeX parser/serializer, MathML, OMML
-    export/ import/ spell/ storage/ styles/  – ODF+DOCX I/O, spell-check, persistence, named styles
+    export/ import/ spell/ storage/ styles/ crypto/  – ODF+DOCX I/O, spell-check, persistence, named styles, password protection
     templates/              – built-in document templates: registry + one localized module each
   styles/                   – global.css + editor.css
 ```
@@ -117,4 +116,5 @@ Directory-level `CLAUDE.md` files load automatically when you touch that directo
 | Text effects, indents, tab stops, list markers, date fields | `docs/architecture/formatting.md` |
 | Formulas (LaTeX model, MathML, OMML, the math font) | `docs/architecture/formulas.md` |
 | Footnotes and endnotes (model, page-foot reservation) | `docs/architecture/notes.md` |
+| Password protection of the saved file | `docs/architecture/encryption.md` |
 | Headless browser + PDF-export debugging | `docs/headless-testing.md` |

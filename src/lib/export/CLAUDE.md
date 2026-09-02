@@ -3,6 +3,9 @@
 `odt.ts` (ODF), `docx.ts` (Word), `pdf.ts` (html2canvas + jsPDF), `saveFile.ts`.
 Frames, tables and pagination have their own deep-dives in `docs/architecture/`.
 
+A password set for the document is applied in `saveFile.ts`'s two write primitives, after
+every pass here and after the template conversion — see `docs/architecture/encryption.md`.
+
 `saveFile.ts` picks the path: `showSaveFilePicker` where there is one, else a download —
 Gecko has none and Brave disables the whole File System Access API by default. The first
 fallback download shows a one-time hint (`edentext-download-hint`) that the browser's

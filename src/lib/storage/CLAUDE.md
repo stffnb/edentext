@@ -1,5 +1,8 @@
 # `src/lib/storage/`
 
+The autosaved document (`autosave.ts`) stays **plain text** even when the document is
+password-protected: the protection is on the saved file, not on the browser copy.
+
 ## Page layout settings
 
 - **`pageMargins.ts`** — `PageMargins` in **cm** (default `{ top: 2, bottom: 2, left: 2, right: 2 }` — LibreOffice's; clamped 0–10). `applyMarginVars` sets `--user-margin-*` (px) on `:root`; `PX_PER_CM = 96/2.54`. Optional `mirrored` (ODF `style:page-usage="mirrored"`, Word `w:mirrorMargins`) makes left/right the **inner/outer** pair, which an even page swaps: `--user-margin-mirror` carries the difference, `pageBreaks.ts` insets an even page's blocks by it and `HeaderFooterLayer.svelte` moves the band. The key is **absent**, never `false`, when off — margins are compared whole in the round-trip tests.
