@@ -37,6 +37,10 @@
   } = $props();
 
   const ICON_SIZE = { big: 28, small: 14, icon: 20 } as const;
+
+  // One or two words wrap into the same two lines whether the box is the full cap or
+  // just its longest word, so those hug it — a longer label keeps the cap to wrap at.
+  const hug = $derived(!!label && label.trim().split(/\s+/).length <= 2);
 </script>
 
 {#snippet face()}
@@ -47,7 +51,7 @@
       <Icon name="chevronDown" size={10} />
     {/if}
   </span>
-  {#if label && variant !== 'icon'}<span class="rb-label">{label}</span>{/if}
+  {#if label && variant !== 'icon'}<span class="rb-label" class:hug>{label}</span>{/if}
   <!-- A row reads left to right, so its caret follows the label rather than the icon. -->
   {#if caret && !onCaret && variant === 'small'}<Icon name="chevronDown" size={10} />{/if}
 {/snippet}
@@ -160,12 +164,16 @@
   }
 
   /* The cap is what makes the wrap happen: unwrapped, a three-word label is twice
-     the width of the icon above it. Two lines fit the band, a third is clipped. */
+     the width of the icon above it. Two lines fit the band, a third is clipped.
+     A hugging label drops the width it wrapped at, or it would push its neighbours a
+     word's width apart. */
   .rb-big .rb-label {
     max-width: 78px;
     white-space: normal;
     text-align: center;
   }
+
+  .rb-big .rb-label.hug { width: min-content; }
 
   /* Split button: the two halves read as one control, so the hover outline sits on
      the wrapper and each half only tints its own surface. */
@@ -207,9 +215,9 @@
   .caret-primary .rb-caret { width: 16px; color: var(--w-text); }
   .caret-primary .rb-caret :global(svg) { transform: scale(1.15); }
 
-  /* That command half gives up its right padding, so the arrow sits against the label
-     rather than at the far edge of a button the label does not fill. */
-  .caret-primary .rb-big { padding-right: 0; }
+  /* That command half keeps only a hair of right padding, so the arrow sits against
+     the label rather than at the far edge of a button the label does not fill. */
+  .caret-primary .rb-big { padding-right: 4px; }
   .caret-primary .rb-big .rb-face { margin-right: 0; }
 
   .rb-caret:hover:not(:disabled) { background: var(--w-pressed); }
