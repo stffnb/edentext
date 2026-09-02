@@ -84,11 +84,18 @@
   // grid Editor.svelte publishes; the document's own is the fallback.
   const boxOf = (page: number) => pageBoxes[page - 1]
     ?? { top: (page - 1) * (pageHeightPx + PAGE_GAP), left: 0, height: pageHeightPx, width: pageWidthPx };
-  let mTop = $derived(cmToPx(pageMargins.top));
-  let mBottom = $derived(cmToPx(pageMargins.bottom));
-  let mLeft = $derived(cmToPx(pageMargins.left));
-  let mRight = $derived(cmToPx(pageMargins.right));
-  const contentWidthOf = (page: number) => Math.max(0, boxOf(page).width - mLeft - mRight);
+  // A section with page margins of its own puts its zones on them, not the document's
+  // — the running head of a mirrored body would otherwise sit at the wrong margin.
+  function marginsOf(page: number): PageMargins {
+    const i = sectionOf(page);
+    const s = sets[i];
+    const own = page === sectionFirstPage(i) ? s?.marginsFirst ?? s?.margins : s?.margins;
+    return own ?? pageMargins;
+  }
+  const contentWidthOf = (page: number) => {
+    const m = marginsOf(page);
+    return Math.max(0, boxOf(page).width - cmToPx(m.left) - cmToPx(m.right));
+  };
   // Edge→zone distance in px. The footer may sit farther from the edge than the body
   // bottom margin (Word's w:footer > w:bottom); the zone then grows up into the margin.
   let headerDistPx = $derived(Math.min(cmToPx(hfDistances.header), pageHeightPx));
@@ -99,15 +106,17 @@
   function zoneBox(zone: HfZone, page: number) {
     // Mirrored margins: an even page is the left-hand one, so the pair is swapped.
     const box = boxOf(page);
+    const m = marginsOf(page);
+    const swap = m.mirrored && page % 2 === 0;
     // From the page's own left edge — a section on narrower paper is centred.
-    const left = box.left + (pageMargins.mirrored && page % 2 === 0 ? mRight : mLeft);
+    const left = box.left + cmToPx(swap ? m.right : m.left);
     const width = contentWidthOf(page);
     if (zone === 'header') {
       const top = box.top + headerDistPx;
-      return { top, left, width, height: Math.max(MIN_ZONE_PX, mTop - headerDistPx) };
+      return { top, left, width, height: Math.max(MIN_ZONE_PX, cmToPx(m.top) - headerDistPx) };
     }
     // Footer anchors its bottom edge at footerDistPx from the page bottom and grows up.
-    const height = Math.max(MIN_ZONE_PX, mBottom - footerDistPx);
+    const height = Math.max(MIN_ZONE_PX, cmToPx(m.bottom) - footerDistPx);
     const top = box.top + box.height - footerDistPx - height;
     return { top, left, width, height };
   }
