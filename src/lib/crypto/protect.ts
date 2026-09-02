@@ -48,9 +48,14 @@ function containerOf(bytes: Uint8Array): Protection {
 }
 
 export async function encryptPackage(bytes: Uint8Array, password: string): Promise<Uint8Array> {
-  if (containerOf(bytes) === 'odf') {
+  const container = containerOf(bytes);
+  if (container === 'odf') {
     const { encryptOdf } = await import('./odf');
     return encryptOdf(bytes, password);
+  }
+  if (container === 'ooxml') {
+    const { encryptOoxml } = await import('./ooxml');
+    return encryptOoxml(bytes, password);
   }
   throw encryptionError(UNSUPPORTED_ENCRYPTION);
 }
@@ -59,6 +64,10 @@ export async function decryptPackage(bytes: Uint8Array, password: string): Promi
   if (isProtected(bytes) === 'odf') {
     const { decryptOdf } = await import('./odf');
     return decryptOdf(bytes, password);
+  }
+  if (isCfb(bytes)) {
+    const { decryptOoxml } = await import('./ooxml');
+    return decryptOoxml(bytes, password);
   }
   throw encryptionError(UNSUPPORTED_ENCRYPTION);
 }
