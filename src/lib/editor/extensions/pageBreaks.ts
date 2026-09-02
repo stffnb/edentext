@@ -1162,10 +1162,13 @@ export const PageBreaks = Extension.create({
             const h = paper[Math.min(i, paper.length - 1)];
             return Number.isFinite(h) && h > 0 ? h : vm.pageHeight;
           };
-          // Mirrored margins (pageMargins.ts): the padding draws the odd page's pair,
-          // so an even page's blocks move right by the difference between the two.
-          const mirrorRaw = parseFloat(csRoot.getPropertyValue('--user-margin-mirror'));
-          const mirror = Number.isFinite(mirrorRaw) ? mirrorRaw : 0;
+          // Mirrored margins: the padding draws the odd page's pair, so an even page's
+          // blocks move right by the difference. Per section — a cover between mirrored
+          // ones has margins of its own and mirrors nothing.
+          const mirrors = csRoot.getPropertyValue('--pb-section-mirror').split(',')
+            .map((g) => g.split('|').map(Number))
+            .filter((g) => g.length === 2 && g.every(Number.isFinite));
+          const mirrorAt = (i: number) => mirrors[Math.min(i, mirrors.length - 1)] ?? [0, 0];
 
           const scale = getScaleFactor();
           const leaves = collectLeaves(CONTENT_HEIGHT, scale);
@@ -1583,7 +1586,8 @@ export const PageBreaks = Extension.create({
               const landedPage = grid.pageAt(leaf.naturalTop + cumulativeShift);
               if (leaf.sectionStart) sectionStartPages.push(landedPage);
               const ins = insetAt(sectionIndex);
-              const mir = landedPage % 2 === 0 ? mirror : 0;
+              const mir = landedPage % 2 === 0
+                ? mirrorAt(sectionIndex)[landedPage === sectionFirstPage ? 0 : 1] : 0;
               const insLeft = Math.round((landedPage === sectionFirstPage ? ins[0] : ins[2]) + mir);
               const insRight = Math.round((landedPage === sectionFirstPage ? ins[1] : ins[3]) - mir);
               if (insLeft || insRight) {

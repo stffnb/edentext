@@ -290,9 +290,18 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     ].map((g) => g.join('|')).join(',');
   });
 
+  // How far an even page's blocks move right, per section and per first/rest page: the
+  // pair a mirrored section swaps. A section whose own margins mirror nothing — a cover
+  // between mirrored pages — contributes 0, as does its first page where that differs.
+  let sectionMirror = $derived([
+    [pageMargins, pageMargins],
+    ...extraHfSections.map((s) => [s.marginsFirst ?? s.margins ?? pageMargins, s.margins ?? pageMargins]),
+  ].map((g) => g.map((m) => (m.mirrored ? Math.round(cmToPx(m.right) - cmToPx(m.left)) : 0)).join('|')).join(','));
+
   $effect(() => {
     const s = document.documentElement.style;
     s.setProperty('--pb-section-inset', sectionInset);
+    s.setProperty('--pb-section-mirror', sectionMirror);
     s.setProperty('--pb-section-page', sectionPaper.map((p) => p.h).join(','));
     s.setProperty('--pb-paper-width', `${paperWidth}px`);
     // The grid the last pass laid out, as "fromPage|height" runs, so every consumer
