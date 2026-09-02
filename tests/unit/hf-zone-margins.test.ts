@@ -1,5 +1,6 @@
 // A header/footer zone's own vertical margins: LibreOffice keeps them on the Header /
-// Footer paragraph style, and a footer's space above is what grows the band.
+// Footer paragraph style. A footer's space above grows the band; the space *below* the
+// zone's last paragraph does not — LibreOffice drops it, so neither zone carries it back.
 import { describe, it, expect } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
 import { buildOdt } from '../../src/lib/export/odt';
@@ -28,7 +29,9 @@ describe('header/footer zone margins', () => {
     expect(styles).toContain('fo:margin-top="24pt"');
 
     const back = await importOdt(bytes);
-    expect(back.header?.content?.[0]?.attrs?.spaceAfter).toBeCloseTo(34, 1);
     expect(back.footer?.content?.[0]?.attrs?.spaceBefore).toBeCloseTo(24, 1);
+    // Probed: a header of one 10pt line with a 12mm bottom margin puts the body at the
+    // band's min-height, not 12mm lower — the trailing margin is no part of the band.
+    expect(back.header?.content?.[0]?.attrs?.spaceAfter ?? 0).toBe(0);
   });
 });

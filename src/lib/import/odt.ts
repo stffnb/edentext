@@ -945,10 +945,14 @@ function convertHfZone(zoneEl: Element, ctx: Ctx, bandCm = 0, footer = false): H
   let stops: string | null = null;
   const boxMaps: Record<string, string>[] = [];
 
-  // The zone's paragraphs collapse into one, so the outer two margins become its own:
-  // what the band has to be tall enough to hold (Editor.svelte's hfReachPx).
+  // The zone's paragraphs collapse into one, so their spacing becomes its own: what the
+  // band has to be tall enough to hold (Editor.svelte's hfReachPx). The **last**
+  // paragraph's own margin-bottom is not part of it — probed: a header of one 10pt line
+  // with a 12mm bottom margin puts the body at min-height, and a footer's is dropped the
+  // same way, while every margin *between* two of its paragraphs counts in full.
   let spaceBefore: number | null = null;
-  let spaceAfter = 0;
+  let between = 0;
+  let prevBottomPt = 0;
   // A zone paragraph's own padding is band height too, and the collapsed paragraph has
   // no padding of its own to carry it — so it joins the spacing on its own side.
   let padTopPt = 0;
@@ -963,8 +967,9 @@ function convertHfZone(zoneEl: Element, ctx: Ctx, bandCm = 0, footer = false): H
     const styleName = p.getAttributeNS(NS.text, 'style-name');
     styleFontPt ??= lengthToPt(ctx.resolver.paraTextProps(styleName)['fo:font-size']) ?? null;
     const outer = ctx.resolver.paraProps(styleName);
-    spaceBefore ??= snapPt(lengthToPt(outer['fo:margin-top']) ?? 0);
-    spaceAfter = snapPt(lengthToPt(outer['fo:margin-bottom']) ?? 0);
+    const topPt = snapPt(lengthToPt(outer['fo:margin-top']) ?? 0);
+    if (spaceBefore == null) spaceBefore = topPt; else between += prevBottomPt + topPt;
+    prevBottomPt = snapPt(lengthToPt(outer['fo:margin-bottom']) ?? 0);
     const pad = lengthToPt(outer['fo:padding']);
     padTopPt += lengthToPt(outer['fo:padding-top']) ?? pad ?? 0;
     padBottomPt += lengthToPt(outer['fo:padding-bottom']) ?? pad ?? 0;
@@ -1009,7 +1014,7 @@ function convertHfZone(zoneEl: Element, ctx: Ctx, bandCm = 0, footer = false): H
   if (stops) attrs.tabStops = stops;
   const bandPt = (bandCm / 2.54) * 72;
   const before = snapPt((spaceBefore ?? 0) + padTopPt + (footer ? bandPt : 0));
-  const after = snapPt(spaceAfter + padBottomPt + (footer ? 0 : bandPt));
+  const after = snapPt(between + padBottomPt + (footer ? 0 : bandPt));
   if (before) attrs.spaceBefore = before;
   if (after) attrs.spaceAfter = after;
   Object.assign(attrs, box);
