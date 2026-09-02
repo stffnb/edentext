@@ -40,6 +40,38 @@
   src: url('../assets/fonts/LiberationSerif-BoldItalic.ttf') format('truetype');
 }
 
+/* Liberation Sans under its own name too: import maps a document's Arial to it
+   (screenFontName), so a run carries the bare family and a machine without the
+   font installed would set an Arial page in the fallback serif. */
+@font-face {
+  font-family: 'Liberation Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/LiberationSans-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Liberation Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/LiberationSans-Bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Liberation Sans';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/LiberationSans-Italic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Liberation Sans';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/LiberationSans-BoldItalic.ttf') format('truetype');
+}
+
 /* Bullet-marker symbols Liberation Serif lacks (❖ ➢ ⇨ ✓ ▸ ◆), subset from DejaVu
    Sans so markers render compact and identical on every platform. First in the
    ::marker/picker stacks; per-glyph fallback keeps all other chars in the text
