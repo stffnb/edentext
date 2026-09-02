@@ -2881,8 +2881,12 @@ function tableMargins(el: Element, ctx: Ctx): { marginLeft?: number; marginRight
 
   let left = lengthToCm(props['fo:margin-left']);
   let right = lengthToCm(props['fo:margin-right']);
+  const align = props['table:align'];
+  // "margins" is ODF for a table filling the space between its own: the side it does
+  // not declare is 0, and style:width is the width the producer's page had, not one to
+  // measure a margin against.
+  if (align === 'margins') { left ??= 0; right ??= 0; }
   if (left == null && width != null) {
-    const align = props['table:align'];
     left = align === 'center' ? (content - width) / 2 : align === 'right' ? content - width : 0;
   }
   left = left ?? 0; // negative is real: a table may hang into the page margin
