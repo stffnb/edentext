@@ -251,8 +251,9 @@
     return { update: apply };
   }
 
-  // The number a page shows, in the document's own format: counted from the nearest
-  // section at or above it that restarts numbering, else from the document's start.
+  // The number a page shows, in its section's format (a roman front matter) or the
+  // document's: counted from the nearest section at or above it that restarts
+  // numbering, else from the document's start.
   function pageLabel(page: number): string {
     let base = pageNumbering.start;
     let from = 1;
@@ -260,7 +261,7 @@
       const start = sets[i]?.pageNumberStart;
       if (start != null) { base = start; from = sectionFirstPage(i); break; }
     }
-    return formatOrdinal(page - from + base, pageNumbering.format);
+    return formatOrdinal(page - from + base, sets[sectionOf(page)]?.pageNumberFormat ?? pageNumbering.format);
   }
 
   // Replace the placeholder text in every page-field span with the real value:

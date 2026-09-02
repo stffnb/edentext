@@ -5436,7 +5436,8 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
   const layoutFor = (index: number, set: HfSet): string => {
     const m = set.margins;
     const paper = set.format || set.orientation ? pageDimsCm(set.format ?? format, set.orientation ?? orientation) : null;
-    if ((!m && !paper) || !layoutXml) return layout;
+    const numFormat = set.pageNumberFormat ?? null;
+    if ((!m && !paper && !numFormat) || !layoutXml) return layout;
     const name = `${layout}Sec${index + 1}`;
     layouts.push(layoutXml
       .replace(`style:name="${layout}"`, `style:name="${name}"`)
@@ -5454,6 +5455,12 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
             .replace(/fo:page-width="[^"]*"/, `fo:page-width="${round3(paper.w)}cm"`)
             .replace(/fo:page-height="[^"]*"/, `fo:page-height="${round3(paper.h)}cm"`)
             .replace(/style:print-orientation="[^"]*"/, `style:print-orientation="${paper.w > paper.h ? 'landscape' : 'portrait'}"`);
+        }
+        // The page-number format rides the layout, which is where LibreOffice keeps it.
+        if (numFormat) {
+          p = /style:num-format="/.test(p)
+            ? p.replace(/style:num-format="[^"]*"/, `style:num-format="${numFormat}"`)
+            : p.replace('<style:page-layout-properties ', `<style:page-layout-properties style:num-format="${numFormat}" `);
         }
         return p;
       }));

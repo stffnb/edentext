@@ -378,8 +378,8 @@ export class StyleResolver {
 
   // The page-number format, from the page layout of the governing master page.
   // ODF's own default is decimal, which is `1` here.
-  pageNumberFormat(): NoteNumFormat {
-    const props = this.pageLayoutEl()?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
+  pageNumberFormat(pageName: string | null = null): NoteNumFormat {
+    const props = this.pageLayoutEl(pageName)?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
     const f = props?.getAttributeNS(NS.style, 'num-format') ?? '';
     return (['1', 'i', 'I', 'a', 'A'] as const).includes(f as NoteNumFormat) ? (f as NoteNumFormat) : '1';
   }

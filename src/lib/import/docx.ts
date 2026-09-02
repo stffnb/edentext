@@ -247,8 +247,12 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   // The paper is the *first* section's, as the margins are: a document whose last
   // section is one landscape page is not a landscape document.
   const docPaper = sectPaper(groups[0]?.sectPr ?? finalSectPr);
+  // The *first* section's, as the paper and the margins are: a document whose front
+  // matter is roman is not a roman document, and vice versa.
+  const docNumbering = docxPageNumbering(groups[0]?.sectPr ?? finalSectPr);
   const hfSections = sectionHfSets(
-    groups.filter((_, gi) => !colsOnly[gi]).map((g) => g.sectPr ?? finalSectPr), ctx, oddEven, docPaper);
+    groups.filter((_, gi) => !colsOnly[gi]).map((g) => g.sectPr ?? finalSectPr), ctx, oddEven,
+    { ...docPaper, numFormat: docNumbering.format });
   const first = hfSections[0];
   // A first-page/even zone reserves the header/footer band even when its default is empty;
   // the distance is document-wide, so any section having one is enough.
@@ -266,7 +270,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     foldMarks: docxFoldMarks(files),
     hyphenate: docAutoHyphenation(files),
     recordChanges: docRecordsChanges(files),
-    pageNumbering: docxPageNumbering(sectPr),
+    pageNumbering: docNumbering,
     orientation: docPaper.orientation,
     format: docPaper.format,
     tabIntervalCm: docTabInterval(files),
@@ -3045,7 +3049,7 @@ function sectMargins(sect: Element | null): PageMargins | null {
 // section, odd/even is document-wide (settings.xml).
 function sectionHfSets(
   sectPrs: (Element | null)[], ctx: Ctx, oddEven: boolean,
-  doc: { format: PageFormat | null; orientation: Orientation | null },
+  doc: { format: PageFormat | null; orientation: Orientation | null; numFormat: NoteNumFormat },
 ): HfSet[] {
   const out: HfSet[] = [];
   for (const sect of sectPrs) {
@@ -3064,9 +3068,12 @@ function sectionHfSets(
     // w:pgNumType w:start restarts the numbering at this section; without it it counts
     // on. The first section's is the document's own start (read separately).
     const pgStart = sect ? intAttr(fc(sect, 'pgNumType'), W, 'start') : null;
+    // w:fmt is per section too — a roman front matter before a decimal body.
+    const pgFmt = DOCX_PAGE_NUM_FORMAT[fc(sect, 'pgNumType')?.getAttributeNS(W, 'fmt') ?? ''] ?? '1';
     out.push({
       margins: sectMargins(sect),
       pageNumberStart: out.length && pgStart != null ? clampPageStart(pgStart) : null,
+      pageNumberFormat: out.length && pgFmt !== doc.numFormat ? pgFmt : null,
       format: paper.format && paper.format !== doc.format ? paper.format : null,
       orientation: paper.orientation && paper.orientation !== doc.orientation ? paper.orientation : null,
       header: zone('header', 'default', prev.header),

@@ -2670,11 +2670,17 @@ export async function buildDocx(
       },
       // w:pgNumType. Word restarts numbering at every section carrying a start, so a
       // later section gets one only where it really restarts; the rest continue.
+      // w:fmt is per section as well, so a roman front matter keeps its own.
       ...(i === 0
         ? (pageNumbering.format !== '1' || pageNumbering.start !== 1
           ? { pageNumbers: { formatType: DOCX_PAGE_NUM_FORMAT[pageNumbering.format], ...(pageNumbering.start !== 1 ? { start: pageNumbering.start } : {}) } }
           : {})
-        : (s.pageNumberStart != null ? { pageNumbers: { start: s.pageNumberStart } } : {})),
+        : (s.pageNumberStart != null || s.pageNumberFormat
+          ? { pageNumbers: {
+              ...(s.pageNumberFormat ? { formatType: DOCX_PAGE_NUM_FORMAT[s.pageNumberFormat] } : {}),
+              ...(s.pageNumberStart != null ? { start: s.pageNumberStart } : {}),
+            } }
+          : {})),
     };
   };
   // Fresh instances per section (Word's per-sectPr references, i.e. no "Link to

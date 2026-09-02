@@ -27,7 +27,7 @@ import type { SpacingModel } from '../storage/spacingModel';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import type { HfDoc, HfSet } from '../storage/headerFooter';
-import { NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteSettings } from '../storage/noteSettings';
+import { NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { clampPageStart, type PageNumbering } from '../storage/pageNumbering';
 import { newCommentId } from '../editor/extensions/comment';
@@ -825,6 +825,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     }
   }
 
+  const docNumFormat = resolver.pageNumberFormat();
   const headerFirst = hf.headerFirst ? convertHfZone(hf.headerFirst, ctx, hf.headerBandCm) : null;
   const footerFirst = hf.footerFirst ? convertHfZone(hf.footerFirst, ctx, hf.footerBandCm, true) : null;
   // The presence of a first-page element is the flag, even when it's empty (an empty
@@ -852,7 +853,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     foldMarks: ctx.foldMarks,
     hyphenate: resolver.documentHyphenation(),
     recordChanges: odfRecordChanges(body),
-    pageNumbering: { format: resolver.pageNumberFormat(), start: odfPageNumberStart(resolver, body) },
+    pageNumbering: { format: docNumFormat, start: odfPageNumberStart(resolver, body) },
     tabIntervalCm: resolver.defaultTabInterval(),
     spacingModel: odfSpacingModel(files),
     header,
@@ -865,7 +866,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     differentOddEven,
     hfSections: [
       { header, footer, headerFirst, footerFirst, differentFirstPage, headerEven, footerEven, differentOddEven },
-      ...ctx.masterPages.map((name, i) => ({ ...hfSetOfMasterPage(name, ctx, geometry), pageNumberStart: ctx.masterPageStarts[i] ?? null })),
+      ...ctx.masterPages.map((name, i) => ({ ...hfSetOfMasterPage(name, ctx, geometry, docNumFormat), pageNumberStart: ctx.masterPageStarts[i] ?? null })),
     ],
     headerDistanceCm: hasHeader ? edge?.top ?? null : null,
     footerDistanceCm: hasFooter ? edge?.bottom ?? null : null,
@@ -882,6 +883,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
 function hfSetOfMasterPage(
   name: string, ctx: Ctx,
   doc: { orientation: Orientation; format: PageFormat } | null,
+  docNumFormat: NoteNumFormat,
 ): HfSet {
   const hf = ctx.resolver.masterPageHF(name);
   const zone = (el: Element | null, footer = false) =>
@@ -897,9 +899,13 @@ function hfSetOfMasterPage(
   // The paper of the layout governing the section's body. Only a section disagreeing
   // with the document carries it — matching is inheritance, as it is for the margins.
   const paper = restGeo ?? geo;
+  // The page-number format rides the layout governing the body, like the margins: a
+  // roman front matter is one master before the decimal body's, not a document setting.
+  const numFormat = ctx.resolver.pageNumberFormat(hf.restPage ?? name);
   return {
     margins: rest,
     marginsFirst: hf.restPage ? own : null,
+    pageNumberFormat: numFormat !== docNumFormat ? numFormat : null,
     format: paper && doc && paper.format !== doc.format ? paper.format : null,
     orientation: paper && doc && paper.orientation !== doc.orientation ? paper.orientation : null,
     header: zone(hf.header),

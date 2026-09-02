@@ -1853,6 +1853,26 @@ describe('Leg 12: per-section page margins (ODT + DOCX)', () => {
     const back = res.hfSections?.[1]?.margins ?? null;
     check('section margins round-trip', JSON.stringify(back) === JSON.stringify(wide), back);
   });
+
+  // A roman front matter before a decimal body: the format is the section's, not the
+  // document's, in both formats (ODF style:num-format, Word w:pgNumType w:fmt).
+  const romanSections = [{ ...EMPTY_HF_SET }, { ...EMPTY_HF_SET, pageNumberFormat: 'i' as const }];
+
+  it('ODT: the section layout carries style:num-format', async () => {
+    const bytes = await buildOdt(secDoc, margins, 'portrait', { sections: romanSections, pageCount: 2 });
+    const styles = strFromU8(unzipSync(bytes)['styles.xml']);
+    check('the minted layout is roman', /style:name="[^"]*Sec2"[^>]*>\s*<style:page-layout-properties[^>]*style:num-format="i"/.test(styles.replace(/\n/g, '')), styles.slice(0, 300));
+    const res = importOdt(bytes);
+    check('document format unchanged', res.pageNumbering?.format === '1', res.pageNumbering);
+    check('section format round-trips', res.hfSections?.[1]?.pageNumberFormat === 'i', res.hfSections?.[1]);
+  });
+
+  it('DOCX: the later sectPr carries w:pgNumType w:fmt', async () => {
+    const bytes = await buildDocx(secDoc, margins, 'portrait', { sections: romanSections, pageCount: 2 });
+    const res = importDocx(bytes);
+    check('document format unchanged', res.pageNumbering?.format === '1', res.pageNumbering);
+    check('section format round-trips', res.hfSections?.[1]?.pageNumberFormat === 'i', res.hfSections?.[1]);
+  });
 });
 
 describe('Leg 13: document properties (meta.xml / docProps/core.xml)', () => {

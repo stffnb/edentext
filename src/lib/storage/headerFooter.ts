@@ -5,6 +5,7 @@
 import type { PageMargins } from './pageMargins';
 import type { PageFormat } from './pageFormat';
 import type { Orientation } from './pageOrientation';
+import type { NoteNumFormat } from './noteSettings';
 
 export type HfZone = 'header' | 'footer';
 export type HfVariant = 'default' | 'first' | 'even';
@@ -34,13 +35,17 @@ export type HfSet = {
   // The page number this section restarts at (Word's w:pgNumType start, ODF's
   // style:page-number on the paragraph that switches master page). null = it counts on.
   pageNumberStart?: number | null;
+  // How its page-number field counts, where the section disagrees with the document
+  // (roman front matter before decimal body). null = the document's own format.
+  pageNumberFormat?: NoteNumFormat | null;
 };
 
 export const EMPTY_HF_SET: HfSet = {
   header: null, footer: null,
   headerFirst: null, footerFirst: null, differentFirstPage: false,
   headerEven: null, footerEven: null, differentOddEven: false,
-  margins: null, marginsFirst: null, format: null, orientation: null, pageNumberStart: null,
+  margins: null, marginsFirst: null, format: null, orientation: null,
+  pageNumberStart: null, pageNumberFormat: null,
 };
 
 // The six zone docs of a set, in the order their measured heights travel from
