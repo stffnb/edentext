@@ -100,7 +100,7 @@ at every height. A flex row cannot reserve width in part of its height, so it mo
 | --- | --- |
 | `Ribbon.svelte` | Shell, tab state, the File menu, which contextual tabs are shown |
 | `RibbonGroup.svelte` | A group: its controls, its visible label, Word's ↘ dialog launcher |
-| `RibbonButton.svelte` | `big` / `small` / `icon`, plus the split button. Hover paints the **icon box**, not the whole button |
+| `RibbonButton.svelte` | `big` / `small` / `icon`, plus the split button. Hover paints the **icon box**, not the whole button. A big label wraps onto two lines at a 78px cap and its caret rides beside the icon, so a three-word label costs width instead of a third row |
 | `RibbonMenu.svelte` | The dropdown panel; its look is global CSS, since its rows come from a caller's snippet |
 | `Icon.svelte`, `icons.ts` | Path data on a 16-unit canvas. `pinnedStroke(size)` holds the painted stroke at ~1.5px on large glyphs and ~1.1px on small ones, so 14px and 28px icons read as one family |
 | `menu.svelte.ts` | The one open-menu id, `anchored`, `pinPanels`, `clickOutside` |

@@ -36,29 +36,23 @@
   const ICON_SIZE = { big: 28, small: 14, icon: 20 } as const;
 </script>
 
-{#snippet face(withLabel = true)}
+{#snippet face()}
   <span class="rb-face">
     {#if content}{@render content()}
     {:else if icon}<Icon name={icon} size={ICON_SIZE[variant]} />{/if}
-    {#if caret && !onCaret && variant === 'icon'}
+    {#if caret && !onCaret && variant !== 'small'}
       <Icon name="chevronDown" size={10} />
     {/if}
   </span>
-  {#if withLabel && label && variant !== 'icon'}<span class="rb-label">{label}</span>{/if}
+  {#if label && variant !== 'icon'}<span class="rb-label">{label}</span>{/if}
   <!-- A row reads left to right, so its caret follows the label rather than the icon. -->
   {#if caret && !onCaret && variant === 'small'}<Icon name="chevronDown" size={10} />{/if}
-  <!-- Held open on every big button, carrying a caret or nothing: the group centres
-       its controls, so one taller button lifts its own icon and label off the row. -->
-  {#if variant === 'big' && !onCaret}
-    <span class="rb-stack-caret">{#if caret}<Icon name="chevronDown" size={10} />{/if}</span>
-  {/if}
 {/snippet}
 
 {#if caret && onCaret}
-  {@const stacked = variant === 'big'}
-  <span class="rb-split" class:rb-split-col={stacked} class:rb-split-active={active || caretActive}>
+  <span class="rb-split" class:rb-split-active={active || caretActive}>
     <button class="rb rb-{variant}" class:active {disabled} {title} {onclick}>
-      {@render face(!stacked)}
+      {@render face()}
     </button>
     <button
       class="rb-caret"
@@ -69,7 +63,6 @@
       aria-expanded={caretActive}
       onclick={onCaret}
     >
-      {#if stacked && label}<span class="rb-label">{label}</span>{/if}
       <Icon name="chevronDown" size={10} />
     </button>
   </span>
@@ -163,12 +156,12 @@
     color: inherit;
   }
 
-  /* Rides closer to the label than the 4px column gap: the two read as one line. */
-  .rb-stack-caret {
-    display: flex;
-    height: 8px;
-    margin-top: -3px;
-    color: var(--w-text-dim);
+  /* The cap is what makes the wrap happen: unwrapped, a three-word label is twice
+     the width of the icon above it. Two lines fit the band, a third is clipped. */
+  .rb-big .rb-label {
+    max-width: 78px;
+    white-space: normal;
+    text-align: center;
   }
 
   /* Split button: the two halves read as one control, so the hover outline sits on
@@ -192,20 +185,6 @@
     border-radius: 0 3px 3px 0;
     color: var(--w-text-dim);
     cursor: pointer;
-  }
-
-  /* A big split button stacks, as in Word: the icon runs the command, the label
-     and the caret under it open the menu. Icon, label and caret each get their
-     own line — abreast, the caret widens the button by its own width. */
-  .rb-split-col { flex-direction: column; }
-  .rb-split-col .rb-big { padding: 2px 6px 0; }
-
-  .rb-split-col .rb-caret {
-    flex-direction: column;
-    width: auto;
-    padding: 0 6px 1px;
-    border-radius: 0 0 3px 3px;
-    color: var(--w-text);
   }
 
   .rb-caret:hover:not(:disabled) { background: var(--w-pressed); }

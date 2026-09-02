@@ -338,8 +338,7 @@
   .rb-menu-wrap { position: relative; }
 
   /* Wrapped onto two lines, as in Word — on one they are half the group's width.
-     `min-content` is what keeps the button off the label's unwrapped width, and
-     the caret slot goes because the two lines already reach the group's foot. */
+     `min-content` breaks at every space, tighter than the button's own cap. */
   .inserts {
     display: flex;
     align-items: stretch;
@@ -354,8 +353,6 @@
        to fit it: a ratio would put that height at the mercy of the font. */
     line-height: 13px;
   }
-
-  .inserts :global(.rb-stack-caret) { display: none; }
 
   /* A big button wrapped in the trigger the popover hangs from; `anchored` drops
      the popover below the whole band, like every other ribbon menu. */
