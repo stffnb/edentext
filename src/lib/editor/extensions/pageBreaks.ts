@@ -1480,11 +1480,14 @@ export const PageBreaks = Extension.create({
                 }
               }
 
-              // A page break — its own spacer, or one that left it at the top — swallows the
-              // block's space above, as LibreOffice does. A line split doesn't: there the
-              // page starts mid-block. `effectiveTop` still excludes this leaf's own push.
+              // A page break the flow had to make — its own spacer, or one that left it at
+              // the top — swallows the block's space above; a break the document asks for
+              // keeps it (probed: a page top is 20.01mm, a manual break with 6/20mm above
+              // puts the block at 26.00/40.01, an automatic one at 20.01 for either). A line
+              // split doesn't: there the page starts mid-block. `effectiveTop` still
+              // excludes this leaf's own push.
               if (
-                i > 0 && !leaf.inTableCell && (leaf.spaceAbove ?? 0) > 0.5
+                i > 0 && !leaf.inTableCell && !leaf.forceBreakBefore && (leaf.spaceAbove ?? 0) > 0.5
                 && (breaks.some((b) => b.reason !== 'line-split')
                   || (breaks.length === 0 && Math.abs(effectiveTop - contentStart) < 0.5))
               ) {
