@@ -2895,17 +2895,19 @@ function docAutoHyphenation(files: Record<string, Uint8Array>): boolean {
 const W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
 const W15 = 'http://schemas.microsoft.com/office/word/2012/wordml';
 
-// word/commentsExtended.xml → the w14:paraId set of resolved (w15:done) comments.
-function docxResolvedParaIds(files: Record<string, Uint8Array>): Set<string> {
-  const out = new Set<string>();
+// word/commentsExtended.xml → per w14:paraId whether the comment is handled (w15:done)
+// and which comment it answers (w15:paraIdParent), the two things w:comment cannot say.
+function docxCommentsEx(files: Record<string, Uint8Array>): Map<string, { done: boolean; parent: string | null }> {
+  const out = new Map<string, { done: boolean; parent: string | null }>();
   const bytes = files['word/commentsExtended.xml'];
   if (!bytes) return out;
   let doc: Document;
   try { doc = parseXml(strFromU8(bytes)); } catch { return out; }
   for (const ex of Array.from(doc.getElementsByTagNameNS(W15, 'commentEx'))) {
-    const done = ex.getAttributeNS(W15, 'done');
     const pid = ex.getAttributeNS(W15, 'paraId');
-    if (pid && (done === '1' || done === 'true')) out.add(pid);
+    if (!pid) continue;
+    const done = ex.getAttributeNS(W15, 'done');
+    out.set(pid, { done: done === '1' || done === 'true', parent: ex.getAttributeNS(W15, 'paraIdParent') || null });
   }
   return out;
 }
@@ -2918,19 +2920,37 @@ function docxComments(files: Record<string, Uint8Array>): Map<string, Record<str
   if (!bytes) return out;
   let doc: Document;
   try { doc = parseXml(strFromU8(bytes)); } catch { return out; }
-  const done = docxResolvedParaIds(files);
+  const ex = docxCommentsEx(files);
+  // paraId → the comment it belongs to, so an answer finds the one it hangs under.
+  const byParaId = new Map<string, Record<string, unknown>>();
+  const replies: { parent: string; attrs: Record<string, unknown> }[] = [];
   for (const c of Array.from(doc.getElementsByTagNameNS(W, 'comment'))) {
     const id = c.getAttributeNS(W, 'id');
     if (!id) continue;
     const paras = fcAll(c, 'p');
     const lastPid = paras.length ? paras[paras.length - 1].getAttributeNS(W14, 'paraId') : null;
-    out.set(id, {
+    const meta = lastPid ? ex.get(lastPid) : undefined;
+    const attrs: Record<string, unknown> = {
       id: `w${id}`,
       author: c.getAttributeNS(W, 'author') ?? '',
       date: c.getAttributeNS(W, 'date') ?? '',
       text: paras.map((p) => p.textContent ?? '').join('\n').trim(),
-      resolved: lastPid != null && done.has(lastPid),
-    });
+      resolved: meta?.done === true,
+    };
+    if (lastPid) byParaId.set(lastPid, attrs);
+    // An answer is a comment of its own in the part; the thread is what the editor
+    // shows, so it is folded into its parent and gets no mark of its own.
+    if (meta?.parent) replies.push({ parent: meta.parent, attrs });
+    else out.set(id, attrs);
+  }
+  // The attr is written only where the file has a thread: an empty one is the mark's
+  // default, and an editor document carries none.
+  for (const r of replies) {
+    const parent = byParaId.get(r.parent);
+    if (!parent) continue;
+    const list = (parent.replies as { author: string; date: string; text: string }[]) ?? [];
+    list.push({ author: String(r.attrs.author), date: String(r.attrs.date), text: String(r.attrs.text) });
+    parent.replies = list;
   }
   return out;
 }

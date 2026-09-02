@@ -9,11 +9,15 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 // The whole comment rides the mark's attrs, so it needs no store of its own: two runs of
 // the same comment carry identical attrs and merge back together.
 
+/** An answer in a comment's thread: ODF's loext:parent-name, Word's w15:paraIdParent. */
+export type CommentReply = { author: string; date: string; text: string };
+
 export type CommentRange = {
   id: string;
   author: string;
   date: string;
   text: string;
+  replies: CommentReply[];
   resolved: boolean;
   from: number;
   to: number;
@@ -31,6 +35,20 @@ export function newCommentId(): string {
 function commentIdOf(marks: readonly PMMark[]): string | null {
   const id = marks.find((m) => m.type.name === 'comment')?.attrs?.id;
   return typeof id === 'string' && id ? id : null;
+}
+
+function repliesOf(value: unknown): CommentReply[] {
+  const list = typeof value === 'string' ? safeParse(value) : value;
+  if (!Array.isArray(list)) return [];
+  return list.map((r) => ({
+    author: String((r as CommentReply)?.author ?? ''),
+    date: String((r as CommentReply)?.date ?? ''),
+    text: String((r as CommentReply)?.text ?? ''),
+  }));
+}
+
+function safeParse(json: string): unknown {
+  try { return JSON.parse(json); } catch { return []; }
 }
 
 export function commentMarkAt(marks: readonly PMMark[]): PMMark | null {
@@ -66,6 +84,7 @@ export function commentRanges(doc: PMNode): CommentRange[] {
       author: String(mark.attrs.author ?? ''),
       date: String(mark.attrs.date ?? ''),
       text: String(mark.attrs.text ?? ''),
+      replies: repliesOf(mark.attrs.replies),
       resolved: mark.attrs.resolved === true,
       from: pos,
       to: pos + node.nodeSize,
@@ -88,7 +107,9 @@ declare module '@tiptap/core' {
     comment: {
       /** Comment the selection; returns false on an empty one, as in Word. */
       addComment: (opts: { author: string; text: string }) => ReturnType;
-      updateComment: (id: string, patch: { text?: string; resolved?: boolean }) => ReturnType;
+      updateComment: (id: string, patch: { text?: string; resolved?: boolean; replies?: CommentReply[] }) => ReturnType;
+      /** Appends to the comment's thread, as the reply box in either review view does. */
+      replyToComment: (id: string, reply: { author: string; text: string }) => ReturnType;
       removeComment: (id: string) => ReturnType;
     };
   }
@@ -107,6 +128,14 @@ export const Comment = Mark.create({
       author: { default: '', parseHTML: (el) => el.getAttribute('data-comment-author') || '', renderHTML: (a) => ({ 'data-comment-author': String(a.author ?? '') }) },
       date: { default: '', parseHTML: (el) => el.getAttribute('data-comment-date') || '', renderHTML: (a) => ({ 'data-comment-date': String(a.date ?? '') }) },
       text: { default: '', parseHTML: (el) => el.getAttribute('data-comment-text') || '', renderHTML: (a) => ({ 'data-comment-text': String(a.text ?? '') }) },
+      replies: {
+        default: [] as CommentReply[],
+        parseHTML: (el) => repliesOf(el.getAttribute('data-comment-replies') || '[]'),
+        renderHTML: (a) => {
+          const list = repliesOf(a.replies);
+          return list.length ? { 'data-comment-replies': JSON.stringify(list) } : {};
+        },
+      },
       resolved: {
         default: false,
         parseHTML: (el) => el.getAttribute('data-comment-resolved') === 'true',
@@ -130,7 +159,7 @@ export const Comment = Mark.create({
         ({ state, commands }) => {
           if (state.selection.empty) return false;
           return commands.setMark(this.name, {
-            id: newCommentId(), author, text, date: new Date().toISOString(), resolved: false,
+            id: newCommentId(), author, text, replies: [], date: new Date().toISOString(), resolved: false,
           });
         },
       updateComment:
@@ -144,11 +173,21 @@ export const Comment = Mark.create({
               tr.addMark(r.from, r.to, state.schema.marks.comment.create({
                 id: r.id, author: r.author, date: r.date,
                 text: patch.text ?? r.text,
+                replies: patch.replies ?? r.replies,
                 resolved: patch.resolved ?? r.resolved,
               }));
             }
           }
           return true;
+        },
+      replyToComment:
+        (id, reply) =>
+        ({ state, commands }) => {
+          const c = commentRanges(state.doc).find((r) => r.id === id);
+          if (!c || !reply.text.trim()) return false;
+          return commands.updateComment(id, {
+            replies: [...c.replies, { author: reply.author, text: reply.text.trim(), date: new Date().toISOString() }],
+          });
         },
       removeComment:
         (id) =>

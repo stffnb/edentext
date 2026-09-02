@@ -157,6 +157,9 @@ type Ctx = {
   openBookmarks: Set<string>;
   // Ranged comments currently open, by their office:name — same shape as openBookmarks.
   openComments: Map<string, Record<string, unknown>>;
+  // The answers in each comment's thread, by the office:name they point at. Collected
+  // up front: LibreOffice writes an answer before the comment it belongs to.
+  commentReplies: Map<string, { author: string; date: string; text: string }[]>;
   // Recorded revisions: the <text:tracked-changes> registry by change id, and the
   // insertions whose <text:change-start> has been seen but not their end.
   revisions: Map<string, { kind: 'insertion' | 'deletion'; author: string; date: string; text: string; paras: Element[] }>;
@@ -773,7 +776,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -2271,8 +2274,14 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
           if (name) ctx.openComments.delete(name);
           continue;
         }
-        const attrs = odfCommentAttrs(e);
+        // An answer is an annotation of its own pointing at its comment; it is folded
+        // into that comment's thread, not shown as a comment beside it.
+        if (e.getAttributeNS(NS.loext, 'parent-name')) continue;
         const name = e.getAttributeNS(NS.office, 'name');
+        const replies = (name && ctx.commentReplies.get(name)) || [];
+        // Only where the file has one: an empty thread is the mark's default, and an
+        // attr written out anyway would differ from what the editor itself holds.
+        const attrs = { ...odfCommentAttrs(e), ...(replies.length ? { replies } : {}) };
         if (name) ctx.openComments.set(name, attrs);
         else points.push({ at: out.length, attrs });
         continue;
@@ -2289,6 +2298,21 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
     target.marks = [...(target.marks ?? []), { type: 'comment', attrs: p.attrs }];
   }
   return mergeAdjacentText(out);
+}
+
+// Every answer in the file by the comment it answers (loext:parent-name), in document
+// order — the annotations themselves may come in any order.
+function odfCommentReplies(body: Element): Map<string, { author: string; date: string; text: string }[]> {
+  const out = new Map<string, { author: string; date: string; text: string }[]>();
+  for (const el of Array.from(body.getElementsByTagNameNS(NS.office, 'annotation'))) {
+    const parent = el.getAttributeNS(NS.loext, 'parent-name');
+    if (!parent) continue;
+    const a = odfCommentAttrs(el);
+    const list = out.get(parent) ?? [];
+    list.push({ author: String(a.author ?? ''), date: String(a.date ?? ''), text: String(a.text ?? '') });
+    out.set(parent, list);
+  }
+  return out;
 }
 
 // <office:annotation> → the comment mark's attrs. `office:name` is the id where the file

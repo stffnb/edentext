@@ -180,25 +180,45 @@ let docTextBoxes: TextBoxDocx[] = [];
 
 // Comments, numbered in document order before the runs are built — Word's ids are
 // integers and word/comments.xml has to exist before the Document is constructed.
-type CommentDocx = { id: number; author: string; date: Date; text: string; resolved: boolean };
+type CommentDocx = { id: number; author: string; date: Date; text: string; resolved: boolean; parent?: number };
 let docComments: CommentDocx[] = [];
 let docCommentIds = new Map<string, number>();
+// The answers in each comment's thread, by the comment's Word id: each is a comment of
+// its own, referenced at the same anchor and tied to its parent in commentsExtended.xml.
+let docCommentReplies = new Map<number, number[]>();
 
 function collectComments(node: TiptapNode): void {
   for (const child of node.content ?? []) {
     const mark = child.type === 'text' ? child.marks?.find(m => m.type === 'comment') : undefined;
     const id = mark ? String(mark.attrs?.id ?? '') : '';
     if (id && !docCommentIds.has(id)) {
-      docCommentIds.set(id, docComments.length);
-      const raw = String(mark!.attrs?.date ?? '');
-      const date = new Date(raw);
+      const parsed = (raw: string) => {
+        const date = new Date(raw);
+        return Number.isNaN(date.getTime()) ? new Date() : date;
+      };
+      const parent = docComments.length;
+      docCommentIds.set(id, parent);
       docComments.push({
-        id: docComments.length,
+        id: parent,
         author: String(mark!.attrs?.author ?? ''),
-        date: Number.isNaN(date.getTime()) ? new Date() : date,
+        date: parsed(String(mark!.attrs?.date ?? '')),
         text: String(mark!.attrs?.text ?? ''),
         resolved: mark!.attrs?.resolved === true,
       });
+      const replies = Array.isArray(mark!.attrs?.replies) ? mark!.attrs.replies : [];
+      if (replies.length) {
+        docCommentReplies.set(parent, replies.map((r: { author?: string; date?: string; text?: string }) => {
+          const id = docComments.length;
+          docComments.push({
+            id, parent,
+            author: String(r?.author ?? ''),
+            date: parsed(String(r?.date ?? '')),
+            text: String(r?.text ?? ''),
+            resolved: false,
+          });
+          return id;
+        }));
+      }
     }
     if (!id) collectComments(child);
   }
@@ -634,6 +654,9 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
     if (openComment === null) return;
     flush();
     out.push(new CommentRangeEnd(openComment), new TextRun({ children: [new CommentReference(openComment)] }));
+    // An answer needs no range of its own: its reference at the same anchor is what
+    // carries it, and commentsExtended.xml names the comment it belongs to.
+    for (const r of docCommentReplies.get(openComment) ?? []) out.push(new TextRun({ children: [new CommentReference(r)] }));
     openComment = null;
   };
   const openCommentAt = (id: number | null) => {
@@ -1045,6 +1068,7 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
   const closeComment = () => {
     if (openComment === null) return;
     runs += `<w:commentRangeEnd w:id="${openComment}"/><w:r><w:commentReference w:id="${openComment}"/></w:r>`;
+    for (const r of docCommentReplies.get(openComment) ?? []) runs += `<w:r><w:commentReference w:id="${r}"/></w:r>`;
     openComment = null;
   };
   let openBookmarkName: string | null = null;
@@ -1552,11 +1576,13 @@ function applyPlaceholdersDocx(bytes: Uint8Array, placeholders: string[]): Uint8
 const W14_NS = 'http://schemas.microsoft.com/office/word/2010/wordml';
 const W15_NS = 'http://schemas.microsoft.com/office/word/2012/wordml';
 
-// Post-pack pass: a resolved comment is w15:done in word/commentsExtended.xml, keyed by
-// the w14:paraId of the comment body's last paragraph — the package knows neither part.
-function applyCommentsResolvedDocx(bytes: Uint8Array): Uint8Array {
-  const resolved = docComments.filter((c) => c.resolved);
-  if (!resolved.length) return bytes;
+// Post-pack pass: word/commentsExtended.xml, which carries what w:comment cannot — a
+// comment is handled (w15:done) and an answer names its comment (w15:paraIdParent).
+// Both are keyed by the w14:paraId of a comment body's last paragraph, and the package
+// writes neither part.
+function applyCommentsExtendedDocx(bytes: Uint8Array): Uint8Array {
+  const threaded = docComments.filter((c) => c.resolved || c.parent !== undefined);
+  if (!threaded.length) return bytes;
   const files = unzipSync(bytes);
   const relsPath = 'word/_rels/document.xml.rels';
   const comments = files['word/comments.xml'] ? strFromU8(files['word/comments.xml']) : '';
@@ -1572,7 +1598,9 @@ function applyCommentsResolvedDocx(bytes: Uint8Array): Uint8Array {
   xml = /<w:comments\b[^>]*\bmc:Ignorable="/.test(xml)
     ? xml.replace(/(<w:comments\b[^>]*\bmc:Ignorable=")((?:(?!w14\b)[^"])*")/, '$1w14 $2')
     : xml.replace(/<w:comments\b/, '<w:comments mc:Ignorable="w14"');
-  for (const c of resolved) {
+  // Every comment in a thread needs its own paraId, not only the ones being marked.
+  const stamped = docComments.filter((c) => threaded.some((t) => t === c || t.parent === c.id));
+  for (const c of stamped) {
     // Stamp the comment's last body paragraph (Word keys the whole comment off it);
     // the greedy tempered scan ends at the last <w:p before </w:comment>.
     xml = xml.replace(
@@ -1584,7 +1612,9 @@ function applyCommentsResolvedDocx(bytes: Uint8Array): Uint8Array {
   files['word/commentsExtended.xml'] = strToU8(
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
     + `<w15:commentsEx xmlns:w15="${W15_NS}">`
-    + resolved.map((c) => `<w15:commentEx w15:paraId="${paraId(c.id)}" w15:done="1"/>`).join('')
+    + stamped.map((c) => `<w15:commentEx w15:paraId="${paraId(c.id)}"`
+      + (c.parent === undefined ? '' : ` w15:paraIdParent="${paraId(c.parent)}"`)
+      + ` w15:done="${c.resolved ? 1 : 0}"/>`).join('')
     + '</w15:commentsEx>');
   files[relsPath] = strToU8(rels.replace('</Relationships>',
     `<Relationship Id="rId${maxIdIn(rels, /Id="rId(\d+)"/g) + 1}" Type="http://schemas.microsoft.com/office/2011/relationships/commentsExtended" Target="commentsExtended.xml"/></Relationships>`));
@@ -2576,6 +2606,7 @@ export async function buildDocx(
   docTextBoxes = [];
   docComments = [];
   docCommentIds = new Map();
+  docCommentReplies = new Map();
   docRevisionIds = new Map();
   collectComments(docJson);
   const notesByClass: Record<NoteKind, Record<string, { children: Paragraph[] }>> = { footnote: {}, endnote: {} };
@@ -2745,8 +2776,8 @@ export async function buildDocx(
   const packed = applyFormulasDocx(applyTextBoxesDocx(linked, docTextBoxes), docFormulas);
   const cited = applyBibliographyDocx(applyPlaceholdersDocx(applyRubyDocx(packed, docRubies), docPlaceholders), docSources, docCitationStyle(docJson));
   const withNotes = docNoteIds.size ? applyNoteMarksDocx(applyNotePrDocx(cited, notesSettings)) : cited;
-  const withResolved = applyCommentsResolvedDocx(withNotes);
-  const mirrored = margins.mirrored ? applyMirrorMarginsDocx(withResolved) : withResolved;
+  const threaded = applyCommentsExtendedDocx(withNotes);
+  const mirrored = margins.mirrored ? applyMirrorMarginsDocx(threaded) : threaded;
   const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);
   const dims = pageDimsCm(pageFormat, orientation);
   const marked = applyFoldMarksDocx(bidi, foldMarks, dims.w * 10);

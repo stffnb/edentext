@@ -1965,6 +1965,44 @@ describe('Leg 16: comments (office:annotation / w:comment)', () => {
     check('neighbours stay uncommented', runs.filter((r: N) => r.marks?.some((x: N) => x.type === 'comment')).length === 1);
   });
 
+  const threadAttrs = { ...attrs, id: 'c9', replies: [
+    { author: 'B. Zweit', date: '2026-08-15T08:00:00.000Z', text: 'Ist geprüft.' },
+  ] };
+  const tDoc: N = { type: 'doc', content: [P(null, T('vor '), CM('markiert', threadAttrs), T(' nach'))] };
+
+  it('ODT: an answer is its own annotation pointing at the comment', async () => {
+    const bytes = await buildOdt(tDoc, margins, 'portrait');
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('answer names its parent', content.includes('loext:parent-name="c9"'), content.slice(0, 400));
+    check('answer carries its own author', content.includes('<dc:creator>B. Zweit</dc:creator>'));
+    check('answer closes its range', content.includes('<office:annotation-end office:name="c9_r1"/>'));
+
+    const back = importOdt(bytes).content as N;
+    const runs = back.content[0].content as N[];
+    const marks = runs.flatMap((r: N) => (r.marks ?? []).filter((m: N) => m.type === 'comment'));
+    check('one comment, not two', marks.length === 1, marks);
+    check('the answer came back on it',
+      marks[0]?.attrs.replies?.[0]?.text === 'Ist geprüft.' && marks[0]?.attrs.replies?.[0]?.author === 'B. Zweit',
+      marks[0]?.attrs.replies);
+  });
+
+  it('DOCX: an answer is its own w:comment tied by w15:paraIdParent', async () => {
+    const bytes = await buildDocx(tDoc, margins, 'portrait');
+    const files = unzipSync(bytes);
+    const ex = strFromU8(files['word/commentsExtended.xml'] ?? new Uint8Array());
+    check('the part exists', !!files['word/commentsExtended.xml'], Object.keys(files).join(' '));
+    check('the answer names its parent', /w15:paraIdParent="/.test(ex), ex);
+    check('two comment bodies', (strFromU8(files['word/comments.xml']).match(/<w:comment /g) ?? []).length === 2);
+    check('the answer is referenced at the anchor',
+      (strFromU8(files['word/document.xml']).match(/<w:commentReference /g) ?? []).length === 2);
+
+    const back = importDocx(bytes).content as N;
+    const runs = back.content[0].content as N[];
+    const marks = runs.flatMap((r: N) => (r.marks ?? []).filter((m: N) => m.type === 'comment'));
+    check('one comment, not two', marks.length === 1, marks);
+    check('the answer came back on it', marks[0]?.attrs.replies?.[0]?.text === 'Ist geprüft.', marks[0]?.attrs.replies);
+  });
+
   it('DOCX: the range brackets the runs and word/comments.xml holds the body', async () => {
     const bytes = await buildDocx(cDoc, margins, 'portrait');
     const files = unzipSync(bytes);

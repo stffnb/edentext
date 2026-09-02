@@ -13,6 +13,8 @@ const COMMENT_COLOR = '#c88c00';
 
 export type PrintedComment = {
   id: string; n: number; author: string; date: string; text: string; quote: string;
+  /** The thread under it — a printout that dropped the answers would misreport it. */
+  replies: { author: string; date: string; text: string }[];
   /** The page the anchor sits on, where the caller knows it (the raster paths do). */
   page?: number;
 };
@@ -38,12 +40,21 @@ export function printedComments(root: ParentNode): PrintedComment[] {
       author: el.getAttribute('data-comment-author') ?? '',
       date: el.getAttribute('data-comment-date') ?? '',
       text: el.getAttribute('data-comment-text') ?? '',
+      replies: parseReplies(el.getAttribute('data-comment-replies')),
       quote: el.textContent ?? '',
     };
     byId.set(id, entry);
     out.push(entry);
   }
   return out;
+}
+
+function parseReplies(json: string | null): { author: string; date: string; text: string }[] {
+  if (!json) return [];
+  try {
+    const list: unknown = JSON.parse(json);
+    return Array.isArray(list) ? list as { author: string; date: string; text: string }[] : [];
+  } catch { return []; }
 }
 
 // The bar takes the revision author's colour, handed out as the editor's decoration
@@ -94,9 +105,14 @@ export function commentListHtml(list: PrintedComment[], labels: CommentLabels): 
     // quote it is what makes an entry findable in a printout nobody can click.
     const meta = [c.page ? labels.onPage(c.page) : '', c.author, c.date ? when(c.date) : '']
       .filter(Boolean).map(esc).join(' · ');
+    const replies = c.replies.map((r) => {
+      const rm = [r.author, r.date ? when(r.date) : ''].filter(Boolean).map(esc).join(' · ');
+      return `<span class="cl-reply"><span class="cl-meta">${rm}</span>`
+        + `<span class="cl-text">${esc(r.text)}</span></span>`;
+    }).join('');
     return `<li><span class="cl-meta">${meta}</span>`
       + (c.quote.trim() ? `<span class="cl-quote">${esc(c.quote)}</span>` : '')
-      + `<span class="cl-text">${esc(c.text)}</span></li>`;
+      + `<span class="cl-text">${esc(c.text)}</span>${replies}</li>`;
   }).join('');
   return `<section class="comment-list"><h2>${esc(labels.heading)}</h2><ol>${rows}</ol></section>`;
 }
@@ -116,5 +132,6 @@ export function reviewPrintCss(): string {
 .cl-meta { display: block; font-size: 9pt; color: #555; }
 .cl-quote { display: block; margin: 0.05cm 0; padding-left: 0.2cm; border-left: 2px solid ${COMMENT_COLOR}; color: #555; }
 .cl-text { display: block; white-space: pre-wrap; }
+.cl-reply { display: block; margin-top: 0.1cm; padding-left: 0.3cm; border-left: 1px solid #bbb; }
 `;
 }

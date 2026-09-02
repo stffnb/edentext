@@ -898,7 +898,11 @@ const bookmarkNameOf = (node: TiptapNode): string =>
   String(node.marks?.find((m) => m.type === 'bookmark')?.attrs?.name ?? '');
 
 // One comment, collected by replaceComments and emitted by applyComments.
-type CommentExport = { name: string; author: string; date: string; text: string; resolved: boolean };
+type CommentExport = {
+  name: string; author: string; date: string; text: string; resolved: boolean;
+  /** The thread under it: LibreOffice writes each answer as its own annotation. */
+  replies: { author: string; date: string; text: string }[];
+};
 
 // Bracket each comment's text with the CMS/CME sentinels, the same shape as the bookmark
 // pair — spliced into the run text, so a comment inside a cell or a list rides along too.
@@ -927,6 +931,7 @@ function replaceComments(node: TiptapNode, out: CommentExport[]): TiptapNode {
         date: String(mark!.attrs?.date ?? ''),
         text: String(mark!.attrs?.text ?? ''),
         resolved: mark!.attrs?.resolved === true,
+        replies: Array.isArray(mark!.attrs?.replies) ? mark!.attrs.replies : [],
       });
       content.push({ ...child, text: `${CMS}${openIndex}${CMS}${child.text ?? ''}` });
       lastOfRange = content.length - 1;
@@ -4636,6 +4641,9 @@ function applyBookmarks(odtBytes: Uint8Array, refs: CrossRefExport[]): Uint8Arra
   return rezipOdt(files);
 }
 
+/** The name an answer's own annotation carries, derived from the comment's. */
+const replyName = (name: string, i: number) => `${name}_r${i + 1}`;
+
 // CMS/CME sentinels → <office:annotation> (author, date and body) and
 // <office:annotation-end/>. content.xml declares neither dc: nor loext:, so the two
 // namespaces are added on the root when a document actually has comments.
@@ -4654,16 +4662,26 @@ function applyComments(odtBytes: Uint8Array, list: CommentExport[]): Uint8Array 
       if (!c) return '';
       // LibreOffice reads its own resolved flag off loext: and writes it either way;
       // its comment bodies carry the pool's Comment paragraph style.
-      const body = c.text.split('\n').map(line => `<text:p text:style-name="Comment">${escapeXml(line)}</text:p>`).join('');
-      return `<office:annotation office:name="${escapeXml(c.name)}" loext:resolved="${c.resolved}">`
-        + (c.author ? `<dc:creator>${escapeXml(c.author)}</dc:creator>` : '')
-        + (c.date ? `<dc:date>${escapeXml(c.date)}</dc:date>` : '')
-        + (body || '<text:p text:style-name="Comment"/>')
-        + '</office:annotation>';
+      // An answer is an annotation of its own over the same range, pointing at the
+      // comment it belongs to — LibreOffice's loext:parent-name (probed).
+      const annotation = (name: string, a: { author: string; date: string; text: string }, parent: string) => {
+        const body = a.text.split('\n').map(line => `<text:p text:style-name="Comment">${escapeXml(line)}</text:p>`).join('');
+        return `<office:annotation office:name="${escapeXml(name)}"`
+          + (parent ? ` loext:parent-name="${escapeXml(parent)}"` : '')
+          + ` loext:resolved="${c.resolved}">`
+          + (a.author ? `<dc:creator>${escapeXml(a.author)}</dc:creator>` : '')
+          + (a.date ? `<dc:date>${escapeXml(a.date)}</dc:date>` : '')
+          + (body || '<text:p text:style-name="Comment"/>')
+          + '</office:annotation>';
+      };
+      return annotation(c.name, c, '')
+        + c.replies.map((r, i) => annotation(replyName(c.name, i), r, c.name)).join('');
     })
     .replace(new RegExp(`${CME}(\\d+)${CME}`, 'g'), (_m, idx: string) => {
       const c = list[Number(idx)];
-      return c ? `<office:annotation-end office:name="${escapeXml(c.name)}"/>` : '';
+      if (!c) return '';
+      return `<office:annotation-end office:name="${escapeXml(c.name)}"/>`
+        + c.replies.map((_r, i) => `<office:annotation-end office:name="${escapeXml(replyName(c.name, i))}"/>`).join('');
     });
 
   // applyRevisions may already have declared dc:; declaring either twice is invalid XML.
