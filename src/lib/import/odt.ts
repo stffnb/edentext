@@ -939,9 +939,14 @@ function convertHfZone(zoneEl: Element, ctx: Ctx, bandCm = 0, footer = false): H
   let padTopPt = 0;
   let padBottomPt = 0;
 
+  // Counted, not measured by what came out: a zone of nothing but empty paragraphs is
+  // still that many lines tall in both products, and its breaks are what reserves them.
+  let paras = 0;
+  let styleFontPt: number | null = null;
   const addPara = (p: Element) => {
-    if (inline.length) inline.push({ type: 'hardBreak' });
+    if (paras++) inline.push({ type: 'hardBreak' });
     const styleName = p.getAttributeNS(NS.text, 'style-name');
+    styleFontPt ??= lengthToPt(ctx.resolver.paraTextProps(styleName)['fo:font-size']) ?? null;
     const outer = ctx.resolver.paraProps(styleName);
     spaceBefore ??= snapPt(lengthToPt(outer['fo:margin-top']) ?? 0);
     spaceAfter = snapPt(lengthToPt(outer['fo:margin-bottom']) ?? 0);
@@ -980,6 +985,11 @@ function convertHfZone(zoneEl: Element, ctx: Ctx, bandCm = 0, footer = false): H
   // The zone is one paragraph here, so its strut is the whole band's line height —
   // runs that agree on a size must set it, or a 10pt footer reserves 12pt lines.
   applyUniformRunFont(attrs, content);
+  // No run to take the strut from — a zone of blank lines is its style's size all the
+  // same, and nothing else in the band can say how tall those lines are.
+  if (attrs.fontSize == null && styleFontPt != null && !content.some((n) => n.type === 'text')) {
+    attrs.fontSize = `${styleFontPt}pt`;
+  }
   if (textAlign) attrs.textAlign = textAlign;
   if (stops) attrs.tabStops = stops;
   const bandPt = (bandCm / 2.54) * 72;
