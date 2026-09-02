@@ -42,7 +42,7 @@ function parseBbox(xml) {
     for (const [, wattrs, text] of body.matchAll(/<word ([^>]*)>([\s\S]*?)<\/word>/g)) {
       const a = num(wattrs);
       const t = decode(text);
-      if (t) words.push({ text: t, x: a.xMin * PT_MM, y: a.yMin * PT_MM, w: (a.xMax - a.xMin) * PT_MM });
+      if (t) words.push({ text: t, x: a.xMin * PT_MM, y: a.yMin * PT_MM, w: (a.xMax - a.xMin) * PT_MM, h: (a.yMax - a.yMin) * PT_MM });
     }
     const a = num(attrs);
     pages.push({ words, width: a.width * PT_MM, height: a.height * PT_MM });
@@ -126,7 +126,7 @@ function extractLayout() {
     const r = document.createRange();
     r.setStart(node, from); r.setEnd(node, to);
     const rects = r.getClientRects();
-    const whole = (rect) => ({ top: rect.top, left: rect.left, width: rect.width, text: node.nodeValue.slice(from, to) });
+    const whole = (rect) => ({ top: rect.top, left: rect.left, width: rect.width, height: rect.height, text: node.nodeValue.slice(from, to) });
     if (rects.length < 2) return rects.length ? [whole(rects[0])] : [];
     const out = [];
     for (let i = from; i < to; i++) {
@@ -136,9 +136,9 @@ function extractLayout() {
       if (!rect) continue;
       const last = out[out.length - 1];
       if (last && Math.abs(last.top - rect.top) < 1) { last.text += node.nodeValue[i]; last.right = rect.right; }
-      else out.push({ top: rect.top, left: rect.left, right: rect.right, text: node.nodeValue[i] });
+      else out.push({ top: rect.top, left: rect.left, right: rect.right, height: rect.height, text: node.nodeValue[i] });
     }
-    return out.map((f) => ({ top: f.top, left: f.left, width: f.right - f.left, text: f.text }));
+    return out.map((f) => ({ top: f.top, left: f.left, width: f.right - f.left, height: f.height, text: f.text }));
   };
 
   // What the page paints, not what the node holds: a style's fo:text-transform /
@@ -167,6 +167,7 @@ function extractLayout() {
           x: (f.left - origin.left) * PX_MM,
           y: (y - page * cycle) * PX_MM,
           w: f.width * PX_MM,
+          h: f.height * PX_MM,
         });
       }
     }
@@ -196,10 +197,15 @@ function toLines(words) {
   const lines = [];
   for (const w of sorted) {
     const last = lines[lines.length - 1];
-    if (last && Math.abs(w.y - last.y) <= LINE_TOL_MM) {
+    // Tops within a hair, or boxes that overlap by half the shorter one: a chapter
+    // number set far larger than its title shares the title's baseline but starts a
+    // long way above it, and banding by top alone reads that as two lines.
+    const over = last ? Math.min(w.y + (w.h ?? 0), last.y2) - Math.max(w.y, last.y) : 0;
+    if (last && (Math.abs(w.y - last.y) <= LINE_TOL_MM || over >= 0.5 * Math.min(w.h ?? 0, last.y2 - last.y))) {
       last.words.push(w);
       last.y = Math.min(last.y, w.y);
-    } else lines.push({ y: w.y, words: [w] });
+      last.y2 = Math.max(last.y2, w.y + (w.h ?? 0));
+    } else lines.push({ y: w.y, y2: w.y + (w.h ?? 0), words: [w] });
   }
   return lines.map((l) => lineOf(l.y, l.words.sort((a, b) => a.x - b.x)));
 }
