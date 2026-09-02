@@ -133,10 +133,15 @@ One header and one footer (`HfDoc` = a single-paragraph TipTap doc per zone, per
 
 ## Comments (`CommentsPane.svelte`)
 
-Word's Reviewing Pane, not its margin bubbles: the page here fills its own scroller, so a
-pane beside it (`.editor-row` in `App.svelte`) keeps the sheet at its true width. It lists
-`comments(editor.state.doc)` in document order — click a card to select the annotated
-range, edit / resolve / remove in place. `App.svelte` owns the New-comment prompt, which
+Word's Reviewing Pane, docked beside the scroller (`.editor-row` in `App.svelte`): the
+list view a comment goes to instead of the margin balloon below — one control picks the
+place (`storage/markup`), so no comment is in both at once. It lists `visibleComments` in
+document order — click a card to select the
+annotated range, answer it in the reply box, and edit / resolve / remove behind the card's
+**⋯** button (`CommentCard.svelte`, shared with the balloon). That menu is **in the flow**,
+not floating: the balloon clips what leaves it, so a popover would be cut off there. Only
+the answer box is a command a card shows outright — it is the one used most, and three
+buttons in a row cost a balloon two lines. `App.svelte` owns the New-comment prompt, which
 both the Review tab and the context menu (`OPEN_COMMENT_EVENT`) fire; the author comes
 from the document properties. The card of the comment the selection lies within (`commentIdAt`)
 is marked and scrolled into view, the pane half of the pairing `pm-comment-active`,
@@ -147,7 +152,8 @@ is marked and scrolled into view, the pane half of the pairing `pm-comment-activ
 The reviewing pane both word processors list revisions in, docked beside `CommentsPane`
 and built the same way: one row per change **id** (a paragraph boundary splits one change
 into several ranges), in the author's own colour, click to select the text, accept or
-reject in place through `acceptRevision`/`rejectRevision`. Opened from the Review tab.
+reject in place through `acceptRevision`/`rejectRevision`. The Review tab's Show-changes
+button picks between this list and the balloons; the pane is not a second view of them.
 The row of the change the selection lies within (`revisionIdAt`) is marked with an inset accent in the
 author's colour — the same colour its margin bar takes — and scrolled into view.
 

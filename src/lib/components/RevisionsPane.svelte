@@ -1,11 +1,13 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import { TextSelection } from '@tiptap/pm/state';
-  import { revisions, revisionIdAt, authorColorIndex, REVISION_AUTHOR_COLORS, type Revision } from '../editor/extensions/trackChanges';
+  import { revisionIdAt, authorColorIndex, REVISION_AUTHOR_COLORS, type Revision } from '../editor/extensions/trackChanges';
+  import { selectRange, visibleRevisions } from './reviewItems';
+  import RevisionCard from './RevisionCard.svelte';
   import { t } from '../i18n/i18n.svelte';
 
   // The reviewing pane both word processors list revisions in, beside the comments one:
   // every recorded change in document order, click to jump, accept or reject in place.
+  // The balloons beside the page are the other view; both build their card from RevisionCard.
   let { editor, tick, author, onClose }: {
     editor: Editor | null;
     tick: number;
@@ -17,7 +19,7 @@
   let list = $derived.by<Revision[]>(() => {
     if (tick < 0 || !editor) return [];
     const seen = new Set<string>();
-    return revisions(editor.state.doc).filter((r) => !seen.has(r.id) && seen.add(r.id));
+    return visibleRevisions(editor.state.doc).filter((r) => !seen.has(r.id) && seen.add(r.id));
   });
 
   let colors = $derived(authorColorIndex(list));
@@ -39,16 +41,7 @@
   }
 
   function jumpTo(r: Revision) {
-    if (!editor) return;
-    const { state, view } = editor;
-    view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, r.from, r.to)).scrollIntoView());
-    view.focus();
-  }
-
-  // The stored ISO date, in the reader's locale — an imported file may carry any format.
-  function when(iso: string): string {
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+    if (editor) selectRange(editor, r.from, r.to);
   }
 </script>
 
@@ -68,18 +61,7 @@
   <ul>
     {#each list as r (r.id)}
       <li bind:this={cards[r.id]} class:active={r.id === activeId} style:box-shadow={r.id === activeId ? `inset 3px 0 0 ${colorOf(r)}` : null}>
-        <button class="card" onclick={() => jumpTo(r)}>
-          <div class="meta">
-            <b style:color={colorOf(r)}>{r.author || author || t().revisions.unknownAuthor}</b>
-            <span>{when(r.date)}</span>
-          </div>
-          <div class="kind">{r.kind === 'insertion' ? t().revisions.inserted : t().revisions.deleted}</div>
-          <div class="quote" class:struck={r.kind === 'deletion'} style:color={colorOf(r)}>{r.text}</div>
-        </button>
-        <div class="actions">
-          <button onclick={() => editor?.chain().focus().acceptRevision(r.id).run()}>{t().revisions.accept}</button>
-          <button onclick={() => editor?.chain().focus().rejectRevision(r.id).run()}>{t().revisions.reject}</button>
-        </div>
+        <RevisionCard {editor} {r} {author} color={colorOf(r)} onSelect={() => jumpTo(r)} />
       </li>
     {/each}
   </ul>
@@ -110,7 +92,7 @@
   }
   .title { flex: 1; font-weight: 600; }
   .count { color: var(--color-text-muted); }
-  .close, .actions button {
+  .close {
     border: 1px solid transparent;
     border-radius: var(--radius);
     background: none;
@@ -119,7 +101,7 @@
     font: inherit;
     cursor: pointer;
   }
-  .close:hover, .actions button:hover { background: var(--color-btn-hover); color: var(--color-text); }
+  .close:hover { background: var(--color-btn-hover); color: var(--color-text); }
 
   .empty { padding: 12px 10px; color: var(--color-text-muted); }
 
@@ -131,34 +113,4 @@
   }
   /* The accent is the author's colour, set inline — the same one the margin bar takes. */
   li.active { background: var(--color-btn-hover); }
-
-  .card {
-    display: block;
-    width: 100%;
-    border: none;
-    background: none;
-    color: inherit;
-    padding: 0;
-    text-align: left;
-    font: inherit;
-    cursor: pointer;
-  }
-
-  .meta { display: flex; justify-content: space-between; gap: 8px; color: var(--color-text-muted); }
-  .kind { color: var(--color-text-muted); }
-
-  .quote {
-    margin: 3px 0;
-    padding-left: 6px;
-    border-left: 2px solid currentColor;
-    /* Two lines of the changed text is enough to recognise it. */
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .quote.struck { text-decoration: line-through; }
-
-  .actions { display: flex; gap: 4px; justify-content: flex-end; }
 </style>

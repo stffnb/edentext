@@ -86,6 +86,8 @@ const en = {
     title: 'Comments',
     onPage: (n: number) => `Page ${n}`,
     empty: 'No comments yet. Select some text and add one.',
+    more: 'More',
+    reply: 'Reply',
     edit: 'Edit',
     resolve: 'Resolve',
     reopen: 'Reopen',

@@ -1,12 +1,13 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import { TextSelection } from '@tiptap/pm/state';
-  import { comments, commentIdAt, type CommentRange } from '../editor/extensions/comment';
+  import { commentIdAt, type CommentRange } from '../editor/extensions/comment';
+  import { selectRange, visibleComments } from './reviewItems';
+  import CommentCard from './CommentCard.svelte';
   import { t } from '../i18n/i18n.svelte';
 
   // Word's Reviewing Pane: every comment in document order, click to jump to the text it
-  // annotates. Margin bubbles are what Word draws beside the page, but the page here fills
-  // its own scroller — a pane keeps the sheet at its true width.
+  // annotates. The balloons beside the page are the other view (ReviewMarginLayer); both
+  // are open at once in Word too, and both build their card from CommentCard.
   let { editor, tick, author, onClose }: {
     editor: Editor | null;
     tick: number;
@@ -16,7 +17,7 @@
 
   let list = $derived.by<CommentRange[]>(() => {
     if (tick < 0 || !editor) return [];
-    return comments(editor.state.doc);
+    return visibleComments(editor.state.doc);
   });
 
   // The comment the caret sits in: its card is marked and pulled into view, the other
@@ -31,31 +32,8 @@
     if (activeId) cards[activeId]?.scrollIntoView({ block: 'nearest' });
   });
 
-  let editingId = $state<string | null>(null);
-  let draft = $state('');
-
   function jumpTo(c: CommentRange) {
-    if (!editor) return;
-    const { state, view } = editor;
-    const tr = state.tr.setSelection(TextSelection.create(state.doc, c.from, c.to)).scrollIntoView();
-    view.dispatch(tr);
-    view.focus();
-  }
-
-  function startEdit(c: CommentRange) {
-    editingId = c.id;
-    draft = c.text;
-  }
-
-  function commit(id: string) {
-    editor?.chain().focus().updateComment(id, { text: draft.trim() }).run();
-    editingId = null;
-  }
-
-  // The stored ISO date, in the reader's locale — an imported file may carry any format.
-  function when(iso: string): string {
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+    if (editor) selectRange(editor, c.from, c.to);
   }
 </script>
 
@@ -75,33 +53,7 @@
   <ul>
     {#each list as c (c.id)}
       <li bind:this={cards[c.id]} class:resolved={c.resolved} class:active={c.id === activeId}>
-        <button class="card" onclick={() => jumpTo(c)}>
-          <div class="meta">
-            <b>{c.author || author}</b>
-            <span>{when(c.date)}</span>
-          </div>
-          <div class="quote">{c.quote}</div>
-        </button>
-        {#if editingId === c.id}
-          <textarea
-            rows="3"
-            bind:value={draft}
-            onkeydown={(e) => { if (e.key === 'Escape') editingId = null; }}
-          ></textarea>
-          <div class="actions">
-            <button onclick={() => (editingId = null)}>{t().common.cancel}</button>
-            <button class="primary" onclick={() => commit(c.id)}>{t().common.ok}</button>
-          </div>
-        {:else}
-          <p class="body">{c.text}</p>
-          <div class="actions">
-            <button onclick={() => startEdit(c)}>{t().comments.edit}</button>
-            <button onclick={() => editor?.chain().focus().updateComment(c.id, { resolved: !c.resolved }).run()}>
-              {c.resolved ? t().comments.reopen : t().comments.resolve}
-            </button>
-            <button onclick={() => editor?.chain().focus().removeComment(c.id).run()}>{t().common.remove}</button>
-          </div>
-        {/if}
+        <CommentCard {editor} {c} {author} onSelect={() => jumpTo(c)} />
       </li>
     {/each}
   </ul>
@@ -132,7 +84,7 @@
   }
   .title { flex: 1; font-weight: 600; }
   .count { color: var(--color-text-muted); }
-  .close, .actions button {
+  .close {
     border: 1px solid transparent;
     border-radius: var(--radius);
     background: none;
@@ -141,8 +93,7 @@
     font: inherit;
     cursor: pointer;
   }
-  .close:hover, .actions button:hover { background: var(--color-btn-hover); color: var(--color-text); }
-  .actions .primary { border-color: var(--color-primary); background: var(--color-primary); color: #fff; }
+  .close:hover { background: var(--color-btn-hover); color: var(--color-text); }
 
   .empty { padding: 12px 10px; color: var(--color-text-muted); }
 
@@ -154,47 +105,4 @@
   }
   li.resolved { opacity: 0.55; }
   li.active { background: var(--color-btn-hover); box-shadow: inset 3px 0 0 rgba(200, 140, 0, 0.9); }
-
-  .card {
-    display: block;
-    width: 100%;
-    border: none;
-    background: none;
-    color: inherit;
-    padding: 0;
-    text-align: left;
-    font: inherit;
-    cursor: pointer;
-  }
-
-  .meta { display: flex; justify-content: space-between; gap: 8px; color: var(--color-text-muted); }
-  .meta b { color: var(--color-text); }
-
-  .quote {
-    margin: 3px 0;
-    padding-left: 6px;
-    border-left: 2px solid rgba(200, 140, 0, 0.7);
-    color: var(--color-text-muted);
-    /* Two lines of the annotated text is enough to recognise it. */
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .body { margin: 4px 0; white-space: pre-wrap; }
-
-  textarea {
-    width: 100%;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    background: var(--color-surface);
-    color: var(--color-text);
-    padding: 4px 6px;
-    font: inherit;
-    resize: vertical;
-  }
-
-  .actions { display: flex; gap: 4px; justify-content: flex-end; }
 </style>
