@@ -41,13 +41,20 @@
     min-width: 163px;
   }
 
+  /* Top, not centred: a two-line label makes its button taller, and centred that
+     lifts every one-line button's icon out of the row the others share. */
   .ribbon-group-items {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 2px;
     flex: 1;
     min-width: 0;
   }
+
+  /* A run of small buttons keeps its centred place: it has no icon row to line up
+     with, and pinned to the top it hangs over the gap the group's height leaves. */
+  .ribbon-group-items > :global(.rb-small),
+  .ribbon-group-items > :global(:has(> .rb-small)) { align-self: center; }
 
   /* Word's labelled group footer; the ↘ launcher sits at its right edge. */
   .ribbon-group-foot {
