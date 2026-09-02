@@ -717,25 +717,30 @@ export class StyleResolver {
       return null;
     };
     // The band LibreOffice lays out is max(declared height, zone content + its gap), and
-    // the zone's own fo:padding counts on both sides of that content (probed). `extraCm`
-    // is the part known without laying the zone out; `bandCm` what its content grows by.
+    // the zone's own fo:padding counts on both sides of that content — but a *dynamic*
+    // gap is absorbed instead of added, so there the band is max(height, content).
+    // Probed at min-height 7.51mm, gap 6.51mm, 12pt lines: false → 11.37 / 21.11 / 35.71
+    // for 1 / 3 / 6 lines, true → 7.51 / 14.60 / 29.21.
+    // `extraCm` is the part known without laying the zone out; `bandCm` what its content
+    // grows by.
+    const gapCm = (props: Element, spacingAttr: 'margin-bottom' | 'margin-top'): number =>
+      (props.getAttributeNS(NS.style, 'dynamic-spacing') === 'true'
+        ? 0 : lengthToCm(props.getAttributeNS(NS.fo, spacingAttr)) ?? 0);
     const extraCm = (local: 'header-style' | 'footer-style', spacingAttr: 'margin-bottom' | 'margin-top'): number => {
       const props = bandProps(local);
       if (!props) return 0;
       const height = lengthToCm(props.getAttributeNS(NS.svg, 'height'))
         ?? lengthToCm(props.getAttributeNS(NS.fo, 'min-height'))
         ?? 0;
-      const spacing = lengthToCm(props.getAttributeNS(NS.fo, spacingAttr)) ?? 0;
-      return Math.max(height, spacing);
+      return Math.max(height, gapCm(props, spacingAttr));
     };
     const bandCm = (local: 'header-style' | 'footer-style', spacingAttr: 'margin-bottom' | 'margin-top'): number => {
       const props = bandProps(local);
       if (!props) return 0;
-      const spacing = lengthToCm(props.getAttributeNS(NS.fo, spacingAttr)) ?? 0;
       const pad = lengthToCm(props.getAttributeNS(NS.fo, 'padding'));
       const padTop = lengthToCm(props.getAttributeNS(NS.fo, 'padding-top')) ?? pad ?? 0;
       const padBottom = lengthToCm(props.getAttributeNS(NS.fo, 'padding-bottom')) ?? pad ?? 0;
-      return spacing + padTop + padBottom;
+      return gapCm(props, spacingAttr) + padTop + padBottom;
     };
 
     return {
