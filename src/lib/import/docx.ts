@@ -17,7 +17,7 @@ import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
 import { shapeFromPrst, isLineKind, lineKindFor, parseSvgPath, parseVmlPath, fitPath } from '../utils/shapes';
 import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
-import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
+import { PX_PER_CM, cmToPx, fitMargins, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { clampTabInterval, DOCX_IMPLIED_TAB_CM } from '../storage/tabInterval';
@@ -3044,7 +3044,8 @@ function parseSectPr(sect: Element | null, ctx: Ctx, oddEven = false): {
   const { orientation, format } = sectPaper(sect);
 
   const pgMar = fc(sect, 'pgMar');
-  const clampCm = (tw: number | null) => (tw == null ? null : Math.min(10, Math.max(0, round2(twipToCm(tw)))));
+  const pageHighCm = (intAttr(fc(sect, 'pgSz'), W, 'h') ?? 16838) / 1440 * 2.54 - 1;
+  const clampCm = (tw: number | null) => (tw == null ? null : Math.min(pageHighCm, Math.max(0, round2(twipToCm(tw)))));
   const margins = sectMargins(sect);
 
   // Different first page: w:titlePg turns on the "first"-type refs for page 1.
@@ -3080,9 +3081,16 @@ function sectMargins(sect: Element | null): PageMargins | null {
   if (!pgMar) return null;
   const cm = (a: string, fallback: number) => {
     const tw = intAttr(pgMar, W, a);
-    return tw == null ? fallback : Math.min(10, Math.max(0, round2(twipToCm(tw))));
+    return tw == null ? fallback : Math.max(0, round2(twipToCm(tw)));
   };
-  return { top: cm('top', 2.54), bottom: cm('bottom', 2.54), left: cm('left', 2.12), right: cm('right', 2.12) };
+  const pgSz = sect ? fc(sect, 'pgSz') : null;
+  const dim = (a: string, fallback: number) => {
+    const tw = intAttr(pgSz, W, a);
+    return tw == null ? fallback : twipToCm(tw);
+  };
+  return fitMargins(
+    { top: cm('top', 2.54), bottom: cm('bottom', 2.54), left: cm('left', 2.12), right: cm('right', 2.12) },
+    dim('w', 21), dim('h', 29.7));
 }
 
 // One HfSet per section, in body order, resolving Word's "Link to Previous": a section

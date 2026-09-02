@@ -1,4 +1,4 @@
-import type { PageMargins } from '../storage/pageMargins';
+import { fitMargins, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { ODF_IMPLIED_TAB_CM } from '../storage/tabInterval';
@@ -795,7 +795,7 @@ export class StyleResolver {
     const cm = (attr: string, fallback: number, extra = 0) => {
       const v = lengthToCm(props.getAttributeNS(NS.fo, attr));
       if (v == null) return fallback;
-      return Math.min(10, Math.max(0, Math.round((v + extra + inset) * 100) / 100));
+      return Math.max(0, Math.round((v + extra + inset) * 100) / 100);
     };
     const margins: PageMargins = {
       top: cm('margin-top', 2.54, hf.header ? hf.headerExtraCm : 0),
@@ -805,22 +805,24 @@ export class StyleResolver {
       left: cm('margin-left', 2.12),
       right: cm('margin-right', 2.12),
     };
-    // A page style that is one side of a book (style:page-usage left/right) mirrors as
-    // surely as one marked "mirrored"; the editor stores the odd page's pair and swaps
-    // it on an even page, so a left-hand layout hands over its mirror image.
+    // A page style that is one side of a book mirrors as surely as one marked
+    // "mirrored" — but only where the two masters really alternate: style:page-usage
+    // ="right" on a single layout is a page that starts on the right, nothing more,
+    // and swapping its pair would draw it at the wrong margin (probed).
     const usage = this.pageLayoutEl(pageName)?.getAttributeNS(NS.style, 'page-usage');
-    if (usage === 'mirrored' || usage === 'left' || usage === 'right') {
+    if (usage === 'mirrored' || ((usage === 'left' || usage === 'right') && hf.mirrorPair)) {
       margins.mirrored = true;
       if (usage === 'left') [margins.left, margins.right] = [margins.right, margins.left];
     }
     const w = lengthToCm(props.getAttributeNS(NS.fo, 'page-width'));
     const h = lengthToCm(props.getAttributeNS(NS.fo, 'page-height'));
+    const fitted = fitMargins(margins, w ?? 21, h ?? 29.7);
     const orientation: Orientation = w != null && h != null && w > h ? 'landscape' : 'portrait';
     const format: PageFormat = w != null && h != null ? (formatFromCm(w, h) ?? 'A4') : 'A4';
     // style:writing-mode: rl-tb is a right-to-left page — the columns fill from the
     // right and the text's base direction is RTL. The vertical modes are not read.
     const rtl = (props.getAttributeNS(NS.style, 'writing-mode') ?? '').startsWith('rl');
-    return { margins, orientation, format, rtl };
+    return { margins: fitted, orientation, format, rtl };
   }
 
   // The document's chapter numbering — one <text:outline-style> in styles.xml.
@@ -891,9 +893,10 @@ export class StyleResolver {
     const props = this.pageLayoutEl()?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
     if (!props) return null;
     const inset = this.decorInsetCm(props);
+    const room = (lengthToCm(props.getAttributeNS(NS.fo, 'page-height')) ?? 29.7) - 1;
     const cm = (attr: string) => {
       const v = lengthToCm(props.getAttributeNS(NS.fo, attr));
-      return v == null ? null : Math.min(10, Math.max(0, Math.round((v + inset) * 100) / 100));
+      return v == null ? null : Math.min(room, Math.max(0, Math.round((v + inset) * 100) / 100));
     };
     return { top: cm('margin-top') ?? 1.25, bottom: cm('margin-bottom') ?? 1.25 };
   }

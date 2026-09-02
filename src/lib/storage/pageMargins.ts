@@ -10,6 +10,22 @@ const KEY = 'edentext-page-margins';
 // document gets these — an imported one always adopts its own page geometry.
 export const DEFAULT_MARGINS: PageMargins = { top: 2, bottom: 2, left: 2, right: 2 };
 
+// An imported margin is laid out as the file declares it — a back cover really does push
+// its five lines to the page foot with a 21cm top. The only cap is that the page keeps a
+// strip of text, or the flow would measure a column of no height at all.
+export const MIN_CONTENT_CM = 1;
+
+export function fitMargins(m: PageMargins, pageWidthCm: number, pageHeightCm: number): PageMargins {
+  const pair = (a: number, b: number, page: number): [number, number] => {
+    const room = Math.max(0, page - MIN_CONTENT_CM);
+    const first = Math.min(Math.max(0, a), room);
+    return [first, Math.min(Math.max(0, b), room - first)];
+  };
+  const [top, bottom] = pair(m.top, m.bottom, pageHeightCm);
+  const [left, right] = pair(m.left, m.right, pageWidthCm);
+  return { ...m, top, bottom, left, right };
+}
+
 export const PX_PER_CM = 96 / 2.54; // 37.795 — A4 @96dpi
 export const cmToPx = (cm: number) => cm * PX_PER_CM;
 
@@ -51,7 +67,4 @@ export function applyMarginVars(m: PageMargins): void {
   root.setProperty('--user-margin-bottom', `${cmToPx(m.bottom)}px`);
   root.setProperty('--user-margin-left',   `${cmToPx(m.left)}px`);
   root.setProperty('--user-margin-right',  `${cmToPx(m.right)}px`);
-  // How far an even page's text block moves right; .tiptap's padding draws the odd
-  // page's pair, so pageBreaks.ts insets the even one by the difference.
-  root.setProperty('--user-margin-mirror', `${m.mirrored ? cmToPx(m.right - m.left) : 0}px`);
 }
