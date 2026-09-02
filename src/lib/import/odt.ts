@@ -830,15 +830,16 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   // The presence of a first-page element is the flag, even when it's empty (an empty
   // first-page zone deliberately blanks page 1 while the default fills later pages).
   const differentFirstPage = !!(hf.headerFirst || hf.footerFirst || hf.firstPageOnly);
-  const headerEven = hf.headerLeft ? convertHfZone(hf.headerLeft, ctx, hf.headerBandCm) : null;
-  const footerEven = hf.footerLeft ? convertHfZone(hf.footerLeft, ctx, hf.footerBandCm, true) : null;
   const differentOddEven = !!(hf.headerLeft || hf.footerLeft);
+  const header = hf.header ? convertHfZone(hf.header, ctx, hf.headerBandCm) : null;
+  const footer = hf.footer ? convertHfZone(hf.footer, ctx, hf.footerBandCm, true) : null;
+  // Odd/even is per zone in ODF: a master that gives only the footer a left variant
+  // repeats its header on left pages. An element that is *there* but empty blanks it.
+  const headerEven = hf.headerLeft ? convertHfZone(hf.headerLeft, ctx, hf.headerBandCm) : differentOddEven ? header : null;
+  const footerEven = hf.footerLeft ? convertHfZone(hf.footerLeft, ctx, hf.footerBandCm, true) : differentOddEven ? footer : null;
   // A first-page/even zone reserves the band even if its default counterpart is empty.
   const hasHeader = hf.header || headerFirst || headerEven;
   const hasFooter = hf.footer || footerFirst || footerEven;
-
-  const header = hf.header ? convertHfZone(hf.header, ctx, hf.headerBandCm) : null;
-  const footer = hf.footer ? convertHfZone(hf.footer, ctx, hf.footerBandCm, true) : null;
 
   return {
     content: { type: 'doc', content: blocks },
@@ -885,6 +886,8 @@ function hfSetOfMasterPage(
   const hf = ctx.resolver.masterPageHF(name);
   const zone = (el: Element | null, footer = false) =>
     (el ? convertHfZone(el, ctx, footer ? hf.footerBandCm : hf.headerBandCm, footer) : null);
+  // Odd/even is per zone: an absent left variant repeats the default one on left pages.
+  const oddEven = !!(hf.headerLeft || hf.footerLeft);
   // Its page layout is the section's own geometry; where the master hands over, that
   // layout governs the first page only and the successor's the rest.
   const geo = ctx.resolver.pageGeometry(name);
@@ -904,9 +907,9 @@ function hfSetOfMasterPage(
     headerFirst: zone(hf.headerFirst),
     footerFirst: zone(hf.footerFirst, true),
     differentFirstPage: !!(hf.headerFirst || hf.footerFirst || hf.firstPageOnly),
-    headerEven: zone(hf.headerLeft),
-    footerEven: zone(hf.footerLeft, true),
-    differentOddEven: !!(hf.headerLeft || hf.footerLeft),
+    headerEven: hf.headerLeft ? zone(hf.headerLeft) : oddEven ? zone(hf.header) : null,
+    footerEven: hf.footerLeft ? zone(hf.footerLeft, true) : oddEven ? zone(hf.footer, true) : null,
+    differentOddEven: oddEven,
   };
 }
 
