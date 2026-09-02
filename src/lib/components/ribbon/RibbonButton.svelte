@@ -16,6 +16,7 @@
     caret = false,
     caretTitle,
     caretActive = false,
+    caretPrimary = false,
     onclick,
     onCaret,
   }: {
@@ -29,6 +30,8 @@
     caret?: boolean;
     caretTitle?: string;
     caretActive?: boolean;
+    // The caret is the half of the control used most: it gets the bigger target.
+    caretPrimary?: boolean;
     onclick?: () => void;
     onCaret?: () => void;
   } = $props();
@@ -50,7 +53,7 @@
 {/snippet}
 
 {#if caret && onCaret}
-  <span class="rb-split" class:rb-split-active={active || caretActive}>
+  <span class="rb-split" class:caret-primary={caretPrimary} class:rb-split-active={active || caretActive}>
     <button class="rb rb-{variant}" class:active {disabled} {title} {onclick}>
       {@render face()}
     </button>
@@ -63,7 +66,7 @@
       aria-expanded={caretActive}
       onclick={onCaret}
     >
-      <Icon name="chevronDown" size={10} />
+      <Icon name="chevronDown" size={caretPrimary ? 16 : 10} />
     </button>
   </span>
 {:else}
@@ -172,8 +175,19 @@
     border-radius: 3px;
   }
 
-  .rb-split:hover { background: var(--w-hover); }
+  .rb-split:hover:not(.rb-split-active) { background: var(--w-hover); }
   .rb-split-active { background: var(--w-active); }
+
+  /* Each half answers its own hover a step past the tint the wrapper carries, so
+     the pointer says which of the two it would hit. The mix is that step where the
+     tint is already the pressed state — a darker grey in light mode, a lighter one
+     in dark. */
+  .rb-split .rb-big:hover:not(:disabled) { background: var(--w-pressed); }
+
+  .rb-split-active .rb-big:hover:not(:disabled),
+  .rb-split-active .rb-caret:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--w-active) 85%, var(--w-text));
+  }
 
   .rb-caret {
     display: inline-flex;
@@ -186,6 +200,17 @@
     color: var(--w-text-dim);
     cursor: pointer;
   }
+
+  /* Wider and in the text colour, not the dim one, where the menu is the half of the
+     control used most. Scaled past its own box rather than given a bigger one: the
+     glyph sits inside a third of empty canvas. */
+  .caret-primary .rb-caret { width: 16px; color: var(--w-text); }
+  .caret-primary .rb-caret :global(svg) { transform: scale(1.15); }
+
+  /* That command half gives up its right padding, so the arrow sits against the label
+     rather than at the far edge of a button the label does not fill. */
+  .caret-primary .rb-big { padding-right: 0; }
+  .caret-primary .rb-big .rb-face { margin-right: 0; }
 
   .rb-caret:hover:not(:disabled) { background: var(--w-pressed); }
   .rb-caret:disabled { opacity: 0.4; cursor: default; }

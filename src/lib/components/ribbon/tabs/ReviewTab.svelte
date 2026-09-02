@@ -133,6 +133,7 @@
       {label}
       title={`${label} — ${PLACE_LABEL[at]()}`}
       caret
+      caretPrimary
       active={on}
       caretActive={isMenuOpen(id)}
       onclick={toggle}
