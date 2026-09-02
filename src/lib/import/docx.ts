@@ -5,6 +5,7 @@ import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../e
 import { PLACEHOLDER_SDT_TAG } from '../export/docx';
 import { FOLD_MARK_NAME } from '../storage/foldMarks';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
+import { DEFAULT_OUTLINE_LEVEL, MAX_OUTLINE_LEVELS, type OutlineNumbering } from '../styles/outlineNumbering';
 import { MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage, framePx } from '../editor/extensions/image';
@@ -919,6 +920,36 @@ function runTextProps(run: RunProps): TextProps {
 
 // The document's style registry: the built-ins with the file's own definitions merged
 // over them — only the styles blocks reference, plus their parent chains.
+// Word keeps chapter numbering as one multilevel numbering the heading styles point at
+// (w:numPr on the style, w:pStyle in the level). Level N is whatever "Heading N" uses.
+function outlineFromDocx(ctx: Ctx): OutlineNumbering | null {
+  const byName = new Map<string, string>();
+  for (const [id, def] of ctx.styles.namedParagraphStyles()) byName.set(def.name.toLowerCase().replace(/\s+/g, ''), id);
+  const out: OutlineNumbering = [];
+  let numbered = false;
+  for (let level = 1; level <= MAX_OUTLINE_LEVELS; level++) {
+    const styleId = byName.get(`heading${level}`) ?? `Heading${level}`;
+    const np = ctx.styles.styleNumPr(styleId);
+    const def = np ? ctx.styles.level(np.numId, np.ilvl) : null;
+    const format = def?.numFmt ? DOCX_PAGE_NUM_FORMAT[def.numFmt] : null;
+    if (!def || !format) { out.push({ ...DEFAULT_OUTLINE_LEVEL }); continue; }
+    numbered = true;
+    const text = def.lvlText ?? '';
+    const holders = [...text.matchAll(/%\d/g)];
+    const last = holders[holders.length - 1];
+    out.push({
+      format,
+      prefix: holders.length ? text.slice(0, holders[0].index) : '',
+      suffix: last ? text.slice((last.index ?? 0) + 2) : '',
+      displayLevels: Math.max(1, holders.length),
+      start: def.start ?? 1,
+    });
+  }
+  // Trailing unnumbered levels carry nothing — a definition ends at its last number.
+  while (out.length && out[out.length - 1].format === 'none') out.pop();
+  return numbered ? out : null;
+}
+
 function collectStyleSheet(ctx: Ctx): StyleSheet {
   const defs = ctx.styles.namedParagraphStyles();
   const sheet = builtinStyleSheet();
@@ -971,6 +1002,7 @@ function collectStyleSheet(ctx: Ctx): StyleSheet {
   for (const [numId, name] of ctx.usedListStyles) {
     sheet.list[name] = listStyleFromDocx(name, ctx, numId, sheet.list[name]?.builtin);
   }
+  sheet.outline = outlineFromDocx(ctx);
   return sheet;
 }
 

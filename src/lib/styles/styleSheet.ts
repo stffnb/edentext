@@ -3,6 +3,7 @@
 // formatting on the block or run still overrides the result.
 
 import { builtinTableStyles, tableStyleCss, type TableStyle } from './tableStyles';
+import { outlineCss, type OutlineNumbering } from './outlineNumbering';
 import { builtinListStyles, type ListStyle } from './listStyles';
 import type { CapsMode } from '../editor/extensions/textEffects';
 
@@ -59,6 +60,9 @@ export type StyleSheet = {
   character: Record<string, Style>;
   table: Record<string, TableStyle>;
   list: Record<string, ListStyle>;
+  // Chapter numbering, one entry per heading level. null = the headings are unnumbered,
+  // which is what a document that declares none has.
+  outline?: OutlineNumbering | null;
 };
 
 export const DEFAULT_STYLE = 'Standard';
@@ -108,7 +112,8 @@ export function mergeStoredSheet(stored: unknown): StyleSheet {
   const sheet = builtinStyleSheet();
   const data = stored as
     | { v?: number; paragraph?: Record<string, Style>; character?: Record<string, Style>;
-        table?: Record<string, TableStyle>; list?: Record<string, ListStyle> }
+        table?: Record<string, TableStyle>; list?: Record<string, ListStyle>;
+        outline?: OutlineNumbering | null }
     | null;
   if (!data?.paragraph || typeof data.paragraph !== 'object') return sheet;
   const current = data.v === STYLE_SHEET_VERSION;
@@ -127,6 +132,7 @@ export function mergeStoredSheet(stored: unknown): StyleSheet {
       (sheet[family] as Record<string, TableStyle | ListStyle>)[name] = style;
     }
   }
+  if (Array.isArray(data.outline)) sheet.outline = data.outline;
   return sheet;
 }
 
@@ -135,7 +141,7 @@ export function builtinStyleSheet(): StyleSheet {
   for (const s of BUILTINS) paragraph[s.name] = structuredClone(s);
   const character: Record<string, Style> = {};
   for (const s of CHAR_BUILTINS) character[s.name] = structuredClone(s);
-  return { paragraph, character, table: builtinTableStyles(), list: builtinListStyles() };
+  return { paragraph, character, table: builtinTableStyles(), list: builtinListStyles(), outline: null };
 }
 
 // Inheritance order: every style directly followed by its own children, so the manager's
@@ -337,6 +343,8 @@ export function styleCss(sheet: StyleSheet): string {
   // Table styles last: their cell selectors must outrank the paragraph rules above.
   const table = tableStyleCss(sheet.table ?? {});
   if (table) rules.push(table);
+  const outline = outlineCss(sheet.outline);
+  if (outline) rules.push(outline);
   return rules.join('\n\n');
 }
 

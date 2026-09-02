@@ -2,6 +2,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
+import { DEFAULT_OUTLINE_LEVEL, MAX_OUTLINE_LEVELS, type OutlineNumbering } from '../styles/outlineNumbering';
 import { LIST_LEVEL_STEP_CM, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage, framePx } from '../editor/extensions/image';
@@ -1547,7 +1548,38 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
     const name = displayStyleName(odfName, resolver.listStyleDisplayName(odfName));
     sheet.list[name] = listStyleFromOdf(name, el, sheet.list[name]?.builtin);
   }
+  sheet.outline = outlineFromOdf(resolver.outlineStyle(), ctx);
   return sheet;
+}
+
+// <text:outline-style> → the chapter-numbering definition, level 1 first. A level the
+// file leaves out is unnumbered, which is how both products switch one off.
+function outlineFromOdf(el: Element | null, ctx: Ctx): OutlineNumbering | null {
+  if (!el) return null;
+  const out: OutlineNumbering = [];
+  let numbered = false;
+  for (let level = 1; level <= MAX_OUTLINE_LEVELS; level++) {
+    const def = Array.from(el.children).find(
+      (c) => c.localName === 'outline-level-style' && c.getAttributeNS(NS.text, 'level') === String(level));
+    const format = def?.getAttributeNS(NS.style, 'num-format') ?? '';
+    if (!def || !['1', 'a', 'A', 'i', 'I'].includes(format)) {
+      out.push({ ...DEFAULT_OUTLINE_LEVEL });
+      continue;
+    }
+    numbered = true;
+    const charStyle = def.getAttributeNS(NS.text, 'style-name');
+    out.push({
+      format: format as NoteNumFormat,
+      prefix: def.getAttributeNS(NS.style, 'num-prefix') ?? '',
+      suffix: def.getAttributeNS(NS.style, 'num-suffix') ?? '',
+      displayLevels: Math.max(1, parseInt(def.getAttributeNS(NS.text, 'display-levels') ?? '1', 10) || 1),
+      start: Math.max(0, parseInt(def.getAttributeNS(NS.text, 'start-value') ?? '1', 10) || 1),
+      ...(charStyle ? { charStyle: ctx.charStyleNames.get(charStyle) ?? charStyle } : {}),
+    });
+  }
+  // Trailing unnumbered levels carry nothing — a definition ends at its last number.
+  while (out.length && out[out.length - 1].format === 'none') out.pop();
+  return numbered ? out : null;
 }
 
 // A named <text:list-style> element → the registry's shape. Each level's indentCm is

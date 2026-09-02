@@ -1,4 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core';
+import { styleSheet } from '../../styles/sheet.svelte';
+import { outlineIsEmpty, outlineLabel } from '../../styles/outlineNumbering';
+import { formatOrdinal } from '../../utils/orderedListTypes';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { MAX_HEADING_LEVEL } from '../../export/odt';
@@ -185,6 +188,16 @@ function entryText(node: PMNode): string {
   return raw.trim();
 }
 
+// A heading inside a table cell or a list item is numbered by neither product.
+function inCellOrItem(doc: PMNode, pos: number): boolean {
+  const $pos = doc.resolve(pos);
+  for (let d = $pos.depth; d > 0; d--) {
+    const name = $pos.node(d).type.name;
+    if (name === 'tableCell' || name === 'tableHeader' || name === 'listItem') return true;
+  }
+  return false;
+}
+
 // Node view: renders the title + one clickable row per heading. Recomputes on each
 // pagination settle (pm-pagecount, caught on the .paper ancestor) and on doc change,
 // writing entries back to the node attr — guarded by a serialized key against a loop.
@@ -262,11 +275,23 @@ class TocView {
       return out;
     }
     const max = Math.min(MAX_HEADING_LEVEL, Number(this.node()?.attrs?.maxLevel) || MAX_HEADING_LEVEL);
-    this.editor.state.doc.descendants((node, pos) => {
+    // Chapter numbering is drawn by CSS counters on the page, which no text walk can
+    // read — a contents row carries the same label, counted the same way (a heading in
+    // a cell or a list item is not part of the count, as outlineCss has it).
+    const outline = styleSheet().outline;
+    const counts: number[] = [];
+    const doc = this.editor.state.doc;
+    doc.descendants((node, pos) => {
       if (node.type.name === 'heading') {
         const text = entryText(node);
         const level = Math.min(MAX_HEADING_LEVEL, (node.attrs.level as number) ?? 1);
-        if (text && level <= max) out.push({ text, level, pos });
+        let label = '';
+        if (!outlineIsEmpty(outline) && !inCellOrItem(doc, pos)) {
+          counts[level - 1] = (counts[level - 1] ?? (outline![level - 1]?.start ?? 1) - 1) + 1;
+          for (let d = level; d < counts.length; d++) counts[d] = (outline![d]?.start ?? 1) - 1;
+          label = outlineLabel(outline, level, counts, formatOrdinal);
+        }
+        if (text && level <= max) out.push({ text: label + text, level, pos });
       }
     });
     return out;

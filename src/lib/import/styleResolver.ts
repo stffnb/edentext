@@ -818,6 +818,11 @@ export class StyleResolver {
     return { margins, orientation, format, rtl };
   }
 
+  // The document's chapter numbering — one <text:outline-style> in styles.xml.
+  outlineStyle(): Element | null {
+    return this.stylesDoc?.getElementsByTagNameNS(NS.text, 'outline-style')[0] ?? null;
+  }
+
   // The page's own decoration (storage/pageDecor.ts): background and border ride the
   // page layout, the watermark is a fontwork shape in the master page's header —
   // exactly where LibreOffice keeps all three (probed).

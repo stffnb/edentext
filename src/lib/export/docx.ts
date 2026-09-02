@@ -36,6 +36,7 @@ import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat } from '../editor/extensions/listMarker';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { effectiveListLevel, listStyleMarginCm, listStyleOverridden, type ListStyle as ListStyleDef } from '../styles/listStyles';
+import { outlineIsEmpty, type OutlineNumbering } from '../styles/outlineNumbering';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, GENERATOR, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
@@ -328,6 +329,34 @@ class Numbering {
       this.styleRefs.set(style.name, entry);
     }
     return { reference: entry.reference, instance: entry.instances++ };
+  }
+
+  // Chapter numbering: one multilevel abstract the heading styles are bound to
+  // post-pack (Word's own shape — w:pStyle per level, w:numPr on the style).
+  outlineRef(outline: OutlineNumbering): number {
+    const reference = 'num-outline';
+    const levels: ILevelsOptions[] = [];
+    for (let l = 0; l < 9; l++) {
+      const def = outline[l];
+      if (!def || def.format === 'none') {
+        levels.push({ level: l, format: LevelFormat.NONE, text: '', start: 1 });
+        continue;
+      }
+      const from = Math.max(1, l + 1 - Math.max(1, def.displayLevels) + 1);
+      const chain = [];
+      for (let k = from; k <= l + 1; k++) if (outline[k - 1]?.format !== 'none') chain.push(`%${k}`);
+      levels.push({
+        level: l,
+        format: ORDERED_FORMAT[def.format] ?? LevelFormat.DECIMAL,
+        text: `${def.prefix}${chain.join('.')}${def.suffix || ' '}`,
+        start: def.start ?? 1,
+        alignment: AlignmentType.LEFT,
+      });
+    }
+    this.map.set(reference, levels);
+    const index = this.config.length;
+    this.config.push({ reference, levels });
+    return index;
   }
 
   // The styles whose shared abstract the post-pack pass links (w:styleLink); the
@@ -1409,6 +1438,50 @@ function applyListStylesDocx(bytes: Uint8Array, links: { name: string; configInd
       `$1${numId}$2`);
   }
 
+  files['word/numbering.xml'] = strToU8(numbering);
+  files['word/styles.xml'] = strToU8(stylesXml);
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
+// Bind the outline abstract to the heading styles: each level names the style it
+// numbers (w:pStyle) and each style points back at the numbering (w:numPr) — which is
+// how Word writes chapter numbering, and what makes a new heading count on its own.
+function applyOutlineNumberingDocx(bytes: Uint8Array, configIndex: number): Uint8Array {
+  if (configIndex < 0) return bytes;
+  const files = unzipSync(bytes);
+  const numberingBytes = files['word/numbering.xml'];
+  const stylesBytes = files['word/styles.xml'];
+  if (!numberingBytes || !stylesBytes) return bytes;
+  let numbering = strFromU8(numberingBytes);
+  let stylesXml = strFromU8(stylesBytes);
+  const abstract = (numbering.match(/<w:abstractNum [\s\S]*?<\/w:abstractNum>/g) ?? [])[configIndex + 1];
+  const absId = abstract && /w:abstractNumId="(\d+)"/.exec(abstract)?.[1];
+  if (absId == null) return bytes;
+  let level = -1;
+  const bound = abstract!
+    .replace(/(<w:multiLevelType[^>]*\/>)/, '<w:multiLevelType w:val="multilevel"/>')
+    // w:pStyle sits between w:lvlRestart and w:suff in the element's fixed order.
+    .replace(/<w:lvl\b[\s\S]*?<\/w:lvl>/g, (lvl) => {
+      level += 1;
+      return lvl.replace(/(<w:numFmt[^>]*\/>)/, `$1<w:pStyle w:val="Heading${level + 1}"/>`);
+    });
+  numbering = numbering.replace(abstract!, bound);
+  // No paragraph references the abstract — the styles do — so the library writes no
+  // w:num for it and one has to be minted past the ids it did write.
+  let numId = new RegExp(`<w:num w:numId="(\\d+)"[^>]*>\\s*<w:abstractNumId w:val="${absId}"/>`).exec(numbering)?.[1];
+  if (!numId) {
+    const ids = [...numbering.matchAll(/<w:num w:numId="(\d+)"/g)].map((m) => Number(m[1]));
+    numId = String(Math.max(0, ...ids) + 1);
+    numbering = numbering.replace('</w:numbering>', `<w:num w:numId="${numId}"><w:abstractNumId w:val="${absId}"/></w:num></w:numbering>`);
+  }
+  for (let n = 1; n <= 9; n++) {
+    const numPr = `<w:numPr><w:ilvl w:val="${n - 1}"/><w:numId w:val="${numId}"/></w:numPr>`;
+    stylesXml = stylesXml.replace(
+      new RegExp(`(<w:style w:type="paragraph"[^>]*w:styleId="Heading${n}"[\\s\\S]*?)(<w:pPr>)`),
+      `$1$2${numPr}`);
+  }
   files['word/numbering.xml'] = strToU8(numbering);
   files['word/styles.xml'] = strToU8(stylesXml);
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
@@ -2594,6 +2667,8 @@ export async function buildDocx(
   docPlaceholders = [];
   docSources = [];
   const num = new Numbering();
+  // Registered before the body walk, so its abstract keeps a stable place in the config.
+  const outlineIndex = outlineIsEmpty(styles.outline) ? -1 : num.outlineRef(styles.outline!);
   const { w: pageWidthCm, h: pageHeightCm } = pageDimsCm(pageFormat, orientation);
   const contentWidthCm = pageWidthCm - margins.left - margins.right;
 
@@ -2778,7 +2853,7 @@ export async function buildDocx(
     ...usedTableStyles(docJson, styles).map(tableStyleXml),
     ...num.styleLinks().map((l) => numberingStyleXml(l.name)),
   ]);
-  const linked = applyListStylesDocx(styled, num.styleLinks());
+  const linked = applyOutlineNumberingDocx(applyListStylesDocx(styled, num.styleLinks()), outlineIndex);
   const packed = applyFormulasDocx(applyTextBoxesDocx(linked, docTextBoxes), docFormulas);
   const cited = applyBibliographyDocx(applyPlaceholdersDocx(applyRubyDocx(packed, docRubies), docPlaceholders), docSources, docCitationStyle(docJson));
   const withNotes = docNoteIds.size ? applyNoteMarksDocx(applyNotePrDocx(cited, notesSettings)) : cited;

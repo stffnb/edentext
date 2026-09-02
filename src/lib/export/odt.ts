@@ -17,6 +17,7 @@ import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
 } from '../styles/tableStyles';
 import { effectiveListLevel, listStyleMarginCm, listStyleOverridden, MAX_LIST_LEVELS, type ListStyle } from '../styles/listStyles';
+import { outlineIsEmpty, type OutlineNumbering } from '../styles/outlineNumbering';
 
 // A table's named style plus the conditional areas it opts into (Word's Table Style
 // Options), collected by exportTable in document order.
@@ -1962,7 +1963,30 @@ function applyNamedStyles(styles: string, sheet: StyleSheet, used: Set<string>, 
     block = upsertProps(upsertProps(block, 'paragraph', para), 'text', text);
     added.push(block);
   }
+  const outline = outlineStyleXml(sheet.outline);
+  if (outline) added.push(outline);
   return added.length ? styles.replace('</office:styles>', `${added.join('')}</office:styles>`) : styles;
+}
+
+// The document's chapter numbering. LibreOffice keeps it in one <text:outline-style>
+// beside the named styles, and numbers a text:h from it with no markup on the heading.
+function outlineStyleXml(outline: OutlineNumbering | null | undefined): string {
+  if (outlineIsEmpty(outline)) return '';
+  const levels: string[] = [];
+  outline!.forEach((level, i) => {
+    if (level.format === 'none') return;
+    const attrs: Record<string, string> = {
+      'text:level': String(i + 1),
+      'style:num-format': level.format,
+      'style:num-suffix': level.suffix,
+    };
+    if (level.prefix) attrs['style:num-prefix'] = level.prefix;
+    if (level.displayLevels > 1) attrs['text:display-levels'] = String(level.displayLevels);
+    if (level.start !== 1) attrs['text:start-value'] = String(level.start);
+    if (level.charStyle) attrs['text:style-name'] = odfStyleName(level.charStyle);
+    levels.push(setTagAttrs('<text:outline-level-style/>', attrs));
+  });
+  return levels.length ? `<text:outline-style style:name="Outline">${levels.join('')}</text:outline-style>` : '';
 }
 
 // Resolve STY sentinels: point each marked block at its named style — directly when it
