@@ -107,8 +107,9 @@ a 177-page document. Word and LibreOffice draw only the visible pages; we can't.
   forever; with one shared scroller that loop never settles.
 - The editor's own view **moves** to pane 0's new host when the layout changes
   (`$effect` on `hosts[0]`), rather than being rebuilt from the document.
-- `min-width: 0` on the row and its scroller: a flex item's automatic minimum is its
-  content, so without it the grid widens the whole app instead of scrolling.
+- `min-width: 0` on the row and its scroller, in every mode: a flex item's automatic
+  minimum is its content, so without it a canvas wider than the window — the grid, or a
+  page beside the balloon strip — widens the app and the toolbar ends short of it.
 - No ruler here: it would repeat per column and eat into the page's own box.
 - **`sectionPaper` stays unrounded.** `pageBreaks` builds its grid from the height this
   publishes as `--pb-section-page`, so rounding A4's 1122.52px to 1123 ran every page
@@ -257,6 +258,61 @@ caret is drawn heavier and last, or a neighbour on the same line would cover it.
 mounted: with nothing marked it renders nothing. It sits inside `.paper`, so the raster
 export and print paths clone it and the bar prints — see `export/reviewPrint.ts` for what
 the vector path has to rebuild instead.
+
+## What the review views may show (`reviewItems.ts`)
+
+Bars, balloons, the leader line, both panes and the two navigation pairs read
+`visibleComments` / `visibleCommentRanges` / `visibleRevisions` instead of the document's
+own `comments()` / `revisions()`, so the markup settings (`storage/markup`) are read in one
+place and cannot drift between the five views. A **resolved** comment is not this rule's
+business — each caller handles it as it did. The text itself is hidden by two levers that
+have to agree: `.paper[data-hide-*]` in `editor.css` takes the mark's text and tint off the
+page, and `trackChanges`' `plain` option drops the decoration that carries the underline,
+the strikethrough and the author colour — CSS alone would lose against `pm-rev-a<n>`.
+An anchor inside hidden text has no box, so `ReviewMarginLayer` drops a card whose line has
+collapsed; the mode change dispatches `FORCE_PAGE_RECALC`, since hiding text reflows pages.
+
+## Margin balloons (`ReviewMarginLayer.svelte`, `storage/markup.svelte.ts`)
+
+What both word processors draw beside the page: one card per unresolved comment and per
+recorded change, at the height of the line it belongs to, with a dashed leader to it.
+Accept/reject and edit/resolve/remove happen in the balloon — `CommentCard.svelte` and
+`RevisionCard.svelte` are the same cards the two panes build their rows from.
+
+- **It sits outside `.paper`**, as a sibling inside `.paper-scaler`, carrying that same
+  `transform: scale()` so it zooms with the page. Inside `.paper` it could not: that box
+  is `overflow-x: clip`, and its width is the one `.tiptap` and the pagination measure.
+- The strip is `REVIEW_MARGIN_CM` (gap + balloon) and is **only reserved when the document
+  has markup the margin shows** — a kind switched to the pane, or a mode that hides it,
+  leaves `.paper-scaler` exactly the page, centred as before.
+  `scaledCanvasWidth` (`Editor.svelte`) adds it; `scaledWidth` stays the page, which is
+  what the `Ruler` is sized from.
+- **The leader runs in the gap under the anchor's line** (`coordsAtPos(...).bottom`, not the
+  line's middle) and eases into the card's left edge at the anchor's own height where the
+  card reaches that far — so a balloon sitting at its line is joined by one straight line
+  that crosses no letters. `ConnectorLayer` draws its leader to the pane the same way.
+- A balloon wants its anchor's line and is pushed down where the one above it reaches
+  (`utils/balloonStack.ts`, unit-tested). Its height is **measured**, not computed — a card
+  grows when its text is edited — so a `ResizeObserver` feeds the stack.
+- **The column belongs to its page, not to the document.** Balloons are grouped by the page
+  their anchor is on and stacked inside that page's band; a stack that would end past the
+  sheet is pulled back up (second pass in `stackTops`). The cards of one page also share its
+  height as a `max-height`, so a comment of a few paragraphs scrolls in its own card instead
+  of pushing the ones below it off the page — `MIN_BALLOON_H` is where the shrinking stops
+  and the column is allowed to run over.
+- Its x comes from the anchor's own page box, so a narrower section's page keeps its
+  balloons at its own right edge. Not mounted in the page grid: `.page-cell` is one page
+  wide and clips.
+- The **⋯** menu and the reply box are part of the shared card, so a balloon and a pane row
+  answer a comment the same way; both grow the card, and the stack follows the measurement.
+- **The card is authored for the pane's 260px and lives here in `BALLOON_W_CM`**, so everything in
+  it has to wrap: the action row is `flex-wrap: wrap` (unwrapped, German labels pushed
+  "Bearbeiten" clean out of the balloon) and the balloon carries `overflow-wrap: anywhere`
+  plus `overflow-x: hidden`. `tests/smoke/run.mjs` guards it — a comment in the longer
+  locale, one unbreakable word and one comment far too long for its share, then every
+  descendant's rect against its card's and every card's against the page.
+- The printout carries the margin bar and the comment list instead (`export/reviewPrint.ts`);
+  `@media print` hides this layer.
 
 ## Reviewing leader (`ConnectorLayer.svelte`)
 

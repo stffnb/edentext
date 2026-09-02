@@ -4,6 +4,10 @@
      by App.svelte); extra bottom padding clears the fixed status bar. */
   padding: calc(var(--toolbar-overlay-h, 0px) + 1.25rem) 1rem 3rem;
   overflow: auto;
+  /* A flex item's automatic minimum is its content: without this a canvas wider than
+     the window — a page grid, or a page beside the balloon strip — widens the whole app
+     instead of scrolling here, and the toolbar above ends short of it. */
+  min-width: 0;
   /* Positioning context for the floating table toolbar (TableToolbar.svelte),
      which is an absolutely-positioned child that scrolls with the content. */
   position: relative;
@@ -11,8 +15,10 @@
 
 /* Reserves the SCALED footprint of the transformed .paper (a CSS transform takes
    no layout space of its own), so the scrollbars and horizontal centering reflect
-   the zoomed page. Its width/height are sized in JS (Editor.svelte). */
+   the zoomed page. Its width/height are sized in JS (Editor.svelte). It is also the
+   origin the margin balloons position in (ReviewMarginLayer.svelte). */
 .paper-scaler {
+  position: relative;
   margin: 0 auto;
 }
 
@@ -1110,6 +1116,12 @@
   .paper-scaler {
     width: auto;
     height: auto;
+  }
+
+  /* The printout carries the margin bar and the comment list instead
+     (export/reviewPrint.ts); the balloons are a screen view. */
+  .review-margin-layer {
+    display: none;
   }
 
   .paper {

@@ -1496,6 +1496,7 @@
     {pageDecor}
     {lineNumbering}
     {foldMarks}
+    commentAuthor={docProps.author}
     bind:extraHfSections
     {zoom}
     onZoom={setZoom}

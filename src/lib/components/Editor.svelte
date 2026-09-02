@@ -28,7 +28,9 @@ import PageSheetLayer from './PageSheetLayer.svelte';
 import LineNumberLayer from './LineNumberLayer.svelte';
 import FoldMarkLayer from './FoldMarkLayer.svelte';
 import ChangeBarLayer from './ChangeBarLayer.svelte';
-  import { markupView } from '../storage/markup.svelte';
+  import ReviewMarginLayer, { REVIEW_MARGIN_CM } from './ReviewMarginLayer.svelte';
+  import { visibleComments, visibleRevisions } from './reviewItems';
+  import { changesInMargin, commentsInMargin, markupView } from '../storage/markup.svelte';
 import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
 import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import Ruler from './Ruler.svelte';
@@ -58,7 +60,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
     zoom = 100, onZoom, showFormattingMarks = false, showRuler = true, splitView = false, pageColumns = 1, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
-    pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', documentEpoch = 0, pageRtl = false, hyphenate = false, documentLanguage = 'en', pageNumbering = DEFAULT_PAGE_NUMBERING, pageDecor = EMPTY_PAGE_DECOR, lineNumbering = DEFAULT_LINE_NUMBERING, foldMarks = false,
+    pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', documentEpoch = 0, pageRtl = false, hyphenate = false, documentLanguage = 'en', pageNumbering = DEFAULT_PAGE_NUMBERING, pageDecor = EMPTY_PAGE_DECOR, lineNumbering = DEFAULT_LINE_NUMBERING, foldMarks = false, commentAuthor = '',
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
     headerEvenDoc = $bindable(null), footerEvenDoc = $bindable(null), differentOddEven = false,
@@ -76,6 +78,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     documentEpoch?: number;
     /** A right-to-left page: the body's base direction, so its columns fill from the right. */
     pageRtl?: boolean;
+    /** Comments and changes as balloons beside the page, and the author a new one takes. */
+    commentAuthor?: string;
     /** Automatic hyphenation; the browser needs the document language to pick its patterns. */
     hyphenate?: boolean; documentLanguage?: string;
     /** How the page-number field counts (format + start value). */
@@ -428,6 +432,16 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let docHeightDoc = $state(0); // document height, from pm-pagecount
   let scaledWidth = $state(0);
   let scaledHeight = $state(0);
+
+  // The balloon strip is only reserved where there is something to put in it, so a
+  // document without review markup keeps the page centred exactly as before.
+  let hasReviewMarkup = $derived.by(() => {
+    if (tick < 0 || !editor) return false;
+    const doc = editor.state.doc;
+    return (changesInMargin() && visibleRevisions(doc).length > 0)
+      || (commentsInMargin() && visibleComments(doc).some((c) => !c.resolved));
+  });
+  let reviewArea = $derived(hasReviewMarkup ? cmToPx(REVIEW_MARGIN_CM) : 0);
 
   function recomputeScaledSize() {
     const paper = papers[0];
@@ -788,6 +802,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // Throttle the value actually written to the DOM to one update per animation frame,
   // so rapid slider events don't trigger 50+ layout/paint cycles per second.
   let appliedZoom = $state(untrack(() => zoom));
+
+  // The scroller's footprint holds page + strip; .paper-scaler's `margin: 0 auto` then
+  // centres the pair, so the page sits left of centre as it does in LibreOffice.
+  let scaledCanvasWidth = $derived(scaledWidth + Math.round(reviewArea * appliedZoom / 100));
+
   let zoomRaf: number | null = null;
 
   $effect(() => {
@@ -1457,8 +1476,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   {/if}
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
-  <div class="paper-scaler" style={scaledWidth ? `width: ${scaledWidth}px; height: ${scaledHeight}px;` : ''}>
+  <div class="paper-scaler" style={scaledWidth ? `width: ${scaledCanvasWidth}px; height: ${scaledHeight}px;` : ''}>
     {@render paper(i, 0, 0)}
+    {#if hasReviewMarkup}
+      <ReviewMarginLayer {editor} {tick} {pageBoxes} {paperWidth} zoom={appliedZoom} author={commentAuthor} />
+    {/if}
   </div>
   {@render chrome(i)}
 </div>
@@ -1607,28 +1629,20 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
 
 <style>
   /* The pane column. Unsplit it holds the one scroller and changes nothing. */
+  /* `min-width: 0` lets it be narrower than its canvas — see the same line on
+     `.editor` in editor.css. */
   .editor-panes {
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    min-width: 0;
   }
 
   /* The lower pane sits below the toolbar island, so it needs none of its clearance. */
   .editor-panes :global(.editor.pane-below) {
     padding-top: 1.25rem;
     border-top: 1px solid var(--color-border);
-  }
-
-  /* The page grid: one scroller holding a canvas of page cells. `min-width: 0` lets
-     it be narrower than its canvas — a flex item's automatic minimum is its content,
-     so without it the grid widens the whole app instead of scrolling. */
-  .editor-panes.grid {
-    min-width: 0;
-  }
-
-  .editor-panes.grid :global(.editor) {
-    min-width: 0;
   }
 
   /* A cell is a window of exactly one page onto its own view of the document. */

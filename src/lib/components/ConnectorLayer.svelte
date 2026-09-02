@@ -63,7 +63,9 @@
       if (clip && (c.bottom < clip.top || c.top > clip.bottom || c.left < clip.left || c.left > clip.right)) return;
       const r = card.getBoundingClientRect();
       const ax = c.left - box.left;
-      const ay = (c.top + c.bottom) / 2 - box.top;
+      // The bottom of the line box: the leader runs through the gap between two lines,
+      // where it crosses no letters, as both word processors draw it.
+      const ay = c.bottom - box.top;
       const cx = r.left - box.left;
       const cy = r.top - box.top + Math.min(14, r.height / 2);
       if (cx <= ax) return;
