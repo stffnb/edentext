@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import { commentIdAt, commentRanges } from '../editor/extensions/comment';
-  import { revisionIdAt, revisions, authorColorIndex, REVISION_AUTHOR_COLORS } from '../editor/extensions/trackChanges';
+  import { commentIdAt } from '../editor/extensions/comment';
+  import { revisionIdAt, authorColorIndex, REVISION_AUTHOR_COLORS } from '../editor/extensions/trackChanges';
+  import { visibleCommentRanges, visibleRevisions } from './reviewItems';
+  import { markupView } from '../storage/markup.svelte';
 
   // The dashed leader both word processors draw from an annotated range to its balloon,
   // here from the text to the reviewing pane's card. Only for the one the caret sits in:
@@ -23,6 +25,7 @@
   // Deferred to the frame, so the pane's own card class and scroll are in the DOM.
   $effect(() => {
     void tick;
+    void markupView();
     schedule();
   });
 
@@ -75,14 +78,14 @@
     };
 
     const state = view.state;
-    const ranges = commentRanges(state.doc);
+    const ranges = visibleCommentRanges(state.doc);
     const cid = commentIdAt(state, ranges);
     if (cid) {
       // The last range of the comment: its end is the anchor both products point from.
       const range = ranges.filter((c) => c.id === cid).pop();
       if (range) add(range.to, document.querySelector('.comments-pane li.active'), COMMENT_COLOR);
     }
-    const list = revisions(state.doc);
+    const list = visibleRevisions(state.doc);
     const rid = revisionIdAt(state, list);
     if (rid) {
       const range = list.filter((r) => r.id === rid).pop();

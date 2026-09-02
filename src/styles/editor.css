@@ -1083,6 +1083,22 @@
 .tiptap .pm-rev-a7 { color: #35556b; }
 .tiptap .pm-rev-a8 { color: #d17600; }
 
+/* Word's display modes (storage/markup.svelte.ts). The document keeps every change —
+   this only takes it off the page, so a final text or the original one can be read. */
+.paper[data-hide-deletions] .tiptap .pm-deletion,
+.paper[data-hide-insertions] .tiptap .pm-insertion { display: none; }
+
+/* What is left reads as plain text: the decoration that carries underline, strike and
+   author colour is off in these modes too (trackChanges.ts), the mark's tint is not. */
+.paper[data-plain-markup] .tiptap .pm-insertion,
+.paper[data-plain-markup] .tiptap .pm-deletion { color: inherit; }
+
+.paper[data-hide-comments] .tiptap .pm-comment,
+.paper[data-hide-comments] .tiptap .pm-comment-active {
+  background: none;
+  border-bottom: none;
+}
+
 /* Print styles: proper A4 pagination */
 @media print {
   .editor {

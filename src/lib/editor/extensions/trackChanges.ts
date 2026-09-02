@@ -159,11 +159,11 @@ function apply(state: EditorState, tr: Transaction, list: Revision[], accept: bo
   tr.setMeta(RECORDING, true);
 }
 
-export const TrackChanges = Extension.create<{ recording: () => boolean; author: () => string }>({
+export const TrackChanges = Extension.create<{ recording: () => boolean; author: () => string; plain: () => boolean }>({
   name: 'trackChanges',
 
   addOptions() {
-    return { recording: () => false, author: () => '' };
+    return { recording: () => false, author: () => '', plain: () => false };
   },
 
   addCommands() {
@@ -190,19 +190,22 @@ export const TrackChanges = Extension.create<{ recording: () => boolean; author:
     // The mark cannot know the document's other authors, so the colour is a decoration:
     // one class per palette slot, keyed by where the author first appears. Cached on the
     // doc — the walk is the whole document, and this runs on every view update.
-    let cache: { doc: PMNode; set: DecorationSet } | null = null;
+    let cache: { doc: PMNode; plain: boolean; set: DecorationSet } | null = null;
     return [
       new Plugin({
         props: {
           decorations(state) {
-            if (cache?.doc === state.doc) return cache.set;
-            const list = revisions(state.doc);
+            // `plain` is in the key: a display mode changes what this draws without
+            // touching the document, and the cached set would otherwise stand.
+            const plain = options.plain();
+            if (cache?.doc === state.doc && cache.plain === plain) return cache.set;
+            const list = plain ? [] : revisions(state.doc);
             const order = authorColorIndex(list);
             const set = DecorationSet.create(state.doc, list.map((r) =>
               Decoration.inline(r.from, r.to, {
                 class: `pm-rev-${r.kind === 'insertion' ? 'ins' : 'del'} pm-rev-a${order.get(r.author) ?? 0}`,
               })));
-            cache = { doc: state.doc, set };
+            cache = { doc: state.doc, plain, set };
             return set;
           },
         },

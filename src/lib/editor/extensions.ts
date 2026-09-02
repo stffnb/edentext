@@ -75,6 +75,7 @@ import { HEADING_LEVELS, MAX_HEADING_LEVEL } from '../export/odt';
 import { styleSheet } from '../styles/sheet.svelte';
 import { noteSettings } from '../storage/notes.svelte';
 import { recordChanges } from '../storage/trackChanges.svelte';
+import { markupView } from '../storage/markup.svelte';
 import { loadDocProperties } from '../storage/docProperties';
 import { Insertion, Deletion, TrackChanges } from './extensions/trackChanges';
 
@@ -240,7 +241,11 @@ export const extensions = [
   // marked. Round-trips to ODF <text:tracked-changes> and DOCX w:ins/w:del.
   Insertion,
   Deletion,
-  TrackChanges.configure({ recording: recordChanges, author: () => loadDocProperties().author.trim() }),
+  TrackChanges.configure({
+    recording: recordChanges,
+    author: () => loadDocProperties().author.trim(),
+    plain: () => markupView().plainRevisions,
+  }),
   AutoCorrect,
   WordCompletion,
   // Named blocks of text kept beside the documents; F3 expands a typed shortcut.

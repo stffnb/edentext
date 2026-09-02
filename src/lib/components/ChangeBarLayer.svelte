@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { cmToPx, type PageMargins } from '../storage/pageMargins';
-  import { commentRanges, commentIdAt } from '../editor/extensions/comment';
-  import { revisions, revisionIdAt, authorColorIndex, REVISION_AUTHOR_COLORS } from '../editor/extensions/trackChanges';
+  import { commentIdAt } from '../editor/extensions/comment';
+  import { revisionIdAt, authorColorIndex, REVISION_AUTHOR_COLORS } from '../editor/extensions/trackChanges';
+  import { visibleCommentRanges, visibleRevisions } from './reviewItems';
+  import { markupView } from '../storage/markup.svelte';
 
   // The changed-lines bar both word processors draw in the margin: a stroke beside every
   // line a recorded change or a comment covers, so a pane entry can be found in the text.
@@ -33,10 +35,12 @@
   };
 
   $effect(() => {
-    // Re-measure on every edit, every selection move and each pagination settle.
+    // Re-measure on every edit, every selection move, each pagination settle — and when
+    // the display mode takes a kind off the page or brings it back.
     void tick;
     void pageBoxes;
     void pageMargins;
+    void markupView();
     schedule();
   });
 
@@ -51,10 +55,10 @@
   // Every marked range with the colour its bar takes: a revision in its author's colour,
   // a comment in the comment amber. A resolved comment is handled and gets none.
   function marked(state: Editor['state']): { from: number; to: number; color: string; active: boolean }[] {
-    const revs = revisions(state.doc);
+    const revs = visibleRevisions(state.doc);
     const order = authorColorIndex(revs);
     const activeRev = revisionIdAt(state, revs);
-    const comments = commentRanges(state.doc);
+    const comments = visibleCommentRanges(state.doc);
     const activeComment = commentIdAt(state, comments);
     return [
       ...revs.map((r) => ({
