@@ -63,7 +63,7 @@
   .ribbon-group-label {
     min-width: 0;
     font-family: var(--w-font);
-    font-size: 11px;
+    font-size: 10px;
     line-height: 13px;
     color: var(--w-text-dim);
     white-space: nowrap;
