@@ -37,8 +37,11 @@ leave nothing to catch).
 **A block's spacing is part of the block.** LibreOffice's paragraph frame includes the space
 below it, so the fit test adds `leaf.spaceAfter` (and keep-with-next adds the successor's space
 above too): a block whose text fits but whose spacing doesn't moves down whole. The **space
-above** is then dropped at the page top, as LibreOffice does (probed: an automatic *and* a hard
-break at a page top swallow it, the document's first block keeps it). `pageBreaks.ts` marks those
+above** is then dropped at the page top where the *flow* had to break, as LibreOffice does — a
+break the document asks for keeps it, and so does the document's first block. Probed against the
+reference, page top at 20.01mm: a block with 6/20mm above lands at 26.00/40.01 after
+`fo:break-before`, at 20.01 for either after an automatic break. Every chapter opening of a
+book-style document is the manual case (measured: 4.23mm a page on one file). `pageBreaks.ts` marks those
 blocks with a `padding-top:0;margin-top:0` node decoration — geometrically, a leaf pushed by its
 own spacer never measures as sitting at the page top, since `effectiveTop` excludes that push, so
 the mark follows from the break it got. The value itself rides `--space-before`

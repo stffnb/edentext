@@ -136,3 +136,15 @@ holds it as a reactive singleton persisted to `edentext-styles` (same shape as `
   selection"). Its preview shows the style with every area on, since it edits the definition
   rather than one table's look. The
   text fields are shared by all three families via `ownText`/`resolvedText`/`editText`.
+
+- **Chapter numbering** (`outlineNumbering.ts`, `StyleSheet.outline`): one definition per
+  document, level 1 first — format, prefix, suffix, `displayLevels` (how many levels the
+  label shows) and start. `outlineCss` draws it with a counter per level that every
+  heading of that level increments and every deeper one resets, so `2.1.4` restarts with
+  its chapter; a heading in a cell, a list item or a frame is outside the count, as in
+  both products. The label is a `hN::before`, like the list marker — **no text walk can
+  read it**, so the contents rows carry their own copy (`outlineLabel`, counted the same
+  way in `tableOfContents.ts`). ODF keeps it in one `text:outline-style` beside the named
+  styles, Word as a multilevel numbering the heading styles point at (`w:numPr` on the
+  style, `w:pStyle` in the level) — the DOCX pass mints that numbering's `w:num` itself,
+  since no paragraph references it.

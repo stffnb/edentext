@@ -193,6 +193,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-15.
 - Multi-document management: one document is open at a time, so there is no window list and no side-by-side compare
 - Grammar check: there is no offline engine small enough to bundle, and the ones that exist are servers
 - A vertical writing mode for the **page** (ODF `tb-rl` on the page layout): a text box can run its text top-to-bottom, the body cannot — pagination fills a page downwards. A ruby annotation's own alignment and position are not offered either; both products' defaults are what we write
+- A chapter number's own label geometry: the number is drawn in front of its heading, not set at the level's `text:list-tab-stop-position` in a hanging indent. Where the label is wider than that stop and the heading is large, LibreOffice breaks the title onto a second line and we keep it on one — measured on a book-style document whose chapter openings then cost it two pages. A caption still numbers from the document rather than restarting per chapter (ODF `text:sequence` on an outline level)
 - Password-protected ODT/DOCX; digital signatures. ODF encrypts each zip entry (AES-256-CBC, PBKDF2, the manifest carrying salt, IV and checksum), which WebCrypto can do; Word's is an OLE compound file we would have to write from scratch, so the two legs are nowhere near the same size
 
 **Out of scope for now**
@@ -205,6 +206,16 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-15.
 
 Deviations from Word/LibreOffice the browser does not let us remove. Anything
 merely unimplemented belongs in the list above, not here.
+
+- A chapter number and a list marker are drawn by `::before`, so they are not
+  part of the text and no text walk sees them — the render-parity harness reads
+  a numbered heading as if it were unnumbered. Root cause: CSS gives `::marker`
+  no position, and both products set the label at the level's own hanging
+  indent, so the marker has to be a generated box rather than a real one; a
+  ProseMirror widget would put it in the document, where every caret, selection
+  and export pass would have to step over it. The contents rows carry the label
+  as real text (`outlineLabel`), which is the part that can be checked.
+  Noted 2026-09-02.
 
 - Zoom 100% does not visually match Word/LibreOffice at 100% on the same
   screen. Root cause: the editor uses the browser's fixed 96 CSS DPI

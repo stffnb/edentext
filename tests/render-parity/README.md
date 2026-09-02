@@ -103,3 +103,12 @@ in both engines at the same word. So a long justified document reports a `lineBr
 every dozen pages with no defect behind it — the browser simply fits marginally less
 per line, worth about a quarter page over fifty. Left-align a passage before believing
 a break difference is ours.
+
+## What the harness cannot see
+
+`extractLayout` walks **text nodes**, so anything drawn by CSS is invisible to it: a
+list marker and a chapter number both ride `hN::before`, and a numbered heading is
+therefore always reported as if it carried no number. Check those against the contents
+rows instead, which hold the same label as real text, or against a screenshot
+(`docs/headless-testing.md`). A `text-transform` is the case the harness *does* handle
+— it reads the case the style paints, not the node's.

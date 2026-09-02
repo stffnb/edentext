@@ -339,10 +339,23 @@ reports on `pm-pagecount`. Section 1 is the app's six per-zone states, the rest 
 `extraHfSections` (bound up to `App`, persisted whole). Editing targets the section of the
 page it starts on, so a double-click edits the zone under the pointer and the Layout-panel
 buttons the current page's; `zoneKey`/`writeZone` route the one live editor's read and
-write-back to either side. Page geometry is still document-wide.
+write-back to either side. A section with page margins of its own puts its zones on
+**those** (`marginsOf`), not the document's — a mirrored body after a wider front matter
+otherwise drew its running head 9mm off the text it belongs over.
 
 Word's "different first page" is per section, so a later section's first page shows its
 own variant. `Editor.svelte` publishes each section's zone reaches as `--pb-section-reach`
 ("topFirst|topRest|bottomFirst|bottomRest" per section, comma-separated) and pageBreaks
 resolves the content area per page from it — without it a tall letterhead on a later
 section's first page would sit on top of the body (measured: 24.9mm).
+
+**The band is measured, not counted.** The body's margin has to clear the height the zone
+really renders at, which no line count can know — a wrapping line, a run smaller than the
+12pt floor and the paragraph's own padding are all invisible to one. `HeaderFooterLayer`
+lays every set's six zones out off-screen (`.hf-measure`, at the section's text width, a
+`ResizeObserver` so a late web font re-reports) and hands the heights up as `zoneHeights`;
+`hfReachPx` uses them and keeps its estimate only for the first frame. The measuring copy
+carries `.hf-zone`, so `styleCss` gives it the document's own zone font — without that it
+measures the editor's serif. The ODF zone's gap to the body and its padding ride the
+collapsed paragraph's spacing (`convertHfZone`), which is where the export already puts
+them, so the measurement sees them and the round trip is unchanged.
