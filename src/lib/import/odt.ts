@@ -27,7 +27,7 @@ import type { Orientation } from '../storage/pageOrientation';
 import type { SpacingModel } from '../storage/spacingModel';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
-import type { HfDoc, HfSet } from '../storage/headerFooter';
+import type { HfDistances, HfDoc, HfSet } from '../storage/headerFooter';
 import { NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { clampPageStart, type PageNumbering } from '../storage/pageNumbering';
@@ -867,7 +867,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     differentOddEven,
     hfSections: [
       { header, footer, headerFirst, footerFirst, differentFirstPage, headerEven, footerEven, differentOddEven },
-      ...ctx.masterPages.map((name, i) => ({ ...hfSetOfMasterPage(name, ctx, geometry, docNumFormat), pageNumberStart: ctx.masterPageStarts[i] ?? null })),
+      ...ctx.masterPages.map((name, i) => ({ ...hfSetOfMasterPage(name, ctx, geometry, docNumFormat, edge), pageNumberStart: ctx.masterPageStarts[i] ?? null })),
     ],
     headerDistanceCm: hasHeader ? edge?.top ?? null : null,
     footerDistanceCm: hasFooter ? edge?.bottom ?? null : null,
@@ -885,6 +885,7 @@ function hfSetOfMasterPage(
   name: string, ctx: Ctx,
   doc: { orientation: Orientation; format: PageFormat } | null,
   docNumFormat: NoteNumFormat,
+  docEdge: { top: number; bottom: number } | null,
 ): HfSet {
   const hf = ctx.resolver.masterPageHF(name);
   const zone = (el: Element | null, footer = false) =>
@@ -903,7 +904,21 @@ function hfSetOfMasterPage(
   // The page-number format rides the layout governing the body, like the margins: a
   // roman front matter is one master before the decimal body's, not a document setting.
   const numFormat = ctx.resolver.pageNumberFormat(hf.restPage ?? name);
+  // The layout's own margin is the edge→zone distance, and a section's zones sit on it:
+  // an index whose header starts 4cm down is not the body's 1.5cm. Matching the
+  // document's is inheritance, as it is for the margins.
+  const distOf = (page: string | null): HfDistances | null => {
+    const e = ctx.resolver.edgeDistancesCm(page);
+    return e ? { header: e.top, footer: e.bottom } : null;
+  };
+  const sameDist = (a: HfDistances | null, b: HfDistances | null) =>
+    !!a && !!b && Math.abs(a.header - b.header) < 0.01 && Math.abs(a.footer - b.footer) < 0.01;
+  const docDist = docEdge ? { header: docEdge.top, footer: docEdge.bottom } : null;
+  const restDist = distOf(hf.restPage ?? name);
+  const firstDist = hf.restPage ? distOf(name) : null;
   return {
+    distances: sameDist(restDist, docDist) ? null : restDist,
+    distancesFirst: firstDist && !sameDist(firstDist, restDist) ? firstDist : null,
     margins: rest,
     marginsFirst: hf.restPage && !hf.mirrorPair ? own : null,
     pageNumberFormat: numFormat !== docNumFormat ? numFormat : null,

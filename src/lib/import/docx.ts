@@ -22,7 +22,7 @@ import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
 import { clampTabInterval, DOCX_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
-import { EMPTY_HF_SET, type HfDoc, type HfSet } from '../storage/headerFooter';
+import { EMPTY_HF_SET, HF_DISTANCE_CM, type HfDistances, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { clampPageStart, DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
@@ -3101,8 +3101,23 @@ function sectionHfSets(
   doc: { format: PageFormat | null; orientation: Orientation | null; numFormat: NoteNumFormat },
 ): HfSet[] {
   const out: HfSet[] = [];
+  // Word's edge→zone distances are per section too; the first section's are the
+  // document's, so only a section that disagrees carries its own.
+  const distOf = (sect: Element | null): HfDistances | null => {
+    const pgMar = sect ? fc(sect, 'pgMar') : null;
+    if (!pgMar) return null;
+    const cm = (a: string, fallback: number) => {
+      const tw = intAttr(pgMar, W, a);
+      return tw == null ? fallback : Math.max(0, round2(twipToCm(tw)));
+    };
+    return { header: cm('header', HF_DISTANCE_CM), footer: cm('footer', HF_DISTANCE_CM) };
+  };
+  const docDist = distOf(sectPrs[0] ?? null);
+  const sameDist = (a: HfDistances | null, b: HfDistances | null) =>
+    !!a && !!b && Math.abs(a.header - b.header) < 0.01 && Math.abs(a.footer - b.footer) < 0.01;
   for (const sect of sectPrs) {
     const prev = out[out.length - 1] ?? EMPTY_HF_SET;
+    const dist = distOf(sect);
     const titlePgEl = sect ? fc(sect, 'titlePg') : null;
     const titlePg = !!titlePgEl && onOff(titlePgEl);
     const zone = (type: 'header' | 'footer', variant: string, inherited: HfDoc): HfDoc => {
@@ -3121,6 +3136,7 @@ function sectionHfSets(
     const pgFmt = DOCX_PAGE_NUM_FORMAT[fc(sect, 'pgNumType')?.getAttributeNS(W, 'fmt') ?? ''] ?? '1';
     out.push({
       margins: sectMargins(sect),
+      distances: sameDist(dist, docDist) ? null : dist,
       pageNumberStart: out.length && pgStart != null ? clampPageStart(pgStart) : null,
       pageNumberFormat: out.length && pgFmt !== doc.numFormat ? pgFmt : null,
       format: paper.format && paper.format !== doc.format ? paper.format : null,

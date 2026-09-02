@@ -2754,12 +2754,15 @@ export async function buildDocx(
     // **portrait** box — handed the swapped one it writes a portrait page merely
     // labelled landscape, which is what LibreOffice then renders.
     const dims = PAGE_FORMAT_CM[s.format ?? pageFormat];
+    // A section's own edge→zone distances, where its page setup gives it others.
+    const hDist = s.distances ? Math.min(s.distances.header, m.top) : Math.min(headerDist, m.top);
+    const fDist = s.distances ? Math.min(s.distances.footer, m.bottom) : Math.min(footerDist, m.bottom);
     return {
       size: { width: cmToTwip(dims.w), height: cmToTwip(dims.h), orientation: sectionLandscape ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT },
       margin: {
         top: cmToTwip(m.top), bottom: cmToTwip(m.bottom),
         left: cmToTwip(m.left), right: cmToTwip(m.right),
-        header: cmToTwip(Math.min(headerDist, m.top)), footer: cmToTwip(Math.min(footerDist, m.bottom)),
+        header: cmToTwip(hDist), footer: cmToTwip(fDist),
       },
       // w:pgNumType. Word restarts numbering at every section carrying a start, so a
       // later section gets one only where it really restarts; the rest continue.

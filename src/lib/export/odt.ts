@@ -5480,7 +5480,12 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
     const m = set.margins;
     const paper = set.format || set.orientation ? pageDimsCm(set.format ?? format, set.orientation ?? orientation) : null;
     const numFormat = set.pageNumberFormat ?? null;
-    if ((!m && !paper && !numFormat) || !layoutXml) return layout;
+    // ODF's page margin *is* the edge→zone distance on a side that has one, so a
+    // section with its own distances writes them outright rather than as a shift.
+    const dist = set.distances ?? null;
+    const distTop = dist && (set.header || set.headerFirst || set.headerEven) ? dist.header : null;
+    const distBottom = dist && (set.footer || set.footerFirst || set.footerEven) ? dist.footer : null;
+    if ((!m && !paper && !numFormat && distTop == null && distBottom == null) || !layoutXml) return layout;
     const name = `${layout}Sec${index + 1}`;
     layouts.push(layoutXml
       .replace(`style:name="${layout}"`, `style:name="${name}"`)
@@ -5499,6 +5504,8 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
             .replace(/fo:page-height="[^"]*"/, `fo:page-height="${round3(paper.h)}cm"`)
             .replace(/style:print-orientation="[^"]*"/, `style:print-orientation="${paper.w > paper.h ? 'landscape' : 'portrait'}"`);
         }
+        if (distTop != null) p = p.replace(/fo:margin-top="[^"]*"/, `fo:margin-top="${distTop}cm"`);
+        if (distBottom != null) p = p.replace(/fo:margin-bottom="[^"]*"/, `fo:margin-bottom="${distBottom}cm"`);
         // The page-number format rides the layout, which is where LibreOffice keeps it.
         if (numFormat) {
           p = /style:num-format="/.test(p)

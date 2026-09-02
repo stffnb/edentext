@@ -62,4 +62,20 @@ describe('per-section header/footer', () => {
     expect(zoneText(back.hfSections[1].header)).toBe('Second header');
     expect((back.content.content ?? []).filter((b: any) => b.attrs?.sectionBreak).length).toBe(1);
   });
+
+  it('carries a section-only edge distance through both formats', async () => {
+    // An index whose header starts 4cm down, in a body whose own starts at 1.25.
+    const deep = [sections[0], { ...sections[1], distances: { header: 4, footer: 3 } }];
+    const own = { ...hf, sections: deep };
+    const odt = await importOdt(await buildOdt(doc, { top: 2, bottom: 2, left: 2, right: 2 }, 'portrait', own));
+    expect(odt.hfSections[0].distances ?? null).toBe(null);
+    expect(odt.hfSections[1].distances?.header).toBeCloseTo(4, 2);
+    expect(odt.hfSections[1].distances?.footer).toBeCloseTo(3, 2);
+
+    const docx = importDocx(await buildDocx(doc, { top: 2, bottom: 2, left: 2, right: 2 }, 'portrait', own));
+    expect(docx.hfSections[0].distances ?? null).toBe(null);
+    // Word clamps the distance below the section's own margin, as both products do.
+    expect(docx.hfSections[1].distances?.header).toBeCloseTo(2, 2);
+    expect(docx.hfSections[1].distances?.footer).toBeCloseTo(2, 2);
+  });
 });

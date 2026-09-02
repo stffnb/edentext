@@ -225,13 +225,18 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       const first = s.marginsFirst ?? rest;
       const topOf = (m: PageMargins | null) => (m ? cmToPx(m.top) : mTopPx);
       const bottomOf = (m: PageMargins | null) => (m ? cmToPx(m.bottom) : mBottomPx);
+      // A section's zones sit at its own edge distance where its page setup gives it one.
+      const restD = s.distances ?? null;
+      const firstD = s.distancesFirst ?? restD;
+      const hDist = (d: HfDistances | null) => (d ? cmToPx(d.header) : headerDistPx);
+      const fDist = (d: HfDistances | null) => (d ? cmToPx(d.footer) : footerDistPx);
       const reach = (key: HfZoneKey, dist: number, footer = false) =>
         hfReachPx(s[key] ?? null, dist, footer, zoneHeightPx(i + 1, key));
       return [
-        Math.max(topOf(first), reach(s.differentFirstPage ? 'headerFirst' : 'header', headerDistPx)),
-        Math.max(topOf(rest), reach('header', headerDistPx), s.differentOddEven ? reach('headerEven', headerDistPx) : 0),
-        Math.max(bottomOf(first), reach(s.differentFirstPage ? 'footerFirst' : 'footer', footerDistPx, true)),
-        Math.max(bottomOf(rest), reach('footer', footerDistPx, true), s.differentOddEven ? reach('footerEven', footerDistPx, true) : 0),
+        Math.max(topOf(first), reach(s.differentFirstPage ? 'headerFirst' : 'header', hDist(firstD))),
+        Math.max(topOf(rest), reach('header', hDist(restD)), s.differentOddEven ? reach('headerEven', hDist(restD)) : 0),
+        Math.max(bottomOf(first), reach(s.differentFirstPage ? 'footerFirst' : 'footer', fDist(firstD), true)),
+        Math.max(bottomOf(rest), reach('footer', fDist(restD), true), s.differentOddEven ? reach('footerEven', fDist(restD), true) : 0),
       ];
     }),
   ].map((g) => g.map((n) => Math.round(n)).join('|')).join(','));

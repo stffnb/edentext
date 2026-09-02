@@ -38,6 +38,11 @@ export type HfSet = {
   // How its page-number field counts, where the section disagrees with the document
   // (roman front matter before decimal body). null = the document's own format.
   pageNumberFormat?: NoteNumFormat | null;
+  // Its own edge→zone distances (ODF's page-layout margin, Word's w:pgMar
+  // w:header/w:footer), where the section's page setup gives it others than the
+  // document's; `distancesFirst` is its first page's where that hands over.
+  distances?: HfDistances | null;
+  distancesFirst?: HfDistances | null;
 };
 
 export const EMPTY_HF_SET: HfSet = {
@@ -45,6 +50,7 @@ export const EMPTY_HF_SET: HfSet = {
   headerFirst: null, footerFirst: null, differentFirstPage: false,
   headerEven: null, footerEven: null, differentOddEven: false,
   margins: null, marginsFirst: null, format: null, orientation: null,
+  distances: null, distancesFirst: null,
   pageNumberStart: null, pageNumberFormat: null,
 };
 

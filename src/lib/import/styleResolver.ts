@@ -889,8 +889,8 @@ export class StyleResolver {
 
   // Raw page margins (cm) = ODF's edge→zone distance, i.e. the header distance from
   // the top and footer distance from the bottom when a header/footer is present.
-  edgeDistancesCm(): { top: number; bottom: number } | null {
-    const props = this.pageLayoutEl()?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
+  edgeDistancesCm(pageName: string | null = null): { top: number; bottom: number } | null {
+    const props = this.pageLayoutEl(pageName)?.getElementsByTagNameNS(NS.style, 'page-layout-properties')[0] ?? null;
     if (!props) return null;
     const inset = this.decorInsetCm(props);
     const room = (lengthToCm(props.getAttributeNS(NS.fo, 'page-height')) ?? 29.7) - 1;

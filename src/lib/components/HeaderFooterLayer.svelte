@@ -100,6 +100,15 @@
   // bottom margin (Word's w:footer > w:bottom); the zone then grows up into the margin.
   let headerDistPx = $derived(Math.min(cmToPx(hfDistances.header), pageHeightPx));
   let footerDistPx = $derived(Math.min(cmToPx(hfDistances.footer), pageHeightPx));
+  // A section whose page setup gives it its own distances puts its zones on those.
+  function distancesOf(page: number): { header: number; footer: number } {
+    const i = sectionOf(page);
+    const s = sets[i];
+    const d = (page === sectionFirstPage(i) ? s?.distancesFirst ?? s?.distances : s?.distances) ?? null;
+    return d
+      ? { header: Math.min(cmToPx(d.header), pageHeightPx), footer: Math.min(cmToPx(d.footer), pageHeightPx) }
+      : { header: headerDistPx, footer: footerDistPx };
+  }
 
   let pages = $derived(Array.from({ length: Math.max(1, numPages) }, (_, i) => i + 1));
 
@@ -107,17 +116,18 @@
     // Mirrored margins: an even page is the left-hand one, so the pair is swapped.
     const box = boxOf(page);
     const m = marginsOf(page);
+    const dist = distancesOf(page);
     const swap = m.mirrored && page % 2 === 0;
     // From the page's own left edge — a section on narrower paper is centred.
     const left = box.left + cmToPx(swap ? m.right : m.left);
     const width = contentWidthOf(page);
     if (zone === 'header') {
-      const top = box.top + headerDistPx;
-      return { top, left, width, height: Math.max(MIN_ZONE_PX, cmToPx(m.top) - headerDistPx) };
+      const top = box.top + dist.header;
+      return { top, left, width, height: Math.max(MIN_ZONE_PX, cmToPx(m.top) - dist.header) };
     }
-    // Footer anchors its bottom edge at footerDistPx from the page bottom and grows up.
-    const height = Math.max(MIN_ZONE_PX, cmToPx(m.bottom) - footerDistPx);
-    const top = box.top + box.height - footerDistPx - height;
+    // Footer anchors its bottom edge at its distance from the page bottom and grows up.
+    const height = Math.max(MIN_ZONE_PX, cmToPx(m.bottom) - dist.footer);
+    const top = box.top + box.height - dist.footer - height;
     return { top, left, width, height };
   }
   // The active (edited) zone grows to fit its content, keeping the anchored edge fixed
