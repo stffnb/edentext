@@ -149,9 +149,9 @@ type Ctx = {
   // The page number each of those sections restarts at, in the same order (null = it
   // counts on). ODF writes it on the paragraph that switches master page.
   masterPageStarts: (number | null)[];
-  // How many body blocks each of them governs: the largest count is the document's own
-  // page geometry, which is not per section.
-  masterBlocks: Map<string, number>;
+  // Body blocks walked so far: only the document's first has nothing above it to break
+  // from when a style names a master page.
+  bodyBlocks: number;
   // Bookmark ranges open at this point of the walk, outermost first; a range may end in
   // a later paragraph than it started in, so the set outlives one convertInline call.
   openBookmarks: Set<string>;
@@ -770,13 +770,15 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   for (const [name, def] of resolver.namedParagraphStyles()) styleNames.set(name, displayStyleName(name, def.display));
   const charStyleNames = new Map<string, string>();
   for (const [name, def] of resolver.namedTextStyles()) charStyleNames.set(name, displayStyleName(name, def.display));
-  // Text width of the file's own page setup — the reference a table's margins are
-  // measured against (falls back to A4 with the ODF default margins).
+  // Page geometry is document-wide, so it comes from the master governing most of the
+  // body — elected before the walk, because the text width it yields is what a table's
+  // margins, an inline image's fit and the tab-stop suppression measure against.
+  resolver.setDefaultMaster(dominantMasterPage(Array.from(body.children), resolver));
   const geo = resolver.pageGeometry();
   const contentWidthCm = geo
     ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
     : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], masterBlocks: new Map(), openBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], bodyBlocks: 0, openBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -800,18 +802,8 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     })) });
   }
 
-  // Page geometry — margins, format, and the band a header/footer reserves — is
-  // document-wide, so it comes from the master governing most of the body rather than
-  // from one the file merely declares (`geo` above only sized the tables).
-  let dominant = '';
-  let governed = 0;
-  for (const [name, count] of ctx.masterBlocks) {
-    if (count > governed) { dominant = name; governed = count; }
-  }
-  resolver.setDefaultMaster(dominant || null);
-
   const hf = resolver.masterPageHF();
-  const geometry = resolver.pageGeometry() ?? geo;
+  const geometry = geo;
   const edge = resolver.edgeDistancesCm();
 
   const fonts: EmbeddedFont[] = [];
@@ -1630,7 +1622,7 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
     // Naming a master *is* a page break, even where the page already uses that one
     // (probed) — which is how a book starts every chapter on a fresh page. Only the
     // document's first block has nothing above it to break from.
-    if (ctx.masterBlocks.size) attrs.breakBefore = 'page';
+    if (ctx.bodyBlocks) attrs.breakBefore = 'page';
     if (ctx.masterPages[ctx.masterPages.length - 1] !== master) {
       ctx.masterPages.push(master);
       // The same paragraph carries the number the section restarts at, if it does.
@@ -1639,9 +1631,7 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
       attrs.sectionBreak = true;
     }
   }
-  // '' = the file's own default master, which the blocks before the first switch use.
-  const governing = kind === 'body' ? ctx.masterPages[ctx.masterPages.length - 1] ?? '' : null;
-  if (governing != null) ctx.masterBlocks.set(governing, (ctx.masterBlocks.get(governing) ?? 0) + 1);
+  if (kind === 'body') ctx.bodyBlocks++;
   // Tab stops live in a child element of the paragraph properties, so they come from
   // the resolver's own walk rather than the flattened paraProps.
   const stops = formatTabStops(resolver.tabStops(styleName));
@@ -2475,6 +2465,37 @@ function formatPt(v: number): string {
 // The heading elements of a <text:list> whose leaves are all headings (each list-item
 // holds only a text:h and/or nested such lists) — ODF outline/chapter numbering, not a
 // real list, so they import as plain headings. null when it's a genuine list.
+// The master page governing the most body blocks. Mirrors convertBlocks' body-level
+// dispatch: only a paragraph or heading can name one, and '' is the file's own default.
+function dominantMasterPage(elements: Element[], resolver: StyleResolver): string | null {
+  const counts = new Map<string, number>();
+  let current = '';
+  const walk = (els: Element[]): void => {
+    for (const el of els) {
+      if (el.namespaceURI !== NS.text) continue;
+      if (el.localName === 'p' || el.localName === 'h') {
+        current = resolver.masterPageOf(el.getAttributeNS(NS.text, 'style-name')) ?? current;
+        counts.set(current, (counts.get(current) ?? 0) + 1);
+      } else if (el.localName === 'list') {
+        const headings = outlineHeadingEls(el);
+        if (headings) walk(headings);
+      } else if (el.localName === 'section') {
+        walk(Array.from(el.children));
+      } else if (/-index$|^table-of-content$|^bibliography$/.test(el.localName)) {
+        const indexBody = el.getElementsByTagNameNS(NS.text, 'index-body')[0];
+        if (indexBody) walk(Array.from(indexBody.children));
+      }
+    }
+  };
+  walk(elements);
+  let dominant = '';
+  let governed = 0;
+  for (const [name, count] of counts) {
+    if (count > governed) { dominant = name; governed = count; }
+  }
+  return dominant || null;
+}
+
 function outlineHeadingEls(listEl: Element): Element[] | null {
   const out: Element[] = [];
   for (const item of Array.from(listEl.children)) {
