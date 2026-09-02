@@ -904,7 +904,7 @@ function hfSetOfMasterPage(
   const numFormat = ctx.resolver.pageNumberFormat(hf.restPage ?? name);
   return {
     margins: rest,
-    marginsFirst: hf.restPage ? own : null,
+    marginsFirst: hf.restPage && !hf.mirrorPair ? own : null,
     pageNumberFormat: numFormat !== docNumFormat ? numFormat : null,
     format: paper && doc && paper.format !== doc.format ? paper.format : null,
     orientation: paper && doc && paper.orientation !== doc.orientation ? paper.orientation : null,

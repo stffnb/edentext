@@ -668,6 +668,7 @@ export class StyleResolver {
     footerBandCm: number;
     firstPageOnly: boolean;
     restPage: string | null;
+    mirrorPair: boolean;
   } {
     const mp = this.masterPageEl(pageName);
     const layout = this.pageLayoutEl(pageName);
@@ -688,11 +689,24 @@ export class StyleResolver {
     const successor = nextName && nextName !== mp?.getAttributeNS(NS.style, 'name')
       ? this.masterPageEl(nextName)
       : null;
-    const rest = successor ?? mp;
+    let rest = successor ?? mp;
+
+    // Two masters naming each other are the left/right pair of a mirrored book, not a
+    // hand-over: LibreOffice's own Left Page / Right Page. The right one governs the odd
+    // pages, the left one becomes the even variant, and neither ends the section.
+    const twin = this.mirrorTwin(rest);
+    // The master named here is itself one half of the pair — as opposed to a title page
+    // handing over *to* the pair, which really does govern one page only.
+    const pair = !!twin && (rest === mp || twin === mp);
+    const leftPage = twin
+      ? (this.pageUsage(rest) === 'left' ? rest : this.pageUsage(twin) === 'left' ? twin : null)
+      : null;
+    if (leftPage === rest) rest = twin;
+    const handover = pair ? null : successor;
 
     const zone = (local: string) => zoneIn(rest, local);
     const firstZone = (local: string): Element | null =>
-      zoneIn(mp, `${local}-first`) ?? (successor ? zoneIn(mp, local) : null);
+      zoneIn(mp, `${local}-first`) ?? (handover ? zoneIn(mp, local) : null);
     const bandProps = (local: 'header-style' | 'footer-style'): Element | null => {
       if (!layout) return null;
       for (const child of Array.from(layout.children)) {
@@ -729,19 +743,36 @@ export class StyleResolver {
       footer: zone('footer'),
       headerFirst: firstZone('header'),
       footerFirst: firstZone('footer'),
-      // Even-page variant (Word odd/even). ODF header-left = the left (even) page.
-      headerLeft: zoneIn(rest, 'header-left'),
-      footerLeft: zoneIn(rest, 'footer-left'),
+      // Even-page variant (Word odd/even). ODF header-left = the left (even) page; the
+      // left master of a mirrored pair is that variant in full.
+      headerLeft: zoneIn(rest, 'header-left') ?? zoneIn(leftPage, 'header'),
+      footerLeft: zoneIn(rest, 'footer-left') ?? zoneIn(leftPage, 'footer'),
       headerExtraCm: extraCm('header-style', 'margin-bottom'),
       footerExtraCm: extraCm('footer-style', 'margin-top'),
       headerBandCm: bandCm('header-style', 'margin-bottom'),
       footerBandCm: bandCm('footer-style', 'margin-top'),
       // Handing over to a successor is itself the "different first page" flag: a title
       // master with no zones of its own leaves page one deliberately blank.
-      firstPageOnly: !!successor,
+      firstPageOnly: !!handover,
       // The master every page after the first uses — also where their geometry comes from.
-      restPage: successor?.getAttributeNS(NS.style, 'name') ?? null,
+      restPage: rest !== mp ? rest?.getAttributeNS(NS.style, 'name') ?? null : null,
+      mirrorPair: pair,
     };
+  }
+
+  private pageUsage(mp: Element | null): string {
+    const name = mp?.getAttributeNS(NS.style, 'name') ?? null;
+    return name ? this.pageLayoutEl(name)?.getAttributeNS(NS.style, 'page-usage') ?? '' : '';
+  }
+
+  // The master that names this one back through style:next-style-name — the other half
+  // of a left/right pair. A one-way chain is the title-page hand-over instead.
+  private mirrorTwin(mp: Element | null): Element | null {
+    const name = mp?.getAttributeNS(NS.style, 'name');
+    const next = mp?.getAttributeNS(NS.style, 'next-style-name');
+    if (!name || !next || next === name) return null;
+    const twin = this.masterPageEl(next);
+    return twin?.getAttributeNS(NS.style, 'next-style-name') === name ? twin : null;
   }
 
   // Page margins + orientation + format from the master page's layout. With a
@@ -769,8 +800,13 @@ export class StyleResolver {
       left: cm('margin-left', 2.12),
       right: cm('margin-right', 2.12),
     };
-    if (this.pageLayoutEl(pageName)?.getAttributeNS(NS.style, 'page-usage') === 'mirrored') {
+    // A page style that is one side of a book (style:page-usage left/right) mirrors as
+    // surely as one marked "mirrored"; the editor stores the odd page's pair and swaps
+    // it on an even page, so a left-hand layout hands over its mirror image.
+    const usage = this.pageLayoutEl(pageName)?.getAttributeNS(NS.style, 'page-usage');
+    if (usage === 'mirrored' || usage === 'left' || usage === 'right') {
       margins.mirrored = true;
+      if (usage === 'left') [margins.left, margins.right] = [margins.right, margins.left];
     }
     const w = lengthToCm(props.getAttributeNS(NS.fo, 'page-width'));
     const h = lengthToCm(props.getAttributeNS(NS.fo, 'page-height'));
