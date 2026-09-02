@@ -142,16 +142,18 @@ function liOrdinal(li: HTMLElement): number {
   return parseInt(parent.getAttribute('start') ?? '1', 10) + items.indexOf(li);
 }
 
-// The <ol> whose 'multilevel' style governs this list: itself, or the nearest
-// ordered ancestor with the attr reached without crossing another explicit style.
+// The outermost <ol> of the unbroken 'multilevel' run this list sits in — where the
+// chain `counters(list-item, '.')` prints starts, so the walk cannot stop at the nearest
+// one. Keyed on the *effective* numbering, the attr editor.css draws from: a list
+// numbered by a named style carries no `data-list-style` of its own.
 function multilevelRoot(ol: HTMLElement, root: HTMLElement): HTMLElement | null {
+  let found: HTMLElement | null = null;
   for (let e: HTMLElement | null = ol; e && e !== root; e = e.parentElement) {
     if (e.tagName !== 'OL') continue;
-    const t = e.getAttribute('data-list-style');
-    if (t === 'multilevel') return e;
-    if (t) return null; // a nearer explicit style cuts the chain
+    if (e.getAttribute('data-eff-list-style') !== 'multilevel') break;
+    found = e;
   }
-  return null;
+  return found;
 }
 
 // The marker text the browser renders for a list item: the depth bullet/bulletChar
@@ -203,15 +205,13 @@ function materializeListMarkers(root: HTMLElement): void {
     const glyph = listMarkerGlyph(li, root);
     if (!glyph) continue;
     const target = li.querySelector(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5') ?? li;
-    const slot = document.createElement('span');
-    slot.style.cssText = 'display:inline-block;width:0;overflow:visible;vertical-align:baseline';
     const label = document.createElement('span');
-    label.style.cssText = `display:inline-block;white-space:pre;transform:translateX(-0.635cm);color:${cs.color}`;
+    label.style.cssText = `float:left;min-width:0.635cm;margin-left:-0.635cm;white-space:pre;color:${cs.color}`;
     // Same symbol shim the editor's ::marker uses (glyphs Liberation Serif lacks).
     label.style.fontFamily = `'EdenText Symbols', ${cs.fontFamily}`;
-    label.textContent = glyph;
-    slot.appendChild(label);
-    target.insertBefore(slot, target.firstChild);
+    label.textContent = `${glyph} `; // the trailing space editor.css puts in every marker
+    label.dataset.pdfMarker = '';
+    target.insertBefore(label, target.firstChild);
   }
 }
 
