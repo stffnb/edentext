@@ -1114,6 +1114,8 @@ const de: Messages = {
     mismatch: 'Die beiden Eingaben unterscheiden sich.',
     wrong: 'Falsches Passwort.',
     note: 'Schützt die gespeicherte Datei. Die Kopie, die der Editor im Browser hält, bleibt unverschlüsselt.',
+    show: 'Passwort anzeigen',
+    hide: 'Passwort verbergen',
     remove: 'Schutz entfernen',
   },
   importError: {

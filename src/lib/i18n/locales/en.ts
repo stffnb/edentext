@@ -1122,6 +1122,8 @@ const en = {
     mismatch: 'The two entries differ.',
     wrong: 'Wrong password.',
     note: 'Protects the saved file. The copy this editor keeps in the browser stays unencrypted.',
+    show: 'Show password',
+    hide: 'Hide password',
     remove: 'Remove protection',
   },
   importError: {

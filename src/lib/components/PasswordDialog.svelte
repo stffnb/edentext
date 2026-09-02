@@ -16,6 +16,7 @@
   let firstInput = $state<HTMLInputElement | null>(null);
   let password = $state('');
   let repeat = $state('');
+  let show = $state(false);
 
   const mismatch = $derived(mode === 'set' && repeat !== '' && password !== repeat);
   const canApply = $derived(password !== '' && (mode === 'ask' || password === repeat));
@@ -31,6 +32,7 @@
     if (!open) return;
     password = '';
     repeat = '';
+    show = false;
     queueMicrotask(() => firstInput?.focus());
   });
 
@@ -45,6 +47,23 @@
   }
 </script>
 
+{#snippet peek()}
+  <button
+    class="peek"
+    type="button"
+    aria-label={show ? t().password.hide : t().password.show}
+    title={show ? t().password.hide : t().password.show}
+    onclick={() => (show = !show)}
+  >
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M1.5 8S4 4 8 4s6.5 4 6.5 4-2.5 4-6.5 4-6.5-4-6.5-4z" />
+      <path d="M8 9.75a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5z" />
+      {#if !show}<path d="M3 13 13 3" />{/if}
+    </svg>
+  </button>
+{/snippet}
+
 <dialog
   bind:this={dialogEl}
   onclose={cancel}
@@ -56,29 +75,35 @@
 
     {#if wrong}<p class="wrong">{t().password.wrong}</p>{/if}
 
-    <label class="row">
-      <span>{t().password.password}</span>
-      <input
-        bind:this={firstInput}
-        type="password"
-        bind:value={password}
-        autocomplete="off"
-        spellcheck="false"
-        onkeydown={(e) => { if (e.key === 'Enter' && canApply) apply(password); }}
-      />
-    </label>
-
-    {#if mode === 'set'}
-      <label class="row">
-        <span>{t().password.repeat}</span>
+    <div class="row">
+      <label>
+        <span>{t().password.password}</span>
         <input
-          type="password"
-          bind:value={repeat}
+          bind:this={firstInput}
+          type={show ? 'text' : 'password'}
+          bind:value={password}
           autocomplete="off"
           spellcheck="false"
           onkeydown={(e) => { if (e.key === 'Enter' && canApply) apply(password); }}
         />
       </label>
+      {@render peek()}
+    </div>
+
+    {#if mode === 'set'}
+      <div class="row">
+        <label>
+          <span>{t().password.repeat}</span>
+          <input
+            type={show ? 'text' : 'password'}
+            bind:value={repeat}
+            autocomplete="off"
+            spellcheck="false"
+            onkeydown={(e) => { if (e.key === 'Enter' && canApply) apply(password); }}
+          />
+        </label>
+        {@render peek()}
+      </div>
       {#if mismatch}<p class="wrong">{t().password.mismatch}</p>{/if}
       <p class="note">{t().password.note}</p>
     {/if}
@@ -124,7 +149,8 @@
   h2 { font-size: 1rem; margin-bottom: 4px; }
 
   .row { display: flex; align-items: center; gap: 8px; }
-  .row > span { flex: 1; color: var(--color-text-muted); }
+  .row label { display: contents; }
+  .row span { flex: 1; color: var(--color-text-muted); }
 
   input {
     height: 26px;
@@ -136,6 +162,17 @@
     padding: 0 6px;
     font: inherit;
   }
+
+  .peek {
+    display: flex;
+    border: none;
+    background: none;
+    color: var(--color-text-muted);
+    padding: 2px;
+    cursor: pointer;
+  }
+  .peek:hover { color: var(--color-text); }
+  .peek svg { width: 16px; height: 16px; }
 
   .note { color: var(--color-text-muted); line-height: 1.35; }
   .wrong { color: #c62828; }
