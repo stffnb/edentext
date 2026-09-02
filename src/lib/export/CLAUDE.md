@@ -70,6 +70,11 @@ before (no list, no CSS, no margin shift). The Review tab's **Print markup** tog
 (`storage/printMarkup.svelte.ts`) turns the whole thing off, as both products offer;
 `printPdf` rebuilds its options field by field, so a new one has to be copied there too.
 
+**The display mode prints too** (`storage/markup`, Word's "Display for review"): a page in
+*no markup* prints as it reads. The two paths that rasterise the live `.paper` inherit its
+attributes with the clone; `printPdf` builds its page from the document instead, so it
+takes them as `markupAttrs`. `printMarkup` still governs the bar and the list beside it.
+
 - **The margin strip is paid for.** The print engine clips to the page area, so a bar at a
   negative offset is silently dropped — measured, not assumed. `printPdf` takes
   `BAR_STRIP_CM` out of the left `@page` margin and gives it back as `.paper` padding,

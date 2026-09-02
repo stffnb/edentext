@@ -68,7 +68,7 @@
     onSelectTheme,
     docxBusy = false,
     pdfBusy = false,
-    onNew, onNewFromTemplate, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onAutoText, onNewComment, commentsOpen = false, onToggleComments, revisionsOpen = false, onToggleRevisions,
+    onNew, onNewFromTemplate, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onAutoText, onNewComment,
     navigatorOpen = false, onToggleNavigator,
     recentFiles = [], onOpenRecent, onForgetRecent,
   }: {
@@ -125,10 +125,6 @@
     onAutoCorrect?: () => void;
     onAutoText?: () => void;
     onNewComment?: () => void;
-    commentsOpen?: boolean;
-    onToggleComments?: () => void;
-    revisionsOpen?: boolean;
-    onToggleRevisions?: () => void;
     navigatorOpen?: boolean;
     onToggleNavigator?: () => void;
   } = $props();
@@ -360,7 +356,7 @@
     {:else if tab === 'references'}
       <ReferencesTab {editor} {tick} {hfActive} {onNoteOptions} />
     {:else if tab === 'review'}
-      <ReviewTab {editor} {tick} {documentLanguage} {onLanguage} {onAutoCorrect} {onNewComment} {commentsOpen} {onToggleComments} {revisionsOpen} {onToggleRevisions} />
+      <ReviewTab {editor} {tick} {documentLanguage} {onLanguage} {onAutoCorrect} {onNewComment} />
     {:else if tab === 'view'}
       <ViewTab bind:showRuler bind:showFormattingMarks bind:splitView bind:pageColumns {zoom} {onZoom} {onDebugDump} {navigatorOpen} {onToggleNavigator} />
     {:else if tab === 'tableDesign' || tab === 'tableLayout'}

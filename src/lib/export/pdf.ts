@@ -467,6 +467,8 @@ export interface PrintPdfOptions {
   commentLabels?: CommentLabels;
   /** Whether the review markup prints at all (`storage/printMarkup`); default on. */
   printMarkup?: boolean;
+  /** The display mode as `.paper` attributes (`storage/markup`): printed as seen. */
+  markupAttrs?: string;
 }
 
 // First-row column weights from table JSON (honours colspan); mirrors tableView.
@@ -641,6 +643,7 @@ export function printPdf(opts: PrintPdfOptions): void {
     differentOddEven: opts.differentOddEven ?? false,
     commentLabels: opts.commentLabels,
     printMarkup: opts.printMarkup,
+    markupAttrs: opts.markupAttrs,
   };
   const title = (o.fileName ?? deriveFilename(o.json)).replace(/\.(odt|pdf)$/i, '');
   // The layers are Svelte DOM and generateHTML knows nothing of them, so this path
@@ -662,7 +665,7 @@ export function printPdf(opts: PrintPdfOptions): void {
   idoc.write(
     `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${title}</title>` +
     `<style>${globalCss}\n${editorCss}\n${printCss(o, review)}</style></head>` +
-    `<body><div class="paper"><div class="tiptap">${host.innerHTML}</div>${list}</div></body></html>`,
+    `<body><div class="paper"${o.markupAttrs ?? ''}><div class="tiptap">${host.innerHTML}</div>${list}</div></body></html>`,
   );
   idoc.close();
 

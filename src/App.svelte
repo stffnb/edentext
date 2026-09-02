@@ -46,6 +46,7 @@
   import { loadLineNumbering, saveLineNumbering, DEFAULT_LINE_NUMBERING, type LineNumbering } from './lib/storage/lineNumbering';
   import { loadFoldMarks, saveFoldMarks } from './lib/storage/foldMarks';
   import { printMarkup } from './lib/storage/printMarkup.svelte';
+  import { commentsInPane, changesInPane, markupAttrs, setShowChanges, setShowComments } from './lib/storage/markup.svelte';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { setTableLanguage } from './lib/storage/tableOptions.svelte';
   import { spellController } from './lib/spell/controller';
@@ -192,8 +193,6 @@
   let autoCorrectOpen = $state(false);
   let autoTextOpen = $state(false);
   let thesaurusOpen = $state(false);
-  let commentsOpen = $state(false);
-  let revisionsOpen = $state(false);
   let navigatorOpen = $state(false);
 
   // Width of the hidden mirror span (below), so the title input grows/shrinks
@@ -749,7 +748,8 @@
     const text = prompt(t().comments.prompt, '');
     if (text === null) return;
     editor.chain().focus().addComment({ author: docProps.author.trim(), text: text.trim() }).run();
-    commentsOpen = true;
+    // A comment nobody can see is worse than none: the new one brings its kind back.
+    setShowComments(true);
   }
 
   $effect(() => {
@@ -1003,6 +1003,7 @@
         differentOddEven,
         commentLabels: { heading: t().comments.title, onPage: t().comments.onPage },
         printMarkup: printMarkup(),
+        markupAttrs: markupAttrs(),
       });
     } catch (err) {
       console.error('[pdf] Print failed:', err);
@@ -1184,10 +1185,6 @@
       onAutoCorrect={() => (autoCorrectOpen = true)}
       onAutoText={() => (autoTextOpen = true)}
       onNewComment={addComment}
-      {commentsOpen}
-      onToggleComments={() => (commentsOpen = !commentsOpen)}
-      {revisionsOpen}
-      onToggleRevisions={() => (revisionsOpen = !revisionsOpen)}
       {navigatorOpen}
       onToggleNavigator={() => (navigatorOpen = !navigatorOpen)}
     />
@@ -1513,13 +1510,13 @@
   {#if navigatorOpen}
     <NavigatorPane {editor} {tick} onClose={() => (navigatorOpen = false)} />
   {/if}
-  {#if commentsOpen}
-    <CommentsPane {editor} {tick} author={docProps.author} onClose={() => (commentsOpen = false)} />
+  {#if commentsInPane()}
+    <CommentsPane {editor} {tick} author={docProps.author} onClose={() => setShowComments(false)} />
   {/if}
-  {#if revisionsOpen}
-    <RevisionsPane {editor} {tick} author={docProps.author} onClose={() => (revisionsOpen = false)} />
+  {#if changesInPane()}
+    <RevisionsPane {editor} {tick} author={docProps.author} onClose={() => setShowChanges(false)} />
   {/if}
-  {#if commentsOpen || revisionsOpen}
+  {#if commentsInPane() || changesInPane()}
     <ConnectorLayer {editor} {tick} />
   {/if}
   </div>

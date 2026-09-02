@@ -393,6 +393,13 @@
 .ribbon-menu .menu-key,
 .ribbon-menu .menu-sub { margin-left: auto; padding-left: 16px; color: var(--w-text-dim); }
 .ribbon-menu .menu-key { font-size: 12px; }
+
+/* A checkable row keeps the slot whether it is checked or not, so the labels line up. */
+.ribbon-menu .menu-check {
+  flex: none;
+  width: 14px;
+  color: var(--w-accent);
+}
 .ribbon-menu .menu-sub { font-size: 11px; }
 
 /* Section label above a run of rows, and the sticky action row below the list. */

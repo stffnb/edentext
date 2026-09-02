@@ -11,6 +11,7 @@ const DOC_OUTLINE = [
 export const STROKED = {
   chevronDown: ['M3.5 6 8 10.5 12.5 6'],
   chevronRight: ['M6 3.5 10.5 8 6 12.5'],
+  chevronLeft: ['M10 3.5 5.5 8 10 12.5'],
   check: ['M3.5 8.5 6.5 11.5 12.5 5'],
   doc: DOC_OUTLINE,
   newDoc: [...DOC_OUTLINE, 'M8 8v3.5M6.25 9.75h3.5'],
