@@ -43,6 +43,11 @@ export const EMPTY_HF_SET: HfSet = {
   margins: null, marginsFirst: null, format: null, orientation: null, pageNumberStart: null,
 };
 
+// The six zone docs of a set, in the order their measured heights travel from
+// HeaderFooterLayer to Editor.svelte.
+export const HF_ZONE_KEYS = ['header', 'footer', 'headerFirst', 'footerFirst', 'headerEven', 'footerEven'] as const;
+export type HfZoneKey = (typeof HF_ZONE_KEYS)[number];
+
 export function hfSetIsEmpty(s: HfSet): boolean {
   return hfIsEmpty(s.header) && hfIsEmpty(s.footer)
     && hfIsEmpty(s.headerFirst) && hfIsEmpty(s.footerFirst)

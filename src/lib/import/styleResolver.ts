@@ -664,6 +664,8 @@ export class StyleResolver {
     footerLeft: Element | null;
     headerExtraCm: number;
     footerExtraCm: number;
+    headerBandCm: number;
+    footerBandCm: number;
     firstPageOnly: boolean;
     restPage: string | null;
   } {
@@ -691,24 +693,35 @@ export class StyleResolver {
     const zone = (local: string) => zoneIn(rest, local);
     const firstZone = (local: string): Element | null =>
       zoneIn(mp, `${local}-first`) ?? (successor ? zoneIn(mp, local) : null);
-    const extraCm = (local: 'header-style' | 'footer-style', spacingAttr: 'margin-bottom' | 'margin-top'): number => {
-      if (!layout) return 0;
-      let props: Element | null = null;
+    const bandProps = (local: 'header-style' | 'footer-style'): Element | null => {
+      if (!layout) return null;
       for (const child of Array.from(layout.children)) {
         if (child.namespaceURI === NS.style && child.localName === local) {
-          props = child.getElementsByTagNameNS(NS.style, 'header-footer-properties')[0] ?? null;
-          break;
+          return child.getElementsByTagNameNS(NS.style, 'header-footer-properties')[0] ?? null;
         }
       }
+      return null;
+    };
+    // The band LibreOffice lays out is max(declared height, zone content + its gap), and
+    // the zone's own fo:padding counts on both sides of that content (probed). `extraCm`
+    // is the part known without laying the zone out; `bandCm` what its content grows by.
+    const extraCm = (local: 'header-style' | 'footer-style', spacingAttr: 'margin-bottom' | 'margin-top'): number => {
+      const props = bandProps(local);
       if (!props) return 0;
       const height = lengthToCm(props.getAttributeNS(NS.svg, 'height'))
         ?? lengthToCm(props.getAttributeNS(NS.fo, 'min-height'))
         ?? 0;
-      // The zone's gap to the body is laid out *inside* that height, not added to it
-      // (probed: a footer's fo:margin-top moves its text down the band and leaves the
-      // last body line where it was; style:dynamic-spacing changes neither side).
       const spacing = lengthToCm(props.getAttributeNS(NS.fo, spacingAttr)) ?? 0;
       return Math.max(height, spacing);
+    };
+    const bandCm = (local: 'header-style' | 'footer-style', spacingAttr: 'margin-bottom' | 'margin-top'): number => {
+      const props = bandProps(local);
+      if (!props) return 0;
+      const spacing = lengthToCm(props.getAttributeNS(NS.fo, spacingAttr)) ?? 0;
+      const pad = lengthToCm(props.getAttributeNS(NS.fo, 'padding'));
+      const padTop = lengthToCm(props.getAttributeNS(NS.fo, 'padding-top')) ?? pad ?? 0;
+      const padBottom = lengthToCm(props.getAttributeNS(NS.fo, 'padding-bottom')) ?? pad ?? 0;
+      return spacing + padTop + padBottom;
     };
 
     return {
@@ -721,6 +734,8 @@ export class StyleResolver {
       footerLeft: zoneIn(rest, 'footer-left'),
       headerExtraCm: extraCm('header-style', 'margin-bottom'),
       footerExtraCm: extraCm('footer-style', 'margin-top'),
+      headerBandCm: bandCm('header-style', 'margin-bottom'),
+      footerBandCm: bandCm('footer-style', 'margin-top'),
       // Handing over to a successor is itself the "different first page" flag: a title
       // master with no zones of its own leaves page one deliberately blank.
       firstPageOnly: !!successor,

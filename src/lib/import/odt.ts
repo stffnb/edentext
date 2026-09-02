@@ -825,20 +825,20 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     }
   }
 
-  const headerFirst = hf.headerFirst ? convertHfZone(hf.headerFirst, ctx) : null;
-  const footerFirst = hf.footerFirst ? convertHfZone(hf.footerFirst, ctx) : null;
+  const headerFirst = hf.headerFirst ? convertHfZone(hf.headerFirst, ctx, hf.headerBandCm) : null;
+  const footerFirst = hf.footerFirst ? convertHfZone(hf.footerFirst, ctx, hf.footerBandCm, true) : null;
   // The presence of a first-page element is the flag, even when it's empty (an empty
   // first-page zone deliberately blanks page 1 while the default fills later pages).
   const differentFirstPage = !!(hf.headerFirst || hf.footerFirst || hf.firstPageOnly);
-  const headerEven = hf.headerLeft ? convertHfZone(hf.headerLeft, ctx) : null;
-  const footerEven = hf.footerLeft ? convertHfZone(hf.footerLeft, ctx) : null;
+  const headerEven = hf.headerLeft ? convertHfZone(hf.headerLeft, ctx, hf.headerBandCm) : null;
+  const footerEven = hf.footerLeft ? convertHfZone(hf.footerLeft, ctx, hf.footerBandCm, true) : null;
   const differentOddEven = !!(hf.headerLeft || hf.footerLeft);
   // A first-page/even zone reserves the band even if its default counterpart is empty.
   const hasHeader = hf.header || headerFirst || headerEven;
   const hasFooter = hf.footer || footerFirst || footerEven;
 
-  const header = hf.header ? convertHfZone(hf.header, ctx) : null;
-  const footer = hf.footer ? convertHfZone(hf.footer, ctx) : null;
+  const header = hf.header ? convertHfZone(hf.header, ctx, hf.headerBandCm) : null;
+  const footer = hf.footer ? convertHfZone(hf.footer, ctx, hf.footerBandCm, true) : null;
 
   return {
     content: { type: 'doc', content: blocks },
@@ -883,7 +883,8 @@ function hfSetOfMasterPage(
   doc: { orientation: Orientation; format: PageFormat } | null,
 ): HfSet {
   const hf = ctx.resolver.masterPageHF(name);
-  const zone = (el: Element | null) => (el ? convertHfZone(el, ctx) : null);
+  const zone = (el: Element | null, footer = false) =>
+    (el ? convertHfZone(el, ctx, footer ? hf.footerBandCm : hf.headerBandCm, footer) : null);
   // Its page layout is the section's own geometry; where the master hands over, that
   // layout governs the first page only and the successor's the rest.
   const geo = ctx.resolver.pageGeometry(name);
@@ -899,19 +900,21 @@ function hfSetOfMasterPage(
     format: paper && doc && paper.format !== doc.format ? paper.format : null,
     orientation: paper && doc && paper.orientation !== doc.orientation ? paper.orientation : null,
     header: zone(hf.header),
-    footer: zone(hf.footer),
+    footer: zone(hf.footer, true),
     headerFirst: zone(hf.headerFirst),
-    footerFirst: zone(hf.footerFirst),
+    footerFirst: zone(hf.footerFirst, true),
     differentFirstPage: !!(hf.headerFirst || hf.footerFirst || hf.firstPageOnly),
     headerEven: zone(hf.headerLeft),
-    footerEven: zone(hf.footerLeft),
+    footerEven: zone(hf.footerLeft, true),
     differentOddEven: !!(hf.headerLeft || hf.footerLeft),
   };
 }
 
 // A header/footer zone → one single-paragraph doc (hfExtensions schema). Multiple
 // paragraphs collapse to hard line breaks; block structures flatten to their text.
-function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
+// `bandCm` is the zone's own gap to the body plus its padding: space inside the band,
+// so it rides the collapsed paragraph's spacing on the side facing the body.
+function convertHfZone(zoneEl: Element, ctx: Ctx, bandCm = 0, footer = false): HfDoc {
   const inline: Node[] = [];
   let textAlign: string | null = null;
   let stops: string | null = null;
@@ -921,6 +924,10 @@ function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
   // what the band has to be tall enough to hold (Editor.svelte's hfReachPx).
   let spaceBefore: number | null = null;
   let spaceAfter = 0;
+  // A zone paragraph's own padding is band height too, and the collapsed paragraph has
+  // no padding of its own to carry it — so it joins the spacing on its own side.
+  let padTopPt = 0;
+  let padBottomPt = 0;
 
   const addPara = (p: Element) => {
     if (inline.length) inline.push({ type: 'hardBreak' });
@@ -928,6 +935,9 @@ function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
     const outer = ctx.resolver.paraProps(styleName);
     spaceBefore ??= snapPt(lengthToPt(outer['fo:margin-top']) ?? 0);
     spaceAfter = snapPt(lengthToPt(outer['fo:margin-bottom']) ?? 0);
+    const pad = lengthToPt(outer['fo:padding']);
+    padTopPt += lengthToPt(outer['fo:padding-top']) ?? pad ?? 0;
+    padBottomPt += lengthToPt(outer['fo:padding-bottom']) ?? pad ?? 0;
     // The zone is one paragraph, so the first line's stops are the zone's.
     stops ??= formatTabStops(ctx.resolver.tabStops(styleName));
     if (textAlign === null) {
@@ -962,8 +972,11 @@ function convertHfZone(zoneEl: Element, ctx: Ctx): HfDoc {
   applyUniformRunFont(attrs, content);
   if (textAlign) attrs.textAlign = textAlign;
   if (stops) attrs.tabStops = stops;
-  if (spaceBefore) attrs.spaceBefore = spaceBefore;
-  if (spaceAfter) attrs.spaceAfter = spaceAfter;
+  const bandPt = (bandCm / 2.54) * 72;
+  const before = snapPt((spaceBefore ?? 0) + padTopPt + (footer ? bandPt : 0));
+  const after = snapPt(spaceAfter + padBottomPt + (footer ? 0 : bandPt));
+  if (before) attrs.spaceBefore = before;
+  if (after) attrs.spaceAfter = after;
   Object.assign(attrs, box);
   if (Object.keys(attrs).length) para.attrs = attrs;
   return { type: 'doc', content: [para] };

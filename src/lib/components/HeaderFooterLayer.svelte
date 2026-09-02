@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { Editor, generateHTML, type Content } from '@tiptap/core';
   import { layOutZoneTabs } from '../editor/extensions/tabStops';
   import { hfExtensions } from '../editor/extensions/headerFooter';
-  import { hfIsEmpty, DEFAULT_HF_DISTANCES, type HfDoc, type HfZone, type HfVariant, type HfDistances, type HfSet } from '../storage/headerFooter';
+  import { hfIsEmpty, DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, type HfDoc, type HfZone, type HfVariant, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
   import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
   import { type Orientation } from '../storage/pageOrientation';
   import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
@@ -34,6 +35,7 @@
     sectionStartPages = [],
     chapterStarts = [],
     pageNumbering = DEFAULT_PAGE_NUMBERING,
+    zoneHeights = $bindable([]),
     interactive = true,
   }: {
     headerDoc: HfDoc;
@@ -60,6 +62,9 @@
     extraHfSections?: HfSet[];
     sectionStartPages?: number[];
     chapterStarts?: ChapterStart[];
+    /** Rendered height (px) of each set's six zones, in HF_ZONE_KEYS order — read back
+     *  by Editor.svelte, whose margins have to clear the band the zone really needs. */
+    zoneHeights?: number[][];
     /** False in a split view's second pane: it draws the zones, it does not edit them. */
     interactive?: boolean;
   } = $props();
@@ -175,6 +180,27 @@
     headerEven: backgrounds(s.headerEven), footerEven: backgrounds(s.footerEven),
   })));
 
+  // Off-screen copy of every zone at its section's text width. What the body has to
+  // clear is the height the zone renders at: counting paragraphs sees neither a line
+  // that wraps, nor a taller run, nor the paragraph's own padding.
+  let measureRoot = $state<HTMLDivElement | null>(null);
+  $effect(() => {
+    const root = measureRoot;
+    if (!root) return;
+    const boxes = Array.from(root.querySelectorAll<HTMLElement>('.hf-measure-box'));
+    const n = HF_ZONE_KEYS.length;
+    const read = () => {
+      const next = setHtml.map((_, i) => HF_ZONE_KEYS.map((_, k) => boxes[i * n + k]?.offsetHeight ?? 0));
+      if (String(next) !== String(untrack(() => zoneHeights))) zoneHeights = next;
+    };
+    // A web font arriving late (an embedded one lands after the import) reflows the zone,
+    // so the height is observed rather than read once.
+    const ro = new ResizeObserver(read);
+    for (const el of boxes) ro.observe(el);
+    read();
+    return () => ro.disconnect();
+  });
+
   // Which section a page belongs to: the count of section starts at or before it,
   // clamped to what the document actually carries.
   function sectionOf(page: number): number {
@@ -263,9 +289,8 @@
   let liveZone: HfZone | null = null;
 
   // Which HfSet field a zone + variant is.
-  type ZoneKey = 'header' | 'footer' | 'headerFirst' | 'footerFirst' | 'headerEven' | 'footerEven';
-  const zoneKey = (zone: HfZone, variant: HfVariant): ZoneKey =>
-    (zone + (variant === 'first' ? 'First' : variant === 'even' ? 'Even' : '')) as ZoneKey;
+  const zoneKey = (zone: HfZone, variant: HfVariant): HfZoneKey =>
+    (zone + (variant === 'first' ? 'First' : variant === 'even' ? 'Even' : '')) as HfZoneKey;
 
   function zoneDoc(index: number, zone: HfZone, variant: HfVariant): HfDoc {
     return (sets[index] ?? sets[0])[zoneKey(zone, variant)];
@@ -376,6 +401,18 @@
   }
 </script>
 
+<!-- Only the measuring pane runs it: every pane renders the same zones, and a second
+     writer would just re-report the same heights. -->
+{#if interactive}
+<div class="hf-measure" aria-hidden="true" bind:this={measureRoot}>
+  {#each setHtml as html, i}
+    {#each HF_ZONE_KEYS as key}
+      <div class="hf-zone hf-measure-box" style="width: {contentWidthOf(sectionFirstPage(i))}px">{@html html[key]}</div>
+    {/each}
+  {/each}
+</div>
+{/if}
+
 <!-- Own layer below the body (z-index -1 against .paper's zoom stacking context), so a
      full-page background sits under the text the way LibreOffice paints it. -->
 <div class="hf-bg-layer">
@@ -462,6 +499,23 @@
      while editing, flow as a line. Selecting it still works from the keyboard. */
   .hf-zone :global([data-wrap]) {
     display: none;
+  }
+
+  .hf-measure {
+    position: absolute;
+    top: 0;
+    left: -10000px;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .hf-measure .hf-zone {
+    position: static;
+    height: auto;
+  }
+  /* The paragraph's space above is band height as well. The visible zone anchors its
+     text at the band edge instead, so only the measurement takes it. */
+  .hf-measure .hf-zone :global(p) {
+    margin-top: var(--space-before, 0);
   }
 
   .hf-zone {

@@ -46,7 +46,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { RESYNC_NOTES } from '../editor/extensions/notes';
   import { applyPageSizeVars, pageDimsCm, type PageFormat } from '../storage/pageFormat';
   import { MAX_PAGE_COLUMNS } from '../storage/theme';
-  import { DEFAULT_HF_DISTANCES, hfIsEmpty, hfUsesChapterField, type HfDoc, type HfZone, type HfDistances, type HfSet } from '../storage/headerFooter';
+  import { DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, hfIsEmpty, hfUsesChapterField, type HfDoc, type HfZone, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, PAGE_GAP, pageOfElement, readVerticalMargins, topInEditor, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { findBookmark } from '../editor/extensions/bookmark';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
@@ -158,7 +158,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // its line count) pushes the body's content area in so text doesn't overlap it: the
   // margin grows to fit the zone. ~18.4px = one 12pt line.
   const HF_LINE_PX = 16 * 1.15;
-  function hfReachPx(doc: HfDoc, distPx: number, footer = false): number {
+  // Rendered zone heights from HeaderFooterLayer, in HF_ZONE_KEYS order per section.
+  let hfZoneHeights = $state<number[][]>([]);
+  const zoneHeightPx = (section: number, key: HfZoneKey): number =>
+    hfZoneHeights[section]?.[HF_ZONE_KEYS.indexOf(key)] ?? 0;
+  function hfReachPx(doc: HfDoc, distPx: number, footer = false, measuredPx = 0): number {
     if (!doc || hfIsEmpty(doc)) return 0;
     type Run = { type?: string; attrs?: { height?: number; wrap?: string }; marks?: { type?: string; attrs?: { fontSize?: string; fontFamily?: string } }[] };
     const para = doc.content?.[0] as { content?: Run[]; attrs?: { spaceBefore?: number; spaceAfter?: number; fontSize?: string; fontFamily?: string } } | undefined;
@@ -186,8 +190,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       else if (n.type === 'image' && typeof n.attrs?.height === 'number' && (n.attrs.wrap ?? 'inline') === 'inline') image = Math.max(image, n.attrs.height);
     }
     // A footer is laid out from the page edge up, so its space above rides the band too;
-    // a header's space below just hangs into the body, which LibreOffice does not move.
+    // a header's space below is part of the band the body starts under.
     const spacing = footer ? ((para?.attrs?.spaceBefore ?? 0) * 96) / 72 : 0;
+    // The measured band wins where there is one: the estimate below cannot see a line
+    // that wraps, and it only ever grows a line past the 12pt default. It carries the
+    // paragraph's space above already (HeaderFooterLayer measures with it).
+    if (measuredPx > 0) return distPx + measuredPx;
     return distPx + spacing + total + Math.max(linePx, image);
   }
   let footerDistPx = $derived(cmToPx((hfDistances ?? DEFAULT_HF_DISTANCES).footer));
@@ -197,27 +205,33 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // Effective top/bottom margins (px) pageBreaks reads to keep content clear of the
   // header/footer: "first" = page 1's own zone, "rest" = every page ≥ 2 with the even
   // variant folded in (max), since one --pb-content-*-rest covers all of them.
-  let evenTopReach = $derived(differentOddEven ? hfReachPx(headerEvenDoc ?? null, headerDistPx) : 0);
-  let evenBottomReach = $derived(differentOddEven ? hfReachPx(footerEvenDoc ?? null, footerDistPx, true) : 0);
-  let effTopRest = $derived(Math.max(mTopPx, hfReachPx(headerDoc ?? null, headerDistPx), evenTopReach));
-  let effTopFirst = $derived(Math.max(mTopPx, hfReachPx((differentFirstPage ? headerFirstDoc : headerDoc) ?? null, headerDistPx)));
-  let effBottomRest = $derived(Math.max(mBottomPx, hfReachPx(footerDoc ?? null, footerDistPx, true), evenBottomReach));
-  let effBottomFirst = $derived(Math.max(mBottomPx, hfReachPx((differentFirstPage ? footerFirstDoc : footerDoc) ?? null, footerDistPx, true)));
+  let evenTopReach = $derived(differentOddEven ? hfReachPx(headerEvenDoc ?? null, headerDistPx, false, zoneHeightPx(0, 'headerEven')) : 0);
+  let evenBottomReach = $derived(differentOddEven ? hfReachPx(footerEvenDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footerEven')) : 0);
+  let effTopRest = $derived(Math.max(mTopPx, hfReachPx(headerDoc ?? null, headerDistPx, false, zoneHeightPx(0, 'header')), evenTopReach));
+  let effTopFirst = $derived(Math.max(mTopPx, differentFirstPage
+    ? hfReachPx(headerFirstDoc ?? null, headerDistPx, false, zoneHeightPx(0, 'headerFirst'))
+    : hfReachPx(headerDoc ?? null, headerDistPx, false, zoneHeightPx(0, 'header'))));
+  let effBottomRest = $derived(Math.max(mBottomPx, hfReachPx(footerDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footer')), evenBottomReach));
+  let effBottomFirst = $derived(Math.max(mBottomPx, differentFirstPage
+    ? hfReachPx(footerFirstDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footerFirst'))
+    : hfReachPx(footerDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footer'))));
   // Per-section reaches for pageBreaks: "topFirst|topRest|bottomFirst|bottomRest" in px,
   // one group per section, comma-separated. Section 1 repeats the four vars below; a
   // section with page margins of its own measures against those (`marginsFirst` = page 1).
   let sectionReach = $derived([
     [effTopFirst, effTopRest, effBottomFirst, effBottomRest],
-    ...extraHfSections.map((s) => {
+    ...extraHfSections.map((s, i) => {
       const rest = s.margins ?? null;
       const first = s.marginsFirst ?? rest;
       const topOf = (m: PageMargins | null) => (m ? cmToPx(m.top) : mTopPx);
       const bottomOf = (m: PageMargins | null) => (m ? cmToPx(m.bottom) : mBottomPx);
+      const reach = (key: HfZoneKey, dist: number, footer = false) =>
+        hfReachPx(s[key] ?? null, dist, footer, zoneHeightPx(i + 1, key));
       return [
-        Math.max(topOf(first), hfReachPx((s.differentFirstPage ? s.headerFirst : s.header) ?? null, headerDistPx)),
-        Math.max(topOf(rest), hfReachPx(s.header ?? null, headerDistPx), s.differentOddEven ? hfReachPx(s.headerEven ?? null, headerDistPx) : 0),
-        Math.max(bottomOf(first), hfReachPx((s.differentFirstPage ? s.footerFirst : s.footer) ?? null, footerDistPx, true)),
-        Math.max(bottomOf(rest), hfReachPx(s.footer ?? null, footerDistPx, true), s.differentOddEven ? hfReachPx(s.footerEven ?? null, footerDistPx, true) : 0),
+        Math.max(topOf(first), reach(s.differentFirstPage ? 'headerFirst' : 'header', headerDistPx)),
+        Math.max(topOf(rest), reach('header', headerDistPx), s.differentOddEven ? reach('headerEven', headerDistPx) : 0),
+        Math.max(bottomOf(first), reach(s.differentFirstPage ? 'footerFirst' : 'footer', footerDistPx, true)),
+        Math.max(bottomOf(rest), reach('footer', footerDistPx, true), s.differentOddEven ? reach('footerEven', footerDistPx, true) : 0),
       ];
     }),
   ].map((g) => g.map((n) => Math.round(n)).join('|')).join(','));
@@ -1539,6 +1553,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         {sectionStartPages}
         {chapterStarts}
         {pageNumbering}
+        bind:zoneHeights={hfZoneHeights}
         interactive={i === 0}
       />
     </div>

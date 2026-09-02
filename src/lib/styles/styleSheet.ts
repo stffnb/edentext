@@ -329,7 +329,8 @@ export function styleCss(sheet: StyleSheet): string {
       items.push('.paper .tiptap li:has(> p:not([data-style]))');
       // A header/footer zone is a paragraph of the file too, and both formats base its
       // style on the default one — without this it renders in the editor's own font.
-      items.push('.paper .hf-layer .hf-zone');
+      // The off-screen copy the band is measured from has to match it exactly.
+      items.push('.paper .hf-layer .hf-zone', '.paper .hf-measure .hf-zone');
     }
     rules.push(`${items.join(',\n')} {\n  ${text.join(';\n  ')};\n}`);
   }
