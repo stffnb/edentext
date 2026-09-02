@@ -17,7 +17,7 @@ import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
 } from '../styles/tableStyles';
 import { effectiveListLevel, listStyleMarginCm, listStyleOverridden, MAX_LIST_LEVELS, type ListStyle } from '../styles/listStyles';
-import { outlineIsEmpty, type OutlineNumbering } from '../styles/outlineNumbering';
+import { outlineIsEmpty, type OutlineLevel, type OutlineNumbering } from '../styles/outlineNumbering';
 
 // A table's named style plus the conditional areas it opts into (Word's Table Style
 // Options), collected by exportTable in document order.
@@ -1984,9 +1984,28 @@ function outlineStyleXml(outline: OutlineNumbering | null | undefined): string {
     if (level.displayLevels > 1) attrs['text:display-levels'] = String(level.displayLevels);
     if (level.start !== 1) attrs['text:start-value'] = String(level.start);
     if (level.charStyle) attrs['text:style-name'] = odfStyleName(level.charStyle);
-    levels.push(setTagAttrs('<text:outline-level-style/>', attrs));
+    const tag = setTagAttrs('<text:outline-level-style/>', attrs);
+    const pos = outlineLevelPositionXml(level);
+    levels.push(pos ? `${tag.replace('/>', '>')}${pos}</text:outline-level-style>` : tag);
   });
   return levels.length ? `<text:outline-style style:name="Outline">${levels.join('')}</text:outline-style>` : '';
+}
+
+// Where the level puts its label — the label-alignment mode both products write today.
+// A level the file gave no position keeps none, so nothing is invented for it.
+function outlineLevelPositionXml(level: OutlineLevel): string {
+  const indent = level.indentCm ?? 0;
+  const first = level.firstIndentCm ?? 0;
+  const tab = level.tabCm ?? null;
+  if (!indent && !first && tab == null) return '';
+  const attrs: Record<string, string> = {
+    'text:label-followed-by': tab == null ? 'nothing' : 'listtab',
+    'fo:text-indent': `${first}cm`,
+    'fo:margin-left': `${indent}cm`,
+  };
+  if (tab != null) attrs['text:list-tab-stop-position'] = `${tab}cm`;
+  return '<style:list-level-properties text:list-level-position-and-space-mode="label-alignment">'
+    + `${setTagAttrs('<style:list-level-label-alignment/>', attrs)}</style:list-level-properties>`;
 }
 
 // Resolve STY sentinels: point each marked block at its named style — directly when it

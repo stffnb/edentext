@@ -937,12 +937,21 @@ function outlineFromDocx(ctx: Ctx): OutlineNumbering | null {
     const text = def.lvlText ?? '';
     const holders = [...text.matchAll(/%\d/g)];
     const last = holders[holders.length - 1];
+    // The label's own run, and where Word hangs it: the level's indent is the stop its
+    // tab runs to, the first line the place the label itself starts.
+    const labelText = def.run ? runTextProps(def.run) : null;
+    const indentCm = def.leftTwip != null ? round2(twipToCm(def.leftTwip)) : 0;
+    const firstCm = def.hangingTwip != null ? round2(-twipToCm(def.hangingTwip)) : 0;
     out.push({
       format,
       prefix: holders.length ? text.slice(0, holders[0].index) : '',
-      suffix: last ? text.slice((last.index ?? 0) + 2) : '',
+      suffix: (last ? text.slice((last.index ?? 0) + 2) : '') + (def.suffix === 'space' ? ' ' : ''),
       displayLevels: Math.max(1, holders.length),
       start: def.start ?? 1,
+      ...(labelText && Object.keys(labelText).length ? { labelText } : {}),
+      ...(indentCm ? { indentCm } : {}),
+      ...(firstCm ? { firstIndentCm: firstCm } : {}),
+      ...(def.suffix === 'space' || def.suffix === 'nothing' ? {} : { tabCm: indentCm }),
     });
   }
   // Trailing unnumbered levels carry nothing — a definition ends at its last number.

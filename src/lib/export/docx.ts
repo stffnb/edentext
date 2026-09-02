@@ -4,7 +4,7 @@ import {
   TableOfContents,
   Table, TableRow, TableCell, Header, Footer, PageNumber, SimpleField, ImportedXmlComponent,
   CommentRangeStart, CommentRangeEnd, CommentReference, InsertedTextRun, DeletedTextRun,
-  AlignmentType, LevelFormat, UnderlineType, BorderStyle, ShadingType,
+  AlignmentType, LevelFormat, LevelSuffix, UnderlineType, BorderStyle, ShadingType,
   WidthType, HeightRule, PageOrientation, LineRuleType, LineNumberRestartFormat, TableLayoutType, SectionType, NumberFormat,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
   TextWrappingType, TextWrappingSide, TabStopType, LeaderType,
@@ -345,12 +345,26 @@ class Numbering {
       const from = Math.max(1, l + 1 - Math.max(1, def.displayLevels) + 1);
       const chain = [];
       for (let k = from; k <= l + 1; k++) if (outline[k - 1]?.format !== 'none') chain.push(`%${k}`);
+      // The label's own run and the indent it hangs out of; a level with no stop to
+      // run to is followed by nothing, its gap already part of the label text.
+      const run = def.labelText ? runPropsOf(def.labelText) : {};
+      const indent: Writable<IIndentAttributesProperties> = {};
+      if (def.indentCm) indent.left = cmToTwip(def.indentCm);
+      if (def.firstIndentCm) {
+        if (def.firstIndentCm < 0) indent.hanging = cmToTwip(-def.firstIndentCm);
+        else indent.firstLine = cmToTwip(def.firstIndentCm);
+      }
+      const style: { run?: IRunStylePropertiesOptions; paragraph?: { indent: IIndentAttributesProperties } } = {};
+      if (Object.keys(run).length) style.run = run;
+      if (Object.keys(indent).length) style.paragraph = { indent };
       levels.push({
         level: l,
         format: ORDERED_FORMAT[def.format] ?? LevelFormat.DECIMAL,
         text: `${def.prefix}${chain.join('.')}${def.suffix || ' '}`,
         start: def.start ?? 1,
         alignment: AlignmentType.LEFT,
+        suffix: def.tabCm == null ? LevelSuffix.NOTHING : LevelSuffix.TAB,
+        ...(Object.keys(style).length ? { style } : {}),
       });
     }
     this.map.set(reference, levels);
@@ -2542,9 +2556,8 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   };
 }
 
-// One registry character style → a Word character style (w:type="character").
-function characterStyleOf(style: Style): ICharacterStyleOptions {
-  const t = style.text;
+// A run of text the model describes → Word's run properties.
+function runPropsOf(t: TextProps): Writable<IRunStylePropertiesOptions> {
   const run: Writable<IRunStylePropertiesOptions> = {};
   if (t.fontFamily) run.font = t.fontFamily === 'Liberation Serif' ? DOC_FONT : t.fontFamily;
   if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
@@ -2555,7 +2568,12 @@ function characterStyleOf(style: Style): ICharacterStyleOptions {
   if (t.underline) run.underline = {};
   if (t.strike) run.strike = t.strike;
   if (t.color) run.color = t.color.replace('#', '');
-  return { id: docxStyleId(style.name), name: style.name, quickFormat: true, run };
+  return run;
+}
+
+// One registry character style → a Word character style (w:type="character").
+function characterStyleOf(style: Style): ICharacterStyleOptions {
+  return { id: docxStyleId(style.name), name: style.name, quickFormat: true, run: runPropsOf(style.text) };
 }
 
 // Word needs a referenced table style to exist. ODF/our model hold the banding, and the

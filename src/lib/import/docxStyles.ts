@@ -44,7 +44,10 @@ export type RunProps = {
 
 // A numbering level definition (numbering.xml w:lvl). bulletFont is the level's
 // w:rPr/w:rFonts (Wingdings/Symbol give the bullet glyph its meaning).
-export type LevelDef = { numFmt?: string; lvlText?: string; leftTwip?: number; start?: number; bulletFont?: string; rightAligned?: boolean };
+export type LevelDef = {
+  numFmt?: string; lvlText?: string; leftTwip?: number; hangingTwip?: number; start?: number;
+  bulletFont?: string; rightAligned?: boolean; suffix?: string; run?: RunProps;
+};
 
 // Paragraph spacing from a w:pPr/w:spacing (only the attributes actually present, so
 // omitted ones inherit up the style chain). before/after in twips, line per w:line.
@@ -365,7 +368,18 @@ export class DocxStyles {
         const txt = firstChild(lvl, 'lvlText'); if (txt) def.lvlText = wVal(txt) ?? undefined;
         const start = firstChild(lvl, 'start'); if (start) { const n = parseInt(wVal(start) ?? '', 10); if (Number.isFinite(n)) def.start = n; }
         const ind = firstChild(lvl, 'pPr') && firstChild(firstChild(lvl, 'pPr')!, 'ind');
-        if (ind) { const l = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10); if (Number.isFinite(l)) def.leftTwip = l; }
+        if (ind) {
+          const l = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10);
+          if (Number.isFinite(l)) def.leftTwip = l;
+          // A first line past the indent is a negative hang, which is how Word writes a
+          // label sitting right of the text it labels.
+          const h = parseInt(ind.getAttributeNS(W, 'hanging') ?? '', 10);
+          const f = parseInt(ind.getAttributeNS(W, 'firstLine') ?? '', 10);
+          if (Number.isFinite(h)) def.hangingTwip = h;
+          else if (Number.isFinite(f)) def.hangingTwip = -f;
+        }
+        const suff = firstChild(lvl, 'suff'); if (suff) def.suffix = wVal(suff) ?? undefined;
+        const rPr = firstChild(lvl, 'rPr'); if (rPr) def.run = parseRunProps(rPr);
         const jc = firstChild(lvl, 'lvlJc');
         if (jc && (wVal(jc) === 'right' || wVal(jc) === 'end')) def.rightAligned = true;
         const rf = firstChild(lvl, 'rPr') && firstChild(firstChild(lvl, 'rPr')!, 'rFonts');

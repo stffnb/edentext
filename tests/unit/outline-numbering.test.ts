@@ -4,7 +4,7 @@ import { importOdt } from '../../src/lib/import/odt';
 import { importDocx } from '../../src/lib/import/docx';
 import { buildOdt } from '../../src/lib/export/odt';
 import { buildDocx } from '../../src/lib/export/docx';
-import { builtinStyleSheet } from '../../src/lib/styles/styleSheet';
+import { builtinStyleSheet, styleCss } from '../../src/lib/styles/styleSheet';
 import { outlineCss, outlineLabel, type OutlineNumbering } from '../../src/lib/styles/outlineNumbering';
 import { formatOrdinal } from '../../src/lib/utils/orderedListTypes';
 
@@ -28,6 +28,27 @@ function odtWithOutline(): Uint8Array {
     <text:outline-level-style text:level="1" style:num-suffix=". " style:num-format="1"/>
     <text:outline-level-style text:level="2" style:num-suffix=" " style:num-format="1" text:display-levels="2"/>
     <text:outline-level-style text:level="3" style:num-suffix=") " style:num-format="A" text:start-value="2"/>
+   </text:outline-style>
+  </office:styles></office:document-styles>`;
+  const content = `<?xml version="1.0"?><office:document-content ${NS}><office:body><office:text>
+   <text:h text:outline-level="1" text:style-name="Standard">One</text:h>
+  </office:text></office:body></office:document-content>`;
+  return zipSync({ 'content.xml': strToU8(content), 'styles.xml': strToU8(styles) });
+}
+
+// The shape LibreOffice writes for a chapter number of its own size: a character style
+// on the level, and the label hung out of the paragraph's indent.
+function odtWithGeometry(): Uint8Array {
+  const styles = `<?xml version="1.0"?><office:document-styles ${NS}><office:styles>
+   <style:style style:name="Standard" style:family="paragraph"/>
+   <style:style style:name="Chapter_20_Number" style:display-name="Chapter Number" style:family="text">
+    <style:text-properties fo:color="#B2B2B2" fo:font-size="96pt"/></style:style>
+   <text:outline-style style:name="Outline">
+    <text:outline-level-style text:level="1" text:style-name="Chapter_20_Number" style:num-suffix=". " style:num-format="1">
+     <style:list-level-properties text:list-level-position-and-space-mode="label-alignment">
+      <style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="7.62mm"
+       fo:text-indent="-7.62mm" fo:margin-left="7.62mm"/>
+     </style:list-level-properties></text:outline-level-style>
    </text:outline-style>
   </office:styles></office:document-styles>`;
   const content = `<?xml version="1.0"?><office:document-content ${NS}><office:body><office:text>
@@ -77,8 +98,41 @@ describe('chapter numbering', () => {
   it('draws the label with counters that reset down the levels', () => {
     const css = outlineCss(outline);
     expect(css).toContain('counter-increment: edt-outline-1');
-    expect(css).toMatch(/h2::before \{\n {2}content: counter\(edt-outline-1, decimal\) "\." counter\(edt-outline-2, decimal\) " ";/);
+    expect(css).toMatch(/h2[^{\n]*::before \{\n {2}content: counter\(edt-outline-1, decimal\) "\." counter\(edt-outline-2, decimal\) " ";/);
     // A heading in a cell or a list item is not part of the chapter count.
-    expect(css).toContain('counter-increment: none');
+    expect(css).toContain(':not(:is(td, th, li, .frame-node) *)');
+  });
+
+  it('reads the label position and the style it is set in', () => {
+    const level = importOdt(odtWithGeometry()).styles?.outline?.[0];
+    expect(level?.indentCm).toBeCloseTo(0.762, 3);
+    expect(level?.firstIndentCm).toBeCloseTo(-0.762, 3);
+    expect(level?.tabCm).toBeCloseTo(0.762, 3);
+    expect(level?.charStyle).toBe('Chapter Number');
+    expect(level?.labelText).toMatchObject({ fontSizePt: 96, color: '#B2B2B2' });
+  });
+
+  it('hangs the label out of the indent, in the size the file gives it', () => {
+    const sheet = importOdt(odtWithGeometry()).styles!;
+    const css = styleCss(sheet);
+    expect(css).toMatch(/h1[^{]*\{\n[^}]*margin-left: calc\(var\(--sec-inset-left, 0px\) \+ 0\.762cm\)/);
+    expect(css).toMatch(/h1[^{]*\{\n[^}]*text-indent: -0\.762cm/);
+    // The stop the label's tab runs to is its minimum width; a wider label overruns it.
+    expect(css).toMatch(/h1[^{]*::before \{\n[^}]*min-width: 0\.762cm/);
+    expect(css).toMatch(/h1[^{]*::before \{\n[^}]*font-size: 96pt/);
+  });
+
+  it('carries the label position through both formats', async () => {
+    const sheet = { ...builtinStyleSheet(), outline: importOdt(odtWithGeometry()).styles!.outline };
+    const odt = await buildOdt(headingDoc as never, margins, 'portrait', undefined, null, 'A4', sheet);
+    expect(strFromU8(unzipSync(odt)['styles.xml'])).toContain('text:list-tab-stop-position="0.762cm"');
+    expect(importOdt(odt).styles?.outline?.[0]).toMatchObject({ indentCm: 0.762, firstIndentCm: -0.762, tabCm: 0.762 });
+
+    const docx = await buildDocx(headingDoc as never, margins, 'portrait', undefined, null, 'A4', sheet);
+    const back = importDocx(docx).styles?.outline?.[0];
+    // Word's twips round the same tenth of a millimetre both ways.
+    expect(back?.indentCm).toBeCloseTo(0.762, 2);
+    expect(back?.firstIndentCm).toBeCloseTo(-0.762, 2);
+    expect(back?.labelText).toMatchObject({ fontSizePt: 96, color: '#B2B2B2' });
   });
 });

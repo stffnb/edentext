@@ -2,7 +2,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
-import { DEFAULT_OUTLINE_LEVEL, MAX_OUTLINE_LEVELS, type OutlineNumbering } from '../styles/outlineNumbering';
+import { DEFAULT_OUTLINE_LEVEL, MAX_OUTLINE_LEVELS, type OutlineLevel, type OutlineNumbering } from '../styles/outlineNumbering';
 import { LIST_LEVEL_STEP_CM, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage, framePx } from '../editor/extensions/image';
@@ -1534,6 +1534,12 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
     if (level) style.outlineLevel = Number(level[1]);
     sheet.paragraph[name] = style;
   }
+  // A chapter number's character style is named by the outline definition, not by any
+  // run, so the walk never sees it — and the export would reference a style it dropped.
+  for (const level of Array.from(resolver.outlineStyle()?.children ?? [])) {
+    const named = level.getAttributeNS(NS.text, 'style-name');
+    if (named) ctx.usedCharStyles.add(named);
+  }
   for (const odfName of ctx.usedCharStyles) {
     const name = ctx.charStyleNames.get(odfName) ?? odfName;
     const builtin = sheet.character[name];
@@ -1568,18 +1574,53 @@ function outlineFromOdf(el: Element | null, ctx: Ctx): OutlineNumbering | null {
     }
     numbered = true;
     const charStyle = def.getAttributeNS(NS.text, 'style-name');
+    const name = charStyle ? ctx.charStyleNames.get(charStyle) ?? charStyle : null;
+    const labelText = charStyle ? textPropsFromOdf(ctx.resolver.spanTextProps(charStyle), ctx.resolver) : null;
+    const geometry = outlineLevelGeometry(def);
     out.push({
       format: format as NoteNumFormat,
       prefix: def.getAttributeNS(NS.style, 'num-prefix') ?? '',
-      suffix: def.getAttributeNS(NS.style, 'num-suffix') ?? '',
+      suffix: (def.getAttributeNS(NS.style, 'num-suffix') ?? '') + geometry.pad,
       displayLevels: Math.max(1, parseInt(def.getAttributeNS(NS.text, 'display-levels') ?? '1', 10) || 1),
       start: Math.max(0, parseInt(def.getAttributeNS(NS.text, 'start-value') ?? '1', 10) || 1),
-      ...(charStyle ? { charStyle: ctx.charStyleNames.get(charStyle) ?? charStyle } : {}),
+      ...(name ? { charStyle: name } : {}),
+      ...(labelText && Object.keys(labelText).length ? { labelText } : {}),
+      ...geometry.pos,
     });
   }
   // Trailing unnumbered levels carry nothing — a definition ends at its last number.
   while (out.length && out[out.length - 1].format === 'none') out.pop();
   return numbered ? out : null;
+}
+
+// Where a level puts its label: the newer label-alignment mode, else the positional one
+// (text:space-before + text:min-label-width). A label followed by a space carries it in
+// its suffix, since only a tab has a stop to run to.
+function outlineLevelGeometry(def: Element): { pos: Partial<OutlineLevel>; pad: string } {
+  const props = def.getElementsByTagNameNS(NS.style, 'list-level-properties')[0] ?? null;
+  const align = props?.getElementsByTagNameNS(NS.style, 'list-level-label-alignment')[0] ?? null;
+  const pos: Partial<OutlineLevel> = {};
+  let pad = '';
+  const cm = (v: number | null) => (v == null ? null : Math.round(v * 1000) / 1000);
+  if (align) {
+    const indent = cm(lengthToCm(align.getAttributeNS(NS.fo, 'margin-left'))) ?? 0;
+    const first = cm(lengthToCm(align.getAttributeNS(NS.fo, 'text-indent'))) ?? 0;
+    const followedBy = align.getAttributeNS(NS.text, 'label-followed-by') ?? 'listtab';
+    if (indent) pos.indentCm = indent;
+    if (first) pos.firstIndentCm = first;
+    if (followedBy === 'listtab') {
+      pos.tabCm = cm(lengthToCm(align.getAttributeNS(NS.text, 'list-tab-stop-position'))) ?? indent;
+    } else if (followedBy === 'space') pad = ' ';
+  } else if (props) {
+    const before = cm(lengthToCm(props.getAttributeNS(NS.text, 'space-before'))) ?? 0;
+    const width = cm(lengthToCm(props.getAttributeNS(NS.text, 'min-label-width'))) ?? 0;
+    if (before || width) {
+      pos.indentCm = Math.round((before + width) * 1000) / 1000;
+      pos.firstIndentCm = -width;
+      pos.tabCm = pos.indentCm;
+    }
+  }
+  return { pos, pad };
 }
 
 // A named <text:list-style> element → the registry's shape. Each level's indentCm is

@@ -148,3 +148,12 @@ holds it as a reactive singleton persisted to `edentext-styles` (same shape as `
   styles, Word as a multilevel numbering the heading styles point at (`w:numPr` on the
   style, `w:pStyle` in the level) — the DOCX pass mints that numbering's `w:num` itself,
   since no paragraph references it.
+  A level also carries **how the label is set and where it sits**: the character style
+  the file names (resolved into `labelText`, since Word's `w:lvl/w:rPr` names none), the
+  paragraph's indent, its first line and the stop the label's tab runs to. The label is
+  an *inline block* so one set larger than its heading grows the line as both products
+  grow it, with the stop as its minimum width; `text-indent` inherits into that block
+  and is zeroed there, or the hanging indent would shrink the label's own box by it.
+  Probed: a label wider than its stop overruns it, and LibreOffice then advances to the
+  paragraph's next tab stop (its own, else the 1.25cm grid, measured from the indent) —
+  the editor butts the title against the label instead, up to one grid step short.

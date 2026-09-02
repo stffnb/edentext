@@ -343,7 +343,7 @@ export function styleCss(sheet: StyleSheet): string {
   // Table styles last: their cell selectors must outrank the paragraph rules above.
   const table = tableStyleCss(sheet.table ?? {});
   if (table) rules.push(table);
-  const outline = outlineCss(sheet.outline);
+  const outline = outlineCss(sheet.outline, (t) => textDeclarations(t));
   if (outline) rules.push(outline);
   return rules.join('\n\n');
 }
