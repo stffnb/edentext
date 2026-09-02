@@ -170,6 +170,7 @@
   .field {
     display: flex;
     align-items: center;
+    align-self: center;
     gap: 6px;
     color: var(--w-text-dim);
   }

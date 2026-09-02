@@ -14,6 +14,19 @@
   const KINDS = Object.keys(SHAPES) as ShapeKind[];
   let open = $state(false);
   let host = $state<HTMLElement | null>(null);
+  let btn = $state<HTMLElement | null>(null);
+  // The ribbon band clips its overflow and the floating box toolbar stacks above it,
+  // so the menu is placed from the button's rect and shown in the top layer.
+  let pos = $state({ top: 0, left: 0 });
+  const topLayer = (node: HTMLElement) => node.showPopover();
+
+  function place() {
+    const r = btn?.getBoundingClientRect();
+    if (!r) return;
+    const band = host?.closest('.ribbon-body')?.getBoundingClientRect();
+    const left = Math.min(r.left, window.innerWidth - 220);
+    pos = { top: Math.max(r.bottom, band?.bottom ?? 0) + 4, left: Math.max(8, left) };
+  }
 
   const label = (k: ShapeKind) => t().textBox.shapes[k];
 
@@ -32,14 +45,17 @@
     aria-label={t().textBox.chooseShape}
     aria-haspopup="true"
     aria-expanded={open}
-    onclick={() => (open = !open)}
+    bind:this={btn}
+    onclick={() => { open = !open; if (open) place(); }}
   >
     {@render tile(value)}
-    <span class="chevron" aria-hidden="true">▾</span>
+    <svg class="chevron" width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+      <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
   </button>
 
   {#if open}
-    <div class="shape-menu" role="menu">
+    <div class="shape-menu" role="menu" popover="manual" use:topLayer style="top: {pos.top}px; left: {pos.left}px">
       {#each KINDS as k}
         <button
           class="shape-tile"
@@ -93,15 +109,16 @@
     cursor: pointer;
   }
   .shape-btn:hover { background: var(--w-hover, rgba(0, 0, 0, 0.08)); }
-  .shape-btn svg { width: 22px; height: 22px; }
-  .shape-btn.compact svg { width: 18px; height: 18px; }
-  .chevron { font-size: 9px; line-height: 1; }
+  /* Kept below the ribbon's own 28px rule for a captioned picker, so the tile grows
+     there and stays compact in the floating toolbar. */
+  :where(.shape-btn) svg:first-of-type { width: 22px; height: 22px; }
+  :where(.shape-btn.compact) svg:first-of-type { width: 18px; height: 18px; }
+  .chevron { width: 8px; height: 8px; flex: none; }
 
   .shape-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    z-index: 60;
+    position: fixed;
+    inset: auto;
+    margin: 0;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 2px;
