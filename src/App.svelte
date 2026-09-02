@@ -13,6 +13,7 @@
   import { supportsFsAccess, saveOdt, saveAsOdt, saveDocx, saveAsDocx, saveAsTemplate, openOdt } from './lib/export/saveFile';
   import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFile, forgetRecentFiles, pruneRecentFiles, type RecentFile } from './lib/storage/recentFiles';
   import { importOdt } from './lib/import/odt';
+  import { isProtected, decryptPackage, WRONG_PASSWORD } from './lib/crypto/protect';
   import { importDocx } from './lib/import/docx';
   import { convertUnsupportedImages } from './lib/import/imageFormats';
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
@@ -56,6 +57,7 @@
   import TemplateGalleryDialog from './lib/components/TemplateGalleryDialog.svelte';
   import type { TemplateEntry } from './lib/templates/types';
   import DocPropertiesDialog from './lib/components/DocPropertiesDialog.svelte';
+  import PasswordDialog from './lib/components/PasswordDialog.svelte';
   import CommentsPane from './lib/components/CommentsPane.svelte';
   import RevisionsPane from './lib/components/RevisionsPane.svelte';
   import ConnectorLayer from './lib/components/ConnectorLayer.svelte';
@@ -481,6 +483,13 @@
   // The file the document is saved to (File System Access API). Session-only: a
   // reload restores the doc from localStorage but the first Save re-prompts.
   let fileHandle: FileSystemFileHandle | null = $state(null);
+  // The password the document is saved with. Session-only: it is never written to
+  // localStorage, and the autosaved copy there stays unencrypted.
+  let docPassword: string | null = $state(null);
+  let passwordSetOpen = $state(false);
+  let passwordAskOpen = $state(false);
+  let passwordWrong = $state(false);
+  let askResolve: ((password: string | null) => void) | null = null;
   // Word's and LibreOffice's recent-documents list; a click reopens the file itself.
   // Only a browser with the File System Access API has handles to reopen from, so
   // elsewhere the list stays empty; a startup prune drops entries whose handle is gone.
@@ -581,6 +590,7 @@
     saveDocProperties(docProps);
     fileHandle = null;
     documentFormat = 'odt';
+    docPassword = null;
     // Styles and note settings live in the document, so a new one starts from the built-ins
     setStyleSheet(builtinStyleSheet());
     setNoteSettings(DEFAULT_NOTE_SETTINGS);
@@ -634,9 +644,41 @@
     if (Array.isArray(n.content)) for (const c of n.content) collectFontFamilies(c, out);
   }
 
+  function settleAsk(password: string | null): void {
+    const resolve = askResolve;
+    askResolve = null;
+    resolve?.(password);
+  }
+
+  // Ask until the password fits or the user gives up; null means give up.
+  async function unprotect(bytes: Uint8Array): Promise<Uint8Array | null> {
+    for (;;) {
+      const password = await new Promise<string | null>((resolve) => {
+        askResolve = resolve;
+        passwordAskOpen = true;
+      });
+      if (password === null) return null;
+      try {
+        const plain = await decryptPackage(bytes, password);
+        docPassword = password;
+        passwordWrong = false;
+        return plain;
+      } catch (err) {
+        if ((err as Error)?.message !== WRONG_PASSWORD) throw err;
+        passwordWrong = true;
+      }
+    }
+  }
+
   async function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string) {
     if (!editor) return;
     try {
+      // Before anything reads the archive: an encrypted file is not one yet.
+      if (isProtected(bytes)) {
+        const opened = await unprotect(bytes);
+        if (!opened) return;
+        bytes = opened;
+      }
       const name = sourceName?.toLowerCase() ?? '';
       let isDocx = name.endsWith('.docx') || name.endsWith('.dotx');
       // A template is loaded for its content but never bound as the handle, so the
@@ -822,17 +864,18 @@
       if (documentFormat === 'docx') {
         const { buildDocx } = await import('./lib/export/docx');
         const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks);
-        fileHandle = await saveDocx(bytes, suggestedFilenameDocx(json), fileHandle);
+        fileHandle = await saveDocx(bytes, suggestedFilenameDocx(json), fileHandle, docPassword);
         recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilenameDocx(json), fileHandle);
         return;
       }
       const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks);
-      fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle);
+      fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle, docPassword);
       recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
-      // A stored handle may have lost permission; re-prompt via Save As.
-      if (fileHandle) { fileHandle = null; await handleSaveAs(); return; }
+      // A stored handle may have lost permission; re-prompt via Save As. Encryption
+      // failing is not that case — it would silently save the document unprotected.
+      if (fileHandle && (err as Error)?.name !== 'EncryptionError') { fileHandle = null; await handleSaveAs(); return; }
       console.error('[save] Failed to save file:', err);
       failed(t().dialogs.couldNotSave, err);
     }
@@ -844,7 +887,7 @@
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
       const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks);
-      fileHandle = await saveAsOdt(bytes, suggestedFilename(json));
+      fileHandle = await saveAsOdt(bytes, suggestedFilename(json), docPassword);
       documentFormat = 'odt'; // Save As is odt-only, so a docx-opened document switches format here.
       recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
     } catch (err) {
@@ -870,7 +913,7 @@
           return docxToDotx(await buildDocx(json, ...args));
         }
         return odtToOtt(await buildOdt(json, ...args));
-      }, stripOdtExtension(suggestedFilename(json)));
+      }, stripOdtExtension(suggestedFilename(json)), docPassword);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save template:', err);
@@ -917,7 +960,7 @@
       const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       const { buildDocx } = await import('./lib/export/docx');
       const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks);
-      await saveAsDocx(bytes, suggestedFilenameDocx(json));
+      await saveAsDocx(bytes, suggestedFilenameDocx(json), docPassword);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[docx] Export failed:', err);
@@ -1182,6 +1225,8 @@
       onPrint={handlePrint}
       onAbout={() => (aboutOpen = true)}
       onDocProperties={() => (docPropsOpen = true)}
+      onProtect={() => (passwordSetOpen = true)}
+      hasPassword={docPassword !== null}
       onAutoCorrect={() => (autoCorrectOpen = true)}
       onAutoText={() => (autoTextOpen = true)}
       onNewComment={addComment}
@@ -1307,6 +1352,10 @@
                   <span class="theme-option-hint">{t().app.clearRecentFiles}</span>
                 </button>
               {/if}
+              <button class="theme-option" onclick={() => { exportMenuOpen = false; passwordSetOpen = true; }} role="menuitem">
+                <span>{t().password.menu}</span>
+                {#if docPassword !== null}<span class="theme-option-hint">{t().password.menuOn}</span>{/if}
+              </button>
               <div class="theme-heading">{t().docProps.title}</div>
               <button class="theme-option" onclick={() => { exportMenuOpen = false; docPropsOpen = true; }} role="menuitem">
                 <span>{t().docProps.title}</span>
@@ -1591,6 +1640,19 @@
   <AutoTextDialog bind:open={autoTextOpen} editor={activeEditor} />
   <ThesaurusDialog bind:open={thesaurusOpen} editor={activeEditor} />
   <DocPropertiesDialog bind:open={docPropsOpen} props={docProps} onApply={(p) => { docProps = p; saveDocProperties(p); }} />
+  <PasswordDialog
+    bind:open={passwordSetOpen}
+    mode="set"
+    hasPassword={docPassword !== null}
+    onApply={(password) => (docPassword = password)}
+  />
+  <PasswordDialog
+    bind:open={passwordAskOpen}
+    mode="ask"
+    wrong={passwordWrong}
+    onApply={settleAsk}
+    onCancel={() => settleAsk(null)}
+  />
   <!-- One instance for every entry point (styles gallery, insert-table menu): the
        callers only say which family to land on. -->
   <StyleManagerDialog bind:open={styleManagerOpen} family={styleManagerFamily} editor={activeEditor} />

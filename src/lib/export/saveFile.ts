@@ -69,6 +69,15 @@ async function writeHandle(handle: FileSystemFileHandle, bytes: Uint8Array): Pro
   await writable.close();
 }
 
+// Password protection is the last thing that happens to the bytes, after every
+// post-processing pass and after the template conversion. The crypto module loads
+// only when a password is actually set.
+async function protect(bytes: Uint8Array, password: string | null): Promise<Uint8Array> {
+  if (!password) return bytes;
+  const { encryptPackage } = await import('../crypto/protect');
+  return encryptPackage(bytes, password);
+}
+
 // Save to the given handle if we have one; otherwise prompt for a location (i.e.
 // the first save acts as Save As). Returns the handle written to, or null when
 // falling back to a plain download. Throws AbortError if the user cancels.
@@ -76,13 +85,15 @@ export async function saveOdt(
   bytes: Uint8Array,
   suggestedName: string,
   handle: FileSystemFileHandle | null,
+  password: string | null = null,
 ): Promise<FileSystemFileHandle | null> {
+  const out = await protect(bytes, password);
   if (!supportsFsAccess()) {
-    download(bytes, suggestedName);
+    download(out, suggestedName);
     return null;
   }
   const target = handle ?? (await (window as WinFs).showSaveFilePicker!({ suggestedName, types: PICKER_TYPES }));
-  await writeHandle(target, bytes);
+  await writeHandle(target, out);
   return target;
 }
 
@@ -90,13 +101,15 @@ export async function saveOdt(
 export async function saveAsOdt(
   bytes: Uint8Array,
   suggestedName: string,
+  password: string | null = null,
 ): Promise<FileSystemFileHandle | null> {
+  const out = await protect(bytes, password);
   if (!supportsFsAccess()) {
-    download(bytes, suggestedName);
+    download(out, suggestedName);
     return null;
   }
   const handle = await (window as WinFs).showSaveFilePicker!({ suggestedName, types: PICKER_TYPES });
-  await writeHandle(handle, bytes);
+  await writeHandle(handle, out);
   return handle;
 }
 
@@ -106,20 +119,26 @@ export async function saveDocx(
   bytes: Uint8Array,
   suggestedName: string,
   handle: FileSystemFileHandle | null,
+  password: string | null = null,
 ): Promise<FileSystemFileHandle | null> {
+  const out = await protect(bytes, password);
   if (!supportsFsAccess()) {
-    download(bytes, suggestedName, DOCX_MIME);
+    download(out, suggestedName, DOCX_MIME);
     return null;
   }
   const target = handle ?? (await (window as WinFs).showSaveFilePicker!({ suggestedName, types: DOCX_PICKER_TYPES }));
-  await writeHandle(target, bytes);
+  await writeHandle(target, out);
   return target;
 }
 
 // Export a .docx: always prompt for a location (no handle is tracked — this is the
 // explicit "Export" action, like PDF). Returns null. Throws AbortError if cancelled.
-export async function saveAsDocx(bytes: Uint8Array, suggestedName: string): Promise<void> {
-  await saveDocx(bytes, suggestedName, null);
+export async function saveAsDocx(
+  bytes: Uint8Array,
+  suggestedName: string,
+  password: string | null = null,
+): Promise<void> {
+  await saveDocx(bytes, suggestedName, null, password);
 }
 
 // Save a template. The picker offers both formats, so the bytes can only be built
@@ -128,15 +147,17 @@ export async function saveAsDocx(bytes: Uint8Array, suggestedName: string): Prom
 export async function saveAsTemplate(
   build: (kind: 'ott' | 'dotx') => Promise<Uint8Array>,
   baseName: string,
+  password: string | null = null,
 ): Promise<void> {
   if (!supportsFsAccess()) {
-    download(await build('ott'), `${baseName}.ott`, OTT_MIME);
+    download(await protect(await build('ott'), password), `${baseName}.ott`, OTT_MIME);
     return;
   }
   const handle = await (window as WinFs).showSaveFilePicker!({
     suggestedName: `${baseName}.ott`, types: TEMPLATE_PICKER_TYPES,
   });
-  await writeHandle(handle, await build(handle.name.toLowerCase().endsWith('.dotx') ? 'dotx' : 'ott'));
+  const kind = handle.name.toLowerCase().endsWith('.dotx') ? 'dotx' : 'ott';
+  await writeHandle(handle, await protect(await build(kind), password));
 }
 
 // Prompt for an .odt/.ott/.docx to open, capturing its handle so a later save can

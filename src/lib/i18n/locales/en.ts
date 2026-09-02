@@ -1112,6 +1112,18 @@ const en = {
     comments: 'Comments were removed',
     missingFonts: (fonts: string) => `These fonts aren't installed and were shown with a substitute: ${fonts}`,
   },
+  password: {
+    menu: 'Protect with a password…',
+    menuOn: 'Protected',
+    setTitle: 'Protect with a password',
+    askTitle: 'This document is protected',
+    password: 'Password',
+    repeat: 'Repeat',
+    mismatch: 'The two entries differ.',
+    wrong: 'Wrong password.',
+    note: 'Protects the saved file. The copy this editor keeps in the browser stays unencrypted.',
+    remove: 'Remove protection',
+  },
   importError: {
     odtArchive: 'Not a valid .odt file (could not read the archive).',
     odtContentMissing: 'Not a valid .odt file (content.xml is missing).',
@@ -1121,6 +1133,7 @@ const en = {
     docxArchive: 'Not a valid .docx file (could not read the archive).',
     docxMissing: 'Not a valid .docx file (word/document.xml is missing).',
     docxNoBody: 'Not a Word document (no w:body).',
+    encryptionUnsupported: 'This document uses an encryption method that is not supported.',
   },
 };
 

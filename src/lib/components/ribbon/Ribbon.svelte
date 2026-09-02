@@ -68,7 +68,8 @@
     onSelectTheme,
     docxBusy = false,
     pdfBusy = false,
-    onNew, onNewFromTemplate, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onAutoCorrect, onAutoText, onNewComment,
+    hasPassword = false,
+    onNew, onNewFromTemplate, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onProtect, onAutoCorrect, onAutoText, onNewComment,
     navigatorOpen = false, onToggleNavigator,
     recentFiles = [], onOpenRecent, onForgetRecent,
   }: {
@@ -122,6 +123,8 @@
     onPrint?: () => void;
     onAbout?: () => void;
     onDocProperties?: () => void;
+    onProtect?: () => void;
+    hasPassword?: boolean;
     onAutoCorrect?: () => void;
     onAutoText?: () => void;
     onNewComment?: () => void;
@@ -246,6 +249,10 @@
           <button onclick={() => run(onPrint)} disabled={!editor || pdfBusy}>
             <Icon name="print" size={16} />{t().app.print}
             <span class="menu-key">{withShortcut('Ctrl+P')}</span>
+          </button>
+          <button onclick={() => run(onProtect)}>
+            <Icon name="lock" size={16} />{t().password.menu}
+            {#if hasPassword}<span class="menu-key">{t().password.menuOn}</span>{/if}
           </button>
           <button onclick={() => run(onDocProperties)}>
             <Icon name="info" size={16} />{t().docProps.title}

@@ -1104,6 +1104,18 @@ const de: Messages = {
     comments: 'Kommentare wurden entfernt',
     missingFonts: (fonts) => `Diese Schriftarten sind nicht installiert und wurden durch Ersatzschriften dargestellt: ${fonts}`,
   },
+  password: {
+    menu: 'Mit Passwort schützen…',
+    menuOn: 'Geschützt',
+    setTitle: 'Mit Passwort schützen',
+    askTitle: 'Dieses Dokument ist geschützt',
+    password: 'Passwort',
+    repeat: 'Wiederholen',
+    mismatch: 'Die beiden Eingaben unterscheiden sich.',
+    wrong: 'Falsches Passwort.',
+    note: 'Schützt die gespeicherte Datei. Die Kopie, die der Editor im Browser hält, bleibt unverschlüsselt.',
+    remove: 'Schutz entfernen',
+  },
   importError: {
     odtArchive: 'Keine gültige .odt-Datei (Archiv konnte nicht gelesen werden).',
     odtContentMissing: 'Keine gültige .odt-Datei (content.xml fehlt).',
@@ -1113,6 +1125,7 @@ const de: Messages = {
     docxArchive: 'Keine gültige .docx-Datei (Archiv konnte nicht gelesen werden).',
     docxMissing: 'Keine gültige .docx-Datei (word/document.xml fehlt).',
     docxNoBody: 'Kein Word-Dokument (kein w:body).',
+    encryptionUnsupported: 'Dieses Dokument benutzt ein Verschlüsselungsverfahren, das nicht unterstützt wird.',
   },
 };
 
