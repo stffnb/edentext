@@ -308,6 +308,12 @@ export function layOutZoneTabs(zone: HTMLElement): void {
   // Math Guide's footer stayed two lines over three pixels.
   const wrapping = para.style.whiteSpace;
   para.style.whiteSpace = 'pre';
+  // Laid out from the left, whatever the paragraph's alignment: LibreOffice positions
+  // the tabbed segments on the stops and only then shifts the whole line by what is
+  // left over (probed — a right-aligned head with two stops starts at the left edge,
+  // and moves right by exactly the gap when its last stop sits inside the column).
+  const align = para.style.textAlign;
+  para.style.textAlign = 'left';
   const rect = para.getBoundingClientRect();
   const scale = para.offsetWidth ? rect.width / para.offsetWidth : 1;
   const cs = getComputedStyle(para);
@@ -317,7 +323,7 @@ export function layOutZoneTabs(zone: HTMLElement): void {
   // a run ending exactly on the boundary wraps and a pixel short of it shows on nothing.
   const lineCm = (rect.width / (scale || 1) - padLeft - parseFloat(cs.paddingRight || '0') - 1) / PX_PER_CM;
   const stops = clampStops(parseTabStops(para.getAttribute('data-tab-stops')), lineCm);
-  if (!scale) { para.style.whiteSpace = wrapping; return; }
+  if (!scale) { para.style.whiteSpace = wrapping; para.style.textAlign = align; return; }
   const originX = rect.left + padLeft * scale;
 
   for (let i = 0; i < tabs.length; i++) {
@@ -334,12 +340,29 @@ export function layOutZoneTabs(zone: HTMLElement): void {
       if (i + 1 < tabs.length) range.setEndBefore(tabs[i + 1]);
       else range.setEnd(para, para.childNodes.length);
       // The extent, not the sum: a range crossing inline elements yields a rect for the
-      // element's box as well as for the text inside it.
-      const boxes = Array.from(range.getClientRects()).filter((r) => r.width);
-      const seg = boxes.length
-        ? Math.max(...boxes.map((r) => r.right)) - Math.min(...boxes.map((r) => r.left))
-        : 0;
-      width -= (stop.align === 'center' ? seg / 2 : seg) / scale;
+      // element's box as well as for the text inside it. Its own line only — a zone
+      // ending in a hard break has a rect on the next one, and that starts at the
+      // paragraph's left edge, which would inflate the segment by its own offset.
+      const segment = () => {
+        const rects = Array.from(range.getClientRects()).filter((r) => r.width);
+        if (!rects.length) return 0;
+        const top = Math.min(...rects.map((r) => r.top));
+        const own = rects.filter((r) => r.top < top + 1);
+        return Math.max(...own.map((r) => r.right)) - Math.min(...own.map((r) => r.left));
+      };
+      const take = (seg: number) => (stop.align === 'center' ? seg / 2 : seg) / scale;
+      width -= take(segment());
+      // A segment too long to reach the stop wraps, and what the stop aligns is the part
+      // that stays on the line — measured with the wrapping the zone really has, and
+      // from this tab at zero, so the break falls where the layout will put it.
+      if (width < 0) {
+        const own = tab.style.marginLeft;
+        tab.style.marginLeft = '0px';
+        para.style.whiteSpace = wrapping;
+        width = (stop.pos - xCm) * PX_PER_CM - take(segment());
+        para.style.whiteSpace = 'pre';
+        tab.style.marginLeft = own;
+      }
     }
     width = Math.max(0, Math.round(width * 100) / 100);
     tab.style.marginLeft = `${width}px`;
@@ -351,6 +374,7 @@ export function layOutZoneTabs(zone: HTMLElement): void {
     }
   }
   para.style.whiteSpace = wrapping;
+  para.style.textAlign = align;
 }
 
 export const TabStops = Extension.create({
