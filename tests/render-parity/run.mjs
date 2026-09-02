@@ -141,6 +141,16 @@ function extractLayout() {
     return out.map((f) => ({ top: f.top, left: f.left, width: f.right - f.left, text: f.text }));
   };
 
+  // What the page paints, not what the node holds: a style's fo:text-transform /
+  // w:caps is a CSS transform here and real uppercase in the reference's PDF.
+  const painted = (text, el) => {
+    const t = getComputedStyle(el).textTransform;
+    if (t === 'uppercase') return text.toUpperCase();
+    if (t === 'lowercase') return text.toLowerCase();
+    if (t === 'capitalize') return text.replace(/^\p{L}/u, (c) => c.toUpperCase());
+    return text;
+  };
+
   const words = [];
   const walker = document.createTreeWalker(paper, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
@@ -152,7 +162,7 @@ function extractLayout() {
         const y = f.top - origin.top;
         const page = Math.floor(y / cycle);
         words.push({
-          text: f.text,
+          text: painted(f.text, n.parentElement),
           page,
           x: (f.left - origin.left) * PX_MM,
           y: (y - page * cycle) * PX_MM,
