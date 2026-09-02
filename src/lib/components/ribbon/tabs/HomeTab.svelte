@@ -191,9 +191,8 @@
       title={`${t().contextMenu.paste} (${withShortcut('Ctrl+V')})`}
       disabled={!editor}
       caret
-      caretActive={isMenuOpen('paste')}
-      onclick={() => paste(false)}
-      onCaret={() => toggleMenu('paste')}
+      active={isMenuOpen('paste')}
+      onclick={() => toggleMenu('paste')}
     />
     {#if isMenuOpen('paste')}
       <!-- Word offers a third, Merge Formatting. The engine reads the clipboard
