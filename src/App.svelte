@@ -10,7 +10,7 @@
   import FindReplaceBar from './lib/components/FindReplaceBar.svelte';
   import type { TiptapNode } from 'odf-kit';
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
-  import { supportsFsAccess, saveOdt, saveAsOdt, saveDocx, saveAsDocx, saveAsTemplate, openOdt } from './lib/export/saveFile';
+  import { supportsFsAccess, saveOdt, saveAsDocument, saveDocx, saveAsDocx, saveAsTemplate, openOdt } from './lib/export/saveFile';
   import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFile, forgetRecentFiles, pruneRecentFiles, type RecentFile } from './lib/storage/recentFiles';
   import { isProtected, decryptPackage, WRONG_PASSWORD } from './lib/crypto/protect';
   import { convertUnsupportedImages } from './lib/import/imageFormats';
@@ -901,6 +901,21 @@
     alert(`${what}\n\n${blocked ? t().dialogs.scriptBlocked : detail}`);
   }
 
+  // Both exporters take the same document-wide arguments, and every save path needs
+  // one of them. The exporter module loads on first use.
+  function exportArgs() {
+    return [pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart] as const;
+  }
+
+  async function buildBytes(kind: DocumentFormat, json: TiptapNode): Promise<Uint8Array> {
+    if (kind === 'docx') {
+      const { buildDocx } = await import('./lib/export/docx');
+      return buildDocx(json, ...exportArgs());
+    }
+    const { buildOdt } = await import('./lib/export/odt');
+    return buildOdt(json, ...exportArgs());
+  }
+
   async function handleSave() {
     if (!editor) return;
     exportMenuOpen = false;
@@ -909,17 +924,11 @@
     try {
       // A document opened as .docx round-trips through the same format, like both
       // reference word processors — not silently rewritten to .odt under its old name.
-      if (documentFormat === 'docx') {
-        const { buildDocx } = await import('./lib/export/docx');
-        const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart);
-        fileHandle = await saveDocx(bytes, suggestedFilenameDocx(json), fileHandle, docPassword);
-        recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilenameDocx(json), fileHandle);
-        return;
-      }
-      const { buildOdt } = await import('./lib/export/odt');
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart);
-      fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle, docPassword);
-      recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
+      const name = documentFormat === 'docx' ? suggestedFilenameDocx(json) : suggestedFilename(json);
+      const bytes = await buildBytes(documentFormat, json);
+      const save = documentFormat === 'docx' ? saveDocx : saveOdt;
+      fileHandle = await save(bytes, name, fileHandle, docPassword);
+      recentFiles = await rememberRecentFile(fileHandle?.name ?? name, fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       // A stored handle may have lost its permission or its file: prompt for a new one,
@@ -931,17 +940,19 @@
     }
   }
 
+  // Save As offers both formats in one picker, so the chosen extension — not the
+  // format the document arrived in — decides what is written and what it becomes.
   async function handleSaveAs() {
     if (!editor) return;
     exportMenuOpen = false;
     if (!(await ensurePassword())) return;
     const json = editor.getJSON() as TiptapNode;
+    const suggested = documentFormat === 'docx' ? suggestedFilenameDocx(json) : suggestedFilename(json);
     try {
-      const { buildOdt } = await import('./lib/export/odt');
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart);
-      fileHandle = await saveAsOdt(bytes, suggestedFilename(json), docPassword);
-      documentFormat = 'odt'; // Save As is odt-only, so a docx-opened document switches format here.
-      recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
+      const { handle, kind } = await saveAsDocument((k) => buildBytes(k, json), suggested, documentFormat, docPassword);
+      fileHandle = handle;
+      documentFormat = kind;
+      recentFiles = await rememberRecentFile(handle?.name ?? suggested, handle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save file:', err);
@@ -959,14 +970,10 @@
     const json = editor.getJSON() as TiptapNode;
     try {
       await saveAsTemplate(async (kind) => {
-        const args = [pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart] as const;
         const { odtToOtt, docxToDotx } = await import('./lib/export/template');
-        if (kind === 'dotx') {
-          const { buildDocx } = await import('./lib/export/docx');
-          return docxToDotx(await buildDocx(json, ...args));
-        }
-        const { buildOdt } = await import('./lib/export/odt');
-        return odtToOtt(await buildOdt(json, ...args));
+        return kind === 'dotx'
+          ? docxToDotx(await buildBytes('docx', json))
+          : odtToOtt(await buildBytes('odt', json));
       }, stripOdtExtension(suggestedFilename(json)), docPassword);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -1013,9 +1020,7 @@
     docxBusy = true;
     try {
       const json = editor.getJSON() as TiptapNode;
-      const { buildDocx } = await import('./lib/export/docx');
-      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart);
-      await saveAsDocx(bytes, suggestedFilenameDocx(json), docPassword);
+      await saveAsDocx(await buildBytes('docx', json), suggestedFilenameDocx(json), docPassword);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[docx] Export failed:', err);
@@ -1380,6 +1385,10 @@
               <button class="theme-option" onclick={handleSave} role="menuitem">
                 <span>{t().app.odt}</span>
                 <span class="theme-option-hint">{t().app.openDocument}</span>
+              </button>
+              <button class="theme-option" onclick={handleSaveAs} role="menuitem">
+                <span>{t().ribbon.saveAs}</span>
+                <span class="theme-option-hint">{t().app.saveAsFormats}</span>
               </button>
               <button class="theme-option" onclick={handleSaveDocx} disabled={docxBusy} role="menuitem">
                 <span>{docxBusy ? t().app.exporting : t().app.wordDocx}</span>

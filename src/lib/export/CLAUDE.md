@@ -6,6 +6,10 @@ Frames, tables and pagination have their own deep-dives in `docs/architecture/`.
 A password set for the document is applied in `saveFile.ts`'s two write primitives, after
 every pass here and after the template conversion — see `docs/architecture/encryption.md`.
 
+**Save As offers both document formats in one picker** (`saveAsDocument`), like the template
+one: the bytes are built only once the extension is known, and that extension is what the
+document round-trips as from then on. Without a picker it keeps the format it had.
+
 `saveFile.ts` picks the path: `showSaveFilePicker` where there is one, else a download —
 Gecko has none and Brave disables the whole File System Access API by default. The first
 fallback download shows a one-time hint (`edentext-download-hint`) that the browser's

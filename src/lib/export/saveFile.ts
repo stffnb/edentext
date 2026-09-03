@@ -19,6 +19,9 @@ const DOCX_PICKER_TYPES = [
   { description: 'Word Document', accept: { [DOCX_MIME]: ['.docx'] } },
 ];
 
+// Both document formats in one picker: the chosen extension decides which is written.
+const DOCUMENT_PICKER_TYPES = [...PICKER_TYPES, ...DOCX_PICKER_TYPES];
+
 const DOTX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.template';
 
 // Both template formats in one picker: the chosen extension decides which is written.
@@ -27,7 +30,7 @@ const TEMPLATE_PICKER_TYPES = [
   { description: 'Word Template', accept: { [DOTX_MIME]: ['.dotx'] } },
 ];
 
-// The open picker also accepts templates (read-only; saving stays .odt-only).
+// The open picker also accepts templates; opening one never binds it as the file.
 const OPEN_PICKER_TYPES = [
   { description: 'OpenDocument Text', accept: { [ODT_MIME]: ['.odt'], [OTT_MIME]: ['.ott'] } },
   { description: 'Word Document', accept: { [DOCX_MIME]: ['.docx'], [DOTX_MIME]: ['.dotx'] } },
@@ -97,20 +100,23 @@ export async function saveOdt(
   return target;
 }
 
-// Always prompt for a location. Returns the new handle, or null on fallback.
-export async function saveAsOdt(
-  bytes: Uint8Array,
+// Always prompt for a location, in either document format. Which exporter runs is
+// only known once a name is picked, so `build` is called with the chosen extension.
+// Without a picker the document keeps the format it already has.
+export async function saveAsDocument(
+  build: (kind: 'odt' | 'docx') => Promise<Uint8Array>,
   suggestedName: string,
+  fallback: 'odt' | 'docx',
   password: string | null = null,
-): Promise<FileSystemFileHandle | null> {
-  const out = await protect(bytes, password);
+): Promise<{ handle: FileSystemFileHandle | null; kind: 'odt' | 'docx' }> {
   if (!supportsFsAccess()) {
-    download(out, suggestedName);
-    return null;
+    download(await protect(await build(fallback), password), suggestedName, fallback === 'docx' ? DOCX_MIME : ODT_MIME);
+    return { handle: null, kind: fallback };
   }
-  const handle = await (window as WinFs).showSaveFilePicker!({ suggestedName, types: PICKER_TYPES });
-  await writeHandle(handle, out);
-  return handle;
+  const handle = await (window as WinFs).showSaveFilePicker!({ suggestedName, types: DOCUMENT_PICKER_TYPES });
+  const kind = handle.name.toLowerCase().endsWith('.docx') ? 'docx' : 'odt';
+  await writeHandle(handle, await protect(await build(kind), password));
+  return { handle, kind };
 }
 
 // Save to the given handle if we have one; otherwise prompt for a location. Mirrors

@@ -216,6 +216,7 @@
           </button>
           <button onclick={() => run(onSaveAs)} disabled={!editor || pdfBusy}>
             <Icon name="save" size={16} />{t().ribbon.saveAs}
+            <span class="menu-sub">{t().app.saveAsFormats}</span>
           </button>
           <hr />
           <button onclick={() => run(onSaveDocx)} disabled={docxBusy}>
