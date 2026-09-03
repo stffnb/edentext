@@ -1912,16 +1912,31 @@ function applyContextualSpacing(el: Element, styleName: string | null, attrs: Re
 }
 
 // The paragraph before or after this one in the flow: its own sibling, or — in a list,
-// where each item wraps its paragraphs — the neighbouring item's nearest one.
+// where each item wraps its paragraphs and a deeper list wraps them again — the
+// neighbouring item's nearest one, climbing out of the item a nested list opens with.
 function flowSibling(el: Element, dir: 'previous' | 'next'): Element | null {
   const isPara = (e: Element) => e.namespaceURI === NS.text && (e.localName === 'p' || e.localName === 'h');
   const step = (e: Element) => (dir === 'previous' ? e.previousElementSibling : e.nextElementSibling);
-  for (let s = step(el); s; s = step(s)) if (isPara(s)) return s;
-  const item = el.parentElement;
-  if (!item || item.namespaceURI !== NS.text || item.localName !== 'list-item') return null;
-  for (let s = step(item); s; s = step(s)) {
-    const kids = Array.from(s.children).filter(isPara);
-    if (kids.length) return dir === 'previous' ? kids[kids.length - 1] : kids[0];
+  // The nearest paragraph inside a list or item, from whichever end the walk arrives at.
+  const inside = (e: Element): Element | null => {
+    if (isPara(e)) return e;
+    const kids = Array.from(e.children);
+    for (const k of dir === 'previous' ? kids.reverse() : kids) {
+      const found = inside(k);
+      if (found) return found;
+    }
+    return null;
+  };
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    for (let s = step(node); s; s = step(s)) {
+      const found = inside(s);
+      if (found) return found;
+    }
+    const parent = node.parentElement;
+    const wrapper = parent && parent.namespaceURI === NS.text
+      && (parent.localName === 'list-item' || parent.localName === 'list'
+        || parent.localName === 'list-header');
+    if (!wrapper) return null;
   }
   return null;
 }
