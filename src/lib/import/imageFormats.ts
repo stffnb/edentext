@@ -203,3 +203,35 @@ export function placeholderImage(label: string, widthPx: number, heightPx: numbe
     + ` text-anchor="middle" dominant-baseline="middle">${text}</text></svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
+
+// Word reads no SVG — a vector picture goes into a .docx as pixels or not at all. The
+// browser is the only renderer at hand, so the export draws it onto a canvas; off the
+// main thread (the test suite) there is none and the caller keeps the vector.
+const SVG_RASTER_SCALE = 2; // the picture is placed at CSS px, so raster at 2× for print
+
+export function isSvgDataUrl(src: unknown): src is string {
+  return typeof src === 'string' && src.startsWith('data:image/svg+xml');
+}
+
+export async function svgToPngDataUrl(src: string, widthPx: number, heightPx: number): Promise<string | null> {
+  if (typeof document === 'undefined' || typeof Image === 'undefined') return null;
+  const w = Math.max(1, Math.round(widthPx * SVG_RASTER_SCALE));
+  const h = Math.max(1, Math.round(heightPx * SVG_RASTER_SCALE));
+  try {
+    const img = new Image();
+    await new Promise<void>((ok, fail) => {
+      img.onload = () => ok();
+      img.onerror = () => fail(new Error('svg'));
+      img.src = src;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL('image/png');
+  } catch {
+    return null;
+  }
+}

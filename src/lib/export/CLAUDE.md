@@ -59,6 +59,14 @@ fallback download shows a one-time hint (`edentext-download-hint`) that the brow
 - **`normalizeColor`** — coerces colors to `#RRGGBB` (ODF requirement; rejects/normalizes `rgb()` and short hex).
 - **Schema conformance** (guarded by `tests/schema-validation.test.ts`; LibreOffice forgives all of this, Word's strict reader does not): `applyOdfVersion` stamps every ODF part **1.3** — the version LibreOffice writes, and the first with `style:header-first` — over odf-kit's 1.2. `draw:image` carries the `xlink:type/show/actuate` trio (`xlink:type` is mandatory beside `xlink:href`); `text:time-value` is an xsd dateTime, never a `PT…S` duration (the ODT importer still reads the legacy duration); `index-entry-link-start/-end` only in TOC entry templates; `text:dont-balance-text-columns` on `style:section-properties`. DOCX: `orderDocxSettings` (last pass) re-sorts `w:settings` children into the fixed CT_Settings sequence the prepend-passes scramble; `w14:paraId` in comments.xml requires `mc:Ignorable="w14"` on the root. `tests/package-lint.test.ts` guards the invariants the schemas cannot express (unique style ids, no dangling style/num/rel references, balanced ranges, manifest completeness).
 
+- **A heading writes its own `w:outlineLvl`** beside its `w:pStyle`: the style carries the
+  look, the level says it is a heading at all, and a document setting its chapters in a
+  style of its own leaves the importer nothing else to go by.
+- **SVG is rasterized on the way into a .docx** (`rasterizeSvgImages`, before the walk —
+  the emitters that place pictures are synchronous): Word reads no SVG, and an EMF arrives
+  as one too, so a vector picture is drawn to PNG at 2× its placed size. Off the main
+  thread there is no canvas and the picture is skipped, as it always was.
+
 - **Factory style slots** (`FACTORY_SLOTS`, `buildStyles`): the `docx` package always writes its own Title/Heading1–6 into styles.xml, so the registry's versions ride `styles.default.title/headingN` instead of `paragraphStyles` — a second definition under the same `w:styleId` makes Word **and** LibreOffice drop the `basedOn` chain (headings lose their sans/bold). Table and numbering styles are **spliced post-pack** (`applyRawStylesDocx`): passing them as `importedStyles` makes the package's Styles merge replace its whole factory set, `w:docDefaults` (default font/size/language) included.
 
 The filename is derived from the first non-empty heading (max 50 chars, sanitized), falling back to `document.odt`.

@@ -1371,3 +1371,49 @@ describe('DOCX named list styles', () => {
     expect(imported?.levels[0]?.indentCm).toBeCloseTo(0.73, 2); // 1134 twips = 2cm → +0.73
   });
 });
+
+// Chapter numbering rides the heading styles (w:numPr in styles.xml), and a heading may
+// wear a style of its own — both only reach the export through the document's own
+// stylesheet, so a fixture built on builtinStyleSheet() never sees either.
+describe('numbered headings under a document stylesheet', () => {
+  const outline = Array.from({ length: 10 }, (_, i) => ({
+    format: '1' as const, prefix: '', suffix: '', displayLevels: i + 1, start: 1,
+  }));
+  const sheet = () => {
+    const s = builtinStyleSheet();
+    s.outline = outline;
+    // A heading style the name test can't recognise: only its outline level says so.
+    s.paragraph['Appendix 1'] = { name: 'Appendix 1', parent: 'Heading 1', next: 'Standard', outlineLevel: 1, para: {}, text: {} };
+    return s;
+  };
+  const doc = {
+    type: 'doc',
+    content: [
+      heading(1, 'Plain chapter', { breakBefore: 'page' }),
+      para('body'),
+      heading(1, 'Appendix', { styleName: 'Appendix 1', breakBefore: 'page' }),
+      para('more'),
+    ],
+  } as any;
+
+  const roundTrip = async () => importDocx(await buildDocx(doc, undefined, undefined, undefined, undefined, undefined, sheet())).content as N;
+
+  it('keeps a numbered heading a heading instead of a list item', async () => {
+    const back = await roundTrip();
+    expect(walk(back, 'orderedList')).toHaveLength(0);
+    expect(walk(back, 'listItem')).toHaveLength(0);
+    expect(walk(back, 'heading').map((h) => h.attrs.level)).toEqual([1, 1]);
+  });
+
+  it('keeps the page break in front of a numbered heading', async () => {
+    const back = await roundTrip();
+    expect(walk(back, 'heading').map((h) => h.attrs.breakBefore)).toEqual(['page', 'page']);
+  });
+
+  it('keeps a heading whose style is not named "Heading n"', async () => {
+    const back = await roundTrip();
+    const named = walk(back, 'heading').find((h) => h.attrs.styleName === 'Appendix 1');
+    expect(named, 'the custom heading style survives as a heading').toBeTruthy();
+    expect(named!.attrs.level).toBe(1);
+  });
+});

@@ -110,3 +110,11 @@ Body text with no resolved font falls back to the *document's own theme minor fo
   document's own comes from the **first** section, as the paper and the margins already do.
 - **Chapter numbering** — `text:outline-style` on the ODF side, the heading styles'
   `w:numPr` on Word's — becomes `StyleSheet.outline`; see `src/lib/styles/CLAUDE.md`.
+  A numbered heading is therefore **never a list item** (`paragraphNum` returns null for
+  anything with an outline level): read as one, every chapter came back wrapped in an
+  `orderedList` that swallowed the `w:pageBreakBefore` in front of it — `blockAttrs`
+  reads the break for `kind === 'body'` only.
+- **A heading is found by `w:outlineLvl`, not only by its style's name.** A file may set
+  its chapters in a style of its own ("Appendix 1") whose `w:basedOn` chain reaches
+  Heading1; `styleOutlineLvl` walks that chain, and the exporter writes the level on the
+  paragraph too, so nothing rests on a style being called "Heading n".

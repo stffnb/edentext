@@ -644,7 +644,13 @@ function paragraphNum(el: Element, ctx: Ctx): { numId: number; ilvl: number } | 
   let np: { numId: number; ilvl: number } | null = null;
   const numPr = fc(ppr, 'numPr');
   if (numPr) np = readNumPr(numPr);
-  if (!np) { const ps = fc(ppr, 'pStyle'); np = ctx.styles.styleNumPr(ps ? wVal(ps) : null); }
+  if (!np) {
+    // Chapter numbering rides the heading styles' own w:numPr, which is how both
+    // products write it — a numbered heading is a heading, never a list item.
+    if (headingLevelOf(ppr, ctx) != null) return null;
+    const ps = fc(ppr, 'pStyle');
+    np = ctx.styles.styleNumPr(ps ? wVal(ps) : null);
+  }
   return np && np.numId !== 0 ? np : null; // numId 0 = "no list"
 }
 

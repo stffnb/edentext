@@ -15,6 +15,7 @@ import type {
   ILevelsOptions, IFloating, IBorderOptions, IParagraphStyleOptions, ICharacterStyleOptions,
 } from 'docx';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
+import { isSvgDataUrl, svgToPngDataUrl } from '../import/imageFormats';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { SHAPES, isShapeKind, drawingMlPath, type ShapeKind } from '../utils/shapes';
 import { cellFormatCode, isCellFormat } from '../utils/cellFormat';
@@ -892,6 +893,20 @@ function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | 
     allowOverlap: false,
     margins,
   };
+}
+
+// An SVG picture — which is also what the importer makes of an EMF — has no place in a
+// .docx, so it is drawn to PNG first. Where no canvas can (the test suite), the node is
+// left alone and the emitters skip it, as they did before.
+async function rasterizeSvgImages(node: TiptapNode): Promise<TiptapNode> {
+  if (node.type === 'image' && isSvgDataUrl(node.attrs?.src)) {
+    const w = typeof node.attrs?.width === 'number' && node.attrs.width > 0 ? node.attrs.width : 200;
+    const h = typeof node.attrs?.height === 'number' && node.attrs.height > 0 ? node.attrs.height : 150;
+    const png = await svgToPngDataUrl(node.attrs.src as string, w, h);
+    return png ? { ...node, attrs: { ...node.attrs, src: png } } : node;
+  }
+  if (!node.content?.length) return node;
+  return { ...node, content: await Promise.all(node.content.map(rasterizeSvgImages)) };
 }
 
 function imageRun(node: TiptapNode): ImageRun | null {
@@ -2122,6 +2137,9 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     spacing: opts.inCell ? cellSpacingOf(attrs, node) : spacingOf(attrs),
     indent: Object.keys(indent).length ? indent : undefined,
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,
+    // w:outlineLvl — the locale- and name-independent heading signal. A heading wearing
+    // a style of its own ("Appendix 1") has nothing else that says what level it is.
+    outlineLevel: node.type === 'heading' ? ((attrs.level as number) ?? 1) - 1 : undefined,
     widowControl: attrs.widowControl === false ? false : undefined,
     keepNext: attrs.keepNext === true || undefined,
     keepLines: attrs.keepLines === true || undefined,
@@ -2695,6 +2713,9 @@ export async function buildDocx(
   spacingAtPageStart = true,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
+  // Before the walk: every picture the file can hold has to be a raster by then, and
+  // rasterizing is async where the emitters that place them are not.
+  docJson = await rasterizeSvgImages(docJson);
   exportSheet = styles;
   exportSpacingModel = spacingModel;
   docFormulas = [];

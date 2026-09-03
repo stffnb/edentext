@@ -21,14 +21,19 @@ const files = existsSync(FIX)
   : [];
 
 const load = (f: string) => new Uint8Array(readFileSync(join(FIX, f)));
-const importAny = (f: string, bytes: Uint8Array): N =>
-  (f.endsWith('.odt') ? importOdt(bytes) : importDocx(bytes)).content;
+const readAny = (f: string, bytes: Uint8Array) =>
+  f.endsWith('.odt') ? importOdt(bytes) : importDocx(bytes);
+const importAny = (f: string, bytes: Uint8Array): N => readAny(f, bytes).content;
 
 // A block's type and its text, flattened depth-first: the shape a round trip must keep.
+// The heading attrs ride along: a chapter that loses its level, its own style or the
+// break in front of it still says the same words, and reflows the document anyway.
 function outline(node: N, out: string[] = []): string[] {
   for (const child of node.content ?? []) {
     if (child.type === 'text') continue;
-    out.push(`${child.type}:${textOf(child).replace(/\s+/g, ' ').trim()}`);
+    const a = child.type === 'heading' ? child.attrs ?? {} : null;
+    const head = a ? `heading${a.level}${a.styleName ? `[${a.styleName}]` : ''}${a.breakBefore ? '+brk' : ''}` : child.type;
+    out.push(`${head}:${textOf(child).replace(/\s+/g, ' ').trim()}`);
     outline(child, out);
   }
   return out;
@@ -76,17 +81,20 @@ describe.skipIf(!files.length)('the authored corpus', () => {
   }
 
   // The same document in both formats, and each one exported as the other: the four
-  // legs a document takes through this editor have to agree on what it says.
+  // legs a document takes through this editor have to agree on what it says. The file's
+  // **own stylesheet** rides the cross legs, as it does when the app saves — chapter
+  // numbering and a heading's own style live there and nowhere in the document tree, so
+  // an export handed builtinStyleSheet() never carries either.
   for (const name of files.filter((f) => f.endsWith('.docx')).map((f) => f.slice(0, -5))) {
     it(`${name} reads the same out of either format`, async () => {
-      const fromDocx = importAny(`${name}.docx`, load(`${name}.docx`));
-      const fromOdt = importAny(`${name}.odt`, load(`${name}.odt`));
-      expect(outline(fromOdt)).toEqual(outline(fromDocx));
+      const docx = readAny(`${name}.docx`, load(`${name}.docx`));
+      const odt = readAny(`${name}.odt`, load(`${name}.odt`));
+      expect(outline(odt.content)).toEqual(outline(docx.content));
       const margins = { top: 2, bottom: 2, left: 2, right: 2 };
-      expect(outline(importOdt(await buildOdt(fromDocx, margins, 'portrait')).content))
-        .toEqual(outline(fromDocx));
-      expect(outline(importDocx(await buildDocx(fromOdt, margins, 'portrait')).content))
-        .toEqual(outline(fromOdt));
+      const asOdt = await buildOdt(docx.content, margins, 'portrait', undefined, undefined, undefined, docx.styles);
+      expect(outline(importOdt(asOdt).content)).toEqual(outline(docx.content));
+      const asDocx = await buildDocx(odt.content, margins, 'portrait', undefined, undefined, undefined, odt.styles);
+      expect(outline(importDocx(asDocx).content)).toEqual(outline(odt.content));
     });
   }
 });
