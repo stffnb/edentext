@@ -3,6 +3,7 @@ import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, togg
 import { lengthToPt, WATERMARK_NAME } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
 import { PLACEHOLDER_SDT_TAG } from '../export/docx';
+import { isAllowedUri } from '@tiptap/extension-link';
 import { FOLD_MARK_NAME } from '../storage/foldMarks';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { DEFAULT_OUTLINE_LEVEL, MAX_OUTLINE_LEVELS, type OutlineNumbering } from '../styles/outlineNumbering';
@@ -1661,7 +1662,9 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
         const rid = el.getAttributeNS(R, 'id');
         // No relationship id: an internal link to a bookmark in this document.
         const anchor = el.getAttributeNS(W, 'anchor');
-        const href = rid ? ctx.rels.get(rid)?.target : anchor ? `#${anchor}` : undefined;
+        let href = rid ? ctx.rels.get(rid)?.target : anchor ? `#${anchor}` : undefined;
+        // A scheme the editor would never open (javascript:) stops here, not at render time.
+        if (!isAllowedUri(href)) href = undefined;
         // A revision wraps its runs inside the link element, so walk both shapes.
         for (const child of Array.from(el.children)) {
           if (child.localName === 'r') handleRun(child, href);

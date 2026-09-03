@@ -1,6 +1,7 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
+import { isAllowedUri } from '@tiptap/extension-link';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { DEFAULT_OUTLINE_LEVEL, MAX_OUTLINE_LEVELS, type OutlineLevel, type OutlineNumbering } from '../styles/outlineNumbering';
 import { LIST_LEVEL_STEP_CM, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
@@ -2242,9 +2243,10 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
           }
           case 'a': {
             // ODF hyperlink → link mark on the contained text; an internal #bookmark
-            // href is kept as-is and resolved against the document's bookmarks.
+            // href is kept as-is and resolved against the document's bookmarks. A scheme
+            // the editor would never open (javascript:) stops here, not at render time.
             const href = e.getAttributeNS(NS.xlink, 'href') ?? '';
-            walk(e, props, href || linkHref);
+            walk(e, props, isAllowedUri(href) ? href || linkHref : linkHref);
             continue;
           }
           case 'ruby': {
