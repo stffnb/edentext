@@ -59,6 +59,14 @@ fallback download shows a one-time hint (`edentext-download-hint`) that the brow
 - **`normalizeColor`** — coerces colors to `#RRGGBB` (ODF requirement; rejects/normalizes `rgb()` and short hex).
 - **Schema conformance** (guarded by `tests/schema-validation.test.ts`; LibreOffice forgives all of this, Word's strict reader does not): `applyOdfVersion` stamps every ODF part **1.3** — the version LibreOffice writes, and the first with `style:header-first` — over odf-kit's 1.2. `draw:image` carries the `xlink:type/show/actuate` trio (`xlink:type` is mandatory beside `xlink:href`); `text:time-value` is an xsd dateTime, never a `PT…S` duration (the ODT importer still reads the legacy duration); `index-entry-link-start/-end` only in TOC entry templates; `text:dont-balance-text-columns` on `style:section-properties`. DOCX: `orderDocxSettings` (last pass) re-sorts `w:settings` children into the fixed CT_Settings sequence the prepend-passes scramble; `w14:paraId` in comments.xml requires `mc:Ignorable="w14"` on the root. `tests/package-lint.test.ts` guards the invariants the schemas cannot express (unique style ids, no dangling style/num/rel references, balanced ranges, manifest completeness).
 
+- **A section past the first spells its zones out, blank ones included.** A `w:sectPr`
+  naming no `w:headerReference` is Word's "Link to Previous" and repeats the section above
+  it — measured: a chapter's running head landed on the pages a blank section was meant
+  for. Both zones write an empty part rather than none (`spellOut`, `mkHeaders`).
+- **A box spanning the text column keeps where it sits across it**, banded or behind the
+  text alike; only a side wrap has its side dictated by the wrap itself.
+- **An index row's tab stop is written even with no page number running to it** — it is
+  where the row's leader is kept, and a stop no tab reaches draws nothing.
 - **A heading writes its own `w:outlineLvl`** beside its `w:pStyle`: the style carries the
   look, the level says it is a heading at all, and a document setting its chapters in a
   style of its own leaves the importer nothing else to go by.

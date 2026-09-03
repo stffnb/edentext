@@ -215,21 +215,21 @@ export function isSvgDataUrl(src: unknown): src is string {
 
 export async function svgToPngDataUrl(src: string, widthPx: number, heightPx: number): Promise<string | null> {
   if (typeof document === 'undefined' || typeof Image === 'undefined') return null;
-  const w = Math.max(1, Math.round(widthPx * SVG_RASTER_SCALE));
-  const h = Math.max(1, Math.round(heightPx * SVG_RASTER_SCALE));
   try {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(widthPx * SVG_RASTER_SCALE));
+    canvas.height = Math.max(1, Math.round(heightPx * SVG_RASTER_SCALE));
+    // Probed before the image is loaded, not after: jsdom has a document and an Image
+    // whose onload never fires for a data URI, and awaiting that one hangs the caller.
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
     const img = new Image();
     await new Promise<void>((ok, fail) => {
       img.onload = () => ok();
       img.onerror = () => fail(new Error('svg'));
       img.src = src;
     });
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(img, 0, 0, w, h);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     return canvas.toDataURL('image/png');
   } catch {
     return null;

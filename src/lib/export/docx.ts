@@ -853,10 +853,14 @@ function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | 
   if (wrap === 'through') {
     // Word's in-front-of / behind-text: no wrap at all, and behindDoc names which side
     // of the text the frame lands on. It overlaps by definition, so allowOverlap holds.
+    // Where it sits across the text column is its own, as it is for a wrapped frame:
+    // a full-width figure behind the text is centred, not flush left.
+    const through = alignH === 'right' ? HorizontalPositionAlign.RIGHT
+      : alignH === 'center' ? HorizontalPositionAlign.CENTER : HorizontalPositionAlign.LEFT;
     return {
       horizontalPosition: offsetCm != null
         ? { relative: HorizontalPositionRelativeFrom.MARGIN, offset: Math.round(offsetCm * 360000) }
-        : { relative: HorizontalPositionRelativeFrom.MARGIN, align: HorizontalPositionAlign.LEFT },
+        : { relative: HorizontalPositionRelativeFrom.MARGIN, align: through },
       verticalPosition,
       wrap: { type: TextWrappingType.NONE },
       behindDocument: !inFront,
@@ -868,9 +872,12 @@ function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | 
     // may overlap vertically — that is what puts them side by side.
     const end = alignH === 'right' ? HorizontalPositionAlign.RIGHT
       : alignH === 'left' ? HorizontalPositionAlign.LEFT : null;
+    // Centred is a place in the band, not an end of it: it shares with nobody, so it
+    // keeps the overlap off that a side-by-side pair needs.
+    const mid = alignH === 'center' ? HorizontalPositionAlign.CENTER : null;
     return {
-      horizontalPosition: end
-        ? { relative: HorizontalPositionRelativeFrom.MARGIN, align: end }
+      horizontalPosition: end || mid
+        ? { relative: HorizontalPositionRelativeFrom.MARGIN, align: (end ?? mid)! }
         : offsetCm != null
           ? { relative: HorizontalPositionRelativeFrom.MARGIN, offset: Math.round(offsetCm * 360000) }
           : { relative: HorizontalPositionRelativeFrom.MARGIN, align: HorizontalPositionAlign.LEFT },
@@ -949,6 +956,7 @@ type TextBoxDocx = {
   fill: string | null;
   stroke: string | null;
   strokeWidthPt: number;
+  paddingCm: number;
   content: TiptapNode[];
 };
 
@@ -971,6 +979,8 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
     strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
+    // The attr is only set where the box disagrees with the editor's own ring.
+    paddingCm: typeof a.paddingCm === 'number' && a.paddingCm >= 0 ? a.paddingCm : TEXTBOX_PADDING_CM,
     content: node.content ?? [],
   };
 }
@@ -1315,7 +1325,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
   const ln = box.stroke
     ? `<a:ln w="${Math.round(box.strokeWidthPt * EMU_PER_PT)}"><a:solidFill><a:srgbClr val="${hexColor(box.stroke) ?? '000000'}"/></a:solidFill>${ends}</a:ln>`
     : '<a:ln><a:noFill/></a:ln>';
-  const inset = Math.round(TEXTBOX_PADDING_CM * EMU_PER_CM);
+  const inset = Math.round(box.paddingCm * EMU_PER_CM);
   // The box keeps the height it declares — LibreOffice's own DOCX export writes this for
   // the same frame, and read as spAutoFit it lays the text out detached from the shape
   // (probed: the text lands in the body, over whatever follows).
@@ -1352,9 +1362,10 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
   const wrapEl = box.wrap === 'through' ? '<wp:wrapNone/>'
     : box.wrap === 'topBottom' ? '<wp:wrapTopAndBottom/>'
     : `<wp:wrapSquare wrapText="${box.wrap === 'right' ? 'left' : 'right'}"/>`;
-  // A side wrap names the side itself; only a band-wrapped box has a place to choose.
+  // A side wrap names the side itself; a box spanning the column — banded or behind the
+  // text — has a place across it to choose, and a figure usually sits in the middle.
   const align = box.wrap === 'right' ? 'right'
-    : box.wrap === 'topBottom' ? box.alignH ?? 'left' : 'left';
+    : box.wrap === 'topBottom' || box.wrap === 'through' ? box.alignH ?? 'left' : 'left';
   const emu = (cm: number) => Math.round(cm * 360000);
   // The x rides topBottom too: it moves the frame within its full-width band.
   const posH = box.offsetCm != null
@@ -2339,7 +2350,10 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
     }
     return new TableRow({
       height: typeof rh === 'number' && rh > 0 ? { value: pxToTwip(rh), rule: HeightRule.ATLEAST } : undefined,
-      ...(repeatHeader && rowIndex === 0 ? { tableHeader: true } : {}),
+      // The flag marks a header row, whether the table asked for the repeat or only the
+      // row's own cells say they head it — ODF spells both with one element.
+      ...((repeatHeader && rowIndex === 0) || (row.content ?? []).some((c) => c.type === 'tableHeader')
+        ? { tableHeader: true } : {}),
       children: cells,
     });
   });
@@ -2376,7 +2390,9 @@ function indexFieldParagraphs(node: TiptapNode, kind: IndexKind, maxLevel: numbe
   const a = node.attrs ?? {};
   const noPages = a.pageNumbers === false;
   const instr =
-    kind === 'alphabetical' ? 'INDEX \\c "1" \\e "\t"'
+    // `\n` is a TOC switch that INDEX has no counterpart for; Word ignores the unknown
+    // one and regenerates its rows, and this side reads it back.
+    kind === 'alphabetical' ? `INDEX \\c "1" \\e "\t"${noPages ? ' \\n' : ''}`
     : kind === 'bibliography' ? 'BIBLIOGRAPHY'
     // `\n` over the whole range: Word's switch takes levels, the editor's index is
     // all-or-nothing.
@@ -2409,7 +2425,9 @@ function indexFieldParagraphs(node: TiptapNode, kind: IndexKind, maxLevel: numbe
   return entries.map((e, i) => new Paragraph({
     style: own(e.level) ? docxStyleId(own(e.level)!) : undefined,
     indent: own(e.level) || e.level === 1 ? undefined : { left: cmToTwip(0.5 * (e.level - 1)) },
-    tabStops: noPage ? undefined : [{ type: TabStopType.RIGHT, position: cmToTwip(tabCm), ...(leader ? { leader } : {}) }],
+    // Written even with no page number running to it: it is where the row's leader is
+    // kept, and a stop no tab reaches changes nothing on the page.
+    tabStops: [{ type: TabStopType.RIGHT, position: cmToTwip(tabCm), ...(leader ? { leader } : {}) }],
     children: [
       ...(i === 0 ? open : []),
       ...e.text.split('\n').map((part, li) => new TextRun(li ? { text: part, break: 1 } : { text: part })),
@@ -2826,23 +2844,31 @@ export async function buildDocx(
     // needs one — empty where the zone has no text — for the post-passes to inject
     // into; a variant without its own part would blank the decor on those pages.
     const decorated = Boolean(decor.watermark?.text) || foldMarks;
+    // A section past the first says what it has, blank included: a zone naming no part
+    // of its own is Word's "Link to Previous" and repeats the section above it — which
+    // put a chapter's running head on the pages a blank one was meant for.
+    const spellOut = decorated || i > 0;
     const h: { default?: Header; first?: Header; even?: Header } = {};
     if (d) h.default = new Header({ children: [paragraphToDocx(d)] });
-    else if (decorated) h.default = new Header({ children: [new Paragraph({})] });
+    else if (spellOut) h.default = new Header({ children: [new Paragraph({})] });
     if (f) h.first = new Header({ children: [paragraphToDocx(f)] });
-    else if (s.differentFirstPage && decorated) h.first = new Header({ children: [new Paragraph({})] });
+    else if (s.differentFirstPage && spellOut) h.first = new Header({ children: [new Paragraph({})] });
     if (e) h.even = new Header({ children: [paragraphToDocx(e)] });
-    else if (s.differentOddEven && decorated) h.even = new Header({ children: [new Paragraph({})] });
+    else if (s.differentOddEven && spellOut) h.even = new Header({ children: [new Paragraph({})] });
     return Object.keys(h).length ? h : undefined;
   };
   const mkFooters = (i: number) => {
     const s = setAt(i);
     const d = para(s.footer), f = s.differentFirstPage ? para(s.footerFirst) : null, e = s.differentOddEven ? para(s.footerEven) : null;
-    if (!d && !f && !e) return undefined;
+    if (!d && !f && !e && i === 0) return undefined;
     const fo: { default?: Footer; first?: Footer; even?: Footer } = {};
+    // Spelled out past the first section, for the reason the headers are.
     if (d) fo.default = new Footer({ children: [paragraphToDocx(d)] });
+    else if (i > 0) fo.default = new Footer({ children: [new Paragraph({})] });
     if (f) fo.first = new Footer({ children: [paragraphToDocx(f)] });
+    else if (s.differentFirstPage && i > 0) fo.first = new Footer({ children: [new Paragraph({})] });
     if (e) fo.even = new Footer({ children: [paragraphToDocx(e)] });
+    else if (s.differentOddEven && i > 0) fo.even = new Footer({ children: [new Paragraph({})] });
     return fo;
   };
 

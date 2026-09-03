@@ -108,6 +108,17 @@ Body text with no resolved font falls back to the *document's own theme minor fo
   on the page layout governing the body (`HfSet.pageNumberFormat`), which is how a roman
   front matter precedes a decimal body; Word's is `w:pgNumType w:fmt` per section, and the
   document's own comes from the **first** section, as the paper and the margins already do.
+- **A header row is `w:tblHeader` on the row**, which says what ODF's
+  `<table:table-header-rows>` says: its cells become `tableHeader`, and the export writes
+  the flag for a row whose cells are header cells even where the table asks for no repeat.
+- **An index's look rides its first row.** The field opens on that row, so the leader and
+  the right tab stop the page number runs to are read off the very paragraph the node is
+  built from; a stop at the text width names no position of its own and is dropped, as on
+  the ODF side. The level styles are a family per index kind (`INDEX_LEVEL_STYLES`) —
+  `Contents n` for a contents, `Illustration Index n`, `Table index n`, `Index n` — since
+  Word regenerates each kind's rows from its own.
+- **A text box's ring is `w:bodyPr/@lIns`** (EMU), suppressed against the editor's own
+  0.15cm as the ODF side suppresses `fo:padding`.
 - **Chapter numbering** — `text:outline-style` on the ODF side, the heading styles'
   `w:numPr` on Word's — becomes `StyleSheet.outline`; see `src/lib/styles/CLAUDE.md`.
   A numbered heading is therefore **never a list item** (`paragraphNum` returns null for

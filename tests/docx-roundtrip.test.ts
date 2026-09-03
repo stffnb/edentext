@@ -1417,3 +1417,87 @@ describe('numbered headings under a document stylesheet', () => {
     expect(named!.attrs.level).toBe(1);
   });
 });
+
+// What a document keeps across the formats besides its words: the look of an index, the
+// header a section blanks, a box's own ring, a header row.
+describe('the look a document carries', () => {
+  const SVG = 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8"/></svg>');
+
+  it('keeps a header row a header row', async () => {
+    const doc = { type: 'doc', content: [{ type: 'table', attrs: { repeatHeader: true }, content: [
+      { type: 'tableRow', content: [headerCell('Name'), headerCell('Qty')] },
+      { type: 'tableRow', content: [cell('Widget'), cell('1')] },
+    ] }] } as any;
+    const back = importDocx(await buildDocx(doc)).content as N;
+    expect(walk(back, 'tableHeader')).toHaveLength(2);
+    expect(back.content![0].attrs.repeatHeader).toBe(true);
+  });
+
+  it('marks a header row even where the table asks for no repeat', async () => {
+    const doc = { type: 'doc', content: [{ type: 'table', content: [
+      { type: 'tableRow', content: [headerCell('H')] },
+      { type: 'tableRow', content: [cell('b')] },
+    ] }] } as any;
+    expect(walk(importDocx(await buildDocx(doc)).content as N, 'tableHeader')).toHaveLength(1);
+  });
+
+  it("keeps a text box's own padding and where it sits behind the text", async () => {
+    const doc = { type: 'doc', content: [para([
+      { type: 'textBox', attrs: { width: 300, height: 100, wrap: 'through', wrapAlign: 'center', paddingCm: 0 }, content: [para('in the box')] },
+    ])] } as any;
+    const box = walk(importDocx(await buildDocx(doc)).content as N, 'textBox')[0];
+    expect(box.attrs.paddingCm).toBe(0);
+    expect(box.attrs.wrapAlign).toBe('center');
+  });
+
+  it("keeps an index's leader, tab position and per-level styles", async () => {
+    const sheet = builtinStyleSheet();
+    for (const n of [1, 2]) sheet.paragraph[`Illustration Index ${n}`] = { name: `Illustration Index ${n}`, parent: 'Standard', next: 'Standard', para: {}, text: {} };
+    const doc = { type: 'doc', content: [{ type: 'tableOfContents', attrs: {
+      index: 'figures', title: '', leader: '.', tabPosCm: 12, maxLevel: 10,
+      levelStyles: ['Illustration Index 1', 'Illustration Index 2'],
+      entries: [{ text: 'Illustration 1: One', level: 1, page: 2 }],
+    } }] } as any;
+    const toc = walk(importDocx(await buildDocx(doc, undefined, undefined, undefined, undefined, undefined, sheet)).content as N, 'tableOfContents')[0];
+    expect(toc.attrs.leader).toBe('.');
+    expect(toc.attrs.tabPosCm).toBe(12);
+    expect(toc.attrs.levelStyles?.[0]).toBe('Illustration Index 1');
+  });
+
+  it('keeps an index of text alone free of page numbers', async () => {
+    const doc = { type: 'doc', content: [{ type: 'tableOfContents', attrs: {
+      index: 'alphabetical', title: '', pageNumbers: false, leader: '.',
+      entries: [{ text: 'Car to X', level: 1, page: 1 }],
+    } }] } as any;
+    const toc = walk(importDocx(await buildDocx(doc)).content as N, 'tableOfContents')[0];
+    expect(toc.attrs.pageNumbers).toBe(false);
+    expect(toc.attrs.leader).toBe('.');
+  });
+
+  it('blanks a later section instead of repeating the header above it', async () => {
+    const doc = { type: 'doc', content: [
+      para('first section'),
+      para('second section', { sectionBreak: true }),
+    ] } as any;
+    const hfTwo = {
+      header: { type: 'doc', content: [{ type: 'paragraph', content: [text('Running head')] }] },
+      footer: null, pageCount: 1,
+      sections: [
+        { header: { type: 'doc', content: [{ type: 'paragraph', content: [text('Running head')] }] }, footer: null },
+        { header: null, footer: null }, // the blank one
+      ],
+    } as any;
+    const xml = strFromU8(unzipSync(await buildDocx(doc, undefined, undefined, hfTwo))['word/document.xml']);
+    // Every section names its own header part; one that named none would inherit.
+    const sects = xml.match(/<w:sectPr[\s\S]*?<\/w:sectPr>/g) ?? [];
+    expect(sects).toHaveLength(2);
+    for (const s of sects) expect(s).toMatch(/<w:headerReference/);
+  });
+
+  it('exports a document holding an SVG without hanging where no canvas can draw', async () => {
+    const doc = { type: 'doc', content: [para([{ type: 'image', attrs: { src: SVG, width: 8, height: 8 } }])] } as any;
+    // jsdom has an Image whose onload never fires; the rasterizer must not await it.
+    const bytes = await buildDocx(doc);
+    expect(bytes.length).toBeGreaterThan(0);
+  });
+});

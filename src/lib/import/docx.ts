@@ -9,6 +9,7 @@ import { DEFAULT_OUTLINE_LEVEL, MAX_OUTLINE_LEVELS, type OutlineNumbering } from
 import { MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { fitInlineImage, framePx } from '../editor/extensions/image';
+import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
 import { formatTabStops } from '../editor/extensions/tabStops';
 import type { CapsMode, LineStyle } from '../editor/extensions/textEffects';
 import { builtinTableStyles, parseTableLook, resolveTableCell, tableLookAttr } from '../styles/tableStyles';
@@ -352,6 +353,19 @@ function documentLanguage(stylesDoc: Document | null, warnings: Set<string>): Do
 }
 
 // ---- block conversion (paragraphs, lists, tables) --------------------------
+// An index row runs its page number out to a right tab stop, and the dots in between are
+// that stop's leader. The field opens on its own first row, so the look sits on the very
+// paragraph the node is built from.
+function tocRowTab(el: Element, ctx: Ctx): { leader?: string; tabPosCm?: number } {
+  const tabs = fc(fc(el, 'pPr'), 'tabs');
+  const stop = tabs ? readTabStops(tabs).find((t) => t.align === 'right') : undefined;
+  if (!stop) return {};
+  // A stop at the text width is where a row's number lands anyway, so it names no
+  // position of its own — the ODF side suppresses it the same way.
+  const own = stop.pos > 0 && Math.abs(stop.pos - ctx.contentWidthCm) > 0.05;
+  return { ...(stop.leader ? { leader: stop.leader } : {}), ...(own ? { tabPosCm: stop.pos } : {}) };
+}
+
 // A TOC is a `TOC` field spanning several paragraphs, each entry a nested PAGEREF field,
 // so field depth is tracked (across one convertBlocks call) to match the TOC's own end.
 type TocFieldState = { fieldDepth: number; tocDepth: number; instr: string[] };
@@ -546,11 +560,12 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         // The field carries no heading of its own — Word's sits in a separate paragraph.
         const instr = instrTextOf(el);
         const index = tocIndexKind(instr);
-        // maxLevel only where the field has levels — the ODF side sets none for the
-        // alphabetical index or the bibliography either.
-        const levels = index === 'alphabetical' || index === 'bibliography' ? null : tocMaxLevel(instr);
-        const levelStyles = levels == null ? null : tocLevelStyles(ctx, levels);
+        // A bibliography has no levels; every other index does, the alphabetical one's
+        // being its own three, as the ODF side reads them off its entry templates.
+        const levels = index === 'bibliography' ? null : tocMaxLevel(instr);
+        const levelStyles = levels == null ? null : tocLevelStyles(ctx, levels, index);
         out.push({ type: 'tableOfContents', attrs: { entries: [], title: '', index, ...tocPageNumbers(instr),
+          ...tocRowTab(el, ctx),
           ...(levels == null ? {} : { maxLevel: levels }),
           ...(levelStyles ? { levelStyles } : {}),
           ...(index === 'bibliography' ? { citationStyle: ctx.citationStyle } : {}) } });
@@ -606,12 +621,13 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
           const content = fc(el, 'sdtContent');
           const instr = content ? instrTextOf(content) : '';
           const maxLevel = tocMaxLevel(instr);
-          const levelStyles = tocLevelStyles(ctx, maxLevel);
+          const sdtKind = tocIndexKind(instr);
+          const levelStyles = tocLevelStyles(ctx, maxLevel, sdtKind);
           out.push({ type: 'tableOfContents', attrs: {
             entries: [],
             title: tocHeading(content) ?? '',
             maxLevel,
-            index: tocIndexKind(instr),
+            index: sdtKind,
             ...tocPageNumbers(instr),
             ...(levelStyles ? { levelStyles } : {}),
           } });
@@ -828,11 +844,24 @@ function registryName(id: string, wordName: string, isDefault: boolean): string 
 
 // The paragraph styles a TOC field regenerates its rows from, by level. Naming them
 // gives the index the file's own indent and spacing instead of the editor's fallback.
-function tocLevelStyles(ctx: Ctx, maxLevel: number): (string | null)[] | null {
+// Each kind of index has its own family of level styles, LibreOffice's names throughout
+// (registryName maps Word's localized `toc n` onto them). Word regenerates its rows from
+// the styles, so the family the index belongs to is what says which ones are its own.
+const INDEX_LEVEL_STYLES: Record<IndexKind, RegExp | null> = {
+  toc: /^Contents (10|[1-9])$/,
+  figures: /^Illustration Index (10|[1-9])$/,
+  tables: /^Table index (10|[1-9])$/i,
+  alphabetical: /^Index (10|[1-9])$/,
+  bibliography: null,
+};
+
+function tocLevelStyles(ctx: Ctx, maxLevel: number, kind: IndexKind = 'toc'): (string | null)[] | null {
+  const pattern = INDEX_LEVEL_STYLES[kind];
+  if (!pattern) return null;
   const out: (string | null)[] = [];
   for (const id of ctx.styles.namedParagraphStyles().keys()) {
     const name = ctx.styleNames.get(id) ?? '';
-    const level = Number(/^Contents (10|[1-9])$/.exec(name)?.[1]);
+    const level = Number(pattern.exec(name)?.[1]);
     if (!level || level > maxLevel) continue;
     ctx.usedStyles.add(id);
     out[level - 1] = name;
@@ -2180,8 +2209,8 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
     // the far end that an image reads as one half of a side-by-side pair.
     const align = root.getElementsByTagNameNS(WP, 'positionH')[0]
       ?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
-    if (wrap === 'topBottom' && offsetCm == null && (align === 'center' || align === 'right'))
-      attrs.wrapAlign = align;
+    if ((wrap === 'topBottom' || wrap === 'through') && offsetCm == null
+      && (align === 'center' || align === 'right')) attrs.wrapAlign = align;
   }
 
   const fillClr = nsChild(nsChild(spPr, A, 'solidFill'), A, 'srgbClr')?.getAttribute('val');
@@ -2201,8 +2230,18 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
 
   // Vertical text: every one of Word's top-to-bottom flows, the editor having the one
   // direction the browser lays out (`vert270` reads bottom-to-top and is not one).
-  const vert = nsChild(wsp, WPS, 'bodyPr')?.getAttribute('vert') ?? 'horz';
+  const bodyPr = nsChild(wsp, WPS, 'bodyPr');
+  const vert = bodyPr?.getAttribute('vert') ?? 'horz';
   if (['vert', 'eaVert', 'mongolianVert', 'wordArtVert'].includes(vert)) attrs.textVertical = true;
+  // The ring inside the box (w:lIns, EMU). Word's own default is 0.25cm on the sides;
+  // only a value the editor's own ring does not already draw is worth the attr.
+  const lIns = bodyPr?.getAttribute('lIns');
+  if (lIns != null) {
+    const padCm = Number(lIns) / 360000;
+    if (Number.isFinite(padCm) && padCm >= 0 && Math.abs(padCm - TEXTBOX_PADDING_CM) > 0.01) {
+      attrs.paddingCm = Math.round(padCm * 1000) / 1000;
+    }
+  }
 
   const txbxContent = nsChild(nsChild(wsp, WPS, 'txbx'), W, 'txbxContent');
   const blocks = txbxContent ? unnestBoxes(convertBlocks(Array.from(txbxContent.children), ctx, 'cell'), ctx) : [];
@@ -2508,6 +2547,10 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
     ?? Math.max(1, ...trs.map((tr) => fcAll(tr, 'tc').reduce((n, tc) => n + (intAttr(fc(fc(tc, 'tcPr'), 'gridSpan'), W, 'val') ?? 1), 0)));
   for (let ri = 0; ri < trs.length; ri++) {
     const tr = trs[ri];
+    // w:tblHeader says the same as ODF's <table:table-header-rows>: this row heads the
+    // table. Its cells are header cells, which is what shades and bolds them.
+    const trHdr = fc(fc(tr, 'trPr'), 'tblHeader');
+    const isHeaderRow = !!trHdr && onOff(trHdr);
     const cells: Node[] = [];
     let col = 0;
     for (const tc of fcAll(tr, 'tc')) {
@@ -2580,7 +2623,7 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
       const { formula, format } = cellFormulaOf(tc);
       if (formula) attrs.formula = formula;
       if (formula && format) attrs.cellFormat = format;
-      const cell: Node = { type: 'tableCell', attrs, content: blocks.length ? blocks : [{ type: 'paragraph' }] };
+      const cell: Node = { type: isHeaderRow ? 'tableHeader' : 'tableCell', attrs, content: blocks.length ? blocks : [{ type: 'paragraph' }] };
       cells.push(cell);
       for (let c = col; c < col + colspan; c++) pending[c] = vMerge === 'restart' ? cell : null;
       col += colspan;
