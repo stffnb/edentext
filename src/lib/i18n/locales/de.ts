@@ -1123,6 +1123,7 @@ const de: Messages = {
     show: 'Passwort anzeigen',
     hide: 'Passwort verbergen',
     remove: 'Schutz entfernen',
+    lost: 'Das Passwort bleibt über einen Reload nicht erhalten. Gib es für die Datei erneut ein, oder entferne den Schutz.',
   },
   importError: {
     odtArchive: 'Keine gültige .odt-Datei (Archiv konnte nicht gelesen werden).',

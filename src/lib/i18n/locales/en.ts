@@ -1131,6 +1131,7 @@ const en = {
     show: 'Show password',
     hide: 'Hide password',
     remove: 'Remove protection',
+    lost: 'The password is not kept across a reload. Enter it again for the file, or remove the protection.',
   },
   importError: {
     odtArchive: 'Not a valid .odt file (could not read the archive).',

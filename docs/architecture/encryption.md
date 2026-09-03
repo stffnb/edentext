@@ -19,7 +19,10 @@ Encryption is the **last** thing to touch the bytes: `writeHandle`/`download` in
 .odt into an .ott. Decryption is the **first**: the top of `applyImport` in `App.svelte`,
 before `convertUnsupportedImages`, which would otherwise unzip an encrypted archive and find
 nothing. The password lives in `docPassword` for the session only — the autosaved copy in
-localStorage stays plain text, as both reference word processors' recovery copies do.
+localStorage stays plain text, as both reference word processors' recovery copies do. What
+survives a reload is the fact of the protection (`edentext-doc-protected`): the first save
+then asks for the password again, or for the protection to be lifted, so a reload never
+turns a protected file into an open one.
 
 ## ODF
 

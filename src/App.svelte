@@ -38,7 +38,7 @@
   import { DEFAULT_NOTE_SETTINGS } from './lib/storage/noteSettings';
   import { builtinStyleSheet, type StyleFamily } from './lib/styles/styleSheet';
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, loadExtraHfSections, saveExtraHfSections, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
-  import { loadDocName, saveDocName, loadDocFormat, saveDocFormat, stripOdtExtension, sanitizeNameForFile, deriveFilename, filenameFor, type DocumentFormat } from './lib/storage/documentName';
+  import { loadDocName, saveDocName, loadDocFormat, saveDocFormat, stripOdtExtension, sanitizeNameForFile, deriveFilename, filenameFor, loadDocProtected, saveDocProtected, type DocumentFormat } from './lib/storage/documentName';
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { loadHyphenation, saveHyphenation } from './lib/storage/hyphenation';
   import { loadPageNumbering, savePageNumbering, DEFAULT_PAGE_NUMBERING, type PageNumbering } from './lib/storage/pageNumbering';
@@ -340,6 +340,7 @@
   $effect(() => {
     saveDocName(documentName);
     saveDocFormat(documentFormat);
+    saveDocProtected(docProtected);
   });
 
   function setZoom(value: number) {
@@ -497,7 +498,11 @@
   // The password the document is saved with. Session-only: it is never written to
   // localStorage, and the autosaved copy there stays unencrypted.
   let docPassword: string | null = $state(null);
+  // Set after a reload: the document is protected, but the password went with the session.
+  let passwordLost = $state(loadDocProtected());
+  let docProtected = $derived(docPassword !== null || passwordLost);
   let passwordSetOpen = $state(false);
+  let setResolve: ((decided: boolean) => void) | null = null;
   let passwordAskOpen = $state(false);
   let passwordWrong = $state(false);
   let askResolve: ((password: string | null) => void) | null = null;
@@ -603,6 +608,7 @@
     fileHandle = null;
     documentFormat = 'odt';
     docPassword = null;
+    passwordLost = false;
     // Styles and note settings live in the document, so a new one starts from the built-ins
     setStyleSheet(builtinStyleSheet());
     setNoteSettings(DEFAULT_NOTE_SETTINGS);
@@ -660,6 +666,29 @@
     const resolve = askResolve;
     askResolve = null;
     resolve?.(password);
+  }
+
+  function applyPassword(password: string | null): void {
+    docPassword = password;
+    passwordLost = false;
+    setResolve?.(true);
+    setResolve = null;
+  }
+
+  function cancelPasswordSet(): void {
+    setResolve?.(false);
+    setResolve = null;
+  }
+
+  // A reload keeps the document marked protected but not its password: the first save
+  // asks for it again, or for the protection to be lifted, rather than writing the
+  // file open. False = the user backed out, and the save with it.
+  function ensurePassword(): Promise<boolean> {
+    if (!passwordLost) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      setResolve = resolve;
+      passwordSetOpen = true;
+    });
   }
 
   // Ask until the password fits or the user gives up; null means give up.
@@ -774,6 +803,7 @@
       // The file's password belongs to the document once it is actually the open one,
       // and an unprotected file drops the previous document's.
       docPassword = password;
+      passwordLost = false;
       if (sourceName) recentFiles = await rememberRecentFile(sourceName, isTemplate ? null : handle);
 
       // Warn about fonts the document uses but the browser can't render, so text
@@ -874,6 +904,7 @@
   async function handleSave() {
     if (!editor) return;
     exportMenuOpen = false;
+    if (!(await ensurePassword())) return;
     const json = editor.getJSON() as TiptapNode;
     try {
       // A document opened as .docx round-trips through the same format, like both
@@ -903,6 +934,7 @@
   async function handleSaveAs() {
     if (!editor) return;
     exportMenuOpen = false;
+    if (!(await ensurePassword())) return;
     const json = editor.getJSON() as TiptapNode;
     try {
       const { buildOdt } = await import('./lib/export/odt');
@@ -923,6 +955,7 @@
   async function handleSaveTemplate() {
     if (!editor) return;
     exportMenuOpen = false;
+    if (!(await ensurePassword())) return;
     const json = editor.getJSON() as TiptapNode;
     try {
       await saveAsTemplate(async (kind) => {
@@ -976,6 +1009,7 @@
   async function handleSaveDocx() {
     if (!editor || docxBusy) return;
     exportMenuOpen = false;
+    if (!(await ensurePassword())) return;
     docxBusy = true;
     try {
       const json = editor.getJSON() as TiptapNode;
@@ -1248,7 +1282,7 @@
       onAbout={() => (aboutOpen = true)}
       onDocProperties={() => (docPropsOpen = true)}
       onProtect={() => (passwordSetOpen = true)}
-      hasPassword={docPassword !== null}
+      hasPassword={docProtected}
       onAutoCorrect={() => (autoCorrectOpen = true)}
       onAutoText={() => (autoTextOpen = true)}
       onNewComment={addComment}
@@ -1376,7 +1410,7 @@
               {/if}
               <button class="theme-option" onclick={() => { exportMenuOpen = false; passwordSetOpen = true; }} role="menuitem">
                 <span>{t().password.menu}</span>
-                {#if docPassword !== null}<span class="theme-option-hint">{t().password.menuOn}</span>{/if}
+                {#if docProtected}<span class="theme-option-hint">{t().password.menuOn}</span>{/if}
               </button>
               <div class="theme-heading">{t().docProps.title}</div>
               <button class="theme-option" onclick={() => { exportMenuOpen = false; docPropsOpen = true; }} role="menuitem">
@@ -1666,8 +1700,10 @@
   <PasswordDialog
     bind:open={passwordSetOpen}
     mode="set"
-    hasPassword={docPassword !== null}
-    onApply={(password) => (docPassword = password)}
+    hasPassword={docProtected}
+    lost={passwordLost}
+    onApply={applyPassword}
+    onCancel={cancelPasswordSet}
   />
   <PasswordDialog
     bind:open={passwordAskOpen}

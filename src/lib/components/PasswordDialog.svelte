@@ -3,11 +3,13 @@
 
   // Two jobs, one dialog: setting the password a document is saved with, and asking
   // for the one an encrypted document was saved with.
-  let { open = $bindable(false), mode, hasPassword = false, wrong = false, onApply, onCancel }: {
+  let { open = $bindable(false), mode, hasPassword = false, wrong = false, lost = false, onApply, onCancel }: {
     open?: boolean;
     mode: 'set' | 'ask';
     hasPassword?: boolean;
     wrong?: boolean;
+    // The document is protected but the session no longer has the password (a reload).
+    lost?: boolean;
     onApply: (password: string | null) => void;
     onCancel?: () => void;
   } = $props();
@@ -74,6 +76,7 @@
     <h2>{mode === 'set' ? t().password.setTitle : t().password.askTitle}</h2>
 
     {#if wrong}<p class="wrong">{t().password.wrong}</p>{/if}
+    {#if lost}<p class="note">{t().password.lost}</p>{/if}
 
     <div class="row">
       <label>

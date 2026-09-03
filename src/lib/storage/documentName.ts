@@ -49,3 +49,16 @@ export function saveDocFormat(format: DocumentFormat): void {
   if (format === 'docx') localStorage.setItem(FORMAT_KEY, format);
   else localStorage.removeItem(FORMAT_KEY);
 }
+
+// Whether the open document is password-protected. The password itself is never
+// stored, so after a reload this is what makes the first save ask for it again.
+const PROTECTED_KEY = 'edentext-doc-protected';
+
+export function loadDocProtected(): boolean {
+  return localStorage.getItem(PROTECTED_KEY) === '1';
+}
+
+export function saveDocProtected(on: boolean): void {
+  if (on) localStorage.setItem(PROTECTED_KEY, '1');
+  else localStorage.removeItem(PROTECTED_KEY);
+}
