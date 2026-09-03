@@ -880,9 +880,10 @@
       recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
-      // A stored handle may have lost permission; re-prompt via Save As. Encryption
-      // failing is not that case — it would silently save the document unprotected.
-      if (fileHandle && (err as Error)?.name !== 'EncryptionError') { fileHandle = null; await handleSaveAs(); return; }
+      // A stored handle may have lost its permission or its file: prompt for a new one,
+      // in the document's own format. Every other error is reported, not papered over.
+      const name = (err as DOMException)?.name;
+      if (fileHandle && (name === 'NotAllowedError' || name === 'NotFoundError')) { fileHandle = null; return handleSave(); }
       console.error('[save] Failed to save file:', err);
       failed(t().dialogs.couldNotSave, err);
     }
