@@ -4,6 +4,7 @@ import { importOdt } from '../../src/lib/import/odt';
 import { importDocx } from '../../src/lib/import/docx';
 import { buildOdt } from '../../src/lib/export/odt';
 import { buildDocx } from '../../src/lib/export/docx';
+import { marginAxisLabel, withMirrored } from '../../src/lib/storage/pageMargins';
 
 // ODF style:page-usage="mirrored" / Word w:mirrorMargins: the declared left and right
 // are the inner/outer pair, so an even (left-hand) page swaps them.
@@ -60,6 +61,19 @@ describe('mirrored page margins', () => {
     const bytes = await buildDocx(doc, margins);
     expect(strFromU8(unzipSync(bytes)['word/settings.xml'])).toContain('mirrorMargins');
     expect(importDocx(bytes).margins).toMatchObject({ left: 1.5, right: 3, mirrored: true });
+  });
+
+  it('is switched on and off without leaving a false behind', async () => {
+    const plain = { top: 2, bottom: 2, left: 1.5, right: 3 };
+    const on = withMirrored(plain, true);
+    expect(on).toEqual({ ...plain, mirrored: true });
+    expect(withMirrored(on, false)).toEqual(plain);
+    expect('mirrored' in withMirrored(on, false)).toBe(false);
+    // The pair the fields name follows the switch; top and bottom never move.
+    expect([marginAxisLabel('left', on), marginAxisLabel('right', on), marginAxisLabel('top', on)])
+      .toEqual(['inner', 'outer', 'top']);
+    expect(marginAxisLabel('left', plain)).toBe('left');
+    expect(importOdt(await buildOdt(doc, on)).margins?.mirrored).toBe(true);
   });
 
   it('leaves an unmirrored DOCX export alone', async () => {

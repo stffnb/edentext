@@ -6,7 +6,7 @@
   import { uniformBlockAttr } from '../../../utils/selectionFormat';
   import { findColumns, DEFAULT_COLUMN_GAP_CM } from '../../../editor/extensions/columns';
   import { PAGE_FORMAT_CM, type PageFormat } from '../../../storage/pageFormat';
-  import { DEFAULT_MARGINS, type PageMargins } from '../../../storage/pageMargins';
+  import { DEFAULT_MARGINS, marginAxisLabel, withMirrored, type PageMargins } from '../../../storage/pageMargins';
   import type { Orientation } from '../../../storage/pageOrientation';
   import { EMPTY_HF_SET, type HfSet, type HfZone } from '../../../storage/headerFooter';
   import { DEFAULT_PAGE_NUMBERING, PAGE_NUM_FORMATS, clampPageStart, type PageNumbering } from '../../../storage/pageNumbering';
@@ -99,6 +99,9 @@
 
   const fmtCm = (v: number) => (Math.round(v * 100) / 100).toString().replace('.', ',');
 
+  // Mirrored, the left/right fields are the inner/outer pair and say so.
+  const mLabel = (edge: (typeof EDGES)[number]) => t().toolbarExpanded.margins[marginAxisLabel(edge, pageMargins)];
+
   function setMargin(edge: (typeof EDGES)[number], raw: string) {
     const v = parseFloat(raw.replace(',', '.'));
     if (isNaN(v)) return;
@@ -139,7 +142,7 @@
     {#if isMenuOpen('margins')}
       <div class="ribbon-menu margin-menu" use:anchored role="menu">
         {#each MARGIN_PRESETS as p}
-          <button onclick={() => { closeMenu(); pageMargins = p.m; }}>
+          <button onclick={() => { closeMenu(); pageMargins = withMirrored(p.m, pageMargins.mirrored === true); }}>
             {t().ribbon.marginPresets[p.key]}
             <span class="menu-sub">{fmtCm(p.m.top)} / {fmtCm(p.m.left)} cm</span>
           </button>
@@ -149,17 +152,25 @@
         <div class="margin-grid">
           {#each EDGES as edge}
             <label class="margin-field">
-              <span>{t().toolbarExpanded.margins[edge]}</span>
+              <span>{mLabel(edge)}</span>
               <input
                 type="text"
                 inputmode="decimal"
                 value={fmtCm(pageMargins[edge])}
-                title={t().toolbarExpanded.marginField(t().toolbarExpanded.margins[edge])}
+                title={t().toolbarExpanded.marginField(mLabel(edge))}
                 onchange={(e) => setMargin(edge, (e.currentTarget as HTMLInputElement).value)}
               />
             </label>
           {/each}
         </div>
+        <label class="check-row" title={t().toolbarExpanded.mirrorMarginsHint}>
+          <input
+            type="checkbox"
+            checked={pageMargins.mirrored === true}
+            onchange={(e) => (pageMargins = withMirrored(pageMargins, e.currentTarget.checked))}
+          />
+          {t().toolbarExpanded.mirrorMargins}
+        </label>
       </div>
     {/if}
   </div>

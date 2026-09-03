@@ -19,7 +19,7 @@
     queryLocalFontsIfAllowed,
     supportsLocalFontAccess,
   } from '../utils/fontDetect';
-  import { DEFAULT_MARGINS, cmToPx, type PageMargins } from '../storage/pageMargins';
+  import { DEFAULT_MARGINS, cmToPx, marginAxisLabel, withMirrored, type MarginAxis, type PageMargins } from '../storage/pageMargins';
   import type { Orientation } from '../storage/pageOrientation';
   import { pageDimsCm, PAGE_FORMAT_CM, type PageFormat } from '../storage/pageFormat';
   import { DEFAULT_HF_DISTANCES, clampHfDistance, type HfDistances } from '../storage/headerFooter';
@@ -590,8 +590,9 @@
   }
 
   // --- Page layout / margins (cm) ---
-  type MarginAxis = 'top' | 'bottom' | 'left' | 'right';
   const MARGIN_FIELDS: MarginAxis[] = ['top', 'bottom', 'left', 'right'];
+  // Mirrored, the left/right fields are the inner/outer pair and say so.
+  const mLabel = (axis: MarginAxis) => t().toolbarExpanded.margins[marginAxisLabel(axis, pageMargins)];
   const MARGIN_STEP = 0.1;
   const MARGIN_MIN = 0;
   const MARGIN_MAX = 10;
@@ -1492,7 +1493,7 @@
           <div class="margin-grid">
             {#each MARGIN_FIELDS as axis}
               <div class="margin-field">
-                <span class="margin-label">{t().toolbarExpanded.margins[axis]}</span>
+                <span class="margin-label">{mLabel(axis)}</span>
                 <div class="margin-input-wrap">
                   <input
                     type="text"
@@ -1501,15 +1502,15 @@
                     onkeydown={(e) => onMarginKeydown(axis, e)}
                     onblur={() => commitMarginInput(axis)}
                     inputmode="decimal"
-                    title={t().toolbarExpanded.marginField(t().toolbarExpanded.margins[axis])}
+                    title={t().toolbarExpanded.marginField(mLabel(axis))}
                   />
                   <div class="margin-steppers">
-                    <button class="margin-step" tabindex="-1" onclick={() => stepMargin(axis, MARGIN_STEP)} title={t().toolbarExpanded.increaseMargin(t().toolbarExpanded.margins[axis])} aria-label={t().toolbarExpanded.increaseMargin(t().toolbarExpanded.margins[axis])}>
+                    <button class="margin-step" tabindex="-1" onclick={() => stepMargin(axis, MARGIN_STEP)} title={t().toolbarExpanded.increaseMargin(mLabel(axis))} aria-label={t().toolbarExpanded.increaseMargin(mLabel(axis))}>
                       <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
                         <path d="M1 5.5l3-3 3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                       </svg>
                     </button>
-                    <button class="margin-step" tabindex="-1" onclick={() => stepMargin(axis, -MARGIN_STEP)} title={t().toolbarExpanded.decreaseMargin(t().toolbarExpanded.margins[axis])} aria-label={t().toolbarExpanded.decreaseMargin(t().toolbarExpanded.margins[axis])}>
+                    <button class="margin-step" tabindex="-1" onclick={() => stepMargin(axis, -MARGIN_STEP)} title={t().toolbarExpanded.decreaseMargin(mLabel(axis))} aria-label={t().toolbarExpanded.decreaseMargin(mLabel(axis))}>
                       <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
                         <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
                       </svg>
@@ -1519,6 +1520,14 @@
               </div>
             {/each}
           </div>
+          <label class="hf-firstpage-row" title={t().toolbarExpanded.mirrorMarginsHint}>
+            <input
+              type="checkbox"
+              checked={pageMargins.mirrored === true}
+              onchange={(e) => (pageMargins = withMirrored(pageMargins, e.currentTarget.checked))}
+            />
+            <span>{t().toolbarExpanded.mirrorMargins}</span>
+          </label>
 
           <div class="lh-section-label">{t().toolbarExpanded.headerFooter}</div>
           <div class="hf-edit-row">

@@ -4,6 +4,21 @@ export type PageMargins = {
   top: number; bottom: number; left: number; right: number; mirrored?: boolean;
 };
 
+export type MarginAxis = 'top' | 'bottom' | 'left' | 'right';
+
+// The flag is absent, never false, when off: margins are compared whole, so a stored
+// `mirrored: false` would read as a different page setup than an unmirrored one.
+export function withMirrored(m: PageMargins, on: boolean): PageMargins {
+  const { mirrored: _was, ...rest } = m;
+  return on ? { ...rest, mirrored: true } : rest;
+}
+
+// Mirrored, the left/right pair is the inner/outer one — the label the field carries.
+export function marginAxisLabel(axis: MarginAxis, m: PageMargins): MarginAxis | 'inner' | 'outer' {
+  if (!m.mirrored || (axis !== 'left' && axis !== 'right')) return axis;
+  return axis === 'left' ? 'inner' : 'outer';
+}
+
 const KEY = 'edentext-page-margins';
 
 // LibreOffice Writer's default page margins (Word uses 2.54cm all round). Only a new
