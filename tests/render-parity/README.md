@@ -45,6 +45,11 @@ line breaks differently for a reason that is not a bug. With them, both engines
 resolve Times New Roman → Liberation Serif, Arial → Liberation Sans, Calibri →
 Carlito, Cambria → Caladea — the same files the editor bundles.
 
+Where the LibreOffice build ships those families itself (the macOS app bundle does:
+`Contents/Resources/fonts/truetype/`), it resolves them without fontconfig and the step
+is only about what it does *not* ship — `fc-list` showing neither Liberation nor Carlito
+is then not a reason to distrust a run.
+
 **But install only what LibreOffice does not already ship.** A second copy of a
 family it bundles makes its render *non-deterministic*: it picks between the two
 files per run — measured as `Carlito` against `Carlito-Regular` in the PDF's font
@@ -78,6 +83,16 @@ Only this harness reads `fixtures/`. The directory is gitignored, so a `tests/un
 reading it fails with `ENOENT` on a fresh clone; it zips its own document instead
 (`docx-onoff.test.ts` — both importers take a `Uint8Array`, not a path), or reads
 `tests/corpus/`, which is committed. CI greps for the read.
+
+## Probing with a purpose-built document
+
+The fastest probe is an `.odt` of your own run through the harness: both engines lay the
+same file out and the report *is* the measurement, in the units the corpus uses. Build it
+with `fflate` (`zipSync`), keep it in the scratchpad, and mind two traps — `mimetype` has
+to be stored uncompressed (`{ level: 0 }`) or LibreOffice produces no PDF at all, and a
+`style:font-name` with **no `<style:font-face>` declaration** is not resolved: LibreOffice
+falls back (Calibri → Liberation Sans) where the editor honours the name, which invents a
+line-height difference that is not there in any real document.
 
 ## Prerequisites, part two: Calibri Light
 
