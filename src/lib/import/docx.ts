@@ -278,6 +278,8 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     // Word takes the larger of the two spacings, and LibreOffice follows it for a
     // Word document — its own ODF default adds them (probed).
     spacingModel: 'max' as const,
+    // Word applies space above at a page top unless its own compatibility flag says not to.
+    spacingAtPageStart: !docSuppressSpaceAfterBreak(files),
     header: first.header,
     footer: first.footer,
     headerFirst: first.differentFirstPage ? first.headerFirst : null,
@@ -2926,6 +2928,19 @@ function docxPageNumbering(sectPr: Element | null): PageNumbering {
 }
 
 // Word's Layout ▸ Hyphenation, from settings.xml (absent = off, as in Word).
+// w:suppressSpBfAfterPgBrk — Word's own "no space above the block that opens a page",
+// the flag LibreOffice reads into AddParaTableSpacingAtStart.
+function docSuppressSpaceAfterBreak(files: Record<string, Uint8Array>): boolean {
+  const bytes = files['word/settings.xml'];
+  if (!bytes) return false;
+  try {
+    const el = parseXml(strFromU8(bytes)).getElementsByTagNameNS(W, 'suppressSpBfAfterPgBrk')[0];
+    return !!el && onOff(el);
+  } catch {
+    return false;
+  }
+}
+
 function docAutoHyphenation(files: Record<string, Uint8Array>): boolean {
   const bytes = files['word/settings.xml'];
   if (!bytes) return false;

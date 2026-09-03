@@ -30,7 +30,7 @@
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadTabInterval, saveTabInterval, applyTabIntervalVar, DEFAULT_TAB_INTERVAL_CM } from './lib/storage/tabInterval';
-  import { loadSpacingModel, saveSpacingModel, type SpacingModel } from './lib/storage/spacingModel';
+  import { loadSpacingModel, saveSpacingModel, loadSpacingAtPageStart, saveSpacingAtPageStart, type SpacingModel } from './lib/storage/spacingModel';
   import { loadPageRtl, savePageRtl } from './lib/storage/writingMode';
   import { loadPageFormat, savePageFormat, type PageFormat } from './lib/storage/pageFormat';
   import { setStyleSheet, styleSheet } from './lib/styles/sheet.svelte';
@@ -168,6 +168,7 @@
   let pageFormat: PageFormat = $state(loadPageFormat());
   let tabIntervalCm = $state(loadTabInterval());
   let spacingModel: SpacingModel = $state(loadSpacingModel());
+  let spacingAtPageStart = $state(loadSpacingAtPageStart());
   // The page's text direction, from the file's own page setup (writingMode.ts).
   let pageRtl = $state(loadPageRtl());
   // Bumped for each document opened (import, new); Editor hides the page until that
@@ -259,6 +260,7 @@
 
   $effect(() => {
     saveSpacingModel(spacingModel);
+    saveSpacingAtPageStart(spacingAtPageStart);
   });
 
 
@@ -576,6 +578,7 @@
     pageFormat = 'A4';
     tabIntervalCm = DEFAULT_TAB_INTERVAL_CM;
     spacingModel = 'add';
+    spacingAtPageStart = true;
     hfDistances = { ...DEFAULT_HF_DISTANCES };
     extraHfSections = [];
     documentName = '';
@@ -722,6 +725,7 @@
       if (result.format) pageFormat = result.format;
       if (result.tabIntervalCm) tabIntervalCm = result.tabIntervalCm;
       spacingModel = result.spacingModel;
+      spacingAtPageStart = result.spacingAtPageStart !== false;
       pageRtl = result.rtl;
       hyphenate = result.hyphenate;
       pageNumbering = result.pageNumbering;
@@ -863,12 +867,12 @@
       // reference word processors — not silently rewritten to .odt under its old name.
       if (documentFormat === 'docx') {
         const { buildDocx } = await import('./lib/export/docx');
-        const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks);
+        const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart);
         fileHandle = await saveDocx(bytes, suggestedFilenameDocx(json), fileHandle, docPassword);
         recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilenameDocx(json), fileHandle);
         return;
       }
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart);
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle, docPassword);
       recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
     } catch (err) {
@@ -886,7 +890,7 @@
     exportMenuOpen = false;
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
-      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks);
+      const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart);
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json), docPassword);
       documentFormat = 'odt'; // Save As is odt-only, so a docx-opened document switches format here.
       recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
@@ -906,7 +910,7 @@
     const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
     try {
       await saveAsTemplate(async (kind) => {
-        const args = [pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks] as const;
+        const args = [pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart] as const;
         const { odtToOtt, docxToDotx } = await import('./lib/export/template');
         if (kind === 'dotx') {
           const { buildDocx } = await import('./lib/export/docx');
@@ -959,7 +963,7 @@
     try {
       const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
       const { buildDocx } = await import('./lib/export/docx');
-      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks);
+      const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart);
       await saveAsDocx(bytes, suggestedFilenameDocx(json), docPassword);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
@@ -1135,6 +1139,7 @@
       // dump carries the spacing that decides that: the sheet and the model it uses.
       tableCells: getTableCellDebug(editor.view),
       spacingModel,
+      spacingAtPageStart,
       styles: styleSheet(),
       colors: getColorDebug(editor),
     };
@@ -1539,6 +1544,7 @@
     {hfDistances}
     {tabIntervalCm}
     {spacingModel}
+    {spacingAtPageStart}
     {hyphenate}
     {documentLanguage}
     {pageNumbering}

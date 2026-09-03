@@ -86,6 +86,7 @@ export interface OdtImportResult {
   // How the space between two blocks is measured; 'max' only where the file says so
   // (settings.xml AddParaTableSpacing=false, what LibreOffice writes for a Word import).
   spacingModel: SpacingModel;
+  spacingAtPageStart: boolean;
   // Single-paragraph docs in the hfExtensions schema; null = no zone.
   header: HfDoc;
   footer: HfDoc;
@@ -749,6 +750,13 @@ function odfSpacingModel(files: Record<string, Uint8Array>): SpacingModel {
   return /AddParaTableSpacing"[^>]*>false</.test(xml) ? 'max' : 'add';
 }
 
+// The same settings file says whether the block that opens a page keeps its space above
+// (AddParaTableSpacingAtStart). Absent = on, which is what LibreOffice writes by default.
+function odfSpacingAtPageStart(files: Record<string, Uint8Array>): boolean {
+  const xml = files['settings.xml'] ? strFromU8(files['settings.xml']) : '';
+  return !/AddParaTableSpacingAtStart"[^>]*>false</.test(xml);
+}
+
 export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = new Map()): OdtImportResult {
   let files: Record<string, Uint8Array>;
   try {
@@ -857,6 +865,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     pageNumbering: { format: docNumFormat, start: odfPageNumberStart(resolver, body) },
     tabIntervalCm: resolver.defaultTabInterval(),
     spacingModel: odfSpacingModel(files),
+    spacingAtPageStart: odfSpacingAtPageStart(files),
     header,
     footer,
     headerFirst,

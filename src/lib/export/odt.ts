@@ -4856,7 +4856,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR, lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING, recordChanges = false, foldMarks = false): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR, lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING, recordChanges = false, foldMarks = false, spacingAtPageStart = true): Promise<Uint8Array> {
   // Images become IMG sentinels before serialization; applyImages resolves them and writes
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
@@ -5121,7 +5121,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it.
   const withSections = applySectionMasterPages(withWatermark, hf?.sections ?? [], hf?.pageCount ?? 1, margins, pageFormat, orientation);
-  return zipFinal(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withSections, spacingModel), pageNumbering.start), props)));
+  return zipFinal(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withSections, spacingModel, spacingAtPageStart), pageNumbering.start), props)));
 }
 
 // The package declares ODF 1.3 in every part — the version LibreOffice writes, and
@@ -5187,13 +5187,15 @@ function applyDocProperties(odtBytes: Uint8Array, props: DocProperties): Uint8Ar
 
 // A document that takes the larger of two adjoining spacings needs LibreOffice's
 // AddParaTableSpacing=false — its own default adds them, so without this the space
-// between every pair of blocks would grow when the file is reopened.
-function applySpacingModel(odtBytes: Uint8Array, model: SpacingModel): Uint8Array {
-  if (model !== 'max') return odtBytes;
+// between every pair of blocks would grow when the file is reopened. The same file
+// carries whether a block opening a page keeps its space above.
+function applySpacingModel(odtBytes: Uint8Array, model: SpacingModel, atPageStart = true): Uint8Array {
+  if (model !== 'max' && atPageStart) return odtBytes;
   const files = unzipSync(odtBytes);
   const item =
     '<config:config-item-set config:name="ooo:configuration-settings">' +
-    '<config:config-item config:name="AddParaTableSpacing" config:type="boolean">false</config:config-item>' +
+    (model === 'max' ? '<config:config-item config:name="AddParaTableSpacing" config:type="boolean">false</config:config-item>' : '') +
+    (atPageStart ? '' : '<config:config-item config:name="AddParaTableSpacingAtStart" config:type="boolean">false</config:config-item>') +
     '</config:config-item-set>';
   const existing = files['settings.xml'];
   if (existing) {

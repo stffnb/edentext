@@ -1767,6 +1767,22 @@ function orderDocxSettings(bytes: Uint8Array): Uint8Array {
   return zipSync(out);
 }
 
+// Post-pack pass: no space above the block that opens a page — Word keeps it in the
+// compatibility set, where LibreOffice reads it into AddParaTableSpacingAtStart.
+function applySpacingAtStartDocx(bytes: Uint8Array): Uint8Array {
+  const files = unzipSync(bytes);
+  const setBytes = files['word/settings.xml'];
+  if (!setBytes) return bytes;
+  const xml = strFromU8(setBytes);
+  if (xml.includes('w:suppressSpBfAfterPgBrk')) return bytes;
+  files['word/settings.xml'] = strToU8(/<w:compat\b[^>]*>/.test(xml)
+    ? xml.replace(/(<w:compat\b[^>]*>)/, '$1<w:suppressSpBfAfterPgBrk/>')
+    : xml.replace(/(<w:settings\b[^>]*>)/, '$1<w:compat><w:suppressSpBfAfterPgBrk/></w:compat>'));
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
 // Post-pack pass: Word's mirror margins are a document setting (w:mirrorMargins in
 // word/settings.xml); the docx lib writes only the per-section w:pgMar, where left and
 // right are already the inner/outer pair the editor holds.
@@ -2676,6 +2692,7 @@ export async function buildDocx(
   lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING,
   recordChanges = false,
   foldMarks = false,
+  spacingAtPageStart = true,
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   exportSheet = styles;
@@ -2882,7 +2899,8 @@ export async function buildDocx(
   const mirrored = margins.mirrored ? applyMirrorMarginsDocx(threaded) : threaded;
   const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);
   const dims = pageDimsCm(pageFormat, orientation);
-  const marked = applyFoldMarksDocx(bidi, foldMarks, dims.w * 10);
+  const foldMarked = applyFoldMarksDocx(bidi, foldMarks, dims.w * 10);
+  const marked = spacingAtPageStart ? foldMarked : applySpacingAtStartDocx(foldMarked);
   if (isEmptyPageDecor(decor)) return orderDocxSettings(marked);
   const pt = (cm: number) => (cm / 2.54) * 72;
   return orderDocxSettings(applyPageDecorDocx(marked, decor,

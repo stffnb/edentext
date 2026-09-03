@@ -1165,6 +1165,8 @@ export const PageBreaks = Extension.create({
           // Mirrored margins: the padding draws the odd page's pair, so an even page's
           // blocks move right by the difference. Per section — a cover between mirrored
           // ones has margins of its own and mirrors nothing.
+          // The document's "spacing at the start of a page" switch (spacingModel.ts).
+          const spacingAtStart = csRoot.getPropertyValue('--pb-space-at-page-start').trim() !== '0';
           const mirrors = csRoot.getPropertyValue('--pb-section-mirror').split(',')
             .map((g) => g.split('|').map(Number))
             .filter((g) => g.length === 2 && g.every(Number.isFinite));
@@ -1486,11 +1488,12 @@ export const PageBreaks = Extension.create({
               // A page break the flow had to make — its own spacer, or one that left it at
               // the top — swallows the block's space above; a break the document asks for
               // keeps it (probed: a page top is 20.01mm, a manual break with 6/20mm above
-              // puts the block at 26.00/40.01, an automatic one at 20.01 for either). A line
-              // split doesn't: there the page starts mid-block. `effectiveTop` still
-              // excludes this leaf's own push.
+              // puts the block at 26.00/40.01, an automatic one at 20.01 for either) —
+              // unless the document turns spacing at a page start off altogether, where
+              // even a manual break loses it. A line split doesn't: there the page starts
+              // mid-block. `effectiveTop` still excludes this leaf's own push.
               if (
-                i > 0 && !leaf.inTableCell && !leaf.forceBreakBefore && (leaf.spaceAbove ?? 0) > 0.5
+                i > 0 && !leaf.inTableCell && !(leaf.forceBreakBefore && spacingAtStart) && (leaf.spaceAbove ?? 0) > 0.5
                 && (breaks.some((b) => b.reason !== 'line-split')
                   || (breaks.length === 0 && Math.abs(effectiveTop - contentStart) < 0.5))
               ) {
