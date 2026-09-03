@@ -9,6 +9,7 @@ describe('autosave crash recovery', () => {
     localStorage.clear();
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { void cb; return 0; });
     vi.stubGlobal('alert', () => {});
+    vi.stubGlobal('confirm', () => false);
   });
 
   it('loads the document again after a startup that completed', async () => {
@@ -24,6 +25,15 @@ describe('autosave crash recovery', () => {
     expect(await loadDocument()).toBeNull();
     expect(localStorage.getItem('edentext-doc-broken')).toBe('{"type":"doc"}');
     expect(localStorage.getItem('edentext-doc')).toBeNull();
+  });
+
+  it('loads the document again when the user asks for another try', async () => {
+    vi.stubGlobal('confirm', () => true);
+    localStorage.setItem('edentext-doc', '{"type":"doc"}');
+    await loadDocument();
+    expect(await loadDocument()).toEqual({ type: 'doc' });
+    expect(localStorage.getItem('edentext-doc-broken')).toBeNull();
+    expect(localStorage.getItem('edentext-doc-loading')).toBe('1');
   });
 
   it('keeps the next document after a recovery', async () => {

@@ -72,13 +72,13 @@ export async function loadDocument(): Promise<object | null> {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (localStorage.getItem(BOOT_KEY)) {
     localStorage.removeItem(BOOT_KEY);
-    if (raw) {
+    // The user decides: a reload that cut a slow start short is the usual cause, and
+    // another try costs nothing a reload would not fix. Given up, the document is parked.
+    if (raw && !confirm(t().dialogs.documentNotLoaded)) {
       localStorage.setItem(BROKEN_KEY, raw);
       localStorage.removeItem(STORAGE_KEY);
-      // After paint, so the message doesn't land on a blank app.
-      requestAnimationFrame(() => alert(t().dialogs.documentNotLoaded));
+      return null;
     }
-    return null;
   }
   if (!raw) return null;
   let doc: object;
