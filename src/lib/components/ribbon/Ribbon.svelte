@@ -38,6 +38,7 @@
     chromeMode = $bindable<ChromeMode>('ribbon'),
     documentName = $bindable(''),
     documentFormat = 'odt',
+    dirty = false,
     showFormattingMarks = $bindable(false),
     showRuler = $bindable(true),
     splitView = $bindable(false),
@@ -78,6 +79,7 @@
     chromeMode?: ChromeMode;
     documentName?: string;
     documentFormat?: 'odt' | 'docx';
+    dirty?: boolean;
     showFormattingMarks?: boolean;
     showRuler?: boolean;
     splitView?: boolean;
@@ -298,6 +300,7 @@
         onblur={() => (documentName = documentName.trim())}
       />
       <span class="doc-name-ext">.{documentFormat}</span>
+      {#if dirty}<span class="doc-dirty" title={t().app.unsavedChanges}>•</span>{/if}
     </div>
 
     <!-- Word puts this chevron in the band's corner. It rides the strip so the band
@@ -605,6 +608,7 @@
   .doc-name-input:focus { outline: none; border-color: var(--w-accent); color: var(--w-text); }
 
   .doc-name-ext { margin-right: 6px; }
+  .doc-dirty { margin: 0 6px 0 -4px; color: var(--w-text-dim); }
 
   .ribbon-body {
     display: flex;

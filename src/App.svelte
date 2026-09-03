@@ -149,8 +149,32 @@
     const { doc } = editor.state;
     if (doc === countedDoc) return;
     countedDoc = doc;
+    // Whatever the editor comes up with is what the file holds; every doc after that
+    // is an edit the file has not seen. Undoing back to it counts as a change too.
+    cleanDoc ??= doc;
+    dirty = doc !== cleanDoc;
     clearTimeout(countTimer);
     countTimer = setTimeout(() => { docStats = countText(doc, 0, doc.content.size); }, 300);
+  });
+
+  // Changed since the last save into a file — the dot both word processors show. It
+  // follows the text only: a margin or a style change is not marked.
+  let dirty = $state(false);
+  let cleanDoc: PmNode | null = null;
+  // Whether there is a file to lose those changes from. A document that only ever
+  // lived in the browser is kept by the autosave, so leaving is not worth a warning.
+  let documentHasFile = $state(false);
+
+  function markSaved(): void {
+    cleanDoc = editor?.state.doc ?? null;
+    dirty = false;
+  }
+
+  $effect(() => {
+    if (!dirty || !documentHasFile) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    addEventListener('beforeunload', warn);
+    return () => removeEventListener('beforeunload', warn);
   });
   let selStats = $derived.by<TextStats | null>(() => {
     if (tick < 0 || !editor) return null;
@@ -607,6 +631,7 @@
     saveDocProperties(docProps);
     fileHandle = null;
     documentFormat = 'odt';
+    documentHasFile = false;
     docPassword = null;
     passwordLost = false;
     // Styles and note settings live in the document, so a new one starts from the built-ins
@@ -623,6 +648,7 @@
     documentEpoch++;
     resetHistory();
     resetDocumentState();
+    markSaved();
     editor.commands.focus();
   }
 
@@ -645,6 +671,7 @@
     }
     foldMarks = data.foldMarks === true;
     documentName = entry.name();
+    markSaved();
     editor.commands.focus();
   }
 
@@ -804,6 +831,10 @@
       // and an unprotected file drops the previous document's.
       docPassword = password;
       passwordLost = false;
+      // The document as opened is what its file holds — a template's is the new
+      // document's own, which is nowhere yet.
+      documentHasFile = !isTemplate;
+      markSaved();
       if (sourceName) recentFiles = await rememberRecentFile(sourceName, isTemplate ? null : handle);
 
       // Warn about fonts the document uses but the browser can't render, so text
@@ -929,6 +960,8 @@
       const save = documentFormat === 'docx' ? saveDocx : saveOdt;
       fileHandle = await save(bytes, name, fileHandle, docPassword);
       recentFiles = await rememberRecentFile(fileHandle?.name ?? name, fileHandle);
+      documentHasFile = true;
+      markSaved();
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       // A stored handle may have lost its permission or its file: prompt for a new one,
@@ -953,6 +986,8 @@
       fileHandle = handle;
       documentFormat = kind;
       recentFiles = await rememberRecentFile(handle?.name ?? suggested, handle);
+      documentHasFile = true;
+      markSaved();
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save file:', err);
@@ -1241,6 +1276,7 @@
       bind:chromeMode
       bind:documentName
       {documentFormat}
+      {dirty}
       bind:showFormattingMarks
       bind:showRuler
       bind:splitView
@@ -1333,6 +1369,7 @@
           onblur={() => (documentName = documentName.trim())}
         />
         <span class="doc-name-ext">.{documentFormat}</span>
+        {#if dirty}<span class="doc-dirty" title={t().app.unsavedChanges}>•</span>{/if}
         <svg class="doc-name-pencil" width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M11.3 2.3a1 1 0 0 1 1.4 0l1 1a1 1 0 0 1 0 1.4l-7 7-2.8.9.9-2.8 7-7.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>
         </svg>
@@ -1981,6 +2018,11 @@
 
   .doc-name:not(.has-value) .doc-name-ext {
     display: none;
+  }
+
+  .doc-dirty {
+    flex-shrink: 0;
+    color: var(--color-text-muted);
   }
 
   .doc-name-pencil {

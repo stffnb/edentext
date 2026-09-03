@@ -212,6 +212,15 @@ margin with the zone's edge distance. The watermark is an `<svg><text textLength
 fontwork shape **stretches** its text to its box instead of setting it at a size — a font
 size alone makes a short word far too small and a long one overflow the page.
 
+## The unsaved dot (`App.svelte`, both chromes)
+
+A `•` beside the document name while the text differs from what was last written to a
+file. It follows the **doc object**: the editor's first document is the clean one, every
+later one is a change (an undo back to it included), and a save, an open or a new document
+makes the current one clean again. Margins, styles or header/footer changes are not marked.
+Leaving the page warns only when the document actually has a file — a browser-only document
+is kept by the autosave, so there would be nothing to lose.
+
 ## Built-in templates (`TemplateGalleryDialog.svelte`, `lib/templates/`)
 
 "New from template" in both chromes opens the gallery; a card applies its entry via
