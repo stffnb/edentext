@@ -1035,6 +1035,7 @@ const de: Messages = {
   app: {
     documentName: 'Dokumentname',
     untitled: 'Unbenanntes Dokument',
+    startTyping: 'Hier tippen…',
     newDocument: 'Neues Dokument',
     open: 'Öffnen…',
     save: '.odt speichern',

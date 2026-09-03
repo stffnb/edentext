@@ -24,6 +24,7 @@ import { Table, TableHeader, TableCell } from '@tiptap/extension-table';
 import { ResizableTableRow } from './extensions/tableRow';
 import History from '@tiptap/extension-history';
 import Placeholder from '@tiptap/extension-placeholder';
+import { t } from '../i18n/i18n.svelte';
 
 import { PageBreaks } from './extensions/pageBreaks';
 import { LineHeight } from './extensions/lineHeight';
@@ -224,7 +225,7 @@ export const extensions = [
   // and the user can keep writing below a table at the document's end.
   TrailingNode,
   History,
-  Placeholder.configure({ placeholder: 'Start typing…' }),
+  Placeholder.configure({ placeholder: () => t().app.startTyping }),
   // No defaultAlignment: it would put textAlign:'left' on every block, and that inline
   // style beats the paragraph style's alignment. Unset = follow the style; an explicit
   // 'left' stays direct formatting that overrides it, as in Word/LibreOffice.

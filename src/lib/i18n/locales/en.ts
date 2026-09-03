@@ -1041,6 +1041,7 @@ const en = {
   app: {
     documentName: 'Document name',
     untitled: 'Untitled document',
+    startTyping: 'Start typing…',
     newDocument: 'New document',
     open: 'Open…',
     save: 'Save .odt',

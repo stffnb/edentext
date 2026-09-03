@@ -1134,6 +1134,13 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     waitForSettled();
   });
 
+  // The placeholder is a decoration, redrawn only by a view update; the UI language
+  // switching is not one, so give it a push.
+  $effect(() => {
+    t();
+    editor?.view.updateState(editor.view.state);
+  });
+
   onMount(async () => {
     // Start with empty history lists — loaded content is not an undoable edit.
     resetHistoryLog();
