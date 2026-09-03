@@ -1102,6 +1102,8 @@ const en = {
       'The document is too large to save automatically (browser storage limit reached). This usually happens with large embedded images. Save it as an .odt file to keep your work.',
     documentNotLoaded:
       'The last document stopped the editor from starting. Load it again anyway?\n\nCancel starts a new, empty document; the old one is kept in the browser storage under "edentext-doc-broken".',
+    remoteImagesDropped: (n: number) =>
+      `${n === 1 ? 'A picture' : `${n} pictures`} from the web could not be copied into the document and ${n === 1 ? 'was' : 'were'} removed. Save the picture as a file and insert it from there.`,
     picturesNotRestored: (n: number) =>
       `${n} picture${n === 1 ? '' : 's'} could not be restored from the browser storage and ${n === 1 ? 'is' : 'are'} shown as broken. Open the document's saved file to get ${n === 1 ? 'it' : 'them'} back.`,
   },

@@ -1096,6 +1096,8 @@ const de: Messages = {
       'Das Dokument ist zu groß, um automatisch gespeichert zu werden (Speicherlimit des Browsers erreicht). Das passiert meist bei großen eingebetteten Bildern. Speichere es als .odt-Datei, um deine Arbeit zu sichern.',
     documentNotLoaded:
       'Das zuletzt bearbeitete Dokument hat den Start des Editors blockiert. Trotzdem noch einmal laden?\n\nAbbrechen startet mit einem neuen, leeren Dokument; das alte bleibt im Browser-Speicher unter „edentext-doc-broken“ erhalten.',
+    remoteImagesDropped: (n) =>
+      `${n === 1 ? 'Ein Bild' : `${n} Bilder`} aus dem Web ${n === 1 ? 'konnte' : 'konnten'} nicht in das Dokument übernommen werden und ${n === 1 ? 'wurde' : 'wurden'} entfernt. Speichere das Bild als Datei und füge es von dort ein.`,
     picturesNotRestored: (n) =>
       `${n} ${n === 1 ? 'Bild konnte' : 'Bilder konnten'} nicht aus dem Browser-Speicher wiederhergestellt werden und ${n === 1 ? 'wird' : 'werden'} als defekt angezeigt. Öffne die gespeicherte Datei des Dokuments, um ${n === 1 ? 'es' : 'sie'} zurückzuholen.`,
   },

@@ -35,6 +35,8 @@ import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbe
 import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import Ruler from './Ruler.svelte';
   import { saveDocument, loadDocument, markDocumentLoaded } from '../storage/autosave';
+  import { IDB_SRC } from '../storage/imageStore';
+  import { fitInlineImage } from '../editor/extensions/image';
   import { applyMarginVars, cmToPx, PX_PER_CM, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
   import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
   import { type Orientation } from '../storage/pageOrientation';
@@ -1060,12 +1062,10 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     return out;
   }
 
-  function insertImageFile(file: File, pos: number | null): void {
-    const ed = editor;
-    if (!ed) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const src = reader.result as string;
+  // The picture's own size, held within the page's text area; null where the browser
+  // cannot decode it.
+  function fittedSize(src: string): Promise<{ width: number; height: number } | null> {
+    return new Promise((resolve) => {
       const probe = document.createElement('img');
       probe.onload = () => {
         let w = probe.naturalWidth || 1;
@@ -1073,13 +1073,72 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         const { maxW, maxH } = imageContentBoxPx();
         if (w > maxW) { h = (h * maxW) / w; w = maxW; }
         if (h > maxH) { w = (w * maxH) / h; h = maxH; }
-        const attrs = { src, alt: file.name, width: Math.round(w), height: Math.round(h) };
-        if (pos == null) ed.chain().focus().setImage(attrs).run();
-        else ed.chain().focus().insertContentAt(pos, { type: 'image', attrs }).run();
+        resolve({ width: Math.round(w), height: Math.round(h) });
       };
+      probe.onerror = () => resolve(null);
       probe.src = src;
+    });
+  }
+
+  function insertImageFile(file: File, pos: number | null): void {
+    const ed = editor;
+    if (!ed) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const src = reader.result as string;
+      const size = await fittedSize(src);
+      if (!size) return;
+      const attrs = { src, alt: file.name, ...size };
+      if (pos == null) ed.chain().focus().setImage(attrs).run();
+      else ed.chain().focus().insertContentAt(pos, { type: 'image', attrs }).run();
     };
     reader.readAsDataURL(file);
+  }
+
+  // A picture pasted or dropped from a web page arrives by its URL. Both word processors
+  // fetch it into the document; one the site withholds would stay a view of the web that
+  // no save carries, so it is dropped and said so. Only a data-URI ever reaches a file.
+  async function inlineRemoteImages(ed: Editor): Promise<void> {
+    const urls = new Set<string>();
+    ed.state.doc.descendants((n) => {
+      const src = n.type.name === 'image' ? n.attrs.src : null;
+      if (typeof src === 'string' && src && !src.startsWith('data:') && !src.startsWith(IDB_SRC)) urls.add(src);
+    });
+    let dropped = 0;
+    for (const url of urls) {
+      const data = await fetchDataUrl(url);
+      const size = data ? await fittedSize(data) : null;
+      const hits: { pos: number; size: number }[] = [];
+      ed.state.doc.descendants((n, pos) => { if (n.type.name === 'image' && n.attrs.src === url) hits.push({ pos, size: n.nodeSize }); });
+      const tr = ed.state.tr.setMeta('addToHistory', false);
+      // Last first, so an earlier position is still right after a deletion.
+      for (const { pos, size: nodeSize } of hits.reverse()) {
+        const attrs = { ...ed.state.doc.nodeAt(pos)!.attrs };
+        if (!data || !size) { tr.delete(pos, pos + nodeSize); dropped++; continue; }
+        attrs.src = data;
+        if (attrs.width == null || attrs.height == null) Object.assign(attrs, size);
+        fitInlineImage(attrs, imageContentBoxPx().maxW);
+        tr.setNodeMarkup(pos, undefined, attrs);
+      }
+      if (tr.docChanged) ed.view.dispatch(tr);
+    }
+    if (dropped) alert(t().dialogs.remoteImagesDropped(dropped));
+  }
+
+  async function fetchDataUrl(url: string): Promise<string | null> {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      if (!res.ok || !blob.type.startsWith('image/')) return null;
+      return await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
   }
 
   // A pagination pass measures the DOM the previous one changed, so a freshly opened
@@ -1231,8 +1290,10 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
           followCaret(currentPage);
         } catch { /* ignore */ }
       },
-      onUpdate: ({ editor: e }) => {
+      onUpdate: ({ editor: e, transaction }) => {
         saveDocument(e.getJSON());
+        const ui = transaction.getMeta('uiEvent');
+        if (ui === 'paste' || ui === 'drop') void inlineRemoteImages(e);
       },
       onFocus: () => {
         // Clicking back into the body ends header/footer editing.
