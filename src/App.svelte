@@ -46,6 +46,7 @@
   import { loadLineNumbering, saveLineNumbering, DEFAULT_LINE_NUMBERING, type LineNumbering } from './lib/storage/lineNumbering';
   import { loadFoldMarks, saveFoldMarks } from './lib/storage/foldMarks';
   import { printMarkup } from './lib/storage/printMarkup.svelte';
+  import { snapshots, loadSnapshots, readSnapshot } from './lib/storage/snapshots.svelte';
   import { commentsInPane, changesInPane, markupAttrs, setShowChanges, setShowComments } from './lib/storage/markup.svelte';
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { setTableLanguage } from './lib/storage/tableOptions.svelte';
@@ -68,7 +69,7 @@
   import { OPEN_THESAURUS_EVENT } from './lib/spell/thesaurus';
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
-  import { t } from './lib/i18n/i18n.svelte';
+  import { t, locale } from './lib/i18n/i18n.svelte';
   import { withShortcut } from './lib/i18n/shortcut';
   import { DEFAULT_SHORTCUTS, matchesEvent, shortcutHint } from './lib/editor/shortcuts';
   import { OPEN_LINK_DIALOG_EVENT } from './lib/editor/extensions/link';
@@ -1040,6 +1041,29 @@
     }
   }
 
+  // The versions the autosave keeps aside, and the reader's label for one.
+  void loadSnapshots();
+  function snapshotLabel(at: number): string {
+    return new Date(at).toLocaleString(locale(), { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  // Put an earlier version's text back. The page setup, the styles and the zones
+  // belong to the open document, so only the text is replaced.
+  async function handleRestoreSnapshot(at: number) {
+    exportMenuOpen = false;
+    if (!editor || !confirm(t().dialogs.confirmRestore(snapshotLabel(at)))) return;
+    const json = await readSnapshot(at);
+    if (!json) {
+      alert(t().dialogs.snapshotGone);
+      void loadSnapshots();
+      return;
+    }
+    loadContent(json as Content);
+    documentEpoch++;
+    resetHistory();
+    editor.commands.focus();
+  }
+
   function handleForgetRecent() {
     forgetRecentFiles();
     recentFiles = [];
@@ -1317,6 +1341,8 @@
       recentFiles={recentFiles}
       onOpenRecent={(id) => { const f = recentFiles.find((r) => r.id === id); if (f) void handleOpenRecent(f); }}
       onForgetRecent={handleForgetRecent}
+      snapshots={snapshots().map((at) => ({ at, label: snapshotLabel(at) }))}
+      onRestoreSnapshot={(at) => void handleRestoreSnapshot(at)}
       onExportPdf={handleExportPdf}
       onPrintPdf={handlePrintPdf}
       onPrint={handlePrint}
@@ -1453,6 +1479,14 @@
                 <button class="theme-option" onclick={handleForgetRecent} role="menuitem">
                   <span class="theme-option-hint">{t().app.clearRecentFiles}</span>
                 </button>
+              {/if}
+              {#if snapshots().length}
+                <div class="theme-heading">{t().app.versions}</div>
+                {#each snapshots() as at (at)}
+                  <button class="theme-option" onclick={() => handleRestoreSnapshot(at)} role="menuitem">
+                    <span class="recent-name">{snapshotLabel(at)}</span>
+                  </button>
+                {/each}
               {/if}
               <button class="theme-option" onclick={() => { exportMenuOpen = false; passwordSetOpen = true; }} role="menuitem">
                 <span>{t().password.menu}</span>

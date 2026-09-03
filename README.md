@@ -30,7 +30,8 @@ EdenText is a web-based, powerful word processor for everything from quick notes
 > EdenText is young, in **beta** and actively developed — more features are on
 > the way. It is tested — the full suite plus LibreOffice round-trip checks run
 > on every commit — but expect occasional bugs, and keep backups of documents
-> you care about.
+> you care about. The browser copy also keeps the last three versions of the open
+> document — File ▸ Earlier versions puts one back.
 
 [![EdenText editing a multi-column document](docs/screenshot.png)](https://edentext.app)
 Sample File from https://sample-files.com/

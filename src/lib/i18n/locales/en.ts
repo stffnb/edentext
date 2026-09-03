@@ -1059,6 +1059,7 @@ const en = {
     vectorHint: 'Sharp, but problems with tables',
     template: 'Template',
     templateHint: '.ott / .dotx — opens as a new document',
+    versions: 'Earlier versions',
     recentFiles: 'Recent files',
     clearRecentFiles: 'Clear the list',
     print: 'Print',
@@ -1102,6 +1103,9 @@ const en = {
     couldNotPrintPdf: 'Could not print to PDF.',
     autosaveQuota:
       'The document is too large to save automatically (browser storage limit reached). This usually happens with large embedded images. Save it as an .odt file to keep your work.',
+    confirmRestore: (when: string) =>
+      `Restore the version from ${when}? It replaces the current text; page setup, styles and the header stay as they are.`,
+    snapshotGone: 'That version is no longer in the browser storage.',
     documentNotLoaded:
       'The last document stopped the editor from starting. Load it again anyway?\n\nCancel starts a new, empty document; the old one is kept in the browser storage under "edentext-doc-broken".',
     remoteImagesDropped: (n: number) =>

@@ -1,5 +1,6 @@
 import { t } from '../i18n/i18n.svelte';
 import { stashImages, putImages, restoreImages } from './imageStore';
+import { keepSnapshot } from './snapshots.svelte';
 
 const STORAGE_KEY = 'edentext-doc';
 // Set while a stored document is being handed to the editor, cleared once the editor
@@ -36,6 +37,9 @@ async function write(): Promise<void> {
   const { json: slim, blobs } = stashImages(json);
   const stashed = await putImages(blobs);
   store(stashed ? slim : json);
+  // Every few minutes one version is kept whole, pictures included — the store the
+  // localStorage copy is swept against holds only what the open document still uses.
+  void keepSnapshot(json);
   // Pending until stored, so a flush during the round trip still has it; a newer
   // document handed in meanwhile stays pending for the write queued behind.
   if (pending === json) pending = null;
