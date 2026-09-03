@@ -654,7 +654,7 @@
   }
 
   // Ask until the password fits or the user gives up; null means give up.
-  async function unprotect(bytes: Uint8Array): Promise<Uint8Array | null> {
+  async function unprotect(bytes: Uint8Array): Promise<{ bytes: Uint8Array; password: string } | null> {
     for (;;) {
       const password = await new Promise<string | null>((resolve) => {
         askResolve = resolve;
@@ -663,9 +663,8 @@
       if (password === null) return null;
       try {
         const plain = await decryptPackage(bytes, password);
-        docPassword = password;
         passwordWrong = false;
-        return plain;
+        return { bytes: plain, password };
       } catch (err) {
         if ((err as Error)?.message !== WRONG_PASSWORD) throw err;
         passwordWrong = true;
@@ -677,10 +676,11 @@
     if (!editor) return;
     try {
       // Before anything reads the archive: an encrypted file is not one yet.
+      let password: string | null = null;
       if (isProtected(bytes)) {
         const opened = await unprotect(bytes);
         if (!opened) return;
-        bytes = opened;
+        ({ bytes, password } = opened);
       }
       const name = sourceName?.toLowerCase() ?? '';
       let isDocx = name.endsWith('.docx') || name.endsWith('.dotx');
@@ -761,6 +761,9 @@
       };
       fileHandle = isTemplate ? null : handle;
       documentFormat = isDocx ? 'docx' : 'odt';
+      // The file's password belongs to the document once it is actually the open one,
+      // and an unprotected file drops the previous document's.
+      docPassword = password;
       if (sourceName) recentFiles = await rememberRecentFile(sourceName, isTemplate ? null : handle);
 
       // Warn about fonts the document uses but the browser can't render, so text
