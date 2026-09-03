@@ -41,7 +41,9 @@ above** is then dropped at the page top where the *flow* had to break, as LibreO
 break the document asks for keeps it, and so does the document's first block. Probed against the
 reference, page top at 20.01mm: a block with 6/20mm above lands at 26.00/40.01 after
 `fo:break-before`, at 20.01 for either after an automatic break. Every chapter opening of a
-book-style document is the manual case (measured: 4.23mm a page on one file). `pageBreaks.ts` marks those
+book-style document is the manual case (measured: 4.23mm a page on one file) — unless the
+document turns spacing at a page start off (`AddParaTableSpacingAtStart`, `storage/CLAUDE.md`),
+where even a manual break loses it and `--pb-space-at-page-start` says so. `pageBreaks.ts` marks those
 blocks with a `padding-top:0;margin-top:0` node decoration — geometrically, a leaf pushed by its
 own spacer never measures as sitting at the page top, since `effectiveTop` excludes that push, so
 the mark follows from the break it got. The value itself rides `--space-before`
