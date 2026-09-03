@@ -993,8 +993,23 @@ function convertHfZone(zoneEl: Element, ctx: Ctx, bandCm = 0, footer = false): H
     inline.push(...convertInline(p, ctx, ctx.resolver.paraTextProps(styleName), blockDefaults(ctx.resolver, null, null, false), true));
   };
 
+  // A text box in a zone has no block node to live in, so its paragraphs become lines of
+  // the zone ahead of the one anchoring it — which is what Word's own converter makes of
+  // the same document, and what keeps the band as tall as LibreOffice lays it out.
+  const boxLines = (p: Element) => {
+    for (const frame of Array.from(p.getElementsByTagNameNS(NS.draw, 'frame'))) {
+      const box = frame.getElementsByTagNameNS(NS.draw, 'text-box')[0];
+      if (!box) continue;
+      ctx.warnings.add('Text boxes in headers or footers were flattened to text');
+      for (const inner of Array.from(box.children)) {
+        if (inner.namespaceURI === NS.text && (inner.localName === 'p' || inner.localName === 'h')) addPara(inner);
+      }
+    }
+  };
+
   for (const child of Array.from(zoneEl.children)) {
     if (child.namespaceURI === NS.text && (child.localName === 'p' || child.localName === 'h')) {
+      boxLines(child);
       addPara(child);
     } else if (child.namespaceURI === NS.text || child.namespaceURI === NS.table) {
       // Lists/tables in headers are beyond the one-paragraph model — keep their text.

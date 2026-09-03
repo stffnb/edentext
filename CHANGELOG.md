@@ -181,7 +181,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-15.
 
 **Content an imported document loses**
 - Charts are **drawn** from the file (`import/chart.ts`: DrawingML `chartN.xml` and ODF `chart:chart`), but as a picture, not a chart object — a re-export carries the drawing and the numbers behind it are no longer editable. The same holds for an **EMF** metafile (`import/emf.ts`): it is drawn, but as the SVG picture it was rebuilt into, and only from the record set a plot consists of — a hatched brush, a clipping region or a rotated bitmap is skipped. **WMF/SVM** metafiles and OLE objects still keep their box and a placeholder label, and export writes that back out: WMF is a different (16-bit) record format, SVM is StarOffice-proprietary, and an OLE object cannot be rendered without its application
-- Two drawings still drop with the "Drawings were removed" warning: a **text box in the header/footer** (the zone is a one-paragraph document, so no block node fits in it — whatever the box carried, a letterhead logo included, goes with it) and a **shape group** (ODF `draw:g`: unwrapping it would anchor every child on its own, and a box cannot be put at a free point — see the limitation below)
+- A **text box in the header/footer** keeps its text but not its box: the zone is a one-paragraph document, so no block node fits in it and the box's paragraphs become lines of the zone ahead of the one that anchors it — which is what Word's own converter makes of the same file, and what keeps the band as tall as LibreOffice lays it out (measured: 7.6mm of band on one letterhead). A positioned box therefore reads in the zone's own flow rather than at its corner. A **shape group** still drops with the "Drawings were removed" warning (ODF `draw:g`: unwrapping it would anchor every child on its own, and a box cannot be put at a free point — see the limitation below)
 - A table of contents is **regenerated** on load, never read from the field's cached rows — so an index whose producer left headings out of its cache comes back listing every heading in the document. Reading the rows instead is the opposite of a live index; what the file says *about* the rows (depth, leader, tab stop, entry styles, page numbers) is read
 - A drawing tool: a freeform, a polygon or a connector **imports, draws and saves** (see below), but there is no way to author one here. A Word connector preset (`bentConnector3`) is also still dropped — Word resolves that geometry and writes no path for it
 
@@ -193,7 +193,7 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-15.
 - Multi-document management: one document is open at a time, so there is no window list and no side-by-side compare
 - Grammar check: there is no offline engine small enough to bundle, and the ones that exist are servers
 - A vertical writing mode for the **page** (ODF `tb-rl` on the page layout): a text box can run its text top-to-bottom, the body cannot — pagination fills a page downwards. A ruby annotation's own alignment and position are not offered either; both products' defaults are what we write
-- A chapter number's own label geometry: the number is drawn in front of its heading, not set at the level's `text:list-tab-stop-position` in a hanging indent. Where the label is wider than that stop and the heading is large, LibreOffice breaks the title onto a second line and we keep it on one — measured on a book-style document whose chapter openings then cost it two pages. A caption still numbers from the document rather than restarting per chapter (ODF `text:sequence` on an outline level)
+- A chapter number whose label is **wider than its own tab stop**: it is set in the character style the file names, hung out of the level's indent and given that stop as its minimum width, but where the label overruns the stop LibreOffice advances to the paragraph's next tab stop (its own, else the 1.25cm grid) and CSS cannot round a box to a grid — so the title sits up to one step early. A caption still numbers from the document rather than restarting per chapter (ODF `text:sequence` on an outline level)
 - Password-protected ODT/DOCX; digital signatures. ODF encrypts each zip entry (AES-256-CBC, PBKDF2, the manifest carrying salt, IV and checksum), which WebCrypto can do; Word's is an OLE compound file we would have to write from scratch, so the two legs are nowhere near the same size
 
 **Out of scope for now**
@@ -215,7 +215,10 @@ merely unimplemented belongs in the list above, not here.
   ProseMirror widget would put it in the document, where every caret, selection
   and export pass would have to step over it. The contents rows carry the label
   as real text (`outlineLabel`), which is the part that can be checked.
-  Noted 2026-09-02.
+  `getComputedStyle(el, '::before').content` returns the *specified* value
+  (`counter(edt-outline-1, decimal) ". "`), never the resolved number, so the
+  harness cannot synthesize the word from the page either.
+  Noted 2026-09-02, revised 2026-09-03.
 
 - Zoom 100% does not visually match Word/LibreOffice at 100% on the same
   screen. Root cause: the editor uses the browser's fixed 96 CSS DPI
