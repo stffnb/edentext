@@ -9,7 +9,7 @@
   import type { HfZone } from '../../../storage/headerFooter';
   import { t } from '../../../i18n/i18n.svelte';
   import { shortcutHint } from '../../../editor/shortcuts';
-  import { HEADING_LEVELS } from '../../../export/odt';
+  import { HEADING_LEVELS } from '../../../styles/headings';
   import { CITATION_STYLES, isCitationStyle, type CitationStyle } from '../../../utils/citationStyle';
 
   let { editor, tick, hfActive = null, onNoteOptions }: {

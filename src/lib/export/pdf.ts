@@ -11,7 +11,7 @@ import { extensions } from '../editor/extensions';
 import { columnPercents } from '../editor/extensions/tableView';
 import { effectiveOrderedDef, formatOrdinal } from '../utils/orderedListTypes';
 import { defaultBulletChar } from '../utils/bulletListTypes';
-import { deriveFilename } from './odt';
+import { deriveFilename } from '../storage/documentName';
 import { BAR_STRIP_CM, commentListHtml, markReviewBlocks, printedComments, reviewPrintCss, type CommentLabels, type PrintedComment } from './reviewPrint';
 
 const DEFAULT_COMMENT_LABELS: CommentLabels = { heading: 'Comments', onPage: (n) => `Page ${n}` };

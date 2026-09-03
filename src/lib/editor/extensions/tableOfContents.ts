@@ -4,7 +4,7 @@ import { outlineIsEmpty, outlineLabel } from '../../styles/outlineNumbering';
 import { formatOrdinal } from '../../utils/orderedListTypes';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { MAX_HEADING_LEVEL } from '../../export/odt';
+import { MAX_HEADING_LEVEL } from '../../styles/headings';
 import { seqCategoryOf, sequenceFieldText, type SeqCategory } from './caption';
 import { indexEntries, indexRows } from './indexEntry';
 import { bibliographyEntries, bibliographyRows } from './bibliographyEntry';

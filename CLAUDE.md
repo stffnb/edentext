@@ -56,7 +56,7 @@ silently lands in every imported document as direct formatting. The defaults fol
 
 - Paragraph spacing **0** — no `margin-top`/`-bottom` on `p`, `ul`/`ol` or the table wrapper. Blank lines come from the document's own empty paragraphs.
 - Body **Liberation Serif 12pt**, single line spacing; page margins **2cm**; tab/indent step **1.25cm**.
-- Headings sans (`HEADING_FONT` = Arial, bundled `@font-face` maps it to metric-identical Liberation Sans), sizes/margins in `HEADING_STYLE_OVERRIDES` (`export/odt.ts` — see `src/lib/export/CLAUDE.md`).
+- Headings sans (`HEADING_FONT` = Arial, bundled `@font-face` maps it to metric-identical Liberation Sans), sizes/margins in `HEADING_STYLE_OVERRIDES` (`styles/headings.ts` — see `src/lib/export/CLAUDE.md`).
 - Liberation Serif TTFs are bundled (`src/assets/fonts/`) and metric-identical to Times New Roman, so editor, LibreOffice and Word share the same metrics. `utils/fontDetect.ts` filters `CANDIDATE_FONTS` to what's installed for the font picker.
 
 **IMPORTANT: keep the layout constants in sync** between `editor/extensions/pageBreaks.ts`,

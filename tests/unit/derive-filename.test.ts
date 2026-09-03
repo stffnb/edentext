@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveFilename } from '../../src/lib/export/odt';
+import { deriveFilename } from '../../src/lib/storage/documentName';
 
 const doc = (...content: any[]) => ({ type: 'doc', content }) as any;
 const heading = (text: string) => ({ type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text }] });

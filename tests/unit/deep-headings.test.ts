@@ -3,7 +3,8 @@
 // style name — instead of collapsing onto level 6.
 import { describe, it, expect } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
-import { buildOdt, MAX_HEADING_LEVEL, HEADING_STYLE_OVERRIDES } from '../../src/lib/export/odt';
+import { buildOdt } from '../../src/lib/export/odt';
+import { MAX_HEADING_LEVEL, HEADING_STYLE_OVERRIDES } from '../../src/lib/styles/headings';
 import { buildDocx } from '../../src/lib/export/docx';
 import { importOdt } from '../../src/lib/import/odt';
 import { importDocx } from '../../src/lib/import/docx';

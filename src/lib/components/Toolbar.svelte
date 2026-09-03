@@ -13,7 +13,7 @@
   import { blockStyleName } from '../editor/extensions/paragraphStyle';
   import { activeCharacterStyle } from '../editor/extensions/characterStyle';
   import { DEFAULT_STYLE, headingStyleName, resolveStyle, visibleStyles, type StyleFamily } from '../styles/styleSheet';
-  import { MAX_HEADING_LEVEL } from '../export/odt';
+  import { MAX_HEADING_LEVEL } from '../styles/headings';
   import { showAllStyles, styleSheet, toggleAllStyles } from '../styles/sheet.svelte';
   import { t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';

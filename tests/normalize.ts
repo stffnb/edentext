@@ -1,6 +1,6 @@
 // Shared round-trip comparison: reduce editor JSON to a canonical shape (defaults
 // dropped, marks sorted, adjacent identical runs merged) and report the first diff.
-import { MAX_HEADING_LEVEL } from '../src/lib/export/odt';
+import { MAX_HEADING_LEVEL } from '../src/lib/styles/headings';
 
 type N = any;
 

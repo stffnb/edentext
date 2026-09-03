@@ -72,7 +72,7 @@ import { Shortcuts } from './extensions/shortcuts';
 import { AutoCorrect } from './extensions/autoCorrect';
 import { WordCompletion } from './extensions/wordCompletion';
 import { AutoText } from './extensions/autoText';
-import { HEADING_LEVELS, MAX_HEADING_LEVEL } from '../export/odt';
+import { HEADING_LEVELS, MAX_HEADING_LEVEL } from '../styles/headings';
 import { styleSheet } from '../styles/sheet.svelte';
 import { noteSettings } from '../storage/notes.svelte';
 import { recordChanges } from '../storage/trackChanges.svelte';

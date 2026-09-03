@@ -1,6 +1,7 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
-import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
+import { ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
+import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
 import { isAllowedUri } from '@tiptap/extension-link';
 import { builtinStyleSheet, DEFAULT_STYLE, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { DEFAULT_OUTLINE_LEVEL, MAX_OUTLINE_LEVELS, type OutlineLevel, type OutlineNumbering } from '../styles/outlineNumbering';

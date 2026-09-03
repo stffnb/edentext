@@ -13,6 +13,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor, type Watermark } from '../storage/pag
 import { FOLD_MARK_MM, PUNCH_MARK_MM, MARK_START_MM, FOLD_MARK_LEN_MM, PUNCH_MARK_LEN_MM, FOLD_MARK_NAME } from '../storage/foldMarks';
 import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps } from '../styles/styleSheet';
+import { HEADING_STYLE_OVERRIDES, HEADING_FONT, HEADING_LEVELS, MAX_HEADING_LEVEL } from '../styles/headings';
 import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
 } from '../styles/tableStyles';
@@ -225,36 +226,8 @@ const EXT_BY_MIME: Record<string, string> = {
 const CELL_LIST_BULLET_STYLE = 'TblListBullet';
 const CELL_LIST_NUMBER_STYLE = 'TblListNumber';
 
-// LibreOffice's heading defaults, shown in the editor (editor.css) and written over
-// odf-kit's Heading_20_N styles on export: its sizes plus the Heading style's margins.
-// The importers use them as the fallback yardstick when a file declares no style.
-// Levels 4 and 6 are italic, as they are in LibreOffice (probed against its style pool).
-export const HEADING_STYLE_OVERRIDES: { name: string; fontSize: string; marginTop: string; marginBottom: string; italic?: true }[] = [
-  { name: 'Heading_20_1', fontSize: '18pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
-  { name: 'Heading_20_2', fontSize: '16pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
-  { name: 'Heading_20_3', fontSize: '14pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
-  { name: 'Heading_20_4', fontSize: '13pt', marginTop: '0.423cm', marginBottom: '0.212cm', italic: true },
-  { name: 'Heading_20_5', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
-  { name: 'Heading_20_6', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm', italic: true },
-  // 7–10 continue level 6 rather than adding a step of our own: probed, LibreOffice
-  // writes these styles with no properties at all and resolves them from its own pool.
-  { name: 'Heading_20_7', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
-  { name: 'Heading_20_8', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm', italic: true },
-  { name: 'Heading_20_9', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm' },
-  { name: 'Heading_20_10', fontSize: '12pt', marginTop: '0.423cm', marginBottom: '0.212cm', italic: true },
-];
-
-// Headings are sans (LibreOffice's Heading style). On screen the bundled 'Arial'
-// @font-face maps to Liberation Sans, so the declared name is metric-identical —
-// the same trick as EXPORT_FONT for the serif body font.
-export const HEADING_FONT = 'Arial';
-
 // What both formats name as the producing application (ODF meta:generator).
 export const GENERATOR = 'EdenText';
-
-// Highest heading level the editor offers (extensions.ts, both importers, TOC).
-export const MAX_HEADING_LEVEL = HEADING_STYLE_OVERRIDES.length;
-export const HEADING_LEVELS = HEADING_STYLE_OVERRIDES.map((_, i) => i + 1);
 
 // The bundled screen font → the metric-identical name declared in files, so
 // LibreOffice and Word render with the editor's metrics.
@@ -5590,22 +5563,3 @@ function odfEncodeInline(s: string): string {
   return out;
 }
 
-// Document filename derived from the first non-empty heading (sanitized, max 50
-// chars), falling back to document.odt.
-export function deriveFilename(json: TiptapNode): string {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const content = (json as any).content as any[] | undefined;
-  const heading = content?.find(
-    (node: any) => node.type === 'heading' && node.content?.length
-  );
-  const firstText: string | undefined = heading?.content?.[0]?.text;
-  if (firstText) {
-    const name = firstText
-      .slice(0, 50)
-      .replace(/[^a-zA-Z0-9\s-]/g, '')
-      .trim()
-      .replace(/\s+/g, '-');
-    if (name) return `${name}.odt`;
-  }
-  return 'document.odt';
-}

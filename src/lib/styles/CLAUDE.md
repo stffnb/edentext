@@ -102,7 +102,7 @@ holds it as a reactive singleton persisted to `edentext-styles` (same shape as `
   default paragraph style always becomes `Standard`, whatever the file calls it). `blockAttrs` now
   reads DIRECT `w:pPr` only — style-level spacing/alignment lives in the style — and `blockDefaults`
   builds the yardstick from `paragraphRun` (docDefaults ← the style chain).
-- `HEADING_STYLE_OVERRIDES` (`export/odt.ts`) is still the fallback yardstick for blocks whose file
+- `HEADING_STYLE_OVERRIDES` (`styles/headings.ts`) is still the fallback yardstick for blocks whose file
   declares no style; `tests/unit/style-resolve.test.ts` asserts the built-ins match it.
 - **Character styles** are the second family (`sheet.character`, LibreOffice's Emphasis /
   Strong Emphasis / Source Text): the `CharacterStyle` mark (`charStyle`, attr `name`) tags a run

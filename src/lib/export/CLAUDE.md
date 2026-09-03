@@ -11,7 +11,7 @@ Gecko has none and Brave disables the whole File System Access API by default. T
 fallback download shows a one-time hint (`edentext-download-hint`) that the browser's
 "always ask where to save" setting picks the location.
 
-## Heading defaults (`HEADING_STYLE_OVERRIDES`, `export/odt.ts`)
+## Heading defaults (`HEADING_STYLE_OVERRIDES`, `styles/headings.ts`)
 
 - **Headings** follow LibreOffice too (`HEADING_STYLE_OVERRIDES`): 18 / 16 / 14 / 13 / 12 / 12pt (levels 4 and 6 italic) with
   the Heading style's 0.423cm/0.212cm margins on every level, bold, and **sans** (`HEADING_FONT` = Arial; on screen the bundled
@@ -21,7 +21,7 @@ fallback download shows a one-time hint (`edentext-download-hint`) that the brow
   own pool, so there is no file value to follow. HTML stops at `h6`, so 7–10 render as unknown
   elements that `editor.css` gives `display: block`.
   Levels 1–10 (`MAX_HEADING_LEVEL` = `HEADING_STYLE_OVERRIDES.length`);
-  both constants live in `export/odt.ts` and feed the importers, the TOC, the DOCX heading styles,
+  both constants live in `styles/headings.ts` and feed the importers, the TOC, the DOCX heading styles,
   `utils/fontSize.ts`, and `editor.css` (kept in sync by `tests/unit/font-size-display.test.ts`).
   The importers no longer override a file's own heading formatting: they only suppress values
   that equal these defaults, exactly as for body text.

@@ -8,13 +8,11 @@
   import ToolbarExpanded from './lib/components/ToolbarExpanded.svelte';
   import Ribbon from './lib/components/ribbon/Ribbon.svelte';
   import FindReplaceBar from './lib/components/FindReplaceBar.svelte';
-  import { buildOdt, deriveFilename } from './lib/export/odt';
+  import type { TiptapNode } from 'odf-kit';
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
   import { supportsFsAccess, saveOdt, saveAsOdt, saveDocx, saveAsDocx, saveAsTemplate, openOdt } from './lib/export/saveFile';
   import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFile, forgetRecentFiles, pruneRecentFiles, type RecentFile } from './lib/storage/recentFiles';
-  import { importOdt } from './lib/import/odt';
   import { isProtected, decryptPackage, WRONG_PASSWORD } from './lib/crypto/protect';
-  import { importDocx } from './lib/import/docx';
   import { convertUnsupportedImages } from './lib/import/imageFormats';
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
   import { RECORDING } from './lib/editor/extensions/trackChanges';
@@ -39,7 +37,7 @@
   import { DEFAULT_NOTE_SETTINGS } from './lib/storage/noteSettings';
   import { builtinStyleSheet, type StyleFamily } from './lib/styles/styleSheet';
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, loadExtraHfSections, saveExtraHfSections, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
-  import { loadDocName, saveDocName, loadDocFormat, saveDocFormat, stripOdtExtension, sanitizeNameForFile, type DocumentFormat } from './lib/storage/documentName';
+  import { loadDocName, saveDocName, loadDocFormat, saveDocFormat, stripOdtExtension, sanitizeNameForFile, deriveFilename, type DocumentFormat } from './lib/storage/documentName';
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { loadHyphenation, saveHyphenation } from './lib/storage/hyphenation';
   import { loadPageNumbering, savePageNumbering, DEFAULT_PAGE_NUMBERING, type PageNumbering } from './lib/storage/pageNumbering';
@@ -207,16 +205,16 @@
   // so we skip the per-transaction getJSON).
   let namePlaceholder = $derived.by(() => {
     if (documentName.trim() || tick < 0 || !editor) return t().app.untitled;
-    const base = stripOdtExtension(deriveFilename(editor.getJSON() as Parameters<typeof buildOdt>[0]));
+    const base = stripOdtExtension(deriveFilename(editor.getJSON() as TiptapNode));
     return base === 'document' ? t().app.untitled : base;
   });
 
-  function suggestedFilename(json: Parameters<typeof buildOdt>[0]): string {
+  function suggestedFilename(json: TiptapNode): string {
     const n = documentName.trim();
     return n ? `${sanitizeNameForFile(n)}.odt` : deriveFilename(json);
   }
 
-  function suggestedFilenameDocx(json: Parameters<typeof buildOdt>[0]): string {
+  function suggestedFilenameDocx(json: TiptapNode): string {
     const n = documentName.trim();
     return n ? `${sanitizeNameForFile(n)}.docx` : deriveFilename(json).replace(/\.odt$/, '.docx');
   }
@@ -694,6 +692,7 @@
       // An extension can be wrong (a renamed or mis-saved file) and both word processors
       // go by content, so the other format is tried before the file is called broken —
       // a file that is neither reports the error for the extension it carries.
+      const [{ importOdt }, { importDocx }] = await Promise.all([import('./lib/import/odt'), import('./lib/import/docx')]);
       let result;
       try {
         result = isDocx ? importDocx(bytes, converted) : importOdt(bytes, converted);
@@ -865,7 +864,7 @@
   async function handleSave() {
     if (!editor) return;
     exportMenuOpen = false;
-    const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
+    const json = editor.getJSON() as TiptapNode;
     try {
       // A document opened as .docx round-trips through the same format, like both
       // reference word processors — not silently rewritten to .odt under its old name.
@@ -876,6 +875,7 @@
         recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilenameDocx(json), fileHandle);
         return;
       }
+      const { buildOdt } = await import('./lib/export/odt');
       const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart);
       fileHandle = await saveOdt(bytes, suggestedFilename(json), fileHandle, docPassword);
       recentFiles = await rememberRecentFile(fileHandle?.name ?? suggestedFilename(json), fileHandle);
@@ -893,8 +893,9 @@
   async function handleSaveAs() {
     if (!editor) return;
     exportMenuOpen = false;
-    const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
+    const json = editor.getJSON() as TiptapNode;
     try {
+      const { buildOdt } = await import('./lib/export/odt');
       const bytes = await buildOdt(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart);
       fileHandle = await saveAsOdt(bytes, suggestedFilename(json), docPassword);
       documentFormat = 'odt'; // Save As is odt-only, so a docx-opened document switches format here.
@@ -912,7 +913,7 @@
   async function handleSaveTemplate() {
     if (!editor) return;
     exportMenuOpen = false;
-    const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
+    const json = editor.getJSON() as TiptapNode;
     try {
       await saveAsTemplate(async (kind) => {
         const args = [pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart] as const;
@@ -921,6 +922,7 @@
           const { buildDocx } = await import('./lib/export/docx');
           return docxToDotx(await buildDocx(json, ...args));
         }
+        const { buildOdt } = await import('./lib/export/odt');
         return odtToOtt(await buildOdt(json, ...args));
       }, stripOdtExtension(suggestedFilename(json)), docPassword);
     } catch (err) {
@@ -966,7 +968,7 @@
     exportMenuOpen = false;
     docxBusy = true;
     try {
-      const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
+      const json = editor.getJSON() as TiptapNode;
       const { buildDocx } = await import('./lib/export/docx');
       const bytes = await buildDocx(json, pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart);
       await saveAsDocx(bytes, suggestedFilenameDocx(json), docPassword);
@@ -986,7 +988,7 @@
     exportMenuOpen = false;
     pdfBusy = true;
     try {
-      const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
+      const json = editor.getJSON() as TiptapNode;
       await exportPdf({
         source: editor.view.dom as HTMLElement,
         json,
@@ -1013,7 +1015,7 @@
     exportMenuOpen = false;
     pdfBusy = true;
     try {
-      const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
+      const json = editor.getJSON() as TiptapNode;
       await printRaster({
         source: editor.view.dom as HTMLElement,
         json,
@@ -1038,7 +1040,7 @@
     if (!editor) return;
     exportMenuOpen = false;
     try {
-      const json = editor.getJSON() as Parameters<typeof buildOdt>[0];
+      const json = editor.getJSON() as TiptapNode;
       printPdf({
         json,
         fileName: suggestedFilename(json),

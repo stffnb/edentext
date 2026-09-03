@@ -1,7 +1,8 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, toggle as onOff, wVal, W, R, WP, A, B, WPS, MC, VML, O, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { lengthToPt, WATERMARK_NAME } from './styleResolver';
-import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL, normalizeColor } from '../export/odt';
+import { normalizeColor } from '../export/odt';
+import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
 import { PLACEHOLDER_SDT_TAG } from '../export/docx';
 import { isAllowedUri } from '@tiptap/extension-link';
 import { FOLD_MARK_NAME } from '../storage/foldMarks';

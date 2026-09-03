@@ -16,6 +16,18 @@ export function stripOdtExtension(name: string): string {
   return name.replace(/\.o[dt]t$/i, '');
 }
 
+// The save filename from the first heading that has text (sanitized, 50 chars at
+// most); `document.odt` without one.
+export function deriveFilename(json: { content?: { type?: string; content?: { text?: string }[] }[] }): string {
+  const heading = json.content?.find((n) => n.type === 'heading' && n.content?.length);
+  return filenameFor(heading?.content?.[0]?.text);
+}
+
+export function filenameFor(firstText: string | undefined): string {
+  const name = firstText?.slice(0, 50).replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
+  return name ? `${name}.odt` : 'document.odt';
+}
+
 // Strip filesystem-illegal characters; keep spaces so user-typed titles read
 // naturally (unlike the heading slug, which hyphenates).
 export function sanitizeNameForFile(name: string): string {

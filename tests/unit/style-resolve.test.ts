@@ -3,7 +3,7 @@ import {
   builtinStyleSheet, mergeStoredSheet, resolveStyle, styleCss, styleOrder, visibleStyles, DEFAULT_STYLE,
   STYLE_SHEET_VERSION, type StyleSheet,
 } from '../../src/lib/styles/styleSheet';
-import { HEADING_STYLE_OVERRIDES } from '../../src/lib/export/odt';
+import { HEADING_STYLE_OVERRIDES } from '../../src/lib/styles/headings';
 
 const ptOf = (len: string) => (len.endsWith('cm') ? (parseFloat(len) / 2.54) * 72 : parseFloat(len));
 

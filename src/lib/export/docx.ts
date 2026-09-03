@@ -39,7 +39,8 @@ import { effectiveOrderedDefAt, formatOrdinal, childCycle, orderedTypeDef, ROOT_
 import { effectiveListLevel, listStyleMarginCm, listStyleOverridden, type ListStyle as ListStyleDef } from '../styles/listStyles';
 import { outlineIsEmpty, type OutlineNumbering } from '../styles/outlineNumbering';
 import { defaultBulletChar } from '../utils/bulletListTypes';
-import { normalizeColor, GENERATOR, MAX_HEADING_LEVEL, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
+import { normalizeColor, GENERATOR, mergeJoinedParagraphsJson, twinFontName, type HfExport } from './odt';
+import { MAX_HEADING_LEVEL } from '../styles/headings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
 import { EMPTY_PAGE_DECOR, isEmptyPageDecor, type PageDecor, type Watermark } from '../storage/pageDecor';
