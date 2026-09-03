@@ -53,13 +53,32 @@ describe.skipIf(!files.length)('the authored corpus', () => {
 
   for (const f of files) {
     it(`${f} imports and survives its own round trip`, async () => {
-      const doc = importAny(f, load(f));
+      const read = readAny(f, load(f));
+      const doc = read.content;
       expect(outline(doc).length).toBeGreaterThan(0);
       const margins = { top: 2, bottom: 2, left: 2, right: 2 };
+      // The file's own stylesheet goes back out with it, as it does when the app saves:
+      // a style the document names but builtinStyleSheet() has never heard of can only
+      // be written from there.
       const again = f.endsWith('.odt')
-        ? importOdt(await buildOdt(doc, margins, 'portrait'))
-        : importDocx(await buildDocx(doc, margins, 'portrait'));
+        ? importOdt(await buildOdt(doc, margins, 'portrait', undefined, undefined, undefined, read.styles))
+        : importDocx(await buildDocx(doc, margins, 'portrait', undefined, undefined, undefined, read.styles));
       expect(outline(again.content)).toEqual(outline(doc));
+    });
+  }
+
+  // What the legs above cannot see: both sides of a round trip go through the same
+  // importer, so a file read wrongly but consistently still compares equal. 15-chapters
+  // carries chapter numbering on its heading styles and two heading styles of its own —
+  // read as a list, or as body text, either would round-trip happily.
+  const CHAPTERS = ['heading1+brk:Introduction', 'heading2:Motivation',
+    'heading1+brk:Results', 'heading2:Method',
+    'heading1[Appendix 1]+brk:Appendix', 'heading2[Appendix 2]:List of Tables'];
+  for (const f of files.filter((n) => n.startsWith('15-chapters'))) {
+    it(`${f} reads its numbered chapters as headings`, () => {
+      const doc = importAny(f, load(f));
+      expect(outline(doc).filter((l) => l.startsWith('heading'))).toEqual(CHAPTERS);
+      expect(outline(doc).filter((l) => /^(ordered|bullet)List|^listItem/.test(l))).toEqual([]);
     });
   }
 

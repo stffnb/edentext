@@ -31,25 +31,35 @@ const para = (text, o = {}) => new Paragraph({ children: [new TextRun({ text, ..
 // Spacing, font and outline level are declared: LibreOffice fills a built-in style's
 // gaps from its own defaults where Word uses only what the file declares, and without
 // the level it converts a heading to a <text:p> merely carrying the heading's style.
-const heading = (id, name, halfPt, before, after, level) => ({
+const heading = (id, name, halfPt, before, after, level, numbering) => ({
   id, name, basedOn: 'Normal', next: 'Normal', quickFormat: true,
   run: { font: 'Arial', size: halfPt, bold: true },
-  paragraph: { spacing: { before, after }, outlineLevel: level },
+  paragraph: { spacing: { before, after }, outlineLevel: level, ...(numbering ? { numbering } : {}) },
 });
 
-async function write(name, sections, defaultRun = { font: 'Times New Roman', size: 24 }, extra = {}) {
+// `chapters` names a numbering the heading styles carry: chapter numbering lives on the
+// style in both products, never on the paragraph. `extra.styles` adds the document's own
+// styles beside the built-ins rather than replacing the whole block.
+async function write(name, sections, defaultRun = { font: 'Times New Roman', size: 24 }, extra = {}, chapters = null) {
   if (only && !only.test(name)) return;
+  const { styles: ownStyles, ...rest } = extra;
+  const h1 = heading('Heading1', 'Heading 1', 36, 240, 120, 0, chapters && { reference: chapters, level: 0 });
+  const h2 = heading('Heading2', 'Heading 2', 32, 200, 100, 1, chapters && { reference: chapters, level: 1 });
+  // The package writes its own Heading1-6 regardless, so a second definition under the
+  // same id leaves two — and LibreOffice reads the first, dropping everything declared
+  // here. A numbered heading therefore rides the factory slot instead (see FACTORY_SLOTS
+  // in src/lib/export/CLAUDE.md); the plain fixtures keep the shape they were built with.
   const doc = new Document({
     styles: {
-      default: { document: { run: defaultRun } },
+      default: { document: { run: defaultRun }, ...(chapters ? { heading1: h1, heading2: h2 } : {}) },
       paragraphStyles: [
         // Word always writes an explicit Normal; the docx lib would emit docDefaults only.
         { id: 'Normal', name: 'Normal', run: defaultRun, paragraph: { spacing: { after: 0 } } },
-        heading('Heading1', 'Heading 1', 36, 240, 120, 0),
-        heading('Heading2', 'Heading 2', 32, 200, 100, 1),
+        ...(chapters ? [] : [h1, h2]),
+        ...(ownStyles?.paragraphStyles ?? []),
       ],
     },
-    ...extra,
+    ...rest,
     sections,
   });
   writeFileSync(join(OUT, name), await Packer.toBuffer(doc));
@@ -285,6 +295,49 @@ await write('14-formulas.docx', [{
     para(LOREM),
   ],
 }]);
+
+// 15. Chapter numbering on the heading styles, plus heading styles of the document's
+// own ("Appendix 1"/"2", named nothing like "Heading n"). Both live in the stylesheet
+// and nowhere in the document tree, so only a leg carrying it exercises them.
+await write('15-chapters.docx', [{
+  properties: { page },
+  children: [
+    para('Introduction', { p: { style: 'Heading1', pageBreakBefore: true } }),
+    para(LOREM),
+    para('Motivation', { p: { style: 'Heading2' } }),
+    para(LOREM),
+    para('Results', { p: { style: 'Heading1', pageBreakBefore: true } }),
+    para(LOREM),
+    para('Method', { p: { style: 'Heading2' } }),
+    para(LOREM),
+    para('Appendix', { p: { style: 'Appendix1', pageBreakBefore: true } }),
+    para(LOREM),
+    para('List of Tables', { p: { style: 'Appendix2' } }),
+    para(LOREM),
+  ],
+}], undefined, {
+  styles: {
+    paragraphStyles: [
+      { id: 'Appendix1', name: 'Appendix 1', basedOn: 'Heading1', next: 'Normal', quickFormat: true,
+        paragraph: { outlineLevel: 0 } },
+      { id: 'Appendix2', name: 'Appendix 2', basedOn: 'Heading2', next: 'Normal', quickFormat: true,
+        paragraph: { outlineLevel: 1 } },
+    ],
+  },
+  numbering: {
+    config: [{
+      reference: 'chapter-numbering',
+      levels: [
+        // The level names the style it numbers and the style points back at the level:
+        // both halves, or LibreOffice reads the pair as an ordinary list.
+        { level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.START,
+          style: { paragraph: { indent: { left: 0, hanging: 360 } }, style: 'Heading1' } },
+        { level: 1, format: LevelFormat.DECIMAL, text: '%1.%2', alignment: AlignmentType.START,
+          style: { paragraph: { indent: { left: 0, hanging: 432 } }, style: 'Heading2' } },
+      ],
+    }],
+  },
+}, 'chapter-numbering');
 
 // ODT twins, written by LibreOffice itself — the dominant ODT producer, so they carry
 // its own conventions (percentage font sizes, Text Body, list styles) and exercise the
