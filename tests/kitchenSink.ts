@@ -191,6 +191,8 @@ export function kitchenSinkDoc(): N {
       p([t('Und noch ein Absatz im Spaltensatz.')]),
     ] },
     p([t('Nach einem Seitenumbruch.')], { breakBefore: 'page' }),
+    // ODF has no section that does not also break the page: naming a master page is
+    // one, so a section start carries both here.
     p([t('Nach einem Abschnittswechsel.')], { sectionBreak: true }),
     h(2, 'Unterkapitel'),
     h(3, 'Tiefer'),
@@ -198,10 +200,10 @@ export function kitchenSinkDoc(): N {
     { type: 'noteSection', content: [
       { type: 'note', attrs: { id: 'f1', kind: 'footnote', label: null, text: '1' },
         content: [t('Der Fußnotentext.')] },
-      { type: 'note', attrs: { id: 'f2', kind: 'footnote', label: '*', text: '*' },
-        content: [t('Die Sternnote.')] },
       { type: 'note', attrs: { id: 'e1', kind: 'endnote', label: null, text: 'i' },
         content: [t('Der Endnotentext.')] },
+      { type: 'note', attrs: { id: 'f2', kind: 'footnote', label: '*', text: '*' },
+        content: [t('Die Sternnote.')] },
     ] },
   ] };
 }
@@ -234,7 +236,12 @@ export function kitchenSinkOptions(): {
     hf: { header: hfDoc('header'), footer: hfDoc('footer'),
       headerFirst: null, footerFirst: null, differentFirstPage: true,
       headerEven: null, footerEven: null, differentOddEven: false,
-      sections: [], pageCount: 3, headerDistanceCm: 1, footerDistanceCm: 1 },
+      // The body's `sectionBreak` opens the second set: without one it switches to nothing.
+      sections: [
+        { header: hfDoc('header'), footer: hfDoc('footer'), differentFirstPage: true },
+        { header: hfDoc('header'), footer: null },
+      ],
+      pageCount: 3, headerDistanceCm: 1, footerDistanceCm: 1 },
     language: { language: 'de', country: 'DE' },
     notesSettings: (() => {
       const s = structuredClone(DEFAULT_NOTE_SETTINGS);

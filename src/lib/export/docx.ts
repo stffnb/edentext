@@ -2954,7 +2954,10 @@ export async function buildDocx(
   const linked = applyOutlineNumberingDocx(applyListStylesDocx(styled, num.styleLinks()), outlineIndex);
   const packed = applyFormulasDocx(applyTextBoxesDocx(linked, docTextBoxes), docFormulas);
   const cited = applyBibliographyDocx(applyPlaceholdersDocx(applyRubyDocx(packed, docRubies), docPlaceholders), docSources, docCitationStyle(docJson));
-  const withNotes = docNoteIds.size ? applyNoteMarksDocx(applyNotePrDocx(cited, notesSettings)) : cited;
+  // The note configuration goes out whether or not a note exists yet, as Word keeps its
+  // own in settings.xml — a document numbering its first footnote from 3 must still say so.
+  const withNotePr = applyNotePrDocx(cited, notesSettings);
+  const withNotes = docNoteIds.size ? applyNoteMarksDocx(withNotePr) : withNotePr;
   const threaded = applyCommentsExtendedDocx(withNotes);
   const mirrored = margins.mirrored ? applyMirrorMarginsDocx(threaded) : threaded;
   const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);

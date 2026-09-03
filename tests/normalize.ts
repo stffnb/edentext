@@ -119,3 +119,15 @@ export function firstDiff(a: N, b: N, path = '$'): string | null {
   }
   return null;
 }
+
+// A paragraph whose runs share one font legitimately comes back with that font also
+// on its attrs (the empty-line-height feature hoists it); ignore it on both sides.
+export function stripFontHoist(node: any): any {
+  if (node.content?.length && node.attrs) {
+    const { fontSize, fontFamily, ...rest } = node.attrs;
+    node.attrs = Object.keys(rest).length ? rest : undefined;
+    if (!node.attrs) delete node.attrs;
+  }
+  for (const c of node.content ?? []) stripFontHoist(c);
+  return node;
+}

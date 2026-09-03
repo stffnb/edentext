@@ -67,6 +67,10 @@ fallback download shows a one-time hint (`edentext-download-hint`) that the brow
   text alike; only a side wrap has its side dictated by the wrap itself.
 - **An index row's tab stop is written even with no page number running to it** — it is
   where the row's leader is kept, and a stop no tab reaches draws nothing.
+- **The note configuration is written whether or not a note exists** (`applyNotePrDocx`,
+  outside the `docNoteIds.size` gate, as Word keeps its own in settings.xml): a document
+  numbering its first footnote from 3 must still say so.
+
 - **A note writes the paragraph style it names** (`noteStyleName`, and `usedStyleNames`
   defines it): the stock `FootnoteText` is 10pt, so a note whose file gives it the body
   size would shrink. See `docs/architecture/notes.md`.

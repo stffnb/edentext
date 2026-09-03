@@ -5,23 +5,11 @@ import { buildOdt } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
 import { buildDocx } from '../src/lib/export/docx';
 import { importDocx } from '../src/lib/import/docx';
-import { normalize, firstDiff } from './normalize';
+import { normalize, firstDiff, stripFontHoist } from './normalize';
 import { genDoc, mulberry32 } from './fuzzDoc';
 
 const margins = { top: 2, bottom: 2, left: 2, right: 2 };
 const SEEDS = Number(process.env.FUZZ_SEEDS ?? 50); // FUZZ_SEEDS=500 for a wide sweep
-
-// A paragraph whose runs share one font legitimately comes back with that font also
-// on its attrs (the empty-line-height feature hoists it); ignore it on both sides.
-function stripFontHoist(node: any): any {
-  if (node.content?.length && node.attrs) {
-    const { fontSize, fontFamily, ...rest } = node.attrs;
-    node.attrs = Object.keys(rest).length ? rest : undefined;
-    if (!node.attrs) delete node.attrs;
-  }
-  for (const c of node.content ?? []) stripFontHoist(c);
-  return node;
-}
 
 describe('fuzz round-trip: editor → buildOdt → importOdt', () => {
   it(`${SEEDS} seeded random documents come back identical`, async () => {
