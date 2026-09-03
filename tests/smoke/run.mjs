@@ -92,6 +92,9 @@ try {
   // Margin balloons: every card's content stays inside its box and the column inside the
   // page. An unwrapped button row once pushed "Edit" clean out of the balloon, and a
   // comment of a few paragraphs pushed the cards under it off the sheet.
+  // Leaving the page flushes a pending autosave over the key; let the debounce drain
+  // before the key is written by hand.
+  await page.waitForTimeout(1500);
   await page.evaluate(() => {
     const p = (text) => ({ type: 'paragraph', content: [{ type: 'text', text }] });
     const m = (text, mark) => ({ type: 'paragraph', content: [{ type: 'text', text, marks: [mark] }] });
