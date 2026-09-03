@@ -1579,7 +1579,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
             else {
               const mark = !hfFields && indexEntryFromInstr(fieldInstr);
               if (mark) out.push(mark);
-              else emitField(out, fieldInstr, hfFields, marks);
+              else emitField(out, fieldInstr, hfFields, marks, fieldResultText);
             }
             fieldMode = 'none';
             fieldDateTime = null;
@@ -1594,7 +1594,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
         case 'delText':
         case 't':
           if (customMark !== null && (child.textContent ?? '') === customMark) { customMark = null; break; }
-          if ((fieldShown || fieldSeq) && fieldMode === 'result') fieldResultText += child.textContent ?? '';
+          if ((fieldShown || fieldSeq || hfFields) && fieldMode === 'result') fieldResultText += child.textContent ?? '';
           else if (!skipResult()) pushText(child.textContent ?? '', marks);
           break;
         case 'ruby': {
@@ -1671,7 +1671,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       }
       case 'fldSimple': {
         const instr = el.getAttributeNS(W, 'instr') ?? '';
-        if (hfFields) { const first = fcAll(el, 'r')[0]; emitField(out, instr, true, first ? runMarks(first) : []); break; }
+        if (hfFields) { const first = fcAll(el, 'r')[0]; emitField(out, instr, true, first ? runMarks(first) : [], el.textContent ?? ''); break; }
         const xref = crossRefFromInstr(instr);
         if (xref) {
           const first = fcAll(el, 'r')[0];
@@ -1726,7 +1726,7 @@ function formulaNode(el: Element, ctx: Ctx): Node | null {
   return { type: 'formula', attrs: { latex, display } };
 }
 
-function emitField(out: Node[], instr: string, hfFields: boolean, marks: Mark[] = []): void {
+function emitField(out: Node[], instr: string, hfFields: boolean, marks: Mark[] = [], cached = ''): void {
   if (!hfFields) return;
   // The atom carries the field run's marks so its digits render in the run's font/size.
   const push = (type: string) => out.push(marks.length ? { type, marks } : { type });
@@ -1736,7 +1736,9 @@ function emitField(out: Node[], instr: string, hfFields: boolean, marks: Mark[] 
   // level rides in the style name ("Heading 2", or a localized "Überschrift 2").
   else {
     const m = /\bSTYLEREF\s+"?[^"\d]*(\d)/i.exec(instr);
-    if (m) out.push({ type: 'chapterField', attrs: { level: Number(m[1]), text: '' }, ...(marks.length ? { marks } : {}) });
+    // The field's cached result is the chapter name a reader shows before it
+    // repaginates; this editor's own layer overwrites it on the first pass.
+    if (m) out.push({ type: 'chapterField', attrs: { level: Number(m[1]), text: cached }, ...(marks.length ? { marks } : {}) });
   }
 }
 

@@ -52,5 +52,14 @@ describe.each([['ODT', buildOdt, importOdt], ['DOCX', buildDocx, importDocx]] as
       expect(res.warnings ?? []).toEqual([]);
       expect(firstDiff(clean(doc), clean(res.content))).toBeNull();
     });
+
+    // The zones are documents of their own, and hold what only they can: the running
+    // head, the page number and count.
+    it('brings its header and footer back as they went out', async () => {
+      const res = read(await (build as N)(kitchenSinkDoc() as N, ...args)) as N;
+      for (const zone of ['header', 'footer'] as const) {
+        expect(firstDiff(clean((o.hf as N)[zone]), clean(res[zone])), zone).toBeNull();
+      }
+    });
   },
 );

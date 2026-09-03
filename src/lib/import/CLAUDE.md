@@ -108,6 +108,10 @@ Body text with no resolved font falls back to the *document's own theme minor fo
   on the page layout governing the body (`HfSet.pageNumberFormat`), which is how a roman
   front matter precedes a decimal body; Word's is `w:pgNumType w:fmt` per section, and the
   document's own comes from the **first** section, as the paper and the margins already do.
+- **The running head keeps the name the field cached.** A `STYLEREF` field's result runs
+  are the chapter a reader shows before it repaginates, so `chapterField.text` takes them
+  (`emitField`, both the `fldSimple` and `fldChar` forms).
+
 - **A header row is `w:tblHeader` on the row**, which says what ODF's
   `<table:table-header-rows>` says: its cells become `tableHeader`, and the export writes
   the flag for a row whose cells are header cells even where the table asks for no repeat.

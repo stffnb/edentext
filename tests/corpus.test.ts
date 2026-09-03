@@ -105,6 +105,19 @@ describe.skipIf(!files.length)('the authored corpus', () => {
     });
   }
 
+  // A second save is the one that drifts: an importer storing as direct formatting what
+  // it read from a style writes that back out, and the file grows a little each pass.
+  for (const f of files) {
+    it(`${f} does not drift on a second save`, async () => {
+      const margins = { top: 2, bottom: 2, left: 2, right: 2 };
+      const build = f.endsWith('.odt') ? buildOdt : buildDocx;
+      const read = f.endsWith('.odt') ? importOdt : importDocx;
+      const once = read(await build(readAny(f, load(f)).content, margins, 'portrait', undefined, undefined, undefined, readAny(f, load(f)).styles));
+      const twice = read(await build(once.content, margins, 'portrait', undefined, undefined, undefined, once.styles));
+      expect(look(twice.content)).toEqual(look(once.content));
+    });
+  }
+
   // Word re-saves of the same documents (tests/corpus/word/): Word rewrites the file
   // in its own dialect — rsids, proofErr, separator notes, theme docDefaults — which
   // neither the docx lib nor LibreOffice produce, so this is the third author here.
@@ -119,6 +132,13 @@ describe.skipIf(!files.length)('the authored corpus', () => {
       const margins = { top: 2, bottom: 2, left: 2, right: 2 };
       const again = importDocx(await buildDocx(doc, margins, 'portrait'));
       expect(outline(again.content)).toEqual(outline(doc));
+    });
+
+    it(`word/${f} keeps its look on the way out as ODT`, async () => {
+      const read = importDocx(new Uint8Array(readFileSync(join(WORD, f))));
+      const margins = { top: 2, bottom: 2, left: 2, right: 2 };
+      const asOdt = await buildOdt(read.content as N, margins, 'portrait', undefined, undefined, undefined, read.styles);
+      expect(look(importOdt(asOdt).content)).toEqual(look(read.content as N));
     });
   }
 

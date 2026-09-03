@@ -37,11 +37,13 @@ function styledTable(): N {
       if (paint.fill) attrs.backgroundColor = paint.fill;
       for (const [k, v] of Object.entries(paint.borders)) if (v !== null) attrs[k] = v;
       if (paint.regions.length) attrs.region = paint.regions.join(' ');
-      return { type: 'tableCell', attrs,
+      // The first row is the table's heading, the shape a file's <table:table-header-rows>
+      // / w:tblHeader imports as: header cells that repeat over a page break.
+      return { type: ri === 0 ? 'tableHeader' : 'tableCell', attrs,
         content: [p([t(`Zelle ${ri + 1}.${ci + 1}`)])] };
     }),
   }));
-  return { type: 'table', attrs: { tableStyle: name, tableLook: tableLookAttr(look) }, content: rows };
+  return { type: 'table', attrs: { tableStyle: name, tableLook: tableLookAttr(look), repeatHeader: true }, content: rows };
 }
 
 export function kitchenSinkDoc(): N {
