@@ -3,11 +3,13 @@
 // Usage and prerequisites — including the mandatory font setup — are in README.md.
 import { execFileSync } from 'node:child_process';
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdtempSync, readdirSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, basename, extname, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { compare, toLines } from './compare.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
@@ -16,25 +18,37 @@ const PORT = +(process.env.PARITY_PORT ?? 5199);   // reuse a dev server already
 const PAGE_GAP = 20;           // pageBreaks.ts
 const PT_MM = 25.4 / 72;
 const PX_MM = 25.4 / 96;
-const LINE_TOL_MM = 1.2;       // words within this vertical span are one line
-const POS_TOL_MM = 1.0;        // reported as a position difference beyond this
+const QUICK_PAGES = 50;        // --quick skips what last measured longer than this
+const CACHE = process.env.PARITY_CACHE ?? join(ROOT, 'node_modules/.cache/render-parity');
+// Keep the blank pages LibreOffice inserts itself (a chapter forced onto a right page):
+// its PDF export drops them by default and the reference then loses a sheet the
+// document really has.
+const LO_ARGS = ['--convert-to',
+  'pdf:writer_pdf_Export:{"IsSkipEmptyPages":{"type":"boolean","value":"false"}}'];
 
 // ---------------------------------------------------------------- reference
 
-function loRender(file, work) {
-  execFileSync('soffice', [
-    '--headless', '--norestore', `-env:UserInstallation=file://${work}/loprofile`,
-    // Keep the blank pages LibreOffice inserts itself (a chapter forced onto a right
-    // page): its PDF export drops them by default and the reference then loses a sheet
-    // the document really has.
-    '--convert-to', 'pdf:writer_pdf_Export:{"IsSkipEmptyPages":{"type":"boolean","value":"false"}}',
-    '--outdir', work, file,
-  ], { stdio: 'pipe', timeout: 120_000 });
-  const pdf = join(work, basename(file, extname(file)) + '.pdf');
-  if (!existsSync(pdf)) throw new Error(`LibreOffice produced no PDF for ${file}`);
-  const xml = join(work, 'ref.xml');
-  execFileSync('pdftotext', ['-bbox-layout', pdf, xml], { stdio: 'pipe' });
-  return { pages: parseBbox(readFileSync(xml, 'utf8')), pdf };
+// The reference depends on the file and the export arguments, never on our code, so a
+// re-run after an editor change reuses it: the corpus measured 9:00 cold, 5:41 cached.
+// `--no-cache` after installing or removing a font, which does change what LO renders.
+function loRender(file, work, cache) {
+  const key = createHash('sha1').update(LO_ARGS.join('\0')).update(readFileSync(file)).digest('hex').slice(0, 16);
+  const pdf = join(CACHE, key + '.pdf');
+  const xml = join(CACHE, key + '.xml');
+  const hit = cache && existsSync(xml);
+  if (!hit) {
+    execFileSync('soffice', [
+      '--headless', '--norestore', `-env:UserInstallation=file://${work}/loprofile`,
+      ...LO_ARGS, '--outdir', work, file,
+    ], { stdio: 'pipe', timeout: 120_000 });
+    const out = join(work, basename(file, extname(file)) + '.pdf');
+    if (!existsSync(out)) throw new Error(`LibreOffice produced no PDF for ${file}`);
+    execFileSync('pdftotext', ['-bbox-layout', out, join(work, 'ref.xml')], { stdio: 'pipe' });
+    mkdirSync(CACHE, { recursive: true });
+    copyFileSync(out, pdf);
+    copyFileSync(join(work, 'ref.xml'), xml);
+  }
+  return { pages: parseBbox(readFileSync(xml, 'utf8')), pdf, cached: hit };
 }
 
 // pdftotext -bbox-layout emits <page><flow><block><line><word>, coords in pt,
@@ -192,87 +206,6 @@ function extractLayout() {
   };
 }
 
-// ---------------------------------------------------------------- compare
-
-// Both sides are reduced to the same shape before diffing: words sorted into
-// lines by vertical band, then left to right.
-function toLines(words) {
-  const sorted = [...words].sort((a, b) => a.y - b.y || a.x - b.x);
-  const lines = [];
-  for (const w of sorted) {
-    const last = lines[lines.length - 1];
-    // Tops within a hair, or boxes that overlap by half the shorter one: a chapter
-    // number set far larger than its title shares the title's baseline but starts a
-    // long way above it, and banding by top alone reads that as two lines.
-    const over = last ? Math.min(w.y + (w.h ?? 0), last.y2) - Math.max(w.y, last.y) : 0;
-    if (last && (Math.abs(w.y - last.y) <= LINE_TOL_MM || over >= 0.5 * Math.min(w.h ?? 0, last.y2 - last.y))) {
-      last.words.push(w);
-      last.y = Math.min(last.y, w.y);
-      last.y2 = Math.max(last.y2, w.y + (w.h ?? 0));
-    } else lines.push({ y: w.y, y2: w.y + (w.h ?? 0), words: [w] });
-  }
-  return lines.map((l) => lineOf(l.y, l.words.sort((a, b) => a.x - b.x)));
-}
-
-const round = (n) => Math.round(n * 10) / 10;
-
-const lineOf = (y, words) => ({
-  y: round(y), x: round(words[0].x), x2: round(Math.max(...words.map((w) => w.x + w.w))),
-  text: words.map((w) => w.text).join(' '), words,
-});
-
-// The editor draws list markers with CSS ::marker, which is not a text node and cannot
-// be measured; LibreOffice's PDF has them as words. Drop a leading reference word only
-// when that makes the two lines identical, so real content can never be skipped.
-function withoutMarker(line) {
-  return line.words.length > 1 ? lineOf(line.y, line.words.slice(1)) : null;
-}
-
-function compare(ref, ed) {
-  const issues = [];
-  if (ref.pages.length !== ed.pages.length) {
-    issues.push({ kind: 'pageCount', ref: ref.pages.length, editor: ed.pages.length });
-  }
-  const n = Math.min(ref.pages.length, ed.pages.length);
-  for (let p = 0; p < n; p++) {
-    const r = toLines(ref.pages[p].words);
-    const e = toLines(ed.pages[p].words);
-    const rows = Math.max(r.length, e.length);
-    for (let i = 0; i < rows; i++) {
-      let a = r[i];
-      const b = e[i];
-      if (!a || !b) {
-        issues.push({ kind: 'lineCount', page: p + 1, line: i + 1, ref: a?.text ?? null, editor: b?.text ?? null });
-        break; // once the lines slip, every following row is noise
-      }
-      if (norm(a.text) !== norm(b.text)) {
-        const trimmed = withoutMarker(a);
-        if (!trimmed || norm(trimmed.text) !== norm(b.text)) {
-          issues.push({ kind: 'lineBreak', page: p + 1, line: i + 1, ref: a.text, editor: b.text });
-          break;
-        }
-        a = trimmed;
-      }
-      const dx = round(b.x - a.x), dy = round(b.y - a.y);
-      if (Math.abs(dx) > POS_TOL_MM || Math.abs(dy) > POS_TOL_MM) {
-        issues.push({ kind: 'position', page: p + 1, line: i + 1, text: a.text.slice(0, 48), dxMm: dx, dyMm: dy });
-      }
-      // The line's end catches what its start cannot: tab stops, justification and
-      // any per-word drift that leaves the first word in place.
-      const dEnd = round(b.x2 - a.x2);
-      if (Math.abs(dEnd - dx) > POS_TOL_MM) {
-        issues.push({ kind: 'lineEnd', page: p + 1, line: i + 1, text: a.text.slice(0, 48), dxMm: dEnd });
-      }
-    }
-  }
-  return issues;
-}
-
-// Whitespace-insensitive: spell decorations split text nodes mid-word and the engines
-// needn't agree on word boundaries, only on what sits on a line. A tab or index leader
-// collapses to one token too — both engines end the fill at the same stop.
-const norm = (s) => s.replace(/[\s\u00a0\u00ad]+/g, '').replace(/([.\u00b7_-])\1{2,}/g, '\u2026');
-
 // ------------------------------------------------------------------- driver
 
 async function devServer() {
@@ -303,10 +236,24 @@ function corpus(args) {
   return out.sort();
 }
 
+// The last run's issue count per file, so a re-run prints what a change moved instead
+// of leaving the arithmetic to whoever reads two reports side by side.
+const BASELINE = join(CACHE, 'baseline.json');
+const readBaseline = () => {
+  try { return JSON.parse(readFileSync(BASELINE, 'utf8')); } catch { return {}; }
+};
+
 const args = process.argv.slice(2);
 const keep = args.includes('--keep');
+const cache = !args.includes('--no-cache');
 const jsonAt = args.includes('--json') ? args[args.indexOf('--json') + 1] : null;
-const files = corpus(args.filter((a) => !a.startsWith('--') && a !== jsonAt));
+const baseline = args.includes('--no-baseline') ? null : readBaseline();
+let files = corpus(args.filter((a) => !a.startsWith('--') && a !== jsonAt));
+if (args.includes('--quick')) {
+  const long = files.filter((f) => (baseline?.[basename(f)]?.refPages ?? 0) > QUICK_PAGES);
+  files = files.filter((f) => !long.includes(f));
+  if (long.length) console.log(`--quick: skipping ${long.length} document(s) over ${QUICK_PAGES} pages`);
+}
 if (!files.length) { console.error('no .docx/.odt files found'); process.exit(2); }
 
 const server = await devServer();
@@ -317,7 +264,7 @@ const report = [];
 for (const file of files) {
   const name = basename(file);
   try {
-    const ref = loRender(file, work);
+    const ref = loRender(file, work, cache);
     const ed = await editorRender(browser, file);
     const issues = compare(ref, ed);
     report.push({
@@ -328,7 +275,9 @@ for (const file of files) {
         margins: ed.margins,
       } : {}),
     });
-    console.log(`\n${issues.length ? '✗' : '✓'} ${name}  (LO ${ref.pages.length}p / editor ${ed.pages.length}p)`);
+    const was = baseline?.[name]?.issues;
+    console.log(`\n${issues.length ? '✗' : '✓'} ${name}  (LO ${ref.pages.length}p / editor ${ed.pages.length}p)`
+      + `  ${issues.length} ${delta(issues.length, was)}${ref.cached ? '  [cached]' : ''}`);
     for (const i of issues.slice(0, 12)) console.log('   ', fmt(i));
     if (issues.length > 12) console.log(`    … ${issues.length - 12} more`);
   } catch (err) {
@@ -337,11 +286,36 @@ for (const file of files) {
   }
 }
 
+// Only what this run measured: a single-fixture run says what that fixture moved and
+// leaves the other files' recorded counts alone.
+const done = report.filter((r) => !r.error);
+const total = done.reduce((n, r) => n + r.issues.length, 0);
+const seen = done.filter((r) => baseline?.[r.file]);
+const before = seen.reduce((n, r) => n + baseline[r.file].issues, 0);
+console.log(`\ntotal ${total} across ${done.length} document(s)`
+  + (seen.length === done.length ? `  ${delta(total, before)}`
+     : seen.length ? `  (${done.length - seen.length} without a baseline)` : ''));
+
+if (baseline) {
+  for (const r of done) baseline[r.file] = { issues: r.issues.length, refPages: r.refPages };
+  mkdirSync(CACHE, { recursive: true });
+  writeFileSync(BASELINE, JSON.stringify(baseline, null, 2));
+}
+
+function delta(now, was) {
+  if (was == null) return '(new)';
+  return now === was ? '(unchanged)' : `(was ${was}, ${now > was ? '+' : '\u2212'}${Math.abs(now - was)})`;
+}
+
 function fmt(i) {
+  const at = `p${i.page}${i.edPage ? `\u2192ed p${i.edPage}` : ''} l${i.line}`;
+  const n = i.lines > 1 ? ` \u00d7${i.lines}` : '';
   if (i.kind === 'pageCount') return `pages: LO ${i.ref}, editor ${i.editor}`;
-  if (i.kind === 'position') return `p${i.page} l${i.line} off by dx ${i.dxMm}mm dy ${i.dyMm}mm — "${i.text}"`;
-  if (i.kind === 'lineEnd') return `p${i.page} l${i.line} ends ${i.dxMm}mm off — "${i.text}"`;
-  return `p${i.page} l${i.line} ${i.kind}\n        LO: ${i.ref}\n        ed: ${i.editor}`;
+  if (i.kind === 'pageShift') return `p${i.page}: the editor runs ${i.by > 0 ? '+' : ''}${i.by} page(s) from here — "${i.text}"`;
+  if (i.kind === 'position') return `${at}${n} off by dx ${i.dxMm}mm dy ${i.dyMm}mm — "${i.text}"`;
+  if (i.kind === 'lineEnd') return `${at}${n} ends ${i.dxMm}mm off — "${i.text}"`;
+  return `p${i.page} l${i.line} ${i.kind} (LO ${i.refLines} / ed ${i.edLines} line(s))`
+    + `\n        LO: ${i.ref}\n        ed: ${i.editor}`;
 }
 
 await browser.close();

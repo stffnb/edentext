@@ -9,32 +9,62 @@ actually looks like.
 npm run test:parity:fixtures   # (re)generate the baseline .docx corpus
 npm run test:parity            # whole corpus
 npm run test:parity -- path/to/file.docx --json report.json
+npm run test:parity -- --quick # skip what last measured over 50 pages
 ```
 
 Exit code 1 when any document differs. `--json` also dumps both sides' lines
 (`y`, `x`, `x2` in mm, per page) — that dump is what you diagnose from.
+
+Every run prints each document's issue count against the previous run's and updates
+`node_modules/.cache/render-parity/baseline.json`, so an A/B measurement reads
+`218 (was 220, −2)` instead of being arithmetic over two reports. A run of one file
+leaves the other files' recorded counts alone. `--no-baseline` neither reads nor
+writes it — use it when measuring a deliberately broken tree.
+
+**The LibreOffice side is cached** in the same directory, keyed by the file's hash and
+the export arguments: the reference never depends on our code, so only the first run of
+a document pays for it — the whole corpus measured **9:00 cold against 5:41 cached**,
+and one fixture 15s against 10s. `--no-cache` after installing or removing a font,
+which does change what LibreOffice renders.
 
 ## How it compares
 
 | | reference | editor |
 |---|---|---|
 | render | `soffice --convert-to pdf` | Playwright Chromium, real app, real file input |
+| read | `pdftotext -bbox-layout` (word boxes, pt) | `Range.getClientRects()` (word boxes, px) |
 
 The PDF is exported with `IsSkipEmptyPages=false`: LibreOffice drops its own
 auto-inserted blank pages by default — a chapter forced onto a right page — and the
 reference then has fewer sheets than the document LibreOffice lays out (the
 458-page guide 456 against 468, one fixture 28 against 32).
-| read | `pdftotext -bbox-layout` (word boxes, pt) | `Range.getClientRects()` (word boxes, px) |
 
-Both sides are normalized to mm from the top-left of each page, grouped into lines,
-and compared as: page count → line count → line text → line position. Comparison is
-whitespace-insensitive, because the spell-check decorations split text nodes
-mid-word and the two engines needn't agree on word boundaries — only on what sits
-on a line.
+Both sides are normalized to mm from the top-left of each page and grouped into lines
+(`compare.mjs`, the pure half of the harness — `tests/unit/parity-compare.test.ts`
+covers it without a browser). Comparison is whitespace-insensitive, because the
+spell-check decorations split text nodes mid-word and the two engines needn't agree on
+word boundaries — only on what sits on a line; the invisible joiners a note anchor
+leaves behind are ignored for the same reason.
 
-Reported differences are `pageCount`, `lineCount`, `lineBreak` (same line, different
-words) and `position` (same words, off by more than `POS_TOL_MM`). Comparison of a
-page stops at the first line-level divergence, since everything after it is noise.
+The two documents are then **aligned as a whole**, not compared line index against line
+index: after a divergence the harness searches up to `SYNC_WINDOW` lines on both sides
+for the nearest pair of skips that makes two consecutive lines match again. One dropped
+line therefore costs one report, not every line after it, and a page-level slip shows up
+as one `pageShift` naming the line it starts at instead of a wall of noise.
+
+Where no resync is in reach it steps both sides by one and keeps comparing. A contents
+block whose numbers are all off by one has no two consecutive matching rows anywhere in
+it, and declaring the documents parted there hid 465 of the 458-page guide's pages
+behind a single report. Contiguous divergent lines are merged into one report carrying
+how many lines each side spent, so the region still reads as one difference.
+
+Reported differences are `pageCount`, `pageShift` (from here on the editor runs ±n pages
+off), `lineCount`, `lineBreak` (same place, different words) and `position` / `lineEnd`
+(same words, off by more than `POS_TOL_MM`). Consecutive lines off by the *same* amount
+are one report with a `×n` count, since that is one cause — a strut, a spacing, a band
+height — and not n of them. Counts recorded before 2026-09-03 came from the index-wise
+comparison, which stopped at the first divergence per page: they are not comparable to
+what a run prints now.
 
 ## Prerequisites
 
