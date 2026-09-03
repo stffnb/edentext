@@ -1,4 +1,5 @@
 import { openDb, idbRequest } from './idb';
+import { fnv1a } from '../utils/hash';
 
 // The document's pictures, out of the autosaved JSON and into IndexedDB. localStorage's
 // ~5 MB quota is a handful of photos, and a document that exceeds it stops saving; the
@@ -17,12 +18,7 @@ const MIN_STASH_CHARS = 4096;
 // agreeing on all three is not something a document produces.
 function keyOf(src: string): string {
   const sample = src.length <= 8192 ? src : src.slice(0, 4096) + src.slice(-4096);
-  let h = 0x811c9dc5;
-  for (let i = 0; i < sample.length; i++) {
-    h ^= sample.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return `${(h >>> 0).toString(36)}${src.length.toString(36)}`;
+  return `${fnv1a(sample).toString(36)}${src.length.toString(36)}`;
 }
 
 type Json = { attrs?: Record<string, unknown>; content?: Json[] } & Record<string, unknown>;

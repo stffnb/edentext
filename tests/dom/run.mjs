@@ -71,16 +71,34 @@ try {
   check(broken === opened + 1 && undone === opened,
     `a page break adds a page and undo takes it back (${opened} → ${broken} → ${undone})`);
 
-  // The unsaved dot: an edit raises it, opening a file clears it again.
+  // The unsaved dot: an edit raises it, an undo back to the saved text clears it
+  // again (it is a checksum, not the document's identity), and so does opening a file.
+  // It follows on the next idle beat, so wait for the state rather than a fixed pause.
+  const dot = async (want) => {
+    await page.waitForFunction((w) => !!document.querySelector('.doc-dirty') === w, want, { timeout: 10_000 })
+      .catch(() => {});
+    return page.evaluate(() => !!document.querySelector('.doc-dirty'));
+  };
+  // The repagination after the undo rebuilds the view, so take the caret back first.
+  await page.click('.tiptap');
+  await page.keyboard.press(`${MOD}+End`);
   await page.keyboard.type('nachtrag');
-  await page.waitForTimeout(500);
-  const marked = await page.evaluate(() => !!document.querySelector('.doc-dirty'));
+  const marked = await dot(true);
+  await page.keyboard.press(`${MOD}+z`);
+  const backToSaved = await dot(false);
   await page.setInputFiles('input.file-input', join(ROOT, 'tests/corpus/04-table.odt'));
   await page.waitForFunction(() => document.querySelector('.tiptap table td')?.textContent.trim(),
     null, { timeout: 30_000 });
-  await page.waitForTimeout(800);
-  const cleared = await page.evaluate(() => !!document.querySelector('.doc-dirty'));
-  check(marked && !cleared, `the unsaved dot follows the edits (edit: ${marked}, after open: ${cleared})`);
+  const opened2 = await dot(false);
+  check(marked && !backToSaved && !opened2,
+    `the dot follows the text (edit: ${marked}, undone: ${backToSaved}, after open: ${opened2})`);
+
+  // The page setup is in the file too, so a margin preset marks it as much as text does.
+  await page.locator('.ribbon-tab', { hasText: 'Layout' }).first().click();
+  await page.locator('.rb-label', { hasText: 'Margins' }).first().click();
+  await page.locator('.ribbon-menu button', { hasText: 'Narrow' }).first().click();
+  const afterMargins = await dot(true);
+  check(afterMargins, `a margin preset marks the document unsaved (${afterMargins})`);
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {

@@ -214,10 +214,18 @@ size alone makes a short word far too small and a long one overflow the page.
 
 ## The unsaved dot (`App.svelte`, both chromes)
 
-A `•` beside the document name while the text differs from what was last written to a
-file. It follows the **doc object**: the editor's first document is the clean one, every
-later one is a change (an undo back to it included), and a save, an open or a new document
-makes the current one clean again. Margins, styles or header/footer changes are not marked.
+A `•` beside the document name while the document differs from what was last written to a
+file. It is an FNV-1a checksum (`utils/hash.ts`) over the text **and** everything
+`exportArgs()` hands the exporter beside it — page setup, styles, notes, the zones — so a
+margin preset marks the document as much as a keystroke does, and an undo back to the saved
+state clears the dot again. The page count is left out: it is a layout result, and a font
+loading late must not mark the document changed.
+
+Taken a beat after the change (300 ms, **throttled** — a debounce never fires while a
+settle pass or the spell checker keeps the document moving), and the baseline is taken
+**synchronously** on the effect's first run, not in that timer: under a repagination the
+timer can be pushed out past the reader's first edit, which would make that edit the
+baseline. A save, an open or a new document takes a fresh baseline (`markSaved`).
 Leaving the page warns only when the document actually has a file — a browser-only document
 is kept by the autosave, so there would be nothing to lose.
 

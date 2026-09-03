@@ -70,6 +70,7 @@
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
   import { t, locale } from './lib/i18n/i18n.svelte';
+  import { fnv1a } from './lib/utils/hash';
   import { withShortcut } from './lib/i18n/shortcut';
   import { DEFAULT_SHORTCUTS, matchesEvent, shortcutHint } from './lib/editor/shortcuts';
   import { OPEN_LINK_DIALOG_EVENT } from './lib/editor/extensions/link';
@@ -145,31 +146,59 @@
   let docStats = $state<TextStats>({ words: 0, charsWithSpaces: 0, charsNoSpaces: 0, paragraphs: 0 });
   let countedDoc: PmNode | null = null;
   let countTimer: ReturnType<typeof setTimeout> | undefined;
+  // Throttled, not debounced: a document that keeps changing (a settle pass, the spell
+  // checker's decorations) would push a debounced count out for as long as it goes on.
   $effect(() => {
     if (tick < 0 || !editor) return;
     const { doc } = editor.state;
     if (doc === countedDoc) return;
     countedDoc = doc;
-    // Whatever the editor comes up with is what the file holds; every doc after that
-    // is an edit the file has not seen. Undoing back to it counts as a change too.
-    cleanDoc ??= doc;
-    dirty = doc !== cleanDoc;
-    clearTimeout(countTimer);
-    countTimer = setTimeout(() => { docStats = countText(doc, 0, doc.content.size); }, 300);
+    countTimer ??= setTimeout(() => {
+      countTimer = undefined;
+      const now = editor!.state.doc;
+      docStats = countText(now, 0, now.content.size);
+    }, 300);
   });
 
-  // Changed since the last save into a file — the dot both word processors show. It
-  // follows the text only: a margin or a style change is not marked.
+  // Changed since the last save into a file — the dot both word processors show.
+  // Everything the file holds counts: the text, and the page setup, styles and zones
+  // beside it, which is what the exporter is handed. Same beat as the word count.
   let dirty = $state(false);
-  let cleanDoc: PmNode | null = null;
+  let cleanSum: number | null = null;
+  let sumTimer: ReturnType<typeof setTimeout> | undefined;
   // Whether there is a file to lose those changes from. A document that only ever
   // lived in the browser is kept by the autosave, so leaving is not worth a warning.
   let documentHasFile = $state(false);
 
+  // The page count rides in with the zones but is a layout result, not an edit: a
+  // late-loading font repaginating the document must not mark it changed.
+  function documentSum(): number {
+    if (!editor) return 0;
+    const [margins, orientation, hf, ...rest] = exportArgs();
+    const { pageCount: _pages, ...zones } = hf;
+    return fnv1a(JSON.stringify([editor.getJSON(), margins, orientation, zones, ...rest]));
+  }
+
   function markSaved(): void {
-    cleanDoc = editor?.state.doc ?? null;
+    cleanSum = documentSum();
     dirty = false;
   }
+
+  $effect(() => {
+    if (tick < 0 || !editor) return; // the tick is the document's own signal
+    exportArgs(); // subscribes to every value the file carries beside the text
+    // The document the editor comes up with is the file's, taken here and not in the
+    // timer: under a repagination the timer can be pushed out past the first edit,
+    // which would make that edit the baseline.
+    if (cleanSum === null) {
+      markSaved();
+      return;
+    }
+    sumTimer ??= setTimeout(() => {
+      sumTimer = undefined;
+      dirty = documentSum() !== cleanSum;
+    }, 300);
+  });
 
   $effect(() => {
     if (!dirty || !documentHasFile) return;
