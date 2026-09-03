@@ -23,6 +23,7 @@
   import { getColorDebug } from './lib/utils/colorDebug';
   import { resetHistoryLog } from './lib/utils/historyLog.svelte';
   import { countText, type TextStats } from './lib/utils/wordCount';
+  import type { Node as PmNode } from 'prosemirror-model';
   import { clampZoom, wheelZoomFactor, MIN_ZOOM, MAX_ZOOM } from './lib/utils/zoom';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadChromeMode, saveChromeMode, loadFormattingMarks, saveFormattingMarks, loadRuler, saveRuler, loadSplitView, saveSplitView, loadPageColumns, savePageColumns, type ThemeMode, type ChromeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
@@ -37,7 +38,7 @@
   import { DEFAULT_NOTE_SETTINGS } from './lib/storage/noteSettings';
   import { builtinStyleSheet, type StyleFamily } from './lib/styles/styleSheet';
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, loadExtraHfSections, saveExtraHfSections, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
-  import { loadDocName, saveDocName, loadDocFormat, saveDocFormat, stripOdtExtension, sanitizeNameForFile, deriveFilename, type DocumentFormat } from './lib/storage/documentName';
+  import { loadDocName, saveDocName, loadDocFormat, saveDocFormat, stripOdtExtension, sanitizeNameForFile, deriveFilename, filenameFor, type DocumentFormat } from './lib/storage/documentName';
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { loadHyphenation, saveHyphenation } from './lib/storage/hyphenation';
   import { loadPageNumbering, savePageNumbering, DEFAULT_PAGE_NUMBERING, type PageNumbering } from './lib/storage/pageNumbering';
@@ -136,14 +137,20 @@
     editor?.commands.clearSearch();
   }
 
-  // Word/character counts for the status-bar counter. Reading `tick` makes these
-  // recompute on every body transaction (incl. selection changes), so they stay
-  // live without subscribing to ProseMirror directly.
+  // Word/character counts for the status-bar counter. A selection-only transaction
+  // keeps the doc object, so nothing recounts; a changed document is counted a beat
+  // later, off the keystroke — a long document's walk is not free.
   let wordCountOpen = $state(false);
-  let docStats = $derived.by<TextStats>(() => {
-    if (tick < 0 || !editor) return { words: 0, charsWithSpaces: 0, charsNoSpaces: 0, paragraphs: 0 };
+  let docStats = $state<TextStats>({ words: 0, charsWithSpaces: 0, charsNoSpaces: 0, paragraphs: 0 });
+  let countedDoc: PmNode | null = null;
+  let countTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    if (tick < 0 || !editor) return;
     const { doc } = editor.state;
-    return countText(doc, 0, doc.content.size);
+    if (doc === countedDoc) return;
+    countedDoc = doc;
+    clearTimeout(countTimer);
+    countTimer = setTimeout(() => { docStats = countText(doc, 0, doc.content.size); }, 300);
   });
   let selStats = $derived.by<TextStats | null>(() => {
     if (tick < 0 || !editor) return null;
@@ -200,12 +207,15 @@
   // with its text instead of sitting in a fixed-width box.
   let docNameSizerWidth = $state(0);
 
-  // Shown in the empty title field: what an actual save would name the file.
-  // Only computed while the field is blank (otherwise the placeholder is hidden,
-  // so we skip the per-transaction getJSON).
+  // Shown in the empty title field: what an actual save would name the file — read
+  // off the document's first heading, not a JSON of the whole document per transaction.
   let namePlaceholder = $derived.by(() => {
     if (documentName.trim() || tick < 0 || !editor) return t().app.untitled;
-    const base = stripOdtExtension(deriveFilename(editor.getJSON() as TiptapNode));
+    let title: string | undefined;
+    editor.state.doc.forEach((n) => {
+      if (title === undefined && n.type.name === 'heading' && n.childCount) title = n.firstChild?.text ?? '';
+    });
+    const base = stripOdtExtension(filenameFor(title));
     return base === 'document' ? t().app.untitled : base;
   });
 

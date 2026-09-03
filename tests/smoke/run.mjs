@@ -57,6 +57,10 @@ try {
   await page.keyboard.type('bold');
   const strong = await page.evaluate(() => document.querySelector('.tiptap strong')?.textContent);
   check(strong === 'bold', 'typing + bold shortcut render');
+  // The status-bar count follows a changed document a beat later, off the keystroke.
+  await page.waitForFunction(() => /\b3 Words\b/.test(document.querySelector('.statusbar')?.textContent ?? ''),
+    null, { timeout: 5_000 });
+  check(true, 'word count follows the typing');
 
   // Autosave (1s debounce) persists the document across a reload.
   await page.waitForFunction(() => (localStorage.getItem('edentext-doc') ?? '').includes('Hello smoke'),
