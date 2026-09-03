@@ -309,6 +309,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let sectionNumStarts = $derived([pageNumbering.start,
     ...extraHfSections.map((s) => s.pageNumberStart ?? 'x')].join(','));
 
+  // The side each section must open on ('x' = wherever it falls): a blank page goes
+  // before one whose flow would open it on the other.
+  let sectionStartsOn = $derived(['x',
+    ...extraHfSections.map((s) => (s.startsOn === 'odd' ? 'o' : s.startsOn === 'even' ? 'e' : 'x'))].join(','));
+
   // The number a page shows, and from it its side: a left page is an even-numbered one.
   let printedNumberAt = $derived.by(() => {
     const starts = [pageNumbering.start, ...extraHfSections.map((s) => s.pageNumberStart ?? null)];
@@ -320,6 +325,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   $effect(() => {
     const s = document.documentElement.style;
     s.setProperty('--pb-section-numstart', sectionNumStarts);
+    s.setProperty('--pb-section-startson', sectionStartsOn);
     s.setProperty('--pb-section-inset', sectionInset);
     s.setProperty('--pb-space-at-page-start', spacingAtPageStart ? '1' : '0');
     s.setProperty('--pb-section-mirror', sectionMirror);

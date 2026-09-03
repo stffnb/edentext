@@ -765,6 +765,15 @@ export class StyleResolver {
     };
   }
 
+  // The side a page style must open on: ODF's style:page-usage right/left, where the
+  // master is not one half of a mirrored pair — there the two alternate by themselves
+  // and neither forces a blank page.
+  pageStartSide(pageName: string | null = null): 'odd' | 'even' | null {
+    if (this.masterPageHF(pageName).mirrorPair) return null;
+    const usage = this.pageLayoutEl(pageName)?.getAttributeNS(NS.style, 'page-usage');
+    return usage === 'right' ? 'odd' : usage === 'left' ? 'even' : null;
+  }
+
   private pageUsage(mp: Element | null): string {
     const name = mp?.getAttributeNS(NS.style, 'name') ?? null;
     return name ? this.pageLayoutEl(name)?.getAttributeNS(NS.style, 'page-usage') ?? '' : '';

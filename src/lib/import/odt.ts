@@ -938,6 +938,9 @@ function hfSetOfMasterPage(
     distancesFirst: firstDist && !sameDist(firstDist, restDist) ? firstDist : null,
     margins: rest,
     marginsFirst: hf.restPage && !hf.mirrorPair ? own : null,
+    // The section's own layout is what says which side it opens on, even where a
+    // successor governs the pages after it.
+    startsOn: ctx.resolver.pageStartSide(name),
     pageNumberFormat: numFormat !== docNumFormat ? numFormat : null,
     format: paper && doc && paper.format !== doc.format ? paper.format : null,
     orientation: paper && doc && paper.orientation !== doc.orientation ? paper.orientation : null,

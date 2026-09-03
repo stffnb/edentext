@@ -43,14 +43,20 @@ export type HfSet = {
   // document's; `distancesFirst` is its first page's where that hands over.
   distances?: HfDistances | null;
   distancesFirst?: HfDistances | null;
+  // The side the section must open on (ODF `style:page-usage` right/left on its page
+  // layout, Word's `w:type` oddPage/evenPage): where the flow would open it on the
+  // other one, a blank page goes before it. null = wherever it falls.
+  startsOn?: PageSide | null;
 };
+
+export type PageSide = 'odd' | 'even';
 
 export const EMPTY_HF_SET: HfSet = {
   header: null, footer: null,
   headerFirst: null, footerFirst: null, differentFirstPage: false,
   headerEven: null, footerEven: null, differentOddEven: false,
   margins: null, marginsFirst: null, format: null, orientation: null,
-  distances: null, distancesFirst: null,
+  distances: null, distancesFirst: null, startsOn: null,
   pageNumberStart: null, pageNumberFormat: null,
 };
 

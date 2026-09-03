@@ -2763,6 +2763,14 @@ function sectionStartsNewPage(sectPr: Element | null): boolean {
   return val !== 'continuous' && val !== 'nextColumn';
 }
 
+// w:type oddPage/evenPage: the section opens on that side, taking a blank page where
+// the flow would open it on the other one.
+function sectionStartSide(sectPr: Element | null): 'odd' | 'even' | null {
+  const t = fc(sectPr, 'type');
+  const val = t ? wVal(t) : null;
+  return val === 'oddPage' ? 'odd' : val === 'evenPage' ? 'even' : null;
+}
+
 // A sectPr's w:cols → columns attrs when it declares more than one column.
 function sectPrColumns(sectPr: Element | null, ctx: Ctx): { count: number; gapCm: number } | null {
   const cols = fc(sectPr, 'cols');
@@ -3150,6 +3158,7 @@ function sectionHfSets(
     // w:fmt is per section too — a roman front matter before a decimal body.
     const pgFmt = DOCX_PAGE_NUM_FORMAT[fc(sect, 'pgNumType')?.getAttributeNS(W, 'fmt') ?? ''] ?? '1';
     out.push({
+      startsOn: sectionStartSide(sect),
       margins: sectMargins(sect),
       distances: sameDist(dist, docDist) ? null : dist,
       pageNumberStart: out.length && pgStart != null ? clampPageStart(pgStart) : null,

@@ -8,7 +8,7 @@
   import { PAGE_FORMAT_CM, type PageFormat } from '../../../storage/pageFormat';
   import { DEFAULT_MARGINS, marginAxisLabel, withMirrored, type PageMargins } from '../../../storage/pageMargins';
   import type { Orientation } from '../../../storage/pageOrientation';
-  import { EMPTY_HF_SET, type HfSet, type HfZone } from '../../../storage/headerFooter';
+  import { EMPTY_HF_SET, type HfSet, type HfZone, type PageSide } from '../../../storage/headerFooter';
   import { DEFAULT_PAGE_NUMBERING, PAGE_NUM_FORMATS, clampPageStart, type PageNumbering } from '../../../storage/pageNumbering';
   import { EMPTY_PAGE_DECOR, type PageDecor } from '../../../storage/pageDecor';
   import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../../../storage/lineNumbering';
@@ -81,6 +81,11 @@
     out[currentSection - 1] = { ...out[currentSection - 1], ...props };
     extraHfSections = out;
   }
+
+  // The side this section must open on, if it must (Word's Layout ▸ Section start).
+  let sectionStartsOn = $derived(
+    currentSection > 0 ? extraHfSections[currentSection - 1]?.startsOn ?? null : null,
+  );
 
   // Where this section restarts the numbering, if it does (Word's "Start at").
   let sectionPageStart = $derived(
@@ -273,6 +278,20 @@
           {t().ribbon.sectionBreak}
           <span class="menu-sub">{t().ribbon.sectionBreakHint}</span>
         </button>
+        {#if currentSection > 0}
+          <hr />
+          <div class="rb-menu-label">{t().ribbon.thisSection}</div>
+          {#each [['odd', t().ribbon.startsOnOdd], ['even', t().ribbon.startsOnEven]] as [side, label]}
+            <label class="check-row" title={t().ribbon.startsOnHint}>
+              <input
+                type="checkbox"
+                checked={sectionStartsOn === side}
+                onchange={(e) => setSectionProp({ startsOn: e.currentTarget.checked ? side as PageSide : null })}
+              />
+              {label}
+            </label>
+          {/each}
+        {/if}
       </div>
     {/if}
   </div>

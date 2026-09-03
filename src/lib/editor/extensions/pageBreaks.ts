@@ -1172,6 +1172,9 @@ export const PageBreaks = Extension.create({
           // document's own start: the side a page is on follows its number, not its sheet.
           const numStarts = csRoot.getPropertyValue('--pb-section-numstart').split(',')
             .map((v) => (Number.isFinite(Number(v)) && v.trim() !== '' ? Number(v) : null));
+          // The side a section must open on ('o'/'e'), else 'x'.
+          const sides = csRoot.getPropertyValue('--pb-section-startson').split(',').map((v) => v.trim());
+          const sideAt = (i: number) => (sides[i] === 'o' ? 'odd' : sides[i] === 'e' ? 'even' : null);
           const mirrors = csRoot.getPropertyValue('--pb-section-mirror').split(',')
             .map((g) => g.split('|').map(Number))
             .filter((g) => g.length === 2 && g.every(Number.isFinite));
@@ -1252,6 +1255,18 @@ export const PageBreaks = Extension.create({
                 sectionIndex++;
                 sectionFirstPage = pushed ? page + 1 : page;
                 sectionFirstPages[sectionIndex] = sectionFirstPage;
+                // A section that must open on a right or left page takes the blank page
+                // before it, the way both word processors insert one — never for the
+                // document's own first page, which is a right page whatever it says.
+                const side = i > 0 ? sideAt(sectionIndex) : null;
+                if (side) {
+                  const numberOf = (pg: number) => printedPageNumber(pg, sectionIndex, numStarts,
+                    (j) => (j === sectionIndex ? pg : sectionFirstPages[j] ?? 1));
+                  if ((isLeftPage(numberOf(sectionFirstPage)) ? 'even' : 'odd') !== side) {
+                    sectionFirstPage++;
+                    sectionFirstPages[sectionIndex] = sectionFirstPage;
+                  }
+                }
                 // Its paper governs from its first page on. Setting it here can only move
                 // pages *below* that one, so the page just resolved stays valid.
                 grid.setFrom(sectionFirstPage, paperAt(sectionIndex));
@@ -1345,13 +1360,17 @@ export const PageBreaks = Extension.create({
               // A manual page break forces the block to the next page's top (never the first
               // leaf, so no leading blank page); once settled at a page top the guard stops.
               // A forced block that then overflows is split by the normal logic next pass.
-              const forced = !!leaf.forceBreakBefore && i > 0 && effectiveTop > contentStart + 0.5;
+              // A section held back for its own side skips the sheets between: its first
+              // page is settled above, so the spacer reaches straight for that one.
+              const skipTo = leaf.sectionStart && sectionFirstPage > page ? sectionFirstPage : 0;
+              const forced = skipTo > 0 || (!!leaf.forceBreakBefore && i > 0 && effectiveTop > contentStart + 0.5);
 
               if (forced) {
-                // The next page's own content start: a section beginning here brings its
-                // first-page header with it.
-                const nextTop = page + 1 === sectionFirstPage ? topFirst : topRest;
-                const target = pageContentStart(page + 1, nextTop, grid);
+                // The target page's own content start: a section beginning there brings
+                // its first-page header with it.
+                const targetPage = skipTo || page + 1;
+                const nextTop = targetPage === sectionFirstPage ? topFirst : topRest;
+                const target = pageContentStart(targetPage, nextTop, grid);
                 const { docPos, row } = leafSpacer(leaf);
                 breaks.push({
                   height: target - effectiveTop,

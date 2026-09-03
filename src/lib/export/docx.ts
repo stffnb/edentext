@@ -2874,8 +2874,12 @@ export async function buildDocx(
         // its header set carries titlePg; later groups of the set must not repeat it.
         ...(setAt(g.section).differentFirstPage && g.section < hfSets.length
           && groups.findIndex((x) => x.section === g.section) === i ? { titlePage: true } : {}),
-        ...(i > 0 && !(setAt(g.section).pageNumberStart != null && groups.findIndex((x) => x.section === g.section) === i)
-          ? { type: SectionType.CONTINUOUS } : {}),
+        // A section that must open on a right or left page says so here; Word inserts
+        // the blank page for it, as LibreOffice does for style:page-usage.
+        ...(i > 0 && groups.findIndex((x) => x.section === g.section) === i && setAt(g.section).startsOn
+          ? { type: setAt(g.section).startsOn === 'odd' ? SectionType.ODD_PAGE : SectionType.EVEN_PAGE }
+          : i > 0 && !(setAt(g.section).pageNumberStart != null && groups.findIndex((x) => x.section === g.section) === i)
+            ? { type: SectionType.CONTINUOUS } : {}),
         ...(g.columns
           ? { column: { count: g.columns.count, space: cmToTwip(g.columns.gapCm), equalWidth: true } }
           : {}),

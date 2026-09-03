@@ -5487,10 +5487,14 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
     const dist = set.distances ?? null;
     const distTop = dist && (set.header || set.headerFirst || set.headerEven) ? dist.header : null;
     const distBottom = dist && (set.footer || set.footerFirst || set.footerEven) ? dist.footer : null;
-    if ((!m && !paper && !numFormat && distTop == null && distBottom == null) || !layoutXml) return layout;
+    // The side the section opens on: page one is a right page whatever it says, so only
+    // a later section carries it.
+    const side = index > 0 && set.startsOn ? (set.startsOn === 'odd' ? 'right' : 'left') : null;
+    if ((!m && !paper && !numFormat && distTop == null && distBottom == null && !side) || !layoutXml) return layout;
     const name = `${layout}Sec${index + 1}`;
     layouts.push(layoutXml
-      .replace(`style:name="${layout}"`, `style:name="${name}"`)
+      .replace(/\s*style:page-usage="[^"]*"/, '')
+      .replace(`style:name="${layout}"`, `style:name="${name}"${side ? ` style:page-usage="${side}"` : ''}`)
       .replace(/<style:page-layout-properties\b[^>]*>/, (props) => {
         // The margins are a shift, so whatever the header/footer pass folded into them
         // survives; the paper is set outright.
