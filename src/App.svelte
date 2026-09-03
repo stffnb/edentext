@@ -39,7 +39,7 @@
   import { DEFAULT_NOTE_SETTINGS } from './lib/storage/noteSettings';
   import { builtinStyleSheet, type StyleFamily } from './lib/styles/styleSheet';
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, DEFAULT_HF_DISTANCES, loadExtraHfSections, saveExtraHfSections, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
-  import { loadDocName, saveDocName, stripOdtExtension, sanitizeNameForFile } from './lib/storage/documentName';
+  import { loadDocName, saveDocName, loadDocFormat, saveDocFormat, stripOdtExtension, sanitizeNameForFile, type DocumentFormat } from './lib/storage/documentName';
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { loadHyphenation, saveHyphenation } from './lib/storage/hyphenation';
   import { loadPageNumbering, savePageNumbering, DEFAULT_PAGE_NUMBERING, type PageNumbering } from './lib/storage/pageNumbering';
@@ -184,7 +184,7 @@
   let documentName: string = $state(loadDocName());
   // The loaded file's format; drives the title's extension label and which
   // exporter "Save" round-trips through (odt-opened saves odt, docx-opened saves docx).
-  let documentFormat: 'odt' | 'docx' = $state('odt');
+  let documentFormat: DocumentFormat = $state(loadDocFormat());
   let docProps: DocProperties = $state(loadDocProperties());
   let docPropsOpen = $state(false);
   let hyphenate = $state(loadHyphenation());
@@ -331,6 +331,7 @@
 
   $effect(() => {
     saveDocName(documentName);
+    saveDocFormat(documentFormat);
   });
 
   function setZoom(value: number) {

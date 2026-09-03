@@ -22,3 +22,18 @@ export function sanitizeNameForFile(name: string): string {
   // eslint-disable-next-line no-control-regex
   return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim();
 }
+
+export type DocumentFormat = 'odt' | 'docx';
+
+// The format the open document round-trips in. Absent at the .odt default, so only a
+// document that came in as .docx writes anything.
+const FORMAT_KEY = 'edentext-doc-format';
+
+export function loadDocFormat(): DocumentFormat {
+  return localStorage.getItem(FORMAT_KEY) === 'docx' ? 'docx' : 'odt';
+}
+
+export function saveDocFormat(format: DocumentFormat): void {
+  if (format === 'docx') localStorage.setItem(FORMAT_KEY, format);
+  else localStorage.removeItem(FORMAT_KEY);
+}
