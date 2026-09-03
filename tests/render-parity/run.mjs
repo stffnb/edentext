@@ -24,7 +24,11 @@ const POS_TOL_MM = 1.0;        // reported as a position difference beyond this
 function loRender(file, work) {
   execFileSync('soffice', [
     '--headless', '--norestore', `-env:UserInstallation=file://${work}/loprofile`,
-    '--convert-to', 'pdf', '--outdir', work, file,
+    // Keep the blank pages LibreOffice inserts itself (a chapter forced onto a right
+    // page): its PDF export drops them by default and the reference then loses a sheet
+    // the document really has.
+    '--convert-to', 'pdf:writer_pdf_Export:{"IsSkipEmptyPages":{"type":"boolean","value":"false"}}',
+    '--outdir', work, file,
   ], { stdio: 'pipe', timeout: 120_000 });
   const pdf = join(work, basename(file, extname(file)) + '.pdf');
   if (!existsSync(pdf)) throw new Error(`LibreOffice produced no PDF for ${file}`);

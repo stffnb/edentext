@@ -19,6 +19,11 @@ Exit code 1 when any document differs. `--json` also dumps both sides' lines
 | | reference | editor |
 |---|---|---|
 | render | `soffice --convert-to pdf` | Playwright Chromium, real app, real file input |
+
+The PDF is exported with `IsSkipEmptyPages=false`: LibreOffice drops its own
+auto-inserted blank pages by default — a chapter forced onto a right page — and the
+reference then has fewer sheets than the document LibreOffice lays out (the
+458-page guide 456 against 468, one fixture 28 against 32).
 | read | `pdftotext -bbox-layout` (word boxes, pt) | `Range.getClientRects()` (word boxes, px) |
 
 Both sides are normalized to mm from the top-left of each page, grouped into lines,
