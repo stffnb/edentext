@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import { COLUMNS_FIT_MARGIN_PX } from './columns';
+import { isLeftPage, printedPageNumber } from '../../storage/pageNumbering';
 import { RESYNC_NOTES, setNoteAnchorPages } from './notes';
 
 export type PageBreakDebugSnapshot = {
@@ -1167,6 +1168,10 @@ export const PageBreaks = Extension.create({
           // ones has margins of its own and mirrors nothing.
           // The document's "spacing at the start of a page" switch (spacingModel.ts).
           const spacingAtStart = csRoot.getPropertyValue('--pb-space-at-page-start').trim() !== '0';
+          // Where each section restarts numbering ('x' = it counts on), section 0 the
+          // document's own start: the side a page is on follows its number, not its sheet.
+          const numStarts = csRoot.getPropertyValue('--pb-section-numstart').split(',')
+            .map((v) => (Number.isFinite(Number(v)) && v.trim() !== '' ? Number(v) : null));
           const mirrors = csRoot.getPropertyValue('--pb-section-mirror').split(',')
             .map((g) => g.split('|').map(Number))
             .filter((g) => g.length === 2 && g.every(Number.isFinite));
@@ -1195,6 +1200,8 @@ export const PageBreaks = Extension.create({
             const sectionStartPages: number[] = [];
             let sectionIndex = 0;
             let sectionFirstPage = 1;
+            // First page per section, which is what a numbering restart counts from.
+            const sectionFirstPages: number[] = [1];
             // The grid this placement lays out against, grown as each section's first
             // page becomes known. Built here, not read back, so a pass never measures
             // its own last answer.
@@ -1244,6 +1251,7 @@ export const PageBreaks = Extension.create({
                 const pushed = !!leaf.forceBreakBefore && i > 0 && effectiveTop > prevStart + 0.5;
                 sectionIndex++;
                 sectionFirstPage = pushed ? page + 1 : page;
+                sectionFirstPages[sectionIndex] = sectionFirstPage;
                 // Its paper governs from its first page on. Setting it here can only move
                 // pages *below* that one, so the page just resolved stays valid.
                 grid.setFrom(sectionFirstPage, paperAt(sectionIndex));
@@ -1589,7 +1597,9 @@ export const PageBreaks = Extension.create({
               const landedPage = grid.pageAt(leaf.naturalTop + cumulativeShift);
               if (leaf.sectionStart) sectionStartPages.push(landedPage);
               const ins = insetAt(sectionIndex);
-              const mir = landedPage % 2 === 0
+              const printed = printedPageNumber(landedPage, sectionIndex, numStarts,
+                (i) => sectionFirstPages[i] ?? 1);
+              const mir = isLeftPage(printed)
                 ? mirrorAt(sectionIndex)[landedPage === sectionFirstPage ? 0 : 1] : 0;
               const insLeft = Math.round((landedPage === sectionFirstPage ? ins[0] : ins[2]) + mir);
               const insRight = Math.round((landedPage === sectionFirstPage ? ins[1] : ins[3]) - mir);

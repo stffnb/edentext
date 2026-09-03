@@ -40,7 +40,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { type Orientation } from '../storage/pageOrientation';
   import { type SpacingModel } from '../storage/spacingModel';
   import { NO_LANGUAGE } from '../storage/documentLanguage';
-  import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
+  import { DEFAULT_PAGE_NUMBERING, isLeftPage, printedPageNumber, type PageNumbering } from '../storage/pageNumbering';
   import { applyNoteVars } from '../storage/noteSettings';
   import { noteSettings } from '../storage/notes.svelte';
   import { RESYNC_NOTES } from '../editor/extensions/notes';
@@ -303,8 +303,23 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     ...extraHfSections.map((s) => [s.marginsFirst ?? s.margins ?? pageMargins, s.margins ?? pageMargins]),
   ].map((g) => g.map((m) => (m.mirrored ? Math.round(cmToPx(m.right) - cmToPx(m.left)) : 0)).join('|')).join(','));
 
+  // Where numbering restarts, per section — section 0 is the document's own start.
+  // A section that counts on carries `x`; the break plugin needs it to tell which
+  // side a page is, and that follows the number, not the sheet.
+  let sectionNumStarts = $derived([pageNumbering.start,
+    ...extraHfSections.map((s) => s.pageNumberStart ?? 'x')].join(','));
+
+  // The number a page shows, and from it its side: a left page is an even-numbered one.
+  let printedNumberAt = $derived.by(() => {
+    const starts = [pageNumbering.start, ...extraHfSections.map((s) => s.pageNumberStart ?? null)];
+    const firstPage = (i: number) => (i === 0 ? 1 : sectionStartPages[i - 1] ?? 1);
+    return (page: number) => printedPageNumber(page, pageBoxes[page - 1]?.section ?? 0, starts, firstPage);
+  });
+  let leftPageAt = $derived((page: number) => isLeftPage(printedNumberAt(page)));
+
   $effect(() => {
     const s = document.documentElement.style;
+    s.setProperty('--pb-section-numstart', sectionNumStarts);
     s.setProperty('--pb-section-inset', sectionInset);
     s.setProperty('--pb-space-at-page-start', spacingAtPageStart ? '1' : '0');
     s.setProperty('--pb-section-mirror', sectionMirror);
@@ -1537,7 +1552,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         </div>
       {/if}
       <PageSheetLayer {pageBoxes} />
-      <PageDecorLayer decor={pageDecor} {pageBoxes} {pageMargins} hfInsets={decorHfInsets} />
+      <PageDecorLayer decor={pageDecor} {pageBoxes} {pageMargins} hfInsets={decorHfInsets} isLeft={leftPageAt} />
       {#if foldMarks}
         <FoldMarkLayer {pageBoxes} />
       {/if}

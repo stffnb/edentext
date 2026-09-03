@@ -5,13 +5,15 @@
   // The page's border and watermark, one box per page — the background itself is a
   // custom property on .paper, which already paints the sheet. Geometry is unscaled
   // document px: the layer sits inside .paper, so the zoom transform covers it.
-  let { decor, pageBoxes, pageMargins, hfInsets = { headerCm: null, footerCm: null } }: {
+  let { decor, pageBoxes, pageMargins, hfInsets = { headerCm: null, footerCm: null }, isLeft = () => false }: {
     decor: PageDecor;
     /** One box per page (Editor.svelte): a section on its own paper differs in size. */
     pageBoxes: { top: number; left: number; height: number; width: number }[];
     pageMargins: PageMargins;
     /** Zone edge distances where a header/footer exists — the border wraps the band. */
     hfInsets?: { headerCm: number | null; footerCm: number | null };
+    /** Whether a page is a left-hand one — its number is even, not its sheet. */
+    isLeft?: (page: number) => boolean;
   } = $props();
 
   // The watermark's aspect ratio, measured off LibreOffice's own shape.
@@ -22,7 +24,7 @@
   // processors wrap it), so its edge distance replaces the margin there.
   let inset = $derived.by(() => {
     const pad = cmToPx(decor.border?.paddingCm ?? 0);
-    const swap = (page: number) => pageMargins.mirrored === true && page % 2 === 0;
+    const swap = (page: number) => pageMargins.mirrored === true && isLeft(page);
     return (page: number) => ({
       top: cmToPx(hfInsets.headerCm ?? pageMargins.top) - pad,
       bottom: cmToPx(hfInsets.footerCm ?? pageMargins.bottom) - pad,

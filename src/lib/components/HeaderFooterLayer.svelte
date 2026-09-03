@@ -7,7 +7,7 @@
   import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
   import { type Orientation } from '../storage/pageOrientation';
   import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
-  import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
+  import { DEFAULT_PAGE_NUMBERING, isLeftPage, printedPageNumber, type PageNumbering } from '../storage/pageNumbering';
   import { formatOrdinal } from '../utils/orderedListTypes';
   import { chapterOn, type ChapterStart } from '../utils/chapterField';
   import { t } from '../i18n/i18n.svelte';
@@ -117,7 +117,7 @@
     const box = boxOf(page);
     const m = marginsOf(page);
     const dist = distancesOf(page);
-    const swap = m.mirrored && page % 2 === 0;
+    const swap = m.mirrored && isLeftPage(pageNumberAt(page));
     // From the page's own left edge — a section on narrower paper is centred.
     const left = box.left + cmToPx(swap ? m.right : m.left);
     const width = contentWidthOf(page);
@@ -240,7 +240,7 @@
   function variantFor(page: number, index = sectionOf(page)): HfVariant {
     const s = sets[index] ?? sets[0];
     if (s.differentFirstPage && page === sectionFirstPage(index)) return 'first';
-    if (s.differentOddEven && page % 2 === 0) return 'even';
+    if (s.differentOddEven && isLeftPage(pageNumberAt(page))) return 'even';
     return 'default';
   }
   function zoneHtml(zone: HfZone, page: number): string {
@@ -270,17 +270,14 @@
     return { update: apply };
   }
 
-  // The number a page shows, in its section's format (a roman front matter) or the
-  // document's: counted from the nearest section at or above it that restarts
-  // numbering, else from the document's start.
+  // The number a page shows, and the label of it in its section's format (a roman
+  // front matter) or the document's.
+  function pageNumberAt(page: number): number {
+    const starts = [pageNumbering.start, ...sets.slice(1).map((s) => s.pageNumberStart ?? null)];
+    return printedPageNumber(page, sectionOf(page), starts, sectionFirstPage);
+  }
   function pageLabel(page: number): string {
-    let base = pageNumbering.start;
-    let from = 1;
-    for (let i = sectionOf(page); i > 0; i--) {
-      const start = sets[i]?.pageNumberStart;
-      if (start != null) { base = start; from = sectionFirstPage(i); break; }
-    }
-    return formatOrdinal(page - from + base, sets[sectionOf(page)]?.pageNumberFormat ?? pageNumbering.format);
+    return formatOrdinal(pageNumberAt(page), sets[sectionOf(page)]?.pageNumberFormat ?? pageNumbering.format);
   }
 
   // Replace the placeholder text in every page-field span with the real value:
