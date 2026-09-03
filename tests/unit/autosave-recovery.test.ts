@@ -37,3 +37,31 @@ describe('autosave crash recovery', () => {
     expect(await loadDocument()).toEqual({ type: 'doc' });
   });
 });
+
+// The debounce is a second; a tab closed inside it would lose that second. Hiding
+// the page writes what is pending at once, without the IndexedDB round trip.
+describe('autosave flush on pagehide', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.stubGlobal('alert', () => {});
+  });
+
+  it('writes the pending document when the page is hidden', () => {
+    vi.useFakeTimers();
+    saveDocument({ type: 'doc', content: [{ type: 'paragraph' }] });
+    expect(localStorage.getItem('edentext-doc')).toBeNull();
+    window.dispatchEvent(new Event('pagehide'));
+    expect(JSON.parse(localStorage.getItem('edentext-doc')!)).toEqual({ type: 'doc', content: [{ type: 'paragraph' }] });
+    vi.useRealTimers();
+  });
+
+  it('writes nothing when nothing is pending', async () => {
+    vi.useFakeTimers();
+    saveDocument({ type: 'doc' });
+    await vi.runAllTimersAsync();
+    localStorage.removeItem('edentext-doc');
+    window.dispatchEvent(new Event('pagehide'));
+    expect(localStorage.getItem('edentext-doc')).toBeNull();
+    vi.useRealTimers();
+  });
+});
