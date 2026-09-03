@@ -2539,6 +2539,12 @@ function styleOf(node: TiptapNode): string {
   return node.type === 'heading' ? `Heading ${(node.attrs?.level as number) ?? 1}` : DEFAULT_STYLE;
 }
 
+// The paragraph style a note names, if it is not the stock note look.
+function noteStyleName(node: TiptapNode): string | null {
+  const own = node.attrs?.styleName;
+  return typeof own === 'string' && own ? own : null;
+}
+
 // Styles to define in the file: the built-ins (Word defines its standard styles too)
 // plus the user styles the document references, each with its parent chain.
 function usedStyleNames(doc: TiptapNode, sheet: StyleSheet): Set<string> {
@@ -2553,6 +2559,7 @@ function usedStyleNames(doc: TiptapNode, sheet: StyleSheet): Set<string> {
   for (const style of Object.values(sheet.paragraph)) if (style.builtin) addChain(style.name);
   const walk = (node: TiptapNode) => {
     if (node.type === 'paragraph' || node.type === 'heading') addChain(styleOf(node));
+    if (node.type === 'note') { const n = noteStyleName(node); if (n) addChain(n); }
     // An index's rows are generated, but the styles their levels name are the file's own.
     if (node.type === 'tableOfContents' && Array.isArray(node.attrs?.levelStyles)) {
       for (const name of node.attrs.levelStyles as unknown[]) if (typeof name === 'string') addChain(name);
@@ -2768,7 +2775,9 @@ export async function buildDocx(
       // The tab after the marker jumps to the note style's hanging indent (the gap the
       // editor draws itself); the importer strips it back off.
       children: [new Paragraph({
-        style: kind === 'endnote' ? 'EndnoteText' : 'FootnoteText',
+        // The note keeps the paragraph style it names; without one it falls to the
+        // stock note style, which is the 10pt look a styleName-less note renders.
+        style: noteStyleName(note) ? docxStyleId(noteStyleName(note)!) : kind === 'endnote' ? 'EndnoteText' : 'FootnoteText',
         children: [new TextRun({ children: [new Tab()] }), ...inlineToRuns(note.content ?? [])],
       })],
     };

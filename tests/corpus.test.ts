@@ -39,6 +39,29 @@ function outline(node: N, out: string[] = []): string[] {
   return out;
 }
 
+// Every attribute a node carries, key order made stable. Dropped: note ids, minted per
+// export; a table's widths, proportional in ODF and absolute in OOXML; a formula's
+// `display`, which ODF has no flag for and reads back off the paragraph.
+function attrs(o: Record<string, N>, skip: (k: string) => boolean = () => false): string {
+  const keep = Object.keys(o).filter((k) => k !== 'colwidth' && k !== 'display' && !skip(k)).sort();
+  return JSON.stringify(Object.fromEntries(keep.map((k) =>
+    [k, /^(ftn|edn|footnote|endnote)\d+$/.test(String(o[k])) ? 'ID' : o[k]])));
+}
+
+// What outline() cannot see: the look each block carries. A round trip that keeps every
+// word can still drop a header row, a box's ring or a note's own style. A run value the
+// paragraph already states is redundant, and each importer is free to suppress it.
+function look(node: N, out: string[] = [], d = 0, from: Record<string, N> = {}): string[] {
+  for (const c of node.content ?? []) {
+    const same = (k: string) => from[k] !== undefined && from[k] === c.attrs?.[k];
+    const marks = (c.marks ?? []).map((m: N) => `${m.type}${attrs(m.attrs ?? {}, (k) => from[k] === m.attrs?.[k])}`)
+      .filter((m: string) => !m.endsWith(':{}') && !m.endsWith('{}')).join(',');
+    out.push(`${' '.repeat(d)}${c.type}:${c.type === 'text' ? marks : attrs(c.attrs ?? {}, same)}`);
+    look(c, out, d + 1, c.type === 'text' ? from : { ...from, ...(c.attrs ?? {}) });
+  }
+  return out;
+}
+
 function textOf(node: N): string {
   if (node.type === 'text') return node.text ?? '';
   return (node.content ?? []).map(textOf).join('');
@@ -111,9 +134,9 @@ describe.skipIf(!files.length)('the authored corpus', () => {
       expect(outline(odt.content)).toEqual(outline(docx.content));
       const margins = { top: 2, bottom: 2, left: 2, right: 2 };
       const asOdt = await buildOdt(docx.content, margins, 'portrait', undefined, undefined, undefined, docx.styles);
-      expect(outline(importOdt(asOdt).content)).toEqual(outline(docx.content));
+      expect(look(importOdt(asOdt).content)).toEqual(look(docx.content));
       const asDocx = await buildDocx(odt.content, margins, 'portrait', undefined, undefined, undefined, odt.styles);
-      expect(outline(importDocx(asDocx).content)).toEqual(outline(odt.content));
+      expect(look(importDocx(asDocx).content)).toEqual(look(odt.content));
     });
   }
 });

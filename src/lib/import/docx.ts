@@ -1487,7 +1487,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       // style, which arrives as an ordinary run mark, so the editor must add nothing of
       // its own. Only our exporter's blue is an editor link — it is stripped above.
       const ours = hexColor(props.color)?.toUpperCase() === LINK_BLUE;
-      marks.push({ type: 'link', attrs: { href: linkHref, plain: !ours } });
+      marks.push({ type: 'link', attrs: { href: linkHref, ...(ours ? {} : { plain: true }) } });
     }
     return marks;
   };

@@ -22,6 +22,7 @@ describe('an editor link round-trips as an editor link', () => {
     const back = importDocx(bytes).content as unknown as N;
     const link = texts(back)[0]?.marks?.find((m: any) => m.type === 'link');
     expect(link?.attrs.href).toBe('https://example.com');
-    expect(link?.attrs.plain).toBe(false);
+    // Absent is the attribute's default: not plain, the same as an explicit false.
+    expect(link?.attrs.plain).toBeFalsy();
   });
 });

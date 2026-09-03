@@ -67,6 +67,10 @@ fallback download shows a one-time hint (`edentext-download-hint`) that the brow
   text alike; only a side wrap has its side dictated by the wrap itself.
 - **An index row's tab stop is written even with no page number running to it** — it is
   where the row's leader is kept, and a stop no tab reaches draws nothing.
+- **A note writes the paragraph style it names** (`noteStyleName`, and `usedStyleNames`
+  defines it): the stock `FootnoteText` is 10pt, so a note whose file gives it the body
+  size would shrink. See `docs/architecture/notes.md`.
+
 - **A heading writes its own `w:outlineLvl`** beside its `w:pStyle`: the style carries the
   look, the level says it is a heading at all, and a document setting its chapters in a
   style of its own leaves the importer nothing else to go by.

@@ -37,7 +37,9 @@ LibreOffice's 10pt only for a note that names none. Its **indent** is the except
 note style declares a hanging pair (`fo:margin-left` with a negative `fo:text-indent`) and
 `ParaProps` has no first-line half, so applying the margin alone would move every note
 right by the indent. The hanging pair therefore stays the editor's — see
-`tests/render-parity/FINDINGS.md`.
+`tests/render-parity/FINDINGS.md`. The **DOCX** export writes that style as the note
+paragraph's `w:pStyle` and defines it; only a note naming none falls to the stock
+`FootnoteText`/`EndnoteText`, whose 10pt the importer suppresses again.
 
 **The sync plugin** (`appendTransaction`) keeps one note per anchor, in anchor order, and
 renumbers each class. It runs in two rounds by design — structure first, numbering on the
