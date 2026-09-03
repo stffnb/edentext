@@ -249,7 +249,7 @@ function boxTextVertical(el: Element, ctx: Ctx, attrs: Record<string, unknown>):
   if (mode === 'tb-rl' || mode === 'tb-lr' || mode === 'tb') attrs.textVertical = true;
 }
 
-function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap): void {
+function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap, contentCm = 0): void {
   const deg = frameRotationDeg(el);
   if (deg) attrs.rotation = deg;
   const anchor = el.getAttributeNS(NS.text, 'anchor-type');
@@ -274,6 +274,14 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   const hpos = gp['style:horizontal-pos'];
   const x = hpos === 'from-left' ? lengthToCm(el.getAttributeNS(NS.svg, 'x')) : null;
   if (x != null && attrs.wrap) attrs.wrapOffset = Math.round(x * 100) / 100;
+  // Where the file names no side (parallel/dynamic), the text takes whichever side of
+  // the frame has room: a frame set past the middle of the column is a float on the
+  // right, not one on the left pushed there — which the browser drops below instead.
+  if (x != null && contentCm > 0 && (attrs.wrap === 'left' || attrs.wrap === 'right')
+      && wrapVal !== 'left' && wrapVal !== 'right') {
+    const w = lengthToCm(el.getAttributeNS(NS.svg, 'width')) ?? 0;
+    attrs.wrap = x > contentCm - (x + w) ? 'right' : 'left';
+  }
   // Set against one end of its band rather than filling it (Word's positionH align).
   if (attrs.wrap === 'topBottom' && (hpos === 'left' || hpos === 'right')) attrs.wrapAlign = hpos;
   // Likewise down the page, but only against the anchor paragraph — a page-relative
@@ -389,7 +397,7 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
   if (hCm != null) attrs.height = framePx(cmToPx(hCm));
   const title = frame.getElementsByTagNameNS(NS.svg, 'title')[0]?.textContent;
   if (title) attrs.alt = title;
-  applyFrameRotationAndWrap(frame, attrs, ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name')));
+  applyFrameRotationAndWrap(frame, attrs, ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name')), ctx.contentWidthCm);
   if (!attrs.wrap || attrs.wrap === 'inline') fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
   return { type: 'image', attrs };
 }
@@ -475,7 +483,7 @@ function convertTextBoxFrame(frame: Element, textBoxEl: Element, ctx: Ctx): Node
     ?? lengthToCm(frame.getAttributeNS(NS.svg, 'height'));
   if (hCm != null) attrs.height = framePx(cmToPx(hCm));
   const gp = ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
-  applyFrameRotationAndWrap(frame, attrs, gp);
+  applyFrameRotationAndWrap(frame, attrs, gp, ctx.contentWidthCm);
   boxWrapAlign(gp, attrs);
   const padCm = lengthToCm(gp['fo:padding']);
   if (padCm != null && Math.abs(padCm - TEXTBOX_PADDING_CM) > 0.01) attrs.paddingCm = Math.round(padCm * 1000) / 1000;
@@ -517,7 +525,7 @@ function convertChartFrame(frame: Element, ctx: Ctx): Node | null {
   const src = doc && odfChartDataUrl(doc, cmToPx(wCm), cmToPx(hCm));
   if (!src) return null;
   const attrs: Record<string, unknown> = { src, width: framePx(cmToPx(wCm)), height: framePx(cmToPx(hCm)), alt: 'Chart' };
-  applyFrameRotationAndWrap(frame, attrs, ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name')));
+  applyFrameRotationAndWrap(frame, attrs, ctx.resolver.graphicProps(frame.getAttributeNS(NS.draw, 'style-name')), ctx.contentWidthCm);
   if (!attrs.wrap || attrs.wrap === 'inline') fitInlineImage(attrs, Math.floor(cmToPx(ctx.contentWidthCm)));
   return { type: 'image', attrs };
 }
@@ -585,7 +593,7 @@ function convertShape(el: Element, ctx: Ctx): Node | null {
   if (wCm != null) attrs.width = framePx(cmToPx(wCm));
   if (hCm != null) attrs.height = framePx(cmToPx(hCm));
   const gp = ctx.resolver.graphicProps(el.getAttributeNS(NS.draw, 'style-name'));
-  applyFrameRotationAndWrap(el, attrs, gp);
+  applyFrameRotationAndWrap(el, attrs, gp, ctx.contentWidthCm);
   boxWrapAlign(gp, attrs);
   shapeStyleAttrs(gp, attrs, true);
   boxTextVertical(el, ctx, attrs);
@@ -631,7 +639,7 @@ function convertFreeform(el: Element, ctx: Ctx): Node | null {
     shapePath: path, width: framePx(cmToPx(wCm)), height: framePx(cmToPx(hCm)),
   };
   const gp = ctx.resolver.graphicProps(el.getAttributeNS(NS.draw, 'style-name'));
-  applyFrameRotationAndWrap(el, attrs, gp);
+  applyFrameRotationAndWrap(el, attrs, gp, ctx.contentWidthCm);
   boxWrapAlign(gp, attrs);
   shapeStyleAttrs(gp, attrs, true);
   return { type: 'textBox', attrs, content: [{ type: 'paragraph' }] };
@@ -652,7 +660,7 @@ function convertLine(el: Element, ctx: Ctx): Node | null {
   };
   // The editor draws a line across its frame, so only the direction is left to keep.
   if ((y2 - y1) * (x2 - x1) < 0) attrs.flipV = true;
-  applyFrameRotationAndWrap(el, attrs, gp);
+  applyFrameRotationAndWrap(el, attrs, gp, ctx.contentWidthCm);
   boxWrapAlign(gp, attrs);
   shapeStyleAttrs(gp, attrs, true);
   return { type: 'textBox', attrs, content: [{ type: 'paragraph' }] };
