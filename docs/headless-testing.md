@@ -9,6 +9,14 @@ Then load `npm run dev`, inject a document into `localStorage['edentext-doc']`, 
 
 For PDF-export repros specifically: replicate `pdf.ts`'s clone + `html2canvas(...)` inside `page.evaluate` and read the canvas back as a PNG — capturing the real jsPDF `doc.save()` download tends to hang in headless. Inspect output PDFs with poppler-utils (`apt-get install -y poppler-utils`: `pdftoppm`, `pdfimages`, `pdftotext`).
 
+## The two committed browser runs
+
+`npm run test:smoke` and `npm run test:dom` are these probes made permanent: both boot
+`dist/` in headless Chromium through `tests/browser.mjs` (preview server, checklist,
+`pageerror` collector) and fail on any uncaught page error. The DOM run keeps the
+pagination invariants of pass 4 below — one page count through a settle, a reload, a
+zoom, a page break and its undo — which is the only test `src/lib/components/**` has.
+
 ## Hunting for bugs the suite cannot see
 
 `npm run test:coverage` says where to look: the logic modules are dense with tests,

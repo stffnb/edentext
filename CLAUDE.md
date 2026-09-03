@@ -17,6 +17,7 @@ npm test         # Vitest suite once (tests/**/*.test.ts)
 npm run test:watch   # Vitest in watch mode
 npm run test:lo      # LibreOffice legs: round trip + ODT/DOCX render consistency (needs `soffice`)
 npm run test:smoke   # boots the dist/ build in headless Chromium (tests/smoke/run.mjs)
+npm run test:dom     # pagination + editing in the real browser (tests/dom/run.mjs)
 npm run test:coverage  # vitest + v8 coverage over src/ → coverage/index.html
 npm run test:parity  # render parity vs LibreOffice (tests/render-parity/README.md)
 node scripts/make-thesaurus.mjs   # re-vendor public/thesaurus/ from LibreOffice's MyThes data
@@ -30,7 +31,7 @@ Tests live in `tests/` (outside `src/`, so `svelte-check` ignores them), jsdom v
 documents (by `make-fixtures.mjs` + Word re-saves in `corpus/word/`, never our exporter);
 `fuzz-roundtrip.test.ts` round-trips seeded random documents (`fuzzDoc.ts` generator);
 `schema-validation.test.ts` validates the `kitchenSink.ts` exports against the vendored
-schemas in `tests/schemas/` (self-skips without `xmllint`); `package-lint.test.ts` checks the semantic invariants schemas can't express (unique ids, dangling references); `tests/unit/` holds fast helper tests. All test tooling stays a
+schemas in `tests/schemas/` (self-skips without `xmllint`); `package-lint.test.ts` checks the semantic invariants schemas can't express (unique ids, dangling references); `tests/unit/` holds fast helper tests; the two browser runs (`tests/smoke/`, `tests/dom/`) share `tests/browser.mjs`. All test tooling stays a
 `devDependency`. No linter/formatter. CI (`.github/workflows/ci.yml`) runs `check` + `test`.
 
 ## Rules

@@ -2,45 +2,13 @@
 // paths jsdom cannot — the bundle boots, typing works, autosave survives a reload,
 // a corpus document imports and paginates, a margin balloon holds its content. Fails on
 // any uncaught page error.
-import { spawn, execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright-core';
+import { join } from 'node:path';
+import { ROOT, MOD, checker, previewServer, openApp } from '../browser.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const PORT = +(process.env.SMOKE_PORT ?? 4180);
-const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
-
-const failures = [];
-const check = (cond, label) => {
-  console.log(`${cond ? '✓' : '✗'} ${label}`);
-  if (!cond) failures.push(label);
-};
-
-async function previewServer() {
-  const up = await fetch(`http://localhost:${PORT}/`).then(() => true).catch(() => false);
-  if (up) return null;
-  if (!existsSync(join(ROOT, 'dist/index.html'))) {
-    console.log('no dist/, building…');
-    execSync('npm run build', { cwd: ROOT, stdio: 'inherit' });
-  }
-  const proc = spawn('npm', ['run', 'preview', '--', '--port', String(PORT), '--strictPort'],
-    { cwd: ROOT, stdio: 'ignore', detached: true });
-  for (let i = 0; i < 60; i++) {
-    await new Promise((r) => setTimeout(r, 500));
-    if (await fetch(`http://localhost:${PORT}/`).then(() => true).catch(() => false)) return proc;
-  }
-  throw new Error('preview server did not start');
-}
-
-const server = await previewServer();
-const browser = await chromium.launch({ executablePath: chromium.executablePath(), args: ['--no-sandbox'] });
-// Fixed locale, so the UI labels the test clicks are deterministic across machines.
-const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US' });
-const pageErrors = [];
-page.on('pageerror', (err) => pageErrors.push(String(err)));
-page.on('dialog', (d) => d.accept());
+const { check, failures } = checker();
+const server = await previewServer(PORT);
+const { browser, page, pageErrors } = await openApp(PORT);
 
 try {
   // Boot on a clean profile.
