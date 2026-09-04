@@ -10,7 +10,7 @@
   import FindReplaceBar from './lib/components/FindReplaceBar.svelte';
   import type { TiptapNode } from 'odf-kit';
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
-  import { supportsFsAccess, saveToHandle, saveAsDocument, saveAsDocx, saveAsTemplate, openOdt } from './lib/export/saveFile';
+  import { supportsFsAccess, saveDocument, openOdt } from './lib/export/saveFile';
   import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFile, forgetRecentFiles, pruneRecentFiles, type RecentFile } from './lib/storage/recentFiles';
   import { isProtected, decryptPackage, WRONG_PASSWORD } from './lib/crypto/protect';
   import { convertUnsupportedImages } from './lib/import/imageFormats';
@@ -568,7 +568,6 @@
   if (fsSupported) void pruneRecentFiles().then((list) => (recentFiles = list));
   let fileInput: HTMLInputElement | null = $state(null);
   let pdfBusy = $state(false);
-  let docxBusy = $state(false);
   let exportMenuOpen = $state(false);
 
   // The editable zones as one section — section 1 of the export.
@@ -979,42 +978,40 @@
 
   async function handleSave() {
     if (!editor) return;
-    // The first save is Save As: the location, and with it the format, is still open.
-    const handle = fileHandle;
-    if (!handle) return handleSaveAs();
     exportMenuOpen = false;
     if (!(await ensurePassword())) return;
+    const json = editor.getJSON() as TiptapNode;
     try {
       // A document opened as .docx round-trips through the same format, like both
       // reference word processors — not silently rewritten to .odt under its old name.
-      await saveToHandle(await buildBytes(documentFormat, editor.getJSON() as TiptapNode), handle, docPassword);
-      recentFiles = await rememberRecentFile(handle.name, handle);
+      const name = documentFormat === 'docx' ? suggestedFilenameDocx(json) : suggestedFilename(json);
+      fileHandle = await saveDocument(await buildBytes(documentFormat, json), name, documentFormat, fileHandle, docPassword);
+      recentFiles = await rememberRecentFile(fileHandle?.name ?? name, fileHandle);
       documentHasFile = true;
       markSaved();
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
-      // A stored handle may have lost its permission or its file: prompt for a new one.
-      // Every other error is reported, not papered over.
+      // A stored handle may have lost its permission or its file: prompt for a new one,
+      // in the document's own format. Every other error is reported, not papered over.
       const name = (err as DOMException)?.name;
-      if (name === 'NotAllowedError' || name === 'NotFoundError') { fileHandle = null; return handleSave(); }
+      if (fileHandle && (name === 'NotAllowedError' || name === 'NotFoundError')) { fileHandle = null; return handleSave(); }
       console.error('[save] Failed to save file:', err);
       failed(t().dialogs.couldNotSave, err);
     }
   }
 
-  // Save As offers both formats in one picker, so the chosen extension — not the
-  // format the document arrived in — decides what is written and what it becomes.
-  async function handleSaveAs() {
+  // Save As is one entry per format: the format has to be settled before the bytes are
+  // built (a download cannot read a name back), and it is the document's from then on.
+  async function handleSaveAs(kind: DocumentFormat) {
     if (!editor) return;
     exportMenuOpen = false;
     if (!(await ensurePassword())) return;
     const json = editor.getJSON() as TiptapNode;
-    const suggested = documentFormat === 'docx' ? suggestedFilenameDocx(json) : suggestedFilename(json);
+    const name = kind === 'docx' ? suggestedFilenameDocx(json) : suggestedFilename(json);
     try {
-      const { handle, kind } = await saveAsDocument((k) => buildBytes(k, json), suggested, documentFormat, docPassword);
-      fileHandle = handle;
+      fileHandle = await saveDocument(await buildBytes(kind, json), name, kind, null, docPassword);
       documentFormat = kind;
-      recentFiles = await rememberRecentFile(handle?.name ?? suggested, handle);
+      recentFiles = await rememberRecentFile(fileHandle?.name ?? name, fileHandle);
       documentHasFile = true;
       markSaved();
     } catch (err) {
@@ -1024,21 +1021,18 @@
     }
   }
 
-  // Save the document as a template. The picker offers .ott and .dotx, so which
-  // exporter runs is only known once a name is chosen; a template is never bound as
-  // the current file, exactly as opening one isn't.
+  // A template in the document's own format (.ott, or .dotx for a .docx document). It
+  // is never bound as the current file, exactly as opening one isn't.
   async function handleSaveTemplate() {
     if (!editor) return;
     exportMenuOpen = false;
     if (!(await ensurePassword())) return;
     const json = editor.getJSON() as TiptapNode;
     try {
-      await saveAsTemplate(async (kind) => {
-        const { odtToOtt, docxToDotx } = await import('./lib/export/template');
-        return kind === 'dotx'
-          ? docxToDotx(await buildBytes('docx', json))
-          : odtToOtt(await buildBytes('odt', json));
-      }, stripOdtExtension(suggestedFilename(json)), docPassword);
+      const { odtToOtt, docxToDotx } = await import('./lib/export/template');
+      const kind = documentFormat === 'docx' ? 'dotx' : 'ott';
+      const bytes = kind === 'dotx' ? docxToDotx(await buildBytes('docx', json)) : odtToOtt(await buildBytes('odt', json));
+      await saveDocument(bytes, `${stripOdtExtension(suggestedFilename(json))}.${kind}`, kind, null, docPassword);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save template:', err);
@@ -1073,25 +1067,6 @@
     forgetRecentFiles();
     recentFiles = [];
     exportMenuOpen = false;
-  }
-
-  // Export to Word .docx. The exporter (and the `docx` library) is lazy-loaded so it
-  // never enters the initial bundle. Export-style like PDF: always prompt, no handle.
-  async function handleSaveDocx() {
-    if (!editor || docxBusy) return;
-    exportMenuOpen = false;
-    if (!(await ensurePassword())) return;
-    docxBusy = true;
-    try {
-      const json = editor.getJSON() as TiptapNode;
-      await saveAsDocx(await buildBytes('docx', json), suggestedFilenameDocx(json), docPassword);
-    } catch (err) {
-      if ((err as DOMException)?.name === 'AbortError') return;
-      console.error('[docx] Export failed:', err);
-      failed(t().dialogs.couldNotExportDocx, err);
-    } finally {
-      docxBusy = false;
-    }
   }
 
   // Lay the document out into A4 pages (Paged.js) and open the print dialog so the
@@ -1334,14 +1309,12 @@
       {namePlaceholder}
       {themeMode}
       onSelectTheme={selectTheme}
-      {docxBusy}
       {pdfBusy}
       onNew={handleNew}
       onNewFromTemplate={() => (templateGalleryOpen = true)}
       onOpen={handleOpen}
       onSave={handleSave}
       onSaveAs={handleSaveAs}
-      onSaveDocx={handleSaveDocx}
       onSaveTemplate={handleSaveTemplate}
       recentFiles={recentFiles}
       onOpenRecent={(id) => { const f = recentFiles.find((r) => r.id === id); if (f) void handleOpenRecent(f); }}
@@ -1452,13 +1425,11 @@
                 <span>{t().app.odt}</span>
                 <span class="theme-option-hint">{t().app.openDocument}</span>
               </button>
-              <button class="theme-option" onclick={handleSaveAs} role="menuitem">
-                <span>{t().ribbon.saveAs}</span>
-                <span class="theme-option-hint">{t().app.saveAsFormats}</span>
+              <button class="theme-option" onclick={() => handleSaveAs('odt')} role="menuitem">
+                <span>{t().ribbon.saveAs} (.odt)</span>
               </button>
-              <button class="theme-option" onclick={handleSaveDocx} disabled={docxBusy} role="menuitem">
-                <span>{docxBusy ? t().app.exporting : t().app.wordDocx}</span>
-                <span class="theme-option-hint">{t().app.microsoftWord}</span>
+              <button class="theme-option" onclick={() => handleSaveAs('docx')} role="menuitem">
+                <span>{t().ribbon.saveAs} (.docx)</span>
               </button>
               <button class="theme-option" onclick={handleExportPdf} disabled={pdfBusy} role="menuitem">
                 <span>{pdfBusy ? t().app.exporting : t().app.rasterPdf}</span>

@@ -3,6 +3,7 @@
 // the page count is what every layer on the page is measured against. Fails on any
 // uncaught page error.
 import { join } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { ROOT, MOD, checker, previewServer, openApp } from '../browser.mjs';
 
 const PORT = +(process.env.DOM_PORT ?? 4185);
@@ -117,6 +118,19 @@ try {
   await page.fill('.doc-name-input', 'Umbenannt');
   const afterRename = await dot(true);
   check(!reopened && afterRename, `a rename marks the document unsaved (${afterRename})`);
+
+  // Without the File System Access API (Brave ships with it off) a save is a download, so
+  // the format is settled before the bytes are built: Save As (.docx) hands over a DOCX
+  // whatever the browser's dialog does with the name.
+  await page.evaluate(() => { window.showSaveFilePicker = undefined; });
+  await page.click('.ribbon-tab-file');
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 30_000 }),
+    page.locator('.ribbon-menu button', { hasText: '(.docx)' }).first().click(),
+  ]);
+  const saved = await readFile(await download.path());
+  const isDocx = saved[0] === 0x50 && saved[1] === 0x4b && saved.includes('word/document.xml');
+  check(isDocx, `Save As (.docx) without a picker downloads a DOCX (${download.suggestedFilename()}, ${saved.length} bytes)`);
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {

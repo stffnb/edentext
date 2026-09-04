@@ -11,23 +11,19 @@ const ODT_MIME = 'application/vnd.oasis.opendocument.text';
 const OTT_MIME = 'application/vnd.oasis.opendocument.text-template';
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-const DOCX_PICKER_TYPES = [
-  { description: 'Word Document', accept: { [DOCX_MIME]: ['.docx'] } },
-];
-
-// Both document formats as ONE picker type: Chrome's macOS save panel shows no format
-// popup and admits only the first type's extensions, so a second type is unreachable.
-// The extension typed decides which is written.
-const DOCUMENT_PICKER_TYPES = [
-  { description: 'Document', accept: { [ODT_MIME]: ['.odt'], [DOCX_MIME]: ['.docx'] } },
-];
-
 const DOTX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.template';
 
-// Both template formats in one picker type, for the same reason as the documents.
-const TEMPLATE_PICKER_TYPES = [
-  { description: 'Template', accept: { [OTT_MIME]: ['.ott'], [DOTX_MIME]: ['.dotx'] } },
-];
+type Kind = 'odt' | 'docx' | 'ott' | 'dotx';
+
+// One picker type per format, and the format is settled before the bytes are built: the
+// download route cannot read a changed name back from the browser's dialog, and Chrome's
+// macOS panel has no format popup, so a second type in one picker is unreachable anyway.
+const FORMATS: Record<Kind, { mime: string; type: { description: string; accept: Record<string, string[]> } }> = {
+  odt: { mime: ODT_MIME, type: { description: 'OpenDocument Text', accept: { [ODT_MIME]: ['.odt'] } } },
+  docx: { mime: DOCX_MIME, type: { description: 'Word Document', accept: { [DOCX_MIME]: ['.docx'] } } },
+  ott: { mime: OTT_MIME, type: { description: 'OpenDocument Text Template', accept: { [OTT_MIME]: ['.ott'] } } },
+  dotx: { mime: DOTX_MIME, type: { description: 'Word Template', accept: { [DOTX_MIME]: ['.dotx'] } } },
+};
 
 // The open picker also accepts templates; opening one never binds it as the file.
 const OPEN_PICKER_TYPES = [
@@ -48,7 +44,7 @@ export function supportsFsAccess(): boolean {
 // Where the browser saves is the browser's business (its download folder, or its own
 // dialog where that is switched on). Gecko needs the anchor in the document and the
 // blob URL alive past the click.
-function download(bytes: Uint8Array, name: string, mime: string = ODT_MIME): void {
+function download(bytes: Uint8Array, name: string, mime: string): void {
   // Before the click: the browser's own save dialog would open on top of it.
   if (!localStorage.getItem(HINT_KEY)) {
     localStorage.setItem(HINT_KEY, '1');
@@ -80,64 +76,24 @@ async function protect(bytes: Uint8Array, password: string | null): Promise<Uint
   return encryptPackage(bytes, password);
 }
 
-// Write into the file the document already has. A document without one saves through
-// saveAsDocument, so no location is ever asked for here.
-export async function saveToHandle(
-  bytes: Uint8Array,
-  handle: FileSystemFileHandle,
-  password: string | null = null,
-): Promise<void> {
-  await writeHandle(handle, await protect(bytes, password));
-}
-
-// Always prompt for a location, in either document format. Which exporter runs is
-// only known once a name is picked, so `build` is called with the chosen extension.
-// Without a picker the document keeps the format it already has.
-export async function saveAsDocument(
-  build: (kind: 'odt' | 'docx') => Promise<Uint8Array>,
-  suggestedName: string,
-  fallback: 'odt' | 'docx',
-  password: string | null = null,
-): Promise<{ handle: FileSystemFileHandle | null; kind: 'odt' | 'docx' }> {
-  if (!supportsFsAccess()) {
-    download(await protect(await build(fallback), password), suggestedName, fallback === 'docx' ? DOCX_MIME : ODT_MIME);
-    return { handle: null, kind: fallback };
-  }
-  const handle = await (window as WinFs).showSaveFilePicker!({ suggestedName, types: DOCUMENT_PICKER_TYPES });
-  const kind = handle.name.toLowerCase().endsWith('.docx') ? 'docx' : 'odt';
-  await writeHandle(handle, await protect(await build(kind), password));
-  return { handle, kind };
-}
-
-// Export a .docx copy: always prompt for a location, no handle is tracked (this is
-// the explicit "Export" action, like PDF). Throws AbortError if cancelled.
-export async function saveAsDocx(
+// Save in the given format: into the handle where there is one, else to a location asked
+// for in that format alone, or a download where there is no picker. Returns the handle
+// written to (null for a download). Throws AbortError if the user cancels.
+export async function saveDocument(
   bytes: Uint8Array,
   suggestedName: string,
+  kind: Kind,
+  handle: FileSystemFileHandle | null = null,
   password: string | null = null,
-): Promise<void> {
+): Promise<FileSystemFileHandle | null> {
   const out = await protect(bytes, password);
-  if (!supportsFsAccess()) return download(out, suggestedName, DOCX_MIME);
-  await writeHandle(await (window as WinFs).showSaveFilePicker!({ suggestedName, types: DOCX_PICKER_TYPES }), out);
-}
-
-// Save a template. The picker offers both formats, so the bytes can only be built
-// once the user has picked one: `build` is called with the chosen extension. Falls
-// back to a plain .ott download where there is no picker.
-export async function saveAsTemplate(
-  build: (kind: 'ott' | 'dotx') => Promise<Uint8Array>,
-  baseName: string,
-  password: string | null = null,
-): Promise<void> {
   if (!supportsFsAccess()) {
-    download(await protect(await build('ott'), password), `${baseName}.ott`, OTT_MIME);
-    return;
+    download(out, suggestedName, FORMATS[kind].mime);
+    return null;
   }
-  const handle = await (window as WinFs).showSaveFilePicker!({
-    suggestedName: `${baseName}.ott`, types: TEMPLATE_PICKER_TYPES,
-  });
-  const kind = handle.name.toLowerCase().endsWith('.dotx') ? 'dotx' : 'ott';
-  await writeHandle(handle, await protect(await build(kind), password));
+  const target = handle ?? (await (window as WinFs).showSaveFilePicker!({ suggestedName, types: [FORMATS[kind].type] }));
+  await writeHandle(target, out);
+  return target;
 }
 
 // Prompt for an .odt/.ott/.docx to open, capturing its handle so a later save can

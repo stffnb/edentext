@@ -67,10 +67,9 @@
     namePlaceholder = '',
     themeMode = 'auto',
     onSelectTheme,
-    docxBusy = false,
     pdfBusy = false,
     hasPassword = false,
-    onNew, onNewFromTemplate, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onProtect, onAutoCorrect, onAutoText, onNewComment,
+    onNew, onNewFromTemplate, onOpen, onSave, onSaveAs, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onProtect, onAutoCorrect, onAutoText, onNewComment,
     navigatorOpen = false, onToggleNavigator,
     recentFiles = [], onOpenRecent, onForgetRecent,
   }: {
@@ -108,14 +107,12 @@
     namePlaceholder?: string;
     themeMode?: ThemeMode;
     onSelectTheme?: (mode: ThemeMode) => void;
-    docxBusy?: boolean;
     pdfBusy?: boolean;
     onNew?: () => void;
     onNewFromTemplate?: () => void;
     onOpen?: () => void;
     onSave?: () => void;
-    onSaveAs?: () => void;
-    onSaveDocx?: () => void;
+    onSaveAs?: (kind: 'odt' | 'docx') => void;
     onSaveTemplate?: () => void;
     recentFiles?: { id: string; name: string }[];
     onOpenRecent?: (id: string) => void;
@@ -216,15 +213,13 @@
             <Icon name="save" size={16} />{t().app.save}
             <span class="menu-key">{withShortcut('Ctrl+S')}</span>
           </button>
-          <button onclick={() => run(onSaveAs)} disabled={!editor || pdfBusy}>
-            <Icon name="save" size={16} />{t().ribbon.saveAs}
-            <span class="menu-sub">{t().app.saveAsFormats}</span>
+          <button onclick={() => run(() => onSaveAs?.('odt'))} disabled={!editor || pdfBusy}>
+            <Icon name="save" size={16} />{t().ribbon.saveAs} (.odt)
+          </button>
+          <button onclick={() => run(() => onSaveAs?.('docx'))} disabled={!editor || pdfBusy}>
+            <Icon name="save" size={16} />{t().ribbon.saveAs} (.docx)
           </button>
           <hr />
-          <button onclick={() => run(onSaveDocx)} disabled={docxBusy}>
-            <Icon name="export" size={16} />{docxBusy ? t().app.exporting : t().app.wordDocx}
-            <span class="menu-sub">{t().app.microsoftWord}</span>
-          </button>
           <button onclick={() => run(onExportPdf)} disabled={pdfBusy}>
             <Icon name="export" size={16} />{pdfBusy ? t().app.exporting : t().app.rasterPdf}
             <span class="menu-sub">{t().app.rasterHint}</span>
