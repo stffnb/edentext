@@ -176,7 +176,7 @@
     if (!editor) return 0;
     const [margins, orientation, hf, ...rest] = exportArgs();
     const { pageCount: _pages, ...zones } = hf;
-    return fnv1a(JSON.stringify([editor.getJSON(), margins, orientation, zones, ...rest]));
+    return fnv1a(JSON.stringify([editor.getJSON(), documentName, margins, orientation, zones, ...rest]));
   }
 
   function markSaved(): void {
@@ -186,7 +186,8 @@
 
   $effect(() => {
     if (tick < 0 || !editor) return; // the tick is the document's own signal
-    exportArgs(); // subscribes to every value the file carries beside the text
+    exportArgs(); // subscribes to every value the file carries beside the text,
+    void documentName; // and to the name it is saved under
     // The document the editor comes up with is the file's, taken here and not in the
     // timer: under a repagination the timer can be pushed out past the first edit,
     // which would make that edit the baseline.

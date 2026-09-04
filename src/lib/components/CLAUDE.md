@@ -216,9 +216,9 @@ size alone makes a short word far too small and a long one overflow the page.
 
 A `•` beside the document name while the document differs from what was last written to a
 file. It is an FNV-1a checksum (`utils/hash.ts`) over the text **and** everything
-`exportArgs()` hands the exporter beside it — page setup, styles, notes, the zones — so a
-margin preset marks the document as much as a keystroke does, and an undo back to the saved
-state clears the dot again. The page count is left out: it is a layout result, and a font
+`exportArgs()` hands the exporter beside it — page setup, styles, notes, the zones — plus
+the name the file is saved under, so a margin preset or a rename marks the document as much
+as a keystroke does, and an undo back to the saved state clears the dot again. The page count is left out: it is a layout result, and a font
 loading late must not mark the document changed.
 
 Taken a beat after the change (300 ms, **throttled** — a debounce never fires while a

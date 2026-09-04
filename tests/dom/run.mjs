@@ -99,6 +99,16 @@ try {
   await page.locator('.ribbon-menu button', { hasText: 'Narrow' }).first().click();
   const afterMargins = await dot(true);
   check(afterMargins, `a margin preset marks the document unsaved (${afterMargins})`);
+
+  // And so does the name the file is saved under. The file comes back in first, so the
+  // rename is the only thing standing between the document and its clean state.
+  await page.setInputFiles('input.file-input', join(ROOT, 'tests/corpus/04-table.odt'));
+  await page.waitForFunction(() => document.querySelector('.tiptap table td')?.textContent.trim(),
+    null, { timeout: 30_000 });
+  const reopened = await dot(false);
+  await page.fill('.doc-name-input', 'Umbenannt');
+  const afterRename = await dot(true);
+  check(!reopened && afterRename, `a rename marks the document unsaved (${afterRename})`);
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {
