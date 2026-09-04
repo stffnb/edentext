@@ -1,4 +1,4 @@
-// File System Access API helpers for saving/opening .odt files. Falls back to a
+// File System Access API helpers for saving/opening documents. Falls back to a
 // plain browser download / no-op where the API is unavailable (Firefox/Safari).
 
 import { t } from '../i18n/i18n.svelte';
@@ -11,23 +11,22 @@ const ODT_MIME = 'application/vnd.oasis.opendocument.text';
 const OTT_MIME = 'application/vnd.oasis.opendocument.text-template';
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-const PICKER_TYPES = [
-  { description: 'OpenDocument Text', accept: { [ODT_MIME]: ['.odt'] } },
-];
-
 const DOCX_PICKER_TYPES = [
   { description: 'Word Document', accept: { [DOCX_MIME]: ['.docx'] } },
 ];
 
-// Both document formats in one picker: the chosen extension decides which is written.
-const DOCUMENT_PICKER_TYPES = [...PICKER_TYPES, ...DOCX_PICKER_TYPES];
+// Both document formats as ONE picker type: Chrome's macOS save panel shows no format
+// popup and admits only the first type's extensions, so a second type is unreachable.
+// The extension typed decides which is written.
+const DOCUMENT_PICKER_TYPES = [
+  { description: 'Document', accept: { [ODT_MIME]: ['.odt'], [DOCX_MIME]: ['.docx'] } },
+];
 
 const DOTX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.template';
 
-// Both template formats in one picker: the chosen extension decides which is written.
+// Both template formats in one picker type, for the same reason as the documents.
 const TEMPLATE_PICKER_TYPES = [
-  { description: 'OpenDocument Text Template', accept: { [OTT_MIME]: ['.ott'] } },
-  { description: 'Word Template', accept: { [DOTX_MIME]: ['.dotx'] } },
+  { description: 'Template', accept: { [OTT_MIME]: ['.ott'], [DOTX_MIME]: ['.dotx'] } },
 ];
 
 // The open picker also accepts templates; opening one never binds it as the file.
@@ -81,23 +80,14 @@ async function protect(bytes: Uint8Array, password: string | null): Promise<Uint
   return encryptPackage(bytes, password);
 }
 
-// Save to the given handle if we have one; otherwise prompt for a location (i.e.
-// the first save acts as Save As). Returns the handle written to, or null when
-// falling back to a plain download. Throws AbortError if the user cancels.
-export async function saveOdt(
+// Write into the file the document already has. A document without one saves through
+// saveAsDocument, so no location is ever asked for here.
+export async function saveToHandle(
   bytes: Uint8Array,
-  suggestedName: string,
-  handle: FileSystemFileHandle | null,
+  handle: FileSystemFileHandle,
   password: string | null = null,
-): Promise<FileSystemFileHandle | null> {
-  const out = await protect(bytes, password);
-  if (!supportsFsAccess()) {
-    download(out, suggestedName);
-    return null;
-  }
-  const target = handle ?? (await (window as WinFs).showSaveFilePicker!({ suggestedName, types: PICKER_TYPES }));
-  await writeHandle(target, out);
-  return target;
+): Promise<void> {
+  await writeHandle(handle, await protect(bytes, password));
 }
 
 // Always prompt for a location, in either document format. Which exporter runs is
@@ -119,32 +109,16 @@ export async function saveAsDocument(
   return { handle, kind };
 }
 
-// Save to the given handle if we have one; otherwise prompt for a location. Mirrors
-// saveOdt, for a document that was opened as .docx and must round-trip as .docx.
-export async function saveDocx(
-  bytes: Uint8Array,
-  suggestedName: string,
-  handle: FileSystemFileHandle | null,
-  password: string | null = null,
-): Promise<FileSystemFileHandle | null> {
-  const out = await protect(bytes, password);
-  if (!supportsFsAccess()) {
-    download(out, suggestedName, DOCX_MIME);
-    return null;
-  }
-  const target = handle ?? (await (window as WinFs).showSaveFilePicker!({ suggestedName, types: DOCX_PICKER_TYPES }));
-  await writeHandle(target, out);
-  return target;
-}
-
-// Export a .docx: always prompt for a location (no handle is tracked — this is the
-// explicit "Export" action, like PDF). Returns null. Throws AbortError if cancelled.
+// Export a .docx copy: always prompt for a location, no handle is tracked (this is
+// the explicit "Export" action, like PDF). Throws AbortError if cancelled.
 export async function saveAsDocx(
   bytes: Uint8Array,
   suggestedName: string,
   password: string | null = null,
 ): Promise<void> {
-  await saveDocx(bytes, suggestedName, null, password);
+  const out = await protect(bytes, password);
+  if (!supportsFsAccess()) return download(out, suggestedName, DOCX_MIME);
+  await writeHandle(await (window as WinFs).showSaveFilePicker!({ suggestedName, types: DOCX_PICKER_TYPES }), out);
 }
 
 // Save a template. The picker offers both formats, so the bytes can only be built

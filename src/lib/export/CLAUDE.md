@@ -8,7 +8,10 @@ every pass here and after the template conversion — see `docs/architecture/enc
 
 **Save As offers both document formats in one picker** (`saveAsDocument`), like the template
 one: the bytes are built only once the extension is known, and that extension is what the
-document round-trips as from then on. Without a picker it keeps the format it had.
+document round-trips as from then on. Without a picker it keeps the format it had. Both
+extensions sit in **one** picker type: Chrome's macOS save panel shows no format popup and
+admits only the first type's extensions, so a second type can never be chosen there. A
+document without a file saves through this picker too — the first save is Save As.
 
 `saveFile.ts` picks the path: `showSaveFilePicker` where there is one, else a download —
 Gecko has none and Brave disables the whole File System Access API by default. The first

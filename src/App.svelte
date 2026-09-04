@@ -10,7 +10,7 @@
   import FindReplaceBar from './lib/components/FindReplaceBar.svelte';
   import type { TiptapNode } from 'odf-kit';
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
-  import { supportsFsAccess, saveOdt, saveAsDocument, saveDocx, saveAsDocx, saveAsTemplate, openOdt } from './lib/export/saveFile';
+  import { supportsFsAccess, saveToHandle, saveAsDocument, saveAsDocx, saveAsTemplate, openOdt } from './lib/export/saveFile';
   import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFile, forgetRecentFiles, pruneRecentFiles, type RecentFile } from './lib/storage/recentFiles';
   import { isProtected, decryptPackage, WRONG_PASSWORD } from './lib/crypto/protect';
   import { convertUnsupportedImages } from './lib/import/imageFormats';
@@ -979,25 +979,24 @@
 
   async function handleSave() {
     if (!editor) return;
+    // The first save is Save As: the location, and with it the format, is still open.
+    const handle = fileHandle;
+    if (!handle) return handleSaveAs();
     exportMenuOpen = false;
     if (!(await ensurePassword())) return;
-    const json = editor.getJSON() as TiptapNode;
     try {
       // A document opened as .docx round-trips through the same format, like both
       // reference word processors — not silently rewritten to .odt under its old name.
-      const name = documentFormat === 'docx' ? suggestedFilenameDocx(json) : suggestedFilename(json);
-      const bytes = await buildBytes(documentFormat, json);
-      const save = documentFormat === 'docx' ? saveDocx : saveOdt;
-      fileHandle = await save(bytes, name, fileHandle, docPassword);
-      recentFiles = await rememberRecentFile(fileHandle?.name ?? name, fileHandle);
+      await saveToHandle(await buildBytes(documentFormat, editor.getJSON() as TiptapNode), handle, docPassword);
+      recentFiles = await rememberRecentFile(handle.name, handle);
       documentHasFile = true;
       markSaved();
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
-      // A stored handle may have lost its permission or its file: prompt for a new one,
-      // in the document's own format. Every other error is reported, not papered over.
+      // A stored handle may have lost its permission or its file: prompt for a new one.
+      // Every other error is reported, not papered over.
       const name = (err as DOMException)?.name;
-      if (fileHandle && (name === 'NotAllowedError' || name === 'NotFoundError')) { fileHandle = null; return handleSave(); }
+      if (name === 'NotAllowedError' || name === 'NotFoundError') { fileHandle = null; return handleSave(); }
       console.error('[save] Failed to save file:', err);
       failed(t().dialogs.couldNotSave, err);
     }

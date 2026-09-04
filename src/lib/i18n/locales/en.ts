@@ -1044,7 +1044,7 @@ const en = {
     startTyping: 'Start typing…',
     newDocument: 'New document',
     open: 'Open…',
-    save: 'Save .odt',
+    save: 'Save',
     saveExport: 'Save / Export',
     unsavedChanges: 'Not saved',
     saveAsFormats: '.odt or .docx',

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { saveAsDocument } from '../../src/lib/export/saveFile';
+import { saveAsDocument, saveAsTemplate } from '../../src/lib/export/saveFile';
 
 // A handle that records what was written to it, like the picker hands back.
 function handleFor(name: string) {
@@ -43,5 +43,29 @@ describe('Save As builds the format the picker chose', () => {
     expect(r.built).toEqual(['docx']);
     expect(r.kind).toBe('docx');
     expect(r.handle).toBeNull();
+  });
+});
+
+// Chrome's macOS save panel has no format popup and admits only the first type's
+// extensions, so both must live in that one type or the second is unreachable.
+describe('the save pickers keep both extensions in one type', () => {
+  const typesOf = async (run: () => Promise<unknown>) => {
+    let types: { accept: Record<string, string[]> }[] = [];
+    (window as unknown as Record<string, unknown>).showSaveFilePicker = async (o: { types: typeof types }) => {
+      types = o.types;
+      return handleFor('x.odt').handle;
+    };
+    await run();
+    return { count: types.length, exts: types.flatMap((t) => Object.values(t.accept).flat()) };
+  };
+
+  it('for documents', async () => {
+    const r = await typesOf(() => saveAsDocument(async () => new Uint8Array(), 'doc.odt', 'odt'));
+    expect(r).toEqual({ count: 1, exts: ['.odt', '.docx'] });
+  });
+
+  it('for templates', async () => {
+    const r = await typesOf(() => saveAsTemplate(async () => new Uint8Array(), 'doc'));
+    expect(r).toEqual({ count: 1, exts: ['.ott', '.dotx'] });
   });
 });

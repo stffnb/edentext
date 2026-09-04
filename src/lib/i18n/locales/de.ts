@@ -1038,7 +1038,7 @@ const de: Messages = {
     startTyping: 'Hier tippen…',
     newDocument: 'Neues Dokument',
     open: 'Öffnen…',
-    save: '.odt speichern',
+    save: 'Speichern',
     saveExport: 'Speichern / Exportieren',
     unsavedChanges: 'Nicht gespeichert',
     saveAsFormats: '.odt oder .docx',
