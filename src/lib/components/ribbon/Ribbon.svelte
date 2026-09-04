@@ -311,8 +311,10 @@
         onblur={() => (documentName = documentName.trim())}
       />
       <span class="doc-name-ext">.{documentFormat}</span>
-      {#if dirty}<span class="doc-dirty" title={t().app.unsavedChanges}>•</span>{/if}
     </div>
+    <!-- Beside the name, not inside it: the name box is capped at 30% of the strip,
+         and the label would take that width off the name itself. -->
+    {#if dirty}<span class="doc-dirty">• {t().app.unsavedChanges}</span>{/if}
 
     <!-- Word puts this chevron in the band's corner. It rides the strip so the band
          keeps its full width: a flex row can only reserve a column, never a corner. -->
@@ -619,7 +621,7 @@
   .doc-name-input:focus { outline: none; border-color: var(--w-accent); color: var(--w-text); }
 
   .doc-name-ext { margin-right: 6px; }
-  .doc-dirty { margin: 0 6px 0 -4px; color: var(--w-text-dim); }
+  .doc-dirty { margin: 0 6px 0 -4px; white-space: nowrap; font-size: 11px; color: var(--w-text-dim); }
 
   .ribbon-body {
     display: flex;

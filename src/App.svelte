@@ -1425,7 +1425,7 @@
           onblur={() => (documentName = documentName.trim())}
         />
         <span class="doc-name-ext">.{documentFormat}</span>
-        {#if dirty}<span class="doc-dirty" title={t().app.unsavedChanges}>•</span>{/if}
+        {#if dirty}<span class="doc-dirty">• {t().app.unsavedChanges}</span>{/if}
         <svg class="doc-name-pencil" width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M11.3 2.3a1 1 0 0 1 1.4 0l1 1a1 1 0 0 1 0 1.4l-7 7-2.8.9.9-2.8 7-7.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>
         </svg>
@@ -2086,6 +2086,8 @@
 
   .doc-dirty {
     flex-shrink: 0;
+    white-space: nowrap;
+    font-size: 0.72rem;
     color: var(--color-text-muted);
   }
 

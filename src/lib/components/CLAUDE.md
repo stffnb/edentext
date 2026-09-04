@@ -214,8 +214,10 @@ size alone makes a short word far too small and a long one overflow the page.
 
 ## The unsaved dot (`App.svelte`, both chromes)
 
-A `•` beside the document name while the document differs from what was last written to a
-file. It is an FNV-1a checksum (`utils/hash.ts`) over the text **and** everything
+A `• Not saved` beside the document name while the document differs from what was last
+written to a file — a label rather than a glyph, since a mark has to be known to be read.
+In the ribbon it sits **beside** the name box, whose 30% cap would otherwise squeeze the
+name itself. It is an FNV-1a checksum (`utils/hash.ts`) over the text **and** everything
 `exportArgs()` hands the exporter beside it — page setup, styles, notes, the zones — plus
 the name the file is saved under, so a margin preset or a rename marks the document as much
 as a keystroke does, and an undo back to the saved state clears the dot again. The page count is left out: it is a layout result, and a font

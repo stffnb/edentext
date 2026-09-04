@@ -1046,7 +1046,7 @@ const en = {
     open: 'Open…',
     save: 'Save .odt',
     saveExport: 'Save / Export',
-    unsavedChanges: 'Unsaved changes',
+    unsavedChanges: 'Not saved',
     saveAsFormats: '.odt or .docx',
     odt: 'ODT',
     openDocument: 'OpenDocument',

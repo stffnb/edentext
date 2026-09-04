@@ -1040,7 +1040,7 @@ const de: Messages = {
     open: 'Öffnen…',
     save: '.odt speichern',
     saveExport: 'Speichern / Exportieren',
-    unsavedChanges: 'Nicht gespeicherte Änderungen',
+    unsavedChanges: 'Nicht gespeichert',
     saveAsFormats: '.odt oder .docx',
     odt: 'ODT',
     openDocument: 'OpenDocument',
