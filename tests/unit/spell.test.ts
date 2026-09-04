@@ -14,7 +14,7 @@ function dictPath(rel: string): string {
 async function makeChecker(code: string): Promise<Hunspell> {
   const factory = await loadModule();
   const aff = factory.mountBuffer(readFileSync(dictPath(`${code}/${code}.aff`)), `${code}.aff`);
-  const dic = factory.mountBuffer(readFileSync(dictPath(`${code}/${code}.dic`)), `${code}.dic`);
+  const dic = factory.mountBuffer(readFileSync(dictPath(`${code}/${code}.dic.txt`)), `${code}.dic`);
   return factory.create(aff, dic);
 }
 

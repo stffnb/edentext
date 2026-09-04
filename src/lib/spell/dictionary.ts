@@ -29,13 +29,14 @@ async function fetchBytes(url: string): Promise<Uint8Array> {
 }
 
 async function build(code: string): Promise<Checker> {
-  // Vendored assets: public/dictionaries/<code>/<code>.{aff,dic}. BASE_URL keeps
-  // this correct under a non-root deploy base.
+  // Vendored assets: public/dictionaries/<code>/<code>.{aff,dic.txt}. The word list is
+  // .txt so the host gzips it (GitHub Pages leaves a .dic's text/x-c uncompressed);
+  // BASE_URL keeps the path correct under a non-root deploy base.
   const base = `${import.meta.env.BASE_URL}dictionaries/${code}/${code}`;
   const [factory, aff, dic] = await Promise.all([
     loadFactory(),
     fetchBytes(`${base}.aff`),
-    fetchBytes(`${base}.dic`),
+    fetchBytes(`${base}.dic.txt`),
   ]);
   const affPath = factory.mountBuffer(aff, `${code}.aff`);
   const dicPath = factory.mountBuffer(dic, `${code}.dic`);
