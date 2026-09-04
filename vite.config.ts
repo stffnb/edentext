@@ -21,6 +21,9 @@ export default defineConfig({
   // subpath (GitHub Pages project site). sw.js and the manifest are relative too.
   base: './',
   plugins: [svelte()],
+  // The browsers the bundle promises to parse in; the CI browser matrix runs the
+  // engines behind them (docs/headless-testing.md).
+  build: { target: 'baseline-widely-available' },
   define: {
     __APP_VERSION__: JSON.stringify(commit ? `${pkg.version} (${commit})` : pkg.version),
   },

@@ -16,8 +16,8 @@ npm run check    # svelte-check type-check (svelte + ts)
 npm test         # Vitest suite once (tests/**/*.test.ts)
 npm run test:watch   # Vitest in watch mode
 npm run test:lo      # LibreOffice legs: round trip + ODT/DOCX render consistency (needs `soffice`)
-npm run test:smoke   # boots the dist/ build in headless Chromium (tests/smoke/run.mjs)
-npm run test:dom     # pagination + editing in the real browser (tests/dom/run.mjs)
+npm run test:smoke   # boots the dist/ build headless (tests/smoke/run.mjs); BROWSER=firefox|webkit
+npm run test:dom     # pagination + editing in the real browser (tests/dom/run.mjs); same BROWSER
 npm run test:coverage  # vitest + v8 coverage over src/ → coverage/index.html
 npm run test:parity  # render parity vs LibreOffice (tests/render-parity/README.md)
 node scripts/make-thesaurus.mjs   # re-vendor public/thesaurus/ from LibreOffice's MyThes data
@@ -64,10 +64,9 @@ silently lands in every imported document as direct formatting. The defaults fol
 `components/Editor.svelte` and `styles/editor.css` (`PAGE_HEIGHT` 1123px, `PAGE_GAP` 20px, the
 `--user-page-*`/`--user-margin-*` custom properties) — details in `docs/architecture/pagination.md`.
 
-**Headless browser testing** — this container is linux **arm64**. Never `puppeteer` /
-`@puppeteer/browsers`: they fetch an x86-64 Chrome that cannot run here. Use `playwright-core` +
-its Chromium; full recipe in `docs/headless-testing.md`. Driving the live app is the only way to
-verify rendering, layout or NodeView behaviour — there is no DOM test suite for it.
+**Headless browser testing** — `playwright-core` with its own engines, never `puppeteer` (it
+fetches an x86-64 Chrome that cannot run on arm64). Recipe and the three-engine CI matrix in
+`docs/headless-testing.md`; driving the live app is the only way to verify rendering or NodeViews.
 
 **Naming** — components `PascalCase.svelte`, every `.ts` module `camelCase`; extension files are
 named by feature (`image.ts`, `indent.ts`), not `XyzExtension.ts`.

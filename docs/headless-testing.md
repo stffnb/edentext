@@ -12,10 +12,17 @@ For PDF-export repros specifically: replicate `pdf.ts`'s clone + `html2canvas(..
 ## The two committed browser runs
 
 `npm run test:smoke` and `npm run test:dom` are these probes made permanent: both boot
-`dist/` in headless Chromium through `tests/browser.mjs` (preview server, checklist,
-`pageerror` collector) and fail on any uncaught page error. The DOM run keeps the
-pagination invariants of pass 4 below — one page count through a settle, a reload, a
-zoom, a page break and its undo — which is the only test `src/lib/components/**` has.
+`dist/` headless through `tests/browser.mjs` (preview server, checklist, `pageerror`
+collector) and fail on any uncaught page error. The DOM run keeps the pagination
+invariants of pass 4 below — one page count through a settle, a reload, a zoom, a page
+break and its undo — which is the only test `src/lib/components/**` has.
+
+`BROWSER=chromium|firefox|webkit` picks the engine (Chromium by default; the others via
+`npx playwright-core install firefox webkit`). CI runs both on all three, one per matrix
+leg, WebKit on macOS because only there its text shaping is Safari's. The engines are
+the ones behind `build.target` in `vite.config.ts`; a browser older than that target
+fails to parse the bundle and no run reaches it. Playwright's WebKit is the engine, not
+Safari: storage eviction, the install prompt and iOS input are outside the matrix.
 
 ## Hunting for bugs the suite cannot see
 

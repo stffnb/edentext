@@ -44,11 +44,20 @@ jobs:
       - run: npm ci
       - run: npm run test:lo
 
-  # Production build booted in headless Chromium — catches bundling and boot
-  # regressions the jsdom suite cannot see.
-  smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  # Production build booted in the three engines behind the supported browsers
+  # (vite build.target). WebKit runs on macOS: its text shaping there is Safari's.
+  browser:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { browser: chromium, os: ubuntu-latest }
+          - { browser: firefox, os: ubuntu-latest }
+          - { browser: webkit, os: macos-latest }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      BROWSER: ${{ matrix.browser }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -56,6 +65,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npx playwright-core install chromium
+      - run: npx playwright-core install --with-deps ${{ matrix.browser }}
       - run: npm run build
       - run: npm run test:smoke
+      - run: npm run test:dom

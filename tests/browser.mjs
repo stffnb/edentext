@@ -4,7 +4,7 @@ import { spawn, execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright-core';
+import * as playwright from 'playwright-core';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -34,9 +34,15 @@ export async function previewServer(port) {
   throw new Error('preview server did not start');
 }
 
-// Fixed locale, so the UI labels a test clicks are deterministic across machines.
+// BROWSER=chromium|firefox|webkit picks the engine (Chromium by default). Fixed locale,
+// so the UI labels a test clicks are deterministic across machines.
 export async function openApp(port) {
-  const browser = await chromium.launch({ executablePath: chromium.executablePath(), args: ['--no-sandbox'] });
+  const name = process.env.BROWSER ?? 'chromium';
+  const engine = playwright[name];
+  if (!engine) throw new Error(`unknown BROWSER "${name}": chromium, firefox or webkit`);
+  const args = name === 'chromium' ? ['--no-sandbox'] : [];
+  const browser = await engine.launch({ executablePath: engine.executablePath(), args });
+  console.log(`engine: ${name} ${browser.version()}`);
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US' });
   const pageErrors = [];
   page.on('pageerror', (err) => pageErrors.push(String(err)));
