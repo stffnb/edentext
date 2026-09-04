@@ -61,11 +61,21 @@ try {
   await page.waitForSelector('.tiptap', { timeout: 15_000 });
   await settled(opened);
 
-  // A page break adds exactly one page, and undo takes it back.
-  await page.click('.tiptap');
-  await page.keyboard.press(`${MOD}+End`);
+  // The caret is placed through the editor: a click lands wherever the element's centre
+  // happens to be. The focus itself arrives on the next animation frame, so a key sent
+  // before it is lost — wait for it.
+  const caretTo = async (pos) => {
+    await page.evaluate((p) => document.querySelector('.tiptap').editor.commands.focus(p), pos);
+    await page.waitForFunction(() => document.activeElement === document.querySelector('.tiptap'), null, { timeout: 5000 });
+  };
+  const firstParagraphEnd = () => page.evaluate(() => document.querySelector('.tiptap').editor.state.doc.firstChild.nodeSize - 1);
+
+  // A page break after the first paragraph pushes the rest down a page, and undo takes
+  // it back. (A break before the empty last paragraph yields no page.)
+  await caretTo(await firstParagraphEnd());
   await page.keyboard.press(`${MOD}+Enter`);
   const broken = await settled(opened + 1);
+  await caretTo('end');
   await page.keyboard.press(`${MOD}+z`);
   const undone = await settled(opened);
   check(broken === opened + 1 && undone === opened,
@@ -79,9 +89,7 @@ try {
       .catch(() => {});
     return page.evaluate(() => !!document.querySelector('.doc-dirty'));
   };
-  // The repagination after the undo rebuilds the view, so take the caret back first.
-  await page.click('.tiptap');
-  await page.keyboard.press(`${MOD}+End`);
+  await caretTo('end');
   await page.keyboard.type('nachtrag');
   const marked = await dot(true);
   await page.keyboard.press(`${MOD}+z`);

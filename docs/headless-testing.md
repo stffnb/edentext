@@ -37,5 +37,7 @@ Then repro minimally and take a stack trace off the **dev** server (sourcemaps) 
 **Budget for false alarms.** Three of four striking signals were the probe's own fault:
 `Range.getClientRects` also returns container rects (a layout checker built on it is noise),
 a stale button index reads as a dead control, and clicking `.tiptap > p` by index hits a
-different block once an edit has reflowed the document. Reproduce deterministically before
-touching any code.
+different block once an edit has reflowed the document. Two more from the DOM run: TipTap's
+`focus()` lands on the next animation frame, so a key sent right after it is lost unless
+`document.activeElement` is awaited; and a page break before the empty last paragraph yields
+no page. Reproduce deterministically before touching any code.
