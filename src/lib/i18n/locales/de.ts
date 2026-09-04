@@ -1053,7 +1053,6 @@ const de: Messages = {
     vectorHint: 'Scharf, aber Probleme mit Tabellen',
     template: 'Vorlage',
     templateHint: '.ott / .dotx — öffnet sich als neues Dokument',
-    versions: 'Frühere Fassungen',
     recentFiles: 'Zuletzt verwendet',
     clearRecentFiles: 'Liste leeren',
     print: 'Drucken',
@@ -1097,9 +1096,8 @@ const de: Messages = {
     couldNotPrintPdf: 'Druck als PDF nicht möglich.',
     autosaveQuota:
       'Das Dokument ist zu groß, um automatisch gespeichert zu werden (Speicherlimit des Browsers erreicht). Das passiert meist bei großen eingebetteten Bildern. Speichere es als .odt-Datei, um deine Arbeit zu sichern.',
-    confirmRestore: (when) =>
-      `Fassung von ${when} wiederherstellen? Der aktuelle Text wird dadurch ersetzt; Seitenformat, Vorlagen und Kopfzeile bleiben, wie sie sind.`,
-    snapshotGone: 'Diese Fassung ist nicht mehr im Browser-Speicher.',
+    openSnapshot: (when: string) =>
+      `Das Dokument konnte nicht geladen werden. Stattdessen die vom Editor gesicherte Fassung von ${when} öffnen?`,
     documentNotLoaded:
       'Das zuletzt bearbeitete Dokument hat den Start des Editors blockiert. Trotzdem noch einmal laden?\n\nAbbrechen startet mit einem neuen, leeren Dokument; das alte bleibt im Browser-Speicher unter „edentext-doc-broken“ erhalten.',
     remoteImagesDropped: (n) =>

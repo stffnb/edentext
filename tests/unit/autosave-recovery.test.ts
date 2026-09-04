@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { loadDocument, markDocumentLoaded, saveDocument } from '../../src/lib/storage/autosave';
+import { keepSnapshot } from '../../src/lib/storage/snapshots';
+import { fakeIndexedDb } from '../fakeIdb';
 
 // A document that freezes the editor would be reloaded from localStorage forever, so
 // loading raises a boot flag that only a completed startup clears. Loading is async
@@ -45,6 +47,43 @@ describe('autosave crash recovery', () => {
     await vi.runAllTimersAsync();
     vi.useRealTimers();
     expect(await loadDocument()).toEqual({ type: 'doc' });
+  });
+});
+
+// Nothing in the UI points at the kept versions: a document that cannot be loaded is
+// where they are offered, one question each, newest first.
+describe('a document that cannot be loaded falls back on a kept version', () => {
+  // A version is kept at most every five minutes, and an earlier test in this file has
+  // already taken one — so each case sets its own clock well past that window.
+  let clock = 2_000_000_000_000;
+  beforeEach(() => {
+    localStorage.clear();
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { void cb; return 0; });
+    vi.stubGlobal('alert', () => {});
+    vi.stubGlobal('indexedDB', { open: fakeIndexedDb().open });
+    vi.spyOn(Date, 'now').mockReturnValue((clock += 600_000));
+  });
+
+  it('offers the version once the reader gives up on the document', async () => {
+    await keepSnapshot({ type: 'doc', content: [{ type: 'paragraph' }] });
+    localStorage.setItem('edentext-doc', '{"type":"doc"}');
+    await loadDocument(); // raises the boot flag, then the "editor hangs"
+    // First question: another try, declined. Second: the kept version, taken.
+    let asked = 0;
+    vi.stubGlobal('confirm', () => asked++ > 0);
+    expect(await loadDocument()).toEqual({ type: 'doc', content: [{ type: 'paragraph' }] });
+    expect(asked).toBe(2);
+    // The parked document stays where it was, and the version starts under the flag.
+    expect(localStorage.getItem('edentext-doc-broken')).toBe('{"type":"doc"}');
+    expect(localStorage.getItem('edentext-doc-loading')).toBe('1');
+  });
+
+  it('starts empty when every version is turned down', async () => {
+    await keepSnapshot({ type: 'doc', content: [] });
+    localStorage.setItem('edentext-doc', '{"type":"doc"}');
+    await loadDocument();
+    vi.stubGlobal('confirm', () => false);
+    expect(await loadDocument()).toBeNull();
   });
 });
 

@@ -11,13 +11,7 @@ const STORE = 'snapshots';
 const KEEP = 3;
 const EVERY_MS = 5 * 60_000;
 
-let list = $state<number[]>([]);
 let lastAt = 0;
-
-/** When each kept version was taken, newest first. */
-export function snapshots(): number[] {
-  return list;
-}
 
 async function withDb<T>(run: (db: IDBDatabase) => Promise<T>): Promise<T | null> {
   if (typeof indexedDB === 'undefined') return null;
@@ -44,12 +38,12 @@ export async function keepSnapshot(json: object): Promise<void> {
     await idbRequest(db, STORE, 'readwrite', (s) => s.put(json, at));
     const all = (await keys(db)).map(Number).sort((a, b) => b - a);
     for (const old of all.slice(KEEP)) await idbRequest(db, STORE, 'readwrite', (s) => s.delete(old));
-    list = all.slice(0, KEEP);
   });
 }
 
-export async function loadSnapshots(): Promise<void> {
-  await withDb(async (db) => { list = (await keys(db)).map(Number).sort((a, b) => b - a); });
+/** When each kept version was taken, newest first. */
+export async function listSnapshots(): Promise<number[]> {
+  return (await withDb(async (db) => (await keys(db)).map(Number).sort((a, b) => b - a))) ?? [];
 }
 
 export async function readSnapshot(at: number): Promise<object | null> {

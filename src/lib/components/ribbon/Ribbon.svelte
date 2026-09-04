@@ -72,7 +72,7 @@
     hasPassword = false,
     onNew, onNewFromTemplate, onOpen, onSave, onSaveAs, onSaveDocx, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onDocProperties, onProtect, onAutoCorrect, onAutoText, onNewComment,
     navigatorOpen = false, onToggleNavigator,
-    recentFiles = [], onOpenRecent, onForgetRecent, snapshots = [], onRestoreSnapshot,
+    recentFiles = [], onOpenRecent, onForgetRecent,
   }: {
     editor: Editor | null;
     tick: number;
@@ -118,8 +118,6 @@
     onSaveDocx?: () => void;
     onSaveTemplate?: () => void;
     recentFiles?: { id: string; name: string }[];
-    snapshots?: { at: number; label: string }[];
-    onRestoreSnapshot?: (at: number) => void;
     onOpenRecent?: (id: string) => void;
     onForgetRecent?: () => void;
     onExportPdf?: () => void;
@@ -249,15 +247,6 @@
             <button onclick={() => run(onForgetRecent)}>
               <span class="menu-sub">{t().app.clearRecentFiles}</span>
             </button>
-          {/if}
-          {#if snapshots.length}
-            <hr />
-            {#each snapshots as s (s.at)}
-              <button onclick={() => { closeMenu(); onRestoreSnapshot?.(s.at); }}>
-                <Icon name="undo" size={16} />{s.label}
-                <span class="menu-sub">{t().app.versions}</span>
-              </button>
-            {/each}
           {/if}
           <hr />
           <button onclick={() => run(onPrint)} disabled={!editor || pdfBusy}>

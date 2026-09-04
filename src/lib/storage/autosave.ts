@@ -1,6 +1,6 @@
-import { t } from '../i18n/i18n.svelte';
+import { t, locale } from '../i18n/i18n.svelte';
 import { stashImages, putImages, restoreImages } from './imageStore';
-import { keepSnapshot } from './snapshots.svelte';
+import { keepSnapshot, listSnapshots, readSnapshot } from './snapshots';
 
 const STORAGE_KEY = 'edentext-doc';
 // Set while a stored document is being handed to the editor, cleared once the editor
@@ -72,16 +72,37 @@ if (typeof document !== 'undefined') {
   addEventListener('pagehide', flushDocument);
 }
 
+// A document that cannot be loaded is the one place the kept versions are offered:
+// nothing in the UI points at them, so this is where a reader meets them. Newest first,
+// one question each — the newest may be the one that broke.
+async function offerSnapshot(): Promise<object | null> {
+  for (const at of await listSnapshots()) {
+    const when = new Date(at).toLocaleString(locale(), { dateStyle: 'short', timeStyle: 'short' });
+    if (!confirm(t().dialogs.openSnapshot(when))) continue;
+    const doc = await readSnapshot(at);
+    if (doc) return doc;
+  }
+  return null;
+}
+
 export async function loadDocument(): Promise<object | null> {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (localStorage.getItem(BOOT_KEY)) {
     localStorage.removeItem(BOOT_KEY);
     // The user decides: a reload that cut a slow start short is the usual cause, and
-    // another try costs nothing a reload would not fix. Given up, the document is parked.
-    if (raw && !confirm(t().dialogs.documentNotLoaded)) {
-      localStorage.setItem(BROKEN_KEY, raw);
-      localStorage.removeItem(STORAGE_KEY);
-      return null;
+    // another try costs nothing a reload would not fix. Given up, the document is parked
+    // and the versions the autosave kept aside are offered in its place.
+    if (!raw || !confirm(t().dialogs.documentNotLoaded)) {
+      if (raw) {
+        localStorage.setItem(BROKEN_KEY, raw);
+        localStorage.removeItem(STORAGE_KEY);
+      }
+      const rescued = await offerSnapshot();
+      if (!rescued) return null;
+      // Under the same flag as any other document: one that freezes the editor again
+      // brings this question back instead of repeating the freeze.
+      localStorage.setItem(BOOT_KEY, '1');
+      return rescued;
     }
   }
   if (!raw) return null;
