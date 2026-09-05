@@ -361,6 +361,8 @@ const BY_PRST = new Map([...NAMED.map((k) => [SHAPES[k].prst, k] as const), ['st
 export function shapeFromOdfType(type: string | null | undefined): ShapeKind | null {
   if (!type) return 'textbox';
   if (type === 'circle') return 'ellipse';
+  // LibreOffice keeps a DOCX preset under its OOXML name ("ooxml-rect").
+  if (type.startsWith('ooxml-')) return shapeFromPrst(type.slice(6));
   return BY_ODF.get(type) ?? null;
 }
 

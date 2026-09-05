@@ -130,6 +130,18 @@ Body text with no resolved font falls back to the *document's own theme minor fo
   anything with an outline level): read as one, every chapter came back wrapped in an
   `orderedList` that swallowed the `w:pageBreakBefore` in front of it — `blockAttrs`
   reads the break for `kind === 'body'` only.
+- **The first block naming the master the document opens on switches nothing**
+  (`Ctx.leadingMaster`): LibreOffice names it on the first paragraph of every converted file,
+  and a section there shifted every zone set by one. A hand-over master whose one page shows
+  its successor's own zones (the left ones on a left page) opens the section on that side,
+  not a different first page (`sameAsRest`).
+- **LibreOffice's own forms**: a DOCX preset shape keeps its OOXML name (`ooxml-rect` →
+  `shapeFromPrst`); a drawn shape's outline is `draw:stroke` alone (its Frame ancestor's
+  hairline `fo:border` is a text frame's); `loext:content-control` is read through, ours
+  (tag `edentext-placeholder`) as a placeholder field; an alphabetical index opens with a
+  separator template that names no page number, so the first entry level decides.
+- **DOCX defaults**: a file flagging no `w:default` style means `Normal`; Word's `Strong`
+  character style is the registry's Strong Emphasis.
 - **A heading is found by `w:outlineLvl`, not only by its style's name.** A file may set
   its chapters in a style of its own ("Appendix 1") whose `w:basedOn` chain reaches
   Heading1; `styleOutlineLvl` walks that chain, and the exporter writes the level on the

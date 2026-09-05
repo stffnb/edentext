@@ -253,6 +253,12 @@
   text-overflow: ellipsis;
   flex: 0 1 auto;
 }
+/* A row with no page number to keep in place (a bibliography) wraps its text instead. */
+.paper .tiptap .toc-nopage .toc-text {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
 /* Leader dots filling the gap: the row grants the span the space that is left and
    clips the dots that do not fit, so the page number stays put. */
 .paper .tiptap .toc-leader {

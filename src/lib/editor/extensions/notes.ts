@@ -194,8 +194,17 @@ function strayRefsInNotes(doc: PMNode): number[] {
 }
 
 export function inNote(state: EditorState): boolean {
+  return inside(state, 'note');
+}
+
+// Both products refuse a note in a text box, and neither file format holds one there.
+export function inTextBox(state: EditorState): boolean {
+  return inside(state, 'textBox');
+}
+
+function inside(state: EditorState, type: string): boolean {
   const $from = state.selection.$from;
-  for (let d = $from.depth; d > 0; d--) if ($from.node(d).type.name === 'note') return true;
+  for (let d = $from.depth; d > 0; d--) if ($from.node(d).type.name === type) return true;
   return false;
 }
 
@@ -275,7 +284,7 @@ export const Notes = Extension.create<NotesOptions>({
           if (!refType || !noteType || !sectionType) return false;
           // No note inside a note: LibreOffice and Word both refuse it, and the anchor
           // would reference a note that can never be numbered.
-          if (inNote(state)) return false;
+          if (inNote(state) || inTextBox(state)) return false;
           if (!dispatch) return true;
 
           const id = newNoteId();
@@ -363,6 +372,10 @@ export const Notes = Extension.create<NotesOptions>({
         // both at once would need positions from a document this transaction is still
         // rewriting.
         appendTransaction(trs, _oldState, newState) {
+          if (trs.some((tr) => tr.selectionSet)) {
+            const clamped = clampToSide(newState);
+            if (clamped) return clamped;
+          }
           if (!trs.some((tr) => tr.docChanged || tr.getMeta(RESYNC_NOTES))) return null;
           return syncStructure(newState) ?? syncNumbers(newState, getSettings());
         },
@@ -371,8 +384,24 @@ export const Notes = Extension.create<NotesOptions>({
   },
 });
 
+// A selection reaching across the notes' boundary stops at it: a replace over the
+// boundary would carry body content into a note, or a note's out — neither product lets
+// a selection span the two. The anchor's side wins.
+function clampToSide(state: EditorState): Transaction | null {
+  const section = findNoteSection(state.doc);
+  if (!section) return null;
+  const { $anchor, $head } = state.selection;
+  const inNotes = (pos: number) => pos > section.pos && pos < section.pos + section.node.nodeSize;
+  const anchorIn = inNotes($anchor.pos);
+  if (anchorIn === inNotes($head.pos)) return null;
+  const limit = state.doc.resolve(anchorIn ? section.pos + 1 : section.pos);
+  return state.tr.setSelection(TextSelection.between($anchor, limit));
+}
+
 // Keep exactly one note per anchor, in anchor order. Returns null when the document
-// already satisfies that, so the pass converges after one repair.
+// already satisfies that, so the pass converges after one repair. The repair rides the
+// history event of the change it follows (undo replays both; kept out, a later undo
+// lands on positions the repair moved).
 function syncStructure(state: EditorState): Transaction | null {
   const noteType = state.schema.nodes.note;
   const sectionType = state.schema.nodes.noteSection;
@@ -384,7 +413,7 @@ function syncStructure(state: EditorState): Transaction | null {
   if (strays.length) {
     const tr = state.tr;
     for (let i = strays.length - 1; i >= 0; i--) tr.delete(strays[i], strays[i] + 1);
-    return tr.setMeta('addToHistory', false);
+    return tr;
   }
 
   const refs = collectNoteRefs(state.doc);
@@ -423,7 +452,7 @@ function syncStructure(state: EditorState): Transaction | null {
     else if (!section) tr.insert(tr.doc.content.size, sectionType.create(null, wanted));
     else tr.replaceWith(section.pos + 1, section.pos + section.node.nodeSize - 1, wanted);
   }
-  return tr.setMeta('addToHistory', false);
+  return tr;
 }
 
 // Write the running label onto every anchor and its note. Cached attrs, so nothing is
@@ -457,5 +486,5 @@ function syncNumbers(state: EditorState, settings: NoteSettings): Transaction | 
     changed = true;
   });
 
-  return changed ? tr.setMeta('addToHistory', false) : null;
+  return changed ? tr : null;
 }

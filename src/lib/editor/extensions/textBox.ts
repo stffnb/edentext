@@ -3,6 +3,7 @@ import type { CommandProps } from '@tiptap/core';
 import TextAlign from '@tiptap/extension-text-align';
 import type { Editor } from '@tiptap/core';
 import { DOMSerializer, Fragment } from '@tiptap/pm/model';
+import { inNote } from './notes';
 import type { DOMOutputSpec, Node as PMNode, Schema, Slice } from '@tiptap/pm/model';
 import { NodeSelection, Selection, TextSelection, Plugin } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
@@ -307,7 +308,9 @@ export const TextBox = Node.create({
           const type = state.schema.nodes.textBox;
           const paraType = state.schema.nodes.paragraph;
           const para = paraType?.createAndFill();
-          if (!type || !paraType || !para) return false;
+          // Not in a note: both products refuse a frame there, and the ODT note body
+          // holds inline content only.
+          if (!type || !paraType || !para || inNote(state)) return false;
           const { $from } = state.selection;
           const nested = boxDepthAt($from) >= 0 && $from.depth >= 1;
           const at = nested ? $from.after(1) : state.selection.from;

@@ -152,6 +152,7 @@ type Ctx = {
   pageRtl: boolean;
   // Master pages the body switches to, in order — one section each past the first.
   masterPages: string[];
+  leadingMaster: string; // the master the document opens on: naming it first switches nothing
   // The page number each of those sections restarts at, in the same order (null = it
   // counts on). ODF writes it on the paragraph that switches master page.
   masterPageStarts: (number | null)[];
@@ -421,7 +422,9 @@ function shapeFill(gp: PropMap, defaultSolid: boolean): string | null {
 // per-shape border) wins over draw:stroke. Like the fill, a drawn shape's stroke defaults
 // to solid when draw:stroke is absent (color from svg:stroke-color); "none" turns it off.
 function shapeStroke(gp: PropMap, defaultSolid: boolean): { color: string | null; widthPt: number | null } {
-  const border = gp['fo:border'];
+  // A drawn shape's outline is draw:stroke alone: its style chain ends in LibreOffice's
+  // Frame style, whose hairline fo:border belongs to text frames.
+  const border = defaultSolid ? undefined : gp['fo:border'];
   if (border !== undefined) {
     let widthPt: number | null = null, color: string | null = null, styleTok: string | null = null;
     for (const part of border.trim().split(/\s+/)) {
@@ -799,7 +802,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const first = resolver.hasMasterPage(masters.leading) ? masters.leading : null;
   const geo = resolver.pageGeometry(first) ?? resolver.pageGeometry();
   const contentWidthCm = contentWidthOf(geo);
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, contentWidthCm, docContentWidthCm: contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], bodyBlocks: 0, openBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, contentWidthCm, docContentWidthCm: contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], leadingMaster: masters.leading ?? 'Standard', masterPageStarts: [], bodyBlocks: 0, openBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -1338,7 +1341,9 @@ function convertToc(el: Element, ctx: Ctx, indexKind: IndexKind): Node {
   // the paragraph style its entries use. Word and LibreOffice both put it short of the
   // text width in some templates, and the number then hangs 45mm out of place.
   const templates = Array.from(source?.getElementsByTagNameNS(NS.text, `${family}-entry-template`) ?? []);
-  const template = templates[0];
+  // LibreOffice opens an alphabetical index with its separator template (the letter
+  // rows), which names no page number; the first entry level says whether the rows do.
+  const template = templates.find((t) => t.getAttributeNS(NS.text, 'outline-level') !== 'separator') ?? templates[0];
   const styled = ctx.resolver.tabStops(template?.getAttributeNS(NS.text, 'style-name') ?? null);
   let tabPosCm = lengthToCm(stop?.getAttributeNS(NS.style, 'position'))
     ?? [...styled].reverse().find(t => t.align === 'right')?.pos ?? null;
@@ -1810,7 +1815,7 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // its own header/footer; the block that does it opens that section, and from it on
   // the blocks measure against that master's text width.
   const master = kind === 'body' ? resolver.masterPageOf(styleName) : null;
-  const opensSection = !!master && ctx.masterPages[ctx.masterPages.length - 1] !== master;
+  const opensSection = !!master && master !== (ctx.masterPages[ctx.masterPages.length - 1] ?? ctx.leadingMaster);
   if (opensSection) {
     ctx.masterPages.push(master!);
     // The same paragraph carries the number the section restarts at, if it does.
@@ -2446,6 +2451,19 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
             if (e.textContent) pushText(e.textContent, props, linkHref);
             continue;
         }
+      }
+      // LibreOffice's content control (loext): ours is a placeholder field, any other
+      // is read through, its text kept.
+      if (e.localName === 'content-control' && e.namespaceURI === (NS.loext as string)) {
+        if (e.getAttributeNS(NS.loext, 'tag') === 'edentext-placeholder') {
+          const field: Node = { type: 'placeholderField', attrs: { text: (e.textContent ?? '').trim() } };
+          const marks = marksFor(props, ctx.resolver, defaults);
+          if (marks.length) field.marks = marks;
+          out.push(field);
+        } else {
+          for (const n of convertInline(e, ctx, props, defaults, hfFields)) out.push(n);
+        }
+        continue;
       }
       if (e.namespaceURI === NS.draw) {
         const conv = convertDrawElement(e, ctx);

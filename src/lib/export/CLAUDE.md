@@ -80,6 +80,18 @@ fallback download shows a one-time hint (`edentext-download-hint`) that the brow
   shared layout put a footer-less chapter's body at the footer distance). A variant zone
   travels with its running one, in the schema's order (running, left, first); the watermark
   is injected after the section masters exist, so their pages show it too.
+- **A section opening on a side hands over after its first page** (`masterPageXml` part
+  `right`/`left` → `rest`): a right-only master makes every page of it a right page in
+  LibreOffice, with a blank one between any two — measured: a book's 93 pages became 189.
+- **A tab in a document-level zone is `<text:tab/>`** (`applyHfPostProcess`): odf-kit writes it
+  bare, and LibreOffice reads a bare tab as a space.
+- **DOCX styles are named for Word's map**: the default style is `Normal` with `w:default="1"`
+  (LibreOffice keeps any other name beside its Standard as "… (WW)", and a reader without the
+  flag falls back to docDefaults); `w:position` is half-points (LibreOffice ignores a unit);
+  `w:footnotePr` rides every `w:sectPr` (LibreOffice reads none from settings.xml);
+  `lastModifiedBy` is the author (LibreOffice shows the modifier); a page field carries a
+  result; a later columns group of a section names no zones ("Link to Previous" — a
+  reference of its own makes LibreOffice switch page styles there, with a page break).
 - **`style:name` is an NCName**: every other character travels as LibreOffice's `_hex_`
   (`odfStyleName`, "&" → `_26_`), the display name carries the real one; a sentinel's
   payload is serialized text, so its XML escapes come off first.

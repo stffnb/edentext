@@ -514,8 +514,8 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     const title = style('Title');
     check('LO resolve: Title inherits from Heading', /style:parent-style-name="Heading"/.test(title), title);
     check('LO resolve: Title is 28pt', /fo:font-size="28pt"/.test(title), title);
-    // w:docDefaults arrives as the style LibreOffice mints for Word's defaults.
-    const defaults = style('Standard_20__28_WW_29_');
+    // w:docDefaults arrive on Standard itself, the style LibreOffice maps "Normal" onto.
+    const defaults = style('Standard');
     check('LO resolve: the default font arrives', /Times New Roman/.test(defaults), defaults);
     check('LO resolve: the default size arrives', /fo:font-size="12pt"/.test(defaults), defaults);
   });

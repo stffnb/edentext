@@ -23,6 +23,7 @@ import { ListStyle } from './extensions/listStyle';
 import { Table, TableHeader, TableCell } from '@tiptap/extension-table';
 import { ResizableTableRow } from './extensions/tableRow';
 import History from '@tiptap/extension-history';
+import { inNote } from './extensions/notes';
 import Placeholder from '@tiptap/extension-placeholder';
 import { t } from '../i18n/i18n.svelte';
 
@@ -198,7 +199,19 @@ export const extensions = [
   // resizable:false keeps TipTap's columnResizing plugin off; TableView, the two
   // resize plugins, and ResizableTableRow supply the drag handling instead. Table
   // (unlike TableKit) doesn't auto-add children, so ResizableTableRow is listed here.
-  Table.configure({ resizable: false, View: TableView }),
+  // No table inside a table (neither exporter writes a nested one), in a list item (ODF's
+  // holds paragraphs, headings and lists) or in a note (whose inline content would take
+  // it wrapped in a text box).
+  Table.extend({
+    addCommands() {
+      const parent = this.parent?.() ?? {};
+      return { ...parent, insertTable: (options) => (props) => {
+        if (inNote(props.state)) return false;
+        for (let d = props.state.selection.$from.depth; d > 0; d--) if (['table', 'listItem'].includes(props.state.selection.$from.node(d).type.name)) return false;
+        return parent.insertTable?.(options)(props) ?? false;
+      } };
+    },
+  }).configure({ resizable: false, View: TableView }),
   ResizableTableRow,
   TableHeader,
   TableCell,

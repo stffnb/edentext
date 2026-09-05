@@ -390,7 +390,7 @@ class TocView {
     const levelStyles = this.node()?.attrs?.levelStyles as (string | null)[] | null | undefined;
     entries.forEach((e, i) => {
       const row = document.createElement('div');
-      row.className = `toc-entry toc-level-${e.level}`;
+      row.className = `toc-entry toc-level-${e.level}${noPage ? ' toc-nopage' : ''}`;
       const levelStyle = levelStyles?.[e.level - 1];
       if (levelStyle) row.dataset.style = levelStyle;
       const text = document.createElement('span');

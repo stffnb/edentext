@@ -498,7 +498,9 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
   if (caps === 'smallCaps') props.smallCaps = true;
   else if (caps === 'uppercase') props.allCaps = true;
   const pos = ts?.attrs?.textPosition;
-  if (typeof pos === 'number' && pos) props.position = `${pos}pt`;
+  // Half-points, as Word writes them: LibreOffice takes the number and ignores a unit
+  // behind it. The library's type wants the unit, the file does not.
+  if (typeof pos === 'number' && pos) props.position = String(Math.round(pos * 2)) as `${number}pt`;
 
   const ff = ts?.attrs?.fontFamily ?? force.fontFamily;
   if (ff) props.font = String(ff) === SCREEN_FONT ? DOC_FONT : String(ff);
@@ -1796,22 +1798,22 @@ function orderDocxSettings(bytes: Uint8Array): Uint8Array {
   return zipSync(out);
 }
 
-// Post-pack pass (runs last): the library writes a paragraph's w:pBdr sides as top,
-// bottom, left, right; the schema's sequence is top, left, bottom, right, between, bar.
+// Post-pack pass (runs last) over what the library writes: a paragraph's w:pBdr sides
+// as top, bottom, left, right (the schema's sequence is top, left, bottom, right, between,
+// bar), and a page field with no cached result (a reader shows what it finds there).
 const PBDR_ORDER = ['w:top', 'w:left', 'w:bottom', 'w:right', 'w:between', 'w:bar'];
-function orderParagraphBorders(bytes: Uint8Array): Uint8Array {
+function patchPackedXml(bytes: Uint8Array): Uint8Array {
   const files = unzipSync(bytes);
   let changed = false;
   for (const [path, data] of Object.entries(files)) {
     if (!/^word\/.*\.xml$/.test(path)) continue;
     const xml = strFromU8(data);
-    if (!xml.includes('<w:pBdr>')) continue;
     const sorted = xml.replace(/<w:pBdr>([\s\S]*?)<\/w:pBdr>/g, (_m, inner: string) => {
       const sides = inner.match(/<w:(?:top|left|bottom|right|between|bar)\b[^>]*\/>/g) ?? [];
       if (sides.join('') !== inner) return _m;
       const rank = (s: string) => PBDR_ORDER.indexOf(/^<(w:\w+)/.exec(s)![1]);
       return `<w:pBdr>${[...sides].sort((a, b) => rank(a) - rank(b)).join('')}</w:pBdr>`;
-    });
+    }).replace(/(<w:instrText[^>]*>\s*(?:PAGE|NUMPAGES)\s*<\/w:instrText><w:fldChar w:fldCharType="separate"\/>)(<w:fldChar w:fldCharType="end"\/>)/g, '$1<w:t>1</w:t>$2');
     if (sorted === xml) continue;
     files[path] = strToU8(sorted);
     changed = true;
@@ -1999,9 +2001,9 @@ const DOCX_NUM_FMT: Record<string, string> = {
   '1': 'decimal', a: 'lowerLetter', A: 'upperLetter', i: 'lowerRoman', I: 'upperRoman',
 };
 
-// Post-pack pass: the document-wide <w:footnotePr>/<w:endnotePr>, which the docx
-// package does not expose. Word keeps its defaults in settings.xml, beside
-// w:mirrorMargins.
+// Post-pack pass: <w:footnotePr>/<w:endnotePr>, which the docx package does not expose.
+// Word keeps the document's in settings.xml, LibreOffice reads a section's alone, so
+// every w:sectPr repeats them (ahead of w:type, in the element's fixed order).
 function applyNotePrDocx(bytes: Uint8Array, notes: NoteSettings): Uint8Array {
   const files = unzipSync(bytes);
   const setBytes = files['word/settings.xml'];
@@ -2020,6 +2022,11 @@ function applyNotePrDocx(bytes: Uint8Array, notes: NoteSettings): Uint8Array {
   files['word/settings.xml'] = strToU8(
     strFromU8(setBytes).replace(/(<w:settings\b[^>]*>)/, `$1${block('footnote')}${block('endnote')}`),
   );
+  const docBytes = files['word/document.xml'];
+  if (docBytes) {
+    files['word/document.xml'] = strToU8(strFromU8(docBytes).replace(
+      /<w:sectPr\b[^>]*>(?:<w:(?:header|footer)Reference\b[^>]*\/>)*/g, (m) => `${m}${block('footnote')}${block('endnote')}`));
+  }
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
   for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
   return zipSync(out);
@@ -2645,7 +2652,7 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   if (border) paragraph.border = border;
   return {
     id: docxStyleId(style.name),
-    name: style.name,
+    name: wordStyleName(style.name),
     basedOn: style.parent ? docxStyleId(style.parent) : undefined,
     next: style.next ? docxStyleId(style.next) : undefined,
     quickFormat: true,
@@ -2671,8 +2678,13 @@ function runPropsOf(t: TextProps): Writable<IRunStylePropertiesOptions> {
 
 // One registry character style → a Word character style (w:type="character").
 function characterStyleOf(style: Style): ICharacterStyleOptions {
-  return { id: docxStyleId(style.name), name: style.name, quickFormat: true, run: runPropsOf(style.text) };
+  return { id: docxStyleId(style.name), name: wordStyleName(style.name), quickFormat: true, run: runPropsOf(style.text) };
 }
+
+// LibreOffice maps a DOCX style by its name: "Normal" is its Standard, any other name a
+// style of its own beside it ("Standard (WW)"). Word's other names buy nothing: "Strong"
+// comes back as a paragraph style, "Quote" as a new one (probed).
+const wordStyleName = (name: string): string => (name === DEFAULT_STYLE ? 'Normal' : name);
 
 // Word needs a referenced table style to exist. ODF/our model hold the banding, and the
 // look is baked into the cells, so a name-only definition is enough (no w:tblStylePr).
@@ -2706,10 +2718,13 @@ function numberingStyleXml(name: string): string {
 // Table and numbering styles are spliced post-pack: handing them to the library as
 // importedStyles makes its Styles merge drop the factory set — w:docDefaults included.
 function applyRawStylesDocx(bytes: Uint8Array, snippets: string[]): Uint8Array {
-  if (!snippets.length) return bytes;
   const files = unzipSync(bytes);
   const stylesXml = strFromU8(files['word/styles.xml']);
-  files['word/styles.xml'] = strToU8(stylesXml.replace('</w:styles>', snippets.join('') + '</w:styles>'));
+  // The default style says so (w:default): a reader falls back to its docDefaults
+  // otherwise, and the style's own size and kerning never apply.
+  files['word/styles.xml'] = strToU8(stylesXml
+    .replace('<w:style w:type="paragraph" w:styleId="Normal">', '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">')
+    .replace('</w:styles>', snippets.join('') + '</w:styles>'));
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
   for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
   return zipSync(out);
@@ -2933,8 +2948,10 @@ export async function buildDocx(
 
   const doc = new Document({
     // Word's File ▸ Info; an empty field is left out so it does not overwrite Word's own.
-    // The creator is the one the library fills in ("Un-named"), so it is always given.
+    // Creator and last modifier are what the library fills in ("Un-named") otherwise,
+    // and LibreOffice shows the modifier as the author.
     creator: props.author.trim(),
+    lastModifiedBy: props.author.trim(),
     ...(props.title.trim() ? { title: props.title.trim() } : {}),
     ...(props.subject.trim() ? { subject: props.subject.trim() } : {}),
     ...(props.keywords.trim() ? { keywords: props.keywords.trim() } : {}),
@@ -2994,8 +3011,11 @@ export async function buildDocx(
           ? { column: { count: g.columns.count, space: cmToTwip(g.columns.gapCm), equalWidth: true } }
           : {}),
       },
-      headers: mkHeaders(g.section),
-      footers: mkFooters(g.section),
+      // A later columns group of its section links to the zones ("Link to Previous"): a
+      // reference of its own makes LibreOffice switch page styles there, which breaks
+      // the page as a continuous break never may.
+      headers: groups.findIndex((x) => x.section === g.section) === i ? mkHeaders(g.section) : undefined,
+      footers: groups.findIndex((x) => x.section === g.section) === i ? mkFooters(g.section) : undefined,
       children: g.children.length ? g.children : [new Paragraph({})],
     })),
   });
@@ -3018,8 +3038,8 @@ export async function buildDocx(
   const dims = pageDimsCm(pageFormat, orientation);
   const foldMarked = applyFoldMarksDocx(bidi, foldMarks, dims.w * 10);
   const marked = spacingAtPageStart ? foldMarked : applySpacingAtStartDocx(foldMarked);
-  if (isEmptyPageDecor(decor)) return orderParagraphBorders(orderDocxSettings(marked));
+  if (isEmptyPageDecor(decor)) return patchPackedXml(orderDocxSettings(marked));
   const pt = (cm: number) => (cm / 2.54) * 72;
-  return orderParagraphBorders(orderDocxSettings(applyPageDecorDocx(marked, decor,
+  return patchPackedXml(orderDocxSettings(applyPageDecorDocx(marked, decor,
     pt(dims.w - margins.left - margins.right), pt(dims.h - margins.top - margins.bottom))));
 }

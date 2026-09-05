@@ -708,7 +708,14 @@ export class StyleResolver {
       ? (this.pageUsage(rest) === 'left' ? rest : this.pageUsage(twin) === 'left' ? twin : null)
       : null;
     if (leftPage === rest) rest = twin;
-    const handover = pair ? null : successor;
+    // A hand-over whose one page shows the very zones its successor runs (the left ones
+    // on a left page) opens the section on that side; only other zones make a first page.
+    const sig = (el: Element | null) => (el
+      ? Array.from(el.childNodes, (n) => new XMLSerializer().serializeToString(n)).join('').replace(/ (?:text|style):style-name="[^"]*"/g, '')
+      : '');
+    const sameAsRest = (local: string) => sig(zoneIn(mp, local))
+      === sig((this.pageUsage(mp) === 'left' ? zoneIn(rest, `${local}-left`) : null) ?? zoneIn(rest, local));
+    const handover = pair || (successor && sameAsRest('header') && sameAsRest('footer')) ? null : successor;
 
     const zone = (local: string) => zoneIn(rest, local);
     const firstZone = (local: string): Element | null =>

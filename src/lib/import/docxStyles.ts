@@ -309,6 +309,8 @@ export class DocxStyles {
         else this.charStyleNames.set(id, name);
       }
     }
+    // A file flagging no default style means the one Word names "Normal".
+    if (!this.defaultParaStyle && this.ownRun.has('Normal')) this.defaultParaStyle = 'Normal';
   }
 
   // Paragraph styles defined in the file: display name and parent, for the style registry.
@@ -325,8 +327,9 @@ export class DocxStyles {
   }
 
   // Character styles defined in the file (w:type="character"), for the style registry.
+  // Word's "Strong" is the registry's Strong Emphasis (the export writes it so too).
   namedCharacterStyles(): Map<string, string> {
-    return new Map(this.charStyleNames);
+    return new Map([...this.charStyleNames].map(([id, name]) => [id, name === 'Strong' ? 'Strong Emphasis' : name]));
   }
 
   // A w:tblStyle id → the style's display name (the id itself when it declares none).

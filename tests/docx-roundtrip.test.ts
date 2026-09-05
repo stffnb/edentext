@@ -101,9 +101,13 @@ describe('DOCX export → import round trip', () => {
     // Word wants the page geometry repeated per sectPr.
     expect(documentXml.match(/<w:pgSz/g)!.length).toBe(3);
     expect(documentXml.match(/<w:pgMar/g)!.length).toBe(3);
-    // The body-final sectPr (the one the importer reads) still references the header.
+    // The section's first sectPr references the header; the later column groups of the
+    // same section name none and link to it (a reference of their own would make
+    // LibreOffice switch page styles there, with a page break).
+    const firstSect = documentXml.slice(documentXml.indexOf('<w:sectPr'), documentXml.indexOf('</w:sectPr>'));
+    expect(firstSect).toContain('<w:headerReference');
     const finalSect = documentXml.slice(documentXml.lastIndexOf('<w:sectPr'));
-    expect(finalSect).toContain('<w:headerReference');
+    expect(finalSect).not.toContain('<w:headerReference');
   });
 
   it('coalesces adjacent equal-attr fragments (columnsFlow page splits) into one section', async () => {

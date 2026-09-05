@@ -5281,9 +5281,10 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
   if (!stylesBytes) return odtBytes;
   let styles = strFromU8(stylesBytes);
 
-  // Same fix as collapseRunWhitespace: odf-kit joins runs with "\n", which would
-  // collapse into spurious spaces. styles.xml only has text:p inside header/footer.
-  styles = styles.replace(/<text:p\b[^>]*>[\s\S]*?<\/text:p>/g, (block) => block.replace(/\n/g, ''));
+  // Same fix as collapseRunWhitespace: odf-kit joins runs with "\n", which would collapse
+  // into spurious spaces, and writes a tab bare, which LibreOffice reads as a space.
+  // styles.xml only has text:p inside header/footer.
+  styles = styles.replace(/<text:p\b[^>]*>[\s\S]*?<\/text:p>/g, (block) => block.replace(/\n/g, '').replace(/\t/g, '<text:tab/>'));
   styles = styles.split(LBR).join('<text:line-break/>');
   styles = styles.replace(new RegExp(`${PGC}(\\d*)${PGC}`, 'g'), '<text:page-count>$1</text:page-count>');
   styles = styles.replace(new RegExp(`${CHP}(\\d)${CHP}([\\s\\S]*?)${CHP}`, 'g'),
@@ -5421,7 +5422,8 @@ function hfVariantZoneXml(kind: 'header' | 'footer', suffix: 'first' | 'left' | 
 
 // A section's own master page: the Standard one cloned under its own name, carrying that
 // section's zones. ODF has no per-section header/footer other than this.
-function masterPageXml(name: string, layoutName: string, set: HfSet, pageCount: number, mint: (styleXml: string) => void, pfx: string): string {
+// `part`: the whole section, the one right/left page it opens on, or the pages after it.
+function masterPageXml(name: string, layoutName: string, set: HfSet, pageCount: number, mint: (styleXml: string) => void, pfx: string, part: 'all' | 'right' | 'left' | 'rest' = 'all', next?: string): string {
   // A variant and its running zone travel as a pair: ODF allows a first/left zone only
   // under a running one, and an absent left zone repeats the running one. Where either
   // is set both are written, the blank one as an empty paragraph, which blanks its side.
@@ -5431,18 +5433,28 @@ function masterPageXml(name: string, layoutName: string, set: HfSet, pageCount: 
     return hfVariantZoneXml(kind, suffix, para as TiptapNode, pageCount, mint, pfx);
   };
   const on = (flag: boolean, running: HfDoc, variant: HfDoc) => flag && (!hfIsEmpty(running) || !hfIsEmpty(variant));
-  const hFirst = on(set.differentFirstPage, set.header, set.headerFirst);
-  const hEven = on(set.differentOddEven, set.header, set.headerEven);
-  const fFirst = on(set.differentFirstPage, set.footer, set.footerFirst);
-  const fEven = on(set.differentOddEven, set.footer, set.footerEven);
-  // In the schema's order: the running zone, its left variant, then its first-page one.
-  const body = zone('header', null, set.header, hFirst || hEven)
-    + (hEven ? zone('header', 'left', set.headerEven, true) : '')
-    + (hFirst ? zone('header', 'first', set.headerFirst, true) : '')
-    + zone('footer', null, set.footer, fFirst || fEven)
-    + (fEven ? zone('footer', 'left', set.footerEven, true) : '')
-    + (fFirst ? zone('footer', 'first', set.footerFirst, true) : '');
-  return `<style:master-page style:name="${name}" style:page-layout-name="${layoutName}">${body}</style:master-page>`;
+  let body: string;
+  if (part === 'right' || part === 'left') {
+    // The one page this master governs shows the first-page variant, else the running
+    // zone — the left one on a left page.
+    const one = (running: HfDoc, first: HfDoc, left: HfDoc): HfDoc =>
+      set.differentFirstPage ? first : part === 'left' && set.differentOddEven ? left : running;
+    body = zone('header', null, one(set.header, set.headerFirst, set.headerEven))
+      + zone('footer', null, one(set.footer, set.footerFirst, set.footerEven));
+  } else {
+    const hFirst = part === 'all' && on(set.differentFirstPage, set.header, set.headerFirst);
+    const hEven = on(set.differentOddEven, set.header, set.headerEven);
+    const fFirst = part === 'all' && on(set.differentFirstPage, set.footer, set.footerFirst);
+    const fEven = on(set.differentOddEven, set.footer, set.footerEven);
+    // In the schema's order: the running zone, its left variant, then its first-page one.
+    body = zone('header', null, set.header, hFirst || hEven)
+      + (hEven ? zone('header', 'left', set.headerEven, true) : '')
+      + (hFirst ? zone('header', 'first', set.headerFirst, true) : '')
+      + zone('footer', null, set.footer, fFirst || fEven)
+      + (fEven ? zone('footer', 'left', set.footerEven, true) : '')
+      + (fFirst ? zone('footer', 'first', set.footerFirst, true) : '');
+  }
+  return `<style:master-page style:name="${name}" style:page-layout-name="${layoutName}"${next ? ` style:next-style-name="${next}"` : ''}>${body}</style:master-page>`;
 }
 
 // What a page border and its padding take off every page margin (they sit inside it).
@@ -5502,15 +5514,12 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
   const layoutXml = new RegExp(`<style:page-layout\\b[^>]*style:name="${layout}"[\\s\\S]*?</style:page-layout>`).exec(styles)?.[0] ?? null;
   const layouts: string[] = [];
   const round3 = (v: number) => Math.round(v * 1000) / 1000;
-  const layoutFor = (index: number, set: HfSet): string => {
+  const layoutFor = (index: number, set: HfSet, side: 'right' | 'left' | null): string => {
     const m = set.margins;
     const paper = set.format || set.orientation ? pageDimsCm(set.format ?? format, set.orientation ?? orientation) : null;
     const numFormat = set.pageNumberFormat ?? null;
     const has = { header: !!(set.header || set.headerFirst || set.headerEven), footer: !!(set.footer || set.footerFirst || set.footerEven) };
     const sameZones = has.header === docZones.header && has.footer === docZones.footer && !set.distances;
-    // The side the section opens on: page one is a right page whatever it says, so only
-    // a later section carries it.
-    const side = index > 0 && set.startsOn ? (set.startsOn === 'odd' ? 'right' : 'left') : null;
     if ((!m && !paper && !numFormat && sameZones && !side) || !layoutXml) return layout;
     const body = m ?? margins;
     const band = (kind: 'header' | 'footer', edge: 'top' | 'bottom'): { margin: number; minH: number | null } => {
@@ -5525,7 +5534,7 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
     const bandXml = (kind: 'header' | 'footer', minH: number | null) => (minH == null
       ? `<style:${kind}-style/>`
       : `<style:${kind}-style><style:header-footer-properties fo:min-height="${round3(minH)}cm" ${kind === 'header' ? 'fo:margin-bottom' : 'fo:margin-top'}="0cm" style:dynamic-spacing="false"/></style:${kind}-style>`);
-    const name = `${layout}Sec${index + 1}`;
+    const name = `${layout}Sec${index + 1}${side ? side[0] : ''}`;
     let xml = (side ? layoutXml.replace(/\s*style:page-usage="[^"]*"/, '') : layoutXml)
       .replace(`style:name="${layout}"`, `style:name="${name}"${side ? ` style:page-usage="${side}"` : ''}`)
       .replace(/<style:page-layout-properties\b[^>]*>/, (props) => {
@@ -5561,7 +5570,18 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
   for (const index of [...used].sort((a, b) => a - b)) {
     const set = sets[index];
     if (!set) continue;
-    pages.push(masterPageXml(`Section${index + 1}`, layoutFor(index, set), set, pageCount, (x) => hfStyles.push(x), `MS${index}`));
+    const mint = (x: string) => hfStyles.push(x);
+    const name = `Section${index + 1}`;
+    // The side a section opens on (page one is a right page whatever it says): a master
+    // for that page alone, handing over to one for the rest — every page of a right-only
+    // master is a right page in LibreOffice, with a blank one between any two.
+    const side = index > 0 && set.startsOn ? (set.startsOn === 'odd' ? 'right' : 'left') : null;
+    if (side) {
+      pages.push(masterPageXml(name, layoutFor(index, set, side), set, pageCount, mint, `MS${index}`, side, `${name}c`));
+      pages.push(masterPageXml(`${name}c`, layoutFor(index, set, null), set, pageCount, mint, `MS${index}c`, 'rest'));
+    } else {
+      pages.push(masterPageXml(name, layoutFor(index, set, null), set, pageCount, mint, `MS${index}`));
+    }
   }
   if (layouts.length) styles = styles.replace('</office:automatic-styles>', `${layouts.join('')}</office:automatic-styles>`);
   if (pages.length) styles = styles.replace('</office:master-styles>', `${pages.join('')}</office:master-styles>`);
