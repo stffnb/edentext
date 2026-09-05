@@ -41,7 +41,10 @@ function marks(r: Rng, heading = false): N[] | undefined {
     const attrs: N = {};
     if (maybe(r, 0.3)) attrs.lineStyle = pick(r, ['dotted', 'double', 'dashed']);
     if (maybe(r, 0.2)) attrs.lineColor = '#FF0000';
-    out.push({ type: 'underline', ...(Object.keys(attrs).length ? { attrs } : {}) });
+    // A user style may underline plainly, and a run repeating exactly that is suppressed
+    // on import — under a named style a run underlines only in its own shape or colour.
+    const line = Object.keys(attrs).length ? { attrs } : null;
+    if (line || !heading) out.push({ type: 'underline', ...(line ?? {}) });
   }
   if (maybe(r, 0.1)) {
     out.push(maybe(r, 0.25) ? { type: 'strike', attrs: { lineStyle: 'double' } } : { type: 'strike' });

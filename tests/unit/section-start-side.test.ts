@@ -33,6 +33,16 @@ describe('the side a section opens on', () => {
     expect(sides(importOdt(bytes))).toEqual([null, 'odd']);
   });
 
+  // The page layout takes the header band off the margin for the whole section, so a
+  // master of it that writes no running zone puts its body up into the reserved band.
+  it('keeps the band it reserved on every master of the section', async () => {
+    const second = { ...EMPTY_HF_SET, headerFirst: zone, differentFirstPage: true,
+      startsOn: 'odd' as const, margins: { top: 1.5, bottom: 2, left: 2, right: 2 } };
+    const bytes = await buildOdt(doc, margins, 'portrait',
+      { ...hf, sections: [{ ...EMPTY_HF_SET, header: zone }, second] } as never);
+    expect((importOdt(bytes).hfSections ?? [])[1]?.margins).toEqual(second.margins);
+  });
+
   it('round-trips through DOCX as w:type', async () => {
     const bytes = await buildDocx(doc, margins, 'portrait', hf as never);
     expect(strFromU8(unzipSync(bytes)['word/document.xml'])).toContain('<w:type w:val="oddPage"');
