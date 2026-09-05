@@ -5,10 +5,11 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { strFromU8 } from 'fflate';
 
 export const hasXmllint = spawnSync('xmllint', ['--version']).status === 0;
-const SCHEMAS = resolve(__dirname, 'schemas');
+const SCHEMAS = resolve(fileURLToPath(import.meta.url), '..', 'schemas');
 const MC_NS = 'http://schemas.openxmlformats.org/markup-compatibility/2006';
 // A DrawingML text box (wps:wsp inside a:graphicData) is post-ECMA-376 Microsoft
 // markup Word accepts natively; no ECMA schema covers it, so it is stripped like an

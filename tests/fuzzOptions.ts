@@ -311,6 +311,23 @@ export function diffLoose(a: N, b: N, path = '$'): string | null {
   return null;
 }
 
+// What DOCX has no place for (see the importers' CLAUDE.md), dropped from both sides of a
+// comparison: Word spaces paragraphs by the larger of the two values, draws its note
+// separator its own way, has no note prefix/suffix and counts every line.
+export const DOCX_LOSSY = ['spacingModel', 'notes.separator', 'notes.footnote.prefix', 'notes.footnote.suffix',
+  'notes.endnote.prefix', 'notes.endnote.suffix', 'lineNumbering.countEmpty'];
+
+// Odd/even pages are a document setting in Word (w:evenAndOddHeaders): once any section
+// asks for it, every section has it, repeating its running zones.
+export function docWideOddEven(canon: N): N {
+  if (!canon.sections.some((s: N) => s.differentOddEven)) return canon;
+  for (const s of canon.sections) {
+    if (s.differentOddEven) continue;
+    Object.assign(s, { differentOddEven: true, headerEven: s.header, footerEven: s.footer });
+  }
+  return canon;
+}
+
 // Drops the paths a format cannot carry (`a.b`, `sections.*.c`) from a canonical reading.
 export function omit(canon: N, paths: readonly string[]): N {
   const out = structuredClone(canon);

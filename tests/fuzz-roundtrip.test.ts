@@ -9,19 +9,15 @@ import { buildDocx } from '../src/lib/export/docx';
 import { importDocx } from '../src/lib/import/docx';
 import { normalize, firstDiff, stripFontHoist } from './normalize';
 import { mulberry32 } from './fuzzDoc';
-import { genCase, exportArgs, expectedOptions, importedOptions, diffLoose, omit } from './fuzzOptions';
+import { genCase, exportArgs, expectedOptions, importedOptions, diffLoose, omit, DOCX_LOSSY, docWideOddEven } from './fuzzOptions';
 import { hasXmllint, validateOdt, validateDocx } from './schemaValidate';
 
 const SEEDS = Number(process.env.FUZZ_SEEDS ?? 50); // FUZZ_SEEDS=500 for a wide sweep
 // The schema leg pays ~0.7s of xmllint per seed, so it takes fewer by default.
 const SCHEMA_SEEDS = Number(process.env.SCHEMA_SEEDS ?? Math.min(SEEDS, 20));
 
-// What each format has no place for (see the importers' CLAUDE.md); dropped from both
-// sides of its comparison. Word spaces paragraphs by the larger of the two values and
-// draws its note separator its own way; it has no note prefix/suffix and counts every line.
+// What ODT has no place for: nothing so far (DOCX_LOSSY lists Word's).
 const ODT_LOSSY: string[] = [];
-const DOCX_LOSSY: string[] = ['spacingModel', 'notes.separator', 'notes.footnote.prefix', 'notes.footnote.suffix',
-  'notes.endnote.prefix', 'notes.endnote.suffix', 'lineNumbering.countEmpty'];
 
 describe('fuzz round-trip: editor → buildOdt → importOdt', () => {
   it(`${SEEDS} seeded random documents come back identical`, async () => {
@@ -45,17 +41,6 @@ describe('fuzz round-trip: editor → buildOdt → importOdt', () => {
     }
     for (const c of node.content ?? []) stripColwidth(c);
     return node;
-  }
-
-  // Odd/even pages are a document setting in Word (w:evenAndOddHeaders): once any
-  // section asks for it, every section has it, repeating its running zones.
-  function docWideOddEven(canon: any): any {
-    if (!canon.sections.some((s: any) => s.differentOddEven)) return canon;
-    for (const s of canon.sections) {
-      if (s.differentOddEven) continue;
-      Object.assign(s, { differentOddEven: true, headerEven: s.header, footerEven: s.footer });
-    }
-    return canon;
   }
 
   // The DOCX leg: its options against what went out, and its content against the ODT

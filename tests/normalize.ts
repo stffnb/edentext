@@ -10,6 +10,9 @@ const ORDERED_DEFAULTS: Record<string, unknown> = {
   type: null, level: undefined, rotation: 0, wrap: 'inline',
   shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1,
   fixed: false, key1: '',
+  joinPrev: false, // pageBreaks.ts's split marker; the export merges the halves
+  marginLeft: 0, marginRight: 0, marginTop: 0, marginBottom: 0, // a table's, once a command has touched them
+  alt: '', inFront: false, paddingCm: 0.15, flipV: false, textVertical: false, // the editor's own picture and box defaults
   // index attrs the DOCX TOC field has no switch for come back at their defaults
   maxLevel: MAX_HEADING_LEVEL, leader: '.', citationStyle: 'key',
 };
@@ -56,12 +59,14 @@ export function normalize(node: N): N {
   if (node.type === 'doc') canonNoteIds(node);
   const out: N = { type: node.type };
   if (node.text != null) out.text = node.text;
-  if (node.marks?.length) {
+  // A formula adopts the caret's marks for its font; neither file carries them.
+  if (node.marks?.length && node.type !== 'formula') {
     out.marks = node.marks
       .map((m: N) => {
         const mm: N = { type: m.type };
         const attrs = Object.fromEntries(Object.entries(m.attrs ?? {})
-          .filter(([k, v]) => v != null && MARK_DEFAULTS[k] !== v));
+          .filter(([k, v]) => v != null && MARK_DEFAULTS[k] !== v)
+          .map(([k, v]) => [k, typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toUpperCase() : v]));
         // ODF keeps the authored (naive local) comment/revision date, DOCX re-serializes
         // the same instant as UTC — compare the instant.
         if ((m.type === 'comment' || m.type === 'insertion' || m.type === 'deletion')

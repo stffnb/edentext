@@ -9,13 +9,29 @@ Then load `npm run dev`, inject a document into `localStorage['edentext-doc']`, 
 
 For PDF-export repros specifically: replicate `pdf.ts`'s clone + `html2canvas(...)` inside `page.evaluate` and read the canvas back as a PNG — capturing the real jsPDF `doc.save()` download tends to hang in headless. Inspect output PDFs with poppler-utils (`apt-get install -y poppler-utils`: `pdftoppm`, `pdfimages`, `pdftotext`).
 
-## The two committed browser runs
+## The four committed browser runs
 
 `npm run test:smoke` and `npm run test:dom` are these probes made permanent: both boot
 `dist/` headless through `tests/browser.mjs` (preview server, checklist, `pageerror`
 collector) and fail on any uncaught page error. The DOM run keeps the pagination
 invariants of pass 4 below — one page count through a settle, a reload, a zoom, a page
 break and its undo — which is the only test `src/lib/components/**` has.
+
+`npm run test:layout` and `npm run test:monkey` run against the dev server (Vite serves
+TypeScript, so a page imports `src/` and `tests/` modules directly). The **layout run**
+opens every corpus and showcase document plus `LAYOUT_SEEDS` fuzz seeds, holds the editor's
+page count against LibreOffice's PDF (`soffice` + `pdfinfo`, a page or a tenth of slack)
+and checks the rendered lines: none overlap, none sit in the page gap or past the sheet,
+none cross a single-section document's margins, no heading ends a page or column, nothing
+is wider than the page. A tab's box, a frame, a formula and the decor are not lines.
+The **monkey run** replays `MONKEY_OPS` random keys and commands per seed
+(`MONKEY_SEED`, `MONKEY_RUNS`, `MONKEY_DOC`) on a corpus document and checks after each:
+no uncaught error, a document its own schema accepts; at the end undo back to the opened
+file and redo forward, then Save As both formats, xmllint each against the schemas and read
+it back through the app's importer. A failing seed prints its last ops and keeps the file
+and both documents under the OS temp dir. Found so far: a note inserted in a text box or a
+text box in a note breaks the ODT's XML, and a table in a cell is dropped on save — both
+commands now refuse there.
 
 `BROWSER=chromium|firefox|webkit` picks the engine (Chromium by default; the others via
 `npx playwright-core install firefox webkit`). CI runs both on all three, one per matrix

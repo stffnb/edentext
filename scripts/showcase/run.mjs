@@ -2,27 +2,17 @@
 // modules are TypeScript the browser imports straight from the dev server, and the app's
 // own exporters write the .odt/.docx; each is then opened through the file input and shot.
 // `node scripts/showcase/run.mjs [regex]` limits the run to matching document names.
-import { spawn } from 'node:child_process';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ROOT, openApp } from '../../tests/browser.mjs';
+import { ROOT, openApp, devServer } from '../../tests/browser.mjs';
 
 const PORT = 4187;
 const OUT = join(ROOT, 'docs/showcase');
 const only = process.argv[2] ? new RegExp(process.argv[2]) : null;
 const DOCS = ['thesis', 'thesis-review', 'book', 'newsletter'].filter((n) => !only || only.test(n));
 
-async function devServer() {
-  const up = () => fetch(`http://localhost:${PORT}/`).then(() => true).catch(() => false);
-  if (await up()) return null;
-  const proc = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'],
-    { cwd: ROOT, stdio: 'ignore', detached: true });
-  for (let i = 0; i < 60 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
-  return proc;
-}
-
 await mkdir(OUT, { recursive: true });
-const server = await devServer();
+const server = await devServer(PORT);
 const { browser, page, pageErrors } = await openApp(PORT);
 const url = `http://localhost:${PORT}/`;
 

@@ -29,10 +29,11 @@ jobs:
       # (the lo-roundtrip job below runs that leg).
       - run: npm test
 
-  # The re-save-through-LibreOffice leg, which self-skips everywhere soffice is absent.
+  # The LibreOffice legs (self-skipping everywhere soffice is absent) and the layout run,
+  # which holds the editor's page counts against LibreOffice's PDFs in Chromium.
   lo-roundtrip:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,6 +44,8 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer fonts-liberation poppler-utils
       - run: npm ci
       - run: npm run test:lo
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run test:layout
 
   # Production build booted in the three engines behind the supported browsers
   # (vite build.target). WebKit runs on macOS: its text shaping there is Safari's.
@@ -69,3 +72,7 @@ jobs:
       - run: npm run build
       - run: npm run test:smoke
       - run: npm run test:dom
+      # xmllint validates the files the monkey saves (macOS ships it).
+      - if: runner.os == 'Linux'
+        run: sudo apt-get install -y --no-install-recommends libxml2-utils
+      - run: npm run test:monkey

@@ -14,26 +14,24 @@ npm run build    # production build → dist/
 npm run preview  # serve the dist/ build locally
 npm run check    # svelte-check type-check (svelte + ts)
 npm test         # Vitest suite once (tests/**/*.test.ts)
-npm run test:watch   # Vitest in watch mode
-npm run test:lo      # LibreOffice legs: round trip + ODT/DOCX render consistency (needs `soffice`)
+npm run test:lo      # LibreOffice legs: round trip, fuzz re-read, ODT/DOCX render consistency (needs `soffice`)
 npm run test:smoke   # boots the dist/ build headless (tests/smoke/run.mjs); BROWSER=firefox|webkit
 npm run test:dom     # pagination + editing in the real browser (tests/dom/run.mjs); same BROWSER
+npm run test:layout  # page counts vs LibreOffice + layout invariants over corpus, showcase, fuzz seeds (tests/layout/)
+npm run test:monkey  # random editing under invariants: schema, undo/redo, the saved file reads back (tests/monkey/)
 npm run test:coverage  # vitest + v8 coverage over src/ → coverage/index.html
 npm run test:parity  # render parity vs LibreOffice (tests/render-parity/README.md)
-node scripts/make-thesaurus.mjs   # re-vendor public/thesaurus/ from LibreOffice's MyThes data
-node scripts/collect-licenses.mjs # regenerate public/licenses.txt after a dependency change
+node scripts/make-thesaurus.mjs; node scripts/collect-licenses.mjs  # re-vendor public/thesaurus/ (MyThes); regenerate public/licenses.txt
 node scripts/showcase/run.mjs     # rebuild docs/showcase/ (sample .odt/.docx + README screenshots); [regex] limits it
 ```
 
 Tests live in `tests/` (outside `src/`, so `svelte-check` ignores them), jsdom via Vitest.
 `roundtrip.test.ts` covers the ODF export↔import round trip + a foreign-doc/style-resolver leg;
-`lo-roundtrip.test.ts` re-saves through LibreOffice and **self-skips** without `soffice`, so
-`npm test`/CI stay green; `corpus.test.ts` round-trips the committed `tests/corpus/`
-documents (by `make-fixtures.mjs` + Word re-saves in `corpus/word/`, never our exporter);
+`lo-roundtrip.test.ts` re-saves through LibreOffice and `lo-fuzz.test.ts` reads the fuzz seeds back through it (`LO_SEEDS`, `LO_DUMP=<file>` for triage) — both **self-skip** without `soffice`, so `npm test`/CI stay green;
+`corpus.test.ts` round-trips the committed `tests/corpus/` documents (by `make-fixtures.mjs` + Word re-saves in `corpus/word/`, never our exporter);
 `fuzz-roundtrip.test.ts` round-trips seeded random documents under random export options (`fuzzDoc.ts`, `fuzzOptions.ts`) through both formats and validates every export against the schemas (`schemaValidate.ts`; `FUZZ_SEEDS=500` widens it);
-`schema-validation.test.ts` validates the `kitchenSink.ts` exports against the vendored
-schemas in `tests/schemas/` (self-skips without `xmllint`); `package-lint.test.ts` checks the semantic invariants schemas can't express (unique ids, dangling references); `tests/unit/` holds fast helper tests; the two browser runs (`tests/smoke/`, `tests/dom/`) share `tests/browser.mjs`. All test tooling stays a
-`devDependency`. No linter/formatter. CI (`.github/workflows/ci.yml`) runs `check` + `test`.
+`schema-validation.test.ts` validates the `kitchenSink.ts` exports against the vendored schemas in `tests/schemas/` (self-skips without `xmllint`); `package-lint.test.ts` checks the semantic invariants schemas can't express (unique ids, dangling references); `tests/unit/` holds fast helper tests;
+the four browser runs (`tests/smoke/`, `tests/dom/`, `tests/layout/`, `tests/monkey/`) share `tests/browser.mjs`. All test tooling stays a `devDependency`. No linter/formatter. CI (`.github/workflows/ci.yml`) runs `check` + `test`.
 
 ## Rules
 
