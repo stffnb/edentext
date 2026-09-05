@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { buildOdt } from '../src/lib/export/odt';
 import { buildDocx } from '../src/lib/export/docx';
 import { importOdt } from '../src/lib/import/odt';
-import { normalize, stripFontHoist } from './normalize';
+import { normalize, stripFontHoist, unhoist } from './normalize';
 import { mulberry32 } from './fuzzDoc';
 import { genCase, exportArgs, expectedOptions, importedOptions, diffLoose, omit, DOCX_LOSSY, docWideOddEven, type FuzzOptions } from './fuzzOptions';
 
@@ -30,21 +30,6 @@ function convertAll(files: string[], outDir: string): void {
   mkdirSync(outDir, { recursive: true });
   execFileSync('soffice', ['--headless', '--norestore', `-env:UserInstallation=file://${join(outDir, '..', 'profile')}`,
     '--convert-to', 'odt', '--outdir', outDir, ...files], { stdio: 'pipe', timeout: 900_000 });
-}
-
-// A font a paragraph carries for all its runs is written on the paragraph alone by
-// LibreOffice; read it back onto the runs, where the authored document keeps it.
-function unhoist(node: N): N {
-  const { fontSize, fontFamily } = node.attrs ?? {};
-  if ((fontSize || fontFamily) && node.content) {
-    for (const c of node.content) {
-      if (c.type !== 'text') continue;
-      const ts = (c.marks ??= []).find((m: N) => m.type === 'textStyle') ?? (c.marks.push({ type: 'textStyle', attrs: {} }), c.marks[c.marks.length - 1]);
-      ts.attrs = { ...(fontSize ? { fontSize } : {}), ...(fontFamily ? { fontFamily } : {}), ...ts.attrs };
-    }
-  }
-  for (const c of node.content ?? []) unhoist(c);
-  return node;
 }
 
 // LibreOffice's own reading: pictures re-encoded, sizes rounded through cm, a width on

@@ -61,11 +61,12 @@ export function normalize(node: N): N {
   if (node.text != null) out.text = node.text;
   // A formula adopts the caret's marks for its font; neither file carries them.
   if (node.marks?.length && node.type !== 'formula') {
-    out.marks = node.marks
+    const marks = node.marks
       .map((m: N) => {
         const mm: N = { type: m.type };
+        // An empty string is the picker's "unset" (a font family, say) — no value at all.
         const attrs = Object.fromEntries(Object.entries(m.attrs ?? {})
-          .filter(([k, v]) => v != null && MARK_DEFAULTS[k] !== v)
+          .filter(([k, v]) => v != null && v !== '' && MARK_DEFAULTS[k] !== v)
           .map(([k, v]) => [k, typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toUpperCase() : v]));
         // ODF keeps the authored (naive local) comment/revision date, DOCX re-serializes
         // the same instant as UTC — compare the instant.
@@ -77,7 +78,9 @@ export function normalize(node: N): N {
         if (Object.keys(attrs).length) mm.attrs = attrs;
         return mm;
       })
+      .filter((m: N) => m.type !== 'textStyle' || m.attrs) // a textStyle with nothing left says nothing
       .sort((a: N, b: N) => a.type.localeCompare(b.type));
+    if (marks.length) out.marks = marks;
   }
   const attrs: N = {};
   // An auto date/time field re-evaluates on load (the DOCX importer stamps "now"), so
@@ -90,6 +93,8 @@ export function normalize(node: N): N {
     if (k in ORDERED_DEFAULTS && ORDERED_DEFAULTS[k] === v) continue;
     if (volatileKey(k)) continue;
     if (k === 'colwidth') { attrs.colwidth = 'CW'; continue; } // ratios compared separately
+    // The gap beside a frame is drawn on a side wrap only, and zero is no gap at all.
+    if (k === 'wrapDist' && !(Number(v) > 0 && (node.attrs?.wrap === 'left' || node.attrs?.wrap === 'right'))) continue;
     // The DOCX importer keeps the OMML serializer's trailing space on purpose
     // (re-serialize-to-itself); the ODT annotation is the authored string. Same formula.
     if (k === 'latex') { attrs.latex = String(v).trim(); continue; }
@@ -123,6 +128,22 @@ export function firstDiff(a: N, b: N, path = '$'): string | null {
     if (d) return d;
   }
   return null;
+}
+
+// A block's own font pushed down onto its runs, so a hoisted font and a run-level one
+// compare as the same document.
+export function unhoist(node: any): any {
+  const { fontSize, fontFamily } = node.attrs ?? {};
+  if ((fontSize || fontFamily) && node.content) {
+    for (const c of node.content) {
+      if (c.type !== 'text') continue;
+      const ts = (c.marks ??= []).find((m: any) => m.type === 'textStyle')
+        ?? (c.marks.push({ type: 'textStyle', attrs: {} }), c.marks[c.marks.length - 1]);
+      ts.attrs = { ...(fontSize ? { fontSize } : {}), ...(fontFamily ? { fontFamily } : {}), ...ts.attrs };
+    }
+  }
+  for (const c of node.content ?? []) unhoist(c);
+  return node;
 }
 
 // A paragraph whose runs share one font legitimately comes back with that font also

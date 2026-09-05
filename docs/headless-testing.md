@@ -24,14 +24,23 @@ page count against LibreOffice's PDF (`soffice` + `pdfinfo`, a page or a tenth o
 and checks the rendered lines: none overlap, none sit in the page gap or past the sheet,
 none cross a single-section document's margins, no heading ends a page or column, nothing
 is wider than the page. A tab's box, a frame, a formula and the decor are not lines.
+It then holds the document against `tests/layout/baseline.json`, which records where each
+page starts and what the load cost: a page starting elsewhere is a layout change the run
+prints page by page, and a load over three times its recorded time is a regression. The
+baseline is keyed by engine and platform (line breaking is theirs) and `LAYOUT_UPDATE=1`
+records it again — the answer to a deliberate change, never to a surprise.
 The **monkey run** replays `MONKEY_OPS` random keys and commands per seed
-(`MONKEY_SEED`, `MONKEY_RUNS`, `MONKEY_DOC`) on a corpus document and checks after each:
+(`MONKEY_SEED`, `MONKEY_RUNS`, `MONKEY_DOC`) on a corpus document — typing, formatting,
+lists, tables, notes, frames and columns — and checks after each:
 no uncaught error, a document its own schema accepts; at the end undo back to the opened
 file and redo forward, then Save As both formats, xmllint each against the schemas and read
 it back through the app's importer. A failing seed prints its last ops and keeps the file
 and both documents under the OS temp dir. Found so far: a note inserted in a text box or a
 text box in a note breaks the ODT's XML, and a table in a cell is dropped on save — both
-commands now refuse there.
+commands now refuse there; a page break inside a columns section, which the editor never
+shows and only DOCX writes, is now cleared as the blocks are wrapped; an `.odt` dropped
+every block of a list item after the first, and a header row that the table did not ask to
+repeat came back as ordinary cells.
 
 `BROWSER=chromium|firefox|webkit` picks the engine (Chromium by default; the others via
 `npx playwright-core install firefox webkit`). CI runs both on all three, one per matrix

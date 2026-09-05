@@ -1,19 +1,27 @@
-// Layout run: the documents the repo carries — corpus, showcase and fuzz seeds — opened in
-// the editor, the page count held against LibreOffice's PDF, and the rendered lines checked
-// for what no layout may show: overlapping lines, text off the page or past the margins, a
-// heading alone at the foot of a page or column. `[regex]` limits the run by file name.
+// Layout run: corpus, showcase and fuzz seeds opened in the editor, the page count held
+// against LibreOffice's PDF, the lines checked for overlap, margin escapes and stranded
+// headings, and the page starts and load time held against tests/layout/baseline.json.
 import { execFileSync, execSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, existsSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename, extname, relative } from 'node:path';
 import { ROOT, checker, devServer, openApp, settle } from '../browser.mjs';
 
+// `[regex]` limits the run by file name; LAYOUT_UPDATE=1 records the baseline for this
+// engine and platform instead of holding the run against it.
 const PORT = +(process.env.LAYOUT_PORT ?? 4188);
 const SEEDS = +(process.env.LAYOUT_SEEDS ?? 10);
+const UPDATE = process.env.LAYOUT_UPDATE === '1';
 const only = process.argv[2] ? new RegExp(process.argv[2]) : null;
 const has = (tool) => { try { execSync(`command -v ${tool}`, { stdio: 'ignore' }); return true; } catch { return false; } };
 const LO = has('soffice') && has('pdfinfo');
 const { check, failures } = checker();
+// Line breaking is the engine's and the platform's, so each keeps its own baseline.
+const BASE = join(ROOT, 'tests/layout/baseline.json');
+const KEY = `${process.env.BROWSER ?? 'chromium'}/${process.platform}`;
+const baseline = existsSync(BASE) ? JSON.parse(readFileSync(BASE, 'utf8')) : {};
+const known = baseline[KEY] ?? {};
+const fresh = {};
 
 const files = (dir) => (existsSync(dir)
   ? readdirSync(dir).filter((f) => /\.(odt|docx)$/.test(f) && !f.startsWith('~$')).sort().map((f) => join(dir, f))
@@ -107,6 +115,7 @@ function lintLayout() {
       if (dy > 0.5 * Math.min(a.bottom - a.top, b.bottom - b.top) && dx > 2) issue('overlap', a, { other: b.text, otherKind: b.kind, otherAt: box(b) });
     }
   }
+  const starts = sheets.map((_, i) => lines.find((l) => l.page === i && (l.kind === 'body' || l.kind === 'note'))?.text ?? '');
   // Body text stays on a sheet and, in a single-section document, inside the margins.
   for (const l of lines) {
     if (l.kind !== 'body' && l.kind !== 'note') continue;
@@ -137,7 +146,7 @@ function lintLayout() {
   }
   const tiptap = document.querySelector('.tiptap');
   if (tiptap.scrollWidth > tiptap.clientWidth + 1) issues.push({ kind: 'content wider than the page', page: 0, text: `${tiptap.scrollWidth}px in ${tiptap.clientWidth}px` });
-  return { pages: sheets.length, lines: lines.length, issues };
+  return { pages: sheets.length, lines: lines.length, starts, issues };
 }
 
 const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s); };
@@ -169,17 +178,31 @@ try {
     await page.evaluate(() => localStorage.clear());
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('.tiptap', { timeout: 30_000 });
+    await page.evaluate(() => { window.__loadAt = performance.now(); });
     await page.setInputFiles('input.file-input', file);
     // The document's name says the file is in; a document may hold nothing to wait for.
     await page.waitForFunction((n) => document.querySelector('.doc-name-input')?.value.startsWith(n), basename(file, extname(file)), { timeout: 60_000 });
     await settle(page, true);
+    // The layout's own time: from the file going in to the last change settle saw, so the
+    // quiet period it waits out afterwards is not part of the measurement.
+    const ms = await page.evaluate(() => Math.round((window.__paritySince - window.__loadAt) / 100) * 100);
     const r = await page.evaluate(lintLayout);
     const ref = lo.get(file);
     const off = ref == null ? 0 : r.pages - ref;
     // A page or a tenth either way is the slack two layout engines take.
     const pagesOk = Math.abs(off) <= Math.max(1, Math.round((ref ?? 0) / 10));
-    const label = `${name}  editor ${r.pages}p${ref != null ? ` / LO ${ref}p` : ''}${off && pagesOk ? ' (~)' : ''}  ${r.issues.length} issue(s)`;
-    check(pagesOk && !r.issues.length, label);
+    // What the baseline holds: where each page starts, and what the load cost.
+    const prev = known[name];
+    fresh[name] = { pages: r.pages, lines: r.lines, ms, starts: r.starts };
+    const moved = prev ? r.starts.map((t, i) => [i + 1, t, prev.starts[i] ?? '—']).filter(([, a, b]) => a !== b) : [];
+    // ponytail: wall clock read through a 500ms poll, so only three times the recorded
+    // load plus a second of slack counts as a regression.
+    const slow = prev && ms > prev.ms * 3 + 1000 ? `${ms}ms against ${prev.ms}ms` : null;
+    const label = `${name}  editor ${r.pages}p${ref != null ? ` / LO ${ref}p` : ''}${off && pagesOk ? ' (~)' : ''}  ${r.issues.length} issue(s)${prev ? '' : ' (new)'}`;
+    check(pagesOk && !r.issues.length && (UPDATE || (!moved.length && !slow)), label);
+    if (slow) console.log(`    slower than the baseline: ${slow}`);
+    for (const [pg, now, was] of moved.slice(0, 5)) console.log(`    p${pg} starts "${now}", the baseline has "${was}"`);
+    if (moved.length > 5) console.log(`    … ${moved.length - 5} page start(s) more`);
     for (const i of r.issues.slice(0, 8)) {
       const where = i.other ? ` × ${i.otherKind} "${i.other}" @${i.otherAt}` : i.body ? ` (body ${i.body})` : i.sheet ? ` (sheet ${i.sheet})` : '';
       console.log(`    p${i.page} ${i.kind}: "${i.text}"${i.at ? ` @${i.at}` : ''}${where}`);
@@ -191,6 +214,13 @@ try {
       if (/Execution context was destroyed/.test(err.message) && !retried.has(file)) { retried.add(file); todo.push(file); continue; }
       check(false, `${name}: ${err.message.split('\n')[0]}`);
     }
+  }
+  if (UPDATE) {
+    const merged = Object.fromEntries(Object.entries({ ...known, ...fresh }).sort());
+    writeFileSync(BASE, JSON.stringify({ ...baseline, [KEY]: merged }, null, 1) + '\n');
+    console.log(`baseline for ${KEY}: ${Object.keys(fresh).length} document(s) recorded`);
+  } else if (!Object.keys(known).length) {
+    console.log(`no baseline for ${KEY} — record one with LAYOUT_UPDATE=1`);
   }
 } catch (err) {
   check(false, `layout run threw: ${err.stack ?? err}`);
