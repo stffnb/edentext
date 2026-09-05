@@ -35,8 +35,10 @@ EdenText is a web-based, powerful word processor for everything from quick notes
 > listed under [Not yet implemented](CHANGELOG.md#not-yet-implemented) and
 > [Known limitations](CHANGELOG.md#known-limitations).
 
-[![EdenText editing a multi-column document](docs/screenshot.png)](https://edentext.app)
-Sample File from https://sample-files.com/
+<a href="https://edentext.app"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/showcase/thesis-dark.png">
+  <img src="docs/showcase/thesis.png" alt="EdenText editing a thesis: numbered chapters, formulas and a running header">
+</picture></a>
 
 ## Features
 
@@ -59,6 +61,18 @@ Sample File from https://sample-files.com/
 - **Any current browser** — in Chrome and Edge, Save writes back to the opened
   file; other browsers receive each save as a download, so turn on "Always ask
   where to save" in their settings to pick the location
+
+## Gallery
+
+The documents behind these pictures are in [`docs/showcase/`](docs/showcase/) as `.odt`
+and `.docx`, ready to open in EdenText, LibreOffice or Word. They are built by
+`scripts/showcase/run.mjs`; the photographs are NASA's and the book is Lewis Carroll's,
+both public domain.
+
+| | |
+|---|---|
+| [![Tracked changes and comments](docs/showcase/thesis-review.png)](docs/showcase/thesis-review.png) **Review** — tracked changes, threaded comments in the margin, a draft watermark | [![A book on facing pages](docs/showcase/book-spread.png)](docs/showcase/book-spread.png) **Book** — A5, mirrored margins, chapters opening on a right-hand page, running heads |
+| [![A newsletter in two columns](docs/showcase/newsletter.png)](docs/showcase/newsletter.png) **Newsletter** — columns, pictures with captions, a sidebar box | [![Tables with formulas](docs/showcase/newsletter-tables.png)](docs/showcase/newsletter-tables.png) **Tables** — table styles and spreadsheet-style formulas |
 
 ## Development
 
