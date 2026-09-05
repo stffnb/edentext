@@ -100,6 +100,12 @@ function collectWrappable(state: EditorState, start: number, end: number): { blo
   return ok && blocks.length ? { blocks: mergeJoinedBlocks(blocks), from, to } : null;
 }
 
+// Pagination breaks a columns fragment as a whole, so a manual page break inside one is
+// honoured by nothing — the blocks lose theirs on the way in.
+function withoutPageBreaks(blocks: PMNode[]): PMNode[] {
+  return blocks.map((b) => (b.attrs?.breakBefore ? b.type.create({ ...b.attrs, breakBefore: null }, b.content, b.marks) : b));
+}
+
 function childArray(n: PMNode): PMNode[] {
   const out: PMNode[] = [];
   n.forEach((c) => out.push(c));
@@ -146,7 +152,7 @@ function applyToWholeDoc(state: EditorState, tr: Transaction, attrs: ColumnsAttr
   if (run) runs.push(run);
   if (!runs.length) return false;
   for (const r of [...runs].reverse()) {
-    tr.replaceWith(r.from, r.to, type.create(attrs, mergeJoinedBlocks(r.blocks)));
+    tr.replaceWith(r.from, r.to, type.create(attrs, withoutPageBreaks(mergeJoinedBlocks(r.blocks))));
   }
   return true;
 }
@@ -261,7 +267,7 @@ export const Columns = Node.create({
           const covered = collectWrappable(state, $from.before(1), $to.after(1));
           if (!covered) return false;
           if (dispatch) {
-            const tr = state.tr.replaceWith(covered.from, covered.to, type.create(attrs, covered.blocks));
+            const tr = state.tr.replaceWith(covered.from, covered.to, type.create(attrs, withoutPageBreaks(covered.blocks)));
             tr.setSelection(TextSelection.near(tr.doc.resolve(covered.from + 1)));
             dispatch(tr.scrollIntoView());
           }

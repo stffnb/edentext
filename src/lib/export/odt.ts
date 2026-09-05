@@ -390,6 +390,23 @@ function replacePageBreaks(doc: TiptapNode): TiptapNode {
   };
 }
 
+// odf-kit writes a list item's first paragraph and nothing else, so the item's further
+// blocks ride it SEG-separated; applyListItemBlocks re-emits them as their own.
+function mergeListItemBlocks(node: TiptapNode): TiptapNode {
+  if (!node.content?.length) return node;
+  const kids = node.content;
+  if (node.type === 'listItem' && kids[0]?.type === 'paragraph') {
+    const extras = kids.slice(1).filter(b => b.type === 'paragraph' || b.type === 'heading');
+    if (extras.length) {
+      const first = { ...kids[0], content: [...(kids[0].content ?? []),
+        ...extras.flatMap(e => [{ type: 'text', text: SEG }, ...(e.content ?? [])])] };
+      const rest = kids.slice(1).filter(b => b.type !== 'paragraph' && b.type !== 'heading');
+      return { ...node, content: [first, ...rest.map(mergeListItemBlocks)] };
+    }
+  }
+  return { ...node, content: kids.map(mergeListItemBlocks) };
+}
+
 // Mark the first block of each section after the first, so applySectionMasterPages can
 // point it at that section's master page. Runs after the column hoist, so a section
 // starting inside one is top-level by now; the PGB marker keeps its place at the front.
@@ -1525,6 +1542,48 @@ function odfLookAttrs(look: TableLook): string {
 // odf-kit's ListBuilder has no per-item paragraph options, so list-item paragraphs all
 // emit as List_20_Bullet/Number. Rewrite content.xml to point those at automatic styles
 // that inherit the list style and add fo:text-align / fo:margin-top / fo:margin-bottom.
+// Split a list item's paragraph back into the blocks mergeListItemBlocks merged into it.
+// ponytail: they are re-emitted at the item's end, so a block before a nested list lands
+// after it — and each takes the item's own paragraph style.
+function applyListItemBlocks(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const contentBytes = files['content.xml'];
+  if (!contentBytes) return odtBytes;
+  const content = strFromU8(contentBytes);
+  let out = '';
+  let i = 0;
+  let touched = false;
+  for (;;) {
+    const at = content.indexOf('<text:list-item', i);
+    if (at < 0) { out += content.slice(i); break; }
+    const pStart = content.indexOf('<text:p', at);
+    const gt = pStart < 0 ? -1 : content.indexOf('>', pStart);
+    const pEnd = gt < 0 ? -1 : content.indexOf('</text:p>', gt);
+    if (pEnd < 0) { out += content.slice(i); break; }
+    const inner = content.slice(gt + 1, pEnd);
+    if (!inner.includes(SEG)) { out += content.slice(i, pEnd); i = pEnd; continue; }
+    // The item's own end, past every nested item.
+    let depth = 1;
+    let scan = pEnd;
+    while (depth > 0) {
+      const open = content.indexOf('<text:list-item', scan + 1);
+      const close = content.indexOf('</text:list-item>', scan + 1);
+      if (close < 0) break;
+      if (open >= 0 && open < close) { depth++; scan = open; } else { depth--; scan = close; }
+    }
+    const [first, ...extras] = inner.split(SEG);
+    const attrs = content.slice(pStart + 7, gt);
+    out += content.slice(i, gt + 1) + first + '</text:p>'
+      + content.slice(pEnd + 9, scan)
+      + extras.map(e => `<text:p${attrs}>${e}</text:p>`).join('');
+    i = scan;
+    touched = true;
+  }
+  if (!touched) return odtBytes;
+  files['content.xml'] = strToU8(out);
+  return zipSync(files, { level: 6 });
+}
+
 function applyListItemStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Array {
   if (styles.every(paraStyleIsEmpty)) return odtBytes;
 
@@ -3725,7 +3784,11 @@ function tablePropsOf(node: TiptapNode, contentWidthCm: number): TableProps | nu
   const mt = Math.max(0, Number(node.attrs?.marginTop) || 0);
   const mb = Math.max(0, Number(node.attrs?.marginBottom) || 0);
   const keepRows = node.attrs?.keepRows === true;
-  const repeatHeader = node.attrs?.repeatHeader === true;
+  // A header row is one whether the table asked for the repeat or only the row's own
+  // cells say they head it — ODF spells both with the one element (docx.ts does the same).
+  const firstRow = (node.content ?? []).find(r => r.type === 'tableRow');
+  const repeatHeader = node.attrs?.repeatHeader === true
+    || (firstRow?.content ?? []).some(c => c.type === 'tableHeader');
   if (ml + mr > contentWidthCm - 1) ml = mr = 0;
   if (!ml && !mr && !mt && !mb && !keepRows && !repeatHeader) return null;
   return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb), keepRows, repeatHeader };
@@ -4880,7 +4943,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const bibMarks: BibExport[] = [];
   const rubies: RubyExport[] = [];
   const sentinels = replaceRuby(replaceBibEntries(replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replacePlaceholderFields(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), placeholderLabels), formulas), crossRefs), commentList), seqFields), revisionList), indexMarks), bibMarks), rubies);
-  const raw = markTextEffects(bakeListCharStyles(sentinels, styles), DEFAULT_FONT_SIZE_PT, styles);
+  const raw = mergeListItemBlocks(markTextEffects(bakeListCharStyles(sentinels, styles), DEFAULT_FONT_SIZE_PT, styles));
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Different first page (ODF header-first): page 1 gets its own zone content.
@@ -5071,7 +5134,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
 
   const listStyles: ParaStyle[] = [];
   collectListItemStyles(raw, listStyles);
-  const styledLists = applyListItemStyles(numberedOdt, listStyles);
+  const styledLists = applyListItemBlocks(applyListItemStyles(numberedOdt, listStyles));
 
   // Whole-list indent → added to each L# list-style's level margins.
   const listLevels: ListLevelProps[][] = [];

@@ -1384,10 +1384,13 @@ function stripPlaceholderGray(marks: Mark[]): Mark[] {
 function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunProps, defaults: BlockDefaults, label: string | null = null): Node | null {
   const note = wid == null ? null : ctx.noteParts[kind].get(wid);
   if (!note) return null;
+  // A picture or a link in a note is related from the note's own part, not the document's.
+  const noteRels = ctx.files[`word/_rels/${kind}s.xml.rels`];
+  const noteCtx: Ctx = noteRels ? { ...ctx, rels: parseRels(noteRels) } : ctx;
   const content: Node[] = [];
   for (const para of Array.from(note.children)) {
     if (para.namespaceURI !== W || para.localName !== 'p') continue;
-    const runs = convertInline(para, ctx, baseRun, defaults, false);
+    const runs = convertInline(para, noteCtx, baseRun, defaults, false);
     if (content.length && runs.length) content.push({ type: 'hardBreak' });
     content.push(...runs);
   }
@@ -2134,8 +2137,11 @@ function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topB
   const offsetCm = anchorOffsetX(anchor, ctx);
   const align = anchor.getElementsByTagNameNS(WP, 'positionH')[0]
     ?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
+  // A band frame with no side of its own is written flush left with overlap forbidden;
+  // that pair is "no side", not a left-aligned frame (which shares its band).
+  const bandLeft = (align === 'left' || align === 'inside') && anchor.getAttribute('allowOverlap') === '0';
   const alignH: 'left' | 'right' | null = align === 'right' || align === 'outside' ? 'right'
-    : align === 'left' || align === 'inside' ? 'left' : null;
+    : (align === 'left' || align === 'inside') && !bandLeft ? 'left' : null;
   // Only the side the text flows on: the gap on the other one is the frame's offset.
   const distOf = (wrap: string) => {
     const emu = parseInt(anchor.getAttribute(wrap === 'right' ? 'distL' : 'distR') ?? '', 10);

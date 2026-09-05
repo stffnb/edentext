@@ -56,5 +56,9 @@ unloaded) and supplies the custom table view + drag plugins instead.
 **What a command refuses, and why** (found by `tests/monkey/`): no note in a text box and no
 text box in a note (neither format holds one there); no table in a table, a list item or a
 note (nothing exports a nested one, ODF's list item holds no table, and ProseMirror would
-wrap one in a text box to fit a note's inline content); a selection stops at the notes'
-boundary (`clampToSide`); the notes plugin's repairs ride the history event they follow.
+wrap one in a text box to fit a note's inline content) — and a **cell's content expression**
+says the same (`CELL_CONTENT`, `extensions.ts`), since a command's refusal is not the only
+way one gets in; a selection stops at the notes' boundary (`clampToSide`); the notes
+plugin's repairs ride the history event they follow.
+Blocks wrapped into a columns section lose a manual page break: pagination breaks a
+fragment as a whole, so nothing there honours one — and only DOCX could write it.

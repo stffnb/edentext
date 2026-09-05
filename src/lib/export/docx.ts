@@ -1857,6 +1857,35 @@ function applyMirrorMarginsDocx(bytes: Uint8Array): Uint8Array {
   return zipSync(out);
 }
 
+// Post-pack pass: the package registers a footnote's pictures in
+// word/_rels/footnotes.xml.rels and leaves the endnotes' `rId{file}` placeholders
+// unresolved — a drawing no reader can follow. Mint the relationship and fill them in.
+function applyEndnoteImagesDocx(bytes: Uint8Array): Uint8Array {
+  const files = unzipSync(bytes);
+  const xmlBytes = files['word/endnotes.xml'];
+  const xml = xmlBytes ? strFromU8(xmlBytes) : '';
+  if (!xml.includes('rId{')) return bytes;
+  const relsPath = 'word/_rels/endnotes.xml.rels';
+  const rels = (files[relsPath] ? strFromU8(files[relsPath]) : `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`)
+    .replace(/<Relationships([^>]*)\/>/, '<Relationships$1></Relationships>');
+  let next = maxIdIn(rels, /Id="rId(\d+)"/g) + 1;
+  const ids = new Map<string, string>();
+  const added: string[] = [];
+  files['word/endnotes.xml'] = strToU8(xml.replace(/rId\{([^}]+)\}/g, (_m, name: string) => {
+    let id = ids.get(name);
+    if (!id) {
+      id = `rId${next++}`;
+      ids.set(name, id);
+      added.push(`<Relationship Id="${id}" Type="${R_NS}/image" Target="media/${name}"/>`);
+    }
+    return id;
+  }));
+  files[relsPath] = strToU8(rels.replace('</Relationships>', added.join('') + '</Relationships>'));
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
 // Post-pack pass: the page's own decoration. Word keeps the background on w:document
 // (switched on in settings.xml), the border in every w:sectPr, and the watermark as a
 // VML fontwork shape in each header part — the shapes LibreOffice writes, probed.
@@ -3031,7 +3060,7 @@ export async function buildDocx(
   // The note configuration goes out whether or not a note exists yet, as Word keeps its
   // own in settings.xml — a document numbering its first footnote from 3 must still say so.
   const withNotePr = applyNotePrDocx(cited, notesSettings);
-  const withNotes = docNoteIds.size ? applyNoteMarksDocx(withNotePr) : withNotePr;
+  const withNotes = docNoteIds.size ? applyEndnoteImagesDocx(applyNoteMarksDocx(withNotePr)) : withNotePr;
   const threaded = applyCommentsExtendedDocx(withNotes);
   const mirrored = margins.mirrored ? applyMirrorMarginsDocx(threaded) : threaded;
   const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);

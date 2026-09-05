@@ -81,6 +81,8 @@ import { markupView } from '../storage/markup.svelte';
 import { loadDocProperties } from '../storage/docProperties';
 import { Insertion, Deletion, TrackChanges } from './extensions/trackChanges';
 
+const CELL_CONTENT = '(paragraph | heading | bulletList | orderedList)+';
+
 export const extensions = [
   // columns has its own group so only the document (not cells/lists) admits it; the
   // note section is last or nowhere. A text box is inline and rides a paragraph.
@@ -213,8 +215,10 @@ export const extensions = [
     },
   }).configure({ resizable: false, View: TableView }),
   ResizableTableRow,
-  TableHeader,
-  TableCell,
+  // A cell holds what both exporters can write into one, which is also what the importers
+  // salvage a nested table into — the command's own refusal is not the only way in.
+  TableHeader.extend({ content: CELL_CONTENT }),
+  TableCell.extend({ content: CELL_CONTENT }),
   TableColumnResize,
   TableRowResize,
   // "Split Cells…" (N×M); merge uses extension-table's built-in mergeCells.
