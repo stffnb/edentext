@@ -68,6 +68,10 @@ fallback download shows a one-time hint (`edentext-download-hint`) that the brow
 - **`normalizeColor`** — coerces colors to `#RRGGBB` (ODF requirement; rejects/normalizes `rgb()` and short hex).
 - **Schema conformance** (guarded by `tests/schema-validation.test.ts`; LibreOffice forgives all of this, Word's strict reader does not): `applyOdfVersion` stamps every ODF part **1.3** — the version LibreOffice writes, and the first with `style:header-first` — over odf-kit's 1.2. `draw:image` carries the `xlink:type/show/actuate` trio (`xlink:type` is mandatory beside `xlink:href`); `text:time-value` is an xsd dateTime, never a `PT…S` duration (the ODT importer still reads the legacy duration); `index-entry-link-start/-end` only in TOC entry templates; `text:dont-balance-text-columns` on `style:section-properties`. DOCX: `orderDocxSettings` (last pass) re-sorts `w:settings` children into the fixed CT_Settings sequence the prepend-passes scramble; `w14:paraId` in comments.xml requires `mc:Ignorable="w14"` on the root. `w:numPr` sits after the keep flags in a heading style's `w:pPr`, and `w:pBdr` sides are re-sorted post-pack (`orderParagraphBorders`: the library writes top, bottom, left, right). `tests/package-lint.test.ts` guards the invariants the schemas cannot express (unique style ids, no dangling style/num/rel references, balanced ranges, manifest completeness).
 
+- **Every master of a section writes the running zone, blank where its own page has none.**
+  The page layout takes the band off the page margin for the whole section (`layoutFor`), so
+  a master without the zone puts its body up into the band — the page a section opens on and
+  the pages after it are separate masters, and it cost a chapter opening 0.8cm of its margin.
 - **A section past the first spells its zones out, blank ones included.** A `w:sectPr`
   naming no `w:headerReference` is Word's "Link to Previous" and repeats the section above
   it — measured: a chapter's running head landed on the pages a blank section was meant

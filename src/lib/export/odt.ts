@@ -3071,7 +3071,9 @@ function injectIntoHeaderZones(styles: string, shapes: string): string {
   const blank = `<style:header><text:p text:style-name="Header">${shapes}</text:p></style:header>`;
   const out = styles.replace(/<style:header-style\s*\/>/g, '<style:header-style><style:header-footer-properties fo:min-height="0cm" fo:margin-bottom="0cm"/></style:header-style>');
   // Every master page, the section masters included: the decor shows on their pages too.
-  return out.replace(/<style:master-page\b[^>]*(?:\/>|>[\s\S]*?<\/style:master-page>)/g, (master) => {
+  // Self-closing first, or a greedy attribute run eats the `/` and the open form swallows
+  // an empty master page together with the next one's closing tag.
+  return out.replace(/<style:master-page\b[^>]*\/>|<style:master-page\b[^>]*>[\s\S]*?<\/style:master-page>/g, (master) => {
     if (!/<style:header[\s/>]/.test(master)) {
       return master.endsWith('/>')
         ? master.replace(/\/>$/, `>${blank}</style:master-page>`)
@@ -5496,24 +5498,31 @@ function masterPageXml(name: string, layoutName: string, set: HfSet, pageCount: 
     return hfVariantZoneXml(kind, suffix, para as TiptapNode, pageCount, mint, pfx);
   };
   const on = (flag: boolean, running: HfDoc, variant: HfDoc) => flag && (!hfIsEmpty(running) || !hfIsEmpty(variant));
+  // The layout takes the band off the page margin for a section that has a zone of this
+  // kind at all (layoutFor), so every master of it writes the running zone — blank where
+  // its own page has none — or the body of that page sits in the reserved band.
+  const has = {
+    header: !!(set.header || set.headerFirst || set.headerEven),
+    footer: !!(set.footer || set.footerFirst || set.footerEven),
+  };
   let body: string;
   if (part === 'right' || part === 'left') {
     // The one page this master governs shows the first-page variant, else the running
     // zone — the left one on a left page.
     const one = (running: HfDoc, first: HfDoc, left: HfDoc): HfDoc =>
       set.differentFirstPage ? first : part === 'left' && set.differentOddEven ? left : running;
-    body = zone('header', null, one(set.header, set.headerFirst, set.headerEven))
-      + zone('footer', null, one(set.footer, set.footerFirst, set.footerEven));
+    body = zone('header', null, one(set.header, set.headerFirst, set.headerEven), has.header)
+      + zone('footer', null, one(set.footer, set.footerFirst, set.footerEven), has.footer);
   } else {
     const hFirst = part === 'all' && on(set.differentFirstPage, set.header, set.headerFirst);
     const hEven = on(set.differentOddEven, set.header, set.headerEven);
     const fFirst = part === 'all' && on(set.differentFirstPage, set.footer, set.footerFirst);
     const fEven = on(set.differentOddEven, set.footer, set.footerEven);
     // In the schema's order: the running zone, its left variant, then its first-page one.
-    body = zone('header', null, set.header, hFirst || hEven)
+    body = zone('header', null, set.header, has.header)
       + (hEven ? zone('header', 'left', set.headerEven, true) : '')
       + (hFirst ? zone('header', 'first', set.headerFirst, true) : '')
-      + zone('footer', null, set.footer, fFirst || fEven)
+      + zone('footer', null, set.footer, has.footer)
       + (fEven ? zone('footer', 'left', set.footerEven, true) : '')
       + (fFirst ? zone('footer', 'first', set.footerFirst, true) : '');
   }

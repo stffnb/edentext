@@ -792,8 +792,9 @@ type BlockDefaults = {
   fonts: Set<string>;
   color: string;
   italic: boolean;
-  underline: boolean;
-  strike: boolean;
+  // The line the style draws (lineSig), null where it draws none.
+  underline: string | null;
+  strike: string | null;
   caps: CapsMode | null;
 };
 
@@ -821,8 +822,8 @@ function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDef
     fonts,
     color: hexColor(baseRun.color) ?? '#000000',
     italic: baseRun.italic ?? (headingLevel != null && HEADING_ITALIC[headingLevel - 1]),
-    underline: !!baseRun.underline,
-    strike: !!baseRun.strike,
+    underline: lineSig(baseRun).underline,
+    strike: lineSig(baseRun).strike,
     caps: baseRun.caps || null,
   };
 }
@@ -1914,11 +1915,12 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
 
   // Marks the block's named style already renders need no mark of their own.
   if (props.italic && !defaults.italic) marks.push({ type: 'italic' });
-  if (props.underline && !inLink && !defaults.underline) { // link underline is the CSS default
-    const line = underlineAttrs(props);
-    marks.push(line ? { type: 'underline', attrs: line } : { type: 'underline' });
+  const line = lineSig(props);
+  if (props.underline && !inLink && line.underline !== defaults.underline) { // link underline is the CSS default
+    const attrs = underlineAttrs(props);
+    marks.push(attrs ? { type: 'underline', attrs } : { type: 'underline' });
   }
-  if (props.strike && !defaults.strike) {
+  if (props.strike && line.strike !== defaults.strike) {
     marks.push({ type: 'strike', ...(props.doubleStrike ? { attrs: { lineStyle: 'double' } } : {}) });
   }
   if (props.vertAlign === 'superscript') marks.push({ type: 'superscript' });
@@ -1959,6 +1961,15 @@ function underlineAttrs(props: RunProps): Record<string, unknown> | undefined {
   const color = hexColor(props.underlineColor);
   if (color) attrs.lineColor = color;
   return Object.keys(attrs).length ? attrs : undefined;
+}
+
+// The lines a style draws, in the shape marksFor gives a run: a run drawing exactly that
+// adds nothing, a different shape or colour is direct formatting the style can't carry.
+function lineSig(props: RunProps): { underline: string | null; strike: string | null } {
+  return {
+    underline: props.underline ? JSON.stringify(underlineAttrs(props) ?? {}) : null,
+    strike: props.strike ? (props.doubleStrike ? 'double' : '') : null,
+  };
 }
 
 // ---- images -----------------------------------------------------------------

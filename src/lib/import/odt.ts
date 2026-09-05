@@ -1430,8 +1430,9 @@ type BlockDefaults = {
   // (only bold has fontWeight:'normal'), so it keeps the style's rendering.
   // ponytail: per-mark "off" overrides need mark attrs like fontWeight's; add if files need it.
   italic: boolean;
-  underline: boolean;
-  strike: boolean;
+  // The line the style draws (lineSig), null where it draws none.
+  underline: string | null;
+  strike: string | null;
   caps: CapsMode | null;
   // The style's own paragraph background and rule lines (paraBoxAttrs).
   box: Record<string, string>;
@@ -1477,8 +1478,8 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     fonts: new Set(headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS),
     color: '#000000',
     italic: hdef ? hdef.italic : false,
-    underline: false,
-    strike: false,
+    underline: null,
+    strike: null,
     caps: null,
     box: {},
   };
@@ -1506,8 +1507,8 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     fonts,
     color: (text['fo:color'] && normalizeColor(text['fo:color'])) || fallback.color,
     italic: fontStyle === 'italic' || fontStyle === 'oblique',
-    underline: !!text['style:text-underline-style'] && text['style:text-underline-style'] !== 'none',
-    strike: !!text['style:text-line-through-style'] && text['style:text-line-through-style'] !== 'none',
+    underline: lineSig(text, 'underline'),
+    strike: lineSig(text, 'line-through'),
     caps: capsFromOdf(text),
     box: paraBoxAttrs(para),
   };
@@ -1778,8 +1779,8 @@ function charDefaults(ctx: Ctx, base: BlockDefaults, odfName: string): BlockDefa
     fonts,
     color: (props['fo:color'] && normalizeColor(props['fo:color'])) || base.color,
     italic: fontStyle ? fontStyle === 'italic' || fontStyle === 'oblique' : base.italic,
-    underline: props['style:text-underline-style'] ? props['style:text-underline-style'] !== 'none' : base.underline,
-    strike: props['style:text-line-through-style'] ? props['style:text-line-through-style'] !== 'none' : base.strike,
+    underline: props['style:text-underline-style'] ? lineSig(props, 'underline') : base.underline,
+    strike: props['style:text-line-through-style'] ? lineSig(props, 'line-through') : base.strike,
     caps: capsFromOdf(props) ?? base.caps,
   };
 }
@@ -2589,6 +2590,15 @@ function lineAttrs(style: string, type: string | undefined, color: string | unde
   return Object.keys(attrs).length ? attrs : undefined;
 }
 
+// The line a style draws, in the shape marksFor gives a run: a run drawing exactly that
+// adds nothing, a different shape or colour is direct formatting the style can't carry.
+function lineSig(props: PropMap, kind: 'underline' | 'line-through'): string | null {
+  const style = props[`style:text-${kind}-style`];
+  if (!style || style === 'none') return null;
+  const color = kind === 'underline' ? props['style:text-underline-color'] : undefined;
+  return JSON.stringify(lineAttrs(style, props[`style:text-${kind}-type`], color) ?? {});
+}
+
 function capsFromOdf(props: PropMap): CapsMode | null {
   if (props['fo:font-variant'] === 'small-caps') return 'smallCaps';
   const t = props['fo:text-transform'];
@@ -2641,12 +2651,12 @@ function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaul
   const fs = props['fo:font-style'];
   if ((fs === 'italic' || fs === 'oblique') && !defaults.italic) marks.push({ type: 'italic' });
   const ul = props['style:text-underline-style'];
-  if (ul && ul !== 'none' && !defaults.underline) {
+  if (ul && ul !== 'none' && lineSig(props, 'underline') !== defaults.underline) {
     const line = lineAttrs(ul, props['style:text-underline-type'], props['style:text-underline-color']);
     marks.push(line ? { type: 'underline', attrs: line } : { type: 'underline' });
   }
   const lt = props['style:text-line-through-style'];
-  if (lt && lt !== 'none' && !defaults.strike) {
+  if (lt && lt !== 'none' && lineSig(props, 'line-through') !== defaults.strike) {
     const line = lineAttrs(lt, props['style:text-line-through-type'], undefined);
     marks.push(line ? { type: 'strike', attrs: line } : { type: 'strike' });
   }
