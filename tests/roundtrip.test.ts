@@ -1588,7 +1588,7 @@ describe('Leg 12: named paragraph styles (ODF)', () => {
   const sheet = builtinStyleSheet();
   sheet.paragraph['Merksatz'] = {
     name: 'Merksatz', parent: 'Standard', next: 'Standard',
-    para: { indent: 2, spaceBefore: 6 }, text: { bold: true, color: '#0000AA' },
+    para: { indent: 2, spaceBefore: 6, lineHeight: '1.15' }, text: { bold: true, color: '#0000AA' },
   };
 
   const doc: N = {
@@ -1626,6 +1626,11 @@ describe('Leg 12: named paragraph styles (ODF)', () => {
     check('the style itself round-trips', imported?.parent === 'Standard', imported);
     check('with its own properties', imported?.text.bold === true && imported?.text.color === '#0000AA'
       && imported?.para.indent === 2 && imported?.para.spaceBefore === 6, imported);
+    // A style's proportional spacing is a bare factor; the file takes a percentage.
+    check('style line spacing round-trips', imported?.para.lineHeight === '1.15', imported?.para);
+    const docx = await buildDocx(doc, margins, 'portrait', undefined, null, 'A4', sheet);
+    const docxStyles = strFromU8(unzipSync(docx)['word/styles.xml']);
+    check('DOCX style carries the spacing', /w:styleId="Merksatz"[\s\S]*?w:line="276"/.test(docxStyles), docxStyles.slice(0, 200));
     // A heading keeps rendering from the registry, not from copied attrs.
     check('heading needs no direct formatting', !blocks[0]?.content?.[0]?.marks, blocks[0]);
   });
@@ -1845,6 +1850,22 @@ describe('Leg 12: per-section page margins (ODT + DOCX)', () => {
     check('document margins unchanged', JSON.stringify(res.margins) === JSON.stringify(margins), res.margins);
     const back = res.hfSections?.[1]?.margins ?? null;
     check('section margins round-trip', JSON.stringify(back) === JSON.stringify(wide), back);
+  });
+
+  // A short front matter on Standard before long chapters on their own masters: the
+  // geometry follows the chapters, the first section's blank header does not.
+  it('ODT: the first section keeps Standard\'s zones under a dominant later master', async () => {
+    const bookDoc: N = { type: 'doc', content: [
+      P(null, T('title page')),
+      P({ sectionBreak: true }, T('chapter one')),
+      ...Array.from({ length: 5 }, (_, i) => P(null, T(`paragraph ${i}`))),
+    ] };
+    const running = { type: 'doc', content: [P(null, T('running head'))] };
+    const bytes = await buildOdt(bookDoc, margins, 'portrait',
+      { sections: [{ ...EMPTY_HF_SET }, { ...EMPTY_HF_SET, header: running }], pageCount: 2 });
+    const res = importOdt(bytes);
+    check('first section has no header', res.header === null, res.header);
+    check('the chapter section keeps its header', JSON.stringify(res.hfSections?.[1]?.header).includes('running head'), res.hfSections?.[1]?.header);
   });
 
   it('DOCX: each sectPr carries its own w:pgMar', async () => {

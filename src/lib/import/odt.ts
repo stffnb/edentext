@@ -143,8 +143,10 @@ type Ctx = {
   files: Record<string, Uint8Array>;
   imageCache: Map<string, string>;
   convertedImages: ConvertedImages;
-  // Text width (cm) of the file's page setup; a table's margins are relative to it.
+  // Text width (cm) of the section being walked; a table's margins are relative to it.
+  // `docContentWidthCm` is the first section's, where the export keeps an index's stop.
   contentWidthCm: number;
+  docContentWidthCm: number;
   // The page's own direction: a block declaring the same one is inheriting, not
   // formatted, so only a block that differs carries a `dir` attr.
   pageRtl: boolean;
@@ -789,15 +791,15 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   for (const [name, def] of resolver.namedParagraphStyles()) styleNames.set(name, displayStyleName(name, def.display));
   const charStyleNames = new Map<string, string>();
   for (const [name, def] of resolver.namedTextStyles()) charStyleNames.set(name, displayStyleName(name, def.display));
-  // Page geometry is document-wide, so it comes from the master governing most of the
-  // body — elected before the walk, because the text width it yields is what a table's
-  // margins, an inline image's fit and the tab-stop suppression measure against.
-  resolver.setDefaultMaster(dominantMasterPage(Array.from(body.children), resolver));
-  const geo = resolver.pageGeometry();
-  const contentWidthCm = geo
-    ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
-    : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], bodyBlocks: 0, openBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
+  // The document's page setup is the first section's: the master its leading block
+  // uses, Standard where it names none. Blocks measure against their own section's text
+  // width (a table's margins, an inline image's fit, the tab-stop suppression).
+  const masters = masterPagesOf(Array.from(body.children), resolver);
+  resolver.setDefaultMaster(masters.dominant);
+  const first = resolver.hasMasterPage(masters.leading) ? masters.leading : null;
+  const geo = resolver.pageGeometry(first) ?? resolver.pageGeometry();
+  const contentWidthCm = contentWidthOf(geo);
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), warnings, files, imageCache: new Map(), convertedImages, contentWidthCm, docContentWidthCm: contentWidthCm, pageRtl: geo?.rtl ?? false, masterPages: [], masterPageStarts: [], bodyBlocks: 0, openBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), notes: [], foldMarks: false };
   let blocks = convertBlocks(Array.from(body.children), ctx, 'body');
   if (blocks.length === 0) blocks.push({ type: 'paragraph' });
   pairAlignedFrames(blocks, Math.floor(cmToPx(contentWidthCm)));
@@ -821,9 +823,11 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     })) });
   }
 
-  const hf = resolver.masterPageHF();
+  // The zones are the first section's too; a later section carries its own setup where
+  // it differs (hfSetOfMasterPage), so a chapter master's is not lost either.
+  const hf = resolver.masterPageHF(first);
   const geometry = geo;
-  const edge = resolver.edgeDistancesCm();
+  const edge = resolver.edgeDistancesCm(first);
 
   const fonts: EmbeddedFont[] = [];
   for (const s of resolver.embeddedFontSources()) {
@@ -844,7 +848,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     }
   }
 
-  const docNumFormat = resolver.pageNumberFormat();
+  const docNumFormat = resolver.pageNumberFormat(first);
   const headerFirst = hf.headerFirst ? convertHfZone(hf.headerFirst, ctx, hf.headerBandCm) : null;
   const footerFirst = hf.footerFirst ? convertHfZone(hf.footerFirst, ctx, hf.footerBandCm, true) : null;
   // The presence of a first-page element is the flag, even when it's empty (an empty
@@ -867,7 +871,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     orientation: geometry?.orientation ?? null,
     format: geometry?.format ?? null,
     rtl: geometry?.rtl ?? false,
-    decor: resolver.pageDecor(),
+    decor: resolver.pageDecor(first),
     lineNumbering: resolver.lineNumbering(),
     foldMarks: ctx.foldMarks,
     hyphenate: resolver.documentHyphenation(),
@@ -1097,16 +1101,31 @@ function mergeHfBox(maps: Record<string, string>[]): Record<string, string> {
   return out;
 }
 
+// The text width of a page setup; the ODF default page where the file declares none.
+function contentWidthOf(geo: { margins: PageMargins; orientation: Orientation; format: PageFormat } | null): number {
+  return geo
+    ? pageDimsCm(geo.format, geo.orientation).w - geo.margins.left - geo.margins.right
+    : pageDimsCm('A4', 'portrait').w - 2 * 2.12;
+}
+
 // The document's first page number: ODF has no document-level start, so LibreOffice puts
 // `style:page-number` on the first paragraph's own style.
 function odfPageNumberStart(resolver: StyleResolver, body: Element): number {
-  for (const el of Array.from(body.children)) {
-    if (el.namespaceURI !== NS.text || (el.localName !== 'p' && el.localName !== 'h')) continue;
-    const style = el.getAttributeNS(NS.text, 'style-name');
-    const n = style ? Number(resolver.paraProps(style)['style:page-number']) : NaN;
-    return Number.isFinite(n) ? clampPageStart(n) : 1;
+  const style = firstParagraph(body)?.getAttributeNS(NS.text, 'style-name');
+  const n = style ? Number(resolver.paraProps(style)['style:page-number']) : NaN;
+  return Number.isFinite(n) ? clampPageStart(n) : 1;
+}
+
+// The first paragraph in document order, wherever the body keeps it (a section, a list,
+// a table) — past the tracked-changes registry, whose paragraphs are deleted text.
+function firstParagraph(el: Element): Element | null {
+  for (const child of Array.from(el.children)) {
+    if (child.namespaceURI === NS.text && child.localName === 'tracked-changes') continue;
+    if (child.namespaceURI === NS.text && (child.localName === 'p' || child.localName === 'h')) return child;
+    const inner = firstParagraph(child);
+    if (inner) return inner;
   }
-  return 1;
+  return null;
 }
 
 // meta.xml → the document's descriptive properties (LibreOffice's File ▸ Properties).
@@ -1324,7 +1343,10 @@ function convertToc(el: Element, ctx: Ctx, indexKind: IndexKind): Node {
   let tabPosCm = lengthToCm(stop?.getAttributeNS(NS.style, 'position'))
     ?? [...styled].reverse().find(t => t.align === 'right')?.pos ?? null;
   // A stop at the column's end is the attr's own default (null = the text width).
-  if (tabPosCm != null && Math.abs(tabPosCm - ctx.contentWidthCm) < 0.05) tabPosCm = null;
+  // ponytail: the entry styles are one set per document, so an index in a section of other
+  // margins carries the document's stop; per-index entry styles would name its own.
+  const atEnd = (w: number) => tabPosCm != null && Math.abs(tabPosCm - w) < 0.05;
+  if (atEnd(ctx.contentWidthCm) || atEnd(ctx.docContentWidthCm)) tabPosCm = null;
   // Each level's own paragraph style: the entry rows carry its name, so the document
   // stylesheet gives them the file's indent, spacing and font instead of our defaults.
   const levelStyles: (string | null)[] = [];
@@ -1356,7 +1378,7 @@ function convertToc(el: Element, ctx: Ctx, indexKind: IndexKind): Node {
     const styles = templates.map((tpl) => citationStyleFromTemplate(
       Array.from(tpl.getElementsByTagNameNS(NS.text, 'index-entry-bibliography'))
         .map((f) => f.getAttributeNS(NS.text, 'bibliography-data-field') ?? '')));
-    attrs.citationStyle = source?.getAttributeNS(NS.text, 'numbered-entries') === 'true'
+    attrs.citationStyle = ctx.resolver.bibliographyNumbered() || source?.getAttributeNS(NS.text, 'numbered-entries') === 'true'
       ? 'numbered'
       : styles.find((st) => st && st !== 'key') ?? 'key';
   }
@@ -1406,6 +1428,8 @@ type BlockDefaults = {
   underline: boolean;
   strike: boolean;
   caps: CapsMode | null;
+  // The style's own paragraph background and rule lines (paraBoxAttrs).
+  box: Record<string, string>;
 };
 
 // Metric twins: the on-screen font and the name we declare in files mean the same thing.
@@ -1451,6 +1475,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     underline: false,
     strike: false,
     caps: null,
+    box: {},
   };
   if (!named) return fallback;
   const para = resolver.paraProps(named);
@@ -1479,6 +1504,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     underline: !!text['style:text-underline-style'] && text['style:text-underline-style'] !== 'none',
     strike: !!text['style:text-line-through-style'] && text['style:text-line-through-style'] !== 'none',
     caps: capsFromOdf(text),
+    box: paraBoxAttrs(para),
   };
 }
 
@@ -1490,9 +1516,14 @@ function screenFontName(family: string): string {
   return family;
 }
 
-// ODF encodes spaces as _20_; a style:display-name (when present) is authoritative.
+// A style:display-name (when present) is authoritative; else the name's _hex_ escapes
+// (LibreOffice's encoding of what an NCName cannot hold, "_20_" for a space) decode.
 function displayStyleName(odfName: string, display?: string): string {
-  return display || odfName.replace(/_20_/g, ' ');
+  return display || decodeStyleName(odfName);
+}
+
+export function decodeStyleName(odfName: string): string {
+  return odfName.replace(/_([0-9a-fA-F]{2,6})_/g, (_m, hex: string) => String.fromCodePoint(parseInt(hex, 16)));
 }
 
 function paraPropsFromOdf(props: PropMap): ParaProps {
@@ -1592,7 +1623,7 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
     const style: Style = {
       name,
       parent: parent && parent !== name ? parent : builtin?.parent ?? null,
-      next: builtin?.next ?? null,
+      next: def.next ? displayStyleName(def.next, defs.get(def.next)?.display) : builtin?.next ?? null,
       builtin: builtin?.builtin,
       para: ownProps(paraPropsFromOdf(resolver.paraProps(odfName)), paraPropsFromOdf(def.parent ? resolver.paraProps(def.parent) : {})),
       text: ownProps(textPropsFromOdf(resolver.paraTextProps(odfName), resolver), textPropsFromOdf(def.parent ? resolver.paraTextProps(def.parent) : {}, resolver)),
@@ -1775,23 +1806,27 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // heading), so the file's own margins there are direct formatting.
   if (kind === 'cell' && !isHeading) { defaults.marginTopPt = 0; defaults.marginBottomPt = 0; }
 
+  // A style:master-page-name switches the page master, which is how ODF gives a section
+  // its own header/footer; the block that does it opens that section, and from it on
+  // the blocks measure against that master's text width.
+  const master = kind === 'body' ? resolver.masterPageOf(styleName) : null;
+  const opensSection = !!master && ctx.masterPages[ctx.masterPages.length - 1] !== master;
+  if (opensSection) {
+    ctx.masterPages.push(master!);
+    // The same paragraph carries the number the section restarts at, if it does.
+    const restart = Number(paraProps['style:page-number']);
+    ctx.masterPageStarts.push(Number.isFinite(restart) ? clampPageStart(restart) : null);
+    const geo = resolver.pageGeometry(master!);
+    if (geo) ctx.contentWidthCm = contentWidthOf(geo);
+  }
   const attrs = blockAttrs(paraProps, baseTextProps, defaults, kind);
   if (paraProps['style:contextual-spacing'] === 'true') applyContextualSpacing(el, styleName, attrs);
-  // A style:master-page-name switches the page master, which is how ODF gives a section
-  // its own header/footer; the block that does it opens that section.
-  const master = kind === 'body' ? resolver.masterPageOf(styleName) : null;
   if (master) {
     // Naming a master *is* a page break, even where the page already uses that one
     // (probed) — which is how a book starts every chapter on a fresh page. Only the
     // document's first block has nothing above it to break from.
     if (ctx.bodyBlocks) attrs.breakBefore = 'page';
-    if (ctx.masterPages[ctx.masterPages.length - 1] !== master) {
-      ctx.masterPages.push(master);
-      // The same paragraph carries the number the section restarts at, if it does.
-      const restart = Number(paraProps['style:page-number']);
-      ctx.masterPageStarts.push(Number.isFinite(restart) ? clampPageStart(restart) : null);
-      attrs.sectionBreak = true;
-    }
+    if (opensSection) attrs.sectionBreak = true;
   }
   if (kind === 'body') ctx.bodyBlocks++;
   // Tab stops live in a child element of the paragraph properties, so they come from
@@ -1909,8 +1944,9 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefau
   // default of 2 (on) — so only an explicit 0 disables it.
   if (paraProps['fo:widows'] === '0' || paraProps['fo:orphans'] === '0') attrs.widowControl = false;
 
-  // Paragraph background ("colored field") + per-side borders ("rule line").
-  Object.assign(attrs, paraBoxAttrs(paraProps));
+  // Paragraph background ("colored field") + per-side borders ("rule line"), less
+  // what the named style supplies.
+  for (const [k, v] of Object.entries(paraBoxAttrs(paraProps))) if (defaults.box[k] !== v) attrs[k] = v;
 
   return attrs;
 }
@@ -2128,7 +2164,7 @@ function noteBodyStyle(e: Element, ctx: Ctx, kind: NoteKind): string | null {
   const named = ctx.resolver.namedAncestor(raw, 'paragraph');
   if (!named || isStockNoteStyle(ctx.resolver, named)) return null;
   ctx.usedStyles.add(named);
-  return ctx.styleNames.get(named) ?? named.replace(/_20_/g, ' ');
+  return ctx.styleNames.get(named) ?? decodeStyleName(named);
 }
 
 // <text:note> → the anchor node, with the note's own text collected into ctx for the
@@ -2643,35 +2679,41 @@ function formatPt(v: number): string {
 // The heading elements of a <text:list> whose leaves are all headings (each list-item
 // holds only a text:h and/or nested such lists) — ODF outline/chapter numbering, not a
 // real list, so they import as plain headings. null when it's a genuine list.
-// The master page governing the most body blocks. Mirrors convertBlocks' body-level
-// dispatch: only a paragraph or heading can name one, and '' is the file's own default.
-function dominantMasterPage(elements: Element[], resolver: StyleResolver): string | null {
+// The master governing the most body blocks, and the one the first paragraph starts on.
+// Mirrors convertBlocks' body-level dispatch: only a paragraph or heading can name one,
+// and '' is the file's own default.
+function masterPagesOf(elements: Element[], resolver: StyleResolver): { dominant: string | null; leading: string | null } {
   const counts = new Map<string, number>();
   let current = '';
-  const walk = (els: Element[]): void => {
+  // The master the first paragraph names; a paragraph naming none — or a leading block
+  // that is no paragraph at all, a table or a list — starts on Standard.
+  let leading: string | null = null;
+  const walk = (els: Element[], top = false): void => {
     for (const el of els) {
-      if (el.namespaceURI !== NS.text) continue;
-      if (el.localName === 'p' || el.localName === 'h') {
-        current = resolver.masterPageOf(el.getAttributeNS(NS.text, 'style-name')) ?? current;
+      if (el.namespaceURI === NS.text && (el.localName === 'p' || el.localName === 'h')) {
+        const own = resolver.masterPageOf(el.getAttributeNS(NS.text, 'style-name'));
+        leading ??= own ?? 'Standard';
+        current = own ?? current;
         counts.set(current, (counts.get(current) ?? 0) + 1);
-      } else if (el.localName === 'list') {
+      } else if (el.namespaceURI === NS.text && el.localName === 'list') {
         const headings = outlineHeadingEls(el);
         if (headings) walk(headings);
-      } else if (el.localName === 'section') {
+      } else if (el.namespaceURI === NS.text && el.localName === 'section') {
         walk(Array.from(el.children));
-      } else if (/-index$|^table-of-content$|^bibliography$/.test(el.localName)) {
+      } else if (el.namespaceURI === NS.text && /-index$|^table-of-content$|^bibliography$/.test(el.localName)) {
         const indexBody = el.getElementsByTagNameNS(NS.text, 'index-body')[0];
         if (indexBody) walk(Array.from(indexBody.children));
       }
+      if (top) leading ??= 'Standard';
     }
   };
-  walk(elements);
+  walk(elements, true);
   let dominant = '';
   let governed = 0;
   for (const [name, count] of counts) {
     if (count > governed) { dominant = name; governed = count; }
   }
-  return dominant || null;
+  return { dominant: dominant || null, leading };
 }
 
 function outlineHeadingEls(listEl: Element): Element[] | null {

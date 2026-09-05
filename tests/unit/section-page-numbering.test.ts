@@ -43,9 +43,9 @@ describe('per-section page numbering', () => {
     const bytes = await buildDocx(doc, margins, 'portrait', hf as never);
     const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
     expect(xml).toContain('<w:pgNumType w:start="1"');
-    // A continuous section is one both word processors ignore the start on (probed),
-    // so the restarting section is the one break that is not continuous.
-    expect(xml.match(/<w:type w:val="continuous"\/>/g)).toHaveLength(1);
+    // Every section begins a page, as naming a master page does in ODF; a continuous
+    // break is a columns group's, and both word processors ignore a start on one (probed).
+    expect(xml.match(/<w:type w:val="continuous"\/>/g)).toBeNull();
     expect(starts(importDocx(bytes))).toEqual([null, null, 1]);
   });
 });

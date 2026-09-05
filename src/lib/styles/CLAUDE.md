@@ -91,7 +91,7 @@ holds it as a reactive singleton persisted to `edentext-styles` (same shape as `
   relative sizes and repeated values don't land raw) over the built-ins, and `OdtImportResult.styles`
   hands them to `App.svelte`. Suppression no longer compares against constants: `blockDefaults`
   builds a per-block **yardstick** from the block's named style (size, margins, indent, font, bold,
-  color, italic/underline/strike), and only what exceeds it becomes direct formatting. Only
+  color, italic/underline/strike) plus its background and rule lines, and only what exceeds it becomes direct formatting. Only
   top-level blocks get a `styleName` — list items and cells reference producer plumbing styles.
 - **DOCX I/O works the same way.** *Export*: `buildDocx(…, styles)` emits the registry as
   docx-lib `paragraphStyles` (`id` via `docxStyleId` — "Heading 1" → `Heading1`, "Standard" →

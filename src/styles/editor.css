@@ -565,6 +565,11 @@
 .paper .tiptap .columns-node > :last-child {
   margin-bottom: 0;
 }
+/* A heading stays with the text it introduces across a column break, as it does
+   across a page break (keep-with-next is implied for headings in both products). */
+.paper .tiptap .columns-node :is(h1, h2, h3, h4, h5, h6, h7, h8, h9, h10) {
+  break-after: avoid;
+}
 
 /* A tab stop's leader fills the gap the tab was given as margin-left. The span is
    zero-width (tab-size:0), so its right padding edge is where the stop sits. Not scoped

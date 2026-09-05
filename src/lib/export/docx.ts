@@ -362,7 +362,7 @@ class Numbering {
       levels.push({
         level: l,
         format: ORDERED_FORMAT[def.format] ?? LevelFormat.DECIMAL,
-        text: `${def.prefix}${chain.join('.')}${def.suffix || ' '}`,
+        text: `${def.prefix}${chain.join('.')}${def.suffix}`,
         start: def.start ?? 1,
         alignment: AlignmentType.LEFT,
         suffix: def.tabCm == null ? LevelSuffix.NOTHING : LevelSuffix.TAB,
@@ -1517,11 +1517,13 @@ function applyOutlineNumberingDocx(bytes: Uint8Array, configIndex: number): Uint
     numId = String(Math.max(0, ...ids) + 1);
     numbering = numbering.replace('</w:numbering>', `<w:num w:numId="${numId}"><w:abstractNumId w:val="${absId}"/></w:num></w:numbering>`);
   }
+  // w:numPr has its place in w:pPr's fixed order: after the keep/break flags, before
+  // the borders, shading and tabs.
   for (let n = 1; n <= 9; n++) {
     const numPr = `<w:numPr><w:ilvl w:val="${n - 1}"/><w:numId w:val="${numId}"/></w:numPr>`;
     stylesXml = stylesXml.replace(
-      new RegExp(`(<w:style w:type="paragraph"[^>]*w:styleId="Heading${n}"[\\s\\S]*?)(<w:pPr>)`),
-      `$1$2${numPr}`);
+      new RegExp(`(<w:style w:type="paragraph"[^>]*w:styleId="Heading${n}"[\\s\\S]*?<w:pPr>(?:<w:(?:pStyle|keepNext|keepLines|pageBreakBefore|framePr|widowControl)\\b[^>]*/>)*)`),
+      `$1${numPr}`);
   }
   files['word/numbering.xml'] = strToU8(numbering);
   files['word/styles.xml'] = strToU8(stylesXml);
@@ -1789,6 +1791,32 @@ function orderDocxSettings(bytes: Uint8Array): Uint8Array {
   const sorted = [...children].sort((a, b) => rank(a) - rank(b));
   if (sorted.join('') === m[2]) return bytes;
   files['word/settings.xml'] = strToU8(xml.replace(m[0], m[1] + sorted.join('') + m[3]));
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
+// Post-pack pass (runs last): the library writes a paragraph's w:pBdr sides as top,
+// bottom, left, right; the schema's sequence is top, left, bottom, right, between, bar.
+const PBDR_ORDER = ['w:top', 'w:left', 'w:bottom', 'w:right', 'w:between', 'w:bar'];
+function orderParagraphBorders(bytes: Uint8Array): Uint8Array {
+  const files = unzipSync(bytes);
+  let changed = false;
+  for (const [path, data] of Object.entries(files)) {
+    if (!/^word\/.*\.xml$/.test(path)) continue;
+    const xml = strFromU8(data);
+    if (!xml.includes('<w:pBdr>')) continue;
+    const sorted = xml.replace(/<w:pBdr>([\s\S]*?)<\/w:pBdr>/g, (_m, inner: string) => {
+      const sides = inner.match(/<w:(?:top|left|bottom|right|between|bar)\b[^>]*\/>/g) ?? [];
+      if (sides.join('') !== inner) return _m;
+      const rank = (s: string) => PBDR_ORDER.indexOf(/^<(w:\w+)/.exec(s)![1]);
+      return `<w:pBdr>${[...sides].sort((a, b) => rank(a) - rank(b)).join('')}</w:pBdr>`;
+    });
+    if (sorted === xml) continue;
+    files[path] = strToU8(sorted);
+    changed = true;
+  }
+  if (!changed) return bytes;
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
   for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
   return zipSync(out);
@@ -2114,10 +2142,11 @@ function paraShadingOf(attrs: TiptapNode['attrs']) {
 }
 
 function paraBordersOf(attrs: TiptapNode['attrs']) {
-  const out: { top?: IBorderOptions; right?: IBorderOptions; bottom?: IBorderOptions; left?: IBorderOptions } = {};
-  for (const [attr, side] of [['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left']] as const) {
+  const out: { top?: IBorderOptions; left?: IBorderOptions; bottom?: IBorderOptions; right?: IBorderOptions } = {};
+  for (const [attr, side] of [['borderTop', 'top'], ['borderLeft', 'left'], ['borderBottom', 'bottom'], ['borderRight', 'right']] as const) {
     const b = parseBorderAttr(attrs?.[attr] as string | null);
-    if (b && b !== 'none') out[side] = { style: BorderStyle.SINGLE, size: Math.max(2, Math.round(b.widthPt * 8)), color: hexColor(b.color) ?? '000000', space: 1 };
+    // w:space is the gap to the rule in points; the editor draws none unless one is set.
+    if (b && b !== 'none') out[side] = { style: BorderStyle.SINGLE, size: Math.max(2, Math.round(b.widthPt * 8)), color: hexColor(b.color) ?? '000000', space: Number(attrs?.borderPadding) || 0 };
   }
   return Object.keys(out).length ? out : undefined;
 }
@@ -2484,7 +2513,8 @@ function startsSection(node: TiptapNode): boolean {
   return node.type === 'columns' && node.content?.[0]?.attrs?.sectionBreak === true;
 }
 
-function bodyGroups(content: TiptapNode[], num: Numbering, contentWidthCm: number): BodyGroup[] {
+// `widthCm(section)`: the text width the section's blocks are sized against.
+function bodyGroups(content: TiptapNode[], num: Numbering, widthCm: (section: number) => number): BodyGroup[] {
   const groups: BodyGroup[] = [];
   let section = 0;
   let plain: TiptapNode[] = [];
@@ -2493,7 +2523,7 @@ function bodyGroups(content: TiptapNode[], num: Numbering, contentWidthCm: numbe
   let cols: { count: number; gapCm: number; blocks: TiptapNode[] } | null = null;
   const flushPlain = () => {
     if (!plain.length) return;
-    groups.push({ section, columns: null, children: blocksToDocx(plain, num, contentWidthCm) });
+    groups.push({ section, columns: null, children: blocksToDocx(plain, num, widthCm(section)) });
     plain = [];
   };
   const flushCols = () => {
@@ -2501,7 +2531,7 @@ function bodyGroups(content: TiptapNode[], num: Numbering, contentWidthCm: numbe
     groups.push({
       section,
       columns: { count: cols.count, gapCm: cols.gapCm },
-      children: blocksToDocx(mergeJoinedParagraphsJson(cols.blocks), num, contentWidthCm),
+      children: blocksToDocx(mergeJoinedParagraphsJson(cols.blocks), num, widthCm(section)),
     });
     cols = null;
   };
@@ -2600,11 +2630,19 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   const spacing: Record<string, number> = {};
   if (p.spaceBefore != null) spacing.before = ptToTwip(p.spaceBefore);
   if (p.spaceAfter != null) spacing.after = ptToTwip(p.spaceAfter);
+  // A proportional spacing is a factor of the single line (240 twips).
+  const factor = Number(p.lineHeight);
+  if (Number.isFinite(factor) && factor > 0 && factor !== 1) spacing.line = Math.round(factor * 240);
   const paragraph: Record<string, unknown> = {};
-  if (Object.keys(spacing).length) paragraph.spacing = { ...spacing, line: 240, lineRule: LineRuleType.AUTO };
+  if (Object.keys(spacing).length) paragraph.spacing = { ...spacing, ...(spacing.line ? { lineRule: LineRuleType.AUTO } : {}) };
   if (p.textAlign) paragraph.alignment = alignOf({ textAlign: p.textAlign });
   if (p.indent != null) paragraph.indent = { left: cmToTwip(p.indent) };
   if (style.outlineLevel) paragraph.keepNext = true;
+  // The style's own colored field and rule lines.
+  const shading = paraShadingOf(p);
+  if (shading) paragraph.shading = shading;
+  const border = paraBordersOf(p);
+  if (border) paragraph.border = border;
   return {
     id: docxStyleId(style.name),
     name: style.name,
@@ -2784,7 +2822,14 @@ export async function buildDocx(
     };
   }
   const body = (docJson.content ?? []).filter((n) => n.type !== 'noteSection');
-  const groups = bodyGroups(body, num, contentWidthCm);
+  // A section with a paper or margins of its own sizes its tables and indexes to them.
+  const sectionWidthCm = (i: number): number => {
+    const sets = hf?.sections ?? [];
+    const s: Partial<HfSet> = sets[Math.min(i, sets.length - 1)] ?? {};
+    const m = s.margins ?? margins;
+    return pageDimsCm(s.format ?? pageFormat, s.orientation ?? orientation).w - m.left - m.right;
+  };
+  const groups = bodyGroups(body, num, sectionWidthCm);
 
   // The index fields carry the editor's rows as their cached result; still ask the
   // reader to update fields on open, so a capable one repaginates + hyperlinks them.
@@ -2831,15 +2876,15 @@ export async function buildDocx(
         header: cmToTwip(hDist), footer: cmToTwip(fDist),
       },
       // w:pgNumType. Word restarts numbering at every section carrying a start, so a
-      // later section gets one only where it really restarts; the rest continue.
-      // w:fmt is per section as well, so a roman front matter keeps its own.
+      // later section gets one only where it really restarts. w:fmt has no document
+      // default behind it, so every section names the document's unless it has its own.
       ...(i === 0
         ? (pageNumbering.format !== '1' || pageNumbering.start !== 1
           ? { pageNumbers: { formatType: DOCX_PAGE_NUM_FORMAT[pageNumbering.format], ...(pageNumbering.start !== 1 ? { start: pageNumbering.start } : {}) } }
           : {})
-        : (s.pageNumberStart != null || s.pageNumberFormat
+        : (s.pageNumberStart != null || (s.pageNumberFormat ?? pageNumbering.format) !== '1'
           ? { pageNumbers: {
-              ...(s.pageNumberFormat ? { formatType: DOCX_PAGE_NUM_FORMAT[s.pageNumberFormat] } : {}),
+              formatType: DOCX_PAGE_NUM_FORMAT[s.pageNumberFormat ?? pageNumbering.format],
               ...(s.pageNumberStart != null ? { start: s.pageNumberStart } : {}),
             } }
           : {})),
@@ -2849,7 +2894,10 @@ export async function buildDocx(
   // Previous"). A first-page variant rides `first:` and is activated by titlePage below.
   const mkHeaders = (i: number) => {
     const s = setAt(i);
-    const d = para(s.header), f = s.differentFirstPage ? para(s.headerFirst) : null, e = s.differentOddEven ? para(s.headerEven) : null;
+    // Odd/even is the document's setting: a section not asking for it repeats its
+    // running zone on even pages, so that is what its even part holds.
+    const d = para(s.header), f = s.differentFirstPage ? para(s.headerFirst) : null,
+      e = s.differentOddEven ? para(s.headerEven) : differentOddEven ? d : null;
     // A watermark (and the fold marks) lives in a header part, so every page variant
     // needs one — empty where the zone has no text — for the post-passes to inject
     // into; a variant without its own part would blank the decor on those pages.
@@ -2864,12 +2912,13 @@ export async function buildDocx(
     if (f) h.first = new Header({ children: [paragraphToDocx(f)] });
     else if (s.differentFirstPage && spellOut) h.first = new Header({ children: [new Paragraph({})] });
     if (e) h.even = new Header({ children: [paragraphToDocx(e)] });
-    else if (s.differentOddEven && spellOut) h.even = new Header({ children: [new Paragraph({})] });
+    else if (differentOddEven && spellOut) h.even = new Header({ children: [new Paragraph({})] });
     return Object.keys(h).length ? h : undefined;
   };
   const mkFooters = (i: number) => {
     const s = setAt(i);
-    const d = para(s.footer), f = s.differentFirstPage ? para(s.footerFirst) : null, e = s.differentOddEven ? para(s.footerEven) : null;
+    const d = para(s.footer), f = s.differentFirstPage ? para(s.footerFirst) : null,
+      e = s.differentOddEven ? para(s.footerEven) : differentOddEven ? d : null;
     if (!d && !f && !e && i === 0) return undefined;
     const fo: { default?: Footer; first?: Footer; even?: Footer } = {};
     // Spelled out past the first section, for the reason the headers are.
@@ -2878,13 +2927,14 @@ export async function buildDocx(
     if (f) fo.first = new Footer({ children: [paragraphToDocx(f)] });
     else if (s.differentFirstPage && i > 0) fo.first = new Footer({ children: [new Paragraph({})] });
     if (e) fo.even = new Footer({ children: [paragraphToDocx(e)] });
-    else if (s.differentOddEven && i > 0) fo.even = new Footer({ children: [new Paragraph({})] });
+    else if (differentOddEven && i > 0) fo.even = new Footer({ children: [new Paragraph({})] });
     return fo;
   };
 
   const doc = new Document({
     // Word's File ▸ Info; an empty field is left out so it does not overwrite Word's own.
-    creator: props.author.trim() || GENERATOR,
+    // The creator is the one the library fills in ("Un-named"), so it is always given.
+    creator: props.author.trim(),
     ...(props.title.trim() ? { title: props.title.trim() } : {}),
     ...(props.subject.trim() ? { subject: props.subject.trim() } : {}),
     ...(props.keywords.trim() ? { keywords: props.keywords.trim() } : {}),
@@ -2932,11 +2982,14 @@ export async function buildDocx(
         ...(setAt(g.section).differentFirstPage && g.section < hfSets.length
           && groups.findIndex((x) => x.section === g.section) === i ? { titlePage: true } : {}),
         // A section that must open on a right or left page says so here; Word inserts
-        // the blank page for it, as LibreOffice does for style:page-usage.
-        ...(i > 0 && groups.findIndex((x) => x.section === g.section) === i && setAt(g.section).startsOn
-          ? { type: setAt(g.section).startsOn === 'odd' ? SectionType.ODD_PAGE : SectionType.EVEN_PAGE }
-          : i > 0 && !(setAt(g.section).pageNumberStart != null && groups.findIndex((x) => x.section === g.section) === i)
-            ? { type: SectionType.CONTINUOUS } : {}),
+        // the blank page for it, as LibreOffice does for style:page-usage. Any other
+        // section begins a page (the default), as naming a master page does in ODF;
+        // only a columns group inside a section flows on.
+        ...(i > 0 && groups.findIndex((x) => x.section === g.section) === i
+          ? (setAt(g.section).startsOn
+            ? { type: setAt(g.section).startsOn === 'odd' ? SectionType.ODD_PAGE : SectionType.EVEN_PAGE }
+            : {})
+          : i > 0 ? { type: SectionType.CONTINUOUS } : {}),
         ...(g.columns
           ? { column: { count: g.columns.count, space: cmToTwip(g.columns.gapCm), equalWidth: true } }
           : {}),
@@ -2965,8 +3018,8 @@ export async function buildDocx(
   const dims = pageDimsCm(pageFormat, orientation);
   const foldMarked = applyFoldMarksDocx(bidi, foldMarks, dims.w * 10);
   const marked = spacingAtPageStart ? foldMarked : applySpacingAtStartDocx(foldMarked);
-  if (isEmptyPageDecor(decor)) return orderDocxSettings(marked);
+  if (isEmptyPageDecor(decor)) return orderParagraphBorders(orderDocxSettings(marked));
   const pt = (cm: number) => (cm / 2.54) * 72;
-  return orderDocxSettings(applyPageDecorDocx(marked, decor,
-    pt(dims.w - margins.left - margins.right), pt(dims.h - margins.top - margins.bottom)));
+  return orderParagraphBorders(orderDocxSettings(applyPageDecorDocx(marked, decor,
+    pt(dims.w - margins.left - margins.right), pt(dims.h - margins.top - margins.bottom))));
 }

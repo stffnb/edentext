@@ -12,7 +12,7 @@ import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbe
 import { EMPTY_PAGE_DECOR, type PageDecor, type Watermark } from '../storage/pageDecor';
 import { FOLD_MARK_MM, PUNCH_MARK_MM, MARK_START_MM, FOLD_MARK_LEN_MM, PUNCH_MARK_LEN_MM, FOLD_MARK_NAME } from '../storage/foldMarks';
 import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
-import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps } from '../styles/styleSheet';
+import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps, type ParaProps } from '../styles/styleSheet';
 import { HEADING_STYLE_OVERRIDES, HEADING_FONT, HEADING_LEVELS, MAX_HEADING_LEVEL } from '../styles/headings';
 import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
@@ -71,7 +71,6 @@ const ODFKIT_DEFAULT_FONT = 'Liberation Serif';
 const EXPORT_FONT = 'Times New Roman';
 // The body size a run without one of its own renders at (LibreOffice's default).
 const DEFAULT_FONT_SIZE_PT = 12;
-const DEFAULT_LINE_HEIGHT = 1;  // must match line-height multiplier default in ToolbarExpanded.svelte
 
 // Sentinel between a cell's blocks (and list items) so the single <text:p> odf-kit
 // emits per cell can be split back into real blocks in applyCellBlocks. A private-use
@@ -237,9 +236,10 @@ export function twinFontName(family: string): string {
   return family;
 }
 
-// ODF encodes spaces in style names as _20_ ("Heading 1" → "Heading_20_1").
+// LibreOffice's style-name encoding: a style:name is an NCName, so every other character
+// travels as its hex code ("Heading 1" → "Heading_20_1", "&" → "_26_").
 export function odfStyleName(name: string): string {
-  return name.replace(/ /g, '_20_');
+  return name.replace(/[^\p{L}\p{N}.-]/gu, (c) => `_${c.codePointAt(0)!.toString(16)}_`);
 }
 
 // The style name a block carries: its own, else the node type's default. Mirrors
@@ -1192,14 +1192,21 @@ function replaceTableOfContents(doc: TiptapNode, tocs: TocExport[]): TiptapNode 
   return { ...doc, content };
 }
 
+function unescapeXml(s: string): string {
+  return s.replace(/&(amp|lt|gt|quot|apos);/g, (_m, e: string) =>
+    ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" })[e]!);
+}
+
 function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // Mirror odf-kit's normalizeLineHeight (content.js): a number is a multiplier
 // (1.5 → "150%"); a string with a unit passes through ("18pt" → "18pt").
+// A proportional spacing is a bare factor, as a number or as the string a style holds.
 function normalizeLineHeight(lh: number | string): string {
-  return typeof lh === 'number' ? `${Math.round(lh * 100)}%` : lh;
+  const n = typeof lh === 'number' ? lh : Number(lh);
+  return Number.isFinite(n) ? `${Math.round(n * 100)}%` : String(lh);
 }
 
 // Paragraph property overrides for the exported .odt, for both list-item and
@@ -1821,14 +1828,18 @@ function upsertProps(block: string, kind: 'paragraph' | 'text', attrs: Record<st
 
 // A style's OWN properties as ODF attributes — the chain stays a chain in the file,
 // so only what the style itself declares is written.
-function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<string, unknown> }) {
+function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<string, unknown> }, inherited: ParaProps = {}) {
   const p = style.para as Record<string, string | number | undefined>;
   const t = style.text as Record<string, string | number | boolean | undefined>;
   const para: Record<string, string> = {};
   if (p.textAlign) para['fo:text-align'] = String(p.textAlign);
   if (p.lineHeight != null) para['fo:line-height'] = normalizeLineHeight(p.lineHeight as string | number);
-  if (p.spaceBefore != null) para['fo:margin-top'] = `${p.spaceBefore}pt`;
-  if (p.spaceAfter != null) para['fo:margin-bottom'] = `${p.spaceAfter}pt`;
+  // LibreOffice keeps the two vertical margins in one item: a style declaring only one
+  // takes the default style's other, not its parent's, so the inherited one is spelled out.
+  const before = p.spaceBefore ?? (p.spaceAfter != null ? inherited.spaceBefore ?? 0 : undefined);
+  const after = p.spaceAfter ?? (p.spaceBefore != null ? inherited.spaceAfter ?? 0 : undefined);
+  if (before != null) para['fo:margin-top'] = `${before}pt`;
+  if (after != null) para['fo:margin-bottom'] = `${after}pt`;
   if (p.indent != null) para['fo:margin-left'] = `${p.indent}cm`;
   if (p.backgroundColor) para['fo:background-color'] = String(p.backgroundColor);
   for (const [key, side] of [['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left']] as const) {
@@ -1893,7 +1904,7 @@ function applyNamedStyles(styles: string, sheet: StyleSheet, used: Set<string>, 
     const odfName = odfStyleName(name);
     if (findAutoStyle(styles, odfName)) continue;
     added.push(setTagAttrs('<style:style/>', {
-      'style:name': odfName, 'style:family': 'table', 'style:display-name': name,
+      'style:name': odfName, 'style:family': 'table', 'style:display-name': escapeXml(name),
     }));
   }
   // List styles are their own element, not a style:style family; the referenced ones
@@ -1910,14 +1921,14 @@ function applyNamedStyles(styles: string, sheet: StyleSheet, used: Set<string>, 
     const odfName = odfStyleName(style.name);
     if (findAutoStyle(styles, odfName)) continue;
     const attrs: Record<string, string> = {
-      'style:name': odfName, 'style:family': 'text', 'style:display-name': style.name,
+      'style:name': odfName, 'style:family': 'text', 'style:display-name': escapeXml(style.name),
     };
     added.push(upsertProps(`${setTagAttrs('<style:style/>', attrs).replace('/>', '>')}</style:style>`, 'text', text));
   }
   for (const style of Object.values(sheet.paragraph)) {
     if (!used.has(style.name)) continue;
     const odfName = odfStyleName(style.name);
-    const { para, text } = ownStyleAttrs(style);
+    const { para, text } = ownStyleAttrs(style, style.parent ? resolveStyle(sheet, style.parent, 'paragraph').para : {});
     const existing = findAutoStyle(styles, odfName);
     if (existing) {
       let block = stripManagedProps(existing);
@@ -1928,7 +1939,7 @@ function applyNamedStyles(styles: string, sheet: StyleSheet, used: Set<string>, 
       continue;
     }
     const attrs: Record<string, string> = {
-      'style:name': odfName, 'style:family': 'paragraph', 'style:display-name': style.name,
+      'style:name': odfName, 'style:family': 'paragraph', 'style:display-name': escapeXml(style.name),
     };
     if (style.parent) attrs['style:parent-style-name'] = odfStyleName(style.parent);
     if (style.next) attrs['style:next-style-name'] = odfStyleName(style.next);
@@ -1997,7 +2008,8 @@ function applyParagraphStyles(odtBytes: Uint8Array): Uint8Array {
   let counter = 0;
 
   const styleFor = (source: string, styleName: string): string => {
-    const odfName = odfStyleName(styleName);
+    // The sentinel carries the name as serialized text, so its XML escapes come off first.
+    const odfName = odfStyleName(unescapeXml(styleName));
     const auto = source ? findAutoStyle(content, source) : null;
     if (!auto) return odfName; // no direct formatting: reference the style itself
     const key = `${source}|${odfName}`;
@@ -2997,19 +3009,22 @@ function applyWatermarkOdf(odtBytes: Uint8Array, wm: Watermark | null): Uint8Arr
 // decor on those pages. A document with no header gets one that reserves no band of
 // its own (LibreOffice still floors the band at 0.499cm, as for its own watermark).
 function injectIntoHeaderZones(styles: string, shapes: string): string {
-  if (!/<style:header[\s/>]/.test(styles)) {
-    const zone = `<style:header><text:p text:style-name="Header">${shapes}</text:p></style:header>`;
-    const out = styles.replace(/<style:header-style\s*\/>/, '<style:header-style><style:header-footer-properties fo:min-height="0cm" fo:margin-bottom="0cm"/></style:header-style>');
-    return /<style:master-page\b[^>]*\/>/.test(out)
-      ? out.replace(/(<style:master-page\b[^>]*)\/>/, `$1>${zone}</style:master-page>`)
-      : out.replace(/(<style:master-page\b[^>]*>)/, `$1${zone}`);
-  }
-  return styles.replace(/<style:header(-first|-left)?\s*\/>|<style:header(?:-first|-left)?>(\s*<text:p[^>]*>)?/g, (m) => {
-    if (m.endsWith('/>')) {
-      const tag = /style:header(?:-first|-left)?/.exec(m)![0];
-      return `<${tag}><text:p text:style-name="Header">${shapes}</text:p></${tag}>`;
+  const blank = `<style:header><text:p text:style-name="Header">${shapes}</text:p></style:header>`;
+  const out = styles.replace(/<style:header-style\s*\/>/g, '<style:header-style><style:header-footer-properties fo:min-height="0cm" fo:margin-bottom="0cm"/></style:header-style>');
+  // Every master page, the section masters included: the decor shows on their pages too.
+  return out.replace(/<style:master-page\b[^>]*(?:\/>|>[\s\S]*?<\/style:master-page>)/g, (master) => {
+    if (!/<style:header[\s/>]/.test(master)) {
+      return master.endsWith('/>')
+        ? master.replace(/\/>$/, `>${blank}</style:master-page>`)
+        : master.replace(/(<style:master-page\b[^>]*>)/, `$1${blank}`);
     }
-    return m.includes('<text:p') ? `${m}${shapes}` : `${m}<text:p text:style-name="Header">${shapes}</text:p>`;
+    return master.replace(/<style:header(-first|-left)?\s*\/>|<style:header(?:-first|-left)?>(\s*<text:p[^>]*>)?/g, (m) => {
+      const tag = /style:header(?:-first|-left)?/.exec(m)![0];
+      if (/^<style:header(?:-first|-left)?\s*\/>$/.test(m)) return `<${tag}><text:p text:style-name="Header">${shapes}</text:p></${tag}>`;
+      if (!m.includes('<text:p')) return `${m}<text:p text:style-name="Header">${shapes}</text:p>`;
+      // A blank zone's paragraph is self-closing; the shape needs it open.
+      return m.endsWith('/>') ? `${m.slice(0, -2)}>${shapes}</text:p>` : `${m}${shapes}`;
+    });
   });
 }
 
@@ -3062,6 +3077,20 @@ function lengthOfPageLayout(styles: string): number {
   return width ? width - num('fo:margin-left') - num('fo:margin-right') : 17;
 }
 
+// LibreOffice's two flags for a numbered bibliography — [1] before each row, rows in
+// citation order — live on the one text:bibliography-configuration in office:styles.
+function applyBibliographyConfig(odtBytes: Uint8Array, numbered: boolean): Uint8Array {
+  if (!numbered) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const stylesBytes = files['styles.xml'];
+  if (!stylesBytes) return odtBytes;
+  const styles = strFromU8(stylesBytes);
+  if (styles.includes('<text:bibliography-configuration')) return odtBytes;
+  files['styles.xml'] = strToU8(styles.replace('</office:styles>',
+    '<text:bibliography-configuration text:numbered-entries="true" text:sort-by-position="true"/></office:styles>'));
+  return rezipOdt(files);
+}
+
 function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; country: string } | null, pageFormat: PageFormat, orientation: Orientation, sheet: StyleSheet, used: Set<string>, usedTables: Set<string> = new Set(), usedLists: Set<string> = new Set(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, mirrored = false, rtl = false, notes: NoteSettings = DEFAULT_NOTE_SETTINGS, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR, lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING): Uint8Array {
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
@@ -3092,7 +3121,7 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: { language: string; countr
   // the editor and Word (w:pgBorders offsetFrom="text") keep the text at the margins and
   // push the border out. Shrink the margins by border + padding so the text stays put.
   if (decor.border) {
-    const inset = decor.border.paddingCm + (decor.border.widthPt * 2.54) / 72;
+    const inset = borderInsetCm(decor);
     styles = styles.replace(/<style:page-layout-properties [^>]*/, (m) =>
       m.replace(/fo:margin-(top|bottom|left|right)="([\d.]+)cm"/g, (_a, side, v) =>
         `fo:margin-${side}="${Math.max(0, round3(Number(v) - inset))}cm"`));
@@ -3458,7 +3487,7 @@ function applyCharacterStyles(odtBytes: Uint8Array): Uint8Array {
   let counter = 0;
 
   const styleFor = (source: string, styleName: string): string => {
-    const odfName = odfStyleName(styleName);
+    const odfName = odfStyleName(unescapeXml(styleName));
     const auto = source ? findAutoStyle(content, source) : null;
     if (!auto) return odfName;
     const key = `${source}|${odfName}`;
@@ -4593,10 +4622,10 @@ function tocXml(toc: TocExport, index: number, bibTypes: string[]): string {
     `</text:${spec.el}-entry-template>`;
   // An alphabetical index is fed by its marks, is single-level, and merges the pages of
   // a term the reader marked more than once — LibreOffice's text:combine-entries.
+  // A numbered bibliography's two flags ride text:bibliography-configuration in
+  // office:styles (applyBibliographyConfig), the source element takes none.
   const sourceAttrs = toc.kind === 'bibliography'
-    // LibreOffice's own two flags for a numbered bibliography: [1] before each row, and
-    // the rows in the order the document cites them rather than sorted.
-    ? (toc.citationStyle === 'numbered' ? ' text:numbered-entries="true" text:sort-by-position="true"' : '')
+    ? ''
     : toc.kind === 'alphabetical'
     ? ' text:combine-entries="true" text:ignore-case="true"'
     : spec.seq
@@ -4943,12 +4972,11 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
         indentFirst?: string;
         tabStops?: { position: string; type: 'left' | 'center' | 'right' }[];
       } = {};
+      // A block with no line height of its own inherits its style's, so none is written.
       if (node.attrs?.lineHeight != null) {
         const lhRaw = String(node.attrs.lineHeight);
         const lhNum = parseFloat(lhRaw);
         opts.lineHeight = isNaN(lhNum) ? lhRaw : lhNum;
-      } else {
-        opts.lineHeight = DEFAULT_LINE_HEIGHT;
       }
       const ta = node.attrs?.textAlign;
       if (ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify') {
@@ -5089,12 +5117,15 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withNamedStyles = applyCharacterStyles(applyTextEffects(applyParagraphStyles(withParaBoxes)));
   const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
   const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(docJson, styles), usedTables, new Set(listStyleRepoints.filter((n): n is string => !!n)), tabIntervalCm, margins.mirrored === true, rtl, notesSettings, hyphenate, pageNumbering, decor, lineNumbering);
-  const withHf = applyHfPostProcess(withStyles, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
-  const withWatermark = applyFoldMarksOdf(applyWatermarkOdf(withHf, decor.watermark), foldMarks);
+  const withBib = applyBibliographyConfig(withStyles, tocs.some((t) => t.kind === 'bibliography' && t.citationStyle === 'numbered'));
+  const withHf = applyHfPostProcess(withBib, margins, headerPara, footerPara, headerDist, footerDist, firstHeaderPara, firstFooterPara, hf?.pageCount ?? 1, hfImages, evenHeaderPara, evenFooterPara);
   // Sections past the first get their own master page, which is where ODF keeps a
-  // section's header/footer; the SEC-marked block points at it.
-  const withSections = applySectionMasterPages(withWatermark, hf?.sections ?? [], hf?.pageCount ?? 1, margins, pageFormat, orientation);
-  return zipFinal(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withSections, spacingModel, spacingAtPageStart), pageNumbering.start), props)));
+  // section's header/footer; the SEC-marked block points at it. The page decor goes
+  // into every master's header after that, so the section pages show it too.
+  const withSections = applySectionMasterPages(withHf, hf?.sections ?? [], hf?.pageCount ?? 1, margins, pageFormat, orientation,
+    { header: !!headerPara, footer: !!footerPara }, { header: headerDist, footer: footerDist }, borderInsetCm(decor));
+  const withWatermark = applyFoldMarksOdf(applyWatermarkOdf(withSections, decor.watermark), foldMarks);
+  return zipFinal(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withWatermark, spacingModel, spacingAtPageStart), pageNumbering.start), props)));
 }
 
 // The package declares ODF 1.3 in every part — the version LibreOffice writes, and
@@ -5120,9 +5151,12 @@ function applyPageNumberStart(odtBytes: Uint8Array, start: number): Uint8Array {
   const content = strFromU8(contentBytes);
   const body = /<office:text\b[^>]*>/.exec(content);
   if (!body) return odtBytes;
-  const first = /<text:(p|h)\b([^>]*)>/.exec(content.slice(body.index + body[0].length));
+  // Past the tracked-changes registry, whose paragraphs are deleted text.
+  const registryEnd = content.indexOf('</text:tracked-changes>', body.index);
+  const from = registryEnd >= 0 ? registryEnd + '</text:tracked-changes>'.length : body.index + body[0].length;
+  const first = /<text:(p|h)\b([^>]*)>/.exec(content.slice(from));
   if (!first) return odtBytes;
-  const at = body.index + body[0].length + first.index;
+  const at = from + first.index;
   const srcM = /text:style-name="([^"]*)"/.exec(first[2]);
   const source = srcM ? srcM[1] : 'Standard';
   const name = 'PgNumStart';
@@ -5270,12 +5304,16 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, headerPa
       new RegExp(`<style:${kind}-style>[\\s\\S]*?</style:${kind}-style>`),
       `<style:${kind}-style><style:header-footer-properties fo:min-height="${minH}cm" ${spacingAttr}="0cm" style:dynamic-spacing="false"/></style:${kind}-style>`,
     );
+    // On the zone's own paragraph, not the shared Header/Footer style: the first-page
+    // and even-page variants inherit that style and have alignments of their own.
     const props = hfParaPropsXml(para);
     if (props) {
-      const styleName = kind === 'header' ? 'Header' : 'Footer';
+      const parent = kind === 'header' ? 'Header' : 'Footer';
+      const name = `HFD${kind[0].toUpperCase()}P`;
+      mint(`<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}">${props}</style:style>`);
       styles = styles.replace(
-        new RegExp(`(<style:style style:name="${styleName}"[^>]*?)/>`),
-        `$1>${props}</style:style>`,
+        new RegExp(`(<style:${kind}>\\s*<text:p )text:style-name="${parent}"`),
+        `$1text:style-name="${name}"`,
       );
     }
   };
@@ -5384,26 +5422,38 @@ function hfVariantZoneXml(kind: 'header' | 'footer', suffix: 'first' | 'left' | 
 // A section's own master page: the Standard one cloned under its own name, carrying that
 // section's zones. ODF has no per-section header/footer other than this.
 function masterPageXml(name: string, layoutName: string, set: HfSet, pageCount: number, mint: (styleXml: string) => void, pfx: string): string {
-  const zone = (kind: 'header' | 'footer', suffix: 'first' | 'left' | null, doc: HfDoc): string => {
-    if (hfIsEmpty(doc)) return '';
-    return hfVariantZoneXml(kind, suffix, doc!.content![0] as TiptapNode, pageCount, mint, pfx);
+  // A variant and its running zone travel as a pair: ODF allows a first/left zone only
+  // under a running one, and an absent left zone repeats the running one. Where either
+  // is set both are written, the blank one as an empty paragraph, which blanks its side.
+  const zone = (kind: 'header' | 'footer', suffix: 'first' | 'left' | null, doc: HfDoc, force = false): string => {
+    if (!force && hfIsEmpty(doc)) return '';
+    const para = hfIsEmpty(doc) ? { type: 'paragraph', content: [] } : doc!.content![0];
+    return hfVariantZoneXml(kind, suffix, para as TiptapNode, pageCount, mint, pfx);
   };
-  // An empty default beside a variant blanks its side, as the editor renders it.
-  const need = (a: HfDoc, b: HfDoc) => (hfIsEmpty(a) && !hfIsEmpty(b) ? { type: 'doc', content: [{ type: 'paragraph', content: [] }] } as HfDoc : a);
-  const hFirst = set.differentFirstPage ? set.headerFirst : null;
-  const fFirst = set.differentFirstPage ? set.footerFirst : null;
-  const hEven = set.differentOddEven ? set.headerEven : null;
-  const fEven = set.differentOddEven ? set.footerEven : null;
-  const body = zone('header', null, need(need(set.header, hFirst), hEven))
-    + zone('header', 'first', hFirst) + zone('header', 'left', hEven)
-    + zone('footer', null, need(need(set.footer, fFirst), fEven))
-    + zone('footer', 'first', fFirst) + zone('footer', 'left', fEven);
+  const on = (flag: boolean, running: HfDoc, variant: HfDoc) => flag && (!hfIsEmpty(running) || !hfIsEmpty(variant));
+  const hFirst = on(set.differentFirstPage, set.header, set.headerFirst);
+  const hEven = on(set.differentOddEven, set.header, set.headerEven);
+  const fFirst = on(set.differentFirstPage, set.footer, set.footerFirst);
+  const fEven = on(set.differentOddEven, set.footer, set.footerEven);
+  // In the schema's order: the running zone, its left variant, then its first-page one.
+  const body = zone('header', null, set.header, hFirst || hEven)
+    + (hEven ? zone('header', 'left', set.headerEven, true) : '')
+    + (hFirst ? zone('header', 'first', set.headerFirst, true) : '')
+    + zone('footer', null, set.footer, fFirst || fEven)
+    + (fEven ? zone('footer', 'left', set.footerEven, true) : '')
+    + (fFirst ? zone('footer', 'first', set.footerFirst, true) : '');
   return `<style:master-page style:name="${name}" style:page-layout-name="${layoutName}">${body}</style:master-page>`;
+}
+
+// What a page border and its padding take off every page margin (they sit inside it).
+function borderInsetCm(decor: PageDecor): number {
+  return decor.border ? decor.border.paddingCm + (decor.border.widthPt * 2.54) / 72 : 0;
 }
 
 // Point each SEC-marked block at its section's master page (ODF's only per-section
 // header/footer), minting the master pages beside the Standard one odf-kit wrote.
-function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount: number, margins: PageMargins, format: PageFormat, orientation: Orientation): Uint8Array {
+// `docZones`/`dists` are the document's own running zones and edge→zone distances.
+function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount: number, margins: PageMargins, format: PageFormat, orientation: Orientation, docZones: { header: boolean; footer: boolean }, dists: { header: number; footer: number }, insetCm: number): Uint8Array {
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
   const stylesBytes = files['styles.xml'];
@@ -5445,46 +5495,53 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
     content = injectAutomaticStyles(content, minted.join(''));
   }
 
-  // The page layout odf-kit gave the Standard master page: reused as is by a section
-  // whose margins are the document's, cloned with them shifted by a section that has
-  // its own — a shift, so whatever the header/footer pass folded into it survives.
+  // The page layout odf-kit gave the Standard master, shared by a section whose page setup
+  // and zones are the document's; any other gets a clone built as applyHfPostProcess builds
+  // it: a side with a zone has the distance as page margin and a band up to the body margin.
   const layout = /<style:master-page\b[^>]*style:page-layout-name="([^"]*)"/.exec(styles)?.[1] ?? 'pm1';
   const layoutXml = new RegExp(`<style:page-layout\\b[^>]*style:name="${layout}"[\\s\\S]*?</style:page-layout>`).exec(styles)?.[0] ?? null;
   const layouts: string[] = [];
+  const round3 = (v: number) => Math.round(v * 1000) / 1000;
   const layoutFor = (index: number, set: HfSet): string => {
     const m = set.margins;
     const paper = set.format || set.orientation ? pageDimsCm(set.format ?? format, set.orientation ?? orientation) : null;
     const numFormat = set.pageNumberFormat ?? null;
-    // ODF's page margin *is* the edge→zone distance on a side that has one, so a
-    // section with its own distances writes them outright rather than as a shift.
-    const dist = set.distances ?? null;
-    const distTop = dist && (set.header || set.headerFirst || set.headerEven) ? dist.header : null;
-    const distBottom = dist && (set.footer || set.footerFirst || set.footerEven) ? dist.footer : null;
+    const has = { header: !!(set.header || set.headerFirst || set.headerEven), footer: !!(set.footer || set.footerFirst || set.footerEven) };
+    const sameZones = has.header === docZones.header && has.footer === docZones.footer && !set.distances;
     // The side the section opens on: page one is a right page whatever it says, so only
     // a later section carries it.
     const side = index > 0 && set.startsOn ? (set.startsOn === 'odd' ? 'right' : 'left') : null;
-    if ((!m && !paper && !numFormat && distTop == null && distBottom == null && !side) || !layoutXml) return layout;
+    if ((!m && !paper && !numFormat && sameZones && !side) || !layoutXml) return layout;
+    const body = m ?? margins;
+    const band = (kind: 'header' | 'footer', edge: 'top' | 'bottom'): { margin: number; minH: number | null } => {
+      if (!has[kind]) return { margin: body[edge], minH: null };
+      // A section's own distance is written as it is: past the body margin, the body
+      // starts below the band there, as the editor lays it out.
+      const dist = set.distances?.[kind] ?? dists[kind];
+      return { margin: dist, minH: Math.max(0.2, body[edge] - dist) };
+    };
+    const top = band('header', 'top');
+    const bottom = band('footer', 'bottom');
+    const bandXml = (kind: 'header' | 'footer', minH: number | null) => (minH == null
+      ? `<style:${kind}-style/>`
+      : `<style:${kind}-style><style:header-footer-properties fo:min-height="${round3(minH)}cm" ${kind === 'header' ? 'fo:margin-bottom' : 'fo:margin-top'}="0cm" style:dynamic-spacing="false"/></style:${kind}-style>`);
     const name = `${layout}Sec${index + 1}`;
-    layouts.push(layoutXml
-      .replace(/\s*style:page-usage="[^"]*"/, '')
+    let xml = (side ? layoutXml.replace(/\s*style:page-usage="[^"]*"/, '') : layoutXml)
       .replace(`style:name="${layout}"`, `style:name="${name}"${side ? ` style:page-usage="${side}"` : ''}`)
       .replace(/<style:page-layout-properties\b[^>]*>/, (props) => {
-        // The margins are a shift, so whatever the header/footer pass folded into them
-        // survives; the paper is set outright.
-        let p = m
-          ? (['top', 'bottom', 'left', 'right'] as const).reduce((q, side) =>
-            q.replace(new RegExp(`fo:margin-${side}="([\\d.]+)cm"`), (_x, cm: string) =>
-              `fo:margin-${side}="${Math.max(0, Math.round((parseFloat(cm) + m[side] - margins[side]) * 1000) / 1000)}cm"`), props)
-          : props;
+        // The page border and its padding sit inside the margins (rewriteStylesXml).
+        const cm = (v: number) => `${Math.max(0, round3(v - insetCm))}cm`;
+        let p = props
+          .replace(/fo:margin-top="[^"]*"/, `fo:margin-top="${cm(top.margin)}"`)
+          .replace(/fo:margin-bottom="[^"]*"/, `fo:margin-bottom="${cm(bottom.margin)}"`)
+          .replace(/fo:margin-left="[^"]*"/, `fo:margin-left="${cm(body.left)}"`)
+          .replace(/fo:margin-right="[^"]*"/, `fo:margin-right="${cm(body.right)}"`);
         if (paper) {
-          const round3 = (v: number) => Math.round(v * 1000) / 1000;
           p = p
             .replace(/fo:page-width="[^"]*"/, `fo:page-width="${round3(paper.w)}cm"`)
             .replace(/fo:page-height="[^"]*"/, `fo:page-height="${round3(paper.h)}cm"`)
             .replace(/style:print-orientation="[^"]*"/, `style:print-orientation="${paper.w > paper.h ? 'landscape' : 'portrait'}"`);
         }
-        if (distTop != null) p = p.replace(/fo:margin-top="[^"]*"/, `fo:margin-top="${distTop}cm"`);
-        if (distBottom != null) p = p.replace(/fo:margin-bottom="[^"]*"/, `fo:margin-bottom="${distBottom}cm"`);
         // The page-number format rides the layout, which is where LibreOffice keeps it.
         if (numFormat) {
           p = /style:num-format="/.test(p)
@@ -5492,7 +5549,11 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], pageCount:
             : p.replace('<style:page-layout-properties ', `<style:page-layout-properties style:num-format="${numFormat}" `);
         }
         return p;
-      }));
+      })
+      .replace(/<style:header-style\b[^>]*?(?:\/>|>[\s\S]*?<\/style:header-style>)/, '')
+      .replace(/<style:footer-style\b[^>]*?(?:\/>|>[\s\S]*?<\/style:footer-style>)/, '');
+    xml = xml.replace('</style:page-layout>', `${bandXml('header', top.minH)}${bandXml('footer', bottom.minH)}</style:page-layout>`);
+    layouts.push(xml);
     return name;
   };
   const hfStyles: string[] = [];

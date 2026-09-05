@@ -48,6 +48,7 @@ export type PropMap = Record<string, string>;
 
 type StyleEntry = {
   parent: string | null;
+  next: string | null; // style:next-style-name
   text: PropMap; // style:text-properties
   para: PropMap; // style:paragraph-properties
   misc: PropMap; // table-column / table-row / table-cell properties
@@ -134,6 +135,7 @@ function collectProps(el: Element, propsLocalName: string, into: PropMap): void 
 function entryFromStyleElement(el: Element): StyleEntry {
   const entry: StyleEntry = {
     parent: el.getAttributeNS(NS.style, 'parent-style-name'),
+    next: el.getAttributeNS(NS.style, 'next-style-name'),
     text: {},
     para: {},
     misc: {},
@@ -197,12 +199,12 @@ export class StyleResolver {
 
   // Paragraph styles from <office:styles> — the file's named styles (as opposed to the
   // automatic styles, which are direct formatting). Own props only; the chain stays a chain.
-  namedParagraphStyles(): Map<string, { parent: string | null; display?: string; text: PropMap; para: PropMap }> {
-    const out = new Map<string, { parent: string | null; display?: string; text: PropMap; para: PropMap }>();
+  namedParagraphStyles(): Map<string, { parent: string | null; next: string | null; display?: string; text: PropMap; para: PropMap }> {
+    const out = new Map<string, { parent: string | null; next: string | null; display?: string; text: PropMap; para: PropMap }>();
     for (const name of this.namedParagraphNames) {
       const entry = this.styles.get(`paragraph\0${name}`);
       // display: only the file's own style:display-name — the caller decodes _20_ itself.
-      if (entry) out.set(name, { parent: entry.parent, display: this.displayNames.get(name), text: entry.text, para: entry.para });
+      if (entry) out.set(name, { parent: entry.parent, next: entry.next, display: this.displayNames.get(name), text: entry.text, para: entry.para });
     }
     return out;
   }
@@ -626,6 +628,10 @@ export class StyleResolver {
     this.defaultMaster = name;
   }
 
+  hasMasterPage(name: string | null): name is string {
+    return !!name && !!this.masterPageEl(name);
+  }
+
   // The master page a paragraph style switches to, walking style:parent-style-name.
   masterPageOf(styleName: string | null): string | null {
     const seen = new Set<string>();
@@ -837,6 +843,13 @@ export class StyleResolver {
   // The document's chapter numbering — one <text:outline-style> in styles.xml.
   outlineStyle(): Element | null {
     return this.stylesDoc?.getElementsByTagNameNS(NS.text, 'outline-style')[0] ?? null;
+  }
+
+  // Whether the bibliography numbers its entries — text:bibliography-configuration in
+  // office:styles, where both flags of a numbered bibliography live.
+  bibliographyNumbered(): boolean {
+    const cfg = this.stylesDoc?.getElementsByTagNameNS(NS.text, 'bibliography-configuration')[0];
+    return cfg?.getAttributeNS(NS.text, 'numbered-entries') === 'true';
   }
 
   // The page's own decoration (storage/pageDecor.ts): background and border ride the

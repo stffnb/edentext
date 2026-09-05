@@ -98,6 +98,8 @@ describe('chapter numbering', () => {
   it('draws the label with counters that reset down the levels', () => {
     const css = outlineCss(outline);
     expect(css).toContain('counter-increment: edt-outline-1');
+    // Set, not reset: a reset on a later chapter would open a counter its sections skip.
+    expect(css).toContain('counter-set: edt-outline-2 0 edt-outline-3 1');
     expect(css).toMatch(/h2[^{\n]*::before \{\n {2}content: counter\(edt-outline-1, decimal\) "\." counter\(edt-outline-2, decimal\) " ";/);
     // A heading in a cell or a list item is not part of the chapter count.
     expect(css).toContain(':not(:is(td, th, li, .frame-node) *)');

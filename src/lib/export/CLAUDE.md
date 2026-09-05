@@ -63,12 +63,26 @@ fallback download shows a one-time hint (`edentext-download-hint`) that the brow
 - **`collapseRunWhitespace`** — strips the bare `\n` separators odf-kit inserts between runs inside a paragraph (they'd otherwise collapse to spurious spaces mid-word).
 - **`rewriteStylesXml`** — `style:page-usage="mirrored"` on the page layout when the margins mirror (the left/right pair is already the inner/outer one), default font Liberation Serif → Times New Roman, heading sizes/margins → the editor's values, Standard's `fo:margin-bottom` → 0 (odf-kit emits 0.212cm; every paragraph and list item inherits it, and the editor has no paragraph spacing — see below).
 - **`normalizeColor`** — coerces colors to `#RRGGBB` (ODF requirement; rejects/normalizes `rgb()` and short hex).
-- **Schema conformance** (guarded by `tests/schema-validation.test.ts`; LibreOffice forgives all of this, Word's strict reader does not): `applyOdfVersion` stamps every ODF part **1.3** — the version LibreOffice writes, and the first with `style:header-first` — over odf-kit's 1.2. `draw:image` carries the `xlink:type/show/actuate` trio (`xlink:type` is mandatory beside `xlink:href`); `text:time-value` is an xsd dateTime, never a `PT…S` duration (the ODT importer still reads the legacy duration); `index-entry-link-start/-end` only in TOC entry templates; `text:dont-balance-text-columns` on `style:section-properties`. DOCX: `orderDocxSettings` (last pass) re-sorts `w:settings` children into the fixed CT_Settings sequence the prepend-passes scramble; `w14:paraId` in comments.xml requires `mc:Ignorable="w14"` on the root. `tests/package-lint.test.ts` guards the invariants the schemas cannot express (unique style ids, no dangling style/num/rel references, balanced ranges, manifest completeness).
+- **Schema conformance** (guarded by `tests/schema-validation.test.ts`; LibreOffice forgives all of this, Word's strict reader does not): `applyOdfVersion` stamps every ODF part **1.3** — the version LibreOffice writes, and the first with `style:header-first` — over odf-kit's 1.2. `draw:image` carries the `xlink:type/show/actuate` trio (`xlink:type` is mandatory beside `xlink:href`); `text:time-value` is an xsd dateTime, never a `PT…S` duration (the ODT importer still reads the legacy duration); `index-entry-link-start/-end` only in TOC entry templates; `text:dont-balance-text-columns` on `style:section-properties`. DOCX: `orderDocxSettings` (last pass) re-sorts `w:settings` children into the fixed CT_Settings sequence the prepend-passes scramble; `w14:paraId` in comments.xml requires `mc:Ignorable="w14"` on the root. `w:numPr` sits after the keep flags in a heading style's `w:pPr`, and `w:pBdr` sides are re-sorted post-pack (`orderParagraphBorders`: the library writes top, bottom, left, right). `tests/package-lint.test.ts` guards the invariants the schemas cannot express (unique style ids, no dangling style/num/rel references, balanced ranges, manifest completeness).
 
 - **A section past the first spells its zones out, blank ones included.** A `w:sectPr`
   naming no `w:headerReference` is Word's "Link to Previous" and repeats the section above
   it — measured: a chapter's running head landed on the pages a blank section was meant
   for. Both zones write an empty part rather than none (`spellOut`, `mkHeaders`).
+- **A section begins a page in DOCX** (`w:type` nextPage, as naming a master page does in ODF);
+  only a columns group inside a section flows on continuously — the importer reads a
+  continuous break as a columns boundary, so a real section on one lost its break.
+- **Odd/even is document-wide in DOCX** (`w:evenAndOddHeaders`): a section not asking for it
+  gets its running zones copied into its even parts, or Word links them to the section above.
+  `w:fmt` rides every `w:sectPr` as well: Word has no document default behind it.
+- **An ODF section master's layout is built from its own zones** (`layoutFor`: page margin =
+  edge→zone distance on a side that has a zone, the body margin on one that has none — a
+  shared layout put a footer-less chapter's body at the footer distance). A variant zone
+  travels with its running one, in the schema's order (running, left, first); the watermark
+  is injected after the section masters exist, so their pages show it too.
+- **`style:name` is an NCName**: every other character travels as LibreOffice's `_hex_`
+  (`odfStyleName`, "&" → `_26_`), the display name carries the real one; a sentinel's
+  payload is serialized text, so its XML escapes come off first.
 - **A box spanning the text column keeps where it sits across it**, banded or behind the
   text alike; only a side wrap has its side dictated by the wrap itself.
 - **An index row's tab stop is written even with no page number running to it** — it is

@@ -169,6 +169,7 @@ export class DocxStyles {
   private defaultsRun: RunProps = {};
   private ownRun = new Map<string, RunProps>(); // styleId → own w:rPr
   private basedOn = new Map<string, string | null>();
+  private next = new Map<string, string | null>(); // w:next
   private memoOwn = new Map<string, RunProps>();
   private styleNum = new Map<string, { numId: number; ilvl: number }>();
   private ownOutline = new Map<string, number>(); // style's own w:outlineLvl (heading marker)
@@ -240,6 +241,7 @@ export class DocxStyles {
       const id = style.getAttributeNS(W, 'styleId');
       if (!id) continue;
       this.basedOn.set(id, firstChild(style, 'basedOn') ? wVal(firstChild(style, 'basedOn')!) : null);
+      this.next.set(id, firstChild(style, 'next') ? wVal(firstChild(style, 'next')!) : null);
       this.ownRun.set(id, parseRunProps(firstChild(style, 'rPr')));
       if (style.getAttributeNS(W, 'type') === 'paragraph' && (style.getAttributeNS(W, 'default') === '1' || style.getAttributeNS(W, 'default') === 'true')) {
         this.defaultParaStyle = id;
@@ -310,9 +312,9 @@ export class DocxStyles {
   }
 
   // Paragraph styles defined in the file: display name and parent, for the style registry.
-  namedParagraphStyles(): Map<string, { name: string; basedOn: string | null }> {
-    const out = new Map<string, { name: string; basedOn: string | null }>();
-    for (const [id, name] of this.paraStyleNames) out.set(id, { name, basedOn: this.basedOn.get(id) ?? null });
+  namedParagraphStyles(): Map<string, { name: string; basedOn: string | null; next: string | null }> {
+    const out = new Map<string, { name: string; basedOn: string | null; next: string | null }>();
+    for (const [id, name] of this.paraStyleNames) out.set(id, { name, basedOn: this.basedOn.get(id) ?? null, next: this.next.get(id) ?? null });
     return out;
   }
 

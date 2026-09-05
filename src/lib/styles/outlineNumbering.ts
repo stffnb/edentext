@@ -119,8 +119,10 @@ export function outlineCss(
     const deeper = levels
       .map((l, i) => (i + 1 > level && l.format !== 'none' ? `${COUNTER(i + 1)} ${Math.max(0, (l.start ?? 1) - 1)}` : ''))
       .filter(Boolean).join(' ');
+    // counter-set, not -reset: a reset on a later sibling opens a counter of its own that
+    // the headings after it do not increment (probed in Chromium), a set rewinds theirs.
     const block = [`counter-increment: ${COUNTER(level)}`];
-    if (deeper) block.push(`counter-reset: ${deeper}`);
+    if (deeper) block.push(`counter-set: ${deeper}`);
     // The label hangs out of the paragraph's indent, so a title that wraps lines up
     // under itself — plus the section inset, which .tiptap's padding can't draw.
     const indent = own.indentCm ?? 0;

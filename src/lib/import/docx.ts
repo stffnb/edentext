@@ -214,6 +214,10 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     && !sectionStartsNewPage(g.sectPr ?? finalSectPr)
     && JSON.stringify(groupCols[gi]) !== JSON.stringify(groupCols[gi - 1]));
   groups.forEach((g, gi) => {
+    // Blocks measure against their own section's text width.
+    const sect = g.sectPr ?? finalSectPr;
+    ctx.contentWidthCm = sectionContentWidthCm(sect);
+    ctx.leftMarginCm = twipToCm(intAttr(fc(sect, 'pgMar'), W, 'left') ?? 1440);
     const inner = convertBlocks(g.els, ctx, 'body');
     // A section's own w:type says how it begins: a page-starting break (nextPage/odd/even,
     // or the default) puts its first block on a new page; continuous/nextColumn flow on.
@@ -248,6 +252,8 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   // section's, since that is the pair .tiptap's padding draws and every later section is
   // measured against (Editor.svelte's --pb-section-inset).
   const sect = parseSectPr(finalSectPr, ctx, oddEven);
+  // The edge→zone distances are the first section's too, as its zones are.
+  const firstSect = parseSectPr(groups[0]?.sectPr ?? finalSectPr, ctx, oddEven);
   // The paper is the *first* section's, as the margins are: a document whose last
   // section is one landscape page is not a landscape document.
   const docPaper = sectPaper(groups[0]?.sectPr ?? finalSectPr);
@@ -292,8 +298,8 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
     footerEven: first.differentOddEven ? first.footerEven : null,
     differentOddEven: first.differentOddEven,
     hfSections,
-    headerDistanceCm: hasHeader ? sect.headerDistCm : null,
-    footerDistanceCm: hasFooter ? sect.footerDistCm : null,
+    headerDistanceCm: hasHeader ? firstSect.headerDistCm : null,
+    footerDistanceCm: hasFooter ? firstSect.footerDistCm : null,
     language: documentLanguage(stylesDoc, warnings),
     props: docxDocProperties(files),
     fonts: extractDocxFonts(files),
@@ -1026,7 +1032,7 @@ function collectStyleSheet(ctx: Ctx): StyleSheet {
     const style: Style = {
       name,
       parent: parent && parent !== name ? parent : builtin?.parent ?? null,
-      next: builtin?.next ?? null,
+      next: def.next ? ctx.styleNames.get(def.next) ?? def.next : builtin?.next ?? null,
       builtin: builtin?.builtin,
       para: ownProps(stylePara(ctx, id), stylePara(ctx, parentId)),
       text: ownProps(styleText(ctx, id), styleText(ctx, parentId)),
