@@ -4,7 +4,7 @@ import {
 } from '../src/lib/styles/tableStyles';
 
 type N = any;
-type Rng = () => number;
+export type Rng = () => number;
 
 export function mulberry32(seed: number): Rng {
   let a = seed >>> 0;
@@ -16,9 +16,9 @@ export function mulberry32(seed: number): Rng {
   };
 }
 
-const pick = <T,>(r: Rng, arr: readonly T[]): T => arr[Math.floor(r() * arr.length)];
-const int = (r: Rng, min: number, max: number) => min + Math.floor(r() * (max - min + 1));
-const maybe = (r: Rng, p: number) => r() < p;
+export const pick = <T,>(r: Rng, arr: readonly T[]): T => arr[Math.floor(r() * arr.length)];
+export const int = (r: Rng, min: number, max: number) => min + Math.floor(r() * (max - min + 1));
+export const maybe = (r: Rng, p: number) => r() < p;
 
 // XML-hostile characters, umlauts, an astral-plane glyph and a tab on purpose.
 const WORDS = ['Lorem', 'ipsum', 'Größe', 'fünf', 'a&b', '<tag>', '"quote"', "it's",
@@ -99,6 +99,9 @@ function paraAttrs(r: Rng, indents: boolean, top: boolean): N | null {
   if (indents && maybe(r, 0.1)) attrs.indentFirst = pick(r, [0.75, -0.75]);
   if (indents && maybe(r, 0.1)) attrs.indentRight = 1.5;
   if (top && maybe(r, 0.05)) attrs.breakBefore = 'page';
+  // A section break is a page break as well: naming a master page breaks the page in
+  // ODF, and the DOCX sectPr is a nextPage one.
+  if (top && maybe(r, 0.06)) { attrs.sectionBreak = true; attrs.breakBefore = 'page'; }
   // Paragraph box: shading and/or rule lines (ParaStyle carries them into cells/lists).
   if (maybe(r, 0.08)) {
     if (maybe(r, 0.6)) attrs.backgroundColor = pick(r, ['#CCFFFF', '#FFE0E0']);
@@ -418,7 +421,8 @@ function table(r: Rng): N {
 // Roman labels for endnotes match the importer's default numbering.
 const ROMAN = ['i', 'ii', 'iii', 'iv', 'v'] as const;
 
-export function genDoc(r: Rng): N {
+// `styleNames` are the sheet's user styles; a styled block may name one of them.
+export function genDoc(r: Rng, styleNames: string[] = []): N {
   bmNames = [];
   commentSeq = 0;
   revSeq = 0;
@@ -443,8 +447,8 @@ export function genDoc(r: Rng): N {
       // Title/Subtitle centre + size and Quotations' indent live in the style, and a
       // direct value equal to the style's own is suppressed on import — a styled
       // block carries heading-safe runs and no paragraph attrs of its own.
-      block = maybe(r, 0.07)
-        ? { type: 'paragraph', attrs: { styleName: pick(r, ['Title', 'Subtitle', 'Quotations', 'Caption']) },
+      block = maybe(r, styleNames.length ? 0.15 : 0.07)
+        ? { type: 'paragraph', attrs: { styleName: pick(r, ['Title', 'Subtitle', 'Quotations', 'Caption', ...styleNames]) },
             content: runs(r, true) }
         : paragraph(r, true, true);
       // not beside a lone display formula: company would cost it its own line (= display)
@@ -473,6 +477,8 @@ export function genDoc(r: Rng): N {
     blocks.push(block);
     prev = block.type;
   }
+  // The first block opens section 1 as it is; only a later one can start another.
+  if (blocks[0]?.attrs?.sectionBreak) delete blocks[0].attrs.sectionBreak;
   if (notes.length) blocks.push({ type: 'noteSection', content: notes });
   return { type: 'doc', content: blocks };
 }

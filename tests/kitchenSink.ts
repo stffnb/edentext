@@ -214,8 +214,8 @@ export function kitchenSinkDoc(): N {
 export function kitchenSinkSheet(): StyleSheet {
   const sheet = builtinStyleSheet();
   sheet.paragraph['Merksatz'] = { name: 'Merksatz', parent: 'Standard',
-    para: { spaceBeforePt: 6, spaceAfterPt: 6, indentCm: 1 },
-    text: { bold: true, color: '#004080' } } as N;
+    para: { spaceBefore: 6, spaceAfter: 6, indent: 1 },
+    text: { bold: true, color: '#004080' } };
   sheet.list['Prüfliste'] = { name: 'Prüfliste', levels: [
     { kind: 'number', numType: 'upper-roman-paren', markerAlign: 'right', indentCm: 0.5 },
     { kind: 'bullet', bulletChar: '✓' },

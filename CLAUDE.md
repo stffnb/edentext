@@ -30,7 +30,7 @@ Tests live in `tests/` (outside `src/`, so `svelte-check` ignores them), jsdom v
 `lo-roundtrip.test.ts` re-saves through LibreOffice and **self-skips** without `soffice`, so
 `npm test`/CI stay green; `corpus.test.ts` round-trips the committed `tests/corpus/`
 documents (by `make-fixtures.mjs` + Word re-saves in `corpus/word/`, never our exporter);
-`fuzz-roundtrip.test.ts` round-trips seeded random documents (`fuzzDoc.ts` generator);
+`fuzz-roundtrip.test.ts` round-trips seeded random documents under random export options (`fuzzDoc.ts`, `fuzzOptions.ts`) through both formats and validates every export against the schemas (`schemaValidate.ts`; `FUZZ_SEEDS=500` widens it);
 `schema-validation.test.ts` validates the `kitchenSink.ts` exports against the vendored
 schemas in `tests/schemas/` (self-skips without `xmllint`); `package-lint.test.ts` checks the semantic invariants schemas can't express (unique ids, dangling references); `tests/unit/` holds fast helper tests; the two browser runs (`tests/smoke/`, `tests/dom/`) share `tests/browser.mjs`. All test tooling stays a
 `devDependency`. No linter/formatter. CI (`.github/workflows/ci.yml`) runs `check` + `test`.
