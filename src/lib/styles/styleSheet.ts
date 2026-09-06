@@ -283,7 +283,8 @@ function declarations(r: ResolvedStyle): string[] {
   if (p.lineHeight) out.push(`--line-factor: ${p.lineHeight}`);
   // Padding or margin per the document's spacing model — editor.css resolves it.
   if (p.spaceBefore != null) out.push(`--space-before: ${p.spaceBefore}pt`);
-  if (p.spaceAfter != null) out.push(`margin-bottom: ${p.spaceAfter}pt`);
+  // The property beside it is what the multi-column rule turns the space below into.
+  if (p.spaceAfter != null) out.push(`margin-bottom: ${p.spaceAfter}pt`, `--space-after: ${p.spaceAfter}pt`);
   // Plus the section inset, which .tiptap's own padding can't draw (editor.css).
   if (p.indent != null) out.push(`margin-left: calc(var(--sec-inset-left, 0px) + ${p.indent}cm)`);
   if (p.backgroundColor) out.push(`background-color: ${p.backgroundColor}`);

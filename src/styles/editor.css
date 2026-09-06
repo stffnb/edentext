@@ -571,6 +571,15 @@
 .paper .tiptap .columns-node > :last-child {
   margin-bottom: 0;
 }
+/* Inside the section the space above is a margin and the space below padding: every
+   engine truncates a margin at a column break but keeps padding, so each column starts
+   level (probed: LibreOffice does) and the two spacings still add up. */
+.paper:not([data-spacing-model='max']) .tiptap .columns-node :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10) {
+  padding-top: 0;
+  margin-top: var(--space-before);
+  margin-bottom: 0 !important;
+  padding-bottom: var(--space-after, 0);
+}
 /* A heading stays with the text it introduces across a column break, as it does
    across a page break (keep-with-next is implied for headings in both products). */
 .paper .tiptap .columns-node :is(h1, h2, h3, h4, h5, h6, h7, h8, h9, h10) {
