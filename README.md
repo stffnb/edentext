@@ -72,7 +72,7 @@ both public domain.
 
 | | |
 |---|---|
-| [![Tracked changes and comments](docs/showcase/thesis-review.png)](docs/showcase/thesis-review.png) **Review** — tracked changes, threaded comments in the margin, a draft watermark | [![A book on facing pages](docs/showcase/book-spread.png)](docs/showcase/book-spread.png) **Book** — A5, mirrored margins, chapters opening on a right-hand page, running heads |
+| [![Tracked changes and comments](docs/showcase/thesis-review.png)](docs/showcase/thesis-review.png) **Review** — tracked changes, threaded comments in the margin, a draft watermark | [![A book on facing pages](docs/showcase/book-spread.png)](docs/showcase/book-spread.png) **Book** — A5, mirrored margins, chapters opening on a right-hand page, running heads; the numbering restarts after the front matter, so page 11 prints the folio 9 |
 | [![A newsletter in two columns](docs/showcase/newsletter.png)](docs/showcase/newsletter.png) **Newsletter** — columns, pictures with captions, a sidebar box | [![Tables with formulas](docs/showcase/newsletter-tables.png)](docs/showcase/newsletter-tables.png) **Tables** — table styles and spreadsheet-style formulas |
 
 ## Development

@@ -82,7 +82,8 @@ export async function build(): Promise<Showcase> {
     props: { title: 'Alice’s Adventures in Wonderland', subject: '', author: 'Lewis Carroll', keywords: '', description: '' },
     shots: [
       { file: 'book', page: 3 },
-      { file: 'book-spread', page: 3, columns: 2, tab: 'layout' },
+      // The spread that shows both page designs: a chapter opening beside a running one.
+      { file: 'book-spread', at: 'The Pool of Tears', columns: 2, tab: 'layout' },
     ],
   };
 }
