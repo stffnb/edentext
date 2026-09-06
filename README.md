@@ -47,8 +47,8 @@ EdenText is a web-based, powerful word processor for everything from quick notes
   opening on a right-hand page for books
 - **Opens and saves `.odt` and `.docx`**, exports PDF; templates (`.ott`/`.dotx`)
   and a letter gallery (DIN 5008); password-protected files in both formats
-- **Plays well with Word and LibreOffice** — exported files open in both without
-  a repair prompt, and every commit re-saves the test corpus through LibreOffice
+- **Plays well with Word and LibreOffice** — documents keep their layout across
+  all three, backed by a sophisticated test pipeline
 - **Styles** — paragraph, character, table and list styles with inheritance,
   chapter numbering
 - **Tables** with styles, sorting and spreadsheet-style formulas
