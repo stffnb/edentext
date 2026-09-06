@@ -59,12 +59,15 @@ export async function build(): Promise<Showcase> {
     ...body(raw),
   ] };
 
-  // Right-hand pages carry the chapter, left-hand pages the book; the number sits outside.
-  const right = HF({ tabStops: '11r' }, { type: 'chapterField', attrs: { level: 1, text: 'Down the Rabbit-Hole' } }, T('\t'), PAGE_NUMBER);
-  const left = HF({ tabStops: '11r' }, PAGE_NUMBER, T('\t'), T('Alice’s Adventures in Wonderland', ITALIC));
+  // Running heads name the chapter on right-hand pages, the book on left-hand ones, each
+  // towards the outer edge; the page number sits centred at the foot of every page.
+  const right = HF({ textAlign: 'right' }, { type: 'chapterField', attrs: { level: 1, text: 'Down the Rabbit-Hole' } });
+  const left = HF(null, T('Alice’s Adventures in Wonderland', ITALIC));
+  const folio = () => HF({ textAlign: 'center' }, PAGE_NUMBER);
   // A chapter opens on a right-hand page with no running head, its number at the foot.
   const chapterSet: HfSet = { ...EMPTY_HF_SET, header: right, headerEven: left, differentOddEven: true, startsOn: 'odd',
-    differentFirstPage: true, headerFirst: null, footerFirst: HF({ textAlign: 'center' }, PAGE_NUMBER) };
+    footer: folio(), footerEven: folio(),
+    differentFirstPage: true, headerFirst: null, footerFirst: folio() };
   const front: HfSet = { ...EMPTY_HF_SET };
   const sections = [front, ...Array.from({ length: 12 }, () => chapterSet)];
   sections[1] = { ...chapterSet, pageNumberStart: 1 };

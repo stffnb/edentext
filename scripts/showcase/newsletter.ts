@@ -102,13 +102,17 @@ export async function build(): Promise<Showcase> {
       T('Eden Astronomy Society, Oak Hill Observatory. Edited by the committee. Published four times a year. Contributions for the next issue to the editors by 15 November.', GREY, SMALL)),
   ] };
 
-  const footer = HF({ tabStops: '18r' }, T('Eden Astronomy Society  ·  Newsletter 3/2026', GREY, SMALL),
+  // The masthead is the first page's head; the pages after it carry a running one.
+  const header = HF({ tabStops: '18r', borderBottom: '0.5pt solid #5A6B7F', borderPadding: 2 },
+    T('Eden Astronomy Society', GREY, SMALL), T('\tSeptember 2026', GREY, SMALL));
+  const footer = () => HF({ tabStops: '18r' }, T('Newsletter 3/2026', GREY, SMALL),
     T('\tPage ', GREY, SMALL), PAGE_NUMBER);
 
   return {
     name: 'newsletter', doc, styles,
     margins: { top: 1.5, bottom: 1.5, left: 1.5, right: 1.5 },
-    hf: { header: null, footer, pageCount: 2, headerDistanceCm: 0.8, footerDistanceCm: 0.8 },
+    hf: { header, footer: footer(), headerFirst: null, footerFirst: footer(), differentFirstPage: true,
+      pageCount: 2, headerDistanceCm: 0.8, footerDistanceCm: 0.8 },
     language: { language: 'en', country: 'GB' },
     hyphenate: true,
     props: { title: 'Newsletter 3/2026', subject: 'Eden Astronomy Society', author: 'The committee', keywords: 'astronomy, society', description: '' },
