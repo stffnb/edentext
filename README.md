@@ -57,7 +57,8 @@ EdenText is a web-based, powerful word processor for everything from quick notes
 - **Review tools** — track changes and threaded comments with margin balloons,
   printable markup, spell check (English & German), synonyms
 - **Private by design** — your documents never leave your computer, all
-  processing runs locally; works offline as an installable app
+  processing runs locally; works offline as an installable app. The site counts
+  anonymous visits (GoatCounter, EU-hosted, no cookies); the editor sends nothing
 - **Any current browser** — in Chrome and Edge, Save writes back to the opened
   file; other browsers receive each save as a download, so turn on "Always ask
   where to save" in their settings to pick the location
