@@ -3036,14 +3036,13 @@ export async function buildDocx(
         // its header set carries titlePg; later groups of the set must not repeat it.
         ...(setAt(g.section).differentFirstPage && g.section < hfSets.length
           && groups.findIndex((x) => x.section === g.section) === i ? { titlePage: true } : {}),
-        // A section that must open on a right or left page says so here; Word inserts
-        // the blank page for it, as LibreOffice does for style:page-usage. Any other
-        // section begins a page (the default), as naming a master page does in ODF;
-        // only a columns group inside a section flows on.
+        // A section that must open on a right or left page says so here. One with zones
+        // or a page setup of its own begins a page, as its master page does in ODF; one
+        // with neither flows on, as the editor lays it out — like a columns group does.
         ...(i > 0 && groups.findIndex((x) => x.section === g.section) === i
           ? (setAt(g.section).startsOn
             ? { type: setAt(g.section).startsOn === 'odd' ? SectionType.ODD_PAGE : SectionType.EVEN_PAGE }
-            : {})
+            : g.section < hfSets.length ? {} : { type: SectionType.CONTINUOUS })
           : i > 0 ? { type: SectionType.CONTINUOUS } : {}),
         ...(g.columns
           ? { column: { count: g.columns.count, space: cmToTwip(g.columns.gapCm), equalWidth: true } }
