@@ -1,4 +1,5 @@
 import { Extension } from '@tiptap/core';
+import { Plugin } from '@tiptap/pm/state';
 import { DEFAULT_SHORTCUTS } from '../shortcuts';
 
 // The text-flow attrs of a paragraph/heading, null = default: breakBefore 'page', widow
@@ -137,8 +138,7 @@ export const PageBreak = Extension.create({
           .some((r) => r);
       },
       // Ctrl+Enter: start a new page at the cursor. Splits the block (unless already at its
-      // start) and marks the following block. Top-level blocks only — breakBefore is ignored
-      // inside lists/table cells, so there it does nothing.
+      // start) and marks the following block. Top-level blocks only.
       insertPageBreak: () => ({ state, chain }) => {
         const { $from, empty } = state.selection;
         if ($from.depth !== 1) return false;
@@ -154,5 +154,28 @@ export const PageBreak = Extension.create({
     return {
       [DEFAULT_SHORTCUTS.pageBreak]: () => this.editor.commands.insertPageBreak(),
     };
+  },
+
+  addProseMirrorPlugins() {
+    // A break only reaches the file from a body block or a list item: inside a table cell,
+    // a frame or a note body both formats drop it, so the editor holds none there either.
+    const carriers = ['doc', 'columns', 'bulletList', 'orderedList', 'listItem'];
+    return [new Plugin({
+      appendTransaction: (trs, _old, state) => {
+        if (!trs.some((t) => t.docChanged)) return null;
+        const tr = state.tr;
+        state.doc.descendants((node, pos) => {
+          if (node.isText) return false; // a text box holds blocks, so only a run is a dead end
+          if (node.attrs.breakBefore !== 'page') return;
+          const $pos = state.doc.resolve(pos);
+          for (let d = $pos.depth; d >= 0; d--) {
+            if (carriers.includes($pos.node(d).type.name)) continue;
+            tr.setNodeMarkup(pos, undefined, { ...node.attrs, breakBefore: null });
+            break;
+          }
+        });
+        return tr.steps.length ? tr : null;
+      },
+    })];
   },
 });

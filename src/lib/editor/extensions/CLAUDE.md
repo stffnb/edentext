@@ -20,11 +20,12 @@ Five topics are large enough to have their own deep-dive — read the file befor
 ## The rest, one line each
 
 - **`fontColor.ts`** (`FontColor`) — `color` attr on the TextStyle mark; also emits `data-color` so theme CSS (allBlack) can target color-bearing spans.
-- **`fontWeight.ts`** (`FontWeight`) — `fontWeight` attr on TextStyle (set `normal` to un-bold a heading without changing the node type).
+- **`fontWeight.ts`** (`FontWeight`) — `fontWeight` attr on TextStyle (set `normal` to un-bold a heading without changing the node type). A parsed weight Bold already claims (`bold`/`bolder`/500+) is dropped: both files spell a run's weight as bold or not, so the attr would only repeat the mark and be lost on save.
+- **`fontFamily.ts`** (`FontFamily`) — TipTap's, with a parse that keeps the **first** family of a value. A contenteditable types over a mixed selection by inserting a span carrying the *computed* style, so an unguarded parse lands a whole CSS stack (`Arial, "Liberation Sans", sans-serif`) as the font name — no name the picker or either file can use. A paste from the web arrives the same way.
 - **`lineHeight.ts`** (`LineHeight`) — `lineHeight` attr on paragraph/heading. `LINE_HEIGHT_RATIO = 1.15`: ODF line spacing multiplies the font's *natural* line height (Liberation Serif ≈1.15× em), CSS multiplies the font size — so the on-screen value is scaled to match what LibreOffice renders. A spacing above single puts **all** of its extra leading below each line (probed: at 150% LibreOffice starts line 1 flush under the block above and adds 6.9pt after every line, the last included); CSS half-leads it, so `editor.css` shifts the block up by that half with `position:relative; top:`, which leaves the flow alone — but **`offsetTop` reports the drawn position, not the flow one**, so `pageBreaks.ts` (`topWithin`) takes the shift back off; without that a block pushed to a page top landed half a leading low.
 - **`paragraphSpacing.ts`** (`ParagraphSpacing`) — `spaceBefore`/`spaceAfter` in **pt**, round-tripping 1:1 to `fo:margin-top`/`fo:margin-bottom`. Space after is a margin, space before rides `--space-before` (`storage/spacingModel.ts` decides padding vs margin); pageBreaks.ts drops it where a page break put the block at a page top, as LibreOffice does.
 - **`blockFontSize.ts`** — the font of the paragraph mark (Word `w:pPr/w:rPr`, ODF the paragraph's own text properties).
-- **`pageBreak.ts`** — the text-flow attrs of a paragraph/heading: `breakBefore: 'page'`, plus `keepNext`/`keepLines` (see `docs/architecture/pagination.md`). Owns `Mod-Enter`.
+- **`pageBreak.ts`** — the text-flow attrs of a paragraph/heading: `breakBefore: 'page'`, plus `keepNext`/`keepLines` (see `docs/architecture/pagination.md`). Owns `Mod-Enter`. A plugin sweeps `breakBefore` off every block whose ancestors are not all doc/columns/list: inside a table cell, a frame or a note body **both** formats drop it (probed), so keeping one would be a break that vanishes on save.
 - **`textDirection.ts`** — a block's own base direction (`dir` attr; ODF `style:writing-mode`, Word `w:bidi`), overriding the page's (`storage/writingMode.ts`). The HTML `dir` is the whole rendering — it resolves the bidi run order and `text-align: start` follows it, so an unaligned block flips. Both importers suppress the direction the page already has: it is inheritance, not formatting. Set in `ParagraphDialog.svelte`, where LibreOffice keeps it.
 - **`formattingMarks.ts`** (`FormattingMarks`) — decorations marking spaces (`·`) and tabs (`→`) when `.paper.show-formatting-marks` is set.
 - **`bulletList.ts`** / **`orderedList.ts`** — the TipTap lists plus a marker-type attr: `setBulletChar` (innermost list, `null` = default cycle) and the ordered numbering cycle (`utils/orderedListTypes.ts`, multilevel targets the outermost list).
@@ -59,6 +60,25 @@ note (nothing exports a nested one, ODF's list item holds no table, and ProseMir
 wrap one in a text box to fit a note's inline content) — and a **cell's content expression**
 says the same (`CELL_CONTENT`, `extensions.ts`), since a command's refusal is not the only
 way one gets in; a selection stops at the notes' boundary (`clampToSide`); the notes
-plugin's repairs ride the history event they follow.
+plugin's repairs ride the history event they follow. An anchor that lands where a note
+cannot live — inside a note, or inside a text box, which a list toggle can pull one into —
+is dropped by `strayRefs`, and its note goes with it: Word writes no note in a shape's
+text, so the `.docx` lost both silently.
 Blocks wrapped into a columns section lose a manual page break: pagination breaks a
 fragment as a whole, so nothing there honours one — and only DOCX could write it.
+
+**What the schema refuses** (same source): `subscript` and `superscript` exclude each other —
+no run is raised and lowered at once, and a file keeps only whichever it writes last; a
+`noteRef` takes no marks at all, since ODF's `text:note-citation` holds bare text (no span, no
+style name) and the anchor wears its note class's look anyway. A **list item's paragraph** keeps
+no indent of its own — the indent commands already refuse to set one, a list indents by nesting,
+and neither importer reads one there — so `indent.ts` clears the three indent attrs whenever a
+transaction leaves one inside a `listItem` (wrapping an indented paragraph into a list is the
+usual door). A table's **first row** is all header cells or none: both formats spell a
+repeating header as the whole row, and typing over a selection spanning two of them left
+one behind (`tableHeaderRow.ts`) — the promotion carries the cell's own attrs, since
+`setNodeMarkup` given a type and no attrs takes the type's defaults. A replace reaching
+into a table rebuilds the cell it lands in the same way, so `tableColumnResize.ts` reads
+the lost column weight back from the column's other rows. A **list item** holds no table:
+neither file keeps one there, and a list toggle over a table would wrap it in silently
+(`LIST_ITEM_CONTENT`, `extensions.ts`).

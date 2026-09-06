@@ -1,7 +1,7 @@
 import { Extension } from '@tiptap/core';
 import type { CommandProps } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import type { EditorState } from '@tiptap/pm/state';
+import { Plugin, type EditorState } from '@tiptap/pm/state';
 import { selectedRect, isInTable } from '@tiptap/pm/tables';
 import { parseTableLook, type TableRegion } from '../../styles/tableStyles';
 
@@ -115,5 +115,34 @@ export const TableHeaderRow = Extension.create({
       toggleHeaderRowStyle: () => toggleHeaderStyle('row'),
       toggleHeaderColumnStyle: () => toggleHeaderStyle('column'),
     };
+  },
+
+  // Both formats spell a repeating header as the whole first row (ODF's
+  // table-header-rows, Word's w:tblHeader), so a row of some header cells is a shape no
+  // file keeps — typing over a selection spanning two of them leaves one behind.
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      appendTransaction: (trs, _old, state) => {
+        if (!trs.some((t) => t.docChanged)) return null;
+        const headerType = state.schema.nodes.tableHeader;
+        if (!headerType) return null;
+        const tr = state.tr;
+        state.doc.descendants((node, pos) => {
+          if (node.isTextblock) return false;
+          if (node.type.name !== 'table') return true;
+          const cells: { cell: PMNode; pos: number }[] = [];
+          let at = pos + 2; // the table's first row starts at pos + 1, its first cell one in
+          node.firstChild?.forEach((cell) => { cells.push({ cell, pos: at }); at += cell.nodeSize; });
+          const some = cells.some((c) => c.cell.type === headerType);
+          if (some && !cells.every((c) => c.cell.type === headerType)) {
+            // Its own attrs ride along: setNodeMarkup takes the type's defaults without them,
+            // which would drop the cell's column weight, its shading and its borders.
+            for (const c of cells) if (c.cell.type !== headerType) tr.setNodeMarkup(c.pos, headerType, c.cell.attrs);
+          }
+          return false;
+        });
+        return tr.steps.length ? tr : null;
+      },
+    })];
   },
 });

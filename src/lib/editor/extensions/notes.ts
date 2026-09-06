@@ -48,6 +48,9 @@ export const NoteRef = Node.create({
   group: 'inline',
   inline: true,
   atom: true,
+  // The anchor wears its note class's own look, not the run's: ODF's text:note-citation
+  // holds bare text (no span, no style name), so no mark on it could be saved.
+  marks: '',
 
   addAttributes() {
     return {
@@ -181,16 +184,21 @@ export function findNoteSection(doc: PMNode): { node: PMNode; pos: number } | nu
   return { node: last, pos: doc.content.size - last.nodeSize };
 }
 
-// Anchors that ended up inside a note — a paste, since inserting one there is refused.
-// They reference nothing and carry no number, so the sync pass drops them.
-function strayRefsInNotes(doc: PMNode): number[] {
-  const section = findNoteSection(doc);
-  if (!section) return [];
+// Anchors where a note cannot live: inside a note (a paste — inserting one there is
+// refused), or inside a text box, which a list toggle can pull one into. They reference
+// nothing a file could carry, so the sync pass drops them.
+function strayRefs(doc: PMNode): number[] {
   const out: number[] = [];
-  section.node.descendants((node, pos) => {
+  const section = findNoteSection(doc);
+  if (section) section.node.descendants((node, pos) => {
     if (node.type.name === 'noteRef') out.push(section.pos + 1 + pos);
   });
-  return out;
+  doc.descendants((node, pos) => {
+    if (node.type.name !== 'textBox') return;
+    node.descendants((inner, at) => { if (inner.type.name === 'noteRef') out.push(pos + 1 + at); });
+    return false;
+  });
+  return out.sort((a, b) => a - b);
 }
 
 export function inNote(state: EditorState): boolean {
@@ -377,12 +385,25 @@ export const Notes = Extension.create<NotesOptions>({
             if (clamped) return clamped;
           }
           if (!trs.some((tr) => tr.docChanged || tr.getMeta(RESYNC_NOTES))) return null;
-          return syncStructure(newState) ?? syncNumbers(newState, getSettings());
+          return syncStructure(newState) ?? syncNumbers(newState, getSettings()) ?? stripAnchorMarks(newState);
         },
       }),
     ];
   },
 });
+
+// The anchor takes no marks (`marks: ''`): ODF's text:note-citation is bare text, so
+// none could be saved, and the anchor draws its note class's look. A mark applied to a
+// range is only checked against the parent, so marking across one still reaches it.
+function stripAnchorMarks(state: EditorState): Transaction | null {
+  let tr: Transaction | null = null;
+  state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'noteRef' || !node.marks.length) return;
+    tr ??= state.tr;
+    tr.setNodeMarkup(pos, undefined, node.attrs, []);
+  });
+  return tr;
+}
 
 // A selection reaching across the notes' boundary stops at it: a replace over the
 // boundary would carry body content into a note, or a note's out — neither product lets
@@ -409,7 +430,7 @@ function syncStructure(state: EditorState): Transaction | null {
 
   // Strays first and on their own: they shift every position after them, and the rest
   // of this pass reads positions out of the document it was handed.
-  const strays = strayRefsInNotes(state.doc);
+  const strays = strayRefs(state.doc);
   if (strays.length) {
     const tr = state.tr;
     for (let i = strays.length - 1; i >= 0; i--) tr.delete(strays[i], strays[i] + 1);

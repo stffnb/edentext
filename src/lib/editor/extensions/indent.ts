@@ -1,6 +1,6 @@
 import { Extension, type CommandProps } from '@tiptap/core';
 import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
-import type { EditorState, Transaction } from '@tiptap/pm/state';
+import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { DEFAULT_SHORTCUTS } from '../shortcuts';
 
 // Left indent in cm: maps to fo:margin-left on paragraphs/headings; on lists it shifts
@@ -284,5 +284,24 @@ export const Indent = Extension.create({
         return true;
       },
     };
+  },
+
+  // A list indents by nesting, so an item's paragraph carries no indent of its own —
+  // the commands above refuse to set one, and neither file can express it. Wrapping an
+  // indented paragraph into a list (or pasting one in) is the door this closes.
+  addProseMirrorPlugins() {
+    const attrs = ['indent', 'indentRight', 'indentFirst'] as const;
+    return [new Plugin({
+      appendTransaction: (trs, _old, state) => {
+        if (!trs.some((t) => t.docChanged)) return null;
+        const tr = state.tr;
+        state.doc.descendants((node, pos, parent) => {
+          if (node.isInline) return false; // a run holds no indent; skip the text of every block
+          if (parent?.type.name !== 'listItem' || attrs.every((a) => node.attrs[a] == null)) return;
+          tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: null, indentRight: null, indentFirst: null });
+        });
+        return tr.steps.length ? tr : null;
+      },
+    })];
   },
 });

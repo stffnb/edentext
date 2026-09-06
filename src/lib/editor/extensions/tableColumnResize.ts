@@ -4,6 +4,7 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { TableMap, cellAround, pointsAtCell } from '@tiptap/pm/tables';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { columnWeightsFromRow, columnPercents } from './tableView';
 import { PX_PER_CM } from '../../storage/pageMargins';
 
@@ -362,6 +363,31 @@ function handleDecorations(state: EditorState, cell: number, edge: EdgeSide): De
 
 // ─── Plugin / extension ──────────────────────────────────────────────────────
 
+// A replace reaching into a table rebuilds the cell it lands in from the type's defaults,
+// so that column loses the weight its other rows still carry (redo, which replays the
+// recorded step, keeps it — the two then differ). Read the weight back from the column.
+function refillColumnWeights(table: PMNode, start: number, tr: Transaction): void {
+  const map = TableMap.get(table);
+  const known: (number | null)[] = new Array(map.width).fill(null);
+  const cells = new Map<number, PMNode>();
+  for (const pos of new Set(map.map)) {
+    const cell = table.nodeAt(pos);
+    if (!cell) continue;
+    cells.set(pos, cell);
+    const at = map.colCount(pos);
+    const cw = cell.attrs.colwidth as number[] | null;
+    for (let k = 0; k < ((cell.attrs.colspan as number) ?? 1); k++) known[at + k] ??= cw?.[k] || null;
+  }
+  for (const [pos, cell] of cells) {
+    const at = map.colCount(pos);
+    const cw = cell.attrs.colwidth as number[] | null;
+    const next = Array.from({ length: (cell.attrs.colspan as number) ?? 1 }, (_, k) => cw?.[k] || known[at + k]);
+    if (next.every((w) => w) && next.some((w, k) => w !== cw?.[k])) {
+      tr.setNodeMarkup(start + pos, undefined, { ...cell.attrs, colwidth: next });
+    }
+  }
+}
+
 export const TableColumnResize = Extension.create({
   name: 'tableColumnResize',
 
@@ -443,6 +469,19 @@ export const TableColumnResize = Extension.create({
             if (s && s.activeHandle > -1) return handleDecorations(state, s.activeHandle, s.edge);
             return null;
           },
+        },
+      }),
+      new Plugin({
+        appendTransaction: (trs, _old, state) => {
+          if (!trs.some((t) => t.docChanged)) return null;
+          const tr = state.tr;
+          state.doc.descendants((node, pos) => {
+            if (node.isTextblock) return false;
+            if (node.type.name !== 'table') return true;
+            refillColumnWeights(node, pos + 1, tr);
+            return false;
+          });
+          return tr.steps.length ? tr : null;
         },
       }),
     ];

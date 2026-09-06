@@ -10,7 +10,8 @@ import Highlight from '@tiptap/extension-highlight';
 import { Link } from './extensions/link';
 import { Bookmark } from './extensions/bookmark';
 import { Comment } from './extensions/comment';
-import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style';
+import { TextStyle, FontSize } from '@tiptap/extension-text-style';
+import { FontFamily } from './extensions/fontFamily';
 import { FontWeight } from './extensions/fontWeight';
 import { FontColor } from './extensions/fontColor';
 import HardBreak from '@tiptap/extension-hard-break';
@@ -82,6 +83,7 @@ import { loadDocProperties } from '../storage/docProperties';
 import { Insertion, Deletion, TrackChanges } from './extensions/trackChanges';
 
 const CELL_CONTENT = '(paragraph | heading | bulletList | orderedList)+';
+const LIST_ITEM_CONTENT = 'paragraph (paragraph | heading | bulletList | orderedList)*';
 
 export const extensions = [
   // columns has its own group so only the document (not cells/lists) admits it; the
@@ -105,8 +107,10 @@ export const extensions = [
   // An annotation on a range of text; round-trips to ODF office:annotation and DOCX
   // w:commentRangeStart/-End + word/comments.xml.
   Comment,
-  Subscript,
-  Superscript,
+  // Neither format can raise and lower the same run, and the file keeps whichever it
+  // writes last — so each drops the other instead of stacking with it.
+  Subscript.extend({ excludes: 'subscript superscript' }),
+  Superscript.extend({ excludes: 'subscript superscript' }),
   TextStyle,
   FontFamily,
   FontSize,
@@ -191,7 +195,9 @@ export const extensions = [
   Heading.extend({ addKeyboardShortcuts: () => ({}) }).configure({ levels: HEADING_LEVELS as Level[] }),
   BulletList,
   OrderedList,
-  ListItem,
+  // The tail is narrower than `block*`: neither file keeps a table (or a table of
+  // contents) in a list item, and a list toggle over one would wrap it in silently.
+  ListItem.extend({ content: LIST_ITEM_CONTENT }),
   // Bullet/number formatting: it follows the item's first text portion, as in
   // LibreOffice (the sheet resolves a character style on that portion).
   ListMarker.configure({ sheet: styleSheet }),

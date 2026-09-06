@@ -26,8 +26,12 @@ export const FontWeight = Extension.create({
         attributes: {
           fontWeight: {
             default: null,
-            parseHTML: element =>
-              element.style.fontWeight?.replace(/['"]+/g, '') || null,
+            // Bold's own parse rule claims bold/bolder/500+, and both files spell a
+            // run's weight as bold or not — an attr repeating that is dropped on save.
+            parseHTML: element => {
+              const w = element.style.fontWeight?.replace(/['"]+/g, '') || null;
+              return w && !/^(bold(er)?|[5-9]\d{2,})$/.test(w) ? w : null;
+            },
             renderHTML: attributes => {
               if (!attributes.fontWeight) return {};
               return { style: `font-weight: ${attributes.fontWeight}` };
