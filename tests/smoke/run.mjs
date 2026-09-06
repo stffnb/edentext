@@ -40,7 +40,7 @@ try {
   check(true, 'autosave survives a reload');
 
   // A corpus document imports, renders its table and reports a page count.
-  await page.setInputFiles('input.file-input', join(ROOT, 'tests/corpus/04-table.odt'));
+  await page.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus/04-table.odt'));
   await page.waitForFunction(() => document.querySelector('.tiptap table td')?.textContent.trim(),
     null, { timeout: 30_000 });
   const pages = await page.evaluate(() => document.querySelector('.statusbar')?.textContent ?? '');

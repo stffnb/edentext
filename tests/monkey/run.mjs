@@ -16,8 +16,9 @@ const PORT = +(process.env.MONKEY_PORT ?? 4189);
 const SEED = +(process.env.MONKEY_SEED ?? 1);
 const RUNS = +(process.env.MONKEY_RUNS ?? 3);
 const OPS = +(process.env.MONKEY_OPS ?? 60);
-const DOCS = process.env.MONKEY_DOC ? [process.env.MONKEY_DOC] : ['02-blocks.odt', '04-table.odt', '08-lists.odt', '12-notes.odt', '15-chapters.odt'];
-const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const HF_OPS = +(process.env.MONKEY_HF_OPS ?? 8);
+const DOCS = process.env.MONKEY_DOC ? [process.env.MONKEY_DOC] : ['02-blocks.odt', '16-hf-variants.odt', '04-table.odt', '08-lists.odt', '12-notes.odt', '15-chapters.odt'];
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC';
 const { check, failures } = checker();
 if (!hasXmllint) console.log('xmllint missing: the saved files are not validated against the schemas');
 
@@ -86,6 +87,30 @@ const drawOp = (r, size) => {
   return { key: 'ArrowRight' };
 };
 
+// The zone's own schema — one paragraph of runs, breaks, fields and inline images — so it
+// draws from a table of its own. No Escape (that leaves), no undo: a pass falls into one
+// history group, so one Mod+Z would empty the zone before the round trip ever sees it.
+const HF_KEYS = ['Enter', 'Backspace', 'Backspace', 'Delete', 'Tab', 'Home', 'End',
+  'ArrowLeft', 'ArrowRight', 'Shift+ArrowLeft', 'Shift+ArrowRight', `${MOD}+b`, `${MOD}+i`, `${MOD}+u`];
+const HF_OPS_TABLE = [
+  [14, (r) => ({ type: pick(r, WORDS) })],
+  [12, (r) => ({ key: pick(r, HF_KEYS) })],
+  // The insert bar's three field buttons, in its order: page number, count, chapter.
+  [5, (r) => ({ field: int(r, 0, 2) })],
+  [9, (r) => pick(r, [
+    { cmd: 'toggleBold' }, { cmd: 'toggleItalic' }, { cmd: 'toggleUnderline' }, { cmd: 'toggleStrike' },
+    { cmd: 'unsetAllMarks' }, { cmd: 'setTextAlign', args: [pick(r, ['left', 'center', 'right'])] },
+    { cmd: 'setFontSize', args: ['10pt'] }, { cmd: 'setColor', args: ['#c00000'] },
+    { cmd: 'setImage', args: [{ src: PNG, width: 24, height: 18 }] },
+  ])],
+];
+const HF_TOTAL = HF_OPS_TABLE.reduce((n, [w]) => n + w, 0);
+const drawHfOp = (r) => {
+  let x = r() * HF_TOTAL;
+  for (const [w, draw] of HF_OPS_TABLE) { if ((x -= w) < 0) return draw(r); }
+  return { key: 'ArrowRight' };
+};
+
 const server = await devServer(PORT);
 const { browser, page, pageErrors } = await openApp(PORT);
 const consoleErrors = [];
@@ -93,20 +118,29 @@ page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text(
 
 const ed = (fn, arg) => page.evaluate(fn, arg);
 const focused = async () => {
-  const err = await ed(() => { try { document.querySelector('.tiptap').editor.commands.focus(); return null; } catch (e) { return String(e); } });
-  await page.waitForFunction(() => document.activeElement === document.querySelector('.tiptap'), null, { timeout: 2000 }).catch(() => {});
+  const err = await ed(() => { try { document.querySelector('.tiptap-host .tiptap').editor.commands.focus(); return null; } catch (e) { return String(e); } });
+  await page.waitForFunction(() => document.activeElement === document.querySelector('.tiptap-host .tiptap'), null, { timeout: 2000 }).catch(() => {});
   return err;
 };
 const runCmd = (op) => ed(({ cmd, args }) => {
-  const editor = document.querySelector('.tiptap').editor;
+  const editor = document.querySelector('.tiptap-host .tiptap').editor;
+  // A caret only ever sits in a text block — the view puts it nowhere else — but
+  // focus(pos) makes the selection wherever it is told, and Enter on one between two
+  // list items throws out of prosemirror. Snap to the next text position instead.
+  if (cmd === 'focus' && typeof args?.[0] === 'number') {
+    const doc = editor.state.doc;
+    let at = Math.max(0, Math.min(args[0], doc.content.size));
+    for (let n = at; n <= doc.content.size; n++) if (doc.resolve(n).parent.isTextblock) { at = n; break; }
+    args = [at];
+  }
   try { return { ok: editor.commands[cmd](...(args ?? [])) }; } catch (e) { return { threw: String(e?.stack ?? e) }; }
 }, op);
 // The schema's own check of the document after every op — a command may leave a node
 // with content its spec rejects, which nothing else reports.
 const docCheck = () => ed(() => {
-  try { document.querySelector('.tiptap').editor.state.doc.check(); return null; } catch (e) { return String(e); }
+  try { document.querySelector('.tiptap-host .tiptap').editor.state.doc.check(); return null; } catch (e) { return String(e); }
 });
-const docJson = () => ed(() => JSON.stringify(document.querySelector('.tiptap').editor.getJSON()));
+const docJson = () => ed(() => JSON.stringify(document.querySelector('.tiptap-host .tiptap').editor.getJSON()));
 // The key the history is held against, and the count of the columns flow's own rewrites:
 // the flow changes the document outside the history (`FLOW_TX`, columnsFlow.ts), so undo
 // rebases over it — ponytail: such a run has its history left unchecked.
@@ -123,8 +157,8 @@ const watchFlow = () => ed(async () => {
     return n;
   };
   window.__docKey = () => JSON.stringify(
-    mergeJoinedParagraphsJson(strip(document.querySelector('.tiptap').editor.getJSON()).content ?? []));
-  const view = document.querySelector('.tiptap').editor.view;
+    mergeJoinedParagraphsJson(strip(document.querySelector('.tiptap-host .tiptap').editor.getJSON()).content ?? []));
+  const view = document.querySelector('.tiptap-host .tiptap').editor.view;
   window.__flowTx = 0;
   if (view.__flowWatched) return;
   view.__flowWatched = true;
@@ -135,25 +169,132 @@ const watchFlow = () => ed(async () => {
   };
 });
 const docKey = () => ed(() => window.__docKey());
-const docSize = () => ed(() => document.querySelector('.tiptap').editor.state.doc.content.size);
+const docSize = () => ed(() => document.querySelector('.tiptap-host .tiptap').editor.state.doc.content.size);
 
-const saveAs = async (ext) => {
+const HF_LIVE = '.hf-active .tiptap';
+const hfCmd = (op) => ed(({ cmd, args }) => {
+  const editor = document.querySelector('.hf-active .tiptap')?.editor;
+  if (!editor) return { threw: 'the zone editor is gone' };
+  try { return { ok: editor.commands[cmd](...(args ?? [])) }; } catch (e) { return { threw: String(e?.stack ?? e) }; }
+}, op);
+const hfCheck = () => ed(() => {
+  const editor = document.querySelector('.hf-active .tiptap')?.editor;
+  if (!editor) return 'the zone editor is gone';
+  try { editor.state.doc.check(); return null; } catch (e) { return String(e); }
+});
+
+// A floating toolbar of the body's — a selected frame's, say — can sit over the zone
+// and its bar; the handler behind the element is what this run is after, not hit-testing.
+const clickish = (at, how = 'click') => at[how]({ timeout: 4000 })
+  .catch(() => at.dispatchEvent(how, {}, { timeout: 4000 }))
+  .catch(() => false); // gone already (an op closed the zone): the checks after it still speak
+
+// A checkbox in the ribbon's own menu: the menu re-renders under the click (the flag
+// ends an open zone edit), so a real click can find the element detached.
+const setBox = (at, on) => at.setChecked(on, { timeout: 4000 })
+  .catch(() => at.evaluate((el, v) => { if (el.checked !== v) el.click(); }, on));
+
+// The two variant flags and the zone distances, from the ribbon's Insert tab. Setting
+// them here is what puts the first-page and even-page zones in play on a document that
+// carries none of its own.
+async function setHfOptions(r) {
+  await page.locator('.ribbon-tab', { hasText: 'Insert' }).first().click();
+  const options = page.locator('button.rb', { hasText: 'Options' }).first();
+  await clickish(options);
+  await page.waitForSelector('.ribbon-menu .check-row input', { timeout: 5000 });
+  const boxes = page.locator('.ribbon-menu .check-row input');
+  for (const i of [0, 1]) await setBox(boxes.nth(i), r() < 0.6);
+  if (r() < 0.4) {
+    const dist = page.locator('.ribbon-menu .num-row input').nth(int(r, 0, 1));
+    await dist.fill(String(pick(r, [0.6, 1, 1.8])));
+    await dist.dispatchEvent('change');
+  }
+  await clickish(options);
+}
+
+// Flipping a flag ends an open zone edit (App.svelte drops hfActive with it), which
+// tears the live editor down mid-session — what was typed must be in the zones anyway.
+async function flipUnderEdit(mark) {
+  const zone = page.locator('.hf-zone.hf-footer').first();
+  if (!(await zone.count())) return null;
+  await clickish(zone, 'dblclick');
+  await page.waitForSelector(HF_LIVE, { timeout: 5000 });
+  await page.waitForFunction(() => document.activeElement?.closest?.('.hf-active'), null, { timeout: 2000 }).catch(() => {});
+  await page.keyboard.type(mark);
+  await page.locator('.ribbon-tab', { hasText: 'Insert' }).first().click();
+  const options = page.locator('button.rb', { hasText: 'Options' }).first();
+  await clickish(options);
+  const box = page.locator('.ribbon-menu .check-row input').nth(1);
+  await setBox(box, !(await box.isChecked()));
+  await clickish(options);
+  const gone = await page.waitForSelector('.hf-active', { state: 'detached', timeout: 5000 }).then(() => true, () => false);
+  const kept = await ed((m) => ['edentext-header', 'edentext-footer', 'edentext-header-first',
+    'edentext-footer-first', 'edentext-header-even', 'edentext-footer-even', 'edentext-hf-sections']
+    .some((k) => (localStorage.getItem(k) ?? '').includes(m)), mark);
+  if (!gone) return 'the flag left the zone editor open';
+  return kept ? null : 'the text typed before the flag flipped is in no zone';
+}
+
+// A zone edited the way a user reaches it: double-click in, edit, leave by Done. Pages
+// 1 to 3 in turn — with the two variant flags on that is one session per variant, the
+// title page's, an even page's and a running one's. Only the round trip reports on it.
+async function editZone(r, zone) {
+  const zones = page.locator(`.hf-zone.hf-${zone}`);
+  const n = await zones.count();
+  if (!n) return { ops: [], broken: `no ${zone} zone on the page` };
+  const ops = [];
+  let broken = null;
+  for (let p = 0; p < Math.min(3, n) && !broken; p++) {
+    await clickish(zones.nth(p), 'dblclick');
+    await page.waitForSelector(HF_LIVE, { timeout: 5000 });
+    // The mount focuses itself a tick later; typing before that loses its first keys.
+    await page.waitForFunction(() => document.activeElement?.closest?.('.hf-active'), null, { timeout: 2000 }).catch(() => {});
+    for (let i = 0; i < HF_OPS && !broken; i++) {
+      const op = { page: p + 1, ...drawHfOp(r) };
+      ops.push(op);
+      if (op.type) await page.keyboard.type(op.type);
+      else if (op.key) await page.keyboard.press(op.key);
+      else if (op.field !== undefined) await clickish(page.locator('.hf-bar-btn').nth(op.field));
+      else {
+        const res = await hfCmd(op);
+        if (res.threw) broken = `${op.cmd} threw: ${res.threw}`;
+      }
+      const invalid = broken ? null : await hfCheck();
+      if (invalid) broken = `schema-invalid ${zone} on page ${p + 1}: ${invalid}`;
+      if (pageErrors.length) broken = `uncaught: ${pageErrors.join(' | ')}`;
+    }
+    await clickish(page.locator('.hf-bar-done'));
+    await page.waitForSelector('.hf-active', { state: 'detached', timeout: 5000 }).catch(() => {});
+  }
+  return { ops, broken };
+}
+
+const saveAs = async (ext, retry = true) => {
   await page.click('.ribbon-tab-file');
-  const [dl] = await Promise.all([
-    page.waitForEvent('download', { timeout: 60_000 }),
-    page.locator('.ribbon-menu button', { hasText: `(.${ext})` }).first().click(),
-  ]);
-  await page.keyboard.press('Escape');
-  return new Uint8Array(await readFile(await dl.path()));
+  try {
+    const [dl] = await Promise.all([
+      page.waitForEvent('download', { timeout: 30_000 }),
+      page.locator('.ribbon-menu button', { hasText: `(.${ext})` }).first().click(),
+    ]);
+    await page.keyboard.press('Escape');
+    return new Uint8Array(await readFile(await dl.path()));
+  } catch (err) {
+    // The File menu can miss a click while the app is still laying the document out, and
+    // no download follows. One more go; a second miss is a finding.
+    if (!retry) throw err;
+    await page.keyboard.press('Escape');
+    return saveAs(ext, false);
+  }
 };
 // The file the app saved, read back by the app's importer against the editor's document
 // (its paragraphs joined across a column or page merged, as the export merges them).
 const roundTrip = (bytes, ext) => ed(async ({ b64, ext }) => {
-  const [{ importOdt }, { importDocx }, { mergeJoinedParagraphsJson }, { normalize, firstDiff, stripFontHoist }] = await Promise.all([
-    import('/src/lib/import/odt.ts'), import('/src/lib/import/docx.ts'), import('/src/lib/export/odt.ts'), import('/tests/normalize.ts')]);
+  const [{ importOdt }, { importDocx }, { mergeJoinedParagraphsJson }, { normalize, firstDiff, stripFontHoist }, hfStore, { effectiveListLevel, defaultLevelBullet }] = await Promise.all([
+    import('/src/lib/import/odt.ts'), import('/src/lib/import/docx.ts'), import('/src/lib/export/odt.ts'), import('/tests/normalize.ts'),
+    import('/src/lib/storage/headerFooter.ts'), import('/src/lib/styles/listStyles.ts')]);
   const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const res = ext === 'odt' ? importOdt(bin) : importDocx(bin);
-  const editor = document.querySelector('.tiptap').editor;
+  const editor = document.querySelector('.tiptap-host .tiptap').editor;
   const json = editor.getJSON();
   // What the importer suppresses as the style's own: a block attribute equal to what its
   // named style resolves to, and bold in a header cell.
@@ -169,8 +310,9 @@ const roundTrip = (bytes, ext) => ed(async ({ b64, ext }) => {
       text = own.text ?? {};
     }
     if (header && n.type === 'text' && n.marks) n.marks = n.marks.filter((m) => m.type !== 'bold');
-    // A formula alone in its paragraph is a display formula to both files.
-    if (n.type === 'paragraph' && n.content?.length === 1 && n.content[0].type === 'formula') n.content[0].attrs = { ...n.content[0].attrs, display: true };
+    // A formula alone in its block is a display formula to both files — a note holds its
+    // inline content without a paragraph, so it is a block here too.
+    if ((n.type === 'paragraph' || n.type === 'note') && n.content?.length === 1 && n.content[0].type === 'formula') n.content[0].attrs = { ...n.content[0].attrs, display: true };
     // A box with no size of its own is saved at the size the exporter falls back to, and
     // Word's table grid always carries widths, so a merged cell reads back with them.
     if (n.type === 'textBox') n.attrs = { ...n.attrs, width: n.attrs?.width ?? 280, height: n.attrs?.height ?? 96 };
@@ -178,6 +320,10 @@ const roundTrip = (bytes, ext) => ed(async ({ b64, ext }) => {
     // Both formats spell a header row as the one that repeats, so it reads back repeating.
     if (n.type === 'table' && n.content?.[0]?.content?.[0]?.type === 'tableHeader') delete n.attrs?.repeatHeader;
     if (n.attrs?.styleName === style || n.attrs?.styleName === 'Standard') delete n.attrs.styleName;
+    // Same for bold and italic: a heading is already both where its style says so, and
+    // a mark repeating that is what the importers drop.
+    if (n.type === 'text' && n.marks) n.marks = n.marks.filter((m) =>
+      !((m.type === 'bold' && text.bold) || (m.type === 'italic' && text.italic)));
     // A run repeating what its own style says is direct formatting both importers
     // suppress — they cannot tell it from a style that failed to resolve.
     for (const m of n.type === 'text' ? n.marks ?? [] : []) {
@@ -194,7 +340,40 @@ const roundTrip = (bytes, ext) => ed(async ({ b64, ext }) => {
     for (const c of n.content ?? []) styled(c, header || n.type === 'tableHeader', inFrame, text);
     return n;
   };
-  const held = styled({ ...json, content: mergeJoinedParagraphsJson(json.content ?? []) });
+  // The exporter folds a columns section's page-split chain back into one node and merges
+  // the flow-split paragraphs inside it (replaceColumns, odt.ts); so must the held side.
+  const foldColumns = (blocks) => {
+    const out = [];
+    for (const b of mergeJoinedParagraphsJson(blocks)) {
+      const prev = out[out.length - 1];
+      if (b.type !== 'columns') { out.push(b); continue; }
+      if (prev?.type === 'columns' && JSON.stringify(prev.attrs) === JSON.stringify(b.attrs)) {
+        prev.content = mergeJoinedParagraphsJson([...(prev.content ?? []), ...(b.content ?? [])]);
+      } else out.push({ ...b, content: mergeJoinedParagraphsJson(b.content ?? []) });
+    }
+    return out;
+  };
+  // A list's type is only what its marker draws: where the document's own list style
+  // governs the depth, that level's kind decides it (listStyles.ts) and neither file
+  // carries a node type beside it. Both sides compare the drawn kind.
+  const effListKinds = (n, style = null, depth = 0) => {
+    const list = n.type === 'bulletList' || n.type === 'orderedList';
+    const own = list && depth === 0 ? sheet?.list?.[n.attrs?.listStyleName] ?? null : style;
+    if (list) {
+      const eff = effectiveListLevel(n.attrs ?? {}, n.type === 'orderedList', own, depth + 1);
+      n.type = eff.kind === 'number' ? 'orderedList' : 'bulletList';
+      // The name is not always written: direct formatting on a marker makes the list keep
+      // its resolved automatic clone instead (odt.ts), and a nested list's own name is only
+      // the memory for a later lift out. corpus.test.ts holds the plain round trip.
+      // Its marker then reads back as the direct char the style drew, so both sides carry
+      // the drawn one — the same model the kind above compares by.
+      n.attrs = { ...(n.attrs ?? {}), listStyleName: null,
+        bulletChar: eff.kind === 'bullet' ? eff.bulletChar ?? defaultLevelBullet(depth + 1) : null };
+    }
+    for (const c of n.content ?? []) effListKinds(c, own, depth + (list ? 1 : 0));
+    return n;
+  };
+  const held = effListKinds(styled({ ...json, content: foldColumns(json.content ?? []) }));
   // Word's list model is flat — an item's further blocks are unnumbered paragraphs at its
   // indent, and nesting is the numbering's — so the DOCX leg compares a list's content
   // flat, without its structure or the indent Word writes on a block it does not number.
@@ -209,22 +388,43 @@ const roundTrip = (bytes, ext) => ed(async ({ b64, ext }) => {
         inList = true;
         continue;
       }
-      // A paragraph following the list carries the same indent: it is a continuation of
-      // the item, which is the one shape Word has for a block it does not number.
-      out.push(inList && kid.type === 'paragraph' ? bare(kid) : kid);
-      inList = inList && kid.type === 'paragraph';
+      // A block following the list carries the same indent: it is a continuation of the
+      // item, which is the one shape Word has for a block it does not number.
+      const cont = kid.type === 'paragraph' || kid.type === 'heading';
+      out.push(inList && cont ? bare(kid) : kid);
+      inList = inList && cont;
     }
     return { ...n, content: out };
   };
   const flat = (n) => stripFontHoist(normalize(ext === 'docx' ? flatLists(n) : n));
-  return { diff: firstDiff(flat(held), flat(styled(res.content))), warnings: res.warnings, held: JSON.stringify(held), read: JSON.stringify(res.content) };
+  // The zones the app holds (its own storage is what it exports from) against the ones
+  // the file gives back — a zone is no part of the document compared above.
+  const { loadHfDoc, loadExtraHfSections, loadDifferentFirstPage, loadDifferentOddEven, hfIsEmpty, EMPTY_HF_SET } = hfStore;
+  const heldSets = [{ ...EMPTY_HF_SET,
+    header: loadHfDoc('header'), footer: loadHfDoc('footer'),
+    headerFirst: loadHfDoc('header', 'first'), footerFirst: loadHfDoc('footer', 'first'),
+    headerEven: loadHfDoc('header', 'even'), footerEven: loadHfDoc('footer', 'even'),
+    differentFirstPage: loadDifferentFirstPage(), differentOddEven: loadDifferentOddEven() }, ...loadExtraHfSections()];
+  const zoneOf = (d) => (hfIsEmpty(d) ? null : stripFontHoist(normalize(structuredClone(d))));
+  // Only the variants a set's flags put in play: the file carries them nowhere else.
+  const zonesOf = (s) => {
+    const out = { header: zoneOf(s.header), footer: zoneOf(s.footer),
+      differentFirstPage: !!s.differentFirstPage, differentOddEven: !!s.differentOddEven };
+    if (out.differentFirstPage) { out.headerFirst = zoneOf(s.headerFirst); out.footerFirst = zoneOf(s.footerFirst); }
+    if (out.differentOddEven) { out.headerEven = zoneOf(s.headerEven); out.footerEven = zoneOf(s.footerEven); }
+    return out;
+  };
+  const hfDiff = firstDiff(heldSets.map(zonesOf), (res.hfSections ?? []).map(zonesOf));
+  return { diff: firstDiff(flat(held), flat(effListKinds(styled(res.content)))), hfDiff, warnings: res.warnings,
+    held: JSON.stringify(held), read: JSON.stringify(res.content),
+    hfHeld: JSON.stringify(heldSets.map(zonesOf)), hfRead: JSON.stringify((res.hfSections ?? []).map(zonesOf)) };
 }, { b64: Buffer.from(bytes).toString('base64'), ext });
 
 try {
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
   await page.evaluate(() => { localStorage.clear(); window.showSaveFilePicker = undefined; });
   await page.reload({ waitUntil: 'load' });
-  await page.waitForSelector('.tiptap', { timeout: 30_000 });
+  await page.waitForSelector('.tiptap-host .tiptap', { timeout: 30_000 });
   await page.evaluate(() => { window.showSaveFilePicker = undefined; });
 
   const retried = new Set();
@@ -234,13 +434,27 @@ try {
       const doc = DOCS[run % DOCS.length];
       const r = mulberry32(seed);
       const before = await docJson();
-      await page.setInputFiles('input.file-input', join(ROOT, 'tests/corpus', doc));
-      await page.waitForFunction((b) => JSON.stringify(document.querySelector('.tiptap').editor.getJSON()) !== b, before, { timeout: 30_000 });
+      await page.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus', doc));
+      await page.waitForFunction((b) => JSON.stringify(document.querySelector('.tiptap-host .tiptap').editor.getJSON()) !== b, before, { timeout: 30_000 });
       await page.waitForTimeout(1500);
-      await watchFlow();
-      const initial = await docKey();
       const log = [];
       let broken = null;
+
+      // Both zones, before the body ops: they can cut the document to a single page,
+      // and pages 1 to 3 are what the two variant flags spread the six zones over.
+      await setHfOptions(r);
+      for (const zone of ['header', 'footer']) {
+        const pass = await editZone(r, zone);
+        await writeFile(join(tmpdir(), `monkey-${seed}-${zone}.json`), JSON.stringify(pass.ops));
+        check(!pass.broken, `seed ${seed}: ${pass.ops.length} ops in the ${zone}${pass.broken ? ` — ${pass.broken}` : ''}`);
+        if (pass.broken) { broken = pass.broken; break; }
+      }
+      if (broken) break;
+      const flipped = await flipUnderEdit(`zap${seed}`);
+      check(!flipped, `seed ${seed}: a flag flipped under an open zone${flipped ? ` — ${flipped}` : ''}`);
+      if (flipped) { broken = flipped; break; }
+      await watchFlow();
+      const initial = await docKey();
       for (let i = 0; i < OPS && !broken; i++) {
         const op = drawOp(r, await docSize());
         log.push(op);
@@ -262,7 +476,7 @@ try {
       // Undo until the opened document is back, redo as often, and the edited one is back.
       const undone = broken ? -1 : await ed(async (initial) => {
         const { firstDiff } = await import('/tests/normalize.ts');
-        const editor = document.querySelector('.tiptap').editor;
+        const editor = document.querySelector('.tiptap-host .tiptap').editor;
         for (let n = 0; n < 500; n++) {
           if (window.__docKey() === initial) return n;
           if (!editor.can().undo()) return `undo stops at ${firstDiff({ type: 'doc', content: JSON.parse(initial) }, { type: 'doc', content: JSON.parse(window.__docKey()) })}`;
@@ -271,7 +485,7 @@ try {
         return -1;
       }, initial);
       const redone = typeof undone !== 'number' || undone < 0 ? null : await ed((n) => {
-        const editor = document.querySelector('.tiptap').editor;
+        const editor = document.querySelector('.tiptap-host .tiptap').editor;
         for (let i = 0; i < n; i++) editor.commands.redo();
         return window.__docKey();
       }, undone);
@@ -289,25 +503,28 @@ try {
         const schema = hasXmllint ? (ext === 'odt' ? validateOdt : validateDocx)(unzipSync(bytes)) : [];
         const rt = await roundTrip(bytes, ext).catch((err) => ({ diff: null, warnings: [], threw: String(err.message ?? err).split('\n')[0] }));
         const bad = rt.threw ? `import threw: ${rt.threw}` : schema.length ? `schema: ${schema[0].slice(0, 300)}`
-          : rt.diff ? `round trip: ${rt.diff}` : rt.warnings.length ? `warnings: ${rt.warnings.join(' | ')}` : null;
+          : rt.diff ? `round trip: ${rt.diff}` : rt.hfDiff ? `header/footer: ${rt.hfDiff}`
+          : rt.warnings.length ? `warnings: ${rt.warnings.join(' | ')}` : null;
         check(!bad, `seed ${seed}: the saved .${ext} validates and reads back${bad ? ` — ${bad}` : ''}`);
         if (bad) {
           // The file and both documents, for the repro.
           const stem = join(tmpdir(), `monkey-${seed}`);
           await writeFile(`${stem}.${ext}`, bytes);
           if (rt.held) await Promise.all([writeFile(`${stem}-${ext}-held.json`, rt.held), writeFile(`${stem}-${ext}-read.json`, rt.read)]);
+          if (rt.hfDiff) await Promise.all([writeFile(`${stem}-${ext}-hf-held.json`, rt.hfHeld), writeFile(`${stem}-${ext}-hf-read.json`, rt.hfRead)]);
           console.log(`    kept: ${stem}.${ext}`);
         }
       }
     } catch (err) {
       // The app reloading under the run (its own recovery prompt, a settings write)
-      // tears the page context down mid-op; one more go, then it is a finding.
-      if (!/Execution context was destroyed/.test(err.message) || retried.has(run)) throw err;
+      // tears the page context down mid-op — either message says so; one more go, then
+      // it is a finding.
+      if (!/Execution context was destroyed|promise was garbage collected/.test(err.message) || retried.has(run)) throw err;
       retried.add(run);
       await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
       await page.evaluate(() => { localStorage.clear(); window.showSaveFilePicker = undefined; });
       await page.reload({ waitUntil: 'load' });
-      await page.waitForSelector('.tiptap', { timeout: 30_000 });
+      await page.waitForSelector('.tiptap-host .tiptap', { timeout: 30_000 });
       run--;
     }
   }

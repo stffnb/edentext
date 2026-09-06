@@ -31,7 +31,7 @@ try {
   await page.waitForSelector('.tiptap', { timeout: 15_000 });
 
   // A multi-page corpus document, through the file input (no picker in headless).
-  await page.setInputFiles('input.file-input', join(ROOT, 'tests/corpus/05-breaks.odt'));
+  await page.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus/05-breaks.odt'));
   await page.waitForFunction(() => (document.querySelector('.tiptap')?.textContent ?? '').length > 200,
     null, { timeout: 30_000 });
   const opened = await settled();
@@ -95,7 +95,7 @@ try {
   const marked = await dot(true);
   await page.keyboard.press(`${MOD}+z`);
   const backToSaved = await dot(false);
-  await page.setInputFiles('input.file-input', join(ROOT, 'tests/corpus/04-table.odt'));
+  await page.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus/04-table.odt'));
   await page.waitForFunction(() => document.querySelector('.tiptap table td')?.textContent.trim(),
     null, { timeout: 30_000 });
   const opened2 = await dot(false);
@@ -111,7 +111,7 @@ try {
 
   // And so does the name the file is saved under. The file comes back in first, so the
   // rename is the only thing standing between the document and its clean state.
-  await page.setInputFiles('input.file-input', join(ROOT, 'tests/corpus/04-table.odt'));
+  await page.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus/04-table.odt'));
   await page.waitForFunction(() => document.querySelector('.tiptap table td')?.textContent.trim(),
     null, { timeout: 30_000 });
   const reopened = await dot(false);
@@ -131,6 +131,33 @@ try {
   const saved = await readFile(await download.path());
   const isDocx = saved[0] === 0x50 && saved[1] === 0x4b && saved.includes('word/document.xml');
   check(isDocx, `Save As (.docx) without a picker downloads a DOCX (${download.suggestedFilename()}, ${saved.length} bytes)`);
+
+  // The header/footer switches live in the ribbon's Insert tab. A ticked "different
+  // first page" makes page 1 a second zone, so what is typed there lands beside the
+  // running one — and the distance travels to the app's own storage.
+  await page.keyboard.press('Escape');
+  await page.locator('.ribbon-tab', { hasText: 'Insert' }).first().click();
+  const hfOptions = page.locator('button.rb', { hasText: 'Options' }).first();
+  await hfOptions.click();
+  await page.locator('.ribbon-menu .check-row input').first().check();
+  const dist = page.locator('.ribbon-menu .num-row input').first();
+  await dist.fill('1.8');
+  await dist.dispatchEvent('change');
+  await hfOptions.click();
+  const zone = page.locator('.hf-zone.hf-header').first();
+  await zone.dblclick({ timeout: 5000 }).catch(() => zone.dispatchEvent('dblclick'));
+  await page.waitForSelector('.hf-active .tiptap', { timeout: 5000 });
+  await page.waitForFunction(() => document.activeElement?.closest?.('.hf-active'), null, { timeout: 5000 });
+  await page.keyboard.type('Titelseite');
+  await page.locator('.hf-bar-done').click();
+  const hf = await page.evaluate(() => ({
+    first: localStorage.getItem('edentext-hf-different-first'),
+    running: localStorage.getItem('edentext-header'),
+    firstPage: localStorage.getItem('edentext-header-first') ?? '',
+    dist: localStorage.getItem('edentext-hf-distances') ?? '',
+  }));
+  check(hf.first === 'true' && !hf.running && hf.firstPage.includes('Titelseite') && /"header":1.8/.test(hf.dist),
+    `the ribbon's header/footer switches reach the document (first page: ${hf.first}, running zone: ${hf.running}, distances: ${hf.dist})`);
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {

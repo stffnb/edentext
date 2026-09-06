@@ -179,7 +179,7 @@ try {
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('.tiptap', { timeout: 30_000 });
     await page.evaluate(() => { window.__loadAt = performance.now(); });
-    await page.setInputFiles('input.file-input', file);
+    await page.setInputFiles('input.file-input[accept*=".odt"]', file);
     // The document's name says the file is in; a document may hold nothing to wait for.
     await page.waitForFunction((n) => document.querySelector('.doc-name-input')?.value.startsWith(n), basename(file, extname(file)), { timeout: 60_000 });
     await settle(page, true);

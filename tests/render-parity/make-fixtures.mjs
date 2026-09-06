@@ -339,6 +339,25 @@ await write('15-chapters.docx', [{
   },
 }, 'chapter-numbering');
 
+// 16. All six header/footer zones at once: a title page of its own and separate even
+// pages, both riding on a running zone. Four pages, so each variant renders at least once.
+await write('16-hf-variants.docx', [{
+  properties: { page, titlePage: true },
+  headers: {
+    default: new Header({ children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun('Odd Header')] })] }),
+    first: new Header({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun('Title Page Header')] })] }),
+    even: new Header({ children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun('Even Header')] })] }),
+  },
+  footers: {
+    default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.RIGHT,
+      children: [new TextRun({ children: ['Odd page ', PageNumber.CURRENT] })] })] }),
+    first: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun('Title Page Footer')] })] }),
+    even: new Footer({ children: [new Paragraph({ alignment: AlignmentType.LEFT,
+      children: [new TextRun({ children: ['Even page ', PageNumber.CURRENT] })] })] }),
+  },
+  children: Array.from({ length: 40 }, (_, i) => para(`${i + 1}. ${LOREM}`)),
+}], undefined, { evenAndOddHeaderAndFooters: true });
+
 // ODT twins, written by LibreOffice itself — the dominant ODT producer, so they carry
 // its own conventions (percentage font sizes, Text Body, list styles) and exercise the
 // foreign-document path our own exporter never produces.

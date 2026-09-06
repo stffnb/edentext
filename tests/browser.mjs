@@ -58,7 +58,10 @@ export async function openApp(port) {
   console.log(`engine: ${name} ${browser.version()}`);
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US' });
   const pageErrors = [];
-  page.on('pageerror', (err) => pageErrors.push(String(err)));
+  // The text box's ResizeObserver refits the wrapper it observes, so the browser defers
+  // the rest of the round to the next frame and reports it — a converging loop, not an error.
+  const benign = /ResizeObserver loop/;
+  page.on('pageerror', (err) => { if (!benign.test(String(err))) pageErrors.push(String(err)); });
   page.on('dialog', (d) => d.accept());
   return { browser, page, pageErrors };
 }

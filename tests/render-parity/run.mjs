@@ -84,7 +84,7 @@ async function editorRender(browser, file) {
   });
   await page.reload({ waitUntil: 'load' });
   await page.waitForSelector('.tiptap');
-  await page.setInputFiles('input.file-input', file);
+  await page.setInputFiles('input.file-input[accept*=".odt"]', file);
   await settle(page);
   const result = await page.evaluate(extractLayout);
   await page.close();

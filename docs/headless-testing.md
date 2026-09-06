@@ -40,7 +40,61 @@ text box in a note breaks the ODT's XML, and a table in a cell is dropped on sav
 commands now refuse there; a page break inside a columns section, which the editor never
 shows and only DOCX writes, is now cleared as the blocks are wrapped; an `.odt` dropped
 every block of a list item after the first, and a header row that the table did not ask to
-repeat came back as ordinary cells.
+repeat came back as ordinary cells. Then: setting one of a heading's two vertical margins
+zeroed the other in the `.odt` (LibreOffice pairs them); a page break before a list item
+reached neither file; a list item's further blocks lost their own alignment, spacing and
+line height in the `.odt`; a run could be subscript and superscript at once; and typing
+over a selection that spans two blocks let the contenteditable's own span land a whole CSS
+font stack, and a weight already saying `bold`, in the document. A list in a table cell
+shifted every body list item's own style by as many items as the cell held; and a heading
+inside a list item came back from the `.odt` as a paragraph. In a note's own text the
+`.docx` lost a formula, a ruby and a leading tab, and a heading in a table cell lost the
+margin it did not set; a list toggle could pull a note anchor into a text box, where the
+`.docx` dropped anchor and note without a word. A running-head or date field in a zone
+lost its own formatting in the `.docx`: the library's simple field writes a bare run.
+Typing over a selection spanning two header cells left a half-header first row, which no
+file keeps. One finding was the checker's own: libxml2's RelaxNG cannot match an element
+the ODF schema declares by name class inside a `<text:span>` (the statistic fields), so a
+formatted page count in a zone read as invalid — LibreOffice writes the same span.
+The run's own `focus(pos)` is snapped to the next text position: TipTap makes the selection
+wherever it is told, and Enter on a caret between two list items throws out of prosemirror —
+a place the view itself never puts one.
+In Firefox: a page break set inside a text box, which neither format keeps, so the same
+plugin now sweeps it from a table cell and a note body too; and the run's 1x1 PNG had a
+truncated IDAT, which only Firefox reports — the same broken bytes were in eleven fixtures.
+WebKit raises `ResizeObserver loop completed with undelivered notifications` as a page
+error — the text box refits the wrapper it observes, so the browser defers the rest of the
+round. That converging loop is the one message `openApp` drops.
+A comment over a line break rides the `hardBreak` too, which no file carries and the
+comment's own text runs keep — `normalize` skips the marks of an inline atom, the picture
+and the formula with it.
+Then the table run: promoting a cell to a header dropped every attr it had; a replace
+reaching into a table left the cell it landed in without its column weight, so redo (which
+replays the recorded step) restored one the edit itself had lost; a list toggle wrapped a
+table into a list item, where the `.odt` drops it; and a heading in a cell came back from
+the `.docx` carrying its size as direct formatting. A list's `listStyleName` is no longer
+compared: direct formatting on a marker makes the file keep the resolved automatic clone
+instead, and `corpus.test.ts` holds the plain round trip. Its marker char goes the same
+way — a list that lost its name carries the char the style drew, so both sides compare the
+drawn one, as the kind already did.
+Still open: a run set to the body's own font, in a columns section, kept its family on the
+held side once in four runs of the same seed chain — the flow rewrites such a document
+between frames, which is why that leg leaves the history unchecked too.
+Both header/footer zones go first, before the body ops can cut the document to one page.
+The run draws the two variant flags and the zone distances from the ribbon's Insert tab
+(Options) — with them on, a double-click on pages 1 to 3 in turn is one session per
+variant — and edits each with `MONKEY_HF_OPS` ops of the zone's own schema: runs, breaks,
+the insert bar's three fields, inline images, left by Done. `16-hf-variants` brings the
+same six zones in through the import path instead. Then one flag is flipped **while a
+zone is open**, which ends the edit (`App.svelte` drops `hfActive` with it): the text
+typed before the flip has to be in the zones all the same. A zone is no part of the
+document, so the saved file is the only thing that reports on it: the round trip holds
+the zones the app's storage keeps against the ones the importer gives back, per section
+and per variant in play. Undo is not among the zone's keys — a pass falls into one
+history group, so a single Mod+Z would empty the zone and the round trip would compare
+nothing. Every run opens its document through `input.file-input[accept*=".odt"]`: the
+Insert tab carries a second `.file-input` for pictures, and a bare class selector picks
+whichever the ribbon happens to be showing.
 
 `BROWSER=chromium|firefox|webkit` picks the engine (Chromium by default; the others via
 `npx playwright-core install firefox webkit`). CI runs both on all three, one per matrix

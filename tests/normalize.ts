@@ -17,6 +17,9 @@ const ORDERED_DEFAULTS: Record<string, unknown> = {
   maxLevel: MAX_HEADING_LEVEL, leader: '.', citationStyle: 'key',
 };
 
+// Inline atoms that carry no mark into either file (see normalize below).
+const MARKLESS_ATOMS = new Set(['formula', 'image', 'hardBreak']);
+
 // Mark-attr defaults dropped like ORDERED_DEFAULTS is for node attrs.
 const MARK_DEFAULTS: Record<string, unknown> = {
   plain: false, // link.ts default; the DOCX importer writes it out explicitly
@@ -59,14 +62,16 @@ export function normalize(node: N): N {
   if (node.type === 'doc') canonNoteIds(node);
   const out: N = { type: node.type };
   if (node.text != null) out.text = node.text;
-  // A formula adopts the caret's marks for its font; neither file carries them.
-  if (node.marks?.length && node.type !== 'formula') {
+  // An inline atom wears the marks of the run around it — a formula's font, a picture's
+  // or a line break's inherited comment. None of them paints, and no file carries them.
+  if (node.marks?.length && !MARKLESS_ATOMS.has(node.type)) {
     const marks = node.marks
       .map((m: N) => {
         const mm: N = { type: m.type };
-        // An empty string is the picker's "unset" (a font family, say) — no value at all.
+        // An empty string is the picker's "unset" (a font family, say) — no value at all,
+        // and an empty list (a comment with no replies) is the same nothing.
         const attrs = Object.fromEntries(Object.entries(m.attrs ?? {})
-          .filter(([k, v]) => v != null && v !== '' && MARK_DEFAULTS[k] !== v)
+          .filter(([k, v]) => v != null && v !== '' && !(Array.isArray(v) && !v.length) && MARK_DEFAULTS[k] !== v)
           .map(([k, v]) => [k, typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toUpperCase() : v]));
         // ODF keeps the authored (naive local) comment/revision date, DOCX re-serializes
         // the same instant as UTC — compare the instant.

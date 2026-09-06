@@ -114,12 +114,19 @@ function validate(schema: string, kind: 'xsd' | 'rng', parts: Part[]): string[] 
 // Every XML part of an unzipped .odt against the ODF schema (foreign namespaces
 // stripped, as extended conformance allows). Formula sub-documents root math:math,
 // which the schema's start pattern excludes; mimetype and Pictures/ are not XML.
+// libxml2's RelaxNG cannot match an element the schema declares by name *class* inside a
+// <text:span> — the ODF statistic fields share one <rng:element><rng:choice>, and probed,
+// text:creator (its own name=) in the same span validates. LibreOffice writes the span
+// too, so the field is unwrapped for the check rather than avoided in the export.
+const STAT_FIELD_SPAN =
+  /<text:span\b[^>]*>(<text:(?:page|paragraph|word|character|table|image|object)-count\b[^>]*(?:\/>|>[^<]*<\/text:[a-z-]+>))<\/text:span>/g;
+
 export function validateOdt(files: Record<string, Uint8Array>): string[] {
   const keepOdf = (ns: string | null) => ns == null || ODF_NS.has(ns);
   const docs: Part[] = [];
   const manifests: Part[] = [];
   for (const [name, bytes] of Object.entries(files)) {
-    const part = { label: `odt ${name}`, xml: stripForeign(strFromU8(bytes), keepOdf) };
+    const part = { label: `odt ${name}`, xml: stripForeign(strFromU8(bytes), keepOdf).replace(STAT_FIELD_SPAN, '$1') };
     if (/^(content|styles|meta|settings)\.xml$/.test(name)) docs.push(part);
     else if (name === 'META-INF/manifest.xml') manifests.push(part);
   }

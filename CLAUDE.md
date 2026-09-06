@@ -18,7 +18,7 @@ npm run test:lo      # LibreOffice legs: round trip, fuzz re-read, ODT/DOCX rend
 npm run test:smoke   # boots the dist/ build headless (tests/smoke/run.mjs); BROWSER=firefox|webkit
 npm run test:dom     # pagination + editing in the real browser (tests/dom/run.mjs); same BROWSER
 npm run test:layout  # page counts vs LibreOffice, layout invariants, page starts vs baseline.json (tests/layout/)
-npm run test:monkey  # random editing under invariants: schema, undo/redo, the saved file reads back (tests/monkey/)
+npm run test:monkey  # random editing, body + header/footer, under invariants: schema, undo/redo, the saved file reads back
 npm run test:coverage  # vitest + v8 coverage over src/ → coverage/index.html
 npm run test:parity  # render parity vs LibreOffice (tests/render-parity/README.md)
 node scripts/make-thesaurus.mjs; node scripts/collect-licenses.mjs  # re-vendor public/thesaurus/ (MyThes); regenerate public/licenses.txt
