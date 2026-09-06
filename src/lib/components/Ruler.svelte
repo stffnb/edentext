@@ -6,12 +6,13 @@
 
   // Horizontal ruler: the tab stops and indents of the block the cursor is in.
   // Positions are cm from the left text margin, the attr's own origin.
-  let { editor, tick, zoom, width, margins }: {
+  let { editor, tick, zoom, width, margins, gutter = 0 }: {
     editor: Editor | null;
     tick: number;
     zoom: number;
     width: number; // the page's SCALED width in px (.paper-scaler's)
     margins: PageMargins;
+    gutter?: number; // the balloon strip .paper-scaler reserves beside the page
   } = $props();
 
   const TYPES: TabAlign[] = ['left', 'center', 'right', 'decimal'];
@@ -110,7 +111,9 @@
   const at = (t: Drag, stored: number) => (dragging(t) && preview != null ? preview : stored);
 </script>
 
-<div class="ruler" style="width: {width}px">
+<!-- The strip beside the page is reserved here too, so the auto margins centre the
+     ruler over the same footprint as .paper-scaler and it stays above the page. -->
+<div class="ruler" style="width: {width + gutter}px; padding-right: {gutter}px">
   <button
     class="tab-type"
     onpointerdown={(e) => e.preventDefault()}

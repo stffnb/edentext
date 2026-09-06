@@ -304,8 +304,10 @@ Accept/reject and edit/resolve/remove happen in the balloon — `CommentCard.sve
 - The strip is `REVIEW_MARGIN_CM` (gap + balloon) and is **only reserved when the document
   has markup the margin shows** — a kind switched to the pane, or a mode that hides it,
   leaves `.paper-scaler` exactly the page, centred as before.
-  `scaledCanvasWidth` (`Editor.svelte`) adds it; `scaledWidth` stays the page, which is
-  what the `Ruler` is sized from.
+  `scaledCanvasWidth` (`Editor.svelte`) adds it; `scaledWidth` stays the page. The `Ruler`
+  is sized from the page but reserves the strip as `padding-right`, or its own `margin:
+  auto` would centre it over a narrower box than `.paper-scaler` and it would hang right
+  of the page it measures.
 - **The leader runs in the gap under the anchor's line** (`coordsAtPos(...).bottom`, not the
   line's middle) and eases into the card's left edge at the anchor's own height where the
   card reaches that far — so a balloon sitting at its line is joined by one straight line
