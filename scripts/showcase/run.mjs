@@ -13,7 +13,8 @@ const DOCS = ['thesis', 'thesis-review', 'book', 'newsletter'].filter((n) => !on
 
 await mkdir(OUT, { recursive: true });
 const server = await devServer(PORT);
-const { browser, page, pageErrors } = await openApp(PORT);
+// Same CSS viewport as the tests, shot at 2x so the README images stay sharp when scaled.
+const { browser, page, pageErrors } = await openApp(PORT, { deviceScaleFactor: 2 });
 const url = `http://localhost:${PORT}/`;
 
 const ready = async () => {

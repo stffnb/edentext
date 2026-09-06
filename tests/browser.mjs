@@ -49,14 +49,14 @@ export async function devServer(port) {
 
 // BROWSER=chromium|firefox|webkit picks the engine (Chromium by default). Fixed locale,
 // so the UI labels a test clicks are deterministic across machines.
-export async function openApp(port) {
+export async function openApp(port, opts = {}) {
   const name = process.env.BROWSER ?? 'chromium';
   const engine = playwright[name];
   if (!engine) throw new Error(`unknown BROWSER "${name}": chromium, firefox or webkit`);
   const args = name === 'chromium' ? ['--no-sandbox'] : [];
   const browser = await engine.launch({ executablePath: engine.executablePath(), args });
   console.log(`engine: ${name} ${browser.version()}`);
-  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US' });
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', ...opts });
   const pageErrors = [];
   // The text box's ResizeObserver refits the wrapper it observes, so the browser defers
   // the rest of the round to the next frame and reports it — a converging loop, not an error.
