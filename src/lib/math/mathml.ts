@@ -13,6 +13,8 @@ const esc = (s: string) =>
 
 const TAG_BY_KIND: Record<TxtKind, string> = { i: 'mi', n: 'mn', o: 'mo', f: 'mi' };
 
+const BRACKETS = /^[([{|‖⟨⌊⌈)\]}⟩⌋⌉]$/;
+
 // A row that MathML needs as a single element (mfrac, msup, … each take exactly one
 // child per slot), so a multi-node row is wrapped in <mrow>.
 function slot(n: MathNode): string {
@@ -27,7 +29,9 @@ export function astToMathml(n: MathNode): string {
       if (n.kind === 'f') return `<mi mathvariant="normal">${esc(n.s)}</mi>`;
       // Multi-letter identifiers stay upright in MathML unless split, and a number
       // like 3.14 is one token — so emit the run whole and let the class pick the tag.
-      return `<${TAG_BY_KIND[n.kind]}>${esc(n.s)}</${TAG_BY_KIND[n.kind]}>`;
+      // A bracket typed without \left stays glyph-height; only a fence stretches.
+      const attr = n.kind === 'o' && BRACKETS.test(n.s) ? ' stretchy="false"' : '';
+      return `<${TAG_BY_KIND[n.kind]}${attr}>${esc(n.s)}</${TAG_BY_KIND[n.kind]}>`;
     }
     case 'frac': return `<mfrac>${slot(n.num)}${slot(n.den)}</mfrac>`;
     case 'script': {

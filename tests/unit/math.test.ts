@@ -54,6 +54,8 @@ describe('MathML', () => {
     expect(astToMathml(parseLatex('\\int_{0}^{1} x'))).toContain('<msubsup>');
     // Brackets must be stretchy or they stay glyph-height next to a fraction.
     expect(astToMathml(parseLatex('\\left(x\\right)'))).toContain('<mo stretchy="true">(</mo>');
+    // A plain bracket must not: the dictionary would stretch it to the row's tallest.
+    expect(astToMathml(parseLatex('C(b) = \\frac{1}{2}'))).toContain('<mo stretchy="false">(</mo>');
   });
 
   it('round-trips through the document element', () => {
