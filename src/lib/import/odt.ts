@@ -1785,13 +1785,16 @@ function charDefaults(ctx: Ctx, base: BlockDefaults, odfName: string): BlockDefa
   };
 }
 
-function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault = false): Node {
+function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault = false, listHeading = false): Node {
   const { resolver } = ctx;
   const styleName = el.getAttributeNS(NS.text, 'style-name');
   const paraProps = resolver.paraProps(styleName);
   const baseTextProps = resolver.paraTextProps(styleName);
 
-  const isHeading = el.localName === 'h' && kind !== 'list';
+  // A <text:h> that *is* the list item is chapter numbering — the numbered heading both
+  // word processors write — and stays a paragraph here; the editor numbers a chapter from
+  // its outline. One after the item's own paragraph is a heading nested in the item.
+  const isHeading = el.localName === 'h' && (kind !== 'list' || listHeading);
   let level = 1;
   if (isHeading) {
     const raw = parseInt(el.getAttributeNS(NS.text, 'outline-level') ?? '1', 10);
@@ -1938,10 +1941,9 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefau
     if (mr != null && mr > 0.02) attrs.indentRight = Math.round(mr * 100) / 100;
   }
 
-  // Manual page break (fo:break-before). Honored for top-level blocks only
-  // (pageBreaks.ts forces them to the next page top); the editor has no column
-  // breaks, so only "page". Cell/list blocks can't carry it.
-  if (kind === 'body' && paraProps['fo:break-before'] === 'page') attrs.breakBefore = 'page';
+  // Manual page break (fo:break-before); the editor has no column breaks, so only
+  // "page". A cell block can't carry one — LibreOffice ignores it inside a table.
+  if (kind !== 'cell' && paraProps['fo:break-before'] === 'page') attrs.breakBefore = 'page';
   // fo:break-after is the same break seen from the block above; convertBlocks moves it
   // onto the next block, which is what the editor can express.
   if (kind === 'body' && paraProps['fo:break-after'] === 'page') attrs.breakAfter = 'page';
@@ -2799,7 +2801,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     const blocks: Node[] = [];
     for (const child of Array.from(item.children)) {
       if (child.namespaceURI === NS.text && (child.localName === 'p' || child.localName === 'h')) {
-        blocks.push(convertParaLike(child, ctx, 'list'));
+        blocks.push(convertParaLike(child, ctx, 'list', false, blocks.length > 0));
       } else if (child.namespaceURI === NS.text && child.localName === 'list') {
         const nested = convertList(child, ctx, styleName, depth + 1, inChain, childBaseCycle);
         if (nested) blocks.push(nested);

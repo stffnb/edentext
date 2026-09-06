@@ -1156,6 +1156,9 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // on another one inherits Standard — so its runs' bold is formatting, not the default.
   const headingBold = !ctx.styles.styleBasedOn(styleId);
   const defaults = blockDefaults(name ? baseRun : ctx.styles.paragraphRun(ctx.styles.defaultParagraphStyle()), level, boldByDefault, headingBold);
+  // A heading keeps its level in a cell, where the editor re-applies the level's own
+  // size — so the mark is measured against that, not the default style's.
+  if (!name && level != null) defaults.fontSizePt = HEADING_SIZES[level - 1];
   // A run inherits the block's own size, not the default style's, so that is what it is
   // measured against — else a size the block overrides is suppressed and lost (odt.ts).
   const ownSizePt = blockDefaults(baseRun, level, boldByDefault).fontSizePt;
@@ -1284,7 +1287,7 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
     if (first != null && Math.abs(first) > LIST_INDENT_EPS_CM) attrs.indentFirst = round2(first);
   }
 
-  if (kind === 'body') {
+  if (kind !== 'cell') {
     const pb = fc(ppr, 'pageBreakBefore');
     if (pb && onOff(pb)) attrs.breakBefore = 'page';
   }
@@ -1396,15 +1399,16 @@ function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunP
     content.push(...runs);
   }
   // Word opens the note with its own marker run and a tab; the editor draws both from
-  // the note's own indent, so the leading tab would be a second one.
-  const stripLeadingTabs = () => {
+  // the note's own indent, so the leading tab would be a second one. Exactly one — both
+  // products write one, and a second is the note's own text.
+  const stripMarkerTab = () => {
     const first = content[0];
-    if (first?.type === 'text' && typeof first.text === 'string') {
-      first.text = first.text.replace(/^\t+/, '');
+    if (first?.type === 'text' && typeof first.text === 'string' && first.text.startsWith('\t')) {
+      first.text = first.text.slice(1);
       if (!first.text) content.shift();
     }
   };
-  stripLeadingTabs();
+  stripMarkerTab();
   const seen = ctx.notes.filter((n) => n.kind === kind).length;
   const text = label ?? formatOrdinal(seen + 1, kind === 'endnote' ? 'i' : '1');
   // A custom-marked note repeats the literal character where <w:footnoteRef/> would
@@ -1414,7 +1418,7 @@ function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunP
   if (label && bodyFirst?.type === 'text' && typeof bodyFirst.text === 'string' && bodyFirst.text.startsWith(label)) {
     bodyFirst.text = bodyFirst.text.slice(label.length);
     if (!bodyFirst.text) content.shift();
-    stripLeadingTabs();
+    stripMarkerTab();
   }
   const id = `${kind}${wid}`;
   // The note renders at the file's own size and indent: its first paragraph names the
