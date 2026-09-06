@@ -1248,13 +1248,18 @@ type ParaStyle = {
   indent: number | null;
   indentFirst: number | null;
   indentRight: number | null;
+  // A page break before the item — list paragraphs only; LibreOffice ignores one in a cell.
+  breakBefore: boolean;
 };
+
+// A list item's blocks past its first: each one's own style, and its heading level.
+type ListItemExtra = { style: ParaStyle; level: number | null };
 
 function paraStyleIsEmpty(s: ParaStyle): boolean {
   return s.align === null && s.spaceBefore === null && s.spaceAfter === null && s.lineHeight === null
     && s.background === null && s.borderTop === null && s.borderRight === null
     && s.borderBottom === null && s.borderLeft === null && s.dir === null
-    && s.indent === null && s.indentFirst === null && s.indentRight === null;
+    && s.indent === null && s.indentFirst === null && s.indentRight === null && !s.breakBefore;
 }
 
 // ODF writes a direction as a writing mode; the vertical ones are not ours to emit.
@@ -1290,7 +1295,19 @@ function paraStyleFromAttrs(attrs: TiptapNode['attrs'], withIndents = true): Par
     indent: cm(attrs?.indent),
     indentFirst: cm(attrs?.indentFirst),
     indentRight: cm(attrs?.indentRight),
+    breakBefore: false,
   };
+}
+
+// LibreOffice keeps the two vertical margins in one item: a style declaring only one
+// resets the other to the *default* style's, not its parent's (probed), so the named
+// style's partner rides along whenever one of the two is direct formatting.
+function pairMargins(style: ParaStyle, styleName: string): ParaStyle {
+  if ((style.spaceBefore == null) === (style.spaceAfter == null)) return style;
+  const own = resolveStyle(exportSheet, styleName, 'paragraph').para;
+  return { ...style,
+    spaceBefore: style.spaceBefore ?? (own.spaceBefore || null),
+    spaceAfter: style.spaceAfter ?? (own.spaceAfter || null) };
 }
 
 // fo:* paragraph-properties attribute strings for a ParaStyle override.
@@ -1303,6 +1320,7 @@ function paraStyleProps(style: ParaStyle): string[] {
   if (style.indent != null) props.push(`fo:margin-left="${style.indent}cm"`);
   if (style.indentFirst != null) props.push(`fo:text-indent="${style.indentFirst}cm"`);
   if (style.indentRight != null) props.push(`fo:margin-right="${style.indentRight}cm"`);
+  if (style.breakBefore) props.push('fo:break-before="page"');
   if (style.background) props.push(`fo:background-color="${style.background}"`);
   // The canonical border attr ('<W>pt solid #RRGGBB') is itself a valid fo:border value.
   for (const [attr, side] of [
@@ -1332,23 +1350,34 @@ type CellBlock =
 // A table's own margins in cm (0/0 tables are recorded as null).
 type TableProps = { ml: number; mr: number; mt: number; mb: number; keepRows: boolean; repeatHeader: boolean };
 
-// Collect the alignment + paragraph spacing of each listItem's first paragraph,
-// in DFS order — matching the order that odf-kit emits <text:list-item> elements
-// into content.xml. Items without overrides yield an all-null descriptor.
-function collectListItemStyles(node: TiptapNode, result: ParaStyle[]): void {
+// Collect the alignment + paragraph spacing of each listItem's first paragraph, and in
+// `extras` the same for its further blocks, in DFS order — matching the order odf-kit
+// emits <text:list-item> in. Items without overrides yield an all-null descriptor.
+function collectListItemStyles(node: TiptapNode, result: ParaStyle[], extras: ListItemExtra[][] = []): void {
   if (node.type === 'listItem') {
+    const blocks = (node.content ?? []).filter(c => c.type === 'paragraph' || c.type === 'heading');
+    extras.push(blocks.slice(1).map(b => ({ style: paraStyleFromAttrs(b.attrs, false),
+      level: b.type === 'heading' ? (b.attrs?.level as number) ?? 1 : null })));
     const firstPara = node.content?.find(c => c.type === 'paragraph');
-    result.push(paraStyleFromAttrs(firstPara?.attrs, false));
+    // replacePageBreaks skips list paragraphs (its sentinel would corrupt the SEG
+    // rebuild), so the item's own break rides its style instead — as LibreOffice
+    // writes it (probed: it keeps fo:break-before on a list item's paragraph).
+    result.push({ ...paraStyleFromAttrs(firstPara?.attrs, false),
+      breakBefore: firstPara?.attrs?.breakBefore === 'page' });
     // Recurse into nested lists only (their listItems extend the DFS sequence).
     for (const child of node.content ?? []) {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
-        collectListItemStyles(child, result);
+        collectListItemStyles(child, result, extras);
       }
     }
     return;
   }
+  // Not into a table: a cell's list is still SEG-segmented text when the two passes
+  // below run (applyCellBlocks rebuilds it after them), so counting its items here
+  // would shift every body item's style by that many.
+  if (node.type === 'table' || node.type === CUST_TABLE) return;
   for (const child of node.content ?? []) {
-    collectListItemStyles(child, result);
+    collectListItemStyles(child, result, extras);
   }
 }
 
@@ -1542,20 +1571,37 @@ function odfLookAttrs(look: TableLook): string {
 // odf-kit's ListBuilder has no per-item paragraph options, so list-item paragraphs all
 // emit as List_20_Bullet/Number. Rewrite content.xml to point those at automatic styles
 // that inherit the list style and add fo:text-align / fo:margin-top / fo:margin-bottom.
-// Split a list item's paragraph back into the blocks mergeListItemBlocks merged into it.
-// ponytail: they are re-emitted at the item's end, so a block before a nested list lands
-// after it — and each takes the item's own paragraph style.
-function applyListItemBlocks(odtBytes: Uint8Array): Uint8Array {
+// Split a list item's paragraph back into the blocks mergeListItemBlocks merged into it,
+// each with its own paragraph style. ponytail: they are re-emitted at the item's end, so
+// a block before a nested list lands after it.
+function applyListItemBlocks(odtBytes: Uint8Array, extras: ListItemExtra[][] = []): Uint8Array {
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
   if (!contentBytes) return odtBytes;
   const content = strFromU8(contentBytes);
   let out = '';
   let i = 0;
+  let item = 0;
   let touched = false;
+  // An extra block keeps its own alignment/spacing/line-height/box: a minted style
+  // under the item's own, which is where the item's list formatting stays.
+  const minted: string[] = [];
+  const nameByKey = new Map<string, string>();
+  const styleFor = (style: ParaStyle, parent: string): string => {
+    const props = paraStyleProps(style).join(' ');
+    const key = `${parent}|${props}`;
+    let name = nameByKey.get(key);
+    if (!name) {
+      name = `LX${nameByKey.size + 1}`;
+      nameByKey.set(key, name);
+      minted.push(`<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${props}/></style:style>`);
+    }
+    return name;
+  };
   for (;;) {
     const at = content.indexOf('<text:list-item', i);
     if (at < 0) { out += content.slice(i); break; }
+    const own = extras[item++] ?? [];
     const pStart = content.indexOf('<text:p', at);
     const gt = pStart < 0 ? -1 : content.indexOf('>', pStart);
     const pEnd = gt < 0 ? -1 : content.indexOf('</text:p>', gt);
@@ -1571,16 +1617,27 @@ function applyListItemBlocks(odtBytes: Uint8Array): Uint8Array {
       if (close < 0) break;
       if (open >= 0 && open < close) { depth++; scan = open; } else { depth--; scan = close; }
     }
-    const [first, ...extras] = inner.split(SEG);
+    const [first, ...rest] = inner.split(SEG);
     const attrs = content.slice(pStart + 7, gt);
+    const itemStyle = /text:style-name="([^"]*)"/.exec(attrs)?.[1] ?? 'Standard';
+    // A heading stays one: ODF holds <text:h> in a list item, and it is where a numbered
+    // heading lives. Its own style is the level's, not the item's list paragraph style.
+    const blockFor = (e: string, n: number) => {
+      const { style, level } = own[n] ?? { style: null, level: null };
+      const parent = level ? `Heading_20_${level}` : itemStyle;
+      const tag = level ? 'text:h' : 'text:p';
+      const named = style && !paraStyleIsEmpty(style) ? ` text:style-name="${styleFor(style, parent)}"`
+        : level ? ` text:style-name="${parent}"` : attrs;
+      return `<${tag}${named}${level ? ` text:outline-level="${level}"` : ''}>${e}</${tag}>`;
+    };
     out += content.slice(i, gt + 1) + first + '</text:p>'
       + content.slice(pEnd + 9, scan)
-      + extras.map(e => `<text:p${attrs}>${e}</text:p>`).join('');
+      + rest.map(blockFor).join('');
     i = scan;
     touched = true;
   }
   if (!touched) return odtBytes;
-  files['content.xml'] = strToU8(out);
+  files['content.xml'] = strToU8(minted.length ? injectAutomaticStyles(out, minted.join('')) : out);
   return zipSync(files, { level: 6 });
 }
 
@@ -3732,7 +3789,8 @@ function buildCellContent(cell: TiptapNode, c: CellBuilder, force: TextProps = {
       blocks.push({ kind: 'paragraph', style: cellParaStyle(block.attrs) });
     } else if (block.type === 'heading') {
       emitSegment(block.content);
-      blocks.push({ kind: 'heading', level: (block.attrs?.level as number) ?? 1, style: paraStyleFromAttrs(block.attrs) });
+      const level = (block.attrs?.level as number) ?? 1;
+      blocks.push({ kind: 'heading', level, style: pairMargins(paraStyleFromAttrs(block.attrs), `Heading ${level}`) });
     } else if (block.type === 'bulletList' || block.type === 'orderedList') {
       blocks.push(walkList(block));
     }
@@ -4945,7 +5003,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const bibMarks: BibExport[] = [];
   const rubies: RubyExport[] = [];
   const sentinels = replaceRuby(replaceBibEntries(replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replacePlaceholderFields(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replacePageBreaks(replaceTableOfContents(docJson, tocs)), textBoxes), columns), notes)))), images), dateFields), placeholderLabels), formulas), crossRefs), commentList), seqFields), revisionList), indexMarks), bibMarks), rubies);
-  const raw = mergeListItemBlocks(markTextEffects(bakeListCharStyles(sentinels, styles), DEFAULT_FONT_SIZE_PT, styles));
+  const unmerged = markTextEffects(bakeListCharStyles(sentinels, styles), DEFAULT_FONT_SIZE_PT, styles);
+  const raw = mergeListItemBlocks(unmerged);
   let headerPara = hf && !hfIsEmpty(hf.header) ? (hf.header!.content![0] as TiptapNode) : null;
   let footerPara = hf && !hfIsEmpty(hf.footer) ? (hf.footer!.content![0] as TiptapNode) : null;
   // Different first page (ODF header-first): page 1 gets its own zone content.
@@ -5047,8 +5106,9 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
       if (ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify') {
         opts.align = ta;
       }
-      if (node.attrs?.spaceBefore != null) opts.spaceBefore = `${node.attrs.spaceBefore}pt`;
-      if (node.attrs?.spaceAfter != null) opts.spaceAfter = `${node.attrs.spaceAfter}pt`;
+      const spacing = pairMargins(paraStyleFromAttrs(node.attrs), styleOf(node));
+      if (spacing.spaceBefore != null) opts.spaceBefore = `${spacing.spaceBefore}pt`;
+      if (spacing.spaceAfter != null) opts.spaceAfter = `${spacing.spaceAfter}pt`;
       // Left indent → fo:margin-left (odf-kit emits it natively from indentLeft).
       if (typeof node.attrs?.indent === 'number' && node.attrs.indent > 0) {
         opts.indentLeft = `${node.attrs.indent}cm`;
@@ -5136,7 +5196,12 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
 
   const listStyles: ParaStyle[] = [];
   collectListItemStyles(raw, listStyles);
-  const styledLists = applyListItemBlocks(applyListItemStyles(numberedOdt, listStyles));
+  // The extras' own styles come from before the merge, which is what folded them in.
+  const listExtraStyles: ListItemExtra[][] = [];
+  collectListItemStyles(unmerged, [], listExtraStyles);
+  // Blocks first: the extras' own styles then parent to the item's list style, not to
+  // the LP# the pass below mints for the item's first paragraph.
+  const styledLists = applyListItemStyles(applyListItemBlocks(numberedOdt, listExtraStyles), listStyles);
 
   // Whole-list indent → added to each L# list-style's level margins.
   const listLevels: ListLevelProps[][] = [];

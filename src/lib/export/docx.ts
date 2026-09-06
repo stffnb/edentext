@@ -604,12 +604,20 @@ function dateTimeFieldParts(node: TiptapNode): { fixed: boolean; instr: string; 
   };
 }
 
+// SimpleField's own cached run is a bare TextRun, so a field carrying marks would lose
+// its look; this pushes the run with the marks' props instead.
+class StyledField extends SimpleField {
+  constructor(instruction: string, cachedValue: string, marks: TiptapNode['marks']) {
+    super(instruction);
+    this.addChildElement(new TextRun({ text: cachedValue, ...runPropsFromMarks(marks) }));
+  }
+}
+
 function dateTimeRun(node: TiptapNode): Inline {
   const { fixed, instr, text } = dateTimeFieldParts(node);
-  // A fixed field is a plain run, so carry its font/size/etc.; SimpleField takes no
-  // run props, so an auto field inherits the paragraph font (Word recomputes it).
+  // A fixed field is a plain run — Word has no fixed-date field.
   if (fixed) return new TextRun({ text, ...runPropsFromMarks(node.marks) });
-  return new SimpleField(instr, text);
+  return new StyledField(instr, text, node.marks);
 }
 
 // The XE field instruction; a literal quote is backslash-escaped, as Word writes it,
@@ -753,7 +761,7 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       // Word's running head: STYLEREF picks the heading of that level in force on the
       // page. The numeric form means outline level; a style name would be looked up
       // localized ("Heading 1" errors in a German Word, which wants "Überschrift 1").
-      out.push(new SimpleField(`STYLEREF ${Number(node.attrs?.level) || 1} \\* MERGEFORMAT`, String(node.attrs?.text ?? '')));
+      out.push(new StyledField(`STYLEREF ${Number(node.attrs?.level) || 1} \\* MERGEFORMAT`, String(node.attrs?.text ?? ''), node.marks));
     } else if (node.type === 'dateTimeField') {
       out.push(dateTimeRun(node));
     } else if (node.type === 'sequenceField') {
@@ -1607,28 +1615,30 @@ function applyBibliographyDocx(bytes: Uint8Array, sources: BibSource[], cite: Ci
   return zipSync(out);
 }
 
-// Post-pack pass: swap each sentinel run in word/document.xml for its <m:oMath>. A
-// display formula additionally wraps its paragraph's content in <m:oMathPara>, which
-// is how Word centers a formula on its own line.
+// The parts a body run can land in: a note's text is its own part, so a sentinel pass
+// that only rewrote document.xml would leave the sentinel standing in a note.
+const NOTE_BEARING_PARTS = ['word/document.xml', 'word/footnotes.xml', 'word/endnotes.xml'];
+
+// Post-pack pass: swap each sentinel run for its <m:oMath>. A display formula
+// additionally wraps its paragraph's content in <m:oMathPara>, which is how Word
+// centers a formula on its own line.
 function applyFormulasDocx(bytes: Uint8Array, formulas: FormulaDocx[]): Uint8Array {
   if (!formulas.length) return bytes;
   const files = unzipSync(bytes);
-  const docBytes = files['word/document.xml'];
-  if (!docBytes) return bytes;
-  let xml = strFromU8(docBytes);
   // Tempered pattern: the match stays inside the one run that holds the sentinel — it
   // may cross neither </w:r> nor a nested <w:r> (a box's drawing run wraps whole
   // paragraphs, so matching from it would swallow the box preamble).
-  xml = xml.replace(
-    new RegExp(`<w:r\\b[^>]*?>(?:(?!</?w:r[\\s>])[\\s\\S])*?${MTH}(\\d+)${MTH}(?:(?!</?w:r[\\s>])[\\s\\S])*?</w:r>`, 'g'),
-    (_m, idx: string) => {
+  const pattern = new RegExp(`<w:r\\b[^>]*?>(?:(?!</?w:r[\\s>])[\\s\\S])*?${MTH}(\\d+)${MTH}(?:(?!</?w:r[\\s>])[\\s\\S])*?</w:r>`, 'g');
+  for (const part of NOTE_BEARING_PARTS) {
+    const partBytes = files[part];
+    if (!partBytes) continue;
+    files[part] = strToU8(strFromU8(partBytes).replace(pattern, (_m, idx: string) => {
       const f = formulas[Number(idx)];
       if (!f) return '';
       const omath = ommlDocument(parseLatex(f.latex));
       return f.display ? `<m:oMathPara xmlns:m="${OMML_NS}">${omath}</m:oMathPara>` : omath;
-    },
-  );
-  files['word/document.xml'] = strToU8(xml);
+    }));
+  }
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
   for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
   return zipSync(out);
@@ -1640,13 +1650,10 @@ function applyFormulasDocx(bytes: Uint8Array, formulas: FormulaDocx[]): Uint8Arr
 function applyRubyDocx(bytes: Uint8Array, rubies: RubyDocx[]): Uint8Array {
   if (!rubies.length) return bytes;
   const files = unzipSync(bytes);
-  const docBytes = files['word/document.xml'];
-  if (!docBytes) return bytes;
-  let xml = strFromU8(docBytes);
   // Tempered like the formula pass: crossing a nested <w:r> would let a match starting
   // at a box's drawing run swallow the box preamble.
-  xml = xml.replace(
-    new RegExp(`<w:r\\b[^>]*?>(?:(?!</?w:r[\\s>])[\\s\\S])*?${RBY}(\\d+)${RBY}(?:(?!</?w:r[\\s>])[\\s\\S])*?</w:r>`, 'g'),
+  const pattern = new RegExp(`<w:r\\b[^>]*?>(?:(?!</?w:r[\\s>])[\\s\\S])*?${RBY}(\\d+)${RBY}(?:(?!</?w:r[\\s>])[\\s\\S])*?</w:r>`, 'g');
+  const rewrite = (xml: string) => xml.replace(pattern,
     (_m, idx: string) => {
       const r = rubies[Number(idx)];
       if (!r) return '';
@@ -1658,7 +1665,9 @@ function applyRubyDocx(bytes: Uint8Array, rubies: RubyDocx[]): Uint8Array {
         + `<w:rt>${run(r.text, 12)}</w:rt><w:rubyBase>${run(r.base)}</w:rubyBase></w:ruby></w:r>`;
     },
   );
-  files['word/document.xml'] = strToU8(xml);
+  for (const part of NOTE_BEARING_PARTS) {
+    if (files[part]) files[part] = strToU8(rewrite(strFromU8(files[part])));
+  }
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
   for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
   return zipSync(out);
