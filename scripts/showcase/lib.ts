@@ -93,6 +93,8 @@ export type Shot = {
   file: string; page?: number; at?: string; zoom?: number; theme?: 'light' | 'dark';
   /** Pages side by side (View ▸ page columns). */
   columns?: number; markup?: boolean; spelling?: boolean;
+  /** The ribbon tab to open, and where to put the caret (first match in view). */
+  tab?: string; caret?: string;
 };
 
 export type Showcase = {

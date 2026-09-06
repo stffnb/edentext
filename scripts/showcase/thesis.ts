@@ -186,12 +186,12 @@ export function build(review = false): Showcase {
     decor: review ? { background: null, border: null,
       watermark: { text: 'DRAFT', font: 'Liberation Sans', color: '#C8C8C8', angle: 45, transparency: 60 } } : undefined,
     shots: review
-      ? [{ file: 'thesis-review', at: 'Introduction', markup: true }]
+      ? [{ file: 'thesis-review', at: 'Introduction', markup: true, tab: 'review' }]
       : [
         { file: 'thesis', at: 'Method' },
         { file: 'thesis-dark', at: 'Method', theme: 'dark' },
-        { file: 'thesis-contents', at: 'Contents' },
-        { file: 'thesis-overview', page: 1, zoom: 50, columns: 2 },
+        { file: 'thesis-contents', at: 'Contents', tab: 'references' },
+        { file: 'thesis-overview', page: 1, zoom: 50, columns: 2, tab: 'view' },
       ],
   };
 }

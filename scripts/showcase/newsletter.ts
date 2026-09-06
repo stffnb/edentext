@@ -112,8 +112,8 @@ export async function build(): Promise<Showcase> {
     hyphenate: true,
     props: { title: 'Newsletter 3/2026', subject: 'Eden Astronomy Society', author: 'The committee', keywords: 'astronomy, society', description: '' },
     shots: [
-      { file: 'newsletter', page: 1 },
-      { file: 'newsletter-tables', page: 2 },
+      { file: 'newsletter', page: 1, tab: 'layout' },
+      { file: 'newsletter-tables', page: 2, tab: 'tableLayout', caret: '.tiptap table td' },
     ],
   };
 }

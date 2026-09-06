@@ -74,11 +74,13 @@ try {
         'edentext-markup-mode': shot.markup ? 'all' : 'none',
         'edentext-page-columns': String(shot.columns ?? 1),
       });
-      // Unknown names would wear squiggles in every shot; the review shot keeps them.
-      if (!shot.spelling) await page.addStyleTag({ content: '.pm-spell-error { text-decoration: none !important; background: none !important; }' });
+      // Unknown names would wear squiggles in every shot; the review shot keeps them. The
+      // floating table toolbar would cover the table the ribbon is already showing.
+      await page.addStyleTag({ content: `.table-toolbar { display: none !important; }
+        ${shot.spelling ? '' : '.pm-spell-error { text-decoration: none !important; background: none !important; }'}` });
       // One .paper holds every page; page n starts n-1 page cycles down it. The caret
       // goes to the first paragraph in view, so the ribbon shows the body's formatting.
-      await page.evaluate(({ page: n, at }) => {
+      await page.evaluate(({ page: n, at, caret }) => {
         const editor = document.querySelector('.editor');
         const paper = document.querySelector('.paper');
         const cycle = parseFloat(getComputedStyle(paper).getPropertyValue('--page-height')) + 20;
@@ -91,10 +93,15 @@ try {
         editor.scrollTop = top + (n - 1) * cycle * zoom - 12;
         const limit = editor.getBoundingClientRect().top + 40;
         const plain = (p) => [...p.querySelectorAll('*')].every((e) => /^(SPAN|STRONG|EM|B|I|U|S|A|SUP|SUB|BR)$/.test(e.tagName));
-        const first = [...document.querySelectorAll('.tiptap > p')].find((p) => p.getBoundingClientRect().top > limit && p.textContent.trim() && plain(p));
+        // A `caret` selector puts it in that element instead — a table cell brings up the
+        // contextual tabs, so the ribbon shows what the shot is about.
+        const first = caret
+          ? [...document.querySelectorAll(caret)].find((e) => e.getBoundingClientRect().top > limit)
+          : [...document.querySelectorAll('.tiptap > p')].find((p) => p.getBoundingClientRect().top > limit && p.textContent.trim() && plain(p));
         const view = document.querySelector('.tiptap').editor;
         if (first) view.commands.focus(view.view.posAtDOM(first, 0) + 1, { scrollIntoView: false });
-      }, { page: shot.page ?? 1, at: shot.at });
+      }, { page: shot.page ?? 1, at: shot.at, caret: shot.caret });
+      if (shot.tab) await page.click(`.ribbon-tab[data-tab="${shot.tab}"]`);
       await page.waitForTimeout(500);
       await page.screenshot({ path: join(OUT, `${shot.file}.png`) });
       console.log(`  ${shot.file}.png`);

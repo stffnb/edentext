@@ -79,7 +79,7 @@ export async function build(): Promise<Showcase> {
     props: { title: 'Alice’s Adventures in Wonderland', subject: '', author: 'Lewis Carroll', keywords: '', description: '' },
     shots: [
       { file: 'book', page: 3 },
-      { file: 'book-spread', page: 3, columns: 2 },
+      { file: 'book-spread', page: 3, columns: 2, tab: 'layout' },
     ],
   };
 }

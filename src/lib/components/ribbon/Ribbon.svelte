@@ -278,6 +278,7 @@
     {#each shown as id}
       <button
         class="ribbon-tab"
+        data-tab={id}
         class:active={tab === id}
         class:contextual={!(TABS as readonly string[]).includes(id)}
         onclick={() => { tab = id; collapsed = false; }}
