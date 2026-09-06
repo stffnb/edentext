@@ -66,7 +66,8 @@ export async function build(): Promise<Showcase> {
       P(null, T('This month not a picture from the observatory but a historic one: the Earthrise that William Anders photographed in 1968 on the fourth orbit of the Moon. It fits the theme of the talk, and it is a reminder of why we look up in the first place.')),
     ),
 
-    H(2, T('Observing nights this autumn')),
+    // The schedule opens the second page, so both tables sit on it and the page fills.
+    { type: 'heading', attrs: { level: 2, breakBefore: 'page' }, content: [T('Observing nights this autumn')] },
     P(null, T('Observing nights take place at the Oak Hill observatory whenever the sky is clear. Whether an evening goes ahead is decided by the leader by 5 pm; the announcement is then on the website and in the members’ group. Dress warmly and bring a red torch.')),
     styledTable('List Table Accent', [
       ['Date', 'Objects', 'Instrument', 'Led by'],
@@ -113,7 +114,7 @@ export async function build(): Promise<Showcase> {
     props: { title: 'Newsletter 3/2026', subject: 'Eden Astronomy Society', author: 'The committee', keywords: 'astronomy, society', description: '' },
     shots: [
       { file: 'newsletter', page: 1, tab: 'layout' },
-      { file: 'newsletter-tables', page: 2, tab: 'tableLayout', caret: '.tiptap table td' },
+      { file: 'newsletter-tables', page: 2, zoom: 120, tab: 'tableLayout', caret: '.tiptap table td' },
     ],
   };
 }
