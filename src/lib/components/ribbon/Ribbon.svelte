@@ -25,7 +25,7 @@
   import { DEFAULT_MARGINS, type PageMargins } from '../../storage/pageMargins';
   import type { Orientation } from '../../storage/pageOrientation';
   import type { PageFormat } from '../../storage/pageFormat';
-  import type { HfSet, HfZone } from '../../storage/headerFooter';
+  import { DEFAULT_HF_DISTANCES, type HfDistances, type HfSet, type HfZone } from '../../storage/headerFooter';
   import type { DocumentLanguage } from '../../storage/documentLanguage';
   import { DEFAULT_TAB_INTERVAL_CM } from '../../storage/tabInterval';
   import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../../storage/pageNumbering';
@@ -53,6 +53,9 @@
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
     extraHfSections = $bindable<HfSet[]>([]),
+    hfDistances = $bindable(DEFAULT_HF_DISTANCES),
+    differentFirstPage = $bindable(false),
+    differentOddEven = $bindable(false),
     hyphenate = $bindable(false),
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     pageDecor = $bindable(EMPTY_PAGE_DECOR),
@@ -93,6 +96,9 @@
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
     extraHfSections?: HfSet[];
+    hfDistances?: HfDistances;
+    differentFirstPage?: boolean;
+    differentOddEven?: boolean;
     hyphenate?: boolean;
     pageNumbering?: PageNumbering;
     pageDecor?: PageDecor;
@@ -358,7 +364,7 @@
     {#if tab === 'home'}
       <HomeTab {editor} {tick} bind:showFormattingMarks {onManageStyles} {onFind} onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'insert'}
-      <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} {onEditZone} {onManageTableStyles} {onAutoText} />
+      <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} bind:hfDistances bind:differentFirstPage bind:differentOddEven {onEditZone} {onManageTableStyles} {onAutoText} />
     {:else if tab === 'layout'}
       <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:extraHfSections bind:hyphenate bind:pageNumbering bind:pageDecor bind:lineNumbering bind:foldMarks onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'references'}

@@ -18,13 +18,16 @@
   import { pageDimsCm, type PageFormat } from '../../../storage/pageFormat';
   import { cmToPx, type PageMargins } from '../../../storage/pageMargins';
   import type { Orientation } from '../../../storage/pageOrientation';
-  import type { HfZone } from '../../../storage/headerFooter';
+  import { clampHfDistance, DEFAULT_HF_DISTANCES, type HfDistances, type HfZone } from '../../../storage/headerFooter';
   import type { StyleFamily } from '../../../styles/styleSheet';
   import { t } from '../../../i18n/i18n.svelte';
   import { shortcutHint } from '../../../editor/shortcuts';
 
   let {
     editor, tick, hfActive = null, pageMargins, pageOrientation, pageFormat,
+    hfDistances = $bindable(DEFAULT_HF_DISTANCES),
+    differentFirstPage = $bindable(false),
+    differentOddEven = $bindable(false),
     onEditZone, onManageTableStyles, onAutoText,
   }: {
     editor: Editor | null;
@@ -33,6 +36,9 @@
     pageMargins: PageMargins;
     pageOrientation: Orientation;
     pageFormat: PageFormat;
+    hfDistances?: HfDistances;
+    differentFirstPage?: boolean;
+    differentOddEven?: boolean;
     onEditZone?: (zone: HfZone) => void;
     onManageTableStyles?: (family: StyleFamily) => void;
     onAutoText?: () => void;
@@ -254,6 +260,35 @@
       </div>
     {/if}
   </div>
+  <div class="rb-menu-wrap" use:clickOutside={'hfOptions'}>
+    <RibbonButton variant="big" icon="settings" label={t().ribbon.hfOptions} title={t().toolbarExpanded.headerFooter} caret active={isMenuOpen('hfOptions')} onclick={() => toggleMenu('hfOptions')} />
+    {#if isMenuOpen('hfOptions')}
+      <div class="ribbon-menu" use:anchored role="menu">
+        <label class="check-row" title={t().toolbarExpanded.differentFirstPageHint}>
+          <input type="checkbox" bind:checked={differentFirstPage} />
+          {t().toolbarExpanded.differentFirstPage}
+        </label>
+        <label class="check-row" title={t().toolbarExpanded.differentOddEvenHint}>
+          <input type="checkbox" bind:checked={differentOddEven} />
+          {t().toolbarExpanded.differentOddEven}
+        </label>
+        <div class="rb-menu-label">{t().toolbarExpanded.position}</div>
+        {#each ['header', 'footer'] as const as axis}
+          <label class="num-row">
+            <span>{t().toolbarExpanded.hfDist[axis]}</span>
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+              value={hfDistances[axis]}
+              onchange={(e) => (hfDistances = { ...hfDistances, [axis]: clampHfDistance(Number(e.currentTarget.value)) })}
+            />
+          </label>
+        {/each}
+      </div>
+    {/if}
+  </div>
 </RibbonGroup>
 
 <div class="ribbon-sep"></div>
@@ -331,6 +366,10 @@
   .link-anchor { position: relative; }
 
   .rb-menu-wrap { position: relative; }
+
+  .check-row { display: flex; align-items: center; gap: 6px; padding: 2px 12px 6px; white-space: nowrap; }
+  .num-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 12px 6px; white-space: nowrap; }
+  .num-row input { width: 72px; }
 
   .file-input {
     position: absolute;

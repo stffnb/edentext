@@ -1295,6 +1295,9 @@
       bind:pageOrientation
       bind:pageFormat
       bind:extraHfSections
+      bind:hfDistances
+      bind:differentFirstPage
+      bind:differentOddEven
       bind:hyphenate
       bind:pageNumbering
       bind:pageDecor

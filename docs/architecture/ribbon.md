@@ -93,6 +93,12 @@ at every height. A flex row cannot reserve width in part of its height, so it mo
 - **Each wrapper names the menu it owns.** One shared open-menu id means every `clickOutside`
   sees every mousedown; without the id each wrapper would close a sibling's open menu, and the
   click on one of its rows would never land.
+- **The header/footer switches ride the Insert tab's Options menu.** Different first page,
+  different odd/even and the two zone distances used to be in `ToolbarExpanded` alone, so the
+  default chrome could reach the first-page and even-page variants only through an import.
+- **Two inputs wear `.file-input`**: the document one in `App.svelte` and the Insert tab's
+  picture one. The ribbon's comes first in the DOM, so a bare class selector opens a picture
+  chooser whenever that tab is showing — the browser runs qualify theirs by `accept`.
 
 ## Pieces
 

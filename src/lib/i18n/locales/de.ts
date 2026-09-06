@@ -969,6 +969,7 @@ const de: Messages = {
     equation: 'Formel',
     header: 'Kopfzeile',
     footer: 'Fußzeile',
+    hfOptions: 'Optionen',
     link: 'Link',
     bookmark: 'Textmarke',
     table: 'Tabelle',

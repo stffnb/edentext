@@ -975,6 +975,7 @@ const en = {
     equation: 'Equation',
     header: 'Header',
     footer: 'Footer',
+    hfOptions: 'Options',
     link: 'Link',
     bookmark: 'Bookmark',
     table: 'Table',
