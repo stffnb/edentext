@@ -5,6 +5,26 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 
 const LICENSE_FILE = /^(LICENSE|LICENCE|COPYING)(\.\w+)?$/i;
 
+// Copied into public/ rather than installed, so no package.json carries the notice.
+const VENDORED = [{
+  name: 'public/count.js (GoatCounter)',
+  license: 'ISC',
+  who: 'Martin Tournoij <martin@arp242.net>',
+  text: `Copyright © Martin Tournoij <martin@arp242.net>
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.`,
+}];
+
 // Read from disk, never through require: an export map that hides package.json
 // would silently drop the package (TipTap, odf-kit and docx all do).
 const manifest = async (name) => {
@@ -58,7 +78,7 @@ async function entry(name) {
   return { name, license: pkg.license, who, text };
 }
 
-const found = [];
+const found = [...VENDORED];
 const missing = [];
 for (const name of [...(await resolveTree(roots))].sort()) {
   const found_ = await entry(name);
