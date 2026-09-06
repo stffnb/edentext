@@ -7,7 +7,7 @@ import { inlineVerticalAlign } from '../../src/lib/editor/extensions/image';
 
 type N = any;
 
-const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC';
 const IMG = (attrs: N): N => ({ type: 'image', attrs: { src: PNG, width: 80, height: 40, ...attrs } });
 const margins = { top: 2, bottom: 2, left: 2, right: 2 };
 

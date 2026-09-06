@@ -260,7 +260,7 @@ await write('12-notes.docx', [{
 
 // 13. Images: an inline picture in the line, sized in EMU by the lib.
 const PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC',
   'base64');
 await write('13-images.docx', [{
   properties: { page },

@@ -4,7 +4,7 @@ import { importDocx } from '../../src/lib/import/docx';
 
 // A 1x1 PNG — real bytes so the importer's magic-number sniff accepts the media.
 const PNG = Uint8Array.from(
-  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='),
+  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC'),
   (c) => c.charCodeAt(0),
 );
 

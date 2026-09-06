@@ -9,7 +9,7 @@ import { importDocx } from '../../src/lib/import/docx';
 
 type N = any;
 
-const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC';
 const IMG = (attrs: N): N => ({ type: 'image', attrs: { src: PNG, width: 200, height: 120, ...attrs } });
 
 const doc: N = {

@@ -41,7 +41,7 @@ const CELLM = (colspan: number, rowspan: number, colwidth: number[] | null, text
 const ROW = (...cells: N[]): N => ({ type: 'tableRow', content: cells });
 
 // A tiny valid PNG; only its bytes matter for the round-trip (no image decoding).
-const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC';
 const IMGN = (width: number, height: number, alt?: string, rotation?: number, wrap?: string, wrapOffsetY?: number): N =>
   ({ type: 'image', attrs: {
     src: PNG, width, height,
@@ -1070,7 +1070,7 @@ describe('Leg 3a: different first page header/footer → buildOdt → importOdt'
 
 describe('Leg 3b: inline images in header/footer → buildOdt → importOdt', () => {
   it('round-trips an as-char image in a default zone and a first-page zone', async () => {
-    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC';
     const img = (w: number, h: number): N => ({ type: 'image', attrs: { src: PNG, alt: 'Logo', width: w, height: h, wrap: 'inline' } });
     const footer: N = { type: 'doc', content: [P({ textAlign: 'center' }, T('Logo '), img(120, 48))] };
     const headerFirst: N = { type: 'doc', content: [P(null, img(200, 60))] };

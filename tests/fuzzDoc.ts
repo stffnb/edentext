@@ -344,7 +344,7 @@ function list(r: Rng, kind: 'bulletList' | 'orderedList', depth: number,
 }
 
 // A tiny valid PNG; only its bytes matter for the round-trip (no image decoding).
-const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC';
 
 // A styled table as the editor authors it: name + look on the table, the style's fill,
 // borders and `region` materialized onto the cells (paintTable). Both importers
