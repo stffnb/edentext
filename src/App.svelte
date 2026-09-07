@@ -166,8 +166,8 @@
   let dirty = $state(false);
   let cleanSum: number | null = null;
   let sumTimer: ReturnType<typeof setTimeout> | undefined;
-  // Whether there is a file to lose those changes from. A document that only ever
-  // lived in the browser is kept by the autosave, so leaving is not worth a warning.
+  // Whether there is a file to lose those changes from — a saved file makes the dot,
+  // and the unload warning, follow the changes rather than the document's existence.
   let documentHasFile = $state(false);
 
   // The page count rides in with the zones but is a layout result, not an edit: a
@@ -202,7 +202,10 @@
   });
 
   $effect(() => {
-    if (!dirty || !documentHasFile) return;
+    // A document with no file behind it lives in this browser alone, so closing the tab
+    // is worth the browser's warning as much as changes a file has not got yet. The
+    // same emptiness test the confirm before a new document uses.
+    if (documentHasFile ? !dirty : tick < 0 || !isDocNonEmpty()) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     addEventListener('beforeunload', warn);
     return () => removeEventListener('beforeunload', warn);

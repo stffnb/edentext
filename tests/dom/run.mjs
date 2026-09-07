@@ -30,11 +30,20 @@ try {
   await page.reload({ waitUntil: 'load' });
   await page.waitForSelector('.tiptap', { timeout: 15_000 });
 
+  // What the browser asks before closing the tab: a beforeunload nobody cancels lets it go.
+  const holdsOn = () => page.evaluate(() => {
+    const e = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(e);
+    return e.defaultPrevented;
+  });
+  check(!(await holdsOn()), 'an empty document lets the tab close');
+
   // Save on a document with no file behind it settles the format first: the download
   // route cannot read one back from the browser's own dialog.
   await page.evaluate(() => { window.showSaveFilePicker = undefined; });
   await page.click('.tiptap');
   await page.keyboard.type('Format first');
+  check(await holdsOn(), 'a document that was never saved warns before the tab closes');
   await page.keyboard.press(`${MOD}+s`);
   const [firstSave] = await Promise.all([
     page.waitForEvent('download', { timeout: 30_000 }),
@@ -42,6 +51,7 @@ try {
   ]);
   check(firstSave.suggestedFilename().endsWith('.docx'),
     `Ctrl+S on an unsaved document asks for the format (${firstSave.suggestedFilename()})`);
+  check(!(await holdsOn()), 'the saved document lets the tab close again');
 
   // A multi-page corpus document, through the file input (no picker in headless).
   await page.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus/05-breaks.odt'));

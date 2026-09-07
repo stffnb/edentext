@@ -228,8 +228,9 @@ settle pass or the spell checker keeps the document moving), and the baseline is
 **synchronously** on the effect's first run, not in that timer: under a repagination the
 timer can be pushed out past the reader's first edit, which would make that edit the
 baseline. A save, an open or a new document takes a fresh baseline (`markSaved`).
-Leaving the page warns only when the document actually has a file — a browser-only document
-is kept by the autosave, so there would be nothing to lose.
+Leaving the page warns while a document with a file differs from it, and for a document
+with no file at all as soon as it has content (the emptiness test the confirm before a new
+document uses). The wording is the browser's own — `beforeunload` carries no message.
 
 ## Built-in templates (`TemplateGalleryDialog.svelte`, `lib/templates/`)
 
