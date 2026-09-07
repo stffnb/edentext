@@ -1,3 +1,5 @@
+import { docKey } from './docScope';
+
 // cm. `mirrored` = ODF style:page-usage="mirrored" / Word's mirror margins: left and
 // right are the inner/outer pair, and an even (left-hand) page swaps them.
 export type PageMargins = {
@@ -19,7 +21,7 @@ export function marginAxisLabel(axis: MarginAxis, m: PageMargins): MarginAxis | 
   return axis === 'left' ? 'inner' : 'outer';
 }
 
-const KEY = 'edentext-page-margins';
+const KEY = docKey('edentext-page-margins');
 
 // LibreOffice Writer's default page margins (Word uses 2.54cm all round). Only a new
 // document gets these — an imported one always adopts its own page geometry.

@@ -3,6 +3,12 @@ import App from './App.svelte';
 import './styles/global.css';
 import { loadTheme, applyTheme } from './lib/storage/theme';
 import { locale } from './lib/i18n/i18n.svelte';
+import { startTabPresence, pruneOldDocuments } from './lib/storage/docScope';
+
+// This tab holds its document while it lives; the ones no tab has held for a while
+// and that fell out of the newest few are dropped here.
+startTabPresence();
+pruneOldDocuments();
 
 // Apply saved theme before mount to prevent flash of wrong theme
 applyTheme(loadTheme());

@@ -56,7 +56,19 @@ export function stashImages(json: object): { json: object; blobs: Map<string, st
 // picture was just deleted would skip the sweep below and leave its bytes behind.
 let inUse = false;
 
-/** Write the pictures and drop every key the document no longer references. */
+// The store is shared across this browser's documents, so a key may only go when no
+// stored document names it any more. A list per document would go stale for every one
+// no tab has opened since; ponytail: a regex over localStorage on each debounced save.
+function referenced(): Set<string> {
+  const out = new Set<string>();
+  for (let i = 0; i < localStorage.length; i++) {
+    const raw = localStorage.getItem(localStorage.key(i)!) ?? '';
+    for (const [, key] of raw.matchAll(/idb:([a-z0-9]+)/g)) out.add(key);
+  }
+  return out;
+}
+
+/** Write the pictures and drop every key no document references any more. */
 export async function putImages(blobs: Map<string, string>): Promise<boolean> {
   if (!blobs.size && !inUse) return true;
   if (typeof indexedDB === 'undefined') return false;
@@ -67,8 +79,10 @@ export async function putImages(blobs: Map<string, string>): Promise<boolean> {
     for (const [key, src] of blobs) {
       if (!known.includes(key)) await idbRequest(db, STORE, 'readwrite', (s) => s.put(src, key));
     }
+    // Not from the stored copy yet, so the sweeper's own pictures come from `blobs`.
+    const live = referenced();
     for (const key of known) {
-      if (!blobs.has(String(key))) await idbRequest(db, STORE, 'readwrite', (s) => s.delete(key));
+      if (!blobs.has(String(key)) && !live.has(String(key))) await idbRequest(db, STORE, 'readwrite', (s) => s.delete(key));
     }
     db.close();
     return true;

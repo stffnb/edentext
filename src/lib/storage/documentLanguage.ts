@@ -3,6 +3,7 @@
 // the default paragraph style). 'none' disables checking.
 
 import { resolveBrowserLocale } from '../i18n/config';
+import { docKey } from './docScope';
 
 export const NO_LANGUAGE = 'none';
 
@@ -22,7 +23,7 @@ export const LANGUAGES: LanguageDef[] = [
   { code: 'de', label: 'Deutsch', odf: { language: 'de', country: 'DE' } },
 ];
 
-const KEY = 'edentext-doc-language';
+const KEY = docKey('edentext-doc-language');
 
 export function findLanguage(code: DocumentLanguage): LanguageDef | undefined {
   return LANGUAGES.find((l) => l.code === code);

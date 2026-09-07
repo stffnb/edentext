@@ -5,8 +5,9 @@
 import { builtinStyleSheet, DEFAULT_STYLE, mergeStoredSheet, STYLE_SHEET_VERSION, type Style, type StyleFamily, type StyleSheet } from './styleSheet';
 import type { TableStyle } from './tableStyles';
 import type { ListStyle } from './listStyles';
+import { docKey } from '../storage/docScope';
 
-const STORAGE_KEY = 'edentext-styles';
+const STORAGE_KEY = docKey('edentext-styles');
 
 function load(): StyleSheet {
   const raw = localStorage.getItem(STORAGE_KEY);

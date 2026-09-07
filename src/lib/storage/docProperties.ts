@@ -1,3 +1,5 @@
+import { docKey } from './docScope';
+
 // The document's descriptive metadata — LibreOffice's File ▸ Properties, Word's
 // File ▸ Info. Written to ODF meta.xml and DOCX docProps/core.xml, read back on import.
 
@@ -12,7 +14,7 @@ export type DocProperties = {
   description: string;
 };
 
-const KEY = 'edentext-doc-properties';
+const KEY = docKey('edentext-doc-properties');
 
 export const EMPTY_DOC_PROPERTIES: DocProperties = {
   title: '', subject: '', author: '', keywords: '', description: '',

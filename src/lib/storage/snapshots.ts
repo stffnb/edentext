@@ -1,10 +1,11 @@
 import { openDb, idbRequest } from './idb';
+import { docKey } from './docScope';
 
 // Earlier versions of the autosaved document, in IndexedDB. The browser copy is one
 // document deep: a bad edit, a failed load or a swept picture would otherwise take it
 // with no way back. A snapshot holds the document's text — margins, styles and the
 // header/footer belong to the open document and are left where they are.
-const DB_NAME = 'edentext-snapshots';
+const DB_NAME = docKey('edentext-snapshots');
 const STORE = 'snapshots';
 // Three is what a session is worth; each holds the pictures inline, unlike the
 // localStorage copy, so the store pays for them.

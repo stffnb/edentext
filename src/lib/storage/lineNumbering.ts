@@ -1,9 +1,11 @@
+import { docKey } from './docScope';
+
 // LibreOffice's Tools ▸ Line Numbering / Word's Layout ▸ Line Numbers. Off by default in
 // both, so a fresh document writes nothing and neither importer stamps it on a file that
 // declares none. ODF keeps it as one <text:linenumbering-configuration> in office:styles,
 // Word as <w:lnNumType> in every w:sectPr (probed).
 
-const KEY = 'edentext-line-numbering';
+const KEY = docKey('edentext-line-numbering');
 
 export type LineNumbering = {
   on: boolean;

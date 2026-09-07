@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { stashImages, IDB_SRC } from '../../src/lib/storage/imageStore';
+import { describe, it, expect, vi } from 'vitest';
+import { stashImages, putImages, IDB_SRC } from '../../src/lib/storage/imageStore';
+import { fakeIndexedDb } from '../fakeIdb';
 
 const big = (fill: string) => `data:image/png;base64,${fill.repeat(5000)}`;
 
@@ -43,5 +44,19 @@ describe('stashImages', () => {
   it('gives two different pictures two keys', () => {
     const { blobs } = stashImages(doc(para(img(big('C')), img(big('D')))));
     expect(blobs.size).toBe(2);
+  });
+});
+
+describe('putImages', () => {
+  it('sweeps what no document names any more, and nothing else', async () => {
+    const idb = fakeIndexedDb();
+    vi.stubGlobal('indexedDB', { open: idb.open });
+    localStorage.clear();
+    // A second document, stored by another tab and not open here.
+    localStorage.setItem('edentext-doc@d2', JSON.stringify({ attrs: { src: `${IDB_SRC}theirs` } }));
+    idb.data.set('theirs', big('B'));
+    idb.data.set('orphan', big('C'));
+    await putImages(new Map([['mine', big('A')]]));
+    expect([...idb.data.keys()].sort()).toEqual(['mine', 'theirs']);
   });
 });

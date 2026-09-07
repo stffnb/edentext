@@ -1,15 +1,16 @@
 import { t, locale } from '../i18n/i18n.svelte';
 import { stashImages, putImages, restoreImages } from './imageStore';
 import { keepSnapshot, listSnapshots, readSnapshot } from './snapshots';
+import { docKey } from './docScope';
 
-const STORAGE_KEY = 'edentext-doc';
+const STORAGE_KEY = docKey('edentext-doc');
 // Set while a stored document is being handed to the editor, cleared once the editor
 // has actually come up (markDocumentLoaded). Finding it still set at load time means
 // the last attempt hung or threw — reloading would only freeze again.
-const BOOT_KEY = 'edentext-doc-loading';
+const BOOT_KEY = docKey('edentext-doc-loading');
 // Where such a document is parked instead of being loaded, so nothing is lost and
 // it can still be pulled out of localStorage.
-const BROKEN_KEY = 'edentext-doc-broken';
+const BROKEN_KEY = docKey('edentext-doc-broken');
 const DEBOUNCE_MS = 1000;
 
 let timeout: ReturnType<typeof setTimeout> | null = null;

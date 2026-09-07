@@ -19,6 +19,7 @@ npm run test:smoke   # boots the dist/ build headless (tests/smoke/run.mjs); BRO
 npm run test:dom     # pagination + editing in the real browser (tests/dom/run.mjs); same BROWSER
 npm run test:layout  # page counts vs LibreOffice, layout invariants, page starts vs baseline.json (tests/layout/)
 npm run test:monkey  # random editing, body + header/footer, under invariants: schema, undo/redo, the saved file reads back
+npm run test:tabs    # two tabs, two documents: each keeps its own across reloads (tests/tabs/)
 npm run test:coverage  # vitest + v8 coverage over src/ → coverage/index.html
 npm run test:parity  # render parity vs LibreOffice (tests/render-parity/README.md)
 node scripts/make-thesaurus.mjs; node scripts/collect-licenses.mjs  # re-vendor public/thesaurus/ (MyThes); regenerate public/licenses.txt
@@ -31,7 +32,7 @@ Tests live in `tests/` (outside `src/`, so `svelte-check` ignores them), jsdom v
 `corpus.test.ts` round-trips the committed `tests/corpus/` documents (by `make-fixtures.mjs` + Word re-saves in `corpus/word/`, never our exporter);
 `fuzz-roundtrip.test.ts` round-trips seeded random documents under random export options (`fuzzDoc.ts`, `fuzzOptions.ts`) through both formats and validates every export against the schemas (`schemaValidate.ts`; `FUZZ_SEEDS=500` widens it);
 `schema-validation.test.ts` validates the `kitchenSink.ts` exports against the vendored schemas in `tests/schemas/` (self-skips without `xmllint`); `package-lint.test.ts` checks the semantic invariants schemas can't express (unique ids, dangling references); `tests/unit/` holds fast helper tests;
-the four browser runs (`tests/smoke/`, `tests/dom/`, `tests/layout/`, `tests/monkey/`) share `tests/browser.mjs`. All test tooling stays a `devDependency`. No linter/formatter. CI (`.github/workflows/ci.yml`) runs `check` + `test`.
+the five browser runs (`tests/smoke/`, `tests/dom/`, `tests/layout/`, `tests/monkey/`, `tests/tabs/`) share `tests/browser.mjs`. All test tooling stays a `devDependency`. No linter/formatter. CI (`.github/workflows/ci.yml`) runs `check` + `test`.
 
 ## Rules
 

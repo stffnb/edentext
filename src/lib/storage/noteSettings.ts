@@ -1,6 +1,7 @@
 import type { OrderedTypeDef } from '../utils/orderedListTypes';
+import { docKey } from './docScope';
 
-const KEY = 'edentext-notes';
+const KEY = docKey('edentext-notes');
 
 // How footnotes and endnotes are numbered and where they sit. Every default here was
 // read out of a document LibreOffice saved (docs/architecture/notes.md) — an

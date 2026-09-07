@@ -1,5 +1,6 @@
 import { PX_PER_CM } from './pageMargins';
 import type { Orientation } from './pageOrientation';
+import { docKey } from './docScope';
 
 export type PageFormat =
   | 'A3' | 'A4' | 'A5' | 'A6'
@@ -7,7 +8,7 @@ export type PageFormat =
   | 'jisB4' | 'jisB5'
   | 'letter' | 'legal' | 'tabloid' | 'executive' | 'folio' | 'statement';
 
-const KEY = 'edentext-page-format';
+const KEY = docKey('edentext-page-format');
 
 // Portrait page dimensions in cm per format (width < height). Landscape swaps them.
 // Grouped A / ISO-B / JIS-B / US, matching the Word/LibreOffice paper menus.

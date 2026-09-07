@@ -1,8 +1,10 @@
+import { docKey } from './docScope';
+
 // Fold and punch marks in the left margin (DIN 5008 letter sheets). Off by default —
 // neither word processor prints any — so a fresh document writes nothing. They ride the
 // master page's header on export, like the watermark, as named <draw:line>/VML lines.
 
-const KEY = 'edentext-fold-marks';
+const KEY = docKey('edentext-fold-marks');
 
 /** Distances from the top paper edge, in mm (DIN 5008: fold marks and punch mark). */
 export const FOLD_MARK_MM = [87, 192];

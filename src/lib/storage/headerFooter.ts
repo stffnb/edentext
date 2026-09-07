@@ -6,6 +6,7 @@ import type { PageMargins } from './pageMargins';
 import type { PageFormat } from './pageFormat';
 import type { Orientation } from './pageOrientation';
 import type { NoteNumFormat } from './noteSettings';
+import { docKey } from './docScope';
 
 export type HfZone = 'header' | 'footer';
 export type HfVariant = 'default' | 'first' | 'even';
@@ -73,7 +74,7 @@ export function hfSetIsEmpty(s: HfSet): boolean {
 
 // Sections past the first, in order. Persisted whole rather than per zone like
 // section 1's, whose six docs each have their own key.
-const EXTRA_KEY = 'edentext-hf-sections';
+const EXTRA_KEY = docKey('edentext-hf-sections');
 
 export function loadExtraHfSections(): HfSet[] {
   const raw = localStorage.getItem(EXTRA_KEY);
@@ -92,14 +93,14 @@ export function saveExtraHfSections(sections: HfSet[]): void {
 }
 
 const KEYS: Record<HfZone, Record<HfVariant, string>> = {
-  header: { default: 'edentext-header', first: 'edentext-header-first', even: 'edentext-header-even' },
-  footer: { default: 'edentext-footer', first: 'edentext-footer-first', even: 'edentext-footer-even' },
+  header: { default: docKey('edentext-header'), first: docKey('edentext-header-first'), even: docKey('edentext-header-even') },
+  footer: { default: docKey('edentext-footer'), first: docKey('edentext-footer-first'), even: docKey('edentext-footer-even') },
 };
 
 // Whether page 1 uses its own header/footer (Word w:titlePg / ODF header-first).
-const DIFFERENT_FIRST_KEY = 'edentext-hf-different-first';
+const DIFFERENT_FIRST_KEY = docKey('edentext-hf-different-first');
 // Whether even pages use their own header/footer (Word w:evenAndOddHeaders / ODF header-left).
-const DIFFERENT_ODD_EVEN_KEY = 'edentext-hf-odd-even';
+const DIFFERENT_ODD_EVEN_KEY = docKey('edentext-hf-odd-even');
 
 export function loadDifferentFirstPage(): boolean {
   return localStorage.getItem(DIFFERENT_FIRST_KEY) === 'true';
@@ -130,7 +131,7 @@ export type HfDistances = { header: number; footer: number };
 
 export const DEFAULT_HF_DISTANCES: HfDistances = { header: HF_DISTANCE_CM, footer: HF_DISTANCE_CM };
 
-const DIST_KEY = 'edentext-hf-distances';
+const DIST_KEY = docKey('edentext-hf-distances');
 const DIST_MIN = 0;
 const DIST_MAX = 10;
 

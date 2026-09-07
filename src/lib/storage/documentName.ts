@@ -1,7 +1,9 @@
+import { docKey } from './docScope';
+
 // The user-visible document name (without the .odt extension). Drives the
 // suggested filename on save; empty falls back to the heading-derived name.
 
-const KEY = 'edentext-doc-name';
+const KEY = docKey('edentext-doc-name');
 
 export function loadDocName(): string {
   return localStorage.getItem(KEY) ?? '';
@@ -39,7 +41,7 @@ export type DocumentFormat = 'odt' | 'docx';
 
 // The format the open document round-trips in. Absent at the .odt default, so only a
 // document that came in as .docx writes anything.
-const FORMAT_KEY = 'edentext-doc-format';
+const FORMAT_KEY = docKey('edentext-doc-format');
 
 export function loadDocFormat(): DocumentFormat {
   return localStorage.getItem(FORMAT_KEY) === 'docx' ? 'docx' : 'odt';
@@ -52,7 +54,7 @@ export function saveDocFormat(format: DocumentFormat): void {
 
 // Whether the open document is password-protected. The password itself is never
 // stored, so after a reload this is what makes the first save ask for it again.
-const PROTECTED_KEY = 'edentext-doc-protected';
+const PROTECTED_KEY = docKey('edentext-doc-protected');
 
 export function loadDocProtected(): boolean {
   return localStorage.getItem(PROTECTED_KEY) === '1';

@@ -1,9 +1,11 @@
+import { docKey } from './docScope';
+
 // Whether the editor records revisions, as a reactive singleton (same shape as
 // autoCorrect.svelte.ts): the extension reads recordChanges() on every transaction, the
 // Review tab flips it. Off by default, as in both word processors — and a document that
 // records nothing writes no revision registry.
 
-const KEY = 'edentext-record-changes';
+const KEY = docKey('edentext-record-changes');
 
 let current = $state(localStorage.getItem(KEY) === 'true');
 

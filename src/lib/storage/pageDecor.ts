@@ -1,10 +1,12 @@
+import { docKey } from './docScope';
+
 // The page's own decoration: LibreOffice's Format ▸ Page Style ▸ Area and Borders, and
 // its Format ▸ Watermark. All three are page-level and all three ride the page layout
 // (the watermark rides the master page's header, where both word processors keep it),
 // so they share one key. Every field is absent by default — a fresh document decorates
 // nothing, and neither importer stamps a decoration on a file that has none.
 
-const KEY = 'edentext-page-decor';
+const KEY = docKey('edentext-page-decor');
 
 // A page border is one rule around the whole page, as both word processors draw it: one
 // width and colour for all four sides, offset from the text by `paddingCm`.

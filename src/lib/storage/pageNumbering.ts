@@ -1,4 +1,5 @@
 import type { NoteNumFormat } from './noteSettings';
+import { docKey } from './docScope';
 
 // How the page-number field counts: Word's Insert ▸ Page Number ▸ Format Page Numbers,
 // LibreOffice's page style ▸ Layout Settings. ODF keeps the format on the page layout
@@ -7,7 +8,7 @@ import type { NoteNumFormat } from './noteSettings';
 
 export type PageNumbering = { format: NoteNumFormat; start: number };
 
-const KEY = 'edentext-page-numbering';
+const KEY = docKey('edentext-page-numbering');
 
 export const DEFAULT_PAGE_NUMBERING: PageNumbering = { format: '1', start: 1 };
 
