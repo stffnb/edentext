@@ -1082,6 +1082,7 @@ const de: Messages = {
     confirmReplace: 'Beim Öffnen dieser Datei wird das aktuelle Dokument ersetzt. Fortfahren?',
     openedWithLimitations: (list) => `Mit Einschränkungen geöffnet:\n• ${list}`,
     couldNotOpen: 'Diese Datei konnte nicht geöffnet werden.',
+    chooseFormat: 'In welchem Format speichern?',
     couldNotSave: 'Diese Datei konnte nicht gespeichert werden.',
     scriptBlocked: 'Ein Teil der App konnte nicht geladen werden — ein Skript-Blocker (uBlock Origin, NoScript, strenger Schutzmodus) verhindert das. Erlaube diese Seite und versuche es erneut.',
     couldNotExportPdf: 'PDF-Export nicht möglich.',

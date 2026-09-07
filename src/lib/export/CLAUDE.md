@@ -11,6 +11,8 @@ are built, because the download route (Brave ships with the File System Access A
 read a changed name back from the browser's dialog — and Chrome's macOS save panel has no format
 popup and admits only the first picker type's extensions anyway. The chosen format is the
 document's from then on; a template follows the document's format (`.ott`, or `.dotx` for `.docx`).
+Save on a document with no file behind it therefore asks first (`SaveFormatDialog`, App.svelte)
+and hands over to Save As — the same beat as saving an untitled document elsewhere.
 
 `saveFile.ts` picks the path: `showSaveFilePicker` where there is one, else a download —
 Gecko has none and Brave disables the whole File System Access API by default. The first

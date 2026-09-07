@@ -1088,6 +1088,7 @@ const en = {
     confirmReplace: 'Opening this file will replace the current document. Continue?',
     openedWithLimitations: (list: string) => `Opened with limitations:\n• ${list}`,
     couldNotOpen: 'Could not open this file.',
+    chooseFormat: 'Save in which format?',
     couldNotSave: 'Could not save this file.',
     scriptBlocked: 'Part of the app could not be loaded — a script blocker (uBlock Origin, NoScript, strict privacy mode) is blocking it. Allow this site and try again.',
     couldNotExportPdf: 'Could not export to PDF.',

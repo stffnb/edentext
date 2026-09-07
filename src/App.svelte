@@ -68,6 +68,7 @@
   import { OPEN_THESAURUS_EVENT } from './lib/spell/thesaurus';
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
+  import SaveFormatDialog from './lib/components/SaveFormatDialog.svelte';
   import { t, locale } from './lib/i18n/i18n.svelte';
   import { fnv1a } from './lib/utils/hash';
   import { withShortcut } from './lib/i18n/shortcut';
@@ -569,6 +570,7 @@
   let fileInput: HTMLInputElement | null = $state(null);
   let pdfBusy = $state(false);
   let exportMenuOpen = $state(false);
+  let saveFormatOpen = $state(false);
 
   // The editable zones as one section — section 1 of the export.
   function hfSetOfState(): HfSet {
@@ -979,6 +981,9 @@
   async function handleSave() {
     if (!editor) return;
     exportMenuOpen = false;
+    // A document with no file behind it has no format yet: ask, the way saving an
+    // untitled document does everywhere else, and let Save As do the rest.
+    if (!fileHandle && !documentHasFile) { saveFormatOpen = true; return; }
     if (!(await ensurePassword())) return;
     const json = editor.getJSON() as TiptapNode;
     try {
@@ -1765,6 +1770,7 @@
        callers only say which family to land on. -->
   <StyleManagerDialog bind:open={styleManagerOpen} family={styleManagerFamily} editor={activeEditor} />
   <NoteOptionsDialog bind:open={noteOptionsOpen} />
+  <SaveFormatDialog bind:open={saveFormatOpen} onPick={handleSaveAs} />
 </main>
 
 <style>

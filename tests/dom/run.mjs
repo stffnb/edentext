@@ -30,6 +30,19 @@ try {
   await page.reload({ waitUntil: 'load' });
   await page.waitForSelector('.tiptap', { timeout: 15_000 });
 
+  // Save on a document with no file behind it settles the format first: the download
+  // route cannot read one back from the browser's own dialog.
+  await page.evaluate(() => { window.showSaveFilePicker = undefined; });
+  await page.click('.tiptap');
+  await page.keyboard.type('Format first');
+  await page.keyboard.press(`${MOD}+s`);
+  const [firstSave] = await Promise.all([
+    page.waitForEvent('download', { timeout: 30_000 }),
+    page.locator('dialog[open] button', { hasText: '(.docx)' }).first().click(),
+  ]);
+  check(firstSave.suggestedFilename().endsWith('.docx'),
+    `Ctrl+S on an unsaved document asks for the format (${firstSave.suggestedFilename()})`);
+
   // A multi-page corpus document, through the file input (no picker in headless).
   await page.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus/05-breaks.odt'));
   await page.waitForFunction(() => (document.querySelector('.tiptap')?.textContent ?? '').length > 200,
