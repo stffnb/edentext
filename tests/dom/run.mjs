@@ -244,16 +244,20 @@ try {
   const frame = (attrs) => ({ type: 'image', attrs: { src: PNG, width: 120, height: 60, ...attrs } });
   const block = (...content) => ({ type: 'paragraph', content });
   const words = (t) => ({ type: 'text', text: t });
-  await page.evaluate((d) => document.querySelector('.tiptap').editor.commands.setContent(d), { type: 'doc', content: [
+  // Out of the autosave, as a reload builds it: the anchored frame is placed while the
+  // view is still being built.
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
     block(words('above')), block(words('with '), frame({ wrap: 'topBottom' })), block(words('below')),
     block(frame({ wrap: 'topBottom', anchorPage: 1 })), block(words('after anchored')),
     block(frame({ wrap: 'topBottom' })), block(frame({ wrap: 'topBottom' })), block(words('after two')),
   ] });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
   await settle(page, true);
   const bands = await page.evaluate(() => Array.from(document.querySelectorAll('.tiptap > p'),
     (p) => `${p.getAttribute('data-wrap-band') ?? '-'}/${getComputedStyle(p).clear}`).join(' '));
   check(bands === '-/none true/none -/both anchored/none -/none true/none true/none -/both',
-    `the block after a band frame clears it, after an anchored one it does not (${bands})`);
+    `loaded from the autosave, the block after a band frame clears it, after an anchored one it does not (${bands})`);
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {

@@ -219,20 +219,20 @@
   },
   "docs/showcase/newsletter.docx": {
    "pages": 2,
-   "lines": 153,
-   "ms": 200,
+   "lines": 155,
+   "ms": 400,
    "starts": [
     "Eden Astronomy Society",
-    "For the"
+    "Observing nights this autumn"
    ]
   },
   "docs/showcase/newsletter.odt": {
    "pages": 2,
-   "lines": 153,
+   "lines": 155,
    "ms": 100,
    "starts": [
     "Eden Astronomy Society",
-    "For the"
+    "Observing nights this autumn"
    ]
   },
   "docs/showcase/thesis-review.docx": {

@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import type { EditorView } from '@tiptap/pm/view';
 import { dropCursor } from '@tiptap/pm/dropcursor';
 import { cmToPx } from '../../storage/pageMargins';
 import { readVerticalMargins } from './pageBreaks';
@@ -287,7 +288,7 @@ export const Image = Node.create({
   },
 
   addNodeView() {
-    return ({ node, editor, getPos }) => new ImageView(node as PMNode, editor, getPos as () => number);
+    return ({ node, editor, getPos, view }) => new ImageView(node as PMNode, editor, getPos as () => number, view);
   },
 
   // The drop cursor paints a caret where a dragged-in image *file* lands; moving an
@@ -357,11 +358,14 @@ class ImageView {
   private badge: HTMLElement;
   private node: PMNode;
   private editor: Editor;
+  // Handed in with the node: editor.view is not there yet while a saved document builds.
+  private view: EditorView;
   private getPos: () => number;
 
-  constructor(node: PMNode, editor: Editor, getPos: () => number) {
+  constructor(node: PMNode, editor: Editor, getPos: () => number, view: EditorView) {
     this.node = node;
     this.editor = editor;
+    this.view = view;
     this.getPos = getPos;
 
     this.dom = document.createElement('span');
@@ -511,7 +515,7 @@ class ImageView {
     d.style.position = 'absolute';
     d.style.zIndex = this.node.attrs.inFront ? '1' : '-1';
     d.style.left = `${px(this.node.attrs.wrapOffset)}px`;
-    const grid = readVerticalMargins(this.editor.view.dom as HTMLElement).grid;
+    const grid = readVerticalMargins(this.view.dom as HTMLElement).grid;
     d.style.top = `${grid.topOf(page) + px(this.node.attrs.wrapOffsetY)}px`;
   }
 
@@ -537,7 +541,7 @@ class ImageView {
     if (!this.editor.isEditable) return;
     event.preventDefault();
     event.stopPropagation();
-    const view = this.editor.view;
+    const view = this.view;
     const origPos = this.getPos();
     if (typeof origPos !== 'number') return;
     const win = this.dom.ownerDocument.defaultView ?? window;
@@ -631,7 +635,7 @@ class ImageView {
   private commit(attrs: Record<string, unknown>): void {
     const pos = this.getPos();
     if (typeof pos !== 'number') return;
-    this.editor.view.dispatch(this.editor.state.tr.setNodeMarkup(pos, undefined, { ...this.node.attrs, ...attrs }));
+    this.view.dispatch(this.editor.state.tr.setNodeMarkup(pos, undefined, { ...this.node.attrs, ...attrs }));
   }
 
   private startResize(event: MouseEvent, cfg: typeof HANDLES[number]): void {
