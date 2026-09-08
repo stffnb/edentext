@@ -1,4 +1,4 @@
-import { unzipSync, strFromU8 } from 'fflate';
+import { strFromU8 } from 'fflate';
 import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, toggle as onOff, wVal, W, R, WP, A, B, WPS, MC, VML, O, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { lengthToPt, WATERMARK_NAME } from './styleResolver';
 import { normalizeColor } from '../export/odt';
@@ -19,7 +19,7 @@ import { formatOrdinal, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, RO
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, toDateValue } from '../utils/dateTime';
 import { shapeFromPrst, isLineKind, lineKindFor, parseSvgPath, parseVmlPath, fitPath } from '../utils/shapes';
-import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
+import { imageDataUrl, placeholderImage, unzipArchive, type ConvertedImages } from './imageFormats';
 import { PX_PER_CM, cmToPx, fitMargins, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import { formatFromCm, type PageFormat } from '../storage/pageFormat';
@@ -171,7 +171,7 @@ function hexColor(v: string | null | undefined): string | undefined {
 export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages = new Map()): OdtImportResult {
   let files: Record<string, Uint8Array>;
   try {
-    files = unzipSync(bytes);
+    files = unzipArchive(bytes);
   } catch {
     throw new Error('Not a valid .docx file (could not read the archive).');
   }

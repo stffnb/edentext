@@ -1,4 +1,4 @@
-import { unzipSync, strFromU8 } from 'fflate';
+import { strFromU8 } from 'fflate';
 import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
 import { ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
@@ -21,7 +21,7 @@ import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
 import {
   shapeFromOdfType, lineKindFor, parseSvgPath, parseOdfPoints, fitPath, type ShapeKind,
 } from '../utils/shapes';
-import { imageDataUrl, placeholderImage, type ConvertedImages } from './imageFormats';
+import { imageDataUrl, placeholderImage, unzipArchive, type ConvertedImages } from './imageFormats';
 import { astToLatex } from '../math/latex';
 import { parseMathml } from '../math/mathml';
 import { PX_PER_CM, cmToPx, type PageMargins } from '../storage/pageMargins';
@@ -775,7 +775,7 @@ function odfSpacingAtPageStart(files: Record<string, Uint8Array>): boolean {
 export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = new Map()): OdtImportResult {
   let files: Record<string, Uint8Array>;
   try {
-    files = unzipSync(bytes);
+    files = unzipArchive(bytes);
   } catch {
     throw new Error('Not a valid .odt file (could not read the archive).');
   }

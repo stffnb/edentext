@@ -54,7 +54,13 @@ export function displayableImageMime(bytes: Uint8Array, path: string): string | 
   return sniffImageMime(bytes);
 }
 
+type ToBase64 = { toBase64?: () => string };
+
 function bytesToBase64(bytes: Uint8Array): string {
+  // The native encoder where the browser has one — a picture-heavy file spends a
+  // quarter second in the loop below, which is only the fallback.
+  const native = (bytes as Uint8Array & ToBase64).toBase64;
+  if (native) return native.call(bytes);
   let bin = '';
   const chunk = 0x8000; // chunk so String.fromCharCode doesn't blow the call stack
   for (let i = 0; i < bytes.length; i += chunk) {
@@ -108,6 +114,18 @@ export function imageDataUrl(bytes: Uint8Array, path: string): string | null {
   const mime = displayableImageMime(bytes, path);
   if (!mime) return null;
   return `data:${mime};base64,${bytesToBase64(mime === 'image/jpeg' ? stripCmykIccProfile(bytes) : bytes)}`;
+}
+
+// One inflate per opened file: the format pre-pass and the importer read the same
+// archive, and a picture-heavy one costs a quarter second per pass.
+const archives = new WeakMap<Uint8Array, Record<string, Uint8Array>>();
+
+export function unzipArchive(bytes: Uint8Array): Record<string, Uint8Array> {
+  const known = archives.get(bytes);
+  if (known) return known;
+  const files = unzipSync(bytes);
+  archives.set(bytes, files);
+  return files;
 }
 
 // ---- client-side decoding of formats the browser can't render ----------------
@@ -182,7 +200,7 @@ function looksLikeMedia(path: string): boolean {
 export async function convertUnsupportedImages(bytes: Uint8Array): Promise<ConvertedImages> {
   const out: ConvertedImages = new Map();
   let files: Record<string, Uint8Array>;
-  try { files = unzipSync(bytes); } catch { return out; }
+  try { files = unzipArchive(bytes); } catch { return out; }
   for (const [path, data] of Object.entries(files)) {
     if (!looksLikeMedia(path) || !isConvertibleImage(data, path)) continue;
     const url = await convertImageToDataUrl(data, path);

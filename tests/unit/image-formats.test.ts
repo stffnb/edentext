@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { displayableImageMime, imageDataUrl, imageExtOf, isConvertibleImage } from '../../src/lib/import/imageFormats';
+import { zipSync } from 'fflate';
+import { displayableImageMime, imageDataUrl, imageExtOf, isConvertibleImage, unzipArchive } from '../../src/lib/import/imageFormats';
 
 const bytesOf = (...b: number[]) => new Uint8Array(b);
 const PNG = bytesOf(0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0);
@@ -59,5 +60,32 @@ describe('imageDataUrl', () => {
   it('emits a data-URI for renderable bytes, null otherwise', () => {
     expect(imageDataUrl(PNG, 'a.png')).toMatch(/^data:image\/png;base64,/);
     expect(imageDataUrl(SVM, 'a.svm')).toBeNull();
+  });
+
+  // The encoder the browser brings and the loop that stands in for it must agree,
+  // padding included — a picture is bytes, and a wrong tail is a broken picture.
+  it('encodes alike with and without the native encoder', () => {
+    const proto = Uint8Array.prototype as Uint8Array & { toBase64?: () => string };
+    const native = proto.toBase64;
+    for (const len of [70000, 70001, 70002]) {
+      const bytes = new Uint8Array(len).map((_, i) => (i * 7) % 256);
+      const want = `data:image/png;base64,${Buffer.from(bytes).toString('base64')}`;
+      expect(imageDataUrl(bytes, 'a.png')).toBe(want);
+      try {
+        delete proto.toBase64;
+        expect(imageDataUrl(bytes, 'a.png')).toBe(want);
+      } finally {
+        if (native) proto.toBase64 = native;
+      }
+    }
+  });
+});
+
+describe('unzipArchive', () => {
+  it('inflates one archive once: the pre-pass and the importer share the entries', () => {
+    const zip = zipSync({ 'content.xml': new Uint8Array([1, 2, 3]) });
+    const once = unzipArchive(zip);
+    expect(unzipArchive(zip)).toBe(once);
+    expect(unzipArchive(zipSync({ 'content.xml': new Uint8Array([1, 2, 3]) }))).not.toBe(once);
   });
 });
