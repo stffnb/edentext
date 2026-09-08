@@ -30,7 +30,8 @@ async function makeEditor() {
     extensions,
     content: { type: 'doc', content: [para('alpha xxone beta'), para('gamma xxtwo delta')] },
   });
-  await Promise.resolve(); // the mount's whole-document check
+  await Promise.resolve();
+  vi.advanceTimersByTime(1); // the mount's whole-document check, which waits for idle time
   checks.length = 0;
   return editor;
 }

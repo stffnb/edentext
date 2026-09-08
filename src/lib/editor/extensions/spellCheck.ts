@@ -151,10 +151,25 @@ export const SpellCheck = Extension.create({
             }, DEBOUNCE_MS);
           };
 
-          // Language / personal-dictionary / ignore changes re-check immediately.
-          const unsubscribe = spellController.subscribe(() => recheck('all'));
+          // The whole document is read in idle time: it costs half a second on a
+          // 460-page one, and an opened file has it queued behind its own layout.
+          const whenIdle = typeof requestIdleCallback === 'function'
+            ? (cb: () => void) => requestIdleCallback(cb, { timeout: 2000 })
+            : (cb: () => void) => setTimeout(cb, 0);
+          let allQueued = false;
+          const recheckAll = () => {
+            if (allQueued) return;
+            allQueued = true;
+            whenIdle(() => {
+              allQueued = false;
+              if (!editorView.isDestroyed) recheck('all');
+            });
+          };
+
+          // Language / personal-dictionary / ignore changes re-check the document.
+          const unsubscribe = spellController.subscribe(recheckAll);
           // Initial pass in case the checker is already loaded at mount.
-          queueMicrotask(() => recheck('all'));
+          recheckAll();
 
           return {
             update(view, prevState) {
