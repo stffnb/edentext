@@ -9,7 +9,8 @@ import { seqCategoryOf, sequenceFieldText, type SeqCategory } from './caption';
 import { indexEntries, indexRows } from './indexEntry';
 import { bibliographyEntries, bibliographyRows } from './bibliographyEntry';
 import { isCitationStyle, type CitationStyle } from '../../utils/citationStyle';
-import { readVerticalMargins, pageOfElement, topInEditor, FORCE_PAGE_RECALC, type PageGrid } from './pageBreaks';
+import type { Transaction } from '@tiptap/pm/state';
+import { readVerticalMargins, pageOfElement, topInEditor, scheduleFieldRound, FORCE_PAGE_RECALC, type FieldWrite, type PageGrid } from './pageBreaks';
 
 // A generated index: a block atom listing every source with its live page number — the
 // headings for a table of contents, the captions of one category for a list of figures
@@ -199,13 +200,13 @@ function inCellOrItem(doc: PMNode, pos: number): boolean {
 }
 
 // Node view: renders the title + one clickable row per heading. Recomputes on each
-// pagination settle (pm-pagecount, caught on the .paper ancestor) and on doc change,
-// writing entries back to the node attr — guarded by a serialized key against a loop.
+// pagination settle (pm-pagecount, caught on the .paper ancestor) and on doc change, in
+// the field round: it measures with the other fields, and writes its entries back on the
+// round's transaction — guarded by a serialized key against a loop.
 class TocView {
   dom: HTMLElement;
   private editor: Editor;
   private getPos: () => number;
-  private scheduled = false;
   private lastKey = '';
   private lastLook = '';
   private wasPaginated = false;
@@ -225,17 +226,13 @@ class TocView {
     requestAnimationFrame(() => {
       this.paper = this.dom.closest('.paper') as HTMLElement | null;
       this.paper?.addEventListener('pm-pagecount', this.onPageCount);
-      this.render();
+      this.schedule();
     });
   }
 
   private schedule(): void {
-    if (this.scheduled) return;
-    this.scheduled = true;
-    requestAnimationFrame(() => {
-      this.scheduled = false;
-      this.render();
-    });
+    if (this.editor.isDestroyed) return;
+    scheduleFieldRound(this.editor.view, this, () => this.measure());
   }
 
   // What the index lists, in document order: the headings down to its own level, or —
@@ -308,7 +305,7 @@ class TocView {
     return pageOfElement(this.editor.view, el, grid);
   }
 
-  private render(): void {
+  private measure(): FieldWrite | void {
     if (this.editor.isDestroyed || !this.dom.isConnected) return;
     const grid = this.grid();
     let heads = this.sources();
@@ -329,18 +326,23 @@ class TocView {
     const { entries: _cached, ...look } = this.node()?.attrs ?? {};
     this.lastLook = JSON.stringify(look);
     const key = JSON.stringify([entries, look]);
-    if (key !== this.lastKey) {
-      this.lastKey = key;
-      this.paint(entries, heads);
-      this.syncAttr(entries);
-    }
-    this.paginate();
+    const stale = key !== this.lastKey;
+    this.lastKey = key;
+    return (tr) => {
+      if (stale) {
+        this.paint(entries, heads);
+        this.syncAttr(entries, tr);
+      }
+      // The rows carry their page numbers now, so where they fall is read once every
+      // field of the round has written.
+      return (last) => this.paginate(last);
+    };
   }
 
   // The index is a block atom: it has no inner document positions for pagination to put
   // a spacer at, so one longer than a page breaks itself — the row that would cross the
   // boundary takes the gap to the next page's content top as its margin.
-  private paginate(): void {
+  private paginate(tr: Transaction): void {
     const rows = Array.from(this.dom.querySelectorAll<HTMLElement>('.toc-entry'));
     if (!rows.length) return;
     const view = this.editor.view;
@@ -364,7 +366,7 @@ class TocView {
     // The index just changed height, and pagination measured the old one.
     if (moved !== this.wasPaginated) {
       this.wasPaginated = moved;
-      view.dispatch(view.state.tr.setMeta('addToHistory', false).setMeta(FORCE_PAGE_RECALC, true));
+      tr.setMeta(FORCE_PAGE_RECALC, true);
     }
   }
 
@@ -476,14 +478,13 @@ class TocView {
     return typeof pos === 'number' ? this.editor.state.doc.nodeAt(pos) : null;
   }
 
-  private syncAttr(entries: TocEntry[]): void {
+  private syncAttr(entries: TocEntry[], tr: Transaction): void {
     const pos = this.getPos();
     if (typeof pos !== 'number') return;
     const node = this.editor.state.doc.nodeAt(pos);
     if (!node || node.type.name !== 'tableOfContents') return;
     if (JSON.stringify(node.attrs.entries ?? []) === JSON.stringify(entries)) return;
-    const tr = this.editor.state.tr.setNodeAttribute(pos, 'entries', entries).setMeta('addToHistory', false);
-    this.editor.view.dispatch(tr);
+    tr.setNodeAttribute(pos, 'entries', entries);
   }
 
   update(node: PMNode): boolean {

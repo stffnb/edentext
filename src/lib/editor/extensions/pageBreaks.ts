@@ -329,6 +329,41 @@ export const pageBreakKey = new PluginKey<PageBreakState>('pageBreaks');
 // pagination recompute even though the document content is unchanged.
 export const FORCE_PAGE_RECALC = 'forcePageBreakRecalc';
 
+// A field that reads the settled layout — an index's page numbers, a cross-reference's.
+// It measures, and what it returns writes: its own DOM, and its cached result on the
+// round's transaction. A write may return one more phase, run after every other write.
+export type FieldWrite = (tr: Transaction) => FieldWrite | void;
+export type FieldRead = () => FieldWrite | void;
+
+type FieldRound = { jobs: Map<object, FieldRead>; raf: number | null };
+const fieldRounds = new WeakMap<EditorView, FieldRound>();
+
+// Every field of one editor answers a pagination pass together: all measure before any
+// writes, or each write lays the whole document out again for the next reader — and one
+// transaction carries the results, a dispatch costing a view update over the document.
+export function scheduleFieldRound(view: EditorView, owner: object, read: FieldRead): void {
+  let round = fieldRounds.get(view);
+  if (!round) fieldRounds.set(view, (round = { jobs: new Map(), raf: null }));
+  round.jobs.set(owner, read);
+  if (round.raf === null) round.raf = requestAnimationFrame(() => runFieldRound(view));
+}
+
+function runFieldRound(view: EditorView): void {
+  const round = fieldRounds.get(view);
+  if (!round) return;
+  round.raf = null;
+  let phase = Array.from(round.jobs.values(), (read) => read());
+  round.jobs.clear();
+  const tr = view.state.tr.setMeta('addToHistory', false);
+  // Bounded: measure, write, and the one read-back a write can ask for.
+  for (let i = 0; i < 2 && phase.some(Boolean); i++) {
+    phase = phase.map((write) => (write ? write(tr) : undefined));
+  }
+  // A field that only moved its own rows carries no document change, and still needs the
+  // pass to measure the height it just changed.
+  if (tr.docChanged || tr.getMeta(FORCE_PAGE_RECALC)) view.dispatch(tr);
+}
+
 // A split view's second pane (Editor.svelte marks its host). Both panes are the same
 // width, so it renders the decorations the first pane's pass produced; a layout pass of
 // its own would measure the same DOM twice and fight over the shared result.

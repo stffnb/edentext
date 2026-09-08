@@ -3,7 +3,7 @@ import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import { bookmarks, findBookmark, type BookmarkRef } from './bookmark';
-import { readVerticalMargins, pageOfElement, type PageGrid } from './pageBreaks';
+import { readVerticalMargins, pageOfElement, scheduleFieldRound, type FieldWrite, type PageGrid } from './pageBreaks';
 
 // A cross-reference: an inline atom showing either the text of a bookmark or the page it
 // sits on, kept live by the node view the way the TOC keeps its page numbers. Round-trips
@@ -100,11 +100,10 @@ function resolveText(view: EditorView, node: PMNode, target: BookmarkRef | undef
 }
 
 // Every reference of one editor resolves in one go, on each pagination settle
-// (pm-pagecount) and on a change to any of them: one bookmark scan, every page read
-// before any text is written, and one transaction for the texts that changed.
+// (pm-pagecount) and on a change to any of them: one bookmark scan, and every page read
+// in the field round's measuring phase, before any text of the round is written.
 class CrossRefBatch {
   private views = new Set<CrossRefView>();
-  private scheduled = false;
   private listening = false;
 
   constructor(private editor: Editor) {}
@@ -119,15 +118,11 @@ class CrossRefBatch {
   }
 
   schedule(): void {
-    if (this.scheduled) return;
-    this.scheduled = true;
-    requestAnimationFrame(() => {
-      this.scheduled = false;
-      this.run();
-    });
+    if (this.editor.isDestroyed) return;
+    scheduleFieldRound(this.editor.view, this, () => this.measure());
   }
 
-  private run(): void {
+  private measure(): FieldWrite | void {
     const { editor } = this;
     if (editor.isDestroyed) return;
     const view = editor.view;
@@ -146,15 +141,12 @@ class CrossRefBatch {
       if (pos === null || !node || node.type.name !== 'crossRef' || !ref.dom.isConnected) continue;
       jobs.push({ ref, node, pos, text: resolveText(view, node, targets.get(String(node.attrs.name ?? '')), gridOf) });
     }
-    for (const j of jobs) j.ref.paint(j.node, j.text);
-    const tr = editor.state.tr.setMeta('addToHistory', false);
-    let changed = false;
-    for (const j of jobs) {
-      if (j.text === j.node.attrs.text) continue;
-      tr.setNodeAttribute(j.pos, 'text', j.text);
-      changed = true;
-    }
-    if (changed) view.dispatch(tr);
+    return (tr) => {
+      for (const j of jobs) j.ref.paint(j.node, j.text);
+      for (const j of jobs) {
+        if (j.text !== j.node.attrs.text) tr.setNodeAttribute(j.pos, 'text', j.text);
+      }
+    };
   }
 }
 

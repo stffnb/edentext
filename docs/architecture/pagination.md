@@ -146,6 +146,16 @@ cross-reference its number) and writes back what it found, which is a document c
 is another pass: a pass that lands what the last one did would set the round going again.
 Opening a 460-page document ran five rounds of that where four answer everything.
 
+**The fields of one answer read together.** Every field that resolves against the settled
+layout — each index's page numbers, every cross-reference — registers with
+`scheduleFieldRound(view, owner, read)` (`pageBreaks.ts`) instead of scheduling a frame of
+its own. The round runs every reader's measurement first and only then their writes, since
+a write between two measurements makes the browser lay the whole document out again; a
+write may return one more phase (the index reads back where its rows now fall), run after
+every other write. Their cached results — the index `entries`, a reference's `text` — ride
+**one** transaction, a dispatch of its own costing a view update over the whole document:
+that alone was 55 ms per index on a 460-page file.
+
 **Layout constants** (must stay in sync between `pageBreaks.ts`, `Editor.svelte`, and `editor.css`):
 - `PAGE_HEIGHT = 1123px` (A4 portrait), `PAGE_GAP = 20px`, `CYCLE = PAGE_HEIGHT + PAGE_GAP = 1143px`.
 - Page height/width and margins are read **live** from CSS custom properties (`--user-page-height`, `--user-page-width`, `--user-margin-*`) so orientation/margin changes don't require new constants. `getCycle()` in `Editor.svelte` reads `--user-page-height` at runtime.
