@@ -211,18 +211,20 @@ try {
     await blocked();
     keys.push(performance.now() - t);
   }
+  // A split always moves the blocks below, so the pause after it holds a whole-document
+  // pass: what a layout costs, recorded for the day it goes incremental.
+  await page.keyboard.press('Enter');
   let pass = 0;
   for (const until = Date.now() + 4000; Date.now() < until;) pass = Math.max(pass, await blocked());
   keys.sort((a, b) => a - b);
   const keyMedian = Math.round(keys[keys.length >> 1]);
   const keyMax = Math.round(keys[keys.length - 1]);
   // Typing feels fluid under ~100 ms a key; a runner is slower than a laptop, so with room.
-  // The pass is what a whole-document layout costs, recorded for the day it goes incremental.
   check(longPages > 100 && keyMedian < 100 && keyMax < 250,
-    `typing at the top of a ${longPages}-page document: ${keyMedian} ms per keystroke (max ${keyMax}), ${Math.round(pass)} ms pass after the burst`);
-  // A letter typed and taken back leaves every block as tall as it was, so no pass runs.
-  // Every pass ends in a pm-pagecount event, so the count is the proof; the blocked time
-  // in the label is the spell checker's whole-document recheck, not a pass.
+    `typing at the top of a ${longPages}-page document: ${keyMedian} ms per keystroke (max ${keyMax}), ${Math.round(pass)} ms pass after a split`);
+  // A letter typed and taken back leaves every block as tall as it was, so no pass runs
+  // (every pass ends in a pm-pagecount event), and the pause costs no more than a key: the
+  // spell checker re-reads the edited paragraph, not the document.
   await page.evaluate(() => {
     window.__passes = 0;
     document.querySelector('.tiptap').addEventListener('pm-pagecount', () => { window.__passes++; });
@@ -233,7 +235,8 @@ try {
   let idle = 0;
   for (const until = Date.now() + 1500; Date.now() < until;) idle = Math.max(idle, await blocked());
   const passes = await page.evaluate(() => window.__passes);
-  check(passes === 0, `a letter typed and taken back runs no pass (${passes} passes, ${Math.round(idle)} ms blocked at most)`);
+  check(passes === 0 && idle < 100,
+    `a letter typed and taken back runs no pass and its pause is free (${passes} passes, ${Math.round(idle)} ms blocked at most)`);
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {

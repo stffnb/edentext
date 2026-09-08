@@ -5,9 +5,15 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { spellController } from '../../spell/controller';
 
-const spellCheckKey = new PluginKey<DecorationSet>('spellCheck');
+type Range = { from: number; to: number };
+// dirty: what the edits since the last check touched, in the current document's positions.
+type SpellState = { set: DecorationSet; dirty: Range[] };
 
-const FORCE_RECHECK_META = 'spellCheck/forceRecheck';
+const spellCheckKey = new PluginKey<SpellState>('spellCheck');
+
+// 'all' checks the whole document (a new language or dictionary), 'dirty' the edited blocks.
+const RECHECK_META = 'spellCheck/recheck';
+type RecheckMode = 'all' | 'dirty';
 
 // Re-check after the user pauses, so large docs stay responsive while typing.
 const DEBOUNCE_MS = 400;
@@ -17,27 +23,70 @@ const DEBOUNCE_MS = 400;
 // exactly the highlighted range.
 const WORD_RE = /[\p{L}\p{M}]+(?:['’\-][\p{L}\p{M}]+)*/gu;
 
-function buildDecorations(doc: PmNode): DecorationSet {
-  if (!spellController.isEnabled()) return DecorationSet.empty;
-  const decos: Decoration[] = [];
-  doc.descendants((node, pos) => {
-    if (!node.isText) return;
-    const text = node.text ?? '';
+// The misspelled words under `node`, whose content starts at `base` in the document.
+function wordDecos(node: PmNode, base: number, decos: Decoration[]): void {
+  node.descendants((child, pos) => {
+    if (!child.isText) return;
+    const text = child.text ?? '';
     WORD_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = WORD_RE.exec(text)) !== null) {
       const word = m[0];
       if (word.length < 2 || spellController.check(word)) continue;
-      const from = pos + m.index;
+      const from = base + pos + m.index;
       decos.push(Decoration.inline(from, from + word.length, { class: 'pm-spell-error' }));
     }
   });
+}
+
+function buildDecorations(doc: PmNode): DecorationSet {
+  if (!spellController.isEnabled()) return DecorationSet.empty;
+  const decos: Decoration[] = [];
+  wordDecos(doc, 0, decos);
   return decos.length ? DecorationSet.create(doc, decos) : DecorationSet.empty;
+}
+
+// Only the textblocks the dirty ranges touch are checked again: a word never crosses a
+// block, and building the whole set walks every block for every squiggle (seconds on a
+// long document), while add/remove of one block's few walks the blocks once.
+function recheckBlocks(doc: PmNode, set: DecorationSet, dirty: Range[]): DecorationSet {
+  if (!spellController.isEnabled()) return DecorationSet.empty;
+  const blocks = new Map<number, PmNode>();
+  for (const { from, to } of dirty) {
+    if (from === to) {
+      // A deletion leaves a point; nodesBetween finds nothing at a point.
+      const $pos = doc.resolve(from);
+      if ($pos.parent.isTextblock) blocks.set($pos.before(), $pos.parent);
+      continue;
+    }
+    doc.nodesBetween(from, to, (node, pos) => {
+      if (!node.isTextblock) return true;
+      blocks.set(pos, node);
+      return false;
+    });
+  }
+  const stale: Decoration[] = [];
+  const decos: Decoration[] = [];
+  for (const [pos, node] of blocks) {
+    stale.push(...set.find(pos + 1, pos + node.nodeSize - 1));
+    wordDecos(node, pos + 1, decos);
+  }
+  return set.remove(stale).add(doc, decos);
+}
+
+// What a transaction touched, in its final document's positions.
+function changedRanges(tr: Transaction): Range[] {
+  const out: Range[] = [];
+  tr.mapping.maps.forEach((map, i) => {
+    const rest = tr.mapping.slice(i + 1);
+    map.forEach((_oldFrom, _oldTo, from, to) => out.push({ from: rest.map(from, -1), to: rest.map(to, 1) }));
+  });
+  return out;
 }
 
 // The misspelled-word range covering `pos`, if any — used by the context menu.
 export function spellErrorAt(state: EditorState, pos: number): { from: number; to: number } | null {
-  const set = spellCheckKey.getState(state);
+  const set = spellCheckKey.getState(state)?.set;
   if (!set) return null;
   const found = set.find(pos, pos);
   return found.length ? { from: found[0].from, to: found[0].to } : null;
@@ -65,39 +114,47 @@ export const SpellCheck = Extension.create({
 
   addProseMirrorPlugins() {
     return [
-      new Plugin<DecorationSet>({
+      new Plugin<SpellState>({
         key: spellCheckKey,
         state: {
-          init: () => DecorationSet.empty,
-          apply(tr: Transaction, old: DecorationSet, _oldState: EditorState, newState: EditorState) {
-            // Full recompute on demand; otherwise keep squiggles glued to text by
-            // mapping them through the change (a debounced recheck follows).
-            if (tr.getMeta(FORCE_RECHECK_META) === true) return buildDecorations(newState.doc);
-            return tr.docChanged ? old.map(tr.mapping, tr.doc) : old;
+          init: () => ({ set: DecorationSet.empty, dirty: [] }),
+          apply(tr: Transaction, old: SpellState, _oldState: EditorState, newState: EditorState) {
+            const mode = tr.getMeta(RECHECK_META) as RecheckMode | undefined;
+            if (mode === 'all') return { set: buildDecorations(newState.doc), dirty: [] };
+            let { set, dirty } = old;
+            if (tr.docChanged) {
+              // Squiggles and dirty ranges stay glued to the text until the next check.
+              set = set.map(tr.mapping, tr.doc);
+              dirty = dirty
+                .map((r) => ({ from: tr.mapping.map(r.from, -1), to: tr.mapping.map(r.to, 1) }))
+                .concat(changedRanges(tr));
+            }
+            if (mode === 'dirty' && dirty.length) return { set: recheckBlocks(newState.doc, set, dirty), dirty: [] };
+            return set === old.set && dirty === old.dirty ? old : { set, dirty };
           },
         },
         props: {
           decorations(state) {
-            return spellCheckKey.getState(state);
+            return spellCheckKey.getState(state)?.set;
           },
         },
         view(editorView) {
           let timer: ReturnType<typeof setTimeout> | undefined;
-          const recheck = () => {
-            editorView.dispatch(editorView.state.tr.setMeta(FORCE_RECHECK_META, true));
+          const recheck = (mode: RecheckMode) => {
+            editorView.dispatch(editorView.state.tr.setMeta(RECHECK_META, mode));
           };
           const scheduleRecheck = () => {
             if (timer !== undefined) clearTimeout(timer);
             timer = setTimeout(() => {
               timer = undefined;
-              recheck();
+              recheck('dirty');
             }, DEBOUNCE_MS);
           };
 
           // Language / personal-dictionary / ignore changes re-check immediately.
-          const unsubscribe = spellController.subscribe(recheck);
+          const unsubscribe = spellController.subscribe(() => recheck('all'));
           // Initial pass in case the checker is already loaded at mount.
-          queueMicrotask(recheck);
+          queueMicrotask(() => recheck('all'));
 
           return {
             update(view, prevState) {
