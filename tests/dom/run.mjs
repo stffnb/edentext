@@ -258,6 +258,27 @@ try {
     (p) => `${p.getAttribute('data-wrap-band') ?? '-'}/${getComputedStyle(p).clear}`).join(' '));
   check(bands === '-/none true/none -/both anchored/none -/none true/none true/none -/both',
     `loaded from the autosave, the block after a band frame clears it, after an anchored one it does not (${bands})`);
+
+  // A two-column section over several pages pages in one pass: a continuation is judged
+  // with a full page wherever it renders, and the split counts the blocks' margins as the
+  // overflow test does — else one block moves down per pass, a pass per block.
+  const lines = [];
+  for (let i = 0; i < 300; i++) {
+    lines.push({ type: 'paragraph', attrs: { spaceAfter: 6 }, content: [words(`Line ${i + 1}: ${LOREM.slice(0, 5 + (i % 5)).join(' ')}`)] });
+  }
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
+    block(words('before the section')), { type: 'columns', attrs: { count: 2 }, content: lines }, block(words('after the section')),
+  ] });
+  await page.addInitScript(() => {
+    window.__passes = 0;
+    document.addEventListener('pm-pagecount', () => { window.__passes++; });
+  });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const flow = await page.evaluate(() => ({ passes: window.__passes, fragments: document.querySelectorAll('.tiptap > .columns-node').length }));
+  check(flow.fragments >= 3 && flow.passes <= 8,
+    `a two-column section over ${flow.fragments} pages settles in ${flow.passes} passes`);
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {

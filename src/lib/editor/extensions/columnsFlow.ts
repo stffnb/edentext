@@ -29,9 +29,11 @@ const OPEN_HEIGHT_SLACK_PX = 40;
 // Below this many lines of leftover room, a boundary block splits at the block
 // boundary instead of pulling a line or two over (not worth a paragraph split).
 const MIN_TAIL_LINES = 2;
-// Pass budget per external change: each pass performs one split/join, so a paste
-// spanning many pages needs several; bounded against estimate-driven oscillation.
+// Pass budget per external change: a pass fixes what it can judge, the next measures
+// the geometry it changed; bounded against estimate-driven oscillation. The op budget
+// within a pass pages a whole section in one go — a split per page.
 const MAX_FLOW_PASSES = 48;
+const MAX_FLOW_OPS = 64;
 
 type Fragment = { pos: number; node: PMNode };
 export type LineRect = { left: number; right: number; top: number; height: number };
@@ -71,20 +73,31 @@ function blockHeightPx(el: Element, scale: number): number {
   return h / scale;
 }
 
-// Total content height of a fragment's blocks as poured into one column flow:
-// block rects plus the collapsed inter-block margins (computed style, unscaled).
-function contentHeightPx(children: Element[], scale: number): number {
+// Where each block starts and ends in the flow as poured into one column: block rects
+// plus the collapsed inter-block margins (computed style, unscaled). The split counts
+// blocks by the same measure the overflow test uses, or it leaves one block too many.
+function flowSpans(children: Element[], scale: number): { start: number[]; end: number[] } {
+  const start: number[] = [];
+  const end: number[] = [];
   let sum = 0;
   let prevMb = 0;
   for (let i = 0; i < children.length; i++) {
     const cs = getComputedStyle(children[i]);
     const mt = parseFloat(cs.marginTop) || 0;
     const mb = parseFloat(cs.marginBottom) || 0;
-    sum += blockHeightPx(children[i], scale);
     if (i > 0) sum += Math.max(prevMb, mt);
+    start.push(sum);
+    sum += blockHeightPx(children[i], scale);
+    end.push(sum);
     prevMb = mb;
   }
-  return sum;
+  return { start, end };
+}
+
+// Total content height of a fragment's blocks as poured into one column flow.
+function contentHeightPx(children: Element[], scale: number): number {
+  const { end } = flowSpans(children, scale);
+  return end.length ? end[end.length - 1] : 0;
 }
 
 // The first rect of each rendered line, in document order — column 1's lines
@@ -274,18 +287,26 @@ export const ColumnsFlow = Extension.create({
           return true;
         }
 
-        // One reflow step: fix the first out-of-sync boundary (merge a stray
-        // joinPrev part, split an overflowing fragment, or pull a continuation
-        // back) and dispatch. Convergence comes from re-running until quiescent.
+        // One reflow pass: fix each out-of-sync boundary (merge a stray joinPrev part,
+        // split an overflowing fragment, or pull a continuation back) and dispatch.
+        // Convergence comes from re-running until quiescent.
         function reflow(): boolean {
           if (editorView.composing || !editorView.dom.isConnected) return false;
-          const frags = fragments();
-          if (!frags.length) return false;
-
           const vm = readVerticalMargins(editorView.dom);
           const scale = getScale();
+          let ops = 0;
+          let fixedAt = -1;
+          let i = 0;
+          let frags = fragments();
+          // An op changes the fragments; `again` keeps the index on the one it changed.
+          const done = (again: boolean) => { ops++; frags = fragments(); if (again) { fixedAt = i; i--; } };
 
-          for (let i = 0; i < frags.length; i++) {
+          pass: for (; i < frags.length && ops < MAX_FLOW_OPS; i++) {
+            // After an op, only its own fragment and chained continuations are judged: a
+            // continuation lands at a page top (a full page of room wherever it renders now),
+            // anything else still sits where the layout before the op had left it.
+            const continued = i > 0 && hasNextInChain(frags, i - 1);
+            if (ops && !continued && i !== fixedAt) break;
             const { pos, node } = frags[i];
 
             // A joinPrev paragraph inside a fragment (left over after a fragment
@@ -299,7 +320,8 @@ export const ColumnsFlow = Extension.create({
                 canJoin(editorView.state.doc, childPos)
               ) {
                 dispatchFlow(editorView.state.tr.join(childPos));
-                return true;
+                done(true);
+                continue pass;
               }
               childPos += child.nodeSize;
             }
@@ -307,13 +329,16 @@ export const ColumnsFlow = Extension.create({
             const el = editorView.nodeDOM(pos) as HTMLElement | null;
             if (!el || !el.classList.contains('columns-node')) continue;
 
-            const top = topWithin(el);
-            const page = Math.floor(top / vm.cycle) + 1;
-            const contentStart = (page - 1) * vm.cycle + vm.top;
-            const contentEnd = contentStart + vm.contentHeight;
-            // Mid-move (pageBreaks hasn't repositioned it yet) — measure next pass.
-            if (top < contentStart - 0.5 || top >= contentEnd) continue;
-            const available = contentEnd - top;
+            let available = vm.contentHeight;
+            if (!continued) {
+              const top = topWithin(el);
+              const page = Math.floor(top / vm.cycle) + 1;
+              const contentStart = (page - 1) * vm.cycle + vm.top;
+              const contentEnd = contentStart + vm.contentHeight;
+              // Mid-move (pageBreaks hasn't repositioned it yet) — measure next pass.
+              if (top < contentStart - 0.5 || top >= contentEnd) continue;
+              available = contentEnd - top;
+            }
             const count = Math.max(1, node.attrs.count as number);
             const children = Array.from(el.children).filter(
               (c) => !(c as HTMLElement).dataset?.pageBreakSpacer,
@@ -321,7 +346,8 @@ export const ColumnsFlow = Extension.create({
             if (children.length !== node.childCount) continue;
             // The rendered box height is our own decoration, so overflow and room
             // are judged from the content itself (per-column share of the flow).
-            const usedPerColumn = contentHeightPx(children, scale) / count;
+            const spans = flowSpans(children, scale);
+            const usedPerColumn = (spans.end[spans.end.length - 1] ?? 0) / count;
 
             // The estimate averages the flow over the columns, but each column ends on
             // a whole line, so a fragment measuring exactly its slot still spills once
@@ -338,31 +364,30 @@ export const ColumnsFlow = Extension.create({
                   available >= vm.contentHeight - 1 &&
                   splitParagraphInBlock(frags[i], children, 0, count * (available - SAFETY_PX), scale, true)
                 ) {
-                  return true;
+                  done(false);
                 }
                 continue;
               }
               if (node.childCount < 2) continue;
-              let sum = 0;
               let k = 0;
               for (let j = 0; j < children.length - 1; j++) {
-                const h = blockHeightPx(children[j], scale);
-                if ((sum + h) / count > available - SAFETY_PX && j > 0) break;
-                sum += h;
+                if (spans.end[j] / count > available - SAFETY_PX && j > 0) break;
                 k = j + 1;
               }
               // Leftover room after k whole blocks: fill it with the boundary
               // block's first lines (line split) rather than leaving it empty.
-              const tailBudget = count * (available - SAFETY_PX) - sum;
+              const tailBudget = count * (available - SAFETY_PX) - spans.start[k];
               if (k < node.childCount && splitParagraphInBlock(frags[i], children, k, tailBudget, scale, false)) {
-                return true;
+                done(false);
+                continue;
               }
               let boundary = pos + 1;
               for (let j = 0; j < k; j++) boundary += node.child(j).nodeSize;
               const typesAfter = [{ type: node.type, attrs: node.attrs }];
               if (!canSplit(editorView.state.doc, boundary, 1, typesAfter)) continue;
               dispatchFlow(editorView.state.tr.split(boundary, 1, typesAfter));
-              return true;
+              done(false);
+              continue;
             }
 
             // Fits: pull the adjacent continuation back when its head would
@@ -396,11 +421,12 @@ export const ColumnsFlow = Extension.create({
                   continue;
                 }
                 dispatchFlow(tr);
-                return true;
+                done(true);
+                continue;
               }
             }
           }
-          return false;
+          return ops > 0;
         }
 
         // Sequential-fill heights: a fragment with a continuation spans its page slot;
@@ -416,12 +442,16 @@ export const ColumnsFlow = Extension.create({
             const { pos, node } = frags[i];
             const el = editorView.nodeDOM(pos) as HTMLElement | null;
             if (!el || !el.classList.contains('columns-node')) continue;
-            const top = topWithin(el);
-            const page = Math.floor(top / vm.cycle) + 1;
-            const contentStart = (page - 1) * vm.cycle + vm.top;
-            const contentEnd = contentStart + vm.contentHeight;
-            if (top < contentStart - 0.5 || top >= contentEnd) continue;
-            const available = contentEnd - top;
+            // A chained continuation spans a full page wherever it renders right now.
+            let available = vm.contentHeight;
+            if (!(i > 0 && hasNextInChain(frags, i - 1))) {
+              const top = topWithin(el);
+              const page = Math.floor(top / vm.cycle) + 1;
+              const contentStart = (page - 1) * vm.cycle + vm.top;
+              const contentEnd = contentStart + vm.contentHeight;
+              if (top < contentStart - 0.5 || top >= contentEnd) continue;
+              available = contentEnd - top;
+            }
             const count = Math.max(1, node.attrs.count as number);
             const children = Array.from(el.children).filter(
               (c) => !(c as HTMLElement).dataset?.pageBreakSpacer,

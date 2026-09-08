@@ -1,9 +1,8 @@
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { cssFontFamily, resolveStyle, type StyleSheet, type TextProps } from '../../styles/styleSheet';
-import { FORCE_PAGE_RECALC } from './pageBreaks';
 
 // A list marker's direct formatting. CSS values, since that is what two of the three
 // consumers want; the DOCX exporter converts. The family is the plain name, not a CSS
@@ -90,6 +89,43 @@ export function listMarkerDecos(doc: ProseMirrorNode, charProps?: CharStyleProps
   return DecorationSet.create(doc, decos);
 }
 
+// Set on the transaction Editor.svelte's stylesheet effect dispatches: an edited registry
+// changes what a character or list style means, which no document change shows.
+export const SHEET_CHANGED = 'sheetChanged';
+
+const LIST_TYPES = new Set(['bulletList', 'orderedList', 'listItem']);
+
+// Whether a transaction's changes reach into a list. A step is taken by its own range
+// (`from`/`to` or `pos`, which is all a mark step has — its position map is empty) and
+// by what its map moved, in the document before and after it. Anything else leaves every
+// marker as it was, so the old decorations are mapped instead of rebuilt.
+export function touchesList(tr: Transaction): boolean {
+  for (let i = 0; i < tr.steps.length; i++) {
+    const step = tr.steps[i] as unknown as { from?: number; to?: number; pos?: number };
+    const before = tr.docs[i];
+    const after = tr.docs[i + 1] ?? tr.doc;
+    if (typeof step.from === 'number' && inList(before, step.from, step.to ?? step.from)) return true;
+    if (typeof step.pos === 'number' && inList(before, step.pos, step.pos + 1)) return true;
+    let hit = false;
+    tr.steps[i].getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
+      hit ||= inList(before, oldStart, oldEnd) || inList(after, newStart, newEnd);
+    });
+    if (hit) return true;
+  }
+  return false;
+}
+
+// A list node in the range, or one around it — a marker's format is read from the item's
+// first text portion, so a change inside an item counts as much as one to the list.
+function inList(doc: ProseMirrorNode, from: number, to: number): boolean {
+  if (from > doc.content.size) return true; // out of this document: rebuild rather than miss
+  const $from = doc.resolve(from);
+  for (let d = $from.depth; d > 0; d--) if (LIST_TYPES.has($from.node(d).type.name)) return true;
+  let hit = false;
+  doc.nodesBetween(from, Math.min(to, doc.content.size), (node) => { hit ||= LIST_TYPES.has(node.type.name); return !hit; });
+  return hit;
+}
+
 function itemMarkerFormat(item: ProseMirrorNode, charProps?: CharStyleProps): MarkerFormat | null {
   const block = item.firstChild;
   const first = block?.firstChild;
@@ -132,10 +168,9 @@ export const ListMarker = Extension.create<{ sheet: () => StyleSheet }>({
         key: listMarkerKey,
         state: {
           init: (_, state) => listMarkerDecos(state.doc, props()),
-          // An edited registry can change what a character style means, and that
-          // arrives as FORCE_PAGE_RECALC (Editor.svelte's stylesheet effect).
           apply: (tr, old) =>
-            tr.docChanged || tr.getMeta(FORCE_PAGE_RECALC) ? listMarkerDecos(tr.doc, props()) : old,
+            tr.getMeta(SHEET_CHANGED) || (tr.docChanged && touchesList(tr)) ? listMarkerDecos(tr.doc, props())
+            : tr.docChanged ? old.map(tr.mapping, tr.doc) : old,
         },
         props: {
           decorations(state) {

@@ -164,7 +164,10 @@
   // Everything the file holds counts: the text, and the page setup, styles and zones
   // beside it, which is what the exporter is handed. Same beat as the word count.
   let dirty = $state(false);
-  let cleanSum: number | null = null;
+  // The text as saved, compared as a tree: every unchanged node is the very object the
+  // saved tree holds, so the comparison is cheap however many pictures ride along.
+  let cleanDoc: PmNode | null = null;
+  let cleanRest = 0;
   let sumTimer: ReturnType<typeof setTimeout> | undefined;
   // Whether there is a file to lose those changes from — a saved file makes the dot,
   // and the unload warning, follow the changes rather than the document's existence.
@@ -172,15 +175,15 @@
 
   // The page count rides in with the zones but is a layout result, not an edit: a
   // late-loading font repaginating the document must not mark it changed.
-  function documentSum(): number {
-    if (!editor) return 0;
+  function restSum(): number {
     const [margins, orientation, hf, ...rest] = exportArgs();
     const { pageCount: _pages, ...zones } = hf;
-    return fnv1a(JSON.stringify([editor.getJSON(), documentName, margins, orientation, zones, ...rest]));
+    return fnv1a(JSON.stringify([documentName, margins, orientation, zones, ...rest]));
   }
 
   function markSaved(): void {
-    cleanSum = documentSum();
+    cleanDoc = editor?.state.doc ?? null;
+    cleanRest = restSum();
     dirty = false;
   }
 
@@ -191,13 +194,13 @@
     // The document the editor comes up with is the file's, taken here and not in the
     // timer: under a repagination the timer can be pushed out past the first edit,
     // which would make that edit the baseline.
-    if (cleanSum === null) {
+    if (cleanDoc === null) {
       markSaved();
       return;
     }
     sumTimer ??= setTimeout(() => {
       sumTimer = undefined;
-      dirty = documentSum() !== cleanSum;
+      dirty = !editor || !cleanDoc || !editor.state.doc.eq(cleanDoc) || restSum() !== cleanRest;
     }, 300);
   });
 

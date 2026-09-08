@@ -207,6 +207,7 @@ class TocView {
   private getPos: () => number;
   private scheduled = false;
   private lastKey = '';
+  private lastLook = '';
   private wasPaginated = false;
   private paper: HTMLElement | null = null;
   private onPageCount = () => this.schedule();
@@ -326,6 +327,7 @@ class TocView {
     // (leader, page numbers, title, level styles). Its cached entries are what syncAttr
     // writes back, so keying on them too would chase this pass's own result.
     const { entries: _cached, ...look } = this.node()?.attrs ?? {};
+    this.lastLook = JSON.stringify(look);
     const key = JSON.stringify([entries, look]);
     if (key !== this.lastKey) {
       this.lastKey = key;
@@ -344,15 +346,15 @@ class TocView {
     const view = this.editor.view;
     const vm = readVerticalMargins(view.dom as HTMLElement);
     for (const row of rows) row.style.marginTop = '';
-    // Read every natural top first: applying a gap moves each row below it, and one
-    // reflow for the whole index beats one per row.
-    const tops = rows.map(row => topInEditor(view, row));
+    // Read every natural top and height first: applying a gap moves each row below it,
+    // and one reflow for the whole index beats one per row.
+    const boxes = rows.map(row => [topInEditor(view, row), row.offsetHeight]);
     let shift = 0;
     let moved = false;
     rows.forEach((row, i) => {
-      const top = tops[i] + shift;
+      const top = boxes[i][0] + shift;
       const page = Math.max(1, Math.floor(top / vm.cycle) + 1);
-      if (top + row.offsetHeight <= (page - 1) * vm.cycle + vm.top + vm.contentHeight) return;
+      if (top + boxes[i][1] <= (page - 1) * vm.cycle + vm.top + vm.contentHeight) return;
       const gap = page * vm.cycle + vm.top - top;
       if (gap <= 0) return;
       row.style.marginTop = `${gap}px`;
@@ -439,24 +441,27 @@ class TocView {
   // As many leader dots as the gap holds. The row clips the rest on screen, but nothing
   // else does: 200 of them reach the PDF, the clipboard and every measurement as text.
   private fillLeaders(): void {
-    const range = document.createRange();
+    const leaders = Array.from(this.dom.querySelectorAll<HTMLElement>('.toc-leader')).filter(el => el.textContent);
     // One dot's advance, probed once per font: the levels have styles of their own, and
     // measuring level 1's dot for a smaller level 3 leaves its row short of the number.
-    const advances = new Map<string, number>();
-    for (const el of this.dom.querySelectorAll<HTMLElement>('.toc-leader')) {
-      const fill = el.textContent?.[0];
-      if (!fill) continue;
+    const keys = leaders.map((el) => {
       const cs = getComputedStyle(el);
-      const key = `${fill}|${cs.fontSize}|${cs.fontFamily}|${cs.fontWeight}|${cs.fontStyle}`;
-      let one = advances.get(key);
-      if (one == null) {
-        el.textContent = fill.repeat(LEADER_PROBE);
-        range.selectNodeContents(el);
-        one = range.getBoundingClientRect().width / LEADER_PROBE;
-        advances.set(key, one);
-      }
-      el.textContent = one > 0 ? fill.repeat(Math.max(0, Math.floor(el.getBoundingClientRect().width / one))) : '';
-    }
+      return `${el.textContent![0]}|${cs.fontSize}|${cs.fontFamily}|${cs.fontWeight}|${cs.fontStyle}`;
+    });
+    // Every gap is read before any row is written: a write between two reads is a layout.
+    const widths = leaders.map(el => el.getBoundingClientRect().width);
+    const advances = new Map<string, number>();
+    const range = document.createRange();
+    leaders.forEach((el, i) => {
+      if (advances.has(keys[i])) return;
+      el.textContent = keys[i][0].repeat(LEADER_PROBE);
+      range.selectNodeContents(el);
+      advances.set(keys[i], range.getBoundingClientRect().width / LEADER_PROBE);
+    });
+    leaders.forEach((el, i) => {
+      const one = advances.get(keys[i]) ?? 0;
+      el.textContent = one > 0 ? keys[i][0].repeat(Math.max(0, Math.floor(widths[i] / one))) : '';
+    });
   }
 
   // Scroll the heading into view and drop the cursor into it.
@@ -483,7 +488,9 @@ class TocView {
 
   update(node: PMNode): boolean {
     if (node.type.name !== 'tableOfContents') return false;
-    this.schedule();
+    // The entries are what syncAttr just wrote back; only a changed look is news.
+    const { entries: _cached, ...look } = node.attrs;
+    if (JSON.stringify(look) !== this.lastLook) this.schedule();
     return true;
   }
 

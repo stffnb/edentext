@@ -1,8 +1,9 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { findBookmark } from './bookmark';
-import { readVerticalMargins, pageOfElement } from './pageBreaks';
+import type { EditorView } from '@tiptap/pm/view';
+import { bookmarks, findBookmark, type BookmarkRef } from './bookmark';
+import { readVerticalMargins, pageOfElement, type PageGrid } from './pageBreaks';
 
 // A cross-reference: an inline atom showing either the text of a bookmark or the page it
 // sits on, kept live by the node view the way the TOC keeps its page numbers. Round-trips
@@ -86,16 +87,91 @@ export const CrossReference = Node.create({
   },
 });
 
-// Node view: repaints from the live bookmark on each pagination settle (pm-pagecount on
-// the .paper ancestor) and on doc change, writing the resolved text back to the attr —
-// guarded against a loop by comparing with what the node already holds.
+// The reference's text now: the bookmark's own text, or the page it renders on. A
+// bookmark that no longer exists leaves the cached text alone (Word shows its cached
+// result too until the field is updated).
+function resolveText(view: EditorView, node: PMNode, target: BookmarkRef | undefined, grid: () => PageGrid): string {
+  const cached = String(node.attrs.text ?? '');
+  if (!target) return cached;
+  if (node.attrs.format !== 'page') return target.text;
+  const at = view.domAtPos(target.from).node;
+  const el = (at.nodeType === 1 ? at : at.parentElement) as HTMLElement | null;
+  return el ? String(pageOfElement(view, el, grid())) : cached;
+}
+
+// Every reference of one editor resolves in one go, on each pagination settle
+// (pm-pagecount) and on a change to any of them: one bookmark scan, every page read
+// before any text is written, and one transaction for the texts that changed.
+class CrossRefBatch {
+  private views = new Set<CrossRefView>();
+  private scheduled = false;
+  private listening = false;
+
+  constructor(private editor: Editor) {}
+
+  add(view: CrossRefView): void {
+    this.views.add(view);
+    this.schedule();
+  }
+
+  remove(view: CrossRefView): void {
+    this.views.delete(view);
+  }
+
+  schedule(): void {
+    if (this.scheduled) return;
+    this.scheduled = true;
+    requestAnimationFrame(() => {
+      this.scheduled = false;
+      this.run();
+    });
+  }
+
+  private run(): void {
+    const { editor } = this;
+    if (editor.isDestroyed) return;
+    const view = editor.view;
+    if (!this.listening) {
+      this.listening = true;
+      view.dom.addEventListener('pm-pagecount', () => this.schedule());
+    }
+    const targets = new Map<string, BookmarkRef>();
+    for (const b of bookmarks(editor.state.doc)) if (!targets.has(b.name)) targets.set(b.name, b);
+    let grid: PageGrid | null = null;
+    const gridOf = () => (grid ??= readVerticalMargins(view.dom as HTMLElement).grid);
+    const jobs: { ref: CrossRefView; node: PMNode; pos: number; text: string }[] = [];
+    for (const ref of this.views) {
+      const pos = ref.pos();
+      const node = pos === null ? null : editor.state.doc.nodeAt(pos);
+      if (pos === null || !node || node.type.name !== 'crossRef' || !ref.dom.isConnected) continue;
+      jobs.push({ ref, node, pos, text: resolveText(view, node, targets.get(String(node.attrs.name ?? '')), gridOf) });
+    }
+    for (const j of jobs) j.ref.paint(j.node, j.text);
+    const tr = editor.state.tr.setMeta('addToHistory', false);
+    let changed = false;
+    for (const j of jobs) {
+      if (j.text === j.node.attrs.text) continue;
+      tr.setNodeAttribute(j.pos, 'text', j.text);
+      changed = true;
+    }
+    if (changed) view.dispatch(tr);
+  }
+}
+
+const batches = new WeakMap<Editor, CrossRefBatch>();
+
+function batchFor(editor: Editor): CrossRefBatch {
+  let batch = batches.get(editor);
+  if (!batch) batches.set(editor, (batch = new CrossRefBatch(editor)));
+  return batch;
+}
+
+// Node view: shows what the batch resolves; a modifier-click jumps to the bookmark.
 class CrossRefView {
   dom: HTMLElement;
   private editor: Editor;
   private getPos: () => number;
-  private scheduled = false;
-  private paper: HTMLElement | null = null;
-  private onPageCount = () => this.schedule();
+  private batch: CrossRefBatch;
 
   constructor(editor: Editor, getPos: () => number) {
     this.editor = editor;
@@ -112,62 +188,27 @@ class CrossRefView {
       this.goTo();
     });
 
-    requestAnimationFrame(() => {
-      this.paper = this.dom.closest('.paper') as HTMLElement | null;
-      this.paper?.addEventListener('pm-pagecount', this.onPageCount);
-      this.render();
-    });
+    this.batch = batchFor(editor);
+    this.batch.add(this);
   }
 
-  private schedule(): void {
-    if (this.scheduled) return;
-    this.scheduled = true;
-    requestAnimationFrame(() => {
-      this.scheduled = false;
-      this.render();
-    });
+  pos(): number | null {
+    const pos = this.getPos();
+    return typeof pos === 'number' ? pos : null;
   }
 
   private node(): PMNode | null {
-    const pos = this.getPos();
-    const node = typeof pos === 'number' ? this.editor.state.doc.nodeAt(pos) : null;
+    const pos = this.pos();
+    const node = pos === null ? null : this.editor.state.doc.nodeAt(pos);
     return node?.type.name === 'crossRef' ? node : null;
   }
 
-  // The reference's text now: the bookmark's own text, or the page it renders on. A
-  // bookmark that no longer exists leaves the cached text alone (Word shows its cached
-  // result too until the field is updated).
-  private resolve(node: PMNode): string {
-    const found = findBookmark(this.editor.state.doc, String(node.attrs.name ?? ''));
-    if (!found) return String(node.attrs.text ?? '');
-    if (node.attrs.format !== 'page') return found.text;
-    const at = this.editor.view.domAtPos(found.from).node;
-    const el = (at.nodeType === 1 ? at : at.parentElement) as HTMLElement | null;
-    if (!el) return String(node.attrs.text ?? '');
-    const { grid } = readVerticalMargins(this.editor.view.dom as HTMLElement);
-    return String(pageOfElement(this.editor.view, el, grid));
-  }
-
   // Mirror what renderHTML would emit, so the DOM reads the same with or without the view.
-  private paint(node: PMNode | null, text = String(node?.attrs?.text ?? '')): void {
+  paint(node: PMNode | null, text = String(node?.attrs?.text ?? '')): void {
     this.dom.dataset.crossRef = String(node?.attrs?.name ?? '');
     this.dom.dataset.format = node?.attrs?.format === 'page' ? 'page' : 'text';
     this.dom.dataset.text = text;
     this.dom.textContent = text;
-  }
-
-  private render(): void {
-    if (this.editor.isDestroyed || !this.dom.isConnected) return;
-    const node = this.node();
-    if (!node) return;
-    const text = this.resolve(node);
-    this.paint(node, text);
-    if (text === node.attrs.text) return;
-    const pos = this.getPos();
-    if (typeof pos !== 'number') return;
-    this.editor.view.dispatch(
-      this.editor.state.tr.setNodeAttribute(pos, 'text', text).setMeta('addToHistory', false),
-    );
   }
 
   // Scroll the bookmark into view and drop the cursor into it.
@@ -183,7 +224,7 @@ class CrossRefView {
 
   update(node: PMNode): boolean {
     if (node.type.name !== 'crossRef') return false;
-    this.schedule();
+    this.batch.schedule();
     return true;
   }
 
@@ -199,6 +240,6 @@ class CrossRefView {
   }
 
   destroy(): void {
-    this.paper?.removeEventListener('pm-pagecount', this.onPageCount);
+    this.batch.remove(this);
   }
 }

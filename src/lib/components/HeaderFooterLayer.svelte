@@ -258,14 +258,25 @@
     return v === 'first' ? b.footerFirst : v === 'even' ? b.footerEven : b.footer;
   }
 
-  // Page, page count, the zone's HTML, the chapter map and the zone: everything the two
-  // actions below re-run on (the map's identity changes with each pagination pass).
+  // Page, the page count and chapter map (only where the zone shows them), its HTML and
+  // the zone: everything the two actions below re-run on.
   type ZoneParams = [number, number, string, unknown, HfZone];
 
   // The zone's tabs: static HTML no ProseMirror plugin reaches. The advances are layout
-  // px, so only a content change invalidates them — not the zoom transform.
+  // px, so only a content change invalidates them — not the zoom transform. The zones of
+  // one flush lay out together, after their fields are patched: one layout, not one each.
+  const tabQueue = new Set<HTMLElement>();
   function layOutTabs(node: HTMLElement, _params: ZoneParams) {
-    const apply = () => layOutZoneTabs(node);
+    const apply = () => {
+      if (!tabQueue.size) {
+        queueMicrotask(() => {
+          const zones = [...tabQueue].filter((z) => z.isConnected);
+          tabQueue.clear();
+          layOutZoneTabs(zones);
+        });
+      }
+      tabQueue.add(node);
+    };
     apply();
     return { update: apply };
   }
@@ -452,6 +463,8 @@
     {#each ['header', 'footer'] as const as zone}
       {#if !(interactive && hfActive === zone && editingPage === p)}
         {@const html = zoneHtml(zone, p)}
+        {@const total = html.includes('data-page-field="count"') ? numPages : 0}
+        {@const chapters = html.includes('data-page-field="chapter"') ? chapterStarts : null}
         <div
           class="hf-zone hf-{zone}"
           class:hf-empty={!html}
@@ -460,8 +473,8 @@
           ondblclick={() => interactive && startEdit(zone, p)}
           role="button"
           tabindex="-1"
-          use:patchFields={[p, numPages, html, chapterStarts, zone]}
-          use:layOutTabs={[p, numPages, html, chapterStarts, zone]}
+          use:patchFields={[p, total, html, chapters, zone]}
+          use:layOutTabs={[p, total, html, chapters, zone]}
         >
           {@html html}
         </div>

@@ -14,8 +14,9 @@ const BROKEN_KEY = docKey('edentext-doc-broken');
 const DEBOUNCE_MS = 1000;
 
 let timeout: ReturnType<typeof setTimeout> | null = null;
-// The document as last handed in, until it is written.
-let pending: object | null = null;
+// Hands out the document as last handed in, until it is written. A function, so a
+// long document is serialized once per write, not once per keystroke.
+let pending: (() => object) | null = null;
 // Writes queue behind each other: an older write finishing after a newer one would
 // store the older document and sweep the pictures the newer one just added.
 let chain: Promise<void> = Promise.resolve();
@@ -24,15 +25,16 @@ let chain: Promise<void> = Promise.resolve();
 // debounced timer doesn't surface an unhandled error.
 let quotaWarned = false;
 
-export function saveDocument(json: object): void {
+export function saveDocument(json: () => object): void {
   pending = json;
   if (timeout) clearTimeout(timeout);
   timeout = setTimeout(() => { chain = chain.then(write); }, DEBOUNCE_MS);
 }
 
 async function write(): Promise<void> {
-  const json = pending;
-  if (!json) return;
+  const take = pending;
+  if (!take) return;
+  const json = take();
   // Pictures go to IndexedDB and the JSON keeps a key; where that fails they stay
   // inline, which is the only thing localStorage ever held.
   const { json: slim, blobs } = stashImages(json);
@@ -43,7 +45,7 @@ async function write(): Promise<void> {
   void keepSnapshot(json);
   // Pending until stored, so a flush during the round trip still has it; a newer
   // document handed in meanwhile stays pending for the write queued behind.
-  if (pending === json) pending = null;
+  if (pending === take) pending = null;
 }
 
 // The tab is going away: no time for the IndexedDB round trip, so the JSON goes out
@@ -51,7 +53,7 @@ async function write(): Promise<void> {
 // Timer and pending stay, so a page revived from the back/forward cache writes again.
 export function flushDocument(): void {
   if (!pending) return;
-  const { json: slim, blobs } = stashImages(pending);
+  const { json: slim, blobs } = stashImages(pending());
   void putImages(blobs);
   store(slim);
 }

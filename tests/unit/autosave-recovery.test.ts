@@ -43,7 +43,7 @@ describe('autosave crash recovery', () => {
     await loadDocument();
     expect(await loadDocument()).toBeNull(); // recovered: boot flag cleared, doc parked
     vi.useFakeTimers();
-    saveDocument({ type: 'doc' });
+    saveDocument(() => ({ type: 'doc' }));
     await vi.runAllTimersAsync();
     vi.useRealTimers();
     expect(await loadDocument()).toEqual({ type: 'doc' });
@@ -97,7 +97,7 @@ describe('autosave flush on pagehide', () => {
 
   it('writes the pending document when the page is hidden', () => {
     vi.useFakeTimers();
-    saveDocument({ type: 'doc', content: [{ type: 'paragraph' }] });
+    saveDocument(() => ({ type: 'doc', content: [{ type: 'paragraph' }] }));
     expect(localStorage.getItem('edentext-doc')).toBeNull();
     window.dispatchEvent(new Event('pagehide'));
     expect(JSON.parse(localStorage.getItem('edentext-doc')!)).toEqual({ type: 'doc', content: [{ type: 'paragraph' }] });
@@ -106,7 +106,7 @@ describe('autosave flush on pagehide', () => {
 
   it('writes nothing when nothing is pending', async () => {
     vi.useFakeTimers();
-    saveDocument({ type: 'doc' });
+    saveDocument(() => ({ type: 'doc' }));
     await vi.runAllTimersAsync();
     localStorage.removeItem('edentext-doc');
     window.dispatchEvent(new Event('pagehide'));

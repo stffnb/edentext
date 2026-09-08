@@ -6,7 +6,7 @@ import { childCycle, defaultOrderedTypeAt, ROOT_ORDERED_CYCLE, type OrderedCycle
 import { effectiveListLevel } from '../../styles/listStyles';
 import type { ListStyle as ListStyleDef } from '../../styles/listStyles';
 import type { StyleSheet } from '../../styles/styleSheet';
-import { FORCE_PAGE_RECALC } from './pageBreaks';
+import { SHEET_CHANGED, touchesList } from './listMarker';
 
 const EMPTY_SHEET: StyleSheet = { paragraph: {}, character: {}, table: {}, list: {} };
 
@@ -175,10 +175,9 @@ export const ListStyle = Extension.create<{ sheet: () => StyleSheet }>({
         key: listStyleKey,
         state: {
           init: (_, state) => listStyleDecos(state.doc, sheet()),
-          // An edited registry changes what a list style means; that arrives as
-          // FORCE_PAGE_RECALC (Editor.svelte's stylesheet effect), as in listMarker.ts.
           apply: (tr, old) =>
-            tr.docChanged || tr.getMeta(FORCE_PAGE_RECALC) ? listStyleDecos(tr.doc, sheet()) : old,
+            tr.getMeta(SHEET_CHANGED) || (tr.docChanged && touchesList(tr)) ? listStyleDecos(tr.doc, sheet())
+            : tr.docChanged ? old.map(tr.mapping, tr.doc) : old,
         },
         props: {
           decorations(state) {

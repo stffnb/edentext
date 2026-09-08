@@ -50,6 +50,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { MAX_PAGE_COLUMNS } from '../storage/theme';
   import { DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, hfIsEmpty, hfUsesChapterField, type HfDoc, type HfZone, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
   import { FORCE_PAGE_RECALC, PAGE_GAP, pageOfElement, readVerticalMargins, topInEditor, type TableBreakBand } from '../editor/extensions/pageBreaks';
+  import { SHEET_CHANGED } from '../editor/extensions/listMarker';
   import { findBookmark } from '../editor/extensions/bookmark';
   import { recordTransaction, resetHistoryLog } from '../utils/historyLog.svelte';
   import { fitPagesZoom, wheelZoomFactor } from '../utils/zoom';
@@ -130,10 +131,20 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     return out;
   }
 
+  // Kept by value: a fresh array per pass would re-lay every zone's fields and tabs.
+  let chapterKey = '';
+  function refreshChapterStarts(): void {
+    const next = wantsChapters ? collectChapterStarts() : [];
+    const key = JSON.stringify(next);
+    if (key === chapterKey) return;
+    chapterKey = key;
+    chapterStarts = next;
+  }
+
   // Pagination refreshes the starts; inserting a chapter field into a zone isn't a
   // pagination event, so collect them as soon as a zone asks for them.
   $effect(() => {
-    chapterStarts = wantsChapters ? collectChapterStarts() : [];
+    refreshChapterStarts();
   });
 
   // The page border wraps the header/footer band too (both word processors draw it
@@ -409,7 +420,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       // A table style's fill/borders live in cell attrs, so an edited registry has to be
       // painted into the document — this effect is the choke point every change passes.
       ed.commands.refreshTableStyles();
-      ed.view.dispatch(ed.state.tr.setMeta('addToHistory', false).setMeta(FORCE_PAGE_RECALC, true));
+      ed.view.dispatch(ed.state.tr.setMeta('addToHistory', false).setMeta(FORCE_PAGE_RECALC, true).setMeta(SHEET_CHANGED, true));
     });
   });
 
@@ -1011,7 +1022,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     if (typeof detail.docHeight === 'number') docHeightDoc = detail.docHeight;
     tableBandsDoc = detail.tableBreakBands ?? [];
     sectionStartPages = detail.sectionStartPages ?? [];
-    chapterStarts = wantsChapters ? collectChapterStarts() : [];
+    refreshChapterStarts();
     // The document height changed → resize the scaled scroll footprint.
     recomputeScaledSize();
     updateCurrentPage();
@@ -1291,7 +1302,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         } catch { /* ignore */ }
       },
       onUpdate: ({ editor: e, transaction }) => {
-        saveDocument(e.getJSON());
+        saveDocument(() => e.getJSON());
         const ui = transaction.getMeta('uiEvent');
         if (ui === 'paste' || ui === 'drop') void inlineRemoteImages(e);
       },

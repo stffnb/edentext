@@ -291,90 +291,115 @@ function wrapZoneTabs(para: HTMLElement): HTMLElement[] {
   return Array.from(para.querySelectorAll<HTMLElement>('span[data-zone-tab]'));
 }
 
+type ZoneJob = {
+  para: HTMLElement; tabs: HTMLElement[]; wrapping: string; align: string;
+  scale: number; originX: number; stops: TabStop[];
+};
+
 // An inactive header/footer zone is generateHTML output no ProseMirror plugin reaches,
 // so its tabs are measured straight on the DOM — same rule, left to right, each advance
-// applied before the next is read.
-export function layOutZoneTabs(zone: HTMLElement): void {
-  const para = zone.querySelector<HTMLElement>('[data-tab-stops]');
-  if (!para || !parseTabStops(para.getAttribute('data-tab-stops')).length) return;
-  const tabs = wrapZoneTabs(para);
-  for (const t of tabs) {
-    t.className = '';
-    t.removeAttribute('data-leader');
-    t.style.cssText = 'tab-size:0';
+// applied before the next is read. Zones go together: a round's reads before its writes.
+export function layOutZoneTabs(zones: HTMLElement[]): void {
+  const jobs: ZoneJob[] = [];
+  for (const zone of zones) {
+    const para = zone.querySelector<HTMLElement>('[data-tab-stops]');
+    if (!para || !parseTabStops(para.getAttribute('data-tab-stops')).length) continue;
+    const tabs = wrapZoneTabs(para);
+    for (const t of tabs) {
+      t.className = '';
+      t.removeAttribute('data-leader');
+      t.style.cssText = 'tab-size:0';
+    }
+    // Measured with wrapping off: a segment that has already wrapped reads short by the
+    // space its break swallowed, so the advance computed from it keeps it wrapped — a
+    // footer stayed two lines over three pixels.
+    const wrapping = para.style.whiteSpace;
+    para.style.whiteSpace = 'pre';
+    // Laid out from the left, whatever the paragraph's alignment: LibreOffice positions
+    // the tabbed segments on the stops and only then shifts the whole line by what is
+    // left over (probed — a right-aligned head with two stops starts at the left edge).
+    const align = para.style.textAlign;
+    para.style.textAlign = 'left';
+    jobs.push({ para, tabs, wrapping, align, scale: 1, originX: 0, stops: [] });
   }
-  // Measured with wrapping off: a segment that has already wrapped reads short by the
-  // space its break swallowed, so the advance computed from it keeps it wrapped — the
-  // Math Guide's footer stayed two lines over three pixels.
-  const wrapping = para.style.whiteSpace;
-  para.style.whiteSpace = 'pre';
-  // Laid out from the left, whatever the paragraph's alignment: LibreOffice positions
-  // the tabbed segments on the stops and only then shifts the whole line by what is
-  // left over (probed — a right-aligned head with two stops starts at the left edge,
-  // and moves right by exactly the gap when its last stop sits inside the column).
-  const align = para.style.textAlign;
-  para.style.textAlign = 'left';
-  const rect = para.getBoundingClientRect();
-  const scale = para.offsetWidth ? rect.width / para.offsetWidth : 1;
-  const cs = getComputedStyle(para);
-  const padLeft = parseFloat(cs.paddingLeft || '0');
-  // The line's own width, not clientWidth: that is rounded up to whole px, and half a pixel
-  // is enough to wrap the run a right-aligned stop puts at the end. One px of slack, since
-  // a run ending exactly on the boundary wraps and a pixel short of it shows on nothing.
-  const lineCm = (rect.width / (scale || 1) - padLeft - parseFloat(cs.paddingRight || '0') - 1) / PX_PER_CM;
-  const stops = clampStops(parseTabStops(para.getAttribute('data-tab-stops')), lineCm);
-  if (!scale) { para.style.whiteSpace = wrapping; para.style.textAlign = align; return; }
-  const originX = rect.left + padLeft * scale;
-
-  for (let i = 0; i < tabs.length; i++) {
-    const tab = tabs[i];
-    const xCm = (tab.getBoundingClientRect().left - originX) / scale / PX_PER_CM;
-    const stop = stops.find((s) => s.pos > xCm + 0.01);
-    if (!stop) continue;
-    let width = (stop.pos - xCm) * PX_PER_CM;
-    // A decimal stop takes the whole segment back, i.e. behaves as right — a zone is one
-    // paragraph of running text, where a separator to align on is not a case that arises.
-    if (stop.align !== 'left') {
-      const range = document.createRange();
-      range.setStartAfter(tab);
-      if (i + 1 < tabs.length) range.setEndBefore(tabs[i + 1]);
-      else range.setEnd(para, para.childNodes.length);
-      // The extent, not the sum: a range crossing inline elements yields a rect for the
-      // element's box as well as for the text inside it. Its own line only — a zone
-      // ending in a hard break has a rect on the next one, and that starts at the
-      // paragraph's left edge, which would inflate the segment by its own offset.
-      const segment = () => {
-        const rects = Array.from(range.getClientRects()).filter((r) => r.width);
-        if (!rects.length) return 0;
-        const top = Math.min(...rects.map((r) => r.top));
-        const own = rects.filter((r) => r.top < top + 1);
-        return Math.max(...own.map((r) => r.right)) - Math.min(...own.map((r) => r.left));
-      };
-      const take = (seg: number) => (stop.align === 'center' ? seg / 2 : seg) / scale;
-      width -= take(segment());
-      // A segment too long to reach the stop wraps, and what the stop aligns is the part
-      // that stays on the line — measured with the wrapping the zone really has, and
-      // from this tab at zero, so the break falls where the layout will put it.
-      if (width < 0) {
-        const own = tab.style.marginLeft;
-        tab.style.marginLeft = '0px';
-        para.style.whiteSpace = wrapping;
-        width = (stop.pos - xCm) * PX_PER_CM - take(segment());
-        para.style.whiteSpace = 'pre';
-        tab.style.marginLeft = own;
+  for (const job of jobs) {
+    const { para } = job;
+    const rect = para.getBoundingClientRect();
+    job.scale = para.offsetWidth ? rect.width / para.offsetWidth : 1;
+    const cs = getComputedStyle(para);
+    const padLeft = parseFloat(cs.paddingLeft || '0');
+    // The line's own width, not clientWidth: that is rounded up to whole px, and half a pixel
+    // is enough to wrap the run a right-aligned stop puts at the end. One px of slack, since
+    // a run ending exactly on the boundary wraps and a pixel short of it shows on nothing.
+    const lineCm = (rect.width / (job.scale || 1) - padLeft - parseFloat(cs.paddingRight || '0') - 1) / PX_PER_CM;
+    job.stops = clampStops(parseTabStops(para.getAttribute('data-tab-stops')), lineCm);
+    job.originX = rect.left + padLeft * job.scale;
+  }
+  for (let i = 0; jobs.some((j) => i < j.tabs.length); i++) {
+    const round: ZoneAdvance[] = [];
+    for (const job of jobs) {
+      if (i >= job.tabs.length || !job.scale) continue;
+      const advance = zoneTabAdvance(job, i);
+      if (advance) round.push(advance);
+    }
+    for (const { tab, width, leader } of round) {
+      tab.style.marginLeft = `${width}px`;
+      if (leader) {
+        tab.className = 'tab-leader';
+        tab.dataset.leader = leader;
+        tab.style.setProperty('--leader-w', `${width}px`);
       }
     }
-    width = Math.max(0, Math.round(width * 100) / 100);
-    tab.style.marginLeft = `${width}px`;
-    const leader = normalizeLeader(stop.leader);
-    if (leader) {
-      tab.className = 'tab-leader';
-      tab.dataset.leader = leader;
-      tab.style.setProperty('--leader-w', `${width}px`);
+  }
+  for (const { para, wrapping, align } of jobs) {
+    para.style.whiteSpace = wrapping;
+    para.style.textAlign = align;
+  }
+}
+
+type ZoneAdvance = { tab: HTMLElement; width: number; leader: ReturnType<typeof normalizeLeader> };
+
+// One tab's advance to its stop, read off the layout of the moment (the tabs before it
+// already carry theirs); null where no stop is left on the line.
+function zoneTabAdvance(job: ZoneJob, i: number): ZoneAdvance | null {
+  const { para, tabs, stops, scale, originX, wrapping } = job;
+  const tab = tabs[i];
+  const xCm = (tab.getBoundingClientRect().left - originX) / scale / PX_PER_CM;
+  const stop = stops.find((s) => s.pos > xCm + 0.01);
+  if (!stop) return null;
+  let width = (stop.pos - xCm) * PX_PER_CM;
+  // A decimal stop takes the whole segment back, i.e. behaves as right — a zone is one
+  // paragraph of running text, where a separator to align on is not a case that arises.
+  if (stop.align !== 'left') {
+    const range = document.createRange();
+    range.setStartAfter(tab);
+    if (i + 1 < tabs.length) range.setEndBefore(tabs[i + 1]);
+    else range.setEnd(para, para.childNodes.length);
+    // The extent, not the sum: a range crossing inline elements yields a rect for the
+    // element's box as well as for the text inside it. Its own line only — a zone ending
+    // in a hard break has a rect on the next line, starting at the paragraph's left edge.
+    const segment = () => {
+      const rects = Array.from(range.getClientRects()).filter((r) => r.width);
+      if (!rects.length) return 0;
+      const top = Math.min(...rects.map((r) => r.top));
+      const own = rects.filter((r) => r.top < top + 1);
+      return Math.max(...own.map((r) => r.right)) - Math.min(...own.map((r) => r.left));
+    };
+    const take = (seg: number) => (stop.align === 'center' ? seg / 2 : seg) / scale;
+    width -= take(segment());
+    // A segment too long to reach the stop wraps, and what the stop aligns is the part
+    // that stays on the line — measured with the wrapping the zone really has, and
+    // from this tab at zero, so the break falls where the layout will put it.
+    if (width < 0) {
+      const own = tab.style.marginLeft;
+      tab.style.marginLeft = '0px';
+      para.style.whiteSpace = wrapping;
+      width = (stop.pos - xCm) * PX_PER_CM - take(segment());
+      para.style.whiteSpace = 'pre';
+      tab.style.marginLeft = own;
     }
   }
-  para.style.whiteSpace = wrapping;
-  para.style.textAlign = align;
+  return { tab, width: Math.max(0, Math.round(width * 100) / 100), leader: normalizeLeader(stop.leader) };
 }
 
 export const TabStops = Extension.create({
