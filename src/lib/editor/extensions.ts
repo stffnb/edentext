@@ -25,7 +25,7 @@ import { Table, TableHeader, TableCell } from '@tiptap/extension-table';
 import { ResizableTableRow } from './extensions/tableRow';
 import History from '@tiptap/extension-history';
 import { inNote } from './extensions/notes';
-import Placeholder from '@tiptap/extension-placeholder';
+import { Placeholder } from './extensions/placeholder';
 import { t } from '../i18n/i18n.svelte';
 
 import { PageBreaks } from './extensions/pageBreaks';

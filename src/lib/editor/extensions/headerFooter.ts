@@ -10,7 +10,7 @@ import Highlight from '@tiptap/extension-highlight';
 import { TextStyle, FontFamily, FontSize } from '@tiptap/extension-text-style';
 import HardBreak from '@tiptap/extension-hard-break';
 import History from '@tiptap/extension-history';
-import Placeholder from '@tiptap/extension-placeholder';
+import { Placeholder } from './placeholder';
 import TextAlign from '@tiptap/extension-text-align';
 import { FontWeight } from './fontWeight';
 import { FontColor } from './fontColor';

@@ -237,6 +237,23 @@ try {
   const passes = await page.evaluate(() => window.__passes);
   check(passes === 0 && idle < 100,
     `a letter typed and taken back runs no pass and its pause is free (${passes} passes, ${Math.round(idle)} ms blocked at most)`);
+
+  // The block after a band-wrapped frame clears it; one after a page-anchored frame does
+  // not. Keyed on an attribute image.ts writes (a `:has()` restyles the whole document).
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC';
+  const frame = (attrs) => ({ type: 'image', attrs: { src: PNG, width: 120, height: 60, ...attrs } });
+  const block = (...content) => ({ type: 'paragraph', content });
+  const words = (t) => ({ type: 'text', text: t });
+  await page.evaluate((d) => document.querySelector('.tiptap').editor.commands.setContent(d), { type: 'doc', content: [
+    block(words('above')), block(words('with '), frame({ wrap: 'topBottom' })), block(words('below')),
+    block(frame({ wrap: 'topBottom', anchorPage: 1 })), block(words('after anchored')),
+    block(frame({ wrap: 'topBottom' })), block(frame({ wrap: 'topBottom' })), block(words('after two')),
+  ] });
+  await settle(page, true);
+  const bands = await page.evaluate(() => Array.from(document.querySelectorAll('.tiptap > p'),
+    (p) => `${p.getAttribute('data-wrap-band') ?? '-'}/${getComputedStyle(p).clear}`).join(' '));
+  check(bands === '-/none true/none -/both anchored/none -/none true/none true/none -/both',
+    `the block after a band frame clears it, after an anchored one it does not (${bands})`);
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {

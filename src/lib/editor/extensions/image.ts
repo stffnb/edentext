@@ -311,6 +311,9 @@ function imageLineDecorations(doc: PMNode): DecorationSet {
     if (!node.isTextblock) return true;
     let images: number[] = [];
     let text = false;
+    // 'true': a full-width float rides this block, so its successor clears the band;
+    // 'anchored': every such float is page-anchored — the successor must not clear.
+    let band: 'true' | 'anchored' | null = null;
     const flush = () => {
       if (!text) for (const at of images) decos.push(Decoration.node(at, at + 1, { class: 'image-line' }));
       images = [];
@@ -319,10 +322,15 @@ function imageLineDecorations(doc: PMNode): DecorationSet {
     node.forEach((child, offset) => {
       if (child.type.name === 'hardBreak') flush();
       else if (child.type.name === 'image') {
-        if ((child.attrs.wrap ?? 'inline') === 'inline') images.push(pos + 1 + offset);
+        const wrap = child.attrs.wrap ?? 'inline';
+        if (wrap === 'inline') images.push(pos + 1 + offset);
+        if (wrap === 'topBottom' && band !== 'true') band = child.attrs.anchorPage ? 'anchored' : 'true';
       } else if (child.isText ? child.text?.trim() : true) text = true;
     });
     flush();
+    // The attribute editor.css keys the clearing on — an attribute, since a `:has()`
+    // there makes Chromium restyle the whole document on every insertion.
+    if (band) decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-wrap-band': band }));
     return false;
   });
   return DecorationSet.create(doc, decos);

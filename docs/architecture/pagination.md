@@ -124,6 +124,20 @@ it: the block is as tall as before, so nothing below it moved. A break inside th
 still forces the pass, since its line has rewrapped. The dom run (`tests/dom/run.mjs`)
 holds the keystroke budget and checks that a letter typed and taken back runs no pass.
 
+**What a pass costs.** At the top of the dom run's 124-page document (Chromium) the
+measuring and placing take ~40 ms — `docPosBeforeElement` is the largest part, ProseMirror
+walks the parent's children for every position, so it is memoised per pass — and the
+decoration dispatch a few ms. Everything above that was the browser's, and three things
+each multiplied it: a **`:has()` left of a sibling combinator** under `.tiptap` makes
+Chromium restyle every element under it (67 000 with the squiggles, ~150 ms) on each child
+inserted there — a spacer, a split paragraph — so the band-clearing rule keys on an
+attribute `image.ts` writes; a **live `Range` per text node** in `getLineRects` — a Range
+is a document listener Chromium updates on every DOM removal, and a pass left hundreds
+behind until the next collection, so one Range is reused; and TipTap's Placeholder
+**hit-testing the viewport** twice per keystroke (`placeholder.ts` replaces it). The pass
+after a split went from 410 to 150 ms, the keystroke that splits from 219 to 50 ms; in a
+document of real words, where few squiggles split the text nodes, 47 and 18 ms.
+
 **Layout constants** (must stay in sync between `pageBreaks.ts`, `Editor.svelte`, and `editor.css`):
 - `PAGE_HEIGHT = 1123px` (A4 portrait), `PAGE_GAP = 20px`, `CYCLE = PAGE_HEIGHT + PAGE_GAP = 1143px`.
 - Page height/width and margins are read **live** from CSS custom properties (`--user-page-height`, `--user-page-width`, `--user-margin-*`) so orientation/margin changes don't require new constants. `getCycle()` in `Editor.svelte` reads `--user-page-height` at runtime.

@@ -551,16 +551,24 @@ export const PageBreaks = Extension.create({
           };
         }
 
+        // Memoised per pass: a leaf is asked twice (its spacer, its page-top rule), and
+        // each answer walks the parent's children linearly on both sides of posAtDOM.
+        let posMemo = new Map<HTMLElement, number | null>();
         function docPosBeforeElement(el: HTMLElement): number | null {
+          const memo = posMemo.get(el);
+          if (memo !== undefined) return memo;
           const parent = el.parentNode;
           if (!parent) return null;
-          const childIndex = Array.from(parent.childNodes).indexOf(el as ChildNode);
-          if (childIndex < 0) return null;
+          let childIndex = 0;
+          for (let n = parent.firstChild; n && n !== el; n = n.nextSibling) childIndex++;
+          let pos: number | null;
           try {
-            return editorView.posAtDOM(parent as Node, childIndex);
+            pos = editorView.posAtDOM(parent as Node, childIndex);
           } catch {
-            return null;
+            pos = null;
           }
+          posMemo.set(el, pos);
+          return pos;
         }
 
         // The display scale (.paper has `transform: scale()`): the ratio of .tiptap's
@@ -660,6 +668,10 @@ export const PageBreaks = Extension.create({
           return { docPos: preLeafDocPos(leaf.el), row: null };
         }
 
+        // One Range for every measurement: a live Range is a document listener, and a pass
+        // that leaves hundreds behind slows every DOM removal until the next collection.
+        const lineRange = document.createRange();
+
         // Walks text nodes and inline images inside `el`, skipping any that live inside
         // a spacer widget, and returns one rect per visual line (in viewport coords).
         function getLineRects(el: HTMLElement): { top: number; bottom: number }[] {
@@ -690,9 +702,8 @@ export const PageBreaks = Extension.create({
           let textNode: Node | null;
           while ((textNode = walker.nextNode())) {
             if (!textNode.textContent || textNode.textContent.length === 0) continue;
-            const range = document.createRange();
-            range.selectNodeContents(textNode);
-            for (const rect of Array.from(range.getClientRects())) {
+            lineRange.selectNodeContents(textNode);
+            for (const rect of Array.from(lineRange.getClientRects())) {
               if (rect.width > 0 && rect.height > 0) allRects.push(rect);
             }
           }
@@ -850,14 +861,14 @@ export const PageBreaks = Extension.create({
           // A leaf's border-box top within .tiptap, in document px. Summing offsetTop up
           // the offsetParent chain is unaffected by .paper's transform:scale, so it's the
           // same at every zoom; the chain ends at .tiptap so the origin is the page top.
-          function topWithin(el: HTMLElement): number {
+          function topWithin(el: HTMLElement, elStyle?: CSSStyleDeclaration): number {
             let top = 0;
             let node: HTMLElement | null = el;
             while (node && node !== dom) {
               // A block spaced above single is drawn half a leading above its flow
               // position (editor.css), and offsetTop reports where it is drawn — so the
               // shift comes back off, or the flow inherits a paint correction.
-              const cs = getComputedStyle(node);
+              const cs = node === el && elStyle ? elStyle : getComputedStyle(node);
               const shift = cs.position === 'relative' ? parseFloat(cs.top) : 0;
               top += node.offsetTop - (Number.isFinite(shift) ? shift : 0);
               node = node.offsetParent as HTMLElement | null;
@@ -868,8 +879,8 @@ export const PageBreaks = Extension.create({
           // A leaf's top in the undecorated document: the rendered top with the spacers
           // above it taken out and the space they swallowed put back, so a pass never
           // measures its own previous answer. Every leaf must be born through this.
-          function naturalTopOf(el: HTMLElement): number {
-            return topWithin(el) - cumulativeSpacerHeight + cumulativeDropped;
+          function naturalTopOf(el: HTMLElement, elStyle?: CSSStyleDeclaration): number {
+            return topWithin(el, elStyle) - cumulativeSpacerHeight + cumulativeDropped;
           }
 
           // The footnote anchors this leaf holds, offset from its own top with the
@@ -1125,7 +1136,7 @@ export const PageBreaks = Extension.create({
                 leaves.push({
                   el: child,
                   kind: isAtomic ? 'atomic' : 'splittable',
-                  naturalTop: naturalTopOf(child),
+                  naturalTop: naturalTopOf(child, cs),
                   naturalHeight: Math.max(child.offsetHeight, floatBottom) - intraSpacerHeight + dropped,
                   spaceAfter: inTableCell ? 0 : parseFloat(cs.marginBottom) || 0,
                   spaceAbove,
@@ -1173,6 +1184,7 @@ export const PageBreaks = Extension.create({
           if (isUpdating || !editorView.dom.isConnected) return;
           isUpdating = true;
           editBlock = null;
+          posMemo = new Map();
 
           const dom = editorView.dom;
           void dom.offsetHeight; // force reflow
@@ -1597,10 +1609,11 @@ export const PageBreaks = Extension.create({
                   : null,
                 naturalTop: leaf.naturalTop,
                 naturalHeight: leaf.naturalHeight,
-                textPreview: (leaf.el.textContent ?? '').slice(0, 120),
-                intraSpacerHeights: Array.from(
-                  leaf.el.querySelectorAll<HTMLElement>('[data-page-break-spacer]'),
-                ).map((sp) => sp.offsetHeight),
+                // Read when the snapshot is, not by every pass for every leaf.
+                get textPreview() { return (leaf.el.textContent ?? '').slice(0, 120); },
+                get intraSpacerHeights() {
+                  return Array.from(leaf.el.querySelectorAll<HTMLElement>('[data-page-break-spacer]')).map((sp) => sp.offsetHeight);
+                },
                 effectiveTop,
                 effectiveBottom,
                 pageOfTop: page,
