@@ -216,10 +216,24 @@ try {
   keys.sort((a, b) => a - b);
   const keyMedian = Math.round(keys[keys.length >> 1]);
   const keyMax = Math.round(keys[keys.length - 1]);
-  // The keystroke is the budget (a runner is slower than a laptop, so with room); the pass
-  // is what a whole-document layout costs, recorded for the day it goes incremental.
-  check(longPages > 100 && keyMedian < 300,
+  // Typing feels fluid under ~100 ms a key; a runner is slower than a laptop, so with room.
+  // The pass is what a whole-document layout costs, recorded for the day it goes incremental.
+  check(longPages > 100 && keyMedian < 100 && keyMax < 250,
     `typing at the top of a ${longPages}-page document: ${keyMedian} ms per keystroke (max ${keyMax}), ${Math.round(pass)} ms pass after the burst`);
+  // A letter typed and taken back leaves every block as tall as it was, so no pass runs.
+  // Every pass ends in a pm-pagecount event, so the count is the proof; the blocked time
+  // in the label is the spell checker's whole-document recheck, not a pass.
+  await page.evaluate(() => {
+    window.__passes = 0;
+    document.querySelector('.tiptap').addEventListener('pm-pagecount', () => { window.__passes++; });
+  });
+  await page.keyboard.type('x');
+  await blocked();
+  await page.keyboard.press('Backspace');
+  let idle = 0;
+  for (const until = Date.now() + 1500; Date.now() < until;) idle = Math.max(idle, await blocked());
+  const passes = await page.evaluate(() => window.__passes);
+  check(passes === 0, `a letter typed and taken back runs no pass (${passes} passes, ${Math.round(idle)} ms blocked at most)`);
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {

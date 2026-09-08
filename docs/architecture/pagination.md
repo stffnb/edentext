@@ -114,10 +114,15 @@ back from the other.
 every transaction (`apply`) and each spacer widget carries a `key` naming what it draws, so
 a pass that lands the same spacers keeps their DOM. Unmapped, an edit above them left every
 widget one position off and the view rebuilt all of them — measured at the top of a
-124-page document: 1.5 s a keystroke, 144 ms with the mapping. An edit within
-`EDIT_IDLE_MS` of the last pass waits for a pause in the typing (the first after a pause
-runs at once); a forced recalc or a layout-only write never waits. The dom run
-(`tests/dom/run.mjs`) holds the budget.
+124-page document: 1.5 s a keystroke, 144 ms with the mapping. An edit's pass waits for
+`EDIT_IDLE_MS` of quiet, so while the typing goes on only the keystroke itself costs; a
+forced recalc or a layout-only write never waits. When the quiet comes, the pass is skipped
+if every edit since the last one only put text into or took text out of one textblock
+(`textOnlyBlock`: a paragraph or heading, inside lists at most — a cell, a note or a frame
+reaches further than its own height) and the content's bottom is where the last pass left
+it: the block is as tall as before, so nothing below it moved. A break inside that block
+still forces the pass, since its line has rewrapped. The dom run (`tests/dom/run.mjs`)
+holds the keystroke budget and checks that a letter typed and taken back runs no pass.
 
 **Layout constants** (must stay in sync between `pageBreaks.ts`, `Editor.svelte`, and `editor.css`):
 - `PAGE_HEIGHT = 1123px` (A4 portrait), `PAGE_GAP = 20px`, `CYCLE = PAGE_HEIGHT + PAGE_GAP = 1143px`.

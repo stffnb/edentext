@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
+import { ReplaceStep } from '@tiptap/pm/transform';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import { COLUMNS_FIT_MARGIN_PX } from './columns';
 import { isLeftPage, printedPageNumber } from '../../storage/pageNumbering';
@@ -290,7 +291,35 @@ function pageContentStart(page: number, marginTop: number, grid: PageGrid): numb
 // `recalc` counts forced recomputes, `edit` the document edits. Layout-only writes
 // (addToHistory:false) bump neither, so the convergence brake in `update` can tell an
 // answer to the last pass from a fresh change.
-type PageBreakState = { recalc: number; edit: number };
+// textBlock: the textblock a text-only transaction stayed inside (its position), else null.
+type PageBreakState = { recalc: number; edit: number; textBlock: number | null };
+
+// Ancestors a leaf may have without the pass seeing more than the leaf: the walk
+// descends these (CONTAINER_TAGS), and their height is the sum of their blocks'.
+const FLOW_CONTAINERS = new Set(['bulletList', 'orderedList', 'listItem', 'blockquote']);
+
+// The textblock a transaction only put text into or took text out of — the one block
+// whose height an edit like that can change. Null for anything else: a node, a split, a
+// join, an edit in a cell, a note or a frame, whose height reaches further than itself.
+function textOnlyBlock(tr: Transaction): number | null {
+  let block: number | null = null;
+  for (let i = 0; i < tr.steps.length; i++) {
+    const step = tr.steps[i];
+    if (!(step instanceof ReplaceStep) || step.slice.openStart || step.slice.openEnd) return null;
+    let textOnly = true;
+    step.slice.content.forEach((n) => { if (!n.isText) textOnly = false; });
+    if (!textOnly) return null;
+    const $from = tr.docs[i].resolve(step.from);
+    if (!$from.parent.isTextblock || step.to > $from.end()) return null;
+    for (let d = 1; d < $from.depth; d++) {
+      if (!FLOW_CONTAINERS.has($from.node(d).type.name)) return null;
+    }
+    const b = $from.before();
+    if (block !== null && block !== b) return null;
+    block = b;
+  }
+  return block;
+}
 
 // Exported for tabStops.ts: a placement change moves lines, so the tab advances
 // measured before it are stale.
@@ -387,11 +416,15 @@ export const PageBreaks = Extension.create({
     let decorations = DecorationSet.empty;
     let isUpdating = false;
     let rafId: number | null = null;
-    // Keys can come faster than a long document paginates: an edit within EDIT_IDLE_MS of
-    // the last pass waits for a pause in the typing; the first after a pause runs at once.
-    const EDIT_IDLE_MS = 150;
+    // A long document paginates slower than keys come, so an edit's pass waits for this
+    // much quiet: while the typing goes on, only the keystroke itself costs.
+    const EDIT_IDLE_MS = 300;
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastPassAt = 0;
+    // Where the content ended after the last pass: the same bottom after edits confined to
+    // one textblock means no block moved, and the pass has nothing to find.
+    let lastBottom = -1;
+    // The textblock every edit since the last pass stayed inside; false once one didn't.
+    let editBlock: number | null | false = null;
     let lastPlacementsKey = '';
     // The layout before the current one: two layouts can each imply the other (a block
     // below a float's overhang moves further than the model's spacer), so seeing the older
@@ -408,7 +441,7 @@ export const PageBreaks = Extension.create({
       // Counters `update` watches. The plugin's own decoration dispatches carry neither
       // FORCE_PAGE_RECALC nor a doc change, so this never self-triggers.
       state: {
-        init: () => ({ recalc: 0, edit: 0 }),
+        init: () => ({ recalc: 0, edit: 0, textBlock: null }),
         apply(tr, value) {
           // The spacers follow the text until the next pass: left unmapped, an edit above
           // them puts every widget one position off and the view tears them all down.
@@ -416,7 +449,11 @@ export const PageBreaks = Extension.create({
           const recalc = value.recalc + (tr.getMeta(FORCE_PAGE_RECALC) ? 1 : 0);
           const edit = value.edit
             + (tr.docChanged && tr.getMeta('addToHistory') !== false ? 1 : 0);
-          return recalc === value.recalc && edit === value.edit ? value : { recalc, edit };
+          if (recalc === value.recalc && edit === value.edit) return value;
+          const own = tr.docChanged ? textOnlyBlock(tr) : null;
+          // An appended transaction rides its root's dispatch: both must name the block.
+          const appended = tr.getMeta('appendedTransaction') !== undefined;
+          return { recalc, edit, textBlock: appended && value.textBlock !== own ? null : own };
         },
       },
       props: {
@@ -1135,6 +1172,7 @@ export const PageBreaks = Extension.create({
           rafId = null;
           if (isUpdating || !editorView.dom.isConnected) return;
           isUpdating = true;
+          editBlock = null;
 
           const dom = editorView.dom;
           void dom.offsetHeight; // force reflow
@@ -1872,7 +1910,7 @@ export const PageBreaks = Extension.create({
           };
 
           isUpdating = false;
-          lastPassAt = performance.now();
+          lastBottom = contentBottom();
 
           // A per-page restart counts within the page each anchor landed on, which only
           // this pass knows (notes.ts). Renumbering can rewrap, so it takes a pass of its
@@ -1896,10 +1934,29 @@ export const PageBreaks = Extension.create({
           if (rafId !== null) cancelAnimationFrame(rafId);
           rafId = requestAnimationFrame(calculate);
         }
+        // The bottom of the last block, not .tiptap's height: its min-height would hide
+        // a block growing on a short document's only page.
+        function contentBottom(): number {
+          const last = editorView.dom.lastElementChild as HTMLElement | null;
+          return last ? last.offsetTop + last.offsetHeight : 0;
+        }
         function scheduleEdit() {
-          if (performance.now() - lastPassAt > EDIT_IDLE_MS) { schedule(); return; }
           if (idleTimer !== null) clearTimeout(idleTimer);
-          idleTimer = setTimeout(schedule, EDIT_IDLE_MS);
+          idleTimer = setTimeout(() => {
+            idleTimer = null;
+            const b = editBlock;
+            editBlock = null;
+            if (b === null) return; // a pass has run since the edit and measured it
+            // Text typed into one block that is as tall as before moved nothing below it —
+            // unless a page break falls inside the block, on a line the text has rewrapped.
+            if (b !== false && contentBottom() === lastBottom) {
+              const node = editorView.state.doc.nodeAt(b);
+              // Widgets only: a node decoration on the block is the page-top rule, not a break.
+              const inside = (spec: { key?: string }) => spec.key !== undefined;
+              if (node && !decorations.find(b + 1, b + node.nodeSize - 1, inside).length) return;
+            }
+            schedule();
+          }, EDIT_IDLE_MS);
         }
 
         // Initial calculation
@@ -1917,7 +1974,13 @@ export const PageBreaks = Extension.create({
               // pm-pagecount — answer the last pass, so forgetting the ping-pong
               // memory on them would leave the guard with nothing to catch.
               if (forced || isEditTr) prevPlacementsKey = null;
-              if (isEditTr && !forced) scheduleEdit(); else schedule();
+              if (isEditTr && !forced) {
+                const b = after?.textBlock ?? null;
+                editBlock = b === null || (editBlock !== null && editBlock !== b) ? false : b;
+                scheduleEdit();
+              } else {
+                schedule();
+              }
             }
           },
           destroy() {
