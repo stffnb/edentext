@@ -138,6 +138,14 @@ behind until the next collection, so one Range is reused; and TipTap's Placehold
 after a split went from 410 to 150 ms, the keystroke that splits from 219 to 50 ms; in a
 document of real words, where few squiggles split the text nodes, 47 and 18 ms.
 
+**A pass tells the document only what changed.** `pm-pagecount` is announced where the
+numbers on it — page count, document height, the section start pages, the placements, the
+table bands — differ from the last announcement. Every reader re-reads the whole document
+from the event (the index resolves each row's page, the header band its geometry, every
+cross-reference its number) and writes back what it found, which is a document change, which
+is another pass: a pass that lands what the last one did would set the round going again.
+Opening a 460-page document ran five rounds of that where four answer everything.
+
 **Layout constants** (must stay in sync between `pageBreaks.ts`, `Editor.svelte`, and `editor.css`):
 - `PAGE_HEIGHT = 1123px` (A4 portrait), `PAGE_GAP = 20px`, `CYCLE = PAGE_HEIGHT + PAGE_GAP = 1143px`.
 - Page height/width and margins are read **live** from CSS custom properties (`--user-page-height`, `--user-page-width`, `--user-margin-*`) so orientation/margin changes don't require new constants. `getCycle()` in `Editor.svelte` reads `--user-page-height` at runtime.

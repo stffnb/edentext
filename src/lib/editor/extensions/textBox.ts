@@ -440,6 +440,32 @@ export const TextBox = Node.create({
   },
 });
 
+type Size = { w: number; h: number };
+
+const rotorSize = (el: HTMLElement): Size => ({ w: el.offsetWidth, h: el.offsetHeight });
+
+// One observer for every frame in the document: a per-view one is delivered in a
+// callback of its own, so the browser lays the document out again between any two
+// frames — 1.4 s on a document holding 450 of them.
+const fitted = new WeakMap<Element, TextBoxView>();
+let fitObserver: ResizeObserver | null = null;
+
+function observeFit(rotor: HTMLElement, view: TextBoxView): void {
+  fitted.set(rotor, view);
+  // A round's reads before its writes: the size is offsetWidth's, which snaps to the
+  // pixel grid the frame sits on and so is the rotor's own, not the observation's.
+  fitObserver ??= new ResizeObserver((entries) => {
+    const jobs = entries.map((e) => [fitted.get(e.target), rotorSize(e.target as HTMLElement)] as const);
+    for (const [view, size] of jobs) view?.refit(size);
+  });
+  fitObserver.observe(rotor);
+}
+
+function unobserveFit(rotor: HTMLElement): void {
+  fitObserver?.unobserve(rotor);
+  fitted.delete(rotor);
+}
+
 // Node view: like ImageView, an axis-aligned wrapper reserves the rotated bounding box and
 // a centered rotor carries fill/stroke/rotation plus the handles — but the rotor holds an
 // editable contentDOM and auto-grows, so a ResizeObserver re-fits the wrapper.
@@ -451,7 +477,6 @@ class TextBoxView {
   private node: PMNode;
   private editor: Editor;
   private getPos: () => number;
-  private observer: ResizeObserver | null = null;
   private resizing = false;
   // The polygon outline, for a shape CSS cannot draw; null for the three it can.
   private outline: SVGPathElement | null = null;
@@ -502,13 +527,7 @@ class TextBoxView {
     // The rotor is out of flow and grows with its content; refit the wrapper to the
     // rotated bounding box whenever the rendered size changes (typing, resizing), and
     // re-fit an ellipse's text area to its now-current height.
-    this.observer = new ResizeObserver(() => {
-      this.applyShapeInset();
-      this.fitWrapper();
-      // A right float's margin is computed from the wrapper width just set.
-      this.applyWrap();
-    });
-    this.observer.observe(this.rotor);
+    observeFit(this.rotor, this);
 
     this.applyAll();
   }
@@ -606,7 +625,7 @@ class TextBoxView {
   // a polygon's `textArea` — so text stays inside the outline. The vertical inset feeds
   // back into the auto-grown height, so rewrite it only past a threshold; the
   // ResizeObserver then settles (every ratio below 0.5 converges).
-  private applyShapeInset(): void {
+  private applyShapeInset(size?: Size): void {
     const kind = this.attrs().shapeKind;
     const area = SHAPES[kind]?.textArea;
     if (kind !== 'ellipse' && !area) {
@@ -614,8 +633,7 @@ class TextBoxView {
       this.lastInset = '';
       return;
     }
-    const w = this.rotor.offsetWidth;
-    const h = this.rotor.offsetHeight;
+    const { w, h } = size ?? rotorSize(this.rotor);
     if (!w || !h) return;
     const [l, t, r, b] = area
       ? [area[0] / 100, area[1] / 100, 1 - area[2] / 100, 1 - area[3] / 100]
@@ -644,9 +662,8 @@ class TextBoxView {
 
   // Size the wrapper to the rotor's rotated bounding box so surrounding text
   // reserves the right space (same math as ImageView.applyLayout).
-  private fitWrapper(): void {
-    const w = this.rotor.offsetWidth;
-    const h = this.rotor.offsetHeight;
+  private fitWrapper(size?: Size): void {
+    const { w, h } = size ?? rotorSize(this.rotor);
     if (!w || !h) return;
     const rad = (this.attrs().rotation * Math.PI) / 180;
     const bw = Math.abs(w * Math.cos(rad)) + Math.abs(h * Math.sin(rad));
@@ -883,9 +900,12 @@ class TextBoxView {
 
   update(node: PMNode): boolean {
     if (node.type !== this.node.type) return false;
+    // Everything applyAll writes comes from the attrs; text typed inside the box carries
+    // the same attrs object, and the observer refits what that grows.
+    const drawn = node.attrs === this.node.attrs;
     this.node = node;
     // Never touch contentDOM children — ProseMirror owns them.
-    if (!this.resizing) this.applyAll();
+    if (!this.resizing && !drawn) this.applyAll();
     return true;
   }
 
@@ -918,9 +938,17 @@ class TextBoxView {
     return this.isFrameHit(event as MouseEvent) || !this.editing(this.editor.state);
   }
 
+  // What the shared observer reports, so nothing here reads the rotor back: one
+  // frame's write between two reads is a forced layout per frame in the document.
+  refit(size: Size): void {
+    this.applyShapeInset(size);
+    this.fitWrapper(size);
+    // A right float's margin is computed from the wrapper width just set.
+    this.applyWrap();
+  }
+
   destroy(): void {
-    this.observer?.disconnect();
-    this.observer = null;
+    unobserveFit(this.rotor);
   }
 }
 

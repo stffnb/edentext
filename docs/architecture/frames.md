@@ -23,6 +23,19 @@ paste into another window keeps the box where it stood in the line, while a prog
 cannot read the attribute still gets the span's plain text. An **AutoText** entry stores
 the slice's nodes for the same reason (`storage/autoText.ts`).
 
+## What a frame costs a big document
+
+Every frame is refitted by **one** `ResizeObserver` for the whole document, and a round's
+reads run before its writes: a per-view observer is delivered in a callback of its own, so
+the wrapper written for one frame makes the browser lay the document out again before the
+next one's `offsetWidth` is read — 1.4 s of forced layout on a document holding 450 frames,
+and the ProseMirror DOM observer flushes (each reading the selection, each another layout)
+once per callback on top. The size is read from the rotor, not taken from the observation:
+`offsetWidth` snaps to the pixel grid the frame sits on, and the fractional border box moves
+blocks below it by a pixel. Both node views also leave the DOM alone when `update()` brings
+the same `attrs` object — everything they write is drawn from the attrs, and text typed
+inside a box keeps them, so there is nothing to redraw.
+
 ## Clicking a float
 
 A block after a float keeps its own box **over** the float — only its line boxes move out

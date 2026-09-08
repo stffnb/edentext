@@ -223,8 +223,8 @@ try {
   check(longPages > 100 && keyMedian < 100 && keyMax < 250,
     `typing at the top of a ${longPages}-page document: ${keyMedian} ms per keystroke (max ${keyMax}), ${Math.round(pass)} ms pass after a split`);
   // A letter typed and taken back leaves every block as tall as it was, so no pass runs
-  // (every pass ends in a pm-pagecount event), and the pause costs no more than a key: the
-  // spell checker re-reads the edited paragraph, not the document.
+  // (a pass that moves something ends in a pm-pagecount event), and the pause costs no more
+  // than a key: the spell checker re-reads the edited paragraph, not the document.
   await page.evaluate(() => {
     window.__passes = 0;
     document.querySelector('.tiptap').addEventListener('pm-pagecount', () => { window.__passes++; });
@@ -237,6 +237,18 @@ try {
   const passes = await page.evaluate(() => window.__passes);
   check(passes === 0 && idle < 100,
     `a letter typed and taken back runs no pass and its pause is free (${passes} passes, ${Math.round(idle)} ms blocked at most)`);
+
+  // A pass that lands the layout the last one did announces nothing: every reader of the
+  // event re-reads the whole document from it — the index its page numbers, the header
+  // band its geometry — and a redundant round would set them all going again.
+  await page.evaluate(() => {
+    window.__passes = 0;
+    const editor = document.querySelector('.tiptap').editor;
+    editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false).setMeta('forcePageBreakRecalc', true));
+  });
+  for (const until = Date.now() + 1500; Date.now() < until;) await blocked();
+  const quiet = await page.evaluate(() => window.__passes);
+  check(quiet === 0, `a recalc that finds the same layout announces no page count (${quiet} events)`);
 
   // The block after a band-wrapped frame clears it; one after a page-anchored frame does
   // not. Keyed on an attribute image.ts writes (a `:has()` restyles the whole document).

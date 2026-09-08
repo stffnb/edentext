@@ -730,7 +730,11 @@ class ImageView {
 
   update(node: PMNode): boolean {
     if (node.type !== this.node.type) return false;
+    // The picture is drawn from the attrs alone: an unchanged attrs object is the
+    // picture already on the page, and rewriting it costs a layout per picture.
+    const drawn = node.attrs === this.node.attrs;
     this.node = node;
+    if (drawn) return true;
     const src = (node.attrs.src as string) ?? '';
     if (this.img.getAttribute('src') !== src) this.img.src = src;
     this.img.alt = (node.attrs.alt as string) ?? '';

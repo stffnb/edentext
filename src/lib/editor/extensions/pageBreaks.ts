@@ -430,6 +430,7 @@ export const PageBreaks = Extension.create({
     // below a float's overhang moves further than the model's spacer), so seeing the older
     // key return means a ping-pong. null, not '' — that is a spacer-free layout's own key.
     let prevPlacementsKey: string | null = null;
+    let lastAnnounced = '';
     // Each pass measures against the spacers left by the previous pass, so a changed
     // result needs one more pass to re-measure and settle (see calculate). Bounded so
     // a hypothetical two-layout ping-pong can't loop forever; reset per external change.
@@ -1899,10 +1900,18 @@ export const PageBreaks = Extension.create({
           }));
 
           // docHeight (document px) lets Editor.svelte size the scaled scroll footprint.
-          dom.dispatchEvent(new CustomEvent('pm-pagecount', {
-            bubbles: true,
-            detail: { numPages, docHeight: targetHeight, tableBreakBands, sectionStartPages },
-          }));
+          // Announced only where the layout differs from the last one: every reader
+          // re-reads the whole document from it and writes back what it found, so a pass
+          // that lands what the last one did would set the round going again.
+          const announced = `${numPages}:${targetHeight}:${sectionStartPages.join()}:${placementsKey}:`
+            + tableBreakBands.map((b) => `${b.key}@${Math.round(b.closeY)}`).join();
+          if (announced !== lastAnnounced) {
+            lastAnnounced = announced;
+            dom.dispatchEvent(new CustomEvent('pm-pagecount', {
+              bubbles: true,
+              detail: { numPages, docHeight: targetHeight, tableBreakBands, sectionStartPages },
+            }));
+          }
 
           lastSnapshot = {
             timestamp: new Date().toISOString(),
