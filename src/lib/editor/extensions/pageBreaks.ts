@@ -315,6 +315,13 @@ export function isSplitPane(view: EditorView): boolean {
 // foot of the gap, which is the top of the continuation.
 type RowSpacer = { columns: number; close: string; open: string; header: { html: string; height: number } | null };
 
+// What a spacer's DOM shows, as the widget key: without one a fresh toDOM is a fresh
+// widget, and an edit near the top moves — and so rebuilds — every spacer below it.
+function spacerKey(p: { height: number; row?: RowSpacer | null }): string {
+  if (!p.row) return `s${p.height}`;
+  return `r${p.height}|${p.row.columns}|${p.row.close}|${p.row.open}|${p.row.header?.html ?? ''}`;
+}
+
 type Leaf = {
   el: HTMLElement;
   kind: 'atomic' | 'splittable';
@@ -380,6 +387,11 @@ export const PageBreaks = Extension.create({
     let decorations = DecorationSet.empty;
     let isUpdating = false;
     let rafId: number | null = null;
+    // Keys can come faster than a long document paginates: an edit within EDIT_IDLE_MS of
+    // the last pass waits for a pause in the typing; the first after a pause runs at once.
+    const EDIT_IDLE_MS = 150;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastPassAt = 0;
     let lastPlacementsKey = '';
     // The layout before the current one: two layouts can each imply the other (a block
     // below a float's overhang moves further than the model's spacer), so seeing the older
@@ -398,6 +410,9 @@ export const PageBreaks = Extension.create({
       state: {
         init: () => ({ recalc: 0, edit: 0 }),
         apply(tr, value) {
+          // The spacers follow the text until the next pass: left unmapped, an edit above
+          // them puts every widget one position off and the view tears them all down.
+          if (tr.docChanged) decorations = decorations.map(tr.mapping, tr.doc);
           const recalc = value.recalc + (tr.getMeta(FORCE_PAGE_RECALC) ? 1 : 0);
           const edit = value.edit
             + (tr.docChanged && tr.getMeta('addToHistory') !== false ? 1 : 0);
@@ -1780,7 +1795,7 @@ export const PageBreaks = Extension.create({
               spacerEl.style.userSelect = 'none';
               spacerEl.setAttribute('contenteditable', 'false');
               return spacerEl;
-            }, { side: -1 }));
+            }, { side: -1, key: spacerKey(p) }));
             if (collapsedTrailing) {
               decoArray.push(Decoration.node(collapsedTrailing.from, collapsedTrailing.to, {
                 style: 'height:0;min-height:0;margin:0;overflow:hidden',
@@ -1857,6 +1872,7 @@ export const PageBreaks = Extension.create({
           };
 
           isUpdating = false;
+          lastPassAt = performance.now();
 
           // A per-page restart counts within the page each anchor landed on, which only
           // this pass knows (notes.ts). Renumbering can rewrap, so it takes a pass of its
@@ -1876,8 +1892,14 @@ export const PageBreaks = Extension.create({
         }
 
         function schedule() {
+          if (idleTimer !== null) { clearTimeout(idleTimer); idleTimer = null; }
           if (rafId !== null) cancelAnimationFrame(rafId);
           rafId = requestAnimationFrame(calculate);
+        }
+        function scheduleEdit() {
+          if (performance.now() - lastPassAt > EDIT_IDLE_MS) { schedule(); return; }
+          if (idleTimer !== null) clearTimeout(idleTimer);
+          idleTimer = setTimeout(schedule, EDIT_IDLE_MS);
         }
 
         // Initial calculation
@@ -1895,10 +1917,11 @@ export const PageBreaks = Extension.create({
               // pm-pagecount — answer the last pass, so forgetting the ping-pong
               // memory on them would leave the guard with nothing to catch.
               if (forced || isEditTr) prevPlacementsKey = null;
-              schedule();
+              if (isEditTr && !forced) scheduleEdit(); else schedule();
             }
           },
           destroy() {
+            if (idleTimer !== null) clearTimeout(idleTimer);
             if (rafId !== null) cancelAnimationFrame(rafId);
             debugAccessors.delete(editorView);
           },

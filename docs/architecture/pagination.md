@@ -110,6 +110,15 @@ width. Every **widget** decoration therefore builds its DOM in a `toDOM` functio
 passed directly can only live in one of the two documents, and each view keeps taking it
 back from the other.
 
+**A pass keeps its spacers, and typing gets a pause.** The decoration set is mapped through
+every transaction (`apply`) and each spacer widget carries a `key` naming what it draws, so
+a pass that lands the same spacers keeps their DOM. Unmapped, an edit above them left every
+widget one position off and the view rebuilt all of them — measured at the top of a
+124-page document: 1.5 s a keystroke, 144 ms with the mapping. An edit within
+`EDIT_IDLE_MS` of the last pass waits for a pause in the typing (the first after a pause
+runs at once); a forced recalc or a layout-only write never waits. The dom run
+(`tests/dom/run.mjs`) holds the budget.
+
 **Layout constants** (must stay in sync between `pageBreaks.ts`, `Editor.svelte`, and `editor.css`):
 - `PAGE_HEIGHT = 1123px` (A4 portrait), `PAGE_GAP = 20px`, `CYCLE = PAGE_HEIGHT + PAGE_GAP = 1143px`.
 - Page height/width and margins are read **live** from CSS custom properties (`--user-page-height`, `--user-page-width`, `--user-margin-*`) so orientation/margin changes don't require new constants. `getCycle()` in `Editor.svelte` reads `--user-page-height` at runtime.

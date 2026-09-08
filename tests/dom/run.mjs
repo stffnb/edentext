@@ -4,7 +4,7 @@
 // uncaught page error.
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { ROOT, MOD, checker, previewServer, openApp } from '../browser.mjs';
+import { ROOT, MOD, checker, previewServer, openApp, settle } from '../browser.mjs';
 
 const PORT = +(process.env.DOM_PORT ?? 4185);
 const { check, failures } = checker();
@@ -181,6 +181,45 @@ try {
   }));
   check(hf.first === 'true' && !hf.running && hf.firstPage.includes('Titelseite') && /"header":1.8/.test(hf.dist),
     `the ribbon's header/footer switches reach the document (first page: ${hf.first}, running zone: ${hf.running}, distances: ${hf.dist})`);
+
+  // Typing latency in a long document. A keystroke at the top moves every page break
+  // below it, so this is where a whole-document pass costs the most: blocked main-thread
+  // time per keystroke in a burst, then the pass that follows the burst.
+  const LOREM = 'Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua'.split(' ');
+  const long = { type: 'doc', content: [] };
+  for (let i = 0; i < 1600; i++) {
+    let s = '';
+    for (let k = i; s.length < 300; k++) s += LOREM[k % LOREM.length] + ' ';
+    long.content.push({ type: 'paragraph', content: [{ type: 'text', text: s.trim() }] });
+  }
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), long);
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const longPages = await pageCount();
+  // How long the page holds the thread: a zero timeout resolves once it is free again.
+  const blocked = async () => {
+    const t = performance.now();
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 0)));
+    return performance.now() - t;
+  };
+  await caretTo(1);
+  const keys = [];
+  for (const ch of 'The quick brown fox jumps') {
+    const t = performance.now();
+    await page.keyboard.type(ch);
+    await blocked();
+    keys.push(performance.now() - t);
+  }
+  let pass = 0;
+  for (const until = Date.now() + 4000; Date.now() < until;) pass = Math.max(pass, await blocked());
+  keys.sort((a, b) => a - b);
+  const keyMedian = Math.round(keys[keys.length >> 1]);
+  const keyMax = Math.round(keys[keys.length - 1]);
+  // The keystroke is the budget (a runner is slower than a laptop, so with room); the pass
+  // is what a whole-document layout costs, recorded for the day it goes incremental.
+  check(longPages > 100 && keyMedian < 300,
+    `typing at the top of a ${longPages}-page document: ${keyMedian} ms per keystroke (max ${keyMax}), ${Math.round(pass)} ms pass after the burst`);
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {
