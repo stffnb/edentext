@@ -1287,19 +1287,10 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         // adding/removing rows or columns).
         scheduleTableUi();
       },
-      onSelectionUpdate: ({ editor: e }) => {
-        // Use the editor instance passed by TipTap directly — avoids any Svelte
-        // prop-reactivity timing issues. TipTap always auto-scrolls the cursor
-        // into view before firing this, so no visibility check is needed here.
-        const view = paneView() ?? e.view;
-        const tiptap = view.dom as HTMLElement | null;
-        if (!tiptap) return;
-        try {
-          const coords = view.coordsAtPos(e.state.selection.head);
-          const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (appliedZoom / 100);
-          currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / getCycle()) + 1));
-          followCaret(currentPage);
-        } catch { /* ignore */ }
+      onSelectionUpdate: () => {
+        // TipTap auto-scrolls the cursor into view before firing this, so the page it
+        // lands on needs no visibility check of its own.
+        scheduleCaretPage();
       },
       onUpdate: ({ editor: e, transaction }) => {
         saveDocument(() => e.getJSON());
@@ -1389,6 +1380,27 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     // cells back in the same tick to find the page it just scrolled to.
     firstRow = row;
     el.scrollTop = gridOrigin(el) + row * firstCycle * (appliedZoom / 100);
+  }
+
+  // The page the caret sits on, read one task later: called straight from the selection
+  // it would lay the whole document out before anything is painted — half a second on a
+  // 460-page file, thrown away by the writes of the load that follow it.
+  let caretPageTask: ReturnType<typeof setTimeout> | null = null;
+  function scheduleCaretPage(): void {
+    if (caretPageTask !== null) return;
+    caretPageTask = setTimeout(() => {
+      caretPageTask = null;
+      if (!editor || editor.isDestroyed) return;
+      const view = paneView() ?? editor.view;
+      const tiptap = view.dom as HTMLElement | null;
+      if (!tiptap) return;
+      try {
+        const coords = view.coordsAtPos(view.state.selection.head);
+        const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (appliedZoom / 100);
+        currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / getCycle()) + 1));
+        followCaret(currentPage);
+      } catch { /* ignore */ }
+    }, 0);
   }
 
   // The caret is drawn by whichever view holds the focus, so it has to be the one

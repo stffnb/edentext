@@ -35,6 +35,8 @@ App.svelte                    – owns app-level state (theme, zoom, margins, or
  └─ footer statusbar          – "Page X of Y" + zoom controls (20–300%)
 ```
 
+`currentPage` is read one task after the selection changes (`scheduleCaretPage`): `coordsAtPos` straight from the handler lays the whole document out before anything is painted — half a second on a 460-page file, thrown away by the writes of the load that follow it.
+
 `Editor.svelte` exposes `editor`, `tick`, `currentPage`, and `numPages` as bindable props to `App.svelte`, and takes `zoom`, `showFormattingMarks`, `pageMargins`, and `orientation` as inputs. `tick` is incremented on every TipTap transaction; toolbar components use `$derived(tick >= 0 && ...)` to re-evaluate `isActive`/value checks reactively without subscribing to ProseMirror directly.
 
 ## The settle gate (`Editor.svelte`)
