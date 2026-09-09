@@ -2,7 +2,9 @@
 // print-time re-render drifts text (vector ≠ hinted metrics) and broke the band masks,
 // so we raster the on-screen render and overlay an invisible, positioned text layer.
 
+import { tick } from 'svelte';
 import { generateHTML } from '@tiptap/core';
+import { allPagesDrawn } from '../components/pageWindow.svelte';
 import { type Orientation } from '../storage/pageOrientation';
 import { DEFAULT_MARGINS, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
@@ -228,7 +230,11 @@ export async function renderPaperToCanvas(opts: PdfOptions, scale = 2): Promise<
   const { pageW, pageH } = pageDims(opts.pageFormat ?? 'A4', orientation);
   const cycle = pageH + PAGE_GAP;
 
+  // The header/footer layer draws a window of pages; the capture takes them all.
+  allPagesDrawn.on = true;
+  await tick();
   const { holder, clone, style } = buildClone(paper, pageW, opts.printMarkup !== false);
+  allPagesDrawn.on = false;
   document.head.appendChild(style);
   document.body.appendChild(holder);
   const cleanup = () => { holder.remove(); style.remove(); };

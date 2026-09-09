@@ -11,6 +11,7 @@
   import { formatOrdinal } from '../utils/orderedListTypes';
   import { chapterOn, type ChapterStart } from '../utils/chapterField';
   import { t } from '../i18n/i18n.svelte';
+  import { allPagesDrawn } from './pageWindow.svelte';
 
   let {
     headerDoc = $bindable(),
@@ -110,7 +111,18 @@
       : { header: headerDistPx, footer: footerDistPx };
   }
 
-  let pages = $derived(Array.from({ length: Math.max(1, numPages) }, (_, i) => i + 1));
+  // Only the pages around the one being read carry their zones: a long document's layer
+  // is a thousand absolutely-placed boxes otherwise, laid out again on every pass. The
+  // window shifts a step at a time, so a scroll does not rebuild it on every tick.
+  const WINDOW_STEP = 25;
+  const WINDOW_PAGES = 75;
+  let pages = $derived.by(() => {
+    const total = Math.max(1, numPages);
+    if (allPagesDrawn.on || total <= WINDOW_PAGES) return Array.from({ length: total }, (_, i) => i + 1);
+    const step = Math.floor((currentPage - 1) / WINDOW_STEP) * WINDOW_STEP - WINDOW_STEP + 1;
+    const start = Math.max(1, Math.min(total - WINDOW_PAGES + 1, step));
+    return Array.from({ length: WINDOW_PAGES }, (_, i) => start + i);
+  });
 
   function zoneBox(zone: HfZone, page: number) {
     // Mirrored margins: an even page is the left-hand one, so the pair is swapped.
