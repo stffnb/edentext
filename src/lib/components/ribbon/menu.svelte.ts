@@ -77,7 +77,7 @@ export function pinPanels(node: HTMLElement) {
 
   // Only what a picker just mounted, so a permanently absolute element in the
   // band (the hidden file input) is never mistaken for a panel.
-  const observer = new MutationObserver((records) => {
+  function classify(records: MutationRecord[]) {
     for (const record of records) {
       for (const added of record.addedNodes) {
         if (!(added instanceof HTMLElement)) continue;
@@ -86,13 +86,27 @@ export function pinPanels(node: HTMLElement) {
         return place();
       }
     }
+  }
+
+  // Reading a position computes the style of the whole document, and the band rebuilds
+  // its galleries whenever one is opened — 300 ms there, for 40 buttons and no panel.
+  // A panel mounts from a click in the band; the rest waits for the style to be there.
+  let acted = -Infinity;
+  const act = () => { acted = performance.now(); };
+  const observer = new MutationObserver((records) => {
+    if (performance.now() - acted < 1000) classify(records);
+    else setTimeout(() => classify(records), 0);
   });
   observer.observe(node, { childList: true, subtree: true });
+  node.addEventListener('pointerdown', act, true);
+  node.addEventListener('keydown', act, true);
   window.addEventListener('resize', place);
   window.addEventListener('scroll', place, true);
   return {
     destroy() {
       observer.disconnect();
+      node.removeEventListener('pointerdown', act, true);
+      node.removeEventListener('keydown', act, true);
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     },

@@ -85,7 +85,10 @@ at every height. A flex row cannot reserve width in part of its height, so it mo
   measures and lands its own height too low.
 - **A reused picker anchors its panel itself**, and no prop says when it opened. `pinPanels`,
   one action on the band, watches for a mounted absolutely-positioned node and pins that; the
-  ColorPicker places its own and only needs the band-aware top.
+  ColorPicker places its own and only needs the band-aware top. Reading that position computes
+  the style of the whole document, and the band rebuilds its galleries whenever a document is
+  opened — 300 ms there, for 40 buttons and no panel — so records are classified at once only
+  within a second of a click or key in the band, and a task later otherwise.
 - **Insert caption sits in three tabs**: References, where both products keep it, plus the
   picture/shape and Table Layout contextual tabs, which are open anyway when you caption
   something. Each mounts its own `CaptionDialog`; it reads the caret for its category, so the
