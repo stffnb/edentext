@@ -3,7 +3,7 @@ import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import { bookmarks, findBookmark, type BookmarkRef } from './bookmark';
-import { readVerticalMargins, pageOfElement, scheduleFieldRound, type FieldWrite, type PageGrid } from './pageBreaks';
+import { pageOfElement, scheduleFieldRound, type FieldWrite, type PageGrid, type VMargins } from './pageBreaks';
 
 // A cross-reference: an inline atom showing either the text of a bookmark or the page it
 // sits on, kept live by the node view the way the TOC keeps its page numbers. Round-trips
@@ -119,10 +119,10 @@ class CrossRefBatch {
 
   schedule(): void {
     if (this.editor.isDestroyed) return;
-    scheduleFieldRound(this.editor.view, this, () => this.measure());
+    scheduleFieldRound(this.editor.view, this, (vm) => this.measure(vm));
   }
 
-  private measure(): FieldWrite | void {
+  private measure(vm: VMargins): FieldWrite | void {
     const { editor } = this;
     if (editor.isDestroyed) return;
     const view = editor.view;
@@ -132,8 +132,7 @@ class CrossRefBatch {
     }
     const targets = new Map<string, BookmarkRef>();
     for (const b of bookmarks(editor.state.doc)) if (!targets.has(b.name)) targets.set(b.name, b);
-    let grid: PageGrid | null = null;
-    const gridOf = () => (grid ??= readVerticalMargins(view.dom as HTMLElement).grid);
+    const gridOf = () => vm.grid;
     const jobs: { ref: CrossRefView; node: PMNode; pos: number; text: string }[] = [];
     for (const ref of this.views) {
       const pos = ref.pos();

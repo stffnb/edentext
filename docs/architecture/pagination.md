@@ -149,7 +149,8 @@ Opening a 460-page document ran five rounds of that where four answer everything
 **The fields of one answer read together.** Every field that resolves against the settled
 layout — each index's page numbers, every cross-reference — registers with
 `scheduleFieldRound(view, owner, read)` (`pageBreaks.ts`) instead of scheduling a frame of
-its own. The round runs every reader's measurement first and only then their writes, since
+its own. The round reads the page grid once and hands it to every reader — they all resolve
+against the same one — and runs every reader's measurement first and only then their writes, since
 a write between two measurements makes the browser lay the whole document out again; a
 write may return one more phase (the index reads back where its rows now fall), run after
 every other write. Their cached results — the index `entries`, a reference's `text` — ride

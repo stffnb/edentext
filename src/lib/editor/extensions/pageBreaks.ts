@@ -333,7 +333,7 @@ export const FORCE_PAGE_RECALC = 'forcePageBreakRecalc';
 // It measures, and what it returns writes: its own DOM, and its cached result on the
 // round's transaction. A write may return one more phase, run after every other write.
 export type FieldWrite = (tr: Transaction) => FieldWrite | void;
-export type FieldRead = () => FieldWrite | void;
+export type FieldRead = (vm: VMargins) => FieldWrite | void;
 
 type FieldRound = { jobs: Map<object, FieldRead>; raf: number | null };
 const fieldRounds = new WeakMap<EditorView, FieldRound>();
@@ -352,7 +352,10 @@ function runFieldRound(view: EditorView): void {
   const round = fieldRounds.get(view);
   if (!round) return;
   round.raf = null;
-  let phase = Array.from(round.jobs.values(), (read) => read());
+  // One reading of the page grid for the round: getComputedStyle is a style pass over
+  // the whole document, and every field resolves its pages against the same grid.
+  const vm = readVerticalMargins(view.dom as HTMLElement);
+  let phase = Array.from(round.jobs.values(), (read) => read(vm));
   round.jobs.clear();
   const tr = view.state.tr.setMeta('addToHistory', false);
   // Bounded: measure, write, and the one read-back a write can ask for.

@@ -10,7 +10,7 @@ import { indexEntries, indexRows } from './indexEntry';
 import { bibliographyEntries, bibliographyRows } from './bibliographyEntry';
 import { isCitationStyle, type CitationStyle } from '../../utils/citationStyle';
 import type { Transaction } from '@tiptap/pm/state';
-import { readVerticalMargins, pageOfElement, topInEditor, scheduleFieldRound, FORCE_PAGE_RECALC, type FieldWrite, type PageGrid } from './pageBreaks';
+import { pageOfElement, topInEditor, scheduleFieldRound, FORCE_PAGE_RECALC, type FieldWrite, type PageGrid, type VMargins } from './pageBreaks';
 
 // A generated index: a block atom listing every source with its live page number — the
 // headings for a table of contents, the captions of one category for a list of figures
@@ -232,7 +232,7 @@ class TocView {
 
   private schedule(): void {
     if (this.editor.isDestroyed) return;
-    scheduleFieldRound(this.editor.view, this, () => this.measure());
+    scheduleFieldRound(this.editor.view, this, (vm) => this.measure(vm));
   }
 
   // What the index lists, in document order: the headings down to its own level, or —
@@ -295,19 +295,15 @@ class TocView {
     return out;
   }
 
-  private grid(): PageGrid {
-    return readVerticalMargins(this.editor.view.dom as HTMLElement).grid;
-  }
-
   private pageOf(pos: number, grid: PageGrid): number {
     const el = this.editor.view.nodeDOM(pos) as HTMLElement | null;
     if (!el || el.nodeType !== 1) return 1;
     return pageOfElement(this.editor.view, el, grid);
   }
 
-  private measure(): FieldWrite | void {
+  private measure(vm: VMargins): FieldWrite | void {
     if (this.editor.isDestroyed || !this.dom.isConnected) return;
-    const grid = this.grid();
+    const grid = vm.grid;
     let heads = this.sources();
     let entries: TocEntry[];
     if (indexKindOf(this.node()?.attrs?.index) === 'alphabetical') {
@@ -335,18 +331,17 @@ class TocView {
       }
       // The rows carry their page numbers now, so where they fall is read once every
       // field of the round has written.
-      return (last) => this.paginate(last);
+      return (last) => this.paginate(last, vm);
     };
   }
 
   // The index is a block atom: it has no inner document positions for pagination to put
   // a spacer at, so one longer than a page breaks itself — the row that would cross the
   // boundary takes the gap to the next page's content top as its margin.
-  private paginate(tr: Transaction): void {
+  private paginate(tr: Transaction, vm: VMargins): void {
     const rows = Array.from(this.dom.querySelectorAll<HTMLElement>('.toc-entry'));
     if (!rows.length) return;
     const view = this.editor.view;
-    const vm = readVerticalMargins(view.dom as HTMLElement);
     for (const row of rows) row.style.marginTop = '';
     // Read every natural top and height first: applying a gap moves each row below it,
     // and one reflow for the whole index beats one per row.
