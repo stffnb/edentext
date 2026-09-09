@@ -22,7 +22,6 @@ const { spellErrorAt } = await import('../../src/lib/editor/extensions/spellChec
 const para = (text: string) => ({ type: 'paragraph', content: [{ type: 'text', text }] });
 
 async function makeEditor() {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   const el = document.createElement('div');
   document.body.appendChild(el);
   const editor = new Editor({
@@ -30,8 +29,12 @@ async function makeEditor() {
     extensions,
     content: { type: 'doc', content: [para('alpha xxone beta'), para('gamma xxtwo delta')] },
   });
-  await Promise.resolve();
-  vi.advanceTimersByTime(1); // the mount's whole-document check, which waits for idle time
+  // The mount's whole-document check waits for idle time and for the pagination to be
+  // over, so it runs on real timers before the test takes them over.
+  for (let i = 0; i < 50 && !spellErrorAt(editor.state, XXONE); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   checks.length = 0;
   return editor;
 }

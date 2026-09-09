@@ -111,6 +111,13 @@ export type TableBreakBand = {
 };
 
 const debugAccessors = new WeakMap<EditorView, () => PageBreakDebugSnapshot | null>();
+const paginating = new WeakMap<EditorView, () => boolean>();
+
+// True while a pass is running or one is queued: work that redraws the view waits for
+// a false, or it pays for the redraw of the pass behind it.
+export function isPaginating(view: EditorView): boolean {
+  return paginating.get(view)?.() ?? false;
+}
 
 export function getPageBreakDebug(view: EditorView): PageBreakDebugSnapshot | null {
   return debugAccessors.get(view)?.() ?? null;
@@ -504,6 +511,7 @@ export const PageBreaks = Extension.create({
         if (isSplitPane(editorView)) return {};
         let lastSnapshot: PageBreakDebugSnapshot | null = null;
 
+        paginating.set(editorView, () => isUpdating || rafId !== null || idleTimer !== null);
         debugAccessors.set(editorView, (): PageBreakDebugSnapshot | null => {
           const snap: PageBreakDebugSnapshot | null = lastSnapshot;
           if (snap === null) return null;
@@ -2047,6 +2055,7 @@ export const PageBreaks = Extension.create({
             if (idleTimer !== null) clearTimeout(idleTimer);
             if (rafId !== null) cancelAnimationFrame(rafId);
             debugAccessors.delete(editorView);
+            paginating.delete(editorView);
           },
         };
       },

@@ -4,6 +4,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { spellController } from '../../spell/controller';
+import { isPaginating } from './pageBreaks';
 
 type Range = { from: number; to: number };
 // dirty: what the edits since the last check touched, in the current document's positions.
@@ -156,13 +157,17 @@ export const SpellCheck = Extension.create({
           const whenIdle = typeof requestIdleCallback === 'function'
             ? (cb: () => void) => requestIdleCallback(cb, { timeout: 2000 })
             : (cb: () => void) => setTimeout(cb, 0);
+          // A pagination pass redraws the view, so a check landing next to one pays for
+          // that redraw too: it waits for the passes to stop instead.
           let allQueued = false;
           const recheckAll = () => {
             if (allQueued) return;
             allQueued = true;
             whenIdle(() => {
               allQueued = false;
-              if (!editorView.isDestroyed) recheck('all');
+              if (editorView.isDestroyed) return;
+              if (isPaginating(editorView)) recheckAll();
+              else recheck('all');
             });
           };
 
