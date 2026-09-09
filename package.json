@@ -1,6 +1,6 @@
 {
   "name": "edentext",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "A fully client-side, serverless rich-text editor that saves documents as .odt",
   "license": "AGPL-3.0-only",

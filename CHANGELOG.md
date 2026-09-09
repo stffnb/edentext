@@ -2,6 +2,43 @@
 
 <!-- Newest release first. New entries go here: ## [x.y.z] — YYYY-MM-DD -->
 
+## [0.3.0] — 2026-09-09
+
+The weight of this release is the latency of a long document: it opens and settles in a
+fraction of the time it took, and typing is no longer held up by the pagination behind it
+— the measurements are under Changed. Beside that, each browser tab edits its own
+document.
+
+### Added
+- Each browser tab edits its own document: a second tab opens an empty one instead of the
+  first tab's, each keeps its own across a reload, and a new tab takes up what a closed one held
+- Saving a document that has no file asks which format to write, `.odt` or `.docx`
+- Closing the tab warns where the document has never been saved to a file
+- The site counts anonymous visits (GoatCounter), and a sponsor button points at the
+  project's PayPal link
+
+### Changed
+- **Opening a file.** The archive is inflated once for the whole open instead of once per
+  pass and pictures are encoded by the browser (−480 ms on a 14 MB file holding 600 of
+  them); the fields of a pass — every index's page numbers, every cross-reference, every
+  zone's tab stops — measure together and write on one transaction; one ResizeObserver
+  refits every frame; a pass that finds the layout it announced last time stays quiet; the
+  ribbon looks for a mounted panel only where one can be; the header/footer layer draws a
+  window of pages around the one being read rather than a zone box on all 460; and the
+  whole-document spell check waits for idle time and for the pagination to stop
+- **Typing.** An edit's pass waits for 300 ms of quiet instead of running between keys, an
+  edit that leaves the content's bottom where it was skips the pass entirely, the spacers
+  are mapped and keyed so a pass that lands the same ones keeps their DOM, and the check
+  after a pause re-reads the edited paragraphs rather than the document. At the top of a
+  124-page file a keystroke costs 41 ms, down from 219 ms; the pause after it 11 ms in
+  Chromium and 17 ms in Firefox, down from 363 ms and 1.4 s
+- The caret's page is read after the frame rather than before it, and a `:has()` rule that
+  made Chromium restyle the whole body on every inserted child is gone
+
+### Fixed
+- A page-anchored frame no longer crashes the editor while a saved document loads
+- A bracket typed without `\left` keeps its glyph height
+
 ## [0.2.0] — 2026-09-06
 
 Everything since the 0.1.0 launch on GitHub Pages. The weight of the release is interoperability:
