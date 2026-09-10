@@ -1111,6 +1111,7 @@ const de: Messages = {
     hfFlattened: 'Listen/Tabellen in Kopf- oder Fußzeilen wurden in Text umgewandelt',
     textBoxFlattened: 'In Tabellenzellen oder anderen Textfeldern verschachtelte Textfelder wurden aufgelöst',
     nestedTables: 'Verschachtelte Tabellen wurden in Absätze umgewandelt',
+    floatingTable: 'Eine frei positionierte Tabelle steht jetzt im Textfluss — was ihr folgt, kann tiefer sitzen als in Word',
     comments: 'Kommentare wurden entfernt',
     missingFonts: (fonts) => `Diese Schriftarten sind nicht installiert und wurden durch Ersatzschriften dargestellt: ${fonts}`,
   },

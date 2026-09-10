@@ -115,6 +115,13 @@ a producer writing EMU there (360000 = 1cm in EMU, 635cm read as twips) would ot
 leave columns of no width. Under that width LibreOffice lays the declared gap out literally
 — probed to 10.16cm on a 15.24cm text — so only the unholdable value is dropped.
 
+**A floating table stays in the flow, with a warning.** Word's `w:tblpPr` takes a table
+out of it — a cover page's layout table is one, and what follows starts where the table
+does — which the editor's block table cannot do. So the blocks after it (and any frame
+anchored to them) sit as far down as the table is tall; LibreOffice models the same table
+as a text frame wrapping it, which is why its own layout of such a cover differs from
+ours.
+
 **A heading in a cell carries its own 0.** No style name reaches a cell, so the editor
 draws the level's 12pt/6pt margins (`styles/headings.ts`) there — where a Word heading
 whose style chain sets no spacing has none. The baked-in chain's silence is therefore
