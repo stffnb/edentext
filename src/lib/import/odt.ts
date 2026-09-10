@@ -17,7 +17,7 @@ import {
 } from '../styles/tableStyles';
 import { orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
-import { matchFormat, toDateValue, type Token } from '../utils/dateTime';
+import { docxPicture, matchFormat, toDateValue, type Token } from '../utils/dateTime';
 import {
   shapeFromOdfType, lineKindFor, parseSvgPath, parseOdfPoints, fitPath, type ShapeKind,
 } from '../utils/shapes';
@@ -2088,7 +2088,9 @@ function convertDateTimeField(e: Element, ctx: Ctx): Node | null {
   // Kind follows the number style's actual tokens, not the element name: OpenOffice
   // can wrap a date field in <text:time> yet reference a date-style, and vice versa.
   const kind = numberStyleKind(tokens) ?? (e.localName === 'time' ? 'time' : 'date');
-  const format = matchFormat(tokens, kind);
+  // A style the catalog does not list rides its own DOCX picture as the key, which
+  // renders and re-exports the same (dateTime.ts findFormat).
+  const format = matchFormat(tokens, kind) ?? (tokens.length ? docxPicture({ key: '', kind, tokens }) : null);
   if (!format) return null;
   const fixed = e.getAttributeNS(NS.text, 'fixed') === 'true';
   const raw = e.getAttributeNS(NS.text, 'date-value') ?? e.getAttributeNS(NS.text, 'time-value');
