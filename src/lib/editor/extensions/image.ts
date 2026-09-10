@@ -314,9 +314,60 @@ export const Image = Node.create({
   // The drop cursor paints a caret where a dragged-in image *file* lands; moving an
   // existing image uses the node view's live re-anchor drag, not PM's native node move.
   addProseMirrorPlugins() {
-    return [dropCursor({ color: '#3b82f6', width: 2 }), imageLinePlugin()];
+    return [dropCursor({ color: '#3b82f6', width: 2 }), imageLinePlugin(), behindTextPlugin()];
   },
 });
+
+// A frame behind the text paints under the page and the paragraphs over it, so the
+// browser hit-tests those first and a click never reaches it — where both word
+// processors let one be picked. The event goes to the frame's own node view, which
+// selects and drags it as a click on any other frame does; text over it still wins,
+// as the caret does there.
+function behindTextPlugin(): Plugin {
+  return new Plugin({
+    props: {
+      handleDOMEvents: {
+        mousedown(view, event) {
+          const at = event.target;
+          if (!view.editable || (at instanceof HTMLElement && at.closest('[data-wrap="through"]'))) return false;
+          const frame = frameBehindPoint(view, event.clientX, event.clientY);
+          if (!frame) return false;
+          event.preventDefault();
+          (frame.querySelector('img') ?? frame).dispatchEvent(new MouseEvent('mousedown', {
+            clientX: event.clientX, clientY: event.clientY, button: 0, cancelable: true,
+          }));
+          return true;
+        },
+      },
+    },
+  });
+}
+
+// The topmost behind-text frame under the point, or null where text painted over it
+// covers the point — the elements above it are walked in paint order.
+function frameBehindPoint(view: EditorView, x: number, y: number): HTMLElement | null {
+  const doc = view.dom.ownerDocument;
+  for (const el of doc.elementsFromPoint(x, y)) {
+    if (!(el instanceof HTMLElement)) continue;
+    if (el.dataset.wrap === 'through' && view.dom.contains(el)) return el;
+    if (textUnder(el, x, y)) return null;
+  }
+  return null;
+}
+
+// Whether one of the element's own text runs covers the point: a hit on its box alone
+// is the empty part of a line or a paragraph, which the frame under it may take.
+function textUnder(el: HTMLElement, x: number, y: number): boolean {
+  const range = el.ownerDocument.createRange();
+  for (const node of Array.from(el.childNodes)) {
+    if (node.nodeType !== 3 || !node.nodeValue?.trim()) continue;
+    range.selectNodeContents(node);
+    for (const r of Array.from(range.getClientRects())) {
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true;
+    }
+  }
+  return false;
+}
 
 // A line carrying nothing but an as-character image is as tall as the image or the
 // block's line height, whichever is more — no text descent hangs below it (probed
