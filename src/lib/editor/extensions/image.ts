@@ -329,7 +329,10 @@ function behindTextPlugin(): Plugin {
       handleDOMEvents: {
         mousedown(view, event) {
           const at = event.target;
-          if (!view.editable || (at instanceof HTMLElement && at.closest('[data-wrap="through"]'))) return false;
+          // The primary button only: a right-click keeps whatever the browser's own
+          // context-menu handling does with the point.
+          if (!view.editable || event.button !== 0) return false;
+          if (at instanceof HTMLElement && at.closest('[data-wrap="through"]')) return false;
           const frame = frameBehindPoint(view, event.clientX, event.clientY);
           if (!frame) return false;
           event.preventDefault();
