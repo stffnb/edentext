@@ -584,9 +584,14 @@ class TextBoxView {
       this.rotor.insertBefore(this.lineSvg, this.rotor.firstChild);
     }
     const color = a.strokeColor ?? '#000000';
-    this.lineSvg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    // A frame of no height (the divider line both word processors write) would give the
+    // SVG a zero-high viewport, and that turns rendering off entirely — the stroke needs
+    // one of its own, which it then overflows by half as it does in any flat frame.
+    const vh = Math.max(h, stroke);
+    this.lineSvg.setAttribute('viewBox', `0 0 ${w} ${vh}`);
     this.lineSvg.setAttribute('width', `${w}`);
-    this.lineSvg.setAttribute('height', `${h}`);
+    this.lineSvg.setAttribute('height', `${vh}`);
+    this.lineSvg.style.height = `${vh}px`;
     this.lineSvg.innerHTML =
       `<path d="${paths.line}" fill="none" stroke="${color}" stroke-width="${stroke}"/>` +
       paths.heads.map((d) => `<path d="${d}" fill="${color}"/>`).join('');
