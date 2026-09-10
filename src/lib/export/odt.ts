@@ -1001,9 +1001,12 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
   const pxToCm = (px: number) => round3((px * 2.54) / 96);
   const a = node.attrs ?? {};
   const wrapAttr = a.wrap;
+  // A line has no box: a frame of no height is the horizontal divider both word
+  // processors write, and standing in the default for it draws a diagonal instead.
+  const line = isShapeKind(a.shapeKind) && isLineKind(a.shapeKind);
   return {
     widthCm: pxToCm(typeof a.width === 'number' && a.width > 0 ? a.width : 280),
-    heightCm: pxToCm(typeof a.height === 'number' && a.height > 0 ? a.height : 96),
+    heightCm: pxToCm(typeof a.height === 'number' && a.height > 0 ? a.height : line ? 0 : 96),
     rotationDeg: typeof a.rotation === 'number' ? a.rotation : 0,
     wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' || wrapAttr === 'through' ? wrapAttr : 'inline',
     wrapOffsetCm: typeof a.wrapOffset === 'number' ? round3(a.wrapOffset) : null,
