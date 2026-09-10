@@ -17,7 +17,7 @@ import type {
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { isSvgDataUrl, svgToPngDataUrl } from '../import/imageFormats';
 import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
-import { SHAPES, isShapeKind, drawingMlPath, type ShapeKind } from '../utils/shapes';
+import { SHAPES, isShapeKind, isLineKind, drawingMlPath, type ShapeKind } from '../utils/shapes';
 import { cellFormatCode, isCellFormat } from '../utils/cellFormat';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -976,9 +976,12 @@ type TextBoxDocx = {
 function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
   const a = node.attrs ?? {};
   const wrapAttr = a.wrap;
+  // A line has no box (see odt.ts): standing in the default height for a divider of
+  // none draws it across the frame's diagonal.
+  const line = isShapeKind(a.shapeKind) && isLineKind(a.shapeKind);
   return {
     widthPx: typeof a.width === 'number' && a.width > 0 ? Math.round(a.width) : 280,
-    heightPx: typeof a.height === 'number' && a.height > 0 ? Math.round(a.height) : 96,
+    heightPx: typeof a.height === 'number' && a.height > 0 ? Math.round(a.height) : line ? 0 : 96,
     rotationDeg: typeof a.rotation === 'number' ? a.rotation : 0,
     wrap: wrapAttr === 'left' || wrapAttr === 'right' || wrapAttr === 'topBottom' || wrapAttr === 'through' ? wrapAttr : 'inline',
     offsetCm: typeof a.wrapOffset === 'number' ? a.wrapOffset : null,
