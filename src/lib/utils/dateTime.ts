@@ -57,8 +57,57 @@ export const TIME_FORMATS: DtFormat[] = [
 
 const BY_KEY = new Map<string, DtFormat>([...DATE_FORMATS, ...TIME_FORMATS].map(f => [f.key, f]));
 
+// A format the catalog does not list is stored (and round-tripped) as its own DOCX
+// picture — the one notation all three consumers are derived from, so a file's
+// "MMMM d" stays a live field instead of freezing into text.
 export function findFormat(key: string): DtFormat | null {
-  return BY_KEY.get(key) ?? null;
+  const known = BY_KEY.get(key);
+  if (known) return known;
+  const tokens = parsePicture(key);
+  return tokens ? { key, kind: pictureKind(tokens), tokens } : null;
+}
+
+const PICTURE_TOKENS: Record<string, Token> = {
+  yyyy: { t: 'year', long: true }, yy: { t: 'year', long: false },
+  MMMM: { t: 'month', style: 'longText' }, MMM: { t: 'month', style: 'shortText' },
+  MM: { t: 'month', style: 'num2' }, M: { t: 'month', style: 'num' },
+  dddd: { t: 'weekday', long: true }, ddd: { t: 'weekday', long: false },
+  dd: { t: 'day', pad: true }, d: { t: 'day', pad: false },
+  HH: { t: 'hour24', pad: true }, H: { t: 'hour24', pad: false },
+  hh: { t: 'hour12', pad: true }, h: { t: 'hour12', pad: false },
+  mm: { t: 'minute' }, m: { t: 'minute' }, ss: { t: 'second' }, s: { t: 'second' },
+  'AM/PM': { t: 'ampm' }, 'am/pm': { t: 'ampm' }, 'A/P': { t: 'ampm' },
+};
+
+const PICTURE_RE = /yyyy|yy|MMMM|MMM|MM|M|dddd|ddd|dd|d|HH|H|hh|h|mm|m|ss|s|AM\/PM|am\/pm|A\/P|'[^']*'/g;
+
+// A Word field picture ('dd.MM.yyyy', 'MMMM d') → tokens; null when it names no field
+// at all. Quoted runs are literals, as they are in the field itself.
+export function parsePicture(pic: string): Token[] | null {
+  const out: Token[] = [];
+  let lit = '';
+  let last = 0;
+  PICTURE_RE.lastIndex = 0;
+  for (let m = PICTURE_RE.exec(pic); m; m = PICTURE_RE.exec(pic)) {
+    lit += pic.slice(last, m.index);
+    last = m.index + m[0].length;
+    const tok = PICTURE_TOKENS[m[0]];
+    if (!tok) { lit += m[0].slice(1, -1); continue; }
+    if (lit) { out.push({ t: 'lit', s: lit }); lit = ''; }
+    out.push({ ...tok });
+  }
+  lit += pic.slice(last);
+  if (lit) out.push({ t: 'lit', s: lit });
+  return out.some((t) => t.t !== 'lit') ? out : null;
+}
+
+const TIME_TOKENS = ['hour24', 'hour12', 'minute', 'second', 'ampm'];
+
+// What a token list is: a clock without a calendar in it is a time, everything else
+// (a date, or a date carrying a time) a date — the element each format serializes to.
+export function pictureKind(tokens: Token[]): FieldKind {
+  return tokens.some((t) => TIME_TOKENS.includes(t.t)) && !tokens.some((t) => ['year', 'month', 'day', 'weekday'].includes(t.t))
+    ? 'time' : 'date';
 }
 
 export const DEFAULT_DATE_FORMAT = 'dmy_dots';
