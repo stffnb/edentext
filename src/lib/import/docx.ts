@@ -3375,10 +3375,13 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
   });
 
   const para: Node = { type: 'paragraph', content: inline };
-  const attrs: Record<string, string> = {};
+  const attrs: Record<string, string | number> = {};
   // The zone is one paragraph here, so its strut is the whole band's line height —
   // runs that agree on a size must set it, or a 10pt footer reserves 12pt lines.
   applyUniformRunFont(attrs, inline);
+  const linePt = parseFloat(String(attrs.fontSize ?? '')) || HF_LINE_PT;
+  const extraPt = hfRowExtraPt(hfParagraphs(root), linePt);
+  if (extraPt > 1) attrs.spaceBefore = Math.round(extraPt * 100) / 100;
   if (textAlign) attrs.textAlign = textAlign;
   if (stops) attrs.tabStops = stops;
   Object.assign(attrs, box);
@@ -3410,17 +3413,41 @@ function hfParagraphs(el: Element, ctx?: Ctx): Element[] {
   return out;
 }
 
+// The zone's own line height where no run says otherwise — the 12pt the zone renders at.
+const HF_LINE_PT = 12;
+
+// A zone table's rows are as tall as the file says (w:trHeight), and the zone collapses
+// to one paragraph: the height its lines do not fill rides the space above them, which
+// is what the band measures and what puts the rule a cell draws at the row's foot.
+function hfRowExtraPt(paras: Element[], linePt: number): number {
+  const lines = new Map<Element, number>();
+  for (const p of paras) {
+    const tr = ancestorNamed(p, 'tr');
+    if (tr) lines.set(tr, (lines.get(tr) ?? 0) + 1);
+  }
+  let extra = 0;
+  for (const [tr, n] of lines) {
+    const tw = intAttr(fc(fc(tr, 'trPr'), 'trHeight'), W, 'val');
+    if (tw) extra += Math.max(0, (tw / 20) - n * linePt * 1.15);
+  }
+  return extra;
+}
+
+function ancestorNamed(el: Element, localName: string): Element | null {
+  for (let e = el.parentElement; e; e = e.parentElement) {
+    if (e.namespaceURI === W && e.localName === localName) return e;
+  }
+  return null;
+}
+
 // The box a zone paragraph inherits from the table cell around it: the rule line a
 // header draws is a one-cell table's border in every Word template. The cell's own
 // w:tcBorders win over the table's, as they do in a body table.
 function hfCellBox(p: Element): Record<string, string> {
-  let tc: Element | null = null;
-  for (let e = p.parentElement; e; e = e.parentElement) {
-    if (e.namespaceURI === W && e.localName === 'tc') { tc = e; break; }
-  }
+  const tc = ancestorNamed(p, 'tc');
   if (!tc) return {};
   const tcPr = fc(tc, 'tcPr');
-  const layers = [fc(tcPr, 'tcBorders'), fc(fc(tblOf(tc), 'tblPr'), 'tblBorders')];
+  const layers = [fc(tcPr, 'tcBorders'), fc(fc(ancestorNamed(tc, 'tbl'), 'tblPr'), 'tblBorders')];
   const out: Record<string, string> = {};
   for (const [wSide, attr] of PARA_BORDER_SIDES) {
     let v: string | null | undefined;
@@ -3431,13 +3458,6 @@ function hfCellBox(p: Element): Record<string, string> {
   const fill = hexColor(fc(tcPr, 'shd')?.getAttributeNS(W, 'fill') ?? null);
   if (fill) out.backgroundColor = fill;
   return out;
-}
-
-function tblOf(el: Element): Element | null {
-  for (let e = el.parentElement; e; e = e.parentElement) {
-    if (e.namespaceURI === W && e.localName === 'tbl') return e;
-  }
-  return null;
 }
 
 // Collapse several source paragraphs' box props into one (mirror of odt.ts mergeHfBox).

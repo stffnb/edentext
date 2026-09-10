@@ -65,6 +65,15 @@ dropped — neither word processor honours one inside a table.
 ## Header/footer import
 
 - **Import:** `StyleResolver.masterPageHF()` reads `style:header`/`style:footer` + the header/footer-style heights; `pageGeometry()` reconstructs the body margin (page margin + zone height + spacing) and `edgeDistancesCm()` returns the raw page margins as the zone distances. `style:page-usage="mirrored"` — or `"left"`/`"right"`, which is one side of a book and mirrors just as surely — marks the left/right pair as **inner/outer**, so an even page swaps them (`margins.mirrored`, set only when true). `style:writing-mode` starting `rl` is a right-to-left page (`rtl`); DOCX reads the section's `w:bidi` for the same thing. The band LibreOffice lays out is **`max(declared height, zone content + the zone's own gap)`**, and the body starts at the page margin plus it — unless the gap is **dynamic** (`style:dynamic-spacing="true"`, which is what LibreOffice writes for a Word header), where it is absorbed rather than added and the band is `max(height, content)`. Probed at min-height 7.51mm, gap 6.51mm, 12pt lines: `false` → 11.37 / 21.11 / 35.71mm for 1 / 3 / 6 lines, `true` → 7.51 / 14.60 / 29.21. Probed on a 20mm top margin, 10pt zone: one line + `fo:margin-bottom` 0 → body at 24.07mm, the same with 5mm → 29.07, three lines → 37.21, one line under `fo:min-height="20mm"` → 40.00 (the floor wins, the gap is not added on top). A zone paragraph that *wraps* counts as the lines it renders, and its own `fo:padding` counts too. The **last** paragraph's `fo:margin-bottom` is no part of the band, in either zone — probed: a header of one 10pt line with a 12mm bottom margin puts the body at the 6mm min-height, and a footer's is dropped the same way, while a margin *between* two of the zone's paragraphs counts in full (two lines 12mm apart → a 20.16mm band). The collapsed paragraph therefore carries only the margins between the source paragraphs, so a zone's own trailing margin does not survive a re-save; nothing renders differently for it. Missing that put a page's body 10.3mm low on every page of one file. The importer folds only `max(height, gap)` into the page margin — the floor it can know without laying the zone out — and the gap plus the zone's and the paragraphs' `fo:padding` join the collapsed paragraph's spacing on the body-facing side (`convertHfZone`'s `bandCm`), so the runtime's **measured** band (`src/lib/components/CLAUDE.md`) sees them; `max(margin, dist + measured)` is then LibreOffice's `rawTop + max(height, content + gap)` exactly. Verified against a copy of one file's own header: LibreOffice puts the body at 33.71mm, the editor at 33.79. `convertHfZone` → single-paragraph doc (extra paragraphs → hard breaks; a text-less zone that carries a background/border rule line is kept, box props merged with the bottom rule from the last paragraph); `convertInline(…, hfFields=true)` keeps `text:page-number`/`-count` as field nodes. A master page whose `style:next-style-name` points at *another* master governs one page only (the "different first page" idiom): its own zones become the first-page variants and the successor's the running ones — read as the running header instead, a title-page master repeats on every page of its section and its height pushes each block onto its own page. A zone's positioned (non-`as-char`) frame keeps its wrap and its `svg:x`/`svg:y` from the page corner: it is out of flow (a letterhead or full-page title background), so `HeaderFooterLayer` paints it per page behind the body and the zone's reach ignores it — inline it would reserve a page-tall line of body space. A **text box** has no block node to live in, so its paragraphs become lines of the zone ahead of the one anchoring it (warned): Word's own converter flattens the same document the same way, and dropping it cost one letterhead 7.6mm of band on every page. `hfIsEmpty` counts a rule-/shading-only paragraph as non-empty so it renders and exports.
+A **table in a DOCX zone** goes the same way as a text box: its cells' paragraphs become
+the zone's lines (`hfParagraphs`), and since the one-cell table is what every Word
+template draws its rule line with, the cell's own borders and shading become the
+collapsed paragraph's box (`hfCellBox`, `w:tcBorders` over the table's `w:tblBorders`).
+Its rows' `w:trHeight` beyond the lines they hold rides that paragraph's **space above**
+(`hfRowExtraPt`), which is both what the measured band grows by and what puts the rule at
+the row's foot — a header zone draws its space above, where a footer's carries the ODF
+gap to the body and only measures it (`HeaderFooterLayer`). Read as no zone at all, a
+2.2cm header band left every page's body 8mm high.
 
 ## Defaults on DOCX import
 
@@ -111,6 +120,13 @@ numbering, so `DocxStyles.level()` resolves through the link (style → its `w:n
 `w:styleLink` abstract); unresolved it read as `{}` and every linked list silently imported
 as a bullet list. A linked numId's list gets `listStyleName` (the style's `w:name`), no
 per-level attrs, and its definition lands in `sheet.list` (`listStyleFromDocx`).
+
+**A shape's fill and stroke resolve the theme.** `<a:schemeClr>` is what a template's own
+colours are named by, so `themeColors` reads theme1.xml's scheme by slot — plus the
+`tx1`/`bg1`/`tx2`/`bg2` aliases Word's default mapping gives it — and `drawingColor`
+applies the `lumMod`/`lumOff`/`tint`/`shade` modifiers per channel (they are defined on
+luminance; channel-wise is within a shade of it and needs no colour space). Read as
+sRGB-only, a cover page came back with no blocks and no divider lines at all.
 
 Body text with no resolved font falls back to the *document's own theme minor font*
 (`docx.ts` `runMarks`), not the editor default — Word's implicit body default. Headings don't

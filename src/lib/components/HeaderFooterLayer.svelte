@@ -554,9 +554,12 @@
     position: static;
     height: auto;
   }
-  /* The paragraph's space above is band height as well. The visible zone anchors its
-     text at the band edge instead, so only the measurement takes it. */
-  .hf-measure .hf-zone :global(p) {
+  /* The paragraph's space above is band height as well — and in a header it is drawn
+     too, which is what puts a rule line at the foot of the band it belongs to. A
+     footer's carries the zone's own gap to the body (import/odt.ts), so it stays a
+     measurement there: drawn, it would push the text off the page. */
+  .hf-measure .hf-zone :global(p),
+  .hf-header :global(p) {
     margin-top: var(--space-before, 0);
   }
 
