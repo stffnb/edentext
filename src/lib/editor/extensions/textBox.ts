@@ -694,6 +694,9 @@ class TextBoxView {
   private applyWrap(): void {
     const d = this.dom;
     const a = this.attrs();
+    // Mirrors renderHTML's data-wrap, so one selector reaches a floating frame in the
+    // live view and in generated static HTML alike (as on an image).
+    if (a.wrap === 'inline') delete d.dataset.wrap; else d.dataset.wrap = a.wrap;
     d.style.float = '';
     d.style.clear = '';
     d.style.position = '';
