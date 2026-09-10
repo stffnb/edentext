@@ -3281,7 +3281,7 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
   let textAlign: string | null = null;
   let stops: string | null = null;
   const boxMaps: Record<string, string>[] = [];
-  for (const p of hfParagraphs(root)) {
+  for (const p of hfParagraphs(root, hfCtx)) {
     const ppr = fc(p, 'pPr');
     // The zone is one paragraph, so the first line's stops are the zone's. Word puts a
     // header's centre/right pair on the Header style rather than the paragraph.
@@ -3292,7 +3292,7 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
       const ta = (fc(ppr, 'jc') ? wVal(fc(ppr, 'jc')!) : null) ?? '';
       textAlign = ta === 'center' || ta === 'both' ? (ta === 'both' ? 'justify' : 'center') : ta === 'right' || ta === 'end' ? 'right' : '';
     }
-    boxMaps.push(readParaBox(ppr));
+    boxMaps.push({ ...hfCellBox(p), ...readParaBox(ppr) });
     const baseRun = hfCtx.styles.paragraphRun(fc(ppr, 'pStyle') ? wVal(fc(ppr, 'pStyle')!) : null);
     // The zone carries no styleName and no style CSS reaches it, so the yardstick is the
     // editor's own defaults — what the Header/Footer style provides has to become marks
@@ -3322,18 +3322,57 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
 }
 
 // A zone's paragraphs in document order, unwrapping the content controls Word puts
-// around an inserted page number — its w:p is not a child of w:hdr/w:ftr.
-function hfParagraphs(el: Element): Element[] {
+// around an inserted page number — its w:p is not a child of w:hdr/w:ftr. A table is
+// beyond the one-paragraph model: its cells' paragraphs become lines of the zone, and
+// the rule line it draws rides the zone's box (hfCellBox).
+function hfParagraphs(el: Element, ctx?: Ctx): Element[] {
   const out: Element[] = [];
   for (const c of Array.from(el.children)) {
     if (c.namespaceURI !== W) continue;
     if (c.localName === 'p') out.push(c);
     else if (c.localName === 'sdt') {
       const content = fc(c, 'sdtContent');
-      if (content) out.push(...hfParagraphs(content));
+      if (content) out.push(...hfParagraphs(content, ctx));
+    } else if (c.localName === 'tbl') {
+      ctx?.warnings.add('Lists/tables in headers or footers were flattened to text');
+      for (const tr of Array.from(c.children).filter((r) => r.namespaceURI === W && r.localName === 'tr')) {
+        for (const tc of Array.from(tr.children).filter((t) => t.namespaceURI === W && t.localName === 'tc')) {
+          out.push(...hfParagraphs(tc, ctx));
+        }
+      }
     }
   }
   return out;
+}
+
+// The box a zone paragraph inherits from the table cell around it: the rule line a
+// header draws is a one-cell table's border in every Word template. The cell's own
+// w:tcBorders win over the table's, as they do in a body table.
+function hfCellBox(p: Element): Record<string, string> {
+  let tc: Element | null = null;
+  for (let e = p.parentElement; e; e = e.parentElement) {
+    if (e.namespaceURI === W && e.localName === 'tc') { tc = e; break; }
+  }
+  if (!tc) return {};
+  const tcPr = fc(tc, 'tcPr');
+  const layers = [fc(tcPr, 'tcBorders'), fc(fc(tblOf(tc), 'tblPr'), 'tblBorders')];
+  const out: Record<string, string> = {};
+  for (const [wSide, attr] of PARA_BORDER_SIDES) {
+    let v: string | null | undefined;
+    for (const el of layers) { v = docxBorderAttr(fc(el, wSide)); if (v !== undefined) break; }
+    // null = the 0.5pt black a cell defaults to; a paragraph box has no default to mean.
+    if (v && v !== 'none') out[attr] = v; else if (v === null) out[attr] = '0.5pt solid #000000';
+  }
+  const fill = hexColor(fc(tcPr, 'shd')?.getAttributeNS(W, 'fill') ?? null);
+  if (fill) out.backgroundColor = fill;
+  return out;
+}
+
+function tblOf(el: Element): Element | null {
+  for (let e = el.parentElement; e; e = e.parentElement) {
+    if (e.namespaceURI === W && e.localName === 'tbl') return e;
+  }
+  return null;
 }
 
 // Collapse several source paragraphs' box props into one (mirror of odt.ts mergeHfBox).
