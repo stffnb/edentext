@@ -3358,6 +3358,9 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
   const lines: Node[][] = [];
   let textAlign: string | null = null;
   let stops: string | null = null;
+  // The zone's own space above: the first line's, as its stops and alignment are — and
+  // what our own export writes for a band taller than the lines it holds.
+  let beforePt: number | null = null;
   const boxMaps: Record<string, string>[] = [];
   for (const p of hfParagraphs(root, hfCtx)) {
     const ppr = fc(p, 'pPr');
@@ -3371,6 +3374,12 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
       textAlign = ta === 'center' || ta === 'both' ? (ta === 'both' ? 'justify' : 'center') : ta === 'right' || ta === 'end' ? 'right' : '';
     }
     boxMaps.push({ ...hfCellBox(p), ...readParaBox(ppr) });
+    if (beforePt == null) {
+      const sp = ppr ? fc(ppr, 'spacing') : null;
+      const tw = (sp ? intAttr(sp, W, 'before') : null)
+        ?? hfCtx.styles.paragraphSpacing(fc(ppr, 'pStyle') ? wVal(fc(ppr, 'pStyle')!) : null).before ?? 0;
+      beforePt = twipToPt(tw);
+    }
     const baseRun = hfCtx.styles.paragraphRun(fc(ppr, 'pStyle') ? wVal(fc(ppr, 'pStyle')!) : null);
     // The zone carries no styleName and no style CSS reaches it, so the yardstick is the
     // editor's own defaults — what the Header/Footer style provides has to become marks
@@ -3393,8 +3402,8 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
   // runs that agree on a size must set it, or a 10pt footer reserves 12pt lines.
   applyUniformRunFont(attrs, inline);
   const linePt = parseFloat(String(attrs.fontSize ?? '')) || HF_LINE_PT;
-  const extraPt = hfRowExtraPt(hfParagraphs(root), linePt);
-  if (extraPt > 1) attrs.spaceBefore = Math.round(extraPt * 100) / 100;
+  const spaceBefore = hfRowExtraPt(hfParagraphs(root), linePt) + (beforePt ?? 0);
+  if (spaceBefore > 1) attrs.spaceBefore = Math.round(spaceBefore * 100) / 100;
   if (textAlign) attrs.textAlign = textAlign;
   if (stops) attrs.tabStops = stops;
   Object.assign(attrs, box);
