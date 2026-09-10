@@ -85,6 +85,8 @@ type Ctx = {
   tblIndToText: boolean;
   // theme1.xml's accent1..6, the colours a chart series names instead of an sRGB.
   accents: string[];
+  // The whole colour scheme by slot name (accent1, tx2, …), which a shape's fill names.
+  themeColors: Map<string, string>;
   // Bookmarks open at this point of the walk (w:id → name). A range may start beside a
   // paragraph and end inside a later one, so the state outlives both walks.
   openBookmarks: Map<string, string>;
@@ -195,7 +197,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const sectPr = fc(body, 'sectPr');
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, listCounters: new Map(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, pageRtl: sectPrRtl(sectPr), hyphenate: docAutoHyphenation(files), cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, listCounters: new Map(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, pageRtl: sectPrRtl(sectPr), hyphenate: docAutoHyphenation(files), cellSpacing: {}, tblIndToText: tblIndIsToText(files), accents: themeAccents(themeDoc), themeColors: themeColors(themeDoc), openBookmarks: new Map(), openComments: new Map(), commentDefs: docxComments(files), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
     footnote: noteParts(files, 'footnotes', 'footnote'),
     endnote: noteParts(files, 'endnotes', 'endnote'),
   } };
@@ -2082,6 +2084,61 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   return { type: 'image', attrs };
 }
 
+// theme1.xml's colour scheme by slot name, plus the text/background aliases Word's
+// default mapping gives them (a shape names `tx2`, the scheme declares `dk2`). A slot
+// defined as a system colour keeps the value the producer last resolved it to.
+function themeColors(theme: Document | null): Map<string, string> {
+  const scheme = theme?.getElementsByTagNameNS(A, 'clrScheme')[0];
+  const out = new Map<string, string>();
+  for (const el of Array.from(scheme?.children ?? [])) {
+    const val = el.getElementsByTagNameNS(A, 'srgbClr')[0]?.getAttribute('val')
+      ?? el.getElementsByTagNameNS(A, 'sysClr')[0]?.getAttribute('lastClr');
+    const hex = hexColor(val);
+    if (hex) out.set(el.localName, hex);
+  }
+  for (const [alias, slot] of [['tx1', 'dk1'], ['bg1', 'lt1'], ['tx2', 'dk2'], ['bg2', 'lt2'],
+    ['text1', 'dk1'], ['background1', 'lt1'], ['text2', 'dk2'], ['background2', 'lt2']] as const) {
+    const v = out.get(slot);
+    if (v) out.set(alias, v);
+  }
+  return out;
+}
+
+// A DrawingML colour holder (<a:solidFill>, <a:ln>'s fill): its sRGB value, or the theme
+// slot it names, shifted by the modifiers Word writes for "accent1, lighter 40%".
+function drawingColor(holder: Element | null, ctx: Ctx): string | undefined {
+  const srgb = nsChild(holder, A, 'srgbClr');
+  const scheme = nsChild(holder, A, 'schemeClr');
+  const el = srgb ?? scheme;
+  if (!el) return undefined;
+  const base = srgb ? hexColor(srgb.getAttribute('val'))
+    : ctx.themeColors.get(scheme!.getAttribute('val') ?? '');
+  return base ? shiftColor(base, el) : undefined;
+}
+
+// The <a:lumMod>/<a:lumOff>/<a:tint>/<a:shade> children, applied per channel (they are
+// defined on luminance; the channel-wise reading is within a shade of it and needs no
+// colour space). Values are thousandths of a percent.
+function shiftColor(hex: string, el: Element): string {
+  const pct = (name: string) => {
+    const v = nsChild(el, A, name)?.getAttribute('val');
+    const n = v != null ? Number(v) / 100000 : NaN;
+    return Number.isFinite(n) ? n : null;
+  };
+  const lumMod = pct('lumMod'), lumOff = pct('lumOff'), tint = pct('tint'), shade = pct('shade');
+  if (lumMod == null && lumOff == null && tint == null && shade == null) return hex;
+  const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const out = ch.map((c) => {
+    let v = c;
+    if (lumMod != null) v *= lumMod;
+    if (lumOff != null) v += 255 * lumOff;
+    if (tint != null) v = v * tint + 255 * (1 - tint);
+    if (shade != null) v *= shade;
+    return Math.max(0, Math.min(255, Math.round(v)));
+  });
+  return `#${out.map((c) => c.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+}
+
 // theme1.xml's accent1..6 as #RRGGBB, in order — a chart series names them by role.
 function themeAccents(theme: Document | null): string[] {
   const scheme = theme?.getElementsByTagNameNS(A, 'clrScheme')[0];
@@ -2248,11 +2305,10 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
       && (align === 'center' || align === 'right')) attrs.wrapAlign = align;
   }
 
-  const fillClr = nsChild(nsChild(spPr, A, 'solidFill'), A, 'srgbClr')?.getAttribute('val');
-  const fill = fillClr ? hexColor(fillClr) ?? null : null;
+  const fill = drawingColor(nsChild(spPr, A, 'solidFill'), ctx) ?? null;
   const ln = nsChild(spPr, A, 'ln');
-  const lnClr = nsChild(nsChild(ln, A, 'solidFill'), A, 'srgbClr')?.getAttribute('val');
-  const stroke = ln && !nsChild(ln, A, 'noFill') ? hexColor(lnClr ?? '000000') ?? '#000000' : null;
+  const stroke = ln && !nsChild(ln, A, 'noFill')
+    ? drawingColor(nsChild(ln, A, 'solidFill'), ctx) ?? '#000000' : null;
   const lnW = intAttr(ln, '', 'w');
   setShapeStyleAttrs(attrs, fill, stroke, lnW != null ? lnW / 12700 : null);
   // A line's heads live on its <a:ln>, and they are what tells the three kinds apart;
