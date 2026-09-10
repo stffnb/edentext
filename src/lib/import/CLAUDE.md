@@ -115,6 +115,12 @@ a producer writing EMU there (360000 = 1cm in EMU, 635cm read as twips) would ot
 leave columns of no width. Under that width LibreOffice lays the declared gap out literally
 — probed to 10.16cm on a 15.24cm text — so only the unholdable value is dropped.
 
+**A heading in a cell carries its own 0.** No style name reaches a cell, so the editor
+draws the level's 12pt/6pt margins (`styles/headings.ts`) there — where a Word heading
+whose style chain sets no spacing has none. The baked-in chain's silence is therefore
+written as an explicit 0 (`convertParaLike`, the `kind === 'cell'` branch), while a cell
+*paragraph*'s 0 stays unset as before. Missing it put every such heading 4.2mm low.
+
 **A `w:numStyleLink` abstract carries no levels** — it defers to its numbering style's own
 numbering, so `DocxStyles.level()` resolves through the link (style → its `w:numPr` → the
 `w:styleLink` abstract); unresolved it read as `{}` and every linked list silently imported

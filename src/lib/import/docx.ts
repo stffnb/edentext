@@ -133,6 +133,10 @@ const BODY_FONT_SIZE_PT = 12;
 // Rounded to half points: that is all Word can store, so it is what our own export
 // writes and what an imported heading must be compared against.
 const HEADING_SIZES = HEADING_STYLE_OVERRIDES.map((h) => Math.round(lengthToPt(h.fontSize)! * 2) / 2);
+// The vertical margins a heading renders with when the block carries none of its own.
+const HEADING_MARGINS = HEADING_STYLE_OVERRIDES.map((h) => ({
+  topPt: lengthToPt(h.marginTop)!, bottomPt: lengthToPt(h.marginBottom)!,
+}));
 const HEADING_ITALIC = HEADING_STYLE_OVERRIDES.map((h) => h.italic === true);
 const DEFAULT_FONTS = new Set(['times new roman', 'liberation serif']);
 // Headings render sans (HEADING_FONT); Word writes Arial, LibreOffice Liberation Sans.
@@ -1123,8 +1127,17 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // unset spacing renders 0/0 (no word processor passes the default style's spacing
   // into a cell), and single line height is only kept over a non-single default.
   if (kind === 'cell') {
-    if (attrs.spaceBefore === 0) delete attrs.spaceBefore;
-    if (attrs.spaceAfter === 0) delete attrs.spaceAfter;
+    // A heading is the other way round: no style name reaches a cell, so the editor
+    // draws its level's own 12pt/6pt margins (styles/headings.ts) there — the chain's
+    // silence is a real 0 and has to be written, or that pair lands in every heading a
+    // cell holds. Word's own spacing at this point is the chain's, baked in above.
+    if (level) {
+      const hm = HEADING_MARGINS[level - 1];
+      if (hm?.topPt) attrs.spaceBefore ??= 0;
+      if (hm?.bottomPt) attrs.spaceAfter ??= 0;
+    }
+    if (attrs.spaceBefore === 0 && !level) delete attrs.spaceBefore;
+    if (attrs.spaceAfter === 0 && !level) delete attrs.spaceAfter;
     const def = ctx.styles.paragraphSpacing(null);
     const defSingle = (def.line ?? 240) === 240 && (!def.lineRule || def.lineRule === 'auto');
     if (attrs.lineHeight === '1' && defSingle) delete attrs.lineHeight;
