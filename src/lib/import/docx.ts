@@ -2071,10 +2071,11 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   if (Number.isFinite(rot) && rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
 
   if (anchor) {
-    const { wrap, offsetCm, offsetYCm, alignH, distCm } = anchorWrap(anchor, ctx);
+    const { wrap, offsetCm, offsetYCm, fromPage, alignH, distCm } = anchorWrap(anchor, ctx);
     attrs.wrap = wrap;
     if (offsetCm != null) attrs.wrapOffset = offsetCm;
     if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
+    if (fromPage) attrs.wrapFromPage = true;
     if (distCm != null) attrs.wrapDist = distCm;
     if (alignH && wrap === 'topBottom') attrs.wrapAlign = alignH;
     if (wrap === 'through') attrs.inFront = anchor.getAttribute('behindDoc') !== '1';
@@ -2163,10 +2164,11 @@ function chartImage(drawing: Element, box: { w: number; h: number }, ctx: Ctx): 
 function frameNode(src: string, box: { w: number; h: number }, label: string, anchor: Element | undefined, ctx: Ctx): Node {
   const attrs: Record<string, unknown> = { src, width: box.w, height: box.h, alt: label };
   if (anchor) {
-    const { wrap, offsetCm, offsetYCm, alignH, distCm } = anchorWrap(anchor, ctx);
+    const { wrap, offsetCm, offsetYCm, fromPage, alignH, distCm } = anchorWrap(anchor, ctx);
     attrs.wrap = wrap;
     if (offsetCm != null) attrs.wrapOffset = offsetCm;
     if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
+    if (fromPage) attrs.wrapFromPage = true;
     if (distCm != null) attrs.wrapDist = distCm;
     if (alignH && wrap === 'topBottom') attrs.wrapAlign = alignH;
     if (wrap === 'through') attrs.inFront = anchor.getAttribute('behindDoc') !== '1';
@@ -2179,16 +2181,20 @@ function frameNode(src: string, box: { w: number; h: number }, label: string, an
 // How far below its anchor paragraph the frame sits. Only the paragraph- and
 // line-relative forms have a CSS equivalent (the float's top margin); page- or
 // margin-relative ones are absolute on the sheet, which a frame in flow cannot be.
-function anchorOffsetY(anchor: Element): number | null {
+function anchorOffsetY(anchor: Element): { cm: number | null; fromPage: boolean } {
   const posV = anchor.getElementsByTagNameNS(WP, 'positionV')[0];
   const from = posV?.getAttribute('relativeFrom');
-  if (from !== 'paragraph' && from !== 'line') return null;
+  // A page-relative offset counts from the top of the page the anchor lands on, which
+  // is where a cover page's own blocks are placed; the node view resolves the page.
+  const fromPage = from === 'page';
+  if (!fromPage && from !== 'paragraph' && from !== 'line') return { cm: null, fromPage: false };
   const off = parseInt(posV?.getElementsByTagNameNS(WP, 'posOffset')[0]?.textContent ?? '', 10);
-  if (!Number.isFinite(off)) return null;
+  if (!Number.isFinite(off)) return { cm: null, fromPage: false };
   // The exporter floors this offset at one twip (LO derails on 0); sub-visible
   // remainders round back to none, not to a 0 that would accrete as an attribute.
+  // A page-relative one keeps its sign — a cover block may start above the page top.
   const cm = round2(off / 360000);
-  return cm > 0 ? cm : null;
+  return { cm: fromPage || cm > 0 ? cm : null, fromPage };
 }
 
 // The frame's own x in the text column, cm from its left edge. null where the file
@@ -2206,8 +2212,8 @@ function anchorOffsetX(anchor: Element, ctx: Ctx): number | null {
 // Wrap mode and place are independent: the mode is what the file's wrap element says,
 // the place its position offsets. Only where neither names a side does the frame's own
 // x decide which half of the column it fills (text flows on one side of a CSS float).
-function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom' | 'through'; offsetCm: number | null; offsetYCm: number | null; alignH: 'left' | 'right' | null; distCm: number | null } {
-  const offsetYCm = anchorOffsetY(anchor);
+function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topBottom' | 'through'; offsetCm: number | null; offsetYCm: number | null; fromPage: boolean; alignH: 'left' | 'right' | null; distCm: number | null } {
+  const { cm: offsetYCm, fromPage } = anchorOffsetY(anchor);
   const offsetCm = anchorOffsetX(anchor, ctx);
   const align = anchor.getElementsByTagNameNS(WP, 'positionH')[0]
     ?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
@@ -2221,7 +2227,7 @@ function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topB
     const emu = parseInt(anchor.getAttribute(wrap === 'right' ? 'distL' : 'distR') ?? '', 10);
     return Number.isFinite(emu) && emu > 0 ? round2(emu / 360000) : null;
   };
-  const at = (wrap: 'left' | 'right' | 'topBottom' | 'through') => ({ wrap, offsetCm, offsetYCm, alignH, distCm: distOf(wrap) });
+  const at = (wrap: 'left' | 'right' | 'topBottom' | 'through') => ({ wrap, offsetCm, offsetYCm, fromPage, alignH, distCm: distOf(wrap) });
   // wrapNone is Word's in-front-of / behind-text: the text runs through the frame, so it
   // reserves neither width nor height. behindDoc picks the side of the text it lands on.
   if (anchor.getElementsByTagNameNS(WP, 'wrapNone')[0]) return at('through');
@@ -2292,10 +2298,11 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
   const rot = intAttr(nsChild(spPr, A, 'xfrm'), '', 'rot');
   if (rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
   if (isAnchor) {
-    const { wrap, offsetCm, offsetYCm, distCm } = anchorWrap(root, ctx);
+    const { wrap, offsetCm, offsetYCm, fromPage, distCm } = anchorWrap(root, ctx);
     attrs.wrap = wrap;
     if (offsetCm != null) attrs.wrapOffset = offsetCm;
     if (offsetYCm != null) attrs.wrapOffsetY = offsetYCm;
+    if (fromPage) attrs.wrapFromPage = true;
     if (distCm != null) attrs.wrapDist = distCm;
     // Where the box sits across its band. A box is a block, so it takes the middle and
     // the far end that an image reads as one half of a side-by-side pair.

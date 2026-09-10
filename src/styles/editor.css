@@ -48,8 +48,8 @@
   overflow-x: clip;
 
   /* The sheets themselves are one box per page (PageSheetLayer), since a section on its
-     own paper makes them differ in size. They sit at z-index -2, under a header's page
-     background (.hf-bg-layer, -1) and so under the body text. */
+     own paper makes them differ in size. They sit at z-index -3, under a shape behind
+     the text (-2), a header's page background (.hf-bg-layer, -1) and the body text. */
 }
 
 /* While a freshly opened document is still finding its pagination (Editor.svelte).

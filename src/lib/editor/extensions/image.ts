@@ -6,7 +6,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { dropCursor } from '@tiptap/pm/dropcursor';
 import { cmToPx } from '../../storage/pageMargins';
-import { readVerticalMargins } from './pageBreaks';
+import { readVerticalMargins, topInEditor } from './pageBreaks';
 
 // Inline, as-character image, or a floating text-wrapped frame (wrap = flow mode);
 // width/height are doc px @96dpi, rotation CW degrees. Export → cm + ODF
@@ -108,6 +108,17 @@ export function applyRunThrough(el: HTMLElement, offsetCm: unknown, offsetYCm: u
   el.style.position = 'absolute';
   el.style.margin = `${px(offsetYCm)}px 0 0 ${px(offsetCm)}px`;
   el.style.zIndex = inFront ? '1' : '-1';
+}
+
+// Word's positionV relativeFrom="page" / ODF's style:vertical-rel="page": the offset
+// counts from the top of the page the anchor lands on, not from the anchor itself. The
+// frame keeps the x its static position gives it and takes its y off the page grid.
+export function sinkToPageTop(view: EditorView, el: HTMLElement, offsetYCm: unknown): void {
+  el.style.marginTop = '0px';
+  const { grid } = readVerticalMargins(view.dom as HTMLElement);
+  const top = topInEditor(view, el);
+  const y = typeof offsetYCm === 'number' ? cmToPx(offsetYCm) : 0;
+  el.style.marginTop = `${Math.round(grid.topOf(grid.pageAt(top)) + y - top)}px`;
 }
 
 // Where an as-char frame sits against the line (ODF style:vertical-pos/-rel, probed
@@ -222,6 +233,14 @@ export const Image = Node.create({
         parseHTML: el => (el as HTMLElement).getAttribute('data-v-align') || null,
         renderHTML: () => ({}),
       },
+      // Whether wrapOffsetY counts from the top of the page the anchor lands on rather
+      // than from the anchor paragraph (Word's positionV relativeFrom="page", ODF's
+      // style:vertical-rel="page") — how a cover page's own blocks are placed.
+      wrapFromPage: {
+        default: false,
+        parseHTML: el => (el as HTMLElement).hasAttribute('data-wrap-from-page'),
+        renderHTML: () => ({}),
+      },
       // A page-anchored frame's stacking against text (ODF style:run-through): default
       // "background" sits behind; a title page's own cover graphic sets "foreground".
       inFront: {
@@ -261,6 +280,7 @@ export const Image = Node.create({
       ...(node.attrs.vAlign ? { 'data-v-align': String(node.attrs.vAlign) } : {}),
       ...(node.attrs.anchorPage ? { 'data-anchor-page': String(node.attrs.anchorPage) } : {}),
       ...(node.attrs.inFront ? { 'data-in-front': '' } : {}),
+      ...(node.attrs.wrapFromPage ? { 'data-wrap-from-page': '' } : {}),
     })];
   },
 
@@ -475,6 +495,9 @@ class ImageView {
     delete d.dataset.anchorPage;
     if (wrap === 'through') {
       applyRunThrough(d, a.wrapOffset, a.wrapOffsetY, a.inFront === true);
+      // Deferred like sinkToOffset: the frame has to be laid out before its own page
+      // can be read off the grid.
+      if (a.wrapFromPage) requestAnimationFrame(() => sinkToPageTop(this.view, d, a.wrapOffsetY));
       return;
     }
     if (wrap === 'left' || wrap === 'right') {

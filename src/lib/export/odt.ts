@@ -429,7 +429,7 @@ function replaceSectionBreaks(doc: TiptapNode): TiptapNode {
 // bytes is ArrayBuffer-backed to match fflate's zip entry map. rotationDeg is CW;
 // wrap floats the frame at its anchor paragraph (left/right/top-bottom/run-through).
 type WrapMode = 'inline' | 'left' | 'right' | 'topBottom' | 'through';
-type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number; wrap: WrapMode; wrapOffsetCm: number | null; wrapOffsetYCm: number | null; wrapDistCm: number | null; wrapAlign: string | null; anchorPage: number | null; vAlign: string | null; inFront: boolean };
+type ImageExport = { path: string; bytes: Uint8Array<ArrayBuffer>; mimeType: string; widthCm: number; heightCm: number; alt: string; rotationDeg: number; wrap: WrapMode; wrapOffsetCm: number | null; wrapOffsetYCm: number | null; wrapDistCm: number | null; wrapAlign: string | null; anchorPage: number | null; vAlign: string | null; inFront: boolean; wrapFromPage: boolean };
 
 function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
@@ -475,6 +475,7 @@ function imageDescriptor(node: TiptapNode, index: number, namePrefix = 'image'):
     wrapDistCm: typeof node.attrs?.wrapDist === 'number' ? round3(node.attrs.wrapDist) : null,
     wrapAlign: node.attrs?.wrapAlign === 'left' || node.attrs?.wrapAlign === 'right' ? node.attrs.wrapAlign : null,
     anchorPage: typeof node.attrs?.anchorPage === 'number' && node.attrs.anchorPage > 0 ? node.attrs.anchorPage : null,
+    wrapFromPage: node.attrs?.wrapFromPage === true,
     vAlign: typeof node.attrs?.vAlign === 'string' ? node.attrs.vAlign : null,
     inFront: node.attrs?.inFront === true,
   };
@@ -984,6 +985,7 @@ type TextBoxExport = {
   wrapOffsetYCm: number | null;
   wrapDistCm: number | null;
   wrapAlign: string | null;
+  wrapFromPage: boolean;
   paddingCm: number;
   shapeKind: ShapeKind;
   shapePath: string | null;
@@ -1008,6 +1010,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     wrapOffsetYCm: typeof a.wrapOffsetY === 'number' ? round3(a.wrapOffsetY) : null,
     wrapDistCm: typeof a.wrapDist === 'number' ? round3(a.wrapDist) : null,
     wrapAlign: a.wrapAlign === 'center' || a.wrapAlign === 'right' ? a.wrapAlign : null,
+    wrapFromPage: a.wrapFromPage === true,
     paddingCm: typeof a.paddingCm === 'number' ? round3(a.paddingCm) : TEXTBOX_PADDING_CM,
     shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
     shapePath: typeof a.shapePath === 'string' && a.shapePath ? a.shapePath : null,
@@ -4192,7 +4195,9 @@ function imageGraphicStyle(img: ImageExport, index: number): string {
       `<style:style style:name="ImgFr${index + 1}" style:family="graphic">` +
       `<style:graphic-properties style:wrap="run-through" style:run-through="${img.inFront ? 'foreground' : 'background'}"` +
       ` style:horizontal-rel="paragraph-content" style:horizontal-pos="${img.wrapOffsetCm != null ? 'from-left' : 'left'}"` +
-      ` style:vertical-rel="paragraph" style:vertical-pos="${img.wrapOffsetYCm != null ? 'from-top' : 'top'}"/></style:style>`
+      // Against the page the anchor lands on, which is what the file the frame came from
+      // said and what places a cover block; the anchor itself stays in the flow.
+      ` style:vertical-rel="${img.wrapFromPage ? 'page' : 'paragraph'}" style:vertical-pos="${img.wrapOffsetYCm != null ? 'from-top' : 'top'}"/></style:style>`
     );
   }
   if (img.wrap === 'inline') {
@@ -4474,7 +4479,8 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
     ? ' style:vertical-pos="top" style:vertical-rel="baseline"'
     : ` ${imageWrapProps(box.wrap, box.wrapOffsetCm, box.wrapAlign, box.wrapDistCm, 'left')} style:number-wrapped-paragraphs="no-limit"` +
       ` style:horizontal-rel="paragraph-content"` +
-      ` style:vertical-pos="${box.wrapOffsetYCm != null ? 'from-top' : 'top'}" style:vertical-rel="paragraph"`;
+      ` style:vertical-pos="${box.wrapOffsetYCm != null ? 'from-top' : 'top'}"` +
+      ` style:vertical-rel="${box.wrapFromPage ? 'page' : 'paragraph'}"`;
   // auto-grow only for plain text boxes; a custom-shape needs both explicitly
   // false, or LibreOffice's shape autofit shrinks it to its text.
   const grow = box.shapeKind === 'textbox' && !box.shapePath
