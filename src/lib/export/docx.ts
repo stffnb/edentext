@@ -853,14 +853,15 @@ function paraOffsetEmu(cm: number): number {
 
 // offsetCm places the frame in the text column (Word's posOffset); without one it is
 // flush to its side. offsetYCm is how far below the anchor paragraph it sits.
-function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | null, alignH?: string | null, distCm?: number | null, inFront?: boolean): IFloating | undefined {
+function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | null, alignH?: string | null, distCm?: number | null, inFront?: boolean, fromPage?: boolean): IFloating | undefined {
   if (wrap === 'inline') return undefined;
   // The gap beside the frame, on both sides as Word writes it; none above or below.
   const margins = distCm ? { left: Math.round(distCm * 360000), right: Math.round(distCm * 360000) } : undefined;
-  const verticalPosition = {
-    relative: VerticalPositionRelativeFrom.PARAGRAPH,
-    offset: paraOffsetEmu(offsetYCm ?? 0),
-  };
+  // A page-relative offset counts from the top of the page the anchor lands on and may
+  // start above it, so it is written as it stands rather than floored at one twip.
+  const verticalPosition = fromPage
+    ? { relative: VerticalPositionRelativeFrom.PAGE, offset: Math.round((offsetYCm ?? 0) * 360000) }
+    : { relative: VerticalPositionRelativeFrom.PARAGRAPH, offset: paraOffsetEmu(offsetYCm ?? 0) };
   if (wrap === 'through') {
     // Word's in-front-of / behind-text: no wrap at all, and behindDoc names which side
     // of the text the frame lands on. It overlaps by definition, so allowOverlap holds.
@@ -944,7 +945,7 @@ function imageRun(node: TiptapNode): ImageRun | null {
     data: decoded.bytes,
     altText: typeof node.attrs?.alt === 'string' && node.attrs.alt ? { name: node.attrs.alt, title: node.attrs.alt, description: node.attrs.alt } : undefined,
     transformation: { width, height, rotation: rotation || undefined },
-    floating: floatingFor(wrap, offsetCm, offsetYCm, node.attrs?.wrapAlign as string | null, distCm, node.attrs?.inFront === true),
+    floating: floatingFor(wrap, offsetCm, offsetYCm, node.attrs?.wrapAlign as string | null, distCm, node.attrs?.inFront === true, node.attrs?.wrapFromPage === true),
   });
 }
 
@@ -960,6 +961,7 @@ type TextBoxDocx = {
   offsetYCm: number | null;
   distCm: number | null;
   alignH: string | null;
+  fromPage: boolean;
   shapeKind: ShapeKind;
   shapePath: string | null;
   flipV: boolean;
@@ -983,6 +985,7 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     offsetYCm: typeof a.wrapOffsetY === 'number' ? a.wrapOffsetY : null,
     distCm: typeof a.wrapDist === 'number' ? a.wrapDist : null,
     alignH: a.wrapAlign === 'center' || a.wrapAlign === 'right' || a.wrapAlign === 'left' ? a.wrapAlign : null,
+    fromPage: a.wrapFromPage === true,
     shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
     shapePath: typeof a.shapePath === 'string' && a.shapePath ? a.shapePath : null,
     flipV: a.flipV === true,
@@ -1387,7 +1390,9 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     ` simplePos="0" relativeHeight="${251658240 + index}" behindDoc="${box.wrap === 'through' ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="${box.wrap === 'through' ? 1 : 0}">` +
     `<wp:simplePos x="0" y="0"/>` +
     `<wp:positionH relativeFrom="margin">${posH}</wp:positionH>` +
-    `<wp:positionV relativeFrom="paragraph"><wp:posOffset>${paraOffsetEmu(box.offsetYCm ?? 0)}</wp:posOffset></wp:positionV>` +
+    (box.fromPage
+      ? `<wp:positionV relativeFrom="page"><wp:posOffset>${Math.round((box.offsetYCm ?? 0) * 360000)}</wp:posOffset></wp:positionV>`
+      : `<wp:positionV relativeFrom="paragraph"><wp:posOffset>${paraOffsetEmu(box.offsetYCm ?? 0)}</wp:posOffset></wp:positionV>`) +
     `${extent}${wrapEl}${docPr}${graphic}</wp:anchor></w:drawing>`
   );
 }

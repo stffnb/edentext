@@ -289,12 +289,17 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   }
   // Set against one end of its band rather than filling it (Word's positionH align).
   if (attrs.wrap === 'topBottom' && (hpos === 'left' || hpos === 'right')) attrs.wrapAlign = hpos;
-  // Likewise down the page, but only against the anchor paragraph — a page-relative
-  // frame is placed absolutely, which one in the text flow cannot be.
+  // Likewise down the page — against the anchor paragraph, or against the top of the
+  // page it lands on (`page`, which is how LibreOffice writes a Word cover block; the
+  // node view resolves the page, so the frame stays in the flow it is anchored in).
   const rel = gp['style:vertical-rel'];
-  const y = gp['style:vertical-pos'] === 'from-top' && (!rel || rel.startsWith('paragraph') || rel === 'line')
+  const fromPage = rel === 'page';
+  const y = gp['style:vertical-pos'] === 'from-top' && (!rel || rel.startsWith('paragraph') || rel === 'line' || fromPage)
     ? lengthToCm(el.getAttributeNS(NS.svg, 'y')) : null;
-  if (y != null && y > 0 && attrs.wrap) attrs.wrapOffsetY = Math.round(y * 100) / 100;
+  if (y != null && attrs.wrap && (fromPage || y > 0)) {
+    attrs.wrapOffsetY = Math.round(y * 100) / 100;
+    if (fromPage) attrs.wrapFromPage = true;
+  }
   // A page-anchored frame is out of the text flow, placed from its page's corner: the
   // cover graphic or watermark of a title page. Its offsets are that corner's, not the
   // column's, so they replace whatever the wrap rules above read.

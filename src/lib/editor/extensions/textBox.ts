@@ -9,7 +9,7 @@ import { NodeSelection, Selection, TextSelection, Plugin } from '@tiptap/pm/stat
 import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
-import { HANDLES, MIN_SIZE_PX, clamp, parsePx, frameMargins, pageContentHeightPx, applyRunThrough, type WrapMode } from './image';
+import { HANDLES, MIN_SIZE_PX, clamp, parsePx, frameMargins, pageContentHeightPx, applyRunThrough, sinkToPageTop, type WrapMode } from './image';
 import { SHAPES, shapePath, linePaths, arrowHeadPx, isShapeKind, isLineKind, type ShapeKind } from '../../utils/shapes';
 import { cmToPx } from '../../storage/pageMargins';
 
@@ -47,6 +47,7 @@ export interface TextBoxAttrs {
   wrap: WrapMode;
   wrapOffset: number | null;  // cm from the text column's left edge
   wrapOffsetY: number | null; // cm below the anchor paragraph
+  wrapFromPage: boolean;      // …or below the top of the page the anchor lands on
   wrapDist: number | null;    // cm of gap to the text beside it
   wrapAlign: string | null;   // 'center'/'right' = set against the middle/far end
   paddingCm: number;          // inset ring around the text (ODF fo:padding)
@@ -188,6 +189,12 @@ export const TextBox = Node.create({
         parseHTML: el => parseCmAttr((el as HTMLElement).getAttribute('data-wrap-offset-y')),
         renderHTML: () => ({}),
       },
+      // Whether wrapOffsetY counts from the top of the frame's page — as on an image.
+      wrapFromPage: {
+        default: false,
+        parseHTML: el => (el as HTMLElement).hasAttribute('data-wrap-from-page'),
+        renderHTML: () => ({}),
+      },
       // The gap to the text beside it, in cm — as on an image.
       wrapDist: {
         default: null,
@@ -286,6 +293,7 @@ export const TextBox = Node.create({
       style,
       ...(a.rotation ? { 'data-rotation': String(a.rotation) } : {}),
       ...(a.wrap !== 'inline' ? { 'data-wrap': a.wrap } : {}),
+      ...(a.wrapFromPage ? { 'data-wrap-from-page': '' } : {}),
       ...(a.shapeKind !== 'textbox' ? { 'data-shape': a.shapeKind } : {}),
       ...(a.shapePath ? { 'data-shape-path': a.shapePath } : {}),
       ...(a.flipV ? { 'data-flip-v': 'true' } : {}),
@@ -698,8 +706,13 @@ class TextBoxView {
       d.style.float = a.wrap;
       d.style.margin = frameMargins(a.wrap, a.wrapOffset, this.wrapperWidth(), null, a.wrapDist);
     } else if (a.wrap === 'through') {
-      // Behind the text, which is what a shape with no run-through of its own exports as.
+      // Behind the text, which is what a shape with no run-through of its own exports as
+      // — and under a picture behind the text too (-1), which is the order LibreOffice
+      // paints a cover page in whatever stacking order the file names.
       applyRunThrough(d, a.wrapOffset, a.wrapOffsetY, false);
+      d.style.zIndex = '-2';
+      // Deferred: the frame has to be laid out before its own page can be read.
+      if (a.wrapFromPage) requestAnimationFrame(() => sinkToPageTop(this.editor.view, d, a.wrapOffsetY));
     } else if (a.wrap === 'topBottom') {
       // A full-width float, as on an image: text may only flow above and below it, and
       // a block box on an inline node view splits the paragraph's inline content into
