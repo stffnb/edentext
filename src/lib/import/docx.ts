@@ -2746,6 +2746,12 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
     rows.push(row);
   }
   if (rows.length === 0) return null;
+  // A floating table (w:tblpPr) is out of Word's flow: what follows it starts where the
+  // table does. The editor has no such table, so it stays in the flow — and a frame
+  // anchored to the paragraph after it lands as far down as the table is tall.
+  if (fc(fc(tbl, 'tblPr'), 'tblpPr')) {
+    ctx.warnings.add('A floating table was placed in the text flow — what follows it may sit lower than in Word');
+  }
   const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx, padBase[3]) ?? {}) };
   if (pad) attrs.cellPadding = pad;
   // w:tblHeader on the first row: Word repeats it at the top of every page the table
