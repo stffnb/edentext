@@ -335,6 +335,9 @@ try {
   const behindBox = await frameBox();
   check(behindBox.wrap === 'through' && behindBox.z === '-1' && await paraHeight() < inlineHeight,
     `the behind-text button takes the frame out of the flow (${behindBox.wrap}, z ${behindBox.z}, ${inlineHeight}px → ${await paraHeight()}px)`);
+  // setNodeMarkup replaces a leaf, so without putting the node selection back the frame
+  // deselects itself on every attribute change and its toolbars close.
+  check(await page.locator('.image-toolbar').count() === 1, 'setting the wrap mode leaves the frame selected');
 
   await page.mouse.move(behindBox.x + 60, behindBox.y + 30);
   await page.mouse.down();
