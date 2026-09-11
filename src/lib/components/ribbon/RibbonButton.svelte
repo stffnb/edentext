@@ -173,7 +173,10 @@
     text-align: center;
   }
 
-  .rb-big .rb-label.hug { width: min-content; }
+  /* The cap can't wrap what has no space in it: a long compound painted past the
+     button and over its neighbour. A hugging label sets its own width instead — a
+     single word widens the button, as it does in Word's German ribbon. */
+  .rb-big .rb-label.hug { width: min-content; max-width: none; }
 
   /* Split button: the two halves read as one control, so the hover outline sits on
      the wrapper and each half only tints its own surface. */
