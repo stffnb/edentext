@@ -6,7 +6,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { dropCursor } from '@tiptap/pm/dropcursor';
 import { cmToPx } from '../../storage/pageMargins';
-import { readVerticalMargins, topInEditor } from './pageBreaks';
+import { readVerticalMargins, placeFromPage } from './pageBreaks';
 
 // Inline, as-character image, or a floating text-wrapped frame (wrap = flow mode);
 // width/height are doc px @96dpi, rotation CW degrees. Export → cm + ODF
@@ -103,22 +103,15 @@ export function frameMargins(wrap: WrapMode, offsetCm: unknown, boxWidthPx: numb
 // Word's behind-text / in-front-of-text, ODF run-through: the text runs over or under
 // the frame, so it reserves nothing. Absolute with no offsets keeps the static position
 // it was anchored at; the file's own offsets ride as margins from there.
-export function applyRunThrough(el: HTMLElement, offsetCm: unknown, offsetYCm: unknown, inFront: boolean): void {
+export function applyRunThrough(el: HTMLElement, offsetCm: unknown, offsetYCm: unknown, inFront: boolean, fromPage = false): void {
   const px = (cm: unknown) => (typeof cm === 'number' ? Math.round(cmToPx(cm)) : 0);
   el.style.position = 'absolute';
   el.style.margin = `${px(offsetYCm)}px 0 0 ${px(offsetCm)}px`;
   el.style.zIndex = inFront ? '1' : '-1';
-}
-
-// Word's positionV relativeFrom="page" / ODF's style:vertical-rel="page": the offset
-// counts from the top of the page the anchor lands on, not from the anchor itself. The
-// frame keeps the x its static position gives it and takes its y off the page grid.
-export function sinkToPageTop(view: EditorView, el: HTMLElement, offsetYCm: unknown): void {
-  el.style.marginTop = '0px';
-  const { grid } = readVerticalMargins(view.dom as HTMLElement);
-  const top = topInEditor(view, el);
-  const y = typeof offsetYCm === 'number' ? cmToPx(offsetYCm) : 0;
-  el.style.marginTop = `${Math.round(grid.topOf(grid.pageAt(top)) + y - top)}px`;
+  // A page-placed frame states its corner instead: placeFromPage turns the pair into
+  // the margins that reach it, and pagination re-places it from these same numbers.
+  if (fromPage) { el.dataset.pageX = String(px(offsetCm)); el.dataset.pageY = String(px(offsetYCm)); }
+  else { delete el.dataset.pageX; delete el.dataset.pageY; }
 }
 
 // Where an as-char frame sits against the line (ODF style:vertical-pos/-rel, probed
@@ -548,10 +541,10 @@ class ImageView {
     }
     delete d.dataset.anchorPage;
     if (wrap === 'through') {
-      applyRunThrough(d, a.wrapOffset, a.wrapOffsetY, a.inFront === true);
+      applyRunThrough(d, a.wrapOffset, a.wrapOffsetY, a.inFront === true, a.wrapFromPage === true);
       // Deferred like sinkToOffset: the frame has to be laid out before its own page
       // can be read off the grid.
-      if (a.wrapFromPage) requestAnimationFrame(() => sinkToPageTop(this.view, d, a.wrapOffsetY));
+      if (a.wrapFromPage) requestAnimationFrame(() => placeFromPage(this.view, d));
       return;
     }
     if (wrap === 'left' || wrap === 'right') {
