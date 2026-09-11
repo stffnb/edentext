@@ -223,6 +223,20 @@ export const Columns = Node.create({
     }), 0];
   },
 
+  // Enter in an empty block: the base chain lifts it out of the section, or splits
+  // the fragment mid-run — a section must read as flowing text, so it only ever
+  // splits the block. Core keymaps come later, so this binding is reached first.
+  addKeyboardShortcuts() {
+    return {
+      Enter: ({ editor }) => {
+        const { $cursor } = editor.state.selection as TextSelection;
+        if (!$cursor || $cursor.parent.content.size) return false;
+        if ($cursor.node(-1)?.type.name !== 'columns') return false;
+        return editor.commands.splitBlock();
+      },
+    };
+  },
+
   addCommands() {
     return {
       // Inside a section: 1 unwraps the whole chain, 2/3 update its count. Outside:
