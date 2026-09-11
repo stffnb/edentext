@@ -291,6 +291,38 @@ export function topInEditor(view: EditorView, el: HTMLElement): number {
   return top;
 }
 
+// Its left, likewise — the same chain, so a frame reads both in one pass.
+export function leftInEditor(view: EditorView, el: HTMLElement): number {
+  const tiptap = view.dom as HTMLElement;
+  let left = 0;
+  for (let n: HTMLElement | null = el; n && n !== tiptap; n = n.offsetParent as HTMLElement | null) {
+    left += n.offsetLeft;
+  }
+  return left;
+}
+
+// A run-through frame the file places against the page, not against its anchor (Word's
+// positionH/V relativeFrom="page"): x counts from the text column, y from the top of the
+// page the anchor lands on. Both are written as margins off the frame's static position,
+// which is where the anchor character sits — so each is measured, not assumed.
+export function placeFromPage(view: EditorView, el: HTMLElement, grid?: PageGrid): void {
+  const g = grid ?? readVerticalMargins(view.dom as HTMLElement).grid;
+  el.style.marginTop = '0px';
+  el.style.marginLeft = '0px';
+  const top = topInEditor(view, el);
+  const left = leftInEditor(view, el);
+  const column = parseFloat(getComputedStyle(view.dom as HTMLElement).paddingLeft) || 0;
+  el.style.marginTop = `${Math.round(g.topOf(g.pageAt(top)) + (Number(el.dataset.pageY) || 0) - top)}px`;
+  el.style.marginLeft = `${Math.round(column + (Number(el.dataset.pageX) || 0) - left)}px`;
+}
+
+// Pagination moves the page grid under those frames, so every pass re-places them.
+export function placePageFrames(view: EditorView, grid: PageGrid): void {
+  for (const el of Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>('[data-page-y]'))) {
+    placeFromPage(view, el, grid);
+  }
+}
+
 function pageContentStart(page: number, marginTop: number, grid: PageGrid): number {
   return grid.topOf(page) + marginTop;
 }
@@ -1979,6 +2011,10 @@ export const PageBreaks = Extension.create({
 
           isUpdating = false;
           lastBottom = contentBottom();
+
+          // The spacers this pass placed moved every page-placed frame's anchor; the
+          // frames sit out of the flow, so re-placing them changes no measurement.
+          placePageFrames(editorView, vm.grid);
 
           // A per-page restart counts within the page each anchor landed on, which only
           // this pass knows (notes.ts). Renumbering can rewrap, so it takes a pass of its
