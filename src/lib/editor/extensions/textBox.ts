@@ -99,8 +99,12 @@ function nestsBox(node: PMNode, inBox = false): boolean {
   node.forEach(child => {
     if (bad) return;
     const isBox = child.type.name === 'textBox';
+    // A frame holding a table is a floating table, not a frame the file has to nest in:
+    // a drawing in one of its cells is anchored in ordinary table text, and both
+    // exporters write it as one.
+    const floatingTable = isBox && child.firstChild?.type.name === 'table';
     if (isBox && inBox) bad = true;
-    else if (nestsBox(child, inBox || isBox)) bad = true;
+    else if (nestsBox(child, !floatingTable && (inBox || isBox))) bad = true;
   });
   return bad;
 }
@@ -149,7 +153,10 @@ export const TextBox = Node.create({
   // or a list item through their paragraphs. A box inside a box is barred by a plugin.
   group: 'inline',
   inline: true,
-  content: '(paragraph | heading | bulletList | orderedList)+',
+  // Either blocks or one table: a frame holding nothing but a table is how both word
+  // processors keep a floating table (Word's w:tblpPr), and the alternation is what
+  // bars a table beside text in a box, which neither format's writer has a place for.
+  content: '(paragraph | heading | bulletList | orderedList)+ | table',
   isolating: true,
   defining: true,
   draggable: true,

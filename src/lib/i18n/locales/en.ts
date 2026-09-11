@@ -1119,7 +1119,6 @@ const en = {
     hfFlattened: 'Lists/tables in headers or footers were flattened to text',
     textBoxFlattened: 'Text boxes nested in table cells or other text boxes were flattened',
     nestedTables: 'Nested tables were flattened to paragraphs',
-    floatingTable: 'A floating table was placed in the text flow — what follows it may sit lower than in Word',
     comments: 'Comments were removed',
     missingFonts: (fonts: string) => `These fonts aren't installed and were shown with a substitute: ${fonts}`,
   },

@@ -461,10 +461,22 @@ function shapeStyleAttrs(gp: PropMap, attrs: Record<string, unknown>, defaultSol
   }
 }
 
-// The block content of a text box / shape: its text:* children via the cell path
-// (which flattens whatever the box schema can't hold), at least one paragraph.
-function textBoxContent(children: Element[], ctx: Ctx): Node[] {
+// The block content of a text box / shape: one table where the frame holds nothing
+// else, otherwise its text:* children via the cell path (which flattens whatever the
+// box schema can't hold), at least one paragraph.
+function textBoxContent(children: Element[], ctx: Ctx, widthCm: number | null): Node[] {
   const textChildren = children.filter(c => c.namespaceURI === NS.text);
+  // A frame holding nothing but a table is a floating table — how LibreOffice keeps
+  // Word's own (w:tblpPr) and the one table the box's schema takes. Its margins are
+  // measured against the frame it fills, not the page's text.
+  const tables = children.filter(c => c.namespaceURI === NS.table && c.localName === 'table');
+  if (tables.length === 1 && textChildren.every(c => !c.textContent?.trim())) {
+    const outerCm = ctx.contentWidthCm;
+    if (widthCm) ctx.contentWidthCm = widthCm;
+    let table: Node | null;
+    try { table = convertTable(tables[0], ctx); } finally { ctx.contentWidthCm = outerCm; }
+    if (table) return [table];
+  }
   const blocks = unnestBoxes(convertBlocks(textChildren, ctx, 'cell'), ctx);
   return blocks.length ? blocks : [{ type: 'paragraph' }];
 }
@@ -501,7 +513,7 @@ function convertTextBoxFrame(frame: Element, textBoxEl: Element, ctx: Ctx): Node
   if (padCm != null && Math.abs(padCm - TEXTBOX_PADDING_CM) > 0.01) attrs.paddingCm = Math.round(padCm * 1000) / 1000;
   shapeStyleAttrs(gp, attrs, false);
   boxTextVertical(frame, ctx, attrs);
-  return { type: 'textBox', attrs, content: textBoxContent(Array.from(textBoxEl.children), ctx) };
+  return { type: 'textBox', attrs, content: textBoxContent(Array.from(textBoxEl.children), ctx, wCm) };
 }
 
 // A <draw:frame> holding a formula object → a formula node. The MathML lives either
@@ -609,7 +621,7 @@ function convertShape(el: Element, ctx: Ctx): Node | null {
   boxWrapAlign(gp, attrs);
   shapeStyleAttrs(gp, attrs, true);
   boxTextVertical(el, ctx, attrs);
-  return { type: 'textBox', attrs, content: textBoxContent(Array.from(el.children), ctx) };
+  return { type: 'textBox', attrs, content: textBoxContent(Array.from(el.children), ctx, wCm) };
 }
 
 // A `<draw:enhanced-geometry>` no preset matches, read as its own outline: only the

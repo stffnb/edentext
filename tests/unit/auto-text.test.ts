@@ -11,6 +11,9 @@ import ListItem from '@tiptap/extension-list-item';
 import { BulletList } from '../../src/lib/editor/extensions/bulletList';
 import { OrderedList } from '../../src/lib/editor/extensions/orderedList';
 import { TextBox } from '../../src/lib/editor/extensions/textBox';
+// A box's content takes a table (a floating table rides one), so the schema needs it.
+import { Table, TableHeader, TableCell } from '@tiptap/extension-table';
+import { ResizableTableRow } from '../../src/lib/editor/extensions/tableRow';
 import { AutoText } from '../../src/lib/editor/extensions/autoText';
 import { entryForShortcut, loadAutoText } from '../../src/lib/storage/autoText';
 import { setAutoTextEntries } from '../../src/lib/storage/autoText.svelte';
@@ -81,7 +84,8 @@ describe('an entry holding a text box', () => {
     document.body.appendChild(el);
     return new Editor({
       element: el,
-      extensions: [Document, Paragraph, Text, Bold, Heading, BulletList, OrderedList, ListItem, TextBox, AutoText],
+      extensions: [Document, Paragraph, Text, Bold, Heading, BulletList, OrderedList, ListItem, TextBox,
+        Table, ResizableTableRow, TableHeader, TableCell, AutoText],
       content: { type: 'doc', content },
     });
   }

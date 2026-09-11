@@ -537,6 +537,8 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
   // Table-of-contents field tracking (see scanTocField). A TOC node is emitted for the
   // body only; its cached paragraphs are skipped. The node view regenerates entries live.
   const tocState: TocFieldState = { fieldDepth: 0, tocDepth: -1, instr: [] };
+  // Floating tables, each with the place in `out` its anchor follows (floatingTableBox).
+  const floatBoxes: { box: Node; at: number }[] = [];
 
   const closeTop = () => {
     const top = stack.pop()!;
@@ -620,6 +622,8 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
       breakPending = false; // a break before a table can't be modeled; drop it
       flush();
       if (kind === 'body') {
+        const floated = floatingTableBox(el, ctx);
+        if (floated) { floatBoxes.push({ box: floated, at: out.length }); continue; }
         const t = convertTable(el, ctx);
         if (t) out.push(t);
       } else {
@@ -653,6 +657,14 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
     }
   }
   flush();
+  // A floating table's frame rides the block that follows it, the paragraph LibreOffice
+  // anchors its own frame to; where no block does, it takes a paragraph of its own.
+  for (let i = floatBoxes.length - 1; i >= 0; i--) {
+    const { box, at } = floatBoxes[i];
+    const host = out[at];
+    if (host && (host.type === 'paragraph' || host.type === 'heading')) host.content = [box, ...(host.content ?? [])];
+    else out.splice(at, 0, { type: 'paragraph', content: [box] });
+  }
   return out;
 }
 
@@ -2586,6 +2598,50 @@ function bakeCellRuns(nodes: Node[], props: RunProps): void {
   }
 }
 
+// A floating table (w:tblpPr) is out of Word's flow: what follows it starts where the
+// table does. It becomes the frame holding a table both formats keep it in — the shape
+// LibreOffice reads it as and writes it back from — so the blocks after it stay put.
+function floatingTableBox(tbl: Element, ctx: Ctx): Node | null {
+  const pos = fc(fc(tbl, 'tblPr'), 'tblpPr');
+  if (!pos) return null;
+  const widthCm = floatTableWidthCm(tbl);
+  if (!widthCm) return null;
+  const outerCm = ctx.contentWidthCm;
+  // The table fills its frame, so what margins it declares are measured against that.
+  ctx.contentWidthCm = widthCm;
+  let table: Node | null;
+  try { table = convertTable(tbl, ctx); } finally { ctx.contentWidthCm = outerCm; }
+  if (!table) return null;
+  const xCm = twipToCm(intAttr(pos, W, 'tblpX') ?? 0);
+  const attrs: Record<string, unknown> = {
+    width: framePx(cmToPx(widthCm)),
+    // The wrap names the side the frame sits on; text flows on the open one.
+    wrap: xCm + widthCm / 2 <= outerCm / 2 ? 'left' : 'right',
+    // No ring of its own: the cells' own margins are the whole inset a table has.
+    paddingCm: 0,
+  };
+  if (Math.abs(xCm) > 0.01) attrs.wrapOffset = round2(xCm);
+  const yCm = twipToCm(intAttr(pos, W, 'tblpY') ?? 0);
+  // w:vertAnchor names what the offset counts from: the page, or the text it rides.
+  if (pos.getAttributeNS(W, 'vertAnchor') === 'page') {
+    attrs.wrapFromPage = true;
+    attrs.wrapOffsetY = round2(yCm);
+  } else if (Math.abs(yCm) > 0.01) attrs.wrapOffsetY = round2(yCm);
+  const dist = intAttr(pos, W, 'leftFromText') ?? intAttr(pos, W, 'rightFromText');
+  if (dist) attrs.wrapDist = round2(twipToCm(dist));
+  return { type: 'textBox', attrs, content: [table] };
+}
+
+// A floating table's own width: what w:tblW declares, else the sum of its grid.
+function floatTableWidthCm(tbl: Element): number | null {
+  const tblW = fc(fc(tbl, 'tblPr'), 'tblW');
+  const declared = tblW && (tblW.getAttributeNS(W, 'type') ?? 'dxa') === 'dxa' ? intAttr(tblW, W, 'w') : null;
+  const grid = fc(tbl, 'tblGrid');
+  const gridTwip = grid ? fcAll(grid, 'gridCol').reduce((a, g) => a + (intAttr(g, W, 'w') ?? 0), 0) : 0;
+  const twip = declared && declared > 0 ? declared : gridTwip;
+  return twip > 0 ? round2(twipToCm(twip)) : null;
+}
+
 function convertTable(tbl: Element, ctx: Ctx): Node | null {
   // The table style's own w:pPr/w:spacing reaches its cells' paragraphs (Word's Table Grid
   // zeroes the space after and the line spacing), under their own style chain. Restored
@@ -2746,12 +2802,6 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
     rows.push(row);
   }
   if (rows.length === 0) return null;
-  // A floating table (w:tblpPr) is out of Word's flow: what follows it starts where the
-  // table does. The editor has no such table, so it stays in the flow — and a frame
-  // anchored to the paragraph after it lands as far down as the table is tall.
-  if (fc(fc(tbl, 'tblPr'), 'tblpPr')) {
-    ctx.warnings.add('A floating table was placed in the text flow — what follows it may sit lower than in Word');
-  }
   const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx, padBase[3]) ?? {}) };
   if (pad) attrs.cellPadding = pad;
   // w:tblHeader on the first row: Word repeats it at the top of every page the table
