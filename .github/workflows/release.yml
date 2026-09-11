@@ -1,0 +1,41 @@
+# Builds dist/ on a version tag and attaches it to a GitHub release, so serving
+# the app needs no Node toolchain: unzip, point a web server at the folder.
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # The build stamps package.json's version into the app, so a tag that
+      # disagrees would publish an archive naming a version it isn't.
+      - run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME" || { echo "$GITHUB_REF_NAME does not match package.json"; exit 1; }
+      - run: npm ci
+      - run: npm run build
+      # The archive unpacks as edentext-<tag>/, ready to serve as a web root.
+      - run: |
+          mv dist "edentext-$GITHUB_REF_NAME"
+          zip -qr "edentext-$GITHUB_REF_NAME.zip" "edentext-$GITHUB_REF_NAME"
+      # This version's changelog section carries the notes; commit subjects
+      # stand in where it has none.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          awk -v h="## [${GITHUB_REF_NAME#v}]" 'index($0, h) == 1 { p = 1; next } p && /^## \[/ { exit } p' CHANGELOG.md > notes.md
+          if [ -s notes.md ]; then
+            gh release create "$GITHUB_REF_NAME" "edentext-$GITHUB_REF_NAME.zip" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" "edentext-$GITHUB_REF_NAME.zip" --generate-notes
+          fi
