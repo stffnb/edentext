@@ -2,6 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
+import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { dropCursor } from '@tiptap/pm/dropcursor';
@@ -199,6 +200,14 @@ export function pageContentHeightPx(): number {
   return h > 0 ? h : 4000;
 }
 
+// setNodeMarkup replaces a leaf node outright, so the node selection maps off it and an
+// attribute change would deselect the frame. Put it back where it stood.
+function frameAttrTr(state: EditorState, pos: number, attrs: Record<string, unknown>): Transaction {
+  const selected = state.selection instanceof NodeSelection && state.selection.from === pos;
+  const tr = state.tr.setNodeMarkup(pos, undefined, attrs);
+  return selected ? tr.setSelection(NodeSelection.create(tr.doc, pos)) : tr;
+}
+
 export const Image = Node.create({
   name: 'image',
   group: 'inline',
@@ -348,7 +357,7 @@ export const Image = Node.create({
           // word processor's own wrap command writes (0.32cm).
           const wrapDist = wrap === 'inline' ? sel.node.attrs.wrapDist : sel.node.attrs.wrapDist ?? 0.32;
           if (dispatch) {
-            dispatch(state.tr.setNodeMarkup(sel.from, undefined,
+            dispatch(frameAttrTr(state, sel.from,
               { ...sel.node.attrs, wrap, wrapDist, ...droppedFrameAttrs(wrap, inFront) }));
           }
           return true;
@@ -783,7 +792,7 @@ class ImageView {
   private commit(attrs: Record<string, unknown>): void {
     const pos = this.getPos();
     if (typeof pos !== 'number') return;
-    this.view.dispatch(this.editor.state.tr.setNodeMarkup(pos, undefined, { ...this.node.attrs, ...attrs }));
+    this.view.dispatch(frameAttrTr(this.editor.state, pos, { ...this.node.attrs, ...attrs }));
   }
 
   private startResize(event: MouseEvent, cfg: typeof HANDLES[number]): void {
