@@ -59,6 +59,7 @@ import { parseTableLook, regionText, type TableStyle } from '../styles/tableStyl
 import { findFormat, renderFormat, docxPicture, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT } from '../utils/dateTime';
 import { parseLatex } from '../math/latex';
 import { ommlDocument, OMML_NS } from '../math/omml';
+import { deobfuscateOdttf, type EmbeddedFont } from '../fonts/embeddedFonts';
 
 // BCP-47 tag for rendering a fixed field's cached text; set at buildDocx start from
 // the document language (Word recomputes an auto field on open using its own locale).
@@ -1907,6 +1908,56 @@ function applyEndnoteImagesDocx(bytes: Uint8Array): Uint8Array {
   return zipSync(out);
 }
 
+// Post-pack pass: the fonts the opened file carried, embedded again. A Word font part is
+// obfuscated with a key of its own — the same XOR the importer undoes — so each cut gets a
+// fresh GUID, a relationship, and its <w:embed…> inside the family's <w:font>.
+function applyEmbeddedFontsDocx(bytes: Uint8Array, fonts: EmbeddedFont[]): Uint8Array {
+  if (!fonts.length) return bytes;
+  const files = unzipSync(bytes);
+  const relsPath = 'word/_rels/fontTable.xml.rels';
+  const tableBytes = files['word/fontTable.xml'];
+  if (!tableBytes || !files[relsPath]) return bytes;
+  const rels = strFromU8(files[relsPath]).replace(/<Relationships([^>]*)\/>/, '<Relationships$1></Relationships>');
+  let next = maxIdIn(rels, /Id="rId(\d+)"/g) + 1;
+  const added: string[] = [];
+  // CT_Font is a sequence, so a family's cuts are written in this order.
+  const CUTS = ['embedRegular', 'embedBold', 'embedItalic', 'embedBoldItalic'];
+  const byFamily = new Map<string, [number, string][]>();
+  fonts.forEach((font, i) => {
+    const name = `font${i + 1}.odttf`;
+    const key = `{${crypto.randomUUID().toUpperCase()}}`;
+    files[`word/fonts/${name}`] = deobfuscateOdttf(font.data.slice(), key) as Uint8Array<ArrayBuffer>;
+    added.push(`<Relationship Id="rId${next}" Type="${R_NS}/font" Target="fonts/${name}"/>`);
+    const rank = font.weight === 'bold' ? (font.style === 'italic' ? 3 : 1) : (font.style === 'italic' ? 2 : 0);
+    const list = byFamily.get(font.family) ?? [];
+    list.push([rank, `<w:${CUTS[rank]} r:id="rId${next++}" w:fontKey="${key}"/>`]);
+    byFamily.set(font.family, list);
+  });
+
+  let table = strFromU8(tableBytes).replace(/<w:fonts([^>]*)\/>/, '<w:fonts$1></w:fonts>');
+  for (const [family, cuts] of byFamily) {
+    const name = escapeXml(family);
+    const xml = cuts.sort((a, b) => a[0] - b[0]).map(([, x]) => x).join('');
+    const quoted = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const empty = new RegExp(`<w:font w:name="${quoted}"([^>]*)/>`);
+    const open = new RegExp(`(<w:font w:name="${quoted}"[^>]*>[\\s\\S]*?)</w:font>`);
+    if (empty.test(table)) table = table.replace(empty, `<w:font w:name="${name}"$1>${xml}</w:font>`);
+    else if (open.test(table)) table = table.replace(open, `$1${xml}</w:font>`);
+    else table = table.replace('</w:fonts>', `<w:font w:name="${name}">${xml}</w:font></w:fonts>`);
+  }
+  files['word/fontTable.xml'] = strToU8(table);
+  files[relsPath] = strToU8(rels.replace('</Relationships>', added.join('') + '</Relationships>'));
+
+  const ct = files['[Content_Types].xml'] && strFromU8(files['[Content_Types].xml']);
+  if (ct && !ct.includes('Extension="odttf"')) {
+    files['[Content_Types].xml'] = strToU8(ct.replace(/(<Types\b[^>]*>)/,
+      '$1<Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/>'));
+  }
+  const out: Record<string, [Uint8Array, { level: 6 }]> = {};
+  for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
+  return zipSync(out);
+}
+
 // Post-pack pass: the page's own decoration. Word keeps the background on w:document
 // (switched on in settings.xml), the border in every w:sectPr, and the watermark as a
 // VML fontwork shape in each header part — the shapes LibreOffice writes, probed.
@@ -2885,6 +2936,7 @@ export async function buildDocx(
   recordChanges = false,
   foldMarks = false,
   spacingAtPageStart = true,
+  fonts: EmbeddedFont[] = [],
 ): Promise<Uint8Array> {
   docLangTag = localeTag(language ? language.language : 'en');
   // Before the walk: every picture the file can hold has to be a raster by then, and
@@ -3131,7 +3183,8 @@ export async function buildDocx(
   const bidi = applyNoHyphensDocx(rtl ? applyBidiDocx(mirrored) : mirrored);
   const dims = pageDimsCm(pageFormat, orientation);
   const foldMarked = applyFoldMarksDocx(bidi, foldMarks, dims.w * 10);
-  const marked = spacingAtPageStart ? foldMarked : applySpacingAtStartDocx(foldMarked);
+  const spaced = spacingAtPageStart ? foldMarked : applySpacingAtStartDocx(foldMarked);
+  const marked = applyEmbeddedFontsDocx(spaced, fonts);
   if (isEmptyPageDecor(decor)) return patchPackedXml(orderDocxSettings(marked));
   const pt = (cm: number) => (cm / 2.54) * 72;
   return patchPackedXml(orderDocxSettings(applyPageDecorDocx(marked, decor,

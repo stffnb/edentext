@@ -12,6 +12,7 @@ const RECENT_KEY = 'edentext-recent-fonts';
 const MAX_RECENT = 5;
 
 let recents = $state<string[]>(load());
+let embedded = $state<string[]>([]);
 let detected = $state<string[]>([]);
 let allInstalled = $state<string[] | null>(null);
 let detectionRan = false;
@@ -33,10 +34,16 @@ export function noteFontUse(font: string): void {
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(recents)); } catch { /* quota or disabled */ }
 }
 
+// The families the open document brought with it, registered via FontFace. Detection
+// measures them as present, but they are in no candidate list, so they are named here.
+export function noteEmbeddedFonts(families: string[]): void {
+  embedded = [...new Set(families)];
+}
+
 // Everything installed that isn't already listed above, alphabetical.
 export function otherFonts(): string[] {
   const recentSet = new Set(recents);
-  return (allInstalled ?? detected)
+  return [...new Set([...embedded, ...(allInstalled ?? detected)])]
     .filter((f) => !WEB_SAFE_SET.has(f) && !recentSet.has(f))
     .sort((a, b) => a.localeCompare(b));
 }
