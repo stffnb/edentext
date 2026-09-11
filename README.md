@@ -96,7 +96,7 @@ requires a signed [CLA](CLA.md), checked automatically on every pull request.
 Thanks to everyone who helped — with ideas, bug reports, testing
 and feedback:
 
-- Patrick R. — alpha tester
+- Patrick R. — alpha and beta tester
 - [@Deleh](https://github.com/Deleh) — beta tester
 
 <!-- Add a line per person: name or [@handle](https://github.com/handle), then
