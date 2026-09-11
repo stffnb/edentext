@@ -13,6 +13,9 @@ import { BulletList } from '../../src/lib/editor/extensions/bulletList';
 import { OrderedList } from '../../src/lib/editor/extensions/orderedList';
 import ListItem from '@tiptap/extension-list-item';
 import { TextBox, TextAlignInFrames } from '../../src/lib/editor/extensions/textBox';
+// The box's content takes a table (a floating table rides one), so the schema needs it.
+import { Table, TableHeader, TableCell } from '@tiptap/extension-table';
+import { ResizableTableRow } from '../../src/lib/editor/extensions/tableRow';
 
 type N = any;
 
@@ -35,6 +38,7 @@ function makeEditor(...content: N[]) {
   return new Editor({
     element: el,
     extensions: [Document, Paragraph, Text, Heading, BulletList, OrderedList, ListItem, TextBox,
+      Table, ResizableTableRow, TableHeader, TableCell,
       TextAlignInFrames.configure({ types: ['paragraph', 'heading'] })],
     content: { type: 'doc', content },
   });
@@ -78,6 +82,19 @@ describe('a text box in the line', () => {
     // Position 2 inside the box's own first paragraph.
     ed.view.dispatch(ed.state.tr.insert(boxPos(ed) + 2, nested));
     expect(boxCount(ed)).toBe(1);
+    ed.destroy();
+  });
+
+  it('keeps a drawing in a floating table’s cell', () => {
+    // The frame around a table is the file's floating table, so what its cells hold is
+    // anchored in ordinary table text — not a frame inside a frame.
+    const inner = box('IM FELD');
+    const cell = { type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: [180] },
+      content: [{ type: 'paragraph', content: [inner] }] };
+    const floating = { type: 'textBox', attrs: { width: 200, wrap: 'left' },
+      content: [{ type: 'table', content: [{ type: 'tableRow', content: [cell] }] }] };
+    const ed = makeEditor({ type: 'paragraph', content: [floating] });
+    expect(boxCount(ed)).toBe(2);
     ed.destroy();
   });
 

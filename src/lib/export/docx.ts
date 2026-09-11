@@ -7,12 +7,14 @@ import {
   AlignmentType, LevelFormat, LevelSuffix, UnderlineType, BorderStyle, ShadingType,
   WidthType, HeightRule, PageOrientation, LineRuleType, LineNumberRestartFormat, TableLayoutType, SectionType, NumberFormat,
   HorizontalPositionAlign, VerticalPositionRelativeFrom, HorizontalPositionRelativeFrom,
+  TableAnchorType, RelativeHorizontalPosition,
   TextWrappingType, TextWrappingSide, TabStopType, LeaderType,
 } from 'docx';
 import type { TiptapNode } from 'odf-kit';
 import type {
   IRunStylePropertiesOptions, ISpacingProperties, IIndentAttributesProperties,
   ILevelsOptions, IFloating, IBorderOptions, IParagraphStyleOptions, ICharacterStyleOptions,
+  ITableFloatOptions,
 } from 'docx';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { isSvgDataUrl, svgToPngDataUrl } from '../import/imageFormats';
@@ -2367,14 +2369,14 @@ function cellBlocksToDocx(content: TiptapNode[] = [], force: TextProps, num: Num
     } else if (child.type === 'table') {
       out.push(tableToDocx(child, contentWidthCm, num));
     } else if (child.type === 'paragraph' || child.type === 'heading') {
-      out.push(paragraphToDocx(child, { force, inCell: true }));
+      out.push(paragraphToDocx(emitFloatingTables(child, contentWidthCm, num, out), { force, inCell: true }));
     }
   }
   if (out.length === 0) out.push(new Paragraph({}));
   return out;
 }
 
-function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): Table {
+function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, float?: ITableFloatOptions): Table {
   const rows = (node.content ?? []).filter((r) => r.type === 'tableRow');
   // The named table style, if the registry still knows it: Word gets the reference
   // (w:tblStyle) plus the baked cell formatting, since w:tblStylePr isn't emitted.
@@ -2442,6 +2444,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering): 
   });
 
   return new Table({
+    ...(float ? { float } : {}),
     ...(tableStyle ? {
       style: docxStyleId(tableStyle.name),
       // Word's Table Style Options are w:tblLook (its band flags are inverted).
@@ -2520,12 +2523,56 @@ function indexFieldParagraphs(node: TiptapNode, kind: IndexKind, maxLevel: numbe
   }));
 }
 
+// A text box whose whole content is one table — the editor's floating table.
+function floatingTableOf(node: TiptapNode): TiptapNode | null {
+  if (node.type !== 'textBox' || node.content?.length !== 1) return null;
+  return node.content[0].type === 'table' ? node.content[0] : null;
+}
+
+function frameWidthCm(box: TiptapNode, fallbackCm: number): number {
+  const w = box.attrs?.width;
+  return typeof w === 'number' && w > 0 ? (w * 2.54) / 96 : fallbackCm;
+}
+
+// Each of a paragraph's floating-table frames becomes a table of its own ahead of it,
+// and the paragraph comes back without them.
+function emitFloatingTables(
+  node: TiptapNode, contentWidthCm: number, num: Numbering, out: (Paragraph | Table | TableOfContents)[],
+): TiptapNode {
+  const floats = (node.content ?? []).filter(c => floatingTableOf(c));
+  if (!floats.length) return node;
+  for (const box of floats) {
+    out.push(tableToDocx(floatingTableOf(box)!, frameWidthCm(box, contentWidthCm), num, tableFloatOptions(box)));
+  }
+  return { ...node, content: (node.content ?? []).filter(c => !floats.includes(c)) };
+}
+
+// The frame's place as w:tblpPr: the x either an offset or the side it takes, the y
+// counted from the page or from the text it rides, and the wrap gap on both sides.
+function tableFloatOptions(box: TiptapNode): ITableFloatOptions {
+  const a = box.attrs ?? {};
+  const dist = typeof a.wrapDist === 'number' ? cmToTwip(a.wrapDist) : 0;
+  const x = typeof a.wrapOffset === 'number' ? a.wrapOffset : null;
+  return {
+    horizontalAnchor: TableAnchorType.MARGIN,
+    ...(x != null
+      ? { absoluteHorizontalPosition: cmToTwip(x) }
+      : { relativeHorizontalPosition: a.wrap === 'right' ? RelativeHorizontalPosition.RIGHT : RelativeHorizontalPosition.LEFT }),
+    verticalAnchor: a.wrapFromPage === true ? TableAnchorType.PAGE : TableAnchorType.TEXT,
+    absoluteVerticalPosition: cmToTwip(typeof a.wrapOffsetY === 'number' ? a.wrapOffsetY : 0),
+    leftFromText: dist,
+    rightFromText: dist,
+  };
+}
+
 // ---- top-level walk --------------------------------------------------------
 function blocksToDocx(content: TiptapNode[], num: Numbering, contentWidthCm: number): (Paragraph | Table | TableOfContents)[] {
   const out: (Paragraph | Table | TableOfContents)[] = [];
   for (const node of content) {
     if (node.type === 'paragraph' || node.type === 'heading') {
-      out.push(paragraphToDocx(node));
+      // A frame holding nothing but a table is Word's floating table: a table of its own
+      // ahead of the paragraph anchoring it, placed by w:tblpPr, not a shape in its run.
+      out.push(paragraphToDocx(emitFloatingTables(node, contentWidthCm, num, out)));
     } else if (node.type === 'bulletList' || node.type === 'orderedList') {
       listEntryToDocx(node, num, out);
     } else if (node.type === 'table') {
