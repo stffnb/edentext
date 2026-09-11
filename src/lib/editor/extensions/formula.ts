@@ -1,5 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { atomAttrTr } from './image';
 import { parseLatex } from '../../math/latex';
 import { mathmlDocument } from '../../math/mathml';
 
@@ -83,7 +84,7 @@ export const Formula = Node.create({
       updateFormula: (pos, attrs) => ({ state, dispatch }) => {
         const node = state.doc.nodeAt(pos);
         if (!node || node.type.name !== this.name) return false;
-        if (dispatch) dispatch(state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs }, node.marks));
+        if (dispatch) dispatch(atomAttrTr(state, pos, { ...node.attrs, ...attrs }, node.marks));
         return true;
       },
     };
