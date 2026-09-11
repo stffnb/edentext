@@ -77,6 +77,9 @@ export const STROKED = {
   wrapLeft: ['M2 3.5h6v9H2z', 'M9.5 4.5h4.5M9.5 7h4.5M9.5 9.5h4.5M9.5 12h4.5'],
   wrapRight: ['M8 3.5h6v9H8z', 'M2 4.5h4.5M2 7h4.5M2 9.5h4.5M2 12h4.5'],
   wrapTopBottom: ['M4 6.5h8v3H4z', 'M2 3h12M2 13h12'],
+  // The text runs over the frame's outline; in front, the solid frame covers it (FILLED).
+  wrapBehind: ['M5 4.5h6v7H5z', 'M2 5.5h12M2 8h12M2 10.5h12'],
+  wrapFront: ['M2 5.5h12M2 8h12M2 10.5h12'],
   // A capital T beside an arrow running down: the text sets vertically.
   textDirection: ['M3 3.75h6M6 3.75v8.5', 'M12.5 4v7.5M10.9 10l1.6 1.6 1.6-1.6'],
   toc: ['M2 3h6M2 6.5h5M2 10h6M2 13.5h4', 'M11 3h3M10 6.5h4M11 10h3M10 13.5h4'],
@@ -157,6 +160,7 @@ export const FILLED = {
   infoDot: ['M8 4.4a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6z'],
   header: ['M5.4 3.8h5.2v1.7H5.4z'],
   footer: ['M5.4 10.5h5.2v1.7H5.4z'],
+  wrapFront: ['M5 4.5h6v7H5z'],
 } as const;
 
 // Constant painted stroke rather than proportional scaling: a 1-unit stroke would

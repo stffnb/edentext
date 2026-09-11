@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import type { WrapMode } from '../editor/extensions/image';
+  import { droppedFrameAttrs, type WrapMode } from '../editor/extensions/image';
   import type { ShapeKind, TextBoxAttrs } from '../editor/extensions/textBox';
   import ColorPicker from './ColorPicker.svelte';
   import ShapePicker from './ShapePicker.svelte';
@@ -11,6 +11,7 @@
     top,
     left,
     wrap,
+    inFront,
     wrapAlign,
     shapeKind,
     fillColor,
@@ -22,6 +23,7 @@
     top: number;
     left: number;
     wrap: WrapMode;
+    inFront: boolean;
     wrapAlign: string | null;
     shapeKind: ShapeKind;
     fillColor: string | null;
@@ -37,11 +39,21 @@
     editor?.chain().focus().setTextBoxAttrs(attrs).run();
   }
 
-  const wrapModes: WrapMode[] = ['inline', 'left', 'right', 'topBottom'];
-  function wrapTitle(m: WrapMode): string {
+  // As on an image: the two run-through entries are one mode told apart by inFront,
+  // and picking any mode by hand drops the offsets of the one it replaces.
+  type WrapChoice = WrapMode | 'behind' | 'front';
+  const wrapModes: WrapChoice[] = ['inline', 'left', 'right', 'topBottom', 'behind', 'front'];
+  const activeWrap = $derived<WrapChoice>(wrap === 'through' ? (inFront ? 'front' : 'behind') : wrap);
+  function setWrap(m: WrapChoice) {
+    const mode: WrapMode = m === 'behind' || m === 'front' ? 'through' : m;
+    set({ wrap: mode, ...droppedFrameAttrs(mode, m === 'front') });
+  }
+  function wrapTitle(m: WrapChoice): string {
     return m === 'inline' ? t().textBox.wrapInline
       : m === 'left' ? t().textBox.wrapLeft
       : m === 'right' ? t().textBox.wrapRight
+      : m === 'behind' ? t().textBox.wrapBehind
+      : m === 'front' ? t().textBox.wrapFront
       : t().textBox.wrapTopBottom;
   }
 
@@ -80,11 +92,11 @@
   {#each wrapModes as m}
     <button
       class="tb-btn"
-      class:active={wrap === m}
+      class:active={activeWrap === m}
       title={wrapTitle(m)}
       aria-label={wrapTitle(m)}
-      aria-pressed={wrap === m}
-      onclick={() => set({ wrap: m })}
+      aria-pressed={activeWrap === m}
+      onclick={() => setWrap(m)}
     >
       {#if m === 'inline'}
         <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -109,6 +121,20 @@
           <line x1="2.5" y1="7" x2="8" y2="7" stroke="currentColor" stroke-width="1.2" />
           <line x1="2.5" y1="10" x2="8" y2="10" stroke="currentColor" stroke-width="1.2" />
           <line x1="2.5" y1="15" x2="15.5" y2="15" stroke="currentColor" stroke-width="1.2" />
+        </svg>
+      {:else if m === 'behind'}
+        <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <rect x="5" y="4.5" width="8" height="9" rx="1" stroke="currentColor" stroke-width="1.2" opacity="0.45" />
+          <line x1="2.5" y1="6" x2="15.5" y2="6" stroke="currentColor" stroke-width="1.2" />
+          <line x1="2.5" y1="9" x2="15.5" y2="9" stroke="currentColor" stroke-width="1.2" />
+          <line x1="2.5" y1="12" x2="15.5" y2="12" stroke="currentColor" stroke-width="1.2" />
+        </svg>
+      {:else if m === 'front'}
+        <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <line x1="2.5" y1="6" x2="15.5" y2="6" stroke="currentColor" stroke-width="1.2" opacity="0.45" />
+          <line x1="2.5" y1="9" x2="15.5" y2="9" stroke="currentColor" stroke-width="1.2" opacity="0.45" />
+          <line x1="2.5" y1="12" x2="15.5" y2="12" stroke="currentColor" stroke-width="1.2" opacity="0.45" />
+          <rect x="5" y="4.5" width="8" height="9" rx="1" fill="currentColor" />
         </svg>
       {:else}
         <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">

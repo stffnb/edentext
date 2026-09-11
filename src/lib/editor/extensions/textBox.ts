@@ -10,7 +10,7 @@ import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { placeFromPage } from './pageBreaks';
-import { HANDLES, MIN_SIZE_PX, clamp, parsePx, frameMargins, pageContentHeightPx, applyRunThrough, type WrapMode } from './image';
+import { HANDLES, MIN_SIZE_PX, clamp, parsePx, frameMargins, pageContentHeightPx, applyRunThrough, startFreeMove, droppedFrameAttrs, type WrapMode } from './image';
 import { SHAPES, shapePath, linePaths, arrowHeadPx, isShapeKind, isLineKind, type ShapeKind } from '../../utils/shapes';
 import { cmToPx } from '../../storage/pageMargins';
 
@@ -503,6 +503,8 @@ class TextBoxView {
   private editor: Editor;
   private getPos: () => number;
   private resizing = false;
+  // Live offsets while a free drag runs (cm), added to the node's own by offX/offY.
+  private dragBy: { x: number; y: number } | null = null;
   // The polygon outline, for a shape CSS cannot draw; null for the three it can.
   private outline: SVGPathElement | null = null;
   // The line and its arrow heads, for the kinds that are two endpoints, not a box.
@@ -560,6 +562,10 @@ class TextBoxView {
   private attrs(): TextBoxAttrs {
     return this.node.attrs as TextBoxAttrs;
   }
+
+  // The frame's offsets, carrying a running free drag (see ImageView).
+  private offX(): unknown { const v = this.attrs().wrapOffset; return this.dragBy ? (typeof v === 'number' ? v : 0) + this.dragBy.x : v; }
+  private offY(): unknown { const v = this.attrs().wrapOffsetY; return this.dragBy ? (typeof v === 'number' ? v : 0) + this.dragBy.y : v; }
 
   private applyAll(): void {
     const a = this.attrs();
@@ -729,7 +735,7 @@ class TextBoxView {
       // Behind the text, which is what a shape with no run-through of its own exports as
       // — and under a picture behind the text too (-1), which is the order LibreOffice
       // paints a cover page in; a box the file puts in front of the text sits above both.
-      applyRunThrough(d, a.wrapOffset, a.wrapOffsetY, a.inFront === true, a.wrapFromPage === true);
+      applyRunThrough(d, this.offX(), this.offY(), a.inFront === true, a.wrapFromPage === true);
       if (a.inFront !== true) d.style.zIndex = '-2';
       // Deferred: the frame has to be laid out before its own page can be read.
       if (a.wrapFromPage) requestAnimationFrame(() => placeFromPage(this.editor.view, d));
@@ -813,6 +819,12 @@ class TextBoxView {
       // draggable, so a later ring drag still moves it natively.
       view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
       if (!already) { e.preventDefault(); view.focus(); }
+      // Out of the flow there is no text position to re-anchor to, so the ring drag
+      // moves the box by its own offsets instead of PM's native node move.
+      if (this.attrs().wrap === 'through') {
+        startFreeMove(e, this.dom, this.node.attrs, by => { this.dragBy = by; this.applyWrap(); },
+          offsets => { if (offsets) this.commit(offsets); });
+      }
     } else if (!this.editing(view.state)) {
       // Body click on a box nobody is editing: the frame is not editable yet, so the
       // browser places no caret in it. Do it ourselves at the click point.

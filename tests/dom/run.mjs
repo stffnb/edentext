@@ -313,6 +313,65 @@ try {
   const flow = await page.evaluate(() => ({ passes: window.__passes, fragments: document.querySelectorAll('.tiptap > .columns-node').length }));
   check(flow.fragments >= 3 && flow.passes <= 8,
     `a two-column section over ${flow.fragments} pages settles in ${flow.passes} passes`);
+  // Behind the text: the frame leaves the flow (so the paragraph loses its height again)
+  // and is then moved by its own offsets, since there is no text position to re-anchor to.
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
+    block(words('before '), frame({}), words(' after the picture')),
+  ] });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap img', { timeout: 15_000 });
+  await settle(page, true);
+  const paraHeight = () => page.evaluate(() => document.querySelector('.tiptap > p').getBoundingClientRect().height);
+  const frameBox = () => page.evaluate(() => {
+    const el = document.querySelector('.image-node');
+    const r = el.getBoundingClientRect();
+    return { wrap: el.dataset.wrap ?? '', z: getComputedStyle(el).zIndex, x: r.left, y: r.top };
+  });
+  const inlineHeight = await paraHeight();
+  await page.click('.tiptap img');
+  await page.waitForSelector('.image-toolbar', { timeout: 10_000 });
+  await page.locator('.image-toolbar .it-btn').nth(4).click();
+  await settle(page, true);
+  const behindBox = await frameBox();
+  check(behindBox.wrap === 'through' && behindBox.z === '-1' && await paraHeight() < inlineHeight,
+    `the behind-text button takes the frame out of the flow (${behindBox.wrap}, z ${behindBox.z}, ${inlineHeight}px → ${await paraHeight()}px)`);
+
+  await page.mouse.move(behindBox.x + 60, behindBox.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(behindBox.x + 120, behindBox.y + 70, { steps: 4 });
+  await page.mouse.up();
+  await settle(page, true);
+  const movedBox = await frameBox();
+  const dx = Math.round(movedBox.x - behindBox.x);
+  const dy = Math.round(movedBox.y - behindBox.y);
+  check(Math.abs(dx - 60) <= 2 && Math.abs(dy - 40) <= 2,
+    `a frame out of the flow is dragged by its own offsets (moved ${dx}/${dy}, wanted 60/40)`);
+
+  // A text box in that mode moves the same way, but by its frame ring — its own drag
+  // is ProseMirror's node move, which would re-anchor it instead.
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
+    block(words('before the box '), { type: 'textBox', attrs: { width: 200, height: 80, wrap: 'through' },
+      content: [block(words('in the box'))] }, words(' after it')),
+  ] });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap .image-node[data-wrap="through"]', { timeout: 15_000 });
+  await settle(page, true);
+  const boxAt = () => page.evaluate(() => {
+    const r = document.querySelector('.tiptap .image-node[data-wrap="through"]').getBoundingClientRect();
+    return { x: r.left, y: r.top };
+  });
+  const boxBefore = await boxAt();
+  await page.mouse.move(boxBefore.x + 2, boxBefore.y + 40);
+  await page.mouse.down();
+  await page.mouse.move(boxBefore.x + 52, boxBefore.y + 65, { steps: 4 });
+  await page.mouse.up();
+  await settle(page, true);
+  const boxAfter = await boxAt();
+  const bdx = Math.round(boxAfter.x - boxBefore.x);
+  const bdy = Math.round(boxAfter.y - boxBefore.y);
+  check(Math.abs(bdx - 50) <= 2 && Math.abs(bdy - 25) <= 2,
+    `a text box out of the flow is dragged by its ring (moved ${bdx}/${bdy}, wanted 50/25)`);
+
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {

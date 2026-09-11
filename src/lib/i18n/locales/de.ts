@@ -316,6 +316,8 @@ const de: Messages = {
     wrapLeft: 'Textumbruch — Bild links',
     wrapRight: 'Textumbruch — Bild rechts',
     wrapTopBottom: 'Oben und unten',
+    wrapBehind: 'Hinter den Text',
+    wrapFront: 'Vor den Text',
   },
   textBox: {
     toolbar: 'Textfeld-Optionen',
@@ -323,6 +325,8 @@ const de: Messages = {
     wrapLeft: 'Textumbruch — Feld links',
     wrapRight: 'Textumbruch — Feld rechts',
     wrapTopBottom: 'Oben und unten',
+    wrapBehind: 'Hinter den Text',
+    wrapFront: 'Vor den Text',
     alignLeft: 'Linksbündig in der Spalte',
     alignCenter: 'Zentriert in der Spalte',
     alignRight: 'Rechtsbündig in der Spalte',

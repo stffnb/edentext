@@ -8,24 +8,33 @@
     top,
     left,
     wrap,
+    inFront,
   }: {
     editor: Editor | null;
     top: number;
     left: number;
     wrap: WrapMode;
+    inFront: boolean;
   } = $props();
 
   // preventDefault on mousedown keeps the image node-selected; .focus() re-anchors
   // to it so setImageWrap targets the right node.
-  function set(mode: WrapMode) {
-    editor?.chain().focus().setImageWrap(mode).run();
+  function set(m: WrapChoice) {
+    editor?.chain().focus().setImageWrap(m === 'behind' || m === 'front' ? 'through' : m, m === 'front').run();
   }
 
-  const modes: WrapMode[] = ['inline', 'left', 'right', 'topBottom'];
-  function wrapTitle(m: WrapMode): string {
+  // The list Word's layout options offer, without "tight" (no browser wraps text along
+  // a contour). The two run-through entries are one mode, told apart by which side of
+  // the text the frame lands on.
+  type WrapChoice = WrapMode | 'behind' | 'front';
+  const modes: WrapChoice[] = ['inline', 'left', 'right', 'topBottom', 'behind', 'front'];
+  const active = $derived<WrapChoice>(wrap === 'through' ? (inFront ? 'front' : 'behind') : wrap);
+  function wrapTitle(m: WrapChoice): string {
     return m === 'inline' ? t().image.wrapInline
       : m === 'left' ? t().image.wrapLeft
       : m === 'right' ? t().image.wrapRight
+      : m === 'behind' ? t().image.wrapBehind
+      : m === 'front' ? t().image.wrapFront
       : t().image.wrapTopBottom;
   }
 </script>
@@ -41,10 +50,10 @@
   {#each modes as m}
     <button
       class="it-btn"
-      class:active={wrap === m}
+      class:active={active === m}
       title={wrapTitle(m)}
       aria-label={wrapTitle(m)}
-      aria-pressed={wrap === m}
+      aria-pressed={active === m}
       onclick={() => set(m)}
     >
       {#if m === 'inline'}
@@ -70,6 +79,20 @@
           <line x1="2.5" y1="7" x2="8" y2="7" stroke="currentColor" stroke-width="1.2" />
           <line x1="2.5" y1="10" x2="8" y2="10" stroke="currentColor" stroke-width="1.2" />
           <line x1="2.5" y1="15" x2="15.5" y2="15" stroke="currentColor" stroke-width="1.2" />
+        </svg>
+      {:else if m === 'behind'}
+        <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <rect x="5" y="4.5" width="8" height="9" rx="1" stroke="currentColor" stroke-width="1.2" opacity="0.45" />
+          <line x1="2.5" y1="6" x2="15.5" y2="6" stroke="currentColor" stroke-width="1.2" />
+          <line x1="2.5" y1="9" x2="15.5" y2="9" stroke="currentColor" stroke-width="1.2" />
+          <line x1="2.5" y1="12" x2="15.5" y2="12" stroke="currentColor" stroke-width="1.2" />
+        </svg>
+      {:else if m === 'front'}
+        <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <line x1="2.5" y1="6" x2="15.5" y2="6" stroke="currentColor" stroke-width="1.2" opacity="0.45" />
+          <line x1="2.5" y1="9" x2="15.5" y2="9" stroke="currentColor" stroke-width="1.2" opacity="0.45" />
+          <line x1="2.5" y1="12" x2="15.5" y2="12" stroke="currentColor" stroke-width="1.2" opacity="0.45" />
+          <rect x="5" y="4.5" width="8" height="9" rx="1" fill="currentColor" />
         </svg>
       {:else}
         <svg width="22" height="22" viewBox="0 0 18 18" fill="none" aria-hidden="true">

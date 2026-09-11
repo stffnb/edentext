@@ -322,6 +322,8 @@ const en = {
     wrapLeft: 'Wrap text — image left',
     wrapRight: 'Wrap text — image right',
     wrapTopBottom: 'Top and bottom',
+    wrapBehind: 'Behind text',
+    wrapFront: 'In front of text',
   },
   textBox: {
     toolbar: 'Text box options',
@@ -329,6 +331,8 @@ const en = {
     wrapLeft: 'Wrap text — box left',
     wrapRight: 'Wrap text — box right',
     wrapTopBottom: 'Top and bottom',
+    wrapBehind: 'Behind text',
+    wrapFront: 'In front of text',
     alignLeft: 'Align left in the column',
     alignCenter: 'Centre in the column',
     alignRight: 'Align right in the column',

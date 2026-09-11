@@ -21,7 +21,7 @@ declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     image: {
       setImage: (attrs: { src: string; alt?: string; width?: number | null; height?: number | null; rotation?: number; wrap?: WrapMode }) => ReturnType;
-      setImageWrap: (wrap: WrapMode) => ReturnType;
+      setImageWrap: (wrap: WrapMode, inFront?: boolean) => ReturnType;
     };
   }
 }
@@ -100,6 +100,19 @@ export function frameMargins(wrap: WrapMode, offsetCm: unknown, boxWidthPx: numb
   return `0 ${far} 0 ${gap}`;
 }
 
+// What picking a wrap mode by hand drops: the offsets belong to the mode that was set,
+// and so do the coordinate systems they were measured in (the page corner, a fixed
+// page). `inFront` means something for run-through alone. Shared with textBox.ts.
+export function droppedFrameAttrs(wrap: WrapMode, inFront: boolean): Record<string, unknown> {
+  return {
+    wrapOffset: null,
+    wrapOffsetY: null,
+    wrapFromPage: false,
+    anchorPage: null,
+    inFront: wrap === 'through' && inFront,
+  };
+}
+
 // Word's behind-text / in-front-of-text, ODF run-through: the text runs over or under
 // the frame, so it reserves nothing. Absolute with no offsets keeps the static position
 // it was anchored at; the file's own offsets ride as margins from there.
@@ -112,6 +125,46 @@ export function applyRunThrough(el: HTMLElement, offsetCm: unknown, offsetYCm: u
   // the margins that reach it, and pagination re-places it from these same numbers.
   if (fromPage) { el.dataset.pageX = String(px(offsetCm)); el.dataset.pageY = String(px(offsetYCm)); }
   else { delete el.dataset.pageX; delete el.dataset.pageY; }
+}
+
+// Drag a frame that is out of the flow. Its offsets count from a point the drag cannot
+// move — the anchor's static position, the page's corner — so the pointer delta is
+// simply added to them. `done(null)` reports a click that never moved.
+export function startFreeMove(
+  event: MouseEvent,
+  dom: HTMLElement,
+  attrs: Record<string, unknown>,
+  preview: (by: { x: number; y: number } | null) => void,
+  done: (offsets: { wrapOffset: number; wrapOffsetY: number } | null) => void,
+): void {
+  event.preventDefault();
+  event.stopPropagation();
+  // The wrapper is axis-aligned, so its scaled/unscaled width ratio is the zoom.
+  const zoom = dom.getBoundingClientRect().width / dom.offsetWidth || 1;
+  const win = dom.ownerDocument.defaultView ?? window;
+  const cm = (px: number) => Math.round((px * 2.54 * 1000) / 96) / 1000;
+  const base = (v: unknown) => (typeof v === 'number' ? v : 0);
+  const sx = event.clientX;
+  const sy = event.clientY;
+  let by = { x: 0, y: 0 };
+  let moved = false;
+
+  const move = (e: MouseEvent): void => {
+    if (!e.buttons) { finish(); return; }
+    by = { x: cm((e.clientX - sx) / zoom), y: cm((e.clientY - sy) / zoom) };
+    moved = true;
+    preview(by);
+  };
+  const finish = (): void => {
+    win.removeEventListener('mousemove', move);
+    win.removeEventListener('mouseup', finish);
+    preview(null);
+    done(moved
+      ? { wrapOffset: base(attrs.wrapOffset) + by.x, wrapOffsetY: base(attrs.wrapOffsetY) + by.y }
+      : null);
+  };
+  win.addEventListener('mousemove', move);
+  win.addEventListener('mouseup', finish);
 }
 
 // Where an as-char frame sits against the line (ODF style:vertical-pos/-rel, probed
@@ -286,7 +339,7 @@ export const Image = Node.create({
 
       // Set the wrap mode on the selected image.
       setImageWrap:
-        (wrap: WrapMode) =>
+        (wrap: WrapMode, inFront = false) =>
         ({ state, dispatch }) => {
           const sel = state.selection;
           if (!(sel instanceof NodeSelection) || sel.node.type.name !== this.name) return false;
@@ -294,7 +347,10 @@ export const Image = Node.create({
           // A frame the file never floated has no distance either; give it the one a
           // word processor's own wrap command writes (0.32cm).
           const wrapDist = wrap === 'inline' ? sel.node.attrs.wrapDist : sel.node.attrs.wrapDist ?? 0.32;
-          if (dispatch) dispatch(state.tr.setNodeMarkup(sel.from, undefined, { ...sel.node.attrs, wrap, wrapDist, wrapOffset: null, wrapOffsetY: null }));
+          if (dispatch) {
+            dispatch(state.tr.setNodeMarkup(sel.from, undefined,
+              { ...sel.node.attrs, wrap, wrapDist, ...droppedFrameAttrs(wrap, inFront) }));
+          }
           return true;
         },
     };
@@ -428,6 +484,8 @@ class ImageView {
   // Handed in with the node: editor.view is not there yet while a saved document builds.
   private view: EditorView;
   private getPos: () => number;
+  // Live offsets while a free drag runs (cm), added to the node's own by offX/offY.
+  private dragBy: { x: number; y: number } | null = null;
 
   constructor(node: PMNode, editor: Editor, getPos: () => number, view: EditorView) {
     this.node = node;
@@ -489,6 +547,12 @@ class ImageView {
   private attrWrap(): WrapMode { const w = this.node.attrs.wrap; return w === 'left' || w === 'right' || w === 'topBottom' || w === 'through' ? w : 'inline'; }
   // The wrapper's reserved (rotated) width, which applyLayout has just written.
   private boxWidth(): number { return parseFloat(this.dom.style.width) || this.attrW() || 0; }
+  // The frame's offsets, carrying a running drag. Without one the attr passes through
+  // as it stands: null means "no offset stated", which places the frame flush.
+  private offX(): unknown { const v = this.node.attrs.wrapOffset; return this.dragBy ? (typeof v === 'number' ? v : 0) + this.dragBy.x : v; }
+  private offY(): unknown { const v = this.node.attrs.wrapOffsetY; return this.dragBy ? (typeof v === 'number' ? v : 0) + this.dragBy.y : v; }
+  // A frame out of the flow is placed by those offsets alone, so it is dragged by them.
+  private isFree(): boolean { return this.attrWrap() === 'through' || typeof this.node.attrs.anchorPage === 'number'; }
 
   // Size the rotor to w×h, rotate it about its centre, and grow the axis-aligned
   // wrapper to the rotated bounding box so the line reserves the right space.
@@ -541,7 +605,7 @@ class ImageView {
     }
     delete d.dataset.anchorPage;
     if (wrap === 'through') {
-      applyRunThrough(d, a.wrapOffset, a.wrapOffsetY, a.inFront === true, a.wrapFromPage === true);
+      applyRunThrough(d, this.offX(), this.offY(), a.inFront === true, a.wrapFromPage === true);
       // Deferred like sinkToOffset: the frame has to be laid out before its own page
       // can be read off the grid.
       if (a.wrapFromPage) requestAnimationFrame(() => placeFromPage(this.view, d));
@@ -584,9 +648,9 @@ class ImageView {
     const px = (cm: unknown) => Math.round(cmToPx(typeof cm === 'number' ? cm : 0));
     d.style.position = 'absolute';
     d.style.zIndex = this.node.attrs.inFront ? '1' : '-1';
-    d.style.left = `${px(this.node.attrs.wrapOffset)}px`;
+    d.style.left = `${px(this.offX())}px`;
     const grid = readVerticalMargins(this.view.dom as HTMLElement).grid;
-    d.style.top = `${grid.topOf(page) + px(this.node.attrs.wrapOffsetY)}px`;
+    d.style.top = `${grid.topOf(page) + px(this.offY())}px`;
   }
 
   // The offset counts from the anchor paragraph's top. Where text precedes the frame
@@ -609,6 +673,7 @@ class ImageView {
   // image to the exact character. One undo step (later moves are addToHistory:false).
   private startReposition(event: MouseEvent): void {
     if (!this.editor.isEditable) return;
+    if (this.isFree()) { this.startFreeDrag(event); return; }
     event.preventDefault();
     event.stopPropagation();
     const view = this.view;
@@ -679,6 +744,19 @@ class ImageView {
     };
     win.addEventListener('mousemove', move);
     win.addEventListener('mouseup', finish);
+  }
+
+  // A frame out of the flow moves by its own offsets instead of re-anchoring: nothing
+  // wraps around it, so there is no text position to follow. A click that never moved
+  // selects it, as it does everywhere else.
+  private startFreeDrag(event: MouseEvent): void {
+    startFreeMove(event, this.dom, this.node.attrs, by => { this.dragBy = by; this.applyWrap(); }, offsets => {
+      if (offsets) { this.commit(offsets); return; }
+      const pos = this.getPos();
+      if (typeof pos === 'number') {
+        this.view.dispatch(this.view.state.tr.setSelection(NodeSelection.create(this.view.state.doc, pos)));
+      }
+    });
   }
 
   private adoptNaturalSize(): void {
