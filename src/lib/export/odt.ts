@@ -13,6 +13,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor, type Watermark } from '../storage/pag
 import { FOLD_MARK_MM, PUNCH_MARK_MM, MARK_START_MM, FOLD_MARK_LEN_MM, PUNCH_MARK_LEN_MM, FOLD_MARK_NAME } from '../storage/foldMarks';
 import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps, type ParaProps } from '../styles/styleSheet';
+import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { HEADING_STYLE_OVERRIDES, HEADING_FONT, HEADING_LEVELS, MAX_HEADING_LEVEL } from '../styles/headings';
 import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
@@ -4327,6 +4328,58 @@ function applyImages(odtBytes: Uint8Array, images: ImageExport[]): Uint8Array {
   return rezipOdt(files);
 }
 
+// The fonts the opened file carried, written back: the binaries under Fonts/, a manifest
+// entry each, and per family one <style:font-face> whose source names every cut. Both
+// content.xml and styles.xml declare them, the way LibreOffice writes an embedded font.
+function applyEmbeddedFontsOdf(odtBytes: Uint8Array, fonts: EmbeddedFont[]): Uint8Array {
+  if (!fonts.length) return odtBytes;
+  const files = unzipSync(odtBytes);
+  const srcByFamily = new Map<string, string>();
+  fonts.forEach((font, i) => {
+    const path = `Fonts/font${i + 1}.ttf`;
+    files[path] = font.data as Uint8Array<ArrayBuffer>;
+    srcByFamily.set(font.family, (srcByFamily.get(font.family) ?? '')
+      + `<svg:font-face-uri xlink:href="${path}" xlink:type="simple"`
+      + ` loext:font-style="${font.style}" loext:font-weight="${font.weight}">`
+      + '<svg:font-face-format svg:string="truetype"/></svg:font-face-uri>');
+  });
+
+  const manifestBytes = files['META-INF/manifest.xml'];
+  if (manifestBytes) {
+    const entries = fonts
+      .map((_f, i) => `<manifest:file-entry manifest:full-path="Fonts/font${i + 1}.ttf" manifest:media-type="application/x-font-ttf"/>`)
+      .join('');
+    files['META-INF/manifest.xml'] = strToU8(strFromU8(manifestBytes).replace('</manifest:manifest>', `${entries}</manifest:manifest>`));
+  }
+  for (const part of ['content.xml', 'styles.xml'] as const) {
+    const bytes = files[part];
+    if (!bytes) continue;
+    const xml = part === 'styles.xml' ? ensureDrawNamespaces(strFromU8(bytes)) : strFromU8(bytes);
+    files[part] = strToU8(declareEmbeddedFonts(xml, srcByFamily));
+  }
+  return rezipOdt(files);
+}
+
+// Each source goes into the family's own declaration — odf-kit writes an empty one for
+// every referenced name, and a second with the same style:name would be invalid.
+function declareEmbeddedFonts(xml: string, srcByFamily: Map<string, string>): string {
+  if (!xml.includes('</office:font-face-decls>')) return xml;
+  let out = xml.includes('xmlns:loext=')
+    ? xml
+    : xml.replace(/<office:document-(?:content|styles)\b/,
+      '$& xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0"');
+  for (const [family, uris] of srcByFamily) {
+    const name = escapeXml(family);
+    const src = `<svg:font-face-src>${uris}</svg:font-face-src>`;
+    const decl = new RegExp(`<style:font-face style:name="${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"([^>]*)/>`);
+    out = decl.test(out)
+      ? out.replace(decl, `<style:font-face style:name="${name}"$1>${src}</style:font-face>`)
+      : out.replace('</office:font-face-decls>',
+        `<style:font-face style:name="${name}" svg:font-family="${name}">${src}</style:font-face></office:font-face-decls>`);
+  }
+  return out;
+}
+
 // The formula sub-document: an ODF formula document's content.xml is the MathML root
 // itself. The LaTeX rides in an annotation so our own files re-import exactly; other
 // readers ignore it and typeset the presentation markup.
@@ -4993,7 +5046,7 @@ export type HfExport = {
 };
 
 // The full document → .odt pipeline, DOM-free; returns the .odt bytes.
-export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR, lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING, recordChanges = false, foldMarks = false, spacingAtPageStart = true): Promise<Uint8Array> {
+export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAULT_MARGINS, orientation: Orientation = 'portrait', hf?: HfExport, language?: { language: string; country: string } | null, pageFormat: PageFormat = 'A4', styles: StyleSheet = builtinStyleSheet(), tabIntervalCm: number = DEFAULT_TAB_INTERVAL_CM, spacingModel: SpacingModel = 'add', rtl = false, notesSettings: NoteSettings = DEFAULT_NOTE_SETTINGS, props: DocProperties = EMPTY_DOC_PROPERTIES, hyphenate = false, pageNumbering: PageNumbering = DEFAULT_PAGE_NUMBERING, decor: PageDecor = EMPTY_PAGE_DECOR, lineNumbering: LineNumbering = DEFAULT_LINE_NUMBERING, recordChanges = false, foldMarks = false, spacingAtPageStart = true, fonts: EmbeddedFont[] = []): Promise<Uint8Array> {
   // Images become IMG sentinels before serialization; applyImages resolves them and writes
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
@@ -5267,7 +5320,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const withSections = applySectionMasterPages(withHf, hf?.sections ?? [], hf?.pageCount ?? 1, margins, pageFormat, orientation,
     { header: !!headerPara, footer: !!footerPara }, { header: headerDist, footer: footerDist }, borderInsetCm(decor));
   const withWatermark = applyFoldMarksOdf(applyWatermarkOdf(withSections, decor.watermark), foldMarks);
-  return zipFinal(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withWatermark, spacingModel, spacingAtPageStart), pageNumbering.start), props)));
+  const withFonts = applyEmbeddedFontsOdf(withWatermark, fonts);
+  return zipFinal(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withFonts, spacingModel, spacingAtPageStart), pageNumbering.start), props)));
 }
 
 // The package declares ODF 1.3 in every part — the version LibreOffice writes, and

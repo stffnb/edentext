@@ -23,6 +23,13 @@ export function deobfuscateOdttf(data: Uint8Array, fontKey: string): Uint8Array 
 // The faces this module added to document.fonts, tracked so a new document's set can
 // replace the previous one (only the current document's fonts stay registered).
 let registered: FontFace[] = [];
+let current: EmbeddedFont[] = [];
+
+// The open document's fonts, for the exporters to embed again. Kept even for a face the
+// browser refused: a word processor may still read it.
+export function embeddedFonts(): EmbeddedFont[] {
+  return current;
+}
 
 export function clearEmbeddedFonts(): void {
   if (typeof document !== 'undefined' && document.fonts) {
@@ -31,13 +38,15 @@ export function clearEmbeddedFonts(): void {
     }
   }
   registered = [];
+  current = [];
 }
 
 // Register each font under its CSS family; an unreadable/blocked one is skipped so the
 // rest still load. No-op without FontFace (jsdom/tests).
 export async function registerEmbeddedFonts(fonts: EmbeddedFont[]): Promise<void> {
-  if (typeof FontFace === 'undefined' || typeof document === 'undefined' || !document.fonts) return;
   clearEmbeddedFonts();
+  current = fonts;
+  if (typeof FontFace === 'undefined' || typeof document === 'undefined' || !document.fonts) return;
   for (const f of fonts) {
     try {
       const face = new FontFace(f.family, f.data as BufferSource, { weight: f.weight, style: f.style });

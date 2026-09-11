@@ -76,8 +76,9 @@
   import { OPEN_LINK_DIALOG_EVENT } from './lib/editor/extensions/link';
   import { localizeImportMessage } from './lib/i18n/importMessages';
   import { unavailableFonts } from './lib/utils/fontDetect';
-  import { registerEmbeddedFonts, clearEmbeddedFonts } from './lib/fonts/embeddedFonts';
+  import { registerEmbeddedFonts, clearEmbeddedFonts, embeddedFonts } from './lib/fonts/embeddedFonts';
   import { saveEmbeddedFonts, loadEmbeddedFonts, clearEmbeddedFontStore } from './lib/storage/embeddedFontStore';
+  import { noteEmbeddedFonts } from './lib/components/ribbon/fontList.svelte';
 
   // launchQueue is not in lib.dom yet; reach it through this shape.
   type WithLaunchQueue = Window & {
@@ -675,6 +676,7 @@
     setStyleSheet(builtinStyleSheet());
     setNoteSettings(DEFAULT_NOTE_SETTINGS);
     clearEmbeddedFonts();
+    noteEmbeddedFonts([]);
     void clearEmbeddedFontStore();
   }
 
@@ -815,6 +817,7 @@
       // rendering, so its text shows in the right face and isn't flagged as missing below.
       await registerEmbeddedFonts(result.fonts);
       void saveEmbeddedFonts(result.fonts);
+      noteEmbeddedFonts(result.fonts.map((f) => f.family));
 
       loadContent(result.content); // onUpdate fires → autosave
       documentEpoch++;
@@ -972,7 +975,7 @@
   // Both exporters take the same document-wide arguments, and every save path needs
   // one of them. The exporter module loads on first use.
   function exportArgs() {
-    return [pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart] as const;
+    return [pageMargins, pageOrientation, hfOpts(), odfFromLanguage(documentLanguage), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarks, spacingAtPageStart, embeddedFonts()] as const;
   }
 
   async function buildBytes(kind: DocumentFormat, json: TiptapNode): Promise<Uint8Array> {
@@ -1182,8 +1185,13 @@
 
   onMount(() => {
     // Re-register the restored document's embedded fonts so it renders in the right face;
-    // FontFace load fires 'loadingdone', which Editor.svelte re-paginates on.
-    void loadEmbeddedFonts().then(registerEmbeddedFonts);
+    // FontFace load fires 'loadingdone', which Editor.svelte re-paginates on. A file opened
+    // while the store was still reading has its own, and registering would replace them.
+    void loadEmbeddedFonts().then((fonts) => {
+      if (embeddedFonts().length) return;
+      noteEmbeddedFonts(fonts.map((f) => f.family));
+      void registerEmbeddedFonts(fonts);
+    });
 
     // Shortcuts that must work regardless of focus and that suppress the browser's
     // own binding (save page, find, open, zoom). Everything editor-scoped lives in
