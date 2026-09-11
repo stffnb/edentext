@@ -155,6 +155,23 @@ try {
   const isDocx = saved[0] === 0x50 && saved[1] === 0x4b && saved.includes('word/document.xml');
   check(isDocx, `Save As (.docx) without a picker downloads a DOCX (${download.suggestedFilename()}, ${saved.length} bytes)`);
 
+  // The whole margin band is the zone's double-click target, and an empty zone's
+  // placeholder sits where the first typed character lands — not a line below it.
+  await page.keyboard.press('Escape');
+  const hit = page.locator('.hf-hit').nth(1);
+  const hitH = (await hit.boundingBox()).height;
+  await hit.dblclick({ position: { x: 8, y: hitH - 4 } });
+  await page.waitForSelector('.hf-active.hf-footer .tiptap', { timeout: 5000 });
+  check(true, 'a double-click in the bottom-left page corner opens the footer');
+  const lineTop = () => page.evaluate(() => document.querySelector('.hf-active .tiptap p').getBoundingClientRect().top);
+  const emptyTop = await lineTop();
+  await page.keyboard.type('x');
+  const typedTop = await lineTop();
+  check(Math.abs(emptyTop - typedTop) < 1,
+    `the footer placeholder sits on the typed line (${emptyTop.toFixed(1)} → ${typedTop.toFixed(1)})`);
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Escape');
+
   // The header/footer switches live in the ribbon's Insert tab. A ticked "different
   // first page" makes page 1 a second zone, so what is typed there lands beside the
   // running one — and the distance travels to the app's own storage.

@@ -155,6 +155,19 @@
     if (zone === 'footer') return { ...b, top: b.top + b.height - height, height };
     return { ...b, height };
   }
+  // Double-click target: the whole margin band the zone sits in, edge to edge, not just
+  // the zone box — the band above the body is the header's, as it is in LibreOffice.
+  function hitBox(zone: HfZone, page: number) {
+    const box = boxOf(page);
+    const z = zoneBox(zone, page);
+    const m = marginsOf(page);
+    if (zone === 'header') {
+      const bottom = Math.max(box.top + cmToPx(m.top), z.top + z.height);
+      return { top: box.top, left: box.left, width: box.width, height: bottom - box.top };
+    }
+    const top = Math.min(box.top + box.height - cmToPx(m.bottom), z.top);
+    return { top, left: box.left, width: box.width, height: box.top + box.height - top };
+  }
   const boxStyle = (b: { top: number; left: number; width: number; height: number }) =>
     `top: ${b.top}px; left: ${b.left}px; width: ${b.width}px; height: ${b.height}px;`;
 
@@ -431,7 +444,9 @@
     // A rendered trailing break adds one caret line past the real content; measure that
     // line height (the CSS var below shifts the editor down so it overflows the anchor).
     const p = tt?.querySelector('p') as HTMLElement | null;
-    const tb = p?.querySelector(':scope > br.ProseMirror-trailingBreak') as HTMLElement | null;
+    // Only past real content: in an empty zone that break is the caret line itself, and
+    // discounting it would drop the placeholder a line below the anchored edge.
+    const tb = p && p.childNodes.length > 1 ? (p.querySelector(':scope > br.ProseMirror-trailingBreak') as HTMLElement | null) : null;
     const lineH = p ? parseFloat(getComputedStyle(p).lineHeight) : 0;
     activeTrailingPx = tb && getComputedStyle(tb).display !== 'none' && Number.isFinite(lineH) ? lineH : 0;
   });
@@ -473,6 +488,9 @@
 <div class="hf-layer">
   {#each pages as p}
     {#each ['header', 'footer'] as const as zone}
+      {#if interactive}
+        <div class="hf-hit" style={boxStyle(hitBox(zone, p))} ondblclick={() => startEdit(zone, p)} role="button" tabindex="-1"></div>
+      {/if}
       {#if !(interactive && hfActive === zone && editingPage === p)}
         {@const html = zoneHtml(zone, p)}
         {@const total = html.includes('data-page-field="count"') ? numPages : 0}
@@ -584,6 +602,13 @@
     justify-content: flex-end;
   }
 
+  /* The margin band around a zone, double-clickable like the zone itself. Painted
+     before it, so the zone keeps the events inside its own box. */
+  .hf-hit {
+    position: absolute;
+    pointer-events: auto;
+  }
+
   /* Empty zone: invisible until hovered, then show a faint double-click hint. */
   .hf-empty::before {
     content: attr(data-hf-label);
@@ -596,7 +621,8 @@
   .hf-footer.hf-empty::before {
     margin-top: auto;
   }
-  .hf-empty:hover::before {
+  .hf-empty:hover::before,
+  .hf-hit:hover + .hf-zone.hf-empty::before {
     opacity: 0.6;
   }
 
