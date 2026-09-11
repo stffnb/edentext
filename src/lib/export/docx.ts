@@ -964,6 +964,7 @@ type TextBoxDocx = {
   distCm: number | null;
   alignH: string | null;
   fromPage: boolean;
+  inFront: boolean;
   shapeKind: ShapeKind;
   shapePath: string | null;
   flipV: boolean;
@@ -991,6 +992,7 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     distCm: typeof a.wrapDist === 'number' ? a.wrapDist : null,
     alignH: a.wrapAlign === 'center' || a.wrapAlign === 'right' || a.wrapAlign === 'left' ? a.wrapAlign : null,
     fromPage: a.wrapFromPage === true,
+    inFront: a.inFront === true,
     shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
     shapePath: typeof a.shapePath === 'string' && a.shapePath ? a.shapePath : null,
     flipV: a.flipV === true,
@@ -1392,7 +1394,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     : `<wp:align>${align}</wp:align>`;
   return (
     `<w:drawing><wp:anchor ${WP_NS} distT="0" distB="0" distL="${emu(box.distCm ?? 0)}" distR="${emu(box.distCm ?? 0)}"` +
-    ` simplePos="0" relativeHeight="${251658240 + index}" behindDoc="${box.wrap === 'through' ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="${box.wrap === 'through' ? 1 : 0}">` +
+    ` simplePos="0" relativeHeight="${251658240 + index}" behindDoc="${box.wrap === 'through' && !box.inFront ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="${box.wrap === 'through' ? 1 : 0}">` +
     `<wp:simplePos x="0" y="0"/>` +
     `<wp:positionH relativeFrom="margin">${posH}</wp:positionH>` +
     (box.fromPage

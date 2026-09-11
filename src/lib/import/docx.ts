@@ -1,5 +1,5 @@
 import { strFromU8 } from 'fflate';
-import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, toggle as onOff, wVal, W, R, WP, A, B, WPS, MC, VML, O, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
+import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readTabStops, toggle as onOff, wVal, W, R, WP, A, B, WPS, WPG, MC, VML, O, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { lengthToPt, WATERMARK_NAME } from './styleResolver';
 import { normalizeColor } from '../export/odt';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
@@ -1563,14 +1563,15 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     // Route a drawing/pict result: both a picture and a text box are inline and stay
     // where the drawing sits. The one-paragraph header/footer zone takes as-char images
     // only — boxes and floating page-sized drawings (backgrounds, watermarks) go.
-    const pushDrawn = (n: Node | null, floating: boolean) => {
-      if (!n) return;
-      if (hfFields) {
-        if (n.type === 'image' && !floating) { out.push({ ...n, attrs: { ...n.attrs, wrap: 'inline' } }); return; }
-        ctx.warnings.add('Drawings were removed');
-        return;
+    const pushDrawn = (n: Node | Node[] | null, floating: boolean) => {
+      for (const one of Array.isArray(n) ? n : n ? [n] : []) {
+        if (hfFields) {
+          if (one.type === 'image' && !floating) out.push({ ...one, attrs: { ...one.attrs, wrap: 'inline' } });
+          else ctx.warnings.add('Drawings were removed');
+          continue;
+        }
+        out.push(one);
       }
-      out.push(n);
     };
 
     // Set when this run's w:footnoteReference declares a custom mark: the run's own
@@ -2030,7 +2031,23 @@ function drawingIsFloating(el: Element): boolean {
   return /(^|;)\s*position\s*:\s*absolute/i.test(shape?.getAttribute('style') ?? '');
 }
 
-function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
+// The picture behind an a:blip, as a data URL. Candidate media: the primary blip plus
+// any SVG alternative (Word 2016+ stores an svgBlip beside a raster fallback) — prefer
+// whichever the browser can display.
+function blipSrc(blip: Element, ctx: Ctx): string | null {
+  const candidates: string[] = [];
+  const pushEmbed = (id: string | null) => {
+    const rel = id ? ctx.rels.get(id) : undefined;
+    if (rel && !rel.external) candidates.push(`word/${rel.target.replace(/^\/+/, '')}`);
+  };
+  pushEmbed(blip.getAttributeNS(R, 'embed'));
+  for (const sb of Array.from(blip.getElementsByTagName('*')))
+    if (sb.localName === 'svgBlip') pushEmbed(sb.getAttributeNS(R, 'embed'));
+  if (!candidates.length) return null;
+  return loadImageDataUrl(candidates.find((p) => loadImageDataUrl(p, ctx)) ?? candidates[0], ctx);
+}
+
+function convertDrawing(drawing: Element, ctx: Ctx): Node | Node[] | null {
   // The drawing's own root, as a direct child: a text box holding a picture nests a
   // second drawing, and a subtree search finds *its* wp:inline first — the box, and
   // the caption in it, are then read as the bare picture.
@@ -2039,6 +2056,9 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   );
   if (!root) return null;
   const anchor = root.localName === 'anchor' ? root : undefined;
+  // A group holds shapes and pictures of its own, so it is read before either.
+  const wgp = root.getElementsByTagNameNS(WPG, 'wgp')[0];
+  if (wgp) return convertGroup(wgp, root, anchor, ctx);
   // A wordprocessingShape (text box / preset shape) has no blip — convert it first.
   const wsp = root.getElementsByTagNameNS(WPS, 'wsp')[0];
   if (wsp) return convertWpsShape(wsp, root, !!anchor, ctx);
@@ -2060,19 +2080,7 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
     ctx.warnings.add('Drawings were removed');
     return null;
   }
-  // Candidate media: the primary blip plus any SVG alternative (Word 2016+ stores an
-  // svgBlip beside a raster fallback) — prefer whichever the browser can display.
-  const candidates: string[] = [];
-  const pushEmbed = (id: string | null) => {
-    const rel = id ? ctx.rels.get(id) : undefined;
-    if (rel && !rel.external) candidates.push(`word/${rel.target.replace(/^\/+/, '')}`);
-  };
-  pushEmbed(blip.getAttributeNS(R, 'embed'));
-  for (const sb of Array.from(blip.getElementsByTagName('*')))
-    if (sb.localName === 'svgBlip') pushEmbed(sb.getAttributeNS(R, 'embed'));
-  if (!candidates.length) { ctx.warnings.add('Some images could not be read and were skipped'); return null; }
-  const path = candidates.find(p => loadImageDataUrl(p, ctx)) ?? candidates[0];
-  const src = loadImageDataUrl(path, ctx);
+  const src = blipSrc(blip, ctx);
   if (!src) {
     if (boxPx.w > 0 && boxPx.h > 0) {
       ctx.warnings.add('Images in a format the browser can’t display (e.g. WMF, EMF) were replaced by a placeholder');
@@ -2109,6 +2117,67 @@ function convertDrawing(drawing: Element, ctx: Ctx): Node | null {
   }
   return { type: 'image', attrs };
 }
+
+// A drawing group (wpg:wgp): the editor has no group node, so each child becomes a frame
+// of its own, mapped out of the group's child coordinate space (a:chOff/a:chExt). The
+// first keeps the group's own placement — that is what reserves an inline group's box —
+// and the rest ride over it as run-through frames at their place in it.
+function convertGroup(wgp: Element, root: Element, anchor: Element | undefined, ctx: Ctx): Node[] {
+  const xfrm = nsChild(nsChild(wgp, WPG, 'grpSpPr'), A, 'xfrm');
+  const chOff = nsChild(xfrm, A, 'chOff');
+  const scale = (axis: 'cx' | 'cy') => {
+    const child = intAttr(nsChild(xfrm, A, 'chExt'), '', axis) ?? 0;
+    return child > 0 ? (intAttr(nsChild(xfrm, A, 'ext'), '', axis) ?? child) / child : 1;
+  };
+  const sx = scale('cx');
+  const sy = scale('cy');
+  const boxOf = (el: Element) => {
+    const own = el.getElementsByTagNameNS(A, 'xfrm')[0];
+    const off = nsChild(own, A, 'off');
+    const ext = nsChild(own, A, 'ext');
+    return {
+      x: emuToPx(((intAttr(off, '', 'x') ?? 0) - (intAttr(chOff, '', 'x') ?? 0)) * sx),
+      y: emuToPx(((intAttr(off, '', 'y') ?? 0) - (intAttr(chOff, '', 'y') ?? 0)) * sy),
+      w: framePx(emuToPx((intAttr(ext, '', 'cx') ?? 0) * sx)),
+      h: framePx(emuToPx((intAttr(ext, '', 'cy') ?? 0) * sy)),
+    };
+  };
+
+  const carrier: Node[] = [];
+  const over: Node[] = [];
+  let first: { x: number; y: number; w: number; h: number } | null = null;
+  for (const kid of Array.from(wgp.children)) {
+    const isPic = kid.localName === 'pic';
+    if (!isPic && !(kid.namespaceURI === WPS && kid.localName === 'wsp')) continue;
+    const box = boxOf(kid);
+    let node: Node | null;
+    if (isPic) {
+      const blip = kid.getElementsByTagNameNS(A, 'blip')[0];
+      const src = blip ? blipSrc(blip, ctx) : null;
+      node = src ? frameNode(src, box, '', anchor, ctx) : null;
+    } else {
+      node = convertWpsShape(kid, root, !!anchor, ctx, box);
+    }
+    if (!node) continue;
+    const attrs = { ...node.attrs, width: box.w, height: box.h } as Record<string, unknown>;
+    if (!first) { first = box; carrier.push({ ...node, attrs }); continue; }
+    // Every other child runs through the text over the first, offset by its place in
+    // the group. An inline group's origin is its paragraph's corner, so a group that
+    // shares its line (a centred one, text beside it) carries the rest there.
+    attrs.wrap = 'through';
+    attrs.inFront = true;
+    const off = (k: string, d: number) =>
+      round2((typeof node.attrs?.[k] === 'number' ? (node.attrs[k] as number) : 0) + d / PX_PER_CM);
+    attrs.wrapOffset = off('wrapOffset', box.x - first.x);
+    attrs.wrapOffsetY = off('wrapOffsetY', box.y - first.y);
+    over.push({ ...node, attrs });
+  }
+  if (!carrier.length) ctx.warnings.add('Drawings were removed');
+  // An inline carrier is what the line reserves the group's box with, and the frames
+  // over it take their static position from the paragraph — so they precede it.
+  return anchor ? [...carrier, ...over] : [...over, ...carrier];
+}
+
 
 // theme1.xml's colour scheme by slot name, plus the text/background aliases Word's
 // default mapping gives them (a shape names `tx2`, the scheme declares `dk2`). A slot
@@ -2306,7 +2375,9 @@ function custGeomPath(spPr: Element | null): string {
 // A DrawingML <wps:wsp> (text box, preset shape or freeform) → a textBox node. A preset
 // `utils/shapes.ts` can't draw and has no path of its own (a connector) is dropped with a
 // warning. All property lookups are scoped to spPr so a nested image's fill/xfrm can't leak in.
-function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ctx): Node | null {
+// `box` overrides the drawing's own extent for a shape inside a group, whose size is
+// its place in the group rather than the whole group's.
+function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ctx, box?: { w: number; h: number }): Node | null {
   const spPr = nsChild(wsp, WPS, 'spPr');
   const outline = custGeomPath(spPr);
   const kind = outline ? 'textbox' : shapeFromPrst(nsChild(spPr, A, 'prstGeom')?.getAttribute('prst') ?? 'rect');
@@ -2318,8 +2389,11 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
   const extent = root.getElementsByTagNameNS(WP, 'extent')[0];
   const cx = intAttr(extent, '', 'cx');
   const cy = intAttr(extent, '', 'cy');
-  if (cx) attrs.width = framePx(emuToPx(cx));
-  if (cy) attrs.height = framePx(emuToPx(cy));
+  if (box) { attrs.width = box.w; attrs.height = box.h; }
+  else {
+    if (cx) attrs.width = framePx(emuToPx(cx));
+    if (cy) attrs.height = framePx(emuToPx(cy));
+  }
   const rot = intAttr(nsChild(spPr, A, 'xfrm'), '', 'rot');
   if (rot) attrs.rotation = ((Math.round(rot / 60000) % 360) + 360) % 360;
   if (isAnchor) {
@@ -2335,6 +2409,7 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
       ?.getElementsByTagNameNS(WP, 'align')[0]?.textContent?.trim();
     if ((wrap === 'topBottom' || wrap === 'through') && offsetCm == null
       && (align === 'center' || align === 'right')) attrs.wrapAlign = align;
+    if (wrap === 'through') attrs.inFront = root.getAttribute('behindDoc') !== '1';
   }
 
   const fill = drawingColor(nsChild(spPr, A, 'solidFill'), ctx) ?? null;
