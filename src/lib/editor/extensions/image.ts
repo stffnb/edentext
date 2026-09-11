@@ -1,6 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Mark, Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
@@ -201,10 +201,11 @@ export function pageContentHeightPx(): number {
 }
 
 // setNodeMarkup replaces a leaf node outright, so the node selection maps off it and an
-// attribute change would deselect the frame. Put it back where it stood.
-function frameAttrTr(state: EditorState, pos: number, attrs: Record<string, unknown>): Transaction {
+// attribute change would deselect the node. Put it back where it stood. Shared with
+// textBox.ts and formula.ts; `marks` is the leaf's own, which the replacement drops.
+export function atomAttrTr(state: EditorState, pos: number, attrs: Record<string, unknown>, marks?: readonly Mark[]): Transaction {
   const selected = state.selection instanceof NodeSelection && state.selection.from === pos;
-  const tr = state.tr.setNodeMarkup(pos, undefined, attrs);
+  const tr = state.tr.setNodeMarkup(pos, undefined, attrs, marks);
   return selected ? tr.setSelection(NodeSelection.create(tr.doc, pos)) : tr;
 }
 
@@ -357,7 +358,7 @@ export const Image = Node.create({
           // word processor's own wrap command writes (0.32cm).
           const wrapDist = wrap === 'inline' ? sel.node.attrs.wrapDist : sel.node.attrs.wrapDist ?? 0.32;
           if (dispatch) {
-            dispatch(frameAttrTr(state, sel.from,
+            dispatch(atomAttrTr(state, sel.from,
               { ...sel.node.attrs, wrap, wrapDist, ...droppedFrameAttrs(wrap, inFront) }));
           }
           return true;
@@ -792,7 +793,7 @@ class ImageView {
   private commit(attrs: Record<string, unknown>): void {
     const pos = this.getPos();
     if (typeof pos !== 'number') return;
-    this.view.dispatch(frameAttrTr(this.editor.state, pos, { ...this.node.attrs, ...attrs }));
+    this.view.dispatch(atomAttrTr(this.editor.state, pos, { ...this.node.attrs, ...attrs }));
   }
 
   private startResize(event: MouseEvent, cfg: typeof HANDLES[number]): void {

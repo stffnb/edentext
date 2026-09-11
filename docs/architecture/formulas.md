@@ -3,6 +3,10 @@
 Insert/edit a mathematical formula (`editor/extensions/formula.ts`, `components/FormulaDialog.svelte`),
 round-tripping to an embedded ODF formula object and to Word's OMML.
 
+A formula is a **leaf** atom, so `updateFormula` builds its transaction with `atomAttrTr`
+(`image.ts`, shared with the frames): `setNodeMarkup` replaces a leaf outright, and without
+putting the node selection back the dialog deselects the formula it just edited.
+
 ## One LaTeX string is the model
 
 The `formula` node stores **`latex`** and a `display` flag — nothing else. Everything is derived:
