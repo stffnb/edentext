@@ -14,6 +14,7 @@ export const PKG_REL = 'http://schemas.openxmlformats.org/package/2006/relations
 // Text boxes / shapes: DrawingML shape container, markup-compatibility wrapper
 // (Word wraps every shape in mc:AlternateContent), and legacy VML.
 export const WPS = 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape';
+export const WPG = 'http://schemas.microsoft.com/office/word/2010/wordprocessingGroup';
 export const MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006';
 export const VML = 'urn:schemas-microsoft-com:vml';
 // VML's Office extensions (o:hr, o:hralign, …).

@@ -986,6 +986,7 @@ type TextBoxExport = {
   wrapDistCm: number | null;
   wrapAlign: string | null;
   wrapFromPage: boolean;
+  inFront: boolean;
   paddingCm: number;
   shapeKind: ShapeKind;
   shapePath: string | null;
@@ -1014,6 +1015,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     wrapDistCm: typeof a.wrapDist === 'number' ? round3(a.wrapDist) : null,
     wrapAlign: a.wrapAlign === 'center' || a.wrapAlign === 'right' ? a.wrapAlign : null,
     wrapFromPage: a.wrapFromPage === true,
+    inFront: a.inFront === true,
     paddingCm: typeof a.paddingCm === 'number' ? round3(a.paddingCm) : TEXTBOX_PADDING_CM,
     shapeKind: isShapeKind(a.shapeKind) ? a.shapeKind : 'textbox',
     shapePath: typeof a.shapePath === 'string' && a.shapePath ? a.shapePath : null,
@@ -4480,7 +4482,8 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   // where a style-less as-char frame (an image) stands on it (probed).
   const wrap = box.wrap === 'inline'
     ? ' style:vertical-pos="top" style:vertical-rel="baseline"'
-    : ` ${imageWrapProps(box.wrap, box.wrapOffsetCm, box.wrapAlign, box.wrapDistCm, 'left')} style:number-wrapped-paragraphs="no-limit"` +
+    : ` ${imageWrapProps(box.wrap, box.wrapOffsetCm, box.wrapAlign, box.wrapDistCm, 'left')} style:number-wrapped-paragraphs="no-limit"`
+      + (box.wrap === 'through' && box.inFront ? ' style:run-through="foreground"' : '') +
       ` style:horizontal-rel="paragraph-content"` +
       ` style:vertical-pos="${box.wrapOffsetYCm != null ? 'from-top' : 'top'}"` +
       ` style:vertical-rel="${box.wrapFromPage ? 'page' : 'paragraph'}"`;
