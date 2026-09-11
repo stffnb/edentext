@@ -5,6 +5,7 @@ import { buildOdt } from '../../src/lib/export/odt';
 import { buildDocx } from '../../src/lib/export/docx';
 import { importOdt } from '../../src/lib/import/odt';
 import { importDocx } from '../../src/lib/import/docx';
+import { droppedFrameAttrs } from '../../src/lib/editor/extensions/image';
 
 type N = any;
 
@@ -48,5 +49,21 @@ describe('a run-through frame', () => {
   it('is not what ODF style:wrap="none" means', async () => {
     const img = frame((await importOdt(await buildOdt(docWith({ wrap: 'topBottom' }), margins, 'portrait'))).content);
     expect(img.attrs.wrap).toBe('topBottom');
+  });
+});
+
+// Picking a mode by hand is "put it there": the offsets go, and so do the coordinate
+// systems they were measured in — a page-placed frame set to a side wrap would
+// otherwise export as vertical-rel="page" with an offset that now counts from a paragraph.
+describe('picking a wrap mode by hand', () => {
+  it('drops the offsets and the frame of reference they belonged to', () => {
+    const dropped = droppedFrameAttrs('left', false);
+    expect(dropped).toMatchObject({ wrapOffset: null, wrapOffsetY: null, wrapFromPage: false, anchorPage: null });
+  });
+
+  it('keeps inFront for run-through alone', () => {
+    expect(droppedFrameAttrs('through', true).inFront).toBe(true);
+    expect(droppedFrameAttrs('through', false).inFront).toBe(false);
+    expect(droppedFrameAttrs('topBottom', true).inFront).toBe(false);
   });
 });

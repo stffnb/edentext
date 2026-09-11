@@ -381,6 +381,7 @@
         {editor}
         which={tab === 'pictureFormat' ? 'picture' : 'shape'}
         wrap={(frameAttrs?.wrap ?? 'inline') as never}
+        inFront={frameAttrs?.inFront === true}
         alt={(frameAttrs?.alt ?? '') as string}
         shapeKind={frameAttrs?.shapeKind as never}
         fillColor={frameAttrs?.fillColor as string | null}

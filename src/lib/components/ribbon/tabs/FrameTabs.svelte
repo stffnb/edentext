@@ -6,16 +6,17 @@
   import ColorPicker from '../../ColorPicker.svelte';
   import ShapePicker from '../../ShapePicker.svelte';
   import CaptionDialog from '../../CaptionDialog.svelte';
-  import type { WrapMode } from '../../../editor/extensions/image';
+  import { droppedFrameAttrs, type WrapMode } from '../../../editor/extensions/image';
   import type { ShapeKind } from '../../../editor/extensions/textBox';
   import { t } from '../../../i18n/i18n.svelte';
 
   // Word's Picture Format and Shape Format: the same wrap modes, plus a shape's
   // own fill, outline and kind.
-  let { editor, which, wrap, alt = '', shapeKind, fillColor, strokeColor, strokeWidthPt, textVertical = false }: {
+  let { editor, which, wrap, inFront = false, alt = '', shapeKind, fillColor, strokeColor, strokeWidthPt, textVertical = false }: {
     editor: Editor | null;
     which: 'picture' | 'shape';
     wrap: WrapMode;
+    inFront?: boolean;
     alt?: string;
     shapeKind?: ShapeKind;
     fillColor?: string | null;
@@ -24,24 +25,31 @@
     textVertical?: boolean;
   } = $props();
 
-  const WRAPS: { key: WrapMode; icon: 'wrapInline' | 'wrapLeft' | 'wrapRight' | 'wrapTopBottom'; label: () => string }[] = [
+  // The two run-through entries are one mode, told apart by which side of the text the
+  // frame lands on — as in Word's layout options, whose "tight" no browser can draw.
+  type WrapChoice = WrapMode | 'behind' | 'front';
+  const WRAPS: { key: WrapChoice; icon: 'wrapInline' | 'wrapLeft' | 'wrapRight' | 'wrapTopBottom' | 'wrapBehind' | 'wrapFront'; label: () => string }[] = [
     { key: 'inline', icon: 'wrapInline', label: () => t().image.wrapInline },
     { key: 'left', icon: 'wrapLeft', label: () => t().image.wrapLeft },
     { key: 'right', icon: 'wrapRight', label: () => t().image.wrapRight },
     { key: 'topBottom', icon: 'wrapTopBottom', label: () => t().image.wrapTopBottom },
+    { key: 'behind', icon: 'wrapBehind', label: () => t().image.wrapBehind },
+    { key: 'front', icon: 'wrapFront', label: () => t().image.wrapFront },
   ];
+  const active = $derived<WrapChoice>(wrap === 'through' ? (inFront ? 'front' : 'behind') : wrap);
 
   let captionOpen = $state(false);
 
-  function setWrap(w: WrapMode) {
-    if (which === 'picture') editor?.chain().focus().setImageWrap(w).run();
-    else editor?.chain().focus().setTextBoxAttrs({ wrap: w }).run();
+  function setWrap(w: WrapChoice) {
+    const mode: WrapMode = w === 'behind' || w === 'front' ? 'through' : w;
+    if (which === 'picture') editor?.chain().focus().setImageWrap(mode, w === 'front').run();
+    else editor?.chain().focus().setTextBoxAttrs({ wrap: mode, ...droppedFrameAttrs(mode, w === 'front') }).run();
   }
 </script>
 
 <RibbonGroup label={t().ribbon.groups.arrange}>
   {#each WRAPS as w}
-    <RibbonButton variant="big" icon={w.icon} label={w.label()} title={w.label()} active={wrap === w.key} onclick={() => setWrap(w.key)} />
+    <RibbonButton variant="big" icon={w.icon} label={w.label()} title={w.label()} active={active === w.key} onclick={() => setWrap(w.key)} />
   {/each}
 </RibbonGroup>
 
