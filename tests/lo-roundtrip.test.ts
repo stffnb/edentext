@@ -125,12 +125,15 @@ function normalize(node: N, inBox = false): N {
   const out: N = { type: node.type };
   if (node.text != null) out.text = node.text;
   if (node.marks?.length) {
-    out.marks = node.marks.map((m: N) => {
+    const marks = node.marks.map((m: N) => {
       const mm: N = { type: m.type };
       const attrs = Object.fromEntries(Object.entries(m.attrs ?? {}).filter(([, v]) => v != null));
+      if (inBox) delete attrs.lang;
       if (Object.keys(attrs).length) mm.attrs = attrs;
       return mm;
-    }).sort((a: N, b: N) => a.type.localeCompare(b.type));
+    }).filter((m: N) => m.type !== 'textStyle' || m.attrs)
+      .sort((a: N, b: N) => a.type.localeCompare(b.type));
+    if (marks.length) out.marks = marks;
   }
   const attrs: N = {};
   for (const [k, v] of Object.entries(node.attrs ?? {})) {
@@ -151,8 +154,8 @@ function normalize(node: N, inBox = false): N {
     // LO re-parents text-box paragraphs onto its Frame-contents style (margin 0), so
     // an explicit spaceAfter 0 comes back where Standard's default was suppressed.
     if (k === 'spaceAfter' && v === 0) continue;
-    // A frame's text does not inherit the document language: LibreOffice stamps its own
-    // locale on it, which differs per machine.
+    // A shape's text carries the document language spelled out; LibreOffice hands it back
+    // on the runs and stamps its own locale on the paragraph, so neither is compared.
     if (k === 'lang' && inBox) continue;
     attrs[k] = v;
   }

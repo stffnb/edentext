@@ -12,7 +12,7 @@ import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbe
 import { EMPTY_PAGE_DECOR, type PageDecor, type Watermark } from '../storage/pageDecor';
 import { FOLD_MARK_MM, PUNCH_MARK_MM, MARK_START_MM, FOLD_MARK_LEN_MM, PUNCH_MARK_LEN_MM, FOLD_MARK_NAME } from '../storage/foldMarks';
 import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
-import { odfFromTag } from '../storage/documentLanguage';
+import { odfFromTag, tagFromOdf } from '../storage/documentLanguage';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps, type ParaProps } from '../styles/styleSheet';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { HEADING_STYLE_OVERRIDES, HEADING_FONT, HEADING_LEVELS, MAX_HEADING_LEVEL } from '../styles/headings';
@@ -1039,6 +1039,18 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
 // sentinels, images). applyTextBoxes lifts the serialized region back out and sets the
 // frame at the sentinel. The staging is only a place to serialize in: where a box really
 // sits and where its content is written out are no longer the same spot.
+
+// A shape's text inherits no language: LibreOffice reads none from the Standard style a
+// frame's text takes it from and spell-checks the text in its own locale (probed). Written
+// on the block it reaches it, and the importer drops it again as the document's own.
+function stampLang(node: TiptapNode): TiptapNode {
+  if (!exportDocLang) return node;
+  if (node.type === 'paragraph' || node.type === 'heading') {
+    return node.attrs?.lang ? node : { ...node, attrs: { ...node.attrs, lang: exportDocLang } };
+  }
+  return node.content?.length ? { ...node, content: node.content.map(stampLang) } : node;
+}
+
 function replaceTextBoxes(doc: TiptapNode, boxes: TextBoxExport[]): TiptapNode {
   const staged: TiptapNode[] = [];
   const walk = (node: TiptapNode): TiptapNode => {
@@ -1047,10 +1059,12 @@ function replaceTextBoxes(doc: TiptapNode, boxes: TextBoxExport[]): TiptapNode {
     for (const child of node.content) {
       if (child.type === 'textBox') {
         const i = boxes.length;
-        boxes.push(textBoxDescriptor(child));
+        const desc = textBoxDescriptor(child);
+        boxes.push(desc);
+        const shape = desc.shapeKind !== 'textbox' || !!desc.shapePath;
         content.push({ type: 'text', text: `${TBX}P${i}${TBX}` });
         staged.push({ type: 'paragraph', content: [{ type: 'text', text: `${TBX}S${i}${TBX}` }] });
-        staged.push(...(child.content ?? []).map(walk));
+        staged.push(...(child.content ?? []).map(b => shape ? stampLang(walk(b)) : walk(b)));
         staged.push({ type: 'paragraph', content: [{ type: 'text', text: `${TBX}E${i}${TBX}` }] });
         continue;
       }
@@ -3467,6 +3481,8 @@ function linkHrefOf(marks: TiptapNode['marks'] = []): string | undefined {
 // without threading it through every cell/list helper (mirrors docLangTag in docx.ts).
 let exportSheet: StyleSheet = builtinStyleSheet();
 let exportSpacingModel: SpacingModel = 'add';
+// The document language as a tag, for the shape text that inherits none (replaceTextBoxes).
+let exportDocLang = '';
 
 // Emit each text node as an odf-kit run; link-marked runs become <text:a> via addLink.
 // `force` bakes formatting onto every run regardless of marks — for header/region cells,
@@ -5082,6 +5098,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
   exportSheet = styles;
   exportSpacingModel = spacingModel;
+  exportDocLang = language ? tagFromOdf(language.language, language.country) : '';
   const images: ImageExport[] = [];
   const tocs: TocExport[] = [];
   const textBoxes: TextBoxExport[] = [];

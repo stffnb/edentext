@@ -139,6 +139,10 @@ fallback download shows a one-time hint (`edentext-download-hint`) that the brow
   every run of it through `force` (the paragraph mark's own `run:` formats only the mark).
   The hand-serialized text-box path (`txbxRunPropsXml`/`txbxPPrXml`) does the same;
   `w:lang` closes `CT_RPr`, and `w:rPr` closes `CT_PPr`.
+  A **shape**'s text inherits none of it: LibreOffice reads no language from the `Standard`
+  style a frame's text takes it from and spell-checks the text in its own locale, so
+  `stampLang` writes the document's onto every block a shape holds (probed; it hands the
+  language back on the runs and stamps its locale on the paragraph, which the LO leg skips).
 
 The filename is derived from the first non-empty heading (max 50 chars, sanitized), falling back to `document.odt`.
 
