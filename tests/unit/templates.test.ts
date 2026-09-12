@@ -5,7 +5,7 @@ import { Node as PMNode } from '@tiptap/pm/model';
 import { extensions } from '../../src/lib/editor/extensions';
 import { TEMPLATES, SHELVED } from '../../src/lib/templates/registry';
 import { setLocale } from '../../src/lib/i18n/i18n.svelte';
-import type { Locale } from '../../src/lib/i18n/config';
+import { LOCALES } from '../../src/lib/i18n/config';
 
 const schema = getSchema(extensions);
 // Shelved drafts stay validated so they still work when they enter the gallery.
@@ -16,7 +16,7 @@ describe('built-in templates', () => {
     expect(new Set(ALL.map((e) => e.id)).size).toBe(ALL.length);
   });
 
-  for (const loc of ['en', 'de'] as Locale[]) {
+  for (const loc of LOCALES) {
     it(`builds valid documents (${loc})`, () => {
       setLocale(loc);
       for (const entry of ALL) {

@@ -5,6 +5,9 @@
 ## [Unreleased]
 
 ### Added
+- **Spanish as a program language** — the globe picker now offers Español alongside English and
+  Deutsch, and the whole UI follows it: ribbon, dialogs, context menus, the built-in templates and
+  the month names of a date field
 - **Spanish spell check and thesaurus** — pick Español beside the page count and Hunspell checks
   against the RLA dictionary (57,344 entries, accents, ñ and enclitic forms like *dámelo*), with
   OpenThesaurus synonyms behind the thesaurus dialog. The document saves as `es-ES`. Grammar stays

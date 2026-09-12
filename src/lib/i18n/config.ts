@@ -1,12 +1,13 @@
 // UI locale configuration. Plain module (no runes), safe to import anywhere —
 // keeps appLanguage.ts and i18n.svelte.ts free of circular runes imports.
 
-export const LOCALES = ['en', 'de'] as const;
+export const LOCALES = ['en', 'de', 'es'] as const;
 export type Locale = (typeof LOCALES)[number];
 
 export const LOCALE_LABELS: Record<Locale, string> = {
   en: 'English',
   de: 'Deutsch',
+  es: 'Español',
 };
 
 export function isLocale(value: string | null): value is Locale {

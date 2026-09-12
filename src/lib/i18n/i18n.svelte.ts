@@ -3,10 +3,11 @@
 
 import en, { type Messages } from './locales/en';
 import de from './locales/de';
+import es from './locales/es';
 import { loadAppLanguage, saveAppLanguage } from '../storage/appLanguage';
 import type { Locale } from './config';
 
-const catalogs: Record<Locale, Messages> = { en, de };
+const catalogs: Record<Locale, Messages> = { en, de, es };
 
 let current = $state<Locale>(loadAppLanguage());
 

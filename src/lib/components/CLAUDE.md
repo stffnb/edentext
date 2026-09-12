@@ -244,7 +244,7 @@ norm's two DIN letter forms come out of one builder in `din5008.ts`, parameteriz
 where the address field opens; both were verified headlessly — Form B 44.97mm, Form A
 26.98mm, their info blocks 49.98/31.99mm, the info column 124.99mm. The letter-family
 templates share that geometry (and the JSON builders) via `templates/builders.ts`;
-`tests/unit/templates.test.ts` schema-checks every entry in both locales.
+`tests/unit/templates.test.ts` schema-checks every entry in every locale.
 
 A block's rect starts **above** its own first line — the spacing model puts space-before
 inside the box — so a probe measuring these positions must range-select the text, not
