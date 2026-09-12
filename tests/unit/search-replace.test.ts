@@ -24,6 +24,13 @@ describe('buildSearchRegex', () => {
     expect(ranges('cat category scat', 'cat')).toEqual([[0, 3], [4, 7], [14, 17]]);
     expect(ranges('cat category scat', 'cat', false, true)).toEqual([[0, 3]]);
   });
+
+  it('bounds a word by Unicode, not by ASCII', () => {
+    expect(ranges('это слово тут', 'слово', false, true)).toEqual([[4, 9]]);
+    expect(ranges('этословотут', 'слово', false, true)).toEqual([]);
+    expect(ranges('ein café hier', 'café', false, true)).toEqual([[4, 8]]);
+    expect(ranges('cafés', 'café', false, true)).toEqual([]);
+  });
 });
 
 describe('regexRanges', () => {

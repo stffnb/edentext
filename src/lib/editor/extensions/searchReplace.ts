@@ -90,10 +90,15 @@ function escapeRegExp(s: string): string {
 export function buildSearchRegex(term: string, matchCase: boolean, wholeWord: boolean, useRegex = false): RegExp | null {
   if (!term) return null;
   // A user pattern is wrapped, not escaped — the whole-word guard then bounds it.
-  let pat = useRegex ? (wholeWord ? `(?:${term})` : term) : escapeRegExp(term);
-  if (wholeWord) pat = `\\b${pat}\\b`;
-  try { return new RegExp(pat, matchCase ? 'g' : 'gi'); }
-  catch { return null; }
+  const pat = useRegex ? (wholeWord ? `(?:${term})` : term) : escapeRegExp(term);
+  const flags = matchCase ? 'g' : 'gi';
+  if (!wholeWord) { try { return new RegExp(pat, flags); } catch { return null; } }
+  // \b is ASCII-defined and bounds no Cyrillic or accented word; the lookarounds
+  // are its Unicode equivalent, which needs the u flag a user pattern may not take.
+  try { return new RegExp(`(?<![\\p{L}\\p{N}_])${pat}(?![\\p{L}\\p{N}_])`, flags + 'u'); }
+  catch {
+    try { return new RegExp(`\\b${pat}\\b`, flags); } catch { return null; }
+  }
 }
 
 // $1…$9 and $& in a replacement, filled from one match's captures. Anything the pattern
