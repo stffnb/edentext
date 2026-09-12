@@ -15,11 +15,19 @@
   import UiLanguagePicker from '../UiLanguagePicker.svelte';
   import ParagraphDialog from '../ParagraphDialog.svelte';
   import TabsDialog from '../TabsDialog.svelte';
+  import LinkDialog from '../LinkDialog.svelte';
+  import BookmarkDialog from '../BookmarkDialog.svelte';
+  import CrossRefDialog from '../CrossRefDialog.svelte';
+  import FormulaDialog from '../FormulaDialog.svelte';
   import { clickOutside, isMenuOpen, pinPanels, toggleMenu, closeMenu } from './menu.svelte';
   import { t } from '../../i18n/i18n.svelte';
   import { withShortcut } from '../../i18n/shortcut';
   import { shortcutHint } from '../../editor/shortcuts';
   import { findTextBox } from '../../editor/extensions/textBox';
+  import { OPEN_LINK_DIALOG_EVENT } from '../../editor/extensions/link';
+  import { OPEN_BOOKMARK_DIALOG_EVENT, bookmarkNames, findBookmark } from '../../editor/extensions/bookmark';
+  import { OPEN_CROSS_REF_DIALOG_EVENT } from '../../editor/extensions/crossReference';
+  import { EDIT_FORMULA_EVENT } from '../../editor/extensions/formula';
   import { loadRibbonCollapsed, saveRibbonCollapsed, type ChromeMode, type ThemeMode } from '../../storage/theme';
   import type { StyleFamily } from '../../styles/styleSheet';
   import { DEFAULT_MARGINS, type PageMargins } from '../../storage/pageMargins';
@@ -175,6 +183,99 @@
 
   $effect(() => {
     if (!shown.includes(tab)) tab = 'home';
+  });
+
+  // The four dialogs the Insert tab's buttons, Ctrl+K, the context menu and a
+  // double-click on a formula all open. They live here, not in the tab: the ribbon
+  // mounts only the open tab, and a dialog in a closed one hears no event.
+  let linkOpen = $state(false);
+  let linkUrl = $state('');
+  let bookmarkOpen = $state(false);
+  let crossRefOpen = $state(false);
+  let formulaOpen = $state(false);
+  let formulaLatex = $state('');
+  let formulaDisplay = $state(false);
+  let formulaPos = $state<number | null>(null);
+
+  let hasSelection = $derived(tick >= 0 && !!editor && !editor.state.selection.empty);
+  let isLink = $derived(tick >= 0 && !!editor?.isActive('link'));
+  let bmNames = $derived(tick >= 0 && editor && !hfActive ? bookmarkNames(editor.state.doc) : []);
+
+  function openLink() {
+    if (!editor || hfActive) return; // body-only; the HF schema has no link mark
+    linkUrl = (editor.getAttributes('link').href as string) ?? '';
+    linkOpen = true;
+  }
+
+  // A bare host or e-mail gets a scheme, as in Word and LibreOffice.
+  function normalizeUrl(raw: string): string {
+    const s = raw.trim();
+    if (!s) return '';
+    if (/^(https?:|mailto:|tel:|ftp:|#|\/)/i.test(s)) return s;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return `mailto:${s}`;
+    return `https://${s}`;
+  }
+
+  function applyLink(raw: string) {
+    linkOpen = false;
+    if (!editor) return;
+    const href = normalizeUrl(raw);
+    if (!href) return;
+    const { empty } = editor.state.selection;
+    // With nothing selected the URL becomes its own link text.
+    if (empty) editor.chain().focus().insertContent({ type: 'text', text: href, marks: [{ type: 'link', attrs: { href } }] }).run();
+    else editor.chain().focus().extendMarkRange('link').setLink({ href }).run();
+  }
+
+  function openBookmark() {
+    if (!editor || hfActive || !hasSelection) return;
+    crossRefOpen = false;
+    bookmarkOpen = true;
+  }
+
+  function openCrossRef() {
+    if (!editor || hfActive || !bmNames.length) return;
+    bookmarkOpen = false;
+    crossRefOpen = true;
+  }
+
+  function goToBookmark(name: string) {
+    const found = editor && findBookmark(editor.state.doc, name);
+    if (!editor || !found) return;
+    bookmarkOpen = false;
+    editor.chain().focus().setTextSelection({ from: found.from, to: found.to }).scrollIntoView().run();
+  }
+
+  function applyFormula(latex: string, display: boolean) {
+    if (!editor) return;
+    if (formulaPos != null) editor.chain().focus().updateFormula(formulaPos, { latex, display }).run();
+    else editor.chain().focus().insertFormula({ latex, display }).run();
+    formulaPos = null;
+  }
+
+  $effect(() => {
+    const onLink = () => openLink();
+    const onBm = () => openBookmark();
+    const onXr = () => openCrossRef();
+    // With a formula's position and source: the double-click on an existing one.
+    // Without: the Insert tab's button, which starts an empty dialog.
+    const onFormula = (e: Event) => {
+      const d = (e as CustomEvent<{ pos: number; latex: string; display: boolean }>).detail;
+      formulaPos = d ? d.pos : null;
+      formulaLatex = d ? d.latex : '';
+      formulaDisplay = d ? d.display : false;
+      formulaOpen = true;
+    };
+    window.addEventListener(OPEN_LINK_DIALOG_EVENT, onLink);
+    window.addEventListener(OPEN_BOOKMARK_DIALOG_EVENT, onBm);
+    window.addEventListener(OPEN_CROSS_REF_DIALOG_EVENT, onXr);
+    window.addEventListener(EDIT_FORMULA_EVENT, onFormula);
+    return () => {
+      window.removeEventListener(OPEN_LINK_DIALOG_EVENT, onLink);
+      window.removeEventListener(OPEN_BOOKMARK_DIALOG_EVENT, onBm);
+      window.removeEventListener(OPEN_CROSS_REF_DIALOG_EVENT, onXr);
+      window.removeEventListener(EDIT_FORMULA_EVENT, onFormula);
+    };
   });
 
   let docNameSizerWidth = $state(0);
@@ -393,6 +494,10 @@
   </div>
   {/if}
 
+  <LinkDialog open={linkOpen} initialUrl={linkUrl} canRemove={isLink} onApply={applyLink} onRemove={() => { linkOpen = false; editor?.chain().focus().extendMarkRange('link').unsetLink().run(); }} onClose={() => (linkOpen = false)} />
+  <BookmarkDialog open={bookmarkOpen} names={bmNames} onApply={(n) => { bookmarkOpen = false; editor?.chain().focus().setBookmark(n).run(); }} onRemove={(n) => editor?.chain().focus().removeBookmark(n).run()} onGoTo={goToBookmark} onClose={() => (bookmarkOpen = false)} />
+  <CrossRefDialog open={crossRefOpen} names={bmNames} onInsert={(n, f) => { crossRefOpen = false; editor?.chain().focus().insertCrossRef({ name: n, format: f }).run(); }} onClose={() => (crossRefOpen = false)} />
+  <FormulaDialog bind:open={formulaOpen} initialLatex={formulaLatex} initialDisplay={formulaDisplay} onApply={applyFormula} />
   <ParagraphDialog bind:open={paragraphDialogOpen} {editor} {tick} onTabs={() => (tabsDialogOpen = true)} />
   <TabsDialog bind:open={tabsDialogOpen} {editor} {tick} bind:tabIntervalCm />
 </div>

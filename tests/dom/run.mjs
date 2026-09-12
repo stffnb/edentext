@@ -375,6 +375,15 @@ try {
   check(Math.abs(bdx - 50) <= 2 && Math.abs(bdy - 25) <= 2,
     `a text box out of the flow is dragged by its ring (moved ${bdx}/${bdy}, wanted 50/25)`);
 
+  // The ribbon mounts only the open tab, so a dialog that lives in one hears no event:
+  // the formula's double-click, Ctrl+K and the context menu fire while Home is up.
+  await page.evaluate(() => document.querySelector('.tiptap').editor.chain().focus().insertFormula({ latex: 'a^2', display: false }).run());
+  await page.waitForSelector('.tiptap .formula', { timeout: 15_000 });
+  await settle(page, true);
+  await page.dblclick('.tiptap .formula');
+  const dialog = await page.waitForSelector('.formula-dialog', { timeout: 5_000 }).then(() => true).catch(() => false);
+  check(dialog, `a double-click on a formula opens its dialog from the ${await page.locator('.ribbon-tab.active').textContent()} tab`);
+
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {
