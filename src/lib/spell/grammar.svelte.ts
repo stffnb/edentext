@@ -33,8 +33,11 @@ let pending: Promise<Linter | null> | null = null;
 function load(): Promise<Linter | null> {
   if (!pending) {
     pending = (async () => {
-      const [{ LocalLinter }, { binary }] = await Promise.all([import('harper.js'), import('harper.js/binary')]);
-      const l = new LocalLinter({ binary });
+      const [{ WorkerLinter }, { binary }] = await Promise.all([import('harper.js'), import('harper.js/binary')]);
+      // A worker, not LocalLinter: one long paragraph costs 50 ms of wasm, which would
+      // be a dropped frame in the middle of typing. Findings come back as wasm objects,
+      // so the 16 MB binary lands in both threads.
+      const l = new WorkerLinter({ binary });
       await l.setup();
       return l as unknown as Linter;
     })().catch((err) => {
