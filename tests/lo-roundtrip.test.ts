@@ -121,7 +121,7 @@ const DEFAULTS: Record<string, unknown> = {
   listStyleType: 'decimal', start: 1, rowHeight: null, colspan: 1, rowspan: 1, type: null,
   shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1,
 };
-function normalize(node: N): N {
+function normalize(node: N, inBox = false): N {
   const out: N = { type: node.type };
   if (node.text != null) out.text = node.text;
   if (node.marks?.length) {
@@ -151,11 +151,14 @@ function normalize(node: N): N {
     // LO re-parents text-box paragraphs onto its Frame-contents style (margin 0), so
     // an explicit spaceAfter 0 comes back where Standard's default was suppressed.
     if (k === 'spaceAfter' && v === 0) continue;
+    // A frame's text does not inherit the document language: LibreOffice stamps its own
+    // locale on it, which differs per machine.
+    if (k === 'lang' && inBox) continue;
     attrs[k] = v;
   }
   if (Object.keys(attrs).length) out.attrs = attrs;
   if (node.content?.length) {
-    const mapped = node.content.map(normalize);
+    const mapped = node.content.map((c: N) => normalize(c, inBox || node.type === 'textBox'));
     // LibreOffice re-anchors paragraph-anchored (floating) frames to the paragraph
     // start; a float's inline position is visually meaningless, so canonicalize it.
     const isFloat = (c: N) => c.type === 'image' && c.attrs?.wrap;
@@ -187,7 +190,9 @@ function firstDiff(a: N, b: N, path = '$'): string | null {
 // run easily exceeds vitest's 5s default.
 describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () => {
   it('survives a `soffice --convert-to odt` re-save of the body document', { timeout: 180000 }, async () => {
-    const bytes = await buildOdt(fixture, margins, 'landscape');
+    // An explicit document language: LibreOffice stamps its own locale as the default
+    // otherwise, and a paragraph language equal to that default is inherited, not written.
+    const bytes = await buildOdt(fixture, margins, 'landscape', undefined, { language: 'de', country: 'DE' });
     mkdirSync('/tmp/lo-rt', { recursive: true });
     writeFileSync('/tmp/lo-rt/doc.odt', bytes);
 
