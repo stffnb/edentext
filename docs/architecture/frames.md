@@ -33,11 +33,13 @@ blocks as JSON, and the `span[data-tbx]` parse rule's `getContent` reads them ba
 paste into another window keeps the box where it stood in the line, while a program that
 cannot read the attribute still gets the span's plain text. An **AutoText** entry stores
 the slice's nodes for the same reason (`storage/autoText.ts`).
-Pasted foreign HTML goes the other way round: ProseMirror fits several pasted blocks into
-the caret's line by wrapping them in the one inline node that holds blocks — a box — so
-`unwrapPastedBox` (called from `transformPasted`, whose direct prop wins over every
-plugin's) spills a **size-less** box's blocks back into the body. Every real box carries a
-size, from the insert command or either importer.
+Pasted foreign HTML goes the other way round: ProseMirror fits pasted blocks into the
+caret's line by wrapping each one that doesn't fit in the only inline node that holds
+blocks — a box — so `unwrapPastedBoxes` (`editor/paste.ts`, called from `transformPasted`,
+whose direct prop wins over every plugin's) spills a **size-less** box's blocks back where
+the paste went. Every real box carries a size, from the insert command or either importer.
+Left in, a paste into a box was dropped whole: a box inside a box never enters the
+document.
 
 ## What a frame costs a big document
 

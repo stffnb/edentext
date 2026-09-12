@@ -2,9 +2,9 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import type { CommandProps } from '@tiptap/core';
 import TextAlign from '@tiptap/extension-text-align';
 import type { Editor } from '@tiptap/core';
-import { DOMSerializer, Fragment, Slice } from '@tiptap/pm/model';
+import { DOMSerializer, Fragment } from '@tiptap/pm/model';
 import { inNote } from './notes';
-import type { DOMOutputSpec, Node as PMNode, Schema } from '@tiptap/pm/model';
+import type { DOMOutputSpec, Node as PMNode, Schema, Slice } from '@tiptap/pm/model';
 import { NodeSelection, Selection, TextSelection, Plugin } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
@@ -151,15 +151,6 @@ function boxClipboardSerializer(schema: Schema): DOMSerializer {
     },
   };
   return new DOMSerializer(nodes, base.marks);
-}
-
-// Pasted blocks are fitted into the caret's line by wrapping them in the one inline node
-// that can hold them — a box. Every real box carries a size (the insert command and both
-// importers set one), so a bare one is that wrapper and its blocks belong in the body.
-export function unwrapPastedBox(slice: Slice): Slice {
-  const box = slice.content.childCount === 1 ? slice.content.firstChild : null;
-  if (box?.type.name !== 'textBox' || box.attrs.width !== null || box.attrs.height !== null) return slice;
-  return Slice.maxOpen(box.content);
 }
 
 export const TextBox = Node.create({

@@ -3,6 +3,7 @@
   import { Editor, generateHTML, type Content } from '@tiptap/core';
   import { layOutZoneTabs } from '../editor/extensions/tabStops';
   import { hfExtensions } from '../editor/extensions/headerFooter';
+  import { flattenToInline } from '../editor/paste';
   import { hfIsEmpty, DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, type HfDoc, type HfZone, type HfVariant, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
   import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
   import { type Orientation } from '../storage/pageOrientation';
@@ -410,6 +411,9 @@
         writeZone(editingIndex, zone, editingVariant, editor.getJSON() as HfDoc);
       },
       editorProps: {
+        // The zone is one paragraph: pasted blocks arrive as its own text, a line break
+        // apart, which is what both importers write for a zone's paragraphs.
+        transformPasted: (slice, view) => flattenToInline(slice, view.state.schema),
         handleKeyDown: (_view, event) => {
           if (event.key === 'Escape') {
             hfActive = null;

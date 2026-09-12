@@ -20,7 +20,9 @@
   import ImageToolbar from './ImageToolbar.svelte';
   import TextBoxToolbar from './TextBoxToolbar.svelte';
   import type { WrapMode } from '../editor/extensions/image';
-  import { findTextBox, unwrapPastedBox, type ShapeKind } from '../editor/extensions/textBox';
+  import { findTextBox, type ShapeKind } from '../editor/extensions/textBox';
+  import { unwrapPastedBoxes, flattenToInline } from '../editor/paste';
+  import { inNote } from '../editor/extensions/notes';
   import { NodeSelection, TextSelection } from '@tiptap/pm/state';
   import { EditorView } from '@tiptap/pm/view';
   import ContextMenu from './ContextMenu.svelte';
@@ -1297,8 +1299,10 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
           },
         },
         transformPasted(pasted, view) {
-          // The direct prop wins over every plugin's, so the box's own unwrap runs here.
-          const slice = unwrapPastedBox(pasted);
+          // The direct prop wins over every plugin's, so the fitting fixes run here.
+          const slice = inNote(view.state)
+            ? flattenToInline(pasted, view.state.schema)
+            : unwrapPastedBoxes(pasted);
           const textStyleType = view.state.schema.marks.textStyle;
           if (!textStyleType) return slice;
           const cursorMarks = view.state.storedMarks ?? view.state.selection.$head.marks();

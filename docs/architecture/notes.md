@@ -48,6 +48,9 @@ transaction is still rewriting. An anchor pasted twice gets a fresh id and a clo
 note it was copied from; an anchor that ends up *inside* a note is dropped, and inserting
 one there is refused (LibreOffice and Word refuse it too). A settings change is no
 document change, so the dialog's path carries the `RESYNC_NOTES` meta.
+A note body holds inline content, so a paste of several blocks is flattened to text with a
+line break per block (`flattenToInline`, `editor/paste.ts`); unflattened, ProseMirror
+wrapped them in a text box, which breaks the ODT's XML, or dropped all but the first.
 
 **The affixes stay in the note area.** A configured prefix/suffix wraps the number in
 the note's own `text` only — the anchor keeps the bare number, which is where

@@ -1,7 +1,10 @@
 # `src/lib/editor/`
 
-The TipTap extension registry (`extensions.ts`), the shortcut table, and the context-menu
-builder. Per-extension notes live in `extensions/CLAUDE.md`.
+The TipTap extension registry (`extensions.ts`), the shortcut table, the context-menu
+builder, and `paste.ts` — how foreign HTML is fitted into this schema, which ProseMirror's
+own fitting gets wrong (`unwrapPastedBoxes`, `flattenToInline`; both called from a
+`transformPasted`, the body editor's in `Editor.svelte`, the zone's in
+`HeaderFooterLayer.svelte`). Per-extension notes live in `extensions/CLAUDE.md`.
 
 ## Keyboard shortcuts (`shortcuts.ts`, `extensions/shortcuts.ts`)
 
