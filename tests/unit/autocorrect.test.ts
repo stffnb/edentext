@@ -38,6 +38,8 @@ describe('autoCorrectFix', () => {
     expect(typed('say “word"')).toBe('say “word”');
     expect(typed('"', 'de')).toBe('„');
     expect(typed('sag „Wort"', 'de')).toBe('sag „Wort“');
+    expect(typed('"', 'ru')).toBe('«');
+    expect(typed('он сказал «слово"', 'ru')).toBe('он сказал «слово»');
     expect(typed("don'")).toBe('don’'); // an apostrophe mid-word closes, as in LibreOffice
     expect(typed("'")).toBe('‘');
   });

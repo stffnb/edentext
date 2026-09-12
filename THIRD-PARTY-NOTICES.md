@@ -44,9 +44,11 @@ thesaurus for the language.
 | `public/dictionaries/de` — Hunspell, igerman98 | GPL-2.0 or GPL-3.0 |
 | `public/dictionaries/en` — Hunspell, from SCOWL | permissive (BSD-style) |
 | `public/dictionaries/es` — Hunspell, RLA-ES | GPL-3.0 or LGPL-3.0 or MPL-1.1 |
+| `public/dictionaries/ru` — Hunspell, Alexander I. Lebedev | BSD-3-Clause |
 | `public/thesaurus/de` — OpenThesaurus | LGPL-2.1-or-later |
 | `public/thesaurus/en` — WordNet 2.1, Princeton University | WordNet license (permissive) |
 | `public/thesaurus/es` — OpenThesaurus español | LGPL-2.1 |
+| `public/thesaurus/ru` — AOT and the Abramov dictionary | LGPL-2.1 |
 
 The thesaurus files are generated from LibreOffice's own MyThes data by
 `scripts/make-thesaurus.mjs`, which also fetches the license files above.

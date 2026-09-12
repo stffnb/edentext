@@ -85,7 +85,7 @@ export function cellFormatFromSpec(spec: FormatSpec): CellFormat {
 // The currency a language spends, as LibreOffice takes it from the document's own
 // language. The bundled dictionaries are en-US and de-DE; a neighbour keeps its own.
 const CURRENCY_BY_REGION: Record<string, string> = {
-  US: 'USD', DE: 'EUR', AT: 'EUR', FR: 'EUR', GB: 'GBP', CH: 'CHF',
+  US: 'USD', DE: 'EUR', AT: 'EUR', FR: 'EUR', GB: 'GBP', CH: 'CHF', RU: 'RUB',
 };
 
 export function localeCurrency(lang: string): string {

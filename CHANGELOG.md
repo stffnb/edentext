@@ -5,6 +5,10 @@
 ## [Unreleased]
 
 ### Added
+- **Russian spell check and thesaurus** — pick Русский beside the page count and Hunspell checks
+  against Lebedev's dictionary (146,269 entries, ё and hyphenated forms like *по-русски*), with the
+  AOT/Abramov synonyms behind the thesaurus dialog. AutoCorrect switches to guillemets — `«слово»`
+  — and a table's currency to the rouble. The document saves as `ru-RU`. Grammar stays English-only
 - **Spanish as a program language** — the globe picker now offers Español alongside English and
   Deutsch, and the whole UI follows it: ribbon, dialogs, context menus, the built-in templates and
   the month names of a date field

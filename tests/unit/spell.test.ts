@@ -72,3 +72,28 @@ describe('Spanish spell-check (hunspell-asm)', () => {
     expect(es.suggest('ordenadr')).toContain('ordenador');
   });
 });
+
+describe('Russian spell-check (hunspell-asm)', () => {
+  let ru: Hunspell;
+  beforeAll(async () => {
+    ru = await makeChecker('ru');
+  });
+
+  it('accepts Cyrillic base words, ё and a hyphenated form', () => {
+    for (const w of ['язык', 'Москва', 'съёмка', 'по-русски']) {
+      expect(ru.spell(w), w).toBe(true);
+    }
+  });
+
+  // Inflections come from the .aff rules, not the word list.
+  it('accepts inflected forms', () => {
+    for (const w of ['сделанный', 'программы', 'книгами']) {
+      expect(ru.spell(w), w).toBe(true);
+    }
+  });
+
+  it('flags a genuine misspelling and suggests the correction', () => {
+    expect(ru.spell('компютер')).toBe(false);
+    expect(ru.suggest('компютер')).toContain('компьютер');
+  });
+});

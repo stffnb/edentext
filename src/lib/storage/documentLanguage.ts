@@ -24,6 +24,7 @@ export const LANGUAGES: LanguageDef[] = [
   { code: 'en', label: 'English (US)', odf: { language: 'en', country: 'US' }, grammar: true },
   { code: 'de', label: 'Deutsch', odf: { language: 'de', country: 'DE' } },
   { code: 'es', label: 'Español', odf: { language: 'es', country: 'ES' } },
+  { code: 'ru', label: 'Русский', odf: { language: 'ru', country: 'RU' } },
 ];
 
 const KEY = docKey('edentext-doc-language');

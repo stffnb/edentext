@@ -8,6 +8,7 @@ const SOURCES = [
   { code: 'de', dat: 'de/th_de_DE_v2.dat', license: 'de/README_thesaurus.txt' },
   { code: 'en', dat: 'en/th_en_US_v2.dat', license: 'en/WordNet_license.txt' },
   { code: 'es', dat: 'es/th_es_v2.dat', license: 'es/README_th_es.txt' },
+  { code: 'ru', dat: 'ru_RU/th_ru_RU_M_aot_and_v2.dat', license: 'ru_RU/README_thes_ru_RU_M_aot_and_v2.txt' },
 ];
 
 // "(noun)", "(ugs.)", "(generic term)" — a label to read, not a word to insert.
@@ -37,10 +38,11 @@ const bytes = async (path) => {
 
 const text = async (path) => new TextDecoder().decode(await bytes(path));
 
-// MyThes names its charset on the first line — es ships ISO8859-1, de/en UTF-8.
+// MyThes names its charset on the first line — es ships ISO8859-1, the rest UTF-8.
+// Decoding that line as UTF-8 drops ru's byte-order mark; the name itself is ASCII.
 const datText = async (path) => {
   const buf = await bytes(path);
-  const charset = new TextDecoder('latin1').decode(buf.subarray(0, 20)).split('\n')[0].trim();
+  const charset = new TextDecoder('utf-8').decode(buf.subarray(0, 20)).split('\n')[0].trim();
   return new TextDecoder(charset).decode(buf);
 };
 
