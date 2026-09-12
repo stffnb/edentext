@@ -4,6 +4,7 @@
   import RibbonButton from '../RibbonButton.svelte';
   import Icon from '../Icon.svelte';
   import LanguagePicker from '../../LanguagePicker.svelte';
+  import GrammarToggle from '../../GrammarToggle.svelte';
   import { captionClicks, anchored, clickOutside, closeMenu, isMenuOpen, toggleMenu } from '../menu.svelte';
   import { countText, type TextStats } from '../../../utils/wordCount';
   import type { DocumentLanguage } from '../../../storage/documentLanguage';
@@ -290,6 +291,9 @@
     <LanguagePicker value={documentLanguage} onChange={onLanguage} {editor} {tick} />
     <span class="rb-caption">{t().spellPicker.label}</span>
   </div>
+  <!-- Beside the captioned picker, not under it: a third row pushes the group's own
+       label out of the band. -->
+  <div class="gr-slot"><GrammarToggle value={documentLanguage} /></div>
 </RibbonGroup>
 
 <style>
@@ -297,6 +301,8 @@
   .stats-menu { min-width: 240px; }
 
   .rb-col { display: flex; flex-direction: column; gap: 2px; }
+
+  .gr-slot { display: flex; align-self: center; }
 
   .rb-check {
     display: flex;

@@ -52,6 +52,7 @@
   import { spellController } from './lib/spell/controller';
   import { setGrammarLanguage } from './lib/spell/grammar.svelte';
   import LanguagePicker from './lib/components/LanguagePicker.svelte';
+  import GrammarToggle from './lib/components/GrammarToggle.svelte';
   import UiLanguagePicker from './lib/components/UiLanguagePicker.svelte';
   import AboutDialog from './lib/components/AboutDialog.svelte';
   import TemplateGalleryDialog from './lib/components/TemplateGalleryDialog.svelte';
@@ -1742,6 +1743,7 @@
     <div class="sb-center">
       <!-- The body editor, not activeEditor: a header/footer zone has no paragraph language. -->
       <LanguagePicker value={documentLanguage} onChange={(code) => (documentLanguage = code)} {editor} {tick} />
+      <GrammarToggle value={documentLanguage} />
     </div>
     <div class="sb-right">
     <div class="zoom-controls">
