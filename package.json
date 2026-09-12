@@ -33,6 +33,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "dictionary-de": "^3.0.0",
     "dictionary-en": "^4.0.0",
+    "dictionary-es": "^4.0.0",
     "jsdom": "^29.1.1",
     "playwright-core": "^1.62.1",
     "svelte": "^5.55.9",

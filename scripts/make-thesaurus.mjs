@@ -7,6 +7,7 @@ const REPO = 'https://raw.githubusercontent.com/LibreOffice/dictionaries/master'
 const SOURCES = [
   { code: 'de', dat: 'de/th_de_DE_v2.dat', license: 'de/README_thesaurus.txt' },
   { code: 'en', dat: 'en/th_en_US_v2.dat', license: 'en/WordNet_license.txt' },
+  { code: 'es', dat: 'es/th_es_v2.dat', license: 'es/README_th_es.txt' },
 ];
 
 // "(noun)", "(ugs.)", "(generic term)" — a label to read, not a word to insert.
@@ -28,14 +29,23 @@ function groups(dat) {
   return [...out].sort();
 }
 
-const text = async (path) => {
+const bytes = async (path) => {
   const res = await fetch(`${REPO}/${path}`);
   if (!res.ok) throw new Error(`${res.status} for ${path}`);
-  return res.text();
+  return new Uint8Array(await res.arrayBuffer());
+};
+
+const text = async (path) => new TextDecoder().decode(await bytes(path));
+
+// MyThes names its charset on the first line — es ships ISO8859-1, de/en UTF-8.
+const datText = async (path) => {
+  const buf = await bytes(path);
+  const charset = new TextDecoder('latin1').decode(buf.subarray(0, 20)).split('\n')[0].trim();
+  return new TextDecoder(charset).decode(buf);
 };
 
 for (const source of SOURCES) {
-  const [dat, license] = await Promise.all([text(source.dat), text(source.license)]);
+  const [dat, license] = await Promise.all([datText(source.dat), text(source.license)]);
   const dir = new URL(`../public/thesaurus/${source.code}/`, import.meta.url);
   await mkdir(dir, { recursive: true });
   const lines = groups(dat);

@@ -23,6 +23,7 @@ export interface LanguageDef {
 export const LANGUAGES: LanguageDef[] = [
   { code: 'en', label: 'English (US)', odf: { language: 'en', country: 'US' }, grammar: true },
   { code: 'de', label: 'Deutsch', odf: { language: 'de', country: 'DE' } },
+  { code: 'es', label: 'Español', odf: { language: 'es', country: 'ES' } },
 ];
 
 const KEY = docKey('edentext-doc-language');

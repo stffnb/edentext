@@ -5,6 +5,10 @@
 ## [Unreleased]
 
 ### Added
+- **Spanish spell check and thesaurus** — pick Español beside the page count and Hunspell checks
+  against the RLA dictionary (57,344 entries, accents, ñ and enclitic forms like *dámelo*), with
+  OpenThesaurus synonyms behind the thesaurus dialog. The document saves as `es-ES`. Grammar stays
+  English-only
 - Grammar and style check (harper.js, local, no server): a switch beside the language picker
   turns it on, blue waves mark what it finds, and the context menu offers the fixes or ignores
   the finding. **English only** — the engine carries its rules in code, not in a data file, so a

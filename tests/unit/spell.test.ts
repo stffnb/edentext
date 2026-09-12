@@ -47,3 +47,28 @@ describe('German spell-check (hunspell-asm)', () => {
     expect(de.spell('Claudewort')).toBe(true);
   });
 });
+
+describe('Spanish spell-check (hunspell-asm)', () => {
+  let es: Hunspell;
+  beforeAll(async () => {
+    es = await makeChecker('es');
+  });
+
+  it('accepts accented words and ñ', () => {
+    for (const w of ['español', 'mañana', 'corazón', 'vergüenza']) {
+      expect(es.spell(w), w).toBe(true);
+    }
+  });
+
+  // Pronouns glued onto the verb; they come from the .aff rules, not the word list.
+  it('accepts enclitic verb forms', () => {
+    for (const w of ['dámelo', 'decírselo']) {
+      expect(es.spell(w), w).toBe(true);
+    }
+  });
+
+  it('flags a genuine misspelling and suggests the correction', () => {
+    expect(es.spell('ordenadr')).toBe(false);
+    expect(es.suggest('ordenadr')).toContain('ordenador');
+  });
+});
