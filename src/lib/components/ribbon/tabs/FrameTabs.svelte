@@ -7,12 +7,12 @@
   import ShapePicker from '../../ShapePicker.svelte';
   import CaptionDialog from '../../CaptionDialog.svelte';
   import { droppedFrameAttrs, type WrapMode } from '../../../editor/extensions/image';
-  import type { ShapeKind } from '../../../editor/extensions/textBox';
+  import type { ShapeKind, TextVAlign } from '../../../editor/extensions/textBox';
   import { t } from '../../../i18n/i18n.svelte';
 
   // Word's Picture Format and Shape Format: the same wrap modes, plus a shape's
   // own fill, outline and kind.
-  let { editor, which, wrap, inFront = false, alt = '', shapeKind, fillColor, strokeColor, strokeWidthPt, textVertical = false }: {
+  let { editor, which, wrap, inFront = false, alt = '', shapeKind, fillColor, strokeColor, strokeWidthPt, textVertical = false, textVAlign = 'top' }: {
     editor: Editor | null;
     which: 'picture' | 'shape';
     wrap: WrapMode;
@@ -23,6 +23,7 @@
     strokeColor?: string | null;
     strokeWidthPt?: number;
     textVertical?: boolean;
+    textVAlign?: TextVAlign;
   } = $props();
 
   // The two run-through entries are one mode, told apart by which side of the text the
@@ -37,6 +38,12 @@
     { key: 'front', icon: 'wrapFront', label: () => t().image.wrapFront },
   ];
   const active = $derived<WrapChoice>(wrap === 'through' ? (inFront ? 'front' : 'behind') : wrap);
+
+  const VALIGNS: { key: TextVAlign; icon: 'alignTop' | 'alignMiddle' | 'alignBottom'; label: () => string }[] = [
+    { key: 'top', icon: 'alignTop', label: () => t().textBox.vAlignTop },
+    { key: 'middle', icon: 'alignMiddle', label: () => t().textBox.vAlignMiddle },
+    { key: 'bottom', icon: 'alignBottom', label: () => t().textBox.vAlignBottom },
+  ];
 
   let captionOpen = $state(false);
 
@@ -150,6 +157,14 @@
       active={textVertical}
       onclick={() => editor?.chain().focus().setTextBoxAttrs({ textVertical: !textVertical }).run()}
     />
+    {#each VALIGNS as v}
+      <RibbonButton
+        icon={v.icon}
+        title={v.label()}
+        active={textVAlign === v.key}
+        onclick={() => editor?.chain().focus().setTextBoxAttrs({ textVAlign: v.key }).run()}
+      />
+    {/each}
   </RibbonGroup>
 {/if}
 

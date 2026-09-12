@@ -26,6 +26,10 @@ const parseCmAttr = (v: string | null): number | null => {
 
 export type { ShapeKind };
 
+// Vertical anchor of the text inside the frame (ODF draw:textarea-vertical-align,
+// DOCX wps:bodyPr/@anchor t|ctr|b).
+export type TextVAlign = 'top' | 'middle' | 'bottom';
+
 // Fixed text inset inside the frame; exported as fo:padding / wps:bodyPr insets.
 export const TEXTBOX_PADDING_CM = 0.15;
 const paddingPx = (cm: unknown) => ((typeof cm === 'number' ? cm : TEXTBOX_PADDING_CM) * 96) / 2.54;
@@ -57,6 +61,7 @@ export interface TextBoxAttrs {
   shapePath: string | null;   // a freeform's own outline, in the 0…100 box
   flipV: boolean;             // a line runs bottom-left → top-right instead
   textVertical: boolean;      // text runs top-to-bottom, right-to-left
+  textVAlign: TextVAlign;     // where the text sits in a box taller than it is
   fillColor: string | null;
   strokeColor: string | null;
   strokeWidthPt: number;
@@ -260,6 +265,16 @@ export const TextBox = Node.create({
         parseHTML: el => (el as HTMLElement).getAttribute('data-text-vertical') === 'true',
         renderHTML: () => ({}),
       },
+      // Where the text sits in a box taller than the text: both formats anchor it
+      // top, middle or bottom.
+      textVAlign: {
+        default: 'top' as TextVAlign,
+        parseHTML: el => {
+          const v = (el as HTMLElement).getAttribute('data-text-valign');
+          return v === 'middle' || v === 'bottom' ? v : 'top';
+        },
+        renderHTML: () => ({}),
+      },
       fillColor: {
         default: '#FFFFFF',
         parseHTML: el => (el as HTMLElement).getAttribute('data-fill') || null,
@@ -303,6 +318,8 @@ export const TextBox = Node.create({
       a.shapeKind !== 'textbox' ? `border-radius:${shapeRadius(a.shapeKind)}` : '',
       a.rotation ? `transform:rotate(${a.rotation}deg)` : '',
       `padding:${paddingPx(a.paddingCm).toFixed(2)}px`,
+      a.textVAlign !== 'top'
+        ? `display:flex;flex-direction:column;justify-content:${a.textVAlign === 'middle' ? 'center' : 'flex-end'}` : '',
     ].filter(Boolean).join(';');
     return ['div', mergeAttributes(HTMLAttributes, {
       'data-textbox': '',
@@ -315,6 +332,7 @@ export const TextBox = Node.create({
       ...(a.shapePath ? { 'data-shape-path': a.shapePath } : {}),
       ...(a.flipV ? { 'data-flip-v': 'true' } : {}),
       ...(a.textVertical ? { 'data-text-vertical': 'true' } : {}),
+      ...(a.textVAlign !== 'top' ? { 'data-text-valign': a.textVAlign } : {}),
       ...(a.fillColor ? { 'data-fill': a.fillColor } : {}),
       ...(a.strokeColor ? { 'data-stroke': a.strokeColor } : {}),
       ...(a.strokeWidthPt !== 1 ? { 'data-stroke-width': String(a.strokeWidthPt) } : {}),
@@ -589,6 +607,10 @@ class TextBoxView {
     this.contentDOM.style.display = line ? 'none' : '';
     // Vertical text: the browser flows it, so the box needs nothing but the mode.
     this.contentDOM.style.writingMode = a.textVertical ? 'vertical-rl' : '';
+    // Vertical anchor: the handles are absolute, so the rotor can flex its one child.
+    this.rotor.style.display = a.textVAlign === 'top' ? '' : 'flex';
+    this.rotor.style.flexDirection = 'column';
+    this.rotor.style.justifyContent = a.textVAlign === 'middle' ? 'center' : a.textVAlign === 'bottom' ? 'flex-end' : '';
     this.applyOutline();
     this.applyLine();
     this.applyWrap();
