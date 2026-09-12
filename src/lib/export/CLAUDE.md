@@ -130,6 +130,16 @@ fallback download shows a one-time hint (`edentext-download-hint`) that the brow
 
 - **Factory style slots** (`FACTORY_SLOTS`, `buildStyles`): the `docx` package always writes its own Title/Heading1–6 into styles.xml, so the registry's versions ride `styles.default.title/headingN` instead of `paragraphStyles` — a second definition under the same `w:styleId` makes Word **and** LibreOffice drop the `basedOn` chain (headings lose their sans/bold). Table and numbering styles are **spliced post-pack** (`applyRawStylesDocx`): passing them as `importedStyles` makes the package's Styles merge replace its whole factory set, `w:docDefaults` (default font/size/language) included.
 
+- **The language of a paragraph and of a run** (`language.ts`) is the one text property the
+  two formats treat differently. In ODF it is written once — `fo:language`/`fo:country` in
+  the block's own `<style:text-properties>` — and LibreOffice passes it on to the runs;
+  `paraBoxSpec`'s eleventh slot carries it for a top-level block, `ParaStyle.lang`
+  (`paraStyleDef`) for a list item's or a cell's, and `odfExtraTextProps` for a run. Word
+  reads a run's language from that run's `w:rPr` **alone**, so the block's is baked onto
+  every run of it through `force` (the paragraph mark's own `run:` formats only the mark).
+  The hand-serialized text-box path (`txbxRunPropsXml`/`txbxPPrXml`) does the same;
+  `w:lang` closes `CT_RPr`, and `w:rPr` closes `CT_PPr`.
+
 The filename is derived from the first non-empty heading (max 50 chars, sanitized), falling back to `document.odt`.
 
 ## Printing the review markup (`reviewPrint.ts`)

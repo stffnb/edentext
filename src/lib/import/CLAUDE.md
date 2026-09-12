@@ -76,6 +76,18 @@ the row's foot — a header zone draws its space above, where a footer's carries
 gap to the body and only measures it (`HeaderFooterLayer`). Read as no zone at all, a
 2.2cm header band left every page's body 8mm high.
 
+## Language on import
+
+A block's or a run's language is formatting only where it **differs** from the level above
+it: a run against its paragraph's, a paragraph against the document's (`documentLanguage()`
+in both resolvers). The paragraph's own language comes from its style's text properties in
+ODF and from the paragraph mark (`w:pPr/w:rPr/w:lang`, which is where Word keeps it) in
+DOCX, and becomes `BlockDefaults.lang` — the yardstick its runs are measured against. A
+DOCX run that names none inherits the block's, **not** `docDefaults`', or every run of a
+paragraph in its own language would arrive carrying a mark. Header and footer zones take
+the document's language the same way, unlike the size and font their style provides, which
+do have to become marks there.
+
 ## Defaults on DOCX import
 
 **Table borders** come from the table's own `w:tblBorders`, else its table style's along the

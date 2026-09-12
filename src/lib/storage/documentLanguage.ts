@@ -54,6 +54,31 @@ export function odfFromLanguage(code: DocumentLanguage): { language: string; cou
   return findLanguage(code)?.odf ?? null;
 }
 
+// A full language tag ('en-US', 'fr-FR') ↔ ODF's split fo:language/fo:country. The tag is
+// what a paragraph and a run carry, so a document in a language we have no dictionary for
+// still saves the one it came with.
+export function odfFromTag(tag: string): { language: string; country: string } | null {
+  const m = /^([A-Za-z]{2,3})(?:[-_]([A-Za-z]{2}|\d{3}))?$/.exec(tag.trim());
+  return m ? { language: m[1].toLowerCase(), country: (m[2] ?? '').toUpperCase() } : null;
+}
+
+export function tagFromOdf(language: string, country?: string): string {
+  const lang = language.toLowerCase();
+  return country ? `${lang}-${country.toUpperCase()}` : lang;
+}
+
+// The dictionary code a language tag maps onto, null where we have no dictionary for it.
+export function codeForTag(tag: string): DocumentLanguage | null {
+  const odf = odfFromTag(tag);
+  return odf ? languageFromOdf(odf.language, odf.country) : null;
+}
+
+// The tag a dictionary code stands for, for the language picker's own entries.
+export function tagForLanguage(code: DocumentLanguage): string | null {
+  const odf = odfFromLanguage(code);
+  return odf ? tagFromOdf(odf.language, odf.country) : null;
+}
+
 // ODF fo:language(/country) → a known code, else null (caller maps to 'none').
 // Matches on language first, preferring an exact country match when present.
 export function languageFromOdf(language: string, country?: string): DocumentLanguage | null {

@@ -2974,3 +2974,54 @@ describe('Leg 37: a box inside a box is unwrapped on import (ODT)', () => {
     check('and it is reported', f.warnings.some((w: string) => /nested in other text boxes/.test(w)), f.warnings);
   });
 });
+
+describe('Leg 38: a language per paragraph and per run (ODT + DOCX)', () => {
+  const de = { language: 'de', country: 'DE' };
+  const doc: N = { type: 'doc', content: [
+    P(null, T('deutscher Fließtext')),
+    P({ lang: 'en-US' }, T('an English paragraph')),
+    P(null, T('mit einem '), T('mot français', { type: 'textStyle', attrs: { lang: 'fr-FR' } }), T(' darin')),
+    { type: 'table', content: [ROW(CELL(null, P({ lang: 'en-US' }, T('in the cell'))))] },
+  ] };
+
+  it('ODT: fo:language on the paragraph and on the run, and back', async () => {
+    const bytes = await buildOdt(doc, margins, 'portrait', undefined, de);
+    const content = strFromU8(unzipSync(bytes)['content.xml']);
+    check('English twice (block + cell)', (content.match(/fo:language="en" fo:country="US"/g) ?? []).length === 2,
+      content.match(/fo:language="[^"]*" fo:country="[^"]*"/g));
+    check('the French run', content.includes('fo:language="fr" fo:country="FR"'),
+      content.match(/fo:language="[^"]*"/g));
+
+    const back = importOdt(bytes).content as N;
+    check('the German paragraph carries none', back.content[0].attrs?.lang === undefined, back.content[0].attrs);
+    check('the English paragraph round-trips', back.content[1].attrs?.lang === 'en-US', back.content[1].attrs);
+    const run = back.content[2].content.find((c: N) => c.text === 'mot français');
+    check('the French run round-trips', run?.marks?.[0]?.attrs?.lang === 'fr-FR', run?.marks);
+    const cellPara = back.content[3].content[0].content[0].content[0];
+    check('the cell paragraph round-trips', cellPara.attrs?.lang === 'en-US', cellPara.attrs);
+  });
+
+  it('DOCX: w:lang in the run properties, and back', async () => {
+    const bytes = await buildDocx(doc, margins, 'portrait', undefined, de);
+    const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+    check('English runs carry it', (xml.match(/<w:lang w:val="en-US"\s*\/>/g) ?? []).length >= 2,
+      xml.match(/<w:lang[^>]*>/g));
+    check('the French run', xml.includes('<w:lang w:val="fr-FR"/>'), xml.match(/<w:lang[^>]*>/g));
+
+    const back = importDocx(bytes).content as N;
+    check('the German paragraph carries none', back.content[0].attrs?.lang === undefined, back.content[0].attrs);
+    check('the English paragraph round-trips', back.content[1].attrs?.lang === 'en-US', back.content[1].attrs);
+    const run = back.content[2].content.find((c: N) => c.text === 'mot français');
+    check('the French run round-trips', run?.marks?.some((m: N) => m.attrs?.lang === 'fr-FR'), run?.marks);
+    const cellPara = back.content[3].content[0].content[0].content[0];
+    check('the cell paragraph round-trips', cellPara.attrs?.lang === 'en-US', cellPara.attrs);
+  });
+
+  it('a document in one language writes no language into its paragraphs', async () => {
+    const plain: N = { type: 'doc', content: [P(null, T('nur Deutsch'))] };
+    const content = strFromU8(unzipSync(await buildOdt(plain, margins, 'portrait', undefined, de))['content.xml']);
+    check('no fo:language in content.xml', !content.includes('fo:language'), content.match(/fo:language="[^"]*"/g));
+    const xml = strFromU8(unzipSync(await buildDocx(plain, margins, 'portrait', undefined, de))['word/document.xml']);
+    check('no w:lang in document.xml', !xml.includes('<w:lang'), xml.match(/<w:lang[^>]*>/g));
+  });
+});

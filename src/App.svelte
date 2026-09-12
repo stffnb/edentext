@@ -1740,7 +1740,8 @@
       </div>
     </div>
     <div class="sb-center">
-      <LanguagePicker value={documentLanguage} onChange={(code) => (documentLanguage = code)} />
+      <!-- The body editor, not activeEditor: a header/footer zone has no paragraph language. -->
+      <LanguagePicker value={documentLanguage} onChange={(code) => (documentLanguage = code)} {editor} {tick} />
     </div>
     <div class="sb-right">
     <div class="zoom-controls">

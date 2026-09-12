@@ -287,7 +287,7 @@
 
 <RibbonGroup label={t().ribbon.groups.language}>
   <div class="rb-captioned" use:captionClicks>
-    <LanguagePicker value={documentLanguage} onChange={onLanguage} />
+    <LanguagePicker value={documentLanguage} onChange={onLanguage} {editor} {tick} />
     <span class="rb-caption">{t().spellPicker.label}</span>
   </div>
 </RibbonGroup>

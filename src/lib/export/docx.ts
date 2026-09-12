@@ -497,6 +497,11 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
   if (markPresent(marks, 'superscript')) props.superScript = true;
   else if (markPresent(marks, 'subscript')) props.subScript = true;
 
+  // Word reads a run's language from its own w:rPr only, so the paragraph's rides in
+  // via `force` — ODF needs none of this, LibreOffice passes the block's on to the runs.
+  const lang = ts?.attrs?.lang ?? force.lang;
+  if (lang) props.language = { value: String(lang) };
+
   const caps = ts?.attrs?.caps;
   if (caps === 'smallCaps') props.smallCaps = true;
   else if (caps === 'uppercase') props.allCaps = true;
@@ -1015,7 +1020,7 @@ function escapeXml(s: string): string {
 
 // Run properties for the hand-serialized txbxContent, in CT_RPr schema order
 // (rFonts, b, i, strike, color, sz, u, shd, vertAlign). Mirrors runPropsFromMarks.
-function txbxRunPropsXml(marks: TiptapNode['marks'] = []): string {
+function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLang?: string): string {
   const ts = marks.find((m) => m.type === 'textStyle');
   const parts: string[] = [];
   // w:rStyle leads w:rPr; the run's own properties below still win, as in the body.
@@ -1069,6 +1074,9 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = []): string {
   }
   if (markPresent(marks, 'superscript')) parts.push('<w:vertAlign w:val="superscript"/>');
   else if (markPresent(marks, 'subscript')) parts.push('<w:vertAlign w:val="subscript"/>');
+  // Last in CT_RPr's order, and the only place Word reads a run's language from.
+  const lang = ts?.attrs?.lang ?? blockLang;
+  if (lang) parts.push(`<w:lang w:val="${escapeXml(String(lang))}"/>`);
   return parts.length ? `<w:rPr>${parts.join('')}</w:rPr>` : '';
 }
 
@@ -1140,6 +1148,8 @@ function txbxPPrXml(attrs: TiptapNode['attrs'], indentTwip: number): string {
   const ta = attrs?.textAlign;
   const jc = ta === 'center' ? 'center' : ta === 'right' ? 'right' : ta === 'justify' ? 'both' : '';
   if (jc) out.push(`<w:jc w:val="${jc}"/>`);
+  // w:rPr closes CT_PPr; it formats the paragraph mark and names the block's language.
+  if (typeof attrs?.lang === 'string' && attrs.lang) out.push(`<w:rPr><w:lang w:val="${escapeXml(attrs.lang)}"/></w:rPr>`);
   return out.join('');
 }
 
@@ -1153,6 +1163,8 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
     pPr.push(`<w:pStyle w:val="Heading${lvl}"/>`);
   }
   pPr.push(numPr, txbxPPrXml(attrs, indentTwip));
+  const blockLang = typeof attrs.lang === 'string' && attrs.lang ? attrs.lang : undefined;
+  const runProps = (marks: TiptapNode['marks']) => txbxRunPropsXml(marks, blockLang);
   let runs = '';
   // Comment ranges and bookmarks bracket consecutive runs sharing the mark, as
   // inlineToRuns does for the body; the reference run is what Word draws the bubble from.
@@ -1188,7 +1200,7 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
       // A caption inside a frame keeps its running number as a field, like any other.
       const { instr, text } = sequenceFieldParts(child);
       runs += `<w:fldSimple w:instr="${escapeXml(instr)}"><w:r>` +
-        `${txbxRunPropsXml(child.marks)}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:fldSimple>`;
+        `${runProps(child.marks)}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:fldSimple>`;
     } else if (child.type === 'crossRef') {
       const verb = child.attrs?.format === 'page' ? 'PAGEREF' : 'REF';
       runs += `<w:fldSimple w:instr="${escapeXml(`${verb} ${String(child.attrs?.name ?? '')} \\h`)}">` +
@@ -1210,12 +1222,12 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
         }
         const shown = String(child.attrs?.text || citationText(identifier));
         runs += `<w:fldSimple w:instr="${escapeXml(`CITATION "${docxTag(identifier)}"`)}"><w:r>` +
-          `${txbxRunPropsXml(child.marks)}<w:t xml:space="preserve">${escapeXml(shown)}</w:t></w:r></w:fldSimple>`;
+          `${runProps(child.marks)}<w:t xml:space="preserve">${escapeXml(shown)}</w:t></w:r></w:fldSimple>`;
       }
     } else if (child.type === 'dateTimeField') {
       const { fixed, instr, text } = dateTimeFieldParts(child);
       runs += fixed
-        ? `<w:r>${txbxRunPropsXml(child.marks)}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`
+        ? `<w:r>${runProps(child.marks)}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`
         : `<w:fldSimple w:instr="${escapeXml(instr)}"><w:r>` +
           `<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:fldSimple>`;
     } else if (child.type === 'formula') {
@@ -1230,9 +1242,9 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
       runs += `<w:r><w:t xml:space="preserve">${RBY}${docRubies.length - 1}${RBY}</w:t></w:r>`;
     } else if (child.type === 'placeholderField') {
       docPlaceholders.push(String(child.attrs?.text ?? ''));
-      runs += `<w:r>${txbxRunPropsXml(child.marks)}<w:t xml:space="preserve">${PLH}${docPlaceholders.length - 1}${PLH}</w:t></w:r>`;
+      runs += `<w:r>${runProps(child.marks)}<w:t xml:space="preserve">${PLH}${docPlaceholders.length - 1}${PLH}</w:t></w:r>`;
     } else if (child.type === 'text' && child.text) {
-      const rPr = txbxRunPropsXml(child.marks);
+      const rPr = runProps(child.marks);
       // A recorded revision wraps the run; a deletion's text sits in w:delText.
       const rev = revisionOf(child);
       const tag = rev?.kind === 'deletion' ? 'w:delText' : 'w:t';
@@ -1259,7 +1271,7 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
         runs += run;
       }
     } else if (child.type === 'hardBreak') {
-      runs += `<w:r>${txbxRunPropsXml(child.marks)}<w:br/></w:r>`;
+      runs += `<w:r>${runProps(child.marks)}<w:br/></w:r>`;
     }
   }
   closeBookmark();
@@ -2282,6 +2294,8 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
   // Paragraph-mark run props carry the block's own font (see import/docx.ts).
   const markSize = typeof attrs.fontSize === 'string' ? fontSizeToHalfPoints(attrs.fontSize) : undefined;
   const markFont = typeof attrs.fontFamily === 'string' && attrs.fontFamily ? attrs.fontFamily : undefined;
+  const blockLang = typeof attrs.lang === 'string' && attrs.lang ? attrs.lang : undefined;
+  const runForce = blockLang ? { ...opts.force, lang: blockLang } : opts.force;
   return new Paragraph({
     style,
     alignment: alignOf(attrs),
@@ -2302,10 +2316,11 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
     numbering: opts.numbering,
     shading: paraShadingOf(attrs),
     border: paraBordersOf(attrs),
-    run: markSize || markFont ? { size: markSize, font: markFont } : undefined,
+    // The paragraph mark's own run properties; the language there formats the mark alone.
+    run: markSize || markFont || blockLang ? { size: markSize, font: markFont, language: blockLang ? { value: blockLang } : undefined } : undefined,
     children: attrs.noHyphenation === true
-      ? [new TextRun(NOHYP), ...inlineToRuns(node.content, opts.force)]
-      : inlineToRuns(node.content, opts.force),
+      ? [new TextRun(NOHYP), ...inlineToRuns(node.content, runForce)]
+      : inlineToRuns(node.content, runForce),
   });
 }
 

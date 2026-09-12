@@ -814,6 +814,8 @@ type BlockDefaults = {
   underline: string | null;
   strike: string | null;
   caps: CapsMode | null;
+  // The language the style chain (docDefaults included) already gives the runs.
+  lang: string | null;
 };
 
 const FONT_TWINS: Record<string, string[]> = {
@@ -843,6 +845,7 @@ function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDef
     underline: lineSig(baseRun).underline,
     strike: lineSig(baseRun).strike,
     caps: baseRun.caps || null,
+    lang: baseRun.lang ?? null,
   };
 }
 
@@ -1189,9 +1192,13 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // A run inherits the block's own size, not the default style's, so that is what it is
   // measured against — else a size the block overrides is suppressed and lost (odt.ts).
   const ownSizePt = blockDefaults(baseRun, level, boldByDefault).fontSizePt;
-  const runDefaults = Math.abs(ownSizePt - defaults.fontSizePt) > 0.05
-    ? { ...defaults, fontSizePt: ownSizePt }
-    : defaults;
+  // The block's own language, which its runs are measured against; the document's is
+  // the default and no formatting.
+  const blockLang = paragraphMarkLanguage(ppr, ctx, baseRun) ?? defaults.lang;
+  const runDefaults = {
+    ...(Math.abs(ownSizePt - defaults.fontSizePt) > 0.05 ? { ...defaults, fontSizePt: ownSizePt } : defaults),
+    lang: blockLang,
+  };
   const content = convertInline(el, ctx, baseRun, runDefaults, false);
 
   if (name) {
@@ -1206,6 +1213,7 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   if (fs) attrs.fontSize = fs;
   const ff = paragraphMarkFont(ppr, ctx, baseRun, defaults.fonts);
   if (ff) attrs.fontFamily = ff;
+  if (blockLang && blockLang !== defaults.lang) attrs.lang = blockLang;
   applyUniformRunFont(attrs, content);
   sinkOffsetFrames(content);
 
@@ -1238,6 +1246,15 @@ function paragraphMarkFontSize(ppr: Element | null, ctx: Ctx, baseRun: RunProps,
   if (props.sizeHalfPt == null) return null;
   const sizePt = props.sizeHalfPt / 2;
   return Math.abs(sizePt - defaultPt) > 0.05 ? `${Math.round(sizePt * 10) / 10}pt` : null;
+}
+
+// The paragraph mark's resolved language (w:pPr/w:rPr/w:lang, incl. its rStyle). Word
+// writes the paragraph's language there as well as onto every run.
+function paragraphMarkLanguage(ppr: Element | null, ctx: Ctx, baseRun: RunProps): string | null {
+  const rPr = fc(ppr, 'rPr');
+  const rStyle = fc(rPr, 'rStyle');
+  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
+  return props.lang ?? null;
 }
 
 // The paragraph mark's resolved font family (w:pPr/w:rPr/w:rFonts, incl. its rStyle),
@@ -1512,8 +1529,16 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     // A named character style: its formatting belongs to the style, so it joins the
     // yardstick and the run only keeps what goes beyond it.
     const styleRun = ctx.styles.styleOwn(charId);
-    const runDefaults = charName ? blockDefaults(mergeRunProps(baseRun, styleRun), null, defaults.boldByDefault) : defaults;
-    const props = mergeRunProps(mergeRunProps(baseRun, styleRun), parseRunProps(rPr));
+    const own = parseRunProps(rPr);
+    // The block's language survives the character style's yardstick — only a style that
+    // names one of its own replaces it.
+    const runDefaults = charName
+      ? { ...blockDefaults(mergeRunProps(baseRun, styleRun), null, defaults.boldByDefault), lang: styleRun.lang ?? defaults.lang }
+      : defaults;
+    const props = mergeRunProps(mergeRunProps(baseRun, styleRun), own);
+    // A run's language is inherited unless its own properties name one: the document
+    // default must not become a mark inside a paragraph in another language.
+    props.lang = own.lang ?? styleRun.lang ?? runDefaults.lang ?? undefined;
     // No font resolved anywhere: fall back to the document's own theme (not the editor
     // default) — Word's implicit default is the minor font for body text, the major one
     // for headings.
@@ -1973,6 +1998,7 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
 
   if (props.caps && props.caps !== defaults.caps) textStyle.caps = props.caps;
   if (props.positionPt) textStyle.textPosition = props.positionPt;
+  if (props.lang && props.lang !== defaults.lang) textStyle.lang = props.lang;
 
   if (Object.keys(textStyle).length) marks.push({ type: 'textStyle', attrs: textStyle });
   return marks;
@@ -3519,7 +3545,9 @@ function convertHfPart(relId: string | null, ctx: Ctx): HfDoc {
     // The zone carries no styleName and no style CSS reaches it, so the yardstick is the
     // editor's own defaults — what the Header/Footer style provides has to become marks
     // (mirrors odt.ts convertHfZone, which passes no style name either).
-    lines.push(convertInline(p, hfCtx, baseRun, blockDefaults({}, null, false), true).filter((n) => n.type !== PB_MARKER));
+    // The zone's own language is the document's and no formatting, unlike the size and
+    // font the style provides, which have to become marks here.
+    lines.push(convertInline(p, hfCtx, baseRun, blockDefaults({ lang: baseRun.lang }, null, false), true).filter((n) => n.type !== PB_MARKER));
   }
   // An all-empty zone is dropped unless it carries a background/rule line (a footer that
   // is just a colored line has no text). The zone collapses to one paragraph (mergeHfBox).

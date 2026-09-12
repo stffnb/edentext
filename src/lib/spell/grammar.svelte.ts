@@ -75,6 +75,11 @@ export function grammarLoading(): boolean {
   return loading;
 }
 
+// The document's own language — the fallback for a block that names none.
+export function grammarLanguage(): DocumentLanguage {
+  return code;
+}
+
 export function grammarReady(): boolean {
   return enabled && linter !== null && hasGrammar(code);
 }

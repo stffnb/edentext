@@ -5,6 +5,7 @@ import { Editor } from '@tiptap/core';
 
 vi.mock('../../src/lib/spell/grammar.svelte', () => ({
   grammarReady: () => false,
+  grammarLanguage: () => 'en',
   subscribeGrammar: () => () => {},
   ignoreGrammar: () => {},
   lintText: async () => [],

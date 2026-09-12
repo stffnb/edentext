@@ -79,7 +79,7 @@ export function kitchenSinkDoc(): N {
     p([t('Tabulatoren'), { type: 'hardBreak' }, t('mit\tFüllzeichen\tund harter Zeile')],
       { tabStops: '3c.;9r_' }),
     p([t('Zusammenhalten, Zeilen halten, ohne Schusterjungen')],
-      { keepNext: true, keepLines: true, widowControl: false }),
+      { keepNext: true, keepLines: true, widowControl: false, lang: 'en-US' }),
     p([t('نص من اليمين إلى اليسار')], { dir: 'rtl' }),
     p([t('Ein Zitat mit eigenem Einzug.')], { styleName: 'Quotations' }),
     p([t('Ein Merksatz im eigenen Stil.')], { styleName: 'Merksatz' }),
@@ -91,7 +91,7 @@ export function kitchenSinkDoc(): N {
           li(p([t('Ebene 2')]),
             { type: 'bulletList', attrs: { bulletChar: '❖' }, content: [li(p([t('Ebene 3, eigenes Zeichen')]))] }),
         ] }),
-      li(p([t('rot und groß', { type: 'textStyle', attrs: { color: '#FF0000', fontSize: '18pt' } })])),
+      li(p([t('rot und groß', { type: 'textStyle', attrs: { color: '#FF0000', fontSize: '18pt', lang: 'fr-FR' } })])),
     ] },
     p([]),
     { type: 'orderedList', attrs: { start: 3, listStyleType: 'upper-roman' }, content: [

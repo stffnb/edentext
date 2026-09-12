@@ -37,6 +37,7 @@ import { ParagraphStyle } from './extensions/paragraphStyle';
 import { CharacterStyle } from './extensions/characterStyle';
 import { PageBreak } from './extensions/pageBreak';
 import { TextDirection } from './extensions/textDirection';
+import { Language } from './extensions/language';
 import { Indent } from './extensions/indent';
 import { TabStops } from './extensions/tabStops';
 import { FormattingMarks } from './extensions/formattingMarks';
@@ -188,6 +189,7 @@ export const extensions = [
   PageBreak,
   // Per-block base direction, overriding the page's (storage/writingMode.ts).
   TextDirection,
+  Language,
   Indent,
   TabStops,
   // Its own Mod-Alt-N is dropped: a keymap plugin runs ahead of every plugin from

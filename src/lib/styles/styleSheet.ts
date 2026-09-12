@@ -36,6 +36,9 @@ export type TextProps = {
   strike?: boolean;
   color?: string;
   caps?: CapsMode; // all caps / small caps (Word w:caps + w:smallCaps, ODF fo:text-transform)
+  // A language tag ('en-US'). Carried here so a paragraph's language can be baked onto
+  // its runs, which is the only place Word reads one from.
+  lang?: string;
 };
 
 export type Style = {

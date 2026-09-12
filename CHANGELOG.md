@@ -11,6 +11,12 @@
   new language is a new rule set rather than a new dictionary; it greys out for every other
   language and says so. Off by default: it downloads a 16 MB language model once and holds it in
   the tab for as long as it is on. Spelling stays Hunspell's
+- A **language per paragraph and per run**, as LibreOffice and Word both carry it: the picker
+  beside the page count follows the cursor and sets the paragraph or the selection, and "For all
+  text" takes the document back to one language. Round-trips as ODF `fo:language`/`fo:country`
+  and Word `w:lang`, a language we have no dictionary for included. Each run is then spelled
+  against its own dictionary, the paragraph carries a real `lang` attribute (so hyphenation
+  follows it), and the grammar check skips a paragraph that is not English
 
 ## [0.4.0] — 2026-09-12
 

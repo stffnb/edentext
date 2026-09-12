@@ -388,6 +388,9 @@ const en = {
   spellPicker: {
     label: 'Spell-check language',
     noSpellCheck: 'No spell check',
+    forSelection: 'For the text at the cursor',
+    forAllText: 'For all text',
+    mixed: 'Several languages',
   },
   view: {
     split: 'Split',

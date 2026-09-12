@@ -382,6 +382,9 @@ const de: Messages = {
   spellPicker: {
     label: 'Rechtschreibsprache',
     noSpellCheck: 'Keine Rechtschreibprüfung',
+    forSelection: 'Für den Text an der Schreibmarke',
+    forAllText: 'Für den ganzen Text',
+    mixed: 'Mehrere Sprachen',
   },
   view: {
     split: 'Teilen',

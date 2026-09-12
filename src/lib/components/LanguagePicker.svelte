@@ -1,15 +1,51 @@
 <script lang="ts">
-  import { LANGUAGES, NO_LANGUAGE, hasGrammar, type DocumentLanguage } from '../storage/documentLanguage';
+  import type { Editor } from '@tiptap/core';
+  import { LANGUAGES, NO_LANGUAGE, hasGrammar, tagForLanguage, codeForTag, type DocumentLanguage } from '../storage/documentLanguage';
   import { grammarEnabled, setGrammarEnabled, grammarLoading } from '../spell/grammar.svelte';
+  import { uniformLanguage } from '../utils/selectionFormat';
   import { t } from '../i18n/i18n.svelte';
 
   let {
     value,
     onChange,
+    editor = null,
+    tick = -1,
   }: {
     value: DocumentLanguage;
     onChange: (code: DocumentLanguage) => void;
+    editor?: Editor | null;
+    tick?: number;
   } = $props();
+
+  // The header/footer editor has no Language extension — there the box only sets the
+  // document's language.
+  let canSet = $derived(!!editor && typeof editor.commands.setBlockLanguage === 'function');
+
+  // The language in force at the cursor: the run's own, else its paragraph's, else the
+  // document's. '' where the selection spans two — the box then shows nothing, as the
+  // font and size boxes do.
+  let atCursor = $derived.by(() => {
+    if (tick < 0 || !editor || !canSet) return tagForLanguage(value);
+    const tag = uniformLanguage(editor.state);
+    return tag === '' ? '' : tag ?? tagForLanguage(value);
+  });
+  let selected = $derived(atCursor === '' ? '' : `sel:${codeForTag(atCursor ?? '') ?? atCursor}`);
+
+  function apply(raw: string) {
+    const [scope, code] = raw.split(':');
+    if (scope === 'doc') {
+      onChange(code);
+      // The document's language is the one everything without an opinion follows, so the
+      // overrides go with it — LibreOffice's "For all text" clears them too.
+      if (canSet) editor!.chain().focus().selectAll().setBlockLanguage(null).setRunLanguage(null).setTextSelection(editor!.state.selection.from).run();
+      return;
+    }
+    const tag = tagForLanguage(code) ?? code;
+    if (!canSet) return;
+    // LibreOffice splits the same way: a selection takes a run, a bare cursor the paragraph.
+    if (editor!.state.selection.empty) editor!.chain().focus().setBlockLanguage(tag).run();
+    else editor!.chain().focus().setRunLanguage(tag).run();
+  }
 </script>
 
 <label class="lang-picker" title={t().spellPicker.label}>
@@ -19,12 +55,25 @@
   </svg>
   <select
     aria-label={t().spellPicker.label}
-    onchange={(e) => onChange((e.currentTarget as HTMLSelectElement).value)}
+    onchange={(e) => apply((e.currentTarget as HTMLSelectElement).value)}
   >
-    {#each LANGUAGES as l}
-      <option value={l.code} selected={l.code === value}>{l.label}</option>
-    {/each}
-    <option value={NO_LANGUAGE} selected={value === NO_LANGUAGE}>{t().spellPicker.noSpellCheck}</option>
+    {#if selected === ''}
+      <option value="" selected>{t().spellPicker.mixed}</option>
+    {:else if !LANGUAGES.some((l) => `sel:${l.code}` === selected)}
+      <!-- A language we have no dictionary for still shows, so it is not silently lost. -->
+      <option value={selected} selected>{atCursor}</option>
+    {/if}
+    <optgroup label={t().spellPicker.forSelection}>
+      {#each LANGUAGES as l}
+        <option value="sel:{l.code}" selected={`sel:${l.code}` === selected}>{l.label}</option>
+      {/each}
+    </optgroup>
+    <optgroup label={t().spellPicker.forAllText}>
+      {#each LANGUAGES as l}
+        <option value="doc:{l.code}">{l.label}</option>
+      {/each}
+      <option value="doc:{NO_LANGUAGE}" selected={value === NO_LANGUAGE && selected === ''}>{t().spellPicker.noSpellCheck}</option>
+    </optgroup>
   </select>
 </label>
 

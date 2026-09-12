@@ -4,6 +4,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { spellController } from '../../spell/controller';
+import { codeForTag, type DocumentLanguage } from '../../storage/documentLanguage';
 import { isPaginating } from './pageBreaks';
 
 export type Range = { from: number; to: number };
@@ -24,16 +25,32 @@ const DEBOUNCE_MS = 400;
 // exactly the highlighted range.
 const WORD_RE = /[\p{L}\p{M}]+(?:['’\-][\p{L}\p{M}]+)*/gu;
 
+// The dictionary a node is checked against: its run's language, else its block's, else
+// the document's (language.ts carries both as full tags).
+function codeOf(tag: unknown): DocumentLanguage | undefined {
+  return typeof tag === 'string' && tag ? codeForTag(tag) ?? undefined : undefined;
+}
+
+function langOf(node: PmNode, blockLang: DocumentLanguage | undefined): DocumentLanguage | undefined {
+  return codeOf(node.marks.find((m) => m.type.name === 'textStyle')?.attrs.lang) ?? blockLang;
+}
+
+export function blockLangOf(node: PmNode): DocumentLanguage | undefined {
+  return codeOf(node.attrs.lang);
+}
+
 // The misspelled words under `node`, whose content starts at `base` in the document.
-function wordDecos(node: PmNode, base: number, decos: Decoration[]): void {
+function wordDecos(node: PmNode, base: number, decos: Decoration[], blockLang?: DocumentLanguage): void {
   node.descendants((child, pos) => {
+    if (child.isTextblock) blockLang = blockLangOf(child) ?? blockLang;
     if (!child.isText) return;
     const text = child.text ?? '';
+    const code = langOf(child, blockLang);
     WORD_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = WORD_RE.exec(text)) !== null) {
       const word = m[0];
-      if (word.length < 2 || spellController.check(word)) continue;
+      if (word.length < 2 || spellController.check(word, code)) continue;
       const from = base + pos + m.index;
       decos.push(Decoration.inline(from, from + word.length, { class: 'pm-spell-error' }));
     }
@@ -70,7 +87,7 @@ function recheckBlocks(doc: PmNode, set: DecorationSet, dirty: Range[]): Decorat
   const decos: Decoration[] = [];
   for (const [pos, node] of blocks) {
     stale.push(...set.find(pos + 1, pos + node.nodeSize - 1));
-    wordDecos(node, pos + 1, decos);
+    wordDecos(node, pos + 1, decos, blockLangOf(node));
   }
   return set.remove(stale).add(doc, decos);
 }
@@ -91,6 +108,16 @@ export function spellErrorAt(state: EditorState, pos: number): { from: number; t
   if (!set) return null;
   const found = set.find(pos, pos);
   return found.length ? { from: found[0].from, to: found[0].to } : null;
+}
+
+// The dictionary in force at `pos` — the run's language, else the block's, else the
+// document's. Used by the context menu and the grammar check.
+export function spellLangAt(state: EditorState, pos: number): DocumentLanguage | undefined {
+  const $pos = state.doc.resolve(pos);
+  if (!$pos.parent.isTextblock) return undefined;
+  const node = $pos.nodeAfter ?? $pos.nodeBefore;
+  return (node ? codeOf(node.marks.find((m) => m.type.name === 'textStyle')?.attrs.lang) : undefined)
+    ?? blockLangOf($pos.parent);
 }
 
 // The word covering `pos`, right or wrong — what the thesaurus looks up. Leaf nodes

@@ -4,8 +4,9 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { changedRanges, type Range } from './spellCheck';
-import { grammarReady, lintText, subscribeGrammar, type GrammarFix, type GrammarLint } from '../../spell/grammar.svelte';
+import { changedRanges, blockLangOf, type Range } from './spellCheck';
+import { hasGrammar } from '../../storage/documentLanguage';
+import { grammarLanguage, grammarReady, lintText, subscribeGrammar, type GrammarFix, type GrammarLint } from '../../spell/grammar.svelte';
 import { isPaginating } from './pageBreaks';
 
 // What the context menu reads off a decoration.
@@ -64,13 +65,20 @@ export function grammarFix(state: EditorState, at: Range, fix: GrammarFix): Tran
   return tr.replaceWith(at.from, at.to, text).scrollIntoView();
 }
 
+// Harper only knows English, so a block in another language is not linted at all —
+// the document's own language stands in where the block names none.
+function lintable(node: PmNode, docLang: string): boolean {
+  if (!node.isTextblock || node.content.size < MIN_CHARS) return false;
+  return hasGrammar(blockLangOf(node) ?? docLang);
+}
+
 // Every textblock worth linting, in document order but rotated onto the one holding
 // the caret, so the visible page finishes first.
-function buildQueue(state: EditorState): Range[] {
+function buildQueue(state: EditorState, docLang: string): Range[] {
   const blocks: Range[] = [];
   state.doc.descendants((node, pos) => {
     if (!node.isTextblock) return true;
-    if (node.content.size >= MIN_CHARS) blocks.push({ from: pos + 1, to: pos + node.nodeSize - 1 });
+    if (lintable(node, docLang)) blocks.push({ from: pos + 1, to: pos + node.nodeSize - 1 });
     return false;
   });
   const caret = state.selection.from;
@@ -79,17 +87,17 @@ function buildQueue(state: EditorState): Range[] {
 }
 
 // The blocks the dirty ranges touch, so an edit re-lints only what changed.
-function dirtyBlocks(doc: PmNode, dirty: Range[]): Range[] {
+function dirtyBlocks(doc: PmNode, dirty: Range[], docLang: string): Range[] {
   const out = new Map<number, Range>();
   for (const { from, to } of dirty) {
     const $pos = doc.resolve(Math.min(from, doc.content.size));
     if (from === to) {
-      if ($pos.parent.isTextblock) out.set($pos.before(), { from: $pos.start(), to: $pos.end() });
+      if (lintable($pos.parent, docLang)) out.set($pos.before(), { from: $pos.start(), to: $pos.end() });
       continue;
     }
     doc.nodesBetween(from, to, (node, pos) => {
       if (!node.isTextblock) return true;
-      out.set(pos, { from: pos + 1, to: pos + node.nodeSize - 1 });
+      if (lintable(node, docLang)) out.set(pos, { from: pos + 1, to: pos + node.nodeSize - 1 });
       return false;
     });
   }
@@ -167,9 +175,10 @@ export const GrammarCheck = Extension.create({
             let rebuilt = false;
             if (!queue.length || queueDoc !== view.state.doc) {
               const dirty = grammarKey.getState(view.state)?.dirty ?? [];
-              const edited = dirtyBlocks(view.state.doc, dirty);
+              const docLang = grammarLanguage();
+              const edited = dirtyBlocks(view.state.doc, dirty, docLang);
               // Until one full pass is through, the edited blocks only jump the queue.
-              queue = swept ? edited : dedupe(edited.concat(buildQueue(view.state)));
+              queue = swept ? edited : dedupe(edited.concat(buildQueue(view.state, docLang)));
               queueDoc = view.state.doc;
               rebuilt = true;
             }

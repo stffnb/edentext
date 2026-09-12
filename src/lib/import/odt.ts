@@ -1,5 +1,6 @@
 import { strFromU8 } from 'fflate';
 import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, type PropMap } from './styleResolver';
+import { tagFromOdf } from '../storage/documentLanguage';
 import { ODF_LOOK_ATTRS, normalizeColor } from '../export/odt';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
 import { isAllowedUri } from '@tiptap/extension-link';
@@ -1454,9 +1455,17 @@ type BlockDefaults = {
   underline: string | null;
   strike: string | null;
   caps: CapsMode | null;
+  // The language in force for the block's runs — its own, else the document's.
+  lang: string | null;
   // The style's own paragraph background and rule lines (paraBoxAttrs).
   box: Record<string, string>;
 };
+
+// fo:language(+fo:country) as one tag; null where the style declares none.
+function langTagOfProps(props: PropMap): string | null {
+  const l = props['fo:language'];
+  return l && l !== 'none' ? tagFromOdf(l, props['fo:country']) : null;
+}
 
 // Metric twins: the on-screen font and the name we declare in files mean the same thing.
 const FONT_TWINS: Record<string, string[]> = {
@@ -1483,6 +1492,8 @@ function odfTextAlign(ta: string | undefined): string | null {
 
 function blockDefaults(resolver: StyleResolver, named: string | null, headingLevel: number | null, boldByDefault: boolean): BlockDefaults {
   const hdef = headingLevel != null ? HEADING_DEFAULTS[headingLevel - 1] : null;
+  const doc = resolver.documentLanguage();
+  const docLang = doc ? tagFromOdf(doc.language, doc.country) : null;
   const fallback: BlockDefaults = {
     fontSizePt: hdef ? hdef.fontSizePt : BODY_FONT_SIZE_PT,
     marginTopPt: hdef ? hdef.marginTopPt : 0,
@@ -1501,6 +1512,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     underline: null,
     strike: null,
     caps: null,
+    lang: docLang,
     box: {},
   };
   if (!named) return fallback;
@@ -1530,6 +1542,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     underline: lineSig(text, 'underline'),
     strike: lineSig(text, 'line-through'),
     caps: capsFromOdf(text),
+    lang: langTagOfProps(text) ?? docLang,
     box: paraBoxAttrs(para),
   };
 }
@@ -1866,9 +1879,16 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // so that is what it is measured against — else a list item whose style sets 11pt drops
   // every 12pt run as "the style supplies it" and renders them at 11.
   const markSizePt = lengthToPt(baseTextProps['fo:font-size']);
-  const runDefaults = markSizePt != null && Math.abs(markSizePt - defaults.fontSizePt) > 0.05
-    ? { ...defaults, fontSizePt: markSizePt }
-    : defaults;
+  // The block's own language, which its runs are measured against; the document's is
+  // the default and no formatting.
+  const docLang = defaults.lang;
+  const blockLang = langTagOfProps(baseTextProps) ?? docLang;
+  const runDefaults = {
+    ...(markSizePt != null && Math.abs(markSizePt - defaults.fontSizePt) > 0.05
+      ? { ...defaults, fontSizePt: markSizePt }
+      : defaults),
+    lang: blockLang,
+  };
   const content = convertInline(el, ctx, baseTextProps, runDefaults, false);
 
   // The paragraph style's own font size is the block's line-height floor on every
@@ -1888,6 +1908,7 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   const wm = paraProps['style:writing-mode'];
   if (wm === 'rl-tb' && !ctx.pageRtl) attrs.dir = 'rtl';
   else if (wm === 'lr-tb' && ctx.pageRtl) attrs.dir = 'ltr';
+  if (blockLang && blockLang !== docLang) attrs.lang = blockLang;
   const markFont = resolver.fontFamilyOf(baseTextProps);
   if (markFont && !defaults.fonts.has(markFont.toLowerCase())) attrs.fontFamily = markFont;
   applyUniformRunFont(attrs, content);
@@ -2700,6 +2721,9 @@ function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaul
 
   const caps = capsFromOdf(props);
   if (caps && caps !== defaults.caps) textStyle.caps = caps;
+
+  const lang = langTagOfProps(props);
+  if (lang && lang !== defaults.lang) textStyle.lang = lang;
 
   const bg = props['fo:background-color'];
   if (bg && bg !== 'transparent') {

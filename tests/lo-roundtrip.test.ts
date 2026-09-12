@@ -52,6 +52,13 @@ const fixture: N = {
       T(' marked', { type: 'highlight', attrs: { color: '#FFFF00' } }),
       T(' arial14', { type: 'textStyle', attrs: { fontFamily: 'Arial', fontSize: '14pt' } }),
     ),
+    // A language on the paragraph and on a run inside it — both are fo:language in a
+    // text-properties block, and LibreOffice must hand both back unchanged.
+    P({ lang: 'en-US' },
+      T('An English paragraph with a '),
+      T('mot français', { type: 'textStyle', attrs: { lang: 'fr-FR' } }),
+      T(' inside it'),
+    ),
     // Character effects: LibreOffice must read back what we write for each of them.
     P(null,
       T('caps ', { type: 'textStyle', attrs: { caps: 'uppercase' } }),

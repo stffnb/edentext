@@ -6,6 +6,7 @@ import { Editor } from '@tiptap/core';
 const { linted } = vi.hoisted(() => ({ linted: [] as string[] }));
 vi.mock('../../src/lib/spell/grammar.svelte', () => ({
   grammarReady: () => true,
+  grammarLanguage: () => 'en',
   subscribeGrammar: () => () => {},
   ignoreGrammar: () => {},
   lintText: async (text: string) => {

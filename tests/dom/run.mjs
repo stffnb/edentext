@@ -389,11 +389,31 @@ try {
   await page.keyboard.press('Escape'); // the formula dialog above still covers the chrome
   await page.evaluate(() => document.querySelector('.tiptap').editor.commands.setContent('<p>He go to the store.</p>'));
   await settle(page, true);
-  await page.selectOption('.statusbar .lang-picker select', 'en');
+  await page.selectOption('.statusbar .lang-picker select', 'doc:en');
   await page.check('.statusbar .gr-toggle input');
   const squiggle = await page.waitForSelector('.tiptap .pm-grammar-error', { timeout: 60_000 })
     .then(() => true).catch(() => false);
   check(squiggle, 'the grammar check flags a wrong sentence in the browser');
+
+  // A paragraph in its own language: the picker writes a real lang attribute, which is
+  // what the hyphenation and the browser's own spell check read.
+  await page.evaluate(() => document.querySelector('.tiptap').editor.commands.setContent(
+    '<p>He go to the store.</p><p>Er geht zum Laden zum Laden.</p>'));
+  await page.waitForFunction(() => document.querySelectorAll('.tiptap .pm-grammar-error').length > 0,
+    null, { timeout: 30_000 }).catch(() => {});
+  await page.evaluate(() => {
+    const ed = document.querySelector('.tiptap').editor;
+    ed.commands.setTextSelection(ed.state.doc.content.size - 2);
+  });
+  await page.selectOption('.statusbar .lang-picker select', 'sel:de');
+  const langs = await page.evaluate(() => [...document.querySelectorAll('.tiptap > p')].map((p) => p.getAttribute('lang')));
+  check(JSON.stringify(langs) === '[null,"de-DE"]', `only the second paragraph takes a language (${JSON.stringify(langs)})`);
+  // Harper reads German as broken English; the block language is what keeps it out.
+  await page.waitForFunction(() => document.querySelectorAll('.tiptap .pm-grammar-error').length > 0,
+    null, { timeout: 30_000 }).catch(() => {});
+  const perPara = await page.evaluate(() =>
+    [...document.querySelectorAll('.tiptap > p')].map((p) => p.querySelectorAll('.pm-grammar-error').length));
+  check(perPara[0] > 0 && perPara[1] === 0, `only the English paragraph is grammar-checked (${JSON.stringify(perPara)})`);
 
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);

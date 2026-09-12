@@ -83,3 +83,18 @@ export function uniformBlockAttr<T>(state: EditorState, attr: string, fallback: 
   const v = uniform<T>(state, (node) => (attr in node.attrs ? ((node.attrs[attr] ?? fallback) as T) : undefined));
   return v === undefined ? fallback : v;
 }
+
+// The language in force across the selection — a run's own beats its block's, and a
+// block that names none reports null (the document's). '' where the selection mixes two.
+export function uniformLanguage(state: EditorState): string | null | '' {
+  const runLang = (node: MarkedNode, parent: MarkedNode | null) =>
+    (node.marks.find((m) => m.type.name === 'textStyle')?.attrs.lang as string | undefined)
+    ?? (parent?.attrs.lang as string | undefined) ?? null;
+  if (state.selection.empty) {
+    const head = state.selection.$head;
+    return storedMarkAttr(state, 'textStyle', 'lang') ?? (head.parent.attrs.lang as string | null) ?? null;
+  }
+  const v = uniform<string | null>(state, (node, parent) =>
+    bearsMark(node, 'textStyle') ? runLang(node, parent) : undefined);
+  return v === undefined ? null : v;
+}

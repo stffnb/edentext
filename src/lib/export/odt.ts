@@ -12,6 +12,7 @@ import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbe
 import { EMPTY_PAGE_DECOR, type PageDecor, type Watermark } from '../storage/pageDecor';
 import { FOLD_MARK_MM, PUNCH_MARK_MM, MARK_START_MM, FOLD_MARK_LEN_MM, PUNCH_MARK_LEN_MM, FOLD_MARK_NAME } from '../storage/foldMarks';
 import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
+import { odfFromTag } from '../storage/documentLanguage';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps, type ParaProps } from '../styles/styleSheet';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { HEADING_STYLE_OVERRIDES, HEADING_FONT, HEADING_LEVELS, MAX_HEADING_LEVEL } from '../styles/headings';
@@ -302,6 +303,7 @@ function hasCustomAttrs(attrs: TiptapNode['attrs']): boolean {
   if (attrs.keepLines === true) return true;
   if (attrs.noHyphenation === true) return true;
   if (attrs.dir === 'rtl' || attrs.dir === 'ltr') return true;
+  if (typeof attrs.lang === 'string' && attrs.lang) return true;
   for (const s of ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'])
     if (typeof attrs[s] === 'string' && attrs[s] && attrs[s] !== 'none') return true;
   const ta = attrs.textAlign;
@@ -1261,6 +1263,8 @@ type ParaStyle = {
   indentRight: number | null;
   // A page break before the item — list paragraphs only; LibreOffice ignores one in a cell.
   breakBefore: boolean;
+  // The block's language tag; ODF keeps it in the text properties, not the paragraph ones.
+  lang: string | null;
 };
 
 // A list item's blocks past its first: each one's own style, and its heading level.
@@ -1270,7 +1274,24 @@ function paraStyleIsEmpty(s: ParaStyle): boolean {
   return s.align === null && s.spaceBefore === null && s.spaceAfter === null && s.lineHeight === null
     && s.background === null && s.borderTop === null && s.borderRight === null
     && s.borderBottom === null && s.borderLeft === null && s.dir === null
-    && s.indent === null && s.indentFirst === null && s.indentRight === null && !s.breakBefore;
+    && s.indent === null && s.indentFirst === null && s.indentRight === null && !s.breakBefore
+    && s.lang === null;
+}
+
+// What a minted style is deduped on — every emitted property, the language included.
+function paraStyleKey(style: ParaStyle): string {
+  return `${paraStyleProps(style).join('|')}|${style.lang ?? ''}`;
+}
+
+// A minted paragraph override as one style element.
+function paraStyleDef(name: string, parent: string, style: ParaStyle): string {
+  const para = paraStyleProps(style).join(' ');
+  const odf = odfFromTag(style.lang ?? '');
+  const text = odf
+    ? `<style:text-properties ${Object.entries(langAttrs(odf)).map(([k, v]) => `${k}="${v}"`).join(' ')}/>`
+    : '';
+  return `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}">`
+    + (para ? `<style:paragraph-properties ${para}/>` : '') + text + '</style:style>';
 }
 
 // ODF writes a direction as a writing mode; the vertical ones are not ours to emit.
@@ -1307,6 +1328,7 @@ function paraStyleFromAttrs(attrs: TiptapNode['attrs'], withIndents = true): Par
     indentFirst: cm(attrs?.indentFirst),
     indentRight: cm(attrs?.indentRight),
     breakBefore: false,
+    lang: typeof attrs?.lang === 'string' && attrs.lang ? attrs.lang : null,
   };
 }
 
@@ -1599,13 +1621,12 @@ function applyListItemBlocks(odtBytes: Uint8Array, extras: ListItemExtra[][] = [
   const minted: string[] = [];
   const nameByKey = new Map<string, string>();
   const styleFor = (style: ParaStyle, parent: string): string => {
-    const props = paraStyleProps(style).join(' ');
-    const key = `${parent}|${props}`;
+    const key = `${parent}|${paraStyleKey(style)}`;
     let name = nameByKey.get(key);
     if (!name) {
       name = `LX${nameByKey.size + 1}`;
       nameByKey.set(key, name);
-      minted.push(`<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${props}/></style:style>`);
+      minted.push(paraStyleDef(name, parent, style));
     }
     return name;
   };
@@ -1673,7 +1694,7 @@ function applyListItemStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Ar
       const style = styles[idx++];
       if (!style || paraStyleIsEmpty(style)) return `${pre}${parentStyle}${post}`;
       // Key on the emitted properties, so the key can never lag behind ParaStyle's fields.
-      const key = `${parentStyle}|${paraStyleProps(style).join('|')}`;
+      const key = `${parentStyle}|${paraStyleKey(style)}`;
       let name = nameByKey.get(key);
       if (!name) {
         counter++;
@@ -1687,9 +1708,7 @@ function applyListItemStyles(odtBytes: Uint8Array, styles: ParaStyle[]): Uint8Ar
 
   if (styleDefs.length === 0) return odtBytes;
 
-  const newStyles = styleDefs.map(({ name, parent, style }) =>
-    `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${paraStyleProps(style).join(' ')}/></style:style>`,
-  ).join('\n');
+  const newStyles = styleDefs.map(({ name, parent, style }) => paraStyleDef(name, parent, style)).join('\n');
 
   content = injectAutomaticStyles(content, `${newStyles}\n`);
 
@@ -1872,8 +1891,8 @@ function applyEmptyLineFontSizes(odtBytes: Uint8Array): Uint8Array {
 
 // A top-level paragraph's box spec for the PBX sentinel: bg|borderTop|Right|Bottom|Left,
 // each the raw value (canonical border '<W>pt solid #RRGGBB' is a valid fo:border) or '',
-// then a widow flag, the right indent, a keep-with-next flag, the writing mode and a
-// no-hyphenation flag. '' when it needs none.
+// then a widow flag, the right indent, a keep-with-next flag, the writing mode, a
+// no-hyphenation flag and the paragraph's language tag. '' when it needs none.
 function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   const s = paraStyleFromAttrs(attrs);
   const noWidow = attrs?.widowControl === false;
@@ -1883,10 +1902,11 @@ function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   // odf-kit has a paragraph option for the left indent but none for the right one.
   const right = typeof attrs?.indentRight === 'number' && attrs.indentRight > 0 ? attrs.indentRight : 0;
   const wm = writingModeOf(s.dir);
-  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right && !keepNext && !keepLines && !wm && !noHyphen) return '';
+  const lang = typeof attrs?.lang === 'string' && attrs.lang ? attrs.lang : '';
+  if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right && !keepNext && !keepLines && !wm && !noHyphen && !lang) return '';
   return [s.background, s.borderTop, s.borderRight, s.borderBottom, s.borderLeft]
     .map((v) => v ?? '')
-    .concat(noWidow ? 'w0' : '', right ? `${right}cm` : '', keepNext ? 'k1' : '', keepLines ? 'g1' : '', wm ?? '', noHyphen ? 'h0' : '').join('|');
+    .concat(noWidow ? 'w0' : '', right ? `${right}cm` : '', keepNext ? 'k1' : '', keepLines ? 'g1' : '', wm ?? '', noHyphen ? 'h0' : '', lang).join('|');
 }
 
 function boxSpecToProps(spec: string): string {
@@ -2206,6 +2226,9 @@ function applyParagraphBoxes(odtBytes: Uint8Array): Uint8Array {
     // ODF counts fo:hyphenate as a *text* property — in paragraph-properties LibreOffice
     // ignores it and drops it on the next save.
     if (spec.split('|')[10] === 'h0') style = upsertProps(style, 'text', { 'fo:hyphenate': 'false' });
+    // The language is a text property too; LibreOffice passes it on to the runs.
+    const odfLang = odfFromTag(spec.split('|')[11] ?? '');
+    if (odfLang) style = upsertProps(style, 'text', langAttrs(odfLang));
     // An RTL block with no alignment of its own gets the fo:text-align="end" LibreOffice
     // pairs with the mode — the mode alone leaves it left-aligned (probed).
     if (spec.split('|')[9] === 'rl-tb' && !/fo:text-align=/.test(style)) {
@@ -2904,7 +2927,7 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
   const styleNameFor = (parent: string, style: ParaStyle): string => {
     if (paraStyleIsEmpty(style)) return parent;
     // Key on the emitted properties, so the key can never lag behind ParaStyle's fields.
-    const key = `${parent}|${paraStyleProps(style).join('|')}`;
+    const key = `${parent}|${paraStyleKey(style)}`;
     let name = nameByKey.get(key);
     if (!name) {
       styleCounter++;
@@ -3023,9 +3046,7 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
     },
   );
 
-  const additions: string[] = styleDefs.map(({ name, parent, style }) =>
-    `<style:style style:name="${name}" style:family="paragraph" style:parent-style-name="${parent}"><style:paragraph-properties ${paraStyleProps(style).join(' ')}/></style:style>`,
-  );
+  const additions: string[] = styleDefs.map(({ name, parent, style }) => paraStyleDef(name, parent, style));
   if (usedBulletList) additions.push(buildCellListStyle(CELL_LIST_BULLET_STYLE, false));
   for (const { name, chars } of bulletStyles) {
     additions.push(buildCellListStyle(name, false, { bulletChars: chars }));
@@ -3484,6 +3505,11 @@ function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []
   }
 }
 
+// ODF splits a language tag over two attributes; a tag with no region writes only the first.
+function langAttrs(odf: { language: string; country: string }): Record<string, string> {
+  return odf.country ? { 'fo:language': odf.language, 'fo:country': odf.country } : { 'fo:language': odf.language };
+}
+
 // CSS line styles → ODF's own names for the same shapes.
 const ODF_LINE_STYLE: Record<string, string> = { dotted: 'dotted', dashed: 'dash', wavy: 'wave' };
 
@@ -3491,6 +3517,8 @@ const ODF_LINE_STYLE: Record<string, string> = { dotted: 'dotted', dashed: 'dash
 // the <style:text-properties> attributes applyTextEffects folds into the run's style.
 export function odfExtraTextProps(marks: TiptapNode['marks'] = [], baseSizePt = DEFAULT_FONT_SIZE_PT): string {
   const a: string[] = [];
+  const lang = odfFromTag(String(marks.find(m => m.type === 'textStyle')?.attrs?.lang ?? ''));
+  if (lang) a.push(...Object.entries(langAttrs(lang)).map(([k, v]) => `${k}="${v}"`));
   const caps = marks.find(m => m.type === 'textStyle')?.attrs?.caps;
   if (caps === 'smallCaps') a.push('fo:font-variant="small-caps"');
   else if (caps === 'uppercase' || caps === 'lowercase' || caps === 'capitalize') a.push(`fo:text-transform="${caps}"`);

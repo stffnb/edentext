@@ -5,7 +5,7 @@
   import type { Node as PmNode, MarkType } from 'prosemirror-model';
   import { extensions } from '../editor/extensions';
   import { buildContextMenu, type MenuEntry, type SpellSection, type GrammarSection } from '../editor/contextMenuItems';
-  import { spellErrorAt } from '../editor/extensions/spellCheck';
+  import { spellErrorAt, spellLangAt } from '../editor/extensions/spellCheck';
   import { grammarErrorAt, grammarFix } from '../editor/extensions/grammarCheck';
   import { ignoreGrammar, type GrammarFix } from '../spell/grammar.svelte';
   import { spellController } from '../spell/controller';
@@ -561,7 +561,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       const word = view.state.doc.textBetween(range.from, range.to);
       spellTarget = { ...range, word };
       spell = {
-        suggestions: spellController.suggest(word).slice(0, 6),
+        suggestions: spellController.suggest(word, spellLangAt(view.state, range.from)).slice(0, 6),
         onReplace: replaceSpellWord,
         onAdd: addSpellWord,
         onIgnore: ignoreSpellWord,

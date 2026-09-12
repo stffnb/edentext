@@ -41,6 +41,7 @@ export type RunProps = {
   underlineColor?: string; // w:u w:color (raw hex)
   doubleStrike?: boolean;  // w:dstrike
   positionPt?: number;     // w:position: pt above the baseline (negative = below)
+  lang?: string;           // w:lang w:val, the run's language tag
 };
 
 // A numbering level definition (numbering.xml w:lvl). bulletFont is the level's
@@ -137,6 +138,7 @@ export function parseRunProps(rPr: Element | null | undefined): RunProps {
         break;
       }
       case 'color': { const v = wVal(child); if (v) p.color = v; break; }
+      case 'lang': { const v = wVal(child); if (v) p.lang = v; break; }
       case 'sz': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.sizeHalfPt = n; break; }
       case 'spacing': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.spacingTwip = n; break; }
       case 'kern': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.kernHalfPt = n; break; }
