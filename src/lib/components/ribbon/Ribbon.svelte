@@ -489,6 +489,7 @@
         strokeColor={frameAttrs?.strokeColor as string | null}
         strokeWidthPt={frameAttrs?.strokeWidthPt as number}
         textVertical={frameAttrs?.textVertical === true}
+        textVAlign={frameAttrs?.textVAlign as never}
       />
     {/if}
   </div>

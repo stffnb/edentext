@@ -27,7 +27,7 @@ type TableStyleRef = { name: string; look: TableLook };
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
-import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
+import { TEXTBOX_PADDING_CM, type TextVAlign } from '../editor/extensions/textBox';
 import { numberLocale, parseCellNumber, toWriterFormula, type CellRef, type NumberLocale } from '../utils/tableFormula';
 import { SHAPES, arrowHeadCm, isShapeKind, isLineKind, odfEnhancedGeometry, odfEnhancedPath, type ShapeKind } from '../utils/shapes';
 import { normalizeLeader, parseTabStops } from '../editor/extensions/tabStops';
@@ -993,6 +993,7 @@ type TextBoxExport = {
   shapePath: string | null;
   flipV: boolean;
   textVertical: boolean;
+  textVAlign: TextVAlign;
   fill: string | null;
   stroke: string | null;
   strokeWidthPt: number;
@@ -1022,6 +1023,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     shapePath: typeof a.shapePath === 'string' && a.shapePath ? a.shapePath : null,
     flipV: a.flipV === true,
     textVertical: a.textVertical === true,
+    textVAlign: a.textVAlign === 'middle' || a.textVAlign === 'bottom' ? a.textVAlign : 'top',
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
     strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
@@ -4562,7 +4564,7 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   return (
     `<style:style style:name="TbxFr${index + 1}" style:family="graphic"${parent}>` +
     `<style:graphic-properties ${fill} ${stroke}${arrows} fo:padding="${box.paddingCm}cm"` +
-    `${grow} draw:textarea-vertical-align="top"${vertMode}${wrap}/>${vertical}` +
+    `${grow} draw:textarea-vertical-align="${box.textVAlign}"${vertMode}${wrap}/>${vertical}` +
     `</style:style>`
   );
 }

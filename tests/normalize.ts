@@ -12,7 +12,7 @@ const ORDERED_DEFAULTS: Record<string, unknown> = {
   fixed: false, key1: '',
   joinPrev: false, // pageBreaks.ts's split marker; the export merges the halves
   marginLeft: 0, marginRight: 0, marginTop: 0, marginBottom: 0, // a table's, once a command has touched them
-  alt: '', inFront: false, paddingCm: 0.15, flipV: false, textVertical: false, // the editor's own picture and box defaults
+  alt: '', inFront: false, paddingCm: 0.15, flipV: false, textVertical: false, textVAlign: 'top', // the editor's own picture and box defaults
   wrapFromPage: false,
   // index attrs the DOCX TOC field has no switch for come back at their defaults
   maxLevel: MAX_HEADING_LEVEL, leader: '.', citationStyle: 'key',

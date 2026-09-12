@@ -18,7 +18,7 @@ import type {
 } from 'docx';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { isSvgDataUrl, svgToPngDataUrl } from '../import/imageFormats';
-import { TEXTBOX_PADDING_CM } from '../editor/extensions/textBox';
+import { TEXTBOX_PADDING_CM, type TextVAlign } from '../editor/extensions/textBox';
 import { SHAPES, isShapeKind, isLineKind, drawingMlPath, type ShapeKind } from '../utils/shapes';
 import { cellFormatCode, isCellFormat } from '../utils/cellFormat';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
@@ -970,6 +970,7 @@ type TextBoxDocx = {
   shapePath: string | null;
   flipV: boolean;
   textVertical: boolean;
+  textVAlign: TextVAlign;
   fill: string | null;
   stroke: string | null;
   strokeWidthPt: number;
@@ -998,6 +999,7 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     shapePath: typeof a.shapePath === 'string' && a.shapePath ? a.shapePath : null,
     flipV: a.flipV === true,
     textVertical: a.textVertical === true,
+    textVAlign: a.textVAlign === 'middle' || a.textVAlign === 'bottom' ? a.textVAlign : 'top',
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
     strokeWidthPt: typeof a.strokeWidthPt === 'number' && a.strokeWidthPt > 0 ? a.strokeWidthPt : 1,
@@ -1370,7 +1372,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     `${geom}${line ? '<a:noFill/>' : fill}${ln}</wps:spPr>` +
     body +
     `<wps:bodyPr rot="0" vert="${box.textVertical ? 'vert' : 'horz'}" wrap="square"` +
-    ` lIns="${inset}" tIns="${inset}" rIns="${inset}" bIns="${inset}" anchor="t">${autofit}</wps:bodyPr>` +
+    ` lIns="${inset}" tIns="${inset}" rIns="${inset}" bIns="${inset}" anchor="${box.textVAlign === 'middle' ? 'ctr' : box.textVAlign === 'bottom' ? 'b' : 't'}">${autofit}</wps:bodyPr>` +
     `</wps:wsp>`;
   const graphic =
     `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +

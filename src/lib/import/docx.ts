@@ -2431,6 +2431,10 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
   const bodyPr = nsChild(wsp, WPS, 'bodyPr');
   const vert = bodyPr?.getAttribute('vert') ?? 'horz';
   if (['vert', 'eaVert', 'mongolianVert', 'wordArtVert'].includes(vert)) attrs.textVertical = true;
+  // Where the text sits in a box taller than it is: bodyPr/@anchor, top by default.
+  const vAnchor = bodyPr?.getAttribute('anchor');
+  if (vAnchor === 'ctr') attrs.textVAlign = 'middle';
+  else if (vAnchor === 'b' || vAnchor === 'just' || vAnchor === 'dist') attrs.textVAlign = 'bottom';
   // The ring inside the box (w:lIns, EMU). Word's own default is 0.25cm on the sides;
   // only a value the editor's own ring does not already draw is worth the attr.
   const lIns = bodyPr?.getAttribute('lIns');

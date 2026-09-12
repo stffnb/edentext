@@ -247,11 +247,14 @@ function boxWrapAlign(gp: PropMap, attrs: Record<string, unknown>): void {
 // Vertical text in any box shape: the style's writing mode, both of ODF's top-to-bottom
 // modes (the editor has the one direction the browser lays out). A text frame carries it
 // in the graphic properties, a drawing shape in its style's paragraph properties.
-function boxTextVertical(el: Element, ctx: Ctx, attrs: Record<string, unknown>): void {
+function boxTextFlow(el: Element, ctx: Ctx, attrs: Record<string, unknown>): void {
   const name = el.getAttributeNS(NS.draw, 'style-name');
-  const mode = ctx.resolver.graphicProps(name)['style:writing-mode']
-    ?? ctx.resolver.graphicParaProps(name)['style:writing-mode'];
+  const gp = ctx.resolver.graphicProps(name);
+  const mode = gp['style:writing-mode'] ?? ctx.resolver.graphicParaProps(name)['style:writing-mode'];
   if (mode === 'tb-rl' || mode === 'tb-lr' || mode === 'tb') attrs.textVertical = true;
+  // Where the text sits in a box taller than it is; 'justify' spreads it, top-anchored.
+  const anchor = gp['draw:textarea-vertical-align'];
+  if (anchor === 'middle' || anchor === 'bottom') attrs.textVAlign = anchor;
 }
 
 function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap, contentCm = 0): void {
@@ -512,7 +515,7 @@ function convertTextBoxFrame(frame: Element, textBoxEl: Element, ctx: Ctx): Node
   const padCm = lengthToCm(gp['fo:padding']);
   if (padCm != null && Math.abs(padCm - TEXTBOX_PADDING_CM) > 0.01) attrs.paddingCm = Math.round(padCm * 1000) / 1000;
   shapeStyleAttrs(gp, attrs, false);
-  boxTextVertical(frame, ctx, attrs);
+  boxTextFlow(frame, ctx, attrs);
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(textBoxEl.children), ctx, wCm) };
 }
 
@@ -620,7 +623,7 @@ function convertShape(el: Element, ctx: Ctx): Node | null {
   applyFrameRotationAndWrap(el, attrs, gp, ctx.contentWidthCm);
   boxWrapAlign(gp, attrs);
   shapeStyleAttrs(gp, attrs, true);
-  boxTextVertical(el, ctx, attrs);
+  boxTextFlow(el, ctx, attrs);
   return { type: 'textBox', attrs, content: textBoxContent(Array.from(el.children), ctx, wCm) };
 }
 
