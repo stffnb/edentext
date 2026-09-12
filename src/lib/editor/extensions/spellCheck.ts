@@ -6,7 +6,7 @@ import type { Node as PmNode } from '@tiptap/pm/model';
 import { spellController } from '../../spell/controller';
 import { isPaginating } from './pageBreaks';
 
-type Range = { from: number; to: number };
+export type Range = { from: number; to: number };
 // dirty: what the edits since the last check touched, in the current document's positions.
 type SpellState = { set: DecorationSet; dirty: Range[] };
 
@@ -76,7 +76,7 @@ function recheckBlocks(doc: PmNode, set: DecorationSet, dirty: Range[]): Decorat
 }
 
 // What a transaction touched, in its final document's positions.
-function changedRanges(tr: Transaction): Range[] {
+export function changedRanges(tr: Transaction): Range[] {
   const out: Range[] = [];
   tr.mapping.maps.forEach((map, i) => {
     const rest = tr.mapping.slice(i + 1);

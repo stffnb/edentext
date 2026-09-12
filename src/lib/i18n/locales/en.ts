@@ -519,6 +519,14 @@ const en = {
     addToDictionary: 'Add to Dictionary',
     ignoreAll: 'Ignore All',
   },
+  grammar: {
+    label: 'Grammar',
+    loadingLabel: 'Grammar…',
+    hint: 'Check grammar and style. Downloads a 16 MB language model once.',
+    unavailable: 'Grammar checking is only available for English.',
+    removeFix: 'Delete',
+    ignore: 'Ignore',
+  },
   thesaurus: {
     // Both products call the tool "Thesaurus", which does not say what it does: the
     // label everywhere is "Synonyms", the term of art lives in the tooltip.

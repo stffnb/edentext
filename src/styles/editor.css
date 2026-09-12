@@ -1050,6 +1050,12 @@
   text-decoration-skip-ink: none;
 }
 
+/* Grammar check: a blue wave, so a grammar finding reads apart from a spelling one. */
+.tiptap .pm-grammar-error {
+  text-decoration: #2b6cb0 wavy underline;
+  text-decoration-skip-ink: none;
+}
+
 /* A commented range, as Word paints it: a tinted band the text still reads through,
    and a heavier tint on the one the pane has selected. A resolved comment keeps only a
    faint underline, the way both word processors grey a handled one out. */
@@ -1170,7 +1176,8 @@
   }
 
   /* Squiggles are an editing aid, never printed. */
-  .tiptap .pm-spell-error {
+  .tiptap .pm-spell-error,
+  .tiptap .pm-grammar-error {
     text-decoration: none;
   }
 

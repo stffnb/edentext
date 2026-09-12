@@ -14,12 +14,14 @@ export interface LanguageDef {
   label: string;
   // Dictionary assets live at public/dictionaries/<code>/<code>.{aff,dic}.
   odf: { language: string; country: string };
+  // harper.js, the grammar engine, only knows English.
+  grammar?: true;
 }
 
 // Languages with a bundled Hunspell dictionary. Add one by dropping a folder in
 // public/dictionaries/<code>/ and appending an entry here.
 export const LANGUAGES: LanguageDef[] = [
-  { code: 'en', label: 'English (US)', odf: { language: 'en', country: 'US' } },
+  { code: 'en', label: 'English (US)', odf: { language: 'en', country: 'US' }, grammar: true },
   { code: 'de', label: 'Deutsch', odf: { language: 'de', country: 'DE' } },
 ];
 
@@ -27,6 +29,10 @@ const KEY = docKey('edentext-doc-language');
 
 export function findLanguage(code: DocumentLanguage): LanguageDef | undefined {
   return LANGUAGES.find((l) => l.code === code);
+}
+
+export function hasGrammar(code: DocumentLanguage): boolean {
+  return findLanguage(code)?.grammar === true;
 }
 
 function isValid(code: string): boolean {

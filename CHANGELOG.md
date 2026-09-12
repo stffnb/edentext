@@ -2,6 +2,16 @@
 
 <!-- Newest release first. New entries go here: ## [x.y.z] — YYYY-MM-DD -->
 
+## [Unreleased]
+
+### Added
+- Grammar and style check (harper.js, local, no server): a switch beside the language picker
+  turns it on, blue waves mark what it finds, and the context menu offers the fixes or ignores
+  the finding. **English only** — the engine carries its rules in code, not in a data file, so a
+  new language is a new rule set rather than a new dictionary; it greys out for every other
+  language and says so. Off by default: it downloads a 16 MB language model once and holds it in
+  the tab for as long as it is on. Spelling stays Hunspell's
+
 ## [0.4.0] — 2026-09-12
 
 The weight of this release is the cover page: frames placed against the page, shape colours out
@@ -362,7 +372,6 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-08-15.
 - A list level's own hanging indent: the marker sits at the 0.635 cm both exports write (`LIST_HANGING_CM`), so a wider *left*-set marker overflows where Word moves the text to the next list tab (a **right**-set one — `w:lvlJc`, which is what the built-in Roman numberings use — grows into the margin and is fine). Reading the value back naively also moves the markers of our own ODT exports — LibreOffice draws its own flat hanging at exactly the value odf-kit writes for level 2; see `tests/render-parity/README.md` before building on it
 - Linked / chained text frames: text overflowing one frame continues in the next, which is a layout engine's job — CSS Regions would do it and no engine implements them
 - Multi-document management: one document is open at a time, so there is no window list and no side-by-side compare
-- Grammar check: there is no offline engine small enough to bundle, and the ones that exist are servers
 - A vertical writing mode for the **page** (ODF `tb-rl` on the page layout): a text box can run its text top-to-bottom, the body cannot — pagination fills a page downwards. A ruby annotation's own alignment and position are not offered either; both products' defaults are what we write
 - A chapter number whose label is **wider than its own tab stop**: it is set in the character style the file names, hung out of the level's indent and given that stop as its minimum width, but where the label overruns the stop LibreOffice advances to the paragraph's next tab stop (its own, else the 1.25cm grid) and CSS cannot round a box to a grid — so the title sits up to one step early. A caption still numbers from the document rather than restarting per chapter (ODF `text:sequence` on an outline level)
 - Digital signatures

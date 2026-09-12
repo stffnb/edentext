@@ -36,6 +36,9 @@ export default defineConfig({
       'emscripten-wasm-loader': 'emscripten-wasm-loader/dist/cjs/index.js',
     },
   },
+  // harper.js/binary resolves its wasm through new URL('…', import.meta.url); the
+  // dep optimizer rewrites that and loses the asset.
+  optimizeDeps: { exclude: ['harper.js'] },
   // Test-only config; never enters the production bundle (vitest is dev-only).
   // jsdom supplies a global DOMParser, so the export/import specs need no setup.
   test: {

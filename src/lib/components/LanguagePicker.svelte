@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { LANGUAGES, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
+  import { LANGUAGES, NO_LANGUAGE, hasGrammar, type DocumentLanguage } from '../storage/documentLanguage';
+  import { grammarEnabled, setGrammarEnabled, grammarLoading } from '../spell/grammar.svelte';
   import { t } from '../i18n/i18n.svelte';
 
   let {
@@ -25,6 +26,22 @@
     {/each}
     <option value={NO_LANGUAGE} selected={value === NO_LANGUAGE}>{t().spellPicker.noSpellCheck}</option>
   </select>
+</label>
+
+<!-- The switch sits beside the control that decides whether it is available: pick
+     German and it greys out, with the reason in its tooltip. -->
+<label
+  class="gr-toggle"
+  class:off={!hasGrammar(value)}
+  title={hasGrammar(value) ? t().grammar.hint : t().grammar.unavailable}
+>
+  <input
+    type="checkbox"
+    checked={grammarEnabled()}
+    disabled={!hasGrammar(value)}
+    onchange={(e) => setGrammarEnabled((e.currentTarget as HTMLInputElement).checked)}
+  />
+  <span>{grammarLoading() ? t().grammar.loadingLabel : t().grammar.label}</span>
 </label>
 
 <style>
@@ -55,6 +72,27 @@
 
   select:hover {
     background: var(--color-btn-hover);
+  }
+
+  .gr-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 8px;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
+  .gr-toggle.off {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  .gr-toggle input {
+    margin: 0;
+    cursor: inherit;
   }
 
   /* The option list is OS-drawn; keep its text legible in dark themes. */

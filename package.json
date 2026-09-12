@@ -68,6 +68,7 @@
     "@tiptap/extension-underline": "^3.23.6",
     "@tiptap/pm": "^3.23.6",
     "docx": "^9.7.1",
+    "harper.js": "^2.10.0",
     "html2canvas": "^1.4.1",
     "hunspell-asm": "^4.0.2",
     "jspdf": "^4.2.1",

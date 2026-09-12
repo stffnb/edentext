@@ -50,6 +50,7 @@
   import { loadDocumentLanguage, saveDocumentLanguage, odfFromLanguage, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { setTableLanguage } from './lib/storage/tableOptions.svelte';
   import { spellController } from './lib/spell/controller';
+  import { setGrammarLanguage } from './lib/spell/grammar.svelte';
   import LanguagePicker from './lib/components/LanguagePicker.svelte';
   import UiLanguagePicker from './lib/components/UiLanguagePicker.svelte';
   import AboutDialog from './lib/components/AboutDialog.svelte';
@@ -354,6 +355,7 @@
     void spellController.setLanguage(documentLanguage);
     // A table cell's number is read and written in the document's language.
     setTableLanguage(documentLanguage);
+    setGrammarLanguage(documentLanguage);
   });
 
   $effect(() => {

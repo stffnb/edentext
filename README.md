@@ -55,7 +55,8 @@ EdenText is a web-based, powerful word processor for everything from quick notes
 - **Everything a thesis needs** — table of contents, captions, cross-references,
   citations & bibliography, alphabetical index, formulas (LaTeX)
 - **Review tools** — track changes and threaded comments with margin balloons,
-  printable markup, spell check (English & German), synonyms
+  printable markup, spell check (English & German), grammar check (English),
+  synonyms
 - **Private by design** — your documents never leave your computer, all
   processing runs locally; works offline as an installable app. The site counts
   anonymous visits (GoatCounter, EU-hosted, no cookies); the editor sends nothing
@@ -116,4 +117,5 @@ Document Foundation. `.docx` and `.odt` are supported for interoperability.*
 
 [^1]: Over the wire, compressed: ~0.4 MB of app code, the rest the bundled fonts a
     page shows and the spell checker with its dictionary. Further fonts, the second
-    dictionary and the thesaurus load on demand; the complete offline install is ~25 MB.
+    dictionary and the thesaurus load on demand; the complete offline install is ~25 MB,
+    or ~33 MB with the English grammar check switched on.

@@ -4,8 +4,10 @@
   import { Slice, Fragment } from 'prosemirror-model';
   import type { Node as PmNode, MarkType } from 'prosemirror-model';
   import { extensions } from '../editor/extensions';
-  import { buildContextMenu, type MenuEntry, type SpellSection } from '../editor/contextMenuItems';
+  import { buildContextMenu, type MenuEntry, type SpellSection, type GrammarSection } from '../editor/contextMenuItems';
   import { spellErrorAt } from '../editor/extensions/spellCheck';
+  import { grammarErrorAt, grammarFix } from '../editor/extensions/grammarCheck';
+  import { ignoreGrammar, type GrammarFix } from '../spell/grammar.svelte';
   import { spellController } from '../spell/controller';
   import { isInTable, selectedRect } from '@tiptap/pm/tables';
   import { currentCellFormat, currentCellFormula, currentCellName, guessFormula } from '../editor/extensions/tableFormula';
@@ -528,6 +530,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let ctxMenu = $state<{ top: number; left: number; items: MenuEntry[] } | null>(null);
   // The misspelled range the open menu's suggestions belong to.
   let spellTarget: { from: number; to: number; word: string } | null = null;
+  // The grammar finding the open menu's fixes belong to.
+  let grammarTarget: { from: number; to: number; message: string; text: string; fixes: GrammarFix[] } | null = null;
 
   function openContextMenu(event: MouseEvent, pane: number) {
     const ed = editor;
@@ -564,12 +568,40 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       };
     }
 
+    // Spelling wins where both cover the click — the narrower correction, as in both
+    // word processors.
+    grammarTarget = null;
+    let grammar: GrammarSection | undefined;
+    const found = !range && coords ? grammarErrorAt(view.state, coords.pos) : null;
+    if (found) {
+      grammarTarget = found;
+      grammar = {
+        message: found.message,
+        suggestions: found.fixes.map((f) => (f.kind === 'remove' ? t().grammar.removeFix : f.text)),
+        onApply: applyGrammarFix,
+        onIgnore: ignoreGrammarFinding,
+      };
+    }
+
     const cRect = container.getBoundingClientRect();
     ctxMenu = {
       top: event.clientY - cRect.top + container.scrollTop,
       left: event.clientX - cRect.left + container.scrollLeft,
-      items: buildContextMenu(ed, { spell }),
+      items: buildContextMenu(ed, { spell, grammar }),
     };
+  }
+
+  function applyGrammarFix(index: number) {
+    const ed = editor;
+    const fix = grammarTarget?.fixes[index];
+    if (!ed || !grammarTarget || !fix) return;
+    ed.view.dispatch(grammarFix(ed.view.state, grammarTarget, fix));
+    ed.view.focus();
+  }
+
+  function ignoreGrammarFinding() {
+    if (grammarTarget) ignoreGrammar(grammarTarget.message, grammarTarget.text);
+    editor?.view.focus();
   }
 
   // Replace the misspelled range, preserving the word's marks (font/bold/etc.).

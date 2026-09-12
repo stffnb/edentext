@@ -384,6 +384,17 @@ try {
   const dialog = await page.waitForSelector('.formula-dialog', { timeout: 5_000 }).then(() => true).catch(() => false);
   check(dialog, `a double-click on a formula opens its dialog from the ${await page.locator('.ribbon-tab.active').textContent()} tab`);
 
+  // The grammar check: the 16 MB wasm has to survive Vite's build and reach the browser,
+  // which only a real page can show. English document, switch on, one wrong sentence.
+  await page.keyboard.press('Escape'); // the formula dialog above still covers the chrome
+  await page.evaluate(() => document.querySelector('.tiptap').editor.commands.setContent('<p>He go to the store.</p>'));
+  await settle(page, true);
+  await page.selectOption('.statusbar .lang-picker select', 'en');
+  await page.check('.statusbar .gr-toggle input');
+  const squiggle = await page.waitForSelector('.tiptap .pm-grammar-error', { timeout: 60_000 })
+    .then(() => true).catch(() => false);
+  check(squiggle, 'the grammar check flags a wrong sentence in the browser');
+
 } catch (err) {
   check(false, `dom run threw: ${err.message ?? err}`);
 } finally {

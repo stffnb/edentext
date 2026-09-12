@@ -21,6 +21,14 @@ export interface SpellSection {
   onIgnore: () => void;
 }
 
+export interface GrammarSection {
+  message: string;
+  suggestions: string[];
+  // By index, not by label: two suggestions can read the same.
+  onApply: (index: number) => void;
+  onIgnore: () => void;
+}
+
 // Cut/copy go through execCommand so ProseMirror's own copy handler builds the
 // clipboard payload (HTML + its slice metadata) — formatting survives.
 // ponytail: deprecated but the only route to that payload; revisit if a browser drops it.
@@ -53,7 +61,7 @@ export async function readClipboard(editor: Editor, plainOnly: boolean) {
   }
 }
 
-export function buildContextMenu(editor: Editor, opts: { spell?: SpellSection } = {}): MenuEntry[] {
+export function buildContextMenu(editor: Editor, opts: { spell?: SpellSection; grammar?: GrammarSection } = {}): MenuEntry[] {
   const m = t().contextMenu;
   const entries: MenuEntry[] = [];
 
@@ -67,6 +75,20 @@ export function buildContextMenu(editor: Editor, opts: { spell?: SpellSection } 
     entries.push({ kind: 'sep' });
     entries.push({ kind: 'item', label: t().spell.ignoreAll, run: onIgnore });
     entries.push({ kind: 'item', label: t().spell.addToDictionary, run: onAdd });
+    entries.push({ kind: 'sep' });
+  }
+
+  if (opts.grammar) {
+    const { message, suggestions, onApply, onIgnore } = opts.grammar;
+    entries.push({ kind: 'item', label: message, disabled: true, run: () => {} });
+    entries.push({ kind: 'sep' });
+    if (suggestions.length) {
+      suggestions.forEach((s, i) => entries.push({ kind: 'item', label: s, strong: true, run: () => onApply(i) }));
+    } else {
+      entries.push({ kind: 'item', label: t().spell.noSuggestions, disabled: true, run: () => {} });
+    }
+    entries.push({ kind: 'sep' });
+    entries.push({ kind: 'item', label: t().grammar.ignore, run: onIgnore });
     entries.push({ kind: 'sep' });
   }
 

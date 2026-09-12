@@ -513,6 +513,14 @@ const de: Messages = {
     addToDictionary: 'Zum Wörterbuch hinzufügen',
     ignoreAll: 'Alle ignorieren',
   },
+  grammar: {
+    label: 'Grammatik',
+    loadingLabel: 'Grammatik …',
+    hint: 'Grammatik und Stil prüfen. Lädt einmalig ein 16-MB-Sprachmodell.',
+    unavailable: 'Die Grammatikprüfung gibt es nur für Englisch.',
+    removeFix: 'Löschen',
+    ignore: 'Ignorieren',
+  },
   thesaurus: {
     // "Thesaurus" heißt das Werkzeug in beiden Programmen, sagt aber nicht, was es tut:
     // sichtbar ist überall "Synonyme", der Fachbegriff steht im Tooltip.

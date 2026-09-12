@@ -41,6 +41,7 @@ import { Indent } from './extensions/indent';
 import { TabStops } from './extensions/tabStops';
 import { FormattingMarks } from './extensions/formattingMarks';
 import { SpellCheck } from './extensions/spellCheck';
+import { GrammarCheck } from './extensions/grammarCheck';
 import { SearchReplace } from './extensions/searchReplace';
 import { TableView } from './extensions/tableView';
 import { TableColumnResize } from './extensions/tableColumnResize';
@@ -260,6 +261,7 @@ export const extensions = [
   PageBreaks,
   FormattingMarks,
   SpellCheck,
+  GrammarCheck,
   // Last of the typing extensions: its handleTextInput runs after every input rule.
   // Recorded revisions: an insertion is marked text, a deletion is text kept and
   // marked. Round-trips to ODF <text:tracked-changes> and DOCX w:ins/w:del.

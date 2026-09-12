@@ -61,6 +61,7 @@ Both thesaurus files are generated from LibreOffice's own MyThes data by
 | `hunspell-asm` — spell checker | MIT |
 | `utif2` — TIFF decoding | MIT |
 | `odf-kit` | Apache-2.0 |
+| `harper.js` — grammar checker | Apache-2.0 |
 | Vite, TypeScript, `@sveltejs/vite-plugin-svelte`, `@tsconfig/svelte` (dev) | MIT / Apache-2.0 |
 
 The table above is a convenience summary of the direct dependencies. The
