@@ -131,7 +131,12 @@ function pad2(n: number): string {
 
 // Render the tokens for the given moment, using Intl for locale month/weekday names.
 export function renderFormat(fmt: DtFormat, d: Date, locale: string): string {
-  const monthName = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(locale, opts).format(d);
+  const intl = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(locale, opts).format(d);
+  // The month beside a day number, so a Slavic locale yields the genitive it prints
+  // a date in ("15 марта", not the stand-alone "март"); unchanged for en/de/es.
+  const monthName = (style: 'long' | 'short') =>
+    new Intl.DateTimeFormat(locale, { month: style, day: 'numeric' })
+      .formatToParts(d).find((p) => p.type === 'month')!.value;
   let out = '';
   for (const tok of fmt.tokens) {
     switch (tok.t) {
@@ -140,10 +145,10 @@ export function renderFormat(fmt: DtFormat, d: Date, locale: string): string {
       case 'month':
         if (tok.style === 'num') out += String(d.getMonth() + 1);
         else if (tok.style === 'num2') out += pad2(d.getMonth() + 1);
-        else out += monthName({ month: tok.style === 'longText' ? 'long' : 'short' });
+        else out += monthName(tok.style === 'longText' ? 'long' : 'short');
         break;
       case 'day': out += tok.pad ? pad2(d.getDate()) : String(d.getDate()); break;
-      case 'weekday': out += monthName({ weekday: tok.long ? 'long' : 'short' }); break;
+      case 'weekday': out += intl({ weekday: tok.long ? 'long' : 'short' }); break;
       case 'hour24': out += tok.pad ? pad2(d.getHours()) : String(d.getHours()); break;
       case 'hour12': { const h = ((d.getHours() + 11) % 12) + 1; out += tok.pad ? pad2(h) : String(h); break; }
       case 'minute': out += pad2(d.getMinutes()); break;
@@ -217,9 +222,9 @@ export function docxPicture(fmt: DtFormat): string {
   return out;
 }
 
-const LOCALE_TAG: Record<string, string> = { en: 'en-US', de: 'de-DE', es: 'es-ES' };
+const LOCALE_TAG: Record<string, string> = { en: 'en-US', de: 'de-DE', es: 'es-ES', ru: 'ru-RU' };
 
-// Map a UI locale ('en'/'de'/'es') to a BCP-47 tag for Intl.
+// Map a UI locale ('en'/'de'/'es'/'ru') to a BCP-47 tag for Intl.
 export function localeTag(locale: string): string {
   return LOCALE_TAG[locale] ?? locale;
 }

@@ -5,6 +5,9 @@
 ## [Unreleased]
 
 ### Added
+- **Russian as a program language** — the globe picker now offers Русский, and the whole UI follows
+  it: ribbon, dialogs, context menus, the built-in templates and the month names of a date field,
+  which a Slavic locale now gets in the genitive a date is printed in ("15 марта", not "15 март")
 - **Russian spell check and thesaurus** — pick Русский beside the page count and Hunspell checks
   against Lebedev's dictionary (146,269 entries, ё and hyphenated forms like *по-русски*), with the
   AOT/Abramov synonyms behind the thesaurus dialog. AutoCorrect switches to guillemets — `«слово»`

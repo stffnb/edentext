@@ -45,6 +45,8 @@ describe('a date field format the catalog does not list', () => {
   it('renders the current date in that format', () => {
     const fmt = findFormat('MMMM d')!;
     expect(renderFormat(fmt, new Date(2026, 8, 10), 'en-US')).toBe('September 10');
+    // A Slavic locale declines the month beside a day; the stand-alone form is "сентябрь".
+    expect(renderFormat(fmt, new Date(2026, 8, 10), 'ru-RU')).toBe('сентября 10');
     expect(docxPicture(fmt)).toBe('MMMM d');
   });
 
