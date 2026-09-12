@@ -5,14 +5,10 @@
   import TablePicker from '../../TablePicker.svelte';
   import SpecialCharPicker from '../../SpecialCharPicker.svelte';
   import DateTimePicker from '../../DateTimePicker.svelte';
-  import LinkDialog from '../../LinkDialog.svelte';
-  import BookmarkDialog from '../../BookmarkDialog.svelte';
-  import CrossRefDialog from '../../CrossRefDialog.svelte';
-  import FormulaDialog from '../../FormulaDialog.svelte';
   import RubyDialog from '../../RubyDialog.svelte';
   import { captionClicks, anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
   import { OPEN_LINK_DIALOG_EVENT } from '../../../editor/extensions/link';
-  import { OPEN_BOOKMARK_DIALOG_EVENT, bookmarkNames, findBookmark } from '../../../editor/extensions/bookmark';
+  import { OPEN_BOOKMARK_DIALOG_EVENT, bookmarkNames } from '../../../editor/extensions/bookmark';
   import { OPEN_CROSS_REF_DIALOG_EVENT } from '../../../editor/extensions/crossReference';
   import { EDIT_FORMULA_EVENT } from '../../../editor/extensions/formula';
   import { pageDimsCm, type PageFormat } from '../../../storage/pageFormat';
@@ -88,103 +84,9 @@
     reader.readAsDataURL(file);
   }
 
-  // --- Link ---
-  let linkOpen = $state(false);
-  let linkUrl = $state('');
-
-  function openLink() {
-    if (!editor || hfActive) return; // body-only; the HF schema has no link mark
-    linkUrl = (editor.getAttributes('link').href as string) ?? '';
-    linkOpen = true;
-  }
-
-  // A bare host or e-mail gets a scheme, as in Word and LibreOffice.
-  function normalizeUrl(raw: string): string {
-    const s = raw.trim();
-    if (!s) return '';
-    if (/^(https?:|mailto:|tel:|ftp:|#|\/)/i.test(s)) return s;
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return `mailto:${s}`;
-    return `https://${s}`;
-  }
-
-  function applyLink(raw: string) {
-    linkOpen = false;
-    if (!editor) return;
-    const href = normalizeUrl(raw);
-    if (!href) return;
-    const { empty } = editor.state.selection;
-    // With nothing selected the URL becomes its own link text.
-    if (empty) editor.chain().focus().insertContent({ type: 'text', text: href, marks: [{ type: 'link', attrs: { href } }] }).run();
-    else editor.chain().focus().extendMarkRange('link').setLink({ href }).run();
-  }
-
-  // --- Bookmarks and cross-references ---
-  let bookmarkOpen = $state(false);
-  let crossRefOpen = $state(false);
-
-  function openBookmark() {
-    if (!editor || hfActive || !hasSelection) return;
-    crossRefOpen = false;
-    bookmarkOpen = true;
-  }
-
-  function openCrossRef() {
-    if (!editor || hfActive || !bmNames.length) return;
-    bookmarkOpen = false;
-    crossRefOpen = true;
-  }
-
-  function goToBookmark(name: string) {
-    const found = editor && findBookmark(editor.state.doc, name);
-    if (!editor || !found) return;
-    bookmarkOpen = false;
-    editor.chain().focus().setTextSelection({ from: found.from, to: found.to }).scrollIntoView().run();
-  }
-
-  // --- Formula ---
-  let formulaOpen = $state(false);
-  let formulaLatex = $state('');
-  let formulaDisplay = $state(false);
-  let formulaPos = $state<number | null>(null);
-
-  function openFormula() {
-    formulaPos = null;
-    formulaLatex = '';
-    formulaDisplay = false;
-    formulaOpen = true;
-  }
-
-  function applyFormula(latex: string, display: boolean) {
-    if (!editor) return;
-    if (formulaPos != null) editor.chain().focus().updateFormula(formulaPos, { latex, display }).run();
-    else editor.chain().focus().insertFormula({ latex, display }).run();
-    formulaPos = null;
-  }
-
-  // Ctrl+K, the context menu and a double-click on a formula all arrive as events.
-  $effect(() => {
-    const onLink = () => openLink();
-    const onBm = () => openBookmark();
-    const onXr = () => openCrossRef();
-    const onFormula = (e: Event) => {
-      const d = (e as CustomEvent<{ pos: number; latex: string; display: boolean }>).detail;
-      if (!d) return;
-      formulaPos = d.pos;
-      formulaLatex = d.latex;
-      formulaDisplay = d.display;
-      formulaOpen = true;
-    };
-    window.addEventListener(OPEN_LINK_DIALOG_EVENT, onLink);
-    window.addEventListener(OPEN_BOOKMARK_DIALOG_EVENT, onBm);
-    window.addEventListener(OPEN_CROSS_REF_DIALOG_EVENT, onXr);
-    window.addEventListener(EDIT_FORMULA_EVENT, onFormula);
-    return () => {
-      window.removeEventListener(OPEN_LINK_DIALOG_EVENT, onLink);
-      window.removeEventListener(OPEN_BOOKMARK_DIALOG_EVENT, onBm);
-      window.removeEventListener(OPEN_CROSS_REF_DIALOG_EVENT, onXr);
-      window.removeEventListener(EDIT_FORMULA_EVENT, onFormula);
-    };
-  });
+  // The dialogs live in Ribbon.svelte — only the open tab is mounted, so one in here
+  // would miss Ctrl+K, the context menu and the double-click on a formula. Same events.
+  const open = (name: string) => () => window.dispatchEvent(new CustomEvent(name));
 
   // A page field only means anything inside a zone, so open the footer first.
   function insertPageField(type: 'pageNumber' | 'pageCount') {
@@ -237,12 +139,9 @@
 
 <RibbonGroup label={t().ribbon.groups.links}>
   <div class="rb-col link-anchor">
-    <RibbonButton variant="small" icon="link" label={t().ribbon.link} title={`${isLink ? t().link.dialogLabel : t().ribbon.link} (${shortcutHint('link')})`} disabled={!editor || !!hfActive} onclick={openLink} />
-    <RibbonButton variant="small" icon="bookmark" label={t().ribbon.bookmark} title={hfActive ? t().toolbarExpanded.bookmarkNotInHf : hasSelection ? t().toolbarExpanded.insertBookmark : t().toolbarExpanded.bookmarkNeedsSelection} disabled={!editor || !!hfActive || !hasSelection} onclick={openBookmark} />
-    <RibbonButton variant="small" icon="crossRef" label={t().ribbon.crossRef} title={hfActive ? t().toolbarExpanded.bookmarkNotInHf : bmNames.length ? t().toolbarExpanded.insertCrossRef : t().toolbarExpanded.crossRefNeedsBookmark} disabled={!editor || !!hfActive || !bmNames.length} onclick={openCrossRef} />
-    <LinkDialog open={linkOpen} initialUrl={linkUrl} canRemove={isLink} onApply={applyLink} onRemove={() => { linkOpen = false; editor?.chain().focus().extendMarkRange('link').unsetLink().run(); }} onClose={() => (linkOpen = false)} />
-    <BookmarkDialog open={bookmarkOpen} names={bmNames} onApply={(n) => { bookmarkOpen = false; editor?.chain().focus().setBookmark(n).run(); }} onRemove={(n) => editor?.chain().focus().removeBookmark(n).run()} onGoTo={goToBookmark} onClose={() => (bookmarkOpen = false)} />
-    <CrossRefDialog open={crossRefOpen} names={bmNames} onInsert={(n, f) => { crossRefOpen = false; editor?.chain().focus().insertCrossRef({ name: n, format: f }).run(); }} onClose={() => (crossRefOpen = false)} />
+    <RibbonButton variant="small" icon="link" label={t().ribbon.link} title={`${isLink ? t().link.dialogLabel : t().ribbon.link} (${shortcutHint('link')})`} disabled={!editor || !!hfActive} onclick={open(OPEN_LINK_DIALOG_EVENT)} />
+    <RibbonButton variant="small" icon="bookmark" label={t().ribbon.bookmark} title={hfActive ? t().toolbarExpanded.bookmarkNotInHf : hasSelection ? t().toolbarExpanded.insertBookmark : t().toolbarExpanded.bookmarkNeedsSelection} disabled={!editor || !!hfActive || !hasSelection} onclick={open(OPEN_BOOKMARK_DIALOG_EVENT)} />
+    <RibbonButton variant="small" icon="crossRef" label={t().ribbon.crossRef} title={hfActive ? t().toolbarExpanded.bookmarkNotInHf : bmNames.length ? t().toolbarExpanded.insertCrossRef : t().toolbarExpanded.crossRefNeedsBookmark} disabled={!editor || !!hfActive || !bmNames.length} onclick={open(OPEN_CROSS_REF_DIALOG_EVENT)} />
   </div>
 </RibbonGroup>
 
@@ -331,7 +230,7 @@
     />
     <span class="rb-caption">{t().ribbon.symbol}</span>
   </div>
-  <RibbonButton variant="big" content={equationIcon} label={t().ribbon.equation} title={t().formula.insert} disabled={!editor} onclick={openFormula} />
+  <RibbonButton variant="big" content={equationIcon} label={t().ribbon.equation} title={t().formula.insert} disabled={!editor} onclick={open(EDIT_FORMULA_EVENT)} />
 </RibbonGroup>
 
 <input
@@ -343,7 +242,6 @@
 />
 
 <RubyDialog bind:open={rubyOpen} {editor} />
-<FormulaDialog bind:open={formulaOpen} initialLatex={formulaLatex} initialDisplay={formulaDisplay} onApply={applyFormula} />
 
 <!-- Word's Equation button is a π, as its Symbol button beside it is an Ω. Same
      canvas, baseline and weight as that Ω; the size is 20 rather than its 14

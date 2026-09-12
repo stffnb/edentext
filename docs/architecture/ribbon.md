@@ -140,6 +140,12 @@ margins, Save As.
 `ParagraphDialog` and `TabsDialog` open from Word's ↘ launcher in a group's corner. They are
 chrome-agnostic, so the modern chrome could gain launchers of its own at no cost.
 
+Every dialog opened by an **event** — link (Ctrl+K, the context menu), bookmark, cross-reference,
+formula (a double-click on one) — is mounted in `Ribbon.svelte`, not in the Insert tab whose
+buttons also open it: only the open tab is mounted, so a listener in a closed one hears nothing
+and the double-click did nothing unless Insert happened to be up. The tab's buttons fire the same
+events; a formula event without a position starts an empty dialog.
+
 There is **no Font dialog**: the Home tab already carries change case and the underline and
 strikethrough line styles, and the two things left over — `letterSpacingPt` and `kerning` — live
 on a named style, not on a run. Setting them as direct formatting would mean a new mark attribute
