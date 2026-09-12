@@ -2,6 +2,51 @@
 
 <!-- Newest release first. New entries go here: ## [x.y.z] — YYYY-MM-DD -->
 
+## [0.4.0] — 2026-09-12
+
+The weight of this release is the cover page: frames placed against the page, shape colours out
+of the document's theme, floating tables and drawing groups now arrive as the file draws them. A
+saved document also carries the fonts it was opened with.
+
+### Added
+- A saved file embeds the fonts it was opened with — TTFs under `Fonts/` in ODF, obfuscated
+  `.odttf` parts in `.docx` — so it keeps its look on a machine without them; the font picker
+  lists the embedded families
+- A drawing group (`wpg:wgp`) opens as the frames it holds
+- A floating table (`w:tblpPr`) opens as the box that holds it, and both exporters write it back
+- Behind and in front of the text are offered as wrap modes on both frame toolbars and in the
+  ribbon's Arrange group, each pickable and draggable where it sits
+- A text box anchors its text top, middle or bottom (Shape Format), carried by both formats
+- Every version tag publishes the built app as an archive on its GitHub release: unzip, point a
+  web server at the folder
+
+### Changed
+- The header/footer layer draws one box per zone instead of two, 150 fewer placed boxes per pass
+
+### Fixed
+
+**Frames and shapes**
+- A frame placed against the page lands there rather than at its anchor paragraph
+- A shape's fill and stroke resolve the document's theme, the per-channel modifiers included
+- A frame behind the text can be picked again, and a right-click over one opens the context menu
+- A line shape of no height draws again, and is saved flat instead of across its frame's diagonal
+- Setting a wrap mode, resizing, rotating or editing a formula keeps the selection, so the
+  floating toolbar and the contextual tab stay up
+
+**Headers and footers**
+- A header zone is as tall as the row the file draws it in (`w:trHeight`)
+- A `.docx` zone keeps the space above its first line, so a tall header reopens at its height
+- A header/footer table's text and rule line reach the zone
+- The whole margin band opens the zone on a double-click, and an empty zone's placeholder sits on
+  the line the caret lands on
+
+**Elsewhere**
+- Ctrl+K, the context menu and a double-click on a formula reach their dialogs from any ribbon tab
+- A heading in a table cell keeps the spacing its file gives it
+- A date or time format outside the picker's catalog stays a live field
+- Enter keeps an empty line inside a columns section
+- A long ribbon label widens its button instead of painting across its neighbour
+
 ## [0.3.0] — 2026-09-09
 
 The weight of this release is the latency of a long document: it opens and settles in a
