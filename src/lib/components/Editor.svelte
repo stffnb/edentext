@@ -20,7 +20,7 @@
   import ImageToolbar from './ImageToolbar.svelte';
   import TextBoxToolbar from './TextBoxToolbar.svelte';
   import type { WrapMode } from '../editor/extensions/image';
-  import { findTextBox, type ShapeKind } from '../editor/extensions/textBox';
+  import { findTextBox, unwrapPastedBox, type ShapeKind } from '../editor/extensions/textBox';
   import { NodeSelection, TextSelection } from '@tiptap/pm/state';
   import { EditorView } from '@tiptap/pm/view';
   import ContextMenu from './ContextMenu.svelte';
@@ -1296,7 +1296,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
             return true;
           },
         },
-        transformPasted(slice, view) {
+        transformPasted(pasted, view) {
+          // The direct prop wins over every plugin's, so the box's own unwrap runs here.
+          const slice = unwrapPastedBox(pasted);
           const textStyleType = view.state.schema.marks.textStyle;
           if (!textStyleType) return slice;
           const cursorMarks = view.state.storedMarks ?? view.state.selection.$head.marks();
