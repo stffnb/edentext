@@ -470,7 +470,7 @@
           <button class:active={!outlineTab && isChar} onclick={() => { outlineTab = false; family = 'character'; }}>{t().styles.tabs.character}</button>
           <button class:active={!outlineTab && isTable} onclick={() => { outlineTab = false; family = 'table'; }}>{t().styles.tabs.table}</button>
           <button class:active={!outlineTab && isList} onclick={() => { outlineTab = false; family = 'list'; }}>{t().styles.tabs.list}</button>
-          <button class="wide" class:active={outlineTab} onclick={() => (outlineTab = true)}>{t().styles.tabs.outline}</button>
+          <button class:active={outlineTab} onclick={() => (outlineTab = true)}>{t().styles.tabs.outline}</button>
         </div>
       <ul class="list">
         {#if outlineTab}
@@ -1064,15 +1064,16 @@
     width: 14rem;
     border-right: 1px solid var(--color-border);
   }
+  /* Five tabs in two full rows: three over two, as one row would break the words. */
   .family {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
     padding: 0.4rem 0.4rem 0;
     gap: 2px;
   }
   .family button {
-    flex: 1;
-    /* Without this a flex item can't shrink below its longest word — a German
+    grid-column: span 2;
+    /* Without this a grid item can't shrink below its longest word — a German
        compound has no break opportunity and pushed the strip out of the pane. */
     min-width: 0;
     overflow-wrap: break-word;
@@ -1086,8 +1087,7 @@
     font-size: 0.72rem;
     cursor: pointer;
   }
-  /* Chapter numbering is no style family: its own row under the four. */
-  .family button.wide { flex-basis: 100%; }
+  .family button:nth-child(n + 4) { grid-column: span 3; }
   .family button.active {
     background: var(--color-btn-hover);
     color: var(--color-text);
