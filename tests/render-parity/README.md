@@ -14,23 +14,23 @@ npm run test:parity -- --quick # skip what last measured over 50 pages
 ```
 
 Exit code 1 when any document differs. `--json` also dumps both sides' lines
-(`y`, `x`, `x2` in mm, per page) — that dump is what you diagnose from.
+(`y`, `x`, `x2` in mm, per page) — diagnose from that dump.
 
 Every run prints each document's issue count against the previous run's and updates
 `node_modules/.cache/render-parity/baseline.json`, so an A/B measurement reads
-`218 (was 220, −2)` instead of being arithmetic over two reports. A run of one file
+`218 (was 220, −2)` without comparing two reports by hand. A run of one file
 leaves the other files' recorded counts alone. `--no-baseline` neither reads nor
 writes it — use it when measuring a deliberately broken tree.
 
 Four documents render at a time (`PARITY_JOBS`, 1 for a serial run): a page is its own
 browser context and the reference is the file's alone. Each document's lines are written
 in one call, so the console reads in completion order while `--json` keeps the corpus'.
-Measured on 15 fixtures, 1:15 serial against 0:27 — a run of a few long documents gains
-little, its time is one document's.
+Measured on 15 fixtures, 1:15 serial against 0:27. A run of a few long documents gains
+little, since the longest document sets its time.
 
 **The LibreOffice side is cached** in the same directory, keyed by the file's hash and
 the export arguments: the reference never depends on our code, so only the first run of
-a document pays for it — the whole corpus measured **9:00 cold against 5:41 cached**,
+a document converts it — the whole corpus measured **9:00 cold against 5:41 cached**,
 and one fixture 15s against 10s. `--no-cache` after installing or removing a font,
 which does change what LibreOffice renders.
 
@@ -96,7 +96,7 @@ npm install --no-save playwright-core && npx playwright-core install chromium
 cp src/assets/fonts/*.ttf /usr/local/share/fonts/ && fc-cache -f
 ```
 
-**The font step is not optional.** LibreOffice renders with system fonts; without
+**The font step is required.** LibreOffice renders with system fonts; without
 the repo's own TTFs installed it substitutes DejaVu for Liberation Serif and every
 line breaks differently for a reason that is not a bug. With them, both engines
 resolve Times New Roman → Liberation Serif, Arial → Liberation Sans, Calibri →
@@ -105,13 +105,13 @@ Carlito, Cambria → Caladea — the same files the editor bundles.
 Where the LibreOffice build ships those families itself (the macOS app bundle does:
 `Contents/Resources/fonts/truetype/`), it resolves them without fontconfig and the step
 is only about what it does *not* ship — `fc-list` showing neither Liberation nor Carlito
-is then not a reason to distrust a run.
+does not invalidate a run there.
 
-**But install only what LibreOffice does not already ship.** A second copy of a
+**Install only what LibreOffice does not already ship.** A second copy of a
 family it bundles makes its render *non-deterministic*: it picks between the two
 files per run — measured as `Carlito` against `Carlito-Regular` in the PDF's font
 list — and their vertical metrics differ, so a page carrying a large-font heading
-lands 1.85mm lower on some runs and a fixture's issue count swings by 40. The
+lands 1.85mm lower on some runs and a fixture's issue count varies by 40. The
 browser side never needs the install: the app `@font-face`s its own copies. On a
 macOS install `/Applications/LibreOffice.app/Contents/Resources/fonts/truetype/`
 already holds Carlito, Caladea and Liberation, so **skip the `cp` there entirely**;
@@ -144,14 +144,14 @@ reading it fails with `ENOENT` on a fresh clone; it zips its own document instea
 ## Probing with a purpose-built document
 
 The fastest probe is an `.odt` of your own run through the harness: both engines lay the
-same file out and the report *is* the measurement, in the units the corpus uses. Build it
-with `fflate` (`zipSync`), keep it in the scratchpad, and mind two traps — `mimetype` has
+same file out and the report is the measurement, in the units the corpus uses. Build it
+with `fflate` (`zipSync`), keep it in the scratchpad. Two pitfalls: `mimetype` has
 to be stored uncompressed (`{ level: 0 }`) or LibreOffice produces no PDF at all, and a
 `style:font-name` with **no `<style:font-face>` declaration** is not resolved: LibreOffice
 falls back (Calibri → Liberation Sans) where the editor honours the name, which invents a
 line-height difference that is not there in any real document.
 
-## Prerequisites, part two: Calibri Light
+## Calibri Light alias
 
 Word's default theme heading font. LibreOffice's substitution table knows Calibri but
 not Calibri Light, so without an alias it falls to fontconfig's generic — DejaVu Serif,
@@ -172,9 +172,9 @@ Both word processors **shrink** the spaces of a justified line to pull one more 
 onto it; CSS `text-align: justify` only stretches. Probed on one paragraph: justified,
 LibreOffice keeps a word the browser drops, and the same paragraph left-aligned breaks
 in both engines at the same word. So a long justified document reports a `lineBreak`
-every dozen pages with no defect behind it — the browser simply fits marginally less
-per line, worth about a quarter page over fifty. Left-align a passage before believing
-a break difference is ours.
+every dozen pages without a defect: the browser fits slightly less per line, about a
+quarter page over fifty. Left-align a passage before attributing a break difference to
+the editor.
 
 ## What the harness cannot see
 

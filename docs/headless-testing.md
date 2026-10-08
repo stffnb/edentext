@@ -1,17 +1,17 @@
 # Headless browser testing
 
-With no test suite, the way to verify rendering, layout, or interaction is to drive the live app in a headless browser. **This container is linux arm64 (`uname -m` → `aarch64`)** — the one gotcha. Use it for any check: pagination, list-marker/float layout, table sizing, header/footer, theme colors, image drag/resize, ODF round-trips, etc. PDF export is just one example.
+Rendering, layout and interaction are verified by driving the live app in a headless browser: pagination, list-marker/float layout, table sizing, header/footer, theme colors, image drag/resize, ODF round trips and PDF export. **The container is linux arm64 (`uname -m` → `aarch64`).**
 
 - **Don't** use `puppeteer` / `npx @puppeteer/browsers install chrome-headless-shell`: they fetch an x86-64 Chrome that can't run here (`rosetta error: failed to open elf at /lib64/ld-linux-x86-64.so.2`). No arm64 chrome-headless-shell build exists.
 - **Use Playwright's Chromium** (native arm64): `npm install --no-save playwright-core && npx playwright-core install chromium` → binary at `~/.cache/ms-playwright/chromium-*/chrome-linux/chrome`. Playwright's `install-deps` host check errors out, but the libs install via apt: `apt-get install -y libdbus-1-3 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libatspi2.0-0 libpango-1.0-0 libcairo2`. Launch with playwright-core, `executablePath` at that binary, `args: ['--no-sandbox']`.
 
-Then load `npm run dev`, inject a document into `localStorage['edentext-doc']`, reload, and read live DOM geometry (`getBoundingClientRect`, `Range.getClientRects`) or screenshot. This is the only way to exercise the editor's live ProseMirror NodeViews (e.g. the image node), which `generateHTML` can't reproduce. The `debug/pagebreak-debug-*.json` snapshots carry the live `doc` JSON, handy to inject.
+Then load `npm run dev`, inject a document into `localStorage['edentext-doc']`, reload, and read live DOM geometry (`getBoundingClientRect`, `Range.getClientRects`) or screenshot. This is the only way to exercise the editor's live ProseMirror NodeViews (e.g. the image node), which `generateHTML` can't reproduce. The `debug/pagebreak-debug-*.json` snapshots carry the live `doc` JSON and can be injected as they are.
 
 For PDF-export repros specifically: replicate `pdf.ts`'s clone + `html2canvas(...)` inside `page.evaluate` and read the canvas back as a PNG — capturing the real jsPDF `doc.save()` download tends to hang in headless. Inspect output PDFs with poppler-utils (`apt-get install -y poppler-utils`: `pdftoppm`, `pdfimages`, `pdftotext`).
 
 ## The four committed browser runs
 
-`npm run test:smoke` and `npm run test:dom` are these probes made permanent: both boot
+`npm run test:smoke` and `npm run test:dom` automate these probes: both boot
 `dist/` headless through `tests/browser.mjs` (preview server, checklist, `pageerror`
 collector) and fail on any uncaught page error. The DOM run keeps the pagination
 invariants of pass 4 below — one page count through a settle, a reload, a zoom, a page
@@ -57,7 +57,7 @@ shifted every body list item's own style by as many items as the cell held; and 
 inside a list item came back from the `.odt` as a paragraph. In a note's own text the
 `.docx` lost a formula, a ruby and a leading tab, and a heading in a table cell lost the
 margin it did not set; a list toggle could pull a note anchor into a text box, where the
-`.docx` dropped anchor and note without a word. A running-head or date field in a zone
+`.docx` silently dropped anchor and note. A running-head or date field in a zone
 lost its own formatting in the `.docx`: the library's simple field writes a bare run.
 Typing over a selection spanning two header cells left a half-header first row, which no
 file keeps. One finding was the checker's own: libxml2's RelaxNG cannot match an element
@@ -72,7 +72,7 @@ truncated IDAT, which only Firefox reports — the same broken bytes were in ele
 WebKit raises `ResizeObserver loop completed with undelivered notifications` as a page
 error — the text box refits the wrapper it observes, so the browser defers the rest of the
 round. That converging loop is the one message `openApp` drops.
-A comment over a line break rides the `hardBreak` too, which no file carries and the
+A comment over a line break also marks the `hardBreak`, which no file carries and the
 comment's own text runs keep — `normalize` skips the marks of an inline atom, the picture
 and the formula with it.
 Then the table run: promoting a cell to a header dropped every attr it had; a replace
@@ -110,14 +110,14 @@ the ones behind `build.target` in `vite.config.ts`; a browser older than that ta
 fails to parse the bundle and no run reaches it. Playwright's WebKit is the engine, not
 Safari: storage eviction, the install prompt and iOS input are outside the matrix.
 
-## Hunting for bugs the suite cannot see
+## Finding bugs outside the test suite
 
 `npm run test:coverage` says where to look: the logic modules are dense with tests,
 `src/lib/components/**` and `App.svelte` are at **0%** — every bug found this way so far
 lived there. Give each probe a `pageerror` + `console.error` collector; that alone reports
 faults nobody predicted (two of six were found by clicking controls and reading the console).
 
-Four passes, cheapest first:
+Four passes, in order of cost:
 
 1. **Edges** — junk in every `edentext-*` key, truncated/renamed/empty archives, a full localStorage, no IndexedDB, page-tall images, 400-section documents.
 2. **Breadth** — click every control of every tab, watch only for uncaught errors.
@@ -127,7 +127,7 @@ Four passes, cheapest first:
 Then repro minimally and take a stack trace off the **dev** server (sourcemaps) with
 `Error.stackTraceLimit = 300` — the default ten frames stop above the cause.
 
-**Budget for false alarms.** Three of four striking signals were the probe's own fault:
+**False alarms.** Three of four conspicuous signals were caused by the probe itself:
 `Range.getClientRects` also returns container rects (a layout checker built on it is noise),
 a stale button index reads as a dead control, and clicking `.tiptap > p` by index hits a
 different block once an edit has reflowed the document. Two more from the DOM run: TipTap's

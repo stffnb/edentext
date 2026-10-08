@@ -20,8 +20,8 @@ then does its DOM hang directly under `.tiptap`, which is `position: relative` �
 document-px space `pageBreaks.ts` and `.band-layer` already compute in. Inline in the
 paragraph, the containing block would be that paragraph, whose own `position: relative`
 (the line-height shift) would have to be defeated with an `!important` special case, the
-way `editor.css` does for a page-anchored frame. It also makes **endnotes nearly free**:
-they simply stay in the flow at the document end.
+way `editor.css` does for a page-anchored frame. It also keeps **endnotes simple**:
+they stay in the flow at the document end.
 
 A note holds one paragraph of inline content. An imported note of several paragraphs is
 flattened to hard breaks.
@@ -72,7 +72,7 @@ and `pageBreaks.ts` gives it its `top`. A **collected** note stays in flow and t
 carries `forceBreakBefore`, because LibreOffice opens a new page for the list (probed).
 Which of the two a footnote is comes from `position: 'document'` → the `data-collect-footnotes`
 attribute (`applyNoteVars`) → `editor.css`, and pagination reads it back off the note's own
-computed `position` rather than the setting: the box is the truth either way.
+computed `position` rather than the setting, since the box is authoritative.
 
 The reservation runs **inside** one pagination pass — reading it back across passes would
 break the file's own rule that a pass must not read its own last answer:

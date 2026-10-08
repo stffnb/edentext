@@ -23,8 +23,8 @@ node view may set `innerHTML` — the MathML it renders is always our own output
 `annotation-xml` can't smuggle in HTML. It also means an imported formula is always editable;
 there is no read-only state to fall back to.
 
-The price: a construct outside the AST degrades. Unknown OMML/MathML elements recurse into
-their `m:e`/child rows, so content survives even where structure doesn't — the same trade
+Limitation: a construct outside the AST degrades. Unknown OMML/MathML elements recurse into
+their `m:e`/child rows, so content survives even where structure doesn't — the same compromise
 LibreOffice makes routing OMML through StarMath.
 
 `src/lib/math/`: `latex.ts` (AST types, parser, serializer, symbol table), `mathml.ts`,
@@ -48,7 +48,7 @@ Two invariants the tests pin (`tests/unit/math.test.ts`, `tests/unit/docx-formul
 - Whitespace inside an OMML run is dropped (`omml.ts` `tokenize`): math layout ignores it, and
   keeping it breaks the invariant above.
 
-## STIX Two Math is required, not decoration
+## STIX Two Math is required
 
 MathML is typeset by the browser natively — no KaTeX/MathJax. But Chromium needs a font with
 an **OpenType MATH table**: measured in this container with only the bundled Liberation/Carlito
@@ -97,14 +97,14 @@ formula in a Word document was silently dropped before this feature. `m:oMathPar
 Real documents mix both: one will carry OMML formulas *and* equations its author pasted
 as raster images. Those import as `image` nodes and offer the image toolbar's wrap options on
 click — in Word and LibreOffice too. Nothing short of OCR changes that, so a click that offers
-wrap options instead of the formula dialog is the document's doing, not a broken import.
+wrap options instead of the formula dialog comes from the document, not from a broken import.
 
 ## Testing note
 
 `npm run test:lo`'s formula leg needs the **`libreoffice-math`** package — LibreOffice is
-modular and Writer alone cannot hold a formula object, so without it every formula is dropped
-on load without a word (measured: converting a formula-bearing `.docx` with a Writer-only
+modular and Writer alone cannot hold a formula object, so without it every formula is silently
+dropped on load (measured: converting a formula-bearing `.docx` with a Writer-only
 install yields an `.odt` with zero formulas). The leg then fails on "both objects survive", which
 looks like a broken export but is the missing component. Check `dpkg -l | grep
-libreoffice-math` before believing that failure. A desktop LibreOffice ships Math; only
+libreoffice-math` before investigating that failure. A desktop LibreOffice ships Math; only
 stripped-down server/container installs don't.

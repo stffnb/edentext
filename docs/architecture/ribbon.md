@@ -10,7 +10,7 @@ compared. Everything the ribbon drives is the same editor, through the same comm
 (`edentext-chrome`, default `'ribbon'`). `App.svelte` forks on it: the ribbon docks as a plain
 flex child, the island keeps its absolute overlay. The choice sits in *Settings ▸ General*
 (`SettingsDialog.svelte`), reachable from both chromes, and only behind `import.meta.env.DEV`
-until the island catches up — a production build offers no way in, but a stored `'modern'`
+until the island offers the same features — a production build offers no way in, but a stored `'modern'`
 pref still loads it.
 
 `--toolbar-overlay-h` is written **only** in modern mode. `editor.css` reads it as
@@ -61,8 +61,8 @@ Ribbon.svelte
 ```
 
 The band's height never changes: it scrolls horizontally with a hidden scrollbar instead of
-collapsing groups into popovers the way Word does when the window narrows. That is the single
-biggest simplification here, and the reason two things below are necessary.
+collapsing groups into popovers the way Word does when the window narrows. This is the main
+simplification here, and the reason two things below are necessary.
 
 84px is the tallest control in any tab — Table Layout's two-line `Insert above`, 65px — plus the
 group footer and the band's padding, so no tab carries dead space above its buttons. Every metric
@@ -103,7 +103,7 @@ at every height. A flex row cannot reserve width in part of its height, so it mo
 - **The header/footer switches ride the Insert tab's Options menu.** Different first page,
   different odd/even and the two zone distances used to be in `ToolbarExpanded` alone, so the
   default chrome could reach the first-page and even-page variants only through an import.
-- **Two inputs wear `.file-input`**: the document one in `App.svelte` and the Insert tab's
+- **Two inputs carry `.file-input`**: the document one in `App.svelte` and the Insert tab's
   picture one. The ribbon's comes first in the DOM, so a bare class selector opens a picture
   chooser whenever that tab is showing — the browser runs qualify theirs by `accept`.
 
@@ -171,7 +171,7 @@ their tab is shown. `tests/unit/command-search.test.ts` fails when an indexed id
 ## Dialogs
 
 `ParagraphDialog` and `TabsDialog` open from Word's ↘ launcher in a group's corner. They are
-chrome-agnostic, so the modern chrome could gain launchers of its own at no cost.
+chrome-agnostic, so the modern chrome could add launchers of its own without changing them.
 
 Every dialog opened by an **event** — link (Ctrl+K, the context menu), bookmark, cross-reference,
 formula (a double-click on one) — is mounted in `Ribbon.svelte`, not in the Insert tab whose

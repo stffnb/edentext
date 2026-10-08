@@ -1,7 +1,7 @@
 # Contributing to EdenText
 
-Thanks for your interest in contributing! This document explains how to get set up
-and the one legal requirement for getting a change merged.
+Thanks for your interest in contributing! This document describes the development setup
+and the legal requirement for merging a change.
 
 ## Development setup
 
