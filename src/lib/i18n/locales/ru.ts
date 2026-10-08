@@ -221,7 +221,7 @@ const ru: Messages = {
     tabs: { paragraph: 'Абзац', character: 'Знак', table: 'Таблица', list: 'Список', outline: 'Главы' },
     outline: {
       number: 'Номер', none: 'Нет', before: 'Перед', after: 'После',
-      sublevels: 'Показать подуровни', indent: 'Отступ текста (см)', decimal: '1, 1.1, 1.1.1', off: 'Удалить нумерацию',
+      sublevels: 'Показать подуровни', indent: 'Отступ текста (см)', decimal: '1, 1.1, 1.1.1', chapter: { before: 'Глава ', after: '' }, off: 'Удалить нумерацию',
     },
     tableStyles: 'Стили таблиц',
     listStyles: 'Стили списков',

@@ -5,7 +5,7 @@ import { importDocx } from '../../src/lib/import/docx';
 import { buildOdt } from '../../src/lib/export/odt';
 import { buildDocx } from '../../src/lib/export/docx';
 import { builtinStyleSheet, styleCss } from '../../src/lib/styles/styleSheet';
-import { decimalOutline, outlineCss, outlineLabel, type OutlineNumbering } from '../../src/lib/styles/outlineNumbering';
+import { chapterOutline, decimalOutline, romanOutline, outlineCss, outlineLabel, type OutlineNumbering } from '../../src/lib/styles/outlineNumbering';
 import { formatOrdinal } from '../../src/lib/utils/orderedListTypes';
 
 const NS =
@@ -97,6 +97,19 @@ describe('chapter numbering', () => {
     // DOCX numbering has nine levels.
     const docx = await buildDocx(headingDoc as never, margins, 'portrait', undefined, null, 'A4', sheet);
     expect(importDocx(docx).styles?.outline).toEqual(decimalOutline().slice(0, 9));
+  });
+
+  it('round-trips the outline and chapter presets through both formats', async () => {
+    for (const outline of [romanOutline(), chapterOutline({ before: '第', after: '章' })]) {
+      const sheet = { ...builtinStyleSheet(), outline };
+      const odt = importOdt(await buildOdt(headingDoc as never, margins, 'portrait', undefined, null, 'A4', sheet)).styles?.outline;
+      const docx = importDocx(await buildDocx(headingDoc as never, margins, 'portrait', undefined, null, 'A4', sheet)).styles?.outline;
+      for (const back of [odt, docx]) {
+        for (const level of [1, 4, 5]) expect(outlineLabel(back, level, [], formatOrdinal)).toBe(outlineLabel(outline, level, [], formatOrdinal));
+      }
+    }
+    expect(outlineLabel(romanOutline(), 5, [], formatOrdinal)).toBe('(1) ');
+    expect(outlineLabel(chapterOutline({ before: '第', after: '章' }), 1, [3], formatOrdinal)).toBe('第3章 ');
   });
 
   it('labels a level from the counts in force', () => {

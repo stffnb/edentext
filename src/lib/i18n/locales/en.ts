@@ -220,7 +220,7 @@ const en = {
     tabs: { paragraph: 'Paragraph', character: 'Character', table: 'Table', list: 'List', outline: 'Chapters' },
     outline: {
       number: 'Number', none: 'None', before: 'Before', after: 'After',
-      sublevels: 'Show sublevels', indent: 'Text indent (cm)', decimal: '1, 1.1, 1.1.1', off: 'Remove numbering',
+      sublevels: 'Show sublevels', indent: 'Text indent (cm)', decimal: '1, 1.1, 1.1.1', chapter: { before: 'Chapter ', after: '' }, off: 'Remove numbering',
     },
     tableStyles: 'Table styles',
     listStyles: 'List styles',

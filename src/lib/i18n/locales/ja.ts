@@ -213,7 +213,7 @@ const ja: Messages = {
     tabs: { paragraph: '段落', character: '文字', table: '表', list: 'リスト', outline: '章' },
     outline: {
       number: '番号', none: 'なし', before: '前', after: '後',
-      sublevels: 'サブレベルの表示', indent: 'テキストのインデント (cm)', decimal: '1, 1.1, 1.1.1', off: '番号付けを解除',
+      sublevels: 'サブレベルの表示', indent: 'テキストのインデント (cm)', decimal: '1, 1.1, 1.1.1', chapter: { before: '第', after: '章' }, off: '番号付けを解除',
     },
     tableStyles: '表のスタイル',
     listStyles: 'リストのスタイル',

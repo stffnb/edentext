@@ -213,7 +213,7 @@ const zhHant: Messages = {
     tabs: { paragraph: '段落', character: '字元', table: '表格', list: '清單', outline: '章節' },
     outline: {
       number: '編號', none: '無', before: '之前', after: '之後',
-      sublevels: '顯示子層級', indent: '文字縮排（公分）', decimal: '1, 1.1, 1.1.1', off: '移除編號',
+      sublevels: '顯示子層級', indent: '文字縮排（公分）', decimal: '1, 1.1, 1.1.1', chapter: { before: '第', after: '章' }, off: '移除編號',
     },
     tableStyles: '表格樣式',
     listStyles: '清單樣式',

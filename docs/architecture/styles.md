@@ -81,8 +81,9 @@ The visible label and table-of-contents label use the same counting rules. ODF w
 definition as an outline style; DOCX writes matching numbering referenced by heading styles.
 Keep the heading level explicit so import does not mistake a numbered heading for a list item.
 
-The style manager's Chapters tab edits it level by level (`setOutline`); its preset
-`decimalOutline` is 1 / 1.1 / 1.1.1 with a space as the suffix. Its one indent field sets
+The style manager's Chapters tab edits it level by level (`setOutline`); its presets are
+`decimalOutline` (1 / 1.1 / 1.1.1), `romanOutline` (I. / A. / 1. / a) / (1)) and
+`chapterOutline` (level 1 only, "Chapter 1" or 第1章 from the UI language). Its one indent field sets
 indent, hanging first line and tab together, the only label position DOCX can state.
 The numbering button on a heading switches it as well, as a word processor's multilevel
 list bound to the heading styles does (`orderedList.ts`).

@@ -212,7 +212,7 @@ const de: Messages = {
     tabs: { paragraph: 'Absatz', character: 'Zeichen', table: 'Tabelle', list: 'Liste', outline: 'Kapitel' },
     outline: {
       number: 'Nummer', none: 'Keine', before: 'Davor', after: 'Dahinter',
-      sublevels: 'Ebenen anzeigen', indent: 'Texteinzug (cm)', decimal: '1, 1.1, 1.1.1', off: 'Nummerierung entfernen',
+      sublevels: 'Ebenen anzeigen', indent: 'Texteinzug (cm)', decimal: '1, 1.1, 1.1.1', chapter: { before: 'Kapitel ', after: '' }, off: 'Nummerierung entfernen',
     },
     tableStyles: 'Tabellenvorlagen',
     listStyles: 'Listenformatvorlagen',

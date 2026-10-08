@@ -221,7 +221,7 @@ const el: Messages = {
     tabs: { paragraph: "Παράγραφος", character: "Χαρακτήρας", table: "Πίνακας", list: "Λίστα", outline: "Κεφάλαια" },
     outline: {
       number: "Αριθμός", none: "Κανένα", before: "Πριν", after: "Μετά",
-      sublevels: "Εμφάνιση υποεπιπέδων", indent: "Εσοχή κειμένου (cm)", decimal: "1, 1.1, 1.1.1", off: "Κατάργηση αρίθμησης",
+      sublevels: "Εμφάνιση υποεπιπέδων", indent: "Εσοχή κειμένου (cm)", decimal: "1, 1.1, 1.1.1", chapter: { before: "Κεφάλαιο ", after: "" }, off: "Κατάργηση αρίθμησης",
     },
     tableStyles: "Στυλ πίνακα",
     listStyles: "Στυλ λίστας",

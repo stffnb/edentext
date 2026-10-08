@@ -210,7 +210,7 @@ const pt: Messages = {
     tabs: { paragraph: 'Parágrafo', character: 'Caráter', table: 'Tabela', list: 'Lista', outline: 'Capítulos' },
     outline: {
       number: 'Número', none: 'Nenhum', before: 'Antes', after: 'Depois',
-      sublevels: 'Mostrar subníveis', indent: 'Avanço do texto (cm)', decimal: '1, 1.1, 1.1.1', off: 'Remover numeração',
+      sublevels: 'Mostrar subníveis', indent: 'Avanço do texto (cm)', decimal: '1, 1.1, 1.1.1', chapter: { before: 'Capítulo ', after: '' }, off: 'Remover numeração',
     },
     tableStyles: 'Estilos de tabela',
     listStyles: 'Estilos de lista',

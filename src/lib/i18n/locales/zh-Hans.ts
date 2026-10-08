@@ -212,7 +212,7 @@ const zhHans: Messages = {
     tabs: { paragraph: '段落', character: '字符', table: '表格', list: '列表', outline: '章节' },
     outline: {
       number: '编号', none: '无', before: '之前', after: '之后',
-      sublevels: '显示子级别', indent: '文本缩进（厘米）', decimal: '1, 1.1, 1.1.1', off: '删除编号',
+      sublevels: '显示子级别', indent: '文本缩进（厘米）', decimal: '1, 1.1, 1.1.1', chapter: { before: '第', after: '章' }, off: '删除编号',
     },
     tableStyles: '表格样式',
     listStyles: '列表样式',

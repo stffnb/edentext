@@ -11,7 +11,7 @@
     putStyle, putTableStyle, renameStyle, resetStyle, setOutline, styleSheet,
   } from '../styles/sheet.svelte';
   import {
-    decimalOutline, DEFAULT_OUTLINE_LEVEL, MAX_OUTLINE_LEVELS, outlineIsEmpty, outlineLabel,
+    chapterOutline, decimalOutline, DEFAULT_OUTLINE_LEVEL, romanOutline, MAX_OUTLINE_LEVELS, outlineIsEmpty, outlineLabel,
     type OutlineFormat, type OutlineLevel,
   } from '../styles/outlineNumbering';
   import { listStyleMarginCm, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
@@ -944,6 +944,8 @@
     <footer>
       {#if outlineTab}
         <button onclick={() => setOutline(decimalOutline())}>{t().styles.outline.decimal}</button>
+        <button onclick={() => setOutline(romanOutline())}>I, A, 1, a)</button>
+        <button onclick={() => setOutline(chapterOutline(t().styles.outline.chapter))}>{t().styles.outline.chapter.before}1{t().styles.outline.chapter.after}</button>
         <span class="spacer"></span>
         <button class="danger" onclick={() => setOutline(null)} disabled={outlineIsEmpty(outline)}>{t().styles.outline.off}</button>
       {:else if isList}

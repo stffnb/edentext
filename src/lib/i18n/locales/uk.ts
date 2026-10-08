@@ -221,7 +221,7 @@ const uk: Messages = {
     tabs: { paragraph: 'Абзац', character: 'Символ', table: 'Таблиця', list: 'Список', outline: 'Розділи' },
     outline: {
       number: 'Номер', none: 'Немає', before: 'Перед', after: 'Після',
-      sublevels: 'Показати підрівні', indent: 'Відступ тексту (см)', decimal: '1, 1.1, 1.1.1', off: 'Вилучити нумерацію',
+      sublevels: 'Показати підрівні', indent: 'Відступ тексту (см)', decimal: '1, 1.1, 1.1.1', chapter: { before: 'Розділ ', after: '' }, off: 'Вилучити нумерацію',
     },
     tableStyles: 'Стилі таблиць',
     listStyles: 'Стилі списків',

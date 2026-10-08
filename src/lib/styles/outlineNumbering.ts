@@ -44,6 +44,22 @@ export function decimalOutline(): OutlineNumbering {
   }));
 }
 
+// I. / A. / 1. / a) / (1) / (a) / (i): the classic outline, each level on its own.
+const OUTLINE_LEVELS: [OutlineFormat, string, string][] = [
+  ['I', '', '.'], ['A', '', '.'], ['1', '', '.'], ['a', '', ')'], ['1', '(', ')'], ['a', '(', ')'], ['i', '(', ')'],
+];
+export function romanOutline(): OutlineNumbering {
+  return Array.from({ length: MAX_OUTLINE_LEVELS }, (_, i) => {
+    const [format, prefix, suffix] = OUTLINE_LEVELS[Math.min(i, OUTLINE_LEVELS.length - 1)];
+    return { format, prefix, suffix: `${suffix} `, displayLevels: 1, start: 1 };
+  });
+}
+
+// "Chapter 1" / 第1章 on the top level only; the words come from the UI language.
+export function chapterOutline({ before, after }: { before: string; after: string }): OutlineNumbering {
+  return [{ format: '1', prefix: before, suffix: `${after} `, displayLevels: 1, start: 1 }];
+}
+
 export function outlineLevelAt(outline: OutlineNumbering | null | undefined, level: number): OutlineLevel | null {
   const l = outline?.[level - 1];
   return l && l.format !== 'none' ? l : null;

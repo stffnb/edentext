@@ -211,7 +211,7 @@ const es: Messages = {
     tabs: { paragraph: 'Párrafo', character: 'Carácter', table: 'Tabla', list: 'Lista', outline: 'Capítulos' },
     outline: {
       number: 'Número', none: 'Ninguno', before: 'Antes', after: 'Después',
-      sublevels: 'Mostrar subniveles', indent: 'Sangría del texto (cm)', decimal: '1, 1.1, 1.1.1', off: 'Quitar numeración',
+      sublevels: 'Mostrar subniveles', indent: 'Sangría del texto (cm)', decimal: '1, 1.1, 1.1.1', chapter: { before: 'Capítulo ', after: '' }, off: 'Quitar numeración',
     },
     tableStyles: 'Estilos de tabla',
     listStyles: 'Estilos de lista',
