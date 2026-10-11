@@ -2,6 +2,55 @@
 
 <!-- Newest release first. New entries go here: ## [x.y.z] — YYYY-MM-DD -->
 
+## [0.9.0] — 2026-10-11
+
+EdenText 0.9.0 introduces an optional AI assistant. It works with the user's own provider (OpenAI,
+Anthropic, Mistral, Gemini, OpenRouter) or a local model in Ollama or LM Studio, reads the entire
+document and records its edits as tracked changes. Nothing is sent until a provider is set up,
+requests go directly to the provider without passing through an EdenText server, and the assistant
+can be switched off in Settings. Greek is added as a program and document language. Settings are
+consolidated in a dedicated dialog, and a single undo history now covers text, headers and
+footers, page setup and styles.
+
+### Added
+- **An AI assistant** in a side pane, in the context menu and behind `Alt+I`, can be switched off:
+  - a chat mode that answers questions and an edit mode that changes the document as tracked
+    changes, kept or undone per reply
+  - it reads text, styles, lists, tables, comments, pages and headers, and can write whole
+    documents, format paragraphs, tables and frames, and set up pages, sections and headers
+  - slash commands (`/draft`, `/rewrite`, `/translate` …) and user-defined prompts, files
+    attached as material, replies that cite paragraphs, and `@AI` in a comment for an answer
+    in the thread
+  - the chat survives a reload, and the pane docks left or right of the pages
+- **Greek as a program and document language**, with spell checking
+- **A Settings dialog** with sections for general, editing, view, privacy and AI, and an accent
+  colour for the chrome
+- **Documents can stay out of the browser**: closed documents can be dropped at the next start,
+  or autosave can be switched off; a document keeps its file across reloads and checks it
+  before overwriting it
+- **Heading numbering** that can be switched on and edited, with presets I / A / 1 / a) and
+  Chapter 1
+- **A frame's space to the text on all four sides**, rules and their padding in the paragraph
+  style manager, and lines dragged by their two ends
+- **The desktop app points to a newer release**, and its dialogs and macOS menu come in every
+  app language
+
+### Fixed
+- Long documents open, scroll and print faster: typing no longer lays out every page again,
+  the page grid builds faster, and PDF export and printing work in page strips with a progress
+  display
+- Lists keep their numbering level's marker formatting, continued counting, spacing and
+  indents from their paragraph style, and their nested lists through ODF
+- Tables start below or beside a floating frame where their words fit, a row that may not
+  break starts a new page, and inserted rows and columns keep their neighbour's formatting
+- Indexes and contents generate their rows when the file cached none, and keep their columns
+  and page numbers at the right edge
+- Mirrored margins and margin edits reach every section, and headers, footers and footnotes
+  stand where LibreOffice puts them
+- Text copied from a word processor pastes as text, not as a picture of it
+- Every import error is translated
+
+
 ## [0.8.0] — 2026-10-03
 
 EdenText now installs as a desktop app on macOS, Windows and Linux, and speaks Ukrainian. Shapes

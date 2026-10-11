@@ -24,7 +24,7 @@
 
 ---
 
-EdenText is a web-based, powerful word processor for everything from quick notes to full-length books. No server, no account — processing runs locally and your documents never leave your computer. Just one URL away, or completely offline as a slim browser app — it opens with under 2 MB of download, dictionaries and fonts follow as needed[^1]. The interface comes in English, German, Spanish, French, Portuguese, Russian, Ukrainian, Japanese and Chinese (simplified and traditional).
+EdenText is a web-based, powerful word processor for everything from quick notes to full-length books. No server, no account — processing runs locally and your documents never leave your computer. Just one URL away, or completely offline as a slim browser app — it opens with under 2 MB of download, dictionaries and fonts follow as needed[^1]. The interface comes in English, German, Spanish, French, Portuguese, Greek, Russian, Ukrainian, Japanese and Chinese (simplified and traditional).
 
 > [!NOTE]
 > EdenText is young, in **beta** and actively developed — more features are on
@@ -59,11 +59,16 @@ EdenText is a web-based, powerful word processor for everything from quick notes
 - **Everything a thesis needs** — table of contents, captions, cross-references,
   citations & bibliography, alphabetical index, formulas (LaTeX)
 - **Review tools** — track changes and threaded comments with margin balloons,
-  printable markup, spell check and synonyms (English, German, Spanish, French,
-  Portuguese, Russian and Ukrainian), grammar check (English)
+  printable markup, spell check (English, German, Spanish, French, Portuguese,
+  Greek, Russian and Ukrainian), synonyms (all of these but Greek), grammar check
+  (English)
+- **Optional AI assistant** — with your own provider or a local model;
+  answers questions about the document and edits it as tracked changes. Can be
+  switched off; requests go directly to the provider, without an EdenText server
 - **Private by design** — your documents never leave your computer, all
   processing runs locally; works offline as an installable app. The site counts
-  anonymous visits (GoatCounter, EU-hosted, no cookies); the editor sends nothing.
+  anonymous visits (GoatCounter, EU-hosted, no cookies); the editor sends nothing,
+  unless you switch on the AI assistant, which sends to the provider you chose.
   Documents are autosaved in the browser; Recent documents can drop closed ones
   at the next start or not save them there at all, and a private window leaves
   nothing behind once it is closed
