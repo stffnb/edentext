@@ -41,7 +41,7 @@ Tests are jsdom Vitest files outside `src/`; `npm test` covers round trips, corp
 - Never exceed three lines or describe/compare to an older implementation; explain only current behaviour and why.
 - Do not use Word as a placeholder for a word processor; name products only for a format or product-specific quirk.
 
-**Commit messages** — subject plus at most about eight lines. Include a short, precise bullet-point body that describes the change; put probes, measurements and rationale in architecture docs or the nearest `CLAUDE.md`.
+**Commit messages** — subject plus at most about eight lines. Include a short, precise bullet-point body that describes the change; put probes, measurements and rationale in architecture docs or the nearest `CLAUDE.md`. Name an issue only as `Refs #N`: never `Closes`, `Fixes` or `Resolves`, in commit messages or PR bodies, since the maintainer closes issues.
 
 **Document names** — never put a real-world document name in the repository or a commit message; describe the fix and measurement instead. See `tests/render-parity/README.md`.
 
