@@ -61,7 +61,7 @@ EdenText 是在瀏覽器中執行、功能強大的文書處理軟體，從隨�
 - **樣式**——段落、字元、表格和清單樣式，支援繼承，以及章節編號
 - **表格**——表格樣式、排序，以及類似試算表的公式
 - **論文需要的都有**——目錄、圖表標號、交互參照、引用與參考文獻、索引、數學公式（LaTeX）
-- **校閱工具**——追蹤修訂、頁邊註解框中的討論串、可列印的修訂標記、拼字檢查（英文、
+- **校閱工具**——追蹤修訂、頁邊註解框中的討論串、與其他檔案比較和合併、可列印的修訂標記、拼字檢查（英文、
   德文、西班牙文、法文、葡萄牙文、希臘文、俄文和烏克蘭文）、同義詞（上述語言中除
   希臘文外皆支援）、文法檢查（英文）
 - **可選用的 AI 助理**——使用你自己的服務供應商或本機模型；可以回答與文件有關的問題，
@@ -135,6 +135,7 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 此外，每個版本都附有包含已建置應用程式的 `edentext-<tag>.zip`；執行 `npm run build` 也會在 `dist/` 中產生相同的檔案。
 任何 Web 伺服器都可以託管這個資料夾。
 也可以用 `docker build -t edentext .` 在本機建置容器映像檔。
+適用於 Kubernetes 的社群維護 Helm chart 位於 [`charts/edentext`](../../charts/edentext)。
 
 更新時，請將新檔案覆蓋到舊檔案上，不要先清空資料夾。
 更新前開啟的分頁在重新載入之前，會繼續載入其所屬版本的檔案。
@@ -179,10 +180,11 @@ Patrick R.、[@Deleh](https://github.com/Deleh)、[@lukasmwerner](https://github
 <a href="https://github.com/stffnb"><img src="https://github.com/stffnb.png?size=96" width="48" alt="@stffnb"/></a>
 <a href="https://github.com/Camthalion77"><img src="https://github.com/Camthalion77.png?size=96" width="48" alt="@Camthalion77"/></a>
 <a href="https://github.com/ehrensperger-niklas"><img src="https://github.com/ehrensperger-niklas.png?size=96" width="48" alt="@ehrensperger-niklas"/></a>
+<a href="https://github.com/farragoo"><img src="https://github.com/farragoo.png?size=96" width="48" alt="@farragoo"/></a>
+<a href="https://github.com/blairhoddinott"><img src="https://github.com/blairhoddinott.png?size=96" width="48" alt="@blairhoddinott"/></a>
 <a href="https://github.com/Deleh"><img src="https://github.com/Deleh.png?size=96" width="48" alt="@Deleh"/></a>
 <a href="https://github.com/lukasmwerner"><img src="https://github.com/lukasmwerner.png?size=96" width="48" alt="@lukasmwerner"/></a>
 <a href="https://github.com/JinJieBeWater"><img src="https://github.com/JinJieBeWater.png?size=96" width="48" alt="@JinJieBeWater"/></a>
-<a href="https://github.com/farragoo"><img src="https://github.com/farragoo.png?size=96" width="48" alt="@farragoo"/></a>
 <a href="https://github.com/sbvelinga"><img src="https://github.com/sbvelinga.png?size=96" width="48" alt="@sbvelinga"/></a>
 </p>
 

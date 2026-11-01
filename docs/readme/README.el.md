@@ -68,6 +68,7 @@
 - **Ό,τι χρειάζεται μια διπλωματική** — πίνακας περιεχομένων, λεζάντες, παραπομπές,
   αναφορές και βιβλιογραφία, ευρετήριο, μαθηματικοί τύποι (LaTeX)
 - **Αναθεώρηση** — παρακολούθηση αλλαγών και νήματα σχολίων σε μπαλόνια στο περιθώριο,
+  σύγκριση και συγχώνευση με άλλο αρχείο,
   εκτυπώσιμες σημάνσεις, ορθογραφικός έλεγχος (αγγλικά, γερμανικά, ισπανικά, γαλλικά,
   πορτογαλικά, ελληνικά, ρωσικά και ουκρανικά), συνώνυμα (οι ίδιες γλώσσες εκτός από τα
   ελληνικά), γραμματικός έλεγχος (αγγλικά)
@@ -152,6 +153,7 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 το `npm run build` δημιουργεί τα ίδια αρχεία στο `dist/`. Ο φάκελος αυτός μπορεί να
 φιλοξενηθεί σε οποιονδήποτε web server. Το container image μπορεί επίσης να δημιουργηθεί
 τοπικά με `docker build -t edentext .`.
+Για το Kubernetes υπάρχει στο [`charts/edentext`](../../charts/edentext) ένα Helm chart που συντηρείται από την κοινότητα.
 
 Για ενημέρωση, αντιγράψτε τα νέα αρχεία πάνω στα παλιά αντί να αδειάσετε πρώτα τον φάκελο.
 Οι καρτέλες που άνοιξαν πριν από την ενημέρωση συνεχίζουν να φορτώνουν τα αρχεία της δικής
@@ -203,10 +205,11 @@ Patrick R., [@Deleh](https://github.com/Deleh), [@lukasmwerner](https://github.c
 <a href="https://github.com/stffnb"><img src="https://github.com/stffnb.png?size=96" width="48" alt="@stffnb"/></a>
 <a href="https://github.com/Camthalion77"><img src="https://github.com/Camthalion77.png?size=96" width="48" alt="@Camthalion77"/></a>
 <a href="https://github.com/ehrensperger-niklas"><img src="https://github.com/ehrensperger-niklas.png?size=96" width="48" alt="@ehrensperger-niklas"/></a>
+<a href="https://github.com/farragoo"><img src="https://github.com/farragoo.png?size=96" width="48" alt="@farragoo"/></a>
+<a href="https://github.com/blairhoddinott"><img src="https://github.com/blairhoddinott.png?size=96" width="48" alt="@blairhoddinott"/></a>
 <a href="https://github.com/Deleh"><img src="https://github.com/Deleh.png?size=96" width="48" alt="@Deleh"/></a>
 <a href="https://github.com/lukasmwerner"><img src="https://github.com/lukasmwerner.png?size=96" width="48" alt="@lukasmwerner"/></a>
 <a href="https://github.com/JinJieBeWater"><img src="https://github.com/JinJieBeWater.png?size=96" width="48" alt="@JinJieBeWater"/></a>
-<a href="https://github.com/farragoo"><img src="https://github.com/farragoo.png?size=96" width="48" alt="@farragoo"/></a>
 <a href="https://github.com/sbvelinga"><img src="https://github.com/sbvelinga.png?size=96" width="48" alt="@sbvelinga"/></a>
 </p>
 

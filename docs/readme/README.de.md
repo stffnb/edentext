@@ -68,6 +68,7 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser – für alles von
 - **Alles für die Abschlussarbeit** – Inhaltsverzeichnis, Beschriftungen, Querverweise,
   Zitate und Literaturverzeichnis, Stichwortverzeichnis, Formeln (LaTeX)
 - **Überarbeiten** – Änderungsverfolgung und Kommentar-Threads in Sprechblasen am Rand,
+  Vergleichen und Zusammenführen mit einer anderen Datei,
   druckbare Markierungen, Rechtschreibprüfung (Englisch, Deutsch, Spanisch, Französisch,
   Portugiesisch, Griechisch, Russisch und Ukrainisch), Synonyme (dieselben Sprachen
   ohne Griechisch), Grammatikprüfung (Englisch)
@@ -148,6 +149,7 @@ Alternativ enthält jedes Release die Datei `edentext-<tag>.zip` mit der fertige
 `npm run build` erzeugt dieselben Dateien in `dist/`. Dieser Ordner lässt sich mit jedem
 Webserver bereitstellen. Das Container-Image kann auch lokal mit
 `docker build -t edentext .` gebaut werden.
+Für Kubernetes gibt es in [`charts/edentext`](../../charts/edentext) ein von der Community gepflegtes Helm-Chart.
 
 Für ein Update empfiehlt es sich, die neuen Dateien über die alten zu kopieren, statt den
 Ordner vorher zu leeren. Tabs, die vor dem Update geöffnet wurden, laden bis zum Neuladen
@@ -197,10 +199,11 @@ Patrick R., [@Deleh](https://github.com/Deleh), [@lukasmwerner](https://github.c
 <a href="https://github.com/stffnb"><img src="https://github.com/stffnb.png?size=96" width="48" alt="@stffnb"/></a>
 <a href="https://github.com/Camthalion77"><img src="https://github.com/Camthalion77.png?size=96" width="48" alt="@Camthalion77"/></a>
 <a href="https://github.com/ehrensperger-niklas"><img src="https://github.com/ehrensperger-niklas.png?size=96" width="48" alt="@ehrensperger-niklas"/></a>
+<a href="https://github.com/farragoo"><img src="https://github.com/farragoo.png?size=96" width="48" alt="@farragoo"/></a>
+<a href="https://github.com/blairhoddinott"><img src="https://github.com/blairhoddinott.png?size=96" width="48" alt="@blairhoddinott"/></a>
 <a href="https://github.com/Deleh"><img src="https://github.com/Deleh.png?size=96" width="48" alt="@Deleh"/></a>
 <a href="https://github.com/lukasmwerner"><img src="https://github.com/lukasmwerner.png?size=96" width="48" alt="@lukasmwerner"/></a>
 <a href="https://github.com/JinJieBeWater"><img src="https://github.com/JinJieBeWater.png?size=96" width="48" alt="@JinJieBeWater"/></a>
-<a href="https://github.com/farragoo"><img src="https://github.com/farragoo.png?size=96" width="48" alt="@farragoo"/></a>
 <a href="https://github.com/sbvelinga"><img src="https://github.com/sbvelinga.png?size=96" width="48" alt="@sbvelinga"/></a>
 </p>
 

@@ -65,7 +65,7 @@ EdenText はブラウザで動く高機能なワープロです。ちょっと�
 - **表** — 表スタイル、並べ替え、表計算のような数式
 - **論文に必要なものがひと通り** — 目次、図表番号、相互参照、引用と参考文献、索引、
   数式（LaTeX）
-- **校閲** — 変更履歴、余白の吹き出しでのスレッド形式コメント、印刷できる校閲記号、
+- **校閲** — 変更履歴、余白の吹き出しでのスレッド形式コメント、別のファイルとの比較と統合、印刷できる校閲記号、
   スペルチェック（英語、ドイツ語、スペイン語、フランス語、ポルトガル語、ギリシャ語、
   ロシア語、ウクライナ語）、類義語（このうちギリシャ語以外）、文法チェック（英語）
 - **オプションの AI アシスタント** — 好きなプロバイダーやローカルモデルを使えます。
@@ -146,6 +146,7 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 `npm run build` を実行すると、同じファイルが `dist/` に作成されます。
 このフォルダーは任意の Web サーバーで公開できます。
 コンテナイメージは `docker build -t edentext .` で手元でもビルドできます。
+Kubernetes 向けには、コミュニティが保守する Helm チャートが [`charts/edentext`](../../charts/edentext) にあります。
 
 更新するときは、フォルダーを空にせず、新しいファイルを古いファイルの上にコピーしてください。
 更新前に開いていたタブは、再読み込みされるまで自分のバージョンのファイルを読み込み続けます。
@@ -195,10 +196,11 @@ Patrick R.、[@Deleh](https://github.com/Deleh)、[@lukasmwerner](https://github
 <a href="https://github.com/stffnb"><img src="https://github.com/stffnb.png?size=96" width="48" alt="@stffnb"/></a>
 <a href="https://github.com/Camthalion77"><img src="https://github.com/Camthalion77.png?size=96" width="48" alt="@Camthalion77"/></a>
 <a href="https://github.com/ehrensperger-niklas"><img src="https://github.com/ehrensperger-niklas.png?size=96" width="48" alt="@ehrensperger-niklas"/></a>
+<a href="https://github.com/farragoo"><img src="https://github.com/farragoo.png?size=96" width="48" alt="@farragoo"/></a>
+<a href="https://github.com/blairhoddinott"><img src="https://github.com/blairhoddinott.png?size=96" width="48" alt="@blairhoddinott"/></a>
 <a href="https://github.com/Deleh"><img src="https://github.com/Deleh.png?size=96" width="48" alt="@Deleh"/></a>
 <a href="https://github.com/lukasmwerner"><img src="https://github.com/lukasmwerner.png?size=96" width="48" alt="@lukasmwerner"/></a>
 <a href="https://github.com/JinJieBeWater"><img src="https://github.com/JinJieBeWater.png?size=96" width="48" alt="@JinJieBeWater"/></a>
-<a href="https://github.com/farragoo"><img src="https://github.com/farragoo.png?size=96" width="48" alt="@farragoo"/></a>
 <a href="https://github.com/sbvelinga"><img src="https://github.com/sbvelinga.png?size=96" width="48" alt="@sbvelinga"/></a>
 </p>
 
