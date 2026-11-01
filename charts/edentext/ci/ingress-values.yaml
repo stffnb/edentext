@@ -1,0 +1,14 @@
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: word.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: word-example-com-tls
+      hosts:
+        - word.example.com

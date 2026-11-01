@@ -68,10 +68,10 @@ src/
   lib/components/           - UI, including ribbon/
   lib/editor/               - registry and extensions/
   lib/{utils,math}/         - framework-free helpers and formula AST
-  lib/{export,import,i18n,spell,storage,styles,crypto}/ - I/O, localization, persistence, styles, protection
+  lib/{export,import,i18n,spell,storage,styles,crypto,templates}/ - I/O, localization, persistence, styles, protection, templates
   lib/ai/                   - AI assistant client, document serialization and tools
-  lib/templates/            - built-in localized templates
   styles/                   - global and editor CSS
+charts/edentext/            - community-maintained Helm chart; test with bash scripts/test-helm-chart.sh
 desktop/                    - Electron shell around dist/ with its own npm commands; see desktop/CLAUDE.md
 ```
 

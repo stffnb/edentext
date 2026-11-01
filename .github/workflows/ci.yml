@@ -7,6 +7,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  helm-chart:
+    strategy:
+      matrix:
+        helm-version: [v3.22.1, v4.3.1]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ matrix.helm-version }}
+      - run: bash scripts/test-helm-chart.sh
+      - if: matrix.helm-version == 'v4.3.1'
+        run: |
+          helm template edentext charts/edentext --namespace edentext \
+            | docker run --rm -i ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e -strict -summary
+          helm template word charts/edentext --namespace documents --values charts/edentext/ci/ingress-values.yaml \
+            | docker run --rm -i ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e -strict -summary
+
   check-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20

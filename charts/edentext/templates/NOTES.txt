@@ -1,0 +1,19 @@
+EdenText has been installed.
+
+{{- if .Values.ingress.enabled }}
+Open the configured ingress host:
+{{- range .Values.ingress.hosts }}
+  {{ .host }}{{ (index .paths 0).path }}
+{{- end }}
+
+The ingress controller and TLS settings determine whether to use HTTP or HTTPS.
+{{- else }}
+To open it locally, run:
+
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "edentext.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  kubectl --namespace {{ .Release.Namespace }} port-forward "$POD_NAME" 8080:8080
+
+Then visit http://127.0.0.1:8080/.
+{{- end }}
+
+Documents remain in the browser; this release stores no document data.

@@ -1,0 +1,85 @@
+replicaCount: 1
+revisionHistoryLimit: 3
+
+image:
+  repository: ghcr.io/stffnb/edentext
+  pullPolicy: IfNotPresent
+  # Defaults to the chart's appVersion when empty.
+  tag: ""
+  # Optional immutable manifest digest, for example sha256:abc123...
+  digest: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  runAsGroup: 101
+  fsGroup: 101
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi
+
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 2
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: edentext.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
