@@ -2,6 +2,64 @@
 
 <!-- Newest release first. New entries go here: ## [x.y.z] — YYYY-MM-DD -->
 
+## [0.13.0] — 2026-11-01
+
+EdenText 0.13.0 is about review. Recording now covers far more than typed text: paragraph breaks,
+character and paragraph formatting, lists, table rows and columns, moved text, text boxes, notes,
+headers and footers. A document can be compared with a file or have one merged in, and recording
+can be protected by a password. Comments are written in the margin, balloons grow with their text
+and every reviewer has one colour. The floating toolbar now reaches every ribbon command, and
+self-hosters get a Helm chart.
+
+Thanks to @farragoo for reporting #18, #19, #21 and #22, and to @blairhoddinott for the Helm chart
+(#20).
+
+### Added
+- **Recorded changes beyond text**: paragraph breaks, character format, list structure, table rows
+  and columns, note anchors and text boxes, in headers and footers too, kept in DOCX and ODT.
+  Paragraph format is recorded too and kept as a change in DOCX; ODT saves its result
+- **Moves** are recorded as one change, from a drop or a chapter moved in the navigator, and accept
+  or reject as a pair
+- **Compare and merge**: compare this document with a file, or merge a file in as its author's
+  changes
+- **Password-protected recording**: recording stays on and changes stay unsettled until the
+  password is given
+- **Review pane filters** by author, kind and day; accept or reject exactly what the filter shows
+- **A reviewer's comment on a change**, kept in ODT and written on the change's card
+- **Accept and reject in the context menu**, **Ctrl+Shift+C** toggles recording, and Next and
+  Previous reach the headers and footers
+- **New comments in the margin**, in a box that grows with the text; Ctrl/Cmd+Enter adds it (#22)
+- **Your own reviewer name** in Settings ▸ Review, kept across documents and signing your comments
+  and changes (#21); a missing name is asked for instead of refused
+- **A Review section in Settings**, also reached from the Review tab: show or hide comments and
+  changes, in balloons or the pane
+- **One colour per reviewer** for comments and changes, in the balloons, the text and the print
+- **Balloons that stay readable**: they grow with their text, resolved comments fold to a greyed
+  card, and a page with too many stacks them as a deck
+- **Word counts and indexes follow the view**, leaving out what it hides
+- **The floating toolbar reaches every ribbon command**, by categories named like the ribbon tabs
+- **Date and time format** in Settings ▸ General, following the UI language or a picked region or
+  ISO 8601
+- **No spell check** as the first choice in the language picker
+- **Disabled controls say why** in their tooltip
+- **Helm chart** for Kubernetes in `charts/edentext` (community-maintained)
+
+### Fixed
+- Clicking marked text stays where it is instead of scrolling to its balloon (#19)
+- Comments and changes carry your name, not the file's author (#21)
+- Starting the app shows the saved theme at once, without a flash of the intro or of an empty
+  window (#18)
+- Recording keeps every edit, undo and redo restore it exactly, and accepting or rejecting loses
+  nothing, also across lists, tables, cells and text boxes
+- Tab stops, line keeps, fonts and named styles of paragraphs in lists, cells and boxes survive
+  saving
+- Font and bullet names read back as written, and a bullet `&` no longer breaks an ODT file
+- A paragraph beside an empty one can become a list, and a list a paragraph joins keeps its format
+- A wrong password keeps its dialog open
+- Scrollbars turn dark in dark themes
+- Enter over a selection in a header or footer no longer fails
+- A disabled field that sets its own colour dims like the others
+
 ## [0.12.0] — 2026-10-23
 
 EdenText 0.12.0 takes the document name from the saved file; browsers without a save dialog ask

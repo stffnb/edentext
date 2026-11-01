@@ -3,7 +3,7 @@ name: edentext
 description: A Helm chart for the EdenText browser-based word processor
 type: application
 version: 0.1.0
-appVersion: "v0.12.0"
+appVersion: "v0.13.0"
 home: https://edentext.app/
 icon: https://raw.githubusercontent.com/stffnb/edentext/main/public/icon-192.png
 sources:
