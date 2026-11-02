@@ -475,6 +475,7 @@ const es: Messages = {
     breaksNotInHf: 'Los saltos no están disponibles en encabezados ni pies',
     captionNotInHf: 'Las leyendas no están disponibles en encabezados ni pies',
     citationNotInHf: 'Las citas no están disponibles en encabezados ni pies',
+    bookmarkNotInHf: 'Los marcadores no están disponibles en encabezados ni pies',
     clearFormatting: 'Quitar el formato',
   },
   image: {
@@ -547,6 +548,8 @@ const es: Messages = {
     existing: 'En este documento',
     none: 'Todavía no hay marcadores',
     goTo: 'Ir al marcador',
+    rename: 'Cambiar nombre',
+    nameTaken: 'Este nombre ya existe',
     crossRefLabel: 'Insertar una referencia cruzada',
     formatText: 'Texto del marcador',
     formatPage: 'Número de página',

@@ -484,6 +484,7 @@ const en = {
     breaksNotInHf: 'Breaks are not available in headers/footers',
     captionNotInHf: 'Captions are not available in headers/footers',
     citationNotInHf: 'Citations are not available in headers/footers',
+    bookmarkNotInHf: 'Bookmarks are not available in headers/footers',
     clearFormatting: 'Clear formatting',
   },
   image: {
@@ -556,6 +557,8 @@ const en = {
     existing: 'In this document',
     none: 'No bookmarks yet',
     goTo: 'Jump to the bookmark',
+    rename: 'Rename',
+    nameTaken: 'This name is already taken',
     crossRefLabel: 'Insert cross-reference',
     formatText: 'Text of the bookmark',
     formatPage: 'Page number',

@@ -5,6 +5,10 @@ import { buildDocx } from '../../src/lib/export/docx';
 import { importOdt } from '../../src/lib/import/odt';
 import { importDocx } from '../../src/lib/import/docx';
 import { DEFAULT_MARGINS } from '../../src/lib/storage/pageMargins';
+import { getSchema } from '@tiptap/core';
+import { Node as PMNode } from '@tiptap/pm/model';
+import { extensions } from '../../src/lib/editor/extensions';
+import { bookmarks } from '../../src/lib/editor/extensions/bookmark';
 
 type N = { type: string; attrs?: any; content?: N[]; marks?: any[]; text?: string };
 
@@ -77,5 +81,31 @@ describe('bookmarks and cross-references round trip', () => {
       ['Fig1', 'page', '1'],
     ]);
     expect(texts(back).some((t) => markAttrs(t, 'link')?.href === '#Fig1')).toBe(true);
+  });
+
+  // One range over several paragraphs, an empty one among them, is one bookmark in both
+  // formats and comes back as one range, whatever the text around it.
+  const para = (...content: N[]): N => ({ type: 'paragraph', attrs: {}, content });
+  const spanning: N = {
+    type: 'doc',
+    content: [
+      para({ type: 'text', text: 'Before ' }, bm('one', 'Span')),
+      para(bm('two', 'Span')),
+      { type: 'paragraph', attrs: {} },
+      para(bm('three', 'Span'), { type: 'text', text: ' after' }),
+      para({ type: 'text', text: 'See ' }, ref('Span', 'text', 'one two three')),
+    ],
+  };
+  const schema = getSchema(extensions);
+  it.each([
+    ['ODF', () => buildOdt(spanning as any, DEFAULT_MARGINS, 'portrait'), 'content.xml', /<text:bookmark-start text:name="Span"\/>/g, /<text:bookmark-end text:name="Span"\/>/g, importOdt],
+    ['DOCX', () => buildDocx(spanning as any, DEFAULT_MARGINS, 'portrait'), 'word/document.xml', /<w:bookmarkStart [^>]*w:name="Span"/g, /<w:bookmarkEnd /g, importDocx],
+  ] as const)('writes a range across paragraphs once through %s', async (_f, build, part, start, end, read) => {
+    const bytes = await build();
+    const xml = strFromU8(unzipSync(bytes)[part]);
+    expect(xml.match(start)?.length).toBe(1);
+    expect(xml.match(end)?.length).toBe(1);
+    const back = PMNode.fromJSON(schema, (read as (b: Uint8Array) => { content: unknown })(bytes).content);
+    expect(bookmarks(back).map((b) => [b.name, b.text])).toEqual([['Span', 'one two three']]);
   });
 });

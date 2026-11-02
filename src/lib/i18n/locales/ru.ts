@@ -485,6 +485,7 @@ const ru: Messages = {
     breaksNotInHf: 'Разрывы в колонтитулах недоступны',
     captionNotInHf: 'Названия в колонтитулах недоступны',
     citationNotInHf: 'Ссылки на источники в колонтитулах недоступны',
+    bookmarkNotInHf: 'Закладки в колонтитулах недоступны',
     clearFormatting: 'Очистить форматирование',
   },
   image: {
@@ -557,6 +558,8 @@ const ru: Messages = {
     existing: 'В этом документе',
     none: 'Закладок пока нет',
     goTo: 'Перейти к закладке',
+    rename: 'Переименовать',
+    nameTaken: 'Такое имя уже есть',
     crossRefLabel: 'Вставить перекрёстную ссылку',
     formatText: 'Текст закладки',
     formatPage: 'Номер страницы',

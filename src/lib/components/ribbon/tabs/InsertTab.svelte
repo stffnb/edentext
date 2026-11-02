@@ -43,7 +43,6 @@
 
   let rubyOpen = $state(false);
 
-  let hasSelection = $derived(tick >= 0 && !!editor && !editor.state.selection.empty);
   let isLink = $derived(tick >= 0 && !!editor?.isActive('link'));
   let bmNames = $derived(tick >= 0 && editor ? bookmarkNames(editor.state.doc) : []);
   let hasRefs = $derived(tick >= 0 && !!editor && hasRefTargets(editor.state.doc));
@@ -144,7 +143,7 @@
 <RibbonGroup label={t().ribbon.groups.links}>
   <div class="rb-col link-anchor">
     <RibbonButton variant="small" icon="link" cmd="link" label={t().ribbon.link} title={`${isLink ? t().link.dialogLabel : t().ribbon.link} (${shortcutHint('link')})`} disabled={!editor} onclick={open(OPEN_LINK_DIALOG_EVENT)} />
-    <RibbonButton variant="small" icon="bookmark" cmd="bookmark" label={t().ribbon.bookmark} title={hasSelection ? t().toolbarExpanded.insertBookmark : t().toolbarExpanded.bookmarkNeedsSelection} disabled={!editor || !hasSelection} onclick={open(OPEN_BOOKMARK_DIALOG_EVENT)} />
+    <RibbonButton variant="small" icon="bookmark" cmd="bookmark" label={t().ribbon.bookmark} title={hfActive ? t().toolbarExpanded.bookmarkNotInHf : t().toolbarExpanded.insertBookmark} disabled={!editor || !!hfActive} onclick={open(OPEN_BOOKMARK_DIALOG_EVENT)} />
     <RibbonButton variant="small" icon="crossRef" cmd="crossRef" label={t().ribbon.crossRef} title={hasRefs ? t().toolbarExpanded.insertCrossRef : t().crossRef.none} disabled={!editor || !hasRefs} onclick={open(OPEN_CROSS_REF_DIALOG_EVENT)} />
   </div>
 </RibbonGroup>

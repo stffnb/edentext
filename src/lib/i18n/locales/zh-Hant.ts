@@ -476,6 +476,7 @@ const zhHant: Messages = {
     breaksNotInHf: '頁首/頁尾中無法使用分隔設定',
     captionNotInHf: '頁首/頁尾中無法使用標號',
     citationNotInHf: '頁首/頁尾中無法使用引文',
+    bookmarkNotInHf: '頁首/頁尾中無法使用書籤',
     clearFormatting: '清除格式',
   },
   image: {
@@ -548,6 +549,8 @@ const zhHant: Messages = {
     existing: '本文件中的書籤',
     none: '尚無書籤',
     goTo: '跳至該書籤',
+    rename: '重新命名',
+    nameTaken: '此名稱已存在',
     crossRefLabel: '插入交互參照',
     formatText: '書籤的文字',
     formatPage: '頁碼',

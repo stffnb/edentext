@@ -34,7 +34,7 @@ import type { SpacingModel } from '../storage/spacingModel';
 import { HF_DISTANCE_CM, HF_ZONE_KEYS, hfIsEmpty, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { DOCX_SEQ_NAME, seqCategoryOf } from '../editor/extensions/caption';
-import { sanitizeBookmarkName } from '../editor/extensions/bookmark';
+import { sanitizeBookmarkName, stampBookmarkEdges, bookmarkEdgesOf } from '../editor/extensions/bookmark';
 import { isCrossRefFormat, isCrossRefKind, type CrossRefFormat, type CrossRefKind } from '../editor/extensions/crossReference';
 import { indexKindOf, INDEX_TITLES, INDEX_COLUMN_GAP_CM, type IndexKind } from '../editor/extensions/tableOfContents';
 import { citationText, DOCX_BIB_FIELD, DOCX_SOURCE_TYPE, type BibSource } from '../editor/extensions/bibliographyEntry';
@@ -879,13 +879,10 @@ const commentIdsOf = (node: TiptapNode): number[] =>
   (node.marks ?? []).filter((m) => m.type === 'comment')
     .map((m) => docCommentIds.get(String(m.attrs?.id ?? ''))).filter((n) => n !== undefined);
 
-// Every bookmark on a node: both formats nest ranges, so one run can carry several.
-const bookmarkNamesOf = (node: TiptapNode): string[] =>
-  (node.marks ?? []).filter((m) => m.type === 'bookmark')
-    .map((m) => String(m.attrs?.name ?? '')).filter(Boolean);
-
 // w:bookmarkStart ids for the body; the box path mints its own, clear of these.
 let nextBookmarkId = 0;
+// The id each range opened with, by `stampBookmarkEdges`'s span, for the paragraph that ends it.
+let docBookmarkIds = new Map<number, number>();
 
 // A name an ODF reference mark brought ("Moving toolbars") is none Word accepts, so it is
 // mapped once per export — target and reference have to come out with the same one.
@@ -904,24 +901,22 @@ function docxBookmarkName(raw: string): string {
 function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline[] {
   const out: Inline[] = [];
   // A bookmark brackets its runs as two points, not as a wrapper: ranges overlap — a
-  // heading's own name inside the contents' one — and no nesting holds them all.
-  // ponytail: a range spanning paragraphs is emitted per paragraph — Word tolerates the
-  // repeated name, and splitting it would need a second pass over the whole document.
-  const open = new Map<string, number>();
-  const openFor = (names: string[]) => {
-    for (const [name, id] of open) {
-      if (names.includes(name)) continue;
-      out.push(new BookmarkEnd(id));
-      open.delete(name);
-    }
-    for (const name of names) {
-      if (open.has(name)) continue;
-      const id = ++nextBookmarkId;
-      open.set(name, id);
-      out.push(new BookmarkStart(docxBookmarkName(name), id));
+  // heading's own name inside the contents' one — and no nesting holds them all. Its
+  // edges come from `stampBookmarkEdges`, so a range across paragraphs is written once.
+  const ends: number[] = [];
+  const edgesAt = (node: TiptapNode) => {
+    flush();
+    for (const e of bookmarkEdgesOf(node)) {
+      if (e.first) {
+        const id = ++nextBookmarkId;
+        docBookmarkIds.set(e.span, id);
+        out.push(new BookmarkStart(docxBookmarkName(e.name), id));
+      }
+      const id = docBookmarkIds.get(e.span);
+      if (e.last && id != null) ends.push(id);
     }
   };
-  const flush = () => openFor([]);
+  function flush() { for (const id of ends.splice(0)) out.push(new BookmarkEnd(id)); }
 
   // A comment's range brackets its runs; the reference run at the end is what Word
   // draws the bubble from.
@@ -946,7 +941,7 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
   for (const node of content) {
     if (closeAtom) out.push(new TextRun({ text: closeAtom }));
     commentsAt(commentIdsOf(node));
-    openFor(bookmarkNamesOf(node));
+    edgesAt(node);
     const atom = atomRevisionMarks(node);
     if (atom) out.push(new TextRun({ text: atom[0] }));
     closeAtom = atom?.[1] ?? null;
@@ -1041,7 +1036,7 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
   }
   if (closeAtom) out.push(new TextRun({ text: closeAtom }));
   commentsAt([]);
-  flush(); // a bookmark still open at the paragraph's end would drop its runs
+  flush(); // the ends owed after the paragraph's last run
   return out;
 }
 
@@ -1484,24 +1479,23 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
       openComments.add(id);
     }
   };
-  const openBookmarks = new Map<string, number>();
-  const openBookmarksFor = (names: string[]) => {
-    for (const [name, id] of openBookmarks) {
-      if (names.includes(name)) continue;
-      runs += `<w:bookmarkEnd w:id="${id}"/>`;
-      openBookmarks.delete(name);
-    }
-    for (const name of names) {
-      if (openBookmarks.has(name)) continue;
-      const id = parts.nextBookmarkId();
-      openBookmarks.set(name, id);
-      runs += `<w:bookmarkStart w:id="${id}" w:name="${escapeXml(docxBookmarkName(name))}"/>`;
+  const ends: number[] = [];
+  const closeBookmark = () => { for (const id of ends.splice(0)) runs += `<w:bookmarkEnd w:id="${id}"/>`; };
+  const edgesAt = (child: TiptapNode) => {
+    closeBookmark();
+    for (const e of bookmarkEdgesOf(child)) {
+      if (e.first) {
+        const id = parts.nextBookmarkId();
+        docBookmarkIds.set(e.span, id);
+        runs += `<w:bookmarkStart w:id="${id}" w:name="${escapeXml(docxBookmarkName(e.name))}"/>`;
+      }
+      const id = docBookmarkIds.get(e.span);
+      if (e.last && id != null) ends.push(id);
     }
   };
-  const closeBookmark = () => openBookmarksFor([]);
   for (const child of node.content ?? []) {
     commentsAt(commentIdsOf(child));
-    openBookmarksFor(bookmarkNamesOf(child));
+    edgesAt(child);
     const atom = atomRevisionMarks(child);
     if (atom) runs += `<w:r><w:t>${atom[0]}</w:t></w:r>`;
     if (child.type === 'image') {
@@ -3662,10 +3656,11 @@ export async function buildDocx(
   // rasterizing is async where the emitters that place them are not.
   docJson = await rasterizeSvgImages(docJson);
   exportSheet = styles;
-  docJson = alignDisplayFormulas(docJson);
+  docJson = stampBookmarkEdges(alignDisplayFormulas(docJson));
   exportSpacingModel = spacingModel;
   docFormulas = [];
   nextBookmarkId = 0;
+  docBookmarkIds = new Map();
   docxBookmarkNames = new Map();
   docRubies = [];
   docAtomRevisions = [];

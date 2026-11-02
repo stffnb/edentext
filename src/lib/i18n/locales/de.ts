@@ -476,6 +476,7 @@ const de: Messages = {
     breaksNotInHf: 'Umbrüche sind in Kopf-/Fußzeilen nicht verfügbar',
     captionNotInHf: 'Beschriftungen sind in Kopf-/Fußzeilen nicht verfügbar',
     citationNotInHf: 'Literaturangaben sind in Kopf-/Fußzeilen nicht verfügbar',
+    bookmarkNotInHf: 'Textmarken sind in Kopf-/Fußzeilen nicht verfügbar',
     clearFormatting: 'Formatierung entfernen',
   },
   image: {
@@ -548,6 +549,8 @@ const de: Messages = {
     existing: 'In diesem Dokument',
     none: 'Noch keine Textmarken',
     goTo: 'Zur Textmarke springen',
+    rename: 'Umbenennen',
+    nameTaken: 'Diesen Namen gibt es schon',
     crossRefLabel: 'Querverweis einfügen',
     formatText: 'Text der Textmarke',
     formatPage: 'Seitenzahl',

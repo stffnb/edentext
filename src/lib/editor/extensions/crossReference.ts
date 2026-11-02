@@ -183,9 +183,8 @@ export const CrossReference = Node.create({
 });
 
 // The bookmark a reference may adopt for a range: one that covers it exactly and whose
-// name means nothing else in the document. A bookmark spanning several blocks comes back
-// as one range per block, and a reference carries nothing but the name — adopting such a
-// name would resolve it to the first piece instead of the one that was picked.
+// name means nothing else in the document. A name over a longer range or several pieces
+// would show that whole range or its first piece, not the target that was picked.
 export function adoptableBookmark(doc: PMNode, range: { from: number; to: number }): BookmarkRef | null {
   const all = bookmarks(doc);
   return all.find((b) => b.from === range.from && b.to === range.to

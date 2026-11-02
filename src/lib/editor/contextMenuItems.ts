@@ -167,12 +167,14 @@ export function buildContextMenu(editor: Editor, opts: { spell?: SpellSection; g
     });
   }
 
-  entries.push({
-    kind: 'item',
-    label: m.insertBookmark,
-    disabled: !hasSelection,
-    run: () => window.dispatchEvent(new CustomEvent(OPEN_BOOKMARK_DIALOG_EVENT)),
-  });
+  // Nor a bookmark: the zone's schema has no such mark either.
+  if (editor.schema.marks.bookmark) {
+    entries.push({
+      kind: 'item',
+      label: m.insertBookmark,
+      run: () => window.dispatchEvent(new CustomEvent(OPEN_BOOKMARK_DIALOG_EVENT)),
+    });
+  }
   // A header or footer takes no comment (its schema has no such mark).
   if (editor.schema.marks.comment) {
     entries.push({

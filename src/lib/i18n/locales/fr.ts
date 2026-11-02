@@ -480,6 +480,7 @@ const fr: Messages = {
     breaksNotInHf: 'Les sauts ne sont pas disponibles dans les en-têtes et pieds de page',
     captionNotInHf: 'Les légendes ne sont pas disponibles dans les en-têtes et pieds de page',
     citationNotInHf: 'Les citations ne sont pas disponibles dans les en-têtes et pieds de page',
+    bookmarkNotInHf: 'Les signets ne sont pas disponibles dans les en-têtes et pieds de page',
     clearFormatting: 'Effacer le formatage',
   },
   image: {
@@ -552,6 +553,8 @@ const fr: Messages = {
     existing: 'Dans ce document',
     none: 'Aucun signet pour le moment',
     goTo: 'Atteindre le signet',
+    rename: 'Renommer',
+    nameTaken: 'Ce nom existe déjà',
     crossRefLabel: 'Insérer un renvoi',
     formatText: 'Texte du signet',
     formatPage: 'Numéro de page',

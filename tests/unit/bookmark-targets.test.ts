@@ -3,7 +3,7 @@
 // marks. Each of those has to come back as a target the editor can jump to.
 import { describe, it, expect } from 'vitest';
 import { zipSync, strToU8, unzipSync, strFromU8 } from 'fflate';
-import { getSchema } from '@tiptap/core';
+import { Editor, getSchema } from '@tiptap/core';
 import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
@@ -199,5 +199,44 @@ describe('finding a target', () => {
     expect(findTarget(doc, '#inner')?.text).toBe('figures');
     expect(findTarget(doc, '#Key performance indicators|outline')?.from).toBe(1);
     expect(findTarget(doc, '#nothing')).toBeNull();
+  });
+});
+
+// A name is one bookmark: renaming takes the references along, setting it again moves it.
+describe('editing a bookmark', () => {
+  const bmText = (text: string, name: string) => ({ type: 'text', text, marks: [{ type: 'bookmark', attrs: { name } }] });
+  const make = () => new Editor({ element: document.createElement('div'), extensions, content: { type: 'doc', content: [
+    { type: 'paragraph', content: [bmText('first', 'Old')] },
+    { type: 'paragraph', content: [bmText('second', 'Old'), { type: 'text', text: ' rest' }] },
+    { type: 'paragraph', content: [
+      { type: 'crossRef', attrs: { name: 'Old', format: 'text', text: 'first second' } },
+      { type: 'text', text: ' jump', marks: [{ type: 'link', attrs: { href: '#Old' } }] },
+    ] },
+  ] } });
+  const refsAndLinks = (editor: Editor) => {
+    const out: string[] = [];
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'crossRef') out.push(`ref:${node.attrs.name}`);
+      for (const m of node.marks) if (m.type.name === 'link') out.push(`link:${m.attrs.href}`);
+      return true;
+    });
+    return out;
+  };
+
+  it('renames the range across paragraphs and every reference to it', () => {
+    const editor = make();
+    expect(editor.commands.renameBookmark('Old', 'New name')).toBe(true);
+    expect(bookmarks(editor.state.doc).map((b) => [b.name, b.text])).toEqual([['New_name', 'first second']]);
+    expect(refsAndLinks(editor)).toEqual(['ref:New_name', 'link:#New_name']);
+    const rest = bookmarks(editor.state.doc)[0].to + 1;
+    editor.chain().setTextSelection({ from: rest, to: rest + 4 }).setBookmark('Other').run();
+    expect(editor.commands.renameBookmark('New_name', 'Other')).toBe(false);
+  });
+
+  it('moves a name set again instead of keeping two ranges', () => {
+    const editor = make();
+    const rest = bookmarks(editor.state.doc)[0].to + 1;
+    editor.chain().setTextSelection({ from: rest, to: rest + 4 }).setBookmark('Old').run();
+    expect(bookmarks(editor.state.doc).map((b) => [b.name, b.text])).toEqual([['Old', 'rest']]);
   });
 });

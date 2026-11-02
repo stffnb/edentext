@@ -1,7 +1,8 @@
 <script lang="ts">
   import { t } from '../i18n/i18n.svelte';
   import { dragWindow } from '../utils/dragWindow';
-  // The bookmark window: name the selected range, and jump to or drop a name the
+  import BookmarkRow from './BookmarkRow.svelte';
+  // The bookmark window: name the selected range, and jump to, rename or drop a name the
   // document already carries. Modeless and draggable like the cross-reference window —
   // a jump has to stay visible, and naming another range must not mean reopening.
   let {
@@ -11,6 +12,7 @@
     canApply = true,
     onApply,
     onRemove,
+    onRename,
     onGoTo,
     onClose,
   }: {
@@ -21,6 +23,7 @@
     canApply?: boolean;
     onApply: (name: string) => void;
     onRemove: (name: string) => void;
+    onRename: (from: string, to: string) => boolean;
     onGoTo: (name: string) => void;
     onClose: () => void;
   } = $props();
@@ -84,12 +87,7 @@
     <span class="bm-label">{t().bookmark.existing}</span>
     <div class="bm-list">
       {#each names as n (n)}
-        <div class="bm-row">
-          <button class="bm-name" onclick={() => { name = n; onGoTo(n); }} title={t().bookmark.goTo}>{n}</button>
-          <button class="bm-drop" onclick={() => onRemove(n)} aria-label={`${t().common.remove} ${n}`} title={t().common.remove}>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-          </button>
-        </div>
+        <BookmarkRow name={n} onGoTo={() => { name = n; onGoTo(n); }} onRemove={() => onRemove(n)} onRename={(to) => onRename(n, to)} />
       {:else}
         <p class="bm-none">{t().bookmark.none}</p>
       {/each}
@@ -180,39 +178,7 @@
     background: var(--color-surface);
   }
 
-  .bm-row { display: flex; align-items: center; }
-  .bm-row:hover { background: var(--color-hover, rgba(0, 0, 0, 0.06)); }
   .bm-none { margin: 0; padding: 0.35rem 0.5rem; font-size: 0.8rem; opacity: 0.7; }
-
-  .bm-name {
-    flex: 1;
-    min-width: 0;
-    padding: 0.3rem 0.5rem;
-    border: none;
-    background: transparent;
-    color: var(--color-text);
-    font-size: 0.8rem;
-    text-align: left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    cursor: pointer;
-  }
-
-  .bm-drop {
-    display: flex;
-    padding: 0.25rem 0.45rem;
-    border: none;
-    background: transparent;
-    color: var(--color-text);
-    opacity: 0;
-    cursor: pointer;
-  }
-
-  /* The delete cross only shows on the row under the pointer, so a long list reads as
-     names rather than as a column of crosses; the keyboard still reaches every one. */
-  .bm-row:hover .bm-drop, .bm-drop:focus-visible { opacity: 0.75; }
-  .bm-drop:hover { opacity: 1; color: #c0392b; }
 
   .bm-actions {
     display: flex;

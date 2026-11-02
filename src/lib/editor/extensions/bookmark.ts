@@ -30,34 +30,121 @@ export function bookmarkNamesOf(marks: readonly PMMark[]): string[] {
     .map((m) => String(m.attrs?.name ?? '')).filter(Boolean);
 }
 
-// Every bookmark range in document order. Adjacent text nodes sharing a name merge into
-// one range; a name that reappears later gets its own entry, and lookups take the first.
-// ponytail: no cross-paragraph merge — the DOCX exporter can't write one either.
-export function bookmarks(doc: PMNode): BookmarkRef[] {
-  const out: BookmarkRef[] = [];
-  const open = new Map<string, BookmarkRef>();
-  doc.descendants((node, pos) => {
-    // Inline atoms count too: a bookmark over a caption's number or a note's anchor has
-    // no text node to hold on to, and the field's cached string is what it shows. An
-    // inline frame carries blocks of its own, and a bookmark inside it lives on that text.
-    if (!node.isInline || !node.isAtom) return true;
-    const names = new Set(bookmarkNamesOf(node.marks));
-    for (const [name, ref] of open) if (!names.has(name) || ref.to !== pos) open.delete(name);
-    const text = inlineText(node);
-    for (const name of names) {
-      const ref = open.get(name);
-      if (ref) {
-        ref.to = pos + node.nodeSize;
-        ref.text += text;
-        continue;
-      }
-      const fresh = { name, from: pos, to: pos + node.nodeSize, text };
+// A note's text and a frame's blocks are stories of their own: a range never runs into
+// or out of one, since both formats write them apart from the text around them.
+const STORIES = new Set(['note', 'textBox']);
+// The JSON's blocks of inline content, which the schema knows as `inlineContent`.
+const TEXTBLOCKS = new Set(['paragraph', 'heading', 'note']);
+
+export type BookmarkSpan<T> = { name: string; items: T[] };
+
+// One range per stretch of a name: it stays open while every inline node it meets
+// carries the name, so a paragraph boundary or an empty paragraph does not end it —
+// unmarked text or a field does. Both formats store a range across paragraphs as one.
+export function bookmarkSpans<T>(seq: Iterable<{ item: T; names: readonly string[] }>): BookmarkSpan<T>[] {
+  const out: BookmarkSpan<T>[] = [];
+  const open = new Map<string, BookmarkSpan<T>>();
+  for (const { item, names } of seq) {
+    for (const name of open.keys()) if (!names.includes(name)) open.delete(name);
+    for (const name of new Set(names)) {
+      const span = open.get(name);
+      if (span) { span.items.push(item); continue; }
+      const fresh = { name, items: [item] };
       out.push(fresh);
       open.set(name, fresh);
     }
-    return false;
-  });
+  }
   return out;
+}
+
+type InlineAt = { node: PMNode; pos: number; block: PMNode };
+
+// The inline leaves of each story in document order. Inline atoms count too: a bookmark
+// over a caption's number or a note's anchor has no text node to hold on to.
+function inlineStories(doc: PMNode): InlineAt[][] {
+  const stories: InlineAt[][] = [[]];
+  const walk = (node: PMNode, start: number, story: InlineAt[]) => {
+    node.forEach((child, offset) => {
+      const pos = start + offset;
+      if (STORIES.has(child.type.name)) {
+        const own: InlineAt[] = [];
+        stories.push(own);
+        walk(child, pos + 1, own);
+      } else if (node.inlineContent && child.isLeaf) story.push({ node: child, pos, block: node });
+      else walk(child, pos + 1, story);
+    });
+  };
+  walk(doc, 0, stories[0]);
+  return stories;
+}
+
+// Every bookmark range in document order; a name that reappears later gets its own
+// entry, and lookups take the first. The text joins the paragraphs a range spans.
+export function bookmarks(doc: PMNode): BookmarkRef[] {
+  const out: BookmarkRef[] = [];
+  for (const story of inlineStories(doc)) {
+    const seq = story.map((at) => ({ item: at, names: bookmarkNamesOf(at.node.marks) }));
+    for (const { name, items } of bookmarkSpans(seq)) {
+      const last = items[items.length - 1];
+      const text = items.map((at, i) => (i && at.block !== items[i - 1].block ? ' ' : '') + inlineText(at.node)).join('');
+      out.push({ name, from: items[0].pos, to: last.pos + last.node.nodeSize, text });
+    }
+  }
+  return out.sort((a, b) => a.from - b.from);
+}
+
+type JsonMark = { type: string; attrs?: Record<string, unknown> };
+type JsonNode = { type: string; content?: JsonNode[]; marks?: JsonMark[] };
+export type BookmarkEdge = { name: string; span: number; first: boolean; last: boolean };
+
+// For the exporters, which bracket a range as two points: a copy of the document JSON
+// whose bookmark marks say which range they belong to and whether they open or close
+// it. `textOnly` counts only text runs as covered, for ODF, whose atoms take none.
+export function stampBookmarkEdges<N extends JsonNode>(doc: N, textOnly = false): N {
+  type Item = { item: JsonNode; names: string[] };
+  const stories: Item[][] = [[]];
+  const copy = (node: JsonNode, story: Item[], inline: boolean): JsonNode => {
+    const out: JsonNode = { ...node };
+    if (node.marks?.some((m) => m.type === 'bookmark')) {
+      out.marks = node.marks.map((m) => (m.type === 'bookmark' ? { ...m, attrs: { ...m.attrs } } : m));
+    }
+    if (inline) {
+      const names = textOnly && node.type !== 'text' ? [] : jsonBookmarkNames(out);
+      story.push({ item: out, names });
+    }
+    if (node.content) {
+      let own = story;
+      if (STORIES.has(node.type)) stories.push((own = []));
+      // An exporter's own block types hold text too, which is what marks them out.
+      const holdsInline = TEXTBLOCKS.has(node.type) || node.content.some((c) => c.type === 'text');
+      out.content = node.content.map((c) => copy(c, own, holdsInline && !c.content));
+    }
+    return out;
+  };
+  const stamped = copy(doc, stories[0], false) as N;
+  let span = 0;
+  for (const story of stories) {
+    for (const { name, items } of bookmarkSpans(story)) {
+      span++;
+      items.forEach((node, i) => {
+        const mark = node.marks?.find((m) => m.type === 'bookmark' && m.attrs?.name === name);
+        if (mark) Object.assign(mark.attrs!, { span, first: i === 0, last: i === items.length - 1 });
+      });
+    }
+  }
+  return stamped;
+}
+
+const jsonBookmarkNames = (node: JsonNode): string[] =>
+  (node.marks ?? []).filter((m) => m.type === 'bookmark').map((m) => String(m.attrs?.name ?? '')).filter(Boolean);
+
+// The edges `stampBookmarkEdges` left on a node. A mark it never saw is a range of its own.
+export function bookmarkEdgesOf(node: JsonNode): BookmarkEdge[] {
+  return (node.marks ?? []).filter((m) => m.type === 'bookmark' && m.attrs?.name).map((m) => {
+    const a = m.attrs!;
+    const stamped = typeof a.span === 'number';
+    return { name: String(a.name), span: stamped ? (a.span as number) : -1, first: !stamped || a.first === true, last: !stamped || a.last === true };
+  });
 }
 
 export function findBookmark(doc: PMNode, name: string): BookmarkRef | null {
@@ -105,6 +192,7 @@ declare module '@tiptap/core' {
       setBookmark: (name: string) => ReturnType;
       unsetBookmark: () => ReturnType;
       removeBookmark: (name: string) => ReturnType;
+      renameBookmark: (from: string, to: string) => ReturnType;
     };
   }
 }
@@ -137,11 +225,15 @@ export const Bookmark = Mark.create({
 
   addCommands() {
     return {
+      // A name the document already has moves to the selection, as in Word: two ranges
+      // under one name are a single bookmark to both formats.
       setBookmark:
         (name) =>
         ({ commands }) => {
           const clean = sanitizeBookmarkName(name);
-          return clean ? commands.setMark(this.name, { name: clean }) : false;
+          if (!clean) return false;
+          commands.removeBookmark(clean);
+          return commands.setMark(this.name, { name: clean });
         },
       unsetBookmark:
         () =>
@@ -158,6 +250,33 @@ export const Bookmark = Mark.create({
             // By name, not by type: a run inside another bookmark's range keeps that one.
             for (const r of ranges) tr.removeMark(r.from, r.to, state.schema.marks.bookmark.create({ name }));
           }
+          return true;
+        },
+      // Rename on every run carrying the name, and the references along with it: a
+      // cross-reference or a "#name" link keeps pointing at the same text.
+      renameBookmark:
+        (from, to) =>
+        ({ tr, state, dispatch }) => {
+          const clean = sanitizeBookmarkName(to);
+          const names = bookmarkNames(state.doc);
+          if (!clean || clean === from || names.includes(clean) || !names.includes(from)) return false;
+          if (!dispatch) return true;
+          const { bookmark, link } = state.schema.marks;
+          state.doc.descendants((node, pos) => {
+            if (node.type.name === 'crossRef' && node.attrs.name === from && node.attrs.kind !== 'note') {
+              tr.setNodeMarkup(pos, undefined, { ...node.attrs, name: clean });
+            }
+            if (!node.isLeaf || !node.isInline) return true;
+            const end = pos + node.nodeSize;
+            for (const m of node.marks) {
+              if (m.type === bookmark && m.attrs.name === from) {
+                tr.removeMark(pos, end, m).addMark(pos, end, bookmark.create({ name: clean }));
+              } else if (link && m.type === link && m.attrs.href === `#${from}`) {
+                tr.removeMark(pos, end, m).addMark(pos, end, link.create({ ...m.attrs, href: `#${clean}` }));
+              }
+            }
+            return false;
+          });
           return true;
         },
     };

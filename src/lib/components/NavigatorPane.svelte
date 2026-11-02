@@ -2,12 +2,13 @@
   import type { Editor } from '@tiptap/core';
   import { TextSelection } from '@tiptap/pm/state';
   import { outline, type OutlineEntry } from '../editor/extensions/outline';
-  import { bookmarks } from '../editor/extensions/bookmark';
+  import { bookmarks, goToTarget } from '../editor/extensions/bookmark';
+  import BookmarkRow from './BookmarkRow.svelte';
   import { t } from '../i18n/i18n.svelte';
 
   // LibreOffice's Navigator and Word's Navigation pane: the chapters of the document,
   // click to jump, and the four chapter operations beside them. Below them the other
-  // things LibreOffice lists — tables, pictures, bookmarks — as plain jump targets.
+  // things LibreOffice lists — tables and pictures to jump to, bookmarks to edit as well.
   let { editor, tick, onClose }: {
     editor: Editor | null;
     tick: number;
@@ -19,10 +20,10 @@
   type Target = { pos: number; label: string };
 
   // Tables and pictures anywhere in the document, in document order.
-  let objects = $derived.by<{ tables: Target[]; images: Target[]; marks: Target[] }>(() => {
+  let objects = $derived.by<{ tables: Target[]; images: Target[] }>(() => {
     const tables: Target[] = [];
     const images: Target[] = [];
-    if (tick < 0 || !editor) return { tables, images, marks: [] };
+    if (tick < 0 || !editor) return { tables, images };
     editor.state.doc.descendants((node, pos) => {
       if (node.type.name === 'table') {
         tables.push({ pos, label: t().navigator.tableN(tables.length + 1) });
@@ -31,8 +32,11 @@
       }
       return true;
     });
-    return { tables, images, marks: bookmarks(editor.state.doc).map((b) => ({ pos: b.from, label: b.name })) };
+    return { tables, images };
   });
+
+  // One row per name, as the bookmark window lists them.
+  let marks = $derived(tick < 0 || !editor ? [] : [...new Set(bookmarks(editor.state.doc).map((b) => b.name))]);
 
   function jumpTo(pos: number) {
     if (!editor) return;
@@ -86,7 +90,6 @@
   {#each [
     { label: t().navigator.tables, items: objects.tables },
     { label: t().navigator.images, items: objects.images },
-    { label: t().navigator.bookmarks, items: objects.marks },
   ] as group}
     {#if group.items.length}
       <div class="group">{group.label}</div>
@@ -97,6 +100,20 @@
       </ul>
     {/if}
   {/each}
+
+  {#if marks.length}
+    <div class="group">{t().navigator.bookmarks}</div>
+    <div class="marks">
+      {#each marks as name (name)}
+        <BookmarkRow
+          {name}
+          onGoTo={() => editor && goToTarget(editor.view, name)}
+          onRemove={() => editor?.chain().focus().removeBookmark(name).run()}
+          onRename={(to) => !!editor?.chain().focus().renameBookmark(name, to).run()}
+        />
+      {/each}
+    </div>
+  {/if}
 </aside>
 
 <style>
@@ -139,6 +156,7 @@
   }
 
   ul { list-style: none; margin: 0; padding: 0; }
+  .marks { padding: 1px 4px; }
 
   li {
     display: flex;

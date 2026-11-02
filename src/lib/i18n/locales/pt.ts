@@ -474,6 +474,7 @@ const pt: Messages = {
     breaksNotInHf: 'As quebras não estão disponíveis em cabeçalhos e rodapés',
     captionNotInHf: 'As legendas não estão disponíveis em cabeçalhos e rodapés',
     citationNotInHf: 'As citações não estão disponíveis em cabeçalhos e rodapés',
+    bookmarkNotInHf: 'Os marcadores não estão disponíveis em cabeçalhos e rodapés',
     clearFormatting: 'Limpar formatação',
   },
   image: {
@@ -546,6 +547,8 @@ const pt: Messages = {
     existing: 'Neste documento',
     none: 'Ainda não há marcadores',
     goTo: 'Ir para o marcador',
+    rename: 'Renomear',
+    nameTaken: 'Este nome já existe',
     crossRefLabel: 'Inserir uma referência cruzada',
     formatText: 'Texto do marcador',
     formatPage: 'Número da página',

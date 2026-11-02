@@ -53,8 +53,9 @@
     } else editor.chain().focus().extendMarkRange('link').setLink({ href }).run();
   }
 
+  // Without a selection too: the list is where a bookmark is found, renamed and dropped.
   function openBookmark() {
-    if (!editor || !hasSelection) return;
+    if (!editor) return;
     crossRefOpen = false;
     bookmarkOpen = true;
   }
@@ -107,6 +108,6 @@
 </script>
 
 <LinkDialog open={linkOpen} initialUrl={linkUrl} canRemove={isLink} onApply={applyLink} onRemove={() => { linkOpen = false; editor?.chain().focus().extendMarkRange('link').unsetLink().run(); }} onClose={() => (linkOpen = false)} />
-<BookmarkDialog open={bookmarkOpen} names={bmNames} canApply={hasSelection} onApply={(n) => { bookmarkOpen = false; editor?.chain().focus().setBookmark(n).run(); }} onRemove={(n) => editor?.chain().focus().removeBookmark(n).run()} onGoTo={goToBookmark} onClose={() => (bookmarkOpen = false)} />
+<BookmarkDialog open={bookmarkOpen} names={bmNames} canApply={hasSelection} onApply={(n) => { bookmarkOpen = false; editor?.chain().focus().setBookmark(n).run(); }} onRemove={(n) => editor?.chain().focus().removeBookmark(n).run()} onRename={(from, to) => !!editor?.chain().focus().renameBookmark(from, to).run()} onGoTo={goToBookmark} onClose={() => (bookmarkOpen = false)} />
 <CrossRefDialog open={crossRefOpen} {editor} {tick} onClose={() => (crossRefOpen = false)} />
 <FormulaDialog bind:open={formulaOpen} initialLatex={formulaLatex} initialDisplay={formulaDisplay} onApply={applyFormula} />

@@ -475,6 +475,7 @@ const zhHans: Messages = {
     breaksNotInHf: '页眉/页脚中不能使用分隔符',
     captionNotInHf: '页眉/页脚中不能使用题注',
     citationNotInHf: '页眉/页脚中不能使用引文',
+    bookmarkNotInHf: '页眉/页脚中不能使用书签',
     clearFormatting: '清除格式',
   },
   image: {
@@ -547,6 +548,8 @@ const zhHans: Messages = {
     existing: '本文档中的书签',
     none: '还没有书签',
     goTo: '跳转到该书签',
+    rename: '重命名',
+    nameTaken: '该名称已存在',
     crossRefLabel: '插入交叉引用',
     formatText: '书签的文字',
     formatPage: '页码',

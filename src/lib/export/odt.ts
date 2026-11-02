@@ -42,6 +42,7 @@ import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/e
 import { orderedTypeDef, effectiveOrderedDef, odfNumFormatAttrs, effectiveOrderedDefAt, childCycle, formatOrdinal, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { ODF_SEQ_NAME, seqCategoryOf, type SeqCategory } from '../editor/extensions/caption';
 import { isCrossRefFormat, isCrossRefKind, type CrossRefFormat, type CrossRefKind } from '../editor/extensions/crossReference';
+import { stampBookmarkEdges, bookmarkEdgesOf } from '../editor/extensions/bookmark';
 import { indexKindOf, INDEX_TITLES, INDEX_COLUMN_GAP_CM, type IndexKind } from '../editor/extensions/tableOfContents';
 import { citationText, isBibType } from '../editor/extensions/bibliographyEntry';
 import { isCitationStyle, rowTemplate, type CitationStyle } from '../utils/citationStyle';
@@ -1181,11 +1182,6 @@ const RUBY_STYLE = 'Ru1';
 // that arrived with one keeps it.
 type CrossRefExport = { name: string; format: CrossRefFormat; kind: CrossRefKind };
 
-// Every bookmark on a node: both formats nest ranges, so one run can carry several.
-const bookmarkNamesOf = (node: TiptapNode): string[] =>
-  (node.marks ?? []).filter((m) => m.type === 'bookmark')
-    .map((m) => String(m.attrs?.name ?? '')).filter(Boolean);
-
 // One comment, collected by replaceComments and emitted by applyComments.
 type CommentExport = {
   name: string; author: string; date: string; text: string; resolved: boolean;
@@ -1240,44 +1236,30 @@ function replaceComments(node: TiptapNode, out: CommentExport[]): TiptapNode {
 // an XRF-sentinel run; applyBookmarks resolves them after serialization. Spliced into the
 // run text, not a run emitter, so both ride every odf-kit path (cells included).
 function replaceBookmarks(node: TiptapNode, refs: CrossRefExport[]): TiptapNode {
+  return bracketBookmarks(stampBookmarkEdges(node, true), refs);
+}
+
+// ODF's start and end are points, so each range is bracketed on its own: before the run
+// that opens it and after the last run it covers, which may lie paragraphs further on.
+function bracketBookmarks(node: TiptapNode, refs: CrossRefExport[]): TiptapNode {
   if (!node.content?.length) return node;
-  const content: TiptapNode[] = [];
-  // Ranges overlap, and ODF's start and end are points, so each name is bracketed on
-  // its own: where its range opens, and the last run it still covers.
-  const open = new Map<string, number>();
-  const starts: { at: number; name: string }[] = [];
-  const ends: { at: number; name: string }[] = [];
-  const keepOnly = (names: string[]) => {
-    for (const [name, at] of open) {
-      if (names.includes(name)) continue;
-      ends.push({ at, name });
-      open.delete(name);
-    }
-  };
-  for (const child of node.content) {
+  const content = node.content.map((child): TiptapNode => {
     if (child.type === 'crossRef') {
-      keepOnly([]);
       const a = child.attrs ?? {};
       refs.push({
         name: String(a.name ?? ''),
         format: isCrossRefFormat(a.format) ? a.format : 'text',
         kind: isCrossRefKind(a.kind) ? a.kind : 'bookmark',
       });
-      content.push({ type: 'text', text: `${XRF}${refs.length - 1}${XRF}${String(a.text ?? '')}${XRF}`, marks: child.marks });
-      continue;
+      return { type: 'text', text: `${XRF}${refs.length - 1}${XRF}${String(a.text ?? '')}${XRF}`, marks: child.marks };
     }
-    const names = child.type === 'text' ? bookmarkNamesOf(child) : [];
-    keepOnly(names);
-    const at = content.length;
-    content.push(names.length ? child : replaceBookmarks(child, refs));
-    for (const name of names) {
-      if (!open.has(name)) starts.push({ at, name });
-      open.set(name, at);
-    }
-  }
-  keepOnly([]);
-  for (const s of starts) content[s.at] = { ...content[s.at], text: `${BMS}${s.name}${BMS}${content[s.at].text ?? ''}` };
-  for (const e of ends) content[e.at] = { ...content[e.at], text: `${content[e.at].text ?? ''}${BME}${e.name}${BME}` };
+    if (child.type !== 'text') return bracketBookmarks(child, refs);
+    const edges = bookmarkEdgesOf(child);
+    if (!edges.length) return child;
+    const starts = edges.filter((e) => e.first).map((e) => `${BMS}${e.name}${BMS}`).join('');
+    const ends = edges.filter((e) => e.last).map((e) => `${BME}${e.name}${BME}`).join('');
+    return { ...child, text: `${starts}${child.text ?? ''}${ends}` };
+  });
   return { ...node, content };
 }
 

@@ -42,7 +42,6 @@
   } = $props();
 
   let rubyOpen = $state(false);
-  let hasSelection = $derived(tick >= 0 && !!editor && !editor.state.selection.empty);
   let isLink = $derived(tick >= 0 && !!editor?.isActive('link'));
   let hasRefs = $derived(tick >= 0 && !!editor && hasRefTargets(editor.state.doc));
 
@@ -107,7 +106,7 @@
 
 <div class="toolbar-group">
   <IslandButton icon="link" cmd="link" title={`${isLink ? t().link.dialogLabel : t().toolbarExpanded.insertLink} (${shortcutHint('link')})`} active={isLink} disabled={!editor} onclick={open(OPEN_LINK_DIALOG_EVENT)} />
-  <IslandButton icon="bookmark" cmd="bookmark" title={hasSelection ? t().toolbarExpanded.insertBookmark : t().toolbarExpanded.bookmarkNeedsSelection} disabled={!editor || !hasSelection} onclick={open(OPEN_BOOKMARK_DIALOG_EVENT)} />
+  <IslandButton icon="bookmark" cmd="bookmark" title={hfActive ? t().toolbarExpanded.bookmarkNotInHf : t().toolbarExpanded.insertBookmark} disabled={!editor || !!hfActive} onclick={open(OPEN_BOOKMARK_DIALOG_EVENT)} />
   <IslandButton icon="crossRef" cmd="crossRef" title={hasRefs ? t().toolbarExpanded.insertCrossRef : t().crossRef.none} disabled={!editor || !hasRefs} onclick={open(OPEN_CROSS_REF_DIALOG_EVENT)} />
 </div>
 

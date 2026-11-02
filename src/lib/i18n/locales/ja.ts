@@ -477,6 +477,7 @@ const ja: Messages = {
     breaksNotInHf: 'ヘッダー/フッターでは区切りを使えません',
     captionNotInHf: 'ヘッダー/フッターでは図表番号を使えません',
     citationNotInHf: 'ヘッダー/フッターでは引用文献を使えません',
+    bookmarkNotInHf: 'ヘッダー/フッターではブックマークを使えません',
     clearFormatting: '書式のクリア',
   },
   image: {
@@ -549,6 +550,8 @@ const ja: Messages = {
     existing: 'この文書内',
     none: 'まだブックマークがありません',
     goTo: 'ブックマークへジャンプ',
+    rename: '名前の変更',
+    nameTaken: 'この名前はすでに使われています',
     crossRefLabel: '相互参照の挿入',
     formatText: 'ブックマークのテキスト',
     formatPage: 'ページ番号',

@@ -485,6 +485,7 @@ const uk: Messages = {
     breaksNotInHf: 'Розриви в колонтитулах недоступні',
     captionNotInHf: 'Підписи в колонтитулах недоступні',
     citationNotInHf: 'Посилання на джерела в колонтитулах недоступні',
+    bookmarkNotInHf: 'Закладки в колонтитулах недоступні',
     clearFormatting: 'Очистити форматування',
   },
   image: {
@@ -557,6 +558,8 @@ const uk: Messages = {
     existing: 'У цьому документі',
     none: 'Закладок ще немає',
     goTo: 'Перейти до закладки',
+    rename: 'Перейменувати',
+    nameTaken: 'Така назва вже є',
     crossRefLabel: 'Вставити перехресне посилання',
     formatText: 'Текст закладки',
     formatPage: 'Номер сторінки',
