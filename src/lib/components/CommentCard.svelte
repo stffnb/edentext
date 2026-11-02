@@ -218,9 +218,12 @@
     max-height: 6lh;
   }
   .body.clamp.line { -webkit-line-clamp: 1; line-clamp: 1; max-height: 1lh; }
-  .replies { margin-top: 2px; color: var(--color-text-muted); }
+  /* Folded answers sit where they unfold, in the text colour so the count is not overlooked. */
+  .replies { width: auto; color: var(--color-text); }
+  .replies:hover { text-decoration: underline; }
 
   /* An answer is indented under the comment it belongs to, as in a threaded pane. */
+  .replies,
   .reply {
     margin-top: 4px;
     padding-left: 6px;
