@@ -120,7 +120,11 @@
     </div>
   {/each}
 {:else if c.replies.length}
-  <button class="card replies" onclick={onSelect}>{t().comments.replies(c.replies.length)}</button>
+  <button class="card replies" aria-expanded="false" onclick={onSelect}>
+    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+      <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>{t().comments.replies(c.replies.length)}
+  </button>
 {/if}
 
 {#if aiAnswering.get(c.id) === ''}
@@ -218,12 +222,12 @@
     max-height: 6lh;
   }
   .body.clamp.line { -webkit-line-clamp: 1; line-clamp: 1; max-height: 1lh; }
-  /* Folded answers sit where they unfold, in the text colour so the count is not overlooked. */
-  .replies { width: auto; color: var(--color-text); }
+  /* A disclosure arrow, in the text colour so folded answers are not overlooked. */
+  .replies { display: flex; align-items: center; gap: 5px; margin-top: 4px; color: var(--color-text); }
+  .replies svg { flex: none; transform: rotate(-90deg); }
   .replies:hover { text-decoration: underline; }
 
   /* An answer is indented under the comment it belongs to, as in a threaded pane. */
-  .replies,
   .reply {
     margin-top: 4px;
     padding-left: 6px;
