@@ -2078,6 +2078,9 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
   // A page field in a header/footer zone (zoneField): its cached result is dropped and
   // the live atom emitted at the field's end.
   let fieldZone = false;
+  // A GOTOBUTTON/MACROBUTTON field (buttonFieldFromInstr): its result, else its
+  // instruction's text, is shown — under the jump's link for a GOTOBUTTON.
+  let fieldButton: { href?: string; text: string } | null = null;
 
   const pushText = (text: string, marks: Mark[]) => {
     if (!text) return;
@@ -2171,6 +2174,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     // Hide a field's cached result where a live node replaces it: a recognized date/time
     // field, a reference, a zone's page field.
     const skipResult = () => fieldMode === 'result' && (fieldZone || !!fieldDateTime || !!fieldShown);
+    const buttonLink = () => (fieldMode === 'result' && !linkHref ? fieldButton?.href : undefined);
 
     // Route a drawing/pict result: both a picture and a text box are inline and stay
     // where the drawing sits.
@@ -2202,7 +2206,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       switch (child.localName) {
         case 'fldChar': {
           const t = child.getAttributeNS(W, 'fldCharType');
-          if (t === 'begin') { fieldMode = 'instr'; fieldInstr = ''; fieldDateTime = null; fieldShown = null; fieldSeq = null; fieldResultText = ''; fieldZone = false; }
+          if (t === 'begin') { fieldMode = 'instr'; fieldInstr = ''; fieldDateTime = null; fieldShown = null; fieldSeq = null; fieldResultText = ''; fieldZone = false; fieldButton = null; }
           else if (t === 'separate') {
             fieldMode = 'result';
             fieldZone = !!ctx.zone && !!zoneField(fieldInstr);
@@ -2211,11 +2215,14 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
               fieldSeq = fieldDateTime ? null : seqFieldFromInstr(fieldInstr);
               fieldShown = fieldDateTime || fieldSeq ? null : (crossRefFromInstr(fieldInstr, ctx) ?? citationFromInstr(fieldInstr, ctx));
               fieldResultText = '';
+              fieldButton = buttonFieldFromInstr(fieldInstr);
               // Carry the field run's marks so the atom renders in the run's font.
               const field = fieldDateTime ?? fieldSeq ?? fieldShown;
               if (field && marks.length) field.marks = marks;
             }
           } else if (t === 'end') {
+            const button = fieldMode === 'instr' ? buttonFieldFromInstr(fieldInstr) : null;
+            if (button) pushText(button.text, linkHref || !button.href ? marks : runMarks(r, button.href));
             // A reference Word never resolved has no w:separate and so no cached result
             // (it shows nothing until the field is updated); the node view fills it in
             // when the bookmark is still there.
@@ -2235,6 +2242,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
             fieldDateTime = null;
             fieldShown = null;
             fieldSeq = null;
+            fieldButton = null;
           }
           break;
         }
@@ -2246,7 +2254,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
         case 't':
           if (customMark !== null && (child.textContent ?? '') === customMark) { customMark = null; break; }
           if ((fieldShown || fieldSeq || fieldZone) && fieldMode === 'result') fieldResultText += child.textContent ?? '';
-          else if (!skipResult()) pushText(child.textContent ?? '', marks);
+          else if (!skipResult()) pushText(child.textContent ?? '', buttonLink() ? runMarks(r, buttonLink()) : marks);
           break;
         case 'ruby': {
           // Word nests both halves in runs of their own; the editor keeps them as one
@@ -2359,7 +2367,12 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       case 'fldSimple': {
         // A field collapsed to one node drops its runs, never the ranges opened or closed in them.
         const node = fieldNode(el);
-        if (node) { out.push(node); trackRanges(el, ctx); } else handleRuns(el, linkHref);
+        const button = node ? null : buttonFieldFromInstr(el.getAttributeNS(W, 'instr') ?? '');
+        if (node) { out.push(node); trackRanges(el, ctx); }
+        else if (button && !fcAll(el, 'r').length) {
+          pushText(button.text, button.href && !linkHref ? runMarks(el, button.href) : runMarks(el, linkHref));
+          trackRanges(el, ctx);
+        } else handleRuns(el, linkHref ?? button?.href);
         break;
       }
       case 'ins':
@@ -2476,6 +2489,16 @@ function citationFromInstr(instr: string, ctx: Ctx): Node | null {
     type: 'bibliographyEntry',
     attrs: { identifier, type: source?.type ?? 'misc', fields: source?.fields ?? {}, text: '' },
   };
+}
+
+// A field whose shown text is in its instruction, not a result: GOTOBUTTON's jump becomes
+// an internal link, MACROBUTTON's text stays plain since no macro runs here.
+function buttonFieldFromInstr(instr: string): { href?: string; text: string } | null {
+  const m = /^\s*(GOTOBUTTON|MACROBUTTON)\s+(\S+)\s*(.*)$/is.exec(instr);
+  if (!m) return null;
+  const text = m[3].replace(/\s\\\*.*$/s, '').trim().replace(/^"(.*)"$/s, '$1');
+  const href = m[1].toUpperCase() === 'GOTOBUTTON' && isAllowedUri(`#${m[2]}`) ? `#${m[2]}` : undefined;
+  return { text, ...(href ? { href } : {}) };
 }
 
 // An XE field instruction → an index entry. Word files the term under a key with

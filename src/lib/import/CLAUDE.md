@@ -22,7 +22,7 @@ the resolved named style as direct formatting. Values equal to LibreOffice-compa
 editor defaults must remain implicit, or each round trip accumulates formatting.
 
 Fit imported content to the editor schema without changing its semantic role: paragraph,
-heading, list, table, frame, note, and field paths have separate constraints. Keep ODF and
+heading, list, table, frame, note, and field paths have separate constraints. A DOCX `GOTOBUTTON`/`MACROBUTTON` without a result shows its instruction's text, a GOTOBUTTON's as a `#target` link (`buttonFieldFromInstr`). Keep ODF and
 DOCX behavior aligned unless the formats expose an unavoidable difference.
 A heading in a cell or a list carries no style name but renders by its level's `Heading N`,
 so a file style of that name is imported even where no top-level block uses it; under any

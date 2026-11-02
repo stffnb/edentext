@@ -99,3 +99,33 @@ describe('a tab inside a contents row', () => {
     }
   });
 });
+
+// GOTOBUTTON and MACROBUTTON show text from their instruction, which a producer often
+// writes with no result at all; a GOTOBUTTON's jump stays an internal link.
+describe('a field showing its instruction', () => {
+  const R = (inner: string) => `<w:r>${inner}</w:r>`;
+  const complex = (instr: string, result = '') => R('<w:fldChar w:fldCharType="begin"/>') + R(`<w:instrText xml:space="preserve">${instr}</w:instrText>`)
+    + (result ? R('<w:fldChar w:fldCharType="separate"/>') + R(`<w:t>${result}</w:t>`) : '') + R('<w:fldChar w:fldCharType="end"/>');
+  const para = (field: string) => importDocx(docxOf(`<w:p><w:bookmarkStart w:id="0" w:name="Target"/>${R('<w:t>T</w:t>')}<w:bookmarkEnd w:id="0"/></w:p>
+    <w:p>${R('<w:t xml:space="preserve">A </w:t>')}${field}${R('<w:t xml:space="preserve"> B</w:t>')}</w:p>`)).content;
+  const shown = (doc: N) => {
+    const runs = doc.content[1].content as N[];
+    const linked = runs.filter((n) => n.marks?.some((m: N) => m.type === 'link')).map((n) => n.marks.find((m: N) => m.type === 'link').attrs.href);
+    return { text: runs.map((n) => n.text ?? '').join(''), links: [...new Set(linked)] };
+  };
+
+  it.each([
+    ['a simple GOTOBUTTON', '<w:fldSimple w:instr=" GOTOBUTTON Target Click here "/>', ['#Target']],
+    ['a GOTOBUTTON without a result', complex(' GOTOBUTTON Target "Click here" '), ['#Target']],
+    ['a GOTOBUTTON with a result', complex(' GOTOBUTTON Target Click here ', 'Click here'), ['#Target']],
+    ['a MACROBUTTON', complex(' MACROBUTTON NoMacro Click here '), []],
+  ])('keeps the text of %s', (_name, field, links) => {
+    expect(shown(para(field))).toEqual({ text: 'A Click here B', links });
+  });
+
+  it('keeps the jump through both formats', async () => {
+    for (const doc of await roundTrips(para(complex(' GOTOBUTTON Target Click here ')))) {
+      expect(shown(doc)).toEqual({ text: 'A Click here B', links: ['#Target'] });
+    }
+  });
+});

@@ -128,7 +128,12 @@ link-to-previous behavior, while a present empty part deliberately clears the zo
 Map paragraphs, headings, lists, tables, inline content, fields, and frames to their semantic
 editor nodes. Keep fields' cached values where the editor cannot recalculate them. An index
 keeps its cached rows (text, level from the row's entry style, page numbers after the last
-tab) as its entries: both word processors show those until the reader updates it. Text boxes,
+tab) as its entries: both word processors show those until the reader updates it. A DOCX
+`GOTOBUTTON`/`MACROBUTTON` shows text from its instruction and is often written without a
+result, so that text is kept where no result is: a GOTOBUTTON's as an internal `#target`
+link, a MACROBUTTON's as plain text. LibreOffice 26.2 keeps MACROBUTTON's text (as
+`text:execute-macro`, which the ODT importer reads as text) but drops a result-less
+GOTOBUTTON's; the editor goes further, since its link writes back in both formats. Text boxes,
 shapes, charts, formulas, bookmarks, cross-references, ruby, bibliography, revisions, notes,
 and placeholders have focused mappings in their architecture documents.
 
