@@ -95,11 +95,6 @@
     z-index: 300;
     width: 18rem;
     padding: 0;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    background: var(--color-toolbar-bg, #fff);
-    color: var(--color-text);
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
   }
 
   .lk-bar {

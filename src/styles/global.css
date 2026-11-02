@@ -340,6 +340,8 @@
   --w-active: #e2e0de;
   --w-accent-soft: #eaeff4;
   --w-menu-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  /* A window without a backdrop stands on its frame alone. */
+  --w-window-shadow: 0 10px 32px rgb(0 0 0 / 22%);
   --w-font: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   /* Body height: three control rows plus the group-label row, and a big button's
      label may take two of them. A tuning knob. */
@@ -368,6 +370,9 @@
   --w-active: #4a4a4a;
   --w-accent-soft: #2b3b49;
   --w-menu-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  /* The workspace behind is lighter than a window, so a dark ring outside the lighter
+     border draws the edge a shadow cannot. */
+  --w-window-shadow: 0 0 0 1px rgb(0 0 0 / 55%), 0 12px 36px rgb(0 0 0 / 60%);
 }
 
 /* AllBlack darkens the canvas past dark, so the ribbon follows with Word's Black
@@ -948,6 +953,16 @@ dialog {
   font-family: var(--font-sans);
 }
 dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+
+/* One frame for every modeless window (link, bookmark, cross-reference): no backdrop
+   sets it off, so it takes the strong border and a shadow of its own. */
+[popover][role='dialog'] {
+  border: 1px solid var(--w-border-strong);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--w-window-shadow);
+}
 
 /* A modal dialog moves by its title (utils/dragWindow.ts). */
 dialog h2 { cursor: move; user-select: none; touch-action: none; }
