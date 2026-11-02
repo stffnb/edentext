@@ -17,7 +17,7 @@ import { COMMANDS } from '../ai/commands';
 // data + closures — ContextMenu.svelte only renders it.
 export type MenuEntry =
   | { kind: 'sep' }
-  | { kind: 'item'; label: string; hint?: string; disabled?: boolean; strong?: boolean; run: () => void }
+  | { kind: 'item'; label: string; hint?: string; disabled?: boolean; strong?: boolean; checked?: boolean; run: () => void }
   | { kind: 'sub'; label: string; items: MenuEntry[]; disabled?: boolean; title?: string };
 
 export interface SpellSection {

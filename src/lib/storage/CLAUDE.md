@@ -88,6 +88,7 @@ writes its own marker, so no two tabs race over one key.
 - **Styles:** `edentext-styles` — the style registry (`styles/sheet.svelte.ts`).
 - **Document properties:** `edentext-doc-properties` — title/subject/author/keywords/comments (`docProperties.ts`); the key is removed when every field is empty, so a fresh document writes nothing into `meta.xml`.
 - **AutoCorrect:** `edentext-autocorrect` — one flag per rule (`autoCorrect.ts`, reactive singleton in `autoCorrect.svelte.ts`), LibreOffice's defaults (all on).
+- **Navigator:** `edentext-navigator` — JSON `{open, side, size, width, wrap, tab}` (`navigator.svelte.ts`), app-wide: the pane's view, never the document's.
 - **AI assistant:** `edentext-ai` — JSON `{enabled, provider, endpoint, apiKey, model}` (`ai.svelte.ts`), app-wide; removed while on and empty, so switching off is stored. `enabled` is the kill switch, on by default so the button is found; nothing goes out before a provider is set; switching off keeps the provider. The key is stored in plain text. See `docs/architecture/ai.md`.
 - **Notes:** `edentext-notes` — footnote/endnote numbering and the separator (`noteSettings.ts`, reactive singleton in `notes.svelte.ts`); `applyNoteVars` puts the separator on `:root`, where `editor.css` draws it and `pageBreaks.ts` reserves its band.
 

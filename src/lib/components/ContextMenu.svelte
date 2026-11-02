@@ -68,6 +68,8 @@
     subUp = trigger.top + subEl.offsetHeight > window.innerHeight - 4;
   });
 
+  const hasChecks = (list: MenuEntry[]) => list.some((e) => e.kind === 'item' && e.checked !== undefined);
+
   function showSub(i: number, focus: boolean) {
     const entry = items[i];
     openSub = entry.kind === 'sub' && !entry.disabled ? i : null;
@@ -104,6 +106,7 @@
   class="cm-menu"
   class:flip-x={flipX}
   class:flip-y={flipY}
+  class:checks={hasChecks(items)}
   style="top: {top}px; left: {left}px;"
   role="menu"
   tabindex="-1"
@@ -130,7 +133,7 @@
           <svg class="cm-hint" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M2.5 1l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
         </button>
         {#if openSub === i}
-          <div bind:this={subEl} class="cm-menu cm-sub" class:left={subLeft} class:up={subUp} role="menu" tabindex="-1">
+          <div bind:this={subEl} class="cm-menu cm-sub" class:checks={hasChecks(entry.items)} class:left={subLeft} class:up={subUp} role="menu" tabindex="-1">
             {#each entry.items as sub}
               {#if sub.kind === 'item'}{@render item(sub)}{:else if sub.kind === 'sep'}<span class="cm-sep"></span>{/if}
             {/each}
@@ -147,11 +150,13 @@
   <button
     class="cm-item"
     class:strong={entry.strong}
-    role="menuitem"
+    role={entry.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+    aria-checked={entry.checked}
     disabled={entry.disabled}
     onpointerenter={onenter}
     onclick={() => activate(entry)}
   >
+    {#if entry.checked}<svg class="cm-check" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 5.2l2.3 2.3 4.7-5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>{/if}
     <span class="cm-label">{entry.label}</span>
     {#if entry.hint}<span class="cm-hint">{entry.hint}</span>{/if}
   </button>
@@ -190,6 +195,10 @@
     text-align: left;
     white-space: nowrap;
   }
+
+  /* A panel with a checkable entry keeps a column for the tick, so its labels align. */
+  .cm-menu.checks > .cm-item, .cm-menu.checks > .cm-subwrap > .cm-item { position: relative; padding-left: 26px; }
+  .cm-check { position: absolute; left: 9px; color: var(--color-primary); }
 
   .cm-subwrap { position: relative; }
   .cm-sub { top: -5px; left: 100%; }

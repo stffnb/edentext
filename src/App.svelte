@@ -91,6 +91,7 @@
   import NavigatorPane from './lib/components/NavigatorPane.svelte';
   import AiPane, { askAi, resetAiChat } from './lib/components/AiPane.svelte';
   import { aiConfig, aiAnswering, aiEnabled, AI_COMMENT_EVENT, OPEN_AI_CHAT_EVENT } from './lib/storage/ai.svelte';
+  import { navigatorSettings, setNavigator } from './lib/storage/navigator.svelte';
   import { aiErrorText, isAbort } from './lib/ai/client';
   import { abortAll as abortAiRequests, answerComment, startRequest, endRequest, type AiHost } from './lib/ai/tools';
   import { commentDraft, OPEN_COMMENT_EVENT } from './lib/editor/extensions/comment';
@@ -396,7 +397,9 @@
   let autoCorrectOpen = $state(false);
   let autoTextOpen = $state(false);
   let thesaurusOpen = $state(false);
-  let navigatorOpen = $state(false);
+  // Kept per browser, so the pane is back after a reload, as in both word processors.
+  const navigatorOpen = $derived(navigatorSettings().open);
+  const toggleNavigator = () => setNavigator({ open: !navigatorOpen });
   let aiOpen = $state(false);
   // The kill switch stops whatever is in flight; a new document starts a new chat.
   $effect(() => { if (!aiEnabled()) abortAiRequests(); });
@@ -1708,7 +1711,7 @@
       [DEFAULT_SHORTCUTS.findNext, () => (findOpen ? editor?.commands.findNext() : openFind('find'))],
       [DEFAULT_SHORTCUTS.findPrevious, () => (findOpen ? editor?.commands.findPrevious() : openFind('find'))],
       [DEFAULT_SHORTCUTS.formattingMarks, () => (showFormattingMarks = !showFormattingMarks)],
-      [DEFAULT_SHORTCUTS.navigator, () => (navigatorOpen = !navigatorOpen)],
+      [DEFAULT_SHORTCUTS.navigator, toggleNavigator],
       [DEFAULT_SHORTCUTS.thesaurus, () => (thesaurusOpen = true)],
       [DEFAULT_SHORTCUTS.splitView, () => (splitView = !splitView)],
       [DEFAULT_SHORTCUTS.recordChanges, toggleRecordChanges],
@@ -1875,7 +1878,7 @@
       onNewComment={addComment}
       onReviewSettings={openReviewSettings}
       {navigatorOpen}
-      onToggleNavigator={() => (navigatorOpen = !navigatorOpen)}
+      onToggleNavigator={toggleNavigator}
       {aiOpen}
       onToggleAi={() => (aiOpen = !aiOpen)}
     />
@@ -2174,7 +2177,7 @@
           {zoom}
           onZoom={setZoom}
           {navigatorOpen}
-          onToggleNavigator={() => (navigatorOpen = !navigatorOpen)}
+          onToggleNavigator={toggleNavigator}
           onEditZone={(zone) => (hfActive = zone)}
           onDebugDump={import.meta.env.DEV ? handleDebugDump : undefined}
           onManageTableStyles={() => openStyleManager('table')}
@@ -2251,7 +2254,7 @@
     {pageFormat}
   />
   {#if navigatorOpen}
-    <NavigatorPane {editor} {tick} onClose={() => (navigatorOpen = false)} />
+    <NavigatorPane {editor} {tick} onClose={() => setNavigator({ open: false })} />
   {/if}
   {#if aiEnabled() && aiOpen}
     <AiPane {editor} host={aiHost} onClose={() => (aiOpen = false)} onSettings={() => { settingsSection = 'ai'; settingsOpen = true; }} />

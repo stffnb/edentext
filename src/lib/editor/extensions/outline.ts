@@ -150,6 +150,8 @@ declare module '@tiptap/core' {
       moveChapter: (pos: number, dir: -1 | 1) => ReturnType;
       /** Promote (-1) or demote (+1) the chapter's heading and its subheadings. */
       shiftChapterLevel: (pos: number, delta: -1 | 1) => ReturnType;
+      /** Delete the chapter starting at `pos`: its heading and everything it owns. */
+      deleteChapter: (pos: number) => ReturnType;
     };
   }
 }
@@ -185,6 +187,14 @@ export const Outline = Extension.create<{ maxLevel: number }>({
           // switch, and the level alone would leave the paragraph looking unchanged.
           tr.setNodeMarkup(at, undefined, { ...node.attrs, level, styleName: headingStyleName(level) });
         }
+        return true;
+      },
+
+      // A plain delete, so recording turns it into one tracked deletion like any other.
+      deleteChapter: (pos) => ({ state, tr, dispatch }) => {
+        const me = outline(state.doc).find((e) => e.pos === pos);
+        if (!me) return false;
+        if (dispatch) tr.delete(me.pos, me.end).scrollIntoView();
         return true;
       },
     };

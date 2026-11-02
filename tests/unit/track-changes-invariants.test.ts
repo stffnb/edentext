@@ -223,7 +223,8 @@ describe('recording keeps its promise', () => {
   });
 
   // A header goes through both files by its own path: the same promise, there.
-  it.each(CASES)('in a header: %s', async (_name, html, steps) => {
+  // A zone has no chapters, so the navigator's cases stay in the body.
+  it.each(CASES.filter(([name]) => !name.includes('navigator')))('in a header: %s', async (_name, html, steps) => {
     const zone = (content: unknown, live = false) => {
       const element = document.body.appendChild(document.createElement('div'));
       return new Editor({ element, extensions: zoneExtensions('', live), content: content as string });

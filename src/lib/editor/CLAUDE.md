@@ -51,7 +51,7 @@ the tooltips (via `withShortcut`, which localizes Ctrl/Shift/Alt and swaps in �
 Word's text context menu: clipboard, link, clear formatting — with the spelling
 suggestions merged in as the first section (the old `SpellContextMenu.svelte`).
 One level of submenu (`sub`, used for AI), opening on hover or →, flipping left/up at the
-window edge; a disabled `sub` keeps its `title` tooltip via `aria-disabled`.
+window edge; a disabled `sub` keeps its `title` tooltip via `aria-disabled`. An item with `checked` is a `menuitemcheckbox`; its panel keeps a tick column (the navigator's options).
 `buildContextMenu(editor, { spell })` returns a `MenuEntry[]`
 (item/sep/sub) whose `run` closures call the same commands the toolbars use;
 `ContextMenu.svelte` only renders it, positioned as a sibling of the zoomed `.paper` so

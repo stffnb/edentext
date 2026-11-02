@@ -181,7 +181,7 @@ edits and pagination settles.
 ## Secondary features
 
 The Navigator derives its outline from `editor/extensions/outline.ts` and performs chapter
-operations on the selected entry. AutoText stores the selected slice as JSON and inserts it
+operations on the selected entry; it docks either side, outside the AI pane. AutoText stores the selected slice as JSON and inserts it
 through its dialog. The synonym dialog loads data lazily for the selected language; unavailable
 data disables lookup rather than the application.
 

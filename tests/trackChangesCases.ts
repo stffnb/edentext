@@ -159,6 +159,8 @@ export const CASES: [string, string, Act[]][] = [
   ['a selection across two paragraphs', THREE, del(3, 9)],
   ['a whole paragraph with its mark', THREE, del(7, 13)],
   ['only a paragraph mark', THREE, del(5, 7)],
+  ['a chapter deleted in the navigator', CHAPTERS, [(e) => e.commands.deleteChapter(7)]],
+  ['the last chapter deleted in the navigator', CHAPTERS, [(e) => e.commands.deleteChapter(14)]],
   ['three paragraphs', THREE, del(2, 15)],
   ['Backspace at a block start', THREE, [(e) => select(e, 7), (e) => e.commands.joinBackward()]],
   ['Delete at a block end', THREE, [(e) => select(e, 5), (e) => e.commands.joinForward()]],
