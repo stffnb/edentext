@@ -158,6 +158,16 @@ EdenText は HTTPS で公開することをおすすめします。HTTP でも�
 開いたファイルへの直接保存（代わりにダウンロードされます）、コピーボタンです。
 localhost では HTTPS と同じようにすべて使えます。
 
+## 埋め込み
+
+他の Web アプリケーションは EdenText を iframe に表示し、文書を自ら管理できます。
+`?embed=1` を付けるとエディター自身のファイル管理が非表示になります。各インスタンスが配信する
+ヘルパー `embed.js` でファイルを読み込み、ODT・DOCX・PDF として受け取れます。詳しくは
+[docs/architecture/embed.md](../../docs/architecture/embed.md) を参照してください。埋め込みモードでは
+EdenText のロゴと「Powered by EdenText」という表示が出ます。これらは AGPL の条件により残す必要があり
+（[NOTICE.md](../../NOTICE.md)）、省略できるのは[商用ライセンス](../../LICENSE.commercial.md)による
+ホワイトラベルのビルド（`VITE_EDENTEXT_ATTRIBUTION=off`）だけです。
+
 ## アーキテクチャ
 
 ```mermaid
@@ -208,7 +218,7 @@ Patrick R.、[@Deleh](https://github.com/Deleh)、[@lukasmwerner](https://github
 
 Copyright © 2026 Steffen Becker · ドイツ製
 
-[AGPL-3.0](../../LICENSE)。AGPL が合わない用途には[商用ライセンス](../../LICENSE.commercial.md)
+[AGPL-3.0](../../LICENSE)（埋め込みモードには第 7 条 (b) に基づく追加条項があります。[NOTICE.md](../../NOTICE.md)）。AGPL が合わない用途には[商用ライセンス](../../LICENSE.commercial.md)
 もあります。同梱のフォントと言語データにはそれぞれのライセンスが適用されます。詳しくは
 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) をご覧ください。
 

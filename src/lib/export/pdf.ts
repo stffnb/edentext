@@ -43,6 +43,8 @@ export interface PdfOptions {
   printMarkup?: boolean;
   /** The share of the pages rastered so far (0…1). */
   onProgress?: (done: number) => void;
+  /** Hand the bytes back instead of downloading them (an embedding host saves them). */
+  toBytes?: boolean;
 }
 
 type Run = { str: string; x: number; y: number; h: number }; // doc px, relative to .paper top-left
@@ -518,8 +520,9 @@ async function renderCommentPages(
   }
 }
 
-// Render the document to A4 pages (raster + invisible text) and download the PDF.
-export async function exportPdf(opts: PdfOptions): Promise<void> {
+// Render the document to A4 pages (raster + invisible text) and download the PDF, or
+// return its bytes with `toBytes`.
+export async function exportPdf(opts: PdfOptions): Promise<ArrayBuffer | undefined> {
   const { images, clone, pages, pageW, pageH, cycle, scale, cleanup } = await renderPages(opts);
   const landscape = (opts.orientation ?? 'portrait') === 'landscape';
   try {
@@ -558,9 +561,10 @@ export async function exportPdf(opts: PdfOptions): Promise<void> {
       }
     }
 
+    if (opts.toBytes) return doc.output('arraybuffer');
     // Test seam: the smoke test takes the bytes here — capturing the real doc.save()
     // download hangs in headless Chromium (docs/headless-testing.md).
-    const sink = (window as { __edentextPdfSink?: (bytes: ArrayBuffer) => void }).__edentextPdfSink;
+    const sink =(window as { __edentextPdfSink?: (bytes: ArrayBuffer) => void }).__edentextPdfSink;
     if (sink) sink(doc.output('arraybuffer'));
     else doc.save((opts.fileName ?? deriveFilename(opts.json)).replace(/\.(odt|pdf)$/i, '') + '.pdf');
   } finally {

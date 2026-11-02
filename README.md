@@ -159,6 +159,16 @@ browsers then turn off a few features: offline use, installing it as an app, sav
 straight back to the opened file (it is downloaded instead) and the copy buttons. On
 localhost everything works as it does over HTTPS.
 
+## Embedding
+
+Another web application can show EdenText in an iframe and keep the document itself.
+With `?embed=1` the editor leaves out its own file management. The `embed.js` helper,
+served by every instance, loads files into it and gets them back as ODT, DOCX or PDF;
+see [docs/architecture/embed.md](docs/architecture/embed.md). In embed mode the editor
+shows the EdenText logo and a “Powered by EdenText” notice, which the AGPL terms require
+to stay ([NOTICE.md](NOTICE.md)) and which only a white-label build under the
+[commercial license](LICENSE.commercial.md) leaves out (`VITE_EDENTEXT_ATTRIBUTION=off`).
+
 ## Architecture
 
 ```mermaid
@@ -213,7 +223,8 @@ Patrick R., [@Deleh](https://github.com/Deleh), [@lukasmwerner](https://github.c
 
 Copyright © 2026 Steffen Becker · Made in Germany
 
-[AGPL-3.0](LICENSE). A [commercial license](LICENSE.commercial.md) is available
+[AGPL-3.0](LICENSE), with an additional term under its section 7(b) for embed mode
+([NOTICE.md](NOTICE.md)). A [commercial license](LICENSE.commercial.md) is available
 for use cases the AGPL does not fit. Bundled fonts and language data keep their
 own licenses — see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 

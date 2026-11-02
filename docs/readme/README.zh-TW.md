@@ -145,6 +145,14 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 離線使用、安裝為應用程式、直接存回已開啟的檔案（改為下載）以及複製按鈕。
 在 localhost 上，所有功能都與 HTTPS 一樣可用。
 
+## 嵌入
+
+其他 Web 應用程式可以在 iframe 中顯示 EdenText，並自行管理文件。使用 `?embed=1` 時，編輯器會隱藏
+自身的檔案管理。每個執行個體都提供輔助腳本 `embed.js`，用來載入檔案，並以 ODT、DOCX 或 PDF 格式取回；
+詳見 [docs/architecture/embed.md](../../docs/architecture/embed.md)。在嵌入模式下，編輯器會顯示
+EdenText 標誌和「Powered by EdenText」標示，AGPL 條款要求保留兩者（[NOTICE.md](../../NOTICE.md)），
+只有依據[商業授權](../../LICENSE.commercial.md)的白標建置（`VITE_EDENTEXT_ATTRIBUTION=off`）才會省略。
+
 ## 架構
 
 ```mermaid
@@ -192,7 +200,7 @@ Patrick R.、[@Deleh](https://github.com/Deleh)、[@lukasmwerner](https://github
 
 Copyright © 2026 Steffen Becker · 德國製造
 
-[AGPL-3.0](../../LICENSE)。如果 AGPL 不適合你的用途，可以選擇[商業授權](../../LICENSE.commercial.md)。
+[AGPL-3.0](../../LICENSE)，嵌入模式另有依據其第 7(b) 條的附加條款（[NOTICE.md](../../NOTICE.md)）。如果 AGPL 不適合你的用途，可以選擇[商業授權](../../LICENSE.commercial.md)。
 隨附的字型和語言資料保留各自的授權——見 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md)。
 
 *EdenText 是獨立專案，與 Microsoft 或 The Document Foundation 無關。支援 `.docx`

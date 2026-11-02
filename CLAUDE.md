@@ -68,7 +68,7 @@ src/
   lib/components/           - UI, including ribbon/
   lib/editor/               - registry and extensions/
   lib/{utils,math}/         - framework-free helpers and formula AST
-  lib/{export,import,i18n,spell,storage,styles,crypto,templates}/ - I/O, localization, persistence, styles, protection, templates
+  lib/{export,import,i18n,spell,storage,styles,crypto,templates,embed}/ - I/O, localization, persistence, styles, protection, templates, embed mode (docs/architecture/embed.md)
   lib/ai/                   - AI assistant client, document serialization and tools
   styles/                   - global and editor CSS
 charts/edentext/            - community-maintained Helm chart; test with bash scripts/test-helm-chart.sh

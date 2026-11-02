@@ -159,6 +159,16 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 сохранение прямо в открытый файл (вместо этого он скачивается) и кнопки копирования. На
 localhost всё работает так же, как по HTTPS.
 
+## Встраивание
+
+Другое веб-приложение может показать EdenText в iframe и само хранить документ. С параметром
+`?embed=1` редактор скрывает собственное управление файлами. Помощник `embed.js`, который
+раздаёт каждый экземпляр, загружает файлы и получает их обратно в ODT, DOCX или PDF; см.
+[docs/architecture/embed.md](../../docs/architecture/embed.md). В режиме встраивания редактор
+показывает логотип EdenText и надпись «Powered by EdenText», которые условия AGPL требуют
+сохранять ([NOTICE.md](../../NOTICE.md)) и которые убирает только white-label-сборка по
+[коммерческой лицензии](../../LICENSE.commercial.md) (`VITE_EDENTEXT_ATTRIBUTION=off`).
+
 ## Архитектура
 
 ```mermaid
@@ -208,7 +218,7 @@ Patrick R., [@Deleh](https://github.com/Deleh), [@lukasmwerner](https://github.c
 
 Copyright © 2026 Steffen Becker · Сделано в Германии
 
-[AGPL-3.0](../../LICENSE). Если AGPL не подходит, есть
+[AGPL-3.0](../../LICENSE) с дополнительным условием по разделу 7(b) для режима встраивания ([NOTICE.md](../../NOTICE.md)). Если AGPL не подходит, есть
 [коммерческая лицензия](../../LICENSE.commercial.md). Входящие в комплект шрифты и языковые
 данные сохраняют свои лицензии — см. [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
 

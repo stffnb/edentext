@@ -18,7 +18,7 @@
   import FindReplaceBar from './lib/components/FindReplaceBar.svelte';
   import type { TiptapNode } from 'odf-kit';
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
-  import { supportsFsAccess, saveDocument, openOdt, allowWrite } from './lib/export/saveFile';
+  import { supportsFsAccess, saveDocument, openOdt, allowWrite, protect, mimeOf } from './lib/export/saveFile';
   import { takeOpenedFile } from './lib/storage/desktopFiles';
   import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFile, forgetRecentFiles, pruneRecentFiles, getHandle, type RecentFile } from './lib/storage/recentFiles';
   import { isProtected, decryptPackage, WRONG_PASSWORD } from './lib/crypto/protect';
@@ -53,7 +53,9 @@
   import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, spreadMargins, DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, EMPTY_HF_SET, loadExtraHfSections, saveExtraHfSections, loadHfPictures, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, loadDocFormat, saveDocFormat, stripOdtExtension, docNameOfFile, sanitizeNameForFile, deriveFilename, filenameFor, loadDocProtected, saveDocProtected, loadDocFile, saveDocFile, type DocumentFormat } from './lib/storage/documentName';
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
-  import { userName } from './lib/storage/userName.svelte';
+  import { userName, setUserName } from './lib/storage/userName.svelte';
+  import { embedded, attribution, whiteLabel } from './lib/embed/mode';
+  import { startBridge, notify, type EmbedSettings, type ExportFormat } from './lib/embed/bridge';
   import { loadHyphenation, saveHyphenation } from './lib/storage/hyphenation';
   import { loadPageNumbering, savePageNumbering, DEFAULT_PAGE_NUMBERING, type PageNumbering } from './lib/storage/pageNumbering';
   import { loadPageDecor, savePageDecor, EMPTY_PAGE_DECOR, type PageDecor } from './lib/storage/pageDecor';
@@ -72,6 +74,7 @@
   import GrammarToggle from './lib/components/GrammarToggle.svelte';
   import UiLanguagePicker from './lib/components/UiLanguagePicker.svelte';
   import AboutDialog from './lib/components/AboutDialog.svelte';
+  import PoweredBy from './lib/components/PoweredBy.svelte';
   import SettingsDialog, { type Section as SettingsSection } from './lib/components/SettingsDialog.svelte';
   import TemplateGalleryDialog from './lib/components/TemplateGalleryDialog.svelte';
   import type { TemplateEntry } from './lib/templates/types';
@@ -98,7 +101,8 @@
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
   import SaveFormatDialog from './lib/components/SaveFormatDialog.svelte';
-  import { t, locale } from './lib/i18n/i18n.svelte';
+  import { t, locale, setLocale } from './lib/i18n/i18n.svelte';
+  import { isLocale } from './lib/i18n/config';
   import { fnv1a } from './lib/utils/hash';
   import { withShortcut } from './lib/i18n/shortcut';
   import { DEFAULT_SHORTCUTS, matchesEvent, shortcutHint } from './lib/editor/shortcuts';
@@ -252,7 +256,8 @@
     // A document with no file behind it lives in this browser alone, so closing the tab
     // is worth the browser's warning as much as changes a file has not got yet. The
     // same emptiness test the confirm before a new document uses.
-    if (documentHasFile ? !dirty : tick < 0 || !isDocNonEmpty()) return;
+    // Embedded, the host application holds the document and asks about leaving it.
+    if (embedded || (documentHasFile ? !dirty : tick < 0 || !isDocNonEmpty())) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     addEventListener('beforeunload', warn);
     return () => removeEventListener('beforeunload', warn);
@@ -593,7 +598,7 @@
   let islandCommands = $derived(searchableCommands([
     ...RIBBON_COMMANDS,
     ...styleCommands(visibleStyles(styleSheet(), showAllStyles()).map((s) => s.name)),
-  ], islandShown, { ai: aiEnabled(), volatile }).filter((c) => !RIBBON_ONLY.has(c.id)));
+  ], islandShown, { ai: aiEnabled(), volatile, embedded }).filter((c) => !RIBBON_ONLY.has(c.id)));
 
   // Where the island keeps a command: its own place if it moved one, the ribbon's tab otherwise.
   function islandPlace(c: RibbonCommand): { category: Category | null; via?: string } {
@@ -929,7 +934,7 @@
   }
 
   function handleNew() {
-    if (!editor) return;
+    if (!editor || embedded) return;
     if (isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
     loadContent('<p></p>'); // onUpdate fires → autosave
     documentEpoch++;
@@ -1112,14 +1117,16 @@
     }
   }
 
-  async function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string) {
-    if (!editor) return;
+  // `host` is an embedding application's load: it replaces the document unasked, and
+  // hears of warnings and failures instead of the reader. False = nothing was opened.
+  async function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string, host?: { warn: (warnings: string[]) => void }): Promise<boolean> {
+    if (!editor) return false;
     try {
       // Before anything reads the archive: an encrypted file is not one yet.
       let password: string | null = null;
       if (isProtected(bytes)) {
         const opened = await unprotect(bytes);
-        if (!opened) return;
+        if (!opened) return false;
         ({ bytes, password } = opened);
       }
       busyTask = 'loading';
@@ -1141,8 +1148,8 @@
 
       const hasContent = editor.state.doc.textContent.length > 0 || editor.state.doc.childCount > 1;
       busyTask = null;
-      if (hasContent && !confirm(t().dialogs.confirmReplace)) {
-        return;
+      if (hasContent && !host && !confirm(t().dialogs.confirmReplace)) {
+        return false;
       }
       busyTask = 'loading';
       await painted();
@@ -1237,13 +1244,17 @@
       if (missingFonts.length) warnings.push(t().importWarn.missingFonts(missingFonts.join(', ')));
       if (warnings.length) {
         console.warn('[import] Opened file with limitations:', result.warnings, missingFonts);
-        alert(t().dialogs.openedWithLimitations(warnings.join('\n• ')));
+        if (host) host.warn(warnings);
+        else alert(t().dialogs.openedWithLimitations(warnings.join('\n• ')));
       }
+      return true;
     } catch (err) {
       busyTask = null;
+      if (host) throw err;
       console.error('[import] Failed to open file:', err);
       if (err instanceof Error && CHUNK_FAILURE.test(err.message)) reportLoadFailure(t().dialogs.couldNotOpen, err);
       else alert(err instanceof Error ? localizeImportMessage(err.message) : t().dialogs.couldNotOpen);
+      return false;
     }
   }
 
@@ -1309,7 +1320,7 @@
   // editor; the handle comes with write permission, so a later Save writes that file.
   // The desktop app hands its document over by path instead.
   $effect(() => {
-    if (!editor) return;
+    if (!editor || embedded) return;
     (window as WithLaunchQueue).launchQueue?.setConsumer(({ files }) => void openLaunched(files?.[0]));
     void takeOpenedFile().then(openLaunched);
   });
@@ -1326,7 +1337,7 @@
   }
 
   async function handleOpen() {
-    if (!editor) return;
+    if (!editor || embedded) return;
     if (fsSupported) {
       try {
         const r = await openOdt();
@@ -1375,6 +1386,8 @@
   async function handleSave() {
     if (!editor) return;
     exportMenuOpen = false;
+    // Embedded, the host application saves: it is asked to, and fetches the bytes itself.
+    if (embedded) return notify('saveRequest');
     // A document with no file behind it has no format yet: ask, the way saving an
     // untitled document does everywhere else, and let Save As do the rest.
     if (!fileHandle && !documentHasFile) { saveFormatKind = null; saveFormatOpen = true; return; }
@@ -1486,8 +1499,16 @@
 
   // Lay the document out into A4 pages (Paged.js) and open the print dialog so the
   // user can "Save as PDF" — vector text matching the editor, with header/footer.
-  async function handleExportPdf() {
-    if (!editor || pdfBusy) return;
+  function handleExportPdf() {
+    void rasterPdf(false);
+  }
+
+  // `toBytes` hands the PDF to an embedding host, which hears of a failure itself.
+  async function rasterPdf(toBytes: boolean): Promise<ArrayBuffer | undefined> {
+    if (!editor || pdfBusy) {
+      if (toBytes) throw new Error('busy');
+      return;
+    }
     exportMenuOpen = false;
     pdfBusy = true;
     busyTask = 'pdf';
@@ -1497,7 +1518,8 @@
       const view = markupView();
       const shown = view.hideDeletions || view.hideInsertions ? settledDoc(editor.state.doc, view.hideDeletions) : editor.state.doc;
       const json = shown.toJSON() as TiptapNode;
-      await exportPdf({
+      return await exportPdf({
+        toBytes,
         source: editor.view.dom as HTMLElement,
         json,
         fileName: suggestedFilename(json),
@@ -1509,6 +1531,7 @@
         onProgress: (done) => { busyProgress = done; },
       });
     } catch (err) {
+      if (toBytes) throw err;
       console.error('[pdf] Export failed:', err);
       reportLoadFailure(t().dialogs.couldNotExportPdf, err);
     } finally {
@@ -1517,6 +1540,49 @@
       busyProgress = null;
     }
   }
+
+  // Embedded, the host application loads and saves the document through the bridge
+  // (lib/embed/bridge.ts); the reader's own file commands are gone.
+  function configureEmbed(s: EmbedSettings): void {
+    if (typeof s.user === 'string') setUserName(s.user);
+    if (typeof s.locale === 'string' && isLocale(s.locale)) setLocale(s.locale);
+    if (s.theme === 'light' || s.theme === 'dark' || s.theme === 'allBlack' || s.theme === 'auto') selectTheme(s.theme);
+    if (s.chrome === 'ribbon' || s.chrome === 'modern') chromeMode = s.chrome;
+    if (typeof s.name === 'string') {
+      // The file's name as the host keeps it, which is no edit of the document.
+      const clean = !dirty;
+      documentName = s.name;
+      if (clean) markSaved();
+    }
+  }
+
+  async function exportForHost(format: ExportFormat): Promise<{ bytes: Uint8Array; mime: string; name: string }> {
+    if (!editor) throw new Error('editor not ready');
+    const json = editor.getJSON() as TiptapNode;
+    if (format === 'pdf') {
+      const pdf = await rasterPdf(true);
+      if (!pdf) throw new Error('nothing to export');
+      return { bytes: new Uint8Array(pdf), mime: mimeOf('pdf'), name: `${stripOdtExtension(suggestedFilename(json))}.pdf` };
+    }
+    const name = format === 'docx' ? suggestedFilenameDocx(json) : suggestedFilename(json);
+    return { bytes: await protect(await buildBytes(format, json), docPassword), mime: mimeOf(format), name };
+  }
+
+  let bridged = false;
+  $effect(() => {
+    if (!embedded || !editor || bridged) return;
+    bridged = true;
+    startBridge({
+      configure: configureEmbed,
+      load: (bytes, name) => applyImport(bytes, null, name, { warn: (warnings) => notify('warning', { warnings }) }),
+      exportAs: exportForHost,
+      // The host has stored what it exported: the document now has a file behind it.
+      markSaved: () => { documentHasFile = true; markSaved(); },
+    });
+  });
+  $effect(() => {
+    if (embedded) notify('dirty', { dirty });
+  });
 
   // Print via the browser's print dialog using the exact raster of the editor (tables,
   // header/footer, band masks intact) — print or "Save as PDF". Used by the printer
@@ -1819,9 +1885,11 @@
     <div class="toolbar-clip" id="primary-toolbar" bind:this={toolbarClipEl} onwheel={onToolbarWheel}>
       <div class="toolbar-stack" bind:this={toolbarStackEl} style="transform: translateX(-{tbScroll}px);">
   <header class:expanded={toolbarExpanded}>
+    {#if !whiteLabel}
     <button class="logo-btn" data-cmd="about" onclick={() => (aboutOpen = true)} aria-label={t().about.label} title={t().about.label}>
       <img src="EdenText.png" alt="EdenText" class="app-logo" />
     </button>
+    {/if}
     <Toolbar editor={activeEditor} tick={activeTick} onManageStyles={openStyleManager} scripts={numberingScripts(documentLanguage, documentLanguageOther, locale())} />
     <div class="header-actions">
       <CommandSearch variant="island" commands={islandCommands} onRun={runIslandCommand} onCancel={focusActiveEditor} />
@@ -1847,6 +1915,7 @@
           type="text"
           style="width: {docNameSizerWidth + 4}px"
           bind:value={documentName}
+          readonly={embedded}
           placeholder={namePlaceholder}
           title={t().app.documentName}
           onkeydown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
@@ -1859,6 +1928,7 @@
         </svg>
       </div>
       <div class="file-actions">
+        {#if !embedded}
         <button class="file-action-btn" data-cmd="newDocument" onclick={handleNew} disabled={!editor} title={t().app.newDocument}>
           <!-- Page with folded corner + plus -->
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1881,6 +1951,7 @@
             <path d="M1.75 12.5V4a1 1 0 0 1 1-1h3.2a1 1 0 0 1 .8.4l.7.95a1 1 0 0 0 .8.4h4.2a1 1 0 0 1 1 1v6.75a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
           </svg>
         </button>
+        {/if}
         <!-- Single Save / Export button → ODT, Raster PDF, or Vector PDF (beta). -->
         <div class="save-split" use:exportMenuClickOutside>
           <div class="save-control">
@@ -1903,6 +1974,7 @@
           {#if exportMenuOpen}
             <div class="theme-dropdown" role="menu">
               <div class="theme-heading">{t().app.saveExport}</div>
+              {#if !embedded}
               <button class="theme-option" onclick={handleSave} role="menuitem">
                 <span>{t().app.odt}</span>
                 <span class="theme-option-hint">{t().app.openDocument}</span>
@@ -1913,6 +1985,7 @@
               <button class="theme-option" data-cmd="saveAsDocx" onclick={() => handleSaveAs('docx')} role="menuitem">
                 <span>{t().ribbon.saveAs} (.docx)</span>
               </button>
+              {/if}
               <button class="theme-option" data-cmd="rasterPdf" onclick={handleExportPdf} disabled={pdfBusy} role="menuitem">
                 <span>{pdfBusy ? t().app.exporting : t().app.rasterPdf}</span>
                 <span class="theme-option-hint">{t().app.rasterHint}</span>
@@ -1926,10 +1999,12 @@
                   <span>{t().browserDocs.title}</span>
                 </button>
               {/if}
+              {#if !embedded}
               <button class="theme-option" data-cmd="saveTemplate" onclick={handleSaveTemplate} role="menuitem">
                 <span>{t().app.template}</span>
                 <span class="theme-option-hint">{t().app.templateHint}</span>
               </button>
+              {/if}
               {#if menuRecentFiles.length}
                 <div class="theme-heading">{t().app.recentFiles}</div>
                 {#each menuRecentFiles as f (f.id)}
@@ -1949,6 +2024,11 @@
               <button class="theme-option" data-cmd="docProperties" onclick={() => { exportMenuOpen = false; docPropsOpen = true; }} role="menuitem">
                 <span>{t().docProps.title}</span>
               </button>
+              {#if whiteLabel}
+                <button class="theme-option" data-cmd="about" onclick={() => { exportMenuOpen = false; aboutOpen = true; }} role="menuitem">
+                  <span>{t().about.label}</span>
+                </button>
+              {/if}
             </div>
           {/if}
         </div>
@@ -2234,6 +2314,7 @@
       <GrammarToggle value={documentLanguage} other={documentLanguageOther} {editor} {tick} />
     </div>
     <div class="sb-right">
+    {#if embedded && attribution}<PoweredBy />{/if}
     <BusyIndicator {editor} task={busyTask} progress={busyProgress} />
     <div class="zoom-controls">
       <button class="zoom-btn" onclick={() => setZoom(zoom - 10)} disabled={zoom <= MIN_ZOOM} title={t().status.zoomOut}>−</button>

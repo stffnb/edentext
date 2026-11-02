@@ -3,12 +3,15 @@
 // a corpus document imports and paginates, a margin balloon holds its content. Fails on
 // any uncaught page error.
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { ROOT, MOD, checker, previewServer, openApp } from '../browser.mjs';
 
 const PORT = +(process.env.SMOKE_PORT ?? 4180);
 const { check, failures } = checker();
 const server = await previewServer(PORT);
 const { browser, page, pageErrors } = await openApp(PORT);
+let hostServer;
 
 try {
   // Boot on a clean profile.
@@ -243,11 +246,85 @@ try {
   check(await page.evaluate(() => !document.querySelector('.balloon textarea')
     && ![...document.querySelectorAll('.tiptap .pm-comment')].some((c) => c.textContent === 'Absatz 6.')),
   'a cancelled comment leaves nothing behind');
+
+  // Embed mode: a host page on another origin drives the editor through public/embed.js.
+  const host = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
+  host.on('pageerror', (err) => pageErrors.push(`[embed] ${err}`));
+  host.on('dialog', (d) => d.accept());
+  // A real server on another site (127.0.0.1 vs localhost): a routed page counts as a
+  // public one, which Chromium may not let frame a loopback address.
+  const hostPage = `<!doctype html><div id="c" style="height:950px"></div>
+    <script type="module">
+      import { EdenTextFrame } from '/embed.js';
+      window.events = [];
+      window.ed = new EdenTextFrame(document.getElementById('c'), { url: 'http://localhost:${PORT}/', user: 'Host', locale: 'en' });
+      for (const t of ['dirty', 'saveRequest', 'warning']) ed.on(t, (m) => events.push(m));
+      ed.ready.then(() => { window.isReady = true; });
+    </script>`;
+  const hostFiles = {
+    '/embed.js': ['text/javascript', () => readFileSync(join(ROOT, 'public/embed.js'))],
+    '/table.odt': ['application/octet-stream', () => readFileSync(join(ROOT, 'tests/corpus/04-table.odt'))],
+    '/': ['text/html', () => hostPage],
+  };
+  hostServer = createServer((req, res) => {
+    const [type, body] = hostFiles[new URL(req.url, 'http://x').pathname] ?? [];
+    if (!type) return void res.writeHead(404).end();
+    res.writeHead(200, { 'content-type': type }).end(body());
+  }).listen(PORT + 1, '127.0.0.1');
+  await new Promise((r) => hostServer.once('listening', r));
+  await host.goto(`http://127.0.0.1:${PORT + 1}/`);
+  await host.waitForFunction(() => window.isReady, null, { timeout: 20_000 });
+  const frame = host.frames().find((f) => f.url().includes('embed=1'));
+  check(!!frame, 'embed: the editor boots in the iframe and answers init');
+  const storedBefore = await frame.evaluate(() => [localStorage.getItem('edentext-doc'), sessionStorage.getItem('edentext-tab-doc')]);
+  check(await frame.isVisible('.powered-by'), 'embed: "Powered by EdenText" shows in the status bar');
+  await frame.click('.ribbon-tab-file');
+  const fileMenu = await frame.evaluate(() => ['open', 'newDocument', 'saveAsOdt', 'saveTemplate', 'save']
+    .map((c) => !!document.querySelector(`.ribbon [data-cmd="${c}"]`)));
+  await host.keyboard.press('Escape');
+  check(fileMenu.join() === 'false,false,false,false,true', `embed: the File menu keeps Save and drops the file commands (${fileMenu})`);
+
+  check(await host.evaluate(async () => ed.load(await (await fetch('/table.odt')).blob(), 'table.odt')), 'embed: load answers ok');
+  await frame.waitForFunction(() => document.querySelector('.tiptap table td')?.textContent.trim(), null, { timeout: 30_000 });
+  check(true, 'embed: the loaded document renders');
+
+  await frame.click('.tiptap p');
+  await host.keyboard.type('Embedded ');
+  await host.waitForFunction(() => events.some((m) => m.type === 'dirty' && m.dirty), null, { timeout: 5_000 });
+  check(true, 'embed: an edit reports dirty');
+  await host.keyboard.press(`${MOD}+s`);
+  await host.waitForFunction(() => events.some((m) => m.type === 'saveRequest'), null, { timeout: 5_000 });
+  check(true, 'embed: Save asks the host');
+
+  const heads = await host.evaluate(async () => {
+    const out = {};
+    for (const f of ['odt', 'docx', 'pdf']) {
+      const file = await ed.export(f);
+      out[f] = [String.fromCharCode(...new Uint8Array(await file.slice(0, 4).arrayBuffer())), file.size, file.name];
+    }
+    return out;
+  });
+  check(heads.odt[0].startsWith('PK') && heads.docx[0].startsWith('PK') && heads.pdf[0] === '%PDF'
+    && heads.odt[2].endsWith('.odt') && heads.docx[2].endsWith('.docx') && heads.pdf[2].endsWith('.pdf'),
+  `embed: export returns odt, docx and pdf files (${JSON.stringify(heads)})`);
+  // The exported DOCX reads back with the edit in it.
+  await host.evaluate(async () => { const f = await ed.export('docx'); await ed.load(f); });
+  await frame.waitForFunction(() => document.querySelector('.tiptap')?.textContent.includes('Embedded'), null, { timeout: 30_000 });
+  check(true, 'embed: an exported file loads back with the edit');
+  await host.evaluate(() => ed.markSaved());
+  await host.waitForFunction(() => events.filter((m) => m.type === 'dirty').at(-1)?.dirty === false, null, { timeout: 5_000 });
+  check(true, 'embed: markSaved clears dirty');
+
+  await new Promise((r) => setTimeout(r, 1500)); // past the autosave debounce
+  const storedAfter = await frame.evaluate(() => [localStorage.getItem('edentext-doc'), sessionStorage.getItem('edentext-tab-doc')]);
+  check(JSON.stringify(storedAfter) === JSON.stringify(storedBefore), 'embed: the document is not kept in browser storage');
+  await host.close();
 } catch (err) {
   check(false, `smoke run threw: ${err.message ?? err}`);
 } finally {
   check(pageErrors.length === 0, pageErrors.length ? `no uncaught page errors — got: ${pageErrors.join(' | ')}` : 'no uncaught page errors');
   await browser.close();
+  hostServer?.close();
   if (server) process.kill(-server.pid);
 }
 process.exit(failures.length ? 1 : 0);

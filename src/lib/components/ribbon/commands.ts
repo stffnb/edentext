@@ -196,12 +196,17 @@ export function tabOf(cmd: RibbonCommand, shown: readonly Tab[]): Tab | null | u
   return cmd.tab === null ? null : [cmd.tab].flat().find((x) => shown.includes(x));
 }
 
+// The file commands an embedding host application takes over (`embed/mode.ts`).
+const HOST_FILE_COMMANDS = new Set(['newDocument', 'newFromTemplate', 'open', 'browserDocuments', 'saveAsOdt', 'saveAsDocx', 'saveTemplate']);
+
 /** What the search offers: commands on a shown tab or in the File menu, the assistant
- *  only while it is on, and the kept-documents list only when documents are kept. */
-export function searchableCommands(cmds: RibbonCommand[], shown: readonly Tab[], opts: { ai: boolean; volatile: boolean }): RibbonCommand[] {
+ *  only while it is on, the kept-documents list only when documents are kept, and no
+ *  file command the host application has taken over. */
+export function searchableCommands(cmds: RibbonCommand[], shown: readonly Tab[], opts: { ai: boolean; volatile: boolean; embedded?: boolean }): RibbonCommand[] {
   return cmds.filter((c) => tabOf(c, shown) !== undefined
     && (opts.ai || !c.id.startsWith('ai'))
-    && !(opts.volatile && c.id === 'browserDocuments'));
+    && !(opts.volatile && c.id === 'browserDocuments')
+    && !(opts.embedded && HOST_FILE_COMMANDS.has(c.id)));
 }
 
 /** Runs a hit's control: a field is focused, anything else clicked. A colour split's own

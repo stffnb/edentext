@@ -42,6 +42,7 @@
   import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../../storage/lineNumbering';
   import { aiEnabled } from '../../storage/ai.svelte';
   import { volatile } from '../../storage/docScope';
+  import { embedded, whiteLabel } from '../../embed/mode';
 
   let {
     editor,
@@ -201,7 +202,7 @@
   let searchable = $derived(searchableCommands([
     ...RIBBON_COMMANDS,
     ...styleCommands(visibleStyles(styleSheet(), showAllStyles()).map((s) => s.name)),
-  ], shown, { ai: aiEnabled(), volatile }));
+  ], shown, { ai: aiEnabled(), volatile, embedded }));
 
   const act = (id: string) => actOnCommand(document.querySelector(`.ribbon [data-cmd="${CSS.escape(id)}"]`));
 
@@ -236,6 +237,8 @@
       </button>
       {#if isMenuOpen('file')}
         <RibbonMenu minWidth={230}>
+          <!-- Embedded, the host application opens and saves; Save asks it to. -->
+          {#if !embedded}
           <button data-cmd="newDocument" onclick={() => run(onNew)} disabled={!editor}>
             <Icon name="newDoc" size={16} />{t().app.newDocument}
           </button>
@@ -253,16 +256,19 @@
             </button>
           {/if}
           <hr />
+          {/if}
           <button data-cmd="save" onclick={() => run(onSave)} disabled={!editor || pdfBusy}>
             <Icon name="save" size={16} />{t().app.save}
             <span class="menu-key">{withShortcut('Ctrl+S')}</span>
           </button>
+          {#if !embedded}
           <button data-cmd="saveAsOdt" onclick={() => run(() => onSaveAs?.('odt'))} disabled={!editor || pdfBusy}>
             <Icon name="save" size={16} />{t().ribbon.saveAs} (.odt)
           </button>
           <button data-cmd="saveAsDocx" onclick={() => run(() => onSaveAs?.('docx'))} disabled={!editor || pdfBusy}>
             <Icon name="save" size={16} />{t().ribbon.saveAs} (.docx)
           </button>
+          {/if}
           <hr />
           <button data-cmd="rasterPdf" onclick={() => run(onExportPdf)} disabled={pdfBusy}>
             <Icon name="export" size={16} />{pdfBusy ? t().app.exporting : t().app.rasterPdf}
@@ -272,10 +278,12 @@
             <Icon name="export" size={16} />{t().app.vectorPdf}
             <span class="menu-sub">{t().app.vectorHint}</span>
           </button>
+          {#if !embedded}
           <button data-cmd="saveTemplate" onclick={() => run(onSaveTemplate)}>
             <Icon name="export" size={16} />{t().app.template}
             <span class="menu-sub">{t().app.templateHint}</span>
           </button>
+          {/if}
           {#if recentFiles.length}
             <hr />
             {#each recentFiles as f (f.id)}
@@ -336,6 +344,7 @@
         type="text"
         style="width: {docNameSizerWidth + 14}px"
         bind:value={documentName}
+        readonly={embedded}
         placeholder={namePlaceholder}
         title={t().app.documentName}
         onkeydown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
@@ -389,9 +398,11 @@
 
     <UiLanguagePicker />
 
+    {#if !whiteLabel}
     <button class="rb-logo-btn" onclick={() => run(onAbout)} title={t().about.label} aria-label={t().about.label}>
       <img src="favicon.svg" alt="" aria-hidden="true" />
     </button>
+    {/if}
   </div>
 
   {#if !collapsed}

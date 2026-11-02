@@ -22,10 +22,14 @@ The AGPL may be incompatible with your needs if you want to:
 - distribute a modified version **without** releasing your source code,
 - offer it as part of a **hosted/SaaS** product without the AGPL's network-source
   obligations, or
-- obtain a warranty, indemnification, or commercial support.
+- obtain a warranty, indemnification, or commercial support, or
+- run the editor in its **embed mode** without the EdenText logo and the “Powered by
+  EdenText” notice that the additional term in [`NOTICE.md`](./NOTICE.md) requires under
+  the AGPL.
 
 For these cases, a **separate commercial license** is available that removes the
-copyleft obligations of the AGPL, under negotiated terms.
+copyleft obligations of the AGPL and the attribution requirement, under negotiated
+terms.
 
 ## 3. What a commercial license does not cover
 
@@ -56,5 +60,4 @@ by the copyright holder on request.
 
 > _This document describes the availability of a commercial license; it is not
 > itself the commercial license contract. The actual terms, pricing, and
-> subscription conditions are set out in a separate agreement. Have that agreement
-> reviewed by qualified legal counsel before use._
+> subscription conditions are set out in a separate agreement._

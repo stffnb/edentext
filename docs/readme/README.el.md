@@ -166,6 +166,17 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 (αντί γι’ αυτό γίνεται λήψη) και τα κουμπιά αντιγραφής. Στο localhost όλα λειτουργούν όπως
 με HTTPS.
 
+## Ενσωμάτωση
+
+Μια άλλη εφαρμογή ιστού μπορεί να εμφανίσει το EdenText σε ένα iframe και να διαχειρίζεται
+η ίδια το έγγραφο. Με `?embed=1` ο επεξεργαστής παραλείπει τη δική του διαχείριση αρχείων.
+Το βοηθητικό `embed.js`, που διαθέτει κάθε εγκατάσταση, φορτώνει αρχεία και τα επιστρέφει ως
+ODT, DOCX ή PDF· δείτε το [docs/architecture/embed.md](../../docs/architecture/embed.md). Σε
+λειτουργία ενσωμάτωσης ο επεξεργαστής δείχνει το λογότυπο του EdenText και την ένδειξη
+«Powered by EdenText», τα οποία οι όροι της AGPL απαιτούν να παραμένουν
+([NOTICE.md](../../NOTICE.md)) και τα οποία παραλείπει μόνο μια έκδοση white-label με την
+[εμπορική άδεια](../../LICENSE.commercial.md) (`VITE_EDENTEXT_ATTRIBUTION=off`).
+
 ## Αρχιτεκτονική
 
 ```mermaid
@@ -217,7 +228,7 @@ Patrick R., [@Deleh](https://github.com/Deleh), [@lukasmwerner](https://github.c
 
 Copyright © 2026 Steffen Becker · Φτιαγμένο στη Γερμανία
 
-[AGPL-3.0](../../LICENSE). Αν η AGPL δεν ταιριάζει, υπάρχει [εμπορική άδεια](../../LICENSE.commercial.md).
+[AGPL-3.0](../../LICENSE), με πρόσθετο όρο βάσει της ενότητας 7(b) για τη λειτουργία ενσωμάτωσης ([NOTICE.md](../../NOTICE.md)). Αν η AGPL δεν ταιριάζει, υπάρχει [εμπορική άδεια](../../LICENSE.commercial.md).
 Οι ενσωματωμένες γραμματοσειρές και τα γλωσσικά δεδομένα διατηρούν τις δικές τους άδειες:
 δείτε το [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
 

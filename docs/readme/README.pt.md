@@ -161,6 +161,16 @@ funciona, mas os navegadores desativam então algumas funções: o uso offline, 
 como aplicação, guardar diretamente no ficheiro aberto (em vez disso, é descarregado) e os
 botões de copiar. Em localhost tudo funciona como com HTTPS.
 
+## Incorporação
+
+Outra aplicação web pode mostrar o EdenText num iframe e gerir ela própria o documento.
+Com `?embed=1`, o editor dispensa a sua própria gestão de ficheiros. O auxiliar `embed.js`,
+disponibilizado por cada instância, carrega ficheiros e devolve-os em ODT, DOCX ou PDF; veja
+[docs/architecture/embed.md](../../docs/architecture/embed.md). No modo incorporado, o editor
+mostra o logótipo do EdenText e o aviso «Powered by EdenText», que os termos da AGPL exigem
+manter ([NOTICE.md](../../NOTICE.md)) e que só uma compilação de marca branca com a
+[licença comercial](../../LICENSE.commercial.md) omite (`VITE_EDENTEXT_ATTRIBUTION=off`).
+
 ## Arquitetura
 
 ```mermaid
@@ -211,7 +221,7 @@ Patrick R., [@Deleh](https://github.com/Deleh), [@lukasmwerner](https://github.c
 
 Copyright © 2026 Steffen Becker · Feito na Alemanha
 
-[AGPL-3.0](../../LICENSE). Se a AGPL não servir, há uma [licença comercial](../../LICENSE.commercial.md).
+[AGPL-3.0](../../LICENSE), com um termo adicional ao abrigo da sua secção 7(b) para o modo incorporado ([NOTICE.md](../../NOTICE.md)). Se a AGPL não servir, há uma [licença comercial](../../LICENSE.commercial.md).
 Os tipos de letra e os dados linguísticos incluídos mantêm as suas próprias licenças: veja
 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
 

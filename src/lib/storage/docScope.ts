@@ -1,4 +1,5 @@
 import { sweepImages } from './imageStore';
+import { embedded } from '../embed/mode';
 
 // Which document this tab edits. Every document-scoped key hangs off the id, so two
 // tabs never write over each other; the first document keeps the empty id, and with it
@@ -51,6 +52,8 @@ function mark(id: string, at: number): void {
 }
 
 function resolve(): string {
+  // An embedded editor keeps nothing, so it claims no slot among the app's own documents.
+  if (embedded) return '';
   try {
     // The tab's own slot, unconditionally: after a reload — or a crash — it has to get
     // its document back, and nothing but this tab knows which one that was.
@@ -83,8 +86,9 @@ export function saveRetention(r: Retention): void {
 }
 
 // Read once: the open document already sits in localStorage, so `'none'` takes effect
-// at the next start, when the prune drops this tab's own copy too.
-export const volatile = (() => { try { return loadRetention() === 'none'; } catch { return false; } })();
+// at the next start, when the prune drops this tab's own copy too. Embedded, the host
+// application holds the document, so none is kept here either.
+export const volatile = embedded || (() => { try { return loadRetention() === 'none'; } catch { return false; } })();
 
 function memoryStorage(): Storage {
   const map = new Map<string, string>();

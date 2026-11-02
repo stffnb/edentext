@@ -5,11 +5,14 @@ import { loadTheme, applyTheme, loadAccent, applyAccent } from './lib/storage/th
 import { locale } from './lib/i18n/i18n.svelte';
 import { startTabPresence, pruneOldDocuments } from './lib/storage/docScope';
 import { dragDialogs } from './lib/utils/dragWindow';
+import { embedded } from './lib/embed/mode';
 
 // This tab holds its document while it lives; the ones no tab has held for a while
-// and that fell out of the newest few are dropped here.
-startTabPresence();
-void pruneOldDocuments();
+// and that fell out of the newest few are dropped here. An embedded editor holds none.
+if (!embedded) {
+    startTabPresence();
+    void pruneOldDocuments();
+}
 
 dragDialogs();
 
@@ -26,8 +29,8 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 });
 
 // Offline support (public/sw.js). Not in dev, where a worker would serve the cached
-// build over the one being edited.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+// build over the one being edited. The host application decides on an embedded one's.
+if (import.meta.env.PROD && !embedded && 'serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
     });

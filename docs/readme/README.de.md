@@ -162,6 +162,17 @@ Offline-Nutzung, die Installation als App, das direkte Speichern in die geöffne
 (sie wird stattdessen heruntergeladen) und die Kopieren-Schaltflächen. Unter localhost
 steht alles wie bei HTTPS zur Verfügung.
 
+## Einbetten
+
+Andere Webanwendungen können EdenText in einem iframe anzeigen und das Dokument selbst
+verwalten. Mit `?embed=1` blendet der Editor seine eigene Dateiverwaltung aus. Der Helfer
+`embed.js`, den jede Instanz mitliefert, lädt Dateien hinein und holt sie als ODT, DOCX
+oder PDF zurück; siehe [docs/architecture/embed.md](../../docs/architecture/embed.md). Im
+Embed-Modus zeigt der Editor das EdenText-Logo und den Hinweis „Powered by EdenText“, die
+nach den AGPL-Bedingungen erhalten bleiben müssen ([NOTICE.md](../../NOTICE.md)) und nur
+ein White-Label-Build unter der [kommerziellen Lizenz](../../LICENSE.commercial.md)
+weglässt (`VITE_EDENTEXT_ATTRIBUTION=off`).
+
 ## Architektur
 
 ```mermaid
@@ -211,7 +222,7 @@ Patrick R., [@Deleh](https://github.com/Deleh), [@lukasmwerner](https://github.c
 
 Copyright © 2026 Steffen Becker · Made in Germany
 
-[AGPL-3.0](../../LICENSE). Wo die AGPL nicht passt, gibt es eine
+[AGPL-3.0](../../LICENSE), mit einer Zusatzbedingung nach deren Abschnitt 7(b) für den Embed-Modus ([NOTICE.md](../../NOTICE.md)). Wo die AGPL nicht passt, gibt es eine
 [kommerzielle Lizenz](../../LICENSE.commercial.md). Mitgelieferte Schriften und Sprachdaten
 behalten ihre eigenen Lizenzen – siehe [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
 

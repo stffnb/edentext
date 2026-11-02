@@ -40,6 +40,10 @@ type WinFs = Window & {
   showOpenFilePicker?: (opts: unknown) => Promise<FileSystemFileHandle[]>;
 };
 
+export function mimeOf(kind: Kind): string {
+  return FORMATS[kind].mime;
+}
+
 export function supportsFsAccess(): boolean {
   return typeof (window as WinFs).showSaveFilePicker === 'function';
 }
@@ -73,7 +77,7 @@ async function writeHandle(handle: FileSystemFileHandle, bytes: Uint8Array): Pro
 // Password protection is the last thing that happens to the bytes, after every
 // post-processing pass and after the template conversion. The crypto module loads
 // only when a password is actually set.
-async function protect(bytes: Uint8Array, password: string | null): Promise<Uint8Array> {
+export async function protect(bytes: Uint8Array, password: string | null): Promise<Uint8Array> {
   if (!password) return bytes;
   const { encryptPackage } = await import('../crypto/protect');
   return encryptPackage(bytes, password);
