@@ -48,6 +48,7 @@
   import { readSource, sourcesBlock, SOURCE_ACCEPT, type Source } from '../ai/sources';
   import { LANGUAGES } from '../storage/documentLanguage';
   import Icon from './ribbon/Icon.svelte';
+  import PaneResize from './PaneResize.svelte';
 
   // Copilot's chat pane: questions about the document with the document as context, and
   // changes the assistant makes through its tools — text edits as tracked changes under
@@ -125,27 +126,6 @@
   function setWidth(w: number) {
     width = clampWidth(w);
     try { localStorage.setItem(WIDTH_KEY, String(width)); } catch { /* not kept */ }
-  }
-
-  function startResize(e: PointerEvent) {
-    const handle = e.currentTarget as HTMLElement;
-    const x0 = e.clientX;
-    const w0 = width;
-    handle.setPointerCapture(e.pointerId);
-    const move = (ev: PointerEvent) => setWidth(w0 + (left ? ev.clientX - x0 : x0 - ev.clientX));
-    const up = () => { handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); };
-    handle.addEventListener('pointermove', move);
-    handle.addEventListener('pointerup', up);
-    e.preventDefault();
-  }
-
-  function resizeKey(e: KeyboardEvent) {
-    const step = e.shiftKey ? 64 : 16;
-    const grow = left ? 'ArrowRight' : 'ArrowLeft';
-    if (e.key === grow) setWidth(width + step);
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') setWidth(width - step);
-    else return;
-    e.preventDefault();
   }
 
   $effect(() => {
@@ -450,11 +430,7 @@
   ondragover={(e) => { if (configured && e.dataTransfer?.types.includes('Files')) { e.preventDefault(); dragging = true; } }}
   ondragleave={(e) => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) dragging = false; }}
   ondrop={onDrop}>
-  <!-- A focusable separator is a widget (ARIA), which Svelte does not know. -->
-  <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-  <div class="resize" role="separator" aria-orientation="vertical" aria-label={t().ai.paneWidth}
-    aria-valuenow={width} aria-valuemin={MIN_WIDTH} tabindex="0" title={t().ai.paneWidth}
-    onpointerdown={startResize} onkeydown={resizeKey} ondblclick={() => setWidth(320)}></div>
+  <PaneResize {width} min={MIN_WIDTH} {left} label={t().ai.paneWidth} onWidth={setWidth} onReset={() => setWidth(320)} />
   <header>
     <Icon name="sparkle" size={16} />
     <span class="title">{t().ai.name}</span>
@@ -614,20 +590,7 @@
     margin-top: var(--toolbar-overlay-h, 0px);
   }
 
-  /* The grab strip straddles the border, wider than it looks. */
-  .resize {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: -3px;
-    width: 6px;
-    cursor: col-resize;
-    z-index: 1;
-    touch-action: none;
-  }
   .ai-pane.left { order: -1; border-left: none; border-right: 1px solid var(--color-border); }
-  .left .resize { left: auto; right: -3px; }
-  .resize:hover, .resize:focus-visible { background: var(--color-primary); opacity: 0.6; outline: none; }
 
   header {
     display: flex;
