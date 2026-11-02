@@ -252,7 +252,7 @@ const en = {
     resolve: 'Resolve',
     reopen: 'Reopen',
     showResolved: 'Show resolved',
-    replies: (n: number) => (n === 1 ? '1 reply' : `${n} replies`),
+    replies: (n: number) => (n === 1 ? 'Show 1 reply' : `Show ${n} replies`),
     prompt: 'Comment on the selected text:',
     needsSelection: 'Select the text to comment on first',
     showPane: 'Show comments',

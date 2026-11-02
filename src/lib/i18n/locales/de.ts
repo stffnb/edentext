@@ -249,7 +249,7 @@ const de: Messages = {
     resolve: 'Erledigt',
     reopen: 'Wieder öffnen',
     showResolved: 'Erledigte anzeigen',
-    replies: (n: number) => (n === 1 ? '1 Antwort' : `${n} Antworten`),
+    replies: (n: number) => (n === 1 ? '1 Antwort anzeigen' : `${n} Antworten anzeigen`),
     prompt: 'Kommentar zum markierten Text:',
     needsSelection: 'Zuerst den zu kommentierenden Text markieren',
     showPane: 'Kommentare anzeigen',

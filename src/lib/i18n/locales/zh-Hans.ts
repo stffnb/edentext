@@ -250,7 +250,7 @@ const zhHans: Messages = {
     resolve: '标记为已解决',
     reopen: '重新打开',
     showResolved: '显示已解决',
-    replies: (n: number) => `${n} 条回复`,
+    replies: (n: number) => `显示 ${n} 条回复`,
     prompt: '对所选文字的批注：',
     needsSelection: '请先选中要批注的文字',
     showPane: '显示批注',

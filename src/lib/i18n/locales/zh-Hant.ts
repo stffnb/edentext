@@ -251,7 +251,7 @@ const zhHant: Messages = {
     resolve: '標示為已解決',
     reopen: '重新開啟',
     showResolved: '顯示已解決',
-    replies: (n: number) => `${n} 則回覆`,
+    replies: (n: number) => `顯示 ${n} 則回覆`,
     prompt: '對選取文字的註解：',
     needsSelection: '請先選取要註解的文字',
     showPane: '顯示註解',

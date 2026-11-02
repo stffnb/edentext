@@ -249,7 +249,7 @@ const es: Messages = {
     resolve: 'Resolver',
     reopen: 'Reabrir',
     showResolved: 'Mostrar los resueltos',
-    replies: (n: number) => (n === 1 ? '1 respuesta' : `${n} respuestas`),
+    replies: (n: number) => (n === 1 ? 'Mostrar 1 respuesta' : `Mostrar ${n} respuestas`),
     prompt: 'Comentario sobre el texto seleccionado:',
     needsSelection: 'Seleccione primero el texto que quiere comentar',
     showPane: 'Mostrar los comentarios',
