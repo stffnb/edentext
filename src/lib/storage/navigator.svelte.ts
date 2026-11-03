@@ -2,12 +2,12 @@
 // whether it is open, which side it docks on, its width, text size, tab and wrapping.
 import { validLayout, type PaneLayout } from './panes.svelte';
 
-export type NavigatorTab = 'headings' | 'pages' | 'bookmarks' | 'objects';
+export type NavigatorTab = 'headings' | 'pages' | 'results' | 'bookmarks' | 'objects';
 export type NavigatorSettings = PaneLayout & { open: boolean; wrap: boolean; tab: NavigatorTab };
 
 const KEY = 'edentext-navigator';
 export const NAVIGATOR_WIDTH = 240;
-export const NAVIGATOR_TABS: NavigatorTab[] = ['headings', 'pages', 'bookmarks', 'objects'];
+export const NAVIGATOR_TABS: NavigatorTab[] = ['headings', 'pages', 'results', 'bookmarks', 'objects'];
 const DEFAULTS: NavigatorSettings = { open: false, side: 'right', size: 'medium', width: NAVIGATOR_WIDTH, wrap: false, tab: 'headings' };
 
 function load(): NavigatorSettings {

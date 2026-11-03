@@ -668,6 +668,28 @@ try {
   await page.click(`.thumbs .tile[data-page="${want}"]`);
   await page.waitForFunction((n) => new RegExp(`^\\D*${n} of`).test(document.querySelector('.statusbar').textContent.trim()), want, { timeout: 5_000 })
     .then(() => true, () => false).then((ok) => check(ok, `a page clicked in the navigator becomes the current page (${want})`));
+  // The navigator's search lists every match with its context and jumps to a clicked
+  // one; its fold replaces them all.
+  await page.fill('.nav-search input[type="search"]', 'Chapter 3');
+  const hitCount = await page.locator('.navigator-pane .hit').count();
+  await page.locator('.navigator-pane .hit').last().click();
+  const hit = await page.waitForFunction(() => {
+    const sel = getSelection()?.toString() || document.querySelector('.search-match-current')?.textContent;
+    const r = document.querySelector('.search-match-current')?.getBoundingClientRect();
+    const box = document.querySelector('.editor').getBoundingClientRect();
+    return r && r.top >= box.top && r.bottom <= box.bottom && document.querySelector('.search-match-current').closest('h1')?.textContent;
+  }, null, { timeout: 5_000 }).then((h) => h.jsonValue(), () => null);
+  check(hitCount === 11 && hit === 'Chapter 39', `the navigator's search lists the matches and shows a clicked one (${hitCount}, ${hit})`);
+  await page.fill('.nav-search input[type="search"]', 'Chapter 40');
+  await page.click('.nav-search .fold');
+  await page.fill('.nav-search input[type="text"]', 'Closing chapter');
+  await page.click('.nav-search button.text:last-of-type');
+  const replaced = await page.evaluate(() => [...document.querySelectorAll('.tiptap-host .tiptap > h1')].map((h) => h.textContent).filter((s) => /Chapter 40|Closing/.test(s)));
+  check(replaced.join() === 'Closing chapter', `the navigator's search replaces its matches (${replaced.join()})`);
+  // The edit's autosave lands now, not at the next reload over the document set below.
+  await page.waitForTimeout(1500);
+  await page.press('.nav-search input[type="search"]', 'Escape');
+  check(!(await page.locator('.search-match').count()), 'clearing the navigator\'s search drops its highlights');
   await page.click('.navigator-pane [role="tab"]#nav-tab-headings');
   await page.keyboard.press('F5');
 

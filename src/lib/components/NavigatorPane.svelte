@@ -10,6 +10,8 @@
   import ContextMenu from './ContextMenu.svelte';
   import PaneResize from './PaneResize.svelte';
   import PageThumbnails from './PageThumbnails.svelte';
+  import NavigatorSearch from './NavigatorSearch.svelte';
+  import { searchMatches } from '../editor/extensions/searchReplace';
   import type { PageBox } from '../utils/pageStrip';
   import PaneOptions, { layoutItems } from './PaneOptions.svelte';
   import { t } from '../i18n/i18n.svelte';
@@ -92,6 +94,31 @@
       return true;
     });
     return { tables, images };
+  });
+
+  // The search's matches, each with the words around it in its paragraph. A long list
+  // stops at RESULT_CAP rows: past that the search wants narrowing, not scrolling.
+  const RESULT_CAP = 500;
+  let hits = $derived.by(() => (tick < 0 || !editor ? [] : searchMatches(editor.state).matches));
+  let currentHit = $derived.by(() => (tick < 0 || !editor ? -1 : searchMatches(editor.state).current));
+  let hitRows = $derived.by(() => {
+    if (!editor) return [];
+    const doc = editor.state.doc;
+    return hits.slice(0, RESULT_CAP).map((m) => {
+      const at = doc.resolve(m.from);
+      const start = at.start(), end = at.end();
+      const before = doc.textBetween(start, m.from, ' ', ' ');
+      return {
+        before: before.length > 24 ? `…${before.slice(-24).replace(/^\S*\s/, '')}` : before,
+        text: doc.textBetween(m.from, m.to, ' ', ' '),
+        after: doc.textBetween(m.to, Math.min(end, m.to + 80), ' ', ' '),
+      };
+    });
+  });
+
+  let hitList: HTMLElement | undefined = $state();
+  $effect(() => {
+    if (settings.tab === 'results' && currentHit >= 0) hitList?.querySelector<HTMLElement>(`[data-hit="${currentHit}"]`)?.scrollIntoView({ block: 'nearest' });
   });
 
   // One row per name, as the bookmark window lists them.
@@ -200,7 +227,7 @@
     ];
   }
 
-  const tabLabel = (tab: NavigatorTab) => ({ headings: t().navigator.headings, pages: t().navigator.pages, bookmarks: t().navigator.bookmarks, objects: t().navigator.objects })[tab];
+  const tabLabel = (tab: NavigatorTab) => ({ headings: t().navigator.headings, pages: t().navigator.pages, results: t().navigator.results, bookmarks: t().navigator.bookmarks, objects: t().navigator.objects })[tab];
 
   function tabKeys(e: KeyboardEvent) {
     const i = NAVIGATOR_TABS.indexOf(settings.tab);
@@ -222,6 +249,8 @@
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
     </button>
   </header>
+
+  <NavigatorSearch {editor} {tick} onSearch={() => { if (settings.tab !== 'results') setNavigator({ tab: 'results' }); }} />
 
   <div class="tabs" role="tablist" tabindex="-1" onkeydown={tabKeys}>
     {#each NAVIGATOR_TABS as tab (tab)}
@@ -261,6 +290,19 @@
       {/if}
     {:else if settings.tab === 'pages'}
       <PageThumbnails {editor} {tick} {pages} {currentPage} size={settings.size} {onShowPage} />
+    {:else if settings.tab === 'results'}
+      {#if !hits.length}
+        <p class="empty">{t().navigator.noResults}</p>
+      {:else}
+        <ul class="hits" bind:this={hitList}>
+          {#each hitRows as h, i (i)}
+            <li><button class="jump hit" class:current={i === currentHit} data-hit={i} onclick={() => editor?.commands.goToMatch(i)}>
+              {h.before}<mark>{h.text}</mark>{h.after}
+            </button></li>
+          {/each}
+        </ul>
+        {#if hits.length > RESULT_CAP}<p class="empty">{t().navigator.moreResults(hits.length - RESULT_CAP)}</p>{/if}
+      {/if}
     {:else if settings.tab === 'bookmarks'}
       {#if !marks.length}
         <p class="empty">{t().navigator.noBookmarks}</p>
@@ -434,6 +476,10 @@
     text-overflow: ellipsis;
   }
   .jump:hover { background: var(--color-btn-hover); }
+  .hits li { padding: 0 4px; }
+  .hit { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; }
+  .hit mark { background: color-mix(in srgb, var(--color-primary) 30%, transparent); color: inherit; font-weight: 600; border-radius: 2px; }
+  .hit.current { background: color-mix(in srgb, var(--color-primary) 22%, transparent); box-shadow: inset 2px 0 0 var(--color-primary); }
   .wrap .jump { white-space: normal; overflow-wrap: anywhere; }
 
   /* The chapter operations stay out of the way until the row is worth acting on. */

@@ -234,6 +234,12 @@ export function getSearchState(state: EditorState): { count: number; current: nu
   return { count: s?.matches.length ?? 0, current: s?.current ?? -1, term: s?.term ?? '' };
 }
 
+// Every match's range and the current one, for the navigator's results list.
+export function searchMatches(state: EditorState): { matches: readonly { from: number; to: number }[]; current: number } {
+  const s = searchKey.getState(state);
+  return { matches: s?.matches ?? [], current: s?.current ?? -1 };
+}
+
 // ProseMirror scrolls a selection into view only while the editor owns the DOM selection,
 // and the find bar keeps the focus in its input — so the match's own element is scrolled
 // here, and only when it isn't comfortably inside its scroller, as both dialogs do.
@@ -253,8 +259,12 @@ function moveCurrent(state: EditorState, dispatch: ((tr: Transaction) => void) |
   const s = searchKey.getState(state);
   if (!s || !s.matches.length) return false;
   const n = s.matches.length;
-  const idx = s.current < 0 ? (dir > 0 ? 0 : n - 1) : (s.current + dir + n) % n;
-  const m = s.matches[idx];
+  return goToMatch(state, dispatch, view, s.current < 0 ? (dir > 0 ? 0 : n - 1) : (s.current + dir + n) % n);
+}
+
+function goToMatch(state: EditorState, dispatch: ((tr: Transaction) => void) | undefined, view: EditorView, idx: number): boolean {
+  const m = searchKey.getState(state)?.matches[idx];
+  if (!m) return false;
   if (dispatch) {
     const tr = state.tr.setMeta(SET_CURRENT, idx);
     tr.setSelection(TextSelection.create(tr.doc, m.from, m.to));
@@ -297,6 +307,7 @@ declare module '@tiptap/core' {
       setSearch: (opts: SearchOptions) => ReturnType;
       findNext: () => ReturnType;
       findPrevious: () => ReturnType;
+      goToMatch: (index: number) => ReturnType;
       scrollToCurrent: () => ReturnType;
       replaceCurrent: (text: string, format?: FormatSpec) => ReturnType;
       replaceAll: (text: string, format?: FormatSpec) => ReturnType;
@@ -350,6 +361,7 @@ export const SearchReplace = Extension.create<{ sheet: () => StyleSheet }>({
       },
       findNext: () => ({ state, dispatch, view }) => moveCurrent(state, dispatch, view, 1),
       findPrevious: () => ({ state, dispatch, view }) => moveCurrent(state, dispatch, view, -1),
+      goToMatch: (index: number) => ({ state, dispatch, view }) => goToMatch(state, dispatch, view, index),
       scrollToCurrent: () => ({ state, dispatch, view }) => {
         const s = searchKey.getState(state);
         if (!s || s.current < 0) return false;
