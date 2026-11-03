@@ -55,6 +55,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { applyPageSizeVars, pageDimsCm, type PageFormat } from '../storage/pageFormat';
   import { MAX_PAGE_COLUMNS } from '../storage/theme';
   import { DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, hfIsEmpty, hfUsesChapterField, type HfDoc, type HfZone, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
+  import { pageStartBlock, type PageBox } from '../utils/pageStrip';
   import { FORCE_PAGE_RECALC, PAGE_GAP, pageOfElement, readVerticalMargins, topInEditor, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { SHEET_CHANGED } from '../editor/extensions/listMarker';
   import { goToTarget } from '../editor/extensions/bookmark';
@@ -74,9 +75,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
     headerEvenDoc = $bindable(null), footerEvenDoc = $bindable(null), differentOddEven = false,
     hfEditor = $bindable(null), hfActive = $bindable(null), hfTick = $bindable(0),
-    extraHfSections = $bindable([]),
+    extraHfSections = $bindable([]), pages = $bindable([]),
   }: {
     editor: Editor | null; tick: number; currentPage: number; numPages: number; zoom: number;
+    /** The sheet of every page in document px, for the navigator's thumbnails. */
+    pages?: PageBox[];
     onZoom?: (zoom: number) => void;
     /** The stored document was given up at startup; the editor starts empty. */
     onDocumentLost?: () => void;
@@ -301,7 +304,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // Which section each page belongs to (sectionStartPages holds the first page of every
   // section past the first), and from it the box every per-page layer paints.
   let pageBoxes = $derived.by(() => {
-    const out: { top: number; left: number; height: number; width: number; section: number }[] = [];
+    const out: PageBox[] = [];
     let top = 0;
     let section = 0;
     for (let p = 1; p <= Math.max(1, numPages); p++) {
@@ -314,6 +317,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     }
     return out;
   });
+
+  $effect(() => { pages = pageBoxes; });
 
   // What one grid cell is worth in document px, across and down. Sections of differing
   // paper make the later pages differ; the grid is laid out on the first page's, and
@@ -1479,6 +1484,26 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     flushSync();
     el.scrollTop = gridOrigin(el) + row * firstCycle * (appliedZoom / 100);
     readFirstRow();
+  }
+
+  // The navigator's page thumbnails: the caret to the page's first block and that page's
+  // top to the top of the scroller, as a click on a page in either word processor does.
+  export function showPage(page: number) {
+    const view = editor?.view;
+    const box = pageBoxes[page - 1];
+    const el = scrollers[0];
+    const paper = papers[0];
+    if (!view || !box || !el || !paper) return;
+    if (multiPage) scrollGridToPage(page);
+    const block = pageStartBlock(paper, box.top, box.top + box.height);
+    if (block) {
+      const pos = view.posAtDOM(block, 0);
+      view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(pos))));
+    }
+    view.focus();
+    if (multiPage) return;
+    const z = appliedZoom / 100;
+    el.scrollTop += paper.getBoundingClientRect().top + box.top * z - el.getBoundingClientRect().top - toolbarOverlay(el);
   }
 
   // Where the caret is drawn: a position at a wrap is also the next line's start, a page

@@ -253,6 +253,8 @@ const en = {
     imageN: (n: number) => `Picture ${n}`,
     headings: 'Headings',
     objects: 'Objects',
+    pages: 'Pages',
+    pageN: (n: number) => `Page ${n}`,
     options: 'Navigator options',
     expandAll: 'Expand all',
     collapseAll: 'Collapse all',

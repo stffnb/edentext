@@ -650,6 +650,25 @@ try {
     const r = h?.getBoundingClientRect();
     return r && r.top >= box.top && r.bottom <= box.bottom;
   }, navText, { timeout: 5_000 }).then(() => true, () => false).then((seen) => check(seen, `a heading clicked in the navigator scrolls into view (${navText})`));
+
+  // The pages tab draws only the tiles in view, each a copy of its own page; a click
+  // takes the reader to that page and leaves no second editable copy behind.
+  await page.click('.navigator-pane [role="tab"]#nav-tab-pages');
+  await page.waitForFunction(() => document.querySelector('.thumbs .zoom .tiptap p'), null, { timeout: 5_000 }).catch(() => {});
+  const tiles = await page.evaluate(() => ({
+    drawn: document.querySelectorAll('.thumbs .tile').length,
+    filled: [...document.querySelectorAll('.thumbs .zoom')].filter((z) => z.querySelector('.tiptap p')).length,
+    editable: document.querySelectorAll('[contenteditable="true"]').length,
+    pages: +(/of (\d+)/.exec(document.querySelector('.statusbar').textContent)?.[1] ?? 0),
+  }));
+  check(tiles.filled > 0 && tiles.drawn < tiles.pages && tiles.editable === 1,
+    `the pages tab draws the tiles in view as copies of their pages (${tiles.filled}/${tiles.drawn} of ${tiles.pages}, ${tiles.editable} editable)`);
+  await page.evaluate(() => { document.querySelector('.thumbs').scrollTop = 1e9; });
+  const want = String(tiles.pages);
+  await page.click(`.thumbs .tile[data-page="${want}"]`);
+  await page.waitForFunction((n) => new RegExp(`^\\D*${n} of`).test(document.querySelector('.statusbar').textContent.trim()), want, { timeout: 5_000 })
+    .then(() => true, () => false).then((ok) => check(ok, `a page clicked in the navigator becomes the current page (${want})`));
+  await page.click('.navigator-pane [role="tab"]#nav-tab-headings');
   await page.keyboard.press('F5');
 
   // Mirrored margins: every part of a block stands at its own page's sides, as in both word

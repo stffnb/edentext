@@ -251,6 +251,8 @@ const zhHans: Messages = {
     imageN: (n: number) => `图片 ${n}`,
     headings: '标题',
     objects: '对象',
+    pages: '页面',
+    pageN: (n: number) => `第 ${n} 页`,
     options: '导航选项',
     expandAll: '全部展开',
     collapseAll: '全部折叠',

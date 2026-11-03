@@ -18,6 +18,7 @@ import { outlineLabel } from '../styles/outlineNumbering';
 import { deriveFilename } from '../storage/documentName';
 import { desktopPrintToPdf } from '../storage/desktopFiles';
 import { saveDocument } from './saveFile';
+import { alignStrip, stripOf } from '../utils/pageStrip';
 import { BAR_STRIP_CM, commentListHtml, markReviewBlocks, printedComments, reviewPrintCss, type CommentLabels, type PrintedComment } from './reviewPrint';
 
 const DEFAULT_COMMENT_LABELS: CommentLabels = { heading: 'Comments', onPage: (n) => `Page ${n}` };
@@ -309,7 +310,7 @@ export async function renderPages(opts: PdfOptions, scale = 2): Promise<{
     document.body.appendChild(strip);
     for (let first = 0; first < pages; first += perStrip) {
       const n = Math.min(perStrip, pages - first);
-      strip.replaceChildren(stripOf(clone, parts, first * cycle - pageH / 2, (first + n) * cycle + pageH / 2));
+      strip.replaceChildren(pdfStrip(clone, parts, first * cycle - pageH / 2, (first + n) * cycle + pageH / 2));
       alignStrip(strip.firstElementChild as HTMLElement);
       const canvas = await html2canvas(strip.firstElementChild as HTMLElement, {
         scale,
@@ -359,10 +360,8 @@ function partsOf(paper: HTMLElement): HTMLElement[] {
 }
 
 // A copy of the paper holding only what reaches into [top, bottom]: html2canvas copies the
-// style of every element it clones, so a strip must not carry the whole document. The flow
-// above it folds into one stand-in, sized so the strip's pages land on the full layout's.
-// Only the kept parts are cloned: a deep copy of the whole paper per strip costs seconds.
-function stripOf(paper: HTMLElement, parts: Part[], top: number, bottom: number): HTMLElement {
+// style of every element it clones, so a strip must not carry the whole document.
+function pdfStrip(paper: HTMLElement, parts: Part[], top: number, bottom: number): HTMLElement {
   const flow = paper.querySelector('.tiptap') as HTMLElement;
   const els = partsOf(paper);
   const keep = new Set<Node>();
@@ -377,34 +376,7 @@ function stripOf(paper: HTMLElement, parts: Part[], top: number, bottom: number)
     }
   });
   const holders = new Set<Node | null>(els.map((el) => el.parentElement));
-  const copies = new Map<Node, Node>();
-  const copyOf = (node: Node): Node => {
-    if (!(node instanceof Element) || !(node.contains(flow) || holders.has(node))) {
-      const c = node.cloneNode(true);
-      copies.set(node, c);
-      return c;
-    }
-    const c = node.cloneNode(false);
-    for (const child of Array.from(node.childNodes)) {
-      if (!holders.has(node) || !(child instanceof Element) || keep.has(child)) c.appendChild(copyOf(child));
-    }
-    return c;
-  };
-  const copy = copyOf(paper) as HTMLElement;
-  if (first < 0) return copy;
-  const standIn = document.createElement('div');
-  standIn.style.cssText = 'display:block !important; margin:0 !important; padding:0 !important; border:0 !important; height:0 !important;';
-  standIn.dataset.pdfTop = String(parts[first].top);
-  (copies.get(els[first]) as HTMLElement).before(standIn);
-  return copy;
-}
-
-function alignStrip(copy: HTMLElement): void {
-  const standIn = copy.querySelector<HTMLElement>('[data-pdf-top]');
-  const block = standIn?.nextElementSibling;
-  if (!standIn || !block) return;
-  const now = block.getBoundingClientRect().top - copy.getBoundingClientRect().top;
-  standIn.style.setProperty('height', `${Math.max(0, Number(standIn.dataset.pdfTop) - now)}px`, 'important');
+  return stripOf(paper, holders, keep, first < 0 ? null : els[first], first < 0 ? 0 : parts[first].top);
 }
 
 // Page JPEGs in a few workers, so encoding runs beside the next strip's render; an engine

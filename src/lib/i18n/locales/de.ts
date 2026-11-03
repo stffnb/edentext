@@ -250,6 +250,8 @@ const de: Messages = {
     imageN: (n) => `Bild ${n}`,
     headings: 'Überschriften',
     objects: 'Objekte',
+    pages: 'Seiten',
+    pageN: (n) => `Seite ${n}`,
     options: 'Navigator-Optionen',
     expandAll: 'Alle erweitern',
     collapseAll: 'Alle reduzieren',

@@ -250,6 +250,8 @@ const es: Messages = {
     imageN: (n) => `Imagen ${n}`,
     headings: 'Títulos',
     objects: 'Objetos',
+    pages: 'Páginas',
+    pageN: (n) => `Página ${n}`,
     options: 'Opciones del navegador',
     expandAll: 'Expandir todo',
     collapseAll: 'Contraer todo',

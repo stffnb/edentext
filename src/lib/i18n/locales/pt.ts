@@ -250,6 +250,8 @@ const pt: Messages = {
     imageN: (n) => `Imagem ${n}`,
     headings: 'Títulos',
     objects: 'Objetos',
+    pages: 'Páginas',
+    pageN: (n) => `Página ${n}`,
     options: 'Opções do navegador',
     expandAll: 'Expandir tudo',
     collapseAll: 'Reduzir tudo',

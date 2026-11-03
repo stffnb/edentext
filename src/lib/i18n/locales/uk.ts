@@ -256,6 +256,8 @@ const uk: Messages = {
     imageN: (n) => `Зображення ${n}`,
     headings: 'Заголовки',
     objects: 'Обʼєкти',
+    pages: 'Сторінки',
+    pageN: (n) => `Сторінка ${n}`,
     options: 'Параметри навігатора',
     expandAll: 'Розгорнути все',
     collapseAll: 'Згорнути все',

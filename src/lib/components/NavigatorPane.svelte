@@ -9,6 +9,8 @@
   import BookmarkRow from './BookmarkRow.svelte';
   import ContextMenu from './ContextMenu.svelte';
   import PaneResize from './PaneResize.svelte';
+  import PageThumbnails from './PageThumbnails.svelte';
+  import type { PageBox } from '../utils/pageStrip';
   import PaneOptions, { layoutItems } from './PaneOptions.svelte';
   import { t } from '../i18n/i18n.svelte';
   import { navigatorSettings, setNavigator, NAVIGATOR_TABS, NAVIGATOR_WIDTH, type NavigatorTab } from '../storage/navigator.svelte';
@@ -17,9 +19,13 @@
   // LibreOffice's Navigator and Word's Navigation pane: the chapters of the document as a
   // tree to fold, click to jump, and the chapter operations beside them and on a right
   // click. The other tabs list the bookmarks and the tables and pictures to jump to.
-  let { editor, tick, onClose }: {
+  let { editor, tick, pages = [], currentPage = 1, onShowPage = () => {}, onClose }: {
     editor: Editor | null;
     tick: number;
+    /** The sheets and the page being read, for the pages tab's thumbnails. */
+    pages?: PageBox[];
+    currentPage?: number;
+    onShowPage?: (page: number) => void;
     onClose: () => void;
   } = $props();
 
@@ -194,7 +200,7 @@
     ];
   }
 
-  const tabLabel = (tab: NavigatorTab) => ({ headings: t().navigator.headings, bookmarks: t().navigator.bookmarks, objects: t().navigator.objects })[tab];
+  const tabLabel = (tab: NavigatorTab) => ({ headings: t().navigator.headings, pages: t().navigator.pages, bookmarks: t().navigator.bookmarks, objects: t().navigator.objects })[tab];
 
   function tabKeys(e: KeyboardEvent) {
     const i = NAVIGATOR_TABS.indexOf(settings.tab);
@@ -253,6 +259,8 @@
           {/each}
         </ul>
       {/if}
+    {:else if settings.tab === 'pages'}
+      <PageThumbnails {editor} {tick} {pages} {currentPage} size={settings.size} {onShowPage} />
     {:else if settings.tab === 'bookmarks'}
       {#if !marks.length}
         <p class="empty">{t().navigator.noBookmarks}</p>
@@ -324,8 +332,10 @@
   }
   .title { flex: 1; font-weight: 600; }
 
+  /* Four tabs outgrow a narrow pane at the large text size: they wrap rather than spill. */
   .tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: 2px;
     padding: 0 6px;
     border-bottom: 1px solid var(--color-border);
@@ -341,6 +351,8 @@
   .tabs button[aria-selected='true'] { color: var(--color-text); border-bottom-color: var(--color-primary); font-weight: 600; }
 
   .body { flex: 1; min-height: 0; overflow-y: auto; font-size: var(--nav-text); padding-bottom: 6px; }
+  /* The thumbnails scroll themselves: they draw only the tiles in their own view. */
+  .body:has(> :global(.thumbs)) { overflow: hidden; padding-bottom: 0; }
 
   .empty { padding: 12px 10px; color: var(--color-text-muted); }
 

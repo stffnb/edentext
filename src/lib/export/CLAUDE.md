@@ -34,7 +34,7 @@ canvas for a long document exceeds every engine's limit and comes out blank; eac
 only the blocks it reaches and a measured stand-in above them. Anything html2canvas cannot
 evaluate (counter() markers, outline counter-set) becomes literal text first, boxed like the
 live pseudo-element, or the copy's layout drifts from the editor's pagination.
-A strip clones only the parts it keeps, and page JPEGs are cropped and encoded in
+A strip clones only the parts it keeps (`utils/pageStrip.ts`, also the navigator's thumbnails), and page JPEGs are cropped and encoded in
 `pageWorker.ts` workers while the next strip renders.
 
 The vector PDF (`printPdf`) builds one print page; a browser opens its print dialog on it, the desktop app turns it into the PDF file directly (`desktopPrintToPdf`).

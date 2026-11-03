@@ -252,6 +252,8 @@ const zhHant: Messages = {
     imageN: (n: number) => `圖片 ${n}`,
     headings: '標題',
     objects: '物件',
+    pages: '頁面',
+    pageN: (n: number) => `第 ${n} 頁`,
     options: '導覽選項',
     expandAll: '全部展開',
     collapseAll: '全部摺疊',

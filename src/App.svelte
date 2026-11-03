@@ -89,6 +89,7 @@
   import RevisionsPane from './lib/components/RevisionsPane.svelte';
   import ConnectorLayer from './lib/components/ConnectorLayer.svelte';
   import NavigatorPane from './lib/components/NavigatorPane.svelte';
+  import type { PageBox } from './lib/utils/pageStrip';
   import AiPane, { askAi, resetAiChat } from './lib/components/AiPane.svelte';
   import { aiConfig, aiAnswering, aiEnabled, AI_COMMENT_EVENT, OPEN_AI_CHAT_EVENT } from './lib/storage/ai.svelte';
   import { navigatorSettings, setNavigator } from './lib/storage/navigator.svelte';
@@ -399,6 +400,8 @@
   let thesaurusOpen = $state(false);
   // Kept per browser, so the pane is back after a reload, as in both word processors.
   const navigatorOpen = $derived(navigatorSettings().open);
+  let editorView = $state<ReturnType<typeof EditorComponent> | null>(null);
+  let pageBoxes = $state<PageBox[]>([]);
   const toggleNavigator = () => setNavigator({ open: !navigatorOpen });
   let aiOpen = $state(false);
   // The kill switch stops whatever is in flight; a new document starts a new chat.
@@ -2211,6 +2214,8 @@
   />
   <div class="editor-row">
   <EditorComponent
+    bind:this={editorView}
+    bind:pages={pageBoxes}
     onDocumentLost={resetDocumentState}
     {documentEpoch}
     {pageRtl}
@@ -2258,7 +2263,7 @@
   <!-- On the right the panes stand in this order; docked left, each sets a CSS order:
        the navigator outermost, the reviewing panes nearest the page. -->
   {#if navigatorOpen}
-    <NavigatorPane {editor} {tick} onClose={() => setNavigator({ open: false })} />
+    <NavigatorPane {editor} {tick} pages={pageBoxes} {currentPage} onShowPage={(p) => editorView?.showPage(p)} onClose={() => setNavigator({ open: false })} />
   {/if}
   {#if aiEnabled() && aiOpen}
     <AiPane {editor} host={aiHost} onClose={() => (aiOpen = false)} onSettings={() => { settingsSection = 'ai'; settingsOpen = true; }} />

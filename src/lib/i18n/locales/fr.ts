@@ -250,6 +250,8 @@ const fr: Messages = {
     imageN: (n) => `Image ${n}`,
     headings: 'Titres',
     objects: 'Objets',
+    pages: 'Pages',
+    pageN: (n) => `Page ${n}`,
     options: 'Options du navigateur',
     expandAll: 'Tout développer',
     collapseAll: 'Tout réduire',

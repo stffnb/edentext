@@ -254,6 +254,8 @@ const el: Messages = {
     imageN: (n: number) => `Εικόνα ${n}`,
     headings: 'Επικεφαλίδες',
     objects: 'Αντικείμενα',
+    pages: 'Σελίδες',
+    pageN: (n: number) => `Σελίδα ${n}`,
     options: 'Επιλογές περιήγησης',
     expandAll: 'Ανάπτυξη όλων',
     collapseAll: 'Σύμπτυξη όλων',

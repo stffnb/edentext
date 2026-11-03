@@ -256,6 +256,8 @@ const ru: Messages = {
     imageN: (n) => `Рисунок ${n}`,
     headings: 'Заголовки',
     objects: 'Объекты',
+    pages: 'Страницы',
+    pageN: (n) => `Страница ${n}`,
     options: 'Параметры навигатора',
     expandAll: 'Развернуть все',
     collapseAll: 'Свернуть все',

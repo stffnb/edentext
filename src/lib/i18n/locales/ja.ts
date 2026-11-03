@@ -252,6 +252,8 @@ const ja: Messages = {
     imageN: (n: number) => `画像 ${n}`,
     headings: '見出し',
     objects: 'オブジェクト',
+    pages: 'ページ',
+    pageN: (n: number) => `${n} ページ`,
     options: 'ナビゲーターのオプション',
     expandAll: 'すべて展開',
     collapseAll: 'すべて折りたたむ',
