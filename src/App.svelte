@@ -431,9 +431,11 @@
     return base === 'document' ? t().app.untitled : base;
   });
 
-  // The window or tab names its document, as a word processor's title bar does.
+  // The window or tab names its document, as a word processor's title bar does; an
+  // untitled one keeps the bare app name, which search engines show for the site.
   $effect(() => {
-    document.title = `${documentName.trim() || namePlaceholder} – EdenText`;
+    const name = documentName.trim() || namePlaceholder;
+    document.title = name === t().app.untitled ? 'EdenText' : `${name} – EdenText`;
   });
 
   function suggestedFilename(json: TiptapNode): string {
