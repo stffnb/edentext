@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <b>Português</b> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a>
+  <a href="../../README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.it.md">Italiano</a> · <b>Português</b> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a>
 </p>
 
 <picture>
@@ -33,7 +33,7 @@
 
 ---
 
-O EdenText é um processador de texto poderoso que funciona no navegador, das notas rápidas a livros inteiros. Sem servidor nem conta: tudo é processado localmente e os documentos nunca saem do computador. Basta abrir o link, ou instalar o EdenText como aplicação e trabalhar offline. Na maioria das línguas, o primeiro download tem cerca de 2 MB; os dicionários e os tipos de letra são carregados quando são precisos[^1]. A interface está disponível em inglês, alemão, espanhol, francês, português, grego, russo, ucraniano, japonês e chinês (simplificado e tradicional).
+O EdenText é um processador de texto poderoso que funciona no navegador, das notas rápidas a livros inteiros. Sem servidor nem conta: tudo é processado localmente e os documentos nunca saem do computador. Basta abrir o link, ou instalar o EdenText como aplicação e trabalhar offline. Na maioria das línguas, o primeiro download tem cerca de 2 MB; os dicionários e os tipos de letra são carregados quando são precisos[^1]. A interface está disponível em inglês, alemão, espanhol, francês, italiano, português, grego, russo, ucraniano, japonês e chinês (simplificado e tradicional).
 
 > [!NOTE]
 > O EdenText ainda está em **beta** e em desenvolvimento ativo. Testes e verificações de
@@ -69,7 +69,7 @@ O EdenText é um processador de texto poderoso que funciona no navegador, das no
   bibliografia, índice remissivo, fórmulas (LaTeX)
 - **Revisão** — controlo de alterações e conversas de comentários em balões na margem,
   comparação e junção com outro ficheiro,
-  marcas imprimíveis, verificação ortográfica (inglês, alemão, espanhol, francês,
+  marcas imprimíveis, verificação ortográfica (inglês, alemão, espanhol, francês, italiano,
   português, grego, russo e ucraniano), sinónimos (as mesmas línguas, exceto o grego),
   verificação gramatical (inglês)
 - **Assistente de IA opcional** — com um fornecedor à escolha ou um modelo local; responde
@@ -234,5 +234,5 @@ Foundation. `.docx` e `.odt` são suportados por razões de interoperabilidade.*
     ortográfico com o dicionário da língua do navegador e os tipos de letra da página
     apresentada. O dicionário grego acrescenta ~2,5 MB e o ucraniano ~1,5 MB. Tudo o resto
     só é descarregado quando é preciso e fica guardado para uso offline; todos os tipos de
-    letra, dicionários e tesauros juntos ocupam ~18 MB, ou ~26 MB com a verificação
+    letra, dicionários e tesauros juntos ocupam ~19 MB, ou ~27 MB com a verificação
     gramatical de inglês.

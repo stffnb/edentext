@@ -1,4 +1,4 @@
-import type { HunspellFactory } from 'hunspell-asm';
+import type { Hunspell, HunspellFactory } from 'hunspell-asm';
 import { NO_LANGUAGE, hasDictionary, findLanguage, type DocumentLanguage } from '../storage/documentLanguage';
 import { reportLoadFailure } from '../utils/loadFailure';
 import { t } from '../i18n/i18n.svelte';
@@ -42,10 +42,20 @@ async function build(code: string): Promise<Checker> {
   ]);
   const affPath = factory.mountBuffer(aff, `${code}.aff`);
   const dicPath = factory.mountBuffer(dic, `${code}.dic`);
-  const hunspell = factory.create(affPath, dicPath);
+  return checkerOf(factory.create(affPath, dicPath));
+}
+
+// AutoCorrect types ’, but a word list without `ICONV ’ '` (it, de, es, pt) stores its
+// elisions with ' only: such a word is checked again with ', and its suggestions keep ’.
+export function checkerOf(hunspell: Pick<Hunspell, 'spell' | 'suggest' | 'addWord'>): Checker {
+  const plain = (word: string) => word.replaceAll('’', "'");
   return {
-    correct: (word) => hunspell.spell(word),
-    suggest: (word) => hunspell.suggest(word),
+    correct: (word) => hunspell.spell(word) || (word.includes('’') && hunspell.spell(plain(word))),
+    suggest: (word) => {
+      const typed = hunspell.suggest(word);
+      if (!word.includes('’')) return typed;
+      return [...new Set([...typed, ...hunspell.suggest(plain(word))].map((s) => s.replaceAll("'", '’')))];
+    },
     add: (word) => hunspell.addWord(word),
   };
 }

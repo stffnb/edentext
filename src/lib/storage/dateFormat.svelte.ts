@@ -8,7 +8,7 @@ import { localeTag } from '../utils/dateTime';
 const KEY = 'edentext-date-format';
 
 export const DATE_FORMATS = [
-  'auto', 'de-DE', 'en-US', 'en-GB', 'fr-FR', 'es-ES', 'pt-PT', 'el-GR', 'ru-RU', 'uk-UA', 'ja-JP', 'zh-CN', 'zh-TW', 'iso',
+  'auto', 'de-DE', 'en-US', 'en-GB', 'fr-FR', 'es-ES', 'it-IT', 'pt-PT', 'el-GR', 'ru-RU', 'uk-UA', 'ja-JP', 'zh-CN', 'zh-TW', 'iso',
 ] as const;
 export type DateFormat = (typeof DATE_FORMATS)[number];
 

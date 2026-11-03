@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">English</a> · <b>Deutsch</b> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.pt.md">Português</a> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a>
+  <a href="../../README.md">English</a> · <b>Deutsch</b> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.it.md">Italiano</a> · <a href="README.pt.md">Português</a> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a>
 </p>
 
 <picture>
@@ -33,7 +33,7 @@
 
 ---
 
-EdenText ist eine leistungsstarke Textverarbeitung im Browser – für alles von der schnellen Notiz bis zum ganzen Buch. Kein Server, kein Konto: Alles wird lokal verarbeitet, die Dokumente verlassen nie den eigenen Rechner. Einfach den Link öffnen oder EdenText als App installieren und offline nutzen. Der erste Download ist für die meisten Sprachen etwa 2 MB groß, Wörterbücher und Schriften werden erst bei Bedarf geladen[^1]. Die Oberfläche gibt es auf Englisch, Deutsch, Spanisch, Französisch, Portugiesisch, Griechisch, Russisch, Ukrainisch, Japanisch und Chinesisch (vereinfacht und traditionell).
+EdenText ist eine leistungsstarke Textverarbeitung im Browser – für alles von der schnellen Notiz bis zum ganzen Buch. Kein Server, kein Konto: Alles wird lokal verarbeitet, die Dokumente verlassen nie den eigenen Rechner. Einfach den Link öffnen oder EdenText als App installieren und offline nutzen. Der erste Download ist für die meisten Sprachen etwa 2 MB groß, Wörterbücher und Schriften werden erst bei Bedarf geladen[^1]. Die Oberfläche gibt es auf Englisch, Deutsch, Spanisch, Französisch, Italienisch, Portugiesisch, Griechisch, Russisch, Ukrainisch, Japanisch und Chinesisch (vereinfacht und traditionell).
 
 > [!NOTE]
 > EdenText ist noch in der **Beta** und wird laufend weiterentwickelt. Tests und
@@ -69,7 +69,7 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser – für alles von
   Zitate und Literaturverzeichnis, Stichwortverzeichnis, Formeln (LaTeX)
 - **Überarbeiten** – Änderungsverfolgung und Kommentar-Threads in Sprechblasen am Rand,
   Vergleichen und Zusammenführen mit einer anderen Datei,
-  druckbare Markierungen, Rechtschreibprüfung (Englisch, Deutsch, Spanisch, Französisch,
+  druckbare Markierungen, Rechtschreibprüfung (Englisch, Deutsch, Spanisch, Französisch, Italienisch,
   Portugiesisch, Griechisch, Russisch und Ukrainisch), Synonyme (dieselben Sprachen
   ohne Griechisch), Grammatikprüfung (Englisch)
 - **Optionaler KI-Assistent** – mit einem frei wählbaren Anbieter oder einem lokalen Modell;
@@ -235,5 +235,5 @@ Foundation verbunden. `.docx` und `.odt` werden aus Gründen der Interoperabilit
     dem Wörterbuch für die Sprache des Browsers und die Schriften der angezeigten Seite.
     Das griechische Wörterbuch bringt ~2,5 MB zusätzlich mit, das ukrainische ~1,5 MB.
     Alles andere wird erst bei Bedarf geladen und danach für die Offline-Nutzung gespeichert; alle
-    Schriften, Wörterbücher und Thesauri zusammen sind ~18 MB groß, mit der englischen
-    Grammatikprüfung ~26 MB.
+    Schriften, Wörterbücher und Thesauri zusammen sind ~19 MB groß, mit der englischen
+    Grammatikprüfung ~27 MB.

@@ -31,6 +31,7 @@ export const LANGUAGES: LanguageDef[] = [
   { code: 'de', label: 'Deutsch', odf: { language: 'de', country: 'DE' } },
   { code: 'es', label: 'Español (España)', odf: { language: 'es', country: 'ES' } },
   { code: 'fr', label: 'Français', odf: { language: 'fr', country: 'FR' } },
+  { code: 'it', label: 'Italiano', odf: { language: 'it', country: 'IT' } },
   { code: 'pt', label: 'Português (Portugal)', odf: { language: 'pt', country: 'PT' } },
   { code: 'el', label: 'Ελληνικά', odf: { language: 'el', country: 'GR' } },
   { code: 'ru', label: 'Русский', odf: { language: 'ru', country: 'RU' } },

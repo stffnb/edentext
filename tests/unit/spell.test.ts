@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadModule, type Hunspell } from 'hunspell-asm';
+import { checkerOf, type Checker } from '../../src/lib/spell/dictionary';
 
 // Exercises the real engine against the vendored dictionaries, mirroring
 // dictionary.ts's mount+create. Guards German compounds, which rely on the
@@ -162,6 +163,26 @@ describe('Ukrainian spell-check (hunspell-asm)', () => {
   it('flags a genuine misspelling and suggests the correction', () => {
     expect(uk.spell('компютер')).toBe(false);
     expect(uk.suggest('компютер')).toContain("комп'ютер");
+  });
+});
+
+describe('Italian spell-check (hunspell-asm)', () => {
+  let it_: Checker;
+  beforeAll(async () => {
+    it_ = checkerOf(await makeChecker('it'));
+  });
+
+  // The word list stores elisions with ', which AutoCorrect types as ’.
+  it('accepts accents and elisions with either apostrophe', () => {
+    for (const w of ['perché', 'città', "l'anno", 'l’anno', 'dell’arte', 'un’altra', 'dicessero']) {
+      expect(it_.correct(w), w).toBe(true);
+    }
+  });
+
+  it('flags a genuine misspelling and suggests the correction', () => {
+    expect(it_.correct('squola')).toBe(false);
+    expect(it_.suggest('squola')).toContain('scuola');
+    expect(it_.suggest('dell’artte')).toContain('dell’arte');
   });
 });
 

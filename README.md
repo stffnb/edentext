@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <b>English</b> · <a href="docs/readme/README.de.md">Deutsch</a> · <a href="docs/readme/README.es.md">Español</a> · <a href="docs/readme/README.fr.md">Français</a> · <a href="docs/readme/README.pt.md">Português</a> · <a href="docs/readme/README.el.md">Ελληνικά</a> · <a href="docs/readme/README.ru.md">Русский</a> · <a href="docs/readme/README.uk.md">Українська</a> · <a href="docs/readme/README.ja.md">日本語</a> · <a href="docs/readme/README.zh-CN.md">简体中文</a> · <a href="docs/readme/README.zh-TW.md">繁體中文</a>
+  <b>English</b> · <a href="docs/readme/README.de.md">Deutsch</a> · <a href="docs/readme/README.es.md">Español</a> · <a href="docs/readme/README.fr.md">Français</a> · <a href="docs/readme/README.it.md">Italiano</a> · <a href="docs/readme/README.pt.md">Português</a> · <a href="docs/readme/README.el.md">Ελληνικά</a> · <a href="docs/readme/README.ru.md">Русский</a> · <a href="docs/readme/README.uk.md">Українська</a> · <a href="docs/readme/README.ja.md">日本語</a> · <a href="docs/readme/README.zh-CN.md">简体中文</a> · <a href="docs/readme/README.zh-TW.md">繁體中文</a>
 </p>
 
 <picture>
@@ -33,7 +33,7 @@
 
 ---
 
-EdenText is a web-based, powerful word processor for everything from quick notes to full-length books. No server, no account — processing runs locally and your documents never leave your computer. Open the link, or install it as an app and work offline. For most languages the first download is about 2 MB; dictionaries and fonts load as needed[^1]. The interface comes in English, German, Spanish, French, Portuguese, Greek, Russian, Ukrainian, Japanese and Chinese (simplified and traditional).
+EdenText is a web-based, powerful word processor for everything from quick notes to full-length books. No server, no account — processing runs locally and your documents never leave your computer. Open the link, or install it as an app and work offline. For most languages the first download is about 2 MB; dictionaries and fonts load as needed[^1]. The interface comes in English, German, Spanish, French, Italian, Portuguese, Greek, Russian, Ukrainian, Japanese and Chinese (simplified and traditional).
 
 > [!NOTE]
 > EdenText is still in **beta** and actively developed. Tests and round-trip
@@ -68,7 +68,7 @@ EdenText is a web-based, powerful word processor for everything from quick notes
   citations & bibliography, alphabetical index, formulas (LaTeX)
 - **Review tools** — track changes and threaded comments with margin balloons,
   comparing and merging with another file,
-  printable markup, spell check (English, German, Spanish, French, Portuguese,
+  printable markup, spell check (English, German, Spanish, French, Italian, Portuguese,
   Greek, Russian and Ukrainian), synonyms (all of these but Greek), grammar check
   (English)
 - **Optional AI assistant** — with your own provider or a local model;
@@ -235,4 +235,4 @@ Document Foundation. `.docx` and `.odt` are supported for interoperability.*
     the dictionary for the browser's language and the fonts a page shows; the Greek and
     Ukrainian dictionaries add ~2.5 and ~1.5 MB. Everything else is fetched and kept for
     offline use once it is needed; all fonts, dictionaries and thesauri together are
-    ~18 MB, or ~26 MB with the English grammar check.
+    ~19 MB, or ~27 MB with the English grammar check.

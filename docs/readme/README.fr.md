@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <b>Français</b> · <a href="README.pt.md">Português</a> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a>
+  <a href="../../README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <b>Français</b> · <a href="README.it.md">Italiano</a> · <a href="README.pt.md">Português</a> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a>
 </p>
 
 <picture>
@@ -33,7 +33,7 @@
 
 ---
 
-EdenText est un traitement de texte puissant qui s’utilise dans le navigateur, de la note rapide au livre entier. Ni serveur ni compte : tout est traité en local et vos documents ne quittent jamais votre ordinateur. Il suffit d’ouvrir le lien, ou d’installer EdenText comme application pour l’utiliser hors ligne. Pour la plupart des langues, le premier téléchargement fait environ 2 Mo ; les dictionnaires et les polices sont chargés au besoin[^1]. L’interface est disponible en anglais, allemand, espagnol, français, portugais, grec, russe, ukrainien, japonais et chinois (simplifié et traditionnel).
+EdenText est un traitement de texte puissant qui s’utilise dans le navigateur, de la note rapide au livre entier. Ni serveur ni compte : tout est traité en local et vos documents ne quittent jamais votre ordinateur. Il suffit d’ouvrir le lien, ou d’installer EdenText comme application pour l’utiliser hors ligne. Pour la plupart des langues, le premier téléchargement fait environ 2 Mo ; les dictionnaires et les polices sont chargés au besoin[^1]. L’interface est disponible en anglais, allemand, espagnol, français, italien, portugais, grec, russe, ukrainien, japonais et chinois (simplifié et traditionnel).
 
 > [!NOTE]
 > EdenText est encore en **bêta** et en développement actif. Des tests et des
@@ -70,7 +70,7 @@ EdenText est un traitement de texte puissant qui s’utilise dans le navigateur,
   renvois, citations et bibliographie, index alphabétique, formules (LaTeX)
 - **Outils de révision** – suivi des modifications et fils de commentaires dans des bulles
   en marge, comparaison et fusion avec un autre fichier, annotations imprimables, correction orthographique (anglais, allemand,
-  espagnol, français, portugais, grec, russe et ukrainien), synonymes (toutes ces langues
+  espagnol, français, italien, portugais, grec, russe et ukrainien), synonymes (toutes ces langues
   sauf le grec), correction grammaticale (anglais)
 - **Assistant IA facultatif** – avec le fournisseur de votre choix ou un modèle local ; il
   répond aux questions sur le document et le modifie avec suivi des modifications. Il
@@ -243,5 +243,5 @@ Foundation. Les formats `.docx` et `.odt` sont pris en charge à des fins d’in
     correcteur orthographique avec le dictionnaire de la langue du navigateur et les
     polices qu’affiche une page ; les dictionnaires grec et ukrainien ajoutent ~2,5 et
     ~1,5 Mo. Tout le reste est téléchargé à la première utilisation puis conservé pour le
-    hors-ligne ; l’ensemble des polices, dictionnaires et thésaurus pèse ~18 Mo, ou ~26 Mo
+    hors-ligne ; l’ensemble des polices, dictionnaires et thésaurus pèse ~19 Mo, ou ~27 Mo
     avec la correction grammaticale anglaise.
