@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { tick as settle } from 'svelte';
-  import { TextSelection } from '@tiptap/pm/state';
-  import { outline, type OutlineEntry } from '../editor/extensions/outline';
+  import { headingNumbers, outline, type OutlineEntry } from '../editor/extensions/outline';
+  import { styleSheet } from '../styles/sheet.svelte';
+  import { selectRange } from './reviewItems';
   import { bookmarks, goToTarget } from '../editor/extensions/bookmark';
   import type { MenuEntry } from '../editor/contextMenuItems';
   import BookmarkRow from './BookmarkRow.svelte';
@@ -33,14 +34,16 @@
 
   // A row's identity across edits, which shift every position after them: its level and
   // text, and which of the same pair it is. Folding is kept by it.
-  type Row = OutlineEntry & { key: string; parent: boolean };
+  // A row shows its chapter number as the page draws it (CSS counters, so counted here).
+  type Row = OutlineEntry & { key: string; parent: boolean; num: string };
   let rows = $derived.by<Row[]>(() => {
     const seen = new Map<string, number>();
+    const numbers = editor ? headingNumbers(editor.state.doc, styleSheet().outline) : new Map();
     return chapters.map((c, i) => {
       const id = `${c.level}:${c.text}`;
       const n = seen.get(id) ?? 0;
       seen.set(id, n + 1);
-      return { ...c, key: `${id}#${n}`, parent: (chapters[i + 1]?.level ?? 0) > c.level };
+      return { ...c, key: `${id}#${n}`, parent: (chapters[i + 1]?.level ?? 0) > c.level, num: numbers.get(c.pos)?.label.trim() ?? '' };
     });
   });
 
@@ -88,12 +91,12 @@
   // One row per name, as the bookmark window lists them.
   let marks = $derived(tick < 0 || !editor ? [] : [...new Set(bookmarks(editor.state.doc).map((b) => b.name))]);
 
+  // Through the reviewing panes' jump: it scrolls once the editor has focus, which a
+  // transaction's own scrollIntoView needs and a click in the pane has taken away.
   function jumpTo(pos: number) {
     if (!editor) return;
-    const { state, view } = editor;
-    const at = Math.min(Math.max(pos, 0), state.doc.content.size);
-    view.dispatch(state.tr.setSelection(TextSelection.near(state.doc.resolve(at))).scrollIntoView());
-    view.focus();
+    const at = Math.min(Math.max(pos, 0), editor.state.doc.content.size);
+    selectRange(editor, at, at);
   }
 
   // The caret's own chapter, or the folded one it lies in, so the pane shows where the reader is.
@@ -145,10 +148,7 @@
   const shift = (c: OutlineEntry, d: -1 | 1) => editor?.chain().focus().shiftChapterLevel(c.pos, d).run();
 
   function selectChapter(c: OutlineEntry) {
-    if (!editor) return;
-    const { state, view } = editor;
-    view.dispatch(state.tr.setSelection(TextSelection.between(state.doc.resolve(c.pos + 1), state.doc.resolve(c.end - 1))).scrollIntoView());
-    view.focus();
+    if (editor) selectRange(editor, c.pos + 1, c.end - 1);
   }
 
   // A chapter's context menu, placed in the window so the pane's scroller cannot clip it.
@@ -235,14 +235,14 @@
               tabindex={r.key === tabKey ? 0 : -1} style:padding-inline-start="calc(2px + {r.level - 1} * 0.9em)"
               onclick={() => { focusKey = r.key; jumpTo(r.pos); }} onkeydown={(e) => rowKey(e, r)} onfocus={() => (focusKey = r.key)}
               oncontextmenu={(e) => { e.preventDefault(); focusKey = r.key; openMenu(chapterMenu(r), e.clientX, e.clientY, e.currentTarget); }}
-              title={r.text}>
+              title={r.num ? `${r.num} ${r.text}` : r.text}>
               <!-- The twisty is a mouse target; the keyboard folds with the arrow keys. -->
               <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
               <span class="twisty" class:hidden={!r.parent} onclick={(e) => { e.stopPropagation(); toggle(r); }}
                 title={isFolded(r) ? t().navigator.expand : t().navigator.collapse}>
                 <svg width="8" height="8" viewBox="0 0 8 8" class:folded={isFolded(r)} aria-hidden="true"><path d="M1 2.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </span>
-              <span class="label">{r.text || t().navigator.untitled}</span>
+              <span class="label">{#if r.num}<span class="num">{r.num}</span>{/if}{r.text || t().navigator.untitled}</span>
               <span class="ops">
                 <button tabindex="-1" onclick={(e) => { e.stopPropagation(); move(r, -1); }} title={t().navigator.moveUp} aria-label={t().navigator.moveUp}>↑</button>
                 <button tabindex="-1" onclick={(e) => { e.stopPropagation(); move(r, 1); }} title={t().navigator.moveDown} aria-label={t().navigator.moveDown}>↓</button>
@@ -401,6 +401,7 @@
     text-overflow: ellipsis;
   }
   .wrap .label { white-space: normal; overflow-wrap: anywhere; }
+  .num { margin-inline-end: 0.4em; font-variant-numeric: tabular-nums; }
 
   button {
     border: none;

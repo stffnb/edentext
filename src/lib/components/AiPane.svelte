@@ -41,7 +41,7 @@
   import { revisions, shownRange } from '../editor/extensions/trackChanges';
   import { aiErrorText, isAbort, streamChat } from '../ai/client';
   import { blockTexts, contentToDom, htmlToSlice, stripFences } from '../ai/doc';
-  import { TextSelection } from '@tiptap/pm/state';
+  import { selectRange } from './reviewItems';
   import { splitDocumentHtml } from '../ai/dialect';
   import { COMMANDS, captureTarget, commandLabel, commandName, commandRequest, expandCustom, insertAtCursor, insertBelowTarget, parseCommand, replaceTarget, uiLanguage } from '../ai/commands';
   import { runTurn, startRequest, endRequest, type AiHost } from '../ai/tools';
@@ -341,9 +341,7 @@
     const a = blocks.find((b) => b.n === Number(cite.dataset.from));
     const b = blocks.find((x) => x.n === Number(cite.dataset.to)) ?? a;
     if (!a || !b) return;
-    const { state, view } = editor;
-    view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, a.from, Math.max(a.from, b.to))).scrollIntoView());
-    view.focus();
+    selectRange(editor, a.from, Math.max(a.from, b.to));
   }
 
   // Typing `/` lists the commands, filtered by name or label, and `/translate ` the

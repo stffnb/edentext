@@ -631,6 +631,27 @@ try {
   check(inset.left > 0 && drift <= 1,
     `a style change keeps the block's section inset (${inset.left}px, drifted ${drift}px)`);
 
+  // A click on a heading in the navigator takes the page there, though the click took
+  // the editor's focus, which a transaction's own scroll needs.
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content:
+    Array.from({ length: 40 }, (_, i) => [
+      { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: `Chapter ${i + 1}` }] },
+      ...Array.from({ length: 6 }, () => block(words('A paragraph of the chapter to fill its page. '.repeat(4)))),
+    ]).flat() });
+  await page.reload({ waitUntil: 'load' });
+  await settle(page, true);
+  await page.keyboard.press('F5');
+  const navRow = page.locator('.navigator-pane [role="treeitem"]').last();
+  const navText = (await navRow.locator('.label').textContent()).trim();
+  await navRow.click();
+  await page.waitForFunction((text) => {
+    const h = [...document.querySelectorAll('.tiptap-host .tiptap > :is(h1,h2,h3,h4,h5,h6)')].find((e) => text.endsWith(e.textContent.trim()));
+    const box = document.querySelector('.editor').getBoundingClientRect();
+    const r = h?.getBoundingClientRect();
+    return r && r.top >= box.top && r.bottom <= box.bottom;
+  }, navText, { timeout: 5_000 }).then(() => true, () => false).then((seen) => check(seen, `a heading clicked in the navigator scrolls into view (${navText})`));
+  await page.keyboard.press('F5');
+
   // Mirrored margins: every part of a block stands at its own page's sides, as in both word
   // processors — a paragraph's lines past a page break, a list's items, a table's rows.
   const lorem = 'The quick brown fox jumps over the lazy dog and keeps on running far away. ';
