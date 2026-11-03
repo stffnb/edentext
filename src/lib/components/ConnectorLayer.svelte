@@ -5,6 +5,7 @@
   import { authorColor, authorColors } from '../editor/authorColors';
   import { visibleCommentRanges, visibleRevisions } from './reviewItems';
   import { markupView } from '../storage/markup.svelte';
+  import { paneLayout } from '../storage/panes.svelte';
 
   // The dashed leader both word processors draw from an annotated range to its balloon,
   // here from the text to the reviewing pane's card. Only for the one the caret sits in:
@@ -25,6 +26,9 @@
   $effect(() => {
     void tick;
     void markupView();
+    // A pane moved to the other side leaves the row's size as it was.
+    void paneLayout('comments').side;
+    void paneLayout('revisions').side;
     schedule();
   });
 
@@ -65,17 +69,21 @@
       // The bottom of the line box: the leader runs through the gap between two lines,
       // where it crosses no letters, as both word processors draw it.
       const ay = c.bottom - box.top;
-      const cx = r.left - box.left;
+      // A pane docked left takes the leader at its card's right edge, mirrored.
+      const toLeft = r.right - box.left <= ax;
+      const cx = (toLeft ? r.right : r.left) - box.left;
       const cy = r.top - box.top + Math.min(14, r.height / 2);
-      if (cx <= ax) return;
+      if (!toLeft && cx <= ax) return;
       // A leader may not run across another pane's cards. With a second pane docked in
       // between, the card is still marked and the margin bar still names the line.
       const own = card.closest('aside');
       for (const pane of el.parentElement?.querySelectorAll('aside') ?? []) {
-        const left = pane.getBoundingClientRect().left - box.left;
-        if (pane !== own && left > ax && left < cx) return;
+        const p = pane.getBoundingClientRect();
+        const edge = (toLeft ? p.right : p.left) - box.left;
+        if (pane !== own && edge > Math.min(ax, cx) && edge < Math.max(ax, cx)) return;
       }
-      out.push({ points: `${ax},${ay} ${Math.max(ax + 8, cx - 24)},${ay} ${cx},${cy}`, color });
+      const knee = toLeft ? Math.min(ax - 8, cx + 24) : Math.max(ax + 8, cx - 24);
+      out.push({ points: `${ax},${ay} ${knee},${ay} ${cx},${cy}`, color });
     };
 
     const state = view.state;

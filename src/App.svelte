@@ -2255,6 +2255,8 @@
     orientation={pageOrientation}
     {pageFormat}
   />
+  <!-- On the right the panes stand in this order; docked left, each sets a CSS order:
+       the navigator outermost, the reviewing panes nearest the page. -->
   {#if navigatorOpen}
     <NavigatorPane {editor} {tick} onClose={() => setNavigator({ open: false })} />
   {/if}

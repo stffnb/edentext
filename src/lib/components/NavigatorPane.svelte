@@ -8,8 +8,10 @@
   import BookmarkRow from './BookmarkRow.svelte';
   import ContextMenu from './ContextMenu.svelte';
   import PaneResize from './PaneResize.svelte';
+  import PaneOptions, { layoutItems } from './PaneOptions.svelte';
   import { t } from '../i18n/i18n.svelte';
-  import { navigatorSettings, setNavigator, NAVIGATOR_SIZES, NAVIGATOR_TABS, NAVIGATOR_WIDTH, type NavigatorTab } from '../storage/navigator.svelte';
+  import { navigatorSettings, setNavigator, NAVIGATOR_TABS, NAVIGATOR_WIDTH, type NavigatorTab } from '../storage/navigator.svelte';
+  import { clampPaneWidth } from '../storage/panes.svelte';
 
   // LibreOffice's Navigator and Word's Navigation pane: the chapters of the document as a
   // tree to fold, click to jump, and the chapter operations beside them and on a right
@@ -24,9 +26,8 @@
   const left = $derived(settings.side === 'left');
 
   const MIN_WIDTH = 180;
-  const clampWidth = (w: number) => Math.round(Math.min(Math.max(MIN_WIDTH, window.innerWidth * 0.5), Math.max(MIN_WIDTH, w)));
-  const width = $derived(clampWidth(settings.width));
-  const setWidth = (w: number) => setNavigator({ width: clampWidth(w) });
+  const width = $derived(clampPaneWidth(settings.width, MIN_WIDTH));
+  const setWidth = (w: number) => setNavigator({ width: clampPaneWidth(w, MIN_WIDTH) });
 
   let chapters = $derived.by<OutlineEntry[]>(() => (tick < 0 || !editor ? [] : outline(editor.state.doc)));
 
@@ -150,18 +151,15 @@
     view.focus();
   }
 
-  // The context menu and the options menu share one ContextMenu, placed in the window.
-  let menu = $state<{ items: MenuEntry[]; x: number; y: number; from: HTMLElement; kind: 'options' | 'row' } | null>(null);
-  let closedAt = 0;
+  // A chapter's context menu, placed in the window so the pane's scroller cannot clip it.
+  let menu = $state<{ items: MenuEntry[]; x: number; y: number; from: HTMLElement } | null>(null);
 
-  function openMenu(items: MenuEntry[], x: number, y: number, from: HTMLElement, kind: 'options' | 'row' = 'row') {
-    menu = { items, x, y, from, kind };
+  function openMenu(items: MenuEntry[], x: number, y: number, from: HTMLElement) {
+    menu = { items, x, y, from };
   }
 
   function closeMenu() {
     const from = menu?.from;
-    // A press on the options button closes the menu ahead of its own click, which must not reopen it.
-    if (menu?.kind === 'options' && from?.matches(':hover')) closedAt = performance.now();
     menu = null;
     // Escape hands focus back to what opened the menu; a command has moved it on.
     queueMicrotask(() => { if (!document.activeElement || document.activeElement === document.body) from?.focus(); });
@@ -191,17 +189,9 @@
       { kind: 'item', label: n.collapseAll, disabled: !hasParents, run: () => foldBelow(1) },
       { kind: 'sub', label: n.expandToLevel, disabled: !hasParents, items: Array.from({ length: deepest }, (_, i) => ({ kind: 'item', label: n.levelN(i + 1), run: () => foldBelow(i + 1) })) },
       { kind: 'sep' },
-      { kind: 'sub', label: n.textSize, items: NAVIGATOR_SIZES.map((s) => ({ kind: 'item', label: n[s], checked: settings.size === s, run: () => setNavigator({ size: s }) })) },
-      { kind: 'sub', label: n.dock, items: (['left', 'right'] as const).map((s) => ({ kind: 'item', label: s === 'left' ? n.dockLeft : n.dockRight, checked: settings.side === s, run: () => setNavigator({ side: s }) })) },
+      ...layoutItems(settings, setNavigator),
       { kind: 'item', label: n.wrap, checked: settings.wrap, run: () => setNavigator({ wrap: !settings.wrap }) },
     ];
-  }
-
-  function toggleOptions(e: MouseEvent) {
-    if (menu?.kind === 'options' || performance.now() - closedAt < 300) { menu = null; return; }
-    const button = e.currentTarget as HTMLElement;
-    const box = button.getBoundingClientRect();
-    openMenu(optionsMenu(), left ? box.left : box.right - 208, box.bottom + 2, button, 'options');
   }
 
   const tabLabel = (tab: NavigatorTab) => ({ headings: t().navigator.headings, bookmarks: t().navigator.bookmarks, objects: t().navigator.objects })[tab];
@@ -221,9 +211,7 @@
   <PaneResize {width} min={MIN_WIDTH} {left} label={t().navigator.paneWidth} onWidth={setWidth} onReset={() => setWidth(NAVIGATOR_WIDTH)} />
   <header>
     <span class="title">{t().navigator.title}</span>
-    <button class="icon" class:open={menu?.kind === 'options'} onclick={toggleOptions} aria-haspopup="menu" aria-expanded={menu?.kind === 'options'} aria-label={t().navigator.options} title={t().navigator.options}>
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 3.5h10M2 7h10M2 10.5h10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="5" cy="3.5" r="1.5" fill="var(--color-surface)" stroke="currentColor" stroke-width="1.2"/><circle cx="9.5" cy="7" r="1.5" fill="var(--color-surface)" stroke="currentColor" stroke-width="1.2"/><circle cx="4" cy="10.5" r="1.5" fill="var(--color-surface)" stroke="currentColor" stroke-width="1.2"/></svg>
-    </button>
+    <PaneOptions label={t().navigator.options} {left} items={optionsMenu} />
     <button class="icon" onclick={onClose} aria-label={t().common.close} title={t().common.close}>
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
     </button>
@@ -323,8 +311,8 @@
        the variable to 0, being in flow. */
     margin-top: var(--toolbar-overlay-h, 0px);
   }
-  /* Outside the AI pane when both dock left; on the right it already is, mounting first. */
-  .navigator-pane.left { order: -2; border-left: none; border-right: 1px solid var(--color-border); }
+  /* Outermost of the panes docked left, as it is innermost on the right (App.svelte). */
+  .navigator-pane.left { order: -4; border-left: none; border-right: 1px solid var(--color-border); }
   .size-small { --nav-text: 0.72rem; }
   .size-large { --nav-text: 1rem; }
 
@@ -453,7 +441,7 @@
     height: 24px;
     color: var(--color-text-muted);
   }
-  .icon:hover, .icon.open { background: var(--color-btn-hover); color: var(--color-text); }
+  .icon:hover { background: var(--color-btn-hover); color: var(--color-text); }
 
   /* The menus sit in the window, so the pane's scroller cannot clip them. */
   .menu-layer { position: fixed; inset: 0; z-index: 300; pointer-events: none; }

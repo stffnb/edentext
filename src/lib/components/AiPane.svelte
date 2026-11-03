@@ -590,7 +590,7 @@
     margin-top: var(--toolbar-overlay-h, 0px);
   }
 
-  .ai-pane.left { order: -1; border-left: none; border-right: 1px solid var(--color-border); }
+  .ai-pane.left { order: -3; border-left: none; border-right: 1px solid var(--color-border); }
 
   header {
     display: flex;
