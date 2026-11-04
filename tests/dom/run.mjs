@@ -637,7 +637,7 @@ try {
     Array.from({ length: 40 }, (_, i) => [
       { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: `Chapter ${i + 1}` }] },
       ...Array.from({ length: 6 }, () => block(words('A paragraph of the chapter to fill its page. '.repeat(4)))),
-    ]).flat() });
+    ]).flat().concat([{ type: 'paragraph', content: [{ type: 'text', text: 'the project site', marks: [{ type: 'link', attrs: { href: 'https://example.org' } }] }] }]) });
   await page.reload({ waitUntil: 'load' });
   await settle(page, true);
   await page.keyboard.press('F5');
@@ -680,12 +680,34 @@ try {
     return r && r.top >= box.top && r.bottom <= box.bottom && document.querySelector('.search-match-current').closest('h1')?.textContent;
   }, null, { timeout: 5_000 }).then((h) => h.jsonValue(), () => null);
   check(hitCount === 11 && hit === 'Chapter 39', `the navigator's search lists the matches and shows a clicked one (${hitCount}, ${hit})`);
+  // The other tabs show where the matches are: the chapters holding one, the pages only they are on.
+  await page.click('.navigator-pane [role="tab"]#nav-tab-headings');
+  const foundRows = await page.locator('.navigator-pane li.found').count();
+  check(foundRows === 11, `the headings tab marks the chapters a search found something in (${foundRows})`);
+  await page.click('.navigator-pane [role="tab"]#nav-tab-pages');
+  const onPages = await page.waitForFunction(() => {
+    const tiles = [...document.querySelectorAll('.thumbs .tile')];
+    const total = +(/of (\d+)/.exec(document.querySelector('.statusbar').textContent)?.[1] ?? 0);
+    const filled = tiles.filter((t) => t.querySelector('.zoom .tiptap'));
+    return tiles.length && tiles.length < total && filled.length === tiles.length && filled.every((t) => t.querySelector('.search-match'))
+      && `${tiles.length} of ${total}`;
+  }, null, { timeout: 5_000 }).then((h) => h.jsonValue(), () => null);
+  check(!!onPages, `the pages tab lists only the pages with a match (${onPages})`);
   await page.fill('.nav-search input[type="search"]', 'Chapter 40');
   await page.click('.nav-search .fold');
   await page.fill('.nav-search input[type="text"]', 'Closing chapter');
   await page.click('.nav-search button.text:last-of-type');
   const replaced = await page.evaluate(() => [...document.querySelectorAll('.tiptap-host .tiptap > h1')].map((h) => h.textContent).filter((s) => /Chapter 40|Closing/.test(s)));
   check(replaced.join() === 'Closing chapter', `the navigator's search replaces its matches (${replaced.join()})`);
+  // A heading dragged onto the top half of another lands before it, with its chapter.
+  await page.click('.navigator-pane [role="tab"]#nav-tab-headings');
+  await page.locator('.navigator-pane [role="treeitem"]', { hasText: 'Chapter 2' }).first()
+    .dragTo(page.locator('.navigator-pane [role="treeitem"]').first(), { targetPosition: { x: 20, y: 2 } });
+  const order = await page.evaluate(() => [...document.querySelectorAll('.tiptap-host .tiptap > h1')].slice(0, 3).map((h) => h.textContent).join());
+  check(order === 'Chapter 2,Chapter 1,Chapter 3', `a heading dragged in the navigator moves its chapter (${order})`);
+  await page.click('.navigator-pane [role="tab"]#nav-tab-objects');
+  const link = await page.locator('.navigator-pane .jump', { hasText: 'the project site' }).count();
+  check(link === 1, 'the objects tab lists the document\'s links');
   // The edit's autosave lands now, not at the next reload over the document set below.
   await page.waitForTimeout(1500);
   await page.press('.nav-search input[type="search"]', 'Escape');

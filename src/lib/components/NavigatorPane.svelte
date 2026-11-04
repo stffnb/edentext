@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { tick as settle } from 'svelte';
-  import { headingNumbers, outline, type OutlineEntry } from '../editor/extensions/outline';
+  import { chapterMoveTo, headingNumbers, outline, type OutlineEntry } from '../editor/extensions/outline';
+  import { comments } from '../editor/extensions/comment';
   import { styleSheet } from '../styles/sheet.svelte';
   import { selectRange } from './reviewItems';
   import { bookmarks, goToTarget } from '../editor/extensions/bookmark';
@@ -78,23 +79,44 @@
   }
   const foldBelow = (level: number) => setFolded(rows.filter((r) => r.parent && r.level >= level).map((r) => r.key));
 
-  type Target = { pos: number; label: string };
+  type Target = { pos: number; label: string; title?: string };
+  type Objects = Record<'tables' | 'images' | 'textBoxes' | 'footnotes' | 'endnotes' | 'comments' | 'links', Target[]>;
+  const clip = (text: string, n = 60) => (text.length > n ? `${text.slice(0, n).trimEnd()}…` : text);
 
-  // Tables and pictures anywhere in the document, in document order.
-  let objects = $derived.by<{ tables: Target[]; images: Target[] }>(() => {
-    const tables: Target[] = [];
-    const images: Target[] = [];
-    if (tick < 0 || !editor) return { tables, images };
-    editor.state.doc.descendants((node, pos) => {
-      if (node.type.name === 'table') {
-        tables.push({ pos, label: t().navigator.tableN(tables.length + 1) });
-      } else if (node.type.name === 'image') {
-        images.push({ pos, label: String(node.attrs.alt || t().navigator.imageN(images.length + 1)) });
+  // What LibreOffice's Navigator lists besides the chapters, anywhere in the document,
+  // in document order: a note by its marker and its text, a link by its text.
+  let objects = $derived.by<Objects>(() => {
+    const out: Objects = { tables: [], images: [], textBoxes: [], footnotes: [], endnotes: [], comments: [], links: [] };
+    if (tick < 0 || !editor) return out;
+    const doc = editor.state.doc;
+    const notes = new Map<string, { marker: string; text: string }>();
+    doc.lastChild?.type.name === 'noteSection' && doc.lastChild.forEach((n) => notes.set(String(n.attrs.id), { marker: String(n.attrs.text ?? ''), text: n.textContent }));
+    let link: { href: string; end: number; at: Target } | null = null;
+    doc.descendants((node, pos) => {
+      const name = node.type.name;
+      if (name === 'noteSection') return false;
+      if (name === 'table') out.tables.push({ pos, label: t().navigator.tableN(out.tables.length + 1) });
+      else if (name === 'image') out.images.push({ pos, label: String(node.attrs.alt || t().navigator.imageN(out.images.length + 1)) });
+      else if (name === 'textBox') out.textBoxes.push({ pos, label: clip(node.textContent.trim()) || t().navigator.textBoxN(out.textBoxes.length + 1) });
+      else if (name === 'noteRef') {
+        const note = notes.get(String(node.attrs.id));
+        const list = node.attrs.kind === 'endnote' ? out.endnotes : out.footnotes;
+        list.push({ pos, label: `${note?.marker || list.length + 1}  ${clip(note?.text.trim() ?? '')}` });
+      } else if (node.isText) {
+        const href = node.marks.find((m) => m.type.name === 'link')?.attrs.href as string | undefined;
+        if (href && link?.href === href && link.end === pos) { link.at.label += node.text; link.end = pos + node.nodeSize; }
+        else if (href) {
+          link = { href, end: pos + node.nodeSize, at: { pos, label: node.text ?? '', title: href } };
+          out.links.push(link.at);
+        }
       }
       return true;
     });
-    return { tables, images };
+    for (const l of out.links) l.label = clip(l.label.trim()) || l.title!;
+    out.comments = comments(doc).map((c) => ({ pos: c.from, label: clip(c.text.trim()) || clip(c.quote ?? ''), title: c.author ? `${c.author}: ${c.text}` : c.text }));
+    return out;
   });
+
 
   // The search's matches, each with the words around it in its paragraph. A long list
   // stops at RESULT_CAP rows: past that the search wants narrowing, not scrolling.
@@ -131,6 +153,51 @@
     const at = Math.min(Math.max(pos, 0), editor.state.doc.content.size);
     selectRange(editor, at, at);
   }
+
+  // A chapter dragged onto another row lands before it, or after it on the row's lower
+  // half: before the next row shown, else at the body's end.
+  let dragKey = $state<string | null>(null);
+  let drop = $state<{ key: string; after: boolean } | null>(null);
+
+  function dropTarget(r: Row, after: boolean): number | null {
+    const me = rows.find((x) => x.key === dragKey);
+    if (!me) return null;
+    const i = visible.findIndex((v) => v.key === r.key);
+    const target = !after ? r.pos : (visible[i + 1]?.pos ?? chapters[chapters.length - 1].end);
+    return chapterMoveTo(chapters, me.pos, target) ? target : null;
+  }
+
+  function dragOver(e: DragEvent, r: Row) {
+    if (!dragKey) return;
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const after = e.clientY > box.top + box.height / 2;
+    if (dropTarget(r, after) === null) { drop = null; return; }
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    drop = { key: r.key, after };
+  }
+
+  function dropOn(e: DragEvent, r: Row) {
+    e.preventDefault();
+    const me = rows.find((x) => x.key === dragKey);
+    const target = drop ? dropTarget(r, drop.after) : null;
+    dragKey = drop = null;
+    if (me && target !== null) editor?.chain().focus().moveChapterTo(me.pos, target).run();
+  }
+
+  // The chapters a search found something in: in the heading's own section, or anywhere
+  // under a folded one, as the Navigation pane marks them.
+  let hitKeys = $derived.by(() => {
+    const out = new Set<string>();
+    if (!hits.length) return out;
+    const anyIn = (from: number, to: number) => {
+      let lo = 0, hi = hits.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (hits[mid].from < from) lo = mid + 1; else hi = mid; }
+      return lo < hits.length && hits[lo].from < to;
+    };
+    rows.forEach((r, i) => { if (anyIn(r.pos, isFolded(r) ? r.end : (rows[i + 1]?.pos ?? r.end))) out.add(r.key); });
+    return out;
+  });
 
   // The caret's own chapter, or the folded one it lies in, so the pane shows where the reader is.
   let currentKey = $derived.by<string | null>(() => {
@@ -266,7 +333,10 @@
         <ul class="chapters" role="tree" aria-label={t().navigator.headings} bind:this={list}>
           {#each visible as r (r.key)}
             <li role="treeitem" data-key={r.key} aria-level={r.level} aria-expanded={r.parent ? !isFolded(r) : undefined}
-              aria-selected={r.key === currentKey} class:current={r.key === currentKey}
+              aria-selected={r.key === currentKey} class:current={r.key === currentKey} class:found={hitKeys.has(r.key)}
+              class:drop-before={drop?.key === r.key && !drop.after} class:drop-after={drop?.key === r.key && drop.after}
+              draggable="true" ondragstart={(e) => { dragKey = r.key; e.dataTransfer?.setData('text/plain', r.text); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; }}
+              ondragover={(e) => dragOver(e, r)} ondrop={(e) => dropOn(e, r)} ondragend={() => (dragKey = drop = null)}
               tabindex={r.key === tabKey ? 0 : -1} style:padding-inline-start="calc(2px + {r.level - 1} * 0.9em)"
               onclick={() => { focusKey = r.key; jumpTo(r.pos); }} onkeydown={(e) => rowKey(e, r)} onfocus={() => (focusKey = r.key)}
               oncontextmenu={(e) => { e.preventDefault(); focusKey = r.key; openMenu(chapterMenu(r), e.clientX, e.clientY, e.currentTarget); }}
@@ -289,7 +359,7 @@
         </ul>
       {/if}
     {:else if settings.tab === 'pages'}
-      <PageThumbnails {editor} {tick} {pages} {currentPage} size={settings.size} {onShowPage} />
+      <PageThumbnails {editor} {tick} {pages} {hits} {currentPage} size={settings.size} {onShowPage} />
     {:else if settings.tab === 'results'}
       {#if !hits.length}
         <p class="empty">{t().navigator.noResults}</p>
@@ -319,18 +389,23 @@
         </div>
       {/if}
     {:else}
-      {#if !objects.tables.length && !objects.images.length}
+      {#if !Object.values(objects).some((l) => l.length)}
         <p class="empty">{t().navigator.noObjects}</p>
       {/if}
       {#each [
         { label: t().navigator.tables, items: objects.tables },
         { label: t().navigator.images, items: objects.images },
+        { label: t().navigator.textBoxes, items: objects.textBoxes },
+        { label: t().navigator.footnotes, items: objects.footnotes },
+        { label: t().navigator.endnotes, items: objects.endnotes },
+        { label: t().navigator.comments, items: objects.comments },
+        { label: t().navigator.links, items: objects.links },
       ] as group}
         {#if group.items.length}
           <div class="group">{group.label}</div>
           <ul>
-            {#each group.items as o (o.pos)}
-              <li><button class="jump" onclick={() => jumpTo(o.pos)} title={o.label}>{o.label}</button></li>
+            {#each group.items as o, i (i)}
+              <li><button class="jump" onclick={() => jumpTo(o.pos)} title={o.title ?? o.label}>{o.label}</button></li>
             {/each}
           </ul>
         {/if}
@@ -429,6 +504,10 @@
     background: color-mix(in srgb, var(--color-primary) 22%, transparent);
     box-shadow: inset 2px 0 0 var(--color-primary);
   }
+  /* A chapter the search found something in, in the matches' own yellow. */
+  .chapters li.found .label { background: rgba(255, 213, 0, 0.45); border-radius: 2px; }
+  .chapters li.drop-before { box-shadow: inset 0 2px 0 var(--color-primary); }
+  .chapters li.drop-after { box-shadow: inset 0 -2px 0 var(--color-primary); }
   .chapters li.current:focus-visible { box-shadow: inset 2px 0 0 var(--color-primary), inset 0 0 0 1.5px var(--color-primary); }
 
   .twisty {

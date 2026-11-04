@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getSchema } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
 import { extensions } from '../../src/lib/editor/extensions';
-import { outline, chapterMove, chapterLevels } from '../../src/lib/editor/extensions/outline';
+import { outline, chapterMove, chapterMoveTo, chapterLevels } from '../../src/lib/editor/extensions/outline';
 
 const schema = getSchema(extensions);
 
@@ -16,8 +16,12 @@ const doc = () => PMNode.fromJSON(schema, {
 });
 
 // The move as the command performs it, so the test exercises the real positions.
-function move(node: PMNode, index: number, dir: -1 | 1): string | null {
-  const plan = chapterMove(outline(node), outline(node)[index].pos, dir);
+// A number is a step to the sibling; `{ to }` drags it before that chapter, or past the body.
+function move(node: PMNode, index: number, dir: -1 | 1 | { to: number | 'end' }): string | null {
+  const list = outline(node);
+  const plan = typeof dir === 'number'
+    ? chapterMove(list, list[index].pos, dir)
+    : chapterMoveTo(list, list[index].pos, dir.to === 'end' ? list[list.length - 1].end : list[dir.to].pos);
   if (!plan) return null;
   const slice = node.slice(plan.from, plan.to);
   const cut = node.replace(plan.from, plan.to, PMNode.fromJSON(schema, { type: 'doc' }).slice(0, 0));
@@ -41,6 +45,22 @@ describe('outline', () => {
   it('moves a chapter with everything under it', () => {
     expect(move(doc(), 2, -1)).toBe('B|b text|A|a text|A.1|a1 text');
     expect(move(doc(), 0, 1)).toBe('B|b text|A|a text|A.1|a1 text');
+  });
+
+  it('drags a chapter before any heading or to the end, keeping its levels', () => {
+    expect(move(doc(), 2, { to: 1 })).toBe('A|a text|B|b text|A.1|a1 text');
+    expect(move(doc(), 1, { to: 'end' })).toBe('A|a text|B|b text|A.1|a1 text');
+    expect(move(doc(), 0, { to: 1 })).toBeNull(); // into itself
+    expect(move(doc(), 1, { to: 2 })).toBeNull(); // where it already ends
+  });
+
+  it('leaves the notes section out of the last chapter', () => {
+    const withNotes = PMNode.fromJSON(schema, {
+      type: 'doc',
+      content: [h(1, 'A'), p('a text'), h(1, 'B'), p('b text'),
+        { type: 'noteSection', content: [{ type: 'note', attrs: { id: 'n1' }, content: [{ type: 'text', text: 'note' }] }] }],
+    });
+    expect(move(withNotes, 1, -1)).toBe('B|b text|A|a text|note');
   });
 
   it('has no sibling to swap with at the ends, or alone at its level', () => {

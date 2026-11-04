@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Transaction } from '@tiptap/pm/state';
 import { headingStyleName } from '../../styles/styleSheet';
 import { MAX_HEADING_LEVEL } from '../../styles/headings';
 import { outlineIsEmpty, outlineLabel, type OutlineNumbering } from '../../styles/outlineNumbering';
@@ -16,7 +17,8 @@ import { markupView } from '../../storage/markup.svelte';
 export type OutlineEntry = {
   /** Start of the heading node. */
   pos: number;
-  /** End of the chapter: the next heading at this level or above, else the body's end. */
+  /** End of the chapter: the next heading at this level or above, else the body's end
+   *  (before the notes' section, which belongs to no chapter). */
   end: number;
   level: number;
   text: string;
@@ -90,11 +92,12 @@ export function headingNumbers(doc: PMNode, numbering: OutlineNumbering | null |
 
 export function outline(doc: PMNode): OutlineEntry[] {
   const out: OutlineEntry[] = [];
+  const end = bodyEnd(doc);
   doc.forEach((node, offset) => {
     if (node.type.name !== 'heading') return;
     out.push({
       pos: offset,
-      end: doc.content.size,
+      end,
       level: Math.max(1, Number(node.attrs.level) || 1),
       text: blockText(node),
     });
@@ -105,6 +108,23 @@ export function outline(doc: PMNode): OutlineEntry[] {
     if (next) out[i].end = next.pos;
   }
   return out;
+}
+
+/** Where the body's blocks end: the notes' section, if any, stays last. */
+export function bodyEnd(doc: PMNode): number {
+  const last = doc.lastChild;
+  return last?.type.name === 'noteSection' ? doc.content.size - last.nodeSize : doc.content.size;
+}
+
+/**
+ * A chapter dragged to `target`, the start of another heading or the body's end: the
+ * range to lift and where it lands once lifted. Its levels stay as they are, as in both
+ * word processors. null when the target lies within the chapter itself.
+ */
+export function chapterMoveTo(list: OutlineEntry[], pos: number, target: number): { from: number; to: number; at: number } | null {
+  const me = list.find((e) => e.pos === pos);
+  if (!me || (target >= me.pos && target <= me.end)) return null;
+  return { from: me.pos, to: me.end, at: target < me.pos ? target : target - (me.end - me.pos) };
 }
 
 /**
@@ -143,11 +163,24 @@ export function chapterLevels(list: OutlineEntry[], pos: number, delta: -1 | 1, 
   return inside.map((e) => ({ pos: e.pos, level: e.level + delta }));
 }
 
+// A chapter lifted out and put back, as one move that recording pairs up.
+function lift(doc: PMNode, tr: Transaction, dispatch: boolean, plan: { from: number; to: number; at: number } | null): boolean {
+  if (!plan) return false;
+  if (!dispatch) return true;
+  const slice = doc.slice(plan.from, plan.to);
+  tr.delete(plan.from, plan.to);
+  tr.insert(plan.at, slice.content);
+  tr.setMeta(MOVING, true);
+  return true;
+}
+
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     outline: {
       /** Move the chapter starting at `pos` past its previous (-1) or next (+1) sibling. */
       moveChapter: (pos: number, dir: -1 | 1) => ReturnType;
+      /** Move the chapter starting at `pos` to `target`: a heading's start or the body's end. */
+      moveChapterTo: (pos: number, target: number) => ReturnType;
       /** Promote (-1) or demote (+1) the chapter's heading and its subheadings. */
       shiftChapterLevel: (pos: number, delta: -1 | 1) => ReturnType;
       /** Delete the chapter starting at `pos`: its heading and everything it owns. */
@@ -165,16 +198,8 @@ export const Outline = Extension.create<{ maxLevel: number }>({
 
   addCommands() {
     return {
-      moveChapter: (pos, dir) => ({ state, tr, dispatch }) => {
-        const plan = chapterMove(outline(state.doc), pos, dir);
-        if (!plan) return false;
-        if (!dispatch) return true;
-        const slice = state.doc.slice(plan.from, plan.to);
-        tr.delete(plan.from, plan.to);
-        tr.insert(plan.at, slice.content);
-        tr.setMeta(MOVING, true);
-        return true;
-      },
+      moveChapter: (pos, dir) => ({ state, tr, dispatch }) => lift(state.doc, tr, !!dispatch, chapterMove(outline(state.doc), pos, dir)),
+      moveChapterTo: (pos, target) => ({ state, tr, dispatch }) => lift(state.doc, tr, !!dispatch, chapterMoveTo(outline(state.doc), pos, target)),
 
       shiftChapterLevel: (pos, delta) => ({ state, tr, dispatch }) => {
         const plan = chapterLevels(outline(state.doc), pos, delta, this.options.maxLevel);

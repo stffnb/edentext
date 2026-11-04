@@ -10,10 +10,12 @@
   // The navigator's pages: each sheet as a small live copy of the page, a click shows it.
   // Only the tiles in view exist, and each copies only its own page's blocks, so a tile
   // costs one page however long the document; copies are made after the layout settles.
-  let { editor, tick, pages, currentPage, size = 'medium', onShowPage }: {
+  let { editor, tick, pages, hits = [], currentPage, size = 'medium', onShowPage }: {
     editor: Editor | null;
     tick: number;
     pages: PageBox[];
+    /** A search's matches: while there are any, only the pages holding one are listed. */
+    hits?: readonly { from: number; to: number }[];
     currentPage: number;
     /** The pane's text size, which the tiles grow with. */
     size?: 'small' | 'medium' | 'large';
@@ -37,20 +39,25 @@
   const tileW = $derived(Math.max(48, Math.min(TILE_W[size], viewW - 2 * PAD)));
   const scale = $derived(tileW / paperW);
 
+  // The pages listed, by number: all of them, or those a search found something on.
+  let found = $state<number[] | null>(null);
+  const order = $derived(found ?? Array.from({ length: pages.length }, (_, i) => i + 1));
+  const indexOf = (page: number) => order.indexOf(page);
+
   // Each tile's top in the list, from the sheet heights; the last entry is the list's end.
   const tops = $derived.by(() => {
-    const out = new Array<number>(pages.length + 1);
+    const out = new Array<number>(order.length + 1);
     let y = PAD;
-    for (let i = 0; i < pages.length; i++) {
+    for (let i = 0; i < order.length; i++) {
       out[i] = y;
-      y += pages[i].height * scale + LABEL + GAP;
+      y += (pages[order[i] - 1]?.height ?? 0) * scale + LABEL + GAP;
     }
-    out[pages.length] = y - GAP + PAD;
+    out[order.length] = y - GAP + PAD;
     return out;
   });
 
   const firstAt = (y: number) => {
-    let lo = 0, hi = pages.length;
+    let lo = 0, hi = order.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
       if (tops[mid + 1] <= y) lo = mid + 1; else hi = mid;
@@ -59,10 +66,10 @@
   };
 
   const shown = $derived.by(() => {
-    if (!pages.length) return [];
+    if (!order.length) return [];
     const from = Math.max(0, firstAt(scrollTop) - OVERSCAN);
-    const to = Math.min(pages.length, firstAt(scrollTop + viewH) + 1 + OVERSCAN);
-    return Array.from({ length: to - from }, (_, k) => from + k + 1);
+    const to = Math.min(order.length, firstAt(scrollTop + viewH) + 1 + OVERSCAN);
+    return Array.from({ length: to - from }, (_, k) => from + k);
   });
 
   let frame = 0;
@@ -209,7 +216,60 @@
     idle = setTimeout(() => { version++; schedule(); }, 300);
   });
 
+  // The page each match is drawn on, read off the laid-out view: a block wholly on one
+  // page answers for all its matches, only one running across a break is asked per match.
+  function pageAt(x: number, y: number): number {
+    let lo = 0, hi = pages.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (pages[mid].top <= y) lo = mid + 1; else hi = mid; }
+    // Side by side, a row's pages share a top: the one under x of those.
+    for (let i = lo - 1; i >= Math.max(0, lo - 12); i--) {
+      const b = pages[i];
+      if (y < b.top + b.height && x >= b.left && x < b.left + b.width) return i + 1;
+    }
+    return Math.max(1, lo);
+  }
+
+  function findPages(): number[] | null {
+    if (!editor || !hits.length || !pages.length) return null;
+    const view = editor.view;
+    const paper = view.dom.closest<HTMLElement>('.paper');
+    if (!paper) return null;
+    const origin = paper.getBoundingClientRect();
+    const k = paper.offsetWidth ? origin.width / paper.offsetWidth : 1;
+    const at = (r: { left: number; top: number }) => pageAt((r.left - origin.left) / k, (r.top - origin.top) / k);
+    const out = new Set<number>();
+    const blocks = new Map<number, number>();
+    for (const m of hits) {
+      const start = view.state.doc.resolve(m.from).before(1);
+      let page = blocks.get(start);
+      if (page === undefined) {
+        const el = view.nodeDOM(start);
+        const box = el instanceof HTMLElement ? el.getBoundingClientRect() : null;
+        const first = box ? at(box) : 0;
+        page = box && first === at({ left: box.left, top: box.bottom - 1 }) ? first : 0;
+        blocks.set(start, page);
+      }
+      out.add(page || at(view.coordsAtPos(m.from)));
+    }
+    return [...out].sort((a, b) => a - b);
+  }
+
+  // Found again once the layout has settled, as the copies are.
+  let finding: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    void hits;
+    void pages;
+    clearTimeout(finding);
+    if (!hits.length) { found = null; return; }
+    const run = () => {
+      if (editor && isPaginating(editor.view)) { finding = setTimeout(run, 100); return; }
+      found = findPages();
+    };
+    finding = setTimeout(run, 150);
+  });
+
   onDestroy(() => {
+    clearTimeout(finding);
     clearTimeout(idle);
     cancelAnimationFrame(pump);
     cancelAnimationFrame(frame);
@@ -218,8 +278,9 @@
 
   // ---- Reading position and keys ------------------------------------------------------
   function reveal(page: number) {
-    if (!scroller || page < 1 || page > pages.length) return;
-    const y = tops[page - 1], end = tops[page] - GAP;
+    const i = indexOf(page);
+    if (!scroller || i < 0) return;
+    const y = tops[i], end = tops[i + 1] - GAP;
     if (y < scroller.scrollTop) scroller.scrollTop = y - PAD;
     else if (end > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = end - scroller.clientHeight + PAD;
     scrollTop = scroller.scrollTop;
@@ -228,14 +289,15 @@
   $effect(() => { if (viewH) reveal(currentPage); });
 
   let focusPage = $state(0);
-  const tabPage = $derived(focusPage >= 1 && focusPage <= pages.length ? focusPage : Math.min(currentPage, pages.length));
+  const tabPage = $derived(order.includes(focusPage) ? focusPage : order.includes(currentPage) ? currentPage : (order[0] ?? 0));
 
   function keys(e: KeyboardEvent, page: number) {
     const step = ({ ArrowDown: 1, ArrowUp: -1, PageDown: 5, PageUp: -5 } as Record<string, number>)[e.key];
-    let to = step ? page + step : e.key === 'Home' ? 1 : e.key === 'End' ? pages.length : 0;
-    if (!to) return;
+    const i = indexOf(page);
+    const next = step ? i + step : e.key === 'Home' ? 0 : e.key === 'End' ? order.length - 1 : null;
+    if (next === null) return;
     e.preventDefault();
-    to = Math.max(1, Math.min(pages.length, to));
+    const to = order[Math.max(0, Math.min(order.length - 1, next))];
     focusPage = to;
     reveal(to);
     void settle().then(() => scroller?.querySelector<HTMLElement>(`[data-page="${to}"]`)?.focus());
@@ -244,14 +306,15 @@
 
 <div class="thumbs" bind:this={scroller} bind:clientWidth={viewW} bind:clientHeight={viewH} onscroll={onScroll}
   role="listbox" aria-label={t().navigator.pages}>
-  <div class="track" style:height="{tops[pages.length] ?? 0}px">
-    {#each shown as page (page)}
+  <div class="track" style:height="{tops[order.length] ?? 0}px">
+    {#each shown as i (order[i])}
+      {@const page = order[i]}
       {@const box = pages[page - 1]}
       <button
         class="tile" class:current={page === currentPage}
         role="option" aria-selected={page === currentPage} aria-label={t().navigator.pageN(page)}
         data-page={page} tabindex={page === tabPage ? 0 : -1}
-        style:top="{tops[page - 1]}px" style:width="{box.width * scale + 4}px"
+        style:top="{tops[i]}px" style:width="{box.width * scale + 4}px"
         onclick={() => { focusPage = page; onShowPage(page); }} onkeydown={(e) => keys(e, page)} onfocus={() => (focusPage = page)}
       >
         <span class="sheet" style:width="{box.width * scale}px" style:height="{box.height * scale}px">
