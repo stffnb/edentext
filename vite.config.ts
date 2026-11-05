@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { execSync } from 'node:child_process';
-import { defineConfig } from 'vite';
+import { readFileSync } from 'node:fs';
+import { defineConfig, type Plugin } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import pkg from './package.json' with { type: 'json' };
 
@@ -16,11 +17,30 @@ const commit = (() => {
   }
 })();
 
+// Anonymous visit counting, only in a build with GOATCOUNTER set to the count endpoint
+// (edentext.app); every other build ships neither the tag nor count.js.
+function goatcounter(): Plugin {
+  const endpoint = process.env.GOATCOUNTER;
+  return {
+    name: 'goatcounter',
+    apply: 'build',
+    transformIndexHtml: () =>
+      endpoint
+        ? [{ tag: 'script', attrs: { 'data-goatcounter': endpoint, async: true, src: './count.js' }, injectTo: 'head' }]
+        : [],
+    generateBundle() {
+      if (!endpoint) return;
+      const source = readFileSync(new URL('./scripts/goatcounter/count.js', import.meta.url), 'utf8');
+      this.emitFile({ type: 'asset', fileName: 'count.js', source });
+    },
+  };
+}
+
 export default defineConfig({
   // Relative asset URLs, so the same build works at the domain root and under a
   // subpath (GitHub Pages project site). sw.js and the manifest are relative too.
   base: './',
-  plugins: [svelte()],
+  plugins: [svelte(), goatcounter()],
   // The browsers the bundle promises to parse in; the CI browser matrix runs the
   // engines behind them (docs/headless-testing.md).
   build: { target: 'baseline-widely-available' },

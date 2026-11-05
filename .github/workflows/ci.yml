@@ -135,7 +135,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Only the site build counts visits; see goatcounter() in vite.config.ts.
       - run: npm run build
+        env:
+          GOATCOUNTER: https://edentext.goatcounter.com/count
       - id: pages
         uses: actions/configure-pages@v5
       # A tab opened before this deploy still loads its build's lazy chunks by their hashed

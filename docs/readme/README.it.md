@@ -76,9 +76,7 @@ EdenText è un elaboratore di testi potente che funziona nel browser, adatto a t
   disattivare; le richieste vanno direttamente al provider, senza passare da un server EdenText
 - **Privacy by design**: i documenti non lasciano mai il computer e tutta
   l'elaborazione avviene in locale; installato come app funziona anche offline.
-  edentext.app conta le visite in forma anonima (GoatCounter, ospitato nell'UE, senza
-  cookie; le installazioni self-hosted e l'app desktop non contano nulla); l'editor non
-  invia nulla, a meno che non si attivi l'assistente IA, che invia i dati al provider scelto.
+  L'editor non invia nulla, a meno che non si attivi l'assistente IA, che invia i dati al provider scelto.
   I documenti vengono salvati automaticamente nel browser; in Documenti recenti si può
   scegliere di eliminare quelli chiusi all'avvio successivo o di non conservarli affatto,
   e una finestra privata non lascia traccia una volta chiusa
@@ -159,6 +157,11 @@ Consigliamo di servire EdenText tramite HTTPS. L'editor funziona anche con il se
 ma in quel caso i browser disattivano alcune funzioni: l'uso offline, l'installazione come app,
 il salvataggio diretto nel file aperto (che viene invece scaricato) e i pulsanti per copiare.
 Su localhost tutto funziona come con HTTPS.
+
+Su [edentext.app](https://edentext.app) c'è una versione ospitata su GitHub Pages,
+liberamente accessibile a tutti (conta le visite in forma anonima con GoatCounter,
+ospitato nell'UE, senza cookie né indirizzi IP salvati; l'app desktop, l'immagine
+container, il download della release e le build proprie non contengono alcun contatore).
 
 ## Integrazione
 

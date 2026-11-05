@@ -75,8 +75,7 @@ EdenText is a web-based, powerful word processor for everything from quick notes
   answers questions about the document and edits it as tracked changes. Can be
   switched off; requests go directly to the provider, without an EdenText server
 - **Private by design** — your documents never leave your computer, all
-  processing runs locally; works offline as an installable app. edentext.app counts
-  anonymous visits (GoatCounter, EU-hosted, no cookies; self-hosted and desktop builds count nothing); the editor sends nothing,
+  processing runs locally; works offline as an installable app. The editor sends nothing,
   unless you switch on the AI assistant, which sends to the provider you chose.
   Documents are autosaved in the browser; Recent documents can be set to delete
   closed ones at the next start or not keep them at all, and a private window
@@ -158,6 +157,11 @@ We recommend serving EdenText over HTTPS. The editor also works over plain HTTP,
 browsers then turn off a few features: offline use, installing it as an app, saving
 straight back to the opened file (it is downloaded instead) and the copy buttons. On
 localhost everything works as it does over HTTPS.
+
+A version hosted on GitHub Pages is freely available to everyone at
+[edentext.app](https://edentext.app) (it counts visits anonymously with GoatCounter,
+EU-hosted, without cookies or stored IP addresses; the desktop app, the container image,
+the release download and self-built copies contain no counter).
 
 ## Embedding
 
