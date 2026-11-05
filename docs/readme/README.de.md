@@ -166,12 +166,14 @@ Version, die für alle frei verfügbar ist (sie zählt Besuche anonym mit GoatCo
 EU gehostet, ohne Cookies und ohne gespeicherte IP-Adressen; Desktop-App, Container-Image,
 Release-Download und eigene Builds enthalten keinen Zähler).
 
-## Einbetten
+## In andere Anwendungen einbinden
 
 Andere Webanwendungen können EdenText in einem iframe anzeigen und das Dokument selbst
 verwalten. Mit `?embed=1` blendet der Editor seine eigene Dateiverwaltung aus. Der Helfer
 `embed.js`, den jede Instanz mitliefert, lädt Dateien hinein und holt sie als ODT, DOCX
-oder PDF zurück; siehe [docs/architecture/embed.md](../../docs/architecture/embed.md). Im
+oder PDF zurück; siehe [docs/architecture/embed.md](../../docs/architecture/embed.md).
+Der Host kann außerdem Sprache, Theme und Akzentfarbe festlegen und den KI-Assistenten abschalten.
+Im
 Embed-Modus zeigt der Editor das EdenText-Logo und den Hinweis „Powered by EdenText“, die
 nach den AGPL-Bedingungen erhalten bleiben müssen ([NOTICE.md](../../NOTICE.md)) und nur
 ein White-Label-Build unter der [kommerziellen Lizenz](../../LICENSE.commercial.md)

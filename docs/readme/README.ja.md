@@ -164,7 +164,7 @@ GitHub Pages でホストしている版が [edentext.app](https://edentext.app)
 他の Web アプリケーションは EdenText を iframe に表示し、文書を自ら管理できます。
 `?embed=1` を付けるとエディター自身のファイル管理が非表示になります。各インスタンスが配信する
 ヘルパー `embed.js` でファイルを読み込み、ODT・DOCX・PDF として受け取れます。詳しくは
-[docs/architecture/embed.md](../../docs/architecture/embed.md) を参照してください。埋め込みモードでは
+[docs/architecture/embed.md](../../docs/architecture/embed.md) を参照してください。ホスト側から言語、テーマ、アクセントカラーを指定し、AI アシスタントをオフにすることもできます。埋め込みモードでは
 EdenText のロゴと「Powered by EdenText」という表示が出ます。これらは AGPL の条件により残す必要があり
 （[NOTICE.md](../../NOTICE.md)）、省略できるのは[商用ライセンス](../../LICENSE.commercial.md)による
 ホワイトラベルのビルド（`VITE_EDENTEXT_ATTRIBUTION=off`）だけです。

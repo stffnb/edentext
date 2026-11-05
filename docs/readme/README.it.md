@@ -168,7 +168,9 @@ container, il download della release e le build proprie non contengono alcun con
 Un'altra applicazione web può mostrare EdenText in un iframe e gestire da sé il documento.
 Con `?embed=1` l'editor rinuncia alla propria gestione dei file. Lo script `embed.js`,
 fornito da ogni istanza, vi carica i file e li restituisce in formato ODT, DOCX o PDF;
-vedi [docs/architecture/embed.md](../architecture/embed.md). In modalità integrata l'editor
+vedi [docs/architecture/embed.md](../architecture/embed.md).
+L'applicazione ospite può anche impostare lingua, tema e colore d'accento e disattivare l'assistente IA.
+In modalità integrata l'editor
 mostra il logo di EdenText e la dicitura “Powered by EdenText”, che i termini della AGPL
 impongono di mantenere ([NOTICE.md](../../NOTICE.md)) e che solo una build white label con la
 [licenza commerciale](../../LICENSE.commercial.md) omette (`VITE_EDENTEXT_ATTRIBUTION=off`).

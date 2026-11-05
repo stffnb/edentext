@@ -75,7 +75,9 @@ Every instance serves the helper next to the app:
 <div id="editor" style="height: 80vh"></div>
 <script type="module">
   import { EdenTextFrame } from 'https://edentext.example.org/embed.js';
-  const ed = new EdenTextFrame(document.getElementById('editor'), { user: 'Jane Doe', locale: 'de' });
+  const ed = new EdenTextFrame(document.getElementById('editor'), {
+    user: 'Jane Doe', locale: 'de', accent: '#0b6e4f', ai: false,
+  });
   await ed.ready;
   await ed.load(await (await fetch('/files/42')).blob(), 'letter.docx');
   ed.on('saveRequest', async () => {
@@ -86,8 +88,32 @@ Every instance serves the helper next to the app:
 </script>
 ```
 
-`embed.d.ts` beside it carries the TypeScript types. `url` in the options points at another instance. By default it is the one serving
-`embed.js`.
+`embed.d.ts` beside it carries the TypeScript types: a project that copies both files
+gets them without further setup.
+
+| Option (constructor and `configure`) | Values |
+|---|---|
+| `url` | the EdenText instance (constructor only); by default the one serving `embed.js` |
+| `user` | the name on comments and recorded changes |
+| `locale` | a UI language: `en`, `de`, `es`, `fr`, `it`, `pt`, `el`, `ru`, `uk`, `ja`, `zh-Hans` or `zh-Hant` |
+| `theme` | `light`, `dark`, `allBlack` or `auto` (follows the system) |
+| `chrome` | `ribbon` or `modern` (the floating toolbar) |
+| `name` | the host's file name, shown in the title field |
+| `accent` | `slate`, `blue`, `teal`, `green`, `violet`, `berry`, `graphite` or a `#rrggbb` colour |
+| `ai` | `false` removes the AI assistant and its settings; `true` leaves it to the reader |
+
+An unknown value is ignored, so the setting keeps what it had.
+
+| Method | Does |
+|---|---|
+| `ready` | a promise that resolves once the editor has taken the options; `version` is then set |
+| `configure(options)` | changes any option above at a later time |
+| `load(data, name?)` | opens a `Blob`, `ArrayBuffer` or `Uint8Array`; the name's extension (`.odt`, `.ott`, `.docx`, `.dotx`) picks the reader. Resolves `false` if the reader cancelled a password prompt |
+| `newDocument(name?)` | starts an empty document |
+| `export(format)` | the document as a `File`: `odt`, `docx` or `pdf` |
+| `markSaved()` | tells the editor the exported file is stored, which clears `dirty` |
+| `on(event, fn)` | `dirty` (`{ dirty }`), `saveRequest` (the reader pressed Save or Ctrl+S), `warning` (`{ warnings }`, what an import could not keep); returns an unsubscribe function |
+| `destroy()` | removes the iframe |
 
 ## Hosting notes
 

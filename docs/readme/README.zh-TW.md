@@ -150,7 +150,7 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 
 其他 Web 應用程式可以在 iframe 中顯示 EdenText，並自行管理文件。使用 `?embed=1` 時，編輯器會隱藏
 自身的檔案管理。每個執行個體都提供輔助腳本 `embed.js`，用來載入檔案，並以 ODT、DOCX 或 PDF 格式取回；
-詳見 [docs/architecture/embed.md](../../docs/architecture/embed.md)。在嵌入模式下，編輯器會顯示
+詳見 [docs/architecture/embed.md](../../docs/architecture/embed.md)。宿主應用程式還可以設定介面語言、主題和強調色，並關閉 AI 助理。在嵌入模式下，編輯器會顯示
 EdenText 標誌和「Powered by EdenText」標示，AGPL 條款要求保留兩者（[NOTICE.md](../../NOTICE.md)），
 只有依據[商業授權](../../LICENSE.commercial.md)的白標建置（`VITE_EDENTEXT_ATTRIBUTION=off`）才會省略。
 

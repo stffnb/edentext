@@ -170,7 +170,9 @@ propias no incluyen ningún contador).
 Otra aplicación web puede mostrar EdenText en un iframe y gestionar ella misma el documento.
 Con `?embed=1` el editor prescinde de su propia gestión de archivos. El asistente `embed.js`,
 que sirve cada instancia, carga archivos y los devuelve como ODT, DOCX o PDF; consulta
-[docs/architecture/embed.md](../../docs/architecture/embed.md). En modo integrado el editor
+[docs/architecture/embed.md](../../docs/architecture/embed.md).
+La aplicación anfitriona también puede fijar el idioma, el tema y el color de acento, y desactivar el asistente de IA.
+En modo integrado el editor
 muestra el logotipo de EdenText y el aviso «Powered by EdenText», que los términos de la AGPL
 exigen conservar ([NOTICE.md](../../NOTICE.md)) y que solo omite una compilación de marca
 blanca con la [licencia comercial](../../LICENSE.commercial.md) (`VITE_EDENTEXT_ATTRIBUTION=off`).
