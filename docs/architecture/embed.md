@@ -29,11 +29,15 @@ only from `window.parent`, pins the host's origin at the first `init` and sends
 everything after that to that origin alone. `ready` goes out to `*` before `init`, since
 it carries no document data. An opaque host origin (`null`) is answered with `*`.
 
+Within protocol 1, messages and fields are only ever added; an existing one keeps its
+name and meaning. A change that breaks this raises the protocol number in `ready`.
+
 | Host → editor | Fields | Reply (`response`, same `id`) |
 |---|---|---|
-| `init` | `user?`, `locale?`, `theme?`, `chrome?`, `name?` | `ok` |
+| `init` | `user?`, `locale?`, `theme?`, `chrome?`, `name?`, `accent?`, `ai?` | `ok` |
 | `configure` | the same, at any later time | `ok` |
 | `load` | `bytes` (ArrayBuffer), `name` | `ok: false` if the reader backed out (password) |
+| `new` | `name?` | `ok` |
 | `export` | `format`: `odt`, `docx` or `pdf` | `bytes` (transferred), `mime`, `name` |
 | `markSaved` | – | `ok` |
 
@@ -47,6 +51,13 @@ A failure is answered with `error: message`.
 - **Clean state.** Exporting does not make the document clean. The host calls
   `markSaved` once it has stored the file, so `dirty` follows what the host holds.
 - **`name`** in `init`/`configure` is the host's file name. It does not count as an edit.
+- **`accent`** is one of the presets in Settings ▸ General (`ACCENTS` in
+  `storage/theme.ts`) or a `#rrggbb` colour, kept like `theme`.
+- **`ai: false`** switches the assistant off above the user's own setting: every AI
+  surface and the Settings ▸ AI section go (`setAiHostOff`, `storage/ai.svelte.ts`). It is
+  never stored, so the host sends it with every `init`; `ai: true` hands the choice back.
+- **`new`** replaces the document with an empty, unchanged one without asking, as New
+  does; `name` is the host's file name for it.
 
 | Editor → host | Fields |
 |---|---|
@@ -74,7 +85,7 @@ Every instance serves the helper next to the app:
 </script>
 ```
 
-`url` in the options points at another instance. By default it is the one serving
+`embed.d.ts` beside it carries the TypeScript types. `url` in the options points at another instance. By default it is the one serving
 `embed.js`.
 
 ## Hosting notes

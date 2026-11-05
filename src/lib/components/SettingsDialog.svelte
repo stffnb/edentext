@@ -21,7 +21,7 @@
   import Icon from './ribbon/Icon.svelte';
   import Toggle from './Toggle.svelte';
   import { LANGUAGES, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
-  import { aiSettings, setAi, aiConfig, AI_PRESETS, presetOf, DEFAULT_CONTEXT_TOKENS, type CustomCommand } from '../storage/ai.svelte';
+  import { aiSettings, setAi, aiConfig, aiHostOff, AI_PRESETS, presetOf, DEFAULT_CONTEXT_TOKENS, type CustomCommand } from '../storage/ai.svelte';
   import { COMMANDS, commandName } from '../ai/commands';
   import { streamChat, aiErrorText } from '../ai/client';
 
@@ -89,6 +89,8 @@
   let dialogEl = $state<HTMLDialogElement | null>(null);
   let retention = $state<Retention>(loadRetention());
   let accent = $state<Accent>(loadAccent());
+  // An embedding host may set the accent while the dialog stays mounted.
+  $effect(() => { if (open) accent = loadAccent(); });
 
   function pickAccent(a: Accent) {
     accent = a;
@@ -163,7 +165,8 @@
   <div class="shell">
     <nav aria-label={t().settings.title}>
       <h2>{t().settings.title}</h2>
-      {#each SECTIONS as s (s.id)}
+      <!-- An embedding host that switched the assistant off leaves nothing to set up. -->
+      {#each SECTIONS.filter((s) => s.id !== 'ai' || !aiHostOff()) as s (s.id)}
         <button class="nav-item" class:active={section === s.id} aria-current={section === s.id} onclick={() => (section = s.id)}>
           <Icon name={s.icon} size={16} />
           <span>{t().settings.sections[s.id]}</span>
@@ -307,7 +310,7 @@
           </div>
           {@render placeRow(t().settings.changePlace, changePlace(), setChangePlace)}
 
-        {:else if section === 'ai'}
+        {:else if section === 'ai' && !aiHostOff()}
           <div class="row">
             <div class="info"><div class="name">{t().ai.enable}</div><div class="desc">{t().ai.enableHint}</div></div>
             <Toggle label={t().ai.enable} checked={ai.enabled} onchange={(on) => setAi({ enabled: on })} />

@@ -14,8 +14,8 @@ export class EdenTextFrame {
 
   /**
    * @param {HTMLElement} container where the iframe goes
-   * @param {{ url?: string, user?: string, locale?: string, theme?: string, chrome?: string, name?: string }} [options]
-   *   `url`: the EdenText instance, by default the one serving this file.
+   * @param {{ url?: string, user?: string, locale?: string, theme?: string, chrome?: string, name?: string, accent?: string, ai?: boolean }} [options]
+   *   `url`: the EdenText instance, by default the one serving this file. Types: embed.d.ts.
    */
   constructor(container, { url, ...settings } = {}) {
     const src = new URL(url ?? new URL('./', import.meta.url), location.href);
@@ -59,7 +59,10 @@ export class EdenTextFrame {
     });
   }
 
-  /** Change user, locale, theme ('light'|'dark'|'allBlack'|'auto'), chrome ('ribbon'|'modern') or name. */
+  /**
+   * Change user, locale, theme ('light'|'dark'|'allBlack'|'auto'), chrome ('ribbon'|'modern'),
+   * name, accent (a preset name or '#rrggbb') or ai (false hides the assistant).
+   */
   async configure(settings) {
     await this.#send('configure', settings);
   }
@@ -75,6 +78,11 @@ export class EdenTextFrame {
       : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
     const r = await this.#send('load', { bytes, name }, [bytes]);
     return r.ok;
+  }
+
+  /** Start an empty, unchanged document; `name` is the host's file name for it. */
+  async newDocument(name) {
+    await this.#send('new', name === undefined ? {} : { name });
   }
 
   /**

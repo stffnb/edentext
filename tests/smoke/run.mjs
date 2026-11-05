@@ -257,7 +257,7 @@ try {
     <script type="module">
       import { EdenTextFrame } from '/embed.js';
       window.events = [];
-      window.ed = new EdenTextFrame(document.getElementById('c'), { url: 'http://localhost:${PORT}/', user: 'Host', locale: 'en' });
+      window.ed = new EdenTextFrame(document.getElementById('c'), { url: 'http://localhost:${PORT}/', user: 'Host', locale: 'en', accent: 'teal', ai: false });
       for (const t of ['dirty', 'saveRequest', 'warning']) ed.on(t, (m) => events.push(m));
       ed.ready.then(() => { window.isReady = true; });
     </script>`;
@@ -278,6 +278,8 @@ try {
   check(!!frame, 'embed: the editor boots in the iframe and answers init');
   const storedBefore = await frame.evaluate(() => [localStorage.getItem('edentext-doc'), sessionStorage.getItem('edentext-tab-doc')]);
   check(await frame.isVisible('.powered-by'), 'embed: "Powered by EdenText" shows in the status bar');
+  const look = await frame.evaluate(() => [document.documentElement.dataset.accent, !!document.querySelector('[data-cmd="aiPane"]')]);
+  check(look.join() === 'teal,false', `embed: init sets the accent and switches the assistant off (${look})`);
   await frame.click('.ribbon-tab-file');
   const fileMenu = await frame.evaluate(() => ['open', 'newDocument', 'saveAsOdt', 'saveTemplate', 'save']
     .map((c) => !!document.querySelector(`.ribbon [data-cmd="${c}"]`)));
@@ -314,6 +316,9 @@ try {
   await host.evaluate(() => ed.markSaved());
   await host.waitForFunction(() => events.filter((m) => m.type === 'dirty').at(-1)?.dirty === false, null, { timeout: 5_000 });
   check(true, 'embed: markSaved clears dirty');
+  await host.evaluate(() => ed.newDocument('blank.odt'));
+  await frame.waitForFunction(() => !document.querySelector('.tiptap')?.textContent.trim(), null, { timeout: 10_000 });
+  check(await host.evaluate(() => events.filter((m) => m.type === 'dirty').at(-1)?.dirty === false), 'embed: new starts an empty, unchanged document');
 
   await new Promise((r) => setTimeout(r, 1500)); // past the autosave debounce
   const storedAfter = await frame.evaluate(() => [localStorage.getItem('edentext-doc'), sessionStorage.getItem('edentext-tab-doc')]);

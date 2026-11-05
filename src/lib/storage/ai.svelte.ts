@@ -45,16 +45,21 @@ function load(): AiSettings {
 }
 
 let current = $state(load());
+// An embedding host's switch-off (`ai: false`), above the user's own; never stored.
+let hostOff = $state(false);
+
+export function setAiHostOff(off: boolean): void { hostOff = off; }
+export function aiHostOff(): boolean { return hostOff; }
 
 /** The kill switch: false hides every AI surface and keeps every request from going out. */
-export function aiEnabled(): boolean { return current.enabled; }
+export function aiEnabled(): boolean { return current.enabled && !hostOff; }
 
 export function aiSettings(): AiSettings { return current; }
 
 /** What a request needs, or null while the assistant is off or not set up. */
 export function aiConfig(): AiConfig | null {
   const { enabled, ...cfg } = current;
-  return enabled && cfg.endpoint.trim() && cfg.model.trim() ? cfg : null;
+  return enabled && !hostOff && cfg.endpoint.trim() && cfg.model.trim() ? cfg : null;
 }
 
 export function setAi(patch: Partial<AiSettings>): void {

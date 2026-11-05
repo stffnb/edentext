@@ -15,6 +15,9 @@ endpoint, apiKey, model, contextTokens, mode, side, commands}`. On is the defaul
   pointing to Settings ▸ AI;
 - `Alt+I` and the pane.
 
+An embedding host's `ai: false` (`docs/architecture/embed.md`) switches it off above the
+user's choice, unstored, and hides Settings ▸ AI.
+
 `App.svelte` aborts every request in flight when the switch goes off. The network is gated
 in the types as well: `ai/client.ts` is the only `fetch`, and it needs an `AiConfig`, which
 `aiConfig()` only returns while the switch is on and an endpoint and model are set.

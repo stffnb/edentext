@@ -38,7 +38,7 @@
   import { ensureUserName, shownStats, toggleRecordChanges } from './lib/components/reviewItems';
   import type { Node as PmNode } from 'prosemirror-model';
   import { clampZoom, wheelZoomFactor, MIN_ZOOM, MAX_ZOOM } from './lib/utils/zoom';
-  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadToolbarCategory, saveToolbarCategory, loadChromeMode, saveChromeMode, loadFormattingMarks, saveFormattingMarks, loadFieldShading, saveFieldShading, loadPageLabels, savePageLabels, loadRuler, saveRuler, loadSplitView, saveSplitView, loadPageColumns, savePageColumns, type ThemeMode, type ChromeMode } from './lib/storage/theme';
+  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadToolbarCategory, saveToolbarCategory, loadChromeMode, saveChromeMode, loadFormattingMarks, saveFormattingMarks, loadFieldShading, saveFieldShading, loadPageLabels, savePageLabels, loadRuler, saveRuler, loadSplitView, saveSplitView, loadPageColumns, savePageColumns, ACCENTS, parseAccentHex, saveAccent, applyAccent, type Accent, type ThemeMode, type ChromeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, fitMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadTabInterval, saveTabInterval, applyTabIntervalVar, DEFAULT_TAB_INTERVAL_CM } from './lib/storage/tabInterval';
@@ -91,7 +91,7 @@
   import NavigatorPane from './lib/components/NavigatorPane.svelte';
   import type { PageBox } from './lib/utils/pageStrip';
   import AiPane, { askAi, resetAiChat } from './lib/components/AiPane.svelte';
-  import { aiConfig, aiAnswering, aiEnabled, AI_COMMENT_EVENT, OPEN_AI_CHAT_EVENT } from './lib/storage/ai.svelte';
+  import { aiConfig, aiAnswering, aiEnabled, setAiHostOff, AI_COMMENT_EVENT, OPEN_AI_CHAT_EVENT } from './lib/storage/ai.svelte';
   import { navigatorSettings, setNavigator } from './lib/storage/navigator.svelte';
   import { aiErrorText, isAbort } from './lib/ai/client';
   import { abortAll as abortAiRequests, answerComment, startRequest, endRequest, type AiHost } from './lib/ai/tools';
@@ -941,14 +941,19 @@
     void clearEmbeddedFontStore();
   }
 
-  function handleNew() {
-    if (!editor || embedded) return;
-    if (isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
+  // An empty document with every side-car at its default; New and the embed host's `new`.
+  function startBlank() {
     loadContent('<p></p>'); // onUpdate fires → autosave
     documentEpoch++;
     resetHistory();
     resetDocumentState();
     markSaved();
+  }
+
+  function handleNew() {
+    if (!editor || embedded) return;
+    if (isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
+    startBlank();
     editor.commands.focus();
   }
 
@@ -1556,6 +1561,11 @@
     if (typeof s.locale === 'string' && isLocale(s.locale)) setLocale(s.locale);
     if (s.theme === 'light' || s.theme === 'dark' || s.theme === 'allBlack' || s.theme === 'auto') selectTheme(s.theme);
     if (s.chrome === 'ribbon' || s.chrome === 'modern') chromeMode = s.chrome;
+    if (typeof s.accent === 'string') {
+      const accent: Accent | null = (ACCENTS as readonly string[]).includes(s.accent) ? (s.accent as Accent) : parseAccentHex(s.accent);
+      if (accent) { saveAccent(accent); applyAccent(accent); }
+    }
+    if (typeof s.ai === 'boolean') setAiHostOff(!s.ai);
     if (typeof s.name === 'string') {
       // The file's name as the host keeps it, which is no edit of the document.
       const clean = !dirty;
@@ -1583,6 +1593,10 @@
     startBridge({
       configure: configureEmbed,
       load: (bytes, name) => applyImport(bytes, null, name, { warn: (warnings) => notify('warning', { warnings }) }),
+      newDocument: (name) => {
+        startBlank();
+        if (name !== undefined) { documentName = name; markSaved(); }
+      },
       exportAs: exportForHost,
       // The host has stored what it exported: the document now has a file behind it.
       markSaved: () => { documentHasFile = true; markSaved(); },

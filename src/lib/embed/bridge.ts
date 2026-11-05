@@ -10,12 +10,15 @@ export interface EmbedSettings {
   theme?: string;
   chrome?: string;
   name?: string;
+  accent?: string;
+  ai?: boolean;
 }
 
 export interface EmbedApi {
   configure(settings: EmbedSettings): void;
   /** False when the reader backed out (a password not given). */
   load(bytes: Uint8Array, name: string): Promise<boolean>;
+  newDocument(name?: string): void;
   exportAs(format: ExportFormat): Promise<{ bytes: Uint8Array; mime: string; name: string }>;
   markSaved(): void;
 }
@@ -50,6 +53,9 @@ export function startBridge(api: EmbedApi): void {
           const bytes = v instanceof ArrayBuffer ? new Uint8Array(v) : new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
           return reply({ ok: await api.load(bytes, String(m.name ?? 'document.odt')) });
         }
+        case 'new':
+          api.newDocument(typeof m.name === 'string' ? m.name : undefined);
+          return reply({ ok: true });
         case 'export': {
           if (m.format !== 'odt' && m.format !== 'docx' && m.format !== 'pdf') throw new Error('export needs format odt, docx or pdf');
           const out = await api.exportAs(m.format);
