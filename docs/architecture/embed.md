@@ -54,7 +54,7 @@ A failure is answered with `error: message`.
 - **`accent`** is one of the presets in Settings ▸ General (`ACCENTS` in
   `storage/theme.ts`) or a `#rrggbb` colour, kept like `theme`.
 - **`ai: false`** switches the assistant off above the user's own setting: every AI
-  surface and the Settings ▸ AI section go (`setAiHostOff`, `storage/ai.svelte.ts`). It is
+  surface, the context menu's AI submenu and the Settings ▸ AI section go (`setAiHostOff`, `storage/ai.svelte.ts`). It is
   never stored, so the host sends it with every `init`; `ai: true` hands the choice back.
 - **`new`** replaces the document with an empty, unchanged one without asking, as New
   does; `name` is the host's file name for it.

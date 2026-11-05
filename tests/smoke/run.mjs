@@ -294,6 +294,11 @@ try {
   await host.keyboard.type('Embedded ');
   await host.waitForFunction(() => events.some((m) => m.type === 'dirty' && m.dirty), null, { timeout: 5_000 });
   check(true, 'embed: an edit reports dirty');
+  await frame.click('.tiptap p', { button: 'right' });
+  await frame.waitForSelector('.cm-item', { timeout: 5_000 });
+  const menu = await frame.$$eval('.cm-item', (items) => items.map((e) => e.textContent.trim()));
+  await host.keyboard.press('Escape');
+  check(menu.length > 0 && !menu.some((l) => /^AI/.test(l)), `embed: the context menu has no AI entry while the host switched it off (${menu.length} items)`);
   await host.keyboard.press(`${MOD}+s`);
   await host.waitForFunction(() => events.some((m) => m.type === 'saveRequest'), null, { timeout: 5_000 });
   check(true, 'embed: Save asks the host');

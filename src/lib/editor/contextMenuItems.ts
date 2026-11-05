@@ -10,7 +10,7 @@ import { OPEN_THESAURUS_EVENT } from '../spell/thesaurus';
 import { outerOrderedListAt } from './extensions/listStyle';
 import { changesAt } from './extensions/trackChanges';
 import { whenUnlocked } from '../storage/trackChanges.svelte';
-import { aiEnabled, OPEN_AI_CHAT_EVENT } from '../storage/ai.svelte';
+import { aiEnabled, aiHostOff, OPEN_AI_CHAT_EVENT } from '../storage/ai.svelte';
 import { COMMANDS } from '../ai/commands';
 
 // The right-click menu's contents, the usual text menu mapped onto this editor. Pure
@@ -132,8 +132,9 @@ export function buildContextMenu(editor: Editor, opts: { spell?: SpellSection; g
   }
 
   // The body only: the assistant does not work in a header or footer, whose schema has no
-  // comment mark. Shown while it is off too, greyed, so the way to turn it on is findable.
-  if (editor.schema.marks.comment) {
+  // comment mark. Greyed while the user has it off, so the way back is findable; gone
+  // while an embedding host has, since then there is no way back.
+  if (editor.schema.marks.comment && !aiHostOff()) {
     const ai = t().ai;
     const chat = (prefill: string, send = false) => () => window.dispatchEvent(new CustomEvent(OPEN_AI_CHAT_EVENT, { detail: { prefill, send } }));
     entries.push(
