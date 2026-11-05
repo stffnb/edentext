@@ -7,8 +7,9 @@ v3.0 (see [`LICENSE`](./LICENSE)), with a separate commercial license available
 It bundles and depends on third-party components that remain under **their own**
 licenses, listed below. The code dependencies and the fonts are permissive and
 compatible with both the AGPL distribution and a commercial distribution of this
-project; the bundled **language data** is a separate question — some of it is
-copyleft, see its section.
+project. Two things are not: the **shape preset table** is under the file-level
+copyleft of the MPL-2.0, and some of the bundled **language data** is copyleft; see
+their sections.
 
 ## Bundled fonts — retain their own license
 
@@ -42,7 +43,9 @@ thesaurus for the language.
 | Data | License |
 |------|---------|
 | `public/dictionaries/de` — Hunspell, igerman98 | GPL-2.0 or GPL-3.0 |
-| `public/dictionaries/en` — Hunspell, from SCOWL | permissive (BSD-style) |
+| `public/dictionaries/el` — Hunspell, elspell (Steve Stavropoulos) | MPL-1.1 or GPL-2.0-or-later or LGPL-2.1-or-later |
+| `public/dictionaries/en` — Hunspell, from SCOWL (en_US) | permissive (BSD-style) |
+| `public/dictionaries/en-GB` — Hunspell, from SCOWL (en_GB-ise) | permissive (BSD-style) |
 | `public/dictionaries/es` — Hunspell, RLA-ES | GPL-3.0 or LGPL-3.0 or MPL-1.1 |
 | `public/dictionaries/fr` — Hunspell, Grammalecte | MPL-2.0 |
 | `public/dictionaries/it` — Hunspell, Italian Writing Aids (Andrea Pescetti) | GPL-3.0 |
@@ -59,7 +62,18 @@ thesaurus for the language.
 | `public/thesaurus/uk` — Andriy Rysin's MyThes | GPL or LGPL or MPL |
 
 The thesaurus files are generated from LibreOffice's own MyThes data by
-`scripts/make-thesaurus.mjs`, which also fetches the license files above.
+`scripts/make-thesaurus.mjs`, which also fetches the license files above. British
+English shares the `en` thesaurus, and Greek has none.
+
+## Shape preset table — MPL-2.0
+
+`src/lib/utils/shapePresets.json`, the DrawingML preset shapes, is derived from
+LibreOffice's `oox/source/drawingml/customshapes/oox-drawingml-cs-presets` by
+`scripts/make-shape-presets.mjs` and stays under the **MPL-2.0**. Unlike the language
+data it is compiled into the application bundle. The MPL's copyleft covers this file
+only, not the code around it: a distribution, commercial or not, has to keep the
+file's notice (`public/licenses.txt` carries it) and make the file's own source,
+including any change to it, available.
 
 ## Runtime / build dependencies
 
