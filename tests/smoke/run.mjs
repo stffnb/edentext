@@ -299,6 +299,10 @@ try {
   const menu = await frame.$$eval('.cm-item', (items) => items.map((e) => e.textContent.trim()));
   await host.keyboard.press('Escape');
   check(menu.length > 0 && !menu.some((l) => /^AI/.test(l)), `embed: the context menu has no AI entry while the host switched it off (${menu.length} items)`);
+  await frame.click('.qa-btn[aria-label="Settings"]');
+  const sections = await frame.$$eval('dialog[open] .nav-item', (items) => items.map((e) => e.textContent.trim()));
+  await host.keyboard.press('Escape');
+  check(sections.length > 0 && !sections.some((l) => /^(AI|Privacy)$/.test(l)), `embed: Settings shows neither AI nor browser storage (${sections})`);
   await host.keyboard.press(`${MOD}+s`);
   await host.waitForFunction(() => events.some((m) => m.type === 'saveRequest'), null, { timeout: 5_000 });
   check(true, 'embed: Save asks the host');

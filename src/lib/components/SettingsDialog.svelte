@@ -4,6 +4,7 @@
 
 <script lang="ts">
   import { loadRetention, saveRetention, volatile, type Retention } from '../storage/docScope';
+  import { embedded } from '../embed/mode';
   import { wordCompletion, setWordCompletion } from '../storage/wordCompletion.svelte';
   import { grammarEnabled, setGrammarEnabled } from '../spell/grammar.svelte';
   import { numberRecognition, setNumberRecognition } from '../storage/tableOptions.svelte';
@@ -83,14 +84,15 @@
     { id: 'ai', icon: 'sparkle' },
     { id: 'privacy', icon: 'lock' },
   ];
+  // Embedded, the host keeps the document, so the browser-storage choices say nothing true;
+  // a host that switched the assistant off leaves nothing to set up.
+  const shown = (id: Section) => !(id === 'privacy' && embedded) && !(id === 'ai' && aiHostOff());
   const THEMES: ThemeMode[] = ['light', 'dark', 'allBlack', 'auto'];
   const LEVELS: Retention[] = ['keep', 'closed', 'none'];
 
   let dialogEl = $state<HTMLDialogElement | null>(null);
   let retention = $state<Retention>(loadRetention());
   let accent = $state<Accent>(loadAccent());
-  // An embedding host may set the accent while the dialog stays mounted.
-  $effect(() => { if (open) accent = loadAccent(); });
 
   function pickAccent(a: Accent) {
     accent = a;
@@ -133,7 +135,8 @@
   $effect(() => {
     const el = dialogEl;
     if (!el) return;
-    if (open && !el.open) { retention = loadRetention(); el.showModal(); }
+    // An embedding host may have set the accent since: the dialog stays mounted.
+    if (open && !el.open) { retention = loadRetention(); accent = loadAccent(); el.showModal(); }
     else if (!open && el.open) el.close();
   });
 </script>
@@ -165,8 +168,7 @@
   <div class="shell">
     <nav aria-label={t().settings.title}>
       <h2>{t().settings.title}</h2>
-      <!-- An embedding host that switched the assistant off leaves nothing to set up. -->
-      {#each SECTIONS.filter((s) => s.id !== 'ai' || !aiHostOff()) as s (s.id)}
+      {#each SECTIONS.filter((s) => shown(s.id)) as s (s.id)}
         <button class="nav-item" class:active={section === s.id} aria-current={section === s.id} onclick={() => (section = s.id)}>
           <Icon name={s.icon} size={16} />
           <span>{t().settings.sections[s.id]}</span>
@@ -310,7 +312,7 @@
           </div>
           {@render placeRow(t().settings.changePlace, changePlace(), setChangePlace)}
 
-        {:else if section === 'ai' && !aiHostOff()}
+        {:else if section === 'ai' && shown('ai')}
           <div class="row">
             <div class="info"><div class="name">{t().ai.enable}</div><div class="desc">{t().ai.enableHint}</div></div>
             <Toggle label={t().ai.enable} checked={ai.enabled} onchange={(on) => setAi({ enabled: on })} />
@@ -372,7 +374,7 @@
             <div><button class="btn" disabled={!ai.enabled} onclick={() => setAi({ commands: [...ai.commands, { name: '', prompt: '' }] })}>{t().ai.addCommand}</button></div>
           </div>
 
-        {:else}
+        {:else if shown('privacy')}
           <div class="row stack">
             <div class="info"><div class="name">{t().settings.documents}</div><div class="desc">{t().settings.autosaveHint}</div></div>
             <div class="choices" role="radiogroup" aria-label={t().settings.documents}>

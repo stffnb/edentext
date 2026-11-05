@@ -8,7 +8,8 @@ changes:
   document, its pictures, snapshots, embedded fonts and recent files stay in memory.
   `main.ts` starts no tab presence, prune or service worker, and `resolve()` claims no
   `sessionStorage` slot. App-wide preferences (theme, language, user name, zoom) still go
-  to `localStorage`, which a browser partitions per embedding site.
+  to `localStorage`, which a browser partitions per embedding site. Settings ▸ Privacy,
+  whose choices are about the browser copy, is hidden.
 - **The host owns the file.** Both chromes and the command search drop New, From
   template, Open, Browser documents, Save As and Save as template
   (`HOST_FILE_COMMANDS` in `ribbon/commands.ts`). Save, its button and Ctrl+S send
