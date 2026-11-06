@@ -241,5 +241,5 @@ Foundation. `.docx` y `.odt` se admiten por interoperabilidad.*
     corrector ortográfico con el diccionario del idioma del navegador y las fuentes que
     muestra una página. Los diccionarios de griego y ucraniano añaden ~2,5 y ~1,5 MB.
     Todo lo demás se descarga cuando hace falta y se conserva para usarlo sin conexión;
-    todas las fuentes, diccionarios y tesauros juntos suman ~19 MB, o ~27 MB con el
+    todas las fuentes, diccionarios y tesauros juntos suman ~20 MB, o ~28 MB con el
     corrector gramatical de inglés.

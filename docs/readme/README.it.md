@@ -238,5 +238,5 @@ Foundation. I formati `.docx` e `.odt` sono supportati per garantire l'interoper
     correttore ortografico con il dizionario per la lingua del browser e i caratteri
     usati nella pagina; i dizionari greco e ucraino aggiungono circa 2,5 e 1,5 MB.
     Tutto il resto viene scaricato e conservato per l'uso offline la prima volta che
-    serve; tutti i caratteri, i dizionari e i thesauri insieme occupano circa 19 MB,
-    o circa 27 MB con il controllo grammaticale per l'inglese.
+    serve; tutti i caratteri, i dizionari e i thesauri insieme occupano circa 20 MB,
+    o circa 28 MB con il controllo grammaticale per l'inglese.

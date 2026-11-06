@@ -241,4 +241,4 @@ Document Foundation. `.docx` and `.odt` are supported for interoperability.*
     the dictionary for the browser's language and the fonts a page shows; the Greek and
     Ukrainian dictionaries add ~2.5 and ~1.5 MB. Everything else is fetched and kept for
     offline use once it is needed; all fonts, dictionaries and thesauri together are
-    ~19 MB, or ~27 MB with the English grammar check.
+    ~20 MB, or ~28 MB with the English grammar check.

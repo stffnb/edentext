@@ -250,5 +250,5 @@ Foundation. Les formats `.docx` et `.odt` sont pris en charge à des fins d’in
     correcteur orthographique avec le dictionnaire de la langue du navigateur et les
     polices qu’affiche une page ; les dictionnaires grec et ukrainien ajoutent ~2,5 et
     ~1,5 Mo. Tout le reste est téléchargé à la première utilisation puis conservé pour le
-    hors-ligne ; l’ensemble des polices, dictionnaires et thésaurus pèse ~19 Mo, ou ~27 Mo
+    hors-ligne ; l’ensemble des polices, dictionnaires et thésaurus pèse ~20 Mo, ou ~28 Mo
     avec la correction grammaticale anglaise.

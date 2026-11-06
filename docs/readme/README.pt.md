@@ -240,5 +240,5 @@ Foundation. `.docx` e `.odt` são suportados por razões de interoperabilidade.*
     ortográfico com o dicionário da língua do navegador e os tipos de letra da página
     apresentada. O dicionário grego acrescenta ~2,5 MB e o ucraniano ~1,5 MB. Tudo o resto
     só é descarregado quando é preciso e fica guardado para uso offline; todos os tipos de
-    letra, dicionários e tesauros juntos ocupam ~19 MB, ou ~27 MB com a verificação
+    letra, dicionários e tesauros juntos ocupam ~20 MB, ou ~28 MB com a verificação
     gramatical de inglês.

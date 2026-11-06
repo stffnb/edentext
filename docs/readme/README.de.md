@@ -241,5 +241,5 @@ Foundation verbunden. `.docx` und `.odt` werden aus Gründen der Interoperabilit
     dem Wörterbuch für die Sprache des Browsers und die Schriften der angezeigten Seite.
     Das griechische Wörterbuch bringt ~2,5 MB zusätzlich mit, das ukrainische ~1,5 MB.
     Alles andere wird erst bei Bedarf geladen und danach für die Offline-Nutzung gespeichert; alle
-    Schriften, Wörterbücher und Thesauri zusammen sind ~19 MB groß, mit der englischen
-    Grammatikprüfung ~27 MB.
+    Schriften, Wörterbücher und Thesauri zusammen sind ~20 MB groß, mit der englischen
+    Grammatikprüfung ~28 MB.
