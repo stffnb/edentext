@@ -657,7 +657,8 @@ const ru: Messages = {
   spellPicker: {
     label: 'Язык проверки орфографии',
     noSpellCheck: 'Без проверки орфографии',
-    forSelection: 'Для текста у курсора',
+    forSelection: 'Для выделенного текста',
+    forParagraph: 'Для абзаца',
     forAllText: 'Для всего текста',
     mixed: 'Несколько языков',
     noDictionary: '(без словаря)',

@@ -657,7 +657,8 @@ const uk: Messages = {
   spellPicker: {
     label: 'Мова перевірки правопису',
     noSpellCheck: 'Без перевірки правопису',
-    forSelection: 'Для тексту біля курсора',
+    forSelection: 'Для виділеного тексту',
+    forParagraph: 'Для абзацу',
     forAllText: 'Для всього тексту',
     mixed: 'Кілька мов',
     noDictionary: '(без словника)',

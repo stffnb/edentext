@@ -72,7 +72,7 @@
     return [
       { kind: 'item', label: p.noSpellCheck, checked: value === NO_LANGUAGE && !atCursor, run: () => apply(`doc:${NO_LANGUAGE}`) },
       { kind: 'sep' },
-      { kind: 'item', label: p.forSelection, disabled: true, run: () => {} },
+      { kind: 'item', label: editor?.state.selection.empty === false ? p.forSelection : p.forParagraph, disabled: true, run: () => {} },
       ...LANGUAGES.map((l): MenuEntry => ({ kind: 'item', label: label(l), checked: `sel:${l.code}` === selected, run: () => apply(`sel:${l.code}`) })),
       { kind: 'sep' },
       { kind: 'sub', label: p.forAllText, items: LANGUAGES.map((l): MenuEntry => ({ kind: 'item', label: label(l), run: () => apply(`doc:${l.code}`) })) },

@@ -657,7 +657,8 @@ const el: Messages = {
   spellPicker: {
     label: "Γλώσσα ορθογραφικού ελέγχου",
     noSpellCheck: "Χωρίς ορθογραφικό έλεγχο",
-    forSelection: "Για το κείμενο στη θέση του δρομέα",
+    forSelection: 'Για την επιλογή',
+    forParagraph: 'Για την παράγραφο',
     forAllText: "Για όλο το κείμενο",
     mixed: "Πολλές γλώσσες",
     noDictionary: "(χωρίς λεξικό)",

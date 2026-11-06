@@ -649,7 +649,8 @@ const ja: Messages = {
   spellPicker: {
     label: 'スペルチェックの言語',
     noSpellCheck: 'スペルチェックなし',
-    forSelection: 'カーソル位置のテキスト',
+    forSelection: '選択範囲',
+    forParagraph: '段落',
     forAllText: 'すべてのテキスト',
     mixed: '複数の言語',
     noDictionary: '(辞書なし)',

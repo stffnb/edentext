@@ -648,7 +648,8 @@ const de: Messages = {
   spellPicker: {
     label: 'Rechtschreibsprache',
     noSpellCheck: 'Keine Rechtschreibprüfung',
-    forSelection: 'Für den Text an der Schreibmarke',
+    forSelection: 'Für die Auswahl',
+    forParagraph: 'Für den Absatz',
     forAllText: 'Für den ganzen Text',
     mixed: 'Mehrere Sprachen',
     noDictionary: '(kein Wörterbuch)',

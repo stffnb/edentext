@@ -646,7 +646,8 @@ const it: Messages = {
   spellPicker: {
     label: 'Lingua del controllo ortografico',
     noSpellCheck: 'Nessun controllo ortografico',
-    forSelection: 'Per il testo nella posizione del cursore',
+    forSelection: 'Per la selezione',
+    forParagraph: 'Per il paragrafo',
     forAllText: 'Per tutto il testo',
     mixed: 'Più lingue',
     noDictionary: '(nessun dizionario)',

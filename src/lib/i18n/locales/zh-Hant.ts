@@ -648,7 +648,8 @@ const zhHant: Messages = {
   spellPicker: {
     label: '拼字檢查語言',
     noSpellCheck: '不檢查拼字',
-    forSelection: '套用於游標處的文字',
+    forSelection: '套用於選取範圍',
+    forParagraph: '套用於段落',
     forAllText: '套用於所有文字',
     mixed: '多種語言',
     noDictionary: '（無詞典）',

@@ -652,7 +652,8 @@ const fr: Messages = {
   spellPicker: {
     label: 'Langue de vérification orthographique',
     noSpellCheck: 'Aucune vérification orthographique',
-    forSelection: 'Pour le texte au niveau du curseur',
+    forSelection: 'Pour la sélection',
+    forParagraph: 'Pour le paragraphe',
     forAllText: 'Pour tout le texte',
     mixed: 'Plusieurs langues',
     noDictionary: '(pas de dictionnaire)',

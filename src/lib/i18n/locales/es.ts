@@ -647,7 +647,8 @@ const es: Messages = {
   spellPicker: {
     label: 'Idioma de la revisión ortográfica',
     noSpellCheck: 'Sin revisión ortográfica',
-    forSelection: 'Para el texto en el cursor',
+    forSelection: 'Para la selección',
+    forParagraph: 'Para el párrafo',
     forAllText: 'Para todo el texto',
     mixed: 'Varios idiomas',
     noDictionary: '(sin diccionario)',

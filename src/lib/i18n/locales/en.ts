@@ -656,7 +656,8 @@ const en = {
   spellPicker: {
     label: 'Spell-check language',
     noSpellCheck: 'No spell check',
-    forSelection: 'For the text at the cursor',
+    forSelection: 'For selection',
+    forParagraph: 'For paragraph',
     forAllText: 'For all text',
     mixed: 'Several languages',
     noDictionary: '(no dictionary)',

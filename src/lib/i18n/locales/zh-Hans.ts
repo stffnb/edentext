@@ -647,7 +647,8 @@ const zhHans: Messages = {
   spellPicker: {
     label: '拼写检查语言',
     noSpellCheck: '不检查拼写',
-    forSelection: '用于光标处的文字',
+    forSelection: '用于所选内容',
+    forParagraph: '用于段落',
     forAllText: '用于全部文字',
     mixed: '多种语言',
     noDictionary: '（无词典）',
