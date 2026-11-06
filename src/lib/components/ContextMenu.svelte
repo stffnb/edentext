@@ -198,7 +198,9 @@
 
   /* A panel with a checkable entry keeps a column for the tick, so its labels align. */
   .cm-menu.checks > .cm-item, .cm-menu.checks > .cm-subwrap > .cm-item { position: relative; padding-left: 26px; }
-  .cm-check { position: absolute; left: 9px; color: var(--color-primary); }
+  /* In the label's colour: the ribbon and panes map --color-primary to a fill accent,
+     too faint on their dark surfaces for a thin tick. */
+  .cm-check { position: absolute; left: 9px; }
 
   .cm-subwrap { position: relative; }
   .cm-sub { top: -5px; left: 100%; }

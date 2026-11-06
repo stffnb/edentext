@@ -631,10 +631,13 @@
   border: 1px solid var(--w-border-strong);
   border-radius: 3px;
   background: var(--w-surface);
+  color: var(--w-text);
 }
 
-.rb-captioned .lang-picker:hover,
-.rb-captioned .lang-picker:focus-within { border-color: var(--w-accent); }
+.rb-captioned .lang-picker:is(:hover, :focus-visible, .open) {
+  border-color: var(--w-accent);
+  background: var(--w-surface);
+}
 
 .rb-caption {
   font-family: var(--w-font);

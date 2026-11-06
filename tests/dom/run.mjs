@@ -23,6 +23,14 @@ const settled = async (want) => {
   }, want, { timeout: 30_000 }).catch(() => {});
   return pageCount();
 };
+// The status bar's spell-check language: 'sel' is the text at the cursor, 'doc' all text.
+const pickSpellLanguage = async (scope, label) => {
+  await page.click('.statusbar .lang-picker');
+  const layer = page.locator('.statusbar .menu-layer');
+  if (scope === 'sel') return layer.getByRole('menuitemcheckbox', { name: label, exact: true }).click();
+  await layer.locator('.cm-subwrap > button').click();
+  await layer.locator('.cm-sub').getByRole('menuitem', { name: label, exact: true }).click();
+};
 
 try {
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
@@ -132,7 +140,7 @@ try {
   const scrolled = () => page.evaluate(() => Math.round(document.querySelector('.editor').scrollTop));
   await page.evaluate(() => { const ed = document.querySelector('.editor'); ed.scrollTop = ed.scrollHeight; });
   const scrollBefore = await scrolled();
-  await page.locator('.statusbar .lang-picker select').selectOption('doc:de');
+  await pickSpellLanguage('doc', 'Deutsch');
   await page.waitForTimeout(300);
   const scrollAfter = await scrolled();
   await page.evaluate(() => { document.querySelector('.editor').scrollTop = 0; });
@@ -1078,7 +1086,7 @@ try {
   await page.keyboard.press('Escape'); // the formula dialog above still covers the chrome
   await page.evaluate(() => document.querySelector('.tiptap').editor.commands.setContent('<p>He go to the store.</p>'));
   await settle(page, true);
-  await page.selectOption('.statusbar .lang-picker select', 'doc:en');
+  await pickSpellLanguage('doc', 'English (US)');
   await page.check('.statusbar .gr-toggle input');
   // The waves are CSS highlight ranges (grammarCheck.ts), not elements.
   const squiggle = await page.waitForFunction(() => CSS.highlights.get('grammar-error')?.size > 0, null, { timeout: 60_000 })
@@ -1098,7 +1106,7 @@ try {
     const ed = document.querySelector('.tiptap').editor;
     ed.commands.setTextSelection(ed.state.doc.content.size - 2);
   });
-  await page.selectOption('.statusbar .lang-picker select', 'sel:de');
+  await pickSpellLanguage('sel', 'Deutsch');
   const langs = await page.evaluate(() => [...document.querySelectorAll('.tiptap-host .tiptap > p')].map((p) => p.getAttribute('lang')));
   check(JSON.stringify(langs) === '[null,"de-DE"]', `only the second paragraph takes a language (${JSON.stringify(langs)})`);
   const paragraphToggleOff = await page.waitForFunction(() => {
@@ -1117,7 +1125,7 @@ try {
   check(perPara[0] > 0 && perPara[1] === 0, `only the English paragraph is grammar-checked (${JSON.stringify(perPara)})`);
 
   // The default can be Portuguese while an English paragraph still gets grammar checks.
-  await page.selectOption('.statusbar .lang-picker select', 'doc:pt');
+  await pickSpellLanguage('doc', 'Português (Portugal)');
   const documentToggleOff = await page.waitForFunction(() => {
     const input = document.querySelector('.statusbar .gr-toggle input');
     return input?.disabled && !input.checked;
@@ -1127,7 +1135,7 @@ try {
     const ed = document.querySelector('.tiptap').editor;
     ed.commands.setTextSelection(2);
   });
-  await page.selectOption('.statusbar .lang-picker select', 'sel:en');
+  await pickSpellLanguage('sel', 'English (US)');
   const englishToggleOn = await page.waitForFunction(() => {
     const input = document.querySelector('.statusbar .gr-toggle input');
     return !input?.disabled && input?.checked;

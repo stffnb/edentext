@@ -3,6 +3,8 @@
   import { LANGUAGES, NO_LANGUAGE, tagForLanguage, codeForTag, documentLangs, type DocumentLanguage, type LanguageDef } from '../storage/documentLanguage';
   import { uniformLanguage } from '../utils/selectionFormat';
   import { t } from '../i18n/i18n.svelte';
+  import type { MenuEntry } from '../editor/contextMenuItems';
+  import ContextMenu from './ContextMenu.svelte';
 
   let {
     value,
@@ -55,56 +57,69 @@
     if (editor!.state.selection.empty) editor!.chain().focus().setBlockLanguage(tag).run();
     else editor!.chain().focus().setRunLanguage(tag).run();
   }
+
+  // The box's text: several languages, one we have no dictionary for (still named, so it
+  // is not silently lost), a listed one, or checking off.
+  let shown = $derived.by(() => {
+    if (atCursor === '') return t().spellPicker.mixed;
+    const def = LANGUAGES.find((l) => `sel:${l.code}` === selected);
+    if (def) return label(def);
+    return atCursor || t().spellPicker.noSpellCheck;
+  });
+
+  function entries(): MenuEntry[] {
+    const p = t().spellPicker;
+    return [
+      { kind: 'item', label: p.noSpellCheck, checked: value === NO_LANGUAGE && !atCursor, run: () => apply(`doc:${NO_LANGUAGE}`) },
+      { kind: 'sep' },
+      { kind: 'item', label: p.forSelection, disabled: true, run: () => {} },
+      ...LANGUAGES.map((l): MenuEntry => ({ kind: 'item', label: label(l), checked: `sel:${l.code}` === selected, run: () => apply(`sel:${l.code}`) })),
+      { kind: 'sep' },
+      { kind: 'sub', label: p.forAllText, items: LANGUAGES.map((l): MenuEntry => ({ kind: 'item', label: label(l), run: () => apply(`doc:${l.code}`) })) },
+    ];
+  }
+
+  // A menu of our own rather than a native list: macOS centres that on the chosen entry,
+  // which in the status bar leaves it a sliver that has to be scrolled.
+  let menu = $state<{ items: MenuEntry[]; x: number; y: number } | null>(null);
+  let button: HTMLButtonElement | undefined = $state();
+  let closedAt = 0;
+
+  function close() {
+    // A press on the button closes the menu ahead of its own click, which must not reopen it.
+    if (button?.matches(':hover')) closedAt = performance.now();
+    menu = null;
+    queueMicrotask(() => { if (!document.activeElement || document.activeElement === document.body) button?.focus(); });
+  }
+
+  function toggle() {
+    if (menu || performance.now() - closedAt < 300 || !button) { menu = null; return; }
+    const box = button.getBoundingClientRect();
+    // In the lower half the menu opens upward: placed at the top edge, it flips above it.
+    const up = box.top > window.innerHeight / 2;
+    menu = { items: entries(), x: box.left, y: up ? box.top - 2 : box.bottom + 2 };
+  }
 </script>
 
-<label class="lang-picker" title={t().spellPicker.label}>
+<button class="lang-picker" class:open={!!menu} bind:this={button} onclick={toggle}
+  aria-haspopup="menu" aria-expanded={!!menu} aria-label={t().spellPicker.label} title={t().spellPicker.label}>
   <svg width="13" height="13" viewBox="0 0 18 18" fill="none" aria-hidden="true">
     <path d="M2 13l3-8 3 8M3.2 10.5h3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M11 14.5l1.6-1.6 1.6 1.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
-  <select class="bare"
-    aria-label={t().spellPicker.label}
-    onchange={(e) => apply((e.currentTarget as HTMLSelectElement).value)}
-  >
-    {#if selected === ''}
-      <option value="" selected>{t().spellPicker.mixed}</option>
-    {:else if atCursor && !LANGUAGES.some((l) => `sel:${l.code}` === selected)}
-      <!-- A language we have no dictionary for still shows, so it is not silently lost. -->
-      <option value={selected} selected>{atCursor}</option>
-    {/if}
-    <!-- Checking off: no language at the cursor and none on the document either. -->
-    <option value="doc:{NO_LANGUAGE}" selected={value === NO_LANGUAGE && !atCursor}>{t().spellPicker.noSpellCheck}</option>
-    <optgroup label={t().spellPicker.forSelection}>
-      {#each LANGUAGES as l}
-        <option value="sel:{l.code}" selected={`sel:${l.code}` === selected}>{label(l)}</option>
-      {/each}
-    </optgroup>
-    <optgroup label={t().spellPicker.forAllText}>
-      {#each LANGUAGES as l}
-        <option value="doc:{l.code}">{label(l)}</option>
-      {/each}
-    </optgroup>
-  </select>
-</label>
+  <span>{shown}</span>
+</button>
+{#if menu}
+  <div class="menu-layer">
+    <ContextMenu top={menu.y} left={menu.x} items={menu.items} onClose={close} />
+  </div>
+{/if}
 
 <style>
   .lang-picker {
     display: inline-flex;
     align-items: center;
     gap: 3px;
-    color: var(--color-text);
-    cursor: pointer;
-  }
-
-  .lang-picker svg {
-    flex: none;
-    opacity: 0.8;
-  }
-
-  /* Sized to the chosen option rather than the longest one, which crowds a narrow bar. */
-  select {
-    field-sizing: content;
-    appearance: none;
     border: none;
     background: transparent;
     color: var(--color-text);
@@ -113,9 +128,18 @@
     padding: 1px 2px;
     border-radius: 2px;
     cursor: pointer;
+    white-space: nowrap;
   }
 
-  select:hover {
+  .lang-picker svg {
+    flex: none;
+    opacity: 0.8;
+  }
+
+  .lang-picker:hover, .lang-picker.open {
     background: var(--color-btn-hover);
   }
+
+  .menu-layer { position: fixed; inset: 0; z-index: 300; pointer-events: none; }
+  .menu-layer :global(.cm-menu) { pointer-events: auto; }
 </style>
