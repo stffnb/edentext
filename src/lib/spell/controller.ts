@@ -81,6 +81,14 @@ class SpellController {
     return checker.correct(word);
   }
 
+  // The share of `words` a language's dictionary knows; undefined while it loads.
+  knownShare(words: string[], code: DocumentLanguage): number | undefined {
+    const checker = this.checkerFor(code);
+    if (checker === undefined) return undefined;
+    if (!checker || !words.length) return 0;
+    return words.filter((w) => checker.correct(w)).length / words.length;
+  }
+
   suggest(word: string, code?: DocumentLanguage): string[] {
     return this.checkerFor(code)?.suggest(word) ?? [];
   }
@@ -96,6 +104,11 @@ class SpellController {
   ignoreWord(word: string): void {
     if (!word || this.ignored.has(word)) return;
     this.ignored.add(word);
+    this.notify();
+  }
+
+  // Something that decides which dictionary a text takes has changed: check again.
+  refresh(): void {
     this.notify();
   }
 

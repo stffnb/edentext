@@ -7,6 +7,7 @@
   import { embedded } from '../embed/mode';
   import { wordCompletion, setWordCompletion } from '../storage/wordCompletion.svelte';
   import { grammarEnabled, setGrammarEnabled } from '../spell/grammar.svelte';
+  import { autoLanguage, setAutoLanguage } from '../spell/detect.svelte';
   import { numberRecognition, setNumberRecognition } from '../storage/tableOptions.svelte';
   import {
     showComments, setShowComments, showChanges, setShowChanges,
@@ -259,6 +260,10 @@
               {#each LANGUAGES as l (l.code)}<option value={l.code}>{l.noDict ? `${l.label} ${t().spellPicker.noDictionary}` : l.label}</option>{/each}
               <option value={NO_LANGUAGE}>{t().spellPicker.noSpellCheck}</option>
             </select>
+          </div>
+          <div class="row">
+            <div class="info"><div class="name">{t().spellPicker.autoDetect}</div><div class="desc">{t().spellPicker.autoDetectHint}</div></div>
+            <Toggle label={t().spellPicker.autoDetect} checked={autoLanguage()} onchange={setAutoLanguage} />
           </div>
           <div class="row">
             <div class="info"><div class="name">{t().settings.grammar}</div><div class="desc">{t().grammar.hint} {t().grammar.unavailable}</div></div>

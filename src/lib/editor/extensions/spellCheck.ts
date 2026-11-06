@@ -8,6 +8,7 @@ import { spellController } from '../../spell/controller';
 import { codeForTag, westLang, type DocumentLanguage } from '../../storage/documentLanguage';
 import { isPaginating } from './pageBreaks';
 import { ASIAN_SCRIPT_RE } from '../../utils/script';
+import { detectLanguage } from '../../spell/detect.svelte';
 
 export type Range = { from: number; to: number };
 // dirty: what the edits since the last check touched, in the current document's positions.
@@ -43,12 +44,17 @@ export function blockLangOf(node: PmNode): DocumentLanguage | undefined {
   return codeOf(node.attrs.lang);
 }
 
+// What a textblock is checked in: its own language, else the one it is detected in.
+export function checkLangOf(node: PmNode): DocumentLanguage | undefined {
+  return blockLangOf(node) ?? detectLanguage(node);
+}
+
 // The misspelled words under `node`, whose content starts at `base` in the document.
 // A block's language holds for its own text only, never for the blocks after it.
 function wordDecos(node: PmNode, base: number, decos: Decoration[], outerLang?: DocumentLanguage): void {
   let blockLang = outerLang;
   node.descendants((child, pos) => {
-    if (child.isTextblock) blockLang = blockLangOf(child) ?? outerLang;
+    if (child.isTextblock) blockLang = checkLangOf(child) ?? outerLang;
     if (!child.isText || child.marks.some((m) => m.type.name === 'deletion')) return;
     const text = child.text ?? '';
     const code = langOf(child, blockLang);
@@ -94,7 +100,7 @@ function recheckBlocks(doc: PmNode, set: DecorationSet, dirty: Range[]): Decorat
   const decos: Decoration[] = [];
   for (const [pos, node] of blocks) {
     stale.push(...set.find(pos + 1, pos + node.nodeSize - 1));
-    wordDecos(node, pos + 1, decos, blockLangOf(node));
+    wordDecos(node, pos + 1, decos, checkLangOf(node));
   }
   return set.remove(stale).add(doc, decos);
 }
@@ -224,7 +230,7 @@ export function spellLangAt(state: EditorState, pos: number): DocumentLanguage |
   if (!$pos.parent.isTextblock) return undefined;
   const node = $pos.nodeAfter ?? $pos.nodeBefore;
   return (node ? codeOf(node.marks.find((m) => m.type.name === 'textStyle')?.attrs.lang) : undefined)
-    ?? blockLangOf($pos.parent);
+    ?? checkLangOf($pos.parent);
 }
 
 // The word covering `pos`, right or wrong — what the thesaurus looks up. Leaf nodes

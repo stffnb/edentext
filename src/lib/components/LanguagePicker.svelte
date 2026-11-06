@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import { LANGUAGES, NO_LANGUAGE, tagForLanguage, codeForTag, documentLangs, type DocumentLanguage, type LanguageDef } from '../storage/documentLanguage';
+  import { LANGUAGES, NO_LANGUAGE, tagForLanguage, codeForTag, documentLangs, findLanguage, type DocumentLanguage, type LanguageDef } from '../storage/documentLanguage';
+  import { autoLanguage, detectLanguage, setAutoLanguage } from '../spell/detect.svelte';
   import { uniformLanguage } from '../utils/selectionFormat';
   import { t } from '../i18n/i18n.svelte';
   import type { MenuEntry } from '../editor/contextMenuItems';
@@ -58,9 +59,20 @@
     else editor!.chain().focus().setRunLanguage(tag).run();
   }
 
-  // The box's text: several languages, one we have no dictionary for (still named, so it
+  // The language the cursor's paragraph is checked in when detection, not the file, says
+  // so: the paragraph names none and the cursor's run follows it.
+  let detected = $derived.by(() => {
+    if (tick < 0 || !editor || !canSet || !autoLanguage()) return undefined;
+    const { $from: from, $to: to } = editor.state.selection;
+    if (from.parent !== to.parent || from.parent.attrs.lang || atCursor !== tagForLanguage(value)) return undefined;
+    const code = detectLanguage(from.parent);
+    return code ? findLanguage(code) : undefined;
+  });
+
+  // The box's text: the detected language, several languages, one we have no dictionary for (still named, so it
   // is not silently lost), a listed one, or checking off.
   let shown = $derived.by(() => {
+    if (detected) return `${label(detected)} ${t().spellPicker.detected}`;
     if (atCursor === '') return t().spellPicker.mixed;
     const def = LANGUAGES.find((l) => `sel:${l.code}` === selected);
     if (def) return label(def);
@@ -69,13 +81,21 @@
 
   function entries(): MenuEntry[] {
     const p = t().spellPicker;
+    const det = detected;
     return [
+      // Writes what the check already uses into the paragraph, so the file carries it.
+      ...(det ? [
+        { kind: 'item', label: p.applyDetected(det.label), run: () => editor!.chain().focus().setBlockLanguage(tagForLanguage(det.code) ?? det.code).run() },
+        { kind: 'sep' },
+      ] satisfies MenuEntry[] : []),
       { kind: 'item', label: p.noSpellCheck, checked: value === NO_LANGUAGE && !atCursor, run: () => apply(`doc:${NO_LANGUAGE}`) },
       { kind: 'sep' },
       { kind: 'item', label: editor?.state.selection.empty === false ? p.forSelection : p.forParagraph, disabled: true, run: () => {} },
       ...LANGUAGES.map((l): MenuEntry => ({ kind: 'item', label: label(l), checked: `sel:${l.code}` === selected, run: () => apply(`sel:${l.code}`) })),
       { kind: 'sep' },
       { kind: 'sub', label: p.forAllText, items: LANGUAGES.map((l): MenuEntry => ({ kind: 'item', label: label(l), run: () => apply(`doc:${l.code}`) })) },
+      { kind: 'sep' },
+      { kind: 'item', label: p.autoDetect, checked: autoLanguage(), run: () => setAutoLanguage(!autoLanguage()) },
     ];
   }
 

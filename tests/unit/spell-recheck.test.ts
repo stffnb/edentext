@@ -13,6 +13,8 @@ vi.mock('../../src/lib/spell/controller', () => ({
     addWord: () => {},
     ignoreWord: () => {},
     subscribe: () => () => {},
+    refresh: () => {},
+    knownShare: () => 0,
   },
 }));
 

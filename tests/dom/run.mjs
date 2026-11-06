@@ -1146,6 +1146,27 @@ try {
     .then(() => check(true, 'an English paragraph in a Portuguese document is grammar-checked'))
     .catch(() => check(false, 'an English paragraph in a Portuguese document is grammar-checked'));
 
+  // Detection: a German paragraph in an English document is checked in German without the
+  // file changing, and the menu writes the detected language into it on request.
+  await pickSpellLanguage('doc', 'English (US)');
+  await page.evaluate(() => {
+    const ed = document.querySelector('.tiptap').editor;
+    ed.commands.setContent('<p>This sentence is English and has a mispeled word.</p>'
+      + '<p>Dieser Absatz ist auf Deutsch geschrieben und enthält ganz gewöhnliche Wörter ohne jeden Fehler.</p>');
+    ed.commands.setTextSelection(ed.state.doc.content.size - 3);
+  });
+  const squigglesPerPara = () => [...document.querySelectorAll('.tiptap-host .tiptap > p')].map((p) =>
+    [...CSS.highlights.get('spell-error') ?? []].filter((r) => p.contains(r.startContainer)).length);
+  await page.waitForFunction(`(${squigglesPerPara})()[0] > 0 && (${squigglesPerPara})()[1] === 0`, null, { timeout: 30_000 }).catch(() => {});
+  const detectedSquiggles = await page.evaluate(squigglesPerPara);
+  check(detectedSquiggles[0] > 0 && detectedSquiggles[1] === 0, `a German paragraph in an English document is checked in German (${JSON.stringify(detectedSquiggles)})`);
+  const detectedLabel = await page.locator('.statusbar .lang-picker').textContent();
+  await page.click('.statusbar .lang-picker');
+  await page.locator('.statusbar .menu-layer').getByRole('menuitem', { name: /Deutsch/ }).first().click();
+  const appliedLangs = await page.evaluate(() => [...document.querySelectorAll('.tiptap-host .tiptap > p')].map((p) => p.getAttribute('lang')));
+  check(/Deutsch/.test(detectedLabel ?? '') && JSON.stringify(appliedLangs) === '[null,"de-DE"]',
+    `the status bar names the detected language and the menu applies it (${detectedLabel?.trim()}, ${JSON.stringify(appliedLangs)})`);
+
   // The page grid: every cell is a fixed window of exactly its own page, and the caret —
   // drawn only by the focused view, clipped to its cell — follows whatever moves it.
   // Last, since it replaces the document and the zoom with its own.

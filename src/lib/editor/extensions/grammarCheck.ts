@@ -4,10 +4,11 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { changedRanges, blockLangOf, langOf, HIGHLIGHTS, paintHighlight, type Range } from './spellCheck';
+import { changedRanges, checkLangOf, langOf, HIGHLIGHTS, paintHighlight, type Range } from './spellCheck';
 import { hasGrammar, NO_LANGUAGE } from '../../storage/documentLanguage';
 import { grammarLanguage, grammarReady, lintText, subscribeGrammar, type GrammarFix, type GrammarLint } from '../../spell/grammar.svelte';
 import { isPaginating } from './pageBreaks';
+import { subscribeDetection } from '../../spell/detect.svelte';
 import { typedText } from './trackChanges';
 import { mostlyAsian } from '../../utils/script';
 
@@ -73,7 +74,7 @@ export function grammarFix(state: EditorState, at: Range, fix: GrammarFix): Tran
 // checking off for the document, nothing is linted, as nothing is spell checked.
 function lintable(node: PmNode, docLang: string): boolean {
   if (docLang === NO_LANGUAGE || !node.isTextblock || node.content.size < MIN_CHARS || mostlyAsian(node.textContent)) return false;
-  return hasGrammar(blockLangOf(node) ?? docLang);
+  return hasGrammar(checkLangOf(node) ?? docLang);
 }
 
 // A finding that touches a run in a language without grammar, which Harper read as English.
@@ -227,13 +228,15 @@ export const GrammarCheck = Extension.create({
             else swept = true;
           }
 
-          const unsubscribe = subscribeGrammar(() => {
+          const relint = () => {
             generation++;
             queue = [];
             queueDoc = null;
             swept = false;
             schedule();
-          });
+          };
+          const unsubscribe = subscribeGrammar(relint);
+          const unsubscribeDetection = subscribeDetection(relint);
           schedule();
           const painter = paintHighlight(view, 'grammar-error', (s) => grammarKey.getState(s)?.set);
 
@@ -248,6 +251,7 @@ export const GrammarCheck = Extension.create({
             destroy() {
               painter.destroy();
               unsubscribe();
+              unsubscribeDetection();
             },
           };
         },
