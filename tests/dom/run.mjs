@@ -400,6 +400,8 @@ try {
   // A letter typed and taken back leaves every block as tall as it was, so no pass runs
   // (a pass that moves something ends in a pm-pagecount event), and the pause costs no more
   // than a key (the engine's budget): the spell checker re-reads the edited paragraph only.
+  // A slow runner is still settling the split past the window above; its tail is not the letter's.
+  await settle(page, true);
   await page.evaluate(() => {
     window.__passes = 0;
     document.querySelector('.tiptap').addEventListener('pm-pagecount', () => { window.__passes++; });
