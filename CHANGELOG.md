@@ -2,6 +2,48 @@
 
 <!-- Newest release first. New entries go here: ## [x.y.z] — YYYY-MM-DD -->
 
+## [0.14.0] — 2026-11-07
+
+EdenText 0.14.0 brings a new navigator and an embed mode. The navigator docks on either side and
+shows headings as a foldable outline, page thumbnails, bookmarks and objects. It can search and
+replace, and chapters can be dragged to a new place. Other applications can run the editor in an
+iframe and load, export and save documents through a small postMessage API. Italian joins the
+program and document languages, and spell check can detect the language of each paragraph.
+
+Thanks to @farragoo for reporting #22, #23, #24 and #25.
+
+### Added
+- **Navigator** docked left or right, with a resizable width, its own text size and the reader's
+  chapter highlighted (#25)
+  - headings as a foldable outline with expand and collapse; a right click moves, levels, selects
+    or deletes a chapter, and a heading row can be dragged onto another to move its chapter (#24)
+  - a pages tab with thumbnails of every page
+  - bookmarks to jump to, rename and delete, and an objects tab with tables, images, text boxes,
+    notes, comments and links
+  - search and replace above the tabs, listing each match in its paragraph; chapters and pages
+    holding a match are marked
+- **Comments and revisions panes** dock on either side too, with their own size and width (#25)
+- **Embed mode** (`?embed=1`) for host applications: load a document, start a new one, export
+  ODT, DOCX or PDF, and hear when it changes or asks to be saved. The host sets the user name,
+  language, theme, accent colour and chrome, and can switch the AI assistant off. `public/embed.js`
+  and its types `embed.d.ts` do the messaging; see `docs/architecture/embed.md`. Within protocol 1
+  messages and fields are only ever added
+- **Italian** as a program language and for spell check and the thesaurus
+- **Detected paragraph language**: a paragraph without its own language is checked in the one it
+  is written in. It is on by default, and the language menu can write the detected language into
+  the paragraph
+- **Rename bookmarks**, with cross-references and links following along
+
+### Fixed
+- A bookmark across several paragraphs stays one bookmark in DOCX and ODT (#23)
+- Folded comment replies show as "Show 2 replies" in the text colour, behind an arrow (#22)
+- A heading clicked in the navigator scrolls into view and shows its number
+- The spell-check language in the status bar opens as a full menu, naming whether it applies to
+  the selection or the paragraph
+- The link, bookmark and cross-reference windows stand out from the page in dark mode
+- The text of a DOCX GOTOBUTTON or MACROBUTTON field is kept
+- An untitled document keeps the bare app name as the window title
+
 ## [0.13.0] — 2026-11-01
 
 EdenText 0.13.0 is about review. Recording now covers far more than typed text: paragraph breaks,
