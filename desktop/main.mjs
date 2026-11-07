@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, session, shell } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { readFile, rename, stat, writeFile } from 'node:fs/promises';
@@ -139,6 +139,11 @@ ipcMain.handle('desktop:print-pdf', async (_e, html) => {
   }
 });
 
+// What the page asks the browser for: saving through the file pickers, installed fonts,
+// the clipboard. Anything else (camera, location, notifications…) is refused.
+const PERMISSIONS = new Set(['fileSystem', 'local-fonts', 'clipboard-read', 'clipboard-sanitized-write']);
+const allowed = (permission, url) => PERMISSIONS.has(permission) && String(url ?? '').startsWith(ORIGIN);
+
 function createWindow(file) {
   const win = new BrowserWindow({
     width: 1280,
@@ -204,6 +209,9 @@ app.on('open-file', (e, file) => {
 
 app.whenReady().then(() => {
   setMenu();
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) =>
+    callback(allowed(permission, details.requestingUrl ?? wc?.getURL())));
+  session.defaultSession.setPermissionCheckHandler((_wc, permission, origin) => allowed(permission, origin));
   protocol.handle('app', (req) => {
     const print = /^\/__print\/([\w-]+)$/.exec(new URL(req.url).pathname);
     // The print page is static markup: it runs no script and loads only the app's files.

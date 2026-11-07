@@ -38,6 +38,13 @@ try {
   assert.equal(app.windows().length, 1, 'external link opened an app window');
   assert.deepEqual(await app.evaluate(() => globalThis.opened), ['https://example.invalid/']);
 
+  // The page gets the clipboard and installed fonts, and nothing it does not use.
+  const granted = await page.evaluate(async () => {
+    await navigator.clipboard.writeText('x');
+    return [await navigator.clipboard.readText(), (await queryLocalFonts()).length > 0, await Notification.requestPermission()];
+  });
+  assert.deepEqual(granted, ['x', true, 'denied']);
+
   // The print page, served with its own script-free policy, still renders to PDF.
   const pdf = await page.evaluate(async () => {
     const bytes = await window.edentextDesktop.printToPdf('<p>Druck</p>');
