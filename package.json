@@ -46,7 +46,7 @@
     "svelte-check": "^4.7.7",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
-    "vitest": "^4.1.9"
+    "vitest": "^5.0.5"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
