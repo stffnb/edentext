@@ -68,6 +68,10 @@ describe('parseImportXml', () => {
   it('rejects excessive element nesting before DOM parsing', () => {
     const xml = '<x>'.repeat(513) + '</x>'.repeat(513);
     expect(() => parseImportXml(xml, 'odt')).toThrow(/too complex/);
+    // Quoted '/>' and '>' neither end a tag nor hide its depth.
+    const masked = '<x a="/>">'.repeat(513) + '<y b=">"/>'.repeat(513) + '</x>'.repeat(513);
+    expect(() => parseImportXml(masked, 'odt')).toThrow(/too complex/);
+    expect(parseImportXml('<x a="/>" b=\'>\'><y c="<"/></x>'.replace('<"', '&lt;"'), 'odt').documentElement.localName).toBe('x');
   });
 });
 

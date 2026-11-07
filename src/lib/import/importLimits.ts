@@ -69,6 +69,8 @@ export function boundedInt(value: string | null | undefined, min: number, max: n
   return Number.isSafeInteger(n) && n >= min && n <= max ? n : null;
 }
 
+const TAG_END = /"[^"]*"|'[^']*'|>/g;
+
 export function parseImportXml(xml: string, format: 'odt' | 'docx'): Document {
   // An entity declaration is what makes XML unsafe; an external subset declares nothing
   // a DOM parser resolves, and an embedded formula object from an older office suite
@@ -88,11 +90,16 @@ export function parseImportXml(xml: string, format: 'odt' | 'docx'): Document {
     }
     if (next === '?') continue;
     if (next === '/') { depth--; continue; }
-    const close = xml.indexOf('>', at + 1);
+    // A quoted attribute value may hold '>' and '/>' of its own.
+    TAG_END.lastIndex = at + 1;
+    let end: RegExpExecArray | null;
+    while ((end = TAG_END.exec(xml)) && end[0] !== '>');
+    const close = end ? end.index : -1;
     if (close < 0 || ++nodes > IMPORT_LIMITS.xmlNodes || ++depth > IMPORT_LIMITS.xmlDepth) {
       throw new Error(en.importError[`${format}TooComplex` as const]);
     }
     if (xml[close - 1] === '/') depth--;
+    at = close;
   }
   if (depth !== 0) throw new Error(en.importError[`${format}Malformed` as const]);
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
