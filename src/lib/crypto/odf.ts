@@ -2,13 +2,14 @@
 // Argon2id, the form LibreOffice writes by default. Read: that plus the per-entry
 // AES-CBC/GCM form with PBKDF2 that every earlier version writes.
 
-import { unzipSync, zipSync, strFromU8, strToU8, deflateSync, inflateSync } from 'fflate';
+import { unzipSync, zipSync, strFromU8, strToU8, deflateSync } from 'fflate';
 import { cbc, gcm } from '@noble/ciphers/aes.js';
 import { argon2idAsync } from '@noble/hashes/argon2.js';
 import { pbkdf2Async } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { sha1 } from '@noble/hashes/legacy.js';
 import { encryptionError, UNSUPPORTED_ENCRYPTION, WRONG_PASSWORD } from './errors';
+import { IMPORT_LIMITS, ImportLimitError, inflateWithin, unzipWithinLimits } from '../import/importLimits';
 
 const MANIFEST_NS = 'urn:oasis:names:tc:opendocument:xmlns:manifest:1.0';
 const LOEXT_NS = 'urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0';
@@ -26,6 +27,10 @@ const PACKAGE = 'encrypted-package';
 const ARGON2 = { t: 3, m: 65536, p: 4 };
 const MAX_PBKDF2_ITERATIONS = 1_000_000;
 const MAX_ARGON2_MEMORY_KIB = 262_144;
+// What one document may make us derive: LibreOffice salts every entry apart, so a file
+// with many pictures needs many PBKDF2 keys, but never more than one Argon2 key.
+const MAX_PBKDF2_WORK = 50_000_000;
+const MAX_ARGON2_KEYS = 2;
 
 type Encryption = {
   algorithm: string;
@@ -139,13 +144,14 @@ function decipher(data: Uint8Array, key: Uint8Array, enc: Encryption): Uint8Arra
 
 // The digest covers the first 1024 bytes of the compressed, not yet encrypted stream —
 // the one place a wrong password shows before the data is unusable.
-function unpack(deflated: Uint8Array, enc: Encryption): Uint8Array {
+function unpack(deflated: Uint8Array, enc: Encryption, max: number): Uint8Array {
   if (enc.checksum && !equal(sha256(deflated.subarray(0, 1024)), enc.checksum)) {
     throw encryptionError(WRONG_PASSWORD);
   }
   try {
-    return inflateSync(deflated);
-  } catch {
+    return inflateWithin(deflated, max);
+  } catch (e) {
+    if (e instanceof ImportLimitError) throw e;
     throw encryptionError(WRONG_PASSWORD);
   }
 }
@@ -153,11 +159,12 @@ function unpack(deflated: Uint8Array, enc: Encryption): Uint8Array {
 function manifestDoc(files: Record<string, Uint8Array>): Document {
   const xml = files[MANIFEST];
   if (!xml) throw encryptionError(UNSUPPORTED_ENCRYPTION);
+  if (/<!(?:DOCTYPE|ENTITY)\b/i.test(strFromU8(xml))) throw encryptionError(UNSUPPORTED_ENCRYPTION);
   return new DOMParser().parseFromString(strFromU8(xml), 'application/xml');
 }
 
 export async function decryptOdf(bytes: Uint8Array, password: string): Promise<Uint8Array> {
-  const files = unzipSync(bytes);
+  const files = unzipWithinLimits(bytes);
   const entries = manifestDoc(files).getElementsByTagNameNS(MANIFEST_NS, 'file-entry');
   const encryptions = new Map<string, Encryption>();
   for (const entry of Array.from(entries)) {
@@ -170,13 +177,14 @@ export async function decryptOdf(bytes: Uint8Array, password: string): Promise<U
   // A whole-package document carries the real one inside a single entry.
   const whole = encryptions.get(PACKAGE);
   if (whole && files[PACKAGE]) {
-    return unpack(decipher(files[PACKAGE], await deriveKey(password, whole), whole), whole);
+    return unpack(decipher(files[PACKAGE], await deriveKey(password, whole), whole), whole, IMPORT_LIMITS.compressedBytes);
   }
 
   // Per entry: decrypt in place, then drop the encryption from the manifest.
   const out: Record<string, [Uint8Array, { level: 0 | 6 }]> = {};
   if (files['mimetype']) out['mimetype'] = [files['mimetype'], { level: 0 }];
   const keys = new Map<string, Uint8Array>();
+  let pbkdf2Work = 0, argon2Keys = 0, inflated = 0;
   for (const [path, data] of Object.entries(files)) {
     if (path === 'mimetype') continue;
     const enc = encryptions.get(path);
@@ -184,10 +192,17 @@ export async function decryptOdf(bytes: Uint8Array, password: string): Promise<U
       out[path] = [data, { level: 6 }];
       continue;
     }
-    const id = `${bytesToB64(enc.salt)}:${enc.iterations}`;
+    const id = JSON.stringify([bytesToB64(enc.salt), enc.kdf, enc.iterations, enc.argon2, enc.startKeySha1]);
     let key = keys.get(id);
-    if (!key) keys.set(id, key = await deriveKey(password, enc));
-    out[path] = [unpack(decipher(data, key, enc), enc), { level: 6 }];
+    if (!key) {
+      if (enc.argon2 ? ++argon2Keys > MAX_ARGON2_KEYS : (pbkdf2Work += enc.iterations) > MAX_PBKDF2_WORK) {
+        throw new ImportLimitError('The document archive exceeds supported limits.');
+      }
+      keys.set(id, key = await deriveKey(password, enc));
+    }
+    const plain = unpack(decipher(data, key, enc), enc, IMPORT_LIMITS.zipEntryBytes);
+    if ((inflated += plain.length) > IMPORT_LIMITS.zipTotalBytes) throw new ImportLimitError('The document archive exceeds supported limits.');
+    out[path] = [plain, { level: 6 }];
   }
   out[MANIFEST] = [strToU8(strippedManifest(files[MANIFEST])), { level: 6 }];
   return zipSync(out);

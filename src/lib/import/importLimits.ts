@@ -1,3 +1,4 @@
+import { unzipSync, Inflate } from 'fflate';
 import en from '../i18n/locales/en';
 
 // Bounds reflect a large office document while keeping one browser tab responsive.
@@ -20,6 +21,45 @@ export const IMPORT_LIMITS = {
 
 export class ImportLimitError extends Error {
   constructor(message: string) { super(message); this.name = 'ImportLimitError'; }
+}
+
+const tooLarge = () => new ImportLimitError('The document archive exceeds supported limits.');
+
+/** An archive unpacked within the limits. They are checked in fflate's own filter, on the
+ *  sizes it allocates by, so a forged directory or a ZIP64 record cannot slip past them.
+ *  `keep` picks entries; all of them still count. */
+export function unzipWithinLimits(bytes: Uint8Array, keep?: (name: string) => boolean): Record<string, Uint8Array> {
+  if (bytes.length > IMPORT_LIMITS.compressedBytes) throw new ImportLimitError('The document is too large to import safely.');
+  let count = 0, total = 0;
+  return unzipSync(bytes, {
+    filter: ({ name, size, originalSize, compression }) => {
+      if (++count > IMPORT_LIMITS.zipEntries) throw tooLarge();
+      if (keep && !keep(name)) return false;
+      // A stored entry is copied at its compressed size, whatever it declares.
+      const out = compression ? originalSize : size;
+      const partLimit = /\.xml$/i.test(name) ? IMPORT_LIMITS.xmlPartBytes
+        : /(^|\/)(Pictures|media)\//i.test(name) ? IMPORT_LIMITS.mediaPartBytes : IMPORT_LIMITS.zipEntryBytes;
+      if (out > partLimit || out > IMPORT_LIMITS.zipEntryBytes
+        || (compression && size && out / size > IMPORT_LIMITS.zipCompressionRatio)) throw tooLarge();
+      if ((total += out) > IMPORT_LIMITS.zipTotalBytes) throw tooLarge();
+      return true;
+    },
+  });
+}
+
+/** A raw deflate stream inflated to at most `max` bytes. */
+export function inflateWithin(data: Uint8Array, max: number): Uint8Array {
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  const inflate = new Inflate((chunk) => {
+    if ((length += chunk.length) > max) throw tooLarge();
+    chunks.push(chunk);
+  });
+  inflate.push(data, true);
+  const out = new Uint8Array(length);
+  let at = 0;
+  for (const chunk of chunks) { out.set(chunk, at); at += chunk.length; }
+  return out;
 }
 
 /** A complete decimal integer within an inclusive safe range, otherwise null. */

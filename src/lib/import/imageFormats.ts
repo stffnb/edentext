@@ -1,8 +1,7 @@
 // Image formats, shared by both importers. An <img> renders only a fixed set, so the
 // rest (WMF/EMF/SVM/TIFF/…) is decoded client-side (convertUnsupportedImages) or skipped
 // with a warning. Resolved by extension, then by magic number so mislabels still work.
-import { unzipSync } from 'fflate';
-import { IMPORT_LIMITS, ImportLimitError } from './importLimits';
+import { IMPORT_LIMITS, unzipWithinLimits } from './importLimits';
 
 const MIME_BY_EXT: Record<string, string> = {
   png: 'image/png',
@@ -161,46 +160,9 @@ const archives = new WeakMap<Uint8Array, Record<string, Uint8Array>>();
 export function unzipArchive(bytes: Uint8Array): Record<string, Uint8Array> {
   const known = archives.get(bytes);
   if (known) return known;
-  checkZipBudget(bytes);
-  const files = unzipSync(bytes);
+  const files = unzipWithinLimits(bytes);
   archives.set(bytes, files);
   return files;
-}
-
-// Inspect the central directory before fflate allocates any decompressed entries. ZIP64 is
-// deliberately refused here: its sentinel sizes cannot be bounded from these fields.
-function checkZipBudget(bytes: Uint8Array): void {
-  if (bytes.length > IMPORT_LIMITS.compressedBytes) throw new ImportLimitError('The document is too large to import safely.');
-  const start = Math.max(0, bytes.length - 0xffff - 22);
-  let eocd = -1;
-  for (let i = bytes.length - 22; i >= start; i--) {
-    if (bytes[i] === 0x50 && bytes[i + 1] === 0x4b && bytes[i + 2] === 5 && bytes[i + 3] === 6) { eocd = i; break; }
-  }
-  if (eocd < 0) return; // fflate reports a malformed archive consistently.
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const count = view.getUint16(eocd + 10, true);
-  const size = view.getUint32(eocd + 12, true);
-  const offset = view.getUint32(eocd + 16, true);
-  if (count === 0xffff || size === 0xffffffff || offset === 0xffffffff || count > IMPORT_LIMITS.zipEntries || offset + size > bytes.length) {
-    throw new ImportLimitError('The document archive exceeds supported limits.');
-  }
-  let at = offset;
-  let total = 0;
-  for (let i = 0; i < count; i++) {
-    if (at + 46 > offset + size || view.getUint32(at, true) !== 0x02014b50) throw new ImportLimitError('The document archive is malformed.');
-    const compressed = view.getUint32(at + 20, true);
-    const uncompressed = view.getUint32(at + 24, true);
-    const name = view.getUint16(at + 28, true), extra = view.getUint16(at + 30, true), comment = view.getUint16(at + 32, true);
-    const path = new TextDecoder().decode(bytes.subarray(at + 46, at + 46 + name));
-    const partLimit = /\.xml$/i.test(path) ? IMPORT_LIMITS.xmlPartBytes
-      : looksLikeMedia(path) ? IMPORT_LIMITS.mediaPartBytes : IMPORT_LIMITS.zipEntryBytes;
-    if (uncompressed === 0xffffffff || compressed === 0xffffffff || uncompressed > IMPORT_LIMITS.zipEntryBytes
-      || uncompressed > partLimit
-      || (compressed && uncompressed / compressed > IMPORT_LIMITS.zipCompressionRatio)) throw new ImportLimitError('The document archive exceeds supported limits.');
-    total += uncompressed;
-    if (total > IMPORT_LIMITS.zipTotalBytes || at + 46 + name + extra + comment > offset + size) throw new ImportLimitError('The document archive exceeds supported limits.');
-    at += 46 + name + extra + comment;
-  }
 }
 
 // ---- client-side decoding of formats the browser can't render ----------------

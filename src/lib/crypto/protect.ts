@@ -1,7 +1,7 @@
 // Password protection of the saved file: the one module the app and saveFile.ts see.
 // The format modules and their crypto libraries load only when a password is in play.
 
-import { unzipSync } from 'fflate';
+import { unzipWithinLimits } from '../import/importLimits';
 import { encryptionError, UNSUPPORTED_ENCRYPTION, WRONG_PASSWORD } from './errors';
 
 export { UNSUPPORTED_ENCRYPTION, WRONG_PASSWORD };
@@ -24,8 +24,9 @@ export function isProtected(bytes: Uint8Array): Protection {
 // Kept here rather than imported from ./odf so that the check itself pulls in no crypto.
 function isEncryptedOdfSync(bytes: Uint8Array): boolean {
   try {
-    const files = unzipSync(bytes, { filter: (f) => f.name === 'META-INF/manifest.xml' });
-    const manifest = files['META-INF/manifest.xml'];
+    // The first manifest only: a repeated name must not be inflated again and again.
+    let found = false;
+    const manifest = unzipWithinLimits(bytes, (name) => name === 'META-INF/manifest.xml' && !found && (found = true))['META-INF/manifest.xml'];
     return manifest !== undefined && new TextDecoder().decode(manifest).includes('encryption-data');
   } catch {
     return false;
@@ -40,7 +41,7 @@ function isZip(bytes: Uint8Array): boolean {
 function containerOf(bytes: Uint8Array): Protection {
   if (!isZip(bytes)) return null;
   try {
-    const files = unzipSync(bytes, { filter: (f) => f.name === 'mimetype' || f.name === '[Content_Types].xml' });
+    const files = unzipWithinLimits(bytes, (name) => name === 'mimetype' || name === '[Content_Types].xml');
     if (files['mimetype']) return 'odf';
     if (files['[Content_Types].xml']) return 'ooxml';
   } catch { /* not a package we can protect */ }

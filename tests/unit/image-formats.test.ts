@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { zipSync } from 'fflate';
 import { displayableImageMime, imageDataUrl, imageExtOf, isConvertibleImage, unzipArchive } from '../../src/lib/import/imageFormats';
 import { boundedInt, IMPORT_LIMITS, parseImportXml } from '../../src/lib/import/importLimits';
+import { decryptOdf } from '../../src/lib/crypto/odf';
 
 const bytesOf = (...b: number[]) => new Uint8Array(b);
 const PNG = bytesOf(0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0);
@@ -20,10 +21,24 @@ describe('imageExtOf', () => {
 });
 
 describe('archive limits', () => {
-  it('rejects an archive with too many entries before extraction', () => {
+  const crowded = (): Uint8Array => {
     const files: Record<string, Uint8Array> = {};
     for (let i = 0; i <= IMPORT_LIMITS.zipEntries; i++) files[`word/media/${i}`] = new Uint8Array(0);
-    expect(() => unzipArchive(zipSync(files))).toThrow(/exceeds supported limits/);
+    return zipSync(files);
+  };
+  // The end record's total count claims one entry; its per-disk count, which the inflater
+  // walks, still holds them all.
+  const forged = (): Uint8Array => {
+    const zip = crowded(), eocd = zip.length - 22;
+    new DataView(zip.buffer).setUint16(eocd + 10, 1, true);
+    return zip;
+  };
+  it.each([
+    ['too many entries', crowded],
+    ['too many entries behind a forged total', forged],
+  ])('rejects %s, imported or decrypted', async (_name, make) => {
+    expect(() => unzipArchive(make())).toThrow(/exceeds supported limits/);
+    await expect(decryptOdf(make(), 'x')).rejects.toThrow(/exceeds supported limits/);
   });
 });
 
