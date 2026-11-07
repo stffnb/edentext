@@ -153,6 +153,19 @@ handle('desktop:print-pdf', async (_e, html) => {
 const PERMISSIONS = new Set(['fileSystem', 'local-fonts', 'clipboard-read', 'clipboard-sanitized-write']);
 const allowed = (permission, url) => PERMISSIONS.has(permission) && String(url ?? '').startsWith(ORIGIN);
 
+// Every window, the app's, one it opens and the hidden print window alike: links go to the
+// system, and a dropped file or a link cannot navigate a window off the app origin.
+app.on('web-contents-created', (_e, contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith(`${ORIGIN}/`)) return { action: 'allow' };
+    if (/^(https?|mailto|tel):/.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  contents.on('will-navigate', (e, url) => {
+    if (!url.startsWith(`${ORIGIN}/`)) e.preventDefault();
+  });
+});
+
 function createWindow(file) {
   const win = new BrowserWindow({
     width: 1280,
@@ -168,15 +181,6 @@ function createWindow(file) {
     grant(file);
     pending.set(win.webContents.id, file);
   }
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith(`${ORIGIN}/`)) return { action: 'allow' };
-    if (/^(https?|mailto|tel):/.test(url)) void shell.openExternal(url);
-    return { action: 'deny' };
-  });
-  // A file dropped outside the editor would otherwise replace the app.
-  win.webContents.on('will-navigate', (e, url) => {
-    if (!url.startsWith(`${ORIGIN}/`)) e.preventDefault();
-  });
   // The page's beforeunload guard blocks closing silently; ask instead.
   win.webContents.on('will-prevent-unload', (e) => {
     const choice = dialog.showMessageBoxSync(win, { type: 'question', message: text().discard, buttons: text().discardButtons, defaultId: 1, cancelId: 1 });
