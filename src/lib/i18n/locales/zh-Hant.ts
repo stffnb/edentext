@@ -84,6 +84,7 @@ const zhHant: Messages = {
     custom: '其他（相容 OpenAI）',
     endpoint: '位址',
     endpointHint: 'API 的基礎 URL',
+    endpointPlain: '未加密：文字和金鑰以明文傳輸',
     model: '模型',
     modelHint: '依服務提供者的命名，例如 gpt-4.1-mini、claude-sonnet-5 或 qwen2.5:7b',
     contextSize: '上下文大小',

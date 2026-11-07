@@ -2,7 +2,7 @@
 // request bodies, error mapping, and the kill switch that hands out no config.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { sseEvents, streamChat, AiError, aiErrorText } from '../../src/lib/ai/client';
-import { aiConfig, setAi } from '../../src/lib/storage/ai.svelte';
+import { aiConfig, plainHttpEndpoint, setAi } from '../../src/lib/storage/ai.svelte';
 import en from '../../src/lib/i18n/locales/en';
 
 function stream(...chunks: string[]): ReadableStream<Uint8Array> {
@@ -169,6 +169,12 @@ describe('kill switch', () => {
     expect(JSON.parse(localStorage.getItem('edentext-ai')!).enabled).toBe(false);
     setAi({ enabled: true });
   });
+
+  it.each([
+    ['http://192.168.1.5:11434/v1', true], ['http://ai.example.com/v1', true],
+    ['https://api.openai.com/v1', false], ['http://localhost:11434/v1', false],
+    ['http://127.0.0.1:1234/v1', false], ['http://[::1]:8080', false], ['', false],
+  ])('warns that %s is unencrypted: %s', (url, plain) => expect(plainHttpEndpoint(url)).toBe(plain));
 });
 
 describe('Ollama', () => {

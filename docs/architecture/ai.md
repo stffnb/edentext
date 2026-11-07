@@ -23,7 +23,25 @@ in the types as well: `ai/client.ts` is the only `fetch`, and it needs an `AiCon
 `aiConfig()` only returns while the switch is on and an endpoint and model are set.
 
 The key is stored unencrypted, like every other setting. Every repo on the same GitHub
-Pages origin can read it, and the settings row says so.
+Pages origin can read it, and the settings row says so. An address on plain `http://`
+off this machine (`plainHttpEndpoint`) swaps the address row's hint for a warning that
+text and key travel in the clear; a LAN model server is still allowed.
+
+## Trust
+
+The model reads text the user did not write: an opened document, an attachment, a
+comment. Such text can instruct it, so the tools are limited to what a reader would
+undo or see:
+
+- Text edits are tracked changes under the assistant's name; Keep/Undo settles them.
+- `review` settles anyone else's changes only after the user confirms
+  (`docs/architecture/ai-tools.md`).
+- A few tools act directly and undoably (comments, page setup, zones, language,
+  columns, table structure); none reaches the network or the file system.
+- A link the model writes is a normal link, so its URL could carry document text to
+  another site, but only when the reader opens it (Ctrl-click, `noopener`). The model's
+  HTML goes through the schema, which drops scripts, handlers and remote images, and the
+  build's CSP blocks script on top.
 
 ## Modules
 

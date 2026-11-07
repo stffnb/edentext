@@ -84,6 +84,7 @@ const el: Messages = {
     custom: 'Άλλος (συμβατός με OpenAI)',
     endpoint: 'Διεύθυνση',
     endpointHint: 'Η βασική URL του API',
+    endpointPlain: 'Χωρίς κρυπτογράφηση: το κείμενο και το κλειδί στέλνονται ως απλό κείμενο',
     model: 'Μοντέλο',
     modelHint: 'Όπως το ονομάζει ο πάροχος, π.χ. gpt-4.1-mini, claude-sonnet-5 ή qwen2.5:7b',
     contextSize: 'Μέγεθος περιβάλλοντος',

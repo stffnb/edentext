@@ -86,6 +86,7 @@ const ru: Messages = {
     custom: 'Другой (OpenAI-совместимый)',
     endpoint: 'Адрес',
     endpointHint: 'Базовый URL API',
+    endpointPlain: 'Без шифрования: текст и ключ передаются открыто',
     model: 'Модель',
     modelHint: 'Как её называет поставщик, например gpt-4.1-mini, claude-sonnet-5 или qwen2.5:7b',
     contextSize: 'Размер контекста',

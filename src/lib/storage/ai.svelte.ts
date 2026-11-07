@@ -63,6 +63,16 @@ export function aiConfig(): AiConfig | null {
   return enabled && !hostOff && cfg.endpoint.trim() && cfg.model.trim() ? cfg : null;
 }
 
+/** An address the document and key would travel to unencrypted: plain http off this machine. */
+export function plainHttpEndpoint(endpoint: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(endpoint.trim());
+    return protocol === 'http:' && !/^(localhost|127(\.\d+){3}|\[::1\])$|\.localhost$/.test(hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function setAi(patch: Partial<AiSettings>): void {
   current = { ...current, ...patch };
   // Typed inside another application's page, a provider and its key last for that page only.

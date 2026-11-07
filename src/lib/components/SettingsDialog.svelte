@@ -23,7 +23,7 @@
   import Icon from './ribbon/Icon.svelte';
   import Toggle from './Toggle.svelte';
   import { LANGUAGES, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
-  import { aiSettings, setAi, aiConfig, aiHostOff, AI_PRESETS, presetOf, DEFAULT_CONTEXT_TOKENS, type CustomCommand } from '../storage/ai.svelte';
+  import { aiSettings, setAi, aiConfig, aiHostOff, plainHttpEndpoint, AI_PRESETS, presetOf, DEFAULT_CONTEXT_TOKENS, type CustomCommand } from '../storage/ai.svelte';
   import { COMMANDS, commandName } from '../ai/commands';
   import { streamChat, aiErrorText } from '../ai/client';
 
@@ -337,7 +337,7 @@
             </select>
           </div>
           <div class="row sub" class:dim={!ai.enabled}>
-            <div class="info"><div class="name">{t().ai.endpoint}</div><div class="desc">{t().ai.endpointHint}</div></div>
+            <div class="info"><div class="name">{t().ai.endpoint}</div><div class="desc">{plainHttpEndpoint(ai.endpoint) ? t().ai.endpointPlain : t().ai.endpointHint}</div></div>
             <input class="field" type="url" spellcheck="false" value={ai.endpoint} disabled={!ai.enabled}
               placeholder="https://…/v1" onchange={(e) => { setAi({ endpoint: e.currentTarget.value.trim() }); aiTest = null; }} />
           </div>

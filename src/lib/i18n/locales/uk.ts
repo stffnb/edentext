@@ -86,6 +86,7 @@ const uk: Messages = {
     custom: 'Інший (OpenAI-сумісний)',
     endpoint: 'Адреса',
     endpointHint: 'Базова URL-адреса API',
+    endpointPlain: 'Без шифрування: текст і ключ передаються відкрито',
     model: 'Модель',
     modelHint: 'Як її називає постачальник, наприклад gpt-4.1-mini, claude-sonnet-5 або qwen2.5:7b',
     contextSize: 'Розмір контексту',

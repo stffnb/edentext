@@ -83,6 +83,7 @@ const en = {
     custom: 'Other (OpenAI-compatible)',
     endpoint: 'Address',
     endpointHint: 'The base URL of the API',
+    endpointPlain: 'Unencrypted: the text and the key travel in the clear',
     model: 'Model',
     modelHint: 'As the provider names it, e.g. gpt-4.1-mini, claude-sonnet-5 or qwen2.5:7b',
     contextSize: 'Context size',

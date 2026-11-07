@@ -82,6 +82,7 @@ const it: Messages = {
     custom: 'Altro (compatibile con OpenAI)',
     endpoint: 'Indirizzo',
     endpointHint: 'L\'URL di base dell\'API',
+    endpointPlain: 'Non cifrato: testo e chiave viaggiano in chiaro',
     model: 'Modello',
     modelHint: 'Con il nome usato dal provider, ad es. gpt-4.1-mini, claude-sonnet-5 o qwen2.5:7b',
     contextSize: 'Dimensione del contesto',

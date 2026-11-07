@@ -84,6 +84,7 @@ const ja: Messages = {
     custom: 'その他 (OpenAI 互換)',
     endpoint: 'アドレス',
     endpointHint: 'API のベース URL',
+    endpointPlain: '暗号化されていません。本文とキーが平文で送信されます',
     model: 'モデル',
     modelHint: 'プロバイダーでの名前 (例: gpt-4.1-mini、claude-sonnet-5、qwen2.5:7b)',
     contextSize: 'コンテキストサイズ',
