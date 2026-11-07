@@ -29,6 +29,10 @@ data:
 
         access_log /dev/stdout;
         error_log /dev/stderr warn;
+        {{- with .Values.frameAncestors }}
+
+        add_header Content-Security-Policy "frame-ancestors {{ . }}" always;
+        {{- end }}
 
         location / {
           try_files $uri $uri/ =404;

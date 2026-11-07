@@ -80,6 +80,10 @@ ingress:
           pathType: Prefix
   tls: []
 
+# Origins allowed to frame the editor, sent as the CSP frame-ancestors directive, for
+# example "'self' https://app.example.com". Empty sends none, so any page may frame it.
+frameAncestors: ""
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

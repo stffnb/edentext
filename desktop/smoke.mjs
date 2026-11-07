@@ -38,6 +38,13 @@ try {
   assert.equal(app.windows().length, 1, 'external link opened an app window');
   assert.deepEqual(await app.evaluate(() => globalThis.opened), ['https://example.invalid/']);
 
+  // The print page, served with its own script-free policy, still renders to PDF.
+  const pdf = await page.evaluate(async () => {
+    const bytes = await window.edentextDesktop.printToPdf('<p>Druck</p>');
+    return new TextDecoder().decode(bytes.slice(0, 5));
+  });
+  assert.equal(pdf, '%PDF-');
+
   // The service worker cannot register on app://; main.ts swallows that.
   assert.deepEqual(errors.filter((e) => !/service ?worker/i.test(e)), []);
   console.log('desktop smoke ok');

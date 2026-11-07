@@ -206,7 +206,11 @@ app.whenReady().then(() => {
   setMenu();
   protocol.handle('app', (req) => {
     const print = /^\/__print\/([\w-]+)$/.exec(new URL(req.url).pathname);
-    if (print) return new Response(printPages.get(print[1]) ?? '', { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    // The print page is static markup: it runs no script and loads only the app's files.
+    if (print) return new Response(printPages.get(print[1]) ?? '', { headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'content-security-policy': "default-src 'self' data: blob:; script-src 'none'; style-src 'self' 'unsafe-inline' data: blob:; object-src 'none'; base-uri 'none'",
+    } });
     const file = path.join(ROOT, decodeURIComponent(new URL(req.url).pathname));
     if (!file.startsWith(ROOT)) return new Response('', { status: 403 });
     return net.fetch(pathToFileURL(file).toString());

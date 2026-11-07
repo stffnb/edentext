@@ -75,6 +75,7 @@ retaining its readable tag.
 | `ingress.annotations` | Controller or certificate annotations | `{}` |
 | `ingress.hosts` | Host and path rules | `edentext.example.com` |
 | `ingress.tls` | TLS Secret and host declarations | `[]` |
+| `frameAncestors` | Origins allowed to frame the editor (CSP `frame-ancestors`); empty allows any | `""` |
 | `nodeSelector` | Pod node selector | `{}` |
 | `tolerations` | Pod tolerations | `[]` |
 | `affinity` | Pod affinity rules | `{}` |

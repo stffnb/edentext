@@ -63,6 +63,11 @@ export async function openApp(port, opts = {}) {
   // the rest of the round to the next frame and reports it — a converging loop, not an error.
   const benign = /ResizeObserver loop/;
   page.on('pageerror', (err) => { if (!benign.test(String(err))) pageErrors.push(String(err)); });
+  // Something the built page's Content-Security-Policy blocked is a broken feature too.
+  await page.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => {
+    console.error(`CSP blocked ${e.blockedURI || 'inline'} (${e.violatedDirective}) at ${e.sourceFile}:${e.lineNumber}:${e.columnNumber}`);
+  }));
+  page.on('console', (msg) => { if (msg.type() === 'error' && msg.text().startsWith('CSP blocked')) pageErrors.push(msg.text()); });
   page.on('dialog', (d) => d.accept());
   // Chromium can leave a close unanswered for good (after a download still running, or
   // the page grid), idle as the page is; a run then ends anyway and Playwright's exit

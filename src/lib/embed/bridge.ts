@@ -27,6 +27,10 @@ export interface EmbedApi {
 // opaque origin ("null", a sandboxed or file:// host) can only be answered with '*'.
 let hostOrigin: string | null = null;
 
+// A build with VITE_EMBED_ORIGINS (space- or comma-separated origins) answers only those
+// hosts; without it any page may frame and drive the editor.
+const allowedHosts = import.meta.env.VITE_EMBED_ORIGINS?.split(/[\s,]+/).filter(Boolean);
+
 /** Tell the host something; dropped until it has introduced itself. */
 export function notify(type: string, data: Record<string, unknown> = {}, transfer: Transferable[] = []): void {
   if (hostOrigin === null) return;
@@ -37,7 +41,7 @@ export function startBridge(api: EmbedApi): void {
   addEventListener('message', async (e: MessageEvent) => {
     const msg = e.data as { edentext?: number; type?: string; id?: unknown } | null;
     if (e.source !== window.parent || msg?.edentext !== PROTOCOL) return;
-    if (msg.type === 'init') hostOrigin ??= e.origin;
+    if (msg.type === 'init' && (!allowedHosts?.length || allowedHosts.includes(e.origin))) hostOrigin ??= e.origin;
     if (e.origin !== hostOrigin) return;
     const reply = (data: Record<string, unknown>, transfer: Transferable[] = []) => notify('response', { id: msg.id, ...data }, transfer);
     try {

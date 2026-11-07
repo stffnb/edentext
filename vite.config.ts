@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { defineConfig, type Plugin } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
@@ -36,11 +37,43 @@ function goatcounter(): Plugin {
   };
 }
 
+// A Content-Security-Policy for the built page, the web app's and the desktop app's alike.
+// Scripts come from the app itself (inline ones by hash) and wasm compiles; a document,
+// a paste or a model's answer cannot run code. connect-src stays open for the AI endpoint.
+function contentSecurityPolicy(): Plugin {
+  const counter = process.env.GOATCOUNTER ? ` ${new URL(process.env.GOATCOUNTER).origin}` : '';
+  return {
+    name: 'csp',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        const hashes = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)]
+          .map(([, body]) => `'sha256-${createHash('sha256').update(body).digest('base64')}'`);
+        const policy = [
+          "default-src 'self'",
+          `script-src 'self' 'wasm-unsafe-eval' ${hashes.join(' ')}`,
+          "style-src 'self' 'unsafe-inline'",
+          `img-src 'self' data: blob:${counter}`,
+          "font-src 'self' data: blob:",
+          "media-src 'self' data: blob:",
+          "connect-src 'self' * data: blob:",
+          "worker-src 'self' blob:",
+          "object-src 'none'",
+          "base-uri 'none'",
+          "form-action 'none'",
+        ].join('; ');
+        return html.replace(/<head>/, `<head>\n    <meta http-equiv="Content-Security-Policy" content="${policy}" />`);
+      },
+    },
+  };
+}
+
 export default defineConfig({
   // Relative asset URLs, so the same build works at the domain root and under a
   // subpath (GitHub Pages project site). sw.js and the manifest are relative too.
   base: './',
-  plugins: [svelte(), goatcounter()],
+  plugins: [svelte(), goatcounter(), contentSecurityPolicy()],
   // The browsers the bundle promises to parse in; the CI browser matrix runs the
   // engines behind them (docs/headless-testing.md).
   build: { target: 'baseline-widely-available' },

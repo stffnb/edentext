@@ -131,3 +131,27 @@ An unknown value is ignored, so the setting keeps what it had.
 - **Local network.** Chromium blocks a page on a public address from framing a loopback
   or private address, so the host and EdenText have to be on the same kind of network.
   The smoke leg serves its host page from a second loopback server for this reason.
+- **iframe `allow`.** `embed.js` grants `clipboard-read` (the context menu's Paste),
+  `clipboard-write` and `local-fonts` (installed fonts in the picker). A host that drops
+  one loses only that feature.
+
+## Security
+
+- **Content-Security-Policy.** The build writes a `<meta>` policy into `index.html`
+  (`contentSecurityPolicy()` in `vite.config.ts`): scripts only from the app itself, the
+  inline ones by hash, plus wasm; no plugins, no `<base>`, no form posts. A document, a
+  paste or a model answer therefore cannot run script even past a sanitizer bug.
+  `connect-src` stays open because the AI endpoint is the reader's choice. The browser
+  legs fail on any violation.
+- **Who may frame it.** A `<meta>` policy cannot carry `frame-ancestors`, so the
+  serving side sends it: the Helm chart's `frameAncestors` value, or the same header
+  from any other server. Without it any page may frame the instance.
+- **Who may drive it.** A build with `VITE_EMBED_ORIGINS` (origins separated by spaces
+  or commas) pins the host only to one of those; any other page's `init` is ignored.
+  Without it the first page to send `init` is the host. A host should run its own
+  instance on its own origin, with both settings.
+- **`embed.js`.** A host that loads the helper from another origin trusts that origin
+  with its page. Copying `embed.js` and `embed.d.ts` into the host's own assets, or
+  pinning them with Subresource Integrity, removes that.
+- **What the host gets.** The editor accepts messages only from `window.parent` and,
+  after `init`, only from the pinned origin, and sends document data only there.

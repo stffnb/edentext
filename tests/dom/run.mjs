@@ -1121,8 +1121,12 @@ try {
   // until the re-check clears them.
   const countPerPara = () => [...document.querySelectorAll('.tiptap-host .tiptap > p')].map((p) =>
     [...CSS.highlights.get('grammar-error') ?? []].filter((r) => p.contains(r.startContainer)).length);
-  await page.waitForFunction(`(${countPerPara})()[0] > 0 && (${countPerPara})()[1] === 0`,
-    null, { timeout: 30_000 }).catch(() => {});
+  // Predicates are functions, not strings: the built page's CSP refuses to compile a string.
+  await page.waitForFunction((name) => {
+    const n = [...document.querySelectorAll('.tiptap-host .tiptap > p')].map((p) =>
+      [...CSS.highlights.get(name) ?? []].filter((r) => p.contains(r.startContainer)).length);
+    return n[0] > 0 && n[1] === 0;
+  }, 'grammar-error', { timeout: 30_000 }).catch(() => {});
   const perPara = await page.evaluate(countPerPara);
   check(perPara[0] > 0 && perPara[1] === 0, `only the English paragraph is grammar-checked (${JSON.stringify(perPara)})`);
 
@@ -1159,7 +1163,11 @@ try {
   });
   const squigglesPerPara = () => [...document.querySelectorAll('.tiptap-host .tiptap > p')].map((p) =>
     [...CSS.highlights.get('spell-error') ?? []].filter((r) => p.contains(r.startContainer)).length);
-  await page.waitForFunction(`(${squigglesPerPara})()[0] > 0 && (${squigglesPerPara})()[1] === 0`, null, { timeout: 30_000 }).catch(() => {});
+  await page.waitForFunction((name) => {
+    const n = [...document.querySelectorAll('.tiptap-host .tiptap > p')].map((p) =>
+      [...CSS.highlights.get(name) ?? []].filter((r) => p.contains(r.startContainer)).length);
+    return n[0] > 0 && n[1] === 0;
+  }, 'spell-error', { timeout: 30_000 }).catch(() => {});
   const detectedSquiggles = await page.evaluate(squigglesPerPara);
   check(detectedSquiggles[0] > 0 && detectedSquiggles[1] === 0, `a German paragraph in an English document is checked in German (${JSON.stringify(detectedSquiggles)})`);
   const detectedLabel = await page.locator('.statusbar .lang-picker').textContent();

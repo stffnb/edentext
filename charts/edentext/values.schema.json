@@ -114,6 +114,7 @@
         }
       }
     },
+    "frameAncestors": { "type": "string", "pattern": "^[^\"\\\\;{}$\\n]*$" },
     "nodeSelector": { "$ref": "#/definitions/stringMap" },
     "tolerations": { "type": "array", "items": { "type": "object" } },
     "affinity": { "type": "object" }
@@ -135,6 +136,7 @@
     "livenessProbe",
     "readinessProbe",
     "ingress",
+    "frameAncestors",
     "nodeSelector",
     "tolerations",
     "affinity"
