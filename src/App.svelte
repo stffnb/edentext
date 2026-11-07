@@ -38,7 +38,7 @@
   import { ensureUserName, shownStats, toggleRecordChanges } from './lib/components/reviewItems';
   import type { Node as PmNode } from 'prosemirror-model';
   import { clampZoom, wheelZoomFactor, MIN_ZOOM, MAX_ZOOM } from './lib/utils/zoom';
-  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadToolbarCategory, saveToolbarCategory, loadChromeMode, saveChromeMode, loadFormattingMarks, saveFormattingMarks, loadFieldShading, saveFieldShading, loadPageLabels, savePageLabels, loadRuler, saveRuler, loadSplitView, saveSplitView, loadPageColumns, savePageColumns, ACCENTS, parseAccentHex, saveAccent, applyAccent, type Accent, type ThemeMode, type ChromeMode } from './lib/storage/theme';
+  import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadToolbarCategory, saveToolbarCategory, loadChromeMode, saveChromeMode, loadFormattingMarks, saveFormattingMarks, loadFieldShading, saveFieldShading, loadPageLabels, savePageLabels, loadRuler, saveRuler, loadSplitView, saveSplitView, loadPageColumns, savePageColumns, ACCENTS, parseAccentHex, applyAccent, type Accent, type ThemeMode, type ChromeMode } from './lib/storage/theme';
   import { loadPageMargins, savePageMargins, fitMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadTabInterval, saveTabInterval, applyTabIntervalVar, DEFAULT_TAB_INTERVAL_CM } from './lib/storage/tabInterval';
@@ -451,8 +451,10 @@
     return n ? `${sanitizeNameForFile(n)}.docx` : deriveFilename(json).replace(/\.odt$/, '.docx');
   }
 
+  // A chrome the embedding host picked is not the reader's own choice to keep.
+  let hostChrome: ChromeMode | null = null;
   $effect(() => {
-    saveChromeMode(chromeMode);
+    if (chromeMode !== hostChrome) saveChromeMode(chromeMode);
   });
 
   $effect(() => {
@@ -583,9 +585,9 @@
     localStorage.setItem('edentext-zoom', String(zoom));
   }
 
-  function selectTheme(m: ThemeMode) {
+  function selectTheme(m: ThemeMode, keep = true) {
     themeMode = m;
-    saveTheme(m);
+    if (keep) saveTheme(m);
     applyTheme(m);
     themeOpen = false;
   }
@@ -1556,14 +1558,16 @@
 
   // Embedded, the host application loads and saves the document through the bridge
   // (lib/embed/bridge.ts); the reader's own file commands are gone.
+  // What the host sets holds for this page and is never stored: a page framing the
+  // editor must not leave a name or a look behind for the reader's own visits.
   function configureEmbed(s: EmbedSettings): void {
-    if (typeof s.user === 'string') setUserName(s.user);
-    if (typeof s.locale === 'string' && isLocale(s.locale)) setLocale(s.locale);
-    if (s.theme === 'light' || s.theme === 'dark' || s.theme === 'allBlack' || s.theme === 'auto') selectTheme(s.theme);
-    if (s.chrome === 'ribbon' || s.chrome === 'modern') chromeMode = s.chrome;
+    if (typeof s.user === 'string') setUserName(s.user, false);
+    if (typeof s.locale === 'string' && isLocale(s.locale)) setLocale(s.locale, false);
+    if (s.theme === 'light' || s.theme === 'dark' || s.theme === 'allBlack' || s.theme === 'auto') selectTheme(s.theme, false);
+    if (s.chrome === 'ribbon' || s.chrome === 'modern') chromeMode = hostChrome = s.chrome;
     if (typeof s.accent === 'string') {
       const accent: Accent | null = (ACCENTS as readonly string[]).includes(s.accent) ? (s.accent as Accent) : parseAccentHex(s.accent);
-      if (accent) { saveAccent(accent); applyAccent(accent); }
+      if (accent) applyAccent(accent);
     }
     if (typeof s.ai === 'boolean') setAiHostOff(!s.ai);
     if (typeof s.name === 'string') {

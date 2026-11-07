@@ -1,5 +1,6 @@
 // Types for embed.js, the EdenText embed helper; see docs/architecture/embed.md.
 
+/** Every setting holds for the page it was sent to and is never stored: send them with each `init`. */
 export interface EdenTextSettings {
   /** The name on comments and recorded changes. */
   user?: string;
@@ -11,7 +12,11 @@ export interface EdenTextSettings {
   name?: string;
   /** 'slate' | 'blue' | 'teal' | 'green' | 'violet' | 'berry' | 'graphite', or a '#rrggbb' colour. */
   accent?: string;
-  /** false hides the AI assistant and its settings; true leaves the choice to the user. */
+  /**
+   * false hides the AI assistant and its settings; true leaves the choice to the user.
+   * The assistant is on by default and sends document text to a provider the user enters,
+   * so a host that must keep documents in-house sends `ai: false` with every `init`.
+   */
   ai?: boolean;
 }
 

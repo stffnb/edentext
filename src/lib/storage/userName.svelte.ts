@@ -8,8 +8,10 @@ let current = $state(localStorage.getItem(KEY) ?? '');
 
 export function userName(): string { return current.trim(); }
 
-export function setUserName(name: string): void {
+/** `keep: false` holds the name for this page only, as an embedding host's does. */
+export function setUserName(name: string, keep = true): void {
   current = name;
+  if (!keep) return;
   if (name.trim()) localStorage.setItem(KEY, name);
   else localStorage.removeItem(KEY);
 }

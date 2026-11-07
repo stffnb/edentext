@@ -34,9 +34,9 @@ export function locale(): Locale {
   return current;
 }
 
-export function setLocale(next: Locale): void {
+export function setLocale(next: Locale, keep = true): void {
   current = next;
-  saveAppLanguage(next);
+  if (keep) saveAppLanguage(next);
   // <html lang> = UI locale (chrome a11y); document content language is separate.
   document.documentElement.lang = next;
 }

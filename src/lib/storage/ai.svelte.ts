@@ -3,6 +3,7 @@
 // switch-off is stored; switching off keeps the provider so switching back on needs no retyping.
 
 import { SvelteMap } from 'svelte/reactivity';
+import { embedded } from '../embed/mode';
 
 export type AiProvider = 'openai' | 'anthropic';
 /** 'chat' answers in the pane only; 'edit' changes the document through the tools. */
@@ -64,6 +65,8 @@ export function aiConfig(): AiConfig | null {
 
 export function setAi(patch: Partial<AiSettings>): void {
   current = { ...current, ...patch };
+  // Typed inside another application's page, a provider and its key last for that page only.
+  if (embedded) return;
   const isDefault = (Object.keys(DEFAULTS) as (keyof AiSettings)[]).every((k) => JSON.stringify(current[k]) === JSON.stringify(DEFAULTS[k]));
   if (isDefault) localStorage.removeItem(KEY);
   else localStorage.setItem(KEY, JSON.stringify(current));

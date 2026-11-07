@@ -7,9 +7,11 @@ changes:
 - **Nothing is stored.** `embedded` makes `docScope.ts`'s `volatile` true, so the
   document, its pictures, snapshots, embedded fonts and recent files stay in memory.
   `main.ts` starts no tab presence, prune or service worker, and `resolve()` claims no
-  `sessionStorage` slot. App-wide preferences (theme, language, user name, zoom) still go
-  to `localStorage`, which a browser partitions per embedding site. Settings ▸ Privacy,
-  whose choices are about the browser copy, is hidden.
+  `sessionStorage` slot. What the host sets in `init`/`configure` and the AI settings
+  typed inside the frame (provider, endpoint, key) last for the page only, so a page
+  framing the editor leaves no name or key behind. Preferences the reader picks (theme,
+  language, user name, zoom) still go to `localStorage`, which a browser partitions per
+  embedding site. Settings ▸ Privacy, whose choices are about the browser copy, is hidden.
 - **The host owns the file.** Both chromes and the command search drop New, From
   template, Open, Browser documents, Save As and Save as template
   (`HOST_FILE_COMMANDS` in `ribbon/commands.ts`). Save, its button and Ctrl+S send
@@ -53,10 +55,14 @@ A failure is answered with `error: message`.
   `markSaved` once it has stored the file, so `dirty` follows what the host holds.
 - **`name`** in `init`/`configure` is the host's file name. It does not count as an edit.
 - **`accent`** is one of the presets in Settings ▸ General (`ACCENTS` in
-  `storage/theme.ts`) or a `#rrggbb` colour, kept like `theme`.
+  `storage/theme.ts`) or a `#rrggbb` colour. Like `user`, `locale`, `theme` and `chrome`
+  it holds for the page and is not stored, so the host sends it with every `init`.
 - **`ai: false`** switches the assistant off above the user's own setting: every AI
   surface, the context menu's AI submenu and the Settings ▸ AI section go (`setAiHostOff`, `storage/ai.svelte.ts`). It is
   never stored, so the host sends it with every `init`; `ai: true` hands the choice back.
+  The assistant is **on by default**, and a reader can enter any provider in the frame,
+  which then receives document text: a host that must keep documents in-house sends
+  `ai: false`.
 - **`new`** replaces the document with an empty, unchanged one without asking, as New
   does; `name` is the host's file name for it.
 
