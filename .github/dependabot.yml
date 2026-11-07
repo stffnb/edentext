@@ -12,6 +12,10 @@ updates:
       default-days: 7
     commit-message:
       prefix: build(deps)
+    # svelte-check takes TypeScript 5 and 6 only; lift once its peer range grows.
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       editor:
         patterns: ["@tiptap/*", "prosemirror-*"]
