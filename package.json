@@ -74,13 +74,13 @@
     "@tiptap/extension-text-style": "^3.33.0",
     "@tiptap/extension-underline": "^3.33.0",
     "@tiptap/pm": "^3.33.0",
-    "docx": "^9.7.1",
+    "docx": "^9.15.1",
     "franc-min": "^6.2.0",
     "harper.js": "^2.10.0",
     "html2canvas": "^1.4.1",
     "hunspell-asm": "^4.0.2",
     "jspdf": "^4.2.1",
-    "odf-kit": "^0.14.2",
+    "odf-kit": "^0.14.5",
     "utif2": "^4.1.0"
   },
   "overrides": {
