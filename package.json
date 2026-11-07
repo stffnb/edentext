@@ -41,9 +41,9 @@
     "dictionary-ru": "^3.0.0",
     "dictionary-uk": "^4.0.0",
     "jsdom": "^29.1.1",
-    "playwright-core": "^1.62.1",
-    "svelte": "^5.55.9",
-    "svelte-check": "^4.7.1",
+    "playwright-core": "^1.64.1",
+    "svelte": "^5.57.3",
+    "svelte-check": "^4.7.7",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
     "vitest": "^4.1.9"
