@@ -247,6 +247,18 @@ try {
     && ![...document.querySelectorAll('.tiptap .pm-comment')].some((c) => c.textContent === 'Absatz 6.')),
   'a cancelled comment leaves nothing behind');
 
+  // Offline: the service worker keeps the editor as its shell, even after another page of
+  // the instance was opened. Read from the cache, as WebKit's offline mode skips the worker.
+  const sw = await browser.newPage({ serviceWorkers: 'allow' });
+  await sw.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+  await sw.evaluate(() => navigator.serviceWorker.ready);
+  await sw.reload({ waitUntil: 'load' });
+  await sw.goto(`http://localhost:${PORT}/licenses.txt`, { waitUntil: 'load' });
+  await sw.waitForTimeout(500);
+  const shell = await sw.evaluate(async () => (await caches.match('./', { ignoreVary: true }))?.text());
+  check(/<div id="app"/.test(shell ?? ''), 'the service worker\'s shell stays the editor');
+  await sw.context().close();
+
   // Embed mode: a host page on another origin drives the editor through public/embed.js.
   const host = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
   host.on('pageerror', (err) => pageErrors.push(`[embed] ${err}`));
