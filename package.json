@@ -30,7 +30,7 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tsconfig/svelte": "^5.0.8",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^5.1.0",
     "dictionary-de": "^3.0.0",
     "dictionary-el": "^4.0.0",
     "dictionary-en": "^4.0.0",
@@ -46,7 +46,7 @@
     "svelte-check": "^4.7.7",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
-    "vitest": "^4.1.9"
+    "vitest": "^5.1.0"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
