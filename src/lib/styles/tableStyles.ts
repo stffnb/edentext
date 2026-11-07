@@ -2,7 +2,8 @@
 // AutoFormats. A style paints conditional regions (header row, banded rows, first column,
 // …); resolveTableCell is the single source of truth for applying, CSS, export and import.
 
-import { textDeclarations, type TextProps } from './styleSheet';
+import { cssString, textDeclarations, type TextProps } from './styleSheet';
+import { normalizeColor } from '../utils/color';
 
 // Ascending precedence, as in Word: a later region's properties win over an earlier one's.
 // `wholeTable` is the base rather than a conditional region, so it is layered first and
@@ -308,7 +309,7 @@ export function previewCellCss(
   const borders = (['Top', 'Right', 'Bottom', 'Left'] as const)
     .map(s => `border-${s.toLowerCase()}: ${side(paint.borders[`border${s}`])}`)
     .join(';');
-  return `background: ${paint.fill ?? 'transparent'};${borders};font-weight: ${paint.text.bold ? 700 : 400}`;
+  return `background: ${normalizeColor(paint.fill) ?? 'transparent'};${borders};font-weight: ${paint.text.bold ? 700 : 400}`;
 }
 
 // The options a style is applied with: its own declared ones over the table's current.
@@ -325,7 +326,7 @@ export function previewTextCss(
 ): string {
   const { text } = resolveTableCell(style, { row, col, rows, cols }, look);
   const bold = text.bold === true;
-  return `height: ${bold ? 2 : 1}px; background: ${text.color ?? 'currentColor'};`
+  return `height: ${bold ? 2 : 1}px; background: ${normalizeColor(text.color) ?? 'currentColor'};`
     + `opacity: ${bold ? 0.85 : 0.45};`
     // A slant for italic, so an italic-only region is visible too.
     + `transform: ${text.italic ? 'skewX(-14deg)' : 'none'}`;
@@ -338,7 +339,7 @@ export function previewTextCss(
 export function tableStyleCss(styles: Record<string, TableStyle>): string {
   const rules: string[] = [];
   for (const style of Object.values(styles ?? {})) {
-    const table = `.paper .tiptap table[data-table-style="${style.name.replace(/"/g, '\\"')}"]`;
+    const table = `.paper .tiptap table[data-table-style="${cssString(style.name)}"]`;
     const emit = (cellSel: string, text: TextProps | undefined) => {
       const decls = textDeclarations(text ?? {});
       if (!decls.length) return;

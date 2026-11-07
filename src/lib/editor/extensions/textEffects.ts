@@ -2,6 +2,7 @@ import Underline from '@tiptap/extension-underline';
 import Strike from '@tiptap/extension-strike';
 import { Extension } from '@tiptap/core';
 import '@tiptap/extension-text-style';
+import { normalizeColor } from '../../utils/color';
 
 // The character effects beyond bold/italic that both Word and LibreOffice carry and
 // CSS can draw: letter case, a raised or lowered run, emphasis marks, and the line
@@ -113,7 +114,10 @@ export const UnderlineStyled = Underline.extend({
       lineColor: {
         default: null,
         parseHTML: el => (el as HTMLElement).style.textDecorationColor || null,
-        renderHTML: attrs => (attrs.lineColor ? { style: `text-decoration-color: ${attrs.lineColor}` } : {}),
+        renderHTML: attrs => {
+          const color = normalizeColor(attrs.lineColor);
+          return color ? { style: `text-decoration-color: ${color}` } : {};
+        },
       },
     };
   },

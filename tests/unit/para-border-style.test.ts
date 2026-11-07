@@ -6,6 +6,8 @@ import { importDocx } from '../../src/lib/import/docx';
 import { importOdt } from '../../src/lib/import/odt';
 import { buildOdt } from '../../src/lib/export/odt';
 import { styleCss } from '../../src/lib/styles/styleSheet';
+import { Editor } from '@tiptap/core';
+import { zoneExtensions } from '../../src/lib/editor/extensions';
 
 type N = any;
 
@@ -64,5 +66,38 @@ describe('a paragraph style’s rule line', () => {
     // A unitless 0 in that calc() would void the whole padding shorthand, the rule's gap with it.
     expect(css).toContain('--pad-left: 0px');
     expect(css).toContain('padding: 0px 0px 4pt calc(var(--pad-left, 0px) - var(--box-hang, 0px))');
+  });
+});
+
+// A file or a paste names a colour; only a colour may reach CSS, never a rule's end or a URL.
+describe('hostile style values', () => {
+  const NS = 'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" '
+    + 'xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" '
+    + 'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"';
+  const bad = (n: number) => `#0}body{background:url(//e.invalid/${n})`;
+  const odt = zipSync({
+    'styles.xml': strToU8(`<?xml version="1.0"?><office:document-styles ${NS}><office:styles>
+      <style:style style:name="Standard" style:family="paragraph"/>
+      <style:style style:name="Ruled" style:family="paragraph"><style:paragraph-properties fo:border="1pt solid ${bad(1)}"/></style:style>
+      </office:styles></office:document-styles>`),
+    'content.xml': strToU8(`<?xml version="1.0"?><office:document-content ${NS}><office:automatic-styles>
+      <style:style style:name="C1" style:family="table-cell"><style:table-cell-properties fo:background-color="red;background-image:url(//e.invalid/2)" fo:border="1pt solid ${bad(3)}"/></style:style>
+      <style:style style:name="P1" style:family="paragraph" style:parent-style-name="Ruled"><style:paragraph-properties fo:border-top="2pt solid ${bad(4)}"/></style:style>
+      </office:automatic-styles><office:body><office:text>
+      <text:p text:style-name="P1">a</text:p>
+      <table:table table:name="T"><table:table-column/><table:table-row><table:table-cell table:style-name="C1"><text:p>b</text:p></table:table-cell></table:table-row></table:table>
+      </office:text></office:body></office:document-content>`),
+  });
+  const paste = '<p data-bg="red;background:url(//e.invalid/5)">c <span style="color: red; text-decoration-color: blue">d</span></p>'
+    + '<table><tr><td style="background-color: red; background-image: url(//e.invalid/6)"><p>e</p></td></tr></table>';
+
+  it('reach neither the stylesheet nor the rendered document', () => {
+    const res = importOdt(odt);
+    expect(styleCss(res.styles)).not.toContain('e.invalid');
+    for (const content of [res.content, paste]) {
+      const editor = new Editor({ extensions: zoneExtensions(), content: content as N });
+      expect(editor.getHTML()).not.toContain('e.invalid');
+      editor.destroy();
+    }
   });
 });

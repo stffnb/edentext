@@ -7,10 +7,18 @@ import { outlineCss, type OutlineNumbering } from './outlineNumbering';
 import { builtinListStyles, type ListStyle } from './listStyles';
 import type { CapsMode } from '../editor/extensions/textEffects';
 import { normalizeColor } from '../utils/color';
+import { parseBorderAttr } from '../editor/extensions/tableCellBorders';
 
 const MAX_STYLE_NAME_LENGTH = 256;
 
-function cssString(value: string): string {
+// A style's values reach a <style> in the page, so each passes a shape check first:
+// a stored or imported sheet must not end a rule or load a URL.
+const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const LINE_SPACING = /^\d+(\.\d+)?(pt)?$/;
+const ALIGNS = new Set(['left', 'center', 'right', 'justify']);
+const CAPS = new Set(['uppercase', 'lowercase', 'capitalize', 'smallCaps']);
+
+export function cssString(value: string): string {
   return Array.from(value.slice(0, MAX_STYLE_NAME_LENGTH), char => {
     const code = char.codePointAt(0)!;
     return code < 0x20 || code > 0x7e || char === '"' || char === '\\'
@@ -390,8 +398,8 @@ export function textDeclarations(t: TextProps, asBlock = false): string[] {
     const lh = singleLineHeight(t.fontFamily);
     if (lh !== 1.15) out.push(`${asBlock ? '--natural-line' : 'line-height'}: ${lh}`);
   }
-  if (t.fontSizePt != null) out.push(`font-size: ${t.fontSizePt}pt`);
-  if (t.letterSpacingPt) out.push(`letter-spacing: ${t.letterSpacingPt}pt`);
+  if (finite(t.fontSizePt)) out.push(`font-size: ${t.fontSizePt}pt`);
+  if (finite(t.letterSpacingPt) && t.letterSpacingPt) out.push(`letter-spacing: ${t.letterSpacingPt}pt`);
   if (t.kerning != null) out.push(`font-kerning: ${t.kerning ? 'normal' : 'none'}`);
   if (t.bold != null) {
     out.push(`font-weight: ${t.bold ? 'var(--bold-weight, 700)' : 400}`, `-webkit-text-stroke-width: ${t.bold ? 'var(--bold-stroke, 0)' : 0}`);
@@ -402,28 +410,28 @@ export function textDeclarations(t: TextProps, asBlock = false): string[] {
   }
   const color = normalizeColor(t.color);
   if (color) out.push(`color: ${color}`);
-  if (t.caps) out.push(t.caps === 'smallCaps' ? 'font-variant-caps: small-caps' : `text-transform: ${t.caps}`);
+  if (t.caps && CAPS.has(t.caps)) out.push(t.caps === 'smallCaps' ? 'font-variant-caps: small-caps' : `text-transform: ${t.caps}`);
   return out;
 }
 
 function declarations(r: ResolvedStyle): string[] {
   const { para: p } = r;
   const out = textDeclarations(r.text, true);
-  if (p.textAlign) out.push(`text-align: ${p.textAlign}`);
-  if (p.lineHeight) out.push(...lineSpacingDeclarations(p.lineHeight));
+  if (p.textAlign && ALIGNS.has(p.textAlign)) out.push(`text-align: ${p.textAlign}`);
+  if (typeof p.lineHeight === 'string' && LINE_SPACING.test(p.lineHeight)) out.push(...lineSpacingDeclarations(p.lineHeight));
   // Padding or margin per the document's spacing model — editor.css resolves it.
-  if (p.spaceBefore != null) out.push(`--space-before: ${p.spaceBefore}pt`);
+  if (finite(p.spaceBefore)) out.push(`--space-before: ${p.spaceBefore}pt`);
   // The property beside it is what the multi-column rule turns the space below into.
-  if (p.spaceAfter != null) out.push(`margin-bottom: ${p.spaceAfter}pt`, `--space-after: ${p.spaceAfter}pt`);
-  if (p.indent != null) out.push(`--ind: ${p.indent}cm`);
-  if (p.indentFirst != null) out.push(`text-indent: ${p.indentFirst}cm`, `--indent-first: ${p.indentFirst}cm`);
+  if (finite(p.spaceAfter)) out.push(`margin-bottom: ${p.spaceAfter}pt`, `--space-after: ${p.spaceAfter}pt`);
+  if (finite(p.indent)) out.push(`--ind: ${p.indent}cm`);
+  if (finite(p.indentFirst)) out.push(`text-indent: ${p.indentFirst}cm`, `--indent-first: ${p.indentFirst}cm`);
   const background = normalizeColor(p.backgroundColor);
   if (background) out.push(`background-color: ${background}`);
   const drawn: Record<string, boolean> = {};
   for (const [key, side] of [['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left']] as const) {
-    const v = p[key];
-    drawn[side] = !!v && v !== 'none';
-    if (drawn[side]) out.push(`border-${side}: ${v}`);
+    const b = parseBorderAttr(p[key]);
+    drawn[side] = !!b && b !== 'none';
+    if (b && b !== 'none') out.push(`border-${side}: ${b.widthPt}pt solid ${b.color}`);
   }
   const boxed = !!background || Object.values(drawn).some(Boolean);
   // The rule and shading start where a hanging first line does (editor.css --box-hang).
@@ -433,7 +441,7 @@ function declarations(r: ResolvedStyle): string[] {
   // The gap the file puts between the text and its rule, on the ruled sides only —
   // a bottom rule must not indent the paragraph or push its first line down.
   const left = 'calc(var(--pad-left, 0px) - var(--box-hang, 0px))';
-  if (p.borderPadding != null) {
+  if (finite(p.borderPadding)) {
     const pad = (side: string) => (drawn[side] ? `${p.borderPadding}pt` : '0px');
     out.push(`--pad-left: ${pad('left')}`, `padding: ${pad('top')} ${pad('right')} ${pad('bottom')} ${left}`);
   } else if (boxed) out.push(`padding-left: ${left}`);
@@ -456,7 +464,7 @@ export function styleCss(sheet: StyleSheet): string {
     const decls = declarations(resolved);
     // A character indent counts in the style's size, whatever the block's own mark or
     // runs say (probed in LibreOffice); indent.ts reads it.
-    if (resolved.text.fontSizePt != null) decls.push(`--char-unit: ${resolved.text.fontSizePt}pt`);
+    if (finite(resolved.text.fontSizePt)) decls.push(`--char-unit: ${resolved.text.fontSizePt}pt`);
     if (!decls.length) continue;
     const attr = `[data-style="${cssString(style.name)}"]`;
     const selectors = [`.paper .tiptap ${attr}`];

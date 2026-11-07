@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
 import '@tiptap/extension-text-style';
+import { normalizeColor } from '../../utils/color';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -28,10 +29,11 @@ export const FontColor = Extension.create({
             default: null,
             parseHTML: element => element.style.color || null,
             renderHTML: attributes => {
-              if (!attributes.color) return {};
+              const color = normalizeColor(attributes.color);
+              if (!color) return {};
               return {
-                style: `--font-color: ${attributes.color}; color: ${attributes.color}`,
-                'data-color': attributes.color,
+                style: `--font-color: ${color}; color: ${color}`,
+                'data-color': color,
               };
             },
           },

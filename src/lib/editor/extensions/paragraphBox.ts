@@ -3,6 +3,7 @@ import type { CommandProps } from '@tiptap/core';
 import type { EditorState } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { cssBorder, parseBorderAttr, type BorderSpec } from './tableCellBorders';
+import { normalizeColor } from '../../utils/color';
 
 // Paragraph/heading background ("colored field") + borders ("rule line"), as in
 // Word/LibreOffice letterheads. Border attrs share table cells' canonical
@@ -79,9 +80,9 @@ export const ParagraphBox = Extension.create({
             default: null,
             // Decorative box shouldn't cascade onto the next paragraph on Enter.
             keepOnSplit: false,
-            parseHTML: (element: HTMLElement) => element.getAttribute('data-bg') || null,
+            parseHTML: (element: HTMLElement) => normalizeColor(element.getAttribute('data-bg')) ?? null,
             renderHTML: (attributes: Record<string, unknown>) => {
-              const c = attributes.backgroundColor as string | null;
+              const c = normalizeColor(attributes.backgroundColor);
               if (!c) return {};
               return { 'data-bg': c, style: `background-color: ${c}` };
             },

@@ -6,6 +6,7 @@
   import { activeCharacterStyle } from '../../../editor/extensions/characterStyle';
   import { DEFAULT_STYLE, fontPairDeclarations, headingStyleName, resolveStyle, visibleStyles, type StyleFamily } from '../../../styles/styleSheet';
   import { MAX_HEADING_LEVEL } from '../../../styles/headings';
+  import { normalizeColor } from '../../../utils/color';
   import { showAllStyles, styleSheet, toggleAllStyles } from '../../../styles/sheet.svelte';
   import { styleLabel, t } from '../../../i18n/i18n.svelte';
   import { shortcutHint, type ShortcutId } from '../../../editor/shortcuts';
@@ -52,7 +53,7 @@
       + `font-style: ${s.text.italic ? 'italic' : 'normal'};`
       // The editor's own stack, so a missing family shows the substitute the page renders.
       + fontPairDeclarations(s.text.fontFamily, s.text.fontFamilyAsian).map((d) => `${d};`).join('')
-      + (s.text.color ? `color: ${s.text.color};` : '');
+      + (normalizeColor(s.text.color) ? `color: ${normalizeColor(s.text.color)};` : '');
   }
 
   function apply(name: string) {

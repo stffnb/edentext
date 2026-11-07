@@ -549,7 +549,7 @@ function shapeStroke(gp: PropMap, defaultSolid: boolean): { color: string | null
     let widthPt: number | null = null, color: string | null = null, styleTok: string | null = null;
     for (const part of border.trim().split(/\s+/)) {
       if (/^-?[\d.]+\s*(pt|cm|mm|in|px|pc)?$/.test(part)) widthPt = lengthToPt(part);
-      else if (part.startsWith('#')) color = normalizeColor(part) ?? part;
+      else if (part.startsWith('#')) color = normalizeColor(part) ?? null;
       else styleTok = part;
     }
     if (styleTok === 'none' || styleTok === 'hidden' || (widthPt != null && widthPt <= 0)) {
@@ -3549,7 +3549,7 @@ export function borderAttrFromOdf(raw: string | null | undefined, treatDefaultAs
   let styleTok: string | null = null;
   for (const part of raw.trim().split(/\s+/)) {
     if (/^-?[\d.]+\s*(pt|cm|mm|in|px|pc)?$/.test(part)) widthPt = lengthToPt(part);
-    else if (part.startsWith('#')) color = normalizeColor(part) ?? part;
+    else if (part.startsWith('#')) color = normalizeColor(part) ?? null;
     else styleTok = part;
   }
   if (styleTok === 'none' || styleTok === 'hidden') return 'none';
@@ -3708,7 +3708,7 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       const ownPad = cellPaddingAttr(padSides, cellPad ?? DEFAULT_CELL_PADDING);
       const verticalAlign = ctx.resolver.cellVerticalAlign(cellStyleName);
       const rawBg = ctx.resolver.cellBackgroundColor(cellStyleName);
-      const backgroundColor = rawBg ? normalizeColor(rawBg) ?? rawBg : null;
+      const backgroundColor = normalizeColor(rawBg) ?? null;
       // Per-side borders; an undeclared side means no border in ODF → 'none'.
       // Only null (= the editor's 0.5pt-black default) is left off the attrs.
       const rawBorders = ctx.resolver.cellBorders(cellStyleName);
