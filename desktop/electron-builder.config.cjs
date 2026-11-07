@@ -14,6 +14,9 @@ module.exports = {
     { ext: 'dotx', name: 'Word Template', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.template', role: 'Editor', rank: 'Alternate' },
   ],
   extraResources: [{ from: '../dist', to: 'app' }],
+  // The binary cannot be reused as a Node.js interpreter, nor take options from the
+  // environment; --inspect stays for the smoke test (APP=<binary>), which drives it.
+  electronFuses: { runAsNode: false, enableNodeOptionsEnvironmentVariable: false, grantFileProtocolExtraPrivileges: false, resetAdHocDarwinSignature: true },
   // The white tile is a macOS convention; Windows and Linux icons stand free.
   icon: '../public/icon-512.png',
   directories: { output: 'release' },
