@@ -138,6 +138,7 @@ export function validateOdt(files: Record<string, Uint8Array>): string[] {
 
 function docxPartSchema(name: string): string | null {
   if (/^word\/(document|styles|numbering|settings|fontTable|footnotes|endnotes|comments|header\d+|footer\d+)\.xml$/.test(name)) return 'ooxml/wml.xsd';
+  if (/^word\/theme\/theme\d+\.xml$/.test(name)) return 'ooxml/dml-main.xsd';
   if (name === 'docProps/core.xml') return 'opc/opc-coreProperties.xsd';
   if (name === 'docProps/app.xml') return 'ooxml/shared-documentPropertiesExtended.xsd';
   if (name === 'docProps/custom.xml') return 'ooxml/shared-documentPropertiesCustom.xsd';

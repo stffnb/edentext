@@ -759,7 +759,9 @@ function docRevisionId(id: string): number {
 }
 
 type Inline = TextRun | ImageRun | ExternalHyperlink | InternalHyperlink | SimpleField
-  | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | InsertedTextRun | DeletedTextRun;
+  | CommentRangeStart | CommentRangeEnd | InsertedTextRun | DeletedTextRun;
+// docx types a paragraph's children without the split bookmark ends its own examples put there.
+const bookmarkEdge = (edge: BookmarkStart | BookmarkEnd) => edge as unknown as Inline;
 
 // A date/time field. A fixed field is plain text (Word has no fixed-date field); an
 // auto field is a DATE/TIME field with the picture switch and a cached value.
@@ -910,13 +912,13 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
       if (e.first) {
         const id = ++nextBookmarkId;
         docBookmarkIds.set(e.span, id);
-        out.push(new BookmarkStart(docxBookmarkName(e.name), id));
+        out.push(bookmarkEdge(new BookmarkStart(docxBookmarkName(e.name), id)));
       }
       const id = docBookmarkIds.get(e.span);
       if (e.last && id != null) ends.push(id);
     }
   };
-  function flush() { for (const id of ends.splice(0)) out.push(new BookmarkEnd(id)); }
+  function flush() { for (const id of ends.splice(0)) out.push(bookmarkEdge(new BookmarkEnd(id))); }
 
   // A comment's range brackets its runs; the reference run at the end is what Word
   // draws the bubble from.
@@ -2765,12 +2767,14 @@ function paragraphStart(xml: string): number {
 }
 
 // ---- paragraphs ------------------------------------------------------------
-function alignOf(attrs: TiptapNode['attrs']): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
+// w:jc names the physical edge, as LibreOffice reads it. docx mirrors left and right on a
+// `bidirectional` paragraph, so an rtl one passes the opposite edge to come out unchanged.
+function alignOf(attrs: TiptapNode['attrs'], rtl = false): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
   switch (attrs?.textAlign) {
     case 'center': return AlignmentType.CENTER;
-    case 'right': return AlignmentType.RIGHT;
+    case 'right': return rtl ? AlignmentType.LEFT : AlignmentType.RIGHT;
     case 'justify': return AlignmentType.BOTH;
-    case 'left': return AlignmentType.LEFT;
+    case 'left': return rtl ? AlignmentType.RIGHT : AlignmentType.LEFT;
     default: return undefined;
   }
 }
@@ -2847,7 +2851,7 @@ function paragraphProps(node: TiptapNode, opts: ParaOpts): IParagraphPropertiesO
   const stops = parseTabStops(attrs.tabStops);
   return {
     style,
-    alignment: alignOf(attrs),
+    alignment: alignOf(attrs, attrs.dir === 'rtl'),
     spacing: opts.inCell ? cellSpacingOf(attrs, node) : spacingOf(attrs),
     indent: Object.keys(indent).length ? indent : undefined,
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,
@@ -3564,14 +3568,22 @@ function numberingStyleXml(name: string): string {
     + '</w:style>';
 }
 
+// Styles the library writes for its own TOC, citations, captions and line numbers. Unused,
+// they would restyle LibreOffice's Contents and Caption styles and read back as TOC levels.
+const FACTORY_EXTRAS = /<w:style w:type="(?:paragraph|character)" w:styleId="(TOC[1-9]|Bibliography|Caption|LineNumber)">.*?<\/w:style>/g;
+
 // Table and numbering styles are spliced post-pack: handing them to the library as
 // importedStyles makes its Styles merge drop the factory set — w:docDefaults included.
-function applyRawStylesDocx(bytes: Uint8Array, snippets: string[]): Uint8Array {
+function applyRawStylesDocx(bytes: Uint8Array, snippets: string[], own: Set<string>): Uint8Array {
   const files = unzipSync(bytes);
   const stylesXml = strFromU8(files['word/styles.xml']);
+  const refs = Object.entries(files).filter(([path]) => /^word\/[^/]+\.xml$/.test(path))
+    .map(([, data]) => strFromU8(data)).join('');
   // The default style says so (w:default): a reader falls back to its docDefaults
   // otherwise, and the style's own size and kerning never apply.
   files['word/styles.xml'] = strToU8(stylesXml
+    .replace(FACTORY_EXTRAS, (style, id: string) =>
+      own.has(id) || new RegExp(`w:val="${id}"`).test(refs) ? style : '')
     .replace('<w:style w:type="paragraph" w:styleId="Normal">', '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">')
     .replace('</w:styles>', snippets.join('') + '</w:styles>'));
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
@@ -3834,6 +3846,7 @@ export async function buildDocx(
     marker(`${TBT}S${i}${TBT}`), tableToDocx(node, widthCm, num), marker(`${TBT}E${i}${TBT}`)));
   const withZones: TiptapNode = { ...docJson, content: [...(docJson.content ?? []),
     ...hfSets.flatMap((set) => HF_ZONE_KEYS.flatMap((k) => (set[k]?.content ?? []) as TiptapNode[]))] };
+  const docStyles = buildStyles(styles, usedStyleNames(withZones, styles), language);
   const doc = new Document({
     // Word's File ▸ Info; an empty field is left out so it does not overwrite Word's own.
     // Creator and last modifier are what the library fills in ("Un-named") otherwise,
@@ -3853,7 +3866,7 @@ export async function buildDocx(
     ...(hasToc || recordChanges
       ? { features: { ...(hasToc ? { updateFields: true } : {}), ...(recordChanges ? { trackRevisions: true } : {}) } }
       : {}),
-    styles: buildStyles(styles, usedStyleNames(withZones, styles), language),
+    styles: docStyles,
     numbering: { config: num.config },
     ...(Object.keys(notesByClass.footnote).length ? { footnotes: notesByClass.footnote } : {}),
     ...(Object.keys(notesByClass.endnote).length ? { endnotes: notesByClass.endnote } : {}),
@@ -3911,7 +3924,7 @@ export async function buildDocx(
   const styled = applyRawStylesDocx(new Uint8Array(await blob.arrayBuffer()), [
     ...usedTableStyles(withZones, styles).map(tableStyleXml),
     ...num.styleLinks().map((l) => numberingStyleXml(l.name)),
-  ]);
+  ], new Set([...docStyles.paragraphStyles, ...docStyles.characterStyles].map((s) => s.id)));
   const linked = applyOutlineNumberingDocx(applyListStylesDocx(styled, num.styleLinks()), outlineIndex);
   const formulas = applyFormulasDocx(applyTextBoxesDocx(linked, docTextBoxes), docFormulas);
   const packed = docPictureMarks ? applyPictureMarksDocx(formulas) : formulas;
