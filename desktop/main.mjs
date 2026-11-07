@@ -105,18 +105,26 @@ const docArgs = (argv, cwd) => argv.slice(1).filter((a) => DOC.test(a) && !a.sta
 // The file each window was opened for, until its page takes it.
 const pending = new Map();
 
-ipcMain.handle('desktop:take-file', (e) => {
+// Every handler answers the app's own pages only, not a frame or window on another origin.
+function handle(channel, fn) {
+  ipcMain.handle(channel, (e, ...args) => {
+    if (!e.senderFrame?.url.startsWith(`${ORIGIN}/`)) throw new Error('EACCES: not the app');
+    return fn(e, ...args);
+  });
+}
+
+handle('desktop:take-file', (e) => {
   const file = pending.get(e.sender.id) ?? null;
   pending.delete(e.sender.id);
   return file;
 });
-ipcMain.handle('desktop:read', async (_e, file) => {
+handle('desktop:read', async (_e, file) => {
   if (!isGranted(file)) throw new Error('EACCES: not a document opened with the app');
   const [bytes, info] = await Promise.all([readFile(file), stat(file)]);
   return { bytes: new Uint8Array(bytes), modified: Math.floor(info.mtimeMs) };
 });
 // Through a temporary file, so a failed write never leaves half a document behind.
-ipcMain.handle('desktop:write', async (_e, file, bytes) => {
+handle('desktop:write', async (_e, file, bytes) => {
   if (!isGranted(file)) throw new Error('EACCES: not a document opened with the app');
   const tmp = `${file}.edentext-${process.pid}.tmp`;
   await writeFile(tmp, bytes);
@@ -126,7 +134,7 @@ ipcMain.handle('desktop:write', async (_e, file, bytes) => {
 // Vector PDF without the print dialog: the page's print HTML, served on the app origin so
 // its fonts and pictures resolve, rendered in a hidden window. Size and margins are @page's.
 const printPages = new Map();
-ipcMain.handle('desktop:print-pdf', async (_e, html) => {
+handle('desktop:print-pdf', async (_e, html) => {
   const id = randomUUID();
   printPages.set(id, html);
   const win = new BrowserWindow({ show: false });
