@@ -92,11 +92,12 @@ const DOC = /\.(odt|ott|docx|dotx)$/i;
 const grantedFile = () => path.join(app.getPath('userData'), 'opened-files.json');
 let granted = null;
 function isGranted(file) {
+  if (typeof file !== 'string' || !DOC.test(file)) return false;
   granted ??= (() => { try { return JSON.parse(readFileSync(grantedFile(), 'utf8')); } catch { return []; } })();
   return granted.includes(file);
 }
 function grant(file) {
-  if (isGranted(file)) return;
+  if (!DOC.test(file) || isGranted(file)) return;
   granted = [file, ...granted].slice(0, 100);
   writeFileSync(grantedFile(), JSON.stringify(granted));
 }
@@ -154,7 +155,8 @@ function createWindow(file) {
   });
   // Shown once the page has painted its theme, not as an empty native window first.
   win.once('ready-to-show', () => win.show());
-  if (file) {
+  // Only a document type the app registered for; anything else opens an empty window.
+  if (file && DOC.test(file)) {
     grant(file);
     pending.set(win.webContents.id, file);
   }
