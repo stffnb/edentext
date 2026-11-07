@@ -220,7 +220,8 @@ app.whenReady().then(() => {
       'content-security-policy': "default-src 'self' data: blob:; script-src 'none'; style-src 'self' 'unsafe-inline' data: blob:; object-src 'none'; base-uri 'none'",
     } });
     const file = path.join(ROOT, decodeURIComponent(new URL(req.url).pathname));
-    if (!file.startsWith(ROOT)) return new Response('', { status: 403 });
+    const rel = path.relative(ROOT, file);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return new Response('', { status: 403 });
     return net.fetch(pathToFileURL(file).toString());
   });
   createWindow(launchFile);
