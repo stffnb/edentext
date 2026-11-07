@@ -210,7 +210,7 @@ describe('tools', () => {
     expect(runTool(turn(editor), call('table_insert', { paragraph: 2, where: 'row_below', cells: ['b', '2'] })).result).toBe('ok');
     const cells: string[] = [];
     editor.state.doc.descendants((n) => { if (n.type.name === 'tableCell') cells.push(`${n.attrs.backgroundColor} ${n.firstChild!.attrs.textAlign} ${n.textContent}`); });
-    expect(cells.slice(2)).toEqual(['rgb(255, 204, 0) justify b', 'null right 2']);
+    expect(cells.slice(2)).toEqual(['#FFCC00 justify b', 'null right 2']);
     editor.destroy();
   });
 
