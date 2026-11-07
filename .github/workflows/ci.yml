@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
         with:
           version: ${{ matrix.helm-version }}
       - run: bash scripts/test-helm-chart.sh
@@ -30,14 +30,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # CLAUDE.md is read at every session start; detail belongs in the nested files.
       - run: test "$(wc -l < CLAUDE.md)" -le 120 || { echo "CLAUDE.md over its 120-line budget"; exit 1; }
       # The corpus is gitignored, so a test reading it would name a document and fail here.
       - run: |
           ! git grep -l "render-parity/fixtures" -- src tests ':!tests/render-parity' \
             || { echo "a test reads the gitignored parity corpus"; exit 1; }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -55,8 +55,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -96,8 +96,8 @@ jobs:
     env:
       BROWSER: ${{ matrix.browser }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -129,8 +129,8 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -140,7 +140,7 @@ jobs:
         env:
           GOATCOUNTER: https://edentext.goatcounter.com/count
       - id: pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
       # A tab opened before this deploy still loads its build's lazy chunks by their hashed
       # names, so each asset stays online for 30 days after the last deploy that shipped it.
       # assets.txt lists every file under assets/ with that date.
@@ -157,8 +157,8 @@ jobs:
           done < old.txt
           mv new.txt dist/assets.txt
           echo "$(awk -v d="$today" '$1 != d' dist/assets.txt | wc -l) assets kept from earlier deploys"
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
