@@ -169,6 +169,7 @@ const ja: Messages = {
       frame: (n: number) => `段落 ${n} に枠を追加しました`,
       frameSet: (n: number) => `段落 ${n} の枠を変更しました`,
       review: (accept: boolean, n: number) => `${n} 件の変更を${accept ? '承諾' : '却下'}しました`,
+      reviewOthers: (accept: boolean, n: number) => `アシスタントが他の人の変更 ${n} 件を${accept ? '承諾' : '却下'}しようとしています。許可しますか?`,
       table: (n: number) => `表 ${n} を変更しました`,
       failed: (msg: string) => `実行できませんでした: ${msg}`,
     },

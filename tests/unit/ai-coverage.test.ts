@@ -464,7 +464,7 @@ function runCheck(c: Check): void {
   try {
     const before = serializeDoc(editor.state);
     for (const [name, args] of c.calls) {
-      const ctx: TurnContext = { editor, blocks: blockTexts(editor.state.doc), mapping: new Mapping(), author: 'AI', host };
+      const ctx: TurnContext = { editor, blocks: blockTexts(editor.state.doc), mapping: new Mapping(), author: 'AI', host, confirm: () => true };
       editor.on('transaction', ({ transaction }) => ctx.mapping.appendMapping(transaction.mapping));
       expect(runTool(ctx, { id: name, name, args: JSON.stringify(args) }).result, `${name} ${JSON.stringify(args)}`).toMatch(/^ok/);
     }

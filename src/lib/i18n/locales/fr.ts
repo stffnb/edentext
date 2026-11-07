@@ -167,6 +167,7 @@ const fr: Messages = {
       frame: (n: number) => `Cadre ajouté au paragraphe ${n}`,
       frameSet: (n: number) => `Cadre modifié au paragraphe ${n}`,
       review: (accept: boolean, n: number) => `${n} modification${n === 1 ? '' : 's'} ${accept ? 'acceptée' : 'refusée'}${n === 1 ? '' : 's'}`,
+      reviewOthers: (accept: boolean, n: number) => `L’assistant veut ${accept ? 'accepter' : 'refuser'} ${n === 1 ? 'une modification' : `${n} modifications`} faite${n === 1 ? '' : 's'} par d’autres personnes. L’autoriser ?`,
       table: (n: number) => `Tableau ${n} modifié`,
       failed: (msg: string) => `Non effectué : ${msg}`,
     },

@@ -171,6 +171,7 @@ const ru: Messages = {
       frame: (n: number) => `Добавлена рамка у абзаца ${n}`,
       frameSet: (n: number) => `Изменена рамка у абзаца ${n}`,
       review: (accept: boolean, n: number) => `${accept ? 'Принято' : 'Отклонено'} изменений: ${n}`,
+      reviewOthers: (accept: boolean, n: number) => `Помощник хочет ${accept ? 'принять' : 'отклонить'} чужие изменения: ${n}. Разрешить?`,
       table: (n: number) => `Таблица ${n} изменена`,
       failed: (msg: string) => `Не выполнено: ${msg}`,
     },

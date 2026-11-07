@@ -47,6 +47,9 @@ The assistant as a whole: `docs/architecture/ai.md`.
   wait until nothing runs; Stop drops the queue.
 - **`review`** accepts or rejects tracked changes, one (`R1`, numbered like comments from the
   turn's snapshot, listed after the document) or all, optionally one author's.
+  The assistant's own changes go through at once; anyone else's only after the user
+  confirms (`confirm` in `TurnContext`), since an opened document or attachment can ask the
+  model to settle the reviewers' work. Without a way to ask they stay.
 - **`add_comment`** comments as the assistant; **`reply_comment`** answers a thread and
   **`resolve_comment`** closes it, both directly and undoable.
 - **`table`** (`table_insert` stays as an alias) adds a row or column with the table

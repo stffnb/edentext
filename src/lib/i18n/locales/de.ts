@@ -167,6 +167,7 @@ const de: Messages = {
       frame: (n: number) => `Rahmen an Absatz ${n} eingefügt`,
       frameSet: (n: number) => `Rahmen an Absatz ${n} geändert`,
       review: (accept: boolean, n: number) => `${n} ${n === 1 ? 'Änderung' : 'Änderungen'} ${accept ? 'angenommen' : 'abgelehnt'}`,
+      reviewOthers: (accept: boolean, n: number) => `Der Assistent möchte ${n === 1 ? 'eine Änderung' : `${n} Änderungen`} von anderen ${accept ? 'annehmen' : 'ablehnen'}. Zulassen?`,
       table: (n: number) => `Tabelle ${n} geändert`,
       failed: (msg: string) => `Nicht ausgeführt: ${msg}`,
     },

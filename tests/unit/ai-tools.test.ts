@@ -260,6 +260,18 @@ describe('tools', () => {
     editor.destroy();
   });
 
+  it.each([
+    ['its own change without asking', AI, undefined, 'Hello world'],
+    ['someone else\'s only when the user allows it', 'Ada', () => true, 'Hello world'],
+    ['nobody else\'s when the user refuses', 'Ada', () => false, 'Hello Ada world'],
+    ['nobody else\'s when it cannot ask', 'Ada', undefined, 'Hello Ada world'],
+  ])('review rejects %s', (_, author, confirm, after) => {
+    const editor = makeEditor(`<p>Hello <span data-insertion="r1" data-rev-author="${author}">Ada </span>world</p>`);
+    runTool({ ...turn(editor), confirm }, call('review', { accept: false }));
+    expect(editor.state.doc.textContent).toBe(after);
+    editor.destroy();
+  });
+
   it('returns failures to the model as text', () => {
     const editor = makeEditor('<p>x</p>');
     const ctx = turn(editor);

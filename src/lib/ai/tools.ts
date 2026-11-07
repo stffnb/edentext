@@ -338,7 +338,8 @@ export type AiHost = {
 };
 
 /** One turn's view of the document: numbers from its snapshot, positions mapped since. */
-export type TurnContext = { editor: Editor; blocks: Block[]; mapping: Mapping; author: string; commentIds?: string[]; changeIds?: string[]; host?: AiHost; allowed?: Set<string> };
+/** `confirm` asks the user before a tool settles other people's changes; without it they stay. */
+export type TurnContext = { editor: Editor; blocks: Block[]; mapping: Mapping; author: string; commentIds?: string[]; changeIds?: string[]; host?: AiHost; allowed?: Set<string>; confirm?: (message: string) => boolean };
 
 const pageFormat = (name: unknown) => (Object.keys(PAGE_FORMAT_CM) as PageFormat[]).find((f) => f.toLowerCase() === String(name).trim().toLowerCase().replace(/^iso\s*/, 'iso'));
 
@@ -1070,6 +1071,10 @@ function run(ctx: TurnContext, call: ToolCall): ToolResult {
       const ids = (ctx.changeIds ?? all.map((r) => r.id));
       const picked = n != null ? [ids[n - 1]].filter(Boolean) : all.filter((r) => !author || r.author.toLowerCase() === author).map((r) => r.id);
       if (!picked.length) throw new ToolError(n != null ? `no change R${n}` : 'no tracked changes to review');
+      // A document or attachment can tell the model to settle the reviewers' work, so the
+      // user decides on anyone's changes but the assistant's own.
+      const others = all.filter((r) => picked.includes(r.id) && r.author !== ctx.author).length;
+      if (others && !ctx.confirm?.(m.reviewOthers(accept, others))) throw new ToolError('the user did not allow settling other people\'s changes');
       for (const id of picked) ctx.editor.commands[accept ? 'acceptRevision' : 'rejectRevision'](id);
       return { result: 'ok', summary: m.review(accept, picked.length) };
     }
@@ -1179,7 +1184,7 @@ export async function runTurn(opts: {
     setPage: (p) => { reflowed = true; h.setPage(p); },
     setLanguage: h.setLanguage && ((c) => { reflowed = true; h.setLanguage!(c); }),
   };
-  const ctx: TurnContext = { editor, blocks, mapping: new Mapping(), author: opts.author, commentIds: comments(editor.state.doc).map((c) => c.id), changeIds: trackedChanges(editor.state.doc).map((r) => r.id), host, allowed };
+  const ctx: TurnContext = { editor, blocks, mapping: new Mapping(), author: opts.author, commentIds: comments(editor.state.doc).map((c) => c.id), changeIds: trackedChanges(editor.state.doc).map((r) => r.id), host, allowed, confirm: (msg) => window.confirm(msg) };
   const track = ({ transaction }: { transaction: Transaction }) => ctx.mapping.appendMapping(transaction.mapping);
   editor.on('transaction', track);
   const preface = opts.context ? `${opts.context}\n\n---\n\n` : '';

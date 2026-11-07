@@ -168,6 +168,7 @@ const en = {
       frame: (n: number) => `Added a frame at paragraph ${n}`,
       frameSet: (n: number) => `Changed a frame at paragraph ${n}`,
       review: (accept: boolean, n: number) => `${accept ? 'Accepted' : 'Rejected'} ${n} tracked change${n === 1 ? '' : 's'}`,
+      reviewOthers: (accept: boolean, n: number) => `The assistant wants to ${accept ? 'accept' : 'reject'} ${n === 1 ? 'a change' : `${n} changes`} made by someone else. Allow this?`,
       table: (n: number) => `Changed table ${n}`,
       failed: (msg: string) => `Not done: ${msg}`,
     },

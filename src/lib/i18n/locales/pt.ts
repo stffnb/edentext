@@ -167,6 +167,7 @@ const pt: Messages = {
       frame: (n: number) => `Moldura adicionada no parágrafo ${n}`,
       frameSet: (n: number) => `Moldura alterada no parágrafo ${n}`,
       review: (accept: boolean, n: number) => `${n} ${n === 1 ? 'alteração' : 'alterações'} ${accept ? (n === 1 ? 'aceite' : 'aceites') : (n === 1 ? 'rejeitada' : 'rejeitadas')}`,
+      reviewOthers: (accept: boolean, n: number) => `O assistente quer ${accept ? 'aceitar' : 'rejeitar'} ${n === 1 ? 'uma alteração' : `${n} alterações`} feita${n === 1 ? '' : 's'} por outras pessoas. Permitir?`,
       table: (n: number) => `Tabela ${n} alterada`,
       failed: (msg: string) => `Não efetuado: ${msg}`,
     },

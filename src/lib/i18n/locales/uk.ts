@@ -171,6 +171,7 @@ const uk: Messages = {
       frame: (n: number) => `Додано рамку біля абзацу ${n}`,
       frameSet: (n: number) => `Змінено рамку біля абзацу ${n}`,
       review: (accept: boolean, n: number) => `${accept ? 'Прийнято' : 'Відхилено'} змін: ${n}`,
+      reviewOthers: (accept: boolean, n: number) => `Помічник хоче ${accept ? 'прийняти' : 'відхилити'} чужі зміни: ${n}. Дозволити?`,
       table: (n: number) => `Таблицю ${n} змінено`,
       failed: (msg: string) => `Не виконано: ${msg}`,
     },

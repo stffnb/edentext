@@ -167,6 +167,7 @@ const it: Messages = {
       frame: (n: number) => `Cornice aggiunta al paragrafo ${n}`,
       frameSet: (n: number) => `Cornice modificata al paragrafo ${n}`,
       review: (accept: boolean, n: number) => `${n === 1 ? '1 revisione' : `${n} revisioni`} ${accept ? (n === 1 ? 'accettata' : 'accettate') : n === 1 ? 'rifiutata' : 'rifiutate'}`,
+      reviewOthers: (accept: boolean, n: number) => `L’assistente vuole ${accept ? 'accettare' : 'rifiutare'} ${n === 1 ? 'una revisione' : `${n} revisioni`} di altre persone. Consentire?`,
       table: (n: number) => `Tabella ${n} modificata`,
       failed: (msg: string) => `Non eseguito: ${msg}`,
     },
