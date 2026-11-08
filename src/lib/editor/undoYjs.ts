@@ -67,6 +67,11 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
     deleteFilter: (item) => !(item.content instanceof Y.ContentType) || !holdsForeign(item.content.type, ydoc.clientID),
   });
 
+  // y-tiptap's undo plugin destroys the manager whenever the plugin views rebuild, which
+  // any later `registerPlugin` does (the session's cursors); it lives until `detach`.
+  const destroy = um.destroy.bind(um);
+  um.destroy = () => {};
+
   // Labels ride the stack items; one moved to the other stack keeps its own.
   let label = 'Edit';
   let moving: string | null = null;
@@ -172,7 +177,7 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
       editor.unregisterPlugin([yUndoPluginKey, ySyncPluginKey]);
       editor.registerPlugin(history({ depth: 100, newGroupDelay: 500 }));
       setUndoBackend(pmUndo);
-      um.destroy();
+      destroy();
       resetHistoryLog();
     },
   };
