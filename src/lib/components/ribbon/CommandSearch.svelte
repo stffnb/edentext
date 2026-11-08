@@ -98,7 +98,7 @@
           {cmd.label(t())}<span class="menu-sub">{place(cmd)}</span>
         </button>
       {:else}
-        <div class={variant === 'island' ? 'im-label' : 'rb-menu-label'}>{t().ribbon.searchNoResults}</div>
+        <div class={variant === 'island' ? 'im-label' : 'rb-menu-label rb-menu-empty'}>{t().ribbon.searchNoResults}</div>
       {/each}
     </div>
   {/if}
