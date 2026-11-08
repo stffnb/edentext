@@ -114,18 +114,4 @@
     overflow: hidden;
     min-width: 200px;
   }
-
-  /* A ruled heading that stays pinned while its fonts scroll, so it never reads
-     as one more font that cannot be picked. */
-  .rb-font-menu .rb-menu-label {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    margin: 6px 0 2px;
-    border-bottom: 1px solid var(--w-text-tertiary);
-    background: var(--w-surface);
-    color: var(--w-text-dim);
-  }
-
-  .rb-font-menu .rb-menu-label:first-child { margin-top: 0; }
 </style>

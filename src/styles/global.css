@@ -516,16 +516,27 @@
 /* Wraps only when the menu hits its max-width; otherwise it sizes to the unwrapped text. */
 .ribbon-menu .menu-sub { font-size: 11px; white-space: normal; text-align: right; }
 
-/* Section label above a run of rows, and the sticky action row below the list. */
+/* Section label above a run of rows: a ruled heading pinned while its rows scroll, so it
+   never reads as one more row that cannot be picked. Below the list, the sticky action row. */
 .ribbon-menu .rb-menu-label {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 6px 0 2px;
   padding: 6px 12px 3px;
+  border-bottom: 1px solid var(--w-text-tertiary);
+  background: var(--w-surface);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--w-text-tertiary);
+  color: var(--w-text-dim);
   user-select: none;
 }
+.ribbon-menu .rb-menu-label:first-child { margin-top: 0; }
+/* A divider already sets the section off, and a message stands in place of rows. */
+.ribbon-menu hr + .rb-menu-label,
+.ribbon-menu .rb-menu-label.rb-menu-empty { position: static; margin: 0; border-bottom: none; }
 
 .ribbon-menu .rb-menu-foot {
   flex-shrink: 0;

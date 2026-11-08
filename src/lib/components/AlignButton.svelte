@@ -120,15 +120,25 @@
     flex-direction: column;
   }
 
+  /* Ruled and pinned like the font list's headings. */
   .align-section-label {
-    padding: 0.4rem 0.6rem 0.2rem;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.3rem 0.6rem;
     font-size: 0.65rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--color-text);
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-text-muted);
     font-family: var(--font-sans);
     user-select: none;
+  }
+
+  .align-section-label:not(:first-child) {
+    margin-top: 6px;
   }
 
   .align-option {

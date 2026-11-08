@@ -663,11 +663,6 @@
     color: var(--color-text-muted);
   }
 
-  .char-label {
-    margin-top: 2px;
-    border-top: 1px solid var(--color-border);
-  }
-
   /* Sits below the scrolling gallery (margins cancel the dropdown's padding) so it
      is reachable without scrolling to the last style. */
   /* Qualified with .ol-option: that rule sits further down the sheet, so at equal
@@ -756,15 +751,33 @@
     overflow-y: auto;
   }
 
+  /* Ruled and pinned like the font list's headings. */
   .ol-section-label {
-    padding: 0.4rem 0.6rem 0.2rem;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.3rem 0.6rem;
     font-size: 0.65rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--color-text);
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-text-muted);
     font-family: var(--font-sans);
     user-select: none;
+  }
+
+  .ol-section-label:not(:first-child) {
+    margin-top: 6px;
+  }
+
+  /* Its divider above already sets the section off. */
+  .ol-section-label.char-label {
+    position: static;
+    margin-top: 2px;
+    border-top: 1px solid var(--color-border);
+    border-bottom: none;
   }
 
   .ol-option {
