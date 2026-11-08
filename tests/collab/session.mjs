@@ -67,8 +67,10 @@ const brief = (v) => `${v.pages}p ${v.width}px "${v.text.slice(0, 30)}" [${v.zon
 const settle = (page) => page.waitForTimeout(900);
 const body = (page) => page.locator('.tiptap-host .tiptap').first();
 // The caret at the body's start or end, where the keys go next.
+// The click's own selection lands a moment later; the caret is placed after it.
 const caret = async (page, where) => {
   await body(page).click();
+  await page.waitForTimeout(150);
   await page.evaluate((w) => document.querySelector('.tiptap-host .tiptap').editor.commands.focus(w), where);
 };
 const sent = (page) => page.evaluate(() => window.__collab.session.stats.sent[1]);
@@ -105,6 +107,11 @@ try {
   await a.waitForTimeout(1500);
   [va, vb] = [await view(a), await view(b)];
   check(same(va, vb) && va.width > 1000, `a page setup reaches the joiner (${brief(va)} | ${brief(vb)})`);
+
+  await caret(a, 'start');
+  await b.waitForTimeout(600);
+  const cursor = await b.evaluate(() => document.querySelector('.ProseMirror-yjs-cursor')?.textContent ?? '');
+  check(cursor.includes('Anna'), `the joiner sees the starter's caret with the name (${JSON.stringify(cursor)})`);
 
   const all = Buffer.concat(seen);
   check(seen.length > 0 && !['Alpha', 'Beta', 'Ben', 'Anna'].some((w) => all.includes(Buffer.from(w))),
