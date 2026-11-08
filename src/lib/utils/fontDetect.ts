@@ -93,7 +93,7 @@ function isAvailable(ctx: CanvasRenderingContext2D, family: string): boolean {
   if (!baselineWidths) {
     baselineWidths = BASELINES.map((b) => measure(ctx, `${PROBE_SIZE} ${b}`));
   }
-  const escaped = family.replace(/"/g, '\\"');
+  const escaped = family.replace(/[\\"]/g, '\\$&');
   for (let i = 0; i < BASELINES.length; i++) {
     const w = measure(ctx, `${PROBE_SIZE} "${escaped}", ${BASELINES[i]}`);
     if (w !== baselineWidths[i]) return true;

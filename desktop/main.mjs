@@ -34,7 +34,7 @@ const TEXT = {
 // Chromium handles the editing keys itself. Labels: menu in TEXT, % for the app name.
 function labels() {
   const [about, hide, hideOthers, showAll, quit, edit, undo, redo, cut, copy, paste, selectAll, window, minimize, zoom, close] =
-    text().menu.map((l) => l.replace('%', app.name));
+    text().menu.map((l) => l.replaceAll('%', app.name));
   return { about, hide, hideOthers, showAll, quit, edit, undo, redo, cut, copy, paste, selectAll, window, minimize, zoom, close };
 }
 

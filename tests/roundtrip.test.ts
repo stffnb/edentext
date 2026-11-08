@@ -365,7 +365,7 @@ describe('Leg 1a2b: formulas (embedded ODF formula objects)', () => {
   it('reads an object whose doctype names a MathML DTD, as an older office suite writes it', async () => {
     const doc: N = { type: 'doc', content: [P(null, T('Vor '), { type: 'formula', attrs: { latex: 'a+b', display: false } }, T(' nach.'))] };
     const files = unzipSync(await buildOdt(doc, margins, 'portrait'));
-    files['Formula1/content.xml'] = strToU8('<?xml version="1.0" encoding="UTF-8"?>'
+    files['Formula1/content.xml'] = strToU8('<?xml version="1.0" encoding="UTF-8"?><!-- a - b -->'
       + '<!DOCTYPE math:math PUBLIC "-//OpenOffice.org//DTD Modified W3C MathML 1.01//EN" "math.dtd">'
       + '<math:math xmlns:math="http://www.w3.org/1998/Math/MathML"><math:semantics><math:mrow>'
       + '<math:mi>x</math:mi><math:mo>+</math:mo><math:mi>y</math:mi>'

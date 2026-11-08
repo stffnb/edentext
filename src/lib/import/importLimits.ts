@@ -76,7 +76,8 @@ export function parseImportXml(xml: string, format: 'odt' | 'docx'): Document {
   // a DOM parser resolves, and an embedded formula object from an older office suite
   // names a MathML DTD, so that doctype is dropped instead of refusing the file.
   if (/<!ENTITY\b/i.test(xml) || /<!DOCTYPE[^[>]*\[/i.test(xml)) throw new Error(en.importError[`${format}Unsafe` as const]);
-  xml = xml.replace(/^((?:\s|<\?[\s\S]*?\?>|<!--[\s\S]*?-->)*)<!DOCTYPE[^[>]*>/i, '$1');
+  // Each body stops at its first terminator, so a hostile prolog cannot backtrack exponentially.
+  xml = xml.replace(/^((?:\s|<\?(?:[^?]|\?(?!>))*\?>|<!--(?:[^-]|-(?!->))*-->)*)<!DOCTYPE[^[>]*>/i, '$1');
   let depth = 0;
   let nodes = 0;
   for (let at = xml.indexOf('<'); at >= 0; at = xml.indexOf('<', at + 1)) {
