@@ -2557,9 +2557,12 @@ export const PageBreaks = Extension.create({
               }
             }
           },
+          // The timers outlive this view: a plugin (un)registered rebuilds it, and the
+          // next view schedules only once they read null.
           destroy() {
             if (idleTimer !== null) clearTimeout(idleTimer);
             if (rafId !== null) cancelAnimationFrame(rafId);
+            idleTimer = rafId = null;
             debugAccessors.delete(editorView);
             paginating.delete(editorView);
             layingOut.delete(editorView);
