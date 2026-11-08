@@ -96,5 +96,5 @@ Read directory-level `CLAUDE.md` files when touching that directory; read archit
 | Formatting | `docs/architecture/formatting.md` |
 | Formulas | `docs/architecture/formulas.md` |
 | Footnotes and endnotes | `docs/architecture/notes.md` |
-| Password protection | `docs/architecture/encryption.md` |
+| Password protection, shared sessions | `docs/architecture/encryption.md`, `docs/architecture/collab.md` |
 | Headless testing | `docs/headless-testing.md` |
