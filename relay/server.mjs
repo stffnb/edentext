@@ -15,9 +15,12 @@ const ROOM = /^[A-Za-z0-9_-]{16,64}$/;
 export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, path = '/relay', tap } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
+  // Behind a proxy that passes `/relay` on unchanged, the app asks `/relay/health`.
+  const health = new Set(['/health', `${path}/health`]);
   const http = createServer((req, res) => {
-    res.writeHead(req.url === '/health' ? 200 : 404, { 'content-type': 'text/plain' });
-    res.end(req.url === '/health' ? 'ok' : '');
+    const ok = health.has(req.url ?? '');
+    res.writeHead(ok ? 200 : 404, { 'content-type': 'text/plain', 'access-control-allow-origin': '*' });
+    res.end(ok ? 'ok' : '');
   });
   const wss = new WebSocketServer({ server: http, path, maxPayload: maxFrame });
 

@@ -47,6 +47,29 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- end }}
 {{- end }}
 
+{{/* The relay's resources, named apart from the web server's. */}}
+{{- define "edentext.relayName" -}}
+{{- printf "%s-relay" (include "edentext.fullname" . | trunc 57 | trimSuffix "-") }}
+{{- end }}
+
+{{/* The relay's selector labels: a name of its own, so the web server's selector,
+     which is name and instance only, never takes in a relay pod. */}}
+{{- define "edentext.relaySelectorLabels" -}}
+app.kubernetes.io/name: {{ printf "%s-relay" (include "edentext.name" . | trunc 57 | trimSuffix "-") | quote }}
+app.kubernetes.io/instance: {{ .Release.Name | quote }}
+{{- end }}
+
+{{/* The relay's tagged image with an optional immutable digest. */}}
+{{- define "edentext.relayImage" -}}
+{{- $tag := default .Chart.AppVersion .Values.relay.image.tag }}
+{{- $image := printf "%s:%s" .Values.relay.image.repository $tag }}
+{{- if .Values.relay.image.digest }}
+{{- printf "%s@%s" $image .Values.relay.image.digest }}
+{{- else }}
+{{- $image }}
+{{- end }}
+{{- end }}
+
 {{/* Tagged image with an optional immutable digest. */}}
 {{- define "edentext.image" -}}
 {{- $tag := default .Chart.AppVersion .Values.image.tag }}

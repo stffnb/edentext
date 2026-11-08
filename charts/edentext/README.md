@@ -8,7 +8,9 @@
 This chart deploys [EdenText](https://github.com/stffnb/edentext), a fully client-side
 word processor, to Kubernetes. The server only delivers static application files;
 documents and recovery copies remain in the user's browser. The chart therefore
-creates no database or persistent volume. Its nginx process listens on an
+creates no database or persistent volume. A second, small Deployment runs the
+collaboration relay, which passes end-to-end encrypted session frames between
+browsers and stores nothing. Its nginx process listens on an
 unprivileged port and the default pod security context is compatible with the
 Kubernetes Restricted Pod Security Standard.
 
@@ -76,11 +78,27 @@ retaining its readable tag.
 | `ingress.hosts` | Host and path rules | `edentext.example.com` |
 | `ingress.tls` | TLS Secret and host declarations | `[]` |
 | `frameAncestors` | Origins allowed to frame the editor (CSP `frame-ancestors`); empty allows any | `""` |
+| `relay.enabled` | Run the collaboration relay and serve it at `/relay` | `true` |
+| `relay.image.repository` | Relay image repository | `ghcr.io/stffnb/edentext-relay` |
+| `relay.image.tag` | Relay tag; chart `appVersion` when empty | `""` |
+| `relay.image.digest` | Optional immutable `sha256:` manifest digest | `""` |
+| `relay.maxPeers` | Clients per session; `0` sets no limit | `0` |
+| `relay.resources` | Relay requests and limits | See `values.yaml` |
 | `nodeSelector` | Pod node selector | `{}` |
 | `tolerations` | Pod tolerations | `[]` |
 | `affinity` | Pod affinity rules | `{}` |
 
 See [`values.yaml`](values.yaml) for every setting and its structure.
+
+## Collaboration
+
+With `relay.enabled`, nginx passes `/relay` to the relay Service, so sessions use
+the app's own host and Ingress. The relay keeps its rooms in memory and therefore
+always runs as one replica. A session is a WebSocket that stays open while people
+edit: an ingress controller with a short idle timeout cuts it, so raise it for this
+host (for ingress-nginx, `nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"`).
+The browsers reconnect on their own when it does. Disable the relay to hide the
+Collaborate command.
 
 ## Validate changes
 

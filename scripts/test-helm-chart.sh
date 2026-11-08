@@ -75,6 +75,15 @@ helm template edentext "$chart" --namespace edentext \
   --set-string frameAncestors="'self' https://app.example.com" > "$workdir/frame.yaml"
 assert_contains "$workdir/frame.yaml" "add_header Content-Security-Policy \"frame-ancestors 'self' https://app.example.com\" always;" 'frameAncestors was not rendered'
 
+printf '%s\n' 'Rendering the collaboration relay'
+assert_contains "$workdir/default.yaml" 'name: edentext-relay$' 'default render has no relay'
+assert_contains "$workdir/default.yaml" "image: \"ghcr.io/stffnb/edentext-relay:$app_version\"" 'relay image does not follow appVersion'
+assert_contains "$workdir/default.yaml" 'location /relay' 'nginx does not pass /relay to the relay'
+assert_contains "$workdir/default.yaml" 'app.kubernetes.io/name: "edentext-relay"' 'relay pods share the web server selector'
+helm template edentext "$chart" --namespace edentext --set relay.enabled=false > "$workdir/norelay.yaml"
+assert_not_contains "$workdir/norelay.yaml" 'edentext-relay' 'a disabled relay was rendered'
+assert_not_contains "$workdir/norelay.yaml" 'location /relay' 'nginx passes /relay without a relay'
+
 printf '%s\n' 'Rejecting invalid values'
 if helm template edentext "$chart" --set replicaCount=0 > /dev/null 2>&1; then
   fail 'replicaCount accepted zero'
@@ -95,6 +104,9 @@ if helm template edentext "$chart" --values "$repo_root/charts/edentext/ci/inval
   fail 'podLabels accepted a reserved selector label'
 fi
 
+if helm template edentext "$chart" --set relay.maxPeers=-1 > /dev/null 2>&1; then
+  fail 'relay.maxPeers accepted a negative count'
+fi
 if helm template edentext "$chart" --set-string 'frameAncestors=https://a.example; add_header X 1' > /dev/null 2>&1; then
   fail 'frameAncestors accepted an nginx directive'
 fi

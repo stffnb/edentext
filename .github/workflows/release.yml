@@ -43,6 +43,15 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}:latest
+      # The collaboration relay, its own image so the app's stays static files.
+      - uses: docker/build-push-action@v7
+        with:
+          context: relay
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-relay:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}-relay:latest
       # The archive unpacks as edentext-<tag>/, ready to serve as a web root.
       - run: |
           mv dist "edentext-$GITHUB_REF_NAME"
