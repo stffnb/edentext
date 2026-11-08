@@ -93,7 +93,11 @@ export default defineConfig({
   // dep optimizer rewrites that and loses the asset.
   optimizeDeps: { exclude: ['harper.js'] },
   // flatpak-builder output is a whole rootfs with symlink loops (var/run → /run).
-  server: { watch: { ignored: ['**/desktop/flatpak/**'] } },
+  server: {
+    watch: { ignored: ['**/desktop/flatpak/**'] },
+    // `npm run relay` beside the dev server, at the path a self-hosted image serves it.
+    proxy: { '/relay': { target: `ws://localhost:${process.env.RELAY_PORT ?? 4390}`, ws: true } },
+  },
   // Test-only config; never enters the production bundle (vitest is dev-only).
   // jsdom supplies a global DOMParser, so the export/import specs need no setup.
   test: {
