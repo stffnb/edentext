@@ -30,6 +30,7 @@ import { addColumnAfter, addColumnBefore, addRowAfter, addRowBefore } from '@tip
 import { ResizableTableRow } from './extensions/tableRow';
 import { inheritingInsert } from './extensions/tableInsert';
 import History from '@tiptap/extension-history';
+import { undoBackend } from './undo';
 import { StateHistory } from './extensions/stateHistory';
 import { inNote } from './extensions/notes';
 import { Placeholder } from './extensions/placeholder';
@@ -309,7 +310,13 @@ export const extensions = [
   // Guarantees a paragraph after a trailing table so the cursor isn't trapped
   // and the user can keep writing below a table at the document's end.
   TrailingNode,
-  History,
+  // Undo and redo run on whichever history is in use (undo.ts).
+  History.extend({
+    addCommands: () => ({
+      undo: () => ({ state, dispatch, tr }) => undoBackend().run('undo', state, dispatch, tr),
+      redo: () => ({ state, dispatch, tr }) => undoBackend().run('redo', state, dispatch, tr),
+    }),
+  }),
   StateHistory,
   Placeholder.configure({ placeholder: () => t().app.startTyping }),
   // No defaultAlignment: it would put textAlign:'left' on every block, and that inline

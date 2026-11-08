@@ -1,6 +1,6 @@
 import { Extension, Mark, mergeAttributes } from '@tiptap/core';
 import { Fragment, Mark as PMMark, NodeRange, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
-import { isHistoryTransaction } from '@tiptap/pm/history';
+import { isUndoRedo } from '../undo';
 import { EditorState, Plugin, PluginKey, type Selection, TextSelection, type Transaction } from '@tiptap/pm/state';
 import { CellSelection, TableMap, removeColumn, removeRow } from '@tiptap/pm/tables';
 import { AddMarkStep, AttrStep, Mapping, type MapResult, RemoveMarkStep, ReplaceAroundStep, ReplaceStep, liftTarget, type Step, type StepMap } from '@tiptap/pm/transform';
@@ -970,7 +970,7 @@ const rebuilds = (tr: Transaction) => !!tr.getMeta(REBUILDING) || tr.getMeta('ad
 // Undo and redo, and what other plugins append to them.
 function fromHistory(tr: Transaction): boolean {
   const root = tr.getMeta('appendedTransaction') as Transaction | undefined;
-  return isHistoryTransaction(tr) || (!!root && isHistoryTransaction(root));
+  return isUndoRedo(tr) || (!!root && isUndoRedo(root));
 }
 
 // What the edits inserted, in the last transaction's coordinates: each step's range mapped

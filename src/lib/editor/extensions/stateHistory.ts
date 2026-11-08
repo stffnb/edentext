@@ -1,9 +1,10 @@
 import { Extension, type Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { history, isHistoryTransaction, undoDepth } from '@tiptap/pm/history';
+import { history, undoDepth } from '@tiptap/pm/history';
 import { Plugin, type Transaction } from '@tiptap/pm/state';
 import { Step, StepMap, StepResult } from '@tiptap/pm/transform';
 import { untrack } from 'svelte';
+import { isUndoRedo } from '../undo';
 
 // A change to what the document holds beside its text, carried on the body's undo stack:
 // the value before and after, under an id ("hf:section:zoneKey" for a header/footer,
@@ -121,7 +122,7 @@ export const StateHistory = Extension.create({
     return [new Plugin({
       props: { handleDOMEvents: { keydown: flush, beforeinput: flush, paste: flush, drop: flush } },
       appendTransaction(trs, _old, state) {
-        if (!trs.some((tr) => tr.docChanged && tr.getMeta('addToHistory') !== false && !isHistoryTransaction(tr))) return null;
+        if (!trs.some((tr) => tr.docChanged && tr.getMeta('addToHistory') !== false && !isUndoRedo(tr))) return null;
         let out: Transaction | null = null;
         for (const w of watches.values()) {
           if (w.from !== null) continue;
@@ -140,7 +141,7 @@ export const StateHistory = Extension.create({
   },
 
   onTransaction({ transaction: tr }) {
-    if (!isHistoryTransaction(tr)) return;
+    if (!isUndoRedo(tr)) return;
     for (const step of tr.steps) {
       const w = step instanceof StateStep ? watches.get(step.id) : undefined;
       if (!w) continue;

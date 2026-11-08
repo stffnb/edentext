@@ -3,9 +3,9 @@
 // labels fed from onTransaction and reconcile lengths to the authoritative depths.
 import type { Editor } from '@tiptap/core';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
-import { undoDepth, redoDepth, isHistoryTransaction } from '@tiptap/pm/history';
 import { ReplaceStep, ReplaceAroundStep, AddMarkStep, RemoveMarkStep, AttrStep } from '@tiptap/pm/transform';
 import { StateStep, resetStateHistory, flushPending } from '../editor/extensions/stateHistory';
+import { undoBackend, isUndoRedo } from '../editor/undo';
 
 export interface HistoryEntry {
   label: string;
@@ -26,15 +26,25 @@ export function resetHistoryLog(): void {
   prevUndo = 0;
   prevRedo = 0;
   resetStateHistory();
+  undoBackend().reset?.();
+}
+
+// A backend that labels its own stack items is read as it is.
+export function syncHistoryLog(): boolean {
+  const labels = undoBackend().labels?.();
+  if (!labels) return false;
+  historyLog.undo = labels.undo.map((label) => ({ label }));
+  historyLog.redo = labels.redo.map((label) => ({ label }));
+  return true;
 }
 
 // Called once per transaction with the POST-transaction state (onTransaction runs after
 // state.apply, so the history depths already reflect this transaction).
 export function recordTransaction(state: EditorState, tr: Transaction): void {
-  const nu = undoDepth(state) as number;
-  const nr = redoDepth(state) as number;
+  if (syncHistoryLog()) return;
+  const { undo: nu, redo: nr } = undoBackend().depths(state);
 
-  if (isHistoryTransaction(tr)) {
+  if (isUndoRedo(tr)) {
     // This transaction was dispatched BY the history plugin — i.e. an undo or a redo.
     // (Reliable even in the common "undo once, then type" case, which by depth deltas
     // alone is indistinguishable from a redo.) Direction = which way the depth moved.
@@ -142,7 +152,7 @@ function describeMark(name: string, attrs: Record<string, unknown> | undefined):
   return MARK_LABELS[name] ?? 'Formatting';
 }
 
-function describeTransaction(tr: Transaction): string {
+export function describeTransaction(tr: Transaction): string {
   let structural: string | null = null; // table / list / heading / paragraph — wins
   let insertedText = '';
   let sawText = false;

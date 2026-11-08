@@ -8,7 +8,7 @@
   import { RECORDING } from '../editor/extensions/trackChanges';
   import { ZONE_SETTLED, connectZones } from '../editor/zoneReview';
   import { authorColors } from '../editor/authorColors';
-  import { isHistoryTransaction } from '@tiptap/pm/history';
+  import { isUndoRedo } from '../editor/undo';
   import { TextSelection, type Transaction } from '@tiptap/pm/state';
   import { plainPastedSpaces, unwrapPastedBoxes } from '../editor/paste';
   import { readClickCaret } from '../editor/clickCaret';
@@ -564,7 +564,7 @@
     const body = bodyEditor;
     if (!interactive || !body) return;
     const restore = ({ transaction }: { transaction: Transaction }) => {
-      if (!isHistoryTransaction(transaction) && !transaction.getMeta(ZONE_SETTLED)) return;
+      if (!isUndoRedo(transaction) && !transaction.getMeta(ZONE_SETTLED)) return;
       for (const step of transaction.steps) {
         if (!(step instanceof StateStep)) continue;
         const [kind, index, key] = step.id.split(':');

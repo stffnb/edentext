@@ -6,7 +6,7 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { dropCursor } from '@tiptap/pm/dropcursor';
-import { closeHistory } from '@tiptap/pm/history';
+import { closeGroup } from '../undo';
 import { cmToPx } from '../../storage/pageMargins';
 import { readVerticalMargins, placeFrameSoon, placeInColumn, freeDragX, sinkSideFloat } from './pageBreaks';
 
@@ -1013,7 +1013,7 @@ class ImageView {
         tr.insert(ip, node);
         tr.setSelection(NodeSelection.create(tr.doc, ip));
         tr.setMeta('composition', group);
-        if (firstMove) closeHistory(tr);
+        if (firstMove) closeGroup(tr);
         view.dispatch(tr);
         curPos = ip;
         firstMove = false;
