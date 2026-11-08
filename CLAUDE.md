@@ -6,7 +6,7 @@ Serverless, fully client-side rich-text editor that saves `.odt` and `.docx`; st
 ## Commands
 
 ```bash
-npm run dev      # Vite dev server (hot-reload, --host)
+npm run dev      # Vite dev server (hot-reload, --host); npm run relay beside it for collaboration
 npm run build    # production build -> dist/; npm run preview serves it
 npm run check    # svelte-check type-check
 npm test         # Vitest once (tests/**/*.test.ts)
@@ -72,7 +72,7 @@ src/
   lib/ai/                   - AI assistant client, document serialization and tools
   styles/                   - global and editor CSS
 charts/edentext/            - community-maintained Helm chart; test with bash scripts/test-helm-chart.sh
-desktop/                    - Electron shell around dist/ with its own npm commands; see desktop/CLAUDE.md
+desktop/, relay/            - Electron shell around dist/; collaboration relay. Own npm projects, see their CLAUDE.md
 ```
 
 ## Where the detail lives

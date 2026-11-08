@@ -1,0 +1,12 @@
+{
+  "name": "edentext-relay",
+  "private": true,
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.22.2"
+  }
+}
