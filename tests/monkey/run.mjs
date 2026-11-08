@@ -14,6 +14,8 @@ import { hasXmllint, validateOdt, validateDocx } from '../schemaValidate.ts';
 Object.assign(globalThis, (({ DOMParser, XMLSerializer }) => ({ DOMParser, XMLSerializer }))(new JSDOM('').window));
 
 const PORT = +(process.env.MONKEY_PORT ?? 4189);
+// UNDO=yjs runs the body's undo on Yjs (src/lib/editor/undoYjs.ts) instead of its history.
+const QUERY = process.env.UNDO === 'yjs' ? '?undo=yjs' : '';
 const SEED = +(process.env.MONKEY_SEED ?? 1);
 const RUNS = +(process.env.MONKEY_RUNS ?? 3);
 const OPS = +(process.env.MONKEY_OPS ?? 60);
@@ -519,7 +521,7 @@ const roundTrip = (bytes, ext) => ed(async ({ b64, ext }) => {
 }, { b64: Buffer.from(bytes).toString('base64'), ext });
 
 try {
-  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${PORT}/${QUERY}`, { waitUntil: 'load' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'load' });
   await page.waitForSelector('.tiptap-host .tiptap', { timeout: 30_000 });
@@ -618,7 +620,7 @@ try {
       // it is a finding.
       if (!/Execution context was destroyed|promise was garbage collected/.test(err.message) || retried.has(run)) throw err;
       retried.add(run);
-      await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+      await page.goto(`http://localhost:${PORT}/${QUERY}`, { waitUntil: 'load' });
       await page.evaluate(() => localStorage.clear());
       await page.reload({ waitUntil: 'load' });
       await page.waitForSelector('.tiptap-host .tiptap', { timeout: 30_000 });

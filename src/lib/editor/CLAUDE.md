@@ -13,6 +13,8 @@ no-break spaces and no ordinary one (a web editor's copy) gets plain spaces back
 
 `zoneReview.ts` gives the review the header and footer docs, open or not; `compare.ts` records what separates this document from a file (both in `docs/architecture/review.md`).
 
+`undo.ts` is the body's undo behind one interface (run, depths, `isUndoRedo`, `closeGroup`): ProseMirror's history, or Yjs's undo manager in a shared session (`undoYjs.ts`, `docs/architecture/collab.md`); nothing else imports `@tiptap/pm/history`.
+
 `clickCaret.ts` (`readClickCaret`, the body's and the zone's `mousedown`): a click that focuses a view reads its caret in at once, since ProseMirror puts its old selection back 20 ms after a focus that no `selectionchange` has followed yet, which a busy page in Firefox delays past that.
 
 ## Keyboard shortcuts (`shortcuts.ts`, `extensions/shortcuts.ts`)

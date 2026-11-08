@@ -74,6 +74,7 @@
     "@tiptap/extension-text-style": "^3.33.0",
     "@tiptap/extension-underline": "^3.33.0",
     "@tiptap/pm": "^3.33.0",
+    "@tiptap/y-tiptap": "^3.2.0",
     "docx": "^9.15.3",
     "franc-min": "^6.2.0",
     "harper.js": "^2.10.0",
@@ -81,7 +82,8 @@
     "hunspell-asm": "^4.0.2",
     "jspdf": "^4.2.1",
     "odf-kit": "^0.14.5",
-    "utif2": "^4.1.0"
+    "utif2": "^4.1.0",
+    "yjs": "^13.6.33"
   },
   "overrides": {
     "prosemirror-transform": "1.12.2"

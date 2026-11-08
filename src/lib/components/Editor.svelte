@@ -1405,6 +1405,17 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     // On the view's own DOM, not hosts[0]: switching the pane layout replaces the
     // host element, and a listener there would go down with it.
     editor.view.dom.addEventListener('pm-pagecount', onPageCount);
+    // Development switch for the undo a shared session uses (src/lib/editor/undoYjs.ts);
+    // `yjs-join` only loads it, for tests/collab/undo.mjs to join another client's doc.
+    const undoMode = import.meta.env.DEV ? new URLSearchParams(location.search).get('undo') : null;
+    if (undoMode === 'yjs' || undoMode === 'yjs-join') {
+      const ed = editor;
+      import('../editor/undoYjs').then((m) => {
+        const w = window as unknown as { __undoYjs: typeof m; __yjsUndo?: unknown };
+        w.__undoYjs = m;
+        if (undoMode === 'yjs') w.__yjsUndo = m.attachYjsUndo(ed);
+      });
+    }
     document.fonts?.addEventListener('loadingdone', repaginateOnFontLoad);
     document.fonts?.ready.then(repaginateOnFontLoad);
     // Seed the scaled footprint before the first paint (so the page is centered, not

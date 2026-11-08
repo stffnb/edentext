@@ -109,7 +109,7 @@ undo lands pending changes first (`flushPending`). A store set in the same task 
 (a renamed style and its retagged paragraphs) joins that change's step through the extension's
 `appendTransaction`. An undo writes the value back; a table style's repaint follows the sheet
 outside the history. Document properties, the recording switch and embedded fonts stay out,
-as in both.
+as in both. A shared session swaps the stack for Yjs's (`editor/undo.ts`, `collab.md`).
 
 A frame in a zone flows there when it wraps (side or band) and stays out of the zone's height
 when it runs through. One placed against the page is placed by CSS from the zone box:

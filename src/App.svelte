@@ -34,6 +34,7 @@
   import { getColorDebug } from './lib/utils/colorDebug';
   import { CHUNK_FAILURE, reportLoadFailure } from './lib/utils/loadFailure';
   import { resetHistoryLog } from './lib/utils/historyLog.svelte';
+  import { undoBackend } from './lib/editor/undo';
   import type { TextStats } from './lib/utils/wordCount';
   import { ensureUserName, shownStats, toggleRecordChanges } from './lib/components/reviewItems';
   import type { Node as PmNode } from 'prosemirror-model';
@@ -862,6 +863,12 @@
   // the state with a fresh history plugin on the same doc.
   function resetHistory() {
     if (!editor) return;
+    // A backend with a stack of its own clears it; the history plugin has no clear.
+    if (undoBackend().reset) {
+      resetHistoryLog();
+      tick++;
+      return;
+    }
     const { state, view } = editor;
     view.updateState(EditorState.create({
       doc: state.doc, selection: state.selection, plugins: state.plugins,
