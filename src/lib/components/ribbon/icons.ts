@@ -32,6 +32,7 @@ export const STROKED = {
   info: ['M8 14.5A6.5 6.5 0 1 0 8 1.5a6.5 6.5 0 0 0 0 13z', 'M8 7.25v4'],
   compare: ['M2.5 3h4.75v10H2.5z', 'M8.75 3h4.75v10H8.75z'],
   mergeDocument: ['M3.5 2.5V6c0 2 4.5 2 4.5 4v3.5', 'M12.5 2.5V6c0 2-4.5 2-4.5 4'],
+  people: ['M6 7.25a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5z', 'M2 13.5a4 4 0 0 1 8 0', 'M10.5 7a1.9 1.9 0 1 0 0-3.8', 'M11.5 9.6A3.6 3.6 0 0 1 14 13.5'],
   lock: ['M3.75 7.25h8.5v6.25h-8.5z', 'M5.75 7.25V5a2.25 2.25 0 0 1 4.5 0v2.25'],
   // The assistant: a round speech bubble, open where a star sits in its corner — round,
   // so it never reads as the comment's square one.

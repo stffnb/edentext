@@ -36,10 +36,15 @@ async function openDoc(page, doc) {
   await page.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus', doc));
   await page.waitForTimeout(2500);
 }
+// Through the File menu and the dialog, as a reader starts one.
 async function start(page) {
-  await page.evaluate(() => { void window.__collabStart(); });
+  await page.click('.ribbon-tab-file');
+  await page.click('.ribbon [data-cmd="collab"]');
+  await page.click('dialog[open] [data-cmd="collabStart"]');
   await live(page);
-  return page.evaluate(() => window.__collab.session.link);
+  const link = await page.inputValue('dialog[open] input[readonly]');
+  await page.click('dialog[open] .primary');
+  return link;
 }
 async function joinLink(page, link) {
   await page.goto(link, { waitUntil: 'load' });
@@ -116,9 +121,11 @@ try {
   va = await view(a);
   check(same(va, vc), `a late joiner gets every edit so far (${brief(vc)})`);
   const names = await a.evaluate(() => window.__collab.view().peers.map((p) => p.name).sort().join(','));
-  check(names === 'Ben,Cleo', `the starter sees who is there (${names})`);
+  const bar = (await a.textContent('.statusbar .collab-btn'))?.trim();
+  check(names === 'Ben,Cleo' && /2/.test(bar ?? ''), `the starter sees who is there (${names}; "${bar}")`);
 
-  await a.evaluate(() => window.__collab.leave());
+  await a.click('.statusbar .collab-btn');
+  await a.click('dialog[open] [data-cmd="collabLeave"]');
   await caret(b, 'end');
   await b.keyboard.type(' Gamma');
   await settle(b);
@@ -133,7 +140,8 @@ try {
 
   const d = await client('Dora');
   await d.goto(`${URL0}#collab=short`, { waitUntil: 'load' });
-  await d.waitForFunction(() => window.__collab?.view()?.status === 'invalid', null, { timeout: 15_000 }).then(() => check(true, 'a cut-short link says so'), () => check(false, 'a cut-short link says so'));
+  const said = await d.waitForSelector('dialog[open] [data-status="invalid"]', { timeout: 15_000 }).then(() => true, () => false);
+  check(said, 'a cut-short link says so');
 
   // Another layout on the joiner's side (as with other fonts): page-number fields must not
   // flip back and forth between the two.

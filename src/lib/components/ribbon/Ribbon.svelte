@@ -86,7 +86,7 @@
     onSelectTheme,
     pdfBusy = false,
     hasPassword = false,
-    onNew, onNewFromTemplate, onOpen, onSave, onSaveAs, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onSettings, onDocProperties, onBrowserDocuments, onProtect, onAutoCorrect, onAutoText, onNewComment, onReviewSettings,
+    onNew, onNewFromTemplate, onOpen, onSave, onSaveAs, onSaveTemplate, onExportPdf, onPrintPdf, onPrint, onAbout, onSettings, onDocProperties, onCollab, onBrowserDocuments, onProtect, onAutoCorrect, onAutoText, onNewComment, onReviewSettings,
     navigatorOpen = false, onToggleNavigator,
     aiOpen = false, onToggleAi,
     recentFiles = [], onOpenRecent, onForgetRecent,
@@ -146,6 +146,8 @@
     onAbout?: () => void;
     onSettings?: () => void;
     onDocProperties?: () => void;
+    /** Absent where no relay serves sessions (`collab/channel.ts`). */
+    onCollab?: () => void;
     onBrowserDocuments?: () => void;
     onProtect?: () => void;
     hasPassword?: boolean;
@@ -202,7 +204,7 @@
   let searchable = $derived(searchableCommands([
     ...RIBBON_COMMANDS,
     ...styleCommands(visibleStyles(styleSheet(), showAllStyles()).map((s) => s.name)),
-  ], shown, { ai: aiEnabled(), volatile, embedded }));
+  ], shown, { ai: aiEnabled(), volatile, embedded, collab: !!onCollab }));
 
   const act = (id: string) => actOnCommand(document.querySelector(`.ribbon [data-cmd="${CSS.escape(id)}"]`));
 
@@ -307,6 +309,11 @@
           <button data-cmd="docProperties" onclick={() => run(onDocProperties)}>
             <Icon name="info" size={16} />{t().docProps.title}
           </button>
+          {#if onCollab}
+            <button data-cmd="collab" onclick={() => run(onCollab)}>
+              <Icon name="people" size={16} />{t().collab.menu}
+            </button>
+          {/if}
           <button data-cmd="about" onclick={() => run(onAbout)}>
             <Icon name="info" size={16} />{t().about.label}
           </button>

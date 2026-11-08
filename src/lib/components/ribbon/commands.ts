@@ -35,6 +35,7 @@ export const RIBBON_COMMANDS: RibbonCommand[] = [
   c(null, 'print', (m) => m.app.print),
   c(null, 'protect', (m) => m.password.menu),
   c(null, 'docProperties', (m) => m.docProps.title),
+  c(null, 'collab', (m) => m.collab.title),
   c(null, 'about', (m) => m.about.label),
 
   c('home', 'paste', (m) => m.contextMenu.paste),
@@ -200,12 +201,13 @@ export function tabOf(cmd: RibbonCommand, shown: readonly Tab[]): Tab | null | u
 const HOST_FILE_COMMANDS = new Set(['newDocument', 'newFromTemplate', 'open', 'browserDocuments', 'saveAsOdt', 'saveAsDocx', 'saveTemplate']);
 
 /** What the search offers: commands on a shown tab or in the File menu, the assistant
- *  only while it is on, the kept-documents list only when documents are kept, and no
- *  file command the host application has taken over. */
-export function searchableCommands(cmds: RibbonCommand[], shown: readonly Tab[], opts: { ai: boolean; volatile: boolean; embedded?: boolean }): RibbonCommand[] {
+ *  only while it is on, the kept-documents list only when documents are kept, sessions
+ *  only with a relay, and no file command the host application has taken over. */
+export function searchableCommands(cmds: RibbonCommand[], shown: readonly Tab[], opts: { ai: boolean; volatile: boolean; embedded?: boolean; collab?: boolean }): RibbonCommand[] {
   return cmds.filter((c) => tabOf(c, shown) !== undefined
     && (opts.ai || !c.id.startsWith('ai'))
     && !(opts.volatile && c.id === 'browserDocuments')
+    && (opts.collab || c.id !== 'collab')
     && !(opts.embedded && HOST_FILE_COMMANDS.has(c.id)));
 }
 
