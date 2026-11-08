@@ -56,7 +56,7 @@
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { userName, setUserName } from './lib/storage/userName.svelte';
   import { embedded, attribution, whiteLabel, collabKey } from './lib/embed/mode';
-  import { relayUrl } from './lib/collab/channel';
+  import { relayReady, relayUrl } from './lib/collab/channel';
   import CollabDialog from './lib/components/CollabDialog.svelte';
   import { keyBytes } from './lib/collab/key';
   import { joinSession, startSession, type Session, type SessionHost, type SessionView } from './lib/collab/session';
@@ -609,7 +609,11 @@
   $effect(() => saveToolbarCategory(toolbarCategory));
 
   // Where shared sessions go (`collab/channel.ts`); none embedded or without a relay.
-  const collabRelay = embedded ? null : relayUrl();
+  let collabRelay: string | null = $state(null);
+  if (!embedded) {
+    const url = relayUrl();
+    void relayReady(url).then((ok) => { if (ok) collabRelay = url; });
+  }
 
   // The island's command search: the ribbon's index, offered while the control is there —
   // a contextual tab's commands while its floating toolbar is shown.

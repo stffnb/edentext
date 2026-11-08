@@ -31,6 +31,16 @@ export function relayUrl(): string | null {
   return u.href;
 }
 
+/**
+ * Whether sessions can be offered: a relay beside the app answers its health check (an
+ * image served without one hides the menu entry); a relay named by URL is taken as is.
+ */
+export async function relayReady(url: string | null): Promise<boolean> {
+  if (!url) return false;
+  if (import.meta.env.VITE_COLLAB_RELAY && import.meta.env.VITE_COLLAB_RELAY !== 'same-origin') return true;
+  try { return (await fetch(new URL('relay/health', location.href))).ok; } catch { return false; }
+}
+
 /** A sealed, self-reconnecting line to the others in the key's room. */
 export function openChannel(o: Options): Channel {
   const room = roomId(o.key);

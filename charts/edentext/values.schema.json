@@ -115,6 +115,27 @@
       }
     },
     "frameAncestors": { "type": "string", "pattern": "^[^\"\\\\;{}$\\n]*$" },
+    "relay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "image", "maxPeers", "resources"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "pullPolicy", "tag", "digest"],
+          "properties": {
+            "repository": { "type": "string", "minLength": 1 },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+            "tag": { "type": "string" },
+            "digest": { "type": "string", "pattern": "^(|sha256:[a-fA-F0-9]{64})$" }
+          }
+        },
+        "maxPeers": { "type": "integer", "minimum": 0 },
+        "resources": { "type": "object" }
+      }
+    },
     "nodeSelector": { "$ref": "#/definitions/stringMap" },
     "tolerations": { "type": "array", "items": { "type": "object" } },
     "affinity": { "type": "object" }
@@ -137,6 +158,7 @@
     "readinessProbe",
     "ingress",
     "frameAncestors",
+    "relay",
     "nodeSelector",
     "tolerations",
     "affinity"

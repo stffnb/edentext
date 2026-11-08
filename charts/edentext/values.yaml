@@ -84,6 +84,27 @@ ingress:
 # example "'self' https://app.example.com". Empty sends none, so any page may frame it.
 frameAncestors: ""
 
+# The collaboration relay: one pod that passes encrypted session frames between the
+# browsers in a room (relay/CLAUDE.md). nginx serves it at /relay beside the app; the
+# app offers sessions only when that path answers. Rooms live in memory, so one replica.
+relay:
+  enabled: true
+  image:
+    repository: ghcr.io/stffnb/edentext-relay
+    pullPolicy: IfNotPresent
+    # Defaults to the chart's appVersion when empty.
+    tag: ""
+    digest: ""
+  # Clients per room; 0 sets no limit.
+  maxPeers: 0
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

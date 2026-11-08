@@ -1,0 +1,96 @@
+{{- if .Values.relay.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "edentext.relayName" . }}
+  labels:
+    helm.sh/chart: {{ include "edentext.chart" . }}
+    {{- include "edentext.relaySelectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: relay
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  # Rooms live in one process's memory: a second replica would split a session.
+  replicas: 1
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "edentext.relaySelectorLabels" . | nindent 6 }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "edentext.relaySelectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: relay
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "edentext.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: relay
+          image: {{ include "edentext.relayImage" . | quote }}
+          imagePullPolicy: {{ .Values.relay.image.pullPolicy }}
+          env:
+            - name: PORT
+              value: "4390"
+            - name: MAX_PEERS
+              value: {{ .Values.relay.maxPeers | quote }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: relay
+              containerPort: 4390
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: relay
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: relay
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.relay.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "edentext.relayName" . }}
+  labels:
+    helm.sh/chart: {{ include "edentext.chart" . }}
+    {{- include "edentext.relaySelectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: relay
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: relay
+      port: 4390
+      targetPort: relay
+      protocol: TCP
+  selector:
+    {{- include "edentext.relaySelectorLabels" . | nindent 4 }}
+{{- end }}

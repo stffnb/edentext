@@ -4,7 +4,10 @@
 FROM --platform=$BUILDPLATFORM node:24-alpine AS build
 WORKDIR /app
 COPY . .
-RUN npm ci && npm run build
+# Sessions go to a relay at /relay beside the app (charts/edentext runs one); without
+# one there, the app finds no relay and offers none.
+ARG VITE_COLLAB_RELAY=same-origin
+RUN npm ci && VITE_COLLAB_RELAY=$VITE_COLLAB_RELAY npm run build
 
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
