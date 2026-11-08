@@ -332,6 +332,7 @@ const RIBBON: Record<string, Entry> = {
   newDocument: UI, newFromTemplate: UI, open: UI, browserDocuments: UI, save: UI, saveAsOdt: UI, saveAsDocx: UI,
   rasterPdf: UI, vectorPdf: UI, saveTemplate: UI, print: UI, about: UI,
   protect: na('a password is the user\'s to choose; the assistant never sees or sets it'),
+  collab: na('sharing a document is the user\'s decision, and its link carries the key'),
   docProperties: check(page({ title: 'Report', keywords: 'a, b' }), () => loadDocProperties().title === 'Report'),
   paste: same('text'), cut: same('mark:deletion'), copy: UI, pastePlain: same('text'),
   growFont: same('mark:textStyle.fontSize'), shrinkFont: same('mark:textStyle.fontSize'),
