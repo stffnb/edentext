@@ -57,6 +57,7 @@
   import { userName, setUserName } from './lib/storage/userName.svelte';
   import { embedded, attribution, whiteLabel, collabKey } from './lib/embed/mode';
   import { relayUrl } from './lib/collab/channel';
+  import CollabDialog from './lib/components/CollabDialog.svelte';
   import { keyBytes } from './lib/collab/key';
   import { joinSession, startSession, type Session, type SessionHost, type SessionView } from './lib/collab/session';
   import { AUTHOR_COLORS, authorColors } from './lib/editor/authorColors';
@@ -607,13 +608,16 @@
   let toolbarCategory = $state<Category>(isCategory(storedCategory) ? storedCategory : 'home');
   $effect(() => saveToolbarCategory(toolbarCategory));
 
+  // Where shared sessions go (`collab/channel.ts`); none embedded or without a relay.
+  const collabRelay = embedded ? null : relayUrl();
+
   // The island's command search: the ribbon's index, offered while the control is there —
   // a contextual tab's commands while its floating toolbar is shown.
   let islandShown = $derived([...TABS, ...(activeTick >= 0 ? contextualTabs(activeEditor, hfActive) : [])] as Tab[]);
   let islandCommands = $derived(searchableCommands([
     ...RIBBON_COMMANDS,
     ...styleCommands(visibleStyles(styleSheet(), showAllStyles()).map((s) => s.name)),
-  ], islandShown, { ai: aiEnabled(), volatile, embedded }).filter((c) => !RIBBON_ONLY.has(c.id)));
+  ], islandShown, { ai: aiEnabled(), volatile, embedded, collab: !!collabRelay }).filter((c) => !RIBBON_ONLY.has(c.id)));
 
   // Where the island keeps a command: its own place if it moved one, the ribbon's tab otherwise.
   function islandPlace(c: RibbonCommand): { category: Category | null; via?: string } {
@@ -1623,9 +1627,14 @@
 
   // A shared session (docs/architecture/collab.md): the starter's document goes along as
   // the start file; a tab opened from the link (`#collab=`) joins and keeps no copy.
-  const collabRelay = embedded ? null : relayUrl();
   let collabSession: Session | null = null;
   let collabView: SessionView | null = $state(null);
+  let collabOpen = $state(false);
+  // A joiner hears of a session that cannot go on: a bad link, a full room, another version.
+  $effect(() => {
+    const s = collabView?.status;
+    if (s === 'invalid' || s === 'full' || s === 'version' || s === 'unreachable') collabOpen = true;
+  });
   function collabHost(): SessionHost {
     return {
       relay: collabRelay!,
@@ -1666,9 +1675,9 @@
     });
   });
   function exposeCollab() {
-    if (import.meta.env.DEV) (window as unknown as { __collab: unknown }).__collab = { session: collabSession, view: () => collabView, start: startCollab, leave: leaveCollab };
+    // The session test reads the state and the frame counts (tests/collab/session.mjs).
+    if (import.meta.env.DEV) (window as unknown as { __collab: unknown }).__collab = { session: collabSession, view: () => collabView };
   }
-  if (import.meta.env.DEV) (window as unknown as { __collabStart: unknown }).__collabStart = startCollab;
 
   // Print via the browser's print dialog using the exact raster of the editor (tables,
   // header/footer, band masks intact) — print or "Save as PDF". Used by the printer
@@ -1953,6 +1962,7 @@
       onAbout={() => (aboutOpen = true)}
       onSettings={() => (settingsOpen = true)}
       onDocProperties={() => (docPropsOpen = true)}
+      onCollab={collabRelay ? () => (collabOpen = true) : undefined}
       onBrowserDocuments={() => (browserDocsOpen = true)}
       onProtect={() => (passwordSetOpen = true)}
       hasPassword={docProtected}
@@ -2110,6 +2120,11 @@
               <button class="theme-option" data-cmd="docProperties" onclick={() => { exportMenuOpen = false; docPropsOpen = true; }} role="menuitem">
                 <span>{t().docProps.title}</span>
               </button>
+              {#if collabRelay}
+                <button class="theme-option" data-cmd="collab" onclick={() => { exportMenuOpen = false; collabOpen = true; }} role="menuitem">
+                  <span>{t().collab.menu}</span>
+                </button>
+              {/if}
               {#if whiteLabel}
                 <button class="theme-option" data-cmd="about" onclick={() => { exportMenuOpen = false; aboutOpen = true; }} role="menuitem">
                   <span>{t().about.label}</span>
@@ -2405,6 +2420,12 @@
     </div>
     <div class="sb-right">
     {#if embedded && attribution}<PoweredBy />{/if}
+    {#if collabView && collabView.status !== 'closed'}
+      <button class="collab-btn" data-status={collabView.status} onclick={() => (collabOpen = true)} title={t().collab.status[collabView.status]}>
+        {#each collabView.peers as p (p.id)}<span class="collab-dot" style:background={p.color} title={p.name}></span>{/each}
+        {collabView.status === 'live' ? t().collab.peers(collabView.peers.length) : t().collab.status[collabView.status]}
+      </button>
+    {/if}
     <BusyIndicator {editor} task={busyTask} progress={busyProgress} />
     <div class="zoom-controls">
       <button class="zoom-btn" onclick={() => setZoom(zoom - 10)} disabled={zoom <= MIN_ZOOM} title={t().status.zoomOut}>−</button>
@@ -2449,6 +2470,7 @@
   <ResumeCard show={!volatile && tick >= 0 && !!editor && !isDocNonEmpty()} onShowAll={() => (browserDocsOpen = true)} />
   <PromptDialog />
   <DocPropertiesDialog bind:open={docPropsOpen} props={docProps} onApply={(p) => { docProps = p; saveDocProperties(p); }} />
+  <CollabDialog bind:open={collabOpen} view={collabView} onStart={() => void startCollab()} onLeave={() => { leaveCollab(); collabOpen = false; }} />
   <PasswordDialog
     bind:open={passwordSetOpen}
     mode="set"
@@ -3094,6 +3116,24 @@
     position: relative;
     display: inline-flex;
   }
+
+  .collab-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    padding: 0 6px;
+    height: 18px;
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .collab-btn:hover { background: var(--color-btn-hover); }
+  .collab-dot { width: 8px; height: 8px; border-radius: 50%; }
 
   .wordcount-btn {
     border: none;
