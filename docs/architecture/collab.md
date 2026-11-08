@@ -1,7 +1,8 @@
 # Collaboration
 
 Shared editing runs on Yjs through `@tiptap/y-tiptap`. The engine choice and the spike
-behind it live on the branch `spike/collab`. This file covers what is built.
+behind it live on the branch `spike/collab`. This file covers what is built: a session
+started from the File menu and joined through a link, over a relay that cannot read it.
 
 ## Undo
 
@@ -53,3 +54,61 @@ now resets the timers.
 Not covered yet: `test:dom` runs the built app, which has no `?undo=yjs`. Cross-client
 grouping (a step's range mapped through remote edits) is checked only through the
 two-client test.
+
+## Sessions
+
+```
+browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness)──▶ relay ──▶ browsers
+```
+
+- **The link is the key.** *Collaborate…* (`CollabDialog.svelte`) makes 32 random bytes
+  and a link `…#collab=<key>` (`collab/key.ts`). Browsers never send the part after `#`,
+  so the relay only learns the room, a truncated SHA-256 of the key. Every frame is
+  sealed with AES-256-GCM and a fresh 12-byte nonce, through `@noble/ciphers`, which also
+  works where `crypto.subtle` is missing. Anyone with the link can read and write. Access
+  can only be taken back by starting a new session.
+- **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`): rooms as sets of sockets in memory,
+  frames passed on unchanged, nothing stored or logged. It still sees addresses, times,
+  frame sizes and how many share a room. `MAX_PEERS` counts connections, and the hello
+  carries a `token` field for a paid limit later.
+- **Where the relay is:** `VITE_COLLAB_RELAY` is a `wss://` URL, or `same-origin` for
+  `/relay` beside the app (dev server proxy, Docker image, Helm chart). With
+  `same-origin` the app offers sessions only once `relay/health` answers, so an image
+  served without a relay shows no menu entry. Embedded, there are none.
+- **Sync** (`collab/session.ts`): three frame kinds. `ASK` is a state vector, and everyone
+  answers it with the update it lacks. `UPDATE` is a Yjs update. `PRESENCE` is an
+  awareness update with name, colour and caret. A client asks when it connects and
+  whenever the relay reports a new peer. Updates leave and arrive in 50 ms batches
+  (`Y.mergeUpdates`), always as a task of their own, never inside a dispatch.
+- **Start and join.** The starter puts its document, exported as `.odt` (`buildBytes`),
+  into the map `meta` with the app version and the name, then binds the body
+  (`attachYjsUndo`). A tab opened from the link waits for a peer and refuses another
+  version. It loads that file through `applyImport` (fonts, layout, styles, zones,
+  properties), binds the body to the received fragment, and applies the stores already
+  in the map `state` (`applyState`). Store changes after that travel through the same
+  map as the undo uses. A header or footer is written as a whole zone, so two people in
+  one zone at the same moment get the last writer's.
+- **Storage.** The starter keeps editing its own document, and autosave stores everyone's
+  edits there. A joining tab is `volatile`: it keeps no copy and claims no slot. Its
+  slot id would be the first document's, so `main.ts` also skips the prune there. The
+  link stays in the address bar, so a reload joins again. Leaving clears it.
+- **Carets** come from y-tiptap's cursor plugin over the awareness, drawn as zero-width
+  decorations in the person's colour (the recorded-change colour when they have one)
+  and hidden in print. y-tiptap's undo plugin destroys its manager whenever the plugin
+  views rebuild (any `registerPlugin`), so `undoYjs.ts` keeps it alive until `detach`.
+
+### Checks
+
+`node tests/collab/session.mjs` starts a relay and the dev server and goes through the
+File menu. B joins by the link and gets A's document: JSON, pages and zones. Both type,
+and each undo takes back only its own typing. A page setup arrives on the other side,
+and the caret shows with its name. The relay's frames hold no typed text and no name. An
+idle session sends no updates. A late joiner gets everything. After the starter leaves,
+the others go on, and a reload rejoins. A cut-short link says so. A client with taller
+lines (6 against 7 pages on an index document) stays quiet as well: the index's page
+numbers do not flip between the two. `tests/relay.test.ts` and `tests/collab.test.ts`
+cover the relay's rooms and limits and the sealing.
+
+Gaps: the relay keeps nothing, so a session lives only while someone is in it. Pictures
+travel twice to a joiner (start file and fragment) and stay in the Yjs history. Two
+clients of different EdenText versions refuse each other. Only Chromium is tested.
