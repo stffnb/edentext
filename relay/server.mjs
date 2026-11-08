@@ -8,10 +8,11 @@ import { fileURLToPath } from 'node:url';
 const ROOM = /^[A-Za-z0-9_-]{16,64}$/;
 
 /**
- * Starts a relay on `port` (0 picks a free one). `maxPeers` 0 means no limit per room.
- * Resolves once listening, with the port and a way to close it.
+ * Starts a relay on `port` (0 picks a free one). `maxPeers` 0 means no limit per room;
+ * `tap` sees every passed frame (tests check it holds no plain text). Resolves once
+ * listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, path = '/relay' } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, path = '/relay', tap } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
   const http = createServer((req, res) => {
@@ -48,6 +49,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
         return;
       }
       if (!binary) return;
+      tap?.(data);
       for (const peer of rooms.get(room) ?? []) if (peer !== ws && peer.readyState === peer.OPEN) peer.send(data, { binary: true });
     });
 

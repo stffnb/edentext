@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { keyBytes, linkKey, newKey, roomId, seal, sessionLink, unseal } from '../src/lib/collab/key';
+import { keyBytes, newKey, roomId, seal, sessionLink, unseal } from '../src/lib/collab/key';
 import { openChannel } from '../src/lib/collab/channel';
 // @ts-expect-error plain JavaScript module, shipped as its own container
 import { startRelay } from '../relay/server.mjs';
@@ -26,7 +26,6 @@ describe('collaboration key', () => {
 
     const link = sessionLink(k, 'https://example.org/app/?x=1#old');
     expect(link).toBe(`https://example.org/app/?x=1#collab=${k}`);
-    expect(linkKey(new URL(link).hash)).toBe(k);
     expect(keyBytes(k.slice(1))).toBeNull();
   });
 

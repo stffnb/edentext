@@ -55,7 +55,11 @@
   import { loadDocName, saveDocName, loadDocFormat, saveDocFormat, stripOdtExtension, docNameOfFile, sanitizeNameForFile, deriveFilename, filenameFor, loadDocProtected, saveDocProtected, loadDocFile, saveDocFile, type DocumentFormat } from './lib/storage/documentName';
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { userName, setUserName } from './lib/storage/userName.svelte';
-  import { embedded, attribution, whiteLabel } from './lib/embed/mode';
+  import { embedded, attribution, whiteLabel, collabKey } from './lib/embed/mode';
+  import { relayUrl } from './lib/collab/channel';
+  import { keyBytes } from './lib/collab/key';
+  import { joinSession, startSession, type Session, type SessionHost, type SessionView } from './lib/collab/session';
+  import { AUTHOR_COLORS, authorColors } from './lib/editor/authorColors';
   import { startBridge, notify, type EmbedSettings, type ExportFormat } from './lib/embed/bridge';
   import { loadHyphenation, saveHyphenation } from './lib/storage/hyphenation';
   import { loadPageNumbering, savePageNumbering, DEFAULT_PAGE_NUMBERING, type PageNumbering } from './lib/storage/pageNumbering';
@@ -1616,6 +1620,55 @@
   $effect(() => {
     if (embedded) notify('dirty', { dirty });
   });
+
+  // A shared session (docs/architecture/collab.md): the starter's document goes along as
+  // the start file; a tab opened from the link (`#collab=`) joins and keeps no copy.
+  const collabRelay = embedded ? null : relayUrl();
+  let collabSession: Session | null = null;
+  let collabView: SessionView | null = $state(null);
+  function collabHost(): SessionHost {
+    return {
+      relay: collabRelay!,
+      snapshot: () => buildBytes('odt', editor!.getJSON() as TiptapNode),
+      load: (bytes, name) => applyImport(bytes, null, `${name || 'document'}.odt`, { warn: () => {} }),
+      name: () => documentName,
+      user: () => {
+        const name = userName();
+        let h = 0;
+        for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+        return { name, color: authorColors(editor!.state.doc).get(name) ?? AUTHOR_COLORS[h % AUTHOR_COLORS.length] };
+      },
+      onChange: (view) => { collabView = view; },
+    };
+  }
+  async function startCollab() {
+    if (!editor || !collabRelay || collabSession || !(await ensureUserName())) return;
+    collabSession = await startSession(editor, collabHost());
+    exposeCollab();
+  }
+  function leaveCollab() {
+    collabSession?.leave();
+    collabSession = null;
+    collabView = null;
+    // A joiner's reload would join again; the copy it holds now is its own.
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  }
+  let joined = false;
+  $effect(() => {
+    const key = collabKey;
+    if (!key || !collabRelay || !editor || joined) return;
+    joined = true;
+    void ensureUserName().then((named) => {
+      if (!named || !editor) return;
+      if (!keyBytes(key)) collabView = { status: 'invalid', peers: [], link: location.href };
+      else collabSession = joinSession(editor, key, collabHost());
+      exposeCollab();
+    });
+  });
+  function exposeCollab() {
+    if (import.meta.env.DEV) (window as unknown as { __collab: unknown }).__collab = { session: collabSession, view: () => collabView, start: startCollab, leave: leaveCollab };
+  }
+  if (import.meta.env.DEV) (window as unknown as { __collabStart: unknown }).__collabStart = startCollab;
 
   // Print via the browser's print dialog using the exact raster of the editor (tables,
   // header/footer, band masks intact) — print or "Save as PDF". Used by the printer

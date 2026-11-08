@@ -5,11 +5,12 @@ import { loadTheme, applyTheme, loadAccent, applyAccent } from './lib/storage/th
 import { locale } from './lib/i18n/i18n.svelte';
 import { startTabPresence, pruneOldDocuments } from './lib/storage/docScope';
 import { dragDialogs } from './lib/utils/dragWindow';
-import { embedded } from './lib/embed/mode';
+import { collabKey, embedded } from './lib/embed/mode';
 
 // This tab holds its document while it lives; the ones no tab has held for a while
-// and that fell out of the newest few are dropped here. An embedded editor holds none.
-if (!embedded) {
+// and that fell out of the newest few are dropped here. An embedded editor holds none, nor
+// one joining a session: its empty slot id would name the first document.
+if (!embedded && !collabKey) {
     startTabPresence();
     void pruneOldDocuments();
 }
