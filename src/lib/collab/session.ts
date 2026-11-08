@@ -1,6 +1,7 @@
 import type { Editor } from '@tiptap/core';
 import * as Y from 'yjs';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
+import { yCursorPlugin, yCursorPluginKey } from '@tiptap/y-tiptap';
 import { attachYjsUndo, type YjsUndo } from '../editor/undoYjs';
 import { openChannel, type ChannelStatus } from './channel';
 import { keyBytes, newKey, sessionLink } from './key';
@@ -59,14 +60,19 @@ function frame(kind: number, payload: Uint8Array): Uint8Array {
   return out;
 }
 
-function connect(key: string, host: SessionHost, ydoc: Y.Doc, bound: YjsUndo | null, join: Join | null): Session {
+function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bound: YjsUndo | null, join: Join | null): Session {
   const awareness = new Awareness(ydoc);
   const link = sessionLink(key);
   const stats = { sent: [0, 0, 0] };
   let status: SessionStatus = 'connecting';
   let peerCount = 1;
-  let binding = bound;
+  let binding: YjsUndo | null = null;
   let joining = join;
+  // The others' carets and selections, drawn as decorations in their colours.
+  const bind = (b: YjsUndo) => {
+    binding = b;
+    editor.registerPlugin(yCursorPlugin(awareness));
+  };
 
   const peers = (): Peer[] => [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.user)
     .map(([id, s]) => ({ id, name: String(s.user.name ?? ''), color: String(s.user.color ?? '') }));
@@ -113,7 +119,7 @@ function connect(key: string, host: SessionHost, ydoc: Y.Doc, bound: YjsUndo | n
       const got = await done();
       if (got === 'version') return setStatus('version');
       if (!got) return setStatus('closed');
-      binding = got;
+      bind(got);
     }
     if (binding) setStatus('live');
   };
@@ -146,6 +152,7 @@ function connect(key: string, host: SessionHost, ydoc: Y.Doc, bound: YjsUndo | n
   });
 
   awareness.setLocalStateField('user', host.user());
+  if (bound) bind(bound);
 
   // Leaving tells the others at once; a closed tab drops out after awareness's timeout.
   const goodbye = () => {
@@ -165,6 +172,7 @@ function connect(key: string, host: SessionHost, ydoc: Y.Doc, bound: YjsUndo | n
       awareness.off('update', onPresence);
       awareness.destroy();
       ydoc.off('update', onUpdate);
+      if (binding) editor.unregisterPlugin(yCursorPluginKey);
       binding?.detach();
       binding = null;
       status = 'closed';
@@ -180,7 +188,7 @@ export async function startSession(editor: Editor, host: SessionHost): Promise<S
   meta.set('snapshot', await host.snapshot());
   meta.set('version', __APP_VERSION__);
   meta.set('name', host.name());
-  return connect(newKey(), host, ydoc, attachYjsUndo(editor, ydoc), null);
+  return connect(editor, newKey(), host, ydoc, attachYjsUndo(editor, ydoc), null);
 }
 
 /**
@@ -189,7 +197,7 @@ export async function startSession(editor: Editor, host: SessionHost): Promise<S
  */
 export function joinSession(editor: Editor, key: string, host: SessionHost): Session {
   const ydoc = new Y.Doc();
-  return connect(key, host, ydoc, null, async () => {
+  return connect(editor, key, host, ydoc, null, async () => {
     const meta = ydoc.getMap('meta');
     if (meta.get('version') !== __APP_VERSION__) return 'version';
     if (!(await host.load(meta.get('snapshot') as Uint8Array, String(meta.get('name') ?? '')))) return null;
