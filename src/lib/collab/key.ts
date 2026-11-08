@@ -46,9 +46,3 @@ export function unseal(key: Uint8Array, frame: Uint8Array): Uint8Array {
 export function sessionLink(key: string, href = location.href): string {
   return `${href.split('#')[0]}#collab=${key}`;
 }
-
-/** The key of the link this page was opened with, if any. */
-export function linkKey(hash: string): string | null {
-  const m = /(?:^#|&)collab=([^&]*)/.exec(hash);
-  return m ? m[1] : null;
-}

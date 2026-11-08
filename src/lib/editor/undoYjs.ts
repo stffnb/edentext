@@ -47,7 +47,11 @@ function mapRanges(ranges: number[] | null, tr: Transaction): number[] | null {
 
 export { Y };
 
-export type YjsUndo = { ydoc: Y.Doc; undoManager: Y.UndoManager; detach: () => void };
+export type YjsUndo = {
+  ydoc: Y.Doc; undoManager: Y.UndoManager; detach: () => void;
+  /** Puts every store the map holds into effect: a joiner's, after its start snapshot. */
+  applyState: () => void;
+};
 
 /**
  * The body's undo on Yjs: the text in the fragment `body`, the stores beside it (`StateStep`
@@ -115,11 +119,14 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
 
   // What an undo (or, later, another author) put back in the map reaches the stores as
   // a body transaction of `StateStep`s, which their own listeners already apply.
+  const apply = (keys: Iterable<string>) => {
+    const tr = editor.state.tr.setMeta(STATE_RESTORED, true).setMeta('addToHistory', false);
+    for (const key of keys) tr.step(new StateStep(key, null, side.get(key) ?? null));
+    if (tr.steps.length) editor.view.dispatch(tr);
+  };
   const restore = (ev: Y.YMapEvent<unknown>, t: Y.Transaction) => {
     if (t.origin === STATE_ORIGIN || (t.local && t.origin !== um)) return;
-    const tr = editor.state.tr.setMeta(STATE_RESTORED, true).setMeta('addToHistory', false);
-    for (const key of ev.keysChanged) tr.step(new StateStep(key, null, side.get(key) ?? null));
-    editor.view.dispatch(tr);
+    apply(ev.keysChanged);
   };
 
   const backend: UndoBackend = {
@@ -155,13 +162,14 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
 
   return {
     ydoc, undoManager: um,
+    applyState: () => apply([...side.keys()]),
     detach() {
       side.unobserve(restore);
       editor.off('beforeTransaction', before);
       editor.off('transaction', mirror);
       editor.off('transaction', track);
-      editor.unregisterPlugin(ySyncPluginKey);
-      editor.unregisterPlugin(yUndoPluginKey);
+      // Together: the undo plugin's view needs the sync plugin while the views rebuild.
+      editor.unregisterPlugin([yUndoPluginKey, ySyncPluginKey]);
       editor.registerPlugin(history({ depth: 100, newGroupDelay: 500 }));
       setUndoBackend(pmUndo);
       um.destroy();
