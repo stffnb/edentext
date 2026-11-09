@@ -24,6 +24,7 @@
     "test:layout": "node tests/layout/run.mjs",
     "test:monkey": "node tests/monkey/run.mjs",
     "test:tabs": "node tests/tabs/run.mjs",
+    "test:collab": "node tests/collab/undo.mjs && node tests/collab/session.mjs",
     "test:coverage": "vitest run --coverage",
     "test:parity": "node tests/render-parity/run.mjs",
     "test:parity:fixtures": "node tests/render-parity/make-fixtures.mjs"
@@ -76,7 +77,7 @@
     "@tiptap/extension-text-style": "^3.33.0",
     "@tiptap/extension-underline": "^3.33.0",
     "@tiptap/pm": "^3.33.0",
-    "@tiptap/y-tiptap": "^3.2.0",
+    "@tiptap/y-tiptap": "3.2.0",
     "docx": "^9.15.3",
     "franc-min": "^6.2.0",
     "harper.js": "^2.10.0",
@@ -85,8 +86,8 @@
     "jspdf": "^4.2.1",
     "odf-kit": "^0.14.5",
     "utif2": "^4.1.0",
-    "y-protocols": "^1.0.7",
-    "yjs": "^13.6.33"
+    "y-protocols": "1.0.7",
+    "yjs": "13.6.33"
   },
   "overrides": {
     "prosemirror-transform": "1.12.2"

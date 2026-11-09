@@ -17,6 +17,10 @@ updates:
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
     groups:
+      # Pinned: undoYjs.ts patches their internals, so an update gets its own PR for test:collab.
+      # A dependency joins the first group it matches, so this one precedes editor.
+      collab:
+        patterns: ["yjs", "y-protocols", "@tiptap/y-tiptap"]
       editor:
         patterns: ["@tiptap/*", "prosemirror-*"]
       production:
