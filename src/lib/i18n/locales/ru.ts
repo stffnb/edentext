@@ -466,7 +466,7 @@ const ru: Messages = {
     layout: 'Макет',
     pageFormat: 'Формат страницы',
     pageFormatCustom: 'Пользовательский',
-    pageSizeCustom: 'Особый размер (см)',
+    pageSizeCustom: 'Пользовательский размер (см)',
     pageWidth: 'Ширина',
     pageHeight: 'Высота',
     pageFormats: {

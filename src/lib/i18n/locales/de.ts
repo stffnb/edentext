@@ -457,7 +457,7 @@ const de: Messages = {
     layout: 'Layout',
     pageFormat: 'Seitenformat',
     pageFormatCustom: 'Benutzerdefiniert',
-    pageSizeCustom: 'Eigene Größe (cm)',
+    pageSizeCustom: 'Benutzerdefiniertes Format (cm)',
     pageWidth: 'Breite',
     pageHeight: 'Höhe',
     pageFormats: {

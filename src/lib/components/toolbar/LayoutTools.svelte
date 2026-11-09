@@ -171,7 +171,7 @@
       </button>
     {/if}
     <hr />
-    <div class="im-label">{t().toolbarExpanded.pageSizeCustom} (cm)</div>
+    <div class="im-label">{t().toolbarExpanded.pageSizeCustom}</div>
     <div class="im-grid">
       {#each (['w', 'h'] as const) as side}
         {@const label = side === 'w' ? t().toolbarExpanded.pageWidth : t().toolbarExpanded.pageHeight}

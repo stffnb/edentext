@@ -466,7 +466,7 @@ const uk: Messages = {
     layout: 'Макет',
     pageFormat: 'Формат сторінки',
     pageFormatCustom: 'Користувацький',
-    pageSizeCustom: 'Власний розмір (см)',
+    pageSizeCustom: 'Користувацький розмір (см)',
     pageWidth: 'Ширина',
     pageHeight: 'Висота',
     pageFormats: {
