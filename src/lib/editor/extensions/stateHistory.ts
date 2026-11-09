@@ -71,6 +71,11 @@ export function watchState(id: string, body: () => Editor | null, read: () => Fi
   return w;
 }
 
+// Each store's value as its steps carry it, by id: what a shared session starts from.
+export function stateValues(): Map<string, unknown> {
+  return new Map([...watches.values()].map((w) => [w.id, JSON.parse(w.json(untrack(w.read)))]));
+}
+
 // Called from an effect, so it re-runs on any change to what `read` reaches. Changes
 // gather for half a second into one step, so a value typed live is one step.
 export function noteState(w: Watch): void {

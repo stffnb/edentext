@@ -1,6 +1,7 @@
 // Two clients on one Yjs doc (src/lib/editor/undoYjs.ts), relayed by this script: each
 // undo takes back only its own client's edits, in the text, the page layout and a header,
-// and an undo while recording leaves no recorded change. Dev server, Chromium.
+// and an undo while recording leaves no recorded change. Concurrent changes to different
+// styles or layout fields both stay. Dev server, Chromium.
 import { MOD, checker, devServer, openApp } from '../browser.mjs';
 
 const PORT = +(process.env.COLLAB_PORT ?? 4391);
@@ -59,6 +60,20 @@ const view = (page) => page.evaluate(() => ({
 const both = async () => [await view(a), await view(b)];
 const body = (page) => page.locator('.tiptap-host .tiptap').first();
 const undo = async (page) => { await body(page).click(); await page.keyboard.press(`${MOD}+z`); await pause(); };
+const redo = async (page) => { await body(page).click(); await page.keyboard.press(`${MOD}+Shift+z`); await pause(); };
+// The style sheet through the app's own store module, which the dev server shares.
+const SHEET = '/src/lib/styles/sheet.svelte.ts';
+const sheet = (page) => page.evaluate(async (url) => {
+  const s = (await import(url)).styleSheet();
+  return { json: JSON.stringify(s), h1: s.paragraph['Heading 1'].text.fontSizePt, quote: s.paragraph.Quotations.para.spaceAfter, names: Object.keys(s.paragraph) };
+}, SHEET);
+const putStyle = (page, name, text, para) => page.evaluate(async ([url, n, t, p]) => {
+  const m = await import(url);
+  const st = m.styleSheet().paragraph[n] ?? { name: n, parent: 'Standard', next: null, para: {}, text: {} };
+  m.putStyle({ ...st, text: { ...st.text, ...t }, para: { ...st.para, ...p } });
+}, [SHEET, name, text, para]);
+const dropStyle = (page, name) => page.evaluate(async ([url, n]) => (await import(url)).deleteStyle(n), [SHEET, name]);
+const margin = (page) => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--user-margin-left').trim());
 
 try {
   await body(a).click();
@@ -110,6 +125,41 @@ try {
   await undo(b);
   [va, vb] = await both();
   check(recorded > 0 && va.marks === 0 && vb.marks === 0 && va.text === '' && vb.text === '', `an undo while recording leaves no change (${recorded} marked before, ${JSON.stringify([va, vb])})`);
+
+  // A and B change different styles before either hears of the other's.
+  await putStyle(a, 'Heading 1', { fontSizePt: 30 }, {});
+  await putStyle(b, 'Quotations', {}, { spaceAfter: 20 });
+  await pause();
+  let [sa, sb] = [await sheet(a), await sheet(b)];
+  check(sa.h1 === 30 && sa.quote === 20 && sa.json === sb.json, `concurrent changes to two styles both stay (${sa.h1}/${sa.quote} | ${sb.h1}/${sb.quote}, same ${sa.json === sb.json})`);
+  await undo(a);
+  [sa, sb] = [await sheet(a), await sheet(b)];
+  check(sa.h1 === 18 && sb.h1 === 18 && sa.quote === 20 && sb.quote === 20, `A's undo takes back only A's style (${sa.h1}/${sa.quote} | ${sb.h1}/${sb.quote})`);
+  await redo(a);
+  [sa, sb] = [await sheet(a), await sheet(b)];
+  check(sa.h1 === 30 && sb.h1 === 30 && sb.quote === 20, `A's redo brings it back on both (${sa.h1} | ${sb.h1})`);
+
+  await putStyle(b, 'Gone', { bold: true }, {});
+  await pause();
+  await putStyle(a, 'Collab/A', { italic: true }, {});
+  await dropStyle(b, 'Gone');
+  await pause();
+  [sa, sb] = [await sheet(a), await sheet(b)];
+  check(sa.names.includes('Collab/A') && !sa.names.includes('Gone') && sa.json === sb.json,
+    `a style added and another deleted at once both take effect (${sa.names.slice(-3)} | ${sb.names.slice(-3)})`);
+
+  const wide = await margin(a);
+  await a.click('[data-tab="layout"]');
+  await a.click('[data-cmd="margins"]');
+  await a.click('[data-cmd="margins-narrow"]');
+  await b.click('[data-tab="layout"]');
+  await b.click('[data-cmd="orientation"]');
+  await b.click('[data-cmd="orientation-landscape"]');
+  await pause();
+  [va, vb] = await both();
+  const [ma, mb] = [await margin(a), await margin(b)];
+  check(ma === mb && ma !== wide && va.width === vb.width && va.width !== portrait, `margins and orientation set at once both stay (${ma} ${va.width}px | ${mb} ${vb.width}px)`);
+
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (e) {
   check(false, `collab undo run threw: ${e}`);
