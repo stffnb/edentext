@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { Editor } from '@tiptap/core';
+import { extensions } from '../../src/lib/editor/extensions';
 import { noteLabel, noteLabels, type NoteRefInfo } from '../../src/lib/editor/extensions/notes';
 import {
   clampNoteSettings, DEFAULT_NOTE_SETTINGS, type NoteSettings,
@@ -121,5 +123,27 @@ describe.each(['footnote', 'endnote'] as const)('a picture in a %s', (kind) => {
     const bytes = await buildDocx(doc(kind));
     const back = JSON.stringify(importDocx(bytes).content);
     expect(back).toContain('data:image/png');
+  });
+});
+
+describe('the notes sync after typing', () => {
+  it('numbers a note inserted where the document had none, and drops it with its anchor', () => {
+    const editor = new Editor({ element: document.createElement('div'), extensions, content: '<p>text</p>' });
+    editor.commands.setTextSelection(5);
+    editor.commands.insertContent('more');
+    editor.commands.insertNote('footnote');
+    // The caret went into the note; the second anchor goes before the first.
+    editor.commands.setTextSelection(3);
+    editor.commands.insertNote('footnote');
+    const labels = () => {
+      const out: string[] = [];
+      editor.state.doc.descendants((n) => { if (n.type.name === 'noteRef' || n.type.name === 'note') out.push(`${n.type.name}:${n.attrs.text}`); });
+      return out;
+    };
+    expect(labels()).toEqual(['noteRef:1', 'noteRef:2', 'note:1', 'note:2']);
+    editor.commands.setContent('<p>plain</p>');
+    editor.commands.insertContent('!');
+    expect(labels()).toEqual([]);
+    editor.destroy();
   });
 });

@@ -3,6 +3,7 @@ import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { AddMarkStep, AttrStep, RemoveMarkStep, ReplaceAroundStep, ReplaceStep, type Step } from '@tiptap/pm/transform';
 import { DEFAULT_SHORTCUTS } from '../shortcuts';
 import { formatOrdinal } from '../../utils/orderedListTypes';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteSettings } from '../../storage/noteSettings';
@@ -162,7 +163,15 @@ export type NoteRefInfo = { id: string; kind: NoteKind; pos: number; chapter: nu
 
 // Every anchor in the body, in document order. The note section is skipped: a note's
 // own text may hold an anchor, and that one numbers nothing.
+// Kept per doc: the sync pass and the cross-references read them after every edit.
+const noteRefsOf = new WeakMap<PMNode, NoteRefInfo[]>();
 export function collectNoteRefs(doc: PMNode): NoteRefInfo[] {
+  let refs = noteRefsOf.get(doc);
+  if (!refs) noteRefsOf.set(doc, (refs = walkNoteRefs(doc)));
+  return refs;
+}
+
+function walkNoteRefs(doc: PMNode): NoteRefInfo[] {
   const out: NoteRefInfo[] = [];
   let chapter = 0;
   doc.forEach((child, offset) => {
@@ -381,18 +390,38 @@ export const Notes = Extension.create<NotesOptions>({
         // Two rounds by design: structure first, numbering on the pass after it. Doing
         // both at once would need positions from a document this transaction is still
         // rewriting.
-        appendTransaction(trs, _oldState, newState) {
+        appendTransaction(trs, oldState, newState) {
           if (trs.some((tr) => tr.selectionSet)) {
             const clamped = clampToSide(newState);
             if (clamped) return clamped;
           }
           if (!trs.some((tr) => tr.docChanged || tr.getMeta(RESYNC_NOTES))) return null;
-          return syncStructure(newState) ?? syncNumbers(newState, getSettings()) ?? stripAnchorMarks(newState);
+          // A document without notes gains one only from a step that brings one in.
+          if (noteless.has(oldState.doc) && !trs.some((tr) => tr.steps.some(bringsNotes))) {
+            noteless.add(newState.doc);
+            return null;
+          }
+          const fix = syncStructure(newState) ?? syncNumbers(newState, getSettings()) ?? stripAnchorMarks(newState);
+          if (!fix && !findNoteSection(newState.doc) && !collectNoteRefs(newState.doc).length) noteless.add(newState.doc);
+          return fix;
         },
       }),
     ];
   },
 });
+
+// Documents known to hold no anchor and no notes' section, so a keystroke there skips the
+// sync pass's walks. A step type unknown here may bring notes in.
+const noteless = new WeakSet<PMNode>();
+const NOTE_NODES = new Set(['noteRef', 'note', 'noteSection']);
+function bringsNotes(step: Step): boolean {
+  if (step instanceof ReplaceStep || step instanceof ReplaceAroundStep) {
+    let found = false;
+    step.slice.content.descendants((node) => { found ||= NOTE_NODES.has(node.type.name); return !found; });
+    return found;
+  }
+  return !(step instanceof AddMarkStep || step instanceof RemoveMarkStep || step instanceof AttrStep);
+}
 
 // The anchor takes no format marks: ODF's text:note-citation is bare text, so none could be
 // saved, and the anchor draws its note class's look. A mark applied to a range is only
