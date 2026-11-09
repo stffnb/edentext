@@ -76,7 +76,7 @@
     "@tiptap/pm": "^3.33.0",
     "docx": "^9.15.3",
     "franc-min": "^6.2.0",
-    "harper.js": "^2.10.0",
+    "harper.js": "^3.0.0",
     "html2canvas": "^1.4.1",
     "hunspell-asm": "^4.0.2",
     "jspdf": "^4.2.1",
