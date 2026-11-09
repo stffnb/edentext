@@ -133,4 +133,7 @@ and WebKit (`BROWSER`, each leg of the CI's browser matrix).
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Pictures
 travel twice to a joiner (start file and fragment) and stay in the Yjs history. Two
-clients of different EdenText versions refuse each other.
+clients of different EdenText versions refuse each other. IME input is driven in Chromium
+only. Seen once each and not again on a rerun: in Firefox a joiner not live within 20 s
+on a just-started dev server; in WebKit an uncaught "Fetch API cannot load
+…/loadFailure.ts due to access control checks" on the starter.
