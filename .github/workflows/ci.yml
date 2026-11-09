@@ -114,8 +114,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
       - run: npm run test:monkey
       # Shared sessions on the dev server: undo per client and the relay end to end.
-      - if: matrix.browser == 'chromium'
-        run: npm run test:collab
+      - run: npm run test:collab
 
   # Publishes dist/ to GitHub Pages only once every leg above is green, so a red
   # push keeps the last good version live. Pages source must be "GitHub Actions".

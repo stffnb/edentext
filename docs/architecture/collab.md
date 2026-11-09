@@ -118,8 +118,9 @@ joiner gets everything, styles included. After the starter leaves,
 the others go on, and a reload rejoins. A cut-short link says so. A client with taller
 lines (6 against 7 pages on an index document) stays quiet as well: the index's page
 numbers do not flip between the two. `tests/relay.test.ts` and `tests/collab.test.ts`
-cover the relay's rooms and limits and the sealing.
+cover the relay's rooms and limits and the sealing. Both scripts run in Chromium, Firefox
+and WebKit (`BROWSER`, each leg of the CI's browser matrix).
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Pictures
 travel twice to a joiner (start file and fragment) and stay in the Yjs history. Two
-clients of different EdenText versions refuse each other. Only Chromium is tested.
+clients of different EdenText versions refuse each other.
