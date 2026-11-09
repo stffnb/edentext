@@ -63,6 +63,15 @@ describe('countText', () => {
     expect(whole(doc(p(t('abc中文def')))).words).toBe(4);
   });
 
+  // The whole document adds up per block, each block's count kept: an edit must recount it.
+  it('counts an edited document as one built afresh', () => {
+    const d = doc(p(t('eins zwei')), p(t('drei')), p(t('vier fünf sechs')));
+    whole(d);
+    const edited = d.replace(d.child(0).nodeSize + 1, d.child(0).nodeSize + 5, doc(p(t('drei und'))).slice(1, 9));
+    expect(whole(edited)).toEqual(whole(schema.nodeFromJSON(edited.toJSON())));
+    expect(whole(edited).words).toBe(7);
+  });
+
   it('counts a selection range only', () => {
     const d = doc(p(t('eins zwei drei')));
     // Positions 1..5: the run "eins" inside the first paragraph.

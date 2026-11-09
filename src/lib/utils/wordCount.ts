@@ -32,6 +32,10 @@ function countWords(text: string): number {
 // newlines so words never merge across paragraphs; newlines aren't counted as
 // characters (they stand in for paragraph/line marks).
 export function countText(doc: PmNode, from: number, to: number): TextStats {
+  return from === 0 && to === doc.content.size ? wholeText(doc) : rangeText(doc, from, to);
+}
+
+function rangeText(doc: PmNode, from: number, to: number): TextStats {
   const text = doc.textBetween(from, to, '\n', leafText);
   let paragraphs = 0;
   doc.nodesBetween(from, to, (node) => {
@@ -43,4 +47,20 @@ export function countText(doc: PmNode, from: number, to: number): TextStats {
     charsNoSpaces: text.replace(/\s/g, '').length,
     paragraphs,
   };
+}
+
+// The whole document as the sum of its top-level blocks, each kept per node: a block
+// boundary is a word boundary, so the counts add up, and an edit recounts one block.
+const blockStats = new WeakMap<PmNode, TextStats>();
+function wholeText(doc: PmNode): TextStats {
+  const sum: TextStats = { words: 0, charsWithSpaces: 0, charsNoSpaces: 0, paragraphs: 0 };
+  doc.forEach((block, offset) => {
+    let s = blockStats.get(block);
+    if (!s) blockStats.set(block, (s = rangeText(doc, offset, offset + block.nodeSize)));
+    sum.words += s.words;
+    sum.charsWithSpaces += s.charsWithSpaces;
+    sum.charsNoSpaces += s.charsNoSpaces;
+    sum.paragraphs += s.paragraphs;
+  });
+  return sum;
 }
