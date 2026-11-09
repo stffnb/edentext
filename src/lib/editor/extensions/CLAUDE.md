@@ -19,6 +19,8 @@ These extensions are documented separately; read the document before changing th
 
 A frame's `wrapDist` is a plain number (the text side) or `{top, right, bottom, left}` in cm; every reader goes through `wrapGap()` in `image.ts`, and a frame that starts to wrap without one gets `PICTURE_WRAP_GAP`/`BOX_WRAP_GAP` (frames.md, Wrap distance).
 
+`image.ts`'s `imageLine` decorations (an image alone on its line, a block a full-width frame rides) are mapped through an edit and only the textblocks it touched read again (`mapImageLines`); a step without a range, an attribute set in place, reads them all. `tests/unit/mapped-decorations.test.ts` holds a carried set against one built afresh.
+
 ## Other extensions
 
 - **`fontColor.ts`** (`FontColor`) — `color` attr on the TextStyle mark; also emits `data-color` so theme CSS (allBlack) can target color-bearing spans.
