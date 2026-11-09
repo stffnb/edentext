@@ -184,7 +184,30 @@ const tableLine = (node: PMNode): 'row' | 'column' | null => {
 // Every recorded change in document order, adjacent runs of one change merged, across a
 // paragraph mark of it too. Text one author inserted and another struck through is in
 // both: the insertion and its deletion.
+// Kept per doc: the decorations and every review layer ask after each keystroke.
+const revisionsOf = new WeakMap<PMNode, Revision[]>();
 export function revisions(doc: PMNode): Revision[] {
+  let list = revisionsOf.get(doc);
+  if (!list) revisionsOf.set(doc, (list = collectRevisions(doc)));
+  return list;
+}
+
+// Whether a step can bring a change into a document that had none: content or a mark
+// carrying review markup, or a revision attribute. A step type unknown here can.
+const REVIEW_MARKS = new Set(['insertion', 'deletion', 'formatChange']);
+const reviewed = (node: PMNode) => !!(node.attrs.revMark || node.attrs.revFormat) || node.marks.some((m) => REVIEW_MARKS.has(m.type.name));
+function addsReview(step: Step): boolean {
+  if (step instanceof ReplaceStep || step instanceof ReplaceAroundStep) {
+    let found = false;
+    step.slice.content.descendants((node) => { found ||= reviewed(node); return !found; });
+    return found;
+  }
+  if (step instanceof AddMarkStep) return REVIEW_MARKS.has(step.mark.type.name);
+  if (step instanceof AttrStep) return step.attr === 'revMark' || step.attr === 'revFormat';
+  return !(step instanceof RemoveMarkStep);
+}
+
+function collectRevisions(doc: PMNode): Revision[] {
   const out: Revision[] = [];
   const last: Record<RevisionKind, Revision | null> = { insertion: null, deletion: null, formatChange: null };
   // The changes whose paragraph mark closed the block before: they reach the next one's start.
@@ -726,8 +749,19 @@ export const TrackChanges = Extension.create<{ recording: () => boolean; author:
     };
     return [
       new Plugin({
+        // A document without changes keeps none through steps that add none, so typing
+        // there never walks it for its revisions: they are known to be none.
+        state: {
+          init: () => null,
+          apply(tr, _value, old) {
+            if (tr.docChanged && !revisions(old.doc).length && !tr.steps.some(addsReview)) revisionsOf.set(tr.doc, []);
+            return null;
+          },
+        },
         props: {
           decorations(state) {
+            // A document with no change carries no revision mark either, so nothing is gone.
+            if (!revisions(state.doc).length) return DecorationSet.empty;
             // `plain` and the palette are in the key: a display mode, or an author elsewhere
             // in the document, changes what this draws without touching this doc.
             const plain = options.plain(), colors = authorColors(state.doc), palette = [...colors.keys()].join('\n');
