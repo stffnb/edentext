@@ -1,7 +1,7 @@
 // Two clients on one Yjs doc (src/lib/editor/undoYjs.ts), relayed by this script: each
 // undo takes back only its own client's edits, in the text, the page layout and a header,
 // and an undo while recording leaves no recorded change. Concurrent changes to different
-// styles or layout fields both stay. Dev server, Chromium.
+// styles or layout fields both stay. Dev server, any engine (BROWSER).
 import { MOD, checker, devServer, openApp } from '../browser.mjs';
 
 const PORT = +(process.env.COLLAB_PORT ?? 4391);

@@ -2,7 +2,7 @@
 // clients joining through the link. Checks that a joiner gets the starter's document with
 // its layout and zones, that edits and undo work both ways, that the relay sees no plain
 // text, that clients come, go and reload, and that an idle session stays quiet, also
-// when one client lays the pages out differently. Chromium.
+// when one client lays the pages out differently. Any engine (BROWSER).
 import { join } from 'node:path';
 import { MOD, ROOT, checker, devServer, openApp } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
