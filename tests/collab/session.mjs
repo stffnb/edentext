@@ -73,6 +73,8 @@ const caret = async (page, where) => {
   await page.waitForTimeout(150);
   await page.evaluate((w) => document.querySelector('.tiptap-host .tiptap').editor.commands.focus(w), where);
 };
+const SHEET = '/src/lib/styles/sheet.svelte.ts';
+const sheet = (page) => page.evaluate(async (url) => JSON.stringify((await import(url)).styleSheet()), SHEET);
 const sent = (page) => page.evaluate(() => window.__collab.session.stats.sent[1]);
 
 try {
@@ -117,16 +119,25 @@ try {
   check(seen.length > 0 && !['Alpha', 'Beta', 'Ben', 'Anna'].some((w) => all.includes(Buffer.from(w))),
     `the relay passed ${seen.length} frames, none with plain text`);
 
+  await a.evaluate(async (url) => {
+    const m = await import(url);
+    const h = m.styleSheet().paragraph['Heading 2'];
+    m.putStyle({ ...h, text: { ...h.text, fontSizePt: 22 } });
+  }, SHEET);
+  await settle(a);
+  const styled = await sheet(a);
+  check(styled.includes('"fontSizePt":22') && styled === await sheet(b), 'a style change reaches the joiner');
+
   const before = [await sent(a), await sent(b)];
   await a.waitForTimeout(5000);
   const after = [await sent(a), await sent(b)];
-  check(before.join() === after.join(), `an idle session sends no edits (${before} → ${after})`);
+  check(before.join() === after.join(), `an idle session, also after a style change, sends no edits (${before} → ${after})`);
 
   const c = await client('Cleo');
   await joinLink(c, link);
   const vc = await view(c);
   va = await view(a);
-  check(same(va, vc), `a late joiner gets every edit so far (${brief(vc)})`);
+  check(same(va, vc) && await sheet(c) === await sheet(a), `a late joiner gets every edit so far, styles too (${brief(vc)})`);
   const names = await a.evaluate(() => window.__collab.view().peers.map((p) => p.name).sort().join(','));
   const bar = (await a.textContent('.statusbar .collab-btn'))?.trim();
   check(names === 'Ben,Cleo' && /2/.test(bar ?? ''), `the starter sees who is there (${names}; "${bar}")`);

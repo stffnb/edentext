@@ -3,7 +3,7 @@ import type { Transaction } from '@tiptap/pm/state';
 import { history, isHistoryTransaction } from '@tiptap/pm/history';
 import * as Y from 'yjs';
 import { ySyncPlugin, ySyncPluginKey, yUndoPlugin, yUndoPluginKey, prosemirrorToYXmlFragment } from '@tiptap/y-tiptap';
-import { StateStep } from './extensions/stateHistory';
+import { StateStep, stateValues } from './extensions/stateHistory';
 import { pmUndo, setUndoBackend, STATE_RESTORED, type UndoBackend } from './undo';
 import { describeTransaction, resetHistoryLog, syncHistoryLog } from '../utils/historyLog.svelte';
 
@@ -45,6 +45,46 @@ function mapRanges(ranges: number[] | null, tr: Transaction): number[] | null {
   return out;
 }
 
+// Page layout and styles lie in the map field by field and style by style, so two authors
+// changing different ones keep both; any other store id is one key (a zone, the notes).
+const FAMILIES = ['paragraph', 'character', 'table', 'list'];
+type Fields = Record<string, unknown>;
+const SPLIT = new Set(['layout', 'styles']);
+const storeOf = (key: string) => (SPLIT.has(key.slice(0, key.indexOf('/'))) ? key.slice(0, key.indexOf('/')) : key);
+
+function entries(id: string, value: unknown): Map<string, unknown> {
+  const out = new Map<string, unknown>();
+  if (id === 'layout') for (const [k, v] of Object.entries(value as Fields)) out.set(`layout/${k}`, v);
+  else if (id === 'styles') {
+    for (const [k, v] of Object.entries((value as { sheet: Fields }).sheet)) {
+      out.set(`styles/${k}`, FAMILIES.includes(k) ? Object.keys(v as Fields) : v);
+      // A family's own key holds its names in order; a name is encoded, as it may hold a '/'.
+      if (FAMILIES.includes(k)) for (const [name, style] of Object.entries(v as Fields)) out.set(`styles/${k}/${encodeURIComponent(name)}`, style);
+    }
+  } else out.set(id, value);
+  return out;
+}
+
+// A store as the map holds it, in an order every client builds alike: fields sorted, styles
+// in their family's order, a style missing there (added by two at once) after it by name.
+function assemble(id: string, side: Y.Map<unknown>): unknown {
+  if (!SPLIT.has(id)) return side.get(id) ?? null;
+  const own = new Map<string, unknown>();
+  for (const [k, v] of side.entries()) if (k.startsWith(`${id}/`)) own.set(k.slice(id.length + 1), v);
+  const fields = [...own.keys()].filter((k) => !k.includes('/')).sort();
+  if (id === 'layout') return Object.fromEntries(fields.map((k) => [k, own.get(k)]));
+  const sheet: Fields = {};
+  for (const k of [...FAMILIES.filter((f) => own.has(f)), ...fields.filter((f) => !FAMILIES.includes(f))]) {
+    if (!FAMILIES.includes(k)) { sheet[k] = own.get(k); continue; }
+    const names = [...own.keys()].filter((n) => n.startsWith(`${k}/`)).map((n) => decodeURIComponent(n.slice(k.length + 1)));
+    const order = (own.get(k) as string[]).filter((n) => names.includes(n));
+    const rest = names.filter((n) => !order.includes(n)).sort();
+    sheet[k] = Object.fromEntries([...order, ...rest].map((n) => [n, own.get(`${k}/${encodeURIComponent(n)}`)]));
+  }
+  return { sheet };
+}
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
 export { Y };
 
 export type YjsUndo = {
@@ -60,7 +100,12 @@ export type YjsUndo = {
 export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
   const frag = ydoc.getXmlFragment('body');
   const side = ydoc.getMap('state');
-  if (frag.length === 0) prosemirrorToYXmlFragment(editor.state.doc, frag);
+  // The client that brings the text brings every store too, entry by entry, before the
+  // history starts: a first write of old values would cover another's new ones.
+  if (frag.length === 0) {
+    prosemirrorToYXmlFragment(editor.state.doc, frag);
+    ydoc.transact(() => { for (const [id, v] of stateValues()) for (const [k, e] of entries(id, v)) side.set(k, e); });
+  }
   const um = new Y.UndoManager([frag, side], {
     trackedOrigins: new Set([ySyncPluginKey, STATE_ORIGIN]),
     captureTransaction: (t) => t.meta.get('addToHistory') !== false,
@@ -107,26 +152,33 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
     for (const t of appendedTransactions) prev = mapRanges(prev, t);
   };
 
-  // A store change beside the text goes into the map; on its own it is a step of its
-  // own, beside a text change it joins that one (a renamed style and its paragraphs).
+  // A store change beside the text goes into the map, only the entries it changed; on its
+  // own it is a step of its own, beside a text change it joins that one (a renamed style
+  // and its paragraphs).
   const mirror = ({ transaction, appendedTransactions }: { transaction: Transaction; appendedTransactions: Transaction[] }) => {
     const trs = [transaction, ...appendedTransactions];
     if (trs.some((t) => t.getMeta(STATE_RESTORED) || t.getMeta(ySyncPluginKey))) return;
     const steps = trs.flatMap((t) => t.steps.filter((s): s is StateStep => s instanceof StateStep));
     if (!steps.length) return;
     const alone = !trs.some((t) => t.docChanged);
-    // A key the map has not seen yet gets its old value first, outside the history.
-    ydoc.transact(() => { for (const s of steps) if (!side.has(s.id)) side.set(s.id, s.from); });
+    // A zone the map has not seen yet gets its old value first, outside the history.
+    ydoc.transact(() => { for (const s of steps) if (!SPLIT.has(s.id) && !side.has(s.id)) side.set(s.id, s.from); });
     if (alone) stop();
-    ydoc.transact(() => { for (const s of steps) side.set(s.id, s.to); }, STATE_ORIGIN);
+    ydoc.transact(() => {
+      for (const s of steps) {
+        const from = entries(s.id, s.from), to = entries(s.id, s.to);
+        for (const [k, v] of to) if ((!from.has(k) || !same(from.get(k), v)) && !(side.has(k) && same(side.get(k), v))) side.set(k, v);
+        for (const k of from.keys()) if (!to.has(k) && side.has(k)) side.delete(k);
+      }
+    }, STATE_ORIGIN);
     if (alone) { stop(); prev = []; }
   };
 
-  // What an undo (or, later, another author) put back in the map reaches the stores as
-  // a body transaction of `StateStep`s, which their own listeners already apply.
+  // What an undo or another author put back in the map reaches the stores as a body
+  // transaction of `StateStep`s, a whole store each, which their own listeners apply.
   const apply = (keys: Iterable<string>) => {
     const tr = editor.state.tr.setMeta(STATE_RESTORED, true).setMeta('addToHistory', false);
-    for (const key of keys) tr.step(new StateStep(key, null, side.get(key) ?? null));
+    for (const id of new Set([...keys].map(storeOf))) tr.step(new StateStep(id, null, assemble(id, side)));
     if (tr.steps.length) editor.view.dispatch(tr);
   };
   const restore = (ev: Y.YMapEvent<unknown>, t: Y.Transaction) => {

@@ -15,11 +15,19 @@ the history log) and `closeGroup` (image drag). Editing alone keeps ProseMirror'
 `body` unchanged, and the undo stack starts empty from there.
 
 - **One manager, two types.** The fragment `body` holds the text. The map `state` holds the
-  stores that `StateStep`s carry: `layout`, `styles`, `notes`, `language`, and `hf:i:key`
-  as a whole zone's JSON. Each `StateStep` the body dispatches is mirrored into the map. A
-  change the manager (or another client) makes there returns as a body transaction of
-  `StateStep`s with the `STATE_RESTORED` meta, which the existing listeners apply as an undo
-  (`watch.write`, `writeZone`). So a page setup or a header goes back the way it does alone.
+  stores that `StateStep`s carry. `layout` lies there field by field (`layout/<field>`,
+  `sections` as one), `styles` style by style (`styles/<family>/<encoded name>`, beside
+  `styles/<family>` with the names in order, and `styles/outline`), so two authors
+  changing different fields or styles keep both; the same entry goes to the last writer.
+  `notes`, `language` and each zone (`hf:i:key`) stay one value. A `StateStep` keeps whole
+  values; mirroring it writes only the entries that differ between `from` and `to`. The
+  client that brings the text fills the map with every store's entries before the history
+  starts (`stateValues`); a joiner never does, and a zone gets its old value on its first
+  write. A change the manager (or another client) makes there returns as a body
+  transaction with the `STATE_RESTORED` meta, one `StateStep` per store, assembled from all
+  its entries: fields sorted, styles in their family's order and the rest by name, so every
+  client builds the same value. The existing listeners apply it as an undo (`watch.write`,
+  `writeZone`), so a page setup or a header goes back the way it does alone.
 - **Grouping as in the history.** Yjs merges by time alone, so fast edits in different places
   became one step together with edits from before them. `undoYjs.ts` stops capturing where
   prosemirror-history would open a group: an edit not touching the last one's range (its
@@ -46,8 +54,10 @@ now resets the timers.
   `UNDO=yjs npm run test:monkey` runs the monkey test on it: undo back to the opened
   file, redo forward, zones, recording.
 - `node tests/collab/undo.mjs`: two clients, relayed by the script. Each undo takes back
-  only its own client's typing, page layout and header, on both sides. An undo while
-  recording leaves no recorded change.
+  only its own client's typing, page layout, header and style, on both sides. An undo
+  while recording leaves no recorded change. Two styles, a style added and another
+  deleted, and margins against orientation, each changed on both sides before the
+  updates cross, all stay.
 - 177 pages (`05-breaks` × 100), one inserted character, median: 4.9 ms alone, 7.0 ms on
   Yjs. One undo: 9 ms against 19 ms.
 
@@ -101,9 +111,10 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness)─�
 
 `node tests/collab/session.mjs` starts a relay and the dev server and goes through the
 File menu. B joins by the link and gets A's document: JSON, pages and zones. Both type,
-and each undo takes back only its own typing. A page setup arrives on the other side,
-and the caret shows with its name. The relay's frames hold no typed text and no name. An
-idle session sends no updates. A late joiner gets everything. After the starter leaves,
+and each undo takes back only its own typing. A page setup and a style change arrive
+on the other side, and the caret shows with its name. The relay's frames hold no typed
+text and no name. An idle session, also after the style change, sends no updates. A late
+joiner gets everything, styles included. After the starter leaves,
 the others go on, and a reload rejoins. A cut-short link says so. A client with taller
 lines (6 against 7 pages on an index document) stays quiet as well: the index's page
 numbers do not flip between the two. `tests/relay.test.ts` and `tests/collab.test.ts`
