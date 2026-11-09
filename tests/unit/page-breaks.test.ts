@@ -34,12 +34,17 @@ const doc = schema.nodeFromJSON({
 describe('page break carriers', () => {
   it('clears the break in a table cell and keeps the body ones', () => {
     const plugins = (PageBreak as N).config.addProseMirrorPlugins.call({ options: { types: [] } });
-    const state = EditorState.create({ schema, doc, plugins });
-    // Any doc change runs the sweep; the insert itself carries no break.
-    const after = state.apply(state.tr.insertText('!', 1));
+    const state = EditorState.create({ schema, plugins });
+    // The sweep reads what an edit brought in, as loading a file brings in everything.
+    const after = state.apply(state.tr.replaceWith(0, state.doc.content.size, doc.content));
     const kept: string[] = [];
     after.doc.descendants((n) => { if (n.attrs.breakBefore === 'page') kept.push(n.textContent); });
-    expect(kept).toEqual(['!body', 'item']);
+    expect(kept).toEqual(['body', 'item']);
+    // A break set in place on a cell's block goes the same way.
+    let cell = -1;
+    after.doc.descendants((n, pos) => { if (n.type.name === 'paragraph' && n.textContent === 'cell') cell = pos; });
+    const again = after.apply(after.tr.setNodeAttribute(cell, 'breakBefore', 'page'));
+    expect(again.doc.nodeAt(cell)?.attrs.breakBefore).toBeNull();
   });
 });
 

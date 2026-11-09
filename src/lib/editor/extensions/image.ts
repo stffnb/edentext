@@ -9,7 +9,7 @@ import { AddMarkStep, RemoveMarkStep, ReplaceAroundStep, ReplaceStep } from '@ti
 import { dropCursor } from '@tiptap/pm/dropcursor';
 import { closeHistory } from '@tiptap/pm/history';
 import { cmToPx } from '../../storage/pageMargins';
-import { changedRanges } from './spellCheck';
+import { changedRanges } from '../changedRanges';
 import { readVerticalMargins, placeFrameSoon, placeInColumn, freeDragX, sinkSideFloat } from './pageBreaks';
 
 // Inline, as-character image, or a floating text-wrapped frame (wrap = flow mode);
