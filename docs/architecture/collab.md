@@ -57,7 +57,12 @@ now resets the timers.
   only its own client's typing, page layout, header and style, on both sides. An undo
   while recording leaves no recorded change. Two styles, a style added and another
   deleted, and margins against orientation, each changed on both sides before the
-  updates cross, all stay.
+  updates cross, all stay. An image dragged right after typing beside it reaches the
+  other client and goes back in one undo, leaving the typing. In Chromium an IME
+  composition (CDP's `Input.imeSetComposition`) while the other client's typing arrives
+  ends as one word on both and goes back in one undo; Firefox and WebKit have no IME to
+  drive, and synthetic composition events take another path in ProseMirror, so there it
+  is checked by hand only.
 - 177 pages (`05-breaks` × 100), one inserted character, median: 4.9 ms alone, 7.0 ms on
   Yjs. One undo: 9 ms against 19 ms.
 

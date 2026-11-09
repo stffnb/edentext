@@ -74,6 +74,20 @@ const putStyle = (page, name, text, para) => page.evaluate(async ([url, n, t, p]
 }, [SHEET, name, text, para]);
 const dropStyle = (page, name) => page.evaluate(async ([url, n]) => (await import(url)).deleteStyle(n), [SHEET, name]);
 const margin = (page) => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--user-margin-left').trim());
+const paras = (page) => page.evaluate(() => {
+  const out = [];
+  document.querySelector('.tiptap-host .tiptap').editor.state.doc.forEach((p) => out.push(p.textContent));
+  return out;
+});
+// Which paragraph (from 1) holds the image, how many there are, and the text.
+const pictures = (page) => page.evaluate(() => {
+  const doc = document.querySelector('.tiptap-host .tiptap').editor.state.doc;
+  let at = 0, count = 0;
+  doc.forEach((p, _o, i) => p.descendants((n) => { if (n.type.name === 'image') { count++; at = i + 1; } }));
+  return { at, count, text: doc.textContent.slice(0, 12) };
+});
+const ENGINE = process.env.BROWSER ?? 'chromium';
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 try {
   await body(a).click();
@@ -159,6 +173,54 @@ try {
   [va, vb] = await both();
   const [ma, mb] = [await margin(a), await margin(b)];
   check(ma === mb && ma !== wide && va.width === vb.width && va.width !== portrait, `margins and orientation set at once both stay (${ma} ${va.width}px | ${mb} ${vb.width}px)`);
+
+  // An IME composition on A while B's typing arrives: one word, one undo step. Only
+  // Chromium has a real IME to drive (CDP); synthetic events would take another path.
+  if (ENGINE === 'chromium') {
+    await a.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.setContent('<p>One</p><p>Two</p>'));
+    await pause();
+    await a.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.focus(4));
+    const ime = await a.context().newCDPSession(a);
+    for (const s of ['に', 'にほ', 'にほん']) {
+      await ime.send('Input.imeSetComposition', { text: s, selectionStart: s.length, selectionEnd: s.length });
+      await a.waitForTimeout(120);
+    }
+    await body(b).click();
+    await b.keyboard.press(`${MOD}+End`);
+    await b.keyboard.type(' x');
+    await b.waitForTimeout(100);
+    await relay();
+    await ime.send('Input.imeSetComposition', { text: 'にほんご', selectionStart: 4, selectionEnd: 4 });
+    await ime.send('Input.insertText', { text: '日本語' });
+    await pause();
+    let [pa, pb] = [await paras(a), await paras(b)];
+    check(pa.join('|') === 'One日本語|Two x' && pb.join('|') === pa.join('|'), `a composition while the other types ends as one word on both (${pa.join('|')} | ${pb.join('|')})`);
+    await undo(a);
+    [pa, pb] = [await paras(a), await paras(b)];
+    check(pa.join('|') === 'One|Two x' && pb.join('|') === pa.join('|'), `one undo takes back the composed word (${pa.join('|')} | ${pb.join('|')})`);
+  } else console.log(`- IME composition: not driven in ${ENGINE}`);
+
+  // An image dragged right after typing beside it is a step of its own (closeGroup), and
+  // its moves are one step together.
+  await a.evaluate((src) => document.querySelector('.tiptap-host .tiptap').editor.commands.setContent({ type: 'doc', content: [
+    { type: 'paragraph', content: [{ type: 'image', attrs: { src, width: 120, height: 60, wrap: 'right' } }, { type: 'text', text: 'One with its picture' }] },
+    ...Array.from({ length: 8 }, (_, i) => ({ type: 'paragraph', content: [{ type: 'text', text: `line ${i} ${'word '.repeat(30)}` }] })),
+  ] }), PNG);
+  await pause();
+  await a.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.focus(2));
+  await a.keyboard.type('Go ');
+  const box = await a.locator('.tiptap-host .tiptap .image-node').first().boundingBox();
+  await a.mouse.move(box.x + 60, box.y + 30);
+  await a.mouse.down();
+  await a.mouse.move(box.x - 200, box.y + 300, { steps: 12 });
+  await a.mouse.up();
+  await pause();
+  let [ia, ib] = [await pictures(a), await pictures(b)];
+  check(ia.at > 1 && ia.count === 1 && JSON.stringify(ia) === JSON.stringify(ib), `a dragged image reaches the other client (${JSON.stringify(ia)} | ${JSON.stringify(ib)})`);
+  await undo(a);
+  [ia, ib] = [await pictures(a), await pictures(b)];
+  check(ia.at === 1 && ia.count === 1 && ia.text.startsWith('Go One') && JSON.stringify(ia) === JSON.stringify(ib),
+    `one undo puts the image back and keeps the typing before it (${JSON.stringify(ia)} | ${JSON.stringify(ib)})`);
 
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (e) {
