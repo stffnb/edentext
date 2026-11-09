@@ -122,7 +122,11 @@ text and no name. An idle session, also after the style change, sends no updates
 joiner gets everything, styles included. After the starter leaves,
 the others go on, and a reload rejoins. A cut-short link says so. A client with taller
 lines (6 against 7 pages on an index document) stays quiet as well: the index's page
-numbers do not flip between the two. `tests/relay.test.ts` and `tests/collab.test.ts`
+numbers do not flip between the two. The assistant on the starter, from a provider the
+script answers itself (`page.route`, no model and no network): its text replacement and
+page setup reach the joiner; with both recording, the joiner keeps the assistant's marks
+and adds none of its own; the starter's undo takes back the page setup, then the text, on
+both sides. `tests/relay.test.ts` and `tests/collab.test.ts`
 cover the relay's rooms and limits and the sealing. Both scripts run in Chromium, Firefox
 and WebKit (`BROWSER`, each leg of the CI's browser matrix).
 

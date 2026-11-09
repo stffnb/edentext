@@ -1,8 +1,9 @@
 // A shared session end to end: the real relay (relay/server.mjs), the dev server, and
 // clients joining through the link. Checks that a joiner gets the starter's document with
 // its layout and zones, that edits and undo work both ways, that the relay sees no plain
-// text, that clients come, go and reload, and that an idle session stays quiet, also
-// when one client lays the pages out differently. Any engine (BROWSER).
+// text, that clients come, go and reload, that the assistant's edits travel
+// and undo like typed ones, and that an idle session stays quiet, also when one client
+// lays the pages out differently. Any engine (BROWSER).
 import { join } from 'node:path';
 import { MOD, ROOT, checker, devServer, openApp } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
@@ -30,7 +31,11 @@ const ready = (page) => page.waitForFunction(() => document.querySelector('.tipt
 const live = (page) => page.waitForFunction(() => window.__collab?.view()?.status === 'live', null, { timeout: 20_000 });
 async function openDoc(page, doc) {
   await page.goto(URL0, { waitUntil: 'load' });
-  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('edentext-user-name', 'Anna'); });
+  await page.evaluate((ai) => {
+    localStorage.clear();
+    localStorage.setItem('edentext-user-name', 'Anna');
+    localStorage.setItem('edentext-ai', JSON.stringify(ai));
+  }, AI);
   await page.reload({ waitUntil: 'load' });
   await ready(page);
   await page.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus', doc));
@@ -76,6 +81,29 @@ const caret = async (page, where) => {
 const SHEET = '/src/lib/styles/sheet.svelte.ts';
 const sheet = (page) => page.evaluate(async (url) => JSON.stringify((await import(url)).styleSheet()), SHEET);
 const sent = (page) => page.evaluate(() => window.__collab.session.stats.sent[1]);
+// The assistant's provider, scripted: two tool calls, then a closing word. Nothing leaves.
+const AI = { enabled: true, provider: 'openai', endpoint: 'http://mock.test/v1', apiKey: '', model: 'm' };
+let aiRequests = 0;
+await a.route('http://mock.test/**', async (route) => {
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST' };
+  if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+  aiRequests++;
+  const msgs = JSON.parse(route.request().postData() ?? '{}').messages ?? [];
+  const tool = (index, name, args) => ({ index, id: `c${index}`, function: { name, arguments: JSON.stringify(args) } });
+  const delta = msgs.at(-1)?.role === 'tool' ? { content: '<p>Done.</p>' }
+    : { tool_calls: [tool(0, 'replace_text', { paragraph: 1, find: 'ipsum', replace: 'Slow' }), tool(1, 'set_page', { orientation: 'portrait' })] };
+  await route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'text/event-stream' }, body: `data: ${JSON.stringify({ choices: [{ delta }] })}\n\ndata: [DONE]\n\n` });
+});
+const RECORD = '/src/lib/storage/trackChanges.svelte.ts';
+const record = (page, on) => page.evaluate(async ([url, v]) => (await import(url)).setRecordChanges(v), [RECORD, on]);
+// Every recorded change's author in the body.
+const authors = (page) => page.evaluate(() => {
+  const out = new Set();
+  document.querySelector('.tiptap-host .tiptap').editor.state.doc.descendants((n) => {
+    for (const m of n.marks) if (m.type.name === 'insertion' || m.type.name === 'deletion') out.add(m.attrs.author);
+  });
+  return [...out].sort().join(',');
+});
 
 try {
   await openDoc(a, '16-hf-variants.odt');
@@ -133,6 +161,33 @@ try {
   const after = [await sent(a), await sent(b)];
   check(before.join() === after.join(), `an idle session, also after a style change, sends no edits (${before} → ${after})`);
 
+  // The assistant on A, both recording: its text change and page setup reach B, B keeps
+  // the assistant's marks without recording them again, and A's undo takes back each.
+  await record(a, true);
+  await record(b, true);
+  await a.locator('[data-cmd="aiPane"]:visible').first().click();
+  await a.fill('.ai-pane textarea', 'Slower, and portrait');
+  await a.keyboard.press('Enter');
+  await a.waitForSelector('.ai-pane .tool', { timeout: 15_000 }).catch(() => {});
+  await a.waitForTimeout(1500);
+  [va, vb] = [await view(a), await view(b)];
+  const [aa, ab] = [await authors(a), await authors(b)];
+  check(same(va, vb) && va.text.includes('Slow') && va.width < 1000 && aiRequests === 2,
+    `the assistant's tool calls reach the joiner (${brief(va)} | ${brief(vb)}; ${aiRequests} requests to the mock)`);
+  check(aa === 'AI' && ab === 'AI', `the joiner keeps the assistant's recorded changes and records none of its own (${aa} | ${ab})`);
+  await caret(a, 'end');
+  await a.keyboard.press(`${MOD}+z`);
+  await settle(a);
+  [va, vb] = [await view(a), await view(b)];
+  check(same(va, vb) && va.width > 1000 && va.text.includes('Slow'), `A's first undo takes back the assistant's page setup on both (${brief(va)} | ${brief(vb)})`);
+  await a.keyboard.press(`${MOD}+z`);
+  await settle(a);
+  [va, vb] = [await view(a), await view(b)];
+  check(same(va, vb) && !va.text.includes('Slow') && va.text.includes('ipsum') && await authors(b) === '',
+    `A's next undo takes back the assistant's text change on both (${brief(va)} | ${brief(vb)})`);
+  await record(a, false);
+  await record(b, false);
+
   const c = await client('Cleo');
   await joinLink(c, link);
   const vc = await view(c);
@@ -141,6 +196,7 @@ try {
   const names = await a.evaluate(() => window.__collab.view().peers.map((p) => p.name).sort().join(','));
   const bar = (await a.textContent('.statusbar .collab-btn'))?.trim();
   check(names === 'Ben,Cleo' && /2/.test(bar ?? ''), `the starter sees who is there (${names}; "${bar}")`);
+
 
   await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');
