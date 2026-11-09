@@ -1,8 +1,56 @@
 # Collaboration
 
-Shared editing runs on Yjs through `@tiptap/y-tiptap`. The engine choice and the spike
-behind it live on the branch `spike/collab`. This file covers what is built: a session
-started from the File menu and joined through a link, over a relay that cannot read it.
+Shared editing runs on Yjs through `@tiptap/y-tiptap`. This file covers why, and what is
+built: a session started from the File menu and joined through a link, over a relay that
+cannot read it.
+
+## Engine
+
+A spike (2026-11-08) ran Yjs and `prosemirror-collab` against the same checks on twelve
+corpus documents. Both passed every one, so the choice is about cost, not feasibility.
+
+- **Why Yjs.** Its relay orders nothing and stores nothing: it passes on encrypted frames.
+  `prosemirror-collab` needs one place that fixes the order of steps, so a relay with a
+  version counter and a step log, online for every session. Yjs also sends fewer and
+  smaller messages and joins long documents faster (tables below).
+- **What it costs.** Undo is rebuilt (`undoYjs.ts`) on y-tiptap and Yjs internals, so the
+  stack is pinned exactly and updated as one Dependabot group (`collab`). Every store
+  beside the text needs its counterpart in the map `state`. Typing on long documents costs
+  more: 7.0 against 4.9 ms per character at 177 pages (Undo, Checks).
+- **Only in a session.** Yjs is attached while a session runs; alone the editor keeps
+  ProseMirror's history and pays nothing.
+- **When to revisit.** If the relay has to keep state anyway, for instance sessions that
+  live on without anyone in them, the main reason for Yjs is gone.
+
+Of what the spike left untested, the session tests now cover Firefox and WebKit, long
+documents, IME composition (Chromium), image drag, the assistant's edits, four clients and
+clients with different line heights; clients of different versions refuse each other.
+Large pictures remain open.
+
+Spike results (Chromium, dev server, one machine; `pm` is `prosemirror-collab`):
+
+| Check | Yjs | pm |
+|---|---|---|
+| Join, idle, 8 rounds of concurrent random edits, pagination, NodeViews, carets, recording | ✓ | ✓ |
+| Overlapping comments, recorded changes by two authors, 3 clients × 10 rounds of structural edits | ✓ | ✓ |
+| 3 clients with 0–250 ms random delay; one offline for 1.5 s: converge | ✓ | ✓ |
+| Messages sent in the latency run (A/B/C) | 21/21/23 | 33/173/128, 277 refused |
+| Bytes per keystroke on the wire | ~53 | ~317 (step JSON) |
+| Applying a remote message while typing, average / max | 0.8 / 1.4 ms | 0.25 / 1.1 ms |
+
+Long documents (`05-breaks` repeated), spike binding without batching:
+
+| | 177 pages | 442 pages |
+|---|---|---|
+| Keystroke alone / Yjs / pm, median | 5.0 / 9.9 / 4.8 ms | 11.7 / 23.6 / 14.5 ms |
+| Remote update applied, Yjs / pm | 8.7 / 2.7 ms | 22 / 6.8 ms |
+| Join, Yjs: time, payload | 0.7 s, 1.2 MB | 1.3 s, 2.9 MB |
+| Join, pm: time, payload | 1.6 s, 2.2 MB | 6.9 s, 5.4 MB |
+
+Under latency `prosemirror-collab` resent every unconfirmed step on each transaction, so
+refusals piled up; a real client would keep one batch in flight. Neither engine marks a
+remote transaction for the history, and `trackChanges.ts` treats it as a rebuild, so
+recording never marks or replays another client's edits.
 
 ## Undo
 
@@ -69,6 +117,11 @@ now resets the timers.
 Not covered yet: `test:dom` runs the built app, which has no `?undo=yjs`. Cross-client
 grouping (a step's range mapped through remote edits) is checked only through the
 two-client test.
+
+Known gaps: a remote change to a store while one's own change to it still waits in
+`noteState`'s 500 ms window loses one's own, and the commit may take the remote value as
+one's own; fixing it means rebasing `w.from`. A document opened during a session clears
+the manager but does not refill the map `state`.
 
 ## Sessions
 
