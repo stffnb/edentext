@@ -119,7 +119,8 @@ File menu. B joins by the link and gets A's document: JSON, pages and zones. Bot
 and each undo takes back only its own typing. A page setup and a style change arrive
 on the other side, and the caret shows with its name. The relay's frames hold no typed
 text and no name. An idle session, also after the style change, sends no updates. A late
-joiner gets everything, styles included. After the starter leaves,
+joiner gets everything, styles included, and a fourth client joining after it types
+and converges with the other three. After the starter leaves,
 the others go on, and a reload rejoins. A cut-short link says so. A client with taller
 lines (6 against 7 pages on an index document) stays quiet as well: the index's page
 numbers do not flip between the two. The assistant on the starter, from a provider the

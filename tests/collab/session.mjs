@@ -1,7 +1,7 @@
 // A shared session end to end: the real relay (relay/server.mjs), the dev server, and
 // clients joining through the link. Checks that a joiner gets the starter's document with
 // its layout and zones, that edits and undo work both ways, that the relay sees no plain
-// text, that clients come, go and reload, that the assistant's edits travel
+// text, that clients come, go and reload (four at once), that the assistant's edits travel
 // and undo like typed ones, and that an idle session stays quiet, also when one client
 // lays the pages out differently. Any engine (BROWSER).
 import { join } from 'node:path';
@@ -197,6 +197,17 @@ try {
   const bar = (await a.textContent('.statusbar .collab-btn'))?.trim();
   check(names === 'Ben,Cleo' && /2/.test(bar ?? ''), `the starter sees who is there (${names}; "${bar}")`);
 
+  const d4 = await client('Dan');
+  await joinLink(d4, link);
+  await caret(d4, 'end');
+  await d4.keyboard.type(' Delta');
+  await caret(c, 'start');
+  await c.keyboard.type('Cleo ');
+  await settle(a);
+  await d4.waitForTimeout(600);
+  const four = await Promise.all([a, b, c, d4].map(view));
+  check(four.every((v) => same(v, four[0])) && four[0].text.startsWith('Cleo ') && four[0].text.endsWith(' Delta'),
+    `a fourth client joins late and types, and all four converge (${four.map(brief).join(' | ')})`);
 
   await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');
