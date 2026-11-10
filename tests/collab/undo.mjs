@@ -34,6 +34,8 @@ await b.evaluate((s) => {
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, Uint8Array.from(s), 'relay');
   window.__yjsUndo = attachYjsUndo(document.querySelector('.tiptap-host .tiptap').editor, ydoc);
+  // A writes the repairs, as the client bound first does in a session.
+  window.__yjsUndo.setRepairer(() => false);
 }, state);
 await outbox(a);
 await outbox(b);

@@ -88,11 +88,20 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   let status: SessionStatus = 'connecting';
   let peerCount = 1;
   let binding: YjsUndo | null = null;
+  let repairer: (() => boolean) | null = null;
   let joining = join;
   // The others' carets and selections, drawn as decorations in their colours, and the
   // pictures put in from now on; one registration, as each rebuilds every plugin view.
   const bind = (b: YjsUndo) => {
     binding = b;
+    // The repairer is the client bound longest (lowest `rank`, then id): one joining later
+    // ranks after everyone it sees, so the role moves only when its holder leaves.
+    const ranks = [...awareness.getStates()].filter(([id]) => id !== ydoc.clientID).map(([, s]) => s.rank).filter((r) => typeof r === 'number');
+    const rank = join ? Math.max(0, ...ranks) + 1 : 0;
+    awareness.setLocalStateField('rank', rank);
+    repairer = () => [...awareness.getStates()].every(([id, s]) =>
+      id === ydoc.clientID || typeof s.rank !== 'number' || s.rank > rank || (s.rank === rank && id > ydoc.clientID));
+    b.setRepairer(repairer);
     editor.registerPlugin(yCursorPlugin(awareness), (p, plugins) => [...plugins, p, pictures.plugin]);
   };
 
@@ -139,6 +148,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   const onPresence = ({ added, updated, removed }: Change, origin: unknown) => {
     if (origin === 'local') send(PRESENCE, encodeAwarenessUpdate(awareness, [...added, ...updated, ...removed]));
     if (added.length || removed.length) pictures.recheck();
+    if (binding && repairer && removed.length) binding.setRepairer(repairer);
     changed();
   };
   awareness.on('update', onPresence);
@@ -351,7 +361,8 @@ export function joinSession(editor: Editor, key: string, host: SessionHost): Ses
     if (!(await host.load(meta.get('snapshot') as Uint8Array, String(meta.get('name') ?? '')))) return null;
     // The start file's pictures are held, under the keys the shared doc names them by.
     keyPictures(editor.state);
-    const binding = attachYjsUndo(editor, ydoc);
+    // Repairs wait for the rank the session gives it on binding.
+    const binding = attachYjsUndo(editor, ydoc, () => false);
     binding.applyState();
     return binding;
   });

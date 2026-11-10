@@ -33,41 +33,58 @@ No match, no move: a block deleted outright stays deleted, typing and all.
 ### Repairs (`editor/yjsRepair.ts`)
 
 y-tiptap applies another client's update (or an undo) inside its mutex, so what the plugins'
-`appendTransaction` repairs after it (table cells, note order and numbers, list starts)
-stayed local: the editors drifted apart over the same Yjs body, and a later local edit sent
-the repair under its own author. Now a microtask after such a transaction writes the
-document into the fragment, with a client id hashed from the Yjs state (state vector and
-delete set) and the document: two clients repairing the same state write the same items,
-and Yjs keeps one. Repairs therefore have to depend on the document alone, and so does the
-diff that writes them: it starts from an empty node mapping, not the binding's. The id's low
-byte (`0xa5`) marks it; an update holding only repair items gets no repair in reply, which
-bounds two clients whose repairs differ (a value read from their own settings) to one round.
-`holdsForeign` (the undo's delete filter) ignores repair items. A table row longer than most
-loses empty cells past that width (`tableRepair.ts`) before prosemirror-tables' `fixTables`
-pads the short ones, so a column undone after another's row went in leaves no extra column.
+`appendTransaction` repairs after it (table cells, note sections, order and numbers, list
+starts) is not written. Every client draws it; one, the **repairer**, writes it. The others
+keep it as an overlay: the plugin `collabRepair` holds the shared doc as this client knows
+it (`base`), and y-tiptap's write after a local edit gets `base` with the edit's steps
+moved onto it (rebased as `prosemirror-collab` does), never the overlay. The repairer's
+version arrives as an update, the redraw takes the overlay away and nothing is left to
+repair. So each repair is written once, under a real client id, in a transaction of its
+own (`REPAIR_ORIGIN`, outside every undo stack), and per-client inputs (notes counted per
+page from one's own pagination) stay local instead of answering each other.
 
-The notes plugin runs its passes (one section, anchor order, numbers) to a fixed point in
-one appended transaction: ProseMirror hands a plugin's appended transaction to the other
+- **Who repairs.** In a session the client bound longest: `rank` in the awareness, 0 for
+  the starter, one past every rank a joiner sees, the id breaking ties. The role moves only
+  when its holder's awareness goes; the next one then writes what it holds. Alone, and in
+  the scripts' pairs, the first client.
+- **An edit into the overlay** (typing in a cell only the overlay pads) cannot be moved
+  onto `base`: it is refused with `collab: edit inside a repair not yet shared`, until the
+  repairer's version comes. A repair after one's own edit is part of that edit, as alone.
+- **Moves.** A move is a rewrite in Yjs, so the notes plugin moves as little as it can:
+  the fullest note section stays, the others' notes join it, blocks past it go ahead of it,
+  and anchor order keeps the longest run of notes already in order. What is typed into a
+  moved note meanwhile is the rescue's.
+- `holdsForeign` (the undo's delete filter) counts another client's text and inline
+  objects, not its empty elements, so a padding cell keeps no row of an undone insert.
+
+A table row longer than most loses empty cells past that width (`tableRepair.ts`) before
+prosemirror-tables' `fixTables` pads the short ones, so a column undone after another's row
+went in leaves no extra column. The notes plugin runs its passes to a fixed point in one
+appended transaction: ProseMirror hands a plugin's appended transaction to the other
 plugins only. The document admits note sections anywhere (`extensions.ts`), so two first
-notes added at once make two sections Yjs can hold; the plugin merges them into one at the
-end. Before, the second section did not fit the schema: y-tiptap's projection left it out,
-positions computed on the fragment fell beyond the document (`RangeError` in
-`restoreRelativeSelection`), and the next local edit deleted it with its note.
+notes added at once make two sections Yjs can hold and the projection keeps.
+
+`collab-repair.test.ts` relays three clients' conflicting edits (a column and a row, two
+first footnotes, typing) in random orders: one doc everywhere, the repairs in it once, and
+nothing written by any client but the repairer after its own edits.
 
 ### Binding guard
 
-y-tiptap restores the caret by walking the fragment; where the document drawn from it
-differs, a position falls outside it and the whole update would be lost to the throw.
-`attachRepair` wraps the binding's observer: a `RangeError` there redraws the document from
-the fragment (`_forceRerender`) and logs `collab: caret not restorable`. The soak run counts
-those lines.
+Shared content that does not fit the schema pauses the binding (y-tiptap's
+`onInvalidContent`): no edits, no writes, `collab: paused` and the `collab-paused` window
+event, until an update fits again; without it y-tiptap deletes that content from the shared
+doc. y-tiptap restores the caret by walking the fragment; where a position falls outside,
+the update would be lost to the throw. `attachRepair` wraps the binding's observer: a
+`RangeError` there redraws the document from the fragment (`collab: caret not restorable`),
+and a redraw that is not the fragment's projection, or not valid, pauses the binding the
+same way. The soak run counts redraws and fails on a pause.
 
 ## Matrix
 
 Columns as the test checks them. **same**: both docs and fragments equal. **valid**:
 `doc.check()`, rectangular tables, notes numbered 1…n. **clean**: applying the other's
 update did not throw. **kept**: B's text at its place (A's deliberate deletion excepted).
-**quiet**: no update after the exchange. **undo**: A's undo leaves both at B's doc alone.
+**quiet**: no update after the exchange but the repairer's (A's) one. **undo**: A's undo leaves both at B's doc alone.
 `~` varies between runs. Measured 2026-11-10, Chromium; Before is R3's measurement.
 
 | A | B | same | valid | clean | kept | quiet | undo | Before |
@@ -118,6 +135,9 @@ update did not throw. **kept**: B's text at its place (A's deliberate deletion e
   `…lazy og.d` on B, the same state vectors, nothing pending. The redone items' origins
   depend on the undoing client's tombstones. The script starts every row from fresh docs;
   the soak run would show it as Yjs bodies apart.
+- **Waiting for the repairer.** Until its version arrives (one relay round; up to
+  awareness's 30 s if its holder vanished unannounced) an edit inside the overlay is
+  refused; the soak run counts these lines (one in 128 ops, 2026-11-10).
 - **Derived values read from a client's own state** (notes counted per page, from that
-  client's pagination) can differ between clients; the repair rule above stops the replies
-  after one round, and the editors can then show different numbers until the next edit.
+  client's pagination) can differ between clients: the shared doc holds the repairer's,
+  each editor shows its own, and a client's edit writes its own with it.

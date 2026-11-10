@@ -62,7 +62,7 @@ New, beyond the matrix:
 - **A derived attr apart over the same Yjs body** (fixed): once a note's label (`text`)
   stayed `""` on one client and `1` on three, with all four Yjs bodies equal. A plugin's
   `appendTransaction` after a remote transaction ran inside y-tiptap's mutex, so its fix
-  stayed local; repairs now reach the shared doc (`collab-conflicts.md`, Repairs).
+  stayed local; the repairer now writes them (`collab-conflicts.md`, Repairs).
 - **Undo after a split** is the matrix's displacement seen from the other side: text that
   Enter, an inline node or typing over a selection moved into a new element belongs to that
   element's author, so its writer's undo leaves it. Text the other author had not seen is

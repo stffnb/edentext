@@ -6,20 +6,25 @@ import { ySyncPlugin, ySyncPluginKey, yUndoPlugin, yUndoPluginKey, prosemirrorTo
 import { StateStep, commitState, stateValues } from './extensions/stateHistory';
 import { pmUndo, setUndoBackend, STATE_RESTORED, type UndoBackend } from './undo';
 import { describeTransaction, resetHistoryLog, syncHistoryLog } from '../utils/historyLog.svelte';
-import { attachRepair, bindingOf, isRepairClient, ownClientId } from './yjsRepair';
+import { attachRepair, bindingOf, repairKey } from './yjsRepair';
 import { attachRescue } from './yjsRescue';
 
 // Origin of the side stores' writes into the shared doc (a `StateStep` mirrored).
 const STATE_ORIGIN = Symbol('stateHistory');
+/** Window event: the shared doc no longer fits this editor, so it neither edits nor writes. */
+export const COLLAB_PAUSED = 'collab-paused';
 
-// Whether a block holds live content of another client. y-tiptap's own filter keeps every
-// paragraph with content, so undoing an Enter left the new paragraph behind. A repair's
-// items (an empty cell padding a row) belong to no one.
-function holdsForeign(type: Y.AbstractType<unknown>, me: number): boolean {
+// Whether a block holds another client's live text or inline object. y-tiptap's own filter
+// keeps every paragraph with content, so undoing an Enter left the new paragraph behind.
+// Another client's empty element (a repair's cell padding a row) holds nothing of theirs.
+function holdsForeign(type: Y.AbstractType<unknown>, me: number, leaf: (name: string) => boolean): boolean {
   for (let it = type._start; it; it = it.right) {
     if (it.deleted) continue;
-    if (it.id.client !== me && !isRepairClient(it.id.client)) return true;
-    if (it.content instanceof Y.ContentType && holdsForeign(it.content.type, me)) return true;
+    if (it.content instanceof Y.ContentType) {
+      const child = it.content.type;
+      if (holdsForeign(child, me, leaf)) return true;
+      if (it.id.client !== me && child instanceof Y.XmlElement && leaf(child.nodeName)) return true;
+    } else if (it.id.client !== me && it.content instanceof Y.ContentString) return true;
   }
   return false;
 }
@@ -92,6 +97,8 @@ export { Y };
 
 export type YjsUndo = {
   ydoc: Y.Doc; undoManager: Y.UndoManager; detach: () => void;
+  /** Who writes the repairs after remote changes (yjsRepair.ts); alone, this client. */
+  setRepairer: (repairs: () => boolean) => void;
   /** Puts every store the map holds into effect: a joiner's, after its start snapshot. */
   applyState: () => void;
 };
@@ -100,8 +107,7 @@ export type YjsUndo = {
  * The body's undo on Yjs: the text in the fragment `body`, the stores beside it (`StateStep`
  * ids) in the map `state`, both under one manager that only takes back this client's edits.
  */
-export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
-  ownClientId(ydoc);
+export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc(), repairs: () => boolean = () => true): YjsUndo {
   const frag = ydoc.getXmlFragment('body');
   const side = ydoc.getMap('state');
   // The client that brings the text brings every store too, entry by entry, before the
@@ -110,10 +116,11 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
     prosemirrorToYXmlFragment(editor.state.doc, frag);
     ydoc.transact(() => { for (const [id, v] of stateValues()) for (const [k, e] of entries(id, v)) side.set(k, e); });
   }
+  const leaf = (name: string) => !!editor.schema.nodes[name]?.isLeaf;
   const um = new Y.UndoManager([frag, side], {
     trackedOrigins: new Set([ySyncPluginKey, STATE_ORIGIN]),
     captureTransaction: (t) => t.meta.get('addToHistory') !== false,
-    deleteFilter: (item) => !(item.content instanceof Y.ContentType) || !holdsForeign(item.content.type, ydoc.clientID),
+    deleteFilter: (item) => !(item.content instanceof Y.ContentType) || !holdsForeign(item.content.type, ydoc.clientID, leaf),
   });
 
   // y-tiptap's undo plugin destroys the manager whenever the plugin views rebuild, which
@@ -215,9 +222,17 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
   };
 
   editor.unregisterPlugin('history');
-  const sync = ySyncPlugin(frag);
+  // Shared content that does not fit the schema pauses editing and writing, instead of
+  // y-tiptap deleting it from the shared doc; it resumes with an update that fits.
+  const paused = (e: Error) => {
+    console.error('collab: paused,', e.message);
+    window.dispatchEvent(new CustomEvent(COLLAB_PAUSED, { detail: e.message }));
+  };
+  const sync = ySyncPlugin(frag, { onInvalidContent: paused });
   const binding = bindingOf(sync);
-  const detachRepair = attachRepair(editor, ydoc, binding);
+  const repair = attachRepair(editor, ydoc, binding, paused);
+  repair.setRepairer(repairs);
+  editor.registerPlugin(repair.plugin);
   editor.registerPlugin(sync);
   const detachRescue = attachRescue(editor, ydoc, binding, um);
   editor.registerPlugin(yUndoPlugin({ undoManager: um }));
@@ -230,16 +245,17 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
 
   return {
     ydoc, undoManager: um,
+    setRepairer: repair.setRepairer,
     applyState: () => apply([...side.keys()]),
     detach() {
-      detachRepair();
+      repair.detach();
       detachRescue();
       side.unobserve(restore);
       editor.off('beforeTransaction', before);
       editor.off('transaction', mirror);
       editor.off('transaction', track);
       // Together: the undo plugin's view needs the sync plugin while the views rebuild.
-      editor.unregisterPlugin([yUndoPluginKey, ySyncPluginKey]);
+      editor.unregisterPlugin([yUndoPluginKey, ySyncPluginKey, repairKey]);
       editor.registerPlugin(history({ depth: 100, newGroupDelay: 500 }));
       setUndoBackend(pmUndo);
       destroy();
