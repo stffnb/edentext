@@ -55,9 +55,10 @@
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { userName, setUserName } from './lib/storage/userName.svelte';
   import { embedded, attribution, whiteLabel, collabKey } from './lib/embed/mode';
-  import CollabDialog from './lib/components/CollabDialog.svelte';
+  import CollabDialog, { type CollabNotice } from './lib/components/CollabDialog.svelte';
   import { zoneHolder } from './lib/collab/zones.svelte';
-  import { unload } from './lib/collab/leave';
+  import { takeOpening, unload, type Opening } from './lib/collab/leave';
+  import { SHELVED, TEMPLATES } from './lib/templates/registry';
   import { collabRelay, collabView, joinCollab, leaveCollab, probeRelay, startCollab, type SessionApp } from './lib/collab/appSession.svelte';
   import { startBridge, notify, type EmbedSettings, type ExportFormat } from './lib/embed/bridge';
   import { printMarkup } from './lib/storage/printMarkup.svelte';
@@ -876,7 +877,7 @@
   }
 
   function handleNew() {
-    if (!editor || embedded) return;
+    if (!editor || embedded || leaveFirst({ blank: true })) return;
     if (isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
     startBlank();
     editor.commands.focus();
@@ -884,9 +885,9 @@
 
   // A built-in template: a full reset, then the template's content and side-cars —
   // the same set an .ott import adopts. No file handle, so the first Save asks where.
-  function applyTemplate(entry: TemplateEntry) {
-    if (!editor) return;
-    if (isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
+  function applyTemplate(entry: TemplateEntry, asked = false) {
+    if (!editor || (!asked && leaveFirst({ template: entry.id }))) return;
+    if (!asked && isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
     const data = entry.build();
     loadContent(data.content);
     documentEpoch++;
@@ -1055,10 +1056,11 @@
     }
   }
 
-  // `host` is an embedding application's load: it replaces the document unasked, and
-  // hears of warnings and failures instead of the reader. False = nothing was opened.
-  async function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string, host?: { warn: (warnings: string[]) => void }): Promise<boolean> {
-    if (!editor) return false;
+  // `host` is an embedding application's or the session's load: it replaces the document
+  // unasked, and hears of warnings and failures instead of the reader. `asked`: the reader
+  // already agreed to replace it. False = nothing was opened.
+  async function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string, host?: { warn: (warnings: string[]) => void }, asked = false): Promise<boolean> {
+    if (!editor || (!host && leaveFirst({ file: { bytes, name: sourceName ?? '', handle } }))) return false;
     try {
       // Before anything reads the archive: an encrypted file is not one yet.
       let password: string | null = null;
@@ -1086,7 +1088,7 @@
 
       const hasContent = editor.state.doc.textContent.length > 0 || editor.state.doc.childCount > 1;
       busyTask = null;
-      if (hasContent && !host && !confirm(t().dialogs.confirmReplace)) {
+      if (hasContent && !host && !asked && !confirm(t().dialogs.confirmReplace)) {
         return false;
       }
       busyTask = 'loading';
@@ -1524,31 +1526,40 @@
   // A shared session (`collab/appSession.svelte.ts`); here only what the reader sees of it.
   let collabOpen = $state(false);
   let collabAsking = $state(false);
+  let collabOpening = $state(false);
+  let collabNotice = $state<CollabNotice | null>(null);
   const sessionView = $derived(collabView());
-  // Everyone hears of a session that cannot go on: a bad link, a full room, another version,
-  // a relay out of reach or a line that keeps breaking. Once per change, not per update.
+  // A session that cannot go on (a bad link, a full room, another version, nobody there)
+  // opens the dialog; a line out of reach or breaking, while editing goes on, is a notice.
+  // Once per change, not per update.
   let collabShown: string | undefined;
   $effect(() => {
     const s = sessionView?.status;
     if (s === collabShown) return;
     collabShown = s;
-    if (s === 'invalid' || s === 'full' || s === 'version' || s === 'unreachable' || s === 'failing' || s === 'empty') collabOpen = true;
+    if (s === 'invalid' || s === 'full' || s === 'version' || s === 'empty') collabOpen = true;
+    if (s === 'unreachable' || s === 'failing') collabNotice = s;
+    else if (untrack(() => collabNotice === 'unreachable' || collabNotice === 'failing')) collabNotice = null;
   });
   // A joiner hears once when nobody in the session stores the document any more; the
   // pause lets the starter's presence arrive after a join or a reconnect.
   let unkeptTold = false;
   const collabUnkept = $derived.by(() => sessionView?.status === 'live' && !sessionView.kept);
   $effect(() => {
-    if (!collabUnkept) { unkeptTold = false; return; }
+    if (!collabUnkept) {
+      unkeptTold = false;
+      if (untrack(() => collabNotice === 'unkept')) collabNotice = null;
+      return;
+    }
     if (unkeptTold) return;
-    const timer = setTimeout(() => { unkeptTold = true; collabOpen = true; }, 2000);
+    const timer = setTimeout(() => { unkeptTold = true; collabNotice = 'unkept'; }, 2000);
     return () => clearTimeout(timer);
   });
-  // A picture no one here could send opens the dialog too.
+  // So does a picture no one here could send.
   let collabMissing = 0;
   $effect(() => {
     const n = sessionView?.missing ?? 0;
-    if (n > collabMissing) collabOpen = true;
+    if (n > collabMissing) collabNotice = 'missing';
     collabMissing = n;
   });
   const sessionApp: SessionApp = {
@@ -1558,10 +1569,48 @@
     name: () => documentName,
     named: ensureUserName,
   };
+  // Another document opened in a session opens in this tab alone, after asking: it never
+  // replaces the shared one. True = the dialog asks, and the caller stops here.
+  let pendingOpening: Opening | null = null;
+  function leaveFirst(opening: Opening): boolean {
+    if (!collabView() || collabView()!.status === 'closed') return false;
+    pendingOpening = opening;
+    collabOpening = true;
+    collabOpen = true;
+    return true;
+  }
+  // The starter opens it in place; a joiner's tab reloads into a new document, which takes it.
+  async function openAlone(opening: Opening) {
+    if ('file' in opening) await applyImport(opening.file.bytes, opening.file.handle, opening.file.name || undefined, undefined, true);
+    else if ('template' in opening) {
+      const entry = [...TEMPLATES, ...SHELVED].find((e) => e.id === opening.template);
+      if (entry) applyTemplate(entry, true);
+    } else {
+      startBlank();
+      editor?.commands.focus();
+    }
+  }
+  let openingTaken = false;
+  $effect(() => {
+    if (!editor || embedded || collabKey || openingTaken) return;
+    openingTaken = true;
+    void takeOpening().then((o) => o && openAlone(o), () => {});
+  });
   // `choice` is a joiner's: keep its copy as a new document or drop it, then reload alone.
   async function leaveSession(choice: 'keep' | 'discard' | null) {
-    if (!(await leaveCollab(sessionApp, choice))) return alert(t().collab.keepFailed);
+    const opening = collabOpening ? pendingOpening : null;
+    pendingOpening = null;
+    let left: boolean;
+    try {
+      left = await leaveCollab(sessionApp, choice, opening);
+    } catch (err) {
+      console.error('[collab] Could not carry the document over:', err);
+      return alert(t().dialogs.couldNotOpen);
+    }
+    if (!left) return alert(t().collab.keepFailed);
     collabOpen = false;
+    collabNotice = null;
+    if (opening && !choice) await openAlone(opening);
   }
   $effect(() => {
     if (collabKey && collabRelay() && editor) joinCollab(sessionApp, collabKey);
@@ -2358,7 +2407,7 @@
   <ResumeCard show={!volatile && tick >= 0 && !!editor && !isDocNonEmpty()} onShowAll={() => (browserDocsOpen = true)} />
   <PromptDialog />
   <DocPropertiesDialog bind:open={docPropsOpen} props={docProps} onApply={(p) => { docProps = p; saveDocProperties(p); }} />
-  <CollabDialog bind:open={collabOpen} bind:asking={collabAsking} view={sessionView} onStart={() => void startCollab(sessionApp)} onLeave={(c) => void leaveSession(c)} />
+  <CollabDialog bind:open={collabOpen} bind:asking={collabAsking} bind:opening={collabOpening} bind:notice={collabNotice} view={sessionView} onStart={() => void startCollab(sessionApp)} onLeave={(c) => void leaveSession(c)} />
   <PasswordDialog
     bind:open={passwordSetOpen}
     mode="set"

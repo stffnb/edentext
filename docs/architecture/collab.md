@@ -106,8 +106,7 @@ resets its timers, so the next view paginates.
 Another author's change to a store whose own change still gathers in `noteState`'s 500 ms
 window lands that change first (`commitState`, from the map's observer), so both authors'
 entries stay and each undo takes its own. Not covered: `test:dom` runs the built app, which
-has no `?undo=yjs`; cross-client grouping only the two-client test checks. Known gap: a
-document opened during a session clears the manager but does not refill the map `state`.
+has no `?undo=yjs`; cross-client grouping only the two-client test checks.
 
 ## Sessions
 
@@ -156,8 +155,9 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   A joining tab is `volatile` (no copy, slot or prune); a starter's reload does not rejoin.
   Leaving, a joiner is asked (`CollabDialog`'s `asking`) to keep the document: `leave.ts`
   puts JSON, `docStore` entries, pictures and fonts into a new slot and reloads there
-  without the link; discarding reloads into the tab's own or an empty slot. With nobody
-  who `keeps` for 2 s, joiners are told, and their tab warns on closing. Alone 5 s: `empty`.
+  without the link; discarding reloads into the tab's own or an empty slot. Open, New or a
+  template asks to leave first (`opening`), then opens alone (a joiner's in a new slot).
+  Nobody `keeps` for 2 s: joiners get a notice, their tab warns on closing. Alone 5 s: `empty`.
 - **Carets** come from y-tiptap's cursor plugin over the awareness: zero-width decorations
   in the person's (or recorded-change) colour, hidden in print. y-tiptap's undo plugin
   destroys its manager on any `registerPlugin`, so `undoYjs.ts` keeps it until `detach`.
@@ -175,19 +175,19 @@ from one client; a fourth joins, types and converges. A joiner whose pulled peer
 answer and line, while a third types, still goes live; a late offer is pulled from and gets
 what it lacks; a waiting joiner asks a client coming back, which pushes it no copy. B
 cannot open a header A holds; opened together, the lower id keeps it; a closed tab frees
-it. The starter leaves unasked, the others are told and go on; a reload rejoins. A joiner
-keeping its copy reloads into it unwarned, picture, styles and zones, also on a second
-reload. The last joiner's tab warns on closing; a cut-short link and an empty room say so.
-A picture whose only holder leaves unsent is a grey box with a note, the line stays `live`.
-Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
-the script (`page.route`): its text and page setup reach the joiner, which keeps its
-recorded marks and adds none; the starter's undo takes back each on both sides. A relay
-dropping every connection after its welcome makes the line `failing` (dialog, 4–5
-connections in 12 s) until it holds. A line that hears and sends nothing leaves `live`
-within a few beats, asks nothing while down, and comes back. `tests/relay.test.ts` and
-`tests/collab.test.ts` cover rooms, limits, beats, sealing and parts. All scripts run in
-the three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`; load, soak and
-typing speed: `collab-soak.md`.
+it. Open and New ask first, then open alone; others keep theirs. The starter leaves
+unasked, the others are told and go on; a reload rejoins. A joiner keeping its copy reloads
+into it unwarned, picture, styles and zones, also on a second reload. The last joiner's tab
+warns on closing; a cut-short link and an empty room say so. A picture whose only holder
+leaves unsent is a grey box with a note, the line stays `live`. Taller lines (6 against 7
+pages) stay quiet too. The assistant on the starter, answered by the script (`page.route`):
+its text and page setup reach the joiner, which keeps its recorded marks and adds none; the
+starter's undo takes back each on both sides. A relay dropping every connection after its
+welcome makes the line `failing` (notice, 4–5 connections in 12 s) until it holds. A line
+that hears and sends nothing leaves `live` within a few beats, asks nothing while down, and
+comes back. `tests/relay.test.ts` and `tests/collab.test.ts` cover rooms, limits, beats,
+sealing and parts. All scripts run in the three engines (`BROWSER`); concurrent edits:
+`collab-conflicts.md`; load, soak and typing speed: `collab-soak.md`.
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. It cannot
 address a frame: every answer reaches every peer, a late offer's edits only the asker. Seen
