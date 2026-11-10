@@ -8,6 +8,7 @@ import { pmUndo, setUndoBackend, STATE_RESTORED, type UndoBackend } from './undo
 import { describeTransaction, resetHistoryLog, syncHistoryLog } from '../utils/historyLog.svelte';
 import { attachRepair, bindingOf, isRepairClient, ownClientId } from './yjsRepair';
 import { attachRescue } from './yjsRescue';
+import './yjsRedo';
 
 // Origin of the side stores' writes into the shared doc (a `StateStep` mirrored).
 const STATE_ORIGIN = Symbol('stateHistory');

@@ -17,7 +17,7 @@ no-break spaces and no ordinary one (a web editor's copy) gets plain spaces back
 
 `yjsRepair.ts` writes the plugins' repairs after another client's update into the shared doc under a client id hashed from the state, and turns a caret y-tiptap cannot restore into a redraw; `yjsRescue.ts` moves this client's text that another client's rebuild of its block left behind or took away (`docs/architecture/collab-conflicts.md`). Both read y-tiptap's binding internals (`_observeFunction`, `_prosemirrorChanged`, `mux`, `mapping`).
 
-`undoYjs.ts` overrides the undo manager's `destroy`, `stopCapturing` and `lastChange` and reads `Y.Item` internals (`_start`, `right`, `deleted`, `id.client`), so `package.json` pins `yjs`, `y-protocols` and `@tiptap/y-tiptap`; update them only with `npm run test:collab` and `UNDO=yjs npm run test:monkey` green.
+`undoYjs.ts` overrides the undo manager's `destroy`, `stopCapturing` and `lastChange` and reads `Y.Item` internals (`_start`, `right`, `deleted`, `id.client`), and `yjsRedo.ts` wraps `Y.Item.prototype.integrate` for an undo's restored items (yjs#823), so `package.json` pins `yjs`, `y-protocols` and `@tiptap/y-tiptap`; update them only with `npm run test:collab` and `UNDO=yjs npm run test:monkey` green.
 
 `clickCaret.ts` (`readClickCaret`, the body's and the zone's `mousedown`): a click that focuses a view reads its caret in at once, since ProseMirror puts its old selection back 20 ms after a focus that no `selectionchange` has followed yet, which a busy page in Firefox delays past that.
 
