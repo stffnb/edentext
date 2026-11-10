@@ -41,37 +41,25 @@
   import type { Node as PmNode } from 'prosemirror-model';
   import { clampZoom, wheelZoomFactor, MIN_ZOOM, MAX_ZOOM } from './lib/utils/zoom';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadToolbarCategory, saveToolbarCategory, loadChromeMode, saveChromeMode, loadFormattingMarks, saveFormattingMarks, loadFieldShading, saveFieldShading, loadPageLabels, savePageLabels, loadRuler, saveRuler, loadSplitView, saveSplitView, loadPageColumns, savePageColumns, ACCENTS, parseAccentHex, applyAccent, type Accent, type ThemeMode, type ChromeMode } from './lib/storage/theme';
-  import { loadPageMargins, savePageMargins, fitMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
-  import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
-  import { loadTabInterval, saveTabInterval, applyTabIntervalVar, DEFAULT_TAB_INTERVAL_CM } from './lib/storage/tabInterval';
-  import { loadSpacingModel, saveSpacingModel, loadSpacingAtPageStart, saveSpacingAtPageStart, type SpacingModel } from './lib/storage/spacingModel';
-  import { loadPageRtl, savePageRtl } from './lib/storage/writingMode';
-  import { loadPageFormat, savePageFormat, pageDimsCm, type PageFormat } from './lib/storage/pageFormat';
+  import { fitMargins } from './lib/storage/pageMargins';
+  import { applyTabIntervalVar } from './lib/storage/tabInterval';
+  import { pageDimsCm } from './lib/storage/pageFormat';
+  import { layout, layoutValues, setLayout, resetLayout, adoptLayout, persistLayout } from './lib/storage/pageLayout.svelte';
   import { setStyleSheet, showAllStyles, styleSheet } from './lib/styles/sheet.svelte';
   import { noteSettings, setNoteSettings } from './lib/storage/notes.svelte';
   import { OPEN_COMPARE_EVENT, OPEN_RECORD_LOCK_EVENT, recordChanges, recordLock, setRecordChanges, setRecordLock } from './lib/storage/trackChanges.svelte';
   import { DEFAULT_NOTE_SETTINGS, type NoteSettings } from './lib/storage/noteSettings';
   import { builtinStyleSheet, visibleStyles, type StyleFamily, type StyleSheet } from './lib/styles/styleSheet';
-  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, spreadMargins, DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, EMPTY_HF_SET, loadExtraHfSections, saveExtraHfSections, loadHfPictures, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
+  import { loadHfDoc, saveHfDoc, hfIsEmpty, spreadMargins, HF_ZONE_KEYS, EMPTY_HF_SET, loadExtraHfSections, saveExtraHfSections, loadHfPictures, type HfDoc, type HfZone, type HfSet } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, loadDocFormat, saveDocFormat, stripOdtExtension, docNameOfFile, sanitizeNameForFile, deriveFilename, filenameFor, loadDocProtected, saveDocProtected, loadDocFile, saveDocFile, type DocumentFormat } from './lib/storage/documentName';
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { userName, setUserName } from './lib/storage/userName.svelte';
   import { embedded, attribution, whiteLabel, collabKey } from './lib/embed/mode';
-  import { relayReady, relayUrl } from './lib/collab/channel';
   import CollabDialog from './lib/components/CollabDialog.svelte';
-  import { keyBytes } from './lib/collab/key';
-  import { joinSession, startSession, type Session, type SessionHost, type SessionView } from './lib/collab/session';
   import { zoneHolder } from './lib/collab/zones.svelte';
-  import { keepSessionCopy, reloadAlone, unload } from './lib/collab/leave';
-  import { AUTHOR_COLORS, authorColors } from './lib/editor/authorColors';
+  import { unload } from './lib/collab/leave';
+  import { collabRelay, collabView, joinCollab, leaveCollab, probeRelay, startCollab, type SessionApp } from './lib/collab/appSession.svelte';
   import { startBridge, notify, type EmbedSettings, type ExportFormat } from './lib/embed/bridge';
-  import { loadHyphenation, saveHyphenation } from './lib/storage/hyphenation';
-  import { loadPageNumbering, savePageNumbering, DEFAULT_PAGE_NUMBERING, type PageNumbering } from './lib/storage/pageNumbering';
-  import { loadPageDecor, savePageDecor, EMPTY_PAGE_DECOR, type PageDecor } from './lib/storage/pageDecor';
-  import { loadLineNumbering, saveLineNumbering, DEFAULT_LINE_NUMBERING, type LineNumbering } from './lib/storage/lineNumbering';
-  import { loadBalanceSpaces, saveBalanceSpaces } from './lib/storage/balanceSpaces';
-  import { loadLineGrid, saveLineGrid, DEFAULT_LINE_GRID, type LineGrid } from './lib/storage/lineGrid';
-  import { loadFoldMarks, saveFoldMarks } from './lib/storage/foldMarks';
   import { printMarkup } from './lib/storage/printMarkup.svelte';
   import { commentsInPane, changesInPane, markupAttrs, markupView, setShowChanges, setShowComments } from './lib/storage/markup.svelte';
   import { isAsianTag, loadDocumentLanguage, numberingScripts, loadDocumentLanguageOther, pickDocumentLanguage, saveDocumentLanguage, saveDocumentLanguageOther, odfFromLanguage, tagForLanguage, westernCode, type DocumentLanguage } from './lib/storage/documentLanguage';
@@ -156,12 +144,9 @@
   // First-page header/footer, shown on page 1 when the flag is on.
   let headerFirstDoc: HfDoc = $state(storedZones.headerFirst);
   let footerFirstDoc: HfDoc = $state(storedZones.footerFirst);
-  let differentFirstPage: boolean = $state(loadDifferentFirstPage());
   // Even-page header/footer, shown on even pages when the flag is on.
   let headerEvenDoc: HfDoc = $state(storedZones.headerEven);
   let footerEvenDoc: HfDoc = $state(storedZones.footerEven);
-  let differentOddEven: boolean = $state(loadDifferentOddEven());
-  let hfDistances: HfDistances = $state(loadHfDistances());
   // Sections past the first; the layer edits them in place, section 1 stays the
   // per-zone state above.
   let extraHfSections: HfSet[] = $state(loadExtraHfSections().map((z) => repairZones(z)));
@@ -292,14 +277,6 @@
   let splitView = $state(loadSplitView());
   let pageColumns = $state(loadPageColumns());
   let zoom = $state(clampZoom(parseInt(localStorage.getItem('edentext-zoom') ?? '100', 10)));
-  let pageMargins: PageMargins = $state(loadPageMargins());
-  let pageOrientation: Orientation = $state(loadOrientation());
-  let pageFormat: PageFormat = $state(loadPageFormat());
-  let tabIntervalCm = $state(loadTabInterval());
-  let spacingModel: SpacingModel = $state(loadSpacingModel());
-  let spacingAtPageStart = $state(loadSpacingAtPageStart());
-  // The page's text direction, from the file's own page setup (writingMode.ts).
-  let pageRtl = $state(loadPageRtl());
   // Bumped for each document opened (import, new); Editor hides the page until that
   // document's pagination holds still.
   let documentEpoch = $state(0);
@@ -323,33 +300,18 @@
   let browserDocsOpen = $state(false);
   let settingsOpen = $state(false);
   let settingsSection = $state<SettingsSection>('general');
-  let hyphenate = $state(loadHyphenation());
-  let pageNumbering: PageNumbering = $state(loadPageNumbering());
-  let pageDecor: PageDecor = $state(loadPageDecor());
-  let lineNumbering: LineNumbering = $state(loadLineNumbering());
-  let lineGrid: LineGrid = $state(loadLineGrid());
-  let balanceSpaces = $state(loadBalanceSpaces());
-  let foldMarks = $state(loadFoldMarks());
   // The switch keeps the user's wish; only A4 portrait, the paper DIN 5008 describes,
   // actually draws and exports the marks. Import and templates set the flag too, so
   // the check sits here, behind all three.
-  const foldMarksOn = $derived(foldMarks && pageFormat === 'A4' && pageOrientation === 'portrait');
+  const foldMarksOn = $derived(layout.foldMarks && layout.pageFormat === 'A4' && layout.pageOrientation === 'portrait');
 
   // The page setup, styles, note settings and language ride the body's undo stack, as in
   // both word processors (stateHistory.ts): every change, from whichever control, lands.
   const isZoneKey = (k: string) => (HF_ZONE_KEYS as readonly string[]).includes(k);
-  const layoutFields = () => ({
-    pageMargins, pageOrientation, pageFormat, hfDistances, differentFirstPage, differentOddEven,
-    pageNumbering, pageDecor, lineNumbering, lineGrid, tabIntervalCm, spacingModel,
-    spacingAtPageStart, pageRtl, hyphenate, balanceSpaces, foldMarks, sections: extraHfSections,
-  });
+  const layoutFields = () => ({ ...layoutValues(), sections: extraHfSections });
   // A section's zones are steps of their own (HeaderFooterLayer.svelte), so a step drops them.
   const layoutWatch = watchState('layout', () => editor, layoutFields, (to) => {
-    ({
-      pageMargins, pageOrientation, pageFormat, hfDistances, differentFirstPage, differentOddEven,
-      pageNumbering, pageDecor, lineNumbering, lineGrid, tabIntervalCm, spacingModel,
-      spacingAtPageStart, pageRtl, hyphenate, balanceSpaces, foldMarks,
-    } = to as ReturnType<typeof layoutFields>);
+    setLayout(to as ReturnType<typeof layoutFields>);
     // The section count is the snapshot's; each keeps the zones it has now.
     extraHfSections = (to.sections as HfSet[]).map((set, i) => {
       const zones = extraHfSections[i] ?? EMPTY_HF_SET;
@@ -381,26 +343,26 @@
         extraHfSections = out;
         return;
       }
-      if (variant === 'first') { differentFirstPage = true; if (zone === 'header') headerFirstDoc = doc; else footerFirstDoc = doc; }
-      else if (variant === 'even') { differentOddEven = true; if (zone === 'header') headerEvenDoc = doc; else footerEvenDoc = doc; }
+      if (variant === 'first') { layout.differentFirstPage = true; if (zone === 'header') headerFirstDoc = doc; else footerFirstDoc = doc; }
+      else if (variant === 'even') { layout.differentOddEven = true; if (zone === 'header') headerEvenDoc = doc; else footerEvenDoc = doc; }
       else if (zone === 'header') headerDoc = doc;
       else footerDoc = doc;
     },
     setPage({ format, orientation, margins, start, numberFormat, lineNumbers, hyphenation, foldMarks: fold, decor, properties }) {
-      if (format) pageFormat = format;
-      if (orientation) pageOrientation = orientation;
+      if (format) layout.pageFormat = format;
+      if (orientation) layout.pageOrientation = orientation;
       if (margins) {
-        const dims = pageDimsCm(pageFormat, pageOrientation);
-        const next = fitMargins({ ...pageMargins, ...margins }, dims.w, dims.h);
-        extraHfSections = spreadMargins(extraHfSections, pageMargins, next);
-        pageMargins = next;
+        const dims = pageDimsCm(layout.pageFormat, layout.pageOrientation);
+        const next = fitMargins({ ...layout.pageMargins, ...margins }, dims.w, dims.h);
+        extraHfSections = spreadMargins(extraHfSections, layout.pageMargins, next);
+        layout.pageMargins = next;
       }
-      if (start != null) pageNumbering = { ...pageNumbering, start };
-      if (numberFormat) pageNumbering = { ...pageNumbering, format: numberFormat };
-      if (lineNumbers != null) lineNumbering = { ...lineNumbering, on: lineNumbers };
-      if (hyphenation != null) hyphenate = hyphenation;
-      if (fold != null) foldMarks = fold;
-      if (decor) pageDecor = { ...pageDecor, ...decor };
+      if (start != null) layout.pageNumbering = { ...layout.pageNumbering, start };
+      if (numberFormat) layout.pageNumbering = { ...layout.pageNumbering, format: numberFormat };
+      if (lineNumbers != null) layout.lineNumbering = { ...layout.lineNumbering, on: lineNumbers };
+      if (hyphenation != null) layout.hyphenate = hyphenation;
+      if (fold != null) layout.foldMarks = fold;
+      if (decor) layout.pageDecor = { ...layout.pageDecor, ...decor };
       if (properties) { docProps = { ...docProps, ...properties }; saveDocProperties(docProps); }
     },
     setLanguage: (code) => setDocumentLanguage(code),
@@ -498,44 +460,10 @@
     if (editor) untrack(() => { if (!isDocNonEmpty()) pageColumns = 1; });
   });
 
-  $effect(() => {
-    savePageMargins(pageMargins);
-  });
+  persistLayout();
 
   $effect(() => {
-    saveOrientation(pageOrientation);
-  });
-
-  $effect(() => {
-    savePageFormat(pageFormat);
-  });
-
-  $effect(() => {
-    saveTabInterval(tabIntervalCm);
-    applyTabIntervalVar(tabIntervalCm);
-  });
-
-  $effect(() => {
-    saveSpacingModel(spacingModel);
-    saveSpacingAtPageStart(spacingAtPageStart);
-  });
-
-
-  $effect(() => {
-    savePageRtl(pageRtl);
-  });
-
-  $effect(() => {
-    saveHyphenation(hyphenate);
-  });
-
-  $effect(() => {
-    savePageNumbering(pageNumbering);
-    savePageDecor(pageDecor);
-    saveLineNumbering(lineNumbering);
-    saveLineGrid(lineGrid);
-    saveBalanceSpaces(balanceSpaces);
-    saveFoldMarks(foldMarks);
+    applyTabIntervalVar(layout.tabIntervalCm);
   });
 
   $effect(() => {
@@ -572,17 +500,6 @@
   });
 
   $effect(() => {
-    saveDifferentOddEven(differentOddEven);
-  });
-
-  $effect(() => {
-    saveDifferentFirstPage(differentFirstPage);
-  });
-
-  $effect(() => {
-    saveHfDistances(hfDistances);
-  });
-  $effect(() => {
     saveExtraHfSections(extraHfSections);
   });
 
@@ -615,11 +532,7 @@
   $effect(() => saveToolbarCategory(toolbarCategory));
 
   // Where shared sessions go (`collab/channel.ts`); none embedded or without a relay.
-  let collabRelay: string | null = $state(null);
-  if (!embedded) {
-    const url = relayUrl();
-    void relayReady(url).then((ok) => { if (ok) collabRelay = url; });
-  }
+  probeRelay();
 
   // The island's command search: the ribbon's index, offered while the control is there —
   // a contextual tab's commands while its floating toolbar is shown.
@@ -627,7 +540,7 @@
   let islandCommands = $derived(searchableCommands([
     ...RIBBON_COMMANDS,
     ...styleCommands(visibleStyles(styleSheet(), showAllStyles()).map((s) => s.name)),
-  ], islandShown, { ai: aiEnabled(), volatile, embedded, collab: !!collabRelay }).filter((c) => !RIBBON_ONLY.has(c.id)));
+  ], islandShown, { ai: aiEnabled(), volatile, embedded, collab: !!collabRelay() }).filter((c) => !RIBBON_ONLY.has(c.id)));
 
   // Where the island keeps a command: its own place if it moved one, the ribbon's tab otherwise.
   function islandPlace(c: RibbonCommand): { category: Category | null; via?: string } {
@@ -853,8 +766,8 @@
   function hfSetOfState(): HfSet {
     return {
       header: headerDoc, footer: footerDoc,
-      headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage,
-      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven,
+      headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage: layout.differentFirstPage,
+      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven: layout.differentOddEven,
     };
   }
 
@@ -862,11 +775,11 @@
   function hfOpts() {
     return {
       header: headerDoc, footer: footerDoc,
-      headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage,
-      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven,
+      headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage: layout.differentFirstPage,
+      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven: layout.differentOddEven,
       pageCount: numPages,
       sections: [hfSetOfState(), ...extraHfSections],
-      headerDistanceCm: hfDistances.header, footerDistanceCm: hfDistances.footer,
+      headerDistanceCm: layout.hfDistances.header, footerDistanceCm: layout.hfDistances.footer,
     };
   }
 
@@ -926,26 +839,11 @@
     footerDoc = null;
     headerFirstDoc = null;
     footerFirstDoc = null;
-    differentFirstPage = false;
     headerEvenDoc = null;
     footerEvenDoc = null;
-    differentOddEven = false;
-    pageMargins = { ...DEFAULT_MARGINS };
-    pageOrientation = 'portrait';
-    pageFormat = 'A4';
-    tabIntervalCm = DEFAULT_TAB_INTERVAL_CM;
-    spacingModel = 'add';
-    spacingAtPageStart = true;
-    hfDistances = { ...DEFAULT_HF_DISTANCES };
+    resetLayout();
     extraHfSections = [];
     documentName = '';
-    hyphenate = false;
-    pageNumbering = { ...DEFAULT_PAGE_NUMBERING };
-    pageDecor = { ...EMPTY_PAGE_DECOR };
-    lineNumbering = { ...DEFAULT_LINE_NUMBERING };
-    lineGrid = { ...DEFAULT_LINE_GRID };
-    balanceSpaces = false;
-    foldMarks = false;
     // A new document is one page, so the page grid would show only empty cells.
     pageColumns = 1;
     // Recording belongs to the document, so a new one starts off, as it does in both.
@@ -994,15 +892,15 @@
     documentEpoch++;
     resetHistory();
     resetDocumentState();
-    if (data.format) pageFormat = data.format;
-    if (data.margins) pageMargins = { ...data.margins };
+    if (data.format) layout.pageFormat = data.format;
+    if (data.margins) layout.pageMargins = { ...data.margins };
     if (data.styles?.length) {
       const sheet = styleSheet();
       const paragraph = { ...sheet.paragraph };
       for (const s of data.styles) paragraph[s.name] = s;
       setStyleSheet({ ...sheet, paragraph });
     }
-    foldMarks = data.foldMarks === true;
+    layout.foldMarks = data.foldMarks === true;
     documentName = entry.name();
     markSaved();
     editor.commands.focus();
@@ -1206,22 +1104,9 @@
       resetHistory();
       // Adopt the opened file's name as the document name (drives the save filename).
       if (sourceName) documentName = docNameOfFile(sourceName);
-      // Adopt the document's page geometry; the $effects persist it and
+      // Adopt the document's page setup; the $effects persist it and
       // Editor.svelte re-paginates.
-      if (result.margins) pageMargins = result.margins;
-      if (result.orientation) pageOrientation = result.orientation;
-      if (result.format) pageFormat = result.format;
-      if (result.tabIntervalCm) tabIntervalCm = result.tabIntervalCm;
-      spacingModel = result.spacingModel;
-      spacingAtPageStart = result.spacingAtPageStart !== false;
-      pageRtl = result.rtl;
-      hyphenate = result.hyphenate;
-      pageNumbering = result.pageNumbering;
-      pageDecor = result.decor;
-      lineNumbering = result.lineNumbering;
-      lineGrid = result.lineGrid;
-      balanceSpaces = result.balanceSpaces;
-      foldMarks = result.foldMarks === true;
+      adoptLayout(result);
       // The file says whether it goes on recording; ours is not the setting that counts.
       setRecordLock(result.recordLock);
       setRecordChanges(result.recordChanges);
@@ -1245,15 +1130,9 @@
       footerDoc = result.footer;
       headerFirstDoc = result.headerFirst;
       footerFirstDoc = result.footerFirst;
-      differentFirstPage = result.differentFirstPage;
       headerEvenDoc = result.headerEven;
       footerEvenDoc = result.footerEven;
-      differentOddEven = result.differentOddEven;
       extraHfSections = (result.hfSections ?? []).slice(1);
-      hfDistances = {
-        header: result.headerDistanceCm ?? DEFAULT_HF_DISTANCES.header,
-        footer: result.footerDistanceCm ?? DEFAULT_HF_DISTANCES.footer,
-      };
       fileHandle = isTemplate ? null : handle;
       documentFormat = isDocx ? 'docx' : 'odt';
       // The file's password belongs to the document once it is actually the open one,
@@ -1411,7 +1290,7 @@
     return odf && { ...odf, other: documentLanguageOther };
   }
   function exportArgs() {
-    return [pageMargins, pageOrientation, hfOpts(), exportLanguage(), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarksOn, spacingAtPageStart, embeddedFonts(), lineGrid, balanceSpaces, recordLock()] as const;
+    return [layout.pageMargins, layout.pageOrientation, hfOpts(), exportLanguage(), layout.pageFormat, styleSheet(), layout.tabIntervalCm, layout.spacingModel, layout.pageRtl, noteSettings(), docProps, layout.hyphenate, layout.pageNumbering, layout.pageDecor, layout.lineNumbering, recordChanges(), foldMarksOn, layout.spacingAtPageStart, embeddedFonts(), layout.lineGrid, layout.balanceSpaces, recordLock()] as const;
   }
 
   // In a session the document names its pictures by key; a file gets the pictures, never a
@@ -1570,8 +1449,8 @@
         source: editor.view.dom as HTMLElement,
         json,
         fileName: suggestedFilename(json),
-        orientation: pageOrientation,
-        pageFormat,
+        orientation: layout.pageOrientation,
+        pageFormat: layout.pageFormat,
         numPages,
         commentLabels: { heading: t().comments.title, onPage: t().comments.onPage },
         printMarkup: printMarkup(),
@@ -1642,17 +1521,15 @@
     if (embedded) notify('dirty', { dirty });
   });
 
-  // A shared session (docs/architecture/collab.md): the starter's document goes along as
-  // the start file; a tab opened from the link (`#collab=`) joins and keeps no copy.
-  let collabSession: Session | null = null;
-  let collabView: SessionView | null = $state(null);
+  // A shared session (`collab/appSession.svelte.ts`); here only what the reader sees of it.
   let collabOpen = $state(false);
   let collabAsking = $state(false);
+  const sessionView = $derived(collabView());
   // Everyone hears of a session that cannot go on: a bad link, a full room, another version,
   // a relay out of reach or a line that keeps breaking. Once per change, not per update.
   let collabShown: string | undefined;
   $effect(() => {
-    const s = collabView?.status;
+    const s = sessionView?.status;
     if (s === collabShown) return;
     collabShown = s;
     if (s === 'invalid' || s === 'full' || s === 'version' || s === 'unreachable' || s === 'failing' || s === 'empty') collabOpen = true;
@@ -1660,7 +1537,7 @@
   // A joiner hears once when nobody in the session stores the document any more; the
   // pause lets the starter's presence arrive after a join or a reconnect.
   let unkeptTold = false;
-  const collabUnkept = $derived.by(() => collabView?.status === 'live' && !collabView.kept);
+  const collabUnkept = $derived.by(() => sessionView?.status === 'live' && !sessionView.kept);
   $effect(() => {
     if (!collabUnkept) { unkeptTold = false; return; }
     if (unkeptTold) return;
@@ -1670,56 +1547,25 @@
   // A picture no one here could send opens the dialog too.
   let collabMissing = 0;
   $effect(() => {
-    const n = collabView?.missing ?? 0;
+    const n = sessionView?.missing ?? 0;
     if (n > collabMissing) collabOpen = true;
     collabMissing = n;
   });
-  function collabHost(): SessionHost {
-    return {
-      relay: collabRelay!,
-      snapshot: () => buildBytes('odt', editor!.getJSON() as TiptapNode),
-      load: (bytes, name) => applyImport(bytes, null, `${name || 'document'}.odt`, { warn: () => {} }),
-      name: () => documentName,
-      user: () => {
-        const name = userName();
-        let h = 0;
-        for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-        return { name, color: authorColors(editor!.state.doc).get(name) ?? AUTHOR_COLORS[h % AUTHOR_COLORS.length] };
-      },
-      onChange: (view) => { collabView = view; },
-    };
-  }
-  async function startCollab() {
-    if (!editor || !collabRelay || collabSession || !(await ensureUserName())) return;
-    collabSession = await startSession(editor, collabHost());
-    exposeCollab();
-  }
+  const sessionApp: SessionApp = {
+    editor: () => editor,
+    snapshot: () => buildBytes('odt', editor!.getJSON() as TiptapNode),
+    load: (bytes, name) => applyImport(bytes, null, `${name || 'document'}.odt`, { warn: () => {} }),
+    name: () => documentName,
+    named: ensureUserName,
+  };
   // `choice` is a joiner's: keep its copy as a new document or drop it, then reload alone.
-  async function leaveCollab(choice: 'keep' | 'discard' | null) {
-    if (choice === 'keep' && !(await keepSessionCopy(editor!))) return alert(t().collab.keepFailed);
-    collabSession?.leave();
-    collabSession = null;
-    collabView = null;
+  async function leaveSession(choice: 'keep' | 'discard' | null) {
+    if (!(await leaveCollab(sessionApp, choice))) return alert(t().collab.keepFailed);
     collabOpen = false;
-    if (choice) return reloadAlone();
-    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   }
-  let joined = false;
   $effect(() => {
-    const key = collabKey;
-    if (!key || !collabRelay || !editor || joined) return;
-    joined = true;
-    void ensureUserName().then((named) => {
-      if (!named || !editor) return;
-      if (!keyBytes(key)) collabView = { status: 'invalid', peers: [], link: location.href, keeps: false, kept: true, missing: 0 };
-      else collabSession = joinSession(editor, key, collabHost());
-      exposeCollab();
-    });
+    if (collabKey && collabRelay() && editor) joinCollab(sessionApp, collabKey);
   });
-  function exposeCollab() {
-    // The session test reads the state and the frame counts (tests/collab/session.mjs).
-    if (import.meta.env.DEV) (window as unknown as { __collab: unknown }).__collab = { session: collabSession, view: () => collabView };
-  }
 
   // Print via the browser's print dialog using the exact raster of the editor (tables,
   // header/footer, band masks intact) — print or "Save as PDF". Used by the printer
@@ -1736,8 +1582,8 @@
         source: editor.view.dom as HTMLElement,
         json,
         fileName: suggestedFilename(json),
-        orientation: pageOrientation,
-        pageFormat,
+        orientation: layout.pageOrientation,
+        pageFormat: layout.pageFormat,
         numPages,
         commentLabels: { heading: t().comments.title, onPage: t().comments.onPage },
         printMarkup: printMarkup(),
@@ -1763,17 +1609,17 @@
       await printPdf({
         json,
         fileName: suggestedFilename(json),
-        margins: pageMargins,
-        orientation: pageOrientation,
-        pageFormat,
+        margins: layout.pageMargins,
+        orientation: layout.pageOrientation,
+        pageFormat: layout.pageFormat,
         headerDoc,
         footerDoc,
         headerFirstDoc,
         footerFirstDoc,
-        differentFirstPage,
+        differentFirstPage: layout.differentFirstPage,
         headerEvenDoc,
         footerEvenDoc,
-        differentOddEven,
+        differentOddEven: layout.differentOddEven,
         commentLabels: { heading: t().comments.title, onPage: t().comments.onPage },
         printMarkup: printMarkup(),
         markupAttrs: markupAttrs(),
@@ -1907,8 +1753,8 @@
       // Cell alignment reads as broken whenever the content fills the box, so the
       // dump carries the spacing that decides that: the sheet and the model it uses.
       tableCells: getTableCellDebug(editor.view),
-      spacingModel,
-      spacingAtPageStart,
+      spacingModel: layout.spacingModel,
+      spacingAtPageStart: layout.spacingAtPageStart,
       styles: styleSheet(),
       colors: getColorDebug(editor),
     };
@@ -1965,19 +1811,19 @@
       {zoom}
       onZoom={setZoom}
       onDebugDump={import.meta.env.DEV ? handleDebugDump : undefined}
-      bind:tabIntervalCm
-      bind:pageMargins
-      bind:pageOrientation
-      bind:pageFormat
+      bind:tabIntervalCm={layout.tabIntervalCm}
+      bind:pageMargins={layout.pageMargins}
+      bind:pageOrientation={layout.pageOrientation}
+      bind:pageFormat={layout.pageFormat}
       bind:extraHfSections
-      bind:hfDistances
-      bind:differentFirstPage
-      bind:differentOddEven
-      bind:hyphenate
-      bind:pageNumbering
-      bind:pageDecor
-      bind:lineNumbering
-      bind:foldMarks
+      bind:hfDistances={layout.hfDistances}
+      bind:differentFirstPage={layout.differentFirstPage}
+      bind:differentOddEven={layout.differentOddEven}
+      bind:hyphenate={layout.hyphenate}
+      bind:pageNumbering={layout.pageNumbering}
+      bind:pageDecor={layout.pageDecor}
+      bind:lineNumbering={layout.lineNumbering}
+      bind:foldMarks={layout.foldMarks}
       {hfActive}
       onManageStyles={openStyleManager}
       onManageTableStyles={() => openStyleManager('table')}
@@ -2004,7 +1850,7 @@
       onAbout={() => (aboutOpen = true)}
       onSettings={() => (settingsOpen = true)}
       onDocProperties={() => (docPropsOpen = true)}
-      onCollab={collabRelay ? () => (collabOpen = true) : undefined}
+      onCollab={collabRelay() ? () => (collabOpen = true) : undefined}
       onBrowserDocuments={() => (browserDocsOpen = true)}
       onProtect={() => (passwordSetOpen = true)}
       hasPassword={docProtected}
@@ -2162,7 +2008,7 @@
               <button class="theme-option" data-cmd="docProperties" onclick={() => { exportMenuOpen = false; docPropsOpen = true; }} role="menuitem">
                 <span>{t().docProps.title}</span>
               </button>
-              {#if collabRelay}
+              {#if collabRelay()}
                 <button class="theme-option" data-cmd="collab" onclick={() => { exportMenuOpen = false; collabOpen = true; }} role="menuitem">
                   <span>{t().collab.menu}</span>
                 </button>
@@ -2296,19 +2142,19 @@
           bind:showRuler
           bind:splitView
           bind:pageColumns
-          bind:tabIntervalCm
-          bind:pageMargins
-          bind:pageOrientation
-          bind:pageFormat
+          bind:tabIntervalCm={layout.tabIntervalCm}
+          bind:pageMargins={layout.pageMargins}
+          bind:pageOrientation={layout.pageOrientation}
+          bind:pageFormat={layout.pageFormat}
           bind:extraHfSections
-          bind:hfDistances
-          bind:differentFirstPage
-          bind:differentOddEven
-          bind:hyphenate
-          bind:pageNumbering
-          bind:pageDecor
-          bind:lineNumbering
-          bind:foldMarks
+          bind:hfDistances={layout.hfDistances}
+          bind:differentFirstPage={layout.differentFirstPage}
+          bind:differentOddEven={layout.differentOddEven}
+          bind:hyphenate={layout.hyphenate}
+          bind:pageNumbering={layout.pageNumbering}
+          bind:pageDecor={layout.pageDecor}
+          bind:lineNumbering={layout.lineNumbering}
+          bind:foldMarks={layout.foldMarks}
           {hfActive}
           asianDocument={isAsianTag(tagForLanguage(documentLanguage) ?? '') || isAsianTag(locale())}
           {documentLanguage}
@@ -2353,7 +2199,7 @@
     bind:pages={pageBoxes}
     onDocumentLost={resetDocumentState}
     {documentEpoch}
-    {pageRtl}
+    pageRtl={layout.pageRtl}
     bind:editor
     bind:tick
     bind:currentPage
@@ -2362,24 +2208,24 @@
     bind:footerDoc
     bind:headerFirstDoc
     bind:footerFirstDoc
-    {differentFirstPage}
+    differentFirstPage={layout.differentFirstPage}
     bind:headerEvenDoc
     bind:footerEvenDoc
-    {differentOddEven}
+    differentOddEven={layout.differentOddEven}
     bind:hfEditor
     bind:hfActive
     bind:hfTick
-    {hfDistances}
-    {tabIntervalCm}
-    {spacingModel}
-    {spacingAtPageStart}
-    {hyphenate}
+    hfDistances={layout.hfDistances}
+    tabIntervalCm={layout.tabIntervalCm}
+    spacingModel={layout.spacingModel}
+    spacingAtPageStart={layout.spacingAtPageStart}
+    hyphenate={layout.hyphenate}
     {documentLanguage}
-    {pageNumbering}
-    {pageDecor}
-    {lineNumbering}
-    {lineGrid}
-    {balanceSpaces}
+    pageNumbering={layout.pageNumbering}
+    pageDecor={layout.pageDecor}
+    lineNumbering={layout.lineNumbering}
+    lineGrid={layout.lineGrid}
+    balanceSpaces={layout.balanceSpaces}
     foldMarks={foldMarksOn}
     commentAuthor={userName()}
     bind:extraHfSections
@@ -2391,9 +2237,9 @@
     {showRuler}
     {splitView}
     pageColumns={gridColumns}
-    {pageMargins}
-    orientation={pageOrientation}
-    {pageFormat}
+    pageMargins={layout.pageMargins}
+    orientation={layout.pageOrientation}
+    pageFormat={layout.pageFormat}
   />
   <!-- On the right the panes stand in this order; docked left, each sets a CSS order:
        the navigator outermost, the reviewing panes nearest the page. -->
@@ -2462,10 +2308,10 @@
     </div>
     <div class="sb-right">
     {#if embedded && attribution}<PoweredBy />{/if}
-    {#if collabView && collabView.status !== 'closed'}
-      <button class="collab-btn" data-status={collabView.status} onclick={() => (collabOpen = true)} title={t().collab.status[collabView.status]}>
-        {#each collabView.peers as p (p.id)}<span class="collab-dot" style:background={p.color} title={p.name}></span>{/each}
-        {collabView.status === 'live' ? t().collab.peers(collabView.peers.length) : t().collab.status[collabView.status]}
+    {#if sessionView && sessionView.status !== 'closed'}
+      <button class="collab-btn" data-status={sessionView.status} onclick={() => (collabOpen = true)} title={t().collab.status[sessionView.status]}>
+        {#each sessionView.peers as p (p.id)}<span class="collab-dot" style:background={p.color} title={p.name}></span>{/each}
+        {sessionView.status === 'live' ? t().collab.peers(sessionView.peers.length) : t().collab.status[sessionView.status]}
       </button>
     {/if}
     <BusyIndicator {editor} task={busyTask} progress={busyProgress} />
@@ -2512,7 +2358,7 @@
   <ResumeCard show={!volatile && tick >= 0 && !!editor && !isDocNonEmpty()} onShowAll={() => (browserDocsOpen = true)} />
   <PromptDialog />
   <DocPropertiesDialog bind:open={docPropsOpen} props={docProps} onApply={(p) => { docProps = p; saveDocProperties(p); }} />
-  <CollabDialog bind:open={collabOpen} bind:asking={collabAsking} view={collabView} onStart={() => void startCollab()} onLeave={(c) => void leaveCollab(c)} />
+  <CollabDialog bind:open={collabOpen} bind:asking={collabAsking} view={sessionView} onStart={() => void startCollab(sessionApp)} onLeave={(c) => void leaveSession(c)} />
   <PasswordDialog
     bind:open={passwordSetOpen}
     mode="set"

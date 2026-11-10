@@ -19,7 +19,7 @@ export function shareZones(awareness: Awareness): () => void {
     for (const [id, s] of awareness.getStates()) {
       const zone = s.zone, user = s.user;
       if (id === awareness.clientID || typeof zone !== 'string' || !user) continue;
-      if (!next[zone] || id < next[zone].id) next[zone] = { id, name: String(user.name ?? ''), color: String(user.color ?? '') };
+      if (!next[zone] || id < next[zone].id) next[zone] = { id, name: String(user.name ?? ''), color: String(user.color ?? ''), keeps: s.keeps === true };
     }
     // Carets change the awareness on every move; the zones only now and then.
     const sig = JSON.stringify(next);
