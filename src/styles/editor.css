@@ -466,6 +466,11 @@
 .paper .tiptap .image-node.image-line + img.ProseMirror-separator {
   position: absolute;
 }
+/* The shim ProseMirror puts before an inline atom opening a block or following another
+   atom: before a display formula or a wrapping image it was a line of its own. */
+.paper .tiptap img.ProseMirror-separator:has(+ :not(br.ProseMirror-trailingBreak)) {
+  position: absolute;
+}
 /* While selected, lift the node (and its handles) above the header/footer layer
    (z-index 22) so a rotate/resize handle poking into a margin stays grabbable. */
 .paper .tiptap .image-node.image-selected {
