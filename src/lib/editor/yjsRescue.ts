@@ -5,10 +5,9 @@ import * as Y from 'yjs';
 import { relativePositionToAbsolutePosition } from '@tiptap/y-tiptap';
 import type { Binding } from './yjsRepair';
 
-// Text this client typed into a block that another client's update rebuilt elsewhere (a
-// heading made of it, a join, a move, a merged cell, a split) follows the block: Yjs cannot
-// move an element, so the rebuild copies only the text its author saw. Only the author of
-// the text moves it, so nothing races. docs/architecture/collab-conflicts.md, "Rescue".
+// Text typed into a block another client rebuilt elsewhere (heading, join, move, merged
+// cell, split) follows it, as the rebuild copies only the text its author saw. Only the
+// text's author moves it, so nothing races. collab-conflicts.md, "Rescue".
 
 /** Meta of the transaction that puts rescued text in its new place. */
 export const RESCUED = 'collabRescued';
@@ -64,10 +63,9 @@ function unitsOf(text: Y.XmlText, me: number, t: Y.Transaction, isNew: (it: Y.It
     while (j < all.length && all[j].own && all[j].live === c.live) j++;
     const before = all[i - 1], after = all[j];
     const lost = !c.live;
-    // Left behind: the text on both sides went and the run stayed, so the update moving
-    // that text never knew the run (a move takes what it knows along). At the text's start
-    // or end one side will do where the update also rewrote this text in place (a sort), or
-    // where another client's block lost all but this run (its undo kept the block for it).
+    // Left behind: both sides went and the run stayed, unknown to the update that moved them.
+    // At the text's edge one side will do where that update rewrote the text in place (a
+    // sort) or another's block lost all but this run (its undo kept the block for it).
     const gone = (c: Char & { live: boolean } | undefined) => !!c && !c.live;
     const left = !lost && textLive && (gone(before) && gone(after)
       || ((rewritten || (abandoned && foreignBlock)) && ((gone(before) && !after) || (!before && gone(after)))));

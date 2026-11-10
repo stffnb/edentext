@@ -468,10 +468,9 @@ function syncStructure(state: EditorState): Transaction | null {
   const sectionType = state.schema.nodes.noteSection;
   if (!noteType || !sectionType) return null;
 
-  // One section, the last block: two clients adding the first note at once make two, and
-  // a block written past the section lands after it. The fullest section stays and takes
-  // the others' notes; blocks past it move ahead of it. Whatever moves is rewritten in a
-  // shared doc, so as little moves as can.
+  // One section, the last block: the fullest of two made at once takes the others' notes,
+  // and blocks written past it move ahead of it. A shared doc rewrites whatever moves, so
+  // as little moves as can.
   const sections: { node: PMNode; pos: number }[] = [];
   state.doc.forEach((child, pos) => { if (child.type === sectionType) sections.push({ node: child, pos }); });
   if (sections.length > 1 || (sections.length === 1 && sections[0].node !== state.doc.lastChild)) {

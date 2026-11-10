@@ -2,11 +2,9 @@ import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/p
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { TableMap } from '@tiptap/pm/tables';
 
-// Rows that two clients changed at once can come out longer or shorter than the others (a
-// column added while another adds a row, then the column undone). prosemirror-tables'
-// fixTables, which runs after this, only adds cells, so a row left too long would widen the
-// whole table. Here a row longer than most loses empty cells past that width first; content
-// never goes. The result depends on the table alone, so every client repairs it alike.
+// Rows two clients changed at once can differ in length; fixTables, run after this, only
+// adds cells, so a row longer than most first loses its empty cells past that width (never
+// content). The result depends on the table alone, so every client repairs it alike.
 
 const plainEmpty = (cell: PMNode) =>
   (cell.attrs.colspan ?? 1) === 1 && (cell.attrs.rowspan ?? 1) === 1 && cell.childCount === 1 && cell.firstChild!.isTextblock && cell.firstChild!.content.size === 0;
