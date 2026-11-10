@@ -1,24 +1,40 @@
 <script lang="ts">
   import type { SessionView } from '../collab/session';
+  import { loadRetention } from '../storage/docScope';
   import { t } from '../i18n/i18n.svelte';
 
   // Starting a shared session, its link, who is there, and leaving (docs/architecture/collab.md).
-  let { open = $bindable(false), view, onStart, onLeave }: {
+  // A joiner that has the document is asked whether to keep it (`asking`, also set from
+  // outside to ask before something else ends the session); the starter's copy is stored.
+  let { open = $bindable(false), asking = $bindable(false), view, onStart, onLeave }: {
     open?: boolean;
+    asking?: boolean;
     view: SessionView | null;
     onStart: () => void;
-    onLeave: () => void;
+    onLeave: (choice: 'keep' | 'discard' | null) => void;
   } = $props();
 
   let dialogEl = $state<HTMLDialogElement | null>(null);
   let copied = $state(false);
+  let hadDoc = false;
+  let storesNothing = $state(false);
+
+  $effect(() => {
+    if (view?.status === 'live') hadDoc = true;
+  });
 
   $effect(() => {
     const el = dialogEl;
     if (!el) return;
-    if (open && !el.open) { copied = false; el.showModal(); }
+    if (open && !el.open) { copied = false; storesNothing = loadRetention() === 'none'; el.showModal(); }
     else if (!open && el.open) el.close();
   });
+
+  function leave() {
+    if (view?.keeps) onLeave(null);
+    else if (hadDoc) asking = true;
+    else onLeave('discard');
+  }
 
   async function copy() {
     if (!view) return;
@@ -28,7 +44,7 @@
 
 <dialog
   bind:this={dialogEl}
-  onclose={() => (open = false)}
+  onclose={() => { open = false; asking = false; }}
   onclick={(e) => e.target === dialogEl && (open = false)}
   aria-label={t().collab.title}
 >
@@ -41,8 +57,21 @@
         <button onclick={() => (open = false)}>{t().common.cancel}</button>
         <button class="primary" data-cmd="collabStart" onclick={onStart}>{t().collab.start}</button>
       </div>
+    {:else if asking}
+      <p data-notice="keep">{storesNothing ? t().collab.keepNone : t().collab.keepAsk}</p>
+      <div class="actions">
+        <button onclick={() => (asking = false)}>{t().common.cancel}</button>
+        <span class="spacer"></span>
+        <button data-cmd="collabDiscard" onclick={() => onLeave('discard')}>{t().collab.discard}</button>
+        {#if !storesNothing}
+          <button class="primary" data-cmd="collabKeep" onclick={() => onLeave('keep')}>{t().collab.keep}</button>
+        {/if}
+      </div>
     {:else}
       <p class="status" data-status={view.status}>{t().collab.status[view.status]}</p>
+      {#if view.status === 'live' && !view.kept}
+        <p class="notice" data-notice="unkept">{t().collab.unkept}</p>
+      {/if}
       {#if view.status !== 'invalid'}
         <label class="row">
           <span>{t().collab.link}</span>
@@ -62,9 +91,9 @@
           <span class="muted">{t().collab.alone}</span>
         {/if}
       </div>
-      <p class="muted">{t().collab.leaveHint}</p>
+      <p class="muted">{view.keeps ? t().collab.leaveHint : t().collab.joinedHint}</p>
       <div class="actions">
-        <button data-cmd="collabLeave" onclick={onLeave}>{t().collab.leave}</button>
+        <button data-cmd="collabLeave" onclick={leave}>{t().collab.leave}</button>
         <span class="spacer"></span>
         <button class="primary" onclick={() => (open = false)}>{t().common.ok}</button>
       </div>
@@ -87,6 +116,11 @@
   p { margin: 0; line-height: 1.45; }
   .muted { color: var(--color-text-muted); }
   .status { font-weight: 600; }
+  .notice {
+    padding: 8px 10px;
+    border-left: 3px solid var(--color-primary);
+    background: var(--color-surface);
+  }
 
   .row { display: flex; align-items: center; gap: 8px; }
   .row > span { color: var(--color-text-muted); white-space: nowrap; }

@@ -1,8 +1,7 @@
 # Collaboration
 
-Shared editing runs on Yjs through `@tiptap/y-tiptap`. This file covers why, and what is
-built: a session started from the File menu and joined through a link, over a relay that
-cannot read it.
+Shared editing runs on Yjs through `@tiptap/y-tiptap`. Here: why, and what is built, a
+session started from the File menu and joined through a link, over a relay that cannot read it.
 
 ## Engine
 
@@ -17,8 +16,7 @@ corpus documents. Both passed every one, so the choice is about cost, not feasib
   stack is pinned exactly and updated as one Dependabot group (`collab`). Every store
   beside the text needs its counterpart in the map `state`. Typing on long documents costs
   more: 7.0 against 4.9 ms per character at 177 pages (Undo, Checks).
-- **Only in a session.** Yjs is attached while a session runs; alone the editor keeps
-  ProseMirror's history and pays nothing.
+- **Only in a session.** Yjs is attached for a session; alone, the history costs nothing.
 - **When to revisit.** If the relay has to keep state anyway, for instance sessions that
   live on without anyone in them, the main reason for Yjs is gone.
 
@@ -90,9 +88,8 @@ the history log) and `closeGroup` (image drag). Editing alone keeps ProseMirror'
 - A document opened in a session clears the manager (`reset`) instead of re-creating
   the state, which would rebuild the sync plugin's binding.
 
-Registering the sync plugins rebuilds every plugin view. `pageBreaks.ts` kept its
-pending frame id across such a rebuild, and pagination then never ran again; its `destroy`
-now resets the timers.
+Registering the sync plugins rebuilds every plugin view, so `pageBreaks.ts`'s `destroy`
+resets its timers: a pending frame id kept across the rebuild would stop pagination.
 
 ### Checks
 
@@ -113,8 +110,7 @@ now resets the timers.
   Yjs. One undo: 9 ms against 19 ms.
 
 Not covered yet: `test:dom` runs the built app, which has no `?undo=yjs`. Cross-client
-grouping (a step's range mapped through remote edits) is checked only through the
-two-client test.
+grouping (a step's range mapped through remote edits) only the two-client test checks.
 
 Known gaps: a remote change to a store while one's own change to it still waits in
 `noteState`'s 500 ms window loses one's own, and the commit may take the remote value as
@@ -157,10 +153,12 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in 
   in the map `state` (`applyState`). Store changes after that travel through the same
   map as the undo uses. A header or footer is written as a whole zone, so two people in
   one zone at the same moment get the last writer's.
-- **Storage.** The starter keeps editing its own document, and autosave stores everyone's
-  edits there. A joining tab is `volatile`: it keeps no copy and claims no slot. Its
-  slot id would be the first document's, so `main.ts` also skips the prune there. The
-  link stays in the address bar, so a reload joins again. Leaving clears it.
+- **Storage.** The starter's autosave stores everyone's edits; its awareness says `keeps`.
+  A joining tab is `volatile` (no copy, slot or prune); a starter's reload does not rejoin.
+  Leaving, a joiner is asked (`CollabDialog`'s `asking`) to keep the document: `leave.ts`
+  puts JSON, `docStore` entries, pictures and fonts into a new slot and reloads there
+  without the link; discarding reloads into the tab's own or an empty slot. With nobody
+  who `keeps` for 2 s, joiners are told, and their tab warns on closing. Alone 5 s: `empty`.
 - **Carets** come from y-tiptap's cursor plugin over the awareness, drawn as zero-width
   decorations in the person's colour (the recorded-change colour when they have one)
   and hidden in print. y-tiptap's undo plugin destroys its manager whenever the plugin
@@ -175,8 +173,10 @@ shows with its name, the relay's frames hold no typed text and no name, and an i
 sends no updates. Frames carry at most 1 MiB; a late joiner gets everything, styles and a
 2.9 MB picture too, from one ask and one answer; a fourth joins, types and converges. A
 joiner whose pulled peer drops its answer and line, while a third types, still goes live.
-After the starter leaves, the others go on, and a reload rejoins. A cut-short link says so.
-A client with taller lines (6 against 7 pages, an index document) stays quiet as well. The
+The starter leaves unasked, the others are told and go on, and a reload rejoins. A joiner
+keeping its copy reloads into it unwarned, picture, styles and zones, also on a second
+reload. The last joiner's tab warns on closing; a cut-short link and an empty room say so. A
+client with taller lines (6 against 7 pages, an index document) stays quiet as well. The
 assistant on the starter, from a provider the script answers itself (`page.route`): its
 text replacement and page setup reach the joiner, which keeps its recorded marks and adds
 none; the starter's undo takes back each on both sides. A relay dropping every connection
