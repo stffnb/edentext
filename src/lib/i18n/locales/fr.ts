@@ -210,8 +210,8 @@ const fr: Messages = {
     peers: (n: number) => `${n} autre${n === 1 ? '' : 's'} personne${n === 1 ? '' : 's'} présente${n === 1 ? '' : 's'}`,
     missing: (n: number) => n === 1 ? 'Une image n’a pas pu être récupérée : la personne qui l’avait est partie. Elle reste un cadre gris jusqu’à ce que quelqu’un qui l’a se joigne à la session.' : `${n} images n’ont pas pu être récupérées : la personne qui les avait est partie. Elles restent des cadres gris jusqu’à ce que quelqu’un qui les a se joigne à la session.`,
     picturesPending: 'Certaines images ne vous sont pas encore parvenues et manqueraient dans le fichier. Réessayez dès qu’elles s’affichent.',
-    paused: 'Modification suspendue',
-    pausedHint: 'Une modification venue de la session ne peut pas s’afficher ici et, si vous continuez à saisir, vous risqueriez de l’écraser : la modification est donc suspendue. Elle reprendra d’elle-même dès que le document pourra de nouveau s’afficher.',
+    paused: 'Édition suspendue',
+    pausedHint: 'Une modification venue de la session ne peut pas s’afficher ici et, si vous continuez à saisir, vous risqueriez de l’écraser : l’édition est donc suspendue. Elle reprendra d’elle-même dès que le document pourra de nouveau s’afficher.',
     status: {
       connecting: 'Connexion…',
       waiting: 'En attente d’une personne ayant le document ouvert…',
