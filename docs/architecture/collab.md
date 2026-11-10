@@ -183,8 +183,8 @@ setup reach the joiner, which keeps its recorded marks and adds none; the starte
 takes back each on both sides. A relay dropping every connection after its welcome makes
 the line `failing` (dialog, 4–5 connections in 12 s) until it holds. A line that hears and
 sends nothing leaves `live` within a few beats, asks nothing while down, and comes back.
-`tests/relay.test.ts` and `tests/collab.test.ts` cover rooms, limits, beats, sealing and
-parts. Both scripts run in Chromium, Firefox and WebKit (`BROWSER`, as the CI's matrix).
+`tests/relay.test.ts` and `tests/collab.test.ts` cover rooms, limits, beats, sealing and parts.
+Both run in all three engines (`BROWSER`); load, soak and typing speed: `collab-soak.md`.
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. It cannot
 address a frame, so every answer reaches every peer, and a late offer's edits reach only
