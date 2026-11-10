@@ -338,9 +338,25 @@ try {
     for (const page of [a, e]) await page.waitForFunction(() => window.__collab.view().status === 'live', null, { timeout: 30_000 }).catch(() => {});
   };
   await relive();
+  // Anna holds back her offers, so the sync Ella starts on the next welcome stays open when
+  // her line dies: it must end there, not keep asking into a line that is down.
+  await a.evaluate(() => {
+    const send = WebSocket.prototype.send, sent = window.__collab.session.stats.sent;
+    let offers = sent[3];
+    window.__noOffers = true;
+    WebSocket.prototype.send = function (d) {
+      if (sent[3] !== offers) { offers = sent[3]; if (window.__noOffers) return; }
+      return send.call(this, d);
+    };
+  });
+  await relive();
   await e.evaluate(() => { window.__deaf.on = true; });
   const noticed = await e.waitForFunction(() => window.__collab.view().status !== 'live', null, { timeout: 5 * BEAT }).then(() => true, () => false);
+  const asked = await sent(e, ASK);
+  await e.waitForTimeout(12_000);
+  const stacked = await sent(e, ASK) - asked;
   const deafAs = await status(e);
+  await a.evaluate(() => { window.__noOffers = false; });
   await e.evaluate(() => { window.__deaf.on = false; });
   await e.waitForFunction(() => window.__collab.view().status === 'live', null, { timeout: 45_000 }).catch(() => {});
   await e.keyboard.press('Escape');
@@ -350,6 +366,7 @@ try {
   const [pa3, pe3] = [await view(a), await view(e)];
   check(noticed && await status(e) === 'live' && pa3.json === pe3.json && pa3.text.endsWith('Psi'),
     `a line that dies without a close is not live (${deafAs}), and live again once it works`);
+  check(stacked === 0, `a sync open when the line died asks nothing while it is down (${stacked} asks)`);
 
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (err) {
