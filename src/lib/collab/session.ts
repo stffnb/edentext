@@ -9,11 +9,17 @@ import { keyBytes, newKey, sessionLink } from './key';
 // A shared session: the Yjs doc behind the body (`undoYjs.ts`) goes over a sealed channel
 // to the others in the room. Frames are one kind byte and its payload; the relay sees none
 // of it. Edits leave and arrive in batches of 50 ms, always as a task of their own.
+// Ids are random per session; frames with a `to` that is not this client are ignored.
 
-const ASK = 0;      // payload: a state vector; the others answer with what it lacks
-const UPDATE = 1;   // payload: a Yjs update
-const PRESENCE = 2; // payload: an awareness update (name, colour, cursor)
+const ASK = 0;      // [from]: everyone offers what they have
+const UPDATE = 1;   // a Yjs update for everyone
+const PRESENCE = 2; // an awareness update (name, colour, cursor)
+const OFFER = 3;    // [to][from][length][state vector][delete set as an update]
+const PULL = 4;     // [to][from][state vector]: the receiver answers with what it lacks
+const ANSWER = 5;   // [to][Yjs update]
 const BATCH_MS = 50;
+const SETTLE_MS = 300;  // how long a sync waits for late offers after the first
+const STALL_MS = 10_000; // a sync that hears nothing this long starts over
 const REMOTE = Symbol('remote');
 
 export type SessionStatus =
@@ -53,17 +59,23 @@ export type Session = {
 
 type Join = () => Promise<YjsUndo | 'version' | null>;
 
-function frame(kind: number, payload: Uint8Array): Uint8Array {
-  const out = new Uint8Array(payload.length + 1);
+function frame(kind: number, ...parts: (number | Uint8Array)[]): Uint8Array {
+  const out = new Uint8Array(1 + parts.reduce<number>((n, p) => n + (typeof p === 'number' ? 4 : p.length), 0));
+  const v = new DataView(out.buffer);
   out[0] = kind;
-  out.set(payload, 1);
+  let at = 1;
+  for (const p of parts) {
+    if (typeof p === 'number') { v.setUint32(at, p); at += 4; } else { out.set(p, at); at += p.length; }
+  }
   return out;
 }
 
 function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bound: YjsUndo | null, join: Join | null): Session {
   const awareness = new Awareness(ydoc);
   const link = sessionLink(key);
-  const stats = { sent: [0, 0, 0] };
+  const stats = { sent: [0, 0, 0, 0, 0, 0] };
+  const me = crypto.getRandomValues(new Uint32Array(1))[0];
+  let line: ChannelStatus = 'connecting';
   let status: SessionStatus = 'connecting';
   let peerCount = 1;
   let binding: YjsUndo | null = null;
@@ -79,8 +91,9 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   const changed = () => host.onChange({ status, peers: peers(), link });
   const setStatus = (s: SessionStatus) => { if (status !== s) { status = s; changed(); } };
 
-  const send = (kind: number, payload: Uint8Array) => { stats.sent[kind]++; channel.send(frame(kind, payload)); };
-  const ask = () => send(ASK, Y.encodeStateVector(ydoc));
+  const settled = (): SessionStatus => binding ? 'live' : peerCount <= 1 ? 'waiting' : 'connecting';
+
+  const send = (kind: number, ...parts: (number | Uint8Array)[]) => { stats.sent[kind]++; channel.send(frame(kind, ...parts)); };
   const present = () => send(PRESENCE, encodeAwarenessUpdate(awareness, [ydoc.clientID]));
 
   // Outgoing: this client's own updates, merged per batch.
@@ -108,11 +121,19 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   // the editor once the doc it received carries a start file.
   let inbox: Uint8Array[] = [];
   let inTimer: ReturnType<typeof setTimeout> | undefined;
-  const flush = async () => {
-    inTimer = undefined;
+  let answered = false;
+  const receive = (u: Uint8Array) => { inbox.push(u.slice()); inTimer ??= setTimeout(flush, BATCH_MS); };
+  // Before telling others what this client has, what already arrived goes in.
+  const applyInbox = () => {
+    if (!inbox.length) return;
     const merged = Y.mergeUpdates(inbox);
     inbox = [];
     Y.applyUpdate(ydoc, merged, REMOTE);
+  };
+  const flush = async () => {
+    inTimer = undefined;
+    applyInbox();
+    if (answered) { answered = false; if (round) { round.target = null; pull(); } }
     if (joining && ydoc.getMap('meta').has('snapshot')) {
       const done = joining;
       joining = null;
@@ -121,33 +142,98 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       if (!got) return setStatus('closed');
       bind(got);
     }
-    if (binding) setStatus('live');
+    if (binding && line === 'open') setStatus('live');
+  };
+
+  // A sync, once per welcome: this client asks, everyone offers its state vector and delete
+  // set, it sends what the others lack in one update and pulls what it lacks from the one
+  // offer that has the most, then from any that still has more. One copy of the doc travels.
+  type Round = { offers: Map<number, Map<number, number>>; pulled: Set<number>; target: number | null; done: boolean; at: number; settle?: ReturnType<typeof setTimeout>; watch?: ReturnType<typeof setInterval> };
+  let round: Round | null = null;
+  const endRound = () => {
+    clearTimeout(round?.settle);
+    clearInterval(round?.watch);
+    round = null;
+  };
+  const startRound = () => {
+    endRound();
+    if (peerCount <= 1) return;
+    const r: Round = round = { offers: new Map(), pulled: new Set(), target: null, done: false, at: Date.now() };
+    r.watch = setInterval(() => { if (Date.now() - Math.max(r.at, channel.heard()) > STALL_MS) startRound(); }, 1000);
+    send(ASK, me);
+  };
+  const settle = () => {
+    if (!round || round.done) return;
+    round.done = true;
+    clearTimeout(round.settle);
+    if (ydoc.store.clients.size) {
+      const least = new Map<number, number>();
+      for (const [client, clock] of Y.decodeStateVector(Y.encodeStateVector(ydoc))) {
+        least.set(client, Math.min(clock, ...[...round.offers.values()].map((sv) => sv.get(client) ?? 0)));
+      }
+      send(UPDATE, Y.encodeStateAsUpdate(ydoc, Y.encodeStateVector(least)));
+    }
+    pull();
+  };
+  const pull = () => {
+    if (!round?.done || round.target !== null) return;
+    const mine = Y.decodeStateVector(Y.encodeStateVector(ydoc));
+    let best: number | null = null, most = 0;
+    for (const [from, sv] of round.offers) {
+      if (round.pulled.has(from)) continue;
+      let more = 0;
+      for (const [client, clock] of sv) more += Math.max(0, clock - (mine.get(client) ?? 0));
+      if (more > most) { most = more; best = from; }
+    }
+    if (best === null) return endRound();
+    round.pulled.add(best);
+    round.target = best;
+    round.at = Date.now();
+    send(PULL, best, me, Y.encodeStateVector(ydoc));
   };
 
   const channel = openChannel({
     url: host.relay, key: keyBytes(key)!,
     onFrame(plain) {
       if (status === 'version') return;
-      const kind = plain[0], payload = plain.subarray(1);
-      if (kind === ASK) send(UPDATE, Y.encodeStateAsUpdate(ydoc, payload));
-      else if (kind === UPDATE) { inbox.push(payload.slice()); inTimer ??= setTimeout(flush, BATCH_MS); }
-      else if (kind === PRESENCE) applyAwarenessUpdate(awareness, payload, REMOTE);
+      const kind = plain[0], v = new DataView(plain.buffer, plain.byteOffset, plain.byteLength);
+      if (kind === UPDATE) receive(plain.subarray(1));
+      else if (kind === PRESENCE) applyAwarenessUpdate(awareness, plain.subarray(1), REMOTE);
+      else if (kind === ASK) {
+        applyInbox();
+        const sv = Y.encodeStateVector(ydoc);
+        send(OFFER, v.getUint32(1), me, sv.length, sv, Y.encodeStateAsUpdate(ydoc, sv));
+      } else if (v.getUint32(1) !== me) return;
+      else if (kind === OFFER && round && !round.done) {
+        const from = v.getUint32(5), n = v.getUint32(9);
+        round.offers.set(from, Y.decodeStateVector(plain.subarray(13, 13 + n)));
+        receive(plain.subarray(13 + n));
+        if (round.offers.size >= peerCount - 1) settle();
+        else round.settle ??= setTimeout(settle, SETTLE_MS);
+      } else if (kind === PULL) {
+        applyInbox();
+        send(ANSWER, v.getUint32(5), Y.encodeStateAsUpdate(ydoc, plain.subarray(9)));
+      } else if (kind === ANSWER) {
+        answered = true;
+        receive(plain.subarray(5));
+      }
     },
     onPeers(n) {
-      // Someone came: ask for what they have and tell them who we are.
-      if (n > peerCount) { ask(); present(); }
+      // Someone came: tell them who we are. Their sync brings the doc both ways.
+      if (n > peerCount) present();
       peerCount = n;
-      if (!binding && n <= 1 && status !== 'version') setStatus('waiting');
+      if (line === 'open' && status !== 'version') setStatus(settled());
       changed();
     },
     onStatus(s: ChannelStatus) {
-      if (s === 'open' || status === 'version') return;
-      setStatus(s === 'closed' ? 'closed' : s);
+      line = s;
+      if (status === 'version') return;
+      setStatus(s === 'open' ? settled() : s);
     },
-    onOpen() {
-      ask();
+    onOpen(n) {
+      peerCount = n;
       present();
-      setStatus(binding ? 'live' : peerCount <= 1 ? 'waiting' : 'connecting');
+      startRound();
     },
   });
 
@@ -167,6 +253,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       removeEventListener('pagehide', goodbye);
       clearTimeout(outTimer);
       clearTimeout(inTimer);
+      endRound();
       goodbye();
       channel.close();
       awareness.off('update', onPresence);

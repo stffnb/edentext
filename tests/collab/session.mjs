@@ -80,7 +80,8 @@ const caret = async (page, where) => {
 };
 const SHEET = '/src/lib/styles/sheet.svelte.ts';
 const sheet = (page) => page.evaluate(async (url) => JSON.stringify((await import(url)).styleSheet()), SHEET);
-const sent = (page) => page.evaluate(() => window.__collab.session.stats.sent[1]);
+const sent = (page, kind = 1) => page.evaluate((k) => window.__collab.session.stats.sent[k], kind);
+const [ASK, ANSWER] = [0, 5];
 // The assistant's provider, scripted: two tool calls, then a closing word. Nothing leaves.
 const AI = { enabled: true, provider: 'openai', endpoint: 'http://mock.test/v1', apiKey: '', model: 'm' };
 let aiRequests = 0;
@@ -188,11 +189,15 @@ try {
   await record(a, false);
   await record(b, false);
 
+  const answers = async () => await sent(a, ANSWER) + await sent(b, ANSWER);
+  const answered = await answers();
   const c = await client('Cleo');
   await joinLink(c, link);
   const vc = await view(c);
   va = await view(a);
   check(same(va, vc) && await sheet(c) === await sheet(a), `a late joiner gets every edit so far, styles too (${brief(vc)})`);
+  const once = [await sent(c, ASK), await answers() - answered];
+  check(once.join() === '1,1', `the late joiner asks once and gets one answer (${once})`);
   const names = await a.evaluate(() => window.__collab.view().peers.map((p) => p.name).sort().join(','));
   const bar = (await a.textContent('.statusbar .collab-btn'))?.trim();
   check(names === 'Ben,Cleo' && /2/.test(bar ?? ''), `the starter sees who is there (${names}; "${bar}")`);

@@ -5,6 +5,8 @@ export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'cl
 export type Channel = {
   send(plain: Uint8Array): void;
   close(): void;
+  /** When the last frame came in, for a session waiting on an answer. */
+  heard(): number;
 };
 
 type Options = {
@@ -13,8 +15,8 @@ type Options = {
   onFrame(plain: Uint8Array): void;
   onPeers(n: number): void;
   onStatus(s: ChannelStatus): void;
-  /** Each time the socket is (re)opened, so the session can sync again. */
-  onOpen(): void;
+  /** Each time the relay welcomes the socket, with the room's size, so the session can sync. */
+  onOpen(peers: number): void;
 };
 
 /**
@@ -47,6 +49,7 @@ export function openChannel(o: Options): Channel {
   let ws: WebSocket | null = null;
   let closed = false;
   let wait = 500;
+  let heard = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const queue: Uint8Array<ArrayBuffer>[] = [];
 
@@ -58,15 +61,15 @@ export function openChannel(o: Options): Channel {
     let welcomed = false;
     sock.onopen = () => sock.send(JSON.stringify({ t: 'hello', v: 1, room, token: null }));
     sock.onmessage = (ev) => {
+      heard = Date.now();
       if (typeof ev.data === 'string') {
         let msg: { t?: string; peers?: number; n?: number };
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.t === 'welcome') {
           welcomed = true;
           wait = 500;
+          o.onOpen(msg.peers ?? 1);
           o.onStatus('open');
-          o.onPeers(msg.peers ?? 1);
-          o.onOpen();
           for (const f of queue.splice(0)) sock.send(f);
         } else if (msg.t === 'peers') o.onPeers(msg.n ?? 1);
         else if (msg.t === 'full') { closed = true; o.onStatus('full'); }
@@ -101,5 +104,6 @@ export function openChannel(o: Options): Channel {
       ws?.close();
       o.onStatus('closed');
     },
+    heard: () => heard,
   };
 }
