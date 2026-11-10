@@ -174,6 +174,22 @@ try {
   check(broken === opened + 1 && undone === opened,
     `a page break adds a page and undo takes it back (${opened} → ${broken} → ${undone})`);
 
+  // A plugin view rebuilt while a pass is pending (plugins reconfigured) paginates on.
+  await page.evaluate(() => {
+    const ed = document.querySelector('.tiptap').editor;
+    const plugin = ed.state.plugins.find((p) => p.key.startsWith('pageBreaks$'));
+    ed.view.dispatch(ed.state.tr.setMeta('addToHistory', false).setMeta('forcePageBreakRecalc', true));
+    ed.unregisterPlugin('pageBreaks');
+    ed.registerPlugin(plugin);
+  });
+  await caretTo(await firstParagraphEnd());
+  await page.keyboard.press(`${MOD}+Enter`);
+  const rebuilt = await settled(opened + 1);
+  await caretTo('end');
+  await page.keyboard.press(`${MOD}+z`);
+  check(rebuilt === opened + 1 && await settled(opened) === opened,
+    `pagination survives its plugin view being rebuilt mid-pass (${opened} → ${rebuilt})`);
+
   // The unsaved dot: an edit raises it, an undo back to the saved text clears it
   // again (it is a checksum, not the document's identity), and so does opening a file.
   // It follows on the next idle beat, so wait for the state rather than a fixed pause.

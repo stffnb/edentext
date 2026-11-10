@@ -2557,9 +2557,13 @@ export const PageBreaks = Extension.create({
               }
             }
           },
+          // The plugin's state outlives this view: a frame left marked pending would keep
+          // a view built later (plugin re-registered) from ever scheduling a pass.
           destroy() {
             if (idleTimer !== null) clearTimeout(idleTimer);
             if (rafId !== null) cancelAnimationFrame(rafId);
+            idleTimer = null;
+            rafId = null;
             debugAccessors.delete(editorView);
             paginating.delete(editorView);
             layingOut.delete(editorView);

@@ -665,8 +665,10 @@ export const ColumnsFlow = Extension.create({
             }
             schedule();
           },
+          // The plugin's state outlives this view, so a later one must find no frame pending.
           destroy() {
             if (rafId !== null) cancelAnimationFrame(rafId);
+            rafId = null;
             flowDebugAccessors.delete(editorView);
           },
         };
