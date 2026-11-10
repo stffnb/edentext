@@ -69,6 +69,12 @@ New, beyond the matrix:
   rescued into the step that typed it (`collab-conflicts.md`); text it had seen is part of
   its copy, which the run classifies as known. Without these ops 36 rounds (1152 ops, every
   disruption) ended with each client's undo and redo exact.
+- **An undo takes others' text** (open; seeds 2 and 3, 2026-11-10, reproducible with
+  `SOAK_SEED=3`). Two causes, traced per undo step: (1) undoing an inserted footnote
+  removes its anchor; the note body, holding another client's text, stays in Yjs, but the
+  notes repair drops it as an orphan. (2) Yjs's undo puts deleted text back as the undoer's
+  own items, so after one undo another client's text in a block counts as the undoer's,
+  and undoing an earlier step (the heading that made that block) deletes the block with it.
 - **Read-back** (low): the starter's `.odt` twice read back a mark spelled otherwise:
   `Liberation Serif` against `Times New Roman` (the monkey run lists that one as open) and
   `rgb(192, 0, 0)` for `#C00000`, a colour taken from the DOM somewhere in a session.
