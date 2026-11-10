@@ -104,6 +104,13 @@ export function rebaseStates(): void {
   }
 }
 
+// Lands a store's waiting change as its own step: another author's value arriving for it
+// must not cover it, and the step must not take that value as this client's.
+export function commitState(id: string): void {
+  const w = watches.get(id);
+  if (w) commitWatch(w);
+}
+
 function commitWatch(w: Watch): void {
   clearTimeout(w.timer);
   const from = w.from;

@@ -104,8 +104,8 @@ now resets the timers.
 - `node tests/collab/undo.mjs`: two clients, relayed by the script. Each undo takes back
   only its own client's typing, page layout, header and style, on both sides. An undo
   while recording leaves no recorded change. Two styles, a style added and another
-  deleted, and margins against orientation, each changed on both sides before the
-  updates cross, all stay. An image dragged right after typing beside it reaches the
+  deleted, and margins against orientation, each changed on both sides before the updates
+  cross or while the other's still gathers, all stay; idle, nothing is sent. An image dragged right after typing beside it reaches the
   other client and goes back in one undo, leaving the typing. In Chromium an IME
   composition (CDP's `Input.imeSetComposition`) while the other client's typing arrives
   ends as one word on both and goes back in one undo; Firefox and WebKit have no IME to
@@ -118,10 +118,10 @@ Not covered yet: `test:dom` runs the built app, which has no `?undo=yjs`. Cross-
 grouping (a step's range mapped through remote edits) is checked only through the
 two-client test.
 
-Known gaps: a remote change to a store while one's own change to it still waits in
-`noteState`'s 500 ms window loses one's own, and the commit may take the remote value as
-one's own; fixing it means rebasing `w.from`. A document opened during a session clears
-the manager but does not refill the map `state`.
+Another author's change to a store whose own change still gathers in `noteState`'s 500 ms
+window lands that change first (`commitState`, from the map's observer), so both authors'
+entries stay and each undo takes its own. Known gap: a document opened during a session
+clears the manager but does not refill the map `state`.
 
 ## Sessions
 
