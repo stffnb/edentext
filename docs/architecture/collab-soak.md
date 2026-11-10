@@ -135,7 +135,7 @@ Not measured: Firefox and WebKit, IME, a machine per client.
 
 ## MAX_PEERS
 
-Proposal: **6**, the user decides. Four people were soaked and six measured: on short and
+Default **6** (decided 2026-11-10). Four people were soaked and six measured: on short and
 mixed documents six stay fluent, and a limit above four leaves room for a reload or a second
 tab, each a connection of its own until the old one closes. On long documents typing slows
 from the second client on whatever the limit; a smaller limit would not help there, a cheaper

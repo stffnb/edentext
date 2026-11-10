@@ -82,7 +82,7 @@ retaining its readable tag.
 | `relay.image.repository` | Relay image repository | `ghcr.io/stffnb/edentext-relay` |
 | `relay.image.tag` | Relay tag; chart `appVersion` when empty | `""` |
 | `relay.image.digest` | Optional immutable `sha256:` manifest digest | `""` |
-| `relay.maxPeers` | Clients per session; `0` sets no limit | `0` |
+| `relay.maxPeers` | Clients per session; `0` sets no limit | `6` |
 | `relay.resources` | Relay requests and limits | See `values.yaml` |
 | `nodeSelector` | Pod node selector | `{}` |
 | `tolerations` | Pod tolerations | `[]` |
