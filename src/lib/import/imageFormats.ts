@@ -93,7 +93,7 @@ export function displayableImageMime(bytes: Uint8Array, path: string): string | 
 
 type ToBase64 = { toBase64?: () => string };
 
-function bytesToBase64(bytes: Uint8Array): string {
+export function bytesToBase64(bytes: Uint8Array): string {
   // The native encoder where the browser has one — a picture-heavy file spends a
   // quarter second in the loop below, which is only the fallback.
   const native = (bytes as Uint8Array & ToBase64).toBase64;

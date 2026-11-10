@@ -272,6 +272,11 @@ export function keepAsNewDocument(values: Iterable<[string, string]>): string | 
   }
 }
 
+/** The next load of this tab takes a new, empty slot instead of the one it has. */
+export function freshSlot(): void {
+  sessionStorage.removeItem(TAB_KEY);
+}
+
 /** Switch this tab to another document; the reload's pagehide saves and releases this one. */
 export function openDocument(id: string): void {
   sessionStorage.setItem(TAB_KEY, id);

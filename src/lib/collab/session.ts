@@ -2,16 +2,18 @@ import type { Editor } from '@tiptap/core';
 import * as Y from 'yjs';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import { yCursorPlugin, yCursorPluginKey } from '@tiptap/y-tiptap';
-import { attachYjsUndo, type YjsUndo } from '../editor/undoYjs';
+import { attachYjsUndo, type StoreCodec, type YjsUndo } from '../editor/undoYjs';
 import { openChannel, type ChannelStatus } from './channel';
 import { keyBytes, newKey, sessionLink } from './key';
 import { shareZones } from './zones.svelte';
-import { keyPictures, picturesKey, sessionPictures, unkeyPictures } from './pictures';
+import { PICTURE, WANT, keyPictures, picturesKey, sessionPictures, unkeyPictures } from './pictures';
+import { IDB_SRC } from '../storage/imageStore';
 
 // A shared session: the Yjs doc behind the body (`undoYjs.ts`) goes over a sealed channel
 // to the others in the room. Frames are one kind byte and its payload; the relay sees none
 // of it. Edits leave and arrive in batches of 50 ms, always as a task of their own.
-// Ids are random per session; frames with a `to` that is not this client are ignored.
+// Ids are random per session; frames with a `to` that is not this client are ignored, and
+// a relay that knows ids passes them to that client alone (`channel.ts`).
 
 const ASK = 0;      // [from]: everyone offers what they have
 const UPDATE = 1;   // a Yjs update for everyone
@@ -20,6 +22,7 @@ const OFFER = 3;    // [to][from][length][state vector][delete set as an update]
 const PULL = 4;     // [to][from][state vector]: the receiver answers with what it lacks
 const ANSWER = 5;   // [to][Yjs update]
 // PICTURE and WANT carry the pictures the doc names by key (`pictures.ts`).
+const DIRECTED = new Set([OFFER, PULL, ANSWER, PICTURE, WANT]); // the first number is `to`
 const BATCH_MS = 50;
 const SETTLE_MS = 300;  // how long a sync waits for late offers after the first
 const STALL_MS = 10_000; // a sync that hears nothing this long starts over
@@ -65,7 +68,26 @@ export type Session = {
   stats: { sent: number[] };
 };
 
-type Join = () => Promise<YjsUndo | 'version' | null>;
+type Join = (codec: StoreCodec) => Promise<YjsUndo | 'version' | null>;
+type Bind = (codec: StoreCodec) => YjsUndo;
+
+type Deletes = ReturnType<typeof Y.createDeleteSet>;
+
+/** Whether the deletions in `has` cover every range of `all`. */
+function holds(has: Deletes, all: Deletes): boolean {
+  const byClock = (x: { clock: number }, y: { clock: number }) => x.clock - y.clock;
+  for (const [client, ranges] of all.clients) {
+    const theirs = [...(has.clients.get(client) ?? [])].sort(byClock);
+    let j = 0;
+    for (const d of [...ranges].sort(byClock)) {
+      for (let at = d.clock; at < d.clock + d.len; at = theirs[j].clock + theirs[j].len) {
+        while (j < theirs.length && theirs[j].clock + theirs[j].len <= at) j++;
+        if (j >= theirs.length || theirs[j].clock > at) return false;
+      }
+    }
+  }
+  return true;
+}
 
 function frame(kind: number, ...parts: (number | Uint8Array)[]): Uint8Array {
   const out = new Uint8Array(1 + parts.reduce<number>((n, p) => n + (typeof p === 'number' ? 4 : p.length), 0));
@@ -78,7 +100,7 @@ function frame(kind: number, ...parts: (number | Uint8Array)[]): Uint8Array {
   return out;
 }
 
-function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bound: YjsUndo | null, join: Join | null): Session {
+function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bound: Bind | null, join: Join | null): Session {
   const awareness = new Awareness(ydoc);
   const link = sessionLink(key);
   const stats = { sent: [0, 0, 0, 0, 0, 0, 0, 0] };
@@ -123,10 +145,15 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
 
   const settled = (): SessionStatus => binding ? 'live' : peerCount <= 1 ? 'waiting' : 'connecting';
 
-  const send = (kind: number, ...parts: (number | Uint8Array)[]) => { stats.sent[kind]++; channel.send(frame(kind, ...parts)); };
-  const present = () => send(PRESENCE, encodeAwarenessUpdate(awareness, [ydoc.clientID]));
+  const send = (kind: number, ...parts: (number | Uint8Array)[]) => {
+    stats.sent[kind]++;
+    channel.send(frame(kind, ...parts), DIRECTED.has(kind) ? parts[0] as number : 0);
+  };
+  // A new clock: others that dropped this client when its line broke take it back.
+  const present = () => awareness.setLocalState(awareness.getLocalState());
   const pictures = sessionPictures({
-    me, send, heard: () => channel.heard(), changed: () => changed(),
+    me, send, heard: () => channel.heard(), changed: () => changed(), others: () => peerCount > 1,
+    arrived: (k) => binding?.refresh(IDB_SRC + k),
     peers: () => [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && typeof s.peer === 'number').map(([, s]) => s.peer as number),
   });
 
@@ -173,7 +200,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     if (joining && ydoc.getMap('meta').has('snapshot')) {
       const done = joining;
       joining = null;
-      const got = await done();
+      const got = await done(pictures);
       if (got === 'version') return setStatus('version');
       if (!got) return setStatus('closed');
       bind(got);
@@ -182,11 +209,11 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   };
 
   // A sync, once per welcome: this client asks, everyone offers its state vector and delete
-  // set, it sends what the others lack in one update and pulls what it lacks from the one
-  // offer that has the most, then from any that still has more. One copy of the doc travels.
-  // An offer after the settle is still pulled from, and gets what it lacks once all is in.
+  // set, it pulls what it lacks from the offer that has the most, then from any that still
+  // has more, a late offer too, and then sends all in one update what any offer lacks.
+  type Known = { sv: Map<number, number>; ds: Deletes };
   type Round = {
-    offers: Map<number, Map<number, number>>; pulled: Set<number>; late: Set<number>; target: number | null;
+    offers: Map<number, Known>; pulled: Set<number>; target: number | null;
     done: boolean; over: boolean; at: number; settle?: ReturnType<typeof setTimeout>; watch?: ReturnType<typeof setInterval>;
   };
   let round: Round | null = null;
@@ -198,33 +225,35 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   const startRound = () => {
     endRound();
     if (peerCount <= 1) return;
-    const r: Round = round = { offers: new Map(), pulled: new Set(), late: new Set(), target: null, done: false, over: false, at: Date.now() };
+    const r: Round = round = { offers: new Map(), pulled: new Set(), target: null, done: false, over: false, at: Date.now() };
     r.watch = setInterval(() => { if (!r.over && Date.now() - Math.max(r.at, channel.heard()) > STALL_MS) startRound(); }, 1000);
     send(ASK, me);
   };
-  // One update with what the lowest of these offers lacks. An empty offer is a joiner,
-  // which pulls the doc itself, so it would only send everyone a second copy.
-  const give = (from: Iterable<number>) => {
-    const svs = [...from].map((id) => round?.offers.get(id)).filter((sv) => sv?.size) as Map<number, number>[];
-    if (!svs.length || !ydoc.store.clients.size) return;
+  // One update to all with what the offers lack, edits pulled from others included, so a
+  // client's edits that reached only some still reach all. An empty offer is a joiner,
+  // which pulls the doc itself. Every offer then counts as holding this client's state.
+  const give = (r: Round) => {
+    if (!ydoc.store.clients.size) return;
+    const sv = Y.decodeStateVector(Y.encodeStateVector(ydoc)), ds = Y.createDeleteSetFromStructStore(ydoc.store);
+    const lacking = [...r.offers.values()].filter((o) => o.sv.size && ([...sv].some(([client, clock]) => (o.sv.get(client) ?? 0) < clock) || !holds(o.ds, ds)));
+    if (!lacking.length) return;
     const least = new Map<number, number>();
-    for (const [client, clock] of Y.decodeStateVector(Y.encodeStateVector(ydoc))) {
-      least.set(client, Math.min(clock, ...svs.map((sv) => sv.get(client) ?? 0)));
-    }
+    for (const [client, clock] of sv) least.set(client, Math.min(clock, ...lacking.map((o) => o.sv.get(client) ?? 0)));
     send(UPDATE, Y.encodeStateAsUpdate(ydoc, Y.encodeStateVector(least)));
+    for (const o of r.offers.values()) if (o.sv.size) { o.sv = sv; o.ds = ds; }
   };
   const settle = () => {
     if (!round || round.done) return;
     round.done = true;
     clearTimeout(round.settle);
-    give(round.offers.keys());
     pull();
   };
   const pull = () => {
     if (!round?.done || round.target !== null) return;
+    applyInbox();
     const mine = Y.decodeStateVector(Y.encodeStateVector(ydoc));
     let best: number | null = null, most = 0;
-    for (const [from, sv] of round.offers) {
+    for (const [from, { sv }] of round.offers) {
       if (round.pulled.has(from)) continue;
       let more = 0;
       for (const [client, clock] of sv) more += Math.max(0, clock - (mine.get(client) ?? 0));
@@ -232,8 +261,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     }
     if (best === null) {
       round.over = true;
-      give(round.late);
-      round.late.clear();
+      give(round);
       return;
     }
     round.over = false;
@@ -244,7 +272,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   };
 
   const channel = openChannel({
-    url: host.relay, key: keyBytes(key)!,
+    url: host.relay, key: keyBytes(key)!, id: me,
     onFrame(plain) {
       if (status === 'version') return;
       const kind = plain[0], v = new DataView(plain.buffer, plain.byteOffset, plain.byteLength);
@@ -258,9 +286,10 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       } else if (v.getUint32(1) !== me) return;
       else if (kind === OFFER && round) {
         const from = v.getUint32(5), n = v.getUint32(9);
-        round.offers.set(from, Y.decodeStateVector(plain.subarray(13, 13 + n)));
-        receive(plain.subarray(13 + n));
-        if (round.done) { round.late.add(from); pull(); }
+        const ds = plain.subarray(13 + n);
+        round.offers.set(from, { sv: Y.decodeStateVector(plain.subarray(13, 13 + n)), ds: Y.decodeUpdate(ds).ds });
+        receive(ds);
+        if (round.done) pull();
         else if (round.offers.size >= peerCount - 1) settle();
         else round.settle ??= setTimeout(settle, SETTLE_MS);
       } else if (kind === PULL) {
@@ -271,13 +300,17 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
         receive(plain.subarray(5));
       }
     },
-    onPeers(n) {
+    onPeers(n, gone) {
+      // A client whose line ended is dropped at once, not after awareness's 30 s: no picture
+      // is asked of it and its zone frees. Back on a new line, it presents itself anew.
+      if (gone) removeAwarenessStates(awareness, [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.peer === gone).map(([id]) => id), 'gone');
       // Someone came: tell them who we are; their sync sends them what they lack, and a
       // client still without the doc asks them. Someone left: a sync still waiting on
       // offers or an answer starts over with the rest, as others' traffic hides the stall.
       const came = n > peerCount, left = n < peerCount;
       if (came) { present(); pictures.retry(); }
       peerCount = n;
+      if (left) pictures.recheck();
       if (left ? round && !round.over : came && joining && (!round || round.over)) startRound();
       if (line === 'open' && status !== 'version') setStatus(settled());
       changed();
@@ -300,7 +333,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   awareness.setLocalStateField('peer', me);
   const unshareZones = shareZones(awareness);
   if (keeps) awareness.setLocalStateField('keeps', true);
-  if (bound) bind(bound);
+  if (bound) bind(bound(pictures));
 
   // Leaving tells the others at once; a closed tab drops out after awareness's timeout.
   const goodbye = () => {
@@ -346,7 +379,7 @@ export async function startSession(editor: Editor, host: SessionHost): Promise<S
   // The start file carries the pictures; the shared doc names them by key.
   const keyed = keyPictures(editor.state);
   if (keyed) editor.view.dispatch(keyed);
-  return connect(editor, newKey(), host, ydoc, attachYjsUndo(editor, ydoc), null);
+  return connect(editor, newKey(), host, ydoc, (codec) => attachYjsUndo(editor, ydoc, codec), null);
 }
 
 /**
@@ -355,14 +388,14 @@ export async function startSession(editor: Editor, host: SessionHost): Promise<S
  */
 export function joinSession(editor: Editor, key: string, host: SessionHost): Session {
   const ydoc = new Y.Doc();
-  return connect(editor, key, host, ydoc, null, async () => {
+  return connect(editor, key, host, ydoc, null, async (codec) => {
     const meta = ydoc.getMap('meta');
     if (meta.get('version') !== __APP_VERSION__) return 'version';
     if (!(await host.load(meta.get('snapshot') as Uint8Array, String(meta.get('name') ?? '')))) return null;
     // The start file's pictures are held, under the keys the shared doc names them by.
     keyPictures(editor.state);
     // Repairs wait for the rank the session gives it on binding.
-    const binding = attachYjsUndo(editor, ydoc, () => false);
+    const binding = attachYjsUndo(editor, ydoc, codec, () => false);
     binding.applyState();
     return binding;
   });

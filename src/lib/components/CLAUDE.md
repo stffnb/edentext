@@ -15,6 +15,7 @@ A control disabled for a reason the user cannot see says it in its `title` (`not
 `activeEditor`/`activeTick` and only one mounts at a time.
 `toolbar/` holds the island's Tools categories and menu primitives; logic shared with a ribbon tab lives in a plain `.ts` module beside them (see `docs/architecture/island.md`).
 A shared session's flow (relay probe, start, join from the link, leave) is `collab/appSession.svelte.ts`; `App.svelte` keeps its status button and `CollabDialog`.
+`CollabDialog` opens by itself only when a session cannot go on; a breaking line, nobody keeping the document or a lost picture is a notice by the status bar, so nothing covers the page while someone types.
 `EventDialogs.svelte` mounts the event-opened dialogs (link, bookmark, cross-reference, formula) once, outside both chromes.
 Under the zh-Hans UI both size boxes list and accept the named sizes (字号, `utils/fontSize.ts`).
 
