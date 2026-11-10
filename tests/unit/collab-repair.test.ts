@@ -129,7 +129,7 @@ const notePos = (ed: Editor) => {
   ed.state.doc.descendants((n, p) => { if (pos < 0 && n.type.name === 'note') pos = p + 1; return pos < 0; });
   return pos;
 };
-const UNDO_CASES: { name: string; a: ((ed: Editor) => void)[]; b: (ed: Editor) => void }[] = [
+const UNDO_CASES: { name: string; a: ((ed: Editor) => void)[]; b: (ed: Editor) => void; gone?: string }[] = [
   { name: 'a footnote another client wrote into',
     a: [(ed) => { ed.commands.setTextSelection(posOf(ed, 'Gamma delta.', 12)); ed.commands.insertNote('footnote'); }],
     b: (ed) => { ed.commands.insertContentAt(notePos(ed), 'Zed'); } },
@@ -141,6 +141,10 @@ const UNDO_CASES: { name: string; a: ((ed: Editor) => void)[]; b: (ed: Editor) =
     a: [(ed) => { ed.commands.insertContentAt(posOf(ed, 'Gamma'), '\t'); },
       (ed) => { ed.commands.setTextSelection(posOf(ed, 'Gamma')); ed.commands.setParagraphStyle('Heading 1'); }],
     b: (ed) => { ed.commands.insertContentAt(posOf(ed, 'Gamma'), 'Zed'); } },
+  { name: 'and its own text before it goes, restored with it as one item',
+    a: [(ed) => { ed.commands.insertContentAt(posOf(ed, 'Gamma'), 'Qq'); },
+      (ed) => { ed.commands.setTextSelection(posOf(ed, 'Gamma')); ed.commands.setParagraphStyle('Heading 1'); }],
+    b: (ed) => { ed.commands.insertContentAt(posOf(ed, 'Gamma'), 'Zed'); }, gone: 'Qq' },
 ];
 
 describe('an undo in a shared doc', () => {
@@ -165,6 +169,7 @@ describe('an undo in a shared doc', () => {
       }
       for (const x of cs) {
         expect(x.ed.state.doc.textContent).toContain('Zed');
+        if (c.gone) expect(x.ed.state.doc.textContent).not.toContain(c.gone);
         expect(JSON.stringify(x.ed.getJSON())).toBe(JSON.stringify(a.ed.getJSON()));
         expect(() => x.ed.state.doc.check()).not.toThrow();
       }
