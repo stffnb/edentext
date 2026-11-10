@@ -117,7 +117,7 @@ update did not throw. **kept**: B's text at its place (A's deliberate deletion e
   items one row of the matrix left behind, A's undo of a join restored `…lazy dog.` on A and
   `…lazy og.d` on B, the same state vectors, nothing pending. The redone items' origins
   depend on the undoing client's tombstones. The script starts every row from fresh docs;
-  the soak run would show it as documents apart over the same Yjs body.
+  the soak run would show it as Yjs bodies apart.
 - **Derived values read from a client's own state** (notes counted per page, from that
   client's pagination) can differ between clients; the repair rule above stops the replies
   after one round, and the editors can then show different numbers until the next edit.
