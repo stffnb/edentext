@@ -235,6 +235,40 @@ try {
   check(four.every((v) => same(v, four[0])) && four[0].text.startsWith('Cleo ') && four[0].text.endsWith(' Delta'),
     `a fourth client joins late and types, and all four converge (${four.map(brief).join(' | ')})`);
 
+  // The client a joiner pulls from drops its answer and its line, while another keeps
+  // typing so the joiner hears frames all along: the joiner still gets the doc from the rest.
+  // The others' offers are held back, so Dan's is the one pulled from.
+  const arm = (page, role) => page.evaluate((role) => {
+    const Orig = WebSocket, send = Orig.prototype.send, sent = window.__collab.session.stats.sent;
+    const st = window.__drop = { muted: role === 'mute', fired: false, offers: sent[3], answers: sent[5] };
+    Orig.prototype.send = function (data) {
+      if (sent[3] !== st.offers) { st.offers = sent[3]; if (st.muted) return; }
+      if (role === 'drop' && (st.fired || sent[5] > st.answers)) {
+        if (!st.fired) setTimeout(() => { this.close(); window.WebSocket = class extends Orig { constructor() { super('ws://127.0.0.1:9/'); } }; }, 1000);
+        st.fired = true;
+        return;
+      }
+      return send.call(this, data);
+    };
+  }, role);
+  for (const page of [a, b, c]) await arm(page, 'mute');
+  await arm(d4, 'drop');
+  const f = await client('Finn');
+  await f.goto(link, { waitUntil: 'load' });
+  await ready(f);
+  const dropped = await d4.waitForFunction(() => window.__drop.fired, null, { timeout: 15_000 }).then(() => true, () => false);
+  for (const page of [a, b, c]) await page.evaluate(() => { window.__drop.muted = false; });
+  await caret(c, 'end');
+  let fLive = false;
+  for (let i = 0; i < 10 && !fLive; i++) {
+    await c.keyboard.type('.');
+    await f.waitForTimeout(2000);
+    fLive = await status(f) === 'live';
+  }
+  await f.waitForTimeout(1500);
+  const [vf, va4] = [await view(f), await view(a)];
+  check(dropped && fLive && same(vf, va4), `a joiner whose answer is lost with its sender's line gets the doc from another (${dropped}, ${await status(f)})`);
+
   await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');
   await caret(b, 'end');

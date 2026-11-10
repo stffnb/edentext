@@ -222,7 +222,11 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     onPeers(n) {
       // Someone came: tell them who we are. Their sync brings the doc both ways.
       if (n > peerCount) present();
+      // Someone left: a sync still waiting on offers or an answer starts over with the rest,
+      // since the others' traffic keeps the stall check from firing.
+      const left = n < peerCount;
       peerCount = n;
+      if (left && round) startRound();
       if (line === 'open' && status !== 'version') setStatus(settled());
       changed();
     },
