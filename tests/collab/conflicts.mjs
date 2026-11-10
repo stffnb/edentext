@@ -1,9 +1,6 @@
-// Two clients do one thing each to the same paragraph, table, change or comment before
-// either hears of the other's (relayed by this script, as undo.mjs). Per pair: same doc on
-// both, a valid doc with rectangular tables, nothing typed lost, no update after the
-// exchange but the repairer's one, A's undo taking back A's op alone. Expected values are
-// what the editor does now, accepted losses included (docs/architecture/collab-conflicts.md).
-// Dev server, any engine.
+// Two clients each do one thing to the same paragraph, table, change or comment, relayed by
+// this script: one valid doc with rectangular tables, nothing typed lost, only the repairer's
+// update after, A's undo taking back A's op alone; accepted losses as in collab-conflicts.md.
 import { checker, collectErrors, devServer, openApp } from '../browser.mjs';
 
 const PORT = +(process.env.COLLAB_PORT ?? 4394);

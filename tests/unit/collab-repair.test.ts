@@ -4,10 +4,9 @@ import * as Y from 'yjs';
 import { extensions } from '../../src/lib/editor/extensions';
 import { attachYjsUndo, type YjsUndo } from '../../src/lib/editor/undoYjs';
 
-// Clients whose concurrent edits need the plugins' repairs (a ragged table, two note
-// sections, notes out of anchor order), their updates relayed in a random order: every
-// client ends with the same shared doc and document, the repairs in it once, and only the
-// repairer wrote any of them.
+// Concurrent edits that need the plugins' repairs (a ragged table, two note sections,
+// notes out of anchor order), relayed in a random order: every client ends with the same
+// shared doc and document, the repairs in it once, all written by the repairer.
 
 type Client = { ed: Editor; undo: YjsUndo; ydoc: Y.Doc; out: Uint8Array[] };
 const live: Client[] = [];

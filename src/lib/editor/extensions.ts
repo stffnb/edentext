@@ -112,11 +112,9 @@ const CELL_CONTENT = '(paragraph | heading | bulletList | orderedList | table)+'
 const LIST_ITEM_CONTENT = '(paragraph | heading | bulletList | orderedList) (paragraph | heading | bulletList | orderedList)*';
 
 export const extensions = [
-  // columns has its own group so only the document (not cells/lists) admits it. The note
-  // section may stand anywhere: two clients adding the first note at once make two, which
-  // the notes plugin merges into one at the end. A text box is inline and rides a paragraph.
-  // Blocks come first in the alternation: TipTap's clearNodes converts a block into the
-  // match's first type (`contentMatchAt(i).defaultType`).
+  // Only the document admits columns (a text box is inline); note sections stand anywhere, as
+  // two made at once merge at the end (notes.ts). Blocks come first: TipTap's clearNodes
+  // converts a block into the match's first type (`contentMatchAt(i).defaultType`).
   Document.extend({
     content: '(block | columns | noteSection)+',
   }),
