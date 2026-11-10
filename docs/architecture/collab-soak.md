@@ -126,8 +126,8 @@ What it means, against about 16 ms per key for a visible stutter and 50 ms for s
   document (`encodeStateAsUpdate`) from 18 to 52 kB, about 3 bytes per typed character.
   Nothing there grows out of proportion.
 
-`perf/keystroke-cost` is not on this branch. Its range-limited plugins read `changedRanges`
-(the steps' maps), which holds for y-tiptap's single `ReplaceStep` too. That step reaches
+The range-limited plugins from `perf/keystroke-cost` read `changedRanges` (the steps'
+maps), which holds for y-tiptap's single `ReplaceStep` too. That step reaches
 from the first to the last top-level block a batch changed, though, so with typists far
 apart the range covers most of the document between them and the saving shrinks.
 
