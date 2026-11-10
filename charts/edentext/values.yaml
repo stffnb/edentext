@@ -95,8 +95,8 @@ relay:
     # Defaults to the chart's appVersion when empty.
     tag: ""
     digest: ""
-  # Clients per room; 0 sets no limit.
-  maxPeers: 0
+  # Clients per room, a reload's second connection included; 0 sets no limit.
+  maxPeers: 6
   resources:
     requests:
       cpu: 10m

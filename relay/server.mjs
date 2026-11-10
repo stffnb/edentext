@@ -107,7 +107,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const relay = await startRelay({
     port: env('PORT', 4390),
     host: process.env.HOST,
-    maxPeers: env('MAX_PEERS', 0),
+    maxPeers: env('MAX_PEERS', 6),
     maxFrame: env('MAX_FRAME', 16 << 20),
     maxRooms: env('MAX_ROOMS', 10000),
     beat: env('BEAT_MS', 15_000),
