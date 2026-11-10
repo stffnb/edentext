@@ -127,12 +127,14 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   `relay/health` answers. Embedded, there are none.
 - **Sync** (`collab/session.ts`) once per welcome: `ASK`; every peer `OFFER`s its state
   vector and delete set. When all have, or 300 ms after the first, the asker `PULL`s an
-  `ANSWER` from the offer ahead most, then from any still ahead, a later offer too. Then it
-  `UPDATE`s all at once what the non-empty offers lack (an empty one is a joiner, which
-  pulls itself), edits pulled from others included, so an edit that reached only some
-  clients reaches all; none lacking an edit or deletion, it sends nothing. A client without the doc asks again when
-  someone comes. A sync ends with the line and restarts when the room shrinks or no peer
-  frame comes for 10 s. Edits and carets go in 50 ms batches, each as a task of its own.
+  `ANSWER` from the offer ahead most, then from any still ahead, a later offer too. Only
+  then do the offered delete sets apply (alone, one may empty what a pulled insert fills).
+  Then it `UPDATE`s all at once what the non-empty offers lack (an empty one is a joiner,
+  which pulls itself), edits pulled from others included, so an edit that reached only some
+  clients reaches all; none lacking an edit or deletion, it sends nothing. A client without
+  the doc asks again when someone comes. A sync ends with the line and restarts when the
+  room shrinks or no peer frame comes for 10 s. Edits and carets go in 50 ms batches, each
+  as a task of its own.
 - **Parts and failures** (`collab/channel.ts`): a message beyond the welcome's `frame`
   (at most 1 MiB) goes as sealed numbered parts. Retries back off from 0.5 to 30 s; three
   connections lost within 5 s of their welcome show `failing` until one holds for 5 s; a
@@ -176,7 +178,7 @@ Frames carry at most 1 MiB; a late joiner gets everything from one ask and one a
 picture from one client; a header's picture goes by its key too; replies go to their asker
 alone; a fourth joins, types and converges. A joiner whose pulled peer drops its answer and
 line, while a third types, still goes live; a late offer is pulled from and gets what it
-lacks, and the others get what was pulled; a waiting joiner asks a client coming back, which pushes it no copy. B cannot open a
+lacks, and the others get what was pulled; one back from offline pauses on no offered deletion; a waiting joiner asks a client coming back, which pushes it no copy. B cannot open a
 header A holds; opened together, the lower id keeps it; a closed tab frees it, a dropped line in seconds. Open and New
 ask first, then open alone; others keep theirs. The starter leaves unasked, the others are
 told and go on; a reload rejoins. A joiner keeping its copy reloads into it unwarned,
