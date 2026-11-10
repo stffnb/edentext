@@ -22,8 +22,8 @@ corpus documents. Both passed every one, so the choice is about cost, not feasib
 - **When to revisit.** If the relay has to keep state anyway, for instance sessions that
   live on without anyone in them, the main reason for Yjs is gone.
 
-What the spike left untested (other engines, long documents, IME, image drag, the
-assistant, four clients, other line heights) the session checks now cover.
+What the spike left untested (engines, long documents, IME, image drag, the assistant, four
+clients, line heights) the session checks cover; concurrent edits: `collab-conflicts.md`.
 
 Spike results (Chromium, dev server, one machine; `pm` is `prosemirror-collab`):
 
