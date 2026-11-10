@@ -140,15 +140,17 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in 
   `/relay` beside the app (dev server proxy, Docker image, Helm chart). With
   `same-origin` the app offers sessions only once `relay/health` answers, so an image
   served without a relay shows no menu entry. Embedded, there are none.
-- **Sync** (`collab/session.ts`) once per welcome: `ASK`, every peer `OFFER`s its state
-  vector and delete set. Once all have offered, or 300 ms after the first, the asker sends
-  one `UPDATE` with what the lowest offer lacks and `PULL`s one `ANSWER` from the offer
-  ahead most, then from any still ahead; a later offer is dropped. When the room shrinks
-  or nothing is heard for 10 s, it starts over. Edits (`UPDATE`) and carets (`PRESENCE`)
-  go in 50 ms batches (`Y.mergeUpdates`), always as a task of their own.
+- **Sync** (`collab/session.ts`) once per welcome: `ASK`; every peer `OFFER`s its state
+  vector and delete set. When all have, or 300 ms after the first, the asker `UPDATE`s what
+  the lowest non-empty offer lacks (an empty one is a joiner, which pulls itself) and
+  `PULL`s an `ANSWER` from the offer ahead most, then from any still ahead, a later offer
+  too, which at the end gets what it lacks. A client without the doc asks again when
+  someone comes. A sync ends with the line and restarts when the room shrinks or no peer
+  frame comes for 10 s. Edits and carets go in 50 ms batches, each as a task of its own.
 - **Parts and failures** (`collab/channel.ts`): a message beyond the welcome's `frame`
   (at most 1 MiB) goes as sealed numbered parts. Retries back off from 0.5 to 30 s; three
-  connections lost within 5 s of their welcome show `failing` until one holds for 5 s.
+  connections lost within 5 s of their welcome show `failing` until one holds for 5 s; a
+  line silent for three `beat`s (15 s) is taken as half-open and redialled.
 - **Start and join.** The starter puts its document, exported as `.odt` (`buildBytes`),
   into the map `meta` with the app version and the name, then binds the body
   (`attachYjsUndo`). A tab opened from the link waits for a peer and refuses another
@@ -158,13 +160,11 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in 
   map as the undo uses. A header or footer is written as a whole zone, so two people in
   one zone at the same moment get the last writer's.
 - **Storage.** The starter keeps editing its own document, and autosave stores everyone's
-  edits there. A joining tab is `volatile`: it keeps no copy and claims no slot. Its
-  slot id would be the first document's, so `main.ts` also skips the prune there. The
-  link stays in the address bar, so a reload joins again. Leaving clears it.
-- **Carets** come from y-tiptap's cursor plugin over the awareness, drawn as zero-width
-  decorations in the person's colour (the recorded-change colour when they have one)
-  and hidden in print. y-tiptap's undo plugin destroys its manager whenever the plugin
-  views rebuild (any `registerPlugin`), so `undoYjs.ts` keeps it alive until `detach`.
+  edits there. A joining tab is `volatile`: no copy, no slot, no prune in `main.ts` (its
+  slot id is the first document's). A reload joins again by the link; leaving clears it.
+- **Carets** come from y-tiptap's cursor plugin over the awareness: zero-width decorations
+  in the person's (or recorded-change) colour, hidden in print. y-tiptap's undo plugin
+  destroys its manager on any `registerPlugin`, so `undoYjs.ts` keeps it until `detach`.
 
 ### Checks
 
@@ -172,26 +172,26 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in 
 menu. B joins by the link and gets A's document: JSON, pages and zones. Both type, and each
 undo takes back only its own typing. A page setup and a style change arrive, the caret
 shows with its name, the relay's frames hold no typed text and no name, and an idle session
-sends no updates. Frames carry at most 1 MiB; a late joiner gets everything, styles and a
-2.9 MB picture too, from one ask and one answer; a fourth joins, types and converges. A
-joiner whose pulled peer drops its answer and line, while a third types, still goes live.
-After the starter leaves, the others go on, and a reload rejoins. A cut-short link says so.
-A client with taller lines (6 against 7 pages, an index document) stays quiet as well. The
-assistant on the starter, from a provider the script answers itself (`page.route`): its
-text replacement and page setup reach the joiner, which keeps its recorded marks and adds
-none; the starter's undo takes back each on both sides. A relay dropping every connection
-after its welcome makes the line `failing` (dialog, 4–5 connections in 12 s) until it
-holds. `tests/relay.test.ts` and `tests/collab.test.ts` cover rooms, limits, sealing and
+sends no updates. Frames carry at most 1 MiB; a late joiner gets everything, a 2.9 MB
+picture too, from one ask and one answer; a fourth joins, types and converges. A joiner
+whose pulled peer drops its answer and line, while a third types, still goes live; a late
+offer is pulled from and gets what it lacks; a waiting joiner asks a client coming back,
+which pushes it no copy. After the starter leaves, the others go on; a reload rejoins; a
+cut-short link says so. A client with taller lines (6 against 7 pages) stays quiet too.
+The assistant on the starter, answered by the script (`page.route`): its text and page
+setup reach the joiner, which keeps its recorded marks and adds none; the starter's undo
+takes back each on both sides. A relay dropping every connection after its welcome makes
+the line `failing` (dialog, 4–5 connections in 12 s) until it holds. A line that hears and
+sends nothing leaves `live` within a few beats, asks nothing while down, and comes back.
+`tests/relay.test.ts` and `tests/collab.test.ts` cover rooms, limits, beats, sealing and
 parts. Both scripts run in Chromium, Firefox and WebKit (`BROWSER`, as the CI's matrix).
 
-Gaps: the relay keeps nothing, so a session lives only while someone is in it. The relay
-cannot address a frame, so every answer reaches every peer. IME input is driven in Chromium
-only. Seen once each and not again on a rerun: in Firefox a joiner not live within 20 s on
-a just-started dev server; in WebKit an uncaught "Fetch API cannot load …/loadFailure.ts
-due to access control checks" on the starter. An offer later than 300 ms after the first
-is dropped, so what only that peer has (offline edits beyond the queue) waits for the next
-sync. A line that dies without a close stays `live` until the browser notices. A link
-holder can make a client keep many half-sent messages of up to 256 MiB each for 60 s.
+Gaps: the relay keeps nothing, so a session lives only while someone is in it. It cannot
+address a frame, so every answer reaches every peer, and a late offer's edits reach only
+the asker, the others at their next sync. IME input is driven in Chromium only. Seen once
+each, not on a rerun: in Firefox a joiner not live within 20 s on a just-started dev
+server; in WebKit an uncaught "Fetch API cannot load …/loadFailure.ts" on the starter. A
+link holder can make a client keep many half-sent messages of up to 256 MiB each for 60 s.
 Pictures (2026-11-10, Chromium, 1.73 MB in `13-images`): `src` goes into the fragment as
 it is. Inserting sends 1.73 MB, resizing 0.4 kB; a drag deletes and inserts the node, so it
 sends it again, and the mover's doc keeps both copies (3.48 MB) for its undo. A late joiner
