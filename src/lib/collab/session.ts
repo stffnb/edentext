@@ -27,7 +27,6 @@ const BATCH_MS = 50;
 const SETTLE_MS = 300;  // how long a sync waits for late offers after the first
 const STALL_MS = 10_000; // a sync that hears nothing this long starts over
 const EMPTY_MS = 5000;   // a joiner alone this long is told the room is empty
-const GONE_MS = 3000;    // after the room shrinks, whose presence is not renewed this long left
 const REMOTE = Symbol('remote');
 
 export type SessionStatus =
@@ -185,15 +184,6 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     changed();
   };
   awareness.on('update', onPresence);
-  // A client the relay lost is gone for the others once they renewed their presence and
-  // its did not come, not after awareness's 30 s: its zone frees and its repairs move on.
-  let goneSince = 0;
-  let goneTimer: ReturnType<typeof setTimeout> | undefined;
-  const sweep = () => {
-    goneTimer = undefined;
-    const gone = [...awareness.meta].filter(([id, m]) => id !== ydoc.clientID && awareness.states.has(id) && m.lastUpdated < goneSince).map(([id]) => id);
-    if (gone.length) removeAwarenessStates(awareness, gone, 'gone');
-  };
 
   // Incoming updates gather for a batch and apply as one Yjs transaction. A joiner binds
   // the editor once the doc it received carries a start file.
@@ -317,20 +307,15 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       }
     },
     onPeers(n, gone) {
-      // A client whose line ended is dropped at once, not after awareness's 30 s: no picture
-      // is asked of it and its zone frees. Back on a new line, it presents itself anew.
+      // A client whose line the relay saw end is dropped at once: no picture is asked of it, its
+      // zone frees, its repairs move on. A presence merely late drops no one (a busy repairer
+      // would get a second). Back on a new line, a client presents itself anew.
       if (gone) removeAwarenessStates(awareness, [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.peer === gone).map(([id]) => id), 'gone');
       // Someone came: tell them who we are; their sync sends them what they lack, and a
       // client still without the doc asks them. Someone left: a sync still waiting on
       // offers or an answer starts over with the rest, as others' traffic hides the stall.
       const came = n > peerCount, left = n < peerCount;
       if (came) { present(); pictures.retry(); }
-      if (left) {
-        present();
-        if (!goneTimer) goneSince = Date.now();
-        clearTimeout(goneTimer);
-        goneTimer = setTimeout(sweep, GONE_MS);
-      }
       peerCount = n;
       if (left) pictures.recheck();
       if (left ? round && !round.over : came && joining && (!round || round.over)) startRound();
@@ -371,7 +356,6 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       clearTimeout(outTimer);
       clearTimeout(inTimer);
       clearTimeout(emptyTimer);
-      clearTimeout(goneTimer);
       endRound();
       goodbye();
       channel.close();

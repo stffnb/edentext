@@ -57,9 +57,9 @@ page from one's own pagination) stay local instead of answering each other.
 - **Who repairs.** In a session the client bound longest: `rank` in the awareness, 0 for
   the starter, one past every rank a joiner sees, the id breaking ties. The role moves only
   when its holder's awareness goes; the next one then writes what it holds. Alone, and in
-  the scripts' pairs, the first client. A client the relay lost goes from everyone's
-  awareness about 3 s after the room shrank (`session.ts`, `GONE_MS`): the others renew
-  theirs at once, and whose renewal does not come is dropped.
+  the scripts' pairs, the first client. A client goes from everyone's awareness when the
+  relay sees its line end (`gone`); a presence merely late (a busy tab) drops no one, as
+  that would leave two clients repairing until it comes.
 - **An edit into the overlay** (typing in a cell only the overlay pads) cannot be moved
   onto `base`, so it is **held** (`held` in `collabRepair`): drawn at once, with every later
   edit of this client behind it in order, but not written. After the next redraw the held
@@ -183,8 +183,8 @@ leaves both at B's doc alone (in the B's undo rows, B's undo takes its last step
   pasted paragraph into the old one by a prefix/suffix diff, so B's typing is not deleted
   but stays where Yjs merges it among A's new characters (`TZedwo lazy days.`), as with any
   concurrent typing into a replaced range. The rescue leaves it there.
-- **Waiting for the repairer.** Until its version arrives (one relay round; about 3 s if
-  its holder's line dropped, up to awareness's 30 s if the relay still counts a frozen tab)
+- **Waiting for the repairer.** Until its version arrives (one relay round; once the relay
+  sees its holder's line end, up to awareness's 30 s if the relay still counts a frozen tab)
   an edit inside the overlay is held: shown, not yet sent, and this client's later edits
   wait behind it.
 - **Derived values read from a client's own state** (notes counted per page, from that
