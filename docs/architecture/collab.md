@@ -137,8 +137,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in 
   can only be taken back by starting a new session.
 - **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`): rooms as sets of sockets in memory,
   frames passed on unchanged, nothing stored or logged. It still sees addresses, times,
-  frame sizes and how many share a room. `MAX_PEERS` counts connections, and the hello
-  carries a `token` field, reserved and not read.
+  frame sizes and how many share a room; `MAX_PEERS` counts connections.
 - **Where the relay is:** `VITE_COLLAB_RELAY` is a `wss://` URL, or `same-origin` for
   `/relay` beside the app (dev server proxy, Docker image, Helm chart). With
   `same-origin` the app offers sessions only once `relay/health` answers, so an image
@@ -170,34 +169,32 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in 
 
 ### Checks
 
-`node tests/collab/session.mjs` starts a relay and the dev server and goes through the
-File menu. B joins by the link and gets A's document: JSON, pages and zones. Both type,
-and each undo takes back only its own typing. A page setup and a style change arrive
-on the other side, and the caret shows with its name. The relay's frames hold no typed
-text and no name. An idle session, also after the style change, sends no updates. A late
-joiner gets everything, styles included, and a fourth client joining after it types
-and converges with the other three. After the starter leaves,
-the others go on, and a reload rejoins. A cut-short link says so. A client with taller
-lines (6 against 7 pages on an index document) stays quiet as well: the index's page
-numbers do not flip between the two. The assistant on the starter, from a provider the
-script answers itself (`page.route`, no model and no network): its text replacement and
-page setup reach the joiner; with both recording, the joiner keeps the assistant's marks
-and adds none of its own; the starter's undo takes back the page setup, then the text, on
-both sides. `tests/relay.test.ts` and `tests/collab.test.ts`
-cover the relay's rooms and limits and the sealing. Both scripts run in Chromium, Firefox
-and WebKit (`BROWSER`, each leg of the CI's browser matrix).
+`node tests/collab/session.mjs` starts a relay and the dev server and goes through the File
+menu. B joins by the link and gets A's document: JSON, pages and zones. Both type, and each
+undo takes back only its own typing. A page setup and a style change arrive on the other
+side, and the caret shows with its name. The relay's frames hold no typed text and no name.
+An idle session, also after the style change, sends no updates. Frames carry at most
+1 MiB; a late joiner gets everything, styles and a 2.9 MB picture too, from one ask and one
+answer; a fourth client joining after it types and converges with the other three. After
+the starter leaves, the others go on, and a reload rejoins. A cut-short link says so. A
+client with taller lines (6 against 7 pages on an index document) stays quiet as well: the
+index's page numbers do not flip between the two. The assistant on the starter, from a
+provider the script answers itself (`page.route`, no model and no network): its text
+replacement and page setup reach the joiner; with both recording, the joiner keeps the
+assistant's marks and adds none of its own; the starter's undo takes back the page setup,
+then the text, on both sides. A relay dropping every connection after its welcome makes the
+line `failing` (dialog, 4–5 connections in 12 s) until it holds. `tests/relay.test.ts` and
+`tests/collab.test.ts` cover rooms, limits, sealing and parts. Both scripts run in
+Chromium, Firefox and WebKit (`BROWSER`, as the CI's browser matrix).
 
-Gaps: the relay keeps nothing, so a session lives only while someone is in it. Pictures
-cost more than their size, and past `MAX_FRAME` a session stops syncing. Two
-clients of different EdenText versions refuse each other. IME input is driven in Chromium
-only. Seen once each and not again on a rerun: in Firefox a joiner not live within 20 s
-on a just-started dev server; in WebKit an uncaught "Fetch API cannot load
-…/loadFailure.ts due to access control checks" on the starter.
-Pictures (2026-11-10, Chromium, a 1.73 MB JPEG data-URI added to `13-images`): `src` goes
-into the fragment as it is. Inserting sends 1.73 MB, resizing 0.4 kB; a drag deletes and
-inserts the node, so it sends it again, and the mover's doc keeps both copies (3.48 MB)
-for its undo, also after a delete. A joiner asks twice (welcome, `onOpen`) and each client
-answers in full: 6.99 MB for the late joiner then. A picture there at the start comes in
-the start file and the fragment. An answer is one frame, so the doc must fit `MAX_FRAME`
-(about 9.5 MB of start picture); past it the relay closes the sender and the channel
-resends forever, while every client shows `live` (tried with 11.7 and 22 MB).
+Gaps: the relay keeps nothing, so a session lives only while someone is in it. The relay
+cannot address a frame, so every answer reaches every peer. IME input is driven in Chromium
+only. Seen once each and not again on a rerun: in Firefox a joiner not live within 20 s on
+a just-started dev server; in WebKit an uncaught "Fetch API cannot load …/loadFailure.ts
+due to access control checks" on the starter. Pictures (2026-11-10, Chromium, a 1.73 MB
+JPEG data-URI added to `13-images`): `src` goes into the fragment as it is. Inserting sends
+1.73 MB, resizing 0.4 kB; a drag deletes and inserts the node, so it sends it again, and
+the mover's doc keeps both copies (3.48 MB) for its undo, also after a delete. A late
+joiner then got 6.99 MB, now 1.75 MB (the doc once). A picture there at the start comes in
+the start file and the fragment, 3.04 MB. In 1 MiB parts an 11.75 MB start picture joins
+(20.58 MB) and a 22 MB one inserted later arrives; one frame stopped at 9.5 MB.
