@@ -226,9 +226,8 @@ try {
   for (const c of CASES) {
     if (ONLY && !ONLY.test(c.name)) continue;
     await record(b, false);
-    // Each pair from fresh Yjs docs: the history one leaves (Yjs keeps deleted items) would
-    // steer where the next one's undo puts things back.
-    // FRESH=0 keeps one pair of docs for the whole run, the history included.
+    // Each pair from fresh Yjs docs, so every row starts from the same state; FRESH=0 keeps
+    // one pair for the whole run, which checks undo over a long history (yjs#823, yjsRedo.ts).
     if (process.env.FRESH !== '0') {
       for (const p of [a, b]) await p.evaluate(() => window.__yjsUndo.detach());
       await a.evaluate((d) => window.__h.ed.commands.setContent({ type: 'doc', content: d }), c.doc);

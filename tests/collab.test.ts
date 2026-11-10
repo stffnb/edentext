@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
+import '../src/lib/editor/yjsRedo';
 import { keyBytes, newKey, roomId, seal, sessionLink, unseal } from '../src/lib/collab/key';
 import { openChannel } from '../src/lib/collab/channel';
 // @ts-expect-error plain JavaScript module, shipped as its own container
@@ -62,5 +64,35 @@ describe('collaboration key', () => {
     a.close();
     b.close();
     await relay.close();
+  });
+});
+
+// A Y.Text holding "xdog." inside a list, edited; `undo` takes back the last edit. Each run
+// ends by deleting the Y.Text and undoing that, which must bring back the text it held.
+type Edit = (list: Y.Array<Y.Text>, undo: () => void) => void;
+const restore: [string, Edit][] = [
+  ['a copy split by a deletion', (l, undo) => { l.get(0).delete(1, 4); undo(); l.get(0).delete(2, 3); undo(); }],
+  ['a copy split by typing', (l, undo) => { l.get(0).delete(1, 4); undo(); l.get(0).insert(2, '++'); }],
+];
+
+describe('shared undo', () => {
+  it.each(restore)('restores text the same on its own doc, a peer and a reload: %s', (_name, edits) => {
+    for (const gc of [true, false]) {
+      const a = new Y.Doc({ gc }), b = new Y.Doc({ gc });
+      a.on('update', (u: Uint8Array) => Y.applyUpdate(b, u));
+      const list = a.getArray<Y.Text>('root');
+      list.insert(0, [new Y.Text('xdog.')]);
+      const um = new Y.UndoManager(list, { captureTimeout: 0 });
+      const undo = () => { um.stopCapturing(); um.undo(); };
+      edits(list, undo);
+      const before = list.get(0).toString();
+      list.delete(0, 1);
+      undo();
+      const reload = new Y.Doc();
+      Y.applyUpdate(reload, Y.encodeStateAsUpdate(a));
+      const text = (d: Y.Doc) => d.getArray<Y.Text>('root').get(0).toString();
+      expect([text(b), text(reload)]).toEqual([text(a), text(a)]);
+      expect(text(a)).toBe(before);
+    }
   });
 });
