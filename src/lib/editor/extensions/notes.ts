@@ -1,7 +1,7 @@
 import { Extension, Node, mergeAttributes } from '@tiptap/core';
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { EditorState, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import type { EditorState, Transaction } from '@tiptap/pm/state';
+import type { Transaction } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { AddMarkStep, AttrStep, RemoveMarkStep, ReplaceAroundStep, ReplaceStep, type Step } from '@tiptap/pm/transform';
 import { DEFAULT_SHORTCUTS } from '../shortcuts';
@@ -387,9 +387,9 @@ export const Notes = Extension.create<NotesOptions>({
           },
         },
 
-        // Two rounds by design: structure first, numbering on the pass after it. Doing
-        // both at once would need positions from a document this transaction is still
-        // rewriting.
+        // Structure first, numbering on the pass after it, each read off the document the
+        // last one left; ProseMirror hands a plugin's own appended transaction to the others
+        // only, so the passes run here until the document holds, all in one transaction.
         appendTransaction(trs, oldState, newState) {
           if (trs.some((tr) => tr.selectionSet)) {
             const clamped = clampToSide(newState);
@@ -401,9 +401,17 @@ export const Notes = Extension.create<NotesOptions>({
             noteless.add(newState.doc);
             return null;
           }
-          const fix = syncStructure(newState) ?? syncNumbers(newState, getSettings()) ?? stripAnchorMarks(newState);
-          if (!fix && !findNoteSection(newState.doc) && !collectNoteRefs(newState.doc).length) noteless.add(newState.doc);
-          return fix;
+          let out: Transaction | null = null;
+          let state = newState;
+          for (let pass = 0; pass < 6; pass++) {
+            const fix = syncStructure(state) ?? syncNumbers(state, getSettings()) ?? stripAnchorMarks(state);
+            if (!fix) break;
+            out ??= newState.tr;
+            for (const step of fix.steps) out.step(step);
+            state = EditorState.create({ schema: newState.schema, doc: out.doc });
+          }
+          if (!out && !findNoteSection(newState.doc) && !collectNoteRefs(newState.doc).length) noteless.add(newState.doc);
+          return out;
         },
       }),
     ];
@@ -459,6 +467,19 @@ function syncStructure(state: EditorState): Transaction | null {
   const noteType = state.schema.nodes.note;
   const sectionType = state.schema.nodes.noteSection;
   if (!noteType || !sectionType) return null;
+
+  // One section, the last block: two clients adding the first note at once make two, and
+  // a block written past the section lands after it. Every client merges them alike.
+  const sections: { node: PMNode; pos: number }[] = [];
+  state.doc.forEach((child, pos) => { if (child.type === sectionType) sections.push({ node: child, pos }); });
+  if (sections.length > 1 || (sections.length === 1 && sections[0].node !== state.doc.lastChild)) {
+    const tr = state.tr;
+    const notes: PMNode[] = [];
+    for (const s of sections) s.node.forEach((n) => notes.push(n));
+    for (const s of [...sections].reverse()) tr.delete(s.pos, s.pos + s.node.nodeSize);
+    tr.insert(tr.doc.content.size, sectionType.create(null, notes));
+    return tr;
+  }
 
   // Strays first and on their own: they shift every position after them, and the rest
   // of this pass reads positions out of the document it was handed.
