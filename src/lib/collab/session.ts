@@ -232,6 +232,8 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     },
     onStatus(s: ChannelStatus) {
       line = s;
+      // A sync needs an open line; the next welcome starts a new one.
+      if (s !== 'open') endRound();
       if (status === 'version') return;
       setStatus(s === 'open' ? settled() : s);
     },
