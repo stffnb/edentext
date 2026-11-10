@@ -92,6 +92,7 @@
       </div>
     {:else}
       <p class="status" data-status={view.status}>{t().collab.status[view.status]}</p>
+      {#if view.paused}<p class="notice" data-notice="paused">{t().collab.pausedHint}</p>{/if}
       {#if view.status === 'live' && !view.kept}
         <p class="notice" data-notice="unkept">{t().collab.unkept}</p>
       {/if}

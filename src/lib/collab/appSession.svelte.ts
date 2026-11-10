@@ -73,7 +73,7 @@ export function joinCollab(app: SessionApp, key: string): void {
   void app.named().then((named) => {
     const editor = app.editor();
     if (!named || !editor) return;
-    if (!keyBytes(key)) view = { status: 'invalid', peers: [], link: location.href, keeps: false, kept: true, missing: 0 };
+    if (!keyBytes(key)) view = { status: 'invalid', peers: [], link: location.href, keeps: false, kept: true, missing: 0, paused: false };
     else session = joinSession(editor, key, host(app));
     expose();
   });

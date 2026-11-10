@@ -210,6 +210,8 @@ const es: Messages = {
     peers: (n: number) => `${n} persona${n === 1 ? '' : 's'} más`,
     missing: (n: number) => n === 1 ? 'No se ha podido obtener una imagen: quien la tenía se ha ido. Se verá como un recuadro gris hasta que se una alguien que la tenga.' : `No se han podido obtener ${n} imágenes: quien las tenía se ha ido. Se verán como recuadros grises hasta que se una alguien que las tenga.`,
     picturesPending: 'Algunas imágenes aún no le han llegado y faltarían en el archivo. Vuelva a intentarlo cuando aparezcan.',
+    paused: 'Edición en pausa',
+    pausedHint: 'Un cambio de la sesión no se puede mostrar aquí y, si sigue escribiendo, podría sobrescribirlo, así que la edición está en pausa. Se reanudará sola en cuanto el documento se pueda mostrar de nuevo.',
     status: {
       connecting: 'Conectando…',
       waiting: 'Esperando a alguien que tenga el documento abierto…',
