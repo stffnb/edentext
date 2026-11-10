@@ -143,11 +143,11 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness)─�
   `/relay` beside the app (dev server proxy, Docker image, Helm chart). With
   `same-origin` the app offers sessions only once `relay/health` answers, so an image
   served without a relay shows no menu entry. Embedded, there are none.
-- **Sync** (`collab/session.ts`): three frame kinds. `ASK` is a state vector, and everyone
-  answers it with the update it lacks. `UPDATE` is a Yjs update. `PRESENCE` is an
-  awareness update with name, colour and caret. A client asks when it connects and
-  whenever the relay reports a new peer. Updates leave and arrive in 50 ms batches
-  (`Y.mergeUpdates`), always as a task of their own, never inside a dispatch.
+- **Sync** (`collab/session.ts`) once per welcome: `ASK`, every peer `OFFER`s its state
+  vector and delete set, the asker sends one `UPDATE` with what the lowest offer lacks
+  and `PULL`s one `ANSWER` from the offer ahead most, then from any still ahead; silent
+  for 10 s, it starts over. Edits (`UPDATE`) and carets (`PRESENCE`) go in 50 ms batches
+  (`Y.mergeUpdates`), always as a task of their own.
 - **Start and join.** The starter puts its document, exported as `.odt` (`buildBytes`),
   into the map `meta` with the app version and the name, then binds the body
   (`attachYjsUndo`). A tab opened from the link waits for a peer and refuses another
