@@ -2552,10 +2552,10 @@ export const PageBreaks = Extension.create({
             const isRemote = before?.remote !== after?.remote;
             if (!isUpdating && (prevState.doc !== editorView.state.doc || forced)) {
               convergePasses = 0; // fresh convergence budget per external change
-              // Layout-only writes — the TOC rewriting its page numbers on every
-              // pm-pagecount — answer the last pass, so forgetting the ping-pong
-              // memory on them would leave the guard with nothing to catch.
-              if (forced || isEditTr) prevPlacementsKey = null;
+              // Layout-only writes (the TOC's page numbers) answer the last pass and keep the
+              // ping-pong memory; another client's edit is new content, like one's own, and
+              // may well bring back the layout of two passes ago.
+              if (forced || isEditTr || isRemote) prevPlacementsKey = null;
               if (isEditTr && !forced) {
                 const b = after?.textBlock ?? null;
                 editBlock = b === null || (editBlock !== null && editBlock !== b) ? false : b;

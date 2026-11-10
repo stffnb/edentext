@@ -125,12 +125,15 @@ function isValid(code: string): boolean {
   return code === NO_LANGUAGE || !!findLanguage(code);
 }
 
-// First run follows the browser language, by full tag first so en-GB picks the British
-// dictionary rather than the US one; resolveBrowserLocale covers the rest. A tag no entry
-// claims leaves checking off rather than guessing.
 export function loadDocumentLanguage(): DocumentLanguage {
   const code = docStore.getItem(KEY);
-  if (code && isValid(code)) return code;
+  return code && isValid(code) ? code : defaultDocumentLanguage();
+}
+
+// A new document's language follows the browser's, by full tag first so en-GB picks the
+// British dictionary rather than the US one; resolveBrowserLocale covers the rest. A tag
+// no entry claims leaves checking off rather than guessing.
+export function defaultDocumentLanguage(): DocumentLanguage {
   const fromTag = codeForTag(navigator.language ?? '');
   if (fromTag) return fromTag;
   const ui = resolveBrowserLocale();

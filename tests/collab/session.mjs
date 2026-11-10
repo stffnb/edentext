@@ -92,17 +92,18 @@ const sheet = (page) => page.evaluate(async (url) => JSON.stringify((await impor
 const sent = (page, kind = 1) => page.evaluate((k) => window.__collab.session.stats.sent[k], kind);
 const [ASK, ANSWER, PICTURE] = [0, 5, 6];
 const status = (page) => page.evaluate(() => window.__collab.view().status);
-// A noise picture, incompressible like a photo, of about 2.5 MB as a data URL.
-const photo = (page) => page.evaluate(() => {
+// A noise picture, incompressible like a photo, of about 2.5 MB (900×700) as a data URL,
+// put in the body or another editor; returns its length and its bytes'.
+const photo = (page, at = '.tiptap-host .tiptap', w = 900, h = 700) => page.evaluate(([at, w, h]) => {
   const c = document.createElement('canvas');
-  c.width = 900; c.height = 700;
-  const ctx = c.getContext('2d'), img = ctx.createImageData(900, 700);
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d'), img = ctx.createImageData(w, h);
   for (let i = 0; i < img.data.length; i++) img.data[i] = (i & 3) === 3 ? 255 : (Math.random() * 256) | 0;
   ctx.putImageData(img, 0, 0);
   const src = c.toDataURL('image/png');
-  document.querySelector('.tiptap-host .tiptap').editor.chain().focus('start').setImage({ src, width: 300, height: 233 }).run();
-  return src.length;
-});
+  document.querySelector(at).editor.chain().focus('start').setImage({ src, width: Math.round(w / 3), height: Math.round(h / 3) }).run();
+  return [src.length, atob(src.slice(src.indexOf(',') + 1)).length];
+}, [at, w, h]);
 // The assistant's provider, scripted: two tool calls, then a closing word. Nothing leaves.
 const AI = { enabled: true, provider: 'openai', endpoint: 'http://mock.test/v1', apiKey: '', model: 'm' };
 let aiRequests = 0;
@@ -285,13 +286,13 @@ try {
   check(same(va, vb) && !await heldTag(a) && !await heldTag(b), `after that both documents are the same (${brief(va)} | ${brief(vb)})`);
 
   const [y0, r0] = [await ysize(a), relayed()];
-  const size = await photo(a);
+  const [size, bytes] = await photo(a);
   await a.waitForTimeout(2500);
   [va, vb] = [await view(a), await view(b)];
   check(size > FRAME && va.json === vb.json && await shown(b) === 1, `a picture longer than the relay's frame reaches the joiner (${(size / 1e6).toFixed(1)} MB)`);
   const [y1, r1] = [await ysize(a), relayed()];
-  check(!inline(va.json) && y1 - y0 < 2000 && r1 - r0 > size && r1 - r0 < size * 1.1,
-    `the shared doc names the picture by its key (+${y1 - y0} bytes), its bytes go once (${((r1 - r0) / size).toFixed(2)}× its size)`);
+  check(!inline(va.json) && y1 - y0 < 2000 && r1 - r0 > bytes && r1 - r0 < bytes * 1.05,
+    `the shared doc names the picture by its key (+${y1 - y0} bytes), its bytes go once, not as base64 (${((r1 - r0) / bytes).toFixed(2)}× its bytes)`);
   // What leaves a client holds the picture: its copy on the clipboard, a saved file, autosave.
   const copied = await b.evaluate(() => {
     const ed = document.querySelector('.tiptap-host .tiptap').editor;
@@ -356,7 +357,22 @@ try {
   const [y3, r3] = [await ysize(a), relayed()];
   check(y3 - y2 < 8000 && r3 - r2 < 30_000 && (await view(b)).json === (await view(a)).json,
     `five moves and a delete send ${r3 - r2} bytes, and the doc grows by ${y3 - y2}`);
-  check(seen.every((f) => f.length <= FRAME), `no frame exceeds the relay's limit (largest ${Math.max(...seen.map((f) => f.length))})`);
+  // A picture in the header goes by its key as well: the zone in the shared doc stays small,
+  // the bytes go once, and the others show it in their header.
+  const [y4, r4] = [await ysize(a), relayed()];
+  await openZone(a, 'header');
+  const [, hbytes] = await photo(a, '.hf-active .tiptap', 600, 400);
+  await a.keyboard.press('Escape');
+  await settle(a);
+  await a.waitForTimeout(1500);
+  const hfShown = (page) => page.evaluate(() => [...document.querySelectorAll('.hf-layer .hf-zone img')].filter((i) => i.src.startsWith('data:') && i.src.length > 1e5).length);
+  const [y5, r5] = [await ysize(a), relayed()];
+  const hf = [await hfShown(a), await hfShown(b), await hfShown(c)];
+  check(hf[0] > 0 && hf.every((n) => n === hf[0]) && y5 - y4 < 4000 && r5 - r4 > hbytes && r5 - r4 < hbytes * 1.1,
+    `a header's picture reaches the others by its key (+${y5 - y4} bytes), its bytes once (${((r5 - r4) / hbytes).toFixed(2)}× them; shown ${hf})`);
+  const addressed = seen.filter((f) => f.readUInt32BE(0) !== 0).length;
+  check(seen.every((f) => f.length <= FRAME) && addressed > 0,
+    `no frame exceeds the relay's limit (largest ${Math.max(...seen.map((f) => f.length))}), and ${addressed} went to one client alone`);
   const names = await a.evaluate(() => window.__collab.view().peers.map((p) => p.name).sort().join(','));
   const bar = (await a.textContent('.statusbar .collab-btn'))?.trim();
   check(names === 'Ben,Cleo' && /2/.test(bar ?? ''), `the starter sees who is there (${names}; "${bar}")`);
@@ -413,7 +429,8 @@ try {
   check(dropped && fLive && same(vf, va4), `a joiner whose answer is lost with its sender's line gets the doc from another (${dropped}, ${await status(f)})`);
 
   // Anna's and Cleo's latest edits each stay their own, then the reloaded Ben asks and
-  // Cleo's offer comes after the settle: Ben still pulls her edit and sends her Anna's.
+  // Cleo's offer comes after the settle: Ben still pulls her edit, and what he pulled from
+  // each reaches every other client without another sync.
   await arm(c, 'slow');
   const silent = (page, on) => page.evaluate((v) => { window.__drop.silent = v; }, on);
   for (const page of [a, c]) await silent(page, true);
@@ -427,9 +444,10 @@ try {
   await ready(b);
   await live(b);
   await b.waitForTimeout(4000);
-  const [vb5, vc5] = [await view(b), await view(c)];
+  const [vb5, vc5, va5, vf5] = [await view(b), await view(c), await view(a), await view(f)];
   const both = (v) => v.text.includes(' Eta') && v.text.includes(' Zeta');
   check(vb5.json === vc5.json && both(vb5), `a late offer is pulled from and gets what it lacks (${both(vb5)}, ${both(vc5)})`);
+  check(va5.json === vb5.json && vf5.json === vb5.json, `edits pulled from one offer reach the other clients too (${both(va5)}, ${both(vf5)})`);
 
   // A tab closed with a zone open frees it for the others.
   await openZone(f, 'footer');
@@ -440,12 +458,41 @@ try {
   const freed = await b.waitForFunction(() => !document.querySelector('.hf-held'), null, { timeout: 40_000 }).then(() => true, () => false);
   check(heldByFinn === 'Finn is editing' && freed, `a tab closed with the footer open frees it ("${heldByFinn}", after ${((Date.now() - closedAt) / 1000).toFixed(1)} s)`);
 
+  // A joiner opening a file is asked first; cancelled, nothing changes. Keeping its copy, it
+  // leaves and the file opens in a new document of its own; the others keep the shared one.
+  const h = await client('Hana');
+  await joinLink(h, link);
+  await settle(a);
+  const shared = await view(c);
+  const otherFile = join(ROOT, 'tests/corpus', '20-index-footer.odt');
+  await h.setInputFiles('input.file-input[accept*=".odt"]', otherFile);
+  const askedOpen = await h.waitForSelector('dialog[open] [data-notice="open"]', { timeout: 5000 }).then(() => true, () => false);
+  await h.keyboard.press('Escape');
+  await h.waitForTimeout(1000);
+  const stayed = await status(h) === 'live' && (await view(h)).json === shared.json;
+  await h.setInputFiles('input.file-input[accept*=".odt"]', otherFile);
+  await h.evaluate(() => { window.__before = true; });
+  h.dialogs.length = 0;
+  await h.click('dialog[open] [data-cmd="collabKeep"]');
+  await h.waitForFunction(() => !window.__before && document.querySelector('.tiptap-host .tiptap')?.editor, null, { timeout: 30_000 });
+  await h.waitForTimeout(2500);
+  const hOpened = await view(h);
+  const hDocs = await h.evaluate(() => Object.keys(localStorage).filter((k) => /^edentext-doc(@|$)/.test(k)).map((k) => localStorage.getItem(k).includes('Alpha')));
+  const hState = await h.evaluate(() => ({ hash: location.hash, collab: !!window.__collab?.view() }));
+  check(askedOpen && stayed && !hOpened.text.includes('Alpha') && hOpened.text.length > 0 && hDocs.filter(Boolean).length === 1 && hDocs.length === 2 && !hState.hash && !hState.collab && !h.dialogs.length,
+    `a joiner opening a file is asked (${askedOpen}), stays on cancel (${stayed}), and keeping its copy opens the file alone (${brief(hOpened)}; docs ${hDocs}; ${JSON.stringify(hState)}; ${h.dialogs})`);
+  await a.waitForTimeout(1500);
+  const others = [await view(a), await view(b), await view(c)].map((v) => v.json === shared.json);
+  const peersLeft = await a.evaluate(() => window.__collab.view().peers.map((p) => p.name));
+  check(others.every(Boolean) && !peersLeft.includes('Hana'),
+    `the others keep the shared document (${others}) and see the joiner gone (${peersLeft})`);
+  await h.context().close();
+
   await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');
-  const unkept = (page) => page.waitForSelector('dialog[open] [data-notice="unkept"]', { timeout: 10_000 }).then(() => true, () => false);
+  const unkept = (page) => page.waitForSelector('.collab-notice[data-notice="unkept"]', { timeout: 10_000 }).then(() => true, () => false);
   const heard = [await unkept(b), await unkept(c)];
-  check(heard.every(Boolean) && !(await a.$("dialog[open]")), `the starter leaves unasked, and the others hear nobody keeps the document (${heard})`);
-  for (const page of [b, c]) await page.keyboard.press('Escape');
+  check(heard.every(Boolean) && !(await a.$("dialog[open]")) && !(await b.$("dialog[open]")), `the starter leaves unasked, and the others hear, without a dialog over the page, that nobody keeps the document (${heard})`);
   await caret(b, 'end');
   await b.keyboard.type(' Gamma');
   await settle(b);
@@ -467,6 +514,7 @@ try {
   const [vKept, sheetKept] = [await view(c), await sheet(c)];
   await b.evaluate(() => { window.__before = true; });
   b.dialogs.length = 0;
+  await b.click('.collab-notice [data-cmd="collabDetails"]');
   await b.click('dialog[open] [data-cmd="collabLeave"]');
   await b.click('dialog[open] [data-cmd="collabKeep"]');
   await b.waitForFunction(() => !window.__before && document.querySelector('.tiptap-host .tiptap')?.editor, null, { timeout: 30_000 });
@@ -518,12 +566,11 @@ try {
   a.on('websocket', (w) => { if (w.url().includes('/relay')) sockets++; });
   const cut = setInterval(() => { for (const room of relay.rooms.values()) for (const w of room) w.close(1009, 'too big'); }, 200);
   const failing = await a.waitForFunction(() => window.__collab.view().status === 'failing', null, { timeout: 20_000 }).then(() => true, () => false);
-  const told = await a.waitForSelector('dialog[open] [data-status="failing"]', { timeout: 2000 }).then(() => true, () => false);
+  const told = await a.waitForSelector('.collab-notice[data-notice="failing"]', { timeout: 2000 }).then(() => true, () => false);
   await a.waitForTimeout(12_000);
   clearInterval(cut);
   const during = [await status(a), sockets];
   check(failing && told && during[0] !== 'live' && sockets <= 8, `a line that keeps breaking is not live and says so, with backoff (${during[0]}, ${sockets} connections)`);
-  for (const page of [a, e]) await page.keyboard.press('Escape');
   await a.waitForFunction(() => window.__collab.view().status === 'live', null, { timeout: 45_000 }).catch(() => {});
   await e.waitForFunction(() => window.__collab.view().status === 'live', null, { timeout: 15_000 }).catch(() => {});
   await caret(e, 'end');
@@ -610,11 +657,27 @@ try {
   const aMissing = await a.evaluate(() => window.__collab.view().missing);
   if (!await a.isVisible('dialog[open] [data-cmd="collabLeave"]')) await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');
-  const told2 = await g.waitForSelector('dialog[open] [data-missing]', { timeout: 30_000 }).then(() => true, () => false);
+  // The relay says she left, so this takes no awareness timeout.
+  const told2 = await g.waitForSelector('.collab-notice[data-notice="missing"]', { timeout: 8000 }).then(() => true, () => false);
+  const gView = await g.evaluate(() => `${window.__collab.view().missing} missing, notice ${!!document.querySelector('.collab-notice[data-notice="missing"]')}`);
   const own = await a.evaluate(() => /"src":"data:image\/png/.test(JSON.stringify(document.querySelector('.tiptap-host .tiptap').editor.getJSON())));
   const boxes = await g.locator('.tiptap-host .tiptap .image-waiting').count();
   check(told2 && await status(g) === 'live' && boxes === 1 && own,
-    `a picture whose only holder left shows as a grey box (${boxes}) with a note, the session stays live (${told2}, ${await status(g)}), and the holder keeps it (${own}, ${aMissing} missing there)`);
+    `a picture whose only holder left shows as a grey box (${boxes}) with a note, the session stays live (${told2}, ${await status(g)}, ${gView}), and the holder keeps it (${own}, ${aMissing} missing there)`);
+
+  // The starter choosing New in a session is asked, leaves, and starts empty; the joiner keeps the document.
+  await openDoc(a, '16-hf-variants.odt');
+  const link3 = await start(a);
+  const k = await client('Kai');
+  await joinLink(k, link3);
+  const kShared = await view(k);
+  await a.click('.ribbon-tab-file');
+  await a.click('.ribbon [data-cmd="newDocument"]');
+  await a.click('dialog[open] [data-cmd="collabLeaveOpen"]');
+  await a.waitForTimeout(1500);
+  const aNew = await a.evaluate(() => ({ text: document.querySelector('.tiptap-host .tiptap').editor.state.doc.textContent, collab: !!window.__collab.view() }));
+  check(!aNew.text && !aNew.collab && await status(k) === 'live' && (await view(k)).json === kShared.json && !!kShared.text,
+    `the starter choosing New leaves first and starts empty, the joiner keeps the document (${JSON.stringify(aNew)})`);
 
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (err) {
