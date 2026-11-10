@@ -174,6 +174,48 @@ try {
   const [ma, mb] = [await margin(a), await margin(b)];
   check(ma === mb && ma !== wide && va.width === vb.width && va.width !== portrait, `margins and orientation set at once both stay (${ma} ${va.width}px | ${mb} ${vb.width}px)`);
 
+  // A sets the margins, B the orientation 100 ms later: exchanged once both are in the map,
+  // and again with A's arriving while B's still gathers. Both stay; each undo takes its own.
+  const pick = async (page, menu, item) => { await page.click('[data-tab="layout"]'); await page.click(`[data-cmd="${menu}"]`); await page.click(`[data-cmd="${item}"]`); };
+  const narrow = ma;
+  const early = async () => {
+    await a.waitForFunction(() => window.__yOut.length > 0, null, { polling: 20, timeout: 3000 });
+    const gathering = await b.evaluate(() => window.__yOut.length === 0);
+    await relay();
+    return gathering;
+  };
+  for (const crossing of [false, true]) {
+    await pick(a, 'margins', 'margins-wide');
+    await a.waitForTimeout(100);
+    await pick(b, 'orientation', 'orientation-portrait');
+    const gathering = crossing ? await early() : null;
+    await pause();
+    [va, vb] = await both();
+    let [m1, m2] = [await margin(a), await margin(b)];
+    check(m1 === m2 && m1 !== narrow && va.width === portrait && vb.width === portrait,
+      `margins and orientation 100 ms apart both stay${crossing ? `, A's arriving while B's gathers (${gathering})` : ''} (${m1} ${va.width}px | ${m2} ${vb.width}px)`);
+    await undo(a);
+    [va, vb] = await both();
+    [m1, m2] = [await margin(a), await margin(b)];
+    check(m1 === narrow && m2 === narrow && va.width === portrait && vb.width === portrait, `A's undo takes back only the margins (${m1} ${va.width}px | ${m2} ${vb.width}px)`);
+    await undo(b);
+    [va, vb] = await both();
+    check(va.width !== portrait && vb.width === va.width, `B's undo takes back its orientation (${va.width}px | ${vb.width}px)`);
+  }
+  await putStyle(a, 'Heading 1', { fontSizePt: 24 }, {});
+  await a.waitForTimeout(100);
+  await putStyle(b, 'Quotations', {}, { spaceAfter: 10 });
+  const gathering = await early();
+  await pause();
+  [sa, sb] = [await sheet(a), await sheet(b)];
+  check(sa.h1 === 24 && sa.quote === 10 && sa.json === sb.json, `two styles 100 ms apart both stay, A's arriving while B's gathers (${gathering}) (${sa.h1}/${sa.quote} | ${sb.h1}/${sb.quote})`);
+  await undo(a);
+  [sa, sb] = [await sheet(a), await sheet(b)];
+  check(sa.h1 === 30 && sb.h1 === 30 && sa.quote === 10 && sb.quote === 10, `A's undo takes back only its style (${sa.h1}/${sa.quote} | ${sb.h1}/${sb.quote})`);
+  await a.waitForTimeout(1500);
+  const idle = [await a.evaluate(() => window.__yOut.length), await b.evaluate(() => window.__yOut.length)];
+  check(idle[0] === 0 && idle[1] === 0, `after it the session sends nothing while idle (${idle})`);
+
   // An IME composition on A while B's typing arrives: one word, one undo step. Only
   // Chromium has a real IME to drive (CDP); synthetic events would take another path.
   if (ENGINE === 'chromium') {
