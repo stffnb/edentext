@@ -32,17 +32,29 @@ function holdsForeign(type: { _start: Y.Item | null }, foreign: (it: Y.Item) => 
 // ranges here keep the author of the text they restore, so the next undo still counts it
 // as another client's. Per client id and sorted, as copies never overlap.
 class Authors {
-  private ranges = new Map<number, { clock: number; end: number }[]>();
+  private ranges = new Map<number, { clock: number; end: number; foreign: boolean }[]>();
   constructor(private ydoc: Y.Doc) {}
+  // The first range of `client` that ends after `clock`.
+  private from(client: number, clock: number): number {
+    const rs = this.ranges.get(client) ?? [];
+    let lo = 0, hi = rs.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (rs[mid].end <= clock) lo = mid + 1; else hi = mid; }
+    return lo;
+  }
   foreign = (it: Y.Item): boolean => {
     if (it.id.client !== this.ydoc.clientID) return true;
-    const rs = this.ranges.get(it.id.client);
-    if (!rs) return false;
-    let lo = 0, hi = rs.length;
-    while (lo < hi) { const mid = (lo + hi) >> 1; if (rs[mid].end <= it.id.clock) lo = mid + 1; else hi = mid; }
-    return lo < rs.length && rs[lo].clock < it.id.clock + it.length;
+    const rs = this.ranges.get(it.id.client) ?? [];
+    for (let i = this.from(it.id.client, it.id.clock); i < rs.length && rs[i].clock < it.id.clock + it.length; i++) if (rs[i].foreign) return true;
+    return false;
   };
-  // After an undo or redo: every item it restored from another's text, as its copy's range.
+  // Yjs merges adjacent copies into one item, and an undo deletes a copy it follows to its
+  // end; split at the end of the copy the item starts in, so only that copy goes.
+  trim(it: Y.Item): void {
+    const r = this.ranges.get(it.id.client)?.[this.from(it.id.client, it.id.clock)];
+    const tr = this.ydoc._transaction;
+    if (r && tr && r.clock <= it.id.clock && it.id.clock + it.length > r.end) Y.getItemCleanStart(tr, Y.createID(it.id.client, r.end));
+  }
+  // After an undo or redo: every item it restored, as its copy's range and whose text it is.
   restored(deletions: { clients: Map<number, { clock: number; len: number }[]> }): void {
     deletions.clients.forEach((dels, client) => {
       const structs = this.ydoc.store.clients.get(client);
@@ -50,10 +62,10 @@ class Authors {
       for (const d of dels) {
         for (let i = Y.findIndexSS(structs, d.clock); i < structs.length && structs[i].id.clock < d.clock + d.len; i++) {
           const it = structs[i];
-          if (!(it instanceof Y.Item) || !it.redone || !this.foreign(it)) continue;
+          if (!(it instanceof Y.Item) || !it.redone) continue;
           const rs = this.ranges.get(it.redone.client) ?? [];
           const at = rs.findIndex((r) => r.clock > it.redone!.clock);
-          rs.splice(at < 0 ? rs.length : at, 0, { clock: it.redone.clock, end: it.redone.clock + it.length });
+          rs.splice(at < 0 ? rs.length : at, 0, { clock: it.redone.clock, end: it.redone.clock + it.length, foreign: this.foreign(it) });
           this.ranges.set(it.redone.client, rs);
         }
       }
@@ -183,7 +195,10 @@ export function attachYjsUndo(
     trackedOrigins: new Set([ySyncPluginKey, STATE_ORIGIN]),
     captureTransaction: (t) => t.meta.get('addToHistory') !== false,
     deleteFilter: (item) => {
-      if (!(item.content instanceof Y.ContentType)) return true;
+      if (!(item.content instanceof Y.ContentType)) {
+        authors.trim(item);
+        return !authors.foreign(item);
+      }
       const type = item.content.type;
       return !holdsForeign(type, authors.foreign, leaf) && !(type instanceof Y.XmlElement && keepsNote(type, frag, authors.foreign, leaf));
     },

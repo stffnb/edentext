@@ -137,6 +137,10 @@ const UNDO_CASES: { name: string; a: ((ed: Editor) => void)[]; b: (ed: Editor) =
     a: [(ed) => { ed.commands.setTextSelection(posOf(ed, 'Alpha beta.', 6)); ed.commands.splitBlock(); },
       (ed) => { ed.commands.setTextSelection(posOf(ed, 'betaZed', 1)); ed.commands.setParagraphStyle('Heading 1'); }],
     b: (ed) => { ed.commands.insertContentAt(posOf(ed, 'beta.', 4), 'Zed'); } },
+  { name: 'beside its own text, both restored by an undo',
+    a: [(ed) => { ed.commands.insertContentAt(posOf(ed, 'Gamma'), '\t'); },
+      (ed) => { ed.commands.setTextSelection(posOf(ed, 'Gamma')); ed.commands.setParagraphStyle('Heading 1'); }],
+    b: (ed) => { ed.commands.insertContentAt(posOf(ed, 'Gamma'), 'Zed'); } },
 ];
 
 describe('an undo in a shared doc', () => {

@@ -78,6 +78,9 @@ page from one's own pagination) stay local instead of answering each other.
   Yjs puts what an undo or redo restores back under the undoer's id; `Authors` follows
   each restored item's `redone` copy and keeps the copy's range as its author's, so a later
   undo (an Enter before a rebuilt block) still leaves the other's text in place.
+  Yjs merges adjacent copies into one item and, following a copy, deletes to the item's
+  end; the filter first splits at the copy's end, so undoing a tab typed just before the
+  other's text, both restored by an undone rebuild, takes the tab alone.
 - A footnote anchor whose note holds another client's text survives its author's undo, as
   the notes repair would drop the note, and that text, without it.
 
