@@ -5,7 +5,7 @@ export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'fa
 export type Channel = {
   send(plain: Uint8Array): void;
   close(): void;
-  /** When the last frame (or part of one) came in, for a session waiting on an answer. */
+  /** When the last peer frame (or part of one) came in, for a session waiting on an answer. */
   heard(): number;
 };
 
@@ -34,6 +34,8 @@ const PART_TTL = 60_000;
 const STABLE_MS = 5000;
 const FAILS = 3;
 const MAX_WAIT = 30_000;
+// A relay that announces a beat sends one that often; a line silent for BEATS of them is dead.
+const BEATS = 3;
 
 function split(plain: Uint8Array, size: number): Uint8Array[] {
   if (plain.length + 1 <= size) {
@@ -139,17 +141,39 @@ export function openChannel(o: Options): Channel {
     sock.binaryType = 'arraybuffer';
     ws = sock;
     ready = false;
-    let welcomed = false, held = false;
+    let welcomed = false, held = false, gone = false, last = Date.now();
+    let alive: ReturnType<typeof setInterval> | undefined;
+    const lost = () => {
+      if (gone) return;
+      gone = true;
+      clearTimeout(stable);
+      clearInterval(alive);
+      if (ws === sock) { ws = null; ready = false; }
+      if (closed) return;
+      if (welcomed && !held) fails++;
+      down = !welcomed;
+      o.onStatus(down ? 'unreachable' : fails >= FAILS ? 'failing' : 'connecting');
+      timer = setTimeout(connect, wait * (0.8 + Math.random() * 0.4));
+      wait = Math.min(wait * 2, MAX_WAIT);
+    };
     sock.onopen = () => sock.send(JSON.stringify({ t: 'hello', v: 1, room, token: null }));
     sock.onmessage = (ev) => {
-      heard = Date.now();
+      last = Date.now();
       if (typeof ev.data === 'string') {
-        let msg: { t?: string; peers?: number; n?: number; frame?: number };
+        let msg: { t?: string; peers?: number; n?: number; frame?: number; beat?: number };
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.t === 'welcome') {
           welcomed = ready = true;
           down = false;
           if (msg.frame) size = Math.max(PART_HEAD + 1024, Math.min(MAX_PART, msg.frame - SEALING));
+          // A half-open line never closes by itself: it is dropped and dialled again.
+          const beat = msg.beat ?? 0;
+          if (beat > 0) alive = setInterval(() => {
+            if (Date.now() - last <= BEATS * beat) return;
+            sock.onmessage = sock.onclose = null;
+            sock.close();
+            lost();
+          }, beat);
           o.onOpen(msg.peers ?? 1);
           for (const m of queue.splice(0)) put(sock, m);
           if (fails < FAILS) o.onStatus('open');
@@ -163,22 +187,14 @@ export function openChannel(o: Options): Channel {
         else if (msg.t === 'full') { closed = true; o.onStatus('full'); }
         return;
       }
+      heard = last;
       let env: Uint8Array;
       // A frame sealed with another key or altered on the way is dropped.
       try { env = unseal(o.key, new Uint8Array(ev.data as ArrayBuffer)); } catch { return; }
       const plain = take(env);
       if (plain) o.onFrame(plain);
     };
-    sock.onclose = () => {
-      clearTimeout(stable);
-      if (ws === sock) { ws = null; ready = false; }
-      if (closed) return;
-      if (welcomed && !held) fails++;
-      down = !welcomed;
-      o.onStatus(down ? 'unreachable' : fails >= FAILS ? 'failing' : 'connecting');
-      timer = setTimeout(connect, wait * (0.8 + Math.random() * 0.4));
-      wait = Math.min(wait * 2, MAX_WAIT);
-    };
+    sock.onclose = lost;
   };
   connect();
 

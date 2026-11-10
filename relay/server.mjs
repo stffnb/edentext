@@ -12,7 +12,7 @@ const ROOM = /^[A-Za-z0-9_-]{16,64}$/;
  * `tap` sees every passed frame (tests check it holds no plain text). Resolves once
  * listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, path = '/relay', tap } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, path = '/relay', tap } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
   // Behind a proxy that passes `/relay` on unchanged, the app asks `/relay/health`.
@@ -46,7 +46,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
         clearTimeout(timer);
         room = hello.room;
         peers.add(ws);
-        send(ws, { t: 'welcome', peers: peers.size, frame: maxFrame });
+        send(ws, { t: 'welcome', peers: peers.size, frame: maxFrame, ...(beat ? { beat } : {}) });
         announce(peers, ws);
         return;
       }
@@ -74,6 +74,10 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
       ws.ping();
     }
   }, 30_000);
+  // A beat to every client in a room, so a client notices a line that died without a close.
+  const beats = beat ? setInterval(() => {
+    for (const peers of rooms.values()) for (const ws of peers) send(ws, { t: 'beat' });
+  }, beat) : undefined;
 
   return new Promise((resolve) => {
     http.listen(port, host, () => resolve({
@@ -81,6 +85,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
       rooms,
       close: () => new Promise((done) => {
         clearInterval(ping);
+        clearInterval(beats);
         for (const ws of wss.clients) ws.terminate();
         wss.close(() => http.close(() => done()));
       }),
@@ -96,6 +101,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     maxPeers: env('MAX_PEERS', 0),
     maxFrame: env('MAX_FRAME', 16 << 20),
     maxRooms: env('MAX_ROOMS', 10000),
+    beat: env('BEAT_MS', 15_000),
   });
   console.log(`relay listening on ${relay.port}`);
   const stop = () => relay.close().then(() => process.exit(0));
