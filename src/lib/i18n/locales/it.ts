@@ -206,6 +206,8 @@ const it: Messages = {
     peers: (n: number) => n === 1 ? 'Un’altra persona presente' : `${n} altre persone presenti`,
     missing: (n: number) => n === 1 ? 'Non è stato possibile recuperare un’immagine: chi l’aveva se n’è andato. Resta un riquadro grigio finché non entra qualcuno che ce l’ha.' : `Non è stato possibile recuperare ${n} immagini: chi le aveva se n’è andato. Restano riquadri grigi finché non entra qualcuno che le ha.`,
     picturesPending: 'Alcune immagini non ti sono ancora arrivate e mancherebbero nel file. Riprova appena compaiono.',
+    paused: 'Modifica sospesa',
+    pausedHint: 'Una modifica arrivata dalla sessione non si può mostrare qui e, se continui a scrivere, potresti sovrascriverla: per questo la modifica è sospesa. Riprende da sola appena il documento si può di nuovo mostrare.',
     status: {
       connecting: 'Connessione…',
       waiting: 'In attesa di qualcuno che abbia il documento aperto…',

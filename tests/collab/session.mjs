@@ -361,6 +361,27 @@ try {
   const bar = (await a.textContent('.statusbar .collab-btn'))?.trim();
   check(names === 'Ben,Cleo' && /2/.test(bar ?? ''), `the starter sees who is there (${names}; "${bar}")`);
 
+  // Shared content that does not fit the schema pauses editing: the status bar and the
+  // dialog say so on every client, and both clear once it is gone again.
+  const bogus = (page, put) => page.evaluate(async (put) => {
+    const { Y } = await import('/src/lib/editor/undoYjs.ts');
+    const body = window.__collab.session.awareness.doc.getXmlFragment('body');
+    if (put) body.insert(0, [new Y.XmlElement('noSuchNode')]); else body.delete(0, 1);
+  }, put);
+  const pausedOn = (page) => page.waitForSelector('.statusbar .collab-btn.paused', { timeout: 5000 }).then(() => true, () => false);
+  await bogus(a, true);
+  const pausedBoth = [await pausedOn(a), await pausedOn(b)];
+  await b.click('.statusbar .collab-btn');
+  const hint = await b.isVisible('dialog[open] [data-notice="paused"]');
+  await b.keyboard.press('Escape');
+  await bogus(a, false);
+  const cleared = await b.waitForFunction(() => !document.querySelector('.statusbar .collab-btn.paused'), null, { timeout: 5000 }).then(() => true, () => false);
+  await caret(b, 'end');
+  await b.keyboard.type(' Kappa');
+  await settle(b);
+  check(pausedBoth.every(Boolean) && hint && cleared && (await view(a)).text.endsWith(' Kappa'),
+    `content that does not fit pauses editing with a notice, and editing resumes when it is gone (${pausedBoth}, ${hint}, ${cleared})`);
+
   const d4 = await client('Dan');
   await joinLink(d4, link);
   await caret(d4, 'end');
@@ -439,6 +460,28 @@ try {
   await f.close();
   const freed = await b.waitForFunction(() => !document.querySelector('.hf-held'), null, { timeout: 40_000 }).then(() => true, () => false);
   check(heldByFinn === 'Finn is editing' && freed, `a tab closed with the footer open frees it ("${heldByFinn}", after ${((Date.now() - closedAt) / 1000).toFixed(1)} s)`);
+
+  // A tab whose line drops without a goodbye frees its zone once the others renewed their
+  // presence and its did not come, well before awareness's 30 s.
+  const gus = await client('Gus');
+  await joinLink(gus, link);
+  await openZone(gus, 'footer');
+  await b.waitForTimeout(600);
+  const heldByGus = await heldTag(b);
+  await gus.evaluate(() => {
+    const Orig = WebSocket, send = Orig.prototype.send;
+    Orig.prototype.send = function () {
+      Orig.prototype.send = send;
+      window.WebSocket = class extends Orig { constructor() { super('ws://127.0.0.1:4/'); } };
+      this.close();
+    };
+  });
+  const droppedAt = Date.now();
+  await gus.evaluate(() => window.__collab.session.awareness.setLocalStateField('ping', 1));
+  const freedGus = await b.waitForFunction(() => !document.querySelector('.hf-held'), null, { timeout: 15_000 }).then(() => true, () => false);
+  const gusAfter = (Date.now() - droppedAt) / 1000;
+  check(heldByGus === 'Gus is editing' && freedGus && gusAfter < 12, `a tab whose line drops unannounced frees the footer ("${heldByGus}", after ${gusAfter.toFixed(1)} s)`);
+  await gus.close();
 
   await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');

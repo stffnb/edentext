@@ -121,3 +121,56 @@ describe('repairs after concurrent edits in a shared doc', () => {
     });
   }
 });
+
+// B types into the cell only its overlay pads, before the repairer's version comes: the
+// text shows at once and goes out with the repair, written by the repairer or, once that
+// one is gone, by B taking over; B's undo takes back its text and leaves the repair.
+describe('an edit into a repair not yet shared', () => {
+  const padded = (ed: Editor) => {
+    let at = -1;
+    ed.state.doc.descendants((n, p) => {
+      if (n.type.name === 'table') { const row = n.child(2); at = p + 1 + n.child(0).nodeSize + n.child(1).nodeSize + 1 + row.child(0).nodeSize + row.child(1).nodeSize + 2; }
+      return at < 0;
+    });
+    return at;
+  };
+  const deliver = (from: Client, to: Client) => { for (const u of from.out.splice(0)) Y.applyUpdate(to.ydoc, u, 'relay'); };
+
+  for (const gone of [false, true]) {
+    it(gone ? 'is written by the next repairer once the repairer is gone' : 'goes out once the repairer has written', async () => {
+      const [a, b, c] = clients(3);
+      a.ed.commands.setTextSelection(posOf(a.ed, 'b1', 1));
+      a.ed.commands.addColumnAfter();
+      b.ed.commands.setTextSelection(posOf(b.ed, 'a2', 1));
+      b.ed.commands.addRowAfter();
+      const aEdit = a.out.slice();
+      deliver(a, b);
+      await Promise.resolve();
+      expect(shape(b.ed).rows).toEqual([3, 3, 3]);
+      b.ed.chain().setTextSelection(padded(b.ed)).insertContent('Q').run();
+      b.ed.commands.insertContent('R');
+      await Promise.resolve();
+      expect(b.ed.state.doc.textContent).toContain('QR');
+      for (const u of aEdit) Y.applyUpdate(c.ydoc, u, 'relay');
+      if (gone) {
+        // A's column reached C too, never its repair: B takes over, as C would have.
+        b.undo.setRepairer(() => true);
+        await relay([b, c], () => 0.5);
+      } else {
+        await relay([a, b, c], () => 0.5);
+      }
+      const all = gone ? [b, c] : [a, b, c];
+      for (const x of all) {
+        expect(x.ydoc.getXmlFragment('body').toString()).toBe(b.ydoc.getXmlFragment('body').toString());
+        expect(shape(x.ed).rows).toEqual([3, 3, 3]);
+        expect(x.ed.state.doc.textContent.split('QR').length).toBe(2);
+      }
+      b.undo.undoManager.undo();
+      await relay(all, () => 0.5);
+      for (const x of all) {
+        expect(x.ed.state.doc.textContent).not.toContain('Q');
+        expect(shape(x.ed).rows).toEqual([3, 3, 3]);
+      }
+    });
+  }
+});

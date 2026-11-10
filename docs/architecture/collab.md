@@ -151,7 +151,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
 - **Headers and footers** go as whole zones, so one person edits a zone at a time
   (`collab/zones.svelte.ts`, awareness field `zone`): the others see the name at it and
   cannot open it. Opened at once, the higher client id yields and may lose its first keys.
-  A closed tab frees it at once; a client gone without `pagehide`, after awareness's 30 s.
+  A closed tab frees it at once; one whose line drops, about 3 s after the room shrinks.
 - **Storage.** The starter's autosave stores everyone's edits; its awareness says `keeps`.
   A joining tab is `volatile` (no copy, slot or prune); a starter's reload does not rejoin.
   Leaving, a joiner is asked (`CollabDialog`'s `asking`) to keep the document: `leave.ts`
@@ -164,30 +164,30 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
 
 ### Checks
 
-`node tests/collab/session.mjs` starts a relay and the dev server and goes through the File
-menu. B joins by the link and gets A's document: JSON, pages and zones. Both type, and each
-undo takes back only its own typing. A page setup and a style change arrive, the caret
-shows with its name, the relay's frames hold no typed text and no name, and an idle session
-sends no updates. A 2.9 MB picture goes to the relay once and adds 0.5 kB to the doc; B's
-copy, saved `.odt` and A's autosave hold it; five moves and a delete send 5 kB. Frames
-carry at most 1 MiB; a late joiner gets everything from one ask and one answer, the picture
-from one client; a fourth joins, types and converges. A joiner whose pulled peer drops its
-answer and line, while a third types, still goes live; a late offer is pulled from and gets
-what it lacks; a waiting joiner asks a client coming back, which pushes it no copy. B
-cannot open a header A holds; opened together, the lower id keeps it; a closed tab frees
-it. The starter leaves unasked, the others are told and go on; a reload rejoins. A joiner
-keeping its copy reloads into it unwarned, picture, styles and zones, also on a second
-reload. The last joiner's tab warns on closing; a cut-short link and an empty room say so.
-A picture whose only holder leaves unsent is a grey box with a note, the line stays `live`.
-Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
-the script (`page.route`): its text and page setup reach the joiner, which keeps its
-recorded marks and adds none; the starter's undo takes back each on both sides. A relay
-dropping every connection after its welcome makes the line `failing` (dialog, 4–5
-connections in 12 s) until it holds. A line that hears and sends nothing leaves `live`
-within a few beats, asks nothing while down, and comes back. `tests/relay.test.ts` and
-`tests/collab.test.ts` cover rooms, limits, beats, sealing and parts. All scripts run in
-the three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`; load, soak and
-typing speed: `collab-soak.md`.
+`node tests/collab/session.mjs` starts a relay and the dev server and goes through the
+File menu. B joins by the link and gets A's document: JSON, pages and zones. Both type,
+and each undo takes back only its own typing. A page setup and a style change arrive, the
+caret shows with its name, the relay's frames hold no typed text and no name, and an idle
+session sends no updates. A 2.9 MB picture goes to the relay once and adds 0.5 kB to the
+doc; B's copy, saved `.odt` and A's autosave hold it; five moves and a delete send 5 kB.
+Frames carry at most 1 MiB; a late joiner gets everything from one ask and one answer, the
+picture from one client; a fourth joins, types and converges. A joiner whose pulled peer
+drops its answer and line, while a third types, still goes live; a late offer is pulled
+from and gets what it lacks; a waiting joiner asks a client coming back, which pushes it
+no copy. B cannot open a header A holds; opened together, the lower id keeps it; a closed
+tab frees it, a dropped line in seconds. The starter leaves unasked, the others are told
+and go on; a reload rejoins. A joiner keeping its copy reloads into it unwarned, picture,
+styles and zones, also on a second reload. The last joiner's tab warns on closing; a
+cut-short link and an empty room say so. A picture whose only holder leaves unsent is a
+grey box and a note, the line `live`. Taller lines (6 against 7 pages) stay quiet too. The
+assistant on the starter, answered by the script (`page.route`): its text and page setup
+reach the joiner, which keeps its recorded marks and adds none; the starter's undo takes
+back each on both sides. A relay dropping every connection after its welcome makes the
+line `failing` (dialog, 4–5 connections in 12 s) until it holds. A line that hears and
+sends nothing leaves `live` within a few beats, asks nothing while down, and comes back.
+`tests/relay.test.ts` and `tests/collab.test.ts`: rooms, limits, beats, sealing, parts.
+All scripts run in three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`;
+load, soak and typing speed: `collab-soak.md`.
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. It cannot
 address a frame: every answer reaches every peer, a late offer's edits only the asker. Seen
