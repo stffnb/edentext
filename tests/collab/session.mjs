@@ -5,8 +5,11 @@
 // and undo like typed ones, and that an idle session stays quiet, also when one client
 // lays the pages out differently. The relay passes at most 1 MiB per frame, so a picture
 // and a late joiner's copy go in parts; a line that keeps breaking stops showing `live`.
+// When the starter leaves, the others are told; a joiner leaving keeps its copy as a
+// document of this browser or drops it, and a link to an empty room says so.
 // Any engine (BROWSER).
 import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { MOD, ROOT, checker, devServer, openApp } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
 
@@ -26,7 +29,8 @@ async function client(name, css) {
   await ctx.addInitScript((n) => { if (!localStorage.getItem('edentext-user-name')) localStorage.setItem('edentext-user-name', n); }, name);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => { if (!/ResizeObserver loop/.test(String(e))) pageErrors.push(`${name}: ${e}`); });
-  page.on('dialog', (d) => d.accept());
+  page.dialogs = [];
+  page.on('dialog', (d) => { page.dialogs.push(d.type()); d.accept(); });
   if (css) await page.addInitScript((c) => addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = c; document.head.append(s); }), css);
   return page;
 }
@@ -271,6 +275,10 @@ try {
 
   await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');
+  const unkept = (page) => page.waitForSelector('dialog[open] [data-notice="unkept"]', { timeout: 10_000 }).then(() => true, () => false);
+  const heard = [await unkept(b), await unkept(c)];
+  check(heard.every(Boolean) && !(await a.$("dialog[open]")), `the starter leaves unasked, and the others hear nobody keeps the document (${heard})`);
+  for (const page of [b, c]) await page.keyboard.press('Escape');
   await caret(b, 'end');
   await b.keyboard.type(' Gamma');
   await settle(b);
@@ -282,6 +290,37 @@ try {
   await live(b);
   await b.waitForTimeout(1500);
   check(same(await view(b), await view(c)), 'a reloaded joiner is back in the session');
+
+  // B leaves and keeps its copy: the tab reloads into a document of its own, which a
+  // further reload still opens, with the picture, the styles and the zones.
+  await unkept(b);
+  const [vKept, sheetKept] = [await view(c), await sheet(c)];
+  await b.evaluate(() => { window.__before = true; });
+  b.dialogs.length = 0;
+  await b.click('dialog[open] [data-cmd="collabLeave"]');
+  await b.click('dialog[open] [data-cmd="collabKeep"]');
+  await b.waitForFunction(() => !window.__before && document.querySelector('.tiptap-host .tiptap')?.editor, null, { timeout: 30_000 });
+  await b.waitForTimeout(2500);
+  const keptView = async () => ({ v: await view(b), sheet: await sheet(b), hash: await b.evaluate(() => location.hash) });
+  let kept = await keptView();
+  const keptOk = (k) => same(k.v, vKept) && k.sheet === sheetKept && !k.hash && k.v.json.includes('data:image/png');
+  check(keptOk(kept) && !b.dialogs.includes('beforeunload'), `a joiner that keeps its copy reloads into it, unwarned (${brief(kept.v)} | ${brief(vKept)}; ${b.dialogs})`);
+  await b.reload({ waitUntil: 'load' });
+  await ready(b);
+  await b.waitForTimeout(2500);
+  kept = await keptView();
+  const slots = await b.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('edentext-live@')).length);
+  check(keptOk(kept) && slots === 1, `the kept copy is a stored document, there after a reload (${brief(kept.v)}; ${slots} slot)`);
+
+  // C is the last one there and holds the only copy: closing the tab asks first.
+  await c.close({ runBeforeUnload: true });
+  await c.waitForEvent('close', { timeout: 5000 }).catch(() => {});
+  check(c.dialogs.includes('beforeunload'), `the last joiner's tab warns before it closes (${c.dialogs})`);
+
+  const g = await client('Gus');
+  await g.goto(`${URL0}#collab=${randomBytes(32).toString('base64url')}`, { waitUntil: 'load' });
+  const empty = await g.waitForSelector('dialog[open] [data-status="empty"]', { timeout: 20_000 }).then(() => true, () => false);
+  check(empty, 'a link to a room nobody is in says the session has ended');
 
   const d = await client('Dora');
   await d.goto(`${URL0}#collab=short`, { waitUntil: 'load' });

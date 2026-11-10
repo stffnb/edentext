@@ -60,6 +60,7 @@
   import CollabDialog from './lib/components/CollabDialog.svelte';
   import { keyBytes } from './lib/collab/key';
   import { joinSession, startSession, type Session, type SessionHost, type SessionView } from './lib/collab/session';
+  import { keepSessionCopy, reloadAlone, unload } from './lib/collab/leave';
   import { AUTHOR_COLORS, authorColors } from './lib/editor/authorColors';
   import { startBridge, notify, type EmbedSettings, type ExportFormat } from './lib/embed/bridge';
   import { loadHyphenation, saveHyphenation } from './lib/storage/hyphenation';
@@ -265,8 +266,9 @@
     // is worth the browser's warning as much as changes a file has not got yet. The
     // same emptiness test the confirm before a new document uses.
     // Embedded, the host application holds the document and asks about leaving it.
-    if (embedded || (documentHasFile ? !dirty : tick < 0 || !isDocNonEmpty())) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    // A joined session's copy is in this tab alone, whatever file it came as.
+    if (embedded || (documentHasFile && !collabKey ? !dirty : tick < 0 || !isDocNonEmpty())) return;
+    const warn = (e: BeforeUnloadEvent) => { if (!unload.quiet) e.preventDefault(); };
     addEventListener('beforeunload', warn);
     return () => removeEventListener('beforeunload', warn);
   });
@@ -1634,6 +1636,7 @@
   let collabSession: Session | null = null;
   let collabView: SessionView | null = $state(null);
   let collabOpen = $state(false);
+  let collabAsking = $state(false);
   // Everyone hears of a session that cannot go on: a bad link, a full room, another version,
   // a relay out of reach or a line that keeps breaking. Once per change, not per update.
   let collabShown: string | undefined;
@@ -1641,7 +1644,17 @@
     const s = collabView?.status;
     if (s === collabShown) return;
     collabShown = s;
-    if (s === 'invalid' || s === 'full' || s === 'version' || s === 'unreachable' || s === 'failing') collabOpen = true;
+    if (s === 'invalid' || s === 'full' || s === 'version' || s === 'unreachable' || s === 'failing' || s === 'empty') collabOpen = true;
+  });
+  // A joiner hears once when nobody in the session stores the document any more; the
+  // pause lets the starter's presence arrive after a join or a reconnect.
+  let unkeptTold = false;
+  const collabUnkept = $derived.by(() => collabView?.status === 'live' && !collabView.kept);
+  $effect(() => {
+    if (!collabUnkept) { unkeptTold = false; return; }
+    if (unkeptTold) return;
+    const timer = setTimeout(() => { unkeptTold = true; collabOpen = true; }, 2000);
+    return () => clearTimeout(timer);
   });
   function collabHost(): SessionHost {
     return {
@@ -1663,11 +1676,14 @@
     collabSession = await startSession(editor, collabHost());
     exposeCollab();
   }
-  function leaveCollab() {
+  // `choice` is a joiner's: keep its copy as a new document or drop it, then reload alone.
+  async function leaveCollab(choice: 'keep' | 'discard' | null) {
+    if (choice === 'keep' && !(await keepSessionCopy(editor!))) return alert(t().collab.keepFailed);
     collabSession?.leave();
     collabSession = null;
     collabView = null;
-    // A joiner's reload would join again; the copy it holds now is its own.
+    collabOpen = false;
+    if (choice) return reloadAlone();
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   }
   let joined = false;
@@ -1677,7 +1693,7 @@
     joined = true;
     void ensureUserName().then((named) => {
       if (!named || !editor) return;
-      if (!keyBytes(key)) collabView = { status: 'invalid', peers: [], link: location.href };
+      if (!keyBytes(key)) collabView = { status: 'invalid', peers: [], link: location.href, keeps: false, kept: true };
       else collabSession = joinSession(editor, key, collabHost());
       exposeCollab();
     });
@@ -2478,7 +2494,7 @@
   <ResumeCard show={!volatile && tick >= 0 && !!editor && !isDocNonEmpty()} onShowAll={() => (browserDocsOpen = true)} />
   <PromptDialog />
   <DocPropertiesDialog bind:open={docPropsOpen} props={docProps} onApply={(p) => { docProps = p; saveDocProperties(p); }} />
-  <CollabDialog bind:open={collabOpen} view={collabView} onStart={() => void startCollab()} onLeave={() => { leaveCollab(); collabOpen = false; }} />
+  <CollabDialog bind:open={collabOpen} bind:asking={collabAsking} view={collabView} onStart={() => void startCollab()} onLeave={(c) => void leaveCollab(c)} />
   <PasswordDialog
     bind:open={passwordSetOpen}
     mode="set"
