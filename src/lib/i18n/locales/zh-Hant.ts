@@ -206,6 +206,7 @@ const zhHant: Messages = {
       version: '其他人使用的是不同版本的 EdenText。請重新載入所有視窗，使版本一致。',
       full: '此工作階段已滿。',
       unreachable: '無法連線至共同編輯伺服器。',
+      failing: '與共同編輯伺服器的連線反覆中斷。您的變更會保留在這裡，連線穩定後即會傳送。',
       invalid: '此連結不完整。請重新索取。',
       closed: '工作階段已結束',
     },

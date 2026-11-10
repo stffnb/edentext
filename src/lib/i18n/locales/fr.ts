@@ -204,6 +204,7 @@ const fr: Messages = {
       version: 'Les autres utilisent une autre version d’EdenText. Rechargez toutes les fenêtres pour avoir la même version.',
       full: 'Cette session est complète.',
       unreachable: 'Le serveur de collaboration est injoignable.',
+      failing: 'La connexion au serveur de collaboration se coupe sans cesse. Vos modifications restent ici et seront envoyées dès qu’elle tiendra de nouveau.',
       invalid: 'Ce lien est incomplet. Demandez-le à nouveau.',
       closed: 'Session terminée',
     },

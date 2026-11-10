@@ -205,6 +205,7 @@ const zhHans: Messages = {
       version: '其他人使用的是不同版本的 EdenText。请重新加载所有窗口，使版本一致。',
       full: '此会话已满。',
       unreachable: '无法连接协作服务器。',
+      failing: '与协作服务器的连接反复中断。您的更改会保留在这里，连接稳定后即会发送。',
       invalid: '此链接不完整。请重新索取。',
       closed: '会话已结束',
     },

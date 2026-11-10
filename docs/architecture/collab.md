@@ -148,8 +148,9 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in 
   and `PULL`s one `ANSWER` from the offer ahead most, then from any still ahead; silent
   for 10 s, it starts over. Edits (`UPDATE`) and carets (`PRESENCE`) go in 50 ms batches
   (`Y.mergeUpdates`), always as a task of their own.
-- **Parts** (`collab/channel.ts`): a message beyond the welcome's `frame` (at most 1 MiB)
-  goes as sealed numbered parts and is joined on arrival.
+- **Parts and failures** (`collab/channel.ts`): a message beyond the welcome's `frame`
+  (at most 1 MiB) goes as sealed numbered parts. Retries back off from 0.5 to 30 s; three
+  connections lost within 5 s of their welcome show `failing` until one holds for 5 s.
 - **Start and join.** The starter puts its document, exported as `.odt` (`buildBytes`),
   into the map `meta` with the app version and the name, then binds the body
   (`attachYjsUndo`). A tab opened from the link waits for a peer and refuses another

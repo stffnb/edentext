@@ -1,6 +1,6 @@
 import { roomId, seal, unseal } from './key';
 
-export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'closed';
+export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'failing' | 'closed';
 
 export type Channel = {
   send(plain: Uint8Array): void;
@@ -29,6 +29,11 @@ const SEALING = 28;          // nonce and GCM tag
 const MAX_PART = 1 << 20;
 const MAX_MESSAGE = 256 << 20;
 const PART_TTL = 60_000;
+// A connection that breaks within STABLE_MS of its welcome counts as failed; after FAILS in a
+// row the line is `failing` until one holds. Retries back off up to MAX_WAIT.
+const STABLE_MS = 5000;
+const FAILS = 3;
+const MAX_WAIT = 30_000;
 
 function split(plain: Uint8Array, size: number): Uint8Array[] {
   if (plain.length + 1 <= size) {
@@ -116,9 +121,12 @@ export function openChannel(o: Options): Channel {
   let ready = false;
   let closed = false;
   let wait = 500;
+  let fails = 0;
+  let down = false;
   let size = MAX_PART;
   let heard = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let stable: ReturnType<typeof setTimeout> | undefined;
   const queue: Uint8Array[] = [];
 
   const put = (sock: WebSocket, plain: Uint8Array) => {
@@ -126,12 +134,12 @@ export function openChannel(o: Options): Channel {
   };
 
   const connect = () => {
-    o.onStatus('connecting');
+    if (fails < FAILS && !down) o.onStatus('connecting');
     const sock = new WebSocket(o.url);
     sock.binaryType = 'arraybuffer';
     ws = sock;
     ready = false;
-    let welcomed = false;
+    let welcomed = false, held = false;
     sock.onopen = () => sock.send(JSON.stringify({ t: 'hello', v: 1, room, token: null }));
     sock.onmessage = (ev) => {
       heard = Date.now();
@@ -140,11 +148,17 @@ export function openChannel(o: Options): Channel {
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.t === 'welcome') {
           welcomed = ready = true;
-          wait = 500;
+          down = false;
           if (msg.frame) size = Math.max(PART_HEAD + 1024, Math.min(MAX_PART, msg.frame - SEALING));
           o.onOpen(msg.peers ?? 1);
           for (const m of queue.splice(0)) put(sock, m);
-          o.onStatus('open');
+          if (fails < FAILS) o.onStatus('open');
+          stable = setTimeout(() => {
+            held = true;
+            fails = 0;
+            wait = 500;
+            o.onStatus('open');
+          }, STABLE_MS);
         } else if (msg.t === 'peers') o.onPeers(msg.n ?? 1);
         else if (msg.t === 'full') { closed = true; o.onStatus('full'); }
         return;
@@ -156,11 +170,14 @@ export function openChannel(o: Options): Channel {
       if (plain) o.onFrame(plain);
     };
     sock.onclose = () => {
+      clearTimeout(stable);
       if (ws === sock) { ws = null; ready = false; }
       if (closed) return;
-      o.onStatus(welcomed ? 'connecting' : 'unreachable');
-      timer = setTimeout(connect, wait);
-      wait = Math.min(wait * 2, 10_000);
+      if (welcomed && !held) fails++;
+      down = !welcomed;
+      o.onStatus(down ? 'unreachable' : fails >= FAILS ? 'failing' : 'connecting');
+      timer = setTimeout(connect, wait * (0.8 + Math.random() * 0.4));
+      wait = Math.min(wait * 2, MAX_WAIT);
     };
   };
   connect();
@@ -175,6 +192,7 @@ export function openChannel(o: Options): Channel {
     close() {
       closed = true;
       clearTimeout(timer);
+      clearTimeout(stable);
       ws?.close();
       o.onStatus('closed');
     },

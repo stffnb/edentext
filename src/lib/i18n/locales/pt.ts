@@ -204,6 +204,7 @@ const pt: Messages = {
       version: 'Os outros usam outra versão do EdenText. Recarregue todas as janelas para terem a mesma versão.',
       full: 'Esta sessão está cheia.',
       unreachable: 'Não é possível contactar o servidor de colaboração.',
+      failing: 'A ligação ao servidor de colaboração está sempre a cair. As suas alterações ficam aqui e serão enviadas assim que voltar a estabilizar.',
       invalid: 'Esta ligação está incompleta. Peça-a novamente.',
       closed: 'Sessão terminada',
     },
