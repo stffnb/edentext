@@ -4,7 +4,7 @@ import { userName } from '../storage/userName.svelte';
 import { AUTHOR_COLORS, authorColors } from '../editor/authorColors';
 import { relayReady, relayUrl } from './channel';
 import { keyBytes } from './key';
-import { keepSessionCopy, reloadAlone } from './leave';
+import { keepSessionCopy, putOpening, reloadAlone, takeOpening, type Opening } from './leave';
 import { joinSession, startSession, type Session, type SessionHost, type SessionView } from './session';
 
 // The app's one shared session (docs/architecture/collab.md): the starter's document goes
@@ -81,15 +81,20 @@ export function joinCollab(app: SessionApp, key: string): void {
 
 /**
  * Ends this tab's part in the session. `choice` is a joiner's: keep its copy as a new
- * document or drop it, then reload alone. False when keeping failed and nothing ended.
+ * document or drop it, then reload alone, into a new document that takes `opening` if
+ * given. False when keeping failed and nothing ended; throws when `opening` was not stored.
  */
-export async function leaveCollab(app: SessionApp, choice: 'keep' | 'discard' | null): Promise<boolean> {
+export async function leaveCollab(app: SessionApp, choice: 'keep' | 'discard' | null, opening: Opening | null = null): Promise<boolean> {
   const editor = app.editor();
-  if (choice === 'keep' && (!editor || !(await keepSessionCopy(editor)))) return false;
+  if (choice && opening) await putOpening(opening);
+  if (choice === 'keep' && (!editor || !(await keepSessionCopy(editor)))) {
+    if (opening) await takeOpening().catch(() => null);
+    return false;
+  }
   session?.leave();
   session = null;
   view = null;
-  if (choice) reloadAlone();
+  if (choice) reloadAlone(!!opening);
   else if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   return true;
 }

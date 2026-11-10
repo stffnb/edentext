@@ -1,6 +1,7 @@
 import type { Editor } from '@tiptap/core';
 import { withoutDefaults } from '../storage/autosave';
-import { docStore, keepAsNewDocument } from '../storage/docScope';
+import { docStore, freshSlot, keepAsNewDocument } from '../storage/docScope';
+import { idbRequest, openDb } from '../storage/idb';
 import { keepEmbeddedFonts } from '../storage/embeddedFontStore';
 import { putImages, stashImages, withHeldImages } from '../storage/imageStore';
 
@@ -48,9 +49,43 @@ export async function keepSessionCopy(editor: Editor): Promise<boolean> {
   return true;
 }
 
-/** Reloads this tab without the session link: into the kept copy, or the tab's own document. */
-export function reloadAlone(): void {
+/** Reloads this tab without the session link: into the kept copy, the tab's own document, or with `fresh` a new one. */
+export function reloadAlone(fresh = false): void {
   unload.quiet = true;
+  if (fresh) freshSlot();
   history.replaceState(null, '', location.pathname + location.search);
   location.reload();
+}
+
+/** What a joiner opens once it has left, carried over the reload: a file, a built-in template or a new document. */
+export type Opening = { file: { bytes: Uint8Array; name: string; handle: FileSystemFileHandle | null } } | { template: string } | { blank: true };
+
+// One entry per tab, named in its sessionStorage, so another tab loading meanwhile takes none.
+const DB = 'edentext-opening';
+const STORE = 'opening';
+const TAB = 'edentext-opening';
+
+export async function putOpening(opening: Opening): Promise<void> {
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const db = await openDb(DB, STORE);
+  try {
+    await idbRequest(db, STORE, 'readwrite', (s) => s.put(opening, id)).catch(() => {
+      // A handle that cannot be cloned (the desktop app's path handle) goes without: Save asks where.
+      if (!('file' in opening)) throw new Error('opening not stored');
+      return idbRequest(db, STORE, 'readwrite', (s) => s.put({ file: { ...opening.file, handle: null } }, id));
+    });
+  } finally { db.close(); }
+  sessionStorage.setItem(TAB, id);
+}
+
+export async function takeOpening(): Promise<Opening | null> {
+  const id = sessionStorage.getItem(TAB);
+  if (!id) return null;
+  sessionStorage.removeItem(TAB);
+  const db = await openDb(DB, STORE);
+  try {
+    const opening = await idbRequest<Opening | undefined>(db, STORE, 'readonly', (s) => s.get(id));
+    await idbRequest(db, STORE, 'readwrite', (s) => s.delete(id));
+    return opening ?? null;
+  } finally { db.close(); }
 }
