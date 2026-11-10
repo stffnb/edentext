@@ -477,6 +477,32 @@ try {
   check(bands === '-/none true/none -/both anchored/none -/none true/none true/none -/both',
     `loaded from the autosave, the block after a band frame clears it, after an anchored one it does not (${bands})`);
 
+  // Another client's lines (y-sync's meta) added above a flowing break and taken back: the
+  // layout of two passes before returns, and is placed again rather than taken for a ping-pong.
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)),
+    { type: 'doc', content: Array.from({ length: 70 }, (_, i) => block(words(`line ${i + 1}`))) });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const spacers = () => page.evaluate(() => [...document.querySelectorAll('.tiptap [data-page-break-spacer]')]
+    .map((s) => `${Math.round(s.offsetTop)}+${Math.round(s.offsetHeight)}`).join());
+  const remote = (add) => page.evaluate(([add, n]) => {
+    const ed = document.querySelector('.tiptap').editor;
+    const tr = ed.state.tr;
+    if (add) tr.insert(0, Array.from({ length: n }, () => ed.schema.nodes.paragraph.create(null, ed.schema.text('added'))));
+    else tr.delete(0, tr.doc.child(0).nodeSize * n);
+    ed.view.dispatch(tr.setMeta('addToHistory', false).setMeta('y-sync$', { isChangeOrigin: true }));
+  }, [add, 10]);
+  const remoteBefore = await spacers();
+  await remote(true);
+  await page.waitForTimeout(1600);
+  const moved = await spacers();
+  await remote(false);
+  await page.waitForTimeout(1600);
+  const back = await spacers();
+  check(remoteBefore !== '' && back === remoteBefore,
+    `another client's lines move a page break and back (${remoteBefore} → ${moved} → ${back})`);
+
   // A borderless table split inside its cell, its pages centred beside a landscape section
   // — under a footer taller than the bottom margin, under none, and above a footnote: the
   // mask draws no edge lines, its gap stripe sits on the sheets' gap, neither reaches past
