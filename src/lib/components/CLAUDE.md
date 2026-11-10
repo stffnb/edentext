@@ -40,5 +40,6 @@ formulas, or notes before changing those areas.
 - `BorderWidthBox.svelte` is every line-width field (style manager, border pens, text box): presets in a list or a typed pt value, clamped to 0.05–9 pt; `none` adds "None" where a side can have no line.
 - `FontSizeField.svelte` is every font-size field outside the editing toolbars (style manager, find bar): the size box's list and 1–400 pt range, empty clears.
 - `Ruler.svelte` draws quarter-, else half-cm marks and thins its cm numbers to every 2nd/5th only as far as the zoom leaves them room, so nothing on it overlaps.
+- `HeaderFooterLayer.svelte` opens one zone editor at a time; in a shared session a zone someone else has open stays shut and carries their name (`collab/zones.svelte.ts`, `docs/architecture/collab.md`).
 - `PageLabelLayer.svelte` puts the sheet number beside each page's bottom right corner, in `.paper-scaler` (`.paper` clips) at an unscaled size, ending where the scroller does so it adds no scrollbar; not in the page grid.
 - `PoweredBy.svelte` is the embed mode's status-bar attribution (`docs/architecture/embed.md`); its fixed English wording is a licence notice, not catalog text.

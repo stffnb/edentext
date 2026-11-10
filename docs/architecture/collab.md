@@ -1,8 +1,7 @@
 # Collaboration
 
 Shared editing runs on Yjs through `@tiptap/y-tiptap`. This file covers why, and what is
-built: a session started from the File menu and joined through a link, over a relay that
-cannot read it.
+built: a session from the File menu, joined through a link, over a relay that cannot read it.
 
 ## Engine
 
@@ -156,9 +155,11 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in 
   (`attachYjsUndo`). A tab opened from the link waits for a peer and refuses another
   version. It loads that file through `applyImport` (fonts, layout, styles, zones,
   properties), binds the body to the received fragment, and applies the stores already
-  in the map `state` (`applyState`). Store changes after that travel through the same
-  map as the undo uses. A header or footer is written as a whole zone, so two people in
-  one zone at the same moment get the last writer's.
+  in the map `state` (`applyState`); later store changes travel through that map.
+- **Headers and footers** go as whole zones, so one person edits a zone at a time
+  (`collab/zones.svelte.ts`, awareness field `zone`): the others see the name at it and
+  cannot open it. Opened at once, the higher client id yields and may lose its first keys.
+  A closed tab frees it at once; a client gone without `pagehide`, after awareness's 30 s.
 - **Storage.** The starter keeps editing its own document, and autosave stores everyone's
   edits there. A joining tab is `volatile`: no copy, no slot, no prune in `main.ts` (its
   slot id is the first document's). A reload joins again by the link; leaving clears it.
@@ -176,8 +177,9 @@ sends no updates. Frames carry at most 1 MiB; a late joiner gets everything, a 2
 picture too, from one ask and one answer; a fourth joins, types and converges. A joiner
 whose pulled peer drops its answer and line, while a third types, still goes live; a late
 offer is pulled from and gets what it lacks; a waiting joiner asks a client coming back,
-which pushes it no copy. After the starter leaves, the others go on; a reload rejoins; a
-cut-short link says so. A client with taller lines (6 against 7 pages) stays quiet too.
+which pushes it no copy. B cannot open a header A holds; opened together, the lower id
+keeps it; a closed tab frees it. After the starter leaves, the others go on; a reload
+rejoins; a cut-short link says so. A client with taller lines (6 against 7 pages) stays quiet too.
 The assistant on the starter, answered by the script (`page.route`): its text and page
 setup reach the joiner, which keeps its recorded marks and adds none; the starter's undo
 takes back each on both sides. A relay dropping every connection after its welcome makes

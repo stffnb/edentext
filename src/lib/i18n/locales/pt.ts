@@ -971,6 +971,7 @@ const pt: Messages = {
     chapterTitle: 'Inserir o título do capítulo em curso na página',
     done: 'Concluir',
     doneTitle: 'Terminar a edição do cabeçalho/rodapé',
+    heldBy: (name: string) => `${name} está a editar`,
   },
   paragraphDialog: {
     title: 'Parágrafo',
