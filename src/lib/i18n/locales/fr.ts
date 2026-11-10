@@ -977,6 +977,7 @@ const fr: Messages = {
     chapterTitle: 'Insérer le titre du chapitre en cours sur la page',
     done: 'Terminer',
     doneTitle: 'Terminer la modification de l’en-tête ou du pied de page',
+    heldBy: (name: string) => `Modification en cours par ${name}`,
   },
   paragraphDialog: {
     title: 'Paragraphe',

@@ -986,6 +986,8 @@ const en = {
     chapterTitle: 'Insert the heading of the chapter running on the page',
     done: 'Done',
     doneTitle: 'Finish editing the header/footer',
+    // Tag on a header or footer someone else in a shared session has open.
+    heldBy: (name: string) => `${name} is editing`,
   },
   paragraphDialog: {
     title: 'Paragraph',

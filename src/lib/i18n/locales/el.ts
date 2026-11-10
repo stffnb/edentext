@@ -987,6 +987,7 @@ const el: Messages = {
     chapterTitle: "Εισαγωγή της επικεφαλίδας του κεφαλαίου που βρίσκεται στη σελίδα",
     done: "Τέλος",
     doneTitle: "Ολοκλήρωση επεξεργασίας κεφαλίδας/υποσέλιδου",
+    heldBy: (name: string) => `Σε επεξεργασία από ${name}`,
   },
   paragraphDialog: {
     title: "Παράγραφος",

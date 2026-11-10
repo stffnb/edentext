@@ -978,6 +978,7 @@ const de: Messages = {
     chapterTitle: 'Überschrift des auf der Seite laufenden Kapitels einfügen',
     done: 'Fertig',
     doneTitle: 'Bearbeiten der Kopf-/Fußzeile beenden',
+    heldBy: (name: string) => `Wird von ${name} bearbeitet`,
   },
   paragraphDialog: {
     title: 'Absatz',
