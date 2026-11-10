@@ -24,7 +24,7 @@
     "test:layout": "node tests/layout/run.mjs",
     "test:monkey": "node tests/monkey/run.mjs",
     "test:tabs": "node tests/tabs/run.mjs",
-    "test:collab": "node tests/collab/undo.mjs && node tests/collab/session.mjs",
+    "test:collab": "node tests/collab/undo.mjs && node tests/collab/conflicts.mjs && node tests/collab/session.mjs",
     "test:coverage": "vitest run --coverage",
     "test:parity": "node tests/render-parity/run.mjs",
     "test:parity:fixtures": "node tests/render-parity/make-fixtures.mjs"
