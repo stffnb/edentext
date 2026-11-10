@@ -126,7 +126,7 @@ the manager but does not refill the map `state`.
 ## Sessions
 
 ```
-browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness)──▶ relay ──▶ browsers
+browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in parts)──▶ relay ──▶ browsers
 ```
 
 - **The link is the key.** *Collaborate…* (`CollabDialog.svelte`) makes 32 random bytes
@@ -148,6 +148,8 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness)─�
   and `PULL`s one `ANSWER` from the offer ahead most, then from any still ahead; silent
   for 10 s, it starts over. Edits (`UPDATE`) and carets (`PRESENCE`) go in 50 ms batches
   (`Y.mergeUpdates`), always as a task of their own.
+- **Parts** (`collab/channel.ts`): a message beyond the welcome's `frame` (at most 1 MiB)
+  goes as sealed numbered parts and is joined on arrival.
 - **Start and join.** The starter puts its document, exported as `.odt` (`buildBytes`),
   into the map `meta` with the app version and the name, then binds the body
   (`attachYjsUndo`). A tab opened from the link waits for a peer and refuses another

@@ -47,7 +47,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
         clearTimeout(timer);
         room = hello.room;
         peers.add(ws);
-        send(ws, { t: 'welcome', peers: peers.size });
+        send(ws, { t: 'welcome', peers: peers.size, frame: maxFrame });
         announce(peers, ws);
         return;
       }

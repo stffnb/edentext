@@ -3,7 +3,8 @@
 // its layout and zones, that edits and undo work both ways, that the relay sees no plain
 // text, that clients come, go and reload (four at once), that the assistant's edits travel
 // and undo like typed ones, and that an idle session stays quiet, also when one client
-// lays the pages out differently. Any engine (BROWSER).
+// lays the pages out differently. The relay passes at most 1 MiB per frame, so a picture
+// and a late joiner's copy go in parts. Any engine (BROWSER).
 import { join } from 'node:path';
 import { MOD, ROOT, checker, devServer, openApp } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
@@ -13,7 +14,8 @@ const RELAY_PORT = +(process.env.COLLAB_RELAY_PORT ?? 4393);
 process.env.RELAY_PORT = String(RELAY_PORT);
 const { check, failures } = checker();
 const seen = [];
-const relay = await startRelay({ port: RELAY_PORT, tap: (d) => seen.push(Buffer.from(d)) });
+const FRAME = 1 << 20;
+const relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, tap: (d) => seen.push(Buffer.from(d)) });
 const server = await devServer(PORT);
 const { browser, page: a, pageErrors } = await openApp(PORT);
 const URL0 = `http://localhost:${PORT}/`;
@@ -82,6 +84,17 @@ const SHEET = '/src/lib/styles/sheet.svelte.ts';
 const sheet = (page) => page.evaluate(async (url) => JSON.stringify((await import(url)).styleSheet()), SHEET);
 const sent = (page, kind = 1) => page.evaluate((k) => window.__collab.session.stats.sent[k], kind);
 const [ASK, ANSWER] = [0, 5];
+// A noise picture, incompressible like a photo, of about 2.5 MB as a data URL.
+const photo = (page) => page.evaluate(() => {
+  const c = document.createElement('canvas');
+  c.width = 900; c.height = 700;
+  const ctx = c.getContext('2d'), img = ctx.createImageData(900, 700);
+  for (let i = 0; i < img.data.length; i++) img.data[i] = (i & 3) === 3 ? 255 : (Math.random() * 256) | 0;
+  ctx.putImageData(img, 0, 0);
+  const src = c.toDataURL('image/png');
+  document.querySelector('.tiptap-host .tiptap').editor.chain().focus('start').setImage({ src, width: 300, height: 233 }).run();
+  return src.length;
+});
 // The assistant's provider, scripted: two tool calls, then a closing word. Nothing leaves.
 const AI = { enabled: true, provider: 'openai', endpoint: 'http://mock.test/v1', apiKey: '', model: 'm' };
 let aiRequests = 0;
@@ -189,15 +202,21 @@ try {
   await record(a, false);
   await record(b, false);
 
+  const size = await photo(a);
+  await a.waitForTimeout(2500);
+  [va, vb] = [await view(a), await view(b)];
+  check(size > FRAME && va.json === vb.json, `a picture longer than the relay's frame reaches the joiner (${(size / 1e6).toFixed(1)} MB)`);
+
   const answers = async () => await sent(a, ANSWER) + await sent(b, ANSWER);
   const answered = await answers();
   const c = await client('Cleo');
   await joinLink(c, link);
   const vc = await view(c);
   va = await view(a);
-  check(same(va, vc) && await sheet(c) === await sheet(a), `a late joiner gets every edit so far, styles too (${brief(vc)})`);
+  check(same(va, vc) && await sheet(c) === await sheet(a), `a late joiner gets every edit so far, styles and the picture too (${brief(vc)})`);
   const once = [await sent(c, ASK), await answers() - answered];
   check(once.join() === '1,1', `the late joiner asks once and gets one answer (${once})`);
+  check(seen.every((f) => f.length <= FRAME), `no frame exceeds the relay's limit (largest ${Math.max(...seen.map((f) => f.length))})`);
   const names = await a.evaluate(() => window.__collab.view().peers.map((p) => p.name).sort().join(','));
   const bar = (await a.textContent('.statusbar .collab-btn'))?.trim();
   check(names === 'Ben,Cleo' && /2/.test(bar ?? ''), `the starter sees who is there (${names}; "${bar}")`);
