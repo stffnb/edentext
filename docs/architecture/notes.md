@@ -48,6 +48,9 @@ transaction is still rewriting. An anchor pasted twice gets a fresh id and a clo
 note it was copied from (its parse rule outranks the superscript mark's `sup`); an anchor that ends up *inside* a note is dropped, and inserting
 one there is refused (LibreOffice and Word refuse it too). A settings change is no
 document change, so the dialog's path carries the `RESYNC_NOTES` meta.
+A document known to hold no anchor and no notes' section keeps that through every step that
+brings neither in (`noteless`, `bringsNotes`), so a keystroke there skips the pass's four walks;
+`collectNoteRefs` is kept per doc for the pass and the cross-references.
 A note body holds inline content, so a paste of several blocks is flattened to text with a
 line break per block (`flattenToInline`, `editor/paste.ts`); unflattened, ProseMirror
 wrapped them in a text box, which breaks the ODT's XML, or dropped all but the first.

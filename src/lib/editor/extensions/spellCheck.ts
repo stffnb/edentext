@@ -3,14 +3,14 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { AddMarkStep, RemoveMarkStep } from '@tiptap/pm/transform';
+import { changedRanges, type Range } from '../changedRanges';
 import { spellController } from '../../spell/controller';
 import { codeForTag, westLang, type DocumentLanguage } from '../../storage/documentLanguage';
 import { isPaginating } from './pageBreaks';
 import { ASIAN_SCRIPT_RE } from '../../utils/script';
 import { detectLanguage } from '../../spell/detect.svelte';
 
-export type Range = { from: number; to: number };
+export { changedRanges, type Range };
 // dirty: what the edits since the last check touched, in the current document's positions.
 type SpellState = { set: DecorationSet; dirty: Range[] };
 
@@ -105,20 +105,6 @@ function recheckBlocks(doc: PmNode, set: DecorationSet, dirty: Range[]): Decorat
   return set.remove(stale).add(doc, decos);
 }
 
-// What a transaction touched, in its final document's positions: one span around all of
-// it, carried through the maps once, since mapping each change through every later map is
-// quadratic in steps (seconds for a format change across a long document).
-export function changedRanges(tr: Transaction): Range[] {
-  let lo = Infinity, hi = -Infinity;
-  tr.mapping.maps.forEach((map, i) => {
-    if (lo <= hi) { lo = map.map(lo, -1); hi = map.map(hi, 1); }
-    map.forEach((_oldFrom, _oldTo, from, to) => { lo = Math.min(lo, from); hi = Math.max(hi, to); });
-    // A mark step moves nothing, so its map is empty, yet a run's language may have changed.
-    const step = tr.steps[i];
-    if (step instanceof AddMarkStep || step instanceof RemoveMarkStep) { lo = Math.min(lo, step.from); hi = Math.max(hi, step.to); }
-  });
-  return lo <= hi ? [{ from: lo, to: hi }] : [];
-}
 
 // Squiggles are painted as CSS highlights, not inline decorations: Chromium's hyphenating
 // line breaker pulls back one word too many where a word ends an element and its space

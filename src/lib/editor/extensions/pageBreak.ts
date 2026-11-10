@@ -1,6 +1,10 @@
 import { Extension, commands as core } from '@tiptap/core';
 import { Plugin, TextSelection } from '@tiptap/pm/state';
+import { AddMarkStep, RemoveMarkStep, ReplaceAroundStep, ReplaceStep } from '@tiptap/pm/transform';
 import { DEFAULT_SHORTCUTS } from '../shortcuts';
+import { changedRanges } from '../changedRanges';
+
+const RANGED = [ReplaceStep, ReplaceAroundStep, AddMarkStep, RemoveMarkStep];
 
 // The text-flow attrs of a paragraph/heading, null = default: breakBefore 'page', widow
 // control, keepNext (a heading has it anyway, so true marks the other blocks and false
@@ -203,7 +207,19 @@ export const PageBreak = Extension.create({
       appendTransaction: (trs, _old, state) => {
         if (!trs.some((t) => t.docChanged)) return null;
         const tr = state.tr;
-        state.doc.descendants((node, pos) => {
+        // A block gains an ancestor only inside what the edit changed; a step without a
+        // range (an attribute set in place) leaves the whole document to look at.
+        let from = 0, to = state.doc.content.size;
+        if (trs.every((t) => t.steps.every((st) => RANGED.some((type) => st instanceof type)))) {
+          let lo = Infinity, hi = -Infinity;
+          for (const t of trs) {
+            if (lo <= hi) { lo = t.mapping.map(lo, -1); hi = t.mapping.map(hi, 1); }
+            for (const r of changedRanges(t)) { lo = Math.min(lo, r.from); hi = Math.max(hi, r.to); }
+          }
+          if (lo > hi) return null;
+          from = Math.max(0, lo - 1); to = Math.min(to, hi + 1);
+        }
+        state.doc.nodesBetween(from, to, (node, pos) => {
           if (node.isText) return false; // a text box holds blocks, so only a run is a dead end
           if (node.attrs.breakBefore !== 'page') return;
           const $pos = state.doc.resolve(pos);

@@ -5,10 +5,12 @@ import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
+import { AddMarkStep, RemoveMarkStep, ReplaceAroundStep, ReplaceStep } from '@tiptap/pm/transform';
 import { dropCursor } from '@tiptap/pm/dropcursor';
 import { closeGroup } from '../undo';
 import { IDB_SRC, awaitImage, shownSrc } from '../../storage/imageStore';
 import { cmToPx } from '../../storage/pageMargins';
+import { changedRanges } from '../changedRanges';
 import { readVerticalMargins, placeFrameSoon, placeInColumn, freeDragX, sinkSideFloat } from './pageBreaks';
 
 // Inline, as-character image, or a floating text-wrapped frame (wrap = flow mode);
@@ -699,35 +701,59 @@ const imageLineKey = new PluginKey('imageLine');
 // Hard breaks are the only line boundaries visible in the model, so a frame is taken
 // as alone on its line when nothing but whitespace shares its break-delimited run —
 // the image-plus-caption idiom. A soft wrap around it can't be seen from here.
+function blockImageLines(node: PMNode, pos: number, decos: Decoration[]): void {
+  let images: number[] = [];
+  let text = false;
+  // 'true': a full-width float rides this block, so its successor clears the band;
+  // 'anchored': every such float is page-anchored — the successor must not clear.
+  let band: 'true' | 'anchored' | null = null;
+  const flush = () => {
+    if (!text) for (const at of images) decos.push(Decoration.node(at, at + 1, { class: 'image-line' }));
+    images = [];
+    text = false;
+  };
+  node.forEach((child, offset) => {
+    if (child.type.name === 'hardBreak') flush();
+    else if (child.type.name === 'image') {
+      const wrap = child.attrs.wrap ?? 'inline';
+      if (wrap === 'inline') images.push(pos + 1 + offset);
+      if (wrap === 'topBottom' && band !== 'true') band = child.attrs.anchorPage ? 'anchored' : 'true';
+    } else if (child.isText ? child.text?.trim() : true) text = true;
+  });
+  flush();
+  // The attribute editor.css keys the clearing on — an attribute, since a `:has()`
+  // there makes Chromium restyle the whole document on every insertion.
+  if (band) decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-wrap-band': band }));
+}
+
 function imageLineDecorations(doc: PMNode): DecorationSet {
   const decos: Decoration[] = [];
   doc.descendants((node, pos) => {
     if (!node.isTextblock) return true;
-    let images: number[] = [];
-    let text = false;
-    // 'true': a full-width float rides this block, so its successor clears the band;
-    // 'anchored': every such float is page-anchored — the successor must not clear.
-    let band: 'true' | 'anchored' | null = null;
-    const flush = () => {
-      if (!text) for (const at of images) decos.push(Decoration.node(at, at + 1, { class: 'image-line' }));
-      images = [];
-      text = false;
-    };
-    node.forEach((child, offset) => {
-      if (child.type.name === 'hardBreak') flush();
-      else if (child.type.name === 'image') {
-        const wrap = child.attrs.wrap ?? 'inline';
-        if (wrap === 'inline') images.push(pos + 1 + offset);
-        if (wrap === 'topBottom' && band !== 'true') band = child.attrs.anchorPage ? 'anchored' : 'true';
-      } else if (child.isText ? child.text?.trim() : true) text = true;
-    });
-    flush();
-    // The attribute editor.css keys the clearing on — an attribute, since a `:has()`
-    // there makes Chromium restyle the whole document on every insertion.
-    if (band) decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-wrap-band': band }));
+    blockImageLines(node, pos, decos);
     return false;
   });
   return DecorationSet.create(doc, decos);
+}
+
+// Only the textblocks an edit touched are read again, the rest mapped: a keystroke would
+// otherwise walk the whole document. A step that moves nothing (an attribute set in place)
+// has no range to go by, so it reads them all.
+const RANGED = [ReplaceStep, ReplaceAroundStep, AddMarkStep, RemoveMarkStep];
+function mapImageLines(tr: Transaction, old: DecorationSet): DecorationSet {
+  if (!tr.steps.every((s) => RANGED.some((type) => s instanceof type))) return imageLineDecorations(tr.doc);
+  const set = old.map(tr.mapping, tr.doc);
+  const [range] = changedRanges(tr);
+  if (!range) return set;
+  const { doc } = tr, stale: Decoration[] = [], fresh: Decoration[] = [];
+  doc.nodesBetween(Math.max(0, range.from - 1), Math.min(doc.content.size, range.to + 1), (node, pos) => {
+    if (!node.isTextblock) return true;
+    const end = pos + node.nodeSize;
+    stale.push(...set.find(pos, end).filter((d) => d.from >= pos && d.to <= end));
+    blockImageLines(node, pos, fresh);
+    return false;
+  });
+  return set.remove(stale).add(doc, fresh);
 }
 
 function imageLinePlugin(): Plugin {
@@ -735,7 +761,7 @@ function imageLinePlugin(): Plugin {
     key: imageLineKey,
     state: {
       init: (_, state) => imageLineDecorations(state.doc),
-      apply: (tr, old) => (tr.docChanged ? imageLineDecorations(tr.doc) : old),
+      apply: (tr, old) => (tr.docChanged ? mapImageLines(tr, old) : old),
     },
     props: { decorations(state) { return imageLineKey.getState(state); } },
   });
