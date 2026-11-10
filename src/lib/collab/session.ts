@@ -6,6 +6,7 @@ import { attachYjsUndo, type YjsUndo } from '../editor/undoYjs';
 import { openChannel, type ChannelStatus } from './channel';
 import { keyBytes, newKey, sessionLink } from './key';
 import { shareZones } from './zones.svelte';
+import { keyPictures, picturesKey, sessionPictures, unkeyPictures } from './pictures';
 
 // A shared session: the Yjs doc behind the body (`undoYjs.ts`) goes over a sealed channel
 // to the others in the room. Frames are one kind byte and its payload; the relay sees none
@@ -18,6 +19,7 @@ const PRESENCE = 2; // an awareness update (name, colour, cursor)
 const OFFER = 3;    // [to][from][length][state vector][delete set as an update]
 const PULL = 4;     // [to][from][state vector]: the receiver answers with what it lacks
 const ANSWER = 5;   // [to][Yjs update]
+// PICTURE and WANT carry the pictures the doc names by key (`pictures.ts`).
 const BATCH_MS = 50;
 const SETTLE_MS = 300;  // how long a sync waits for late offers after the first
 const STALL_MS = 10_000; // a sync that hears nothing this long starts over
@@ -39,7 +41,8 @@ export type SessionStatus =
 /** `keeps`: this client stores the document (the starter); a joiner holds it in its tab only. */
 export type Peer = { id: number; name: string; color: string; keeps: boolean };
 
-export type SessionView = { status: SessionStatus; peers: Peer[]; link: string; keeps: boolean; kept: boolean };
+/** `missing`: pictures no one here could send, shown as grey boxes. */
+export type SessionView = { status: SessionStatus; peers: Peer[]; link: string; keeps: boolean; kept: boolean; missing: number };
 
 /** What the session needs from the app. */
 export type SessionHost = {
@@ -78,17 +81,19 @@ function frame(kind: number, ...parts: (number | Uint8Array)[]): Uint8Array {
 function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bound: YjsUndo | null, join: Join | null): Session {
   const awareness = new Awareness(ydoc);
   const link = sessionLink(key);
-  const stats = { sent: [0, 0, 0, 0, 0, 0] };
-  const me = crypto.getRandomValues(new Uint32Array(1))[0];
+  const stats = { sent: [0, 0, 0, 0, 0, 0, 0, 0] };
+  // Never 0, the PICTURE frame's address for everyone.
+  const me = crypto.getRandomValues(new Uint32Array(1))[0] || 1;
   let line: ChannelStatus = 'connecting';
   let status: SessionStatus = 'connecting';
   let peerCount = 1;
   let binding: YjsUndo | null = null;
   let joining = join;
-  // The others' carets and selections, drawn as decorations in their colours.
+  // The others' carets and selections, drawn as decorations in their colours, and the
+  // pictures put in from now on; one registration, as each rebuilds every plugin view.
   const bind = (b: YjsUndo) => {
     binding = b;
-    editor.registerPlugin(yCursorPlugin(awareness));
+    editor.registerPlugin(yCursorPlugin(awareness), (p, plugins) => [...plugins, p, pictures.plugin]);
   };
 
   const keeps = !join;
@@ -96,7 +101,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     .map(([id, s]) => ({ id, name: String(s.user.name ?? ''), color: String(s.user.color ?? ''), keeps: s.keeps === true }));
   const changed = () => {
     const all = peers();
-    host.onChange({ status, peers: all, link, keeps, kept: keeps || all.some((p) => p.keeps) });
+    host.onChange({ status, peers: all, link, keeps, kept: keeps || all.some((p) => p.keeps), missing: pictures.missing() });
   };
   // Waiting turns into `empty` after EMPTY_MS and stays so until someone comes.
   let emptyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -111,6 +116,10 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
 
   const send = (kind: number, ...parts: (number | Uint8Array)[]) => { stats.sent[kind]++; channel.send(frame(kind, ...parts)); };
   const present = () => send(PRESENCE, encodeAwarenessUpdate(awareness, [ydoc.clientID]));
+  const pictures = sessionPictures({
+    me, send, heard: () => channel.heard(), changed: () => changed(),
+    peers: () => [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && typeof s.peer === 'number').map(([, s]) => s.peer as number),
+  });
 
   // Outgoing: this client's own updates, merged per batch.
   let out: Uint8Array[] = [];
@@ -129,6 +138,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   type Change = { added: number[]; updated: number[]; removed: number[] };
   const onPresence = ({ added, updated, removed }: Change, origin: unknown) => {
     if (origin === 'local') send(PRESENCE, encodeAwarenessUpdate(awareness, [...added, ...updated, ...removed]));
+    if (added.length || removed.length) pictures.recheck();
     changed();
   };
   awareness.on('update', onPresence);
@@ -229,6 +239,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       if (status === 'version') return;
       const kind = plain[0], v = new DataView(plain.buffer, plain.byteOffset, plain.byteLength);
       if (kind === UPDATE) receive(plain.subarray(1));
+      else if (pictures.receive(plain)) return;
       else if (kind === PRESENCE) applyAwarenessUpdate(awareness, plain.subarray(1), REMOTE);
       else if (kind === ASK) {
         applyInbox();
@@ -255,7 +266,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       // client still without the doc asks them. Someone left: a sync still waiting on
       // offers or an answer starts over with the rest, as others' traffic hides the stall.
       const came = n > peerCount, left = n < peerCount;
-      if (came) present();
+      if (came) { present(); pictures.retry(); }
       peerCount = n;
       if (left ? round && !round.over : came && joining && (!round || round.over)) startRound();
       if (line === 'open' && status !== 'version') setStatus(settled());
@@ -276,6 +287,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   });
 
   awareness.setLocalStateField('user', host.user());
+  awareness.setLocalStateField('peer', me);
   const unshareZones = shareZones(awareness);
   if (keeps) awareness.setLocalStateField('keeps', true);
   if (bound) bind(bound);
@@ -301,8 +313,12 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       unshareZones();
       awareness.destroy();
       ydoc.off('update', onUpdate);
-      if (binding) editor.unregisterPlugin(yCursorPluginKey);
+      if (binding) editor.unregisterPlugin([yCursorPluginKey, picturesKey]);
       binding?.detach();
+      // Alone again, the document holds its pictures itself.
+      const tr = binding && unkeyPictures(editor.state);
+      if (tr) editor.view.dispatch(tr);
+      pictures.close();
       binding = null;
       status = 'closed';
       changed();
@@ -317,6 +333,9 @@ export async function startSession(editor: Editor, host: SessionHost): Promise<S
   meta.set('snapshot', await host.snapshot());
   meta.set('version', __APP_VERSION__);
   meta.set('name', host.name());
+  // The start file carries the pictures; the shared doc names them by key.
+  const keyed = keyPictures(editor.state);
+  if (keyed) editor.view.dispatch(keyed);
   return connect(editor, newKey(), host, ydoc, attachYjsUndo(editor, ydoc), null);
 }
 
@@ -330,6 +349,8 @@ export function joinSession(editor: Editor, key: string, host: SessionHost): Ses
     const meta = ydoc.getMap('meta');
     if (meta.get('version') !== __APP_VERSION__) return 'version';
     if (!(await host.load(meta.get('snapshot') as Uint8Array, String(meta.get('name') ?? '')))) return null;
+    // The start file's pictures are held, under the keys the shared doc names them by.
+    keyPictures(editor.state);
     const binding = attachYjsUndo(editor, ydoc);
     binding.applyState();
     return binding;

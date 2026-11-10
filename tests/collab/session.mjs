@@ -10,6 +10,7 @@
 // Any engine (BROWSER).
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { MOD, ROOT, checker, devServer, openApp } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
 
@@ -89,7 +90,7 @@ const caret = async (page, where) => {
 const SHEET = '/src/lib/styles/sheet.svelte.ts';
 const sheet = (page) => page.evaluate(async (url) => JSON.stringify((await import(url)).styleSheet()), SHEET);
 const sent = (page, kind = 1) => page.evaluate((k) => window.__collab.session.stats.sent[k], kind);
-const [ASK, ANSWER] = [0, 5];
+const [ASK, ANSWER, PICTURE] = [0, 5, 6];
 const status = (page) => page.evaluate(() => window.__collab.view().status);
 // A noise picture, incompressible like a photo, of about 2.5 MB as a data URL.
 const photo = (page) => page.evaluate(() => {
@@ -134,6 +135,11 @@ const hold = (page, on) => page.evaluate((h) => {
   window.__holding = h;
   if (!h) for (const [w, d] of window.__held.splice(0)) if (w.readyState === 1) window.__send.call(w, d);
 }, on);
+// Pictures: how many the editor shows as bytes, the Yjs doc's size, bytes into the relay.
+const shown = (page) => page.evaluate(() => [...document.querySelectorAll('.tiptap-host .tiptap img')].filter((i) => i.src.startsWith('data:') && i.src.length > 1e6).length);
+const ysize = (page) => page.evaluate(async () => (await import('/src/lib/editor/undoYjs.ts')).Y.encodeStateAsUpdate(window.__collab.session.awareness.doc).length);
+const relayed = () => seen.reduce((n, f) => n + f.length, 0);
+const inline = (json) => /"src":"data:[^"]{5000}/.test(json);
 const clientId = (page) => page.evaluate(() => window.__collab.session.awareness.clientID);
 const RECORD = '/src/lib/storage/trackChanges.svelte.ts';
 const record = (page, on) => page.evaluate(async ([url, v]) => (await import(url)).setRecordChanges(v), [RECORD, on]);
@@ -278,13 +284,43 @@ try {
   [va, vb] = [await view(a), await view(b)];
   check(same(va, vb) && !await heldTag(a) && !await heldTag(b), `after that both documents are the same (${brief(va)} | ${brief(vb)})`);
 
+  const [y0, r0] = [await ysize(a), relayed()];
   const size = await photo(a);
   await a.waitForTimeout(2500);
   [va, vb] = [await view(a), await view(b)];
-  check(size > FRAME && va.json === vb.json, `a picture longer than the relay's frame reaches the joiner (${(size / 1e6).toFixed(1)} MB)`);
+  check(size > FRAME && va.json === vb.json && await shown(b) === 1, `a picture longer than the relay's frame reaches the joiner (${(size / 1e6).toFixed(1)} MB)`);
+  const [y1, r1] = [await ysize(a), relayed()];
+  check(!inline(va.json) && y1 - y0 < 2000 && r1 - r0 > size && r1 - r0 < size * 1.1,
+    `the shared doc names the picture by its key (+${y1 - y0} bytes), its bytes go once (${((r1 - r0) / size).toFixed(2)}× its size)`);
+  // What leaves a client holds the picture: its copy on the clipboard, a saved file, autosave.
+  const copied = await b.evaluate(() => {
+    const ed = document.querySelector('.tiptap-host .tiptap').editor;
+    let at = -1;
+    ed.state.doc.descendants((n, pos) => { if (n.type.name === 'image') at = pos; });
+    ed.commands.setNodeSelection(at);
+    return ed.view.serializeForClipboard(ed.state.selection.content()).dom.innerHTML;
+  });
+  await b.evaluate(() => { window.showSaveFilePicker = undefined; });
+  await b.click('.ribbon-tab-file');
+  const [file] = await Promise.all([
+    b.waitForEvent('download', { timeout: 30_000 }),
+    b.locator('.ribbon-menu button', { hasText: '(.odt)' }).first().click()
+      .then(() => b.locator('dialog[open] button.primary').click({ timeout: 2_000 }).catch(() => {})),
+  ]);
+  const saved = await readFile(await file.path());
+  const stash = await a.evaluate(async () => {
+    const keys = [...(localStorage.getItem('edentext-doc') ?? '').matchAll(/idb:([a-z0-9]+)/g)].map((m) => m[1]);
+    const db = await new Promise((r) => { const q = indexedDB.open('edentext-images'); q.onsuccess = () => r(q.result); });
+    const have = await Promise.all(keys.map((k) => new Promise((r) => { const q = db.transaction('images').objectStore('images').get(k); q.onsuccess = () => r(!!q.result); })));
+    return `${keys.length}/${have.filter(Boolean).length}`;
+  });
+  check(/src="data:image\/png/.test(copied) && saved.includes('Pictures/') && saved.length > size * 0.7 && /^(\d+)\/\1$/.test(stash) && stash !== '0/0',
+    `the copied picture, B's saved file (${saved.length} bytes) and A's autosave (${stash} keys stored) hold the picture`);
+  await b.keyboard.press('Escape');
 
   const answers = async () => await sent(a, ANSWER) + await sent(b, ANSWER);
   const answered = await answers();
+  const pictured = await sent(a, PICTURE) + await sent(b, PICTURE);
   const c = await client('Cleo');
   await joinLink(c, link);
   const vc = await view(c);
@@ -292,6 +328,34 @@ try {
   check(same(va, vc) && await sheet(c) === await sheet(a), `a late joiner gets every edit so far, styles and the picture too (${brief(vc)})`);
   const once = [await sent(c, ASK), await answers() - answered];
   check(once.join() === '1,1', `the late joiner asks once and gets one answer (${once})`);
+  const given = await sent(a, PICTURE) + await sent(b, PICTURE) - pictured;
+  check(await shown(c) === 1 && given === 1, `the late joiner gets the picture inserted after the start once, by one client (${given})`);
+
+  // Moved five times, then deleted: the key moves, not the picture.
+  const [y2, r2] = [await ysize(a), relayed()];
+  for (const block of [2, 4, 1, 3, 2]) {
+    await a.evaluate((block) => {
+      const ed = document.querySelector('.tiptap-host .tiptap').editor;
+      let at = -1;
+      ed.state.doc.descendants((n, pos) => { if (n.type.name === 'image') at = pos; });
+      const node = ed.state.doc.nodeAt(at);
+      let target = 0;
+      ed.state.doc.forEach((n, off, i) => { if (i === block) target = off + 1; });
+      const tr = ed.state.tr.delete(at, at + node.nodeSize);
+      ed.view.dispatch(tr.insert(tr.mapping.map(target), node).setMeta('composition', 4242 + block));
+    }, block);
+    await a.waitForTimeout(300);
+  }
+  await a.evaluate(() => {
+    const ed = document.querySelector('.tiptap-host .tiptap').editor;
+    let at = -1;
+    ed.state.doc.descendants((n, pos) => { if (n.type.name === 'image') at = pos; });
+    ed.chain().setNodeSelection(at).deleteSelection().run();
+  });
+  await settle(a);
+  const [y3, r3] = [await ysize(a), relayed()];
+  check(y3 - y2 < 8000 && r3 - r2 < 30_000 && (await view(b)).json === (await view(a)).json,
+    `five moves and a delete send ${r3 - r2} bytes, and the doc grows by ${y3 - y2}`);
   check(seen.every((f) => f.length <= FRAME), `no frame exceeds the relay's limit (largest ${Math.max(...seen.map((f) => f.length))})`);
   const names = await a.evaluate(() => window.__collab.view().peers.map((p) => p.name).sort().join(','));
   const bar = (await a.textContent('.statusbar .collab-btn'))?.trim();
@@ -529,6 +593,23 @@ try {
   const [pa4, pg4, pushed2] = [await view(a), await view(g), await sent(a)];
   check(waited && gLive && pa4.json === pg4.json && pushed2 === pushed,
     `a waiting joiner asks the client that comes back, which sends it no copy of its own (${waited}, ${gLive}, ${pushed2 - pushed} updates)`);
+
+  // The only client with a picture leaves before its bytes went out: the other shows a grey
+  // box and says so, and stays live. The one who left has the picture in its own copy.
+  await a.evaluate(() => {
+    const send = WebSocket.prototype.send;
+    WebSocket.prototype.send = function (d) { if ((d.byteLength ?? d.length) < 200_000) return send.call(this, d); };
+  });
+  await photo(a);
+  await g.waitForSelector('.tiptap-host .tiptap .image-waiting', { timeout: 10_000 }).catch(() => {});
+  const aMissing = await a.evaluate(() => window.__collab.view().missing);
+  if (!await a.isVisible('dialog[open] [data-cmd="collabLeave"]')) await a.click('.statusbar .collab-btn');
+  await a.click('dialog[open] [data-cmd="collabLeave"]');
+  const told2 = await g.waitForSelector('dialog[open] [data-missing]', { timeout: 30_000 }).then(() => true, () => false);
+  const own = await a.evaluate(() => /"src":"data:image\/png/.test(JSON.stringify(document.querySelector('.tiptap-host .tiptap').editor.getJSON())));
+  const boxes = await g.locator('.tiptap-host .tiptap .image-waiting').count();
+  check(told2 && await status(g) === 'live' && boxes === 1 && own,
+    `a picture whose only holder left shows as a grey box (${boxes}) with a note, the session stays live (${told2}, ${await status(g)}), and the holder keeps it (${own}, ${aMissing} missing there)`);
 
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (err) {

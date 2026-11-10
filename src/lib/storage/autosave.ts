@@ -1,6 +1,6 @@
 import { t } from '../i18n/i18n.svelte';
 import { formatMoment } from './dateFormat.svelte';
-import { stashImages, putImages, restoreImages, isStored } from './imageStore';
+import { stashImages, putImages, restoreImages, isStored, withHeldImages } from './imageStore';
 import { keepSnapshot, listSnapshots, readSnapshot } from './snapshots';
 import { docKey, docStore, volatile, otherDocumentsStored } from './docScope';
 import type { Schema } from '@tiptap/pm/model';
@@ -59,7 +59,8 @@ export function saveDocument(json: () => object): void {
 async function write(): Promise<void> {
   const take = pending;
   if (!take) return;
-  const json = take();
+  // A session's keys go back to their pictures, which no other tab could look up.
+  const json = withHeldImages(take()).json;
   // Pictures go to IndexedDB and the JSON keeps a key; where that fails they stay
   // inline, which is the only thing localStorage ever held.
   const { json: slim, blobs } = stashImages(json);
@@ -78,7 +79,7 @@ async function write(): Promise<void> {
 // Timer and pending stay, so a page revived from the back/forward cache writes again.
 export function flushDocument(): void {
   if (!pending) return;
-  const json = pending();
+  const json = withHeldImages(pending()).json;
   const { json: slim, blobs } = stashImages(json);
   void putImages(blobs);
   // A picture the store has not confirmed may never land before the tab dies (one just

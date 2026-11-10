@@ -205,6 +205,8 @@ const en = {
     keepFailed: 'There is not enough room in this browser to keep the document. Save it as a file instead.',
     you: 'you',
     peers: (n: number) => `${n} other${n === 1 ? '' : 's'} here`,
+    missing: (n: number) => n === 1 ? 'One picture could not be fetched: whoever had it has left. It shows as a grey box until someone who has it joins.' : `${n} pictures could not be fetched: whoever had them has left. They show as grey boxes until someone who has them joins.`,
+    picturesPending: 'Some pictures have not reached you yet, so the file would be missing them. Try again once they show.',
     status: {
       connecting: 'Connecting…',
       waiting: 'Waiting for someone who has the document open…',
