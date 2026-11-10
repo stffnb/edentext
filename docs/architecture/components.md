@@ -104,7 +104,7 @@ The zones, page setup, style sheet, note settings and document language share th
 stack, as in both word processors. Each change lands there as a `StateStep` (`stateHistory.ts`:
 the value before and after, the body untouched). The live zone's own history only groups its
 edits, and its undo/redo run on the body's stack. `App.svelte` registers each store with
-`watchState`, whichever control writes it, and a change lands after a 500 ms pause. Typing or an
+`watchState`, the page setup as the field list of `storage/pageLayout.svelte.ts`, whichever control writes it, and a change lands after a 500 ms pause. Typing or an
 undo lands pending changes first (`flushPending`). A store set in the same task as a text change
 (a renamed style and its retagged paragraphs) joins that change's step through the extension's
 `appendTransaction`. An undo writes the value back; a table style's repaint follows the sheet
