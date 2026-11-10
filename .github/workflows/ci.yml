@@ -160,8 +160,12 @@ jobs:
           done < old.txt
           mv new.txt dist/assets.txt
           echo "$(awk -v d="$today" '$1 != d' dist/assets.txt | wc -l) assets kept from earlier deploys"
+      # A re-run keeps the earlier attempt's artifact, and deploy-pages refuses two of one name.
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
+          name: github-pages-${{ github.run_attempt }}
       - id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
