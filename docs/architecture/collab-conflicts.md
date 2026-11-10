@@ -88,6 +88,17 @@ the update would be lost to the throw. `attachRepair` wraps the binding's observ
 and a redraw that is not the fragment's projection, or not valid, pauses the binding the
 same way. The soak run counts redraws and fails on a pause.
 
+### Restored items (`editor/yjsRedo.ts`)
+
+Yjs 13.6.33's undo traces a restored item's left and right neighbours separately through
+the copies earlier undos made (yjs#823, open). After a copy was split, both can reach one
+item, so the restored item gets an origin right of its right origin: the undoing client
+placed it after `left`, every peer and a reload of its own state elsewhere. A's undo of a
+join after a split's undo gave `…lazy dog.` on A and `…lazy og.d` on B, the same state
+vectors and delete sets, with `gc` off too. `yjsRedo.ts` wraps `Item.integrate` in undo
+transactions: if `right` is not reachable from `left`, the item goes directly after `left`
+(the fallback proposed upstream, PR #795), which every replica decodes alike.
+
 ## Matrix
 
 Columns as the test checks them. **same**: both docs and fragments equal. **valid**:
@@ -147,11 +158,6 @@ leaves both at B's doc alone (in the B's undo rows, B's undo takes its last step
   pasted paragraph into the old one by a prefix/suffix diff, so B's typing is not deleted
   but stays where Yjs merges it among A's new characters (`TZedwo lazy days.`), as with any
   concurrent typing into a replaced range. The rescue leaves it there.
-- **Yjs's undo on a long history** can put text back apart on two clients: with the deleted
-  items one row of the matrix left behind, A's undo of a join restored `…lazy dog.` on A and
-  `…lazy og.d` on B, the same state vectors, nothing pending. The redone items' origins
-  depend on the undoing client's tombstones. The script starts every row from fresh docs;
-  the soak run would show it as Yjs bodies apart.
 - **Waiting for the repairer.** Until its version arrives (one relay round; up to
   awareness's 30 s if its holder vanished unannounced) an edit inside the overlay is
   refused; the soak run counts these lines (one in 128 ops, 2026-11-10).
