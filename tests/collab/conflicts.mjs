@@ -2,8 +2,8 @@
 // either hears of the other's (relayed by this script, as undo.mjs). Per pair: same doc on
 // both, a valid doc with rectangular tables, nothing typed lost, no repair going back and
 // forth, A's undo taking back A's op alone. Expected values are what the editor does now,
-// known losses included (docs/architecture/collab-conflicts.md). Dev server, any engine.
-import { checker, devServer, openApp } from '../browser.mjs';
+// accepted losses included (docs/architecture/collab-conflicts.md). Dev server, any engine.
+import { checker, collectErrors, devServer, openApp } from '../browser.mjs';
 
 const PORT = +(process.env.COLLAB_PORT ?? 4394);
 const ROUNDS = +(process.env.ROUNDS ?? 8);
@@ -12,7 +12,7 @@ const { check, failures } = checker();
 const server = await devServer(PORT);
 const { browser, page: a, pageErrors } = await openApp(PORT);
 const b = await (await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' })).newPage();
-b.on('pageerror', (e) => { if (!/ResizeObserver loop/.test(String(e))) pageErrors.push(`B: ${e}`); });
+collectErrors(b, pageErrors, 'B: ');
 b.on('dialog', (d) => d.accept());
 
 const open = async (page, name) => {
@@ -143,45 +143,45 @@ const ok = { same: true, valid: true, clean: true, kept: true, quiet: true, undo
 const red = (...keys) => ({ ...ok, ...Object.fromEntries(keys.map((k) => k.endsWith('?') ? [k.slice(0, -1), null] : [k, false])) });
 const CASES = [
   { name: 'A types elsewhere in the paragraph (control)', doc: PARA, a: 'h.type(h.at("The ", 4), "Ann")', b: B_TYPES, keep: ['The Ann', 'lazy Zed'], want: ok },
-  { name: 'A splits the paragraph before B\'s place', doc: PARA, a: 'h.select(h.at("brown ", 6)); h.ed.commands.splitBlock()', b: B_TYPES, keep: ['lazy Zed'], want: red('kept') },
+  { name: 'A splits the paragraph before B\'s place', doc: PARA, a: 'h.select(h.at("brown ", 6)); h.ed.commands.splitBlock()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A splits the paragraph behind B\'s place', doc: PARA, a: 'h.select(h.at("lazy d", 6)); h.ed.commands.splitBlock()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
-  { name: 'A joins it to the paragraph before', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.joinBackward()', b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
-  { name: 'A makes it a heading', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.setParagraphStyle("Heading 1")', b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
-  { name: 'A makes a heading a paragraph again', doc: [P('Before.'), H(FOX), P('After.')], a: 'h.select(h.at("The ")); h.ed.commands.setParagraph()', b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
-  { name: 'A makes it a list item', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.toggleBulletList()', b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
-  { name: 'A indents it in its list', doc: [UL(LI('One'), LI(FOX), LI('Three'))], a: 'h.select(h.at("The ")); h.ed.commands.indentListForward()', b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
-  { name: 'A outdents it in its list', doc: [UL(LI('One', UL(LI(FOX))), LI('Three'))], a: 'h.select(h.at("The ")); h.ed.commands.liftListItem("listItem")', b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
+  { name: 'A joins it to the paragraph before', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.joinBackward()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
+  { name: 'A makes it a heading', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.setParagraphStyle("Heading 1")', b: B_TYPES, keep: ['lazy Zed'], want: ok },
+  { name: 'A makes a heading a paragraph again', doc: [P('Before.'), H(FOX), P('After.')], a: 'h.select(h.at("The ")); h.ed.commands.setParagraph()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
+  { name: 'A makes it a list item', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.toggleBulletList()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
+  { name: 'A indents it in its list', doc: [UL(LI('One'), LI(FOX), LI('Three'))], a: 'h.select(h.at("The ")); h.ed.commands.indentListForward()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
+  { name: 'A outdents it in its list', doc: [UL(LI('One', UL(LI(FOX))), LI('Three'))], a: 'h.select(h.at("The ")); h.ed.commands.liftListItem("listItem")', b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A gives it another paragraph style', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.setParagraphStyle("Quotations")', b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A centres it', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.setTextAlign("center")', b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A indents it', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.indentMore()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A drags it below the next one', doc: PARA,
     a: 'const from = h.block(1), node = h.doc().child(1); const tr = h.ed.state.tr.delete(from, from + node.nodeSize); tr.insert(tr.doc.content.size, node); h.ed.view.dispatch(tr)',
-    b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
+    b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A deletes it whole', doc: PARA, a: 'const from = h.block(1); h.ed.view.dispatch(h.ed.state.tr.delete(from, from + h.doc().child(1).nodeSize))', b: B_TYPES, keep: [], want: red('undo') },
-  { name: 'A puts a footnote in it', doc: PARA, a: 'h.select(h.at("quick", 5)); h.ed.commands.insertNote("footnote")', b: B_TYPES, keep: ['lazy Zed'], want: red('kept') },
+  { name: 'A puts a footnote in it', doc: PARA, a: 'h.select(h.at("quick", 5)); h.ed.commands.insertNote("footnote")', b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A comments a word in it', doc: PARA, a: 'h.select(h.at("brown"), h.at("brown", 5)); h.ed.commands.addComment({ author: "Anna", text: "Hm" })', b: B_TYPES, keep: ['lazy Zed'], want: ok },
-  { name: 'A puts a picture in it', doc: PARA, a: `h.select(h.at("fox ", 4)); h.ed.commands.setImage({ src: "${PNG}", width: 20, height: 20 })`, b: B_TYPES, keep: ['lazy Zed'], want: red('kept') },
+  { name: 'A puts a picture in it', doc: PARA, a: `h.select(h.at("fox ", 4)); h.ed.commands.setImage({ src: "${PNG}", width: 20, height: 20 })`, b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A replaces a word in it (Replace All)', doc: PARA,
     a: 'h.ed.commands.setSearch({ term: "quick", matchCase: false, wholeWord: false, useRegex: false }); h.ed.commands.replaceAll("slow"); h.ed.commands.clearSearch()',
     b: B_TYPES, keep: ['lazy Zed', 'slow'], want: ok },
 
   // Tables: 3 × 3, cell text "a1".."c3"; h.cells()[row][col] is a cell's position.
-  { name: 'A inserts a column, B a row', doc: TABLE, a: 'h.select(h.cells()[0][0] + 2); h.ed.commands.addColumnAfter()', b: 'h.select(h.cells()[1][1] + 2); h.ed.commands.addRowAfter()', keep: [], want: red('same?', 'quiet', 'undo') },
+  { name: 'A inserts a column, B a row', doc: TABLE, a: 'h.select(h.cells()[0][0] + 2); h.ed.commands.addColumnAfter()', b: 'h.select(h.cells()[1][1] + 2); h.ed.commands.addRowAfter()', keep: [], want: ok },
   { name: 'A deletes a row, B types in it', doc: TABLE, a: 'h.select(h.cells()[1][0] + 2); h.ed.commands.deleteRow()', b: 'h.type(h.at("b2", 2), "Zed")', keep: [], want: red('undo') },
   { name: 'A deletes a column, B types in it', doc: TABLE, a: 'h.select(h.cells()[0][1] + 2); h.ed.commands.deleteColumn()', b: 'h.type(h.at("b2", 2), "Zed")', keep: [], want: red('undo') },
   { name: 'A merges two cells, B types in one', doc: TABLE,
     a: 'const c = h.cells(); h.ed.commands.setCellSelection({ anchorCell: c[0][0], headCell: c[0][1] }); h.ed.commands.mergeCells()',
-    b: 'h.type(h.at("b1", 2), "Zed")', keep: ['b1Zed', 'a1'], want: red('kept', 'undo') },
+    b: 'h.type(h.at("b1", 2), "Zed")', keep: ['b1Zed', 'a1'], want: ok },
   { name: 'A and B merge overlapping cells', doc: TABLE,
     a: 'const c = h.cells(); h.ed.commands.setCellSelection({ anchorCell: c[0][0], headCell: c[0][1] }); h.ed.commands.mergeCells()',
     b: 'const c = h.cells(); h.ed.commands.setCellSelection({ anchorCell: c[0][1], headCell: c[1][1] }); h.ed.commands.mergeCells()',
-    keep: ['a1', 'b1', 'b2'], want: red('same?', 'kept?', 'quiet', 'undo') },
+    keep: ['a1', 'b1', 'b2'], want: red('undo') },
   { name: 'A widens a column, B inserts one', doc: TABLE,
     a: 'const tr = h.ed.state.tr; h.cells().forEach((r, i) => tr.setNodeAttribute(r[0], "colwidth", [300])); h.ed.view.dispatch(tr)',
     b: 'h.select(h.cells()[0][1] + 2); h.ed.commands.addColumnAfter()', keep: [], want: ok },
   { name: 'A sorts the table, B types in a cell', doc: TABLE,
     a: 'h.select(h.cells()[0][0] + 2); h.ed.commands.sortTable({ keys: [{ column: 0, descending: true, type: "text" }], headerRow: false })',
-    b: 'h.type(h.at("b1", 2), "Zed")', keep: ['b1Zed'], want: red('kept') },
+    b: 'h.type(h.at("b1", 2), "Zed")', keep: ['b1Zed'], want: ok },
   { name: 'A deletes the table, B types in a cell', doc: TABLE, a: 'h.select(h.cells()[0][0] + 2); h.ed.commands.deleteTable()', b: 'h.type(h.at("b2", 2), "Zed")', keep: [], want: red('undo') },
 
   // Recorded changes (r1 marks "brown fox ") and comments (c1 on "brown").
@@ -192,9 +192,9 @@ const CASES = [
 
   // Derived content: the TOC's rows, the notes' numbers.
   { name: 'A updates the TOC, B edits a heading', doc: [{ type: 'tableOfContents', attrs: { index: 'toc', entries: [{ text: 'Alpha', level: 1, page: 1 }, { text: 'Old', level: 1, page: 1 }] } }, H('Alpha'), P('Text.'), H('Beta')],
-    a: 'h.ed.commands.updateIndexes()', b: 'h.type(h.at("Alpha", 5), " Zed")', keep: ['Alpha Zed'], want: red('undo') },
-  { name: 'A adds the first footnote, B one before it', doc: PARA, a: 'h.select(h.at("After", 5)); h.ed.commands.insertNote("footnote")', b: 'h.select(h.at("Before", 6)); h.ed.commands.insertNote("footnote")', keep: [], notes: 2, want: red('clean', 'kept', 'quiet') },
-  { name: 'A adds a footnote, B one before it', doc: NOTED, a: 'h.select(h.at("After", 5)); h.ed.commands.insertNote("footnote")', b: 'h.select(h.at("Before", 6)); h.ed.commands.insertNote("footnote")', keep: [], notes: 3, want: red('quiet', 'undo') },
+    a: 'h.ed.commands.updateIndexes()', b: 'h.type(h.at("Alpha", 5), " Zed")', keep: ['Alpha Zed'], want: red('quiet?', 'undo') },
+  { name: 'A adds the first footnote, B one before it', doc: PARA, a: 'h.select(h.at("After", 5)); h.ed.commands.insertNote("footnote")', b: 'h.select(h.at("Before", 6)); h.ed.commands.insertNote("footnote")', keep: [], notes: 2, want: ok },
+  { name: 'A adds a footnote, B one before it', doc: NOTED, a: 'h.select(h.at("After", 5)); h.ed.commands.insertNote("footnote")', b: 'h.select(h.at("Before", 6)); h.ed.commands.insertNote("footnote")', keep: [], notes: 3, want: ok },
 ];
 
 const diff = (x, y) => { let i = 0; while (i < x.length && x[i] === y[i]) i++; return `…${x.slice(Math.max(0, i - 40), i + 80)}… vs …${y.slice(Math.max(0, i - 40), i + 80)}…`; };

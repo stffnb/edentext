@@ -25,19 +25,20 @@ no page threw. At the end the starter's `.odt` reads back (the monkey run's comp
 each client in turn undoes all its steps and redoes them: the others' letters stay, its own
 are gone, and redo gives the document back.
 
-A finding that matches a known conflict (`collab-conflicts.md`, R3) is printed as `known` and
+A finding that matches an accepted conflict (`collab-conflicts.md`) is printed as `known` and
 the run goes on; anything else fails it. A finding that leaves the clients apart restarts the
-session from the starter's document, so one finding does not hide the next. Known are: a
-RangeError from `restoreRelativeSelection`; a table repaired on both sides (traffic while
-idle, or documents apart over the same Yjs body, after a row, column or merge op); undo
-after a block rebuilt, split, joined or deleted, or after the columns flow rewrote text (as
-alone: the monkey run leaves the history unchecked there). Any other throw is new.
+session from the starter's document, so one finding does not hide the next. Known are: text
+typed into what another deleted (a selection typed over, Backspace or Delete, a row, column or
+table), and undo after such a deletion, after a block another client rebuilt (the copy is
+its maker's, so the typist's undo no longer reaches what it holds) or after the columns flow
+rewrote text (as alone: the monkey run leaves the history unchecked there). Any throw is new;
+the binding's redraw after a caret it could not restore (`collab: caret not restorable`) is
+counted and printed, not failed.
 
-By default the run leaves out every op behind those conflicts (block styles but Standard and
-Quotations, lists and indents, Enter, Backspace, Delete, Tab, selections typed over, notes,
-pictures, formulas, text boxes, breaks, table structure, columns), so only new ones show
-and `test:collab` stays green on them; `SOAK_SKIP=none` draws every op and classifies.
-Further: `SOAK_SEED`, `SOAK_CLIENTS` (4), `SOAK_ROUNDS` (4), `SOAK_OPS` (8 per client and
+By default the run leaves out the deleting ops and the columns flow, so only new findings
+show and `test:collab` stays green on them; block styles, lists, Enter, notes, pictures,
+formulas, text boxes, breaks and table structure are drawn. `SOAK_SKIP=none` draws every op
+and classifies. Further: `SOAK_SEED`, `SOAK_CLIENTS` (4), `SOAK_ROUNDS` (4), `SOAK_OPS` (8 per client and
 round), `SOAK_DOC`, and for the long run `SOAK_RUNS` seeds within `SOAK_MINUTES`. A seed
 fixes every client's ops and the disruptions, not their timing, so a failing seed shows the
 same ops but may not fail again. Diverged documents and the ops of the round go to the OS

@@ -78,7 +78,7 @@ the undo stack starts empty from there.
   otherwise split a typed word. The monkey test counts about as many steps on both (22/12/18, 22/14/19).
 - **Delete filter.** y-tiptap keeps every paragraph with content on undo, so undoing an
   Enter left the new paragraph behind. Ours keeps an element only while it holds another
-  client's live content.
+  client's live content (not a repair's; `collab-conflicts.md`, which the rescue then moves).
 - **Labels** for the toolbar list ride the stack items (`meta.label`), read by `historyLog`.
   A document opened in a session clears the manager (`reset`) instead of re-creating the
   state, which would rebuild the sync plugin's binding.
