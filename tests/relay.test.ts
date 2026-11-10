@@ -28,8 +28,8 @@ describe('collaboration relay', () => {
   it('passes frames within a room only, announces peers and forgets an empty room', async () => {
     relay = await startRelay({ port: 0 });
     const a = await join(ROOM_A), b = await join(ROOM_A), c = await join(ROOM_B);
-    expect(a.text).toContainEqual({ t: 'welcome', peers: 1, frame: 16 << 20 });
-    expect(b.text).toContainEqual({ t: 'welcome', peers: 2, frame: 16 << 20 });
+    expect(a.text).toContainEqual({ t: 'welcome', peers: 1, frame: 16 << 20, beat: 15_000 });
+    expect(b.text).toContainEqual({ t: 'welcome', peers: 2, frame: 16 << 20, beat: 15_000 });
     expect(a.text).toContainEqual({ t: 'peers', n: 2 });
 
     a.ws.send(Buffer.from([1, 2, 3]));
@@ -45,6 +45,22 @@ describe('collaboration relay', () => {
     c.ws.close();
     await tick();
     expect(relay!.rooms.size).toBe(0);
+  });
+
+  it('beats to every client in a room as often as its welcome says, and not with beat 0', async () => {
+    relay = await startRelay({ port: 0, beat: 40 });
+    const a = await join(ROOM_A);
+    await tick();
+    expect(a.text[0]).toMatchObject({ t: 'welcome', beat: 40 });
+    expect(a.text.filter((m) => m.t === 'beat').length).toBeGreaterThanOrEqual(1);
+    a.ws.close();
+    await relay!.close();
+    relay = await startRelay({ port: 0, beat: 0 });
+    const b = await join(ROOM_A);
+    await tick();
+    await tick();
+    expect(b.text).toEqual([{ t: 'welcome', peers: 1, frame: 16 << 20 }]);
+    b.ws.close();
   });
 
   it('refuses a full room, an oversized frame and a missing hello', async () => {

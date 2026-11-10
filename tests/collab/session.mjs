@@ -16,7 +16,8 @@ process.env.RELAY_PORT = String(RELAY_PORT);
 const { check, failures } = checker();
 const seen = [];
 const FRAME = 1 << 20;
-const relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, tap: (d) => seen.push(Buffer.from(d)) });
+const BEAT = 2000;
+const relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, tap: (d) => seen.push(Buffer.from(d)) });
 const server = await devServer(PORT);
 const { browser, page: a, pageErrors } = await openApp(PORT);
 const URL0 = `http://localhost:${PORT}/`;
@@ -235,6 +236,64 @@ try {
   check(four.every((v) => same(v, four[0])) && four[0].text.startsWith('Cleo ') && four[0].text.endsWith(' Delta'),
     `a fourth client joins late and types, and all four converge (${four.map(brief).join(' | ')})`);
 
+  // The client a joiner pulls from drops its answer and its line, while another keeps
+  // typing so the joiner hears frames all along: the joiner still gets the doc from the rest.
+  // The others' offers are held back, so Dan's is the one pulled from.
+  const arm = (page, role) => page.evaluate((role) => {
+    const Orig = WebSocket, send = Orig.prototype.send, sent = window.__collab.session.stats.sent;
+    const st = window.__drop = { muted: role === 'mute', silent: false, fired: false, offers: sent[3], answers: sent[5] };
+    Orig.prototype.send = function (data) {
+      if (st.silent) return;
+      if (sent[3] !== st.offers) {
+        st.offers = sent[3];
+        if (st.muted) return;
+        if (role === 'slow') { setTimeout(() => send.call(this, data), 1500); return; }
+      }
+      if (role === 'drop' && (st.fired || sent[5] > st.answers)) {
+        if (!st.fired) setTimeout(() => { this.close(); window.WebSocket = class extends Orig { constructor() { super('ws://127.0.0.1:4/'); } }; }, 1000);
+        st.fired = true;
+        return;
+      }
+      return send.call(this, data);
+    };
+  }, role);
+  for (const page of [a, b, c]) await arm(page, 'mute');
+  await arm(d4, 'drop');
+  const f = await client('Finn');
+  await f.goto(link, { waitUntil: 'load' });
+  await ready(f);
+  const dropped = await d4.waitForFunction(() => window.__drop.fired, null, { timeout: 15_000 }).then(() => true, () => false);
+  for (const page of [a, b, c]) await page.evaluate(() => { window.__drop.muted = false; });
+  await caret(c, 'end');
+  let fLive = false;
+  for (let i = 0; i < 10 && !fLive; i++) {
+    await c.keyboard.type('.');
+    await f.waitForTimeout(2000);
+    fLive = await status(f) === 'live';
+  }
+  await f.waitForTimeout(1500);
+  const [vf, va4] = [await view(f), await view(a)];
+  check(dropped && fLive && same(vf, va4), `a joiner whose answer is lost with its sender's line gets the doc from another (${dropped}, ${await status(f)})`);
+
+  // Anna's and Cleo's latest edits each stay their own, then the reloaded Ben asks and
+  // Cleo's offer comes after the settle: Ben still pulls her edit and sends her Anna's.
+  await arm(c, 'slow');
+  const silent = (page, on) => page.evaluate((v) => { window.__drop.silent = v; }, on);
+  for (const page of [a, c]) await silent(page, true);
+  await caret(a, 'end');
+  await a.keyboard.type(' Eta');
+  await caret(c, 'end');
+  await c.keyboard.type(' Zeta');
+  await a.waitForTimeout(400);
+  for (const page of [a, c]) await silent(page, false);
+  await b.reload({ waitUntil: 'load' });
+  await ready(b);
+  await live(b);
+  await b.waitForTimeout(4000);
+  const [vb5, vc5] = [await view(b), await view(c)];
+  const both = (v) => v.text.includes(' Eta') && v.text.includes(' Zeta');
+  check(vb5.json === vc5.json && both(vb5), `a late offer is pulled from and gets what it lacks (${both(vb5)}, ${both(vc5)})`);
+
   await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');
   await caret(b, 'end');
@@ -287,6 +346,72 @@ try {
   await a.waitForTimeout(600);
   const [pa2, pe2] = [await view(a), await view(e)];
   check(await status(a) === 'live' && pa2.json === pe2.json && pa2.text.endsWith('Omega'), `once the line holds it is live again and edits arrive (${await status(a)})`);
+
+  // A line that dies without a close: Ella hears and sends nothing, while the relay still
+  // holds her socket. The relay's beats stop reaching her, so within a few she is no longer
+  // `live`, and she is back once the line works again.
+  await e.evaluate(() => {
+    const O = WebSocket, st = window.__deaf = { on: false };
+    window.WebSocket = class extends O {
+      constructor(...x) { super(...x); this.addEventListener('message', (ev) => { if (st.on) ev.stopImmediatePropagation(); }); }
+      send(d) { if (!st.on) super.send(d); }
+    };
+  });
+  const relive = async () => {
+    for (const room of relay.rooms.values()) for (const w of room) w.close();
+    for (const page of [a, e]) await page.waitForFunction(() => window.__collab.view().status === 'live', null, { timeout: 30_000 }).catch(() => {});
+  };
+  await relive();
+  // Anna holds back her offers, so the sync Ella starts on the next welcome stays open when
+  // her line dies: it must end there, not keep asking into a line that is down.
+  await a.evaluate(() => {
+    const send = WebSocket.prototype.send, sent = window.__collab.session.stats.sent;
+    let offers = sent[3];
+    window.__noOffers = true;
+    WebSocket.prototype.send = function (d) {
+      if (sent[3] !== offers) { offers = sent[3]; if (window.__noOffers) return; }
+      return send.call(this, d);
+    };
+  });
+  await relive();
+  await e.evaluate(() => { window.__deaf.on = true; });
+  const noticed = await e.waitForFunction(() => window.__collab.view().status !== 'live', null, { timeout: 5 * BEAT }).then(() => true, () => false);
+  const asked = await sent(e, ASK);
+  await e.waitForTimeout(12_000);
+  const stacked = await sent(e, ASK) - asked;
+  const deafAs = await status(e);
+  await a.evaluate(() => { window.__noOffers = false; });
+  await e.evaluate(() => { window.__deaf.on = false; });
+  await e.waitForFunction(() => window.__collab.view().status === 'live', null, { timeout: 45_000 }).catch(() => {});
+  await e.keyboard.press('Escape');
+  await caret(e, 'end');
+  await e.keyboard.type(' Psi');
+  await settle(a);
+  const [pa3, pe3] = [await view(a), await view(e)];
+  check(noticed && await status(e) === 'live' && pa3.json === pe3.json && pa3.text.endsWith('Psi'),
+    `a line that dies without a close is not live (${deafAs}), and live again once it works`);
+  check(stacked === 0, `a sync open when the line died asks nothing while it is down (${stacked} asks)`);
+
+  // A joiner alone in the room waits; when a client with the doc comes back, the joiner
+  // asks it, and that client's own sync sends no copy to the joiner's empty offer.
+  const away = (page) => page.evaluate(() => {
+    window.__WS ??= WebSocket;
+    window.WebSocket = class extends window.__WS { constructor() { super('ws://127.0.0.1:4/'); } };
+  });
+  for (const page of [a, e]) await away(page);
+  for (const room of relay.rooms.values()) for (const w of room) w.close();
+  await a.waitForTimeout(500);
+  const g = await client('Gus');
+  await g.goto(link2, { waitUntil: 'load' });
+  await ready(g);
+  const waited = await g.waitForFunction(() => window.__collab?.view()?.status === 'waiting', null, { timeout: 15_000 }).then(() => true, () => false);
+  const pushed = await sent(a);
+  await a.evaluate(() => { window.WebSocket = window.__WS; });
+  const gLive = await g.waitForFunction(() => window.__collab.view().status === 'live', null, { timeout: 45_000 }).then(() => true, () => false);
+  await g.waitForTimeout(1500);
+  const [pa4, pg4, pushed2] = [await view(a), await view(g), await sent(a)];
+  check(waited && gLive && pa4.json === pg4.json && pushed2 === pushed,
+    `a waiting joiner asks the client that comes back, which sends it no copy of its own (${waited}, ${gLive}, ${pushed2 - pushed} updates)`);
 
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (err) {
