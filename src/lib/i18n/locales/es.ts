@@ -842,7 +842,7 @@ const es: Messages = {
     copy: 'Copiar',
     paste: 'Pegar',
     pasteWithoutFormatting: 'Pegar sin formato',
-    pasteBlocked: 'Este navegador solo permite pegar desde el teclado. Pulse Ctrl+V, o mantenga Mayús al hacer clic con el botón derecho para usar el menú del navegador.',
+    pasteBlocked: (key: string) => `Este navegador solo permite pegar desde el teclado. Pulse ${key}, o mantenga Mayús al hacer clic con el botón derecho para usar el menú del navegador.`,
     insertLink: 'Enlace…',
     editLink: 'Editar enlace…',
     removeLink: 'Quitar enlace',

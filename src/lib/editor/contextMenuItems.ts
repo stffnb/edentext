@@ -64,7 +64,7 @@ export async function readClipboard(editor: Editor, plainOnly: boolean) {
     }
   } catch {
     // Firefox/Safari gate clipboard reads behind their own paste affordance.
-    alert(t().contextMenu.pasteBlocked);
+    alert(t().contextMenu.pasteBlocked(withShortcut('Ctrl+V')));
   }
 }
 
