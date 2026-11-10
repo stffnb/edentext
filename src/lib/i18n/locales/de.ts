@@ -212,6 +212,7 @@ const de: Messages = {
     picturesPending: 'Einige Bilder sind noch nicht bei Ihnen angekommen und würden in der Datei fehlen. Versuchen Sie es noch einmal, sobald sie zu sehen sind.',
     paused: 'Bearbeitung angehalten',
     pausedHint: 'Eine Änderung aus der Sitzung lässt sich hier nicht anzeigen. Damit sie nicht überschrieben wird, ist die Bearbeitung angehalten. Sobald das Dokument wieder angezeigt werden kann, geht es von selbst weiter.',
+    dropped: 'Eine Eingabe ließ sich nicht übernehmen: Jemand anderes hat gleichzeitig die Stelle geändert, an der sie stand.',
     status: {
       connecting: 'Verbinde…',
       waiting: 'Warte auf jemanden, der das Dokument geöffnet hat…',

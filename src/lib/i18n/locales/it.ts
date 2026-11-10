@@ -212,6 +212,7 @@ const it: Messages = {
     picturesPending: 'Alcune immagini non ti sono ancora arrivate e mancherebbero nel file. Riprova appena compaiono.',
     paused: 'Modifica sospesa',
     pausedHint: 'Una modifica arrivata dalla sessione non si può mostrare qui e, se continui a scrivere, potresti sovrascriverla: per questo la scrittura è sospesa. Riprende da sola appena il documento si può di nuovo mostrare.',
+    dropped: 'Una parte di quello che hai appena scritto non si è potuta mantenere: nello stesso momento qualcun altro ha cambiato quel punto.',
     status: {
       connecting: 'Connessione…',
       waiting: 'In attesa di qualcuno che abbia il documento aperto…',

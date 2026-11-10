@@ -214,6 +214,7 @@ const zhHant: Messages = {
     picturesPending: '部分圖片尚未傳到您這裡，檔案中會缺少它們。請等圖片顯示後再試一次。',
     paused: '編輯已暫停',
     pausedHint: '工作階段中的一項變更無法在此顯示，現在繼續輸入可能會覆寫它，因此編輯已暫停。文件可以重新顯示後，編輯會自動恢復。',
+    dropped: '剛才輸入的部分內容未能保留：其他人同時變更了同一位置。',
     status: {
       connecting: '正在連線…',
       waiting: '正在等待已開啟此文件的人…',

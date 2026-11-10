@@ -212,6 +212,7 @@ const pt: Messages = {
     picturesPending: 'Algumas imagens ainda não lhe chegaram e faltariam no ficheiro. Tente novamente quando aparecerem.',
     paused: 'Edição em pausa',
     pausedHint: 'Uma alteração vinda da sessão não pode ser mostrada aqui e, se continuar a escrever, poderia substituí-la, por isso a edição está em pausa. Retoma sozinha assim que o documento puder voltar a ser mostrado.',
+    dropped: 'Não foi possível manter parte do que acabou de escrever: outra pessoa alterou esse mesmo sítio ao mesmo tempo.',
     status: {
       connecting: 'A ligar…',
       waiting: 'À espera de alguém que tenha o documento aberto…',

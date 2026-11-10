@@ -65,7 +65,7 @@ page from one's own pagination) stay local instead of answering each other.
   edit of this client behind it in order, but not written. After the next redraw the held
   steps are moved onto the new doc: written if what they reached into is shared now, held
   again if not, dropped with `collab: edit inside a repair not yet shared, lost` where they
-  no longer fit. A client that becomes the repairer while holding writes the repair under
+  no longer fit, and a notice beside the status bar tells the typist (`dropped`). A client that becomes the repairer while holding writes the repair under
   `REPAIR_ORIGIN` and its held edits as its own, undoable. Writing a held edit at once
   would bring the repair twice; holding it keeps one writer per repair and the caret where
   it was. A repair after one's own edit is part of that edit, as alone.

@@ -47,8 +47,9 @@ export type Peer = { id: number; name: string; color: string; keeps: boolean };
 /**
  * `missing`: pictures no one here could send, shown as grey boxes. `paused`: the shared doc
  * does not fit this editor, which neither edits nor writes until an update fits again.
+ * `dropped`: held edits that no longer fitted and went, counted for a notice.
  */
-export type SessionView = { status: SessionStatus; peers: Peer[]; link: string; keeps: boolean; kept: boolean; missing: number; paused: boolean };
+export type SessionView = { status: SessionStatus; peers: Peer[]; link: string; keeps: boolean; kept: boolean; missing: number; paused: boolean; dropped: number };
 
 /** What the session needs from the app. */
 export type SessionHost = {
@@ -115,6 +116,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   let binding: YjsUndo | null = null;
   let repairer: (() => boolean) | null = null;
   let paused = false;
+  let dropped = 0;
   let joining = join;
   // The others' carets and selections, drawn as decorations in their colours, and the
   // pictures put in from now on; one registration, as each rebuilds every plugin view.
@@ -129,6 +131,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       id === ydoc.clientID || typeof s.rank !== 'number' || s.rank > rank || (s.rank === rank && id > ydoc.clientID));
     b.setRepairer(repairer);
     b.onPause((p) => { paused = p; changed(); });
+    b.onDrop(() => { dropped++; changed(); });
     editor.registerPlugin(yCursorPlugin(awareness), (p, plugins) => [...plugins, p, pictures.plugin]);
   };
 
@@ -137,7 +140,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     .map(([id, s]) => ({ id, name: String(s.user.name ?? ''), color: String(s.user.color ?? ''), keeps: s.keeps === true }));
   const changed = () => {
     const all = peers();
-    host.onChange({ status, peers: all, link, keeps, kept: keeps || all.some((p) => p.keeps), missing: pictures.missing(), paused });
+    host.onChange({ status, peers: all, link, keeps, kept: keeps || all.some((p) => p.keeps), missing: pictures.missing(), paused, dropped });
   };
   // Waiting turns into `empty` after EMPTY_MS and stays so until someone comes.
   let emptyTimer: ReturnType<typeof setTimeout> | undefined;

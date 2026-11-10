@@ -213,6 +213,7 @@ const zhHans: Messages = {
     picturesPending: '部分图片尚未传到您这里，文件中会缺少它们。请等图片显示后再试。',
     paused: '编辑已暂停',
     pausedHint: '会话中的一项更改无法在此显示，现在继续输入可能会覆盖它，因此编辑已暂停。文档可以重新显示后，编辑会自动恢复。',
+    dropped: '刚才输入的部分内容未能保留：其他人同时更改了同一位置。',
     status: {
       connecting: '正在连接…',
       waiting: '正在等待已打开此文档的人…',
