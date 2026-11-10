@@ -4,6 +4,7 @@
 // uncaught page error.
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
+import { zipSync, strToU8 } from 'fflate';
 import { ROOT, MOD, checker, previewServer, openApp, settle } from '../browser.mjs';
 
 const PORT = +(process.env.DOM_PORT ?? 4185);
@@ -229,6 +230,18 @@ try {
   const narrowAgain = await page.waitForFunction((n) => (localStorage.getItem('edentext-page-margins') ?? '') === n, narrow, { timeout: 5000 })
     .then(() => true, () => false);
   check(wideAgain && narrowAgain, `undo and redo reach a margin preset (undone: ${wideAgain}, redone: ${narrowAgain}, now ${await margins()})`);
+
+  // What an opened file leaves out is the default, not the previous document's: a bare
+  // ODT after Narrow margins and German opens at 2cm and in the browser's language.
+  await pickSpellLanguage('doc', 'Deutsch');
+  const german = await page.evaluate(() => localStorage.getItem('edentext-doc-language'));
+  const bareXml = '<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.3"><office:body><office:text><text:p>Bare</text:p></office:text></office:body></office:document-content>';
+  await page.setInputFiles('input.file-input[accept*=".odt"]', { name: 'bare.odt', mimeType: 'application/vnd.oasis.opendocument.text',
+    buffer: Buffer.from(zipSync({ mimetype: strToU8('application/vnd.oasis.opendocument.text'), 'content.xml': strToU8(bareXml) })) });
+  await page.waitForFunction(() => document.querySelector('.tiptap')?.textContent === 'Bare', null, { timeout: 30_000 });
+  const bare = await page.evaluate(() => ({ margins: JSON.parse(localStorage.getItem('edentext-page-margins') ?? '{}'), lang: localStorage.getItem('edentext-doc-language') }));
+  check(german === 'de' && Object.values(bare.margins).every((v) => v === 2) && bare.lang !== 'de',
+    `a file without page setup or language opens at the defaults (${german} → ${JSON.stringify(bare)})`);
 
   // And so does the name the file is saved under. The file comes back in first, so the
   // rename is the only thing standing between the document and its clean state.

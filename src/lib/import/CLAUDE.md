@@ -1,7 +1,7 @@
 # `src/lib/import/`
 
 This directory imports ODF and DOCX into the TipTap schema; `imageFormats.ts` is shared.
-Password-protected files are decrypted before either importer runs.
+Password-protected files are decrypted before either importer runs. Opening a file starts from New's per-document settings (`resetDocumentSettings` in `App.svelte`), so what the file leaves out (margins, page format, language, tab step, …) is the default, never the previous document's.
 
 `importLimits.ts` bounds ZIP input to 128 MiB compressed, 10,000 entries, 32 MiB XML parts,
 64 MiB media parts, 64 MiB other entries, 256 MiB total expansion, and a 1000:1 ratio before
