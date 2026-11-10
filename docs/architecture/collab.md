@@ -22,10 +22,8 @@ corpus documents. Both passed every one, so the choice is about cost, not feasib
 - **When to revisit.** If the relay has to keep state anyway, for instance sessions that
   live on without anyone in them, the main reason for Yjs is gone.
 
-Of what the spike left untested, the session tests now cover Firefox and WebKit, long
-documents, IME composition (Chromium), image drag, the assistant's edits, four clients and
-clients with different line heights; clients of different versions refuse each other.
-Large pictures are measured (Sessions, Checks) and cost more than their size.
+What the spike left untested (other engines, long documents, IME, image drag, the
+assistant, four clients, other line heights) the session checks now cover.
 
 Spike results (Chromium, dev server, one machine; `pm` is `prosemirror-collab`):
 
@@ -143,10 +141,11 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in 
   `same-origin` the app offers sessions only once `relay/health` answers, so an image
   served without a relay shows no menu entry. Embedded, there are none.
 - **Sync** (`collab/session.ts`) once per welcome: `ASK`, every peer `OFFER`s its state
-  vector and delete set, the asker sends one `UPDATE` with what the lowest offer lacks
-  and `PULL`s one `ANSWER` from the offer ahead most, then from any still ahead; silent
-  for 10 s, it starts over. Edits (`UPDATE`) and carets (`PRESENCE`) go in 50 ms batches
-  (`Y.mergeUpdates`), always as a task of their own.
+  vector and delete set. Once all have offered, or 300 ms after the first, the asker sends
+  one `UPDATE` with what the lowest offer lacks and `PULL`s one `ANSWER` from the offer
+  ahead most, then from any still ahead; a later offer is dropped. When the room shrinks
+  or nothing is heard for 10 s, it starts over. Edits (`UPDATE`) and carets (`PRESENCE`)
+  go in 50 ms batches (`Y.mergeUpdates`), always as a task of their own.
 - **Parts and failures** (`collab/channel.ts`): a message beyond the welcome's `frame`
   (at most 1 MiB) goes as sealed numbered parts. Retries back off from 0.5 to 30 s; three
   connections lost within 5 s of their welcome show `failing` until one holds for 5 s.
@@ -171,30 +170,31 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in 
 
 `node tests/collab/session.mjs` starts a relay and the dev server and goes through the File
 menu. B joins by the link and gets A's document: JSON, pages and zones. Both type, and each
-undo takes back only its own typing. A page setup and a style change arrive on the other
-side, and the caret shows with its name. The relay's frames hold no typed text and no name.
-An idle session, also after the style change, sends no updates. Frames carry at most
-1 MiB; a late joiner gets everything, styles and a 2.9 MB picture too, from one ask and one
-answer; a fourth client joining after it types and converges with the other three. After
-the starter leaves, the others go on, and a reload rejoins. A cut-short link says so. A
-client with taller lines (6 against 7 pages on an index document) stays quiet as well: the
-index's page numbers do not flip between the two. The assistant on the starter, from a
-provider the script answers itself (`page.route`, no model and no network): its text
-replacement and page setup reach the joiner; with both recording, the joiner keeps the
-assistant's marks and adds none of its own; the starter's undo takes back the page setup,
-then the text, on both sides. A relay dropping every connection after its welcome makes the
-line `failing` (dialog, 4–5 connections in 12 s) until it holds. `tests/relay.test.ts` and
-`tests/collab.test.ts` cover rooms, limits, sealing and parts. Both scripts run in
-Chromium, Firefox and WebKit (`BROWSER`, as the CI's browser matrix).
+undo takes back only its own typing. A page setup and a style change arrive, the caret
+shows with its name, the relay's frames hold no typed text and no name, and an idle session
+sends no updates. Frames carry at most 1 MiB; a late joiner gets everything, styles and a
+2.9 MB picture too, from one ask and one answer; a fourth joins, types and converges. A
+joiner whose pulled peer drops its answer and line, while a third types, still goes live.
+After the starter leaves, the others go on, and a reload rejoins. A cut-short link says so.
+A client with taller lines (6 against 7 pages, an index document) stays quiet as well. The
+assistant on the starter, from a provider the script answers itself (`page.route`): its
+text replacement and page setup reach the joiner, which keeps its recorded marks and adds
+none; the starter's undo takes back each on both sides. A relay dropping every connection
+after its welcome makes the line `failing` (dialog, 4–5 connections in 12 s) until it
+holds. `tests/relay.test.ts` and `tests/collab.test.ts` cover rooms, limits, sealing and
+parts. Both scripts run in Chromium, Firefox and WebKit (`BROWSER`, as the CI's matrix).
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. The relay
 cannot address a frame, so every answer reaches every peer. IME input is driven in Chromium
 only. Seen once each and not again on a rerun: in Firefox a joiner not live within 20 s on
 a just-started dev server; in WebKit an uncaught "Fetch API cannot load …/loadFailure.ts
-due to access control checks" on the starter. Pictures (2026-11-10, Chromium, a 1.73 MB
-JPEG data-URI added to `13-images`): `src` goes into the fragment as it is. Inserting sends
-1.73 MB, resizing 0.4 kB; a drag deletes and inserts the node, so it sends it again, and
-the mover's doc keeps both copies (3.48 MB) for its undo, also after a delete. A late
-joiner then got 6.99 MB, now 1.75 MB (the doc once). A picture there at the start comes in
-the start file and the fragment, 3.04 MB. In 1 MiB parts an 11.75 MB start picture joins
-(20.58 MB) and a 22 MB one inserted later arrives; one frame stopped at 9.5 MB.
+due to access control checks" on the starter. An offer later than 300 ms after the first
+is dropped, so what only that peer has (offline edits beyond the queue) waits for the next
+sync. A line that dies without a close stays `live` until the browser notices. A link
+holder can make a client keep many half-sent messages of up to 256 MiB each for 60 s.
+Pictures (2026-11-10, Chromium, 1.73 MB in `13-images`): `src` goes into the fragment as
+it is. Inserting sends 1.73 MB, resizing 0.4 kB; a drag deletes and inserts the node, so it
+sends it again, and the mover's doc keeps both copies (3.48 MB) for its undo. A late joiner
+gets 1.75 MB with one, two or three clients there. A start picture comes in the start file
+and the fragment: 11.7 MB joins in 2.2 s (20.5 MB), 22 MB in 3.1 s (38.5 MB). With 64 kB
+frames, joining, edits, a picture and a late joiner all converge.
