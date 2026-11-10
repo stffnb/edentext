@@ -2,16 +2,18 @@ import type { Editor } from '@tiptap/core';
 import * as Y from 'yjs';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import { yCursorPlugin, yCursorPluginKey } from '@tiptap/y-tiptap';
-import { attachYjsUndo, type YjsUndo } from '../editor/undoYjs';
+import { attachYjsUndo, type StoreCodec, type YjsUndo } from '../editor/undoYjs';
 import { openChannel, type ChannelStatus } from './channel';
 import { keyBytes, newKey, sessionLink } from './key';
 import { shareZones } from './zones.svelte';
-import { keyPictures, picturesKey, sessionPictures, unkeyPictures } from './pictures';
+import { PICTURE, WANT, keyPictures, picturesKey, sessionPictures, unkeyPictures } from './pictures';
+import { IDB_SRC } from '../storage/imageStore';
 
 // A shared session: the Yjs doc behind the body (`undoYjs.ts`) goes over a sealed channel
 // to the others in the room. Frames are one kind byte and its payload; the relay sees none
 // of it. Edits leave and arrive in batches of 50 ms, always as a task of their own.
-// Ids are random per session; frames with a `to` that is not this client are ignored.
+// Ids are random per session; frames with a `to` that is not this client are ignored, and
+// a relay that knows ids passes them to that client alone (`channel.ts`).
 
 const ASK = 0;      // [from]: everyone offers what they have
 const UPDATE = 1;   // a Yjs update for everyone
@@ -20,6 +22,7 @@ const OFFER = 3;    // [to][from][length][state vector][delete set as an update]
 const PULL = 4;     // [to][from][state vector]: the receiver answers with what it lacks
 const ANSWER = 5;   // [to][Yjs update]
 // PICTURE and WANT carry the pictures the doc names by key (`pictures.ts`).
+const DIRECTED = new Set([OFFER, PULL, ANSWER, PICTURE, WANT]); // the first number is `to`
 const BATCH_MS = 50;
 const SETTLE_MS = 300;  // how long a sync waits for late offers after the first
 const STALL_MS = 10_000; // a sync that hears nothing this long starts over
@@ -65,7 +68,8 @@ export type Session = {
   stats: { sent: number[] };
 };
 
-type Join = () => Promise<YjsUndo | 'version' | null>;
+type Join = (codec: StoreCodec) => Promise<YjsUndo | 'version' | null>;
+type Bind = (codec: StoreCodec) => YjsUndo;
 
 function frame(kind: number, ...parts: (number | Uint8Array)[]): Uint8Array {
   const out = new Uint8Array(1 + parts.reduce<number>((n, p) => n + (typeof p === 'number' ? 4 : p.length), 0));
@@ -78,7 +82,7 @@ function frame(kind: number, ...parts: (number | Uint8Array)[]): Uint8Array {
   return out;
 }
 
-function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bound: YjsUndo | null, join: Join | null): Session {
+function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bound: Bind | null, join: Join | null): Session {
   const awareness = new Awareness(ydoc);
   const link = sessionLink(key);
   const stats = { sent: [0, 0, 0, 0, 0, 0, 0, 0] };
@@ -114,10 +118,15 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
 
   const settled = (): SessionStatus => binding ? 'live' : peerCount <= 1 ? 'waiting' : 'connecting';
 
-  const send = (kind: number, ...parts: (number | Uint8Array)[]) => { stats.sent[kind]++; channel.send(frame(kind, ...parts)); };
-  const present = () => send(PRESENCE, encodeAwarenessUpdate(awareness, [ydoc.clientID]));
+  const send = (kind: number, ...parts: (number | Uint8Array)[]) => {
+    stats.sent[kind]++;
+    channel.send(frame(kind, ...parts), DIRECTED.has(kind) ? parts[0] as number : 0);
+  };
+  // A new clock: others that dropped this client when its line broke take it back.
+  const present = () => awareness.setLocalState(awareness.getLocalState());
   const pictures = sessionPictures({
-    me, send, heard: () => channel.heard(), changed: () => changed(),
+    me, send, heard: () => channel.heard(), changed: () => changed(), others: () => peerCount > 1,
+    arrived: (k) => binding?.refresh(IDB_SRC + k),
     peers: () => [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && typeof s.peer === 'number').map(([, s]) => s.peer as number),
   });
 
@@ -163,7 +172,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     if (joining && ydoc.getMap('meta').has('snapshot')) {
       const done = joining;
       joining = null;
-      const got = await done();
+      const got = await done(pictures);
       if (got === 'version') return setStatus('version');
       if (!got) return setStatus('closed');
       bind(got);
@@ -234,7 +243,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   };
 
   const channel = openChannel({
-    url: host.relay, key: keyBytes(key)!,
+    url: host.relay, key: keyBytes(key)!, id: me,
     onFrame(plain) {
       if (status === 'version') return;
       const kind = plain[0], v = new DataView(plain.buffer, plain.byteOffset, plain.byteLength);
@@ -261,13 +270,17 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
         receive(plain.subarray(5));
       }
     },
-    onPeers(n) {
+    onPeers(n, gone) {
+      // A client whose line ended is dropped at once, not after awareness's 30 s: no picture
+      // is asked of it and its zone frees. Back on a new line, it presents itself anew.
+      if (gone) removeAwarenessStates(awareness, [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.peer === gone).map(([id]) => id), 'gone');
       // Someone came: tell them who we are; their sync sends them what they lack, and a
       // client still without the doc asks them. Someone left: a sync still waiting on
       // offers or an answer starts over with the rest, as others' traffic hides the stall.
       const came = n > peerCount, left = n < peerCount;
       if (came) { present(); pictures.retry(); }
       peerCount = n;
+      if (left) pictures.recheck();
       if (left ? round && !round.over : came && joining && (!round || round.over)) startRound();
       if (line === 'open' && status !== 'version') setStatus(settled());
       changed();
@@ -290,7 +303,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   awareness.setLocalStateField('peer', me);
   const unshareZones = shareZones(awareness);
   if (keeps) awareness.setLocalStateField('keeps', true);
-  if (bound) bind(bound);
+  if (bound) bind(bound(pictures));
 
   // Leaving tells the others at once; a closed tab drops out after awareness's timeout.
   const goodbye = () => {
@@ -336,7 +349,7 @@ export async function startSession(editor: Editor, host: SessionHost): Promise<S
   // The start file carries the pictures; the shared doc names them by key.
   const keyed = keyPictures(editor.state);
   if (keyed) editor.view.dispatch(keyed);
-  return connect(editor, newKey(), host, ydoc, attachYjsUndo(editor, ydoc), null);
+  return connect(editor, newKey(), host, ydoc, (codec) => attachYjsUndo(editor, ydoc, codec), null);
 }
 
 /**
@@ -345,13 +358,13 @@ export async function startSession(editor: Editor, host: SessionHost): Promise<S
  */
 export function joinSession(editor: Editor, key: string, host: SessionHost): Session {
   const ydoc = new Y.Doc();
-  return connect(editor, key, host, ydoc, null, async () => {
+  return connect(editor, key, host, ydoc, null, async (codec) => {
     const meta = ydoc.getMap('meta');
     if (meta.get('version') !== __APP_VERSION__) return 'version';
     if (!(await host.load(meta.get('snapshot') as Uint8Array, String(meta.get('name') ?? '')))) return null;
     // The start file's pictures are held, under the keys the shared doc names them by.
     keyPictures(editor.state);
-    const binding = attachYjsUndo(editor, ydoc);
+    const binding = attachYjsUndo(editor, ydoc, codec);
     binding.applyState();
     return binding;
   });

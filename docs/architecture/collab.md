@@ -120,7 +120,8 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   with AES-256-GCM and a fresh 12-byte nonce (`@noble/ciphers`, also without
   `crypto.subtle`). Anyone with the link can read and write, until a new session.
 - **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`): rooms as sets of sockets in memory,
-  frames passed on unchanged, nothing stored or logged; `MAX_PEERS` counts connections.
+  frames passed on unchanged, to the one client a clear `to` names where there is one (the
+  sync's replies, pictures), nothing stored or logged; `MAX_PEERS` counts connections.
 - **Where the relay is:** `VITE_COLLAB_RELAY` is a `wss://` URL, or `same-origin` for `/relay`
   beside the app (dev proxy, Docker, Helm), where sessions are offered only once
   `relay/health` answers. Embedded, there are none.
@@ -141,12 +142,12 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   version. It loads that file through `applyImport` (fonts, layout, styles, zones,
   properties), binds the body to the received fragment, and applies the stores already in
   the map `state` (`applyState`); later store changes travel through that map.
-- **Pictures** (`collab/pictures.ts`) over 4 kB lie in the shared doc as their key,
-  `idb:<key>` as in autosave, the bytes in memory (`imageStore.ts`): from the start file,
-  or sent to all (`PICTURE`) by whoever puts one in. One missing is asked of each other
-  client in turn (`WANT`, awareness `peer`); none has it: a grey box and a note. Files,
-  autosave, clipboard and vector PDF get pictures (`withHeldImages`, `renderHTML`); a save
-  with one still on its way fails. Leaving puts them back in, outside the history.
+- **Pictures** (`collab/pictures.ts`, `collab-pictures.md`) over 4 kB lie in the shared doc
+  and its stores (headers, footers) as their key, `idb:<key>` as in autosave, the bytes in
+  memory (`imageStore.ts`): from the start file, or sent to all as bytes (`PICTURE`) by
+  whoever puts one in. One missing is asked of each other client in turn (`WANT`, awareness
+  `peer`); none has it: a grey box and a note. Files, autosave, clipboard and vector PDF get
+  pictures; a save with one still on its way fails. Leaving puts them back in.
 - **Headers and footers** go as whole zones, so one person edits a zone at a time
   (`collab/zones.svelte.ts`, awareness field `zone`): the others see the name at it and
   cannot open it. Opened at once, the higher client id yields and may lose its first keys.
@@ -168,33 +169,30 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
 menu. B joins by the link and gets A's document: JSON, pages and zones. Both type, and each
 undo takes back only its own typing. A page setup and a style change arrive, the caret
 shows with its name, the relay's frames hold no typed text and no name, and an idle session
-sends no updates. A 2.9 MB picture goes to the relay once and adds 0.5 kB to the doc; B's
-copy, saved `.odt` and A's autosave hold it; five moves and a delete send 5 kB. Frames
-carry at most 1 MiB; a late joiner gets everything from one ask and one answer, the picture
-from one client; a fourth joins, types and converges. A joiner whose pulled peer drops its
-answer and line, while a third types, still goes live; a late offer is pulled from and gets
-what it lacks; a waiting joiner asks a client coming back, which pushes it no copy. B
-cannot open a header A holds; opened together, the lower id keeps it; a closed tab frees
-it. Open and New ask first, then open alone; others keep theirs. The starter leaves
-unasked, the others are told and go on; a reload rejoins. A joiner keeping its copy reloads
-into it unwarned, picture, styles and zones, also on a second reload. The last joiner's tab
-warns on closing; a cut-short link and an empty room say so. A picture whose only holder
-leaves unsent is a grey box with a note, the line stays `live`. Taller lines (6 against 7
-pages) stay quiet too. The assistant on the starter, answered by the script (`page.route`):
-its text and page setup reach the joiner, which keeps its recorded marks and adds none; the
-starter's undo takes back each on both sides. A relay dropping every connection after its
-welcome makes the line `failing` (notice, 4–5 connections in 12 s) until it holds. A line
-that hears and sends nothing leaves `live` within a few beats, asks nothing while down, and
-comes back. `tests/relay.test.ts` and `tests/collab.test.ts` cover rooms, limits, beats,
-sealing and parts. All scripts run in the three engines (`BROWSER`); concurrent edits:
-`collab-conflicts.md`; load, soak and typing speed: `collab-soak.md`.
+sends no updates. A 2.9 MB picture goes to the relay once, as bytes, and adds 0.5 kB to the
+doc; B's copy, saved `.odt` and A's autosave hold it; five moves and a delete send 5 kB.
+Frames carry at most 1 MiB; a late joiner gets everything from one ask and one answer, the
+picture from one client; a header's picture goes by its key too; replies go to their asker
+alone; a fourth joins, types and converges. A joiner whose pulled peer drops its answer and
+line, while a third types, still goes live; a late offer is pulled from and gets what it
+lacks; a waiting joiner asks a client coming back, which pushes it no copy. B cannot open a
+header A holds; opened together, the lower id keeps it; a closed tab frees it. Open and New
+ask first, then open alone; others keep theirs. The starter leaves unasked, the others are
+told and go on; a reload rejoins. A joiner keeping its copy reloads into it unwarned,
+picture, styles and zones, also on a second reload. The last joiner's tab warns on closing;
+a cut-short link and an empty room say so. A picture whose only holder leaves unsent is a
+grey box with a note within seconds, as the relay says who left, and the line stays `live`.
+Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
+the script (`page.route`): its text and page setup reach the joiner, which keeps its
+recorded marks and adds none; the starter's undo takes back each on both sides. A relay
+dropping every connection after its welcome makes the line `failing` (notice, 4–5
+connections in 12 s) until it holds. A line that hears and sends nothing leaves `live`
+within a few beats, asks nothing while down, and comes back. `tests/relay.test.ts` and
+`tests/collab.test.ts` cover rooms, limits, beats, addressing, sealing and parts. All
+scripts run in the three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`; load,
+soak and typing speed: `collab-soak.md`.
 
-Gaps: the relay keeps nothing, so a session lives only while someone is in it. It cannot
-address a frame: every answer reaches every peer, a late offer's edits only the asker. Seen
-once, not on a rerun: in Firefox a joiner not live within 20 s on a just-started dev
-server. A link holder can make a client keep many half-sent messages of up to 256 MiB each
-for 60 s. Pictures (2026-11-10, Chromium, 1.73 MB JPEG in `13-images`, bytes per client,
-before the keys in brackets): insert 1.73 MB (same); five moves 2 kB (1.73 MB each); the
-mover's doc after them and a delete +1.2 kB (3.48 MB); a start picture, in the start file
-only, 1.31 MB (3.04 MB); a late joiner 1.75 MB, the others too. A header's or footer's
-picture still goes inside its zone's value.
+Gaps: the relay keeps nothing, so a session lives only while someone is in it. A late
+offer's edits reach only the asker. Seen once, not on a rerun: in Firefox a joiner not live
+within 20 s on a just-started dev server. A link holder can make a client keep many
+half-sent messages of up to 256 MiB each for 60 s. What pictures cost: `collab-pictures.md`.
