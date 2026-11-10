@@ -1571,6 +1571,13 @@
     if (n > collabMissing) collabNotice = 'missing';
     collabMissing = n;
   });
+  // And an edit of this tab's that a change around it left no place for.
+  let collabDropped = 0;
+  $effect(() => {
+    const n = sessionView?.dropped ?? 0;
+    if (n > collabDropped) collabNotice = 'dropped';
+    collabDropped = n;
+  });
   const sessionApp: SessionApp = {
     editor: () => editor,
     snapshot: () => buildBytes('odt', editor!.getJSON() as TiptapNode),

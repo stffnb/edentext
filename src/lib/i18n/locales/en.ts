@@ -213,6 +213,7 @@ const en = {
     picturesPending: 'Some pictures have not reached you yet, so the file would be missing them. Try again once they show.',
     paused: 'Editing paused',
     pausedHint: 'A change from the session cannot be shown here, and typing now could overwrite it, so editing is paused. It carries on by itself as soon as the document can be shown again.',
+    dropped: 'Part of what you just typed could not be kept: someone else changed that spot at the same time.',
     status: {
       connecting: 'Connecting…',
       waiting: 'Waiting for someone who has the document open…',

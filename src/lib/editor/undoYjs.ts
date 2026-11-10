@@ -163,6 +163,8 @@ export type YjsUndo = {
   refresh: (text: string) => void;
   /** Hears when the shared doc stops fitting this editor (no edits, no writes) and fits again. */
   onPause: (fn: (paused: boolean) => void) => void;
+  /** Hears when an edit held inside a repair not yet shared no longer fits and is dropped. */
+  onDrop: (fn: () => void) => void;
 };
 
 /**
@@ -315,7 +317,8 @@ export function attachYjsUndo(
   let invalid: (e: Error) => void = paused;
   const sync = ySyncPlugin(frag, { onInvalidContent: (e) => invalid(e) });
   const binding = bindingOf(sync);
-  const repair = attachRepair(editor, ydoc, binding, paused);
+  let dropped: () => void = () => {};
+  const repair = attachRepair(editor, ydoc, binding, paused, () => dropped());
   invalid = repair.pause;
   repair.setRepairer(repairs);
   editor.registerPlugin(repair.plugin);
@@ -333,6 +336,7 @@ export function attachYjsUndo(
     ydoc, undoManager: um,
     setRepairer: repair.setRepairer,
     onPause: (fn) => { heard = fn; },
+    onDrop: (fn) => { dropped = fn; },
     applyState: () => apply([...side.keys()]),
     refresh(text) {
       const keys = [...side.entries()].filter(([, v]) => JSON.stringify(v).includes(text)).map(([k]) => k);

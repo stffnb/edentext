@@ -229,4 +229,28 @@ describe('an edit into a repair not yet shared', () => {
       }
     });
   }
+
+  it('is dropped and told when a change around it leaves it no place', async () => {
+    const [a, b] = clients(2);
+    let told = 0;
+    b.undo.onDrop(() => { told++; });
+    a.ed.commands.setTextSelection(posOf(a.ed, 'b1', 1));
+    a.ed.commands.addColumnAfter();
+    b.ed.commands.setTextSelection(posOf(b.ed, 'a2', 1));
+    b.ed.commands.addRowAfter();
+    const aEdit = a.out.splice(0);
+    for (const u of aEdit) Y.applyUpdate(b.ydoc, u, 'relay');
+    await Promise.resolve();
+    b.ed.chain().setTextSelection(padded(b.ed)).insertContent('Q').run();
+    await Promise.resolve();
+    expect(b.ed.state.doc.textContent).toContain('Q');
+    // A deletes the table before B's row reaches it.
+    a.ed.commands.setTextSelection(posOf(a.ed, 'a1', 1));
+    a.ed.commands.deleteTable();
+    deliver(a, b);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(b.ed.state.doc.textContent).not.toContain('Q');
+    expect(told).toBe(1);
+  });
 });

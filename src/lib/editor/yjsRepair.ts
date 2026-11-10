@@ -103,9 +103,10 @@ const REPLAYED = 'collabRepairReplayed';
 /**
  * Keeps the plugins' repairs after a binding-dispatched transaction out of the shared doc
  * on every client but the repairer (`setRepairer`), which writes them under its own id
- * outside the history. `onPause` hears the binding pause (an error) and resume (null).
+ * outside the history. `onPause` hears the binding pause (an error) and resume (null),
+ * `onDrop` a held edit that no longer fits.
  */
-export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onPause: (e: Error | null) => void) {
+export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onPause: (e: Error | null) => void, onDrop: () => void) {
   let repairs: () => boolean = () => true;
   const rebased = new WeakMap<Transaction, PMNode | null>();
   const rebaseOnce = (base: PMNode, tr: Transaction) => {
@@ -180,7 +181,7 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onPa
     if (destroyed || !held || held.doc === doc || binding.invalidContentError) return;
     const moved = move(doc, held);
     const tr = editor.state.tr.setMeta(REPLAYED, true);
-    if (!moved) console.warn('collab: edit inside a repair not yet shared, lost to a change around it');
+    if (!moved) { console.warn('collab: edit inside a repair not yet shared, lost to a change around it'); onDrop(); }
     else {
       for (const s of moved.steps) tr.step(s);
       if (held.sel) {

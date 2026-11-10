@@ -212,6 +212,7 @@ const fr: Messages = {
     picturesPending: 'Certaines images ne vous sont pas encore parvenues et manqueraient dans le fichier. Réessayez dès qu’elles s’affichent.',
     paused: 'Édition suspendue',
     pausedHint: 'Une modification venue de la session ne peut pas s’afficher ici et, si vous continuez à saisir, vous risqueriez de l’écraser : l’édition est donc suspendue. Elle reprendra d’elle-même dès que le document pourra de nouveau s’afficher.',
+    dropped: 'Une partie de ce que vous venez de saisir n’a pas pu être conservée : quelqu’un d’autre a modifié cet endroit au même moment.',
     status: {
       connecting: 'Connexion…',
       waiting: 'En attente d’une personne ayant le document ouvert…',
