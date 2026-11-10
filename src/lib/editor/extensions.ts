@@ -26,6 +26,7 @@ import ListItem from '@tiptap/extension-list-item';
 import { ListMarker } from './extensions/listMarker';
 import { ListStyle, splitListAt } from './extensions/listStyle';
 import { Table, TableHeader, TableCell, createTable } from '@tiptap/extension-table';
+import { tableRepair } from './extensions/tableRepair';
 import { addColumnAfter, addColumnBefore, addRowAfter, addRowBefore } from '@tiptap/pm/tables';
 import { ResizableTableRow } from './extensions/tableRow';
 import { inheritingInsert } from './extensions/tableInsert';
@@ -111,13 +112,13 @@ const CELL_CONTENT = '(paragraph | heading | bulletList | orderedList | table)+'
 const LIST_ITEM_CONTENT = '(paragraph | heading | bulletList | orderedList) (paragraph | heading | bulletList | orderedList)*';
 
 export const extensions = [
-  // columns has its own group so only the document (not cells/lists) admits it; the
-  // note section is last or nowhere. A text box is inline and rides a paragraph.
-  // Spelled as an alternation, not `… + noteSection?`: with the trailing optional the
-  // match state after the first block offers noteSection first, and that is the type
-  // TipTap's clearNodes converts a block into (`contentMatchAt(i).defaultType`).
+  // columns has its own group so only the document (not cells/lists) admits it. The note
+  // section may stand anywhere: two clients adding the first note at once make two, which
+  // the notes plugin merges into one at the end. A text box is inline and rides a paragraph.
+  // Blocks come first in the alternation: TipTap's clearNodes converts a block into the
+  // match's first type (`contentMatchAt(i).defaultType`).
   Document.extend({
-    content: '((block | columns)+ noteSection) | (block | columns)+',
+    content: '(block | columns | noteSection)+',
   }),
   Paragraph,
   Text,
@@ -245,7 +246,7 @@ export const extensions = [
   // processors: neither format keeps one in a list item, and the second part counts on.
   Table.extend({
     addProseMirrorPlugins() {
-      return [...(this.parent?.() ?? []), new Plugin({ props: { handleDrop: (_view, _event, slice) => cutsCells(slice) } })];
+      return [tableRepair(), ...(this.parent?.() ?? []), new Plugin({ props: { handleDrop: (_view, _event, slice) => cutsCells(slice) } })];
     },
     addCommands() {
       const parent = this.parent?.() ?? {};
