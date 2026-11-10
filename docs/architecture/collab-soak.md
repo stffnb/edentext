@@ -53,23 +53,30 @@ New, beyond the matrix:
 - **Pagination after others' edits (fixed).** Every arriving batch ran a full pagination
   pass at once; see the numbers below. Now it waits like a typed edit, at most 1 s
   (`pagination.md`).
-- **RangeError in `restoreRelativeSelection` without a footnote** (high): six undos threw
+- **RangeError in `restoreRelativeSelection` without a footnote** (fixed): six undos threw
   `Position N out of range` from y-tiptap's `restoreRelativeSelection`, and three rounds
-  raised it uncaught, none with a note on both sides. The site is R3's; the trigger is
-  wider: the binding computes the restored caret against the Yjs fragment while the
-  ProseMirror document differs from it. Catching it there, as R3 recommends, covers both.
-- **A derived attr apart over the same Yjs body** (medium): once a note's label (`text`)
-  stayed `""` on one client and `1` on three, with all four Yjs bodies equal. Likely cause,
-  not yet reduced: a plugin's `appendTransaction` after a remote transaction runs inside
-  y-tiptap's mutex, so its fix stays local; that would hold for every such repair.
+  raised it uncaught. The binding computes the restored caret against the Yjs fragment, so a
+  document drawn differently from it (a note section the schema refused, a repair kept
+  local) puts positions outside; both causes are gone and a throw left redraws instead
+  (`collab-conflicts.md`, Binding guard).
+- **A derived attr apart over the same Yjs body** (fixed): once a note's label (`text`)
+  stayed `""` on one client and `1` on three, with all four Yjs bodies equal. A plugin's
+  `appendTransaction` after a remote transaction ran inside y-tiptap's mutex, so its fix
+  stayed local; repairs now reach the shared doc (`collab-conflicts.md`, Repairs).
 - **Undo after a split** is the matrix's displacement seen from the other side: text that
   Enter, an inline node or typing over a selection moved into a new element belongs to that
-  element's author, so its writer's undo leaves it. The default skip list holds these ops
-  since; without them 36 rounds (1152 ops, every disruption) ended with each client's undo
-  and redo exact.
+  element's author, so its writer's undo leaves it. Text the other author had not seen is
+  rescued into the step that typed it (`collab-conflicts.md`); text it had seen is part of
+  its copy, which the run classifies as known. Without these ops 36 rounds (1152 ops, every
+  disruption) ended with each client's undo and redo exact.
 - **Read-back** (low): the starter's `.odt` twice read back a mark spelled otherwise:
   `Liberation Serif` against `Times New Roman` (the monkey run lists that one as open) and
   `rgb(192, 0, 0)` for `#C00000`, a colour taken from the DOM somewhere in a session.
+
+After the fixes (2026-11-10, Chromium, seed 1, rebuilding ops drawn): four rounds, 128 ops,
+every round one document, quiet, valid, no throw and no redraw; four undo findings, all
+after a block another client copied. The starter's `.odt` read back a link mark (autolink
+on typed text) without its `target`, a read-back gap of its own.
 
 Found and fixed in the harness: cutting the line also closed the dev server's socket, whose
 client then reloaded the page (a joiner's editor and undo history gone mid-round). Known
