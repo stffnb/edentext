@@ -224,11 +224,11 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   };
 
   // A sync, once per welcome: this client asks, everyone offers its state vector and delete
-  // set, it pulls what it lacks from the offer that has the most, then from any that still
-  // has more, a late offer too, and then sends all in one update what any offer lacks.
+  // set, it pulls from the offer with the most, then any with more (a late one too), then
+  // applies the offered deletions, which may need a pulled insert, and gives what offers lack.
   type Known = { sv: Map<number, number>; ds: Deletes };
   type Round = {
-    offers: Map<number, Known>; pulled: Set<number>; target: number | null;
+    offers: Map<number, Known>; pulled: Set<number>; target: number | null; deletes: Uint8Array[];
     done: boolean; over: boolean; at: number; settle?: ReturnType<typeof setTimeout>; watch?: ReturnType<typeof setInterval>;
   };
   let round: Round | null = null;
@@ -240,7 +240,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   const startRound = () => {
     endRound();
     if (peerCount <= 1) return;
-    const r: Round = round = { offers: new Map(), pulled: new Set(), target: null, done: false, over: false, at: Date.now() };
+    const r: Round = round = { offers: new Map(), pulled: new Set(), target: null, deletes: [], done: false, over: false, at: Date.now() };
     r.watch = setInterval(() => { if (!r.over && Date.now() - Math.max(r.at, channel.heard()) > STALL_MS) startRound(); }, 1000);
     send(ASK, me);
   };
@@ -275,6 +275,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       if (more > most) { most = more; best = from; }
     }
     if (best === null) {
+      if (round.deletes.length) { inbox.push(...round.deletes.splice(0)); applyInbox(); }
       round.over = true;
       give(round);
       return;
@@ -303,7 +304,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
         const from = v.getUint32(5), n = v.getUint32(9);
         const ds = plain.subarray(13 + n);
         round.offers.set(from, { sv: Y.decodeStateVector(plain.subarray(13, 13 + n)), ds: Y.decodeUpdate(ds).ds });
-        receive(ds);
+        round.deletes.push(ds.slice());
         if (round.done) pull();
         else if (round.offers.size >= peerCount - 1) settle();
         else round.settle ??= setTimeout(settle, SETTLE_MS);

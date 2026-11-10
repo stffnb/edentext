@@ -479,6 +479,48 @@ try {
   const freed = await b.waitForFunction(() => !document.querySelector('.hf-held'), null, { timeout: 40_000 }).then(() => true, () => false);
   check(heldByFinn === 'Finn is editing' && freed, `a tab closed with the footer open frees it ("${heldByFinn}", after ${((Date.now() - closedAt) / 1000).toFixed(1)} s)`);
 
+  // Ida is offline while Anna turns a list item's only block, a heading, into a paragraph.
+  // Back, Ida must not apply the offers' deletions before the pulled paragraph: the list
+  // item would stand empty and editing pause.
+  const ida = await client('Ida');
+  await ida.addInitScript(() => {
+    const O = window.WebSocket, st = window.__line = { away: false, sockets: [] };
+    window.WebSocket = class extends O {
+      constructor(url, ...x) {
+        const relay = String(url).includes('/relay');
+        super(st.away && relay ? 'ws://127.0.0.1:4/' : url, ...x);
+        if (relay) st.sockets.push(this);
+      }
+    };
+  });
+  const idaLog = [];
+  ida.on('console', (m) => { if (/collab: paused/.test(m.text())) idaLog.push(m.text().slice(0, 120)); });
+  await caret(a, 'end');
+  await a.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.insertContent([
+    { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Iota' }] }] }] }]));
+  await joinLink(ida, link);
+  await ida.evaluate(() => { window.__line.away = true; for (const w of window.__line.sockets) w.close(); });
+  await ida.waitForTimeout(500);
+  await a.evaluate(() => {
+    const ed = document.querySelector('.tiptap-host .tiptap').editor;
+    let at = -1;
+    ed.state.doc.descendants((n, p) => { if (n.type.name === 'heading' && n.textContent === 'Iota') at = p + 1; });
+    ed.chain().setTextSelection(at).setNode('paragraph').run();
+  });
+  await a.waitForTimeout(1000);
+  await ida.evaluate(() => { window.__line.away = false; });
+  await live(ida);
+  await ida.waitForTimeout(3000);
+  const [vaI, viI] = [await view(a), await view(ida)];
+  const iota = await ida.evaluate(() => {
+    let t = '';
+    document.querySelector('.tiptap-host .tiptap').editor.state.doc.descendants((n) => { if (n.isTextblock && n.textContent === 'Iota') t = n.type.name; });
+    return t;
+  });
+  check(!idaLog.length && vaI.json === viI.json && iota === 'paragraph',
+    `a client back from offline applies offered deletions only with the inserts that replaced them (${idaLog[0] ?? 'no pause'}, ${iota})`);
+  await ida.close();
+
   // A joiner opening a file is asked first; cancelled, nothing changes. Keeping its copy, it
   // leaves and the file opens in a new document of its own; the others keep the shared one.
   const h = await client('Hana');
