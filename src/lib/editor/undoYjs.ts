@@ -91,21 +91,32 @@ export type YjsUndo = {
   ydoc: Y.Doc; undoManager: Y.UndoManager; detach: () => void;
   /** Puts every store the map holds into effect: a joiner's, after its start snapshot. */
   applyState: () => void;
+  /** Puts into effect again each store whose entries mention `text`, as a picture they name came. */
+  refresh: (text: string) => void;
 };
+
+/**
+ * How store values go into the map and come out (a session names pictures by key there);
+ * `pack`'s `share` is false for values every client already has from the start file.
+ */
+export type StoreCodec = { pack(value: unknown, share: boolean): unknown; unpack(value: unknown): unknown };
+const PLAIN: StoreCodec = { pack: (v) => v, unpack: (v) => v };
 
 /**
  * The body's undo on Yjs: the text in the fragment `body`, the stores beside it (`StateStep`
  * ids) in the map `state`, both under one manager that only takes back this client's edits.
  */
-export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
+export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc(), codec = PLAIN): YjsUndo {
   const frag = ydoc.getXmlFragment('body');
   const side = ydoc.getMap('state');
+  const packed = (id: string, value: unknown, share: boolean) => entries(id, codec.pack(value, share));
   // The client that brings the text brings every store too, entry by entry, before the
-  // history starts: a first write of old values would cover another's new ones.
+  // history starts: a first write of old values would cover another's new ones. A joiner
+  // only learns the pictures its start file gave the stores.
   if (frag.length === 0) {
     prosemirrorToYXmlFragment(editor.state.doc, frag);
-    ydoc.transact(() => { for (const [id, v] of stateValues()) for (const [k, e] of entries(id, v)) side.set(k, e); });
-  }
+    ydoc.transact(() => { for (const [id, v] of stateValues()) for (const [k, e] of packed(id, v, false)) side.set(k, e); });
+  } else for (const [, v] of stateValues()) codec.pack(v, false);
   const um = new Y.UndoManager([frag, side], {
     trackedOrigins: new Set([ySyncPluginKey, STATE_ORIGIN]),
     captureTransaction: (t) => t.meta.get('addToHistory') !== false,
@@ -162,11 +173,11 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
     if (!steps.length) return;
     const alone = !trs.some((t) => t.docChanged);
     // A zone the map has not seen yet gets its old value first, outside the history.
-    ydoc.transact(() => { for (const s of steps) if (!SPLIT.has(s.id) && !side.has(s.id)) side.set(s.id, s.from); });
+    ydoc.transact(() => { for (const s of steps) if (!SPLIT.has(s.id) && !side.has(s.id)) side.set(s.id, codec.pack(s.from, false)); });
     if (alone) stop();
     ydoc.transact(() => {
       for (const s of steps) {
-        const from = entries(s.id, s.from), to = entries(s.id, s.to);
+        const from = packed(s.id, s.from, false), to = packed(s.id, s.to, true);
         for (const [k, v] of to) if ((!from.has(k) || !same(from.get(k), v)) && !(side.has(k) && same(side.get(k), v))) side.set(k, v);
         for (const k of from.keys()) if (!to.has(k) && side.has(k)) side.delete(k);
       }
@@ -178,7 +189,7 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
   // transaction of `StateStep`s, a whole store each, which their own listeners apply.
   const apply = (keys: Iterable<string>) => {
     const tr = editor.state.tr.setMeta(STATE_RESTORED, true).setMeta('addToHistory', false);
-    for (const id of new Set([...keys].map(storeOf))) tr.step(new StateStep(id, null, assemble(id, side)));
+    for (const id of new Set([...keys].map(storeOf))) tr.step(new StateStep(id, null, codec.unpack(assemble(id, side))));
     if (tr.steps.length) editor.view.dispatch(tr);
   };
   const restore = (ev: Y.YMapEvent<unknown>, t: Y.Transaction) => {
@@ -223,6 +234,12 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
   return {
     ydoc, undoManager: um,
     applyState: () => apply([...side.keys()]),
+    refresh(text) {
+      const keys = [...side.entries()].filter(([, v]) => JSON.stringify(v).includes(text)).map(([k]) => k);
+      // An open zone's own edits go into the map first, so the refresh keeps them.
+      for (const id of new Set(keys.map(storeOf))) commitState(id);
+      apply(keys);
+    },
     detach() {
       side.unobserve(restore);
       editor.off('beforeTransaction', before);
