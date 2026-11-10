@@ -62,6 +62,17 @@ differs, a position falls outside it and the whole update would be lost to the t
 the fragment (`_forceRerender`) and logs `collab: caret not restorable`. The soak run counts
 those lines.
 
+### Restored items (`editor/yjsRedo.ts`)
+
+Yjs 13.6.33's undo traces a restored item's left and right neighbours separately through
+the copies earlier undos made (yjs#823, open). After a copy was split, both can reach one
+item, so the restored item gets an origin right of its right origin: the undoing client
+placed it after `left`, every peer and a reload of its own state elsewhere. A's undo of a
+join after a split's undo gave `…lazy dog.` on A and `…lazy og.d` on B, the same state
+vectors and delete sets, with `gc` off too. `yjsRedo.ts` wraps `Item.integrate` in undo
+transactions: if `right` is not reachable from `left`, the item goes directly after `left`
+(the fallback proposed upstream, PR #795), which every replica decodes alike.
+
 ## Matrix
 
 Columns as the test checks them. **same**: both docs and fragments equal. **valid**:
@@ -113,11 +124,6 @@ update did not throw. **kept**: B's text at its place (A's deliberate deletion e
   cannot give back B's merge of a cell A's merge deleted.
 - **Rescue placement** is by text: where the update's new text repeats the run's
   surroundings more than once, the first best match wins.
-- **Yjs's undo on a long history** can put text back apart on two clients: with the deleted
-  items one row of the matrix left behind, A's undo of a join restored `…lazy dog.` on A and
-  `…lazy og.d` on B, the same state vectors, nothing pending. The redone items' origins
-  depend on the undoing client's tombstones. The script starts every row from fresh docs;
-  the soak run would show it as Yjs bodies apart.
 - **Derived values read from a client's own state** (notes counted per page, from that
   client's pagination) can differ between clients; the repair rule above stops the replies
   after one round, and the editors can then show different numbers until the next edit.
