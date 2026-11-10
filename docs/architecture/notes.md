@@ -45,7 +45,7 @@ paragraph's `w:pStyle` and defines it; only a note naming none falls to the stoc
 in anchor order, and renumbers each class. Its passes run one after another — structure
 first, numbering after — each on the document the last one left, until nothing changes, in
 one appended transaction (ProseMirror never hands a plugin its own appended transaction).
-Two sections, or one not last, come from two clients editing at once (`collab-conflicts.md`). An anchor pasted twice gets a fresh id and a clone of the
+Two sections, or one not last, come from two clients editing at once; the passes move as few notes as they can (`collab-conflicts.md`, Repairs). An anchor pasted twice gets a fresh id and a clone of the
 note it was copied from (its parse rule outranks the superscript mark's `sup`); an anchor that ends up *inside* a note is dropped, and inserting
 one there is refused (LibreOffice and Word refuse it too). A settings change is no
 document change, so the dialog's path carries the `RESYNC_NOTES` meta.
