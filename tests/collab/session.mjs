@@ -16,7 +16,8 @@ process.env.RELAY_PORT = String(RELAY_PORT);
 const { check, failures } = checker();
 const seen = [];
 const FRAME = 1 << 20;
-const relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, tap: (d) => seen.push(Buffer.from(d)) });
+const BEAT = 2000;
+const relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, tap: (d) => seen.push(Buffer.from(d)) });
 const server = await devServer(PORT);
 const { browser, page: a, pageErrors } = await openApp(PORT);
 const URL0 = `http://localhost:${PORT}/`;
@@ -321,6 +322,34 @@ try {
   await a.waitForTimeout(600);
   const [pa2, pe2] = [await view(a), await view(e)];
   check(await status(a) === 'live' && pa2.json === pe2.json && pa2.text.endsWith('Omega'), `once the line holds it is live again and edits arrive (${await status(a)})`);
+
+  // A line that dies without a close: Ella hears and sends nothing, while the relay still
+  // holds her socket. The relay's beats stop reaching her, so within a few she is no longer
+  // `live`, and she is back once the line works again.
+  await e.evaluate(() => {
+    const O = WebSocket, st = window.__deaf = { on: false };
+    window.WebSocket = class extends O {
+      constructor(...x) { super(...x); this.addEventListener('message', (ev) => { if (st.on) ev.stopImmediatePropagation(); }); }
+      send(d) { if (!st.on) super.send(d); }
+    };
+  });
+  const relive = async () => {
+    for (const room of relay.rooms.values()) for (const w of room) w.close();
+    for (const page of [a, e]) await page.waitForFunction(() => window.__collab.view().status === 'live', null, { timeout: 30_000 }).catch(() => {});
+  };
+  await relive();
+  await e.evaluate(() => { window.__deaf.on = true; });
+  const noticed = await e.waitForFunction(() => window.__collab.view().status !== 'live', null, { timeout: 5 * BEAT }).then(() => true, () => false);
+  const deafAs = await status(e);
+  await e.evaluate(() => { window.__deaf.on = false; });
+  await e.waitForFunction(() => window.__collab.view().status === 'live', null, { timeout: 45_000 }).catch(() => {});
+  await e.keyboard.press('Escape');
+  await caret(e, 'end');
+  await e.keyboard.type(' Psi');
+  await settle(a);
+  const [pa3, pe3] = [await view(a), await view(e)];
+  check(noticed && await status(e) === 'live' && pa3.json === pe3.json && pa3.text.endsWith('Psi'),
+    `a line that dies without a close is not live (${deafAs}), and live again once it works`);
 
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (err) {
