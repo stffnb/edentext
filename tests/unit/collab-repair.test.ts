@@ -121,3 +121,51 @@ describe('repairs after concurrent edits in a shared doc', () => {
     });
   }
 });
+
+// One client's steps around another's typing, then that client undoes them all: the other
+// client's text stays on every client, and the documents agree and stay valid.
+const notePos = (ed: Editor) => {
+  let pos = -1;
+  ed.state.doc.descendants((n, p) => { if (pos < 0 && n.type.name === 'note') pos = p + 1; return pos < 0; });
+  return pos;
+};
+const UNDO_CASES: { name: string; a: ((ed: Editor) => void)[]; b: (ed: Editor) => void }[] = [
+  { name: 'a footnote another client wrote into',
+    a: [(ed) => { ed.commands.setTextSelection(posOf(ed, 'Gamma delta.', 12)); ed.commands.insertNote('footnote'); }],
+    b: (ed) => { ed.commands.insertContentAt(notePos(ed), 'Zed'); } },
+  { name: 'a block another client wrote into, rebuilt later',
+    a: [(ed) => { ed.commands.setTextSelection(posOf(ed, 'Alpha beta.', 6)); ed.commands.splitBlock(); },
+      (ed) => { ed.commands.setTextSelection(posOf(ed, 'betaZed', 1)); ed.commands.setParagraphStyle('Heading 1'); }],
+    b: (ed) => { ed.commands.insertContentAt(posOf(ed, 'beta.', 4), 'Zed'); } },
+];
+
+describe('an undo in a shared doc', () => {
+  for (const c of UNDO_CASES) {
+    it(`keeps another client's text: ${c.name}`, async () => {
+      let s = 7;
+      const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+      const cs = clients(2);
+      const [a, b] = cs;
+      c.a[0](a.ed);
+      await relay(cs, rnd);
+      c.b(b.ed);
+      await relay(cs, rnd);
+      for (const step of c.a.slice(1)) {
+        a.undo.undoManager.lastChange = 0;
+        step(a.ed);
+        await relay(cs, rnd);
+      }
+      for (let i = 0; i < 10 && a.undo.undoManager.undoStack.length; i++) {
+        a.undo.undoManager.undo();
+        await relay(cs, rnd);
+      }
+      for (const x of cs) {
+        expect(x.ed.state.doc.textContent).toContain('Zed');
+        expect(JSON.stringify(x.ed.getJSON())).toBe(JSON.stringify(a.ed.getJSON()));
+        expect(() => x.ed.state.doc.check()).not.toThrow();
+      }
+      const got = shape(a.ed);
+      expect(got.notes).toBe(got.refs);
+    });
+  }
+});
