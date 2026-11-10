@@ -44,7 +44,42 @@ export async function devServer(port) {
     { cwd: ROOT, stdio: 'ignore', detached: true });
   for (let i = 0; i < 120 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
   if (!(await up())) throw new Error('dev server did not start');
+  await warm(`http://localhost:${port}`);
   return proc;
+}
+
+// A fresh dev server transforms each module on its first request and bundles the
+// dependencies it meets, so the app's first load takes many seconds; requesting the whole
+// module graph once, lazy chunks too, does that before a page opens.
+async function warm(origin) {
+  const seen = new Set();
+  const visit = async (path) => {
+    if (seen.has(path)) return;
+    seen.add(path);
+    const code = await fetch(origin + path).then((r) => (r.ok ? r.text() : ''), () => '');
+    const next = [...code.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)["'](\/[^"'?]+(?:\?[^"']*)?)["']/g)].map((m) => m[1]);
+    await Promise.all(next.map(visit));
+  };
+  const t0 = Date.now();
+  await visit('/src/main.ts');
+  console.log(`dev server warmed: ${seen.size} modules in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+}
+
+// A page's uncaught errors, but not the text box's converging ResizeObserver loop, nor
+// WebKit's "… due to access control checks" for a fetch started while the page navigates
+// away, which Playwright reports even when caught (docs/headless-testing.md).
+export function collectErrors(page, errors, label = '') {
+  let leaving = null;
+  page.on('request', (r) => { if (r.isNavigationRequest() && r.frame() === page.mainFrame()) leaving = r; });
+  page.on('requestfailed', (r) => { if (r === leaving) leaving = null; });
+  page.on('download', () => { leaving = null; });
+  page.on('domcontentloaded', () => { leaving = null; });
+  page.on('pageerror', (err) => {
+    const text = String(err);
+    if (/ResizeObserver loop/.test(text)) return;
+    if (leaving && /due to access control checks/.test(text)) console.log(`  (${label}cancelled by navigation: ${text.slice(0, 100)})`);
+    else errors.push(label + text);
+  });
 }
 
 // BROWSER=chromium|firefox|webkit picks the engine (Chromium by default). Fixed locale,
@@ -59,10 +94,7 @@ export async function openApp(port, opts = {}) {
   // No service worker: under one, WebKit's page.route misses the page's cross-origin fetches.
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block', ...opts });
   const pageErrors = [];
-  // The text box's ResizeObserver refits the wrapper it observes, so the browser defers
-  // the rest of the round to the next frame and reports it — a converging loop, not an error.
-  const benign = /ResizeObserver loop/;
-  page.on('pageerror', (err) => { if (!benign.test(String(err))) pageErrors.push(String(err)); });
+  collectErrors(page, pageErrors);
   // Something the built page's Content-Security-Policy blocked is a broken feature too.
   await page.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => {
     console.error(`CSP blocked ${e.blockedURI || 'inline'} (${e.violatedDirective}) at ${e.sourceFile}:${e.lineNumber}:${e.columnNumber}`);
