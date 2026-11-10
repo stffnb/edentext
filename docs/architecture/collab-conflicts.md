@@ -38,7 +38,8 @@ and nothing else joins it. The left-behind run is then deleted, and a block an u
 only for it (the deleted block still held another client's text) is dropped in a
 transaction of its own: y-tiptap writes a multi-block change as a rebuild of its
 neighbours. The caret moves along. Own text means this client id's: text typed before Yjs
-reassigned the id, or in an earlier session, is no longer rescued.
+reassigned the id, or in an earlier session, is no longer rescued; another client's text
+that this client's undo or redo put back stays the other's (below).
 
 ### Repairs (`editor/yjsRepair.ts`)
 
@@ -66,6 +67,11 @@ page from one's own pagination) stay local instead of answering each other.
   moved note meanwhile is the rescue's.
 - `holdsForeign` (the undo's delete filter) counts another client's text and inline
   objects, not its empty elements, so a padding cell keeps no row of an undone insert.
+  Yjs puts what an undo or redo restores back under the undoer's id; `Authors` follows
+  each restored item's `redone` copy and keeps the copy's range as its author's, so a later
+  undo (an Enter before a rebuilt block) still leaves the other's text in place.
+- A footnote anchor whose note holds another client's text survives its author's undo, as
+  the notes repair would drop the note, and that text, without it.
 
 A table row longer than most loses empty cells past that width (`tableRepair.ts`) before
 prosemirror-tables' `fixTables` pads the short ones, so a column undone after another's row
