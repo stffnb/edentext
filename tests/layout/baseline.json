@@ -397,7 +397,7 @@
    "lines": 9,
    "ms": 200,
    "starts": [
-    "it's €42 sit dolor €42 sit"
+    "<tag> dolor Größe €42 a&b"
    ]
   },
   "tests/corpus/01-flow.docx": {
