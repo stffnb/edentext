@@ -92,17 +92,18 @@ const sheet = (page) => page.evaluate(async (url) => JSON.stringify((await impor
 const sent = (page, kind = 1) => page.evaluate((k) => window.__collab.session.stats.sent[k], kind);
 const [ASK, ANSWER, PICTURE] = [0, 5, 6];
 const status = (page) => page.evaluate(() => window.__collab.view().status);
-// A noise picture, incompressible like a photo, of about 2.5 MB as a data URL.
-const photo = (page) => page.evaluate(() => {
+// A noise picture, incompressible like a photo, of about 2.5 MB (900×700) as a data URL,
+// put in the body or another editor; returns its length and its bytes'.
+const photo = (page, at = '.tiptap-host .tiptap', w = 900, h = 700) => page.evaluate(([at, w, h]) => {
   const c = document.createElement('canvas');
-  c.width = 900; c.height = 700;
-  const ctx = c.getContext('2d'), img = ctx.createImageData(900, 700);
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d'), img = ctx.createImageData(w, h);
   for (let i = 0; i < img.data.length; i++) img.data[i] = (i & 3) === 3 ? 255 : (Math.random() * 256) | 0;
   ctx.putImageData(img, 0, 0);
   const src = c.toDataURL('image/png');
-  document.querySelector('.tiptap-host .tiptap').editor.chain().focus('start').setImage({ src, width: 300, height: 233 }).run();
-  return src.length;
-});
+  document.querySelector(at).editor.chain().focus('start').setImage({ src, width: Math.round(w / 3), height: Math.round(h / 3) }).run();
+  return [src.length, atob(src.slice(src.indexOf(',') + 1)).length];
+}, [at, w, h]);
 // The assistant's provider, scripted: two tool calls, then a closing word. Nothing leaves.
 const AI = { enabled: true, provider: 'openai', endpoint: 'http://mock.test/v1', apiKey: '', model: 'm' };
 let aiRequests = 0;
@@ -285,13 +286,13 @@ try {
   check(same(va, vb) && !await heldTag(a) && !await heldTag(b), `after that both documents are the same (${brief(va)} | ${brief(vb)})`);
 
   const [y0, r0] = [await ysize(a), relayed()];
-  const size = await photo(a);
+  const [size, bytes] = await photo(a);
   await a.waitForTimeout(2500);
   [va, vb] = [await view(a), await view(b)];
   check(size > FRAME && va.json === vb.json && await shown(b) === 1, `a picture longer than the relay's frame reaches the joiner (${(size / 1e6).toFixed(1)} MB)`);
   const [y1, r1] = [await ysize(a), relayed()];
-  check(!inline(va.json) && y1 - y0 < 2000 && r1 - r0 > size && r1 - r0 < size * 1.1,
-    `the shared doc names the picture by its key (+${y1 - y0} bytes), its bytes go once (${((r1 - r0) / size).toFixed(2)}× its size)`);
+  check(!inline(va.json) && y1 - y0 < 2000 && r1 - r0 > bytes && r1 - r0 < bytes * 1.05,
+    `the shared doc names the picture by its key (+${y1 - y0} bytes), its bytes go once, not as base64 (${((r1 - r0) / bytes).toFixed(2)}× its bytes)`);
   // What leaves a client holds the picture: its copy on the clipboard, a saved file, autosave.
   const copied = await b.evaluate(() => {
     const ed = document.querySelector('.tiptap-host .tiptap').editor;
@@ -356,7 +357,22 @@ try {
   const [y3, r3] = [await ysize(a), relayed()];
   check(y3 - y2 < 8000 && r3 - r2 < 30_000 && (await view(b)).json === (await view(a)).json,
     `five moves and a delete send ${r3 - r2} bytes, and the doc grows by ${y3 - y2}`);
-  check(seen.every((f) => f.length <= FRAME), `no frame exceeds the relay's limit (largest ${Math.max(...seen.map((f) => f.length))})`);
+  // A picture in the header goes by its key as well: the zone in the shared doc stays small,
+  // the bytes go once, and the others show it in their header.
+  const [y4, r4] = [await ysize(a), relayed()];
+  await openZone(a, 'header');
+  const [, hbytes] = await photo(a, '.hf-active .tiptap', 600, 400);
+  await a.keyboard.press('Escape');
+  await settle(a);
+  await a.waitForTimeout(1500);
+  const hfShown = (page) => page.evaluate(() => [...document.querySelectorAll('.hf-layer .hf-zone img')].filter((i) => i.src.startsWith('data:') && i.src.length > 1e5).length);
+  const [y5, r5] = [await ysize(a), relayed()];
+  const hf = [await hfShown(a), await hfShown(b), await hfShown(c)];
+  check(hf[0] > 0 && hf.every((n) => n === hf[0]) && y5 - y4 < 4000 && r5 - r4 > hbytes && r5 - r4 < hbytes * 1.1,
+    `a header's picture reaches the others by its key (+${y5 - y4} bytes), its bytes once (${((r5 - r4) / hbytes).toFixed(2)}× them; shown ${hf})`);
+  const addressed = seen.filter((f) => f.readUInt32BE(0) !== 0).length;
+  check(seen.every((f) => f.length <= FRAME) && addressed > 0,
+    `no frame exceeds the relay's limit (largest ${Math.max(...seen.map((f) => f.length))}), and ${addressed} went to one client alone`);
   const names = await a.evaluate(() => window.__collab.view().peers.map((p) => p.name).sort().join(','));
   const bar = (await a.textContent('.statusbar .collab-btn'))?.trim();
   check(names === 'Ben,Cleo' && /2/.test(bar ?? ''), `the starter sees who is there (${names}; "${bar}")`);
@@ -640,11 +656,13 @@ try {
   const aMissing = await a.evaluate(() => window.__collab.view().missing);
   if (!await a.isVisible('dialog[open] [data-cmd="collabLeave"]')) await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');
-  const told2 = await g.waitForSelector('.collab-notice[data-notice="missing"]', { timeout: 30_000 }).then(() => true, () => false);
+  // The relay says she left, so this takes no awareness timeout.
+  const told2 = await g.waitForSelector('.collab-notice[data-notice="missing"]', { timeout: 8000 }).then(() => true, () => false);
+  const gView = await g.evaluate(() => `${window.__collab.view().missing} missing, notice ${!!document.querySelector('.collab-notice[data-notice="missing"]')}`);
   const own = await a.evaluate(() => /"src":"data:image\/png/.test(JSON.stringify(document.querySelector('.tiptap-host .tiptap').editor.getJSON())));
   const boxes = await g.locator('.tiptap-host .tiptap .image-waiting').count();
   check(told2 && await status(g) === 'live' && boxes === 1 && own,
-    `a picture whose only holder left shows as a grey box (${boxes}) with a note, the session stays live (${told2}, ${await status(g)}), and the holder keeps it (${own}, ${aMissing} missing there)`);
+    `a picture whose only holder left shows as a grey box (${boxes}) with a note, the session stays live (${told2}, ${await status(g)}, ${gView}), and the holder keeps it (${own}, ${aMissing} missing there)`);
 
   // The starter choosing New in a session is asked, leaves, and starts empty; the joiner keeps the document.
   await openDoc(a, '16-hf-variants.odt');
