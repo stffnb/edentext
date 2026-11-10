@@ -19,16 +19,25 @@ indent, marks) change in place and keep everything. Three mechanisms handle what
 
 After each update from another client, each client looks for its own text the update took
 away (its block deleted) or left behind (the text on both sides gone, the run still there)
-and puts it where the update put the text around it: the place in the update's new text
-whose 40 characters before and after match best, at least three of them, one new. Only the
-author of the text moves it, so nothing races; the move goes into the shared doc as an
-ordinary edit outside the history, and its characters join the undo step that typed them.
-A text the update rewrote in place (a sort) counts one side gone at its start or end. A
-block of nothing but the client's text goes beside the rebuilt block that held what stood
-beside it. A block an undo kept only for the rescued text (the deleted block still held
-another client's text) is dropped once the text has left it, in a transaction of its own:
-y-tiptap writes a multi-block change as a rebuild of its neighbours. The caret moves along.
-No match, no move: a block deleted outright stays deleted, typing and all.
+and puts it where the update put the text around it, only where the update clearly rebuilt
+that text: in the update's new text, each side of the run's 40 characters of context
+matches whole or up to where that text starts or ends (a cut), one side whole, at least
+eight characters (fewer where the context is shorter), one of them new. A replacement's
+text (typing or pasting over a selection) matches only by chance and in part, so the run
+stays deleted with the text it replaced. A text the update rewrote in place (a sort) counts
+one side gone at its start or end. A block of nothing but the client's text goes beside
+the rebuilt block that held what stood beside it. No match, no move.
+
+Only the author of the text moves it, so nothing races. The move runs in a microtask, after
+the repairs of the same update are written, and not while an input method composes (it
+waits for `compositionend`). Each part of the run typed in one undo step goes in a
+transaction of its own outside the history, and only the items it wrote into the target
+text (or the block it made) join that step: undoing the newest step takes its part alone,
+and nothing else joins it. The left-behind run is then deleted, and a block an undo kept
+only for it (the deleted block still held another client's text) is dropped in a
+transaction of its own: y-tiptap writes a multi-block change as a rebuild of its
+neighbours. The caret moves along. Own text means this client id's: text typed before Yjs
+reassigned the id, or in an earlier session, is no longer rescued.
 
 ### Repairs (`editor/yjsRepair.ts`)
 
@@ -84,7 +93,8 @@ same way. The soak run counts redraws and fails on a pause.
 Columns as the test checks them. **same**: both docs and fragments equal. **valid**:
 `doc.check()`, rectangular tables, notes numbered 1…n. **clean**: applying the other's
 update did not throw. **kept**: B's text at its place (A's deliberate deletion excepted).
-**quiet**: no update after the exchange but the repairer's (A's) one. **undo**: A's undo leaves both at B's doc alone.
+**quiet**: no update after the exchange but the repairer's (A's) one. **undo**: A's undo
+leaves both at B's doc alone (in the B's undo rows, B's undo takes its last step alone).
 `~` varies between runs. Measured 2026-11-10, Chromium; Before is R3's measurement.
 
 | A | B | same | valid | clean | kept | quiet | undo | Before |
@@ -97,6 +107,9 @@ update did not throw. **kept**: B's text at its place (A's deliberate deletion e
 | makes it a list item, indents / outdents it there | types | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | kept, undo ✗ |
 | other paragraph style, alignment, indent | types | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – |
 | drags it below the next one | types | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | kept, undo ✗ |
+| types over the end of the one before and it | types | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | text injected |
+| pastes over the end of the one before and it | types | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – |
+| makes it a heading / splits it; B's undo | types twice | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – |
 | deletes it whole | types | ✓ | ✓ | ✓ | (✓) | ✓ | ✗ | accepted |
 | puts a footnote / a picture in it | types | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | kept ✗ |
 | comments a word / Replace All of a word | types | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – |
@@ -114,8 +127,8 @@ update did not throw. **kept**: B's text at its place (A's deliberate deletion e
 
 ## Accepted
 
-- **Delete vs typing** (paragraph, row, column, table): the deletion was meant; B's caret
-  lands in the next block, which shows it. A's undo restores the old content without B's
+- **Delete vs typing** (paragraph, row, column, table, typing over a selection that ends in
+  it): the deletion was meant; B's caret lands in the next block, which shows it. A's undo restores the old content without B's
   typing.
 - **Comment deleted vs answered:** the comment comes back with the answer (no text lost; A's
   deletion is undone). A's undo then adds the comment a second time over it; deleting
@@ -130,6 +143,10 @@ update did not throw. **kept**: B's text at its place (A's deliberate deletion e
   cannot give back B's merge of a cell A's merge deleted.
 - **Rescue placement** is by text: where the update's new text repeats the run's
   surroundings more than once, the first best match wins.
+- **Typing over a range the other client's paste rewrote in place:** y-tiptap writes the
+  pasted paragraph into the old one by a prefix/suffix diff, so B's typing is not deleted
+  but stays where Yjs merges it among A's new characters (`TZedwo lazy days.`), as with any
+  concurrent typing into a replaced range. The rescue leaves it there.
 - **Yjs's undo on a long history** can put text back apart on two clients: with the deleted
   items one row of the matrix left behind, A's undo of a join restored `…lazy dog.` on A and
   `…lazy og.d` on B, the same state vectors, nothing pending. The redone items' origins

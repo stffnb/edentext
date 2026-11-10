@@ -154,7 +154,12 @@ function placeOf(u: Unit, sites: Map<Y.XmlText, Site>): Place | null {
     }
     return null;
   }
+  // A rebuild copies the text around the run: each side matches whole, or up to where the new
+  // text starts or ends (a cut). A replacement's text matches by chance and only in part.
   const run = textOf(u.chars);
+  const needL = u.left.length - (u.left.startsWith(START) ? 1 : 0);
+  const needR = u.right.length - (u.right.endsWith(END) ? 1 : 0);
+  const least = Math.max(1, Math.min(needL + needR, 8));
   let best: { text: Y.XmlText; offset: number; skip: number; score: number } | null = null;
   for (const [text, { s, fresh }] of sites) {
     if (text === u.text) continue;
@@ -165,8 +170,10 @@ function placeOf(u: Unit, sites: Map<Y.XmlText, Site>): Place | null {
       while (k < run.length && s[e + k] === run[k]) k++;
       let r = 0;
       while (r < u.right.length && s[e + k + r] === u.right[r]) r++;
-      const score = l + r;
-      if (score < 3 || (best && score <= best.score)) continue;
+      const wholeL = l >= needL, wholeR = r >= needR;
+      if (!(wholeL || s[e - 1 - l] === START) || !(wholeR || s[e + k + r] === END) || (!wholeL && !wholeR)) continue;
+      const score = Math.min(l, needL) + Math.min(r, needR);
+      if (score < least || (best && score <= best.score)) continue;
       let any = false;
       for (let i = e - l; i < e + k + r && !any; i++) any = fresh[i];
       if (any) best = { text, offset: e - 1, skip: k, score };
@@ -177,6 +184,8 @@ function placeOf(u: Unit, sites: Map<Y.XmlText, Site>): Place | null {
 
 const markName = (key: string) => key.replace(/--[a-zA-Z0-9+/=]{8}$/, '');
 
+type Plan = { unit: Unit; text: Y.XmlText; at: Y.RelativePosition; side?: 'after' | 'before'; caret: number | null; assoc: number };
+
 export function attachRescue(editor: Editor, ydoc: Y.Doc, binding: Binding, um: Y.UndoManager): () => void {
   const frag = binding.type;
   // A text's characters are one run in the document, so a place in it is its start plus the
@@ -186,6 +195,8 @@ export function attachRescue(editor: Editor, ydoc: Y.Doc, binding: Binding, um: 
     return start === null ? null : start + index;
   };
 
+  let queue: Plan[] = [];
+  let scheduled = false, destroyed = false;
   const after = (t: Y.Transaction) => {
     if (t.local || !binding.prosemirrorView) return;
     const me = ydoc.clientID;
@@ -203,92 +214,129 @@ export function attachRescue(editor: Editor, ydoc: Y.Doc, binding: Binding, um: 
     if (!units.length) return;
     const sites = sitesOf(ydoc, t, me, isNew);
     if (!sites.size) return;
-
-    const { state } = editor;
-    const schema = state.schema;
-    type Op = { at: number; del?: number; insert?: Char[]; block?: string; unit: Unit; abandoned?: boolean };
-    const ops: Op[] = [];
-    for (const u of units) {
-      const place = placeOf(u, sites);
-      if (!place || place.skip === u.chars.length) continue;
-      let at = absolute(place.text, place.offset);
-      if (at === null) continue;
-      if (place.side) {
-        const $at = state.doc.resolve(at);
-        if (!$at.parent.isTextblock || !schema.nodes[u.block!.name]) continue;
-        at = place.side === 'after' ? $at.after() : $at.before();
-      }
-      ops.push({ at, insert: u.chars.slice(place.skip), block: place.side && u.block!.name, unit: u });
-      if (u.lost) continue;
-      const from = absolute(u.text, u.at);
-      if (from === null || state.doc.textBetween(from, from + u.chars.length) !== textOf(u.chars)) { ops.pop(); continue; }
-      ops.push({ at: from, del: u.chars.length, unit: u, abandoned: u.abandoned });
-    }
-    if (!ops.length) return;
-
     // The caret in a moved run moves with it.
     const head = binding.beforeTransactionSelection?.head;
     const caret = head?.item && head.item.client === me ? head.item.clock : null;
+    for (const u of units) {
+      const place = placeOf(u, sites);
+      if (!place || place.skip === u.chars.length) continue;
+      const at = Y.createRelativePositionFromTypeIndex(place.text, place.offset + place.skip);
+      queue.push({ unit: { ...u, chars: u.chars.slice(place.skip) }, text: place.text, at, side: place.side, caret, assoc: head?.assoc ?? 0 });
+    }
+    // After the plugins' repairs of this update are written (a microtask the update queued
+    // first), so the rescue's transactions hold the rescue alone.
+    if (queue.length && !scheduled) { scheduled = true; queueMicrotask(flush); }
+  };
 
-    const tr = state.tr;
-    let caretAt: { pos: number; steps: number } | null = null;
-    ops.sort((a, b) => b.at - a.at || (a.del ? -1 : 1));
-    const emptied: { pos: number; steps: number }[] = [];
-    for (const op of ops) {
-      if (op.del) {
-        tr.delete(op.at, op.at + op.del);
-        if (op.abandoned) emptied.push({ pos: op.at, steps: tr.steps.length });
-        continue;
-      }
-      let pos = op.at;
-      if (op.block) {
-        tr.insert(pos, schema.nodes[op.block].create());
-        pos += 1;
-      }
-      for (let i = 0; i < op.insert!.length;) {
-        let j = i;
-        while (j < op.insert!.length && op.insert![j].attrs === op.insert![i].attrs) j++;
-        const marks = Object.entries(op.insert![i].attrs).flatMap(([k, v]) => {
+  // Not while an input method composes: moving text around its caret would break it.
+  const flush = () => {
+    scheduled = false;
+    if (destroyed || !binding.prosemirrorView) { queue = []; return; }
+    if (editor.view.composing) return;
+    const plans = queue;
+    queue = [];
+    for (const p of plans) apply(p);
+  };
+  const composed = () => {
+    if (queue.length && !scheduled) { scheduled = true; setTimeout(flush, 50); }
+  };
+
+  const apply = (p: Plan) => {
+    const u = p.unit, schema = editor.state.schema;
+    if (p.text._item?.deleted) return;
+    const abs = Y.createAbsolutePositionFromRelativePosition(p.at, ydoc);
+    if (!abs || abs.type !== p.text) return;
+    let pos = absolute(p.text, abs.index);
+    if (pos === null) return;
+    if (p.side) {
+      const $at = editor.state.doc.resolve(pos);
+      if (!$at.parent.isTextblock || !schema.nodes[u.block!.name]) return;
+      pos = p.side === 'after' ? $at.after() : $at.before();
+    }
+    // Each part goes in with the undo step that typed it, in a transaction of its own.
+    const steps = u.chars.map((c) => um.undoStack.find((s) => Y.isDeleted(s.insertions, Y.createID(c.item.id.client, c.clock))));
+    // The run left behind, read before the copy goes in: y-tiptap may write the copy's
+    // paragraph anew, and the run's own text then no longer resolves.
+    let from = -1;
+    if (!u.lost) {
+      const at = absolute(u.text, liveIndex(u.text, u.chars[0]));
+      if (at === null || editor.state.doc.textBetween(at, at + u.chars.length) !== textOf(u.chars)) return;
+      from = at;
+    }
+    let block = p.side && u.block!.name;
+    for (let i = 0; i < u.chars.length;) {
+      let j = i;
+      while (j < u.chars.length && steps[j] === steps[i]) j++;
+      const part = u.chars.slice(i, j);
+      const tr = editor.state.tr;
+      let at: number = pos;
+      if (block) { tr.insert(at, schema.nodes[block].create()); at += 1; }
+      for (let a = 0; a < part.length;) {
+        let b = a;
+        while (b < part.length && part[b].attrs === part[a].attrs) b++;
+        const marks = Object.entries(part[a].attrs).flatMap(([k, v]) => {
           const type = schema.marks[markName(k)];
           return type ? [type.create(v as Record<string, unknown>)] : [] as Mark[];
         });
-        tr.insert(pos, schema.text(textOf(op.insert!.slice(i, j)), marks));
-        const hit = caret === null ? -1 : op.insert!.slice(i, j).findIndex((c) => c.clock === caret);
-        if (hit >= 0) caretAt = { pos: pos + hit + ((head?.assoc ?? 0) < 0 ? 1 : 0), steps: tr.steps.length };
-        pos += j - i;
-        i = j;
+        tr.insert(at + a, schema.text(textOf(part.slice(a, b)), marks));
+        a = b;
       }
+      const hit = p.caret === null ? -1 : part.findIndex((c) => c.clock === p.caret);
+      if (hit >= 0) {
+        try { tr.setSelection(TextSelection.create(tr.doc, at + hit + (p.assoc < 0 ? 1 : 0))); } catch { /* the caret stays where the update put it */ }
+      }
+      const me = ydoc.clientID, c0 = Y.getState(ydoc.store, me);
+      editor.view.dispatch(tr.setMeta('addToHistory', false).setMeta(RESCUED, true));
+      if (from >= 0) from = tr.mapping.map(from);
+      if (editor.state.doc.textBetween(at, at + part.length) !== textOf(part)) return;
+      if (steps[i]) joinStep(steps[i]!, me, c0, block ? null : p.text);
+      pos = at + part.length;
+      block = undefined;
+      i = j;
     }
-    const ends = emptied.map((e) => tr.mapping.slice(e.steps).map(e.pos)).sort((a, b) => b - a);
-    if (caretAt) {
-      const pos = tr.mapping.slice(caretAt.steps).map(caretAt.pos);
-      try { tr.setSelection(TextSelection.create(tr.doc, pos)); } catch { /* the caret stays where the update put it */ }
-    }
-    tr.setMeta('addToHistory', false).setMeta(RESCUED, true);
-
-    const c0 = Y.getState(ydoc.store, me);
-    editor.view.dispatch(tr);
-    // A block an undo kept only for this client's text goes once the text has left it; in
-    // a transaction of its own, which y-tiptap writes as that block's removal alone.
-    if (ends.length && editor.state.doc === tr.doc) {
-      const drop = editor.state.tr;
-      for (const pos of ends) dropEmpty(drop, pos);
-      if (drop.docChanged) editor.view.dispatch(drop.setMeta('addToHistory', false).setMeta(RESCUED, true));
-    }
-    const c1 = Y.getState(ydoc.store, me);
-    if (c1 === c0) return;
-    // The rescued text belongs to the step that typed it, so its writer's undo takes it.
-    const added = Y.createDeleteSet();
-    added.clients.set(me, [{ clock: c0, len: c1 - c0 } as never]);
-    for (const s of um.undoStack) {
-      if (!ops.some((op) => op.insert && Y.isDeleted(s.insertions, op.unit.chars[0].item.id))) continue;
-      s.insertions = Y.mergeDeleteSets([s.insertions, added]);
-      break;
-    }
+    if (u.lost) return;
+    // The run left behind goes; a block an undo kept only for it goes too, in a transaction
+    // of its own, which y-tiptap writes as that block's removal alone.
+    if (editor.state.doc.textBetween(from, from + u.chars.length) !== textOf(u.chars)) return;
+    const del = editor.state.tr.delete(from, from + u.chars.length);
+    editor.view.dispatch(del.setMeta('addToHistory', false).setMeta(RESCUED, true));
+    if (!u.abandoned || editor.state.doc !== del.doc) return;
+    const drop = editor.state.tr;
+    dropEmpty(drop, from);
+    if (drop.docChanged) editor.view.dispatch(drop.setMeta('addToHistory', false).setMeta(RESCUED, true));
   };
 
+  // What the rescue wrote since `c0` joins the step: the text it put into `text`, or the
+  // block it made with everything in it. Nothing else the transaction wrote does.
+  const joinStep = (step: Y.UndoManager['undoStack'][number], me: number, c0: number, text: Y.XmlText | null) => {
+    const structs = ydoc.store.clients.get(me);
+    if (!structs || Y.getState(ydoc.store, me) === c0) return;
+    const ranges: { clock: number; len: number }[] = [];
+    let root: Y.AbstractType<any> | null = text;
+    for (let i = Y.findIndexSS(structs, c0); i < structs.length; i++) {
+      const s = structs[i];
+      if (!(s instanceof Y.Item)) continue;
+      if (!root && s.content instanceof Y.ContentType && s.content.type instanceof Y.XmlElement) root = s.content.type;
+      let inside = s.content instanceof Y.ContentType && s.content.type === root;
+      for (let t = s.parent as Y.AbstractType<any> | null; t && !inside; t = t._item?.parent as Y.AbstractType<any> | null) inside = t === root;
+      // Yjs may have merged the new characters into an item written before `c0`.
+      const clock = Math.max(s.id.clock, c0);
+      if (inside) ranges.push({ clock, len: s.id.clock + s.length - clock });
+    }
+    if (!ranges.length) return;
+    const added = Y.createDeleteSet();
+    added.clients.set(me, ranges as never);
+    step.insertions = Y.mergeDeleteSets([step.insertions, added]);
+  };
+
+  const dom = editor.view.dom;
   ydoc.on('afterTransaction', after);
-  return () => ydoc.off('afterTransaction', after);
+  dom.addEventListener('compositionend', composed);
+  return () => {
+    destroyed = true;
+    ydoc.off('afterTransaction', after);
+    dom.removeEventListener('compositionend', composed);
+  };
 }
 
 // The emptied block at `pos`, with every ancestor it is the only child of, unless that
