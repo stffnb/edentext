@@ -21,7 +21,10 @@ behind it — a colour a control fixed instead of taking the theme's. `openApp` 
 `browser.close` a 10 s deadline: Chromium can leave it unanswered after the page grid.
 
 `npm run test:layout` and `npm run test:monkey` run against the dev server (Vite serves
-TypeScript, so a page imports `src/` and `tests/` modules directly). The **layout run**
+TypeScript, so a page imports `src/` and `tests/` modules directly). A dev server `devServer`
+starts itself is first warmed: it requests the whole module graph, lazy chunks included,
+and its dependencies are bundled before the first page loads; a cold first load took long
+enough under load to time out a test's first click or `live` wait. The **layout run**
 opens every corpus and showcase document plus `LAYOUT_SEEDS` fuzz seeds, holds the editor's
 page count against LibreOffice's PDF (`soffice` + `pdfinfo`, a page or a tenth of slack)
 and checks the rendered lines: none overlap, none sit in the page gap or past the sheet,
@@ -71,7 +74,12 @@ plugin now sweeps it from a table cell and a note body too; and the run's 1x1 PN
 truncated IDAT, which only Firefox reports — the same broken bytes were in eleven fixtures.
 WebKit raises `ResizeObserver loop completed with undelivered notifications` as a page
 error — the text box refits the wrapper it observes, so the browser defers the rest of the
-round. That converging loop is the one message `openApp` drops.
+round. That converging loop is one message `collectErrors` drops; the other is WebKit's
+`Fetch API cannot load … due to access control checks` while the page navigates: WebKit
+refuses every fetch a page starts after a reload or `goto` began (a dictionary's wasm data
+URL, or the HEAD request of `utils/loadFailure.ts` after a chunk the navigation cut off), and
+Playwright reports that log line as a page error even when the fetch's rejection is caught.
+Outside a navigation it still fails the run.
 A comment over a line break also marks the `hardBreak`, which no file carries and the
 comment's own text runs keep — `normalize` skips the marks of an inline atom, the picture
 and the formula with it.

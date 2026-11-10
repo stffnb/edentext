@@ -7,7 +7,7 @@
 // and a late joiner's copy go in parts; a line that keeps breaking stops showing `live`.
 // Any engine (BROWSER).
 import { join } from 'node:path';
-import { MOD, ROOT, checker, devServer, openApp } from '../browser.mjs';
+import { MOD, ROOT, checker, collectErrors, devServer, openApp } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
 
 const PORT = +(process.env.COLLAB_PORT ?? 4392);
@@ -26,7 +26,7 @@ async function client(name, css) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
   await ctx.addInitScript((n) => { if (!localStorage.getItem('edentext-user-name')) localStorage.setItem('edentext-user-name', n); }, name);
   const page = await ctx.newPage();
-  page.on('pageerror', (e) => { if (!/ResizeObserver loop/.test(String(e))) pageErrors.push(`${name}: ${e}`); });
+  collectErrors(page, pageErrors, `${name}: `);
   page.on('dialog', (d) => d.accept());
   if (css) await page.addInitScript((c) => addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = c; document.head.append(s); }), css);
   return page;
