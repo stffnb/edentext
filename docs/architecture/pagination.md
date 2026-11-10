@@ -157,27 +157,21 @@ text into or took text out of one textblock (`textOnlyBlock`: a paragraph or hea
 most; a cell, note or frame reaches further) and the content's bottom is where the last pass left it. A
 break inside it still forces the pass. The dom run checks the keystroke budget and a letter taken back.
 
-**What a pass costs.** At the top of the dom run's 124-page document (Chromium) the
-measuring and placing take ~40 ms — `docPosBeforeElement` is the largest part, ProseMirror
-walks the parent's children for every position, so it is memoised per pass — and the
-decoration dispatch a few ms. Everything above that was the browser's, and three things
-each multiplied it: a **`:has()` left of a sibling combinator** under `.tiptap` makes
-Chromium restyle every element under it (67 000 with the squiggles, ~150 ms) on each child
-inserted there — a spacer, a split paragraph — so the band-clearing rule keys on an
-attribute `image.ts` writes; a **live `Range` per text node** in `getLineRects` — a Range
-is a document listener Chromium updates on every DOM removal, and a pass left hundreds
-behind until the next collection, so one Range is reused; and TipTap's Placeholder
-**hit-testing the viewport** twice per keystroke (`placeholder.ts` replaces it). The pass
-after a split went from 410 to 150 ms, the keystroke that splits from 219 to 50 ms; in a
-document of real words, where few squiggles split the text nodes, 47 and 18 ms.
+**What a pass costs.** At the top of the dom run's 124-page document (Chromium) the measuring and placing take ~40 ms — `docPosBeforeElement` is the largest part, ProseMirror walks the parent's children for every position, so it is memoised per pass — and the decoration dispatch a few ms. Everything above that was the browser's, and three things each multiplied it: a **`:has()` left of a sibling combinator** under `.tiptap` makes Chromium restyle every element under it (67 000 with the squiggles, ~150 ms) on each child inserted there — a spacer, a split paragraph — so the band-clearing rule keys on an attribute `image.ts` writes; a **live `Range` per text node** in `getLineRects` — a Range is a document listener Chromium updates on every DOM removal, and a pass left hundreds behind until the next collection, so one Range is reused; and TipTap's Placeholder **hit-testing the viewport** twice per keystroke (`placeholder.ts` replaces it). The pass after a split went from 410 to 150 ms, the keystroke that splits from 219 to 50 ms; in a document of real words, where few squiggles split the text nodes, 47 and 18 ms.
 
-**A pass tells the document only what changed.** `pm-pagecount` is announced where the
-numbers on it — page count, document height, the section start pages, the placements, the
-table bands — differ from the last announcement. Every reader re-reads the whole document
-from the event (the index resolves each row's page, the header band its geometry, every
-cross-reference its number) and writes back what it found, which is a document change, which
-is another pass: a pass that lands what the last one did would start the round again.
-Opening a 460-page document ran five rounds of that where four answer everything.
+**What a keystroke costs.** `node tests/perf/keystroke.mjs [100,250]` repeats `05-breaks` (177 and 442 pages, 2 200 and 5 500 textblocks), dispatches 40 single characters at its start, middle and end, and splits each dispatch by plugin hook (`apply`, `appendTransaction`, `filterTransaction`, `decorations`, a plugin view's `update`) and editor listener; `PERF_PROFILE=1` adds a CPU profile of the keys alone, which also sees the Svelte effects after the dispatch. Chromium, dev server, one machine under varying load (about ±1 ms between runs). Mean per key, before the fixes below:
+
+| | 177 pages | 442 pages |
+|---|---|---|
+| whole dispatch | 5.2 ms | 14.4 ms |
+| pageBreaks view (`caretOverflows`: its `offsetTop` forces the layout) | 1.5 | 3.4 |
+| trackChanges author colours (walks for authors, revisions, gone blocks) | 0.8 | 1.7 |
+| imageLine `apply` / notes sync (four walks) / pageBreak sweep | 0.4 / 0.3 / 0.2 | 0.8 / 0.7 / 0.6 |
+| rest of the view update: ProseMirror, mostly `DecorationSet.forChild` | ~0.8 | ~5 |
+
+Outside the dispatch the status bar's word count re-read the whole text every 300 ms of typing (~15 ms at 442 pages) and every review layer walked the revisions again. Now the revisions are kept per doc and a document without changes stays known as such (`addsReview`), the image-line decorations are mapped (`mapImageLines`), the break sweep reads the changed range, the notes sync skips a document without notes (`noteless`) and the word count adds up per block: the dispatch is 4.0 and 11.6 ms (median 3.7–3.9 and 11.5–11.6, p90 4.4–4.6 and 12.3–12.9). Left alone: the forced layout (in the next frame it costs the same), ProseMirror's decoration lookup, and the pass after an Enter (~0.55 s at 177 pages, ~1 s at 442). A walk taken out mostly moves its cost to the next one, which then meets the document cold: ranging the indent sweep left the total unchanged, so `indent.ts`, `bibliographyEntry.ts`, `caption.ts` and the navigator's bookmarks still walk. pageBreaks' view `destroy` leaves `rafId` set, so a view rebuilt around the same plugin (a reconfigure, `unregisterPlugin`) never paginates again; the script wraps the state fields in place for that reason.
+
+**A pass tells the document only what changed.** `pm-pagecount` is announced where the numbers on it — page count, document height, the section start pages, the placements, the table bands — differ from the last announcement. Every reader re-reads the whole document from the event (the index resolves each row's page, the header band its geometry, every cross-reference its number) and writes back what it found, which is a document change, which is another pass: a pass that lands what the last one did would start the round again. Opening a 460-page document ran five rounds of that where four answer everything.
 
 **The fields of one answer read together.** Every field that resolves against the settled
 layout — each index's page numbers, every cross-reference — registers with
