@@ -3,6 +3,7 @@ import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { ReplaceStep } from '@tiptap/pm/transform';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { COLUMNS_FIT_MARGIN_PX, headFitPx } from './columns';
 import { isLeftPage, printedPageNumber } from '../../storage/pageNumbering';
 import { RESYNC_NOTES, setNoteAnchorPages } from './notes';
@@ -538,7 +539,8 @@ function pageContentStart(page: number, marginTop: number, grid: PageGrid): numb
 // (addToHistory:false) bump neither, so the convergence brake in `update` can tell an
 // answer to the last pass from a fresh change.
 // textBlock: the textblock a text-only transaction stayed inside (its position), else null.
-type PageBreakState = { recalc: number; edit: number; textBlock: number | null };
+// `remote` counts another client's edits in a shared session, which skip the history too.
+type PageBreakState = { recalc: number; edit: number; remote: number; textBlock: number | null };
 
 // Ancestors a leaf may have without the pass seeing more than the leaf: the walk
 // descends these (CONTAINER_TAGS), and their height is the sum of their blocks'.
@@ -763,6 +765,10 @@ export const PageBreaks = Extension.create({
     // much quiet: while the typing goes on, only the keystroke itself costs.
     const EDIT_IDLE_MS = 300;
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    // Others' edits wait for the same quiet, but never longer than this since the first:
+    // while others type on, a pass per arriving batch would take the whole main thread.
+    const REMOTE_MAX_MS = 1000;
+    let remoteSince: number | null = null;
     // Where the content ended after the last pass: the same bottom after edits confined to
     // one textblock means no block moved, and the pass has nothing to find.
     let lastBottom = -1;
@@ -785,7 +791,7 @@ export const PageBreaks = Extension.create({
       // Counters `update` watches. The plugin's own decoration dispatches carry neither
       // FORCE_PAGE_RECALC nor a doc change, so this never self-triggers.
       state: {
-        init: () => ({ recalc: 0, edit: 0, textBlock: null }),
+        init: () => ({ recalc: 0, edit: 0, remote: 0, textBlock: null }),
         apply(tr, value) {
           // The spacers follow the text until the next pass: left unmapped, an edit above
           // them puts every widget one position off and the view tears them all down.
@@ -798,11 +804,12 @@ export const PageBreaks = Extension.create({
           const recalc = value.recalc + (tr.getMeta(FORCE_PAGE_RECALC) ? 1 : 0);
           const edit = value.edit
             + (tr.docChanged && tr.getMeta('addToHistory') !== false ? 1 : 0);
-          if (recalc === value.recalc && edit === value.edit) return value;
+          const remote = value.remote + (tr.docChanged && tr.getMeta(ySyncPluginKey)?.isChangeOrigin ? 1 : 0);
+          if (recalc === value.recalc && edit === value.edit && remote === value.remote) return value;
           const own = tr.docChanged ? textOnlyBlock(tr) : null;
           // An appended transaction rides its root's dispatch: both must name the block.
           const appended = tr.getMeta('appendedTransaction') !== undefined;
-          return { recalc, edit, textBlock: appended && value.textBlock !== own ? null : own };
+          return { recalc, edit, remote, textBlock: appended && value.textBlock !== own ? null : own };
         },
       },
       props: {
@@ -1614,6 +1621,7 @@ export const PageBreaks = Extension.create({
           if (isUpdating || !editorView.dom.isConnected) return;
           isUpdating = true;
           editBlock = null;
+          remoteSince = null;
           posMemo = new Map();
 
           const dom = editorView.dom;
@@ -2541,6 +2549,7 @@ export const PageBreaks = Extension.create({
             const after = pageBreakKey.getState(editorView.state);
             const forced = before?.recalc !== after?.recalc;
             const isEditTr = before?.edit !== after?.edit;
+            const isRemote = before?.remote !== after?.remote;
             if (!isUpdating && (prevState.doc !== editorView.state.doc || forced)) {
               convergePasses = 0; // fresh convergence budget per external change
               // Layout-only writes — the TOC rewriting its page numbers on every
@@ -2551,6 +2560,11 @@ export const PageBreaks = Extension.create({
                 const b = after?.textBlock ?? null;
                 editBlock = b === null || (editBlock !== null && editBlock !== b) ? false : b;
                 if (caretOverflows()) schedule();
+                else scheduleEdit();
+              } else if (isRemote && !forced) {
+                editBlock = false;
+                remoteSince ??= performance.now();
+                if (performance.now() - remoteSince > REMOTE_MAX_MS) schedule();
                 else scheduleEdit();
               } else {
                 schedule();

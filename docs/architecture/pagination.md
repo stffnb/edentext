@@ -147,15 +147,15 @@ back from the other.
 every transaction (`apply`) and each spacer widget carries a `key` naming what it draws, so
 a pass that lands the same spacers keeps their DOM. Unmapped, an edit above them left every
 widget one position off and the view rebuilt all of them — measured at the top of a
-124-page document: 1.5 s a keystroke, 144 ms with the mapping. An edit's pass waits for
-`EDIT_IDLE_MS` of quiet, so while the typing goes on only the keystroke itself costs; a forced
-recalc, a layout-only write and an edit leaving the caret's block past its page's text area
-(`caretOverflows`, or a held Enter keeps the caret off the page) never wait. Once quiet, the
-pass is skipped if every edit since the last one only put text into or took text out of one
-textblock (`textOnlyBlock`: a paragraph or heading, inside lists at most — a cell, a note or
-a frame reaches further than its own height) and the content's bottom is where the last pass
-left it: nothing below the block moved. A break inside it still forces the pass (its line has
-rewrapped). The dom run checks the keystroke budget and a letter taken back.
+124-page document: 1.5 s a keystroke, 144 ms with the mapping. An edit's pass waits for `EDIT_IDLE_MS`
+of quiet, so while the typing goes on only the keystroke itself costs; a forced recalc, a layout-only
+write and an edit leaving the caret's block past its page's text area (`caretOverflows`, or a held Enter
+keeps the caret off the page) never wait. Another client's edit in a session waits too, but at most
+`REMOTE_MAX_MS` (1 s) after the first: a pass per arriving batch took the whole main thread on long
+documents (`collab-soak.md`). Once quiet, the pass is skipped if every edit since the last one only put
+text into or took text out of one textblock (`textOnlyBlock`: a paragraph or heading, inside lists at
+most; a cell, note or frame reaches further) and the content's bottom is where the last pass left it. A
+break inside it still forces the pass. The dom run checks the keystroke budget and a letter taken back.
 
 **What a pass costs.** At the top of the dom run's 124-page document (Chromium) the
 measuring and placing take ~40 ms — `docPosBeforeElement` is the largest part, ProseMirror
