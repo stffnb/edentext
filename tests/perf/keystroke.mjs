@@ -27,8 +27,7 @@ function instrument() {
     };
   };
   // A plugin's state field binds `apply` when the configuration is built, so the field is
-  // wrapped in place: reconfiguring would recreate the plugin views, and pageBreaks' view
-  // destroyed with a pass queued leaves its frame handle set, so it never paginates again.
+  // wrapped in place: reconfiguring would recreate the plugin views mid-measurement.
   for (const f of view.state.config.fields) {
     const p = view.state.plugins.find((pl) => pl.key === f.name);
     if (p) f.apply = wrap('apply ' + p.key, f.apply, p.spec.state.apply);
