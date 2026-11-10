@@ -71,6 +71,24 @@ export type Session = {
 type Join = (codec: StoreCodec) => Promise<YjsUndo | 'version' | null>;
 type Bind = (codec: StoreCodec) => YjsUndo;
 
+type Deletes = ReturnType<typeof Y.createDeleteSet>;
+
+/** Whether the deletions in `has` cover every range of `all`. */
+function holds(has: Deletes, all: Deletes): boolean {
+  const byClock = (x: { clock: number }, y: { clock: number }) => x.clock - y.clock;
+  for (const [client, ranges] of all.clients) {
+    const theirs = [...(has.clients.get(client) ?? [])].sort(byClock);
+    let j = 0;
+    for (const d of [...ranges].sort(byClock)) {
+      for (let at = d.clock; at < d.clock + d.len; at = theirs[j].clock + theirs[j].len) {
+        while (j < theirs.length && theirs[j].clock + theirs[j].len <= at) j++;
+        if (j >= theirs.length || theirs[j].clock > at) return false;
+      }
+    }
+  }
+  return true;
+}
+
 function frame(kind: number, ...parts: (number | Uint8Array)[]): Uint8Array {
   const out = new Uint8Array(1 + parts.reduce<number>((n, p) => n + (typeof p === 'number' ? 4 : p.length), 0));
   const v = new DataView(out.buffer);
@@ -181,11 +199,11 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   };
 
   // A sync, once per welcome: this client asks, everyone offers its state vector and delete
-  // set, it sends what the others lack in one update and pulls what it lacks from the one
-  // offer that has the most, then from any that still has more. One copy of the doc travels.
-  // An offer after the settle is still pulled from, and gets what it lacks once all is in.
+  // set, it pulls what it lacks from the offer that has the most, then from any that still
+  // has more, a late offer too, and then sends all in one update what any offer lacks.
+  type Known = { sv: Map<number, number>; ds: Deletes };
   type Round = {
-    offers: Map<number, Map<number, number>>; pulled: Set<number>; late: Set<number>; target: number | null;
+    offers: Map<number, Known>; pulled: Set<number>; target: number | null;
     done: boolean; over: boolean; at: number; settle?: ReturnType<typeof setTimeout>; watch?: ReturnType<typeof setInterval>;
   };
   let round: Round | null = null;
@@ -197,33 +215,35 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   const startRound = () => {
     endRound();
     if (peerCount <= 1) return;
-    const r: Round = round = { offers: new Map(), pulled: new Set(), late: new Set(), target: null, done: false, over: false, at: Date.now() };
+    const r: Round = round = { offers: new Map(), pulled: new Set(), target: null, done: false, over: false, at: Date.now() };
     r.watch = setInterval(() => { if (!r.over && Date.now() - Math.max(r.at, channel.heard()) > STALL_MS) startRound(); }, 1000);
     send(ASK, me);
   };
-  // One update with what the lowest of these offers lacks. An empty offer is a joiner,
-  // which pulls the doc itself, so it would only send everyone a second copy.
-  const give = (from: Iterable<number>) => {
-    const svs = [...from].map((id) => round?.offers.get(id)).filter((sv) => sv?.size) as Map<number, number>[];
-    if (!svs.length || !ydoc.store.clients.size) return;
+  // One update to all with what the offers lack, edits pulled from others included, so a
+  // client's edits that reached only some still reach all. An empty offer is a joiner,
+  // which pulls the doc itself. Every offer then counts as holding this client's state.
+  const give = (r: Round) => {
+    if (!ydoc.store.clients.size) return;
+    const sv = Y.decodeStateVector(Y.encodeStateVector(ydoc)), ds = Y.createDeleteSetFromStructStore(ydoc.store);
+    const lacking = [...r.offers.values()].filter((o) => o.sv.size && ([...sv].some(([client, clock]) => (o.sv.get(client) ?? 0) < clock) || !holds(o.ds, ds)));
+    if (!lacking.length) return;
     const least = new Map<number, number>();
-    for (const [client, clock] of Y.decodeStateVector(Y.encodeStateVector(ydoc))) {
-      least.set(client, Math.min(clock, ...svs.map((sv) => sv.get(client) ?? 0)));
-    }
+    for (const [client, clock] of sv) least.set(client, Math.min(clock, ...lacking.map((o) => o.sv.get(client) ?? 0)));
     send(UPDATE, Y.encodeStateAsUpdate(ydoc, Y.encodeStateVector(least)));
+    for (const o of r.offers.values()) if (o.sv.size) { o.sv = sv; o.ds = ds; }
   };
   const settle = () => {
     if (!round || round.done) return;
     round.done = true;
     clearTimeout(round.settle);
-    give(round.offers.keys());
     pull();
   };
   const pull = () => {
     if (!round?.done || round.target !== null) return;
+    applyInbox();
     const mine = Y.decodeStateVector(Y.encodeStateVector(ydoc));
     let best: number | null = null, most = 0;
-    for (const [from, sv] of round.offers) {
+    for (const [from, { sv }] of round.offers) {
       if (round.pulled.has(from)) continue;
       let more = 0;
       for (const [client, clock] of sv) more += Math.max(0, clock - (mine.get(client) ?? 0));
@@ -231,8 +251,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     }
     if (best === null) {
       round.over = true;
-      give(round.late);
-      round.late.clear();
+      give(round);
       return;
     }
     round.over = false;
@@ -257,9 +276,10 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       } else if (v.getUint32(1) !== me) return;
       else if (kind === OFFER && round) {
         const from = v.getUint32(5), n = v.getUint32(9);
-        round.offers.set(from, Y.decodeStateVector(plain.subarray(13, 13 + n)));
-        receive(plain.subarray(13 + n));
-        if (round.done) { round.late.add(from); pull(); }
+        const ds = plain.subarray(13 + n);
+        round.offers.set(from, { sv: Y.decodeStateVector(plain.subarray(13, 13 + n)), ds: Y.decodeUpdate(ds).ds });
+        receive(ds);
+        if (round.done) pull();
         else if (round.offers.size >= peerCount - 1) settle();
         else round.settle ??= setTimeout(settle, SETTLE_MS);
       } else if (kind === PULL) {
