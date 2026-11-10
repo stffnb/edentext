@@ -233,7 +233,13 @@ try {
       await a.evaluate((d) => window.__h.ed.commands.setContent({ type: 'doc', content: d }), c.doc);
       await attach(a, 1);
       await attach(b, 2, await a.evaluate(() => [...window.__undoYjs.Y.encodeStateAsUpdate(window.__yjsUndo.ydoc)]));
-    } else await a.evaluate((d) => window.__h.ed.commands.setContent({ type: 'doc', content: d }), c.doc);
+    } else {
+      // B empties the doc first: A's new rows then rebuild none of B's text, which B would rescue.
+      await b.evaluate(() => window.__h.ed.commands.clearContent());
+      await b.waitForTimeout(250);
+      await relay();
+      await a.evaluate((d) => window.__h.ed.commands.setContent({ type: 'doc', content: d }), c.doc);
+    }
     for (let i = 0; i < 3; i++) { await a.waitForTimeout(250); await relay(); }
     await thrown();
     for (const p of [a, b]) await p.evaluate(() => { window.__yjsUndo.undoManager.clear(); window.__yOut.length = 0; });
