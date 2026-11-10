@@ -551,13 +551,20 @@ try {
     `the others keep the shared document (${others}) and see the joiner gone (${peersLeft})`);
   await h.context().close();
 
-  // A tab whose line drops without a goodbye frees its zone once the others renewed their
-  // presence and its did not come, well before awareness's 30 s.
+  // A tab whose line drops without a goodbye frees its zone once the relay sees the line end.
+  // Anna, the repairer, is busy meanwhile: late as she is, she stays present for the others,
+  // her header held and no second client repairing.
+  const repairs = (page) => page.evaluate(() => {
+    const aw = window.__collab.session.awareness, me = aw.doc.clientID, mine = aw.getLocalState()?.rank;
+    return typeof mine === 'number' && [...aw.getStates()].every(([id, s]) => id === me || typeof s.rank !== 'number' || s.rank > mine || (s.rank === mine && id > me));
+  });
   const gus = await client('Gus');
   await joinLink(gus, link);
   await openZone(gus, 'footer');
+  await openZone(a, 'header');
   await b.waitForTimeout(600);
   const heldByGus = await heldTag(b);
+  const solo = [await repairs(a), await repairs(b), await repairs(c)];
   await gus.evaluate(() => {
     const Orig = WebSocket, send = Orig.prototype.send;
     Orig.prototype.send = function () {
@@ -566,11 +573,19 @@ try {
       this.close();
     };
   });
+  const busy = a.evaluate(() => { const t = Date.now(); while (Date.now() - t < 5500); });
+  await b.waitForTimeout(200);
   const droppedAt = Date.now();
   await gus.evaluate(() => window.__collab.session.awareness.setLocalStateField('ping', 1));
-  const freedGus = await b.waitForFunction(() => !document.querySelector('.hf-held'), null, { timeout: 15_000 }).then(() => true, () => false);
+  const freedGus = await b.waitForFunction(() => ![...document.querySelectorAll('.hf-held')].some((t) => /Gus/.test(t.textContent)), null, { timeout: 15_000 }).then(() => true, () => false);
   const gusAfter = (Date.now() - droppedAt) / 1000;
-  check(heldByGus === 'Gus is editing' && freedGus && gusAfter < 12, `a tab whose line drops unannounced frees the footer ("${heldByGus}", after ${gusAfter.toFixed(1)} s)`);
+  await b.waitForTimeout(Math.max(0, 4500 - (Date.now() - droppedAt)));
+  const lateHeld = await heldTag(b), second = [await repairs(b), await repairs(c)];
+  await busy;
+  await a.keyboard.press('Escape');
+  check(heldByGus.includes('Gus is editing') && freedGus && gusAfter < 12, `a tab whose line drops unannounced frees the footer ("${heldByGus}", after ${gusAfter.toFixed(1)} s)`);
+  check(solo.join() === 'true,false,false' && lateHeld === 'Anna is editing' && !second.some(Boolean),
+    `a busy repairer stays present for the others ("${lateHeld}", repairers before ${solo}, others after 4.5 s ${second})`);
   await gus.close();
 
   await a.click('.statusbar .collab-btn');
