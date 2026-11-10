@@ -6,16 +6,19 @@ import { ySyncPlugin, ySyncPluginKey, yUndoPlugin, yUndoPluginKey, prosemirrorTo
 import { StateStep, commitState, stateValues } from './extensions/stateHistory';
 import { pmUndo, setUndoBackend, STATE_RESTORED, type UndoBackend } from './undo';
 import { describeTransaction, resetHistoryLog, syncHistoryLog } from '../utils/historyLog.svelte';
+import { attachRepair, bindingOf, isRepairClient, ownClientId } from './yjsRepair';
+import { attachRescue } from './yjsRescue';
 
 // Origin of the side stores' writes into the shared doc (a `StateStep` mirrored).
 const STATE_ORIGIN = Symbol('stateHistory');
 
 // Whether a block holds live content of another client. y-tiptap's own filter keeps every
-// paragraph with content, so undoing an Enter left the new paragraph behind.
+// paragraph with content, so undoing an Enter left the new paragraph behind. A repair's
+// items (an empty cell padding a row) belong to no one.
 function holdsForeign(type: Y.AbstractType<unknown>, me: number): boolean {
   for (let it = type._start; it; it = it.right) {
     if (it.deleted) continue;
-    if (it.id.client !== me) return true;
+    if (it.id.client !== me && !isRepairClient(it.id.client)) return true;
     if (it.content instanceof Y.ContentType && holdsForeign(it.content.type, me)) return true;
   }
   return false;
@@ -98,6 +101,7 @@ export type YjsUndo = {
  * ids) in the map `state`, both under one manager that only takes back this client's edits.
  */
 export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
+  ownClientId(ydoc);
   const frag = ydoc.getXmlFragment('body');
   const side = ydoc.getMap('state');
   // The client that brings the text brings every store too, entry by entry, before the
@@ -211,7 +215,11 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
   };
 
   editor.unregisterPlugin('history');
-  editor.registerPlugin(ySyncPlugin(frag));
+  const sync = ySyncPlugin(frag);
+  const binding = bindingOf(sync);
+  const detachRepair = attachRepair(editor, ydoc, binding);
+  editor.registerPlugin(sync);
+  const detachRescue = attachRescue(editor, ydoc, binding, um);
   editor.registerPlugin(yUndoPlugin({ undoManager: um }));
   editor.on('beforeTransaction', before);
   editor.on('transaction', mirror);
@@ -224,6 +232,8 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
     ydoc, undoManager: um,
     applyState: () => apply([...side.keys()]),
     detach() {
+      detachRepair();
+      detachRescue();
       side.unobserve(restore);
       editor.off('beforeTransaction', before);
       editor.off('transaction', mirror);
