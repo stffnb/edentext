@@ -20,6 +20,7 @@
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
   import { supportsFsAccess, saveDocument, openOdt, allowWrite, protect, mimeOf } from './lib/export/saveFile';
   import { takeOpenedFile } from './lib/storage/desktopFiles';
+  import { withHeldImages } from './lib/storage/imageStore';
   import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFile, forgetRecentFiles, pruneRecentFiles, getHandle, type RecentFile } from './lib/storage/recentFiles';
   import { isProtected, decryptPackage, WRONG_PASSWORD } from './lib/crypto/protect';
   import { convertUnsupportedImages } from './lib/import/imageFormats';
@@ -1411,13 +1412,20 @@
     return [pageMargins, pageOrientation, hfOpts(), exportLanguage(), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarksOn, spacingAtPageStart, embeddedFonts(), lineGrid, balanceSpaces, recordLock()] as const;
   }
 
+  // In a session the document names its pictures by key; a file gets the pictures, never a
+  // key, so one still on its way stops the save.
+  function withPictures(json: TiptapNode): TiptapNode {
+    const { json: full, missing } = withHeldImages(json);
+    if (missing) throw new Error(t().collab.picturesPending);
+    return full;
+  }
   async function buildBytes(kind: DocumentFormat, json: TiptapNode): Promise<Uint8Array> {
     if (kind === 'docx') {
       const { buildDocx } = await import('./lib/export/docx');
-      return buildDocx(editor ? withRenderedBoxHeights(editor.view) as TiptapNode : json, ...exportArgs());
+      return buildDocx(withPictures(editor ? withRenderedBoxHeights(editor.view) as TiptapNode : json), ...exportArgs());
     }
     const { buildOdt } = await import('./lib/export/odt');
-    return buildOdt(json, ...exportArgs());
+    return buildOdt(withPictures(json), ...exportArgs());
   }
 
   async function handleSave() {
@@ -1646,6 +1654,13 @@
     collabShown = s;
     if (s === 'invalid' || s === 'full' || s === 'version' || s === 'unreachable' || s === 'failing') collabOpen = true;
   });
+  // So does a picture no one here could send.
+  let collabMissing = 0;
+  $effect(() => {
+    const n = collabView?.missing ?? 0;
+    if (n > collabMissing) collabOpen = true;
+    collabMissing = n;
+  });
   function collabHost(): SessionHost {
     return {
       relay: collabRelay!,
@@ -1680,7 +1695,7 @@
     joined = true;
     void ensureUserName().then((named) => {
       if (!named || !editor) return;
-      if (!keyBytes(key)) collabView = { status: 'invalid', peers: [], link: location.href };
+      if (!keyBytes(key)) collabView = { status: 'invalid', peers: [], link: location.href, missing: 0 };
       else collabSession = joinSession(editor, key, collabHost());
       exposeCollab();
     });

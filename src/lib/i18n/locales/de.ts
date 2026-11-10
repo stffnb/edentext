@@ -197,6 +197,8 @@ const de: Messages = {
     leaveHint: 'Ihre Kopie bleibt offen. Die anderen können ohne Sie weitermachen.',
     you: 'Sie',
     peers: (n: number) => `${n} ${n === 1 ? 'weitere Person' : 'weitere Personen'} dabei`,
+    missing: (n: number) => n === 1 ? 'Ein Bild ließ sich nicht holen, weil gegangen ist, wer es hatte. Es bleibt ein grauer Kasten, bis jemand dazukommt, der es hat.' : `${n} Bilder ließen sich nicht holen, weil gegangen ist, wer sie hatte. Sie bleiben graue Kästen, bis jemand dazukommt, der sie hat.`,
+    picturesPending: 'Einige Bilder sind noch nicht bei Ihnen angekommen und würden in der Datei fehlen. Versuchen Sie es noch einmal, sobald sie zu sehen sind.',
     status: {
       connecting: 'Verbinde…',
       waiting: 'Warte auf jemanden, der das Dokument geöffnet hat…',

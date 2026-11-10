@@ -7,6 +7,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { dropCursor } from '@tiptap/pm/dropcursor';
 import { closeGroup } from '../undo';
+import { IDB_SRC, awaitImage, shownSrc } from '../../storage/imageStore';
 import { cmToPx } from '../../storage/pageMargins';
 import { readVerticalMargins, placeFrameSoon, placeInColumn, freeDragX, sinkSideFloat } from './pageBreaks';
 
@@ -423,7 +424,9 @@ export const Image = Node.create({
 
   addAttributes() {
     return {
-      src: { default: null },
+      // In a session a large picture's src is its key (`collab/pictures.ts`): the copy, the
+      // clipboard and the vector PDF get the picture.
+      src: { default: null, renderHTML: (a) => (a.src == null ? {} : { src: shownSrc(a.src) }) },
       alt: { default: '' },
       // px @96dpi and CW degrees; kept off the width/height attrs (rendered via
       // inline style / data-rotation) so one place drives the node view.
@@ -738,6 +741,8 @@ function imageLinePlugin(): Plugin {
   });
 }
 
+const WAITING_SRC = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1" preserveAspectRatio="none"><rect width="1" height="1" fill="#e5e7eb"/></svg>')}`;
+
 // Node view: a bounding-box wrapper (reserves the rotated footprint for text flow)
 // holds a centered, rotated "rotor" with the <img>, eight resize handles (corners
 // aspect-locked, edges single-axis) and a rotate grip — all rotating with the image.
@@ -754,6 +759,7 @@ class ImageView {
   // Live offsets while a free drag runs (cm), added to the node's own by offX/offY.
   private dragBy: { x: number; y: number } | null = null;
   private dragX = 0;
+  private unwait: (() => void) | null = null;
 
   constructor(node: PMNode, editor: Editor, getPos: () => number, view: EditorView) {
     this.node = node;
@@ -768,7 +774,7 @@ class ImageView {
     this.rotor.className = 'image-rotor';
 
     this.img = document.createElement('img');
-    this.img.src = (node.attrs.src as string) ?? '';
+    this.showSrc();
     this.img.alt = (node.attrs.alt as string) ?? '';
     // Pasted/HTML images may arrive without dimensions; adopt their natural size
     // (capped to the text column) so every image is explicitly sized.
@@ -1044,8 +1050,25 @@ class ImageView {
       offsets => { if (offsets) this.commit(offsets); });
   }
 
+  // A session key whose picture has not arrived shows a grey box of the picture's size,
+  // so nothing reflows, until it comes.
+  private showSrc(): void {
+    this.unwait?.();
+    this.unwait = null;
+    const shown = shownSrc(this.node.attrs.src);
+    const waiting = shown.startsWith(IDB_SRC);
+    this.dom.classList.toggle('image-waiting', waiting);
+    const url = waiting ? WAITING_SRC : shown;
+    if (this.img.getAttribute('src') !== url) this.img.src = url;
+    if (waiting) this.unwait = awaitImage(shown.slice(IDB_SRC.length), () => { this.unwait = null; this.showSrc(); });
+  }
+
+  destroy(): void {
+    this.unwait?.();
+  }
+
   private adoptNaturalSize(): void {
-    if (this.attrW() != null && this.attrH() != null) return;
+    if (this.attrW() != null && this.attrH() != null || this.dom.classList.contains('image-waiting')) return;
     const nw = this.img.naturalWidth;
     const nh = this.img.naturalHeight;
     if (!nw || !nh) return;
@@ -1168,8 +1191,7 @@ class ImageView {
     const drawn = node.attrs === this.node.attrs;
     this.node = node;
     if (drawn) return true;
-    const src = (node.attrs.src as string) ?? '';
-    if (this.img.getAttribute('src') !== src) this.img.src = src;
+    this.showSrc();
     this.img.alt = (node.attrs.alt as string) ?? '';
     this.applyLayout(this.attrW(), this.attrH(), this.attrRot());
     this.applyCrop();

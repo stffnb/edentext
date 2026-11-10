@@ -43,6 +43,7 @@
       </div>
     {:else}
       <p class="status" data-status={view.status}>{t().collab.status[view.status]}</p>
+      {#if view.missing}<p data-missing>{t().collab.missing(view.missing)}</p>{/if}
       {#if view.status !== 'invalid'}
         <label class="row">
           <span>{t().collab.link}</span>
