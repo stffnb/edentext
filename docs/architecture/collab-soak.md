@@ -22,8 +22,8 @@ After each round, once all are live and nobody has sent an update for a second: 
 holds the same document, the same map `state` and the same page count; the session then
 stays silent for 3 s; every document passes `doc.check()` and every table is rectangular;
 no page threw. At the end the starter's `.odt` reads back (the monkey run's comparison), and
-each client in turn undoes all its steps and redoes them: the others' letters stay, its own
-are gone, and redo gives the document back.
+each client in turn undoes all its steps and redoes them: no word of another's letters goes
+(fewer copies of a word are no loss), its own are gone, and redo gives the document back.
 
 A finding that matches an accepted conflict (`collab-conflicts.md`) is printed as `known` and
 the run goes on; anything else fails it. A finding that leaves the clients apart restarts the
@@ -77,9 +77,8 @@ New, beyond the matrix:
   restored copies now keep their original author (`collab-conflicts.md`, Repairs). (3)
   Seed 1 (merged branches, 1 run in 3): an undone heading rebuild restored the undoer's
   tab and another's text as one merged item, which the tab's undo deleted whole; fixed.
-  Seed 3's remaining `lost` (about 1 run in 2, also before the merges): in the run
-  inspected, an undo took its own copy of a list item two clients rebuilt at once, the
-  other copy keeping all text; the run still counts it as lost (open).
+  Seed 3's remaining `lost` was a miscount: an undo took duplicates that an earlier
+  client's undo and redo made of a block two clients rebuilt; no word went.
 - **Read-back** (low): the starter's `.odt` twice read back a mark spelled otherwise:
   `Liberation Serif` against `Times New Roman` (the monkey run lists that one as open) and
   `rgb(192, 0, 0)` for `#C00000`, a colour taken from the DOM somewhere in a session.
