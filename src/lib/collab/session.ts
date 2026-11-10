@@ -5,6 +5,7 @@ import { yCursorPlugin, yCursorPluginKey } from '@tiptap/y-tiptap';
 import { attachYjsUndo, type YjsUndo } from '../editor/undoYjs';
 import { openChannel, type ChannelStatus } from './channel';
 import { keyBytes, newKey, sessionLink } from './key';
+import { shareZones } from './zones.svelte';
 
 // A shared session: the Yjs doc behind the body (`undoYjs.ts`) goes over a sealed channel
 // to the others in the room. Frames are one kind byte and its payload; the relay sees none
@@ -239,6 +240,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   });
 
   awareness.setLocalStateField('user', host.user());
+  const unshareZones = shareZones(awareness);
   if (bound) bind(bound);
 
   // Leaving tells the others at once; a closed tab drops out after awareness's timeout.
@@ -258,6 +260,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       goodbye();
       channel.close();
       awareness.off('update', onPresence);
+      unshareZones();
       awareness.destroy();
       ydoc.off('update', onUpdate);
       if (binding) editor.unregisterPlugin(yCursorPluginKey);

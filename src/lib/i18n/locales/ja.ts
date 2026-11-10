@@ -974,6 +974,7 @@ const ja: Messages = {
     chapterTitle: 'そのページの章の見出しを挿入',
     done: '完了',
     doneTitle: 'ヘッダー/フッターの編集を終了',
+    heldBy: (name: string) => `${name} さんが編集中`,
   },
   paragraphDialog: {
     title: '段落',

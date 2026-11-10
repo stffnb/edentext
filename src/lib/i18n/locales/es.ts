@@ -973,6 +973,7 @@ const es: Messages = {
     chapterTitle: 'Insertar el título del capítulo que corre en la página',
     done: 'Listo',
     doneTitle: 'Terminar la edición del encabezado o el pie',
+    heldBy: (name: string) => `${name} lo está editando`,
   },
   paragraphDialog: {
     title: 'Párrafo',

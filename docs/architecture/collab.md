@@ -1,8 +1,7 @@
 # Collaboration
 
 Shared editing runs on Yjs through `@tiptap/y-tiptap`. This file covers why, and what is
-built: a session started from the File menu and joined through a link, over a relay that
-cannot read it.
+built: a session from the File menu, joined through a link, over a relay that cannot read it.
 
 ## Engine
 
@@ -22,10 +21,8 @@ corpus documents. Both passed every one, so the choice is about cost, not feasib
 - **When to revisit.** If the relay has to keep state anyway, for instance sessions that
   live on without anyone in them, the main reason for Yjs is gone.
 
-Of what the spike left untested, the session tests now cover Firefox and WebKit, long
-documents, IME composition (Chromium), image drag, the assistant's edits, four clients and
-clients with different line heights; clients of different versions refuse each other.
-Large pictures are measured (Sessions, Checks) and cost more than their size.
+Since the spike, the session tests also cover Firefox and WebKit, long documents, IME,
+image drag, the assistant, four clients and different line heights (Sessions, Checks).
 
 Spike results (Chromium, dev server, one machine; `pm` is `prosemirror-collab`):
 
@@ -155,9 +152,11 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in 
   (`attachYjsUndo`). A tab opened from the link waits for a peer and refuses another
   version. It loads that file through `applyImport` (fonts, layout, styles, zones,
   properties), binds the body to the received fragment, and applies the stores already
-  in the map `state` (`applyState`). Store changes after that travel through the same
-  map as the undo uses. A header or footer is written as a whole zone, so two people in
-  one zone at the same moment get the last writer's.
+  in the map `state` (`applyState`); later store changes travel through that map.
+- **Headers and footers** go as whole zones, so one person edits a zone at a time
+  (`collab/zones.svelte.ts`, awareness field `zone`): the others see the name at it and
+  cannot open it. Opened at once, the higher client id yields and may lose its first keys.
+  A closed tab frees it at once; a client gone without `pagehide`, after awareness's 30 s.
 - **Storage.** The starter keeps editing its own document, and autosave stores everyone's
   edits there. A joining tab is `volatile`: it keeps no copy and claims no slot. Its
   slot id would be the first document's, so `main.ts` also skips the prune there. The
@@ -182,9 +181,10 @@ index's page numbers do not flip between the two. The assistant on the starter, 
 provider the script answers itself (`page.route`, no model and no network): its text
 replacement and page setup reach the joiner; with both recording, the joiner keeps the
 assistant's marks and adds none of its own; the starter's undo takes back the page setup,
-then the text, on both sides. A relay dropping every connection after its welcome makes the
-line `failing` (dialog, 4–5 connections in 12 s) until it holds. `tests/relay.test.ts` and
-`tests/collab.test.ts` cover rooms, limits, sealing and parts. Both scripts run in
+then the text, on both sides. B cannot open a header A holds; opened together, the lower id
+keeps it; a closed tab frees it. A relay dropping every connection after its welcome makes
+the line `failing` (dialog, 4–5 connections in 12 s) until it holds. `tests/relay.test.ts`
+and `tests/collab.test.ts` cover rooms, limits, sealing and parts. Both scripts run in
 Chromium, Firefox and WebKit (`BROWSER`, as the CI's browser matrix).
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. The relay
