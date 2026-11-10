@@ -175,6 +175,8 @@ leaves both at B's doc alone (in the B's undo rows, B's undo takes its last step
 
 - **Overlapping merges** keep every text and settle on one rectangular table, but A's undo
   cannot give back B's merge of a cell A's merge deleted.
+- **Two rebuilds of one block at once** (both make it a list item, say) leave a copy
+  each, with the text in it; an undo takes back its maker's copy and leaves the other.
 - **Rescue placement** is by text: where the update's new text repeats the run's
   surroundings more than once, the first best match wins.
 - **Typing over a range the other client's paste rewrote in place:** y-tiptap writes the
