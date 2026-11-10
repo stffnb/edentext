@@ -5,7 +5,7 @@
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { ROOT, MOD, checker, previewServer, openApp } from '../browser.mjs';
+import { ROOT, MOD, checker, collectErrors, previewServer, openApp } from '../browser.mjs';
 
 const PORT = +(process.env.SMOKE_PORT ?? 4180);
 const { check, failures } = checker();
@@ -261,7 +261,7 @@ try {
 
   // Embed mode: a host page on another origin drives the editor through public/embed.js.
   const host = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
-  host.on('pageerror', (err) => pageErrors.push(`[embed] ${err}`));
+  collectErrors(host, pageErrors, '[embed] ');
   host.on('dialog', (d) => d.accept());
   // A real server on another site (127.0.0.1 vs localhost): a routed page counts as a
   // public one, which Chromium may not let frame a loopback address.

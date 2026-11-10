@@ -2,14 +2,14 @@
 // undo takes back only its own client's edits, in the text, the page layout and a header,
 // and an undo while recording leaves no recorded change. Concurrent changes to different
 // styles or layout fields both stay. Dev server, any engine (BROWSER).
-import { MOD, checker, devServer, openApp } from '../browser.mjs';
+import { MOD, checker, collectErrors, devServer, openApp } from '../browser.mjs';
 
 const PORT = +(process.env.COLLAB_PORT ?? 4391);
 const { check, failures } = checker();
 const server = await devServer(PORT);
 const { browser, page: a, pageErrors } = await openApp(PORT);
 const b = await (await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' })).newPage();
-b.on('pageerror', (e) => pageErrors.push(`B: ${e}`));
+collectErrors(b, pageErrors, 'B: ');
 b.on('dialog', (d) => d.accept());
 
 const open = async (page, mode) => {
@@ -269,6 +269,6 @@ try {
   check(false, `collab undo run threw: ${e}`);
 } finally {
   await browser.close();
-  server?.kill?.();
+  if (server) process.kill(-server.pid);
 }
 process.exit(failures.length ? 1 : 0);

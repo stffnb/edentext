@@ -1,7 +1,7 @@
 // Several tabs, several documents: the one thing jsdom cannot show, since it has no
 // second tab. Two pages in one browser context share localStorage and have their own
 // sessionStorage each — exactly what two tabs of the same browser are.
-import { checker, previewServer, openApp } from '../browser.mjs';
+import { checker, collectErrors, previewServer, openApp } from '../browser.mjs';
 
 const PORT = +(process.env.TABS_PORT ?? 4183);
 const URL = `http://localhost:${PORT}/`;
@@ -18,7 +18,7 @@ const text = (p) => p.textContent('.tiptap');
 async function openTab() {
   const p = await ctx.newPage();
   p.on('dialog', (d) => d.accept());
-  p.on('pageerror', (err) => pageErrors.push(String(err)));
+  collectErrors(p, pageErrors);
   await p.goto(URL, { waitUntil: 'load' });
   await p.waitForSelector('.tiptap', { timeout: 15_000 });
   return p;
