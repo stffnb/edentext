@@ -25,7 +25,7 @@ corpus documents. Both passed every one, so the choice is about cost, not feasib
 Of what the spike left untested, the session tests now cover Firefox and WebKit, long
 documents, IME composition (Chromium), image drag, the assistant's edits, four clients and
 clients with different line heights; clients of different versions refuse each other.
-Large pictures remain open.
+Large pictures are measured (Sessions, Checks) and cost more than their size.
 
 Spike results (Chromium, dev server, one machine; `pm` is `prosemirror-collab`):
 
@@ -185,8 +185,16 @@ cover the relay's rooms and limits and the sealing. Both scripts run in Chromium
 and WebKit (`BROWSER`, each leg of the CI's browser matrix).
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Pictures
-travel twice to a joiner (start file and fragment) and stay in the Yjs history. Two
+cost more than their size, and past `MAX_FRAME` a session stops syncing. Two
 clients of different EdenText versions refuse each other. IME input is driven in Chromium
 only. Seen once each and not again on a rerun: in Firefox a joiner not live within 20 s
 on a just-started dev server; in WebKit an uncaught "Fetch API cannot load
 …/loadFailure.ts due to access control checks" on the starter.
+Pictures (2026-11-10, Chromium, a 1.73 MB JPEG data-URI added to `13-images`): `src` goes
+into the fragment as it is. Inserting sends 1.73 MB, resizing 0.4 kB; a drag deletes and
+inserts the node, so it sends it again, and the mover's doc keeps both copies (3.48 MB)
+for its undo, also after a delete. A joiner asks twice (welcome, `onOpen`) and each client
+answers in full: 6.99 MB for the late joiner then. A picture there at the start comes in
+the start file and the fragment. An answer is one frame, so the doc must fit `MAX_FRAME`
+(about 9.5 MB of start picture); past it the relay closes the sender and the channel
+resends forever, while every client shows `live` (tried with 11.7 and 22 MB).
