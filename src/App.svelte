@@ -892,9 +892,10 @@
       n?.type === 'textBox' ? { type: 'paragraph', content: [n] } : n) } as Content;
   }
 
-  // Reset every document side-car to its default; the $effects persist these.
-  // Shared by New and New-from-template, which then assigns the template's own values.
-  function resetDocumentState() {
+  // Every document side-car at its default; the $effects persist these. New, a template
+  // and an opened file start from it, the latter two then assign only what they name,
+  // so nothing a file leaves out carries over from the previous document.
+  function resetDocumentSettings() {
     zoneEpoch++;
     hfActive = null;
     headerDoc = null;
@@ -924,8 +925,6 @@
     lineGrid = { ...DEFAULT_LINE_GRID };
     balanceSpaces = false;
     foldMarks = false;
-    // A new document is one page, so the page grid would show only empty cells.
-    pageColumns = 1;
     // Recording belongs to the document, so a new one starts off, as it does in both.
     setRecordLock(null);
     setRecordChanges(false);
@@ -941,6 +940,14 @@
     // Styles and note settings live in the document, so a new one starts from the built-ins
     setStyleSheet(builtinStyleSheet());
     setNoteSettings(DEFAULT_NOTE_SETTINGS);
+  }
+
+  // A blank document: the settings plus the page grid and the embedded fonts, which an
+  // opened file replaces itself.
+  function resetDocumentState() {
+    resetDocumentSettings();
+    // A new document is one page, so the page grid would show only empty cells.
+    pageColumns = 1;
     clearEmbeddedFonts();
     noteEmbeddedFonts([]);
     void clearEmbeddedFontStore();
@@ -1178,14 +1185,16 @@
       void saveEmbeddedFonts(result.fonts);
       noteEmbeddedFonts(result.fonts.map((f) => f.family));
 
+      // Table styles are not stored in the file (ODF has no banding), so the registry
+      // survives the reset — an imported table finds its style again by name.
+      const tableStyles = styleSheet().table;
       loadContent(content); // onUpdate fires → autosave
       documentEpoch++;
-      zoneEpoch++;
       resetHistory();
+      resetDocumentSettings();
       // Adopt the opened file's name as the document name (drives the save filename).
       if (sourceName) documentName = docNameOfFile(sourceName);
-      // Adopt the document's page geometry; the $effects persist it and
-      // Editor.svelte re-paginates.
+      // Adopt the document's page geometry; what it leaves out stays at the default.
       if (result.margins) pageMargins = result.margins;
       if (result.orientation) pageOrientation = result.orientation;
       if (result.format) pageFormat = result.format;
@@ -1205,15 +1214,13 @@
       setRecordChanges(result.recordChanges);
       if (result.recordChanges) void ensureUserName();
       // Adopt the document's spell-check language (the $effect switches the
-      // controller + loads its dictionary). null = file declared none; keep ours.
+      // controller + loads its dictionary). null = file declared none: the default.
       if (result.language) {
         documentLanguage = result.language;
         documentLanguageOther = result.languageOther ?? null;
       }
-      // Adopt the document's named paragraph styles (built-ins + the file's own). Table
-      // styles are not stored in the file (ODF has no banding), so the registry survives —
-      // an imported table finds its style again by name.
-      setStyleSheet({ ...result.styles, table: styleSheet().table });
+      // Adopt the document's named paragraph styles (built-ins + the file's own).
+      setStyleSheet({ ...result.styles, table: tableStyles });
       setNoteSettings(result.notes);
       docProps = result.props;
       saveDocProperties(docProps);
