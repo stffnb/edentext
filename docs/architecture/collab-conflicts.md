@@ -38,7 +38,8 @@ stayed local: the editors drifted apart over the same Yjs body, and a later loca
 the repair under its own author. Now a microtask after such a transaction writes the
 document into the fragment, with a client id hashed from the Yjs state (state vector and
 delete set) and the document: two clients repairing the same state write the same items,
-and Yjs keeps one. Repairs therefore have to depend on the document alone. The id's low
+and Yjs keeps one. Repairs therefore have to depend on the document alone, and so does the
+diff that writes them: it starts from an empty node mapping, not the binding's. The id's low
 byte (`0xa5`) marks it; an update holding only repair items gets no repair in reply, which
 bounds two clients whose repairs differ (a value read from their own settings) to one round.
 `holdsForeign` (the undo's delete filter) ignores repair items. A table row longer than most
@@ -112,6 +113,11 @@ update did not throw. **kept**: B's text at its place (A's deliberate deletion e
   cannot give back B's merge of a cell A's merge deleted.
 - **Rescue placement** is by text: where the update's new text repeats the run's
   surroundings more than once, the first best match wins.
+- **Yjs's undo on a long history** can put text back apart on two clients: with the deleted
+  items one row of the matrix left behind, A's undo of a join restored `…lazy dog.` on A and
+  `…lazy og.d` on B, the same state vectors, nothing pending. The redone items' origins
+  depend on the undoing client's tombstones. The script starts every row from fresh docs;
+  the soak run would show it as documents apart over the same Yjs body.
 - **Derived values read from a client's own state** (notes counted per page, from that
   client's pagination) can differ between clients; the repair rule above stops the replies
   after one round, and the editors can then show different numbers until the next edit.

@@ -203,7 +203,12 @@ try {
   for (const c of CASES) {
     if (ONLY && !ONLY.test(c.name)) continue;
     await record(b, false);
+    // Each pair from fresh Yjs docs: the history one leaves (Yjs keeps deleted items) would
+    // steer where the next one's undo puts things back.
+    for (const p of [a, b]) await p.evaluate(() => window.__yjsUndo.detach());
     await a.evaluate((d) => window.__h.ed.commands.setContent({ type: 'doc', content: d }), c.doc);
+    await attach(a, 1);
+    await attach(b, 2, await a.evaluate(() => [...window.__undoYjs.Y.encodeStateAsUpdate(window.__yjsUndo.ydoc)]));
     for (let i = 0; i < 3; i++) { await a.waitForTimeout(250); await relay(); }
     await thrown();
     for (const p of [a, b]) await p.evaluate(() => { window.__yjsUndo.undoManager.clear(); window.__yOut.length = 0; });

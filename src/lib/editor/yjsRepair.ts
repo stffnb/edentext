@@ -1,7 +1,7 @@
 import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
 import * as Y from 'yjs';
-import { ySyncPluginKey, type ProsemirrorBinding } from '@tiptap/y-tiptap';
+import { updateYFragment, ySyncPluginKey, type ProsemirrorBinding } from '@tiptap/y-tiptap';
 
 // What the plugins repair after a transaction the binding dispatched (another client's
 // update, an undo) reaches the shared doc too: y-tiptap writes nothing while it applies one.
@@ -66,11 +66,15 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding): () 
     const doc = editor.state.doc;
     const own = ydoc.clientID;
     const id = repairClient(ydoc, JSON.stringify(doc.toJSON()));
+    // The diff starts from an empty node mapping: the binding's own depends on this client's
+    // history and steers which items the diff writes, which must be the same everywhere.
+    const meta = { mapping: new Map(), isOMark: new Map() };
     binding.mux(() => ydoc.transact((t) => {
       t.meta.set('addToHistory', false);
       ydoc.clientID = id;
-      try { binding._prosemirrorChanged(doc); } finally { ydoc.clientID = own; }
+      try { updateYFragment(ydoc, binding.type, doc, meta); } finally { ydoc.clientID = own; }
     }, REPAIR_ORIGIN));
+    meta.mapping.forEach((node, type) => binding.mapping.set(type, node));
   };
   const onTransaction = ({ transaction, appendedTransactions }: { transaction: Transaction; appendedTransactions: Transaction[] }) => {
     if (!(transaction.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean } | undefined)?.isChangeOrigin) return;
