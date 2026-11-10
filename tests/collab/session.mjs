@@ -568,8 +568,9 @@ try {
   await a.click('dialog[open] [data-cmd="collabLeave"]');
   const told2 = await g.waitForSelector('dialog[open] [data-missing]', { timeout: 30_000 }).then(() => true, () => false);
   const own = await a.evaluate(() => /"src":"data:image\/png/.test(JSON.stringify(document.querySelector('.tiptap-host .tiptap').editor.getJSON())));
-  check(told2 && await status(g) === 'live' && await g.locator('.tiptap-host .tiptap .image-waiting').count() === 1 && own,
-    `a picture whose only holder left shows as a grey box with a note, the session stays live (${told2}, ${await status(g)}), and the holder keeps it (${own}, ${aMissing} missing there)`);
+  const boxes = await g.locator('.tiptap-host .tiptap .image-waiting').count();
+  check(told2 && await status(g) === 'live' && boxes === 1 && own,
+    `a picture whose only holder left shows as a grey box (${boxes}) with a note, the session stays live (${told2}, ${await status(g)}), and the holder keeps it (${own}, ${aMissing} missing there)`);
 
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (err) {

@@ -91,8 +91,10 @@ export function sessionPictures(w: Wire): Pictures {
     const lostBefore = lost.size;
     for (const [key, x] of wants) {
       if (heldImage(key)) { wants.delete(key); continue; }
-      if (x.to !== null || !peers.length) continue;
+      if (x.to !== null) continue;
       const next = peers.find((p) => !x.tried.has(p));
+      // Nobody known yet waits for the others' awareness; everyone asked, it is lost.
+      if (next === undefined && !peers.length && !x.tried.size) continue;
       if (next === undefined) { wants.delete(key); lost.add(key); continue; }
       x.tried.add(next);
       x.to = next;
