@@ -198,6 +198,8 @@ const zhHans: Messages = {
     leaveHint: '您的副本仍保持打开。其他人可以在您离开后继续。',
     you: '您',
     peers: (n: number) => `另有 ${n} 人在线`,
+    missing: (n: number) => `有 ${n} 张图片无法获取：拥有它们的人已经离开。在拥有这些图片的人加入之前，它们显示为灰色方框。`,
+    picturesPending: '部分图片尚未传到您这里，文件中会缺少它们。请等图片显示后再试。',
     status: {
       connecting: '正在连接…',
       waiting: '正在等待已打开此文档的人…',

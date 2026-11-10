@@ -199,6 +199,8 @@ const zhHant: Messages = {
     leaveHint: '您的副本仍保持開啟。其他人可以在您離開後繼續。',
     you: '您',
     peers: (n: number) => `另有 ${n} 人在線`,
+    missing: (n: number) => `有 ${n} 張圖片無法取得：擁有它們的人已經離開。在擁有這些圖片的人加入之前，它們會顯示為灰色方框。`,
+    picturesPending: '部分圖片尚未傳到您這裡，檔案中會缺少它們。請等圖片顯示後再試一次。',
     status: {
       connecting: '正在連線…',
       waiting: '正在等待已開啟此文件的人…',
