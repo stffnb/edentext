@@ -54,11 +54,8 @@
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { userName, setUserName } from './lib/storage/userName.svelte';
   import { embedded, attribution, whiteLabel, collabKey } from './lib/embed/mode';
-  import { relayReady, relayUrl } from './lib/collab/channel';
   import CollabDialog from './lib/components/CollabDialog.svelte';
-  import { keyBytes } from './lib/collab/key';
-  import { joinSession, startSession, type Session, type SessionHost, type SessionView } from './lib/collab/session';
-  import { AUTHOR_COLORS, authorColors } from './lib/editor/authorColors';
+  import { collabRelay, collabView, joinCollab, leaveCollab, probeRelay, startCollab, type SessionApp } from './lib/collab/appSession.svelte';
   import { startBridge, notify, type EmbedSettings, type ExportFormat } from './lib/embed/bridge';
   import { printMarkup } from './lib/storage/printMarkup.svelte';
   import { commentsInPane, changesInPane, markupAttrs, markupView, setShowChanges, setShowComments } from './lib/storage/markup.svelte';
@@ -529,11 +526,7 @@
   $effect(() => saveToolbarCategory(toolbarCategory));
 
   // Where shared sessions go (`collab/channel.ts`); none embedded or without a relay.
-  let collabRelay: string | null = $state(null);
-  if (!embedded) {
-    const url = relayUrl();
-    void relayReady(url).then((ok) => { if (ok) collabRelay = url; });
-  }
+  probeRelay();
 
   // The island's command search: the ribbon's index, offered while the control is there —
   // a contextual tab's commands while its floating toolbar is shown.
@@ -541,7 +534,7 @@
   let islandCommands = $derived(searchableCommands([
     ...RIBBON_COMMANDS,
     ...styleCommands(visibleStyles(styleSheet(), showAllStyles()).map((s) => s.name)),
-  ], islandShown, { ai: aiEnabled(), volatile, embedded, collab: !!collabRelay }).filter((c) => !RIBBON_ONLY.has(c.id)));
+  ], islandShown, { ai: aiEnabled(), volatile, embedded, collab: !!collabRelay() }).filter((c) => !RIBBON_ONLY.has(c.id)));
 
   // Where the island keeps a command: its own place if it moved one, the ribbon's tab otherwise.
   function islandPlace(c: RibbonCommand): { category: Category | null; via?: string } {
@@ -1515,59 +1508,24 @@
     if (embedded) notify('dirty', { dirty });
   });
 
-  // A shared session (docs/architecture/collab.md): the starter's document goes along as
-  // the start file; a tab opened from the link (`#collab=`) joins and keeps no copy.
-  let collabSession: Session | null = null;
-  let collabView: SessionView | null = $state(null);
+  // A shared session (`collab/appSession.svelte.ts`); here only what the reader sees of it.
   let collabOpen = $state(false);
+  const sessionView = $derived(collabView());
   // A joiner hears of a session that cannot go on: a bad link, a full room, another version.
   $effect(() => {
-    const s = collabView?.status;
+    const s = sessionView?.status;
     if (s === 'invalid' || s === 'full' || s === 'version' || s === 'unreachable') collabOpen = true;
   });
-  function collabHost(): SessionHost {
-    return {
-      relay: collabRelay!,
-      snapshot: () => buildBytes('odt', editor!.getJSON() as TiptapNode),
-      load: (bytes, name) => applyImport(bytes, null, `${name || 'document'}.odt`, { warn: () => {} }),
-      name: () => documentName,
-      user: () => {
-        const name = userName();
-        let h = 0;
-        for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-        return { name, color: authorColors(editor!.state.doc).get(name) ?? AUTHOR_COLORS[h % AUTHOR_COLORS.length] };
-      },
-      onChange: (view) => { collabView = view; },
-    };
-  }
-  async function startCollab() {
-    if (!editor || !collabRelay || collabSession || !(await ensureUserName())) return;
-    collabSession = await startSession(editor, collabHost());
-    exposeCollab();
-  }
-  function leaveCollab() {
-    collabSession?.leave();
-    collabSession = null;
-    collabView = null;
-    // A joiner's reload would join again; the copy it holds now is its own.
-    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
-  }
-  let joined = false;
+  const sessionApp: SessionApp = {
+    editor: () => editor,
+    snapshot: () => buildBytes('odt', editor!.getJSON() as TiptapNode),
+    load: (bytes, name) => applyImport(bytes, null, `${name || 'document'}.odt`, { warn: () => {} }),
+    name: () => documentName,
+    named: ensureUserName,
+  };
   $effect(() => {
-    const key = collabKey;
-    if (!key || !collabRelay || !editor || joined) return;
-    joined = true;
-    void ensureUserName().then((named) => {
-      if (!named || !editor) return;
-      if (!keyBytes(key)) collabView = { status: 'invalid', peers: [], link: location.href };
-      else collabSession = joinSession(editor, key, collabHost());
-      exposeCollab();
-    });
+    if (collabKey && collabRelay() && editor) joinCollab(sessionApp, collabKey);
   });
-  function exposeCollab() {
-    // The session test reads the state and the frame counts (tests/collab/session.mjs).
-    if (import.meta.env.DEV) (window as unknown as { __collab: unknown }).__collab = { session: collabSession, view: () => collabView };
-  }
 
   // Print via the browser's print dialog using the exact raster of the editor (tables,
   // header/footer, band masks intact) — print or "Save as PDF". Used by the printer
@@ -1852,7 +1810,7 @@
       onAbout={() => (aboutOpen = true)}
       onSettings={() => (settingsOpen = true)}
       onDocProperties={() => (docPropsOpen = true)}
-      onCollab={collabRelay ? () => (collabOpen = true) : undefined}
+      onCollab={collabRelay() ? () => (collabOpen = true) : undefined}
       onBrowserDocuments={() => (browserDocsOpen = true)}
       onProtect={() => (passwordSetOpen = true)}
       hasPassword={docProtected}
@@ -2010,7 +1968,7 @@
               <button class="theme-option" data-cmd="docProperties" onclick={() => { exportMenuOpen = false; docPropsOpen = true; }} role="menuitem">
                 <span>{t().docProps.title}</span>
               </button>
-              {#if collabRelay}
+              {#if collabRelay()}
                 <button class="theme-option" data-cmd="collab" onclick={() => { exportMenuOpen = false; collabOpen = true; }} role="menuitem">
                   <span>{t().collab.menu}</span>
                 </button>
@@ -2310,10 +2268,10 @@
     </div>
     <div class="sb-right">
     {#if embedded && attribution}<PoweredBy />{/if}
-    {#if collabView && collabView.status !== 'closed'}
-      <button class="collab-btn" data-status={collabView.status} onclick={() => (collabOpen = true)} title={t().collab.status[collabView.status]}>
-        {#each collabView.peers as p (p.id)}<span class="collab-dot" style:background={p.color} title={p.name}></span>{/each}
-        {collabView.status === 'live' ? t().collab.peers(collabView.peers.length) : t().collab.status[collabView.status]}
+    {#if sessionView && sessionView.status !== 'closed'}
+      <button class="collab-btn" data-status={sessionView.status} onclick={() => (collabOpen = true)} title={t().collab.status[sessionView.status]}>
+        {#each sessionView.peers as p (p.id)}<span class="collab-dot" style:background={p.color} title={p.name}></span>{/each}
+        {sessionView.status === 'live' ? t().collab.peers(sessionView.peers.length) : t().collab.status[sessionView.status]}
       </button>
     {/if}
     <BusyIndicator {editor} task={busyTask} progress={busyProgress} />
@@ -2360,7 +2318,7 @@
   <ResumeCard show={!volatile && tick >= 0 && !!editor && !isDocNonEmpty()} onShowAll={() => (browserDocsOpen = true)} />
   <PromptDialog />
   <DocPropertiesDialog bind:open={docPropsOpen} props={docProps} onApply={(p) => { docProps = p; saveDocProperties(p); }} />
-  <CollabDialog bind:open={collabOpen} view={collabView} onStart={() => void startCollab()} onLeave={() => { leaveCollab(); collabOpen = false; }} />
+  <CollabDialog bind:open={collabOpen} view={sessionView} onStart={() => void startCollab(sessionApp)} onLeave={() => { leaveCollab(); collabOpen = false; }} />
   <PasswordDialog
     bind:open={passwordSetOpen}
     mode="set"
