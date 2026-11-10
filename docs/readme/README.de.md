@@ -28,21 +28,21 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../hero-dark.webp">
-  <img src="../hero-light.webp" alt="EdenText bearbeitet einen zweispaltigen Newsletter, die Funktionen sind markiert">
+  <img src="../hero-light.webp" alt="Ein zweispaltiger Newsletter in EdenText, die Funktionen sind markiert">
 </picture>
 
 ---
 
-EdenText ist eine leistungsstarke Textverarbeitung im Browser – für alles von der schnellen Notiz bis zum ganzen Buch. Kein Server, kein Konto: Alles wird lokal verarbeitet, die Dokumente verlassen nie den eigenen Rechner. Einfach den Link öffnen oder EdenText als App installieren und offline nutzen. Der erste Download ist für die meisten Sprachen etwa 2 MB groß, Wörterbücher und Schriften werden erst bei Bedarf geladen[^1]. Die Oberfläche gibt es auf Englisch, Deutsch, Spanisch, Französisch, Italienisch, Portugiesisch, Griechisch, Russisch, Ukrainisch, Japanisch und Chinesisch (vereinfacht und traditionell).
+EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von der schnellen Notiz bis zum ganzen Buch. Kein Server, kein Konto: Alles wird lokal verarbeitet, die Dokumente verlassen nie den eigenen Rechner. Einfach den Link öffnen oder EdenText als App installieren und offline nutzen. Der erste Download ist für die meisten Sprachen etwa 2 MB groß; Wörterbücher und Schriften werden erst bei Bedarf geladen[^1]. Die Oberfläche gibt es auf Englisch, Deutsch, Spanisch, Französisch, Italienisch, Portugiesisch, Griechisch, Russisch, Ukrainisch, Japanisch und Chinesisch (vereinfacht und traditionell).
 
 > [!NOTE]
-> EdenText ist noch in der **Beta** und wird laufend weiterentwickelt. Tests und
-> Round-Trip-Prüfungen verifizieren die Funktionalität. Nichtsdestotrotz sind Bugs in der
-> aktuellen Phase nicht ausgeschlossen. Von wichtigen Dokumenten daher bitte
-> Sicherungskopien behalten. Im Browser hebt EdenText außerdem die letzten drei Fassungen
+> EdenText ist noch in der **Beta**-Phase und wird laufend weiterentwickelt. Tests und
+> Round-Trip-Prüfungen sichern die Funktion ab; trotzdem lassen sich Fehler in dieser
+> Phase nicht ausschließen. Von wichtigen Dokumenten daher bitte Sicherungskopien
+> aufbewahren. Im Browser hebt EdenText außerdem die letzten drei Fassungen
 > des geöffneten Dokuments auf, falls es sich einmal nicht laden lässt.
 >
-> **Einen Fehler gefunden, oder sieht ein Dokument falsch aus?** Bitte
+> **Einen Fehler gefunden oder ein Dokument, das falsch aussieht?** Bitte
 > [ein Issue erstellen](https://github.com/stffnb/edentext/issues), jede Meldung hilft.
 > Besonders willkommen sind Dokumente, die in EdenText anders aussehen als in Word,
 > LibreOffice oder WPS Office. Mit der Datei (oder einer gekürzten Kopie) im Anhang wird
@@ -50,7 +50,7 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser – für alles von
 
 <a href="https://edentext.app"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="../showcase/thesis-dark.png">
-  <img src="../showcase/thesis.png" alt="EdenText bearbeitet eine Abschlussarbeit: nummerierte Kapitel, Formeln und eine Kopfzeile">
+  <img src="../showcase/thesis.png" alt="Eine Abschlussarbeit in EdenText: nummerierte Kapitel, Formeln und eine Kopfzeile">
 </picture></a>
 
 ## Funktionen
@@ -69,7 +69,7 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser – für alles von
   Zitate und Literaturverzeichnis, Stichwortverzeichnis, Formeln (LaTeX)
 - **Überarbeiten** – Änderungsverfolgung und Kommentar-Threads in Sprechblasen am Rand,
   Vergleichen und Zusammenführen mit einer anderen Datei,
-  druckbare Markierungen, Rechtschreibprüfung (Englisch, Deutsch, Spanisch, Französisch, Italienisch,
+  druckbares Markup, Rechtschreibprüfung (Englisch, Deutsch, Spanisch, Französisch, Italienisch,
   Portugiesisch, Griechisch, Russisch und Ukrainisch), Synonyme (dieselben Sprachen
   ohne Griechisch), Grammatikprüfung (Englisch)
 - **Optionaler KI-Assistent** – mit einem frei wählbaren Anbieter oder einem lokalen Modell;
@@ -78,7 +78,7 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser – für alles von
 - **Private by Design** – Dokumente verlassen nie den Rechner, alles läuft lokal; als
   installierte App auch offline. Der Editor selbst sendet nichts, außer bei eingeschaltetem
   KI-Assistenten an den gewählten Anbieter. Dokumente werden automatisch im Browser
-  gesichert; unter „Zuletzt benutzte Dokumente“ lässt sich einstellen, dass geschlossene
+  gesichert; unter „Zuletzt verwendete Dokumente“ lässt sich einstellen, dass geschlossene
   Dokumente beim nächsten Start gelöscht oder gar nicht erst gespeichert werden. Ein
   privates Fenster hinterlässt nach dem Schließen keine Spuren
 - **Jeder aktuelle Browser** – in Chrome und Edge schreibt „Speichern“ zurück in die
@@ -169,15 +169,14 @@ Release-Download und eigene Builds enthalten keinen Zähler).
 ## In andere Anwendungen einbinden
 
 Andere Webanwendungen können EdenText in einem iframe anzeigen und das Dokument selbst
-verwalten. Mit `?embed=1` blendet der Editor seine eigene Dateiverwaltung aus. Der Helfer
-`embed.js`, den jede Instanz mitliefert, lädt Dateien hinein und holt sie als ODT, DOCX
+verwalten. Mit `?embed=1` blendet der Editor seine eigene Dateiverwaltung aus. Das Hilfsskript
+`embed.js`, das jede Instanz mitliefert, lädt Dateien hinein und holt sie als ODT, DOCX
 oder PDF zurück; siehe [docs/architecture/embed.md](../../docs/architecture/embed.md).
-Der Host kann außerdem Sprache, Theme und Akzentfarbe festlegen und den KI-Assistenten abschalten.
-Im
-Embed-Modus zeigt der Editor das EdenText-Logo und den Hinweis „Powered by EdenText“, die
-nach den AGPL-Bedingungen erhalten bleiben müssen ([NOTICE.md](../../NOTICE.md)) und nur
+Die einbettende Anwendung kann außerdem Sprache, Theme und Akzentfarbe festlegen und den KI-Assistenten abschalten.
+Im Embed-Modus zeigt der Editor das EdenText-Logo und den Hinweis „Powered by EdenText“.
+Beides muss nach den AGPL-Bedingungen erhalten bleiben ([NOTICE.md](../../NOTICE.md)); nur
 ein White-Label-Build unter der [kommerziellen Lizenz](../../LICENSE.commercial.md)
-weglässt (`VITE_EDENTEXT_ATTRIBUTION=off`).
+lässt es weg (`VITE_EDENTEXT_ATTRIBUTION=off`).
 
 ## Architektur
 

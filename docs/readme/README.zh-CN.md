@@ -7,8 +7,8 @@
 </h1>
 
 <p align="center">
-  <strong>功能强大的文字处理软件——打开网址即可使用。</strong><br>
-  免费 · 开源 · 隐私优先
+  <strong>功能齐全的文字处理软件，在浏览器中即开即用</strong><br>
+  免费 · 开源 · Private by Design
 </p>
 
 <p align="center">
@@ -53,24 +53,24 @@ EdenText 是一款基于网页、功能强大的文字处理软件，从随手�
 ## 功能
 
 - **真正的页面排版**——A4/Letter 页面、页边距、页眉页脚、脚注、分栏、页码与行号、
-  水印；为书籍提供对称页边距以及章节从右页开始
+  水印；排书时可用对称页边距，并让每章从右页开始
 - **打开并保存 `.odt` 和 `.docx`**，可导出 PDF；支持模板（`.ott`/`.dotx`）和信函模板库
-  （DIN 5008）；两种格式均支持密码保护文件
+  （DIN 5008）；两种格式均支持密码保护
 - **与 Word、LibreOffice 和 WPS Office 兼容**——文档保持原有版式；
-  自动化往返转换和排版测试以 LibreOffice 为基准进行验证
+  自动化的往返转换测试和排版测试会对照 LibreOffice 检验这一点
 - **样式**——支持继承的段落、字符、表格和列表样式，章节编号
 - **表格**——表格样式、排序以及类似电子表格的公式
-- **论文所需的一切**——目录、题注、交叉引用、引文与参考文献、索引、公式（LaTeX）
-- **审阅工具**——修订跟踪和带页边批注框的讨论式批注，与其他文件比较和合并，可打印的修订标记，拼写检查
+- **论文所需的一切**——目录、题注、交叉引用、引文与书目、索引、公式（LaTeX）
+- **审阅工具**——修订，显示在页边批注框中、可逐条回复的批注，与其他文件比较和合并，可打印的修订标记，拼写检查
   （英语、德语、西班牙语、法语、意大利语、葡萄牙语、希腊语、俄语和乌克兰语），同义词
   （以上除希腊语外的所有语言），语法检查（英语）
-- **可选的 AI 助手**——使用你自己的服务商或本地模型；回答关于文档的问题，并以修订
-  的形式编辑文档。可以关闭；请求直接发送给服务商，不经过任何 EdenText 服务器
-- **隐私优先**——文档绝不会离开你的电脑，所有处理均在本地完成；可作为可安装的应用
-  离线使用。编辑器本身不发送任何内容，只有开启 AI 助手后，才会把请求发给你选择的服务商。文档会自动
+- **可选的 AI 助手**——使用你自己的服务提供商或本地模型；回答关于文档的问题，并以修订
+  的形式编辑文档。可以关闭；请求直接发送给服务提供商，不经过 EdenText 服务器
+- **隐私优先（Private by Design）**——文档绝不会离开你的电脑，所有处理均在本地完成；可安装为应用
+  离线使用。编辑器本身不发送任何内容，只有开启 AI 助手后，才会把请求发给你选择的服务提供商。文档会自动
   保存在浏览器中；在“最近使用的文档”里可以设置已关闭的文档在下次启动时删除，或者干脆
   不保存。隐私窗口关闭后不会留下任何痕迹
-- **支持所有现代浏览器**——在 Chrome 和 Edge 中，"保存"会写回打开的文件；在 Brave 中
+- **支持所有现代浏览器**——在 Chrome 和 Edge 中，“保存”会写回打开的文件；在 Brave 中
   启用 `brave://flags/#file-system-access-api` 后同样如此；其他浏览器每次保存都是一次
   下载，想自己选保存位置的话，在浏览器设置里打开“下载前询问每个文件的保存位置”
 
@@ -85,7 +85,7 @@ EdenText 是一款基于网页、功能强大的文字处理软件，从随手�
 
 <table>
 <tr>
-<td width="50%" valign="top"><a href="../showcase/thesis-review.png"><img src="../showcase/thesis-review.png" alt="修订和批注" width="100%"></a><br><b>审阅</b>——修订跟踪、页边的讨论式批注、草稿水印</td>
+<td width="50%" valign="top"><a href="../showcase/thesis-review.png"><img src="../showcase/thesis-review.png" alt="修订和批注" width="100%"></a><br><b>审阅</b>——修订、页边可逐条回复的批注、草稿水印</td>
 <td width="50%" valign="top"><a href="../showcase/book-spread.png"><img src="../showcase/book-spread.png" alt="对页显示的书籍" width="100%"></a><br><b>书籍</b>——A5，对称页边距。每章从右页开始，页眉在左页显示书名、在右页显示章节名，页码从第一章开始编号</td>
 </tr>
 <tr>
@@ -99,15 +99,15 @@ EdenText 是一款基于网页、功能强大的文字处理软件，从随手�
 每个发行版还附带使用 Electron 构建的未签名桌面安装包：
 
 - **macOS**——`EdenText-<version>-arm64.dmg`（Apple 芯片）或 `EdenText-<version>.dmg`（Intel）。
-  将应用拖入"应用程序"文件夹。由于未签名，首次请通过右键 → 打开来启动，或运行
+  将应用拖入“应用程序”文件夹。由于未签名，首次请通过右键 → 打开来启动，或运行
   `xattr -d com.apple.quarantine /Applications/EdenText.app`。
 - **Windows**——`EdenText-Setup-<version>.exe`。SmartScreen 会提示发布者未知：
-  点击"更多信息"→"仍要运行"。
+  点击“更多信息”→“仍要运行”。
 - **Linux**——`EdenText-<version>.AppImage`（先 `chmod +x`，再运行）或 `.deb`
   （`sudo apt install ./edentext_*.deb`）。
 
-桌面应用可以从文件管理器打开文档并直接保存回原文件，无需打印对话框即可写出 PDF，
-并在启动时提示是否有新版本。
+桌面应用可以从文件管理器打开文档并直接保存回原文件，不经打印对话框直接生成 PDF，
+有新版本时还会在启动时提示。
 
 ## 开发
 
@@ -148,10 +148,10 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 ## 嵌入
 
 其他 Web 应用可以在 iframe 中显示 EdenText，并自行管理文档。使用 `?embed=1` 时，编辑器会隐藏自身的
-文件管理。每个实例都提供辅助脚本 `embed.js`，用于载入文件，并以 ODT、DOCX 或 PDF 格式取回；详见
+文件管理。每个实例都提供辅助脚本 `embed.js`，用于加载文件，并以 ODT、DOCX 或 PDF 格式取回；详见
 [docs/architecture/embed.md](../../docs/architecture/embed.md)。宿主应用还可以设置界面语言、主题和强调色，并关闭 AI 助手。在嵌入模式下，编辑器会显示
 EdenText 徽标和“Powered by EdenText”标识，AGPL 条款要求保留二者（[NOTICE.md](../../NOTICE.md)），
-只有依据[商业许可](../../LICENSE.commercial.md)的白标构建（`VITE_EDENTEXT_ATTRIBUTION=off`）才会省略。
+只有依据[商业许可证](../../LICENSE.commercial.md)的白标构建（`VITE_EDENTEXT_ATTRIBUTION=off`）才会省略。
 
 ## 架构
 
@@ -182,7 +182,7 @@ EdenText 完全在浏览器中运行：`App.svelte` 围绕 TipTap 文档模型�
 
 感谢所有通过想法、问题报告、测试和反馈提供帮助的人。除 GitHub 上列出的贡献者外，我还要感谢：
 
-Patrick R.、[@Deleh](https://github.com/Deleh)、[@lukasmwerner](https://github.com/lukasmwerner)、[@JinJieBeWater](https://github.com/JinJieBeWater)、[@farragoo](https://github.com/farragoo), [@sbvelinga](https://github.com/sbvelinga)
+Patrick R.、[@Deleh](https://github.com/Deleh)、[@lukasmwerner](https://github.com/lukasmwerner)、[@JinJieBeWater](https://github.com/JinJieBeWater)、[@farragoo](https://github.com/farragoo)、[@sbvelinga](https://github.com/sbvelinga)
 
 <p>
 <a href="https://github.com/stffnb"><img src="https://github.com/stffnb.png?size=96" width="48" alt="@stffnb"/></a>

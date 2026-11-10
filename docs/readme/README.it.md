@@ -37,9 +37,9 @@ EdenText è un elaboratore di testi potente che funziona nel browser, adatto a t
 
 > [!NOTE]
 > EdenText è ancora in **beta** ed è in pieno sviluppo. Test automatici e prove di
-> andata e ritorno tra i formati ne verificano il funzionamento; in questa fase però
+> round-trip tra i formati ne verificano il funzionamento; in questa fase però
 > non si possono escludere errori, quindi conserva una copia dei documenti importanti.
-> Il browser mantiene inoltre le ultime tre versioni del documento aperto, nel caso
+> Il browser conserva inoltre le ultime tre versioni del documento aperto, nel caso
 > in cui non si riesca più a caricarlo.
 >
 > **Hai trovato un bug o un documento che non viene visualizzato bene?**
@@ -61,20 +61,20 @@ EdenText è un elaboratore di testi potente che funziona nel browser, adatto a t
 - **Apre e salva `.odt` e `.docx`** ed esporta in PDF; modelli (`.ott`/`.dotx`)
   e una raccolta di lettere (DIN 5008); file protetti da password in entrambi i formati
 - **Compatibile con Word, LibreOffice e WPS Office**: i documenti mantengono il loro
-  layout, e test automatici di andata e ritorno e di impaginazione lo verificano con LibreOffice
+  layout, e test automatici di round-trip e di impaginazione lo verificano con LibreOffice
 - **Stili**: stili di paragrafo, di carattere, di tabella e di elenco con ereditarietà,
   numerazione dei capitoli
 - **Tabelle** con stili, ordinamento e formule come in un foglio di calcolo
 - **Tutto ciò che serve per una tesi**: sommario, didascalie, riferimenti incrociati,
   citazioni e bibliografia, indice analitico, formule (LaTeX)
-- **Strumenti di revisione**: revisioni e commenti con risposte nei fumetti a margine,
+- **Strumenti di revisione**: revisioni e commenti con risposte nelle aree commenti a margine,
   confronto e unione con un altro file, stampa delle revisioni, controllo ortografico
   (inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo e ucraino),
   sinonimi (in tutte queste lingue tranne il greco), controllo grammaticale (inglese)
 - **Assistente IA facoltativo**: con il provider che preferisci o con un modello locale;
   risponde a domande sul documento e lo modifica sotto forma di revisioni. Si può
   disattivare; le richieste vanno direttamente al provider, senza passare da un server EdenText
-- **Privacy by design**: i documenti non lasciano mai il computer e tutta
+- **Private by design**: i documenti non lasciano mai il computer e tutta
   l'elaborazione avviene in locale; installato come app funziona anche offline.
   L'editor non invia nulla, a meno che non si attivi l'assistente IA, che invia i dati al provider scelto.
   I documenti vengono salvati automaticamente nel browser; in Documenti recenti si può
@@ -83,7 +83,7 @@ EdenText è un elaboratore di testi potente che funziona nel browser, adatto a t
 - **Qualsiasi browser recente**: in Chrome ed Edge, Salva scrive direttamente nel file
   aperto, e lo stesso vale per Brave dopo aver attivato `brave://flags/#file-system-access-api`;
   negli altri casi ogni salvataggio è un download, quindi conviene attivare
-  "Chiedi dove salvare ciascun file" nelle impostazioni del browser per scegliere la posizione
+  “Chiedi dove salvare ciascun file” nelle impostazioni del browser per scegliere la posizione
 
 I casi in cui il browser impedisce a EdenText di riprodurre esattamente Word o
 LibreOffice sono descritti in [Known limitations](../../CHANGELOG.md#known-limitations).
@@ -161,16 +161,16 @@ Su localhost tutto funziona come con HTTPS.
 Su [edentext.app](https://edentext.app) c'è una versione ospitata su GitHub Pages,
 liberamente accessibile a tutti (conta le visite in forma anonima con GoatCounter,
 ospitato nell'UE, senza cookie né indirizzi IP salvati; l'app desktop, l'immagine
-container, il download della release e le build proprie non contengono alcun contatore).
+container, il download della release e le copie compilate in proprio non contengono alcun contatore).
 
-## Integrazione
+## Incorporamento
 
 Un'altra applicazione web può mostrare EdenText in un iframe e gestire da sé il documento.
 Con `?embed=1` l'editor rinuncia alla propria gestione dei file. Lo script `embed.js`,
 fornito da ogni istanza, vi carica i file e li restituisce in formato ODT, DOCX o PDF;
 vedi [docs/architecture/embed.md](../architecture/embed.md).
-L'applicazione ospite può anche impostare lingua, tema e colore d'accento e disattivare l'assistente IA.
-In modalità integrata l'editor
+L'applicazione ospitante può anche impostare lingua, tema e colore principale e disattivare l'assistente IA.
+In modalità incorporata l'editor
 mostra il logo di EdenText e la dicitura “Powered by EdenText”, che i termini della AGPL
 impongono di mantenere ([NOTICE.md](../../NOTICE.md)) e che solo una build white label con la
 [licenza commerciale](../../LICENSE.commercial.md) omette (`VITE_EDENTEXT_ATTRIBUTION=off`).
@@ -225,8 +225,8 @@ Patrick R., [@Deleh](https://github.com/Deleh), [@lukasmwerner](https://github.c
 
 Copyright © 2026 Steffen Becker · Made in Germany
 
-[AGPL-3.0](../../LICENSE), con un termine aggiuntivo ai sensi della sezione 7(b) per la
-modalità integrata ([NOTICE.md](../../NOTICE.md)). Per i casi d'uso a cui la AGPL non si
+[AGPL-3.0](../../LICENSE), con una clausola aggiuntiva ai sensi della sezione 7(b) per la
+modalità incorporata ([NOTICE.md](../../NOTICE.md)). Per i casi d'uso a cui la AGPL non si
 adatta è disponibile una [licenza commerciale](../../LICENSE.commercial.md). I caratteri e
 i dati linguistici inclusi mantengono le proprie licenze: vedi
 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
