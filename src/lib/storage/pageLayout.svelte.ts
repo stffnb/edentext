@@ -46,8 +46,7 @@ const FIELDS = {
   tabIntervalCm: field({ load: loadTabInterval, save: saveTabInterval, blank: () => DEFAULT_TAB_INTERVAL_CM, opened: (f) => f.tabIntervalCm || undefined }),
   spacingModel: field<SpacingModel>({ load: loadSpacingModel, save: saveSpacingModel, blank: () => 'add', opened: (f) => f.spacingModel }),
   spacingAtPageStart: field({ load: loadSpacingAtPageStart, save: saveSpacingAtPageStart, blank: () => true, opened: (f) => f.spacingAtPageStart !== false }),
-  // New leaves the page's direction as it is.
-  pageRtl: field({ load: loadPageRtl, save: savePageRtl, blank: (now) => now, opened: (f) => f.rtl }),
+  pageRtl: field({ load: loadPageRtl, save: savePageRtl, blank: () => false, opened: (f) => f.rtl }),
   hyphenate: field({ load: loadHyphenation, save: saveHyphenation, blank: () => false, opened: (f) => f.hyphenate }),
   balanceSpaces: field({ load: loadBalanceSpaces, save: saveBalanceSpaces, blank: () => false, opened: (f) => f.balanceSpaces }),
   foldMarks: field({ load: loadFoldMarks, save: saveFoldMarks, blank: () => false, opened: (f) => f.foldMarks === true }),
