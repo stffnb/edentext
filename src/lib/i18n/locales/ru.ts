@@ -987,6 +987,7 @@ const ru: Messages = {
     chapterTitle: 'Вставить заголовок главы на текущей странице',
     done: 'Готово',
     doneTitle: 'Закончить правку колонтитула',
+    heldBy: (name: string) => `Редактирует ${name}`,
   },
   paragraphDialog: {
     title: 'Абзац',

@@ -111,6 +111,26 @@ await a.route('http://mock.test/**', async (route) => {
     : { tool_calls: [tool(0, 'replace_text', { paragraph: 1, find: 'ipsum', replace: 'Slow' }), tool(1, 'set_page', { orientation: 'portrait' })] };
   await route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'text/event-stream' }, body: `data: ${JSON.stringify({ choices: [{ delta }] })}\n\ndata: [DONE]\n\n` });
 });
+// Header and footer zones: one person at a time, the others see who.
+const openZone = async (page, kind) => {
+  const z = page.locator(`.hf-layer .hf-zone.hf-${kind}:not(.hf-active)`).first();
+  await z.dblclick({ timeout: 5000 }).catch(() => z.dispatchEvent('dblclick'));
+  await page.waitForTimeout(400);
+};
+const editing = (page) => page.evaluate(() => /hf-(header|footer)/.exec(document.querySelector('.hf-active')?.className ?? '')?.[1] ?? '');
+const heldTag = (page) => page.evaluate(() => [...new Set([...document.querySelectorAll('.hf-held')].map((t) => t.textContent.trim()))].join('|'));
+// Holds back every frame a page sends until released, as a slow line would.
+const hold = (page, on) => page.evaluate((h) => {
+  if (!window.__held) {
+    const send = WebSocket.prototype.send;
+    window.__held = [];
+    window.__send = send;
+    WebSocket.prototype.send = function (d) { if (window.__holding) window.__held.push([this, d]); else send.call(this, d); };
+  }
+  window.__holding = h;
+  if (!h) for (const [w, d] of window.__held.splice(0)) if (w.readyState === 1) window.__send.call(w, d);
+}, on);
+const clientId = (page) => page.evaluate(() => window.__collab.session.awareness.clientID);
 const RECORD = '/src/lib/storage/trackChanges.svelte.ts';
 const record = (page, on) => page.evaluate(async ([url, v]) => (await import(url)).setRecordChanges(v), [RECORD, on]);
 // Every recorded change's author in the body.
@@ -205,6 +225,55 @@ try {
   await record(a, false);
   await record(b, false);
 
+  // A has the header open: B sees it held with A's name and cannot open it, but can open
+  // the footer. A's typing reaches B and goes back with A's undo on both; then B's turn.
+  await openZone(a, 'header');
+  await b.waitForTimeout(600);
+  const heldForB = await heldTag(b);
+  await openZone(b, 'header');
+  const bInHeader = await editing(b);
+  check(await editing(a) === 'header' && heldForB === 'Anna is editing' && !bInHeader, `B sees the header held by A and cannot open it ("${heldForB}", B in "${bInHeader}")`);
+  await openZone(b, 'footer');
+  check(await editing(b) === 'footer', 'B can open the footer meanwhile');
+  await b.keyboard.press('Escape');
+  await a.keyboard.type(' Xa');
+  await a.keyboard.press('Escape');
+  await settle(a);
+  [va, vb] = [await view(a), await view(b)];
+  check(same(va, vb) && vb.zones.includes('Xa') && !await heldTag(b), `A's header text reaches B and the header is free again (${brief(vb)})`);
+  await caret(a, 'end');
+  await a.keyboard.press(`${MOD}+z`);
+  await settle(a);
+  [va, vb] = [await view(a), await view(b)];
+  check(same(va, vb) && !va.zones.includes('Xa'), `A's undo takes back the header text on both (${brief(va)} | ${brief(vb)})`);
+  await openZone(b, 'header');
+  await b.keyboard.type(' Yb');
+  await b.keyboard.press('Escape');
+  await settle(b);
+  [va, vb] = [await view(a), await view(b)];
+  check(same(va, vb) && va.zones.includes('Yb'), `then B opens the header and its text reaches A (${brief(va)})`);
+
+  // Both open the header before either hears of the other: the higher client id gives way.
+  await hold(a, true);
+  await hold(b, true);
+  await Promise.all([openZone(a, 'header'), openZone(b, 'header')]);
+  await a.keyboard.type('Q');
+  await b.keyboard.type('R');
+  const opened = [await editing(a), await editing(b)];
+  await hold(a, false);
+  await hold(b, false);
+  await a.waitForTimeout(1200);
+  const kept = [await editing(a), await editing(b)];
+  const ids = [await clientId(a), await clientId(b)];
+  const [keeper, other] = kept[0] ? [a, b] : [b, a];
+  const lower = kept[0] ? ids[0] < ids[1] : ids[1] < ids[0];
+  check(opened.join() === 'header,header' && kept.filter(Boolean).length === 1 && lower && await heldTag(other),
+    `two opening the header at once: one keeps it, the lower client id (${opened} → ${kept}, tag "${await heldTag(other)}")`);
+  await keeper.keyboard.press('Escape');
+  await settle(a);
+  [va, vb] = [await view(a), await view(b)];
+  check(same(va, vb) && !await heldTag(a) && !await heldTag(b), `after that both documents are the same (${brief(va)} | ${brief(vb)})`);
+
   const size = await photo(a);
   await a.waitForTimeout(2500);
   [va, vb] = [await view(a), await view(b)];
@@ -293,6 +362,15 @@ try {
   const [vb5, vc5] = [await view(b), await view(c)];
   const both = (v) => v.text.includes(' Eta') && v.text.includes(' Zeta');
   check(vb5.json === vc5.json && both(vb5), `a late offer is pulled from and gets what it lacks (${both(vb5)}, ${both(vc5)})`);
+
+  // A tab closed with a zone open frees it for the others.
+  await openZone(f, 'footer');
+  await b.waitForTimeout(600);
+  const heldByFinn = await heldTag(b);
+  const closedAt = Date.now();
+  await f.close();
+  const freed = await b.waitForFunction(() => !document.querySelector('.hf-held'), null, { timeout: 40_000 }).then(() => true, () => false);
+  check(heldByFinn === 'Finn is editing' && freed, `a tab closed with the footer open frees it ("${heldByFinn}", after ${((Date.now() - closedAt) / 1000).toFixed(1)} s)`);
 
   await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');

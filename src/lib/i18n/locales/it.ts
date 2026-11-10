@@ -970,6 +970,7 @@ const it: Messages = {
     chapterTitle: 'Inserisci il titolo del capitolo in corso sulla pagina',
     done: 'Fine',
     doneTitle: 'Termina la modifica di intestazione/piè di pagina',
+    heldBy: (name: string) => `${name} lo sta modificando`,
   },
   paragraphDialog: {
     title: 'Paragrafo',

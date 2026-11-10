@@ -60,6 +60,7 @@
   import CollabDialog from './lib/components/CollabDialog.svelte';
   import { keyBytes } from './lib/collab/key';
   import { joinSession, startSession, type Session, type SessionHost, type SessionView } from './lib/collab/session';
+  import { zoneHolder } from './lib/collab/zones.svelte';
   import { AUTHOR_COLORS, authorColors } from './lib/editor/authorColors';
   import { startBridge, notify, type EmbedSettings, type ExportFormat } from './lib/embed/bridge';
   import { loadHyphenation, saveHyphenation } from './lib/storage/hyphenation';
@@ -364,6 +365,8 @@
   // so it closes first; a first-page or even-page zone switches its variant on.
   const aiHost: AiHost = {
     setZone(zone, variant, doc, section = 1) {
+      const holder = zoneHolder(`hf:${section - 1}:${zone}${variant === 'first' ? 'First' : variant === 'even' ? 'Even' : ''}`);
+      if (holder) throw new Error(`${holder.name} is editing this ${zone} in the shared session; try again once they are done`);
       hfActive = null;
       if (section > 1) {
         // A section without its own set shows section 1's, so a gap is filled with a copy.
