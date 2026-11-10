@@ -40,18 +40,16 @@
   import type { Node as PmNode } from 'prosemirror-model';
   import { clampZoom, wheelZoomFactor, MIN_ZOOM, MAX_ZOOM } from './lib/utils/zoom';
   import { loadTheme, saveTheme, applyTheme, loadToolbarExpanded, saveToolbarExpanded, loadToolbarCategory, saveToolbarCategory, loadChromeMode, saveChromeMode, loadFormattingMarks, saveFormattingMarks, loadFieldShading, saveFieldShading, loadPageLabels, savePageLabels, loadRuler, saveRuler, loadSplitView, saveSplitView, loadPageColumns, savePageColumns, ACCENTS, parseAccentHex, applyAccent, type Accent, type ThemeMode, type ChromeMode } from './lib/storage/theme';
-  import { loadPageMargins, savePageMargins, fitMargins, DEFAULT_MARGINS, type PageMargins } from './lib/storage/pageMargins';
-  import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
-  import { loadTabInterval, saveTabInterval, applyTabIntervalVar, DEFAULT_TAB_INTERVAL_CM } from './lib/storage/tabInterval';
-  import { loadSpacingModel, saveSpacingModel, loadSpacingAtPageStart, saveSpacingAtPageStart, type SpacingModel } from './lib/storage/spacingModel';
-  import { loadPageRtl, savePageRtl } from './lib/storage/writingMode';
-  import { loadPageFormat, savePageFormat, pageDimsCm, type PageFormat } from './lib/storage/pageFormat';
+  import { fitMargins } from './lib/storage/pageMargins';
+  import { applyTabIntervalVar } from './lib/storage/tabInterval';
+  import { pageDimsCm } from './lib/storage/pageFormat';
+  import { layout, layoutValues, setLayout, resetLayout, adoptLayout, persistLayout } from './lib/storage/pageLayout.svelte';
   import { setStyleSheet, showAllStyles, styleSheet } from './lib/styles/sheet.svelte';
   import { noteSettings, setNoteSettings } from './lib/storage/notes.svelte';
   import { OPEN_COMPARE_EVENT, OPEN_RECORD_LOCK_EVENT, recordChanges, recordLock, setRecordChanges, setRecordLock } from './lib/storage/trackChanges.svelte';
   import { DEFAULT_NOTE_SETTINGS, type NoteSettings } from './lib/storage/noteSettings';
   import { builtinStyleSheet, visibleStyles, type StyleFamily, type StyleSheet } from './lib/styles/styleSheet';
-  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, spreadMargins, DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, EMPTY_HF_SET, loadExtraHfSections, saveExtraHfSections, loadHfPictures, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
+  import { loadHfDoc, saveHfDoc, hfIsEmpty, spreadMargins, HF_ZONE_KEYS, EMPTY_HF_SET, loadExtraHfSections, saveExtraHfSections, loadHfPictures, type HfDoc, type HfZone, type HfSet } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, loadDocFormat, saveDocFormat, stripOdtExtension, docNameOfFile, sanitizeNameForFile, deriveFilename, filenameFor, loadDocProtected, saveDocProtected, loadDocFile, saveDocFile, type DocumentFormat } from './lib/storage/documentName';
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { userName, setUserName } from './lib/storage/userName.svelte';
@@ -62,13 +60,6 @@
   import { joinSession, startSession, type Session, type SessionHost, type SessionView } from './lib/collab/session';
   import { AUTHOR_COLORS, authorColors } from './lib/editor/authorColors';
   import { startBridge, notify, type EmbedSettings, type ExportFormat } from './lib/embed/bridge';
-  import { loadHyphenation, saveHyphenation } from './lib/storage/hyphenation';
-  import { loadPageNumbering, savePageNumbering, DEFAULT_PAGE_NUMBERING, type PageNumbering } from './lib/storage/pageNumbering';
-  import { loadPageDecor, savePageDecor, EMPTY_PAGE_DECOR, type PageDecor } from './lib/storage/pageDecor';
-  import { loadLineNumbering, saveLineNumbering, DEFAULT_LINE_NUMBERING, type LineNumbering } from './lib/storage/lineNumbering';
-  import { loadBalanceSpaces, saveBalanceSpaces } from './lib/storage/balanceSpaces';
-  import { loadLineGrid, saveLineGrid, DEFAULT_LINE_GRID, type LineGrid } from './lib/storage/lineGrid';
-  import { loadFoldMarks, saveFoldMarks } from './lib/storage/foldMarks';
   import { printMarkup } from './lib/storage/printMarkup.svelte';
   import { commentsInPane, changesInPane, markupAttrs, markupView, setShowChanges, setShowComments } from './lib/storage/markup.svelte';
   import { isAsianTag, loadDocumentLanguage, numberingScripts, loadDocumentLanguageOther, pickDocumentLanguage, saveDocumentLanguage, saveDocumentLanguageOther, odfFromLanguage, tagForLanguage, westernCode, type DocumentLanguage } from './lib/storage/documentLanguage';
@@ -153,12 +144,9 @@
   // First-page header/footer, shown on page 1 when the flag is on.
   let headerFirstDoc: HfDoc = $state(storedZones.headerFirst);
   let footerFirstDoc: HfDoc = $state(storedZones.footerFirst);
-  let differentFirstPage: boolean = $state(loadDifferentFirstPage());
   // Even-page header/footer, shown on even pages when the flag is on.
   let headerEvenDoc: HfDoc = $state(storedZones.headerEven);
   let footerEvenDoc: HfDoc = $state(storedZones.footerEven);
-  let differentOddEven: boolean = $state(loadDifferentOddEven());
-  let hfDistances: HfDistances = $state(loadHfDistances());
   // Sections past the first; the layer edits them in place, section 1 stays the
   // per-zone state above.
   let extraHfSections: HfSet[] = $state(loadExtraHfSections().map((z) => repairZones(z)));
@@ -288,14 +276,6 @@
   let splitView = $state(loadSplitView());
   let pageColumns = $state(loadPageColumns());
   let zoom = $state(clampZoom(parseInt(localStorage.getItem('edentext-zoom') ?? '100', 10)));
-  let pageMargins: PageMargins = $state(loadPageMargins());
-  let pageOrientation: Orientation = $state(loadOrientation());
-  let pageFormat: PageFormat = $state(loadPageFormat());
-  let tabIntervalCm = $state(loadTabInterval());
-  let spacingModel: SpacingModel = $state(loadSpacingModel());
-  let spacingAtPageStart = $state(loadSpacingAtPageStart());
-  // The page's text direction, from the file's own page setup (writingMode.ts).
-  let pageRtl = $state(loadPageRtl());
   // Bumped for each document opened (import, new); Editor hides the page until that
   // document's pagination holds still.
   let documentEpoch = $state(0);
@@ -319,33 +299,18 @@
   let browserDocsOpen = $state(false);
   let settingsOpen = $state(false);
   let settingsSection = $state<SettingsSection>('general');
-  let hyphenate = $state(loadHyphenation());
-  let pageNumbering: PageNumbering = $state(loadPageNumbering());
-  let pageDecor: PageDecor = $state(loadPageDecor());
-  let lineNumbering: LineNumbering = $state(loadLineNumbering());
-  let lineGrid: LineGrid = $state(loadLineGrid());
-  let balanceSpaces = $state(loadBalanceSpaces());
-  let foldMarks = $state(loadFoldMarks());
   // The switch keeps the user's wish; only A4 portrait, the paper DIN 5008 describes,
   // actually draws and exports the marks. Import and templates set the flag too, so
   // the check sits here, behind all three.
-  const foldMarksOn = $derived(foldMarks && pageFormat === 'A4' && pageOrientation === 'portrait');
+  const foldMarksOn = $derived(layout.foldMarks && layout.pageFormat === 'A4' && layout.pageOrientation === 'portrait');
 
   // The page setup, styles, note settings and language ride the body's undo stack, as in
   // both word processors (stateHistory.ts): every change, from whichever control, lands.
   const isZoneKey = (k: string) => (HF_ZONE_KEYS as readonly string[]).includes(k);
-  const layoutFields = () => ({
-    pageMargins, pageOrientation, pageFormat, hfDistances, differentFirstPage, differentOddEven,
-    pageNumbering, pageDecor, lineNumbering, lineGrid, tabIntervalCm, spacingModel,
-    spacingAtPageStart, pageRtl, hyphenate, balanceSpaces, foldMarks, sections: extraHfSections,
-  });
+  const layoutFields = () => ({ ...layoutValues(), sections: extraHfSections });
   // A section's zones are steps of their own (HeaderFooterLayer.svelte), so a step drops them.
   const layoutWatch = watchState('layout', () => editor, layoutFields, (to) => {
-    ({
-      pageMargins, pageOrientation, pageFormat, hfDistances, differentFirstPage, differentOddEven,
-      pageNumbering, pageDecor, lineNumbering, lineGrid, tabIntervalCm, spacingModel,
-      spacingAtPageStart, pageRtl, hyphenate, balanceSpaces, foldMarks,
-    } = to as ReturnType<typeof layoutFields>);
+    setLayout(to as ReturnType<typeof layoutFields>);
     // The section count is the snapshot's; each keeps the zones it has now.
     extraHfSections = (to.sections as HfSet[]).map((set, i) => {
       const zones = extraHfSections[i] ?? EMPTY_HF_SET;
@@ -375,26 +340,26 @@
         extraHfSections = out;
         return;
       }
-      if (variant === 'first') { differentFirstPage = true; if (zone === 'header') headerFirstDoc = doc; else footerFirstDoc = doc; }
-      else if (variant === 'even') { differentOddEven = true; if (zone === 'header') headerEvenDoc = doc; else footerEvenDoc = doc; }
+      if (variant === 'first') { layout.differentFirstPage = true; if (zone === 'header') headerFirstDoc = doc; else footerFirstDoc = doc; }
+      else if (variant === 'even') { layout.differentOddEven = true; if (zone === 'header') headerEvenDoc = doc; else footerEvenDoc = doc; }
       else if (zone === 'header') headerDoc = doc;
       else footerDoc = doc;
     },
     setPage({ format, orientation, margins, start, numberFormat, lineNumbers, hyphenation, foldMarks: fold, decor, properties }) {
-      if (format) pageFormat = format;
-      if (orientation) pageOrientation = orientation;
+      if (format) layout.pageFormat = format;
+      if (orientation) layout.pageOrientation = orientation;
       if (margins) {
-        const dims = pageDimsCm(pageFormat, pageOrientation);
-        const next = fitMargins({ ...pageMargins, ...margins }, dims.w, dims.h);
-        extraHfSections = spreadMargins(extraHfSections, pageMargins, next);
-        pageMargins = next;
+        const dims = pageDimsCm(layout.pageFormat, layout.pageOrientation);
+        const next = fitMargins({ ...layout.pageMargins, ...margins }, dims.w, dims.h);
+        extraHfSections = spreadMargins(extraHfSections, layout.pageMargins, next);
+        layout.pageMargins = next;
       }
-      if (start != null) pageNumbering = { ...pageNumbering, start };
-      if (numberFormat) pageNumbering = { ...pageNumbering, format: numberFormat };
-      if (lineNumbers != null) lineNumbering = { ...lineNumbering, on: lineNumbers };
-      if (hyphenation != null) hyphenate = hyphenation;
-      if (fold != null) foldMarks = fold;
-      if (decor) pageDecor = { ...pageDecor, ...decor };
+      if (start != null) layout.pageNumbering = { ...layout.pageNumbering, start };
+      if (numberFormat) layout.pageNumbering = { ...layout.pageNumbering, format: numberFormat };
+      if (lineNumbers != null) layout.lineNumbering = { ...layout.lineNumbering, on: lineNumbers };
+      if (hyphenation != null) layout.hyphenate = hyphenation;
+      if (fold != null) layout.foldMarks = fold;
+      if (decor) layout.pageDecor = { ...layout.pageDecor, ...decor };
       if (properties) { docProps = { ...docProps, ...properties }; saveDocProperties(docProps); }
     },
     setLanguage: (code) => setDocumentLanguage(code),
@@ -492,44 +457,10 @@
     if (editor) untrack(() => { if (!isDocNonEmpty()) pageColumns = 1; });
   });
 
-  $effect(() => {
-    savePageMargins(pageMargins);
-  });
+  persistLayout();
 
   $effect(() => {
-    saveOrientation(pageOrientation);
-  });
-
-  $effect(() => {
-    savePageFormat(pageFormat);
-  });
-
-  $effect(() => {
-    saveTabInterval(tabIntervalCm);
-    applyTabIntervalVar(tabIntervalCm);
-  });
-
-  $effect(() => {
-    saveSpacingModel(spacingModel);
-    saveSpacingAtPageStart(spacingAtPageStart);
-  });
-
-
-  $effect(() => {
-    savePageRtl(pageRtl);
-  });
-
-  $effect(() => {
-    saveHyphenation(hyphenate);
-  });
-
-  $effect(() => {
-    savePageNumbering(pageNumbering);
-    savePageDecor(pageDecor);
-    saveLineNumbering(lineNumbering);
-    saveLineGrid(lineGrid);
-    saveBalanceSpaces(balanceSpaces);
-    saveFoldMarks(foldMarks);
+    applyTabIntervalVar(layout.tabIntervalCm);
   });
 
   $effect(() => {
@@ -565,17 +496,6 @@
     saveHfDoc('footer', footerEvenDoc, 'even');
   });
 
-  $effect(() => {
-    saveDifferentOddEven(differentOddEven);
-  });
-
-  $effect(() => {
-    saveDifferentFirstPage(differentFirstPage);
-  });
-
-  $effect(() => {
-    saveHfDistances(hfDistances);
-  });
   $effect(() => {
     saveExtraHfSections(extraHfSections);
   });
@@ -847,8 +767,8 @@
   function hfSetOfState(): HfSet {
     return {
       header: headerDoc, footer: footerDoc,
-      headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage,
-      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven,
+      headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage: layout.differentFirstPage,
+      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven: layout.differentOddEven,
     };
   }
 
@@ -856,11 +776,11 @@
   function hfOpts() {
     return {
       header: headerDoc, footer: footerDoc,
-      headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage,
-      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven,
+      headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage: layout.differentFirstPage,
+      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven: layout.differentOddEven,
       pageCount: numPages,
       sections: [hfSetOfState(), ...extraHfSections],
-      headerDistanceCm: hfDistances.header, footerDistanceCm: hfDistances.footer,
+      headerDistanceCm: layout.hfDistances.header, footerDistanceCm: layout.hfDistances.footer,
     };
   }
 
@@ -920,26 +840,11 @@
     footerDoc = null;
     headerFirstDoc = null;
     footerFirstDoc = null;
-    differentFirstPage = false;
     headerEvenDoc = null;
     footerEvenDoc = null;
-    differentOddEven = false;
-    pageMargins = { ...DEFAULT_MARGINS };
-    pageOrientation = 'portrait';
-    pageFormat = 'A4';
-    tabIntervalCm = DEFAULT_TAB_INTERVAL_CM;
-    spacingModel = 'add';
-    spacingAtPageStart = true;
-    hfDistances = { ...DEFAULT_HF_DISTANCES };
+    resetLayout();
     extraHfSections = [];
     documentName = '';
-    hyphenate = false;
-    pageNumbering = { ...DEFAULT_PAGE_NUMBERING };
-    pageDecor = { ...EMPTY_PAGE_DECOR };
-    lineNumbering = { ...DEFAULT_LINE_NUMBERING };
-    lineGrid = { ...DEFAULT_LINE_GRID };
-    balanceSpaces = false;
-    foldMarks = false;
     // A new document is one page, so the page grid would show only empty cells.
     pageColumns = 1;
     // Recording belongs to the document, so a new one starts off, as it does in both.
@@ -988,15 +893,15 @@
     documentEpoch++;
     resetHistory();
     resetDocumentState();
-    if (data.format) pageFormat = data.format;
-    if (data.margins) pageMargins = { ...data.margins };
+    if (data.format) layout.pageFormat = data.format;
+    if (data.margins) layout.pageMargins = { ...data.margins };
     if (data.styles?.length) {
       const sheet = styleSheet();
       const paragraph = { ...sheet.paragraph };
       for (const s of data.styles) paragraph[s.name] = s;
       setStyleSheet({ ...sheet, paragraph });
     }
-    foldMarks = data.foldMarks === true;
+    layout.foldMarks = data.foldMarks === true;
     documentName = entry.name();
     markSaved();
     editor.commands.focus();
@@ -1200,22 +1105,9 @@
       resetHistory();
       // Adopt the opened file's name as the document name (drives the save filename).
       if (sourceName) documentName = docNameOfFile(sourceName);
-      // Adopt the document's page geometry; the $effects persist it and
+      // Adopt the document's page setup; the $effects persist it and
       // Editor.svelte re-paginates.
-      if (result.margins) pageMargins = result.margins;
-      if (result.orientation) pageOrientation = result.orientation;
-      if (result.format) pageFormat = result.format;
-      if (result.tabIntervalCm) tabIntervalCm = result.tabIntervalCm;
-      spacingModel = result.spacingModel;
-      spacingAtPageStart = result.spacingAtPageStart !== false;
-      pageRtl = result.rtl;
-      hyphenate = result.hyphenate;
-      pageNumbering = result.pageNumbering;
-      pageDecor = result.decor;
-      lineNumbering = result.lineNumbering;
-      lineGrid = result.lineGrid;
-      balanceSpaces = result.balanceSpaces;
-      foldMarks = result.foldMarks === true;
+      adoptLayout(result);
       // The file says whether it goes on recording; ours is not the setting that counts.
       setRecordLock(result.recordLock);
       setRecordChanges(result.recordChanges);
@@ -1239,15 +1131,9 @@
       footerDoc = result.footer;
       headerFirstDoc = result.headerFirst;
       footerFirstDoc = result.footerFirst;
-      differentFirstPage = result.differentFirstPage;
       headerEvenDoc = result.headerEven;
       footerEvenDoc = result.footerEven;
-      differentOddEven = result.differentOddEven;
       extraHfSections = (result.hfSections ?? []).slice(1);
-      hfDistances = {
-        header: result.headerDistanceCm ?? DEFAULT_HF_DISTANCES.header,
-        footer: result.footerDistanceCm ?? DEFAULT_HF_DISTANCES.footer,
-      };
       fileHandle = isTemplate ? null : handle;
       documentFormat = isDocx ? 'docx' : 'odt';
       // The file's password belongs to the document once it is actually the open one,
@@ -1405,7 +1291,7 @@
     return odf && { ...odf, other: documentLanguageOther };
   }
   function exportArgs() {
-    return [pageMargins, pageOrientation, hfOpts(), exportLanguage(), pageFormat, styleSheet(), tabIntervalCm, spacingModel, pageRtl, noteSettings(), docProps, hyphenate, pageNumbering, pageDecor, lineNumbering, recordChanges(), foldMarksOn, spacingAtPageStart, embeddedFonts(), lineGrid, balanceSpaces, recordLock()] as const;
+    return [layout.pageMargins, layout.pageOrientation, hfOpts(), exportLanguage(), layout.pageFormat, styleSheet(), layout.tabIntervalCm, layout.spacingModel, layout.pageRtl, noteSettings(), docProps, layout.hyphenate, layout.pageNumbering, layout.pageDecor, layout.lineNumbering, recordChanges(), foldMarksOn, layout.spacingAtPageStart, embeddedFonts(), layout.lineGrid, layout.balanceSpaces, recordLock()] as const;
   }
 
   async function buildBytes(kind: DocumentFormat, json: TiptapNode): Promise<Uint8Array> {
@@ -1557,8 +1443,8 @@
         source: editor.view.dom as HTMLElement,
         json,
         fileName: suggestedFilename(json),
-        orientation: pageOrientation,
-        pageFormat,
+        orientation: layout.pageOrientation,
+        pageFormat: layout.pageFormat,
         numPages,
         commentLabels: { heading: t().comments.title, onPage: t().comments.onPage },
         printMarkup: printMarkup(),
@@ -1698,8 +1584,8 @@
         source: editor.view.dom as HTMLElement,
         json,
         fileName: suggestedFilename(json),
-        orientation: pageOrientation,
-        pageFormat,
+        orientation: layout.pageOrientation,
+        pageFormat: layout.pageFormat,
         numPages,
         commentLabels: { heading: t().comments.title, onPage: t().comments.onPage },
         printMarkup: printMarkup(),
@@ -1725,17 +1611,17 @@
       await printPdf({
         json,
         fileName: suggestedFilename(json),
-        margins: pageMargins,
-        orientation: pageOrientation,
-        pageFormat,
+        margins: layout.pageMargins,
+        orientation: layout.pageOrientation,
+        pageFormat: layout.pageFormat,
         headerDoc,
         footerDoc,
         headerFirstDoc,
         footerFirstDoc,
-        differentFirstPage,
+        differentFirstPage: layout.differentFirstPage,
         headerEvenDoc,
         footerEvenDoc,
-        differentOddEven,
+        differentOddEven: layout.differentOddEven,
         commentLabels: { heading: t().comments.title, onPage: t().comments.onPage },
         printMarkup: printMarkup(),
         markupAttrs: markupAttrs(),
@@ -1869,8 +1755,8 @@
       // Cell alignment reads as broken whenever the content fills the box, so the
       // dump carries the spacing that decides that: the sheet and the model it uses.
       tableCells: getTableCellDebug(editor.view),
-      spacingModel,
-      spacingAtPageStart,
+      spacingModel: layout.spacingModel,
+      spacingAtPageStart: layout.spacingAtPageStart,
       styles: styleSheet(),
       colors: getColorDebug(editor),
     };
@@ -1927,19 +1813,19 @@
       {zoom}
       onZoom={setZoom}
       onDebugDump={import.meta.env.DEV ? handleDebugDump : undefined}
-      bind:tabIntervalCm
-      bind:pageMargins
-      bind:pageOrientation
-      bind:pageFormat
+      bind:tabIntervalCm={layout.tabIntervalCm}
+      bind:pageMargins={layout.pageMargins}
+      bind:pageOrientation={layout.pageOrientation}
+      bind:pageFormat={layout.pageFormat}
       bind:extraHfSections
-      bind:hfDistances
-      bind:differentFirstPage
-      bind:differentOddEven
-      bind:hyphenate
-      bind:pageNumbering
-      bind:pageDecor
-      bind:lineNumbering
-      bind:foldMarks
+      bind:hfDistances={layout.hfDistances}
+      bind:differentFirstPage={layout.differentFirstPage}
+      bind:differentOddEven={layout.differentOddEven}
+      bind:hyphenate={layout.hyphenate}
+      bind:pageNumbering={layout.pageNumbering}
+      bind:pageDecor={layout.pageDecor}
+      bind:lineNumbering={layout.lineNumbering}
+      bind:foldMarks={layout.foldMarks}
       {hfActive}
       onManageStyles={openStyleManager}
       onManageTableStyles={() => openStyleManager('table')}
@@ -2258,19 +2144,19 @@
           bind:showRuler
           bind:splitView
           bind:pageColumns
-          bind:tabIntervalCm
-          bind:pageMargins
-          bind:pageOrientation
-          bind:pageFormat
+          bind:tabIntervalCm={layout.tabIntervalCm}
+          bind:pageMargins={layout.pageMargins}
+          bind:pageOrientation={layout.pageOrientation}
+          bind:pageFormat={layout.pageFormat}
           bind:extraHfSections
-          bind:hfDistances
-          bind:differentFirstPage
-          bind:differentOddEven
-          bind:hyphenate
-          bind:pageNumbering
-          bind:pageDecor
-          bind:lineNumbering
-          bind:foldMarks
+          bind:hfDistances={layout.hfDistances}
+          bind:differentFirstPage={layout.differentFirstPage}
+          bind:differentOddEven={layout.differentOddEven}
+          bind:hyphenate={layout.hyphenate}
+          bind:pageNumbering={layout.pageNumbering}
+          bind:pageDecor={layout.pageDecor}
+          bind:lineNumbering={layout.lineNumbering}
+          bind:foldMarks={layout.foldMarks}
           {hfActive}
           asianDocument={isAsianTag(tagForLanguage(documentLanguage) ?? '') || isAsianTag(locale())}
           {documentLanguage}
@@ -2315,7 +2201,7 @@
     bind:pages={pageBoxes}
     onDocumentLost={resetDocumentState}
     {documentEpoch}
-    {pageRtl}
+    pageRtl={layout.pageRtl}
     bind:editor
     bind:tick
     bind:currentPage
@@ -2324,24 +2210,24 @@
     bind:footerDoc
     bind:headerFirstDoc
     bind:footerFirstDoc
-    {differentFirstPage}
+    differentFirstPage={layout.differentFirstPage}
     bind:headerEvenDoc
     bind:footerEvenDoc
-    {differentOddEven}
+    differentOddEven={layout.differentOddEven}
     bind:hfEditor
     bind:hfActive
     bind:hfTick
-    {hfDistances}
-    {tabIntervalCm}
-    {spacingModel}
-    {spacingAtPageStart}
-    {hyphenate}
+    hfDistances={layout.hfDistances}
+    tabIntervalCm={layout.tabIntervalCm}
+    spacingModel={layout.spacingModel}
+    spacingAtPageStart={layout.spacingAtPageStart}
+    hyphenate={layout.hyphenate}
     {documentLanguage}
-    {pageNumbering}
-    {pageDecor}
-    {lineNumbering}
-    {lineGrid}
-    {balanceSpaces}
+    pageNumbering={layout.pageNumbering}
+    pageDecor={layout.pageDecor}
+    lineNumbering={layout.lineNumbering}
+    lineGrid={layout.lineGrid}
+    balanceSpaces={layout.balanceSpaces}
     foldMarks={foldMarksOn}
     commentAuthor={userName()}
     bind:extraHfSections
@@ -2353,9 +2239,9 @@
     {showRuler}
     {splitView}
     pageColumns={gridColumns}
-    {pageMargins}
-    orientation={pageOrientation}
-    {pageFormat}
+    pageMargins={layout.pageMargins}
+    orientation={layout.pageOrientation}
+    pageFormat={layout.pageFormat}
   />
   <!-- On the right the panes stand in this order; docked left, each sets a CSS order:
        the navigator outermost, the reviewing panes nearest the page. -->
