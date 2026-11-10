@@ -29,8 +29,9 @@ one side gone at its start or end. A block of nothing but the client's text goes
 the rebuilt block that held what stood beside it. No match, no move.
 
 Only the author of the text moves it, so nothing races. The move runs in a microtask, after
-the repairs of the same update are written, and not while an input method composes (it
-waits for `compositionend`). Each part of the run typed in one undo step goes in a
+the repairer's write of the same update's repairs (Yjs calls the observers that queue it
+before `afterTransaction`); elsewhere it is rebased past the overlay like any local edit.
+Not while an input method composes (it waits for `compositionend`). Each part of the run typed in one undo step goes in a
 transaction of its own outside the history, and only the items it wrote into the target
 text (or the block it made) join that step: undoing the newest step takes its part alone,
 and nothing else joins it. The left-behind run is then deleted, and a block an undo kept
