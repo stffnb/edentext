@@ -973,6 +973,7 @@ const zhHant: Messages = {
     chapterTitle: '插入本頁所屬章節的標題',
     done: '完成',
     doneTitle: '結束頁首/頁尾編輯',
+    heldBy: (name: string) => `${name} 正在編輯`,
   },
   paragraphDialog: {
     title: '段落',
