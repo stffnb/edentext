@@ -21,11 +21,13 @@ const ANSWER = 5;   // [to][Yjs update]
 const BATCH_MS = 50;
 const SETTLE_MS = 300;  // how long a sync waits for late offers after the first
 const STALL_MS = 10_000; // a sync that hears nothing this long starts over
+const EMPTY_MS = 5000;   // a joiner alone this long is told the room is empty
 const REMOTE = Symbol('remote');
 
 export type SessionStatus =
   | 'connecting'   // no line to the relay yet
   | 'waiting'      // joined, but nobody with the document is there
+  | 'empty'        // still nobody there after EMPTY_MS: the session has ended
   | 'live'
   | 'version'      // the others run another EdenText version
   | 'full'
@@ -34,9 +36,10 @@ export type SessionStatus =
   | 'invalid'      // the link's key is cut short or mistyped
   | 'closed';
 
-export type Peer = { id: number; name: string; color: string };
+/** `keeps`: this client stores the document (the starter); a joiner holds it in its tab only. */
+export type Peer = { id: number; name: string; color: string; keeps: boolean };
 
-export type SessionView = { status: SessionStatus; peers: Peer[]; link: string };
+export type SessionView = { status: SessionStatus; peers: Peer[]; link: string; keeps: boolean; kept: boolean };
 
 /** What the session needs from the app. */
 export type SessionHost = {
@@ -88,10 +91,21 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     editor.registerPlugin(yCursorPlugin(awareness));
   };
 
+  const keeps = !join;
   const peers = (): Peer[] => [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.user)
-    .map(([id, s]) => ({ id, name: String(s.user.name ?? ''), color: String(s.user.color ?? '') }));
-  const changed = () => host.onChange({ status, peers: peers(), link });
-  const setStatus = (s: SessionStatus) => { if (status !== s) { status = s; changed(); } };
+    .map(([id, s]) => ({ id, name: String(s.user.name ?? ''), color: String(s.user.color ?? ''), keeps: s.keeps === true }));
+  const changed = () => {
+    const all = peers();
+    host.onChange({ status, peers: all, link, keeps, kept: keeps || all.some((p) => p.keeps) });
+  };
+  // Waiting turns into `empty` after EMPTY_MS and stays so until someone comes.
+  let emptyTimer: ReturnType<typeof setTimeout> | undefined;
+  const setStatus = (s: SessionStatus) => {
+    if (s === 'waiting' && status === 'empty') return;
+    if (s === 'waiting') emptyTimer ??= setTimeout(() => { if (status === 'waiting') { status = 'empty'; changed(); } }, EMPTY_MS);
+    else { clearTimeout(emptyTimer); emptyTimer = undefined; }
+    if (status !== s) { status = s; changed(); }
+  };
 
   const settled = (): SessionStatus => binding ? 'live' : peerCount <= 1 ? 'waiting' : 'connecting';
 
@@ -263,6 +277,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
 
   awareness.setLocalStateField('user', host.user());
   const unshareZones = shareZones(awareness);
+  if (keeps) awareness.setLocalStateField('keeps', true);
   if (bound) bind(bound);
 
   // Leaving tells the others at once; a closed tab drops out after awareness's timeout.
@@ -278,6 +293,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       removeEventListener('pagehide', goodbye);
       clearTimeout(outTimer);
       clearTimeout(inTimer);
+      clearTimeout(emptyTimer);
       endRound();
       goodbye();
       channel.close();
