@@ -72,6 +72,7 @@
       {#if view.status === 'live' && !view.kept}
         <p class="notice" data-notice="unkept">{t().collab.unkept}</p>
       {/if}
+      {#if view.missing}<p data-missing>{t().collab.missing(view.missing)}</p>{/if}
       {#if view.status !== 'invalid'}
         <label class="row">
           <span>{t().collab.link}</span>

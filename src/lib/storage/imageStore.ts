@@ -16,7 +16,7 @@ const MIN_STASH_CHARS = 4096;
 // Content key: FNV-1a over the head, the tail and the length, not the whole data-URI —
 // a photo is megabytes, and this runs on every autosave. Two different pictures
 // agreeing on all three is not something a document produces.
-function keyOf(src: string): string {
+export function keyOf(src: string): string {
   const sample = src.length <= 8192 ? src : src.slice(0, 4096) + src.slice(-4096);
   return `${fnv1a(sample).toString(36)}${src.length.toString(36)}`;
 }
@@ -120,6 +120,67 @@ export function sweepImages(): Promise<boolean> {
  * keep the key as their `src`, which renders as a broken picture rather than quietly
  * dropping the reader's content.
  */
+// Pictures a shared session holds (`collab/pictures.ts`): there the document names each
+// large one by its key, `idb:<key>`, and the bytes travel beside it, once per client.
+const held = new Map<string, string>();
+const waiting = new Map<string, Set<() => void>>();
+let wanted: ((key: string) => void) | null = null;
+
+/** The key a session holds this data-URI under, or null when it is small enough to stay inline. */
+export const imageKey = (src: unknown): string | null =>
+  typeof src === 'string' && src.startsWith('data:') && src.length >= MIN_STASH_CHARS ? keyOf(src) : null;
+
+/** Holds a picture; true when it is new here. Whoever waits for it is told. */
+export function holdImage(key: string, src: string): boolean {
+  if (held.has(key)) return false;
+  held.set(key, src);
+  for (const fn of waiting.get(key) ?? []) fn();
+  waiting.delete(key);
+  return true;
+}
+export const heldImage = (key: string): string | undefined => held.get(key);
+
+/** What a `src` shows: the held picture for a session key, anything else as it is. */
+export function shownSrc(src: unknown): string {
+  const s = typeof src === 'string' ? src : '';
+  return (s.startsWith(IDB_SRC) && held.get(s.slice(IDB_SRC.length))) || s;
+}
+
+/** Calls `fn` once a key's picture arrives and asks the session for it; returns the unsubscribe. */
+export function awaitImage(key: string, fn: () => void): () => void {
+  const set = waiting.get(key) ?? new Set();
+  waiting.set(key, set.add(fn));
+  wanted?.(key);
+  return () => { set.delete(fn); };
+}
+
+/** The session that fetches missing pictures, or null; null also lets go of every held one. */
+export function fetchImagesWith(fn: ((key: string) => void) | null): void {
+  wanted = fn;
+  if (!fn) held.clear();
+}
+
+/**
+ * The document with every held session key back as its picture, for whatever leaves the
+ * editor (a file, autosave). `missing` counts the keys no one here holds.
+ */
+export function withHeldImages<T extends object>(json: T): { json: T; missing: number } {
+  let missing = 0;
+  if (!held.size && !wanted) return { json, missing };
+  const walk = (node: Json): Json => {
+    const src = node?.attrs?.src;
+    const content = node?.content?.map(walk);
+    let attrs = node?.attrs;
+    if (typeof src === 'string' && src.startsWith(IDB_SRC)) {
+      const data = held.get(src.slice(IDB_SRC.length));
+      if (data) attrs = { ...attrs, src: data };
+      else missing++;
+    }
+    return content || attrs !== node?.attrs ? { ...node, ...(attrs ? { attrs } : {}), ...(content ? { content } : {}) } : node;
+  };
+  return { json: walk(json as unknown as Json) as unknown as T, missing };
+}
+
 export async function restoreImages(json: object): Promise<number> {
   const nodes = srcNodes(json as Json).filter((n) => String(n.attrs!.src).startsWith(IDB_SRC));
   if (!nodes.length) return 0;

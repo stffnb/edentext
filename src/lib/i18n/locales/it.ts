@@ -204,6 +204,8 @@ const it: Messages = {
     keepFailed: 'Nel browser non c’è abbastanza spazio per tenere il documento. Salvalo invece come file.',
     you: 'tu',
     peers: (n: number) => n === 1 ? 'Un’altra persona presente' : `${n} altre persone presenti`,
+    missing: (n: number) => n === 1 ? 'Non è stato possibile recuperare un’immagine: chi l’aveva se n’è andato. Resta un riquadro grigio finché non entra qualcuno che ce l’ha.' : `Non è stato possibile recuperare ${n} immagini: chi le aveva se n’è andato. Restano riquadri grigi finché non entra qualcuno che le ha.`,
+    picturesPending: 'Alcune immagini non ti sono ancora arrivate e mancherebbero nel file. Riprova appena compaiono.',
     status: {
       connecting: 'Connessione…',
       waiting: 'In attesa di qualcuno che abbia il documento aperto…',

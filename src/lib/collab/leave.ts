@@ -2,7 +2,7 @@ import type { Editor } from '@tiptap/core';
 import { withoutDefaults } from '../storage/autosave';
 import { docStore, keepAsNewDocument } from '../storage/docScope';
 import { keepEmbeddedFonts } from '../storage/embeddedFontStore';
-import { putImages, stashImages } from '../storage/imageStore';
+import { putImages, stashImages, withHeldImages } from '../storage/imageStore';
 
 // Leaving a joined session (docs/architecture/collab.md, Storage). A joiner holds the
 // document in memory only, so it either keeps it as a new document of this browser or
@@ -28,9 +28,9 @@ function stashDeep(value: unknown, blobs: Map<string, string>): unknown {
   return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, stashDeep(v, blobs)]));
 }
 
-/** Stores the open document, its stores, pictures and fonts as a new document for this tab. */
+/** Stores the open document, its stores, pictures (held ones too) and fonts as a new document for this tab. */
 export async function keepSessionCopy(editor: Editor): Promise<boolean> {
-  const values: [string, string][] = [['edentext-doc', JSON.stringify(withoutDefaults(editor.getJSON(), editor.schema))]];
+  const values: [string, string][] = [['edentext-doc', JSON.stringify(withoutDefaults(withHeldImages(editor.getJSON()).json, editor.schema))]];
   for (let i = 0; i < docStore.length; i++) {
     const name = docStore.key(i)!;
     if (!SKIP.has(name)) values.push([name, docStore.getItem(name)!]);

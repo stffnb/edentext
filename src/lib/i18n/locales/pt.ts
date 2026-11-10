@@ -204,6 +204,8 @@ const pt: Messages = {
     keepFailed: 'Não há espaço suficiente neste navegador para ficar com o documento. Guarde-o antes como ficheiro.',
     you: 'você',
     peers: (n: number) => `Mais ${n} pessoa${n === 1 ? '' : 's'}`,
+    missing: (n: number) => n === 1 ? 'Não foi possível obter uma imagem: quem a tinha saiu. Fica um retângulo cinzento até entrar alguém que a tenha.' : `Não foi possível obter ${n} imagens: quem as tinha saiu. Ficam retângulos cinzentos até entrar alguém que as tenha.`,
+    picturesPending: 'Algumas imagens ainda não lhe chegaram e faltariam no ficheiro. Tente novamente quando aparecerem.',
     status: {
       connecting: 'A ligar…',
       waiting: 'À espera de alguém que tenha o documento aberto…',
