@@ -33,7 +33,7 @@ const textOf = (chars: Char[]) => chars.map((c) => c.ch).join('');
 
 // The runs of this client's text that the update took away (their block deleted) or left
 // behind (everything around them gone), with the text around them before the update.
-function unitsOf(text: Y.XmlText, me: number, t: Y.Transaction, isNew: (it: Y.Item) => boolean): Unit[] {
+function unitsOf(text: Y.XmlText, me: number, t: Y.Transaction, isNew: (it: Y.Item) => boolean, foreign: (it: Y.Item) => boolean): Unit[] {
   const all: (Char & { own: boolean; live: boolean })[] = [];
   let attrs: Record<string, unknown> = {};
   for (let it = text._start; it; it = it.right) {
@@ -47,7 +47,7 @@ function unitsOf(text: Y.XmlText, me: number, t: Y.Transaction, isNew: (it: Y.It
     }
     if (!(it.content instanceof Y.ContentString)) continue;
     const str = it.content.str;
-    for (let i = 0; i < str.length; i++) all.push({ ch: str[i], clock: it.id.clock + i, item: it, attrs, own: it.id.client === me, live: !it.deleted });
+    for (let i = 0; i < str.length; i++) all.push({ ch: str[i], clock: it.id.clock + i, item: it, attrs, own: !foreign(it), live: !it.deleted });
   }
   const textLive = !text._item?.deleted;
   let rewritten = false;
@@ -186,7 +186,9 @@ const markName = (key: string) => key.replace(/--[a-zA-Z0-9+/=]{8}$/, '');
 
 type Plan = { unit: Unit; text: Y.XmlText; at: Y.RelativePosition; side?: 'after' | 'before'; caret: number | null; assoc: number };
 
-export function attachRescue(editor: Editor, ydoc: Y.Doc, binding: Binding, um: Y.UndoManager): () => void {
+// `foreign`: whose text a character is, an undo's restored copy counting as its author's.
+export function attachRescue(editor: Editor, ydoc: Y.Doc, binding: Binding, um: Y.UndoManager,
+  foreign = (it: Y.Item) => it.id.client !== ydoc.clientID): () => void {
   const frag = binding.type;
   // A text's characters are one run in the document, so a place in it is its start plus the
   // index; y-tiptap's own reading of a character's position second-guesses a moved one.
@@ -210,7 +212,7 @@ export function attachRescue(editor: Editor, ydoc: Y.Doc, binding: Binding, um: 
         if (s instanceof Y.Item && s.parent instanceof Y.XmlText) texts.add(s.parent);
       }
     }
-    const units = [...texts].flatMap((text) => unitsOf(text, me, t, isNew));
+    const units = [...texts].flatMap((text) => unitsOf(text, me, t, isNew, foreign));
     if (!units.length) return;
     const sites = sitesOf(ydoc, t, me, isNew);
     if (!sites.size) return;
