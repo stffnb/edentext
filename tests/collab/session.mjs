@@ -241,9 +241,14 @@ try {
   // The others' offers are held back, so Dan's is the one pulled from.
   const arm = (page, role) => page.evaluate((role) => {
     const Orig = WebSocket, send = Orig.prototype.send, sent = window.__collab.session.stats.sent;
-    const st = window.__drop = { muted: role === 'mute', fired: false, offers: sent[3], answers: sent[5] };
+    const st = window.__drop = { muted: role === 'mute', silent: false, fired: false, offers: sent[3], answers: sent[5] };
     Orig.prototype.send = function (data) {
-      if (sent[3] !== st.offers) { st.offers = sent[3]; if (st.muted) return; }
+      if (st.silent) return;
+      if (sent[3] !== st.offers) {
+        st.offers = sent[3];
+        if (st.muted) return;
+        if (role === 'slow') { setTimeout(() => send.call(this, data), 1500); return; }
+      }
       if (role === 'drop' && (st.fired || sent[5] > st.answers)) {
         if (!st.fired) setTimeout(() => { this.close(); window.WebSocket = class extends Orig { constructor() { super('ws://127.0.0.1:4/'); } }; }, 1000);
         st.fired = true;
@@ -269,6 +274,25 @@ try {
   await f.waitForTimeout(1500);
   const [vf, va4] = [await view(f), await view(a)];
   check(dropped && fLive && same(vf, va4), `a joiner whose answer is lost with its sender's line gets the doc from another (${dropped}, ${await status(f)})`);
+
+  // Anna's and Cleo's latest edits each stay their own, then the reloaded Ben asks and
+  // Cleo's offer comes after the settle: Ben still pulls her edit and sends her Anna's.
+  await arm(c, 'slow');
+  const silent = (page, on) => page.evaluate((v) => { window.__drop.silent = v; }, on);
+  for (const page of [a, c]) await silent(page, true);
+  await caret(a, 'end');
+  await a.keyboard.type(' Eta');
+  await caret(c, 'end');
+  await c.keyboard.type(' Zeta');
+  await a.waitForTimeout(400);
+  for (const page of [a, c]) await silent(page, false);
+  await b.reload({ waitUntil: 'load' });
+  await ready(b);
+  await live(b);
+  await b.waitForTimeout(4000);
+  const [vb5, vc5] = [await view(b), await view(c)];
+  const both = (v) => v.text.includes(' Eta') && v.text.includes(' Zeta');
+  check(vb5.json === vc5.json && both(vb5), `a late offer is pulled from and gets what it lacks (${both(vb5)}, ${both(vc5)})`);
 
   await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');
@@ -367,6 +391,27 @@ try {
   check(noticed && await status(e) === 'live' && pa3.json === pe3.json && pa3.text.endsWith('Psi'),
     `a line that dies without a close is not live (${deafAs}), and live again once it works`);
   check(stacked === 0, `a sync open when the line died asks nothing while it is down (${stacked} asks)`);
+
+  // A joiner alone in the room waits; when a client with the doc comes back, the joiner
+  // asks it, and that client's own sync sends no copy to the joiner's empty offer.
+  const away = (page) => page.evaluate(() => {
+    window.__WS ??= WebSocket;
+    window.WebSocket = class extends window.__WS { constructor() { super('ws://127.0.0.1:4/'); } };
+  });
+  for (const page of [a, e]) await away(page);
+  for (const room of relay.rooms.values()) for (const w of room) w.close();
+  await a.waitForTimeout(500);
+  const g = await client('Gus');
+  await g.goto(link2, { waitUntil: 'load' });
+  await ready(g);
+  const waited = await g.waitForFunction(() => window.__collab?.view()?.status === 'waiting', null, { timeout: 15_000 }).then(() => true, () => false);
+  const pushed = await sent(a);
+  await a.evaluate(() => { window.WebSocket = window.__WS; });
+  const gLive = await g.waitForFunction(() => window.__collab.view().status === 'live', null, { timeout: 45_000 }).then(() => true, () => false);
+  await g.waitForTimeout(1500);
+  const [pa4, pg4, pushed2] = [await view(a), await view(g), await sent(a)];
+  check(waited && gLive && pa4.json === pg4.json && pushed2 === pushed,
+    `a waiting joiner asks the client that comes back, which sends it no copy of its own (${waited}, ${gLive}, ${pushed2 - pushed} updates)`);
 
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (err) {
