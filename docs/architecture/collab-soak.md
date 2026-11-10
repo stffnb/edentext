@@ -74,7 +74,9 @@ New, beyond the matrix:
   text, and the notes repair dropped the orphaned note with it; the anchor now stays. (2)
   Yjs's undo puts deleted text back as the undoer's own items, so a later undo of the step
   that made the block (an Enter before a heading rebuild) deleted it with the other's text;
-  restored copies now keep their original author (`collab-conflicts.md`, Repairs).
+  restored copies now keep their original author (`collab-conflicts.md`, Repairs). (3)
+  Seed 1 (merged branches, 1 run in 3): an undone heading rebuild restored the undoer's
+  tab and another's text as one merged item, which the tab's undo deleted whole; fixed.
 - **Read-back** (low): the starter's `.odt` twice read back a mark spelled otherwise:
   `Liberation Serif` against `Times New Roman` (the monkey run lists that one as open) and
   `rgb(192, 0, 0)` for `#C00000`, a colour taken from the DOM somewhere in a session.
