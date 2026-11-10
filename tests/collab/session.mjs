@@ -461,6 +461,9 @@ try {
   // B leaves and keeps its copy: the tab reloads into a document of its own, which a
   // further reload still opens, with the picture, the styles and the zones.
   await unkept(b);
+  // The earlier picture is gone; this one B holds only as a session picture, by its key.
+  await photo(c);
+  await b.waitForTimeout(2500);
   const [vKept, sheetKept] = [await view(c), await sheet(c)];
   await b.evaluate(() => { window.__before = true; });
   b.dialogs.length = 0;
@@ -469,24 +472,26 @@ try {
   await b.waitForFunction(() => !window.__before && document.querySelector('.tiptap-host .tiptap')?.editor, null, { timeout: 30_000 });
   await b.waitForTimeout(2500);
   const keptView = async () => ({ v: await view(b), sheet: await sheet(b), hash: await b.evaluate(() => location.hash) });
-  let kept = await keptView();
-  const keptOk = (k) => same(k.v, vKept) && k.sheet === sheetKept && !k.hash && k.v.json.includes('data:image/png');
-  check(keptOk(kept) && !b.dialogs.includes('beforeunload'), `a joiner that keeps its copy reloads into it, unwarned (${brief(kept.v)} | ${brief(vKept)}; ${b.dialogs})`);
+  let copy = await keptView();
+  // In the session a picture is named by its key; the kept copy holds the picture itself.
+  const srcless = (v) => ({ ...v, json: v.json.replace(/"src":"[^"]*"/g, '"src":""') });
+  const keptOk = (k) => same(srcless(k.v), srcless(vKept)) && k.sheet === sheetKept && !k.hash && k.v.json.includes('data:image/png') && !k.v.json.includes('idb:');
+  check(keptOk(copy) && !b.dialogs.includes('beforeunload'), `a joiner that keeps its copy reloads into it, unwarned (${brief(copy.v)} | ${brief(vKept)}; ${b.dialogs})`);
   await b.reload({ waitUntil: 'load' });
   await ready(b);
   await b.waitForTimeout(2500);
-  kept = await keptView();
+  copy = await keptView();
   const slots = await b.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('edentext-live@')).length);
-  check(keptOk(kept) && slots === 1, `the kept copy is a stored document, there after a reload (${brief(kept.v)}; ${slots} slot)`);
+  check(keptOk(copy) && slots === 1, `the kept copy is a stored document, there after a reload (${brief(copy.v)}; ${slots} slot)`);
 
   // C is the last one there and holds the only copy: closing the tab asks first.
   await c.close({ runBeforeUnload: true });
   await c.waitForEvent('close', { timeout: 5000 }).catch(() => {});
   check(c.dialogs.includes('beforeunload'), `the last joiner's tab warns before it closes (${c.dialogs})`);
 
-  const g = await client('Gus');
-  await g.goto(`${URL0}#collab=${randomBytes(32).toString('base64url')}`, { waitUntil: 'load' });
-  const empty = await g.waitForSelector('dialog[open] [data-status="empty"]', { timeout: 20_000 }).then(() => true, () => false);
+  const lone = await client('Gus');
+  await lone.goto(`${URL0}#collab=${randomBytes(32).toString('base64url')}`, { waitUntil: 'load' });
+  const empty = await lone.waitForSelector('dialog[open] [data-status="empty"]', { timeout: 20_000 }).then(() => true, () => false);
   check(empty, 'a link to a room nobody is in says the session has ended');
 
   const d = await client('Dora');
