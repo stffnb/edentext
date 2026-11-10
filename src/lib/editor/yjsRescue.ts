@@ -223,8 +223,8 @@ export function attachRescue(editor: Editor, ydoc: Y.Doc, binding: Binding, um: 
       const at = Y.createRelativePositionFromTypeIndex(place.text, place.offset + place.skip);
       queue.push({ unit: { ...u, chars: u.chars.slice(place.skip) }, text: place.text, at, side: place.side, caret, assoc: head?.assoc ?? 0 });
     }
-    // After the plugins' repairs of this update are written (a microtask the update queued
-    // first), so the rescue's transactions hold the rescue alone.
+    // After the repairer writes this update's repairs (a microtask its observers queued
+    // first; elsewhere they stay an overlay the write leaves out): the rescue goes alone.
     if (queue.length && !scheduled) { scheduled = true; queueMicrotask(flush); }
   };
 
