@@ -244,7 +244,7 @@ try {
     Orig.prototype.send = function (data) {
       if (sent[3] !== st.offers) { st.offers = sent[3]; if (st.muted) return; }
       if (role === 'drop' && (st.fired || sent[5] > st.answers)) {
-        if (!st.fired) setTimeout(() => { this.close(); window.WebSocket = class extends Orig { constructor() { super('ws://127.0.0.1:9/'); } }; }, 1000);
+        if (!st.fired) setTimeout(() => { this.close(); window.WebSocket = class extends Orig { constructor() { super('ws://127.0.0.1:4/'); } }; }, 1000);
         st.fired = true;
         return;
       }
