@@ -429,7 +429,8 @@ try {
   check(dropped && fLive && same(vf, va4), `a joiner whose answer is lost with its sender's line gets the doc from another (${dropped}, ${await status(f)})`);
 
   // Anna's and Cleo's latest edits each stay their own, then the reloaded Ben asks and
-  // Cleo's offer comes after the settle: Ben still pulls her edit and sends her Anna's.
+  // Cleo's offer comes after the settle: Ben still pulls her edit, and what he pulled from
+  // each reaches every other client without another sync.
   await arm(c, 'slow');
   const silent = (page, on) => page.evaluate((v) => { window.__drop.silent = v; }, on);
   for (const page of [a, c]) await silent(page, true);
@@ -443,9 +444,10 @@ try {
   await ready(b);
   await live(b);
   await b.waitForTimeout(4000);
-  const [vb5, vc5] = [await view(b), await view(c)];
+  const [vb5, vc5, va5, vf5] = [await view(b), await view(c), await view(a), await view(f)];
   const both = (v) => v.text.includes(' Eta') && v.text.includes(' Zeta');
   check(vb5.json === vc5.json && both(vb5), `a late offer is pulled from and gets what it lacks (${both(vb5)}, ${both(vc5)})`);
+  check(va5.json === vb5.json && vf5.json === vb5.json, `edits pulled from one offer reach the other clients too (${both(va5)}, ${both(vf5)})`);
 
   // A tab closed with a zone open frees it for the others.
   await openZone(f, 'footer');
@@ -460,9 +462,8 @@ try {
   // leaves and the file opens in a new document of its own; the others keep the shared one.
   const h = await client('Hana');
   await joinLink(h, link);
-  // Anna may lack Cleo's late edit until a later sync (Gaps), e.g. once Hana has gone.
   await settle(a);
-  const [shared, aShared] = [await view(c), await view(a)];
+  const shared = await view(c);
   const otherFile = join(ROOT, 'tests/corpus', '20-index-footer.odt');
   await h.setInputFiles('input.file-input[accept*=".odt"]', otherFile);
   const askedOpen = await h.waitForSelector('dialog[open] [data-notice="open"]', { timeout: 5000 }).then(() => true, () => false);
@@ -481,7 +482,7 @@ try {
   check(askedOpen && stayed && !hOpened.text.includes('Alpha') && hOpened.text.length > 0 && hDocs.filter(Boolean).length === 1 && hDocs.length === 2 && !hState.hash && !hState.collab && !h.dialogs.length,
     `a joiner opening a file is asked (${askedOpen}), stays on cancel (${stayed}), and keeping its copy opens the file alone (${brief(hOpened)}; docs ${hDocs}; ${JSON.stringify(hState)}; ${h.dialogs})`);
   await a.waitForTimeout(1500);
-  const others = [[aShared.json, shared.json].includes((await view(a)).json), ...[await view(b), await view(c)].map((v) => v.json === shared.json)];
+  const others = [await view(a), await view(b), await view(c)].map((v) => v.json === shared.json);
   const peersLeft = await a.evaluate(() => window.__collab.view().peers.map((p) => p.name));
   check(others.every(Boolean) && !peersLeft.includes('Hana'),
     `the others keep the shared document (${others}) and see the joiner gone (${peersLeft})`);
