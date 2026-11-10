@@ -987,6 +987,7 @@ const uk: Messages = {
     chapterTitle: 'Вставити заголовок розділу на поточній сторінці',
     done: 'Готово',
     doneTitle: 'Завершити редагування колонтитула',
+    heldBy: (name: string) => `Редагує ${name}`,
   },
   paragraphDialog: {
     title: 'Абзац',

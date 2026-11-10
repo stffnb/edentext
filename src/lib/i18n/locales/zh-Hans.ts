@@ -972,6 +972,7 @@ const zhHans: Messages = {
     chapterTitle: '插入本页所属章节的标题',
     done: '完成',
     doneTitle: '结束页眉/页脚编辑',
+    heldBy: (name: string) => `${name} 正在编辑`,
   },
   paragraphDialog: {
     title: '段落',

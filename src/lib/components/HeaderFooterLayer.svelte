@@ -21,6 +21,7 @@
   import { chapterOn, type ChapterStart } from '../utils/chapterField';
   import { t } from '../i18n/i18n.svelte';
   import { allPagesDrawn } from './pageWindow.svelte';
+  import { claimZone, yieldsZone, zoneHolder } from '../collab/zones.svelte';
 
   let {
     headerDoc = $bindable(),
@@ -514,6 +515,15 @@
       if (liveKey === `${index}:${variantFor(page, index)}`) return;
       pendingPage = page;
     }
+    // In a session a zone someone else has open stays shut; its tag says who (below).
+    const page = pendingPage ?? currentPage, at = sectionOf(page);
+    const target = `hf:${at}:${zoneKey(zone, variantFor(page, at))}`;
+    if (untrack(() => zoneHolder(target))) {
+      pendingPage = null;
+      refuse(target);
+      hfActive = null;
+      return;
+    }
     if (hfEditor) destroyLive();
 
     editingPage = pendingPage ?? currentPage;
@@ -557,6 +567,22 @@
     ed.commands.focus('end', { scrollIntoView: false });
     hfEditor = ed;
   });
+
+  // Claimed while open, also when a session starts under it. Two who opened it at once
+  // before either heard of the other: the higher client id gives way, its typing may go.
+  $effect(() => {
+    if (interactive) claimZone(hfEditor ? liveId : null);
+  });
+  $effect(() => {
+    if (interactive && hfEditor && yieldsZone(liveId)) hfActive = null;
+  });
+  let refused = $state('');
+  let refusedTimer: ReturnType<typeof setTimeout> | undefined;
+  function refuse(id: string) {
+    refused = id;
+    clearTimeout(refusedTimer);
+    refusedTimer = setTimeout(() => (refused = ''), 1200);
+  }
 
   // An undo or redo on the body's stack that reaches a zone puts that zone's content back,
   // in the open zone's editor too (off its own history, which only groups new edits).
@@ -714,6 +740,10 @@
           tabindex="-1"
           use:fillZone={[p, total, src, chapters, zone, pageLabel(p), sourceVersion]}
         ></div>
+        {@const holder = zoneHolder(`hf:${id}`)}
+        {#if holder}
+          <div class="hf-tag hf-held" class:hf-refused={refused === `hf:${id}`} style="top: {zb.top}px; left: {zb.left}px; --hf-held: {holder.color || 'var(--color-primary)'};">{t().hf.heldBy(holder.name)}</div>
+        {/if}
       {/if}
     {/each}
   {/each}
@@ -908,6 +938,22 @@
     pointer-events: none;
     white-space: nowrap;
     user-select: none;
+  }
+
+  .hf-held {
+    background: var(--hf-held);
+  }
+
+  .hf-refused {
+    animation: hf-refused 0.4s ease-in-out 2;
+  }
+
+  @keyframes hf-refused {
+    50% { transform: translateY(calc(-100% - 2px)) scale(1.15); }
+  }
+
+  @media print {
+    .hf-held { display: none; }
   }
 
   /* A zone's editor (live, source or clone) is a `.tiptap`, so it takes the body's block
