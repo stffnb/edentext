@@ -207,6 +207,8 @@ const en = {
     peers: (n: number) => `${n} other${n === 1 ? '' : 's'} here`,
     missing: (n: number) => n === 1 ? 'One picture could not be fetched: whoever had it has left. It shows as a grey box until someone who has it joins.' : `${n} pictures could not be fetched: whoever had them has left. They show as grey boxes until someone who has them joins.`,
     picturesPending: 'Some pictures have not reached you yet, so the file would be missing them. Try again once they show.',
+    paused: 'Editing paused',
+    pausedHint: 'A change from the session cannot be shown here, and typing now could overwrite it, so editing is paused. It carries on by itself as soon as the document can be shown again.',
     status: {
       connecting: 'Connecting…',
       waiting: 'Waiting for someone who has the document open…',

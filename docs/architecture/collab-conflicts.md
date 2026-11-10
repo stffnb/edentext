@@ -56,10 +56,18 @@ page from one's own pagination) stay local instead of answering each other.
 - **Who repairs.** In a session the client bound longest: `rank` in the awareness, 0 for
   the starter, one past every rank a joiner sees, the id breaking ties. The role moves only
   when its holder's awareness goes; the next one then writes what it holds. Alone, and in
-  the scripts' pairs, the first client.
+  the scripts' pairs, the first client. A client the relay lost goes from everyone's
+  awareness about 3 s after the room shrank (`session.ts`, `GONE_MS`): the others renew
+  theirs at once, and whose renewal does not come is dropped.
 - **An edit into the overlay** (typing in a cell only the overlay pads) cannot be moved
-  onto `base`: it is refused with `collab: edit inside a repair not yet shared`, until the
-  repairer's version comes. A repair after one's own edit is part of that edit, as alone.
+  onto `base`, so it is **held** (`held` in `collabRepair`): drawn at once, with every later
+  edit of this client behind it in order, but not written. After the next redraw the held
+  steps are moved onto the new doc: written if what they reached into is shared now, held
+  again if not, dropped with `collab: edit inside a repair not yet shared, lost` where they
+  no longer fit. A client that becomes the repairer while holding writes the repair under
+  `REPAIR_ORIGIN` and its held edits as its own, undoable. Writing a held edit at once
+  would bring the repair twice; holding it keeps one writer per repair and the caret where
+  it was. A repair after one's own edit is part of that edit, as alone.
 - **Moves.** A move is a rewrite in Yjs, so the notes plugin moves as little as it can:
   the fullest note section stays, the others' notes join it, blocks past it go ahead of it,
   and anchor order keeps the longest run of notes already in order. What is typed into a
@@ -76,18 +84,23 @@ notes added at once make two sections Yjs can hold and the projection keeps.
 
 `collab-repair.test.ts` relays three clients' conflicting edits (a column and a row, two
 first footnotes, typing) in random orders: one doc everywhere, the repairs in it once, and
-nothing written by any client but the repairer after its own edits.
+nothing written by any client but the repairer after its own edits. Typing into a cell
+only the overlay pads shows at once and arrives once, whether the repairer writes or B
+takes over from one that is gone; B's undo takes back the text and keeps the cell.
 
 ### Binding guard
 
 Shared content that does not fit the schema pauses the binding (y-tiptap's
-`onInvalidContent`): no edits, no writes, `collab: paused` and the `collab-paused` window
-event, until an update fits again; without it y-tiptap deletes that content from the shared
-doc. y-tiptap restores the caret by walking the fragment; where a position falls outside,
-the update would be lost to the throw. `attachRepair` wraps the binding's observer: a
-`RangeError` there redraws the document from the fragment (`collab: caret not restorable`),
-and a redraw that is not the fragment's projection, or not valid, pauses the binding the
-same way. The soak run counts redraws and fails on a pause.
+`onInvalidContent`) instead of y-tiptap deleting it from the shared doc: no edits, no
+writes, `collab: paused`, until an update fits again (`collab: resumed`).
+`YjsUndo.onPause` tells the session, whose `paused` turns the status bar's session button
+into "Editing paused" and adds a notice to its dialog, both gone on resuming. y-tiptap
+restores the caret by walking the fragment; where a position falls outside, the update
+would be lost to the throw. `attachRepair` wraps the binding's observer: a `RangeError`
+there redraws the document from the fragment (`collab: caret not restorable`), and a
+redraw that is not the fragment's projection, or not valid, pauses the binding the same
+way. The soak run counts redraws and fails on a pause; `session.mjs` puts an unknown
+element into the body and sees both clients' notices come and go.
 
 ### Restored items (`editor/yjsRedo.ts`)
 
@@ -159,9 +172,10 @@ leaves both at B's doc alone (in the B's undo rows, B's undo takes its last step
   pasted paragraph into the old one by a prefix/suffix diff, so B's typing is not deleted
   but stays where Yjs merges it among A's new characters (`TZedwo lazy days.`), as with any
   concurrent typing into a replaced range. The rescue leaves it there.
-- **Waiting for the repairer.** Until its version arrives (one relay round; up to
-  awareness's 30 s if its holder vanished unannounced) an edit inside the overlay is
-  refused; the soak run counts these lines (one in 128 ops, 2026-11-10).
+- **Waiting for the repairer.** Until its version arrives (one relay round; about 3 s if
+  its holder's line dropped, up to awareness's 30 s if the relay still counts a frozen tab)
+  an edit inside the overlay is held: shown, not yet sent, and this client's later edits
+  wait behind it.
 - **Derived values read from a client's own state** (notes counted per page, from that
   client's pagination) can differ between clients: the shared doc holds the repairer's,
   each editor shows its own, and a client's edit writes its own with it.
