@@ -3,7 +3,7 @@ import type { Transaction } from '@tiptap/pm/state';
 import { history, isHistoryTransaction } from '@tiptap/pm/history';
 import * as Y from 'yjs';
 import { ySyncPlugin, ySyncPluginKey, yUndoPlugin, yUndoPluginKey, prosemirrorToYXmlFragment } from '@tiptap/y-tiptap';
-import { StateStep, stateValues } from './extensions/stateHistory';
+import { StateStep, commitState, stateValues } from './extensions/stateHistory';
 import { pmUndo, setUndoBackend, STATE_RESTORED, type UndoBackend } from './undo';
 import { describeTransaction, resetHistoryLog, syncHistoryLog } from '../utils/historyLog.svelte';
 
@@ -183,6 +183,9 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc()): YjsUndo {
   };
   const restore = (ev: Y.YMapEvent<unknown>, t: Y.Transaction) => {
     if (t.origin === STATE_ORIGIN || (t.local && t.origin !== um)) return;
+    // One's own change still gathering goes into the map first, so both authors' entries
+    // stay; its write is a transaction of its own, which Yjs runs after this observer.
+    if (!t.local) for (const id of new Set([...ev.keysChanged].map(storeOf))) commitState(id);
     apply(ev.keysChanged);
   };
 
