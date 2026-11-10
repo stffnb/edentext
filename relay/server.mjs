@@ -9,10 +9,11 @@ const ROOM = /^[A-Za-z0-9_-]{16,64}$/;
 
 /**
  * Starts a relay on `port` (0 picks a free one). `maxPeers` 0 means no limit per room;
- * `tap` sees every passed frame (tests check it holds no plain text). Resolves once
- * listening, with the port and a way to close it.
+ * `tap` sees every passed frame (tests check it holds no plain text); `lag` (tests only)
+ * delays each frame by its ms per receiver, in order per sender, so senders overtake each
+ * other. Resolves once listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, path = '/relay', tap } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, path = '/relay', tap, lag } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
   // Behind a proxy that passes `/relay` on unchanged, the app asks `/relay/health`.
@@ -26,6 +27,14 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
 
   const send = (ws, msg) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
   const announce = (peers, except) => { for (const ws of peers) if (ws !== except) send(ws, { t: 'peers', n: peers.size }); };
+  const pass = (from, to, data) => {
+    const ms = lag?.() ?? 0;
+    if (!ms && !from.due?.get(to)) return to.send(data, { binary: true });
+    // Never before an earlier frame of the same sender: one connection keeps its order.
+    const at = Math.max(Date.now() + ms, (from.due ??= new Map()).get(to) ?? 0);
+    from.due.set(to, at);
+    setTimeout(() => { if (from.due.get(to) === at) from.due.delete(to); if (to.readyState === to.OPEN) to.send(data, { binary: true }); }, at - Date.now());
+  };
 
   wss.on('connection', (ws) => {
     let room = null;
@@ -53,7 +62,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
       }
       if (!binary) return;
       tap?.(data);
-      for (const peer of rooms.get(room) ?? []) if (peer !== ws && peer.readyState === peer.OPEN) peer.send(data, { binary: true });
+      for (const peer of rooms.get(room) ?? []) if (peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, data);
     });
 
     ws.on('close', () => {
