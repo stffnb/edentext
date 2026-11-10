@@ -15,7 +15,7 @@ no-break spaces and no ordinary one (a web editor's copy) gets plain spaces back
 
 `undo.ts` is the body's undo behind one interface (run, depths, `isUndoRedo`, `closeGroup`): ProseMirror's history, or Yjs's undo manager in a shared session (`undoYjs.ts`, `docs/architecture/collab.md`); nothing else imports `@tiptap/pm/history`.
 
-`yjsRepair.ts` writes the plugins' repairs after another client's update into the shared doc under a client id hashed from the state, and turns a caret y-tiptap cannot restore into a redraw; `yjsRescue.ts` moves this client's text that another client's rebuild of its block left behind or took away (`docs/architecture/collab-conflicts.md`). Both read y-tiptap's binding internals (`_observeFunction`, `_prosemirrorChanged`, `mux`, `mapping`).
+`yjsRepair.ts` keeps the plugins' repairs after another client's update out of the shared doc (an overlay, rebased past local edits) except on the one client that writes them, and turns a caret y-tiptap cannot restore into a checked redraw; `yjsRescue.ts` moves this client's text that another client's rebuild of its block left behind or took away (`docs/architecture/collab-conflicts.md`). Both read y-tiptap's binding internals (`_observeFunction`, `_prosemirrorChanged`, `mux`, `mapping`).
 
 `undoYjs.ts` overrides the undo manager's `destroy`, `stopCapturing` and `lastChange` and reads `Y.Item` internals (`_start`, `right`, `deleted`, `id.client`), so `package.json` pins `yjs`, `y-protocols` and `@tiptap/y-tiptap`; update them only with `npm run test:collab` and `UNDO=yjs npm run test:monkey` green.
 

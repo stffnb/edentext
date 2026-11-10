@@ -1,8 +1,9 @@
 // Two clients do one thing each to the same paragraph, table, change or comment before
 // either hears of the other's (relayed by this script, as undo.mjs). Per pair: same doc on
-// both, a valid doc with rectangular tables, nothing typed lost, no repair going back and
-// forth, A's undo taking back A's op alone. Expected values are what the editor does now,
-// accepted losses included (docs/architecture/collab-conflicts.md). Dev server, any engine.
+// both, a valid doc with rectangular tables, nothing typed lost, no update after the
+// exchange but the repairer's one, A's undo taking back A's op alone. Expected values are
+// what the editor does now, accepted losses included (docs/architecture/collab-conflicts.md).
+// Dev server, any engine.
 import { checker, collectErrors, devServer, openApp } from '../browser.mjs';
 
 const PORT = +(process.env.COLLAB_PORT ?? 4394);
@@ -13,6 +14,7 @@ const server = await devServer(PORT);
 const { browser, page: a, pageErrors } = await openApp(PORT);
 const b = await (await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' })).newPage();
 collectErrors(b, pageErrors, 'B: ');
+if (process.env.VERBOSE) for (const [p, n] of [[a, 'A'], [b, 'B']]) p.on('console', (m) => { if (/collab/.test(m.text())) console.log(n, m.text().slice(0, 200)); });
 b.on('dialog', (d) => d.accept());
 
 const open = async (page, name) => {
@@ -33,6 +35,8 @@ const attach = (page, id, state) => page.evaluate(([id, s]) => {
   if (s) Y.applyUpdate(ydoc, Uint8Array.from(s), 'relay');
   const ed = document.querySelector('.tiptap-host .tiptap').editor;
   window.__yjsUndo = attachYjsUndo(ed, ydoc);
+  // A writes the repairs, as the client bound first does in a session.
+  window.__yjsUndo.setRepairer(() => id === 1);
   window.__yOut = [];
   ydoc.on('update', (u, origin) => { if (origin !== 'relay') window.__yOut.push([...u]); });
   // What the cases call: positions by text, cells by grid, typing as a transaction.
@@ -65,12 +69,14 @@ const attach = (page, id, state) => page.evaluate(([id, s]) => {
 await attach(a, 1);
 await attach(b, 2, await a.evaluate(() => [...window.__undoYjs.Y.encodeStateAsUpdate(window.__yjsUndo.ydoc)]));
 
-// Moves every waiting update across once; returns how many went.
+// Moves every waiting update across once; returns how many went (`sent`: per client).
+const sent = { a: 0, b: 0 };
 const relay = async () => {
   let n = 0;
   for (const [from, to] of [[a, b], [b, a]]) {
     const out = await from.evaluate(() => window.__yOut.splice(0));
     n += out.length;
+    sent[from === a ? 'a' : 'b'] = out.length;
     // The binding can throw while it applies an update; the case notes it and goes on.
     if (out.length) await to.evaluate((us) => {
       for (const u of us) {
@@ -138,7 +144,7 @@ const COMMENTED = [P('Before.'), { type: 'paragraph', content: [{ type: 'text', 
 // (a side's deliberate deletion excepted). `want`: what the run measures now.
 const B_TYPES = 'h.type(h.at("lazy ", 5), "Zed")';
 const NOTED = [P('Before.'), { type: 'paragraph', content: [{ type: 'text', text: 'Noted' }, { type: 'noteRef', attrs: { id: 'n1', kind: 'footnote', text: '1' } }, { type: 'text', text: '.' }] }, P('After.'),
-  { type: 'noteSection', content: [{ type: 'note', attrs: { id: 'n1', kind: 'footnote', text: '1' }, content: [P('First note.')] }] }];
+  { type: 'noteSection', content: [{ type: 'note', attrs: { id: 'n1', kind: 'footnote', text: '1' }, content: [{ type: 'text', text: 'First note.' }] }] }];
 const ok = { same: true, valid: true, clean: true, kept: true, quiet: true, undo: true };
 const red = (...keys) => ({ ...ok, ...Object.fromEntries(keys.map((k) => k.endsWith('?') ? [k.slice(0, -1), null] : [k, false])) });
 const CASES = [
@@ -205,10 +211,13 @@ try {
     await record(b, false);
     // Each pair from fresh Yjs docs: the history one leaves (Yjs keeps deleted items) would
     // steer where the next one's undo puts things back.
-    for (const p of [a, b]) await p.evaluate(() => window.__yjsUndo.detach());
-    await a.evaluate((d) => window.__h.ed.commands.setContent({ type: 'doc', content: d }), c.doc);
-    await attach(a, 1);
-    await attach(b, 2, await a.evaluate(() => [...window.__undoYjs.Y.encodeStateAsUpdate(window.__yjsUndo.ydoc)]));
+    // FRESH=0 keeps one pair of docs for the whole run, the history included.
+    if (process.env.FRESH !== '0') {
+      for (const p of [a, b]) await p.evaluate(() => window.__yjsUndo.detach());
+      await a.evaluate((d) => window.__h.ed.commands.setContent({ type: 'doc', content: d }), c.doc);
+      await attach(a, 1);
+      await attach(b, 2, await a.evaluate(() => [...window.__undoYjs.Y.encodeStateAsUpdate(window.__yjsUndo.ydoc)]));
+    } else await a.evaluate((d) => window.__h.ed.commands.setContent({ type: 'doc', content: d }), c.doc);
     for (let i = 0; i < 3; i++) { await a.waitForTimeout(250); await relay(); }
     await thrown();
     for (const p of [a, b]) await p.evaluate(() => { window.__yjsUndo.undoManager.clear(); window.__yOut.length = 0; });
@@ -219,11 +228,12 @@ try {
     const onlyB = await view(b);
     // The exchange, then whatever either sends on its own afterwards.
     await relay();
+    // A, the repairer, may write its repair once, right after the exchange.
     let extra = 0, quietRounds = 0;
     for (let i = 0; i < ROUNDS && quietRounds < 3; i++) {
       await a.waitForTimeout(i === 0 ? 700 : 200);
       const n = await relay();
-      extra += n;
+      extra += i === 0 ? sent.b : n;
       if (process.env.VERBOSE && n) console.log(`  round ${i}: ${n} updates`, process.env.DUMP ? (await view(a)).json.replace(/"attrs":\{[^{}]*\}/g, '').replace(/"(revMark|revFormat)":null,?/g, '') : '');
       quietRounds = n ? 0 : quietRounds + 1;
     }

@@ -25,6 +25,7 @@ const DOCS = process.env.SOAK_DOC ? [process.env.SOAK_DOC] : ['02-blocks.odt', '
 const { check, failures } = checker();
 const known = [];
 const redrawn = [];
+const refused = [];
 const BEAT = 2000;
 let lagOn = false;
 const relay = await startRelay({ port: RELAY_PORT, beat: BEAT, lag: () => (lagOn ? Math.floor(Math.random() * 250) : 0) });
@@ -76,8 +77,11 @@ async function client(name, page) {
   // What the dev server's client said last: a reload it orders is no finding of the app's.
   page.on('console', (m) => {
     if (/\[vite\]/.test(m.text())) c.vite = m.text().slice(0, 120);
-    // The binding's fallback when it cannot restore the caret (yjsRepair.ts): counted, not failed.
+    // The binding's fallback when it cannot restore the caret (yjsRepair.ts): counted, not
+    // failed; a redraw that is not the shared doc, or content that does not fit, pauses it.
     if (/caret not restorable/.test(m.text())) redrawn.push(`${name}: ${m.text().slice(0, 160)}`);
+    if (/collab: paused/.test(m.text())) check(false, `${name}: ${m.text().slice(0, 200)}`);
+    if (/inside a repair not yet shared/.test(m.text())) refused.push(name);
   });
   page.on('crash', () => { c.vite = 'renderer crashed'; });
   return c;
@@ -366,6 +370,7 @@ try {
   check(false, `soak run threw (seed ${seed}, round ${roundNo}): ${err.stack ?? err}`);
 } finally {
   if (redrawn.length) console.log(`redrawn after a caret not restorable: ${redrawn.length} (${redrawn[0]})`);
+  if (refused.length) console.log(`edits refused inside a repair not yet shared: ${refused.length}`);
   if (known.length) console.log(`known: ${[...new Set(known)].map((k) => `${k} ×${known.filter((x) => x === k).length}`).join('; ')}`);
   await browser.close();
   await relay.close();
