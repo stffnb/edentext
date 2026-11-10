@@ -201,7 +201,8 @@ function firstText(node: { text?: string; marks?: { type?: string }[]; content?:
   return '';
 }
 
-const keyOf = (id: string, name: string) => (id === '' ? name : `${name}@${id}`);
+/** The key document `id` keeps `name` under. */
+export const keyOf = (id: string, name: string) => (id === '' ? name : `${name}@${id}`);
 
 type Json = { type?: string; content?: Json[] };
 
@@ -248,6 +249,27 @@ export async function listDocuments(): Promise<BrowserDocument[]> {
       label: labelOf(id),
     }))
     .filter((d) => d.mine || d.held || !isEmpty(d.id));
+}
+
+/**
+ * Store a document this tab holds in memory (a joined session's) as a new one of this
+ * browser's and make it the tab's, for the reload that opens it. Null when it did not fit.
+ */
+export function keepAsNewDocument(values: Iterable<[string, string]>): string | null {
+  const id = pickSlot(markers(), Date.now());
+  const written: string[] = [];
+  try {
+    for (const [name, value] of values) {
+      written.push(keyOf(id, name));
+      localStorage.setItem(keyOf(id, name), value);
+    }
+    localStorage.setItem(LIVE + id, String(Date.now()));
+    sessionStorage.setItem(TAB_KEY, id);
+    return id;
+  } catch {
+    for (const key of written) localStorage.removeItem(key);
+    return null;
+  }
 }
 
 /** Switch this tab to another document; the reload's pagehide saves and releases this one. */

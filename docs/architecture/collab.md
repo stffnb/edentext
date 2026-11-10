@@ -16,8 +16,7 @@ corpus documents. Both passed every one, so the choice is about cost, not feasib
   stack is pinned exactly and updated as one Dependabot group (`collab`). Every store
   beside the text needs its counterpart in the map `state`. Typing on long documents costs
   more: 7.0 against 4.9 ms per character at 177 pages (Undo, Checks).
-- **Only in a session.** Yjs is attached while a session runs; alone the editor keeps
-  ProseMirror's history and pays nothing.
+- **Only in a session.** Yjs is attached for a session; alone, the history costs nothing.
 - **When to revisit.** If the relay has to keep state anyway, for instance sessions that
   live on without anyone in them, the main reason for Yjs is gone.
 
@@ -89,9 +88,8 @@ the history log) and `closeGroup` (image drag). Editing alone keeps ProseMirror'
 - A document opened in a session clears the manager (`reset`) instead of re-creating
   the state, which would rebuild the sync plugin's binding.
 
-Registering the sync plugins rebuilds every plugin view. `pageBreaks.ts` kept its
-pending frame id across such a rebuild, and pagination then never ran again; its `destroy`
-now resets the timers.
+Registering the sync plugins rebuilds every plugin view, so `pageBreaks.ts`'s `destroy`
+resets its timers: a pending frame id kept across the rebuild would stop pagination.
 
 ### Checks
 
@@ -112,8 +110,7 @@ now resets the timers.
   Yjs. One undo: 9 ms against 19 ms.
 
 Not covered yet: `test:dom` runs the built app, which has no `?undo=yjs`. Cross-client
-grouping (a step's range mapped through remote edits) is checked only through the
-two-client test.
+grouping (a step's range mapped through remote edits) only the two-client test checks.
 
 Another author's change to a store whose own change still gathers in `noteState`'s 500 ms
 window lands that change first (`commitState`, from the map's observer), so both authors'
@@ -160,9 +157,12 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness, in 
   (`collab/zones.svelte.ts`, awareness field `zone`): the others see the name at it and
   cannot open it. Opened at once, the higher client id yields and may lose its first keys.
   A closed tab frees it at once; a client gone without `pagehide`, after awareness's 30 s.
-- **Storage.** The starter keeps editing its own document, and autosave stores everyone's
-  edits there. A joining tab is `volatile`: no copy, no slot, no prune in `main.ts` (its
-  slot id is the first document's). A reload joins again by the link; leaving clears it.
+- **Storage.** The starter's autosave stores everyone's edits; its awareness says `keeps`.
+  A joining tab is `volatile` (no copy, slot or prune); a starter's reload does not rejoin.
+  Leaving, a joiner is asked (`CollabDialog`'s `asking`) to keep the document: `leave.ts`
+  puts JSON, `docStore` entries, pictures and fonts into a new slot and reloads there
+  without the link; discarding reloads into the tab's own or an empty slot. With nobody
+  who `keeps` for 2 s, joiners are told, and their tab warns on closing. Alone 5 s: `empty`.
 - **Carets** come from y-tiptap's cursor plugin over the awareness: zero-width decorations
   in the person's (or recorded-change) colour, hidden in print. y-tiptap's undo plugin
   destroys its manager on any `registerPlugin`, so `undoYjs.ts` keeps it until `detach`.
@@ -178,8 +178,11 @@ picture too, from one ask and one answer; a fourth joins, types and converges. A
 whose pulled peer drops its answer and line, while a third types, still goes live; a late
 offer is pulled from and gets what it lacks; a waiting joiner asks a client coming back,
 which pushes it no copy. B cannot open a header A holds; opened together, the lower id
-keeps it; a closed tab frees it. After the starter leaves, the others go on; a reload
-rejoins; a cut-short link says so. A client with taller lines (6 against 7 pages) stays quiet too.
+keeps it; a closed tab frees it. The starter leaves unasked, the
+others are told and go on; a reload rejoins. A joiner keeping its copy reloads into it
+unwarned, picture, styles and zones, also on a second reload. The last joiner's tab warns
+on closing; a cut-short link and an empty room say so. Taller lines (6 against 7 pages)
+stay quiet too.
 The assistant on the starter, answered by the script (`page.route`): its text and page
 setup reach the joiner, which keeps its recorded marks and adds none; the starter's undo
 takes back each on both sides. A relay dropping every connection after its welcome makes
