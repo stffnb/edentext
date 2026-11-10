@@ -4,7 +4,8 @@
 // text, that clients come, go and reload (four at once), that the assistant's edits travel
 // and undo like typed ones, and that an idle session stays quiet, also when one client
 // lays the pages out differently. The relay passes at most 1 MiB per frame, so a picture
-// and a late joiner's copy go in parts. Any engine (BROWSER).
+// and a late joiner's copy go in parts; a line that keeps breaking stops showing `live`.
+// Any engine (BROWSER).
 import { join } from 'node:path';
 import { MOD, ROOT, checker, devServer, openApp } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
@@ -84,6 +85,7 @@ const SHEET = '/src/lib/styles/sheet.svelte.ts';
 const sheet = (page) => page.evaluate(async (url) => JSON.stringify((await import(url)).styleSheet()), SHEET);
 const sent = (page, kind = 1) => page.evaluate((k) => window.__collab.session.stats.sent[k], kind);
 const [ASK, ANSWER] = [0, 5];
+const status = (page) => page.evaluate(() => window.__collab.view().status);
 // A noise picture, incompressible like a photo, of about 2.5 MB as a data URL.
 const photo = (page) => page.evaluate(() => {
   const c = document.createElement('canvas');
@@ -264,6 +266,27 @@ try {
   const quiet2 = [await sent(a), await sent(e)];
   const [pa, pe] = [await view(a), await view(e)];
   check(pa.pages !== pe.pages && quiet.join() === quiet2.join(), `different layouts stay quiet (${quiet} → ${quiet2}, pages ${pa.pages}/${pe.pages})`);
+
+  // The relay drops every connection right after its welcome, as with a frame too large: the
+  // line is not `live`, says so, retries with growing pauses and recovers once it holds.
+  let sockets = 0;
+  a.on('websocket', (w) => { if (w.url().includes('/relay')) sockets++; });
+  const cut = setInterval(() => { for (const room of relay.rooms.values()) for (const w of room) w.close(1009, 'too big'); }, 200);
+  const failing = await a.waitForFunction(() => window.__collab.view().status === 'failing', null, { timeout: 20_000 }).then(() => true, () => false);
+  const told = await a.waitForSelector('dialog[open] [data-status="failing"]', { timeout: 2000 }).then(() => true, () => false);
+  await a.waitForTimeout(12_000);
+  clearInterval(cut);
+  const during = [await status(a), sockets];
+  check(failing && told && during[0] !== 'live' && sockets <= 8, `a line that keeps breaking is not live and says so, with backoff (${during[0]}, ${sockets} connections)`);
+  for (const page of [a, e]) await page.keyboard.press('Escape');
+  await a.waitForFunction(() => window.__collab.view().status === 'live', null, { timeout: 45_000 }).catch(() => {});
+  await e.waitForFunction(() => window.__collab.view().status === 'live', null, { timeout: 15_000 }).catch(() => {});
+  await caret(e, 'end');
+  await e.keyboard.type(' Omega');
+  await settle(a);
+  await a.waitForTimeout(600);
+  const [pa2, pe2] = [await view(a), await view(e)];
+  check(await status(a) === 'live' && pa2.json === pe2.json && pa2.text.endsWith('Omega'), `once the line holds it is live again and edits arrive (${await status(a)})`);
 
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (err) {

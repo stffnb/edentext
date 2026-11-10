@@ -204,6 +204,7 @@ const de: Messages = {
       version: 'Die anderen nutzen eine andere EdenText-Version. Laden Sie alle Fenster neu, damit alle dieselbe Version haben.',
       full: 'Diese Sitzung ist voll.',
       unreachable: 'Der Server für die Zusammenarbeit ist nicht erreichbar.',
+      failing: 'Die Verbindung zum Server für die Zusammenarbeit bricht immer wieder ab. Ihre Änderungen bleiben hier und werden gesendet, sobald sie wieder steht.',
       invalid: 'Dieser Link ist unvollständig. Bitte lassen Sie ihn sich noch einmal schicken.',
       closed: 'Sitzung beendet',
     },

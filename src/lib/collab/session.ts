@@ -29,6 +29,7 @@ export type SessionStatus =
   | 'version'      // the others run another EdenText version
   | 'full'
   | 'unreachable'
+  | 'failing'      // the line keeps breaking off
   | 'invalid'      // the link's key is cut short or mistyped
   | 'closed';
 

@@ -1634,10 +1634,14 @@
   let collabSession: Session | null = null;
   let collabView: SessionView | null = $state(null);
   let collabOpen = $state(false);
-  // A joiner hears of a session that cannot go on: a bad link, a full room, another version.
+  // Everyone hears of a session that cannot go on: a bad link, a full room, another version,
+  // a relay out of reach or a line that keeps breaking. Once per change, not per update.
+  let collabShown: string | undefined;
   $effect(() => {
     const s = collabView?.status;
-    if (s === 'invalid' || s === 'full' || s === 'version' || s === 'unreachable') collabOpen = true;
+    if (s === collabShown) return;
+    collabShown = s;
+    if (s === 'invalid' || s === 'full' || s === 'version' || s === 'unreachable' || s === 'failing') collabOpen = true;
   });
   function collabHost(): SessionHost {
     return {
