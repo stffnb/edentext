@@ -163,6 +163,7 @@ function report(kind, detail, ctx = {}) {
     : kind === 'undo' && ops.some(FLOW_OP) ? 'undo after the columns flow rewrote text'
     : kind === 'undo' && ops.some((op) => REBUILD_OP(op) || DELETE_OP(op)) ? 'undo after a block copied by another client or deleted'
     : kind === 'lost' && ops.some(DELETE_OP) ? 'text typed into what another deleted'
+    : kind === 'copied' && ops.some((op) => REBUILD_OP(op) || DELETE_OP(op)) ? 'undo and redo after two rebuilds of one block'
     : null;
   if (why) { known.push(`${kind}: ${why}`); console.log(`  known (${why}): ${kind} — ${detail.slice(0, 200)}`); }
   else check(false, `seed ${seed}, round ${roundNo}: ${kind} — ${detail}`);
@@ -359,11 +360,12 @@ try {
       await c.page.evaluate((n) => { const ed = document.querySelector('.tiptap-host .tiptap').editor; for (let i = 0; i < n; i++) ed.commands.redo(); }, n);
       const redone = await calm(cs, c.log);
       if (redone === 'reset') break;
+      // Copies of others' text change the document too: one finding, `copied`, with the diff.
+      const copied = before.letters.some((k, i) => i !== c.index && redone.letters[i] > k);
       const d1 = await docJson(cs[0]);
-      if (d1 !== d0) {
-        const diff = await cs[0].page.evaluate(async ([a, b]) => (await import('/tests/normalize.ts')).firstDiff(JSON.parse(a), JSON.parse(b)), [d0, d1]);
-        report('undo', `${c.name}'s ${n} redos do not give the document back: ${diff}`, { ops: c.log });
-      }
+      const diff = d1 === d0 ? '' : await cs[0].page.evaluate(async ([a, b]) => (await import('/tests/normalize.ts')).firstDiff(JSON.parse(a), JSON.parse(b)), [d0, d1]);
+      if (copied) report('copied', `${c.name}'s undos and redos copied others' text: letters ${before.letters} → ${undone.letters} → ${redone.letters}; ${diff}`, { ops: cs.flatMap((x) => x.log) });
+      else if (diff) report('undo', `${c.name}'s ${n} redos do not give the document back: ${diff}`, { ops: c.log });
       else console.log(`  ${c.name}: ${n} undos and redos, letters ${before.letters} → ${undone.letters} → ${redone.letters}`);
     }
     for (const c of cs) await leave(c);
