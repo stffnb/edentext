@@ -911,6 +911,7 @@
     tabIntervalCm = DEFAULT_TAB_INTERVAL_CM;
     spacingModel = 'add';
     spacingAtPageStart = true;
+    pageRtl = false;
     hfDistances = { ...DEFAULT_HF_DISTANCES };
     extraHfSections = [];
     documentName = '';
