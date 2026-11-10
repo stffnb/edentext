@@ -3,7 +3,8 @@ import { roomId, seal, unseal } from './key';
 export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'failing' | 'closed';
 
 export type Channel = {
-  send(plain: Uint8Array): void;
+  /** To one client by its id, or with `to` 0 to everyone. */
+  send(plain: Uint8Array, to?: number): void;
   close(): void;
   /** When the last peer frame (or part of one) came in, for a session waiting on an answer. */
   heard(): number;
@@ -12,8 +13,11 @@ export type Channel = {
 type Options = {
   url: string;
   key: Uint8Array;
+  /** This client's id: a relay that knows ids passes a frame only to its receiver. */
+  id?: number;
   onFrame(plain: Uint8Array): void;
-  onPeers(n: number): void;
+  /** The room's size; `gone` is the id of a client whose line the relay saw end. */
+  onPeers(n: number, gone?: number): void;
   onStatus(s: ChannelStatus): void;
   /** Each time the relay welcomes the socket, with the room's size, so the session can sync. */
   onOpen(peers: number): void;
@@ -26,6 +30,7 @@ const WHOLE = 0;
 const PART = 1;
 const PART_HEAD = 17;        // envelope, 8-byte id, index, count
 const SEALING = 28;          // nonce and GCM tag
+const TO = 4;                // the receiver in clear in front of a sealed frame, 0 for all
 const MAX_PART = 1 << 20;
 const MAX_MESSAGE = 256 << 20;
 const PART_TTL = 60_000;
@@ -129,10 +134,18 @@ export function openChannel(o: Options): Channel {
   let heard = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stable: ReturnType<typeof setTimeout> | undefined;
-  const queue: Uint8Array[] = [];
+  let addressed = false;
+  const queue: [Uint8Array, number][] = [];
 
-  const put = (sock: WebSocket, plain: Uint8Array) => {
-    for (const part of split(plain, size)) sock.send(seal(o.key, part));
+  const put = (sock: WebSocket, plain: Uint8Array, to: number) => {
+    for (const part of split(plain, size)) {
+      const sealed = seal(o.key, part);
+      if (!addressed) { sock.send(sealed); continue; }
+      const out = new Uint8Array(TO + sealed.length);
+      new DataView(out.buffer).setUint32(0, to);
+      out.set(sealed, TO);
+      sock.send(out);
+    }
   };
 
   const connect = () => {
@@ -156,16 +169,18 @@ export function openChannel(o: Options): Channel {
       timer = setTimeout(connect, wait * (0.8 + Math.random() * 0.4));
       wait = Math.min(wait * 2, MAX_WAIT);
     };
-    sock.onopen = () => sock.send(JSON.stringify({ t: 'hello', v: 1, room, token: null }));
+    sock.onopen = () => sock.send(JSON.stringify({ t: 'hello', v: 1, room, token: null, ...(o.id ? { id: o.id } : {}) }));
     sock.onmessage = (ev) => {
       last = Date.now();
       if (typeof ev.data === 'string') {
-        let msg: { t?: string; peers?: number; n?: number; frame?: number; beat?: number };
+        let msg: { t?: string; peers?: number; n?: number; frame?: number; beat?: number; to?: boolean; gone?: number };
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.t === 'welcome') {
           welcomed = ready = true;
           down = false;
-          if (msg.frame) size = Math.max(PART_HEAD + 1024, Math.min(MAX_PART, msg.frame - SEALING));
+          // A relay without ids passes every frame to all, which drop those not theirs.
+          addressed = msg.to === true && !!o.id;
+          if (msg.frame) size = Math.max(PART_HEAD + 1024, Math.min(MAX_PART, msg.frame - SEALING - (addressed ? TO : 0)));
           // A half-open line never closes by itself: it is dropped and dialled again.
           const beat = msg.beat ?? 0;
           if (beat > 0) alive = setInterval(() => {
@@ -175,7 +190,7 @@ export function openChannel(o: Options): Channel {
             lost();
           }, beat);
           o.onOpen(msg.peers ?? 1);
-          for (const m of queue.splice(0)) put(sock, m);
+          for (const [m, to] of queue.splice(0)) put(sock, m, to);
           if (fails < FAILS) o.onStatus('open');
           stable = setTimeout(() => {
             held = true;
@@ -183,7 +198,7 @@ export function openChannel(o: Options): Channel {
             wait = 500;
             o.onStatus('open');
           }, STABLE_MS);
-        } else if (msg.t === 'peers') o.onPeers(msg.n ?? 1);
+        } else if (msg.t === 'peers') o.onPeers(msg.n ?? 1, msg.gone);
         else if (msg.t === 'full') { closed = true; o.onStatus('full'); }
         return;
       }
@@ -199,11 +214,11 @@ export function openChannel(o: Options): Channel {
   connect();
 
   return {
-    send(plain) {
-      if (ws && ready && ws.readyState === WebSocket.OPEN) put(ws, plain);
+    send(plain, to = 0) {
+      if (ws && ready && ws.readyState === WebSocket.OPEN) put(ws, plain, to);
       // What was typed while the line was down goes out on the next welcome; the sync
       // that follows it would carry it too, so the queue only saves a round trip.
-      else if (queue.length < 256) queue.push(plain);
+      else if (queue.length < 256) queue.push([plain, to]);
     },
     close() {
       closed = true;

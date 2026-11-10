@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 
 const ROOM = /^[A-Za-z0-9_-]{16,64}$/;
+const ID = (v) => Number.isInteger(v) && v > 0 && v < 2 ** 32;
 
 /**
  * Starts a relay on `port` (0 picks a free one). `maxPeers` 0 means no limit per room;
@@ -16,6 +17,9 @@ const ROOM = /^[A-Za-z0-9_-]{16,64}$/;
 export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, path = '/relay', tap, lag } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
+  // Per room, the socket each client id last said hello from: a frame's `to` finds it there.
+  /** @type {Map<string, Map<number, import('ws').WebSocket>>} */
+  const ids = new Map();
   // Behind a proxy that passes `/relay` on unchanged, the app asks `/relay/health`.
   const health = new Set(['/health', `${path}/health`]);
   const http = createServer((req, res) => {
@@ -26,7 +30,9 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
   const wss = new WebSocketServer({ server: http, path, maxPayload: maxFrame });
 
   const send = (ws, msg) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
-  const announce = (peers, except) => { for (const ws of peers) if (ws !== except) send(ws, { t: 'peers', n: peers.size }); };
+  const announce = (peers, except, gone) => {
+    for (const ws of peers) if (ws !== except) send(ws, { t: 'peers', n: peers.size, ...(gone ? { gone } : {}) });
+  };
   const pass = (from, to, data) => {
     const ms = lag?.() ?? 0;
     if (!ms && !from.due?.get(to)) return to.send(data, { binary: true });
@@ -47,7 +53,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
       if (!room) {
         let hello;
         try { hello = binary ? null : JSON.parse(String(data)); } catch { hello = null; }
-        if (hello?.t !== 'hello' || hello.v !== 1 || !ROOM.test(hello.room ?? '')) return ws.close(4000, 'hello');
+        if (hello?.t !== 'hello' || hello.v !== 1 || !ROOM.test(hello.room ?? '') || (hello.id != null && !ID(hello.id))) return ws.close(4000, 'hello');
         let peers = rooms.get(hello.room);
         if (!peers && rooms.size >= maxRooms) return ws.close(4003, 'busy');
         if (peers && maxPeers && peers.size >= maxPeers) { send(ws, { t: 'full' }); return ws.close(4001, 'full'); }
@@ -55,13 +61,30 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
         clearTimeout(timer);
         room = hello.room;
         peers.add(ws);
-        send(ws, { t: 'welcome', peers: peers.size, frame: maxFrame, ...(beat ? { beat } : {}) });
+        // A client with an id puts its receiver in front of each frame; a redial takes its id over.
+        if (hello.id) {
+          ws.id = hello.id;
+          if (!ids.has(room)) ids.set(room, new Map());
+          ids.get(room).set(ws.id, ws);
+        }
+        send(ws, { t: 'welcome', peers: peers.size, frame: maxFrame, ...(beat ? { beat } : {}), ...(ws.id ? { to: true } : {}) });
         announce(peers, ws);
         return;
       }
       if (!binary) return;
       tap?.(data);
-      for (const peer of rooms.get(room) ?? []) if (peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, data);
+      if (!ws.id) {
+        for (const peer of rooms.get(room) ?? []) if (peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, data);
+        return;
+      }
+      if (data.length < 4) return;
+      const to = data.readUInt32BE(0), sealed = data.subarray(4);
+      if (to) {
+        const peer = ids.get(room)?.get(to);
+        if (peer && peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, sealed);
+        return;
+      }
+      for (const peer of rooms.get(room) ?? []) if (peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, sealed);
     });
 
     ws.on('close', () => {
@@ -69,8 +92,12 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
       const peers = room && rooms.get(room);
       if (!peers) return;
       peers.delete(ws);
-      if (peers.size) announce(peers);
-      else rooms.delete(room);
+      // Only the id's current socket leaving means its client is gone; a replaced one does not.
+      const named = ids.get(room);
+      const gone = ws.id && named?.get(ws.id) === ws ? ws.id : 0;
+      if (gone) named.delete(gone);
+      if (peers.size) announce(peers, null, gone);
+      else { rooms.delete(room); ids.delete(room); }
     });
     ws.on('error', () => ws.terminate());
   });

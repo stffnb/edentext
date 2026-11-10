@@ -29,7 +29,7 @@ describe('collaboration key', () => {
     expect(keyBytes(k.slice(1))).toBeNull();
   });
 
-  it('carries messages of any size between two channels of one key through the relay', async () => {
+  it('carries messages of any size between channels of one key through the relay, to one or all', async () => {
     // Frames the relay passes stay under its limit; longer messages arrive whole.
     const frames: number[] = [];
     const relay = await startRelay({ port: 0, maxFrame: 4096, tap: (d: Buffer) => frames.push(d.length) });
@@ -37,30 +37,34 @@ describe('collaboration key', () => {
     const got: string[] = [];
     const big: Uint8Array[] = [];
     const peers: number[] = [];
-    const open = (name: string) => new Promise<ReturnType<typeof openChannel>>((resolve) => {
+    const open = (name: string, id?: number) => new Promise<ReturnType<typeof openChannel>>((resolve) => {
       const ch = openChannel({
-        url: `ws://127.0.0.1:${relay.port}/relay`, key,
+        url: `ws://127.0.0.1:${relay.port}/relay`, key, id,
         onFrame: (p) => (p.length > 1000 ? big.push(p) : got.push(`${name}:${new TextDecoder().decode(p)}`)),
         onPeers: (n) => peers.push(n),
         onStatus: () => {},
         onOpen: () => resolve(ch),
       });
     });
-    const a = await open('a');
-    const b = await open('b');
+    const a = await open('a', 1);
+    const b = await open('b', 2);
+    const c = await open('c', 3);
     const long = (seed: number) => Uint8Array.from({ length: 50_000 }, (_, i) => (i * seed) & 255);
     a.send(long(7));
     b.send(text('ho'));
     b.send(long(13));
     a.send(text('hi'));
+    a.send(long(9), 2);
+    c.send(text('to a'), 1);
     await new Promise((r) => setTimeout(r, 300));
-    expect(got.sort()).toEqual(['a:ho', 'b:hi']);
-    expect(big.map((m) => m[1]).sort((x, y) => x - y)).toEqual([7, 13]);
+    expect(got.sort()).toEqual(['a:ho', 'a:to a', 'b:hi', 'c:hi', 'c:ho']);
+    expect(big.map((m) => m[1]).sort((x, y) => x - y)).toEqual([7, 7, 9, 13, 13]);
     expect(big.every((m) => m.length === 50_000 && m[2] === ((2 * m[1]) & 255))).toBe(true);
     expect(Math.max(...frames)).toBeLessThanOrEqual(4096);
-    expect(peers).toContain(2);
+    expect(peers).toContain(3);
     a.close();
     b.close();
+    c.close();
     await relay.close();
   });
 });
