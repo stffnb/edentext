@@ -25,7 +25,7 @@ const DOCS = process.env.SOAK_DOC ? [process.env.SOAK_DOC] : ['02-blocks.odt', '
 const { check, failures } = checker();
 const known = [];
 const redrawn = [];
-const refused = [];
+const refused = []; // held edits that no longer fit
 const BEAT = 2000;
 let lagOn = false;
 const relay = await startRelay({ port: RELAY_PORT, beat: BEAT, lag: () => (lagOn ? Math.floor(Math.random() * 250) : 0) });
@@ -370,7 +370,7 @@ try {
   check(false, `soak run threw (seed ${seed}, round ${roundNo}): ${err.stack ?? err}`);
 } finally {
   if (redrawn.length) console.log(`redrawn after a caret not restorable: ${redrawn.length} (${redrawn[0]})`);
-  if (refused.length) console.log(`edits refused inside a repair not yet shared: ${refused.length}`);
+  if (refused.length) console.log(`held edits lost inside a repair not yet shared: ${refused.length}`);
   if (known.length) console.log(`known: ${[...new Set(known)].map((k) => `${k} ×${known.filter((x) => x === k).length}`).join('; ')}`);
   await browser.close();
   await relay.close();

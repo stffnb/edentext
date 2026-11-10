@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/core';
-import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection, type Transaction } from '@tiptap/pm/state';
 import { AttrStep, ReplaceStep, Transform, type Step } from '@tiptap/pm/transform';
 import { Fragment, Mark, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import * as Y from 'yjs';
@@ -62,11 +62,16 @@ export function diffSteps(a: PMNode, b: PMNode): Step[] {
   return out;
 }
 
-// The shared doc after `tr` without the overlay: `tr`'s steps moved from `base` + overlay
-// onto `base`. Null where a step reaches into what only the overlay holds.
-function rebase(base: PMNode, tr: Transaction): PMNode | null {
+// What changed between two docs, as steps from `before` to `doc`.
+type Change = { before: PMNode; doc: PMNode; steps: readonly Step[]; docs: readonly PMNode[] };
+type Moved = { doc: PMNode; steps: Step[]; map: (pos: number) => number };
+
+// `tr`'s steps moved from `tr.before` onto `base` (as prosemirror-collab rebases): the shared
+// doc after `tr` without the overlay, or held edits onto a redraw. Null where a step reaches
+// into what only `tr.before` holds.
+function move(base: PMNode, tr: Change): Moved | null {
   const over = diffSteps(base, tr.before);
-  if (!over.length) return tr.doc;
+  if (!over.length) return { doc: tr.doc, steps: [...tr.steps], map: (p) => p };
   try {
     const ot = new Transform(base);
     for (const s of over) ot.step(s);
@@ -80,60 +85,69 @@ function rebase(base: PMNode, tr: Transaction): PMNode | null {
       if (!mapped || t.maybeStep(mapped).failed) return null;
       (t.mapping as unknown as Mirrored).setMirror(n - 1 - i, t.steps.length - 1);
     }
-    return t.doc;
+    return { doc: t.doc, steps: t.steps.slice(n + over.length), map: (p) => t.mapping.map(p) };
   } catch {
     return null;
   }
 }
 
-/** `base`: the shared doc as this client knows it, when the editor's differs by an overlay. */
-type Overlay = { base: PMNode | null };
+/**
+ * `base`: the shared doc as this client knows it, when the editor's differs by an overlay.
+ * `held`: this client's edits since one reached into the overlay, drawn but not written.
+ */
+type Held = Change & { sel: [number, number] | null };
+type Overlay = { base: PMNode | null; held: Held | null };
 export const repairKey = new PluginKey<Overlay>('collabRepair');
+const REPLAYED = 'collabRepairReplayed';
 
 /**
  * Keeps the plugins' repairs after a binding-dispatched transaction out of the shared doc
  * on every client but the repairer (`setRepairer`), which writes them under its own id
- * outside the history. Pauses the binding when what it drew is not the fragment.
+ * outside the history. `onPause` hears the binding pause (an error) and resume (null).
  */
-export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onInvalid: (e: Error) => void) {
+export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onPause: (e: Error | null) => void) {
   let repairs: () => boolean = () => true;
   const rebased = new WeakMap<Transaction, PMNode | null>();
   const rebaseOnce = (base: PMNode, tr: Transaction) => {
-    if (!rebased.has(tr)) rebased.set(tr, rebase(base, tr));
+    if (!rebased.has(tr)) rebased.set(tr, move(base, tr)?.doc ?? null);
     return rebased.get(tr)!;
   };
+  const stateOf = (state = editor.state) => repairKey.getState(state) ?? { base: null, held: null };
   const overlayOf = (state = editor.state) => {
-    const base = repairKey.getState(state)?.base ?? null;
+    const base = stateOf(state).base;
     return base && base !== state.doc ? base : null;
   };
+  const hold = (h: Held | null, tr: Transaction): Held => h
+    ? { before: h.before, doc: tr.doc, steps: [...h.steps, ...tr.steps], docs: [...h.docs, ...tr.docs], sel: null }
+    : { before: tr.before, doc: tr.doc, steps: tr.steps, docs: tr.docs, sel: null };
 
   const plugin = new Plugin<Overlay>({
     key: repairKey,
     state: {
-      init: () => ({ base: null }),
+      init: () => ({ base: null, held: null }),
       apply(tr, value, oldState) {
-        if (tr.getMeta(FLUSHED)) return { base: null };
-        if (fromBinding(tr)) return { base: tr.doc };
-        if (!tr.docChanged) return value;
+        if (tr.getMeta(FLUSHED)) return { base: null, held: null };
+        const held = tr.getMeta(REPLAYED) ? null : value.held;
+        // The redraw drops held edits; the caret they left is where the replay puts it.
+        if (fromBinding(tr)) {
+          const sel: [number, number] = [oldState.selection.anchor, oldState.selection.head];
+          return { base: tr.doc, held: held && held.doc === oldState.doc ? { ...held, sel } : held };
+        }
+        if (!tr.docChanged) return held === value.held ? value : { base: value.base, held };
         const root = tr.getMeta('appendedTransaction') as Transaction | undefined;
         // A repair after another client's change (or an undo) joins the overlay.
-        if (root && fromBinding(root)) return { base: value.base ?? oldState.doc };
-        if (!value.base || value.base === oldState.doc) return { base: null };
+        if (root && fromBinding(root)) return { base: value.base ?? oldState.doc, held };
+        // Once an edit is held, the ones after it wait with it, in order.
+        if (held && held.doc === oldState.doc) return { base: value.base, held: hold(held, tr) };
+        if (!value.base || value.base === oldState.doc) return { base: null, held };
         const next = rebaseOnce(value.base, tr);
-        if (next) return { base: next === tr.doc ? null : next };
+        if (next) return { base: next === tr.doc ? null : next, held };
         // A repair after a local edit reaching into the overlay joins it; the repairer's
-        // own edit there is written whole, the overlay with it.
-        return root ? { base: value.base } : { base: null };
+        // own edit there is written whole, the overlay with it. Anyone else's is held:
+        // written now, it would bring the repair twice.
+        if (root) return { base: value.base, held };
+        return repairs() ? { base: null, held: null } : { base: value.base, held: hold(null, tr) };
       },
-    },
-    // This client's edit reaching into what only its overlay holds waits for the
-    // repairer's version: written now, it would bring the repair twice.
-    filterTransaction(tr, state) {
-      const base = overlayOf(state);
-      if (!base || !tr.docChanged || fromBinding(tr) || tr.getMeta('appendedTransaction') || repairs()) return true;
-      if (rebaseOnce(base, tr)) return true;
-      console.warn('collab: edit inside a repair not yet shared, refused');
-      return false;
     },
   });
 
@@ -141,25 +155,53 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onIn
   const write = binding._prosemirrorChanged.bind(binding);
   binding._prosemirrorChanged = (doc) => write(overlayOf() ?? doc);
 
-  let pending = false, destroyed = false;
+  let pending = false, replaying = false, destroyed = false, paused = false;
   const flush = () => {
     pending = false;
     if (destroyed || !binding.prosemirrorView || binding.invalidContentError || !overlayOf() || !repairs()) return;
     const doc = editor.state.doc;
+    const held = stateOf().held;
+    const repaired = held && held.doc === doc ? held.before : doc;
     binding.mux(() => {
       ydoc.transact((t) => {
         t.meta.set('addToHistory', false);
-        updateYFragment(ydoc, binding.type, doc, binding);
+        updateYFragment(ydoc, binding.type, repaired, binding);
       }, REPAIR_ORIGIN);
+      // Edits held until now go in as this client's own, undoable.
+      if (repaired !== doc) write(doc);
       editor.view.dispatch(editor.state.tr.setMeta(FLUSHED, true).setMeta('addToHistory', false));
     });
   };
+  // The held edits again on the redrawn doc: written if the overlay they reached into is
+  // shared now, held again if not, dropped with a warning where they no longer fit.
+  const replay = () => {
+    replaying = false;
+    const held = stateOf().held, doc = editor.state.doc;
+    if (destroyed || !held || held.doc === doc || binding.invalidContentError) return;
+    const moved = move(doc, held);
+    const tr = editor.state.tr.setMeta(REPLAYED, true);
+    if (!moved) console.warn('collab: edit inside a repair not yet shared, lost to a change around it');
+    else {
+      for (const s of moved.steps) tr.step(s);
+      if (held.sel) {
+        const at = (p: number) => tr.doc.resolve(Math.max(0, Math.min(moved.map(p), tr.doc.content.size)));
+        tr.setSelection(TextSelection.between(at(held.sel[0]), at(held.sel[1])));
+      }
+    }
+    editor.view.dispatch(tr);
+  };
   // After the updates arriving together, so one write covers them all.
   const schedule = () => {
+    if (paused && !binding.invalidContentError) { paused = false; onPause(null); }
+    if (!destroyed && !replaying && stateOf().held && stateOf().held!.doc !== editor.state.doc) {
+      replaying = true;
+      queueMicrotask(replay);
+    }
     if (pending || destroyed || !overlayOf() || !repairs()) return;
     pending = true;
     queueMicrotask(flush);
   };
+  const pause = (e: Error) => { paused = true; onPause(e); };
 
   // y-tiptap restores the caret by walking the fragment; where the document drawn from it
   // differs, a position falls outside and the update would be lost with a RangeError. The
@@ -178,7 +220,7 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onIn
       if (!fits) {
         const err = new RangeError('the redrawn document is not the shared one');
         (binding as unknown as { _invalidContentError: Error })._invalidContentError = err;
-        onInvalid(err);
+        pause(err);
       }
     }
   };
@@ -186,6 +228,8 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onIn
   editor.on('transaction', schedule);
   return {
     plugin,
+    /** The binding's `onInvalidContent`. */
+    pause,
     /** Who writes repairs; a held one is written if that is now this client. */
     setRepairer(fn: () => boolean) { repairs = fn; schedule(); },
     detach() {

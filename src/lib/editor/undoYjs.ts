@@ -12,8 +12,6 @@ import './yjsRedo';
 
 // Origin of the side stores' writes into the shared doc (a `StateStep` mirrored).
 const STATE_ORIGIN = Symbol('stateHistory');
-/** Window event: the shared doc no longer fits this editor, so it neither edits nor writes. */
-export const COLLAB_PAUSED = 'collab-paused';
 
 // Whether a block holds another client's live text or inline object. y-tiptap's own filter
 // keeps every paragraph with content, so undoing an Enter left the new paragraph behind.
@@ -151,6 +149,8 @@ export type YjsUndo = {
   applyState: () => void;
   /** Puts into effect again each store whose entries mention `text`, as a picture they name came. */
   refresh: (text: string) => void;
+  /** Hears when the shared doc stops fitting this editor (no edits, no writes) and fits again. */
+  onPause: (fn: (paused: boolean) => void) => void;
 };
 
 /**
@@ -291,13 +291,17 @@ export function attachYjsUndo(
   editor.unregisterPlugin('history');
   // Shared content that does not fit the schema pauses editing and writing, instead of
   // y-tiptap deleting it from the shared doc; it resumes with an update that fits.
-  const paused = (e: Error) => {
-    console.error('collab: paused,', e.message);
-    window.dispatchEvent(new CustomEvent(COLLAB_PAUSED, { detail: e.message }));
+  let heard: (paused: boolean) => void = () => {};
+  const paused = (e: Error | null) => {
+    if (e) console.error('collab: paused,', e.message);
+    else console.info('collab: resumed');
+    heard(!!e);
   };
-  const sync = ySyncPlugin(frag, { onInvalidContent: paused });
+  let invalid: (e: Error) => void = paused;
+  const sync = ySyncPlugin(frag, { onInvalidContent: (e) => invalid(e) });
   const binding = bindingOf(sync);
   const repair = attachRepair(editor, ydoc, binding, paused);
+  invalid = repair.pause;
   repair.setRepairer(repairs);
   editor.registerPlugin(repair.plugin);
   editor.registerPlugin(sync);
@@ -313,6 +317,7 @@ export function attachYjsUndo(
   return {
     ydoc, undoManager: um,
     setRepairer: repair.setRepairer,
+    onPause: (fn) => { heard = fn; },
     applyState: () => apply([...side.keys()]),
     refresh(text) {
       const keys = [...side.entries()].filter(([, v]) => JSON.stringify(v).includes(text)).map(([k]) => k);

@@ -2367,9 +2367,11 @@
     <div class="sb-right">
     {#if embedded && attribution}<PoweredBy />{/if}
     {#if sessionView && sessionView.status !== 'closed'}
-      <button class="collab-btn" data-status={sessionView.status} onclick={() => (collabOpen = true)} title={t().collab.status[sessionView.status]}>
+      <!-- A paused binding takes the button over until an update fits again. -->
+      <button class="collab-btn" class:paused={sessionView.paused} data-status={sessionView.status} aria-live="polite" onclick={() => (collabOpen = true)}
+        title={sessionView.paused ? t().collab.pausedHint : t().collab.status[sessionView.status]}>
         {#each sessionView.peers as p (p.id)}<span class="collab-dot" style:background={p.color} title={p.name}></span>{/each}
-        {sessionView.status === 'live' ? t().collab.peers(sessionView.peers.length) : t().collab.status[sessionView.status]}
+        {sessionView.paused ? t().collab.paused : sessionView.status === 'live' ? t().collab.peers(sessionView.peers.length) : t().collab.status[sessionView.status]}
       </button>
     {/if}
     <BusyIndicator {editor} task={busyTask} progress={busyProgress} />
@@ -3079,6 +3081,7 @@
     white-space: nowrap;
   }
   .collab-btn:hover { background: var(--color-btn-hover); }
+  .collab-btn.paused { color: var(--color-primary); font-weight: 600; box-shadow: inset 0 0 0 1px var(--color-primary); }
   .collab-dot { width: 8px; height: 8px; border-radius: 50%; }
 
   .wordcount-btn {

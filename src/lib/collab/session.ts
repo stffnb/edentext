@@ -27,6 +27,7 @@ const BATCH_MS = 50;
 const SETTLE_MS = 300;  // how long a sync waits for late offers after the first
 const STALL_MS = 10_000; // a sync that hears nothing this long starts over
 const EMPTY_MS = 5000;   // a joiner alone this long is told the room is empty
+const GONE_MS = 3000;    // after the room shrinks, whose presence is not renewed this long left
 const REMOTE = Symbol('remote');
 
 export type SessionStatus =
@@ -44,8 +45,11 @@ export type SessionStatus =
 /** `keeps`: this client stores the document (the starter); a joiner holds it in its tab only. */
 export type Peer = { id: number; name: string; color: string; keeps: boolean };
 
-/** `missing`: pictures no one here could send, shown as grey boxes. */
-export type SessionView = { status: SessionStatus; peers: Peer[]; link: string; keeps: boolean; kept: boolean; missing: number };
+/**
+ * `missing`: pictures no one here could send, shown as grey boxes. `paused`: the shared doc
+ * does not fit this editor, which neither edits nor writes until an update fits again.
+ */
+export type SessionView = { status: SessionStatus; peers: Peer[]; link: string; keeps: boolean; kept: boolean; missing: number; paused: boolean };
 
 /** What the session needs from the app. */
 export type SessionHost = {
@@ -111,6 +115,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   let peerCount = 1;
   let binding: YjsUndo | null = null;
   let repairer: (() => boolean) | null = null;
+  let paused = false;
   let joining = join;
   // The others' carets and selections, drawn as decorations in their colours, and the
   // pictures put in from now on; one registration, as each rebuilds every plugin view.
@@ -124,6 +129,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     repairer = () => [...awareness.getStates()].every(([id, s]) =>
       id === ydoc.clientID || typeof s.rank !== 'number' || s.rank > rank || (s.rank === rank && id > ydoc.clientID));
     b.setRepairer(repairer);
+    b.onPause((p) => { paused = p; changed(); });
     editor.registerPlugin(yCursorPlugin(awareness), (p, plugins) => [...plugins, p, pictures.plugin]);
   };
 
@@ -132,7 +138,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     .map(([id, s]) => ({ id, name: String(s.user.name ?? ''), color: String(s.user.color ?? ''), keeps: s.keeps === true }));
   const changed = () => {
     const all = peers();
-    host.onChange({ status, peers: all, link, keeps, kept: keeps || all.some((p) => p.keeps), missing: pictures.missing() });
+    host.onChange({ status, peers: all, link, keeps, kept: keeps || all.some((p) => p.keeps), missing: pictures.missing(), paused });
   };
   // Waiting turns into `empty` after EMPTY_MS and stays so until someone comes.
   let emptyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -179,6 +185,15 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     changed();
   };
   awareness.on('update', onPresence);
+  // A client the relay lost is gone for the others once they renewed their presence and
+  // its did not come, not after awareness's 30 s: its zone frees and its repairs move on.
+  let goneSince = 0;
+  let goneTimer: ReturnType<typeof setTimeout> | undefined;
+  const sweep = () => {
+    goneTimer = undefined;
+    const gone = [...awareness.meta].filter(([id, m]) => id !== ydoc.clientID && awareness.states.has(id) && m.lastUpdated < goneSince).map(([id]) => id);
+    if (gone.length) removeAwarenessStates(awareness, gone, 'gone');
+  };
 
   // Incoming updates gather for a batch and apply as one Yjs transaction. A joiner binds
   // the editor once the doc it received carries a start file.
@@ -309,6 +324,12 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       // offers or an answer starts over with the rest, as others' traffic hides the stall.
       const came = n > peerCount, left = n < peerCount;
       if (came) { present(); pictures.retry(); }
+      if (left) {
+        present();
+        if (!goneTimer) goneSince = Date.now();
+        clearTimeout(goneTimer);
+        goneTimer = setTimeout(sweep, GONE_MS);
+      }
       peerCount = n;
       if (left) pictures.recheck();
       if (left ? round && !round.over : came && joining && (!round || round.over)) startRound();
@@ -349,6 +370,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       clearTimeout(outTimer);
       clearTimeout(inTimer);
       clearTimeout(emptyTimer);
+      clearTimeout(goneTimer);
       endRound();
       goodbye();
       channel.close();
