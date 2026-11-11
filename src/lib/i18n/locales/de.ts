@@ -215,7 +215,7 @@ const de: Messages = {
     leaveOpen: 'Verlassen und öffnen',
     you: 'Sie',
     peers: (n: number) => `${n} ${n === 1 ? 'weitere Person' : 'weitere Personen'} dabei`,
-    missing: (n: number) => n === 1 ? 'Ein Bild ließ sich nicht holen, weil gegangen ist, wer es hatte. Es bleibt ein grauer Kasten, bis jemand dazukommt, der es hat.' : `${n} Bilder ließen sich nicht holen, weil gegangen ist, wer sie hatte. Sie bleiben graue Kästen, bis jemand dazukommt, der sie hat.`,
+    missing: (n: number) => n === 1 ? 'Ein Bild fehlt: Wer es hatte, ist nicht mehr dabei. Bis jemand dazukommt, der es hat, steht dort ein grauer Kasten.' : `${n} Bilder fehlen: Wer sie hatte, ist nicht mehr dabei. Bis jemand dazukommt, der sie hat, stehen dort graue Kästen.`,
     picturesPending: 'Einige Bilder sind noch nicht bei Ihnen angekommen und würden in der Datei fehlen. Bitte erneut versuchen, sobald sie zu sehen sind.',
     paused: 'Bearbeitung angehalten',
     pausedHint: 'Eine Änderung aus der Sitzung lässt sich hier nicht anzeigen. Damit sie nicht überschrieben wird, ist die Bearbeitung angehalten. Sobald das Dokument wieder angezeigt werden kann, geht es von selbst weiter.',
