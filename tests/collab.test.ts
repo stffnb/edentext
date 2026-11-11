@@ -69,6 +69,35 @@ describe('collaboration key', () => {
     c.close();
     await relay.close();
   });
+
+  it('holds only a bounded number of unfinished messages, whoever sends the parts', async () => {
+    const relay = await startRelay({ port: 0 });
+    const key = keyBytes(newKey())!;
+    const url = `ws://127.0.0.1:${relay.port}/relay`;
+    let whole = 0;
+    await new Promise<void>((resolve) => openChannel({ url, key, id: 1, onFrame: () => whole++, onPeers: () => {}, onStatus: () => {}, onOpen: () => resolve() }));
+    const raw = new WebSocket(url);
+    raw.binaryType = 'arraybuffer';
+    await new Promise<void>((resolve) => {
+      raw.onopen = () => raw.send(JSON.stringify({ t: 'hello', v: 1, room: roomId(key), token: null }));
+      raw.onmessage = () => resolve();
+    });
+    // Forty messages of two parts each: all first parts, then all second ones.
+    const part = (msg: number, index: number) => {
+      const env = new Uint8Array(17 + 2048);
+      const v = new DataView(env.buffer);
+      env[0] = 1;
+      v.setUint32(5, msg);
+      v.setUint32(9, index);
+      v.setUint32(13, 2);
+      return seal(key, env);
+    };
+    for (const index of [0, 1]) for (let m = 0; m < 40; m++) raw.send(part(m, index));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(whole).toBe(16);
+    raw.close();
+    await relay.close();
+  });
 });
 
 // A Y.Text holding "xdog." inside a list, edited; `undo` takes back the last edit. Each run
