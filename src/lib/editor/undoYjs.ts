@@ -9,6 +9,7 @@ import { pmUndo, setUndoBackend, STATE_RESTORED, type UndoBackend } from './undo
 import { describeTransaction, resetHistoryLog, syncHistoryLog } from '../utils/historyLog.svelte';
 import { attachRepair, bindingOf, repairKey } from './yjsRepair';
 import { attachRescue } from './yjsRescue';
+import { withMarks } from './yjsMarks';
 import './yjsRedo';
 
 // Origin of the side stores' writes into the shared doc (a `StateStep` mirrored).
@@ -220,7 +221,7 @@ export function attachYjsUndo(
   // history starts: a first write of old values would cover another's new ones. A joiner
   // only learns the pictures its start file gave the stores.
   if (frag.length === 0) {
-    prosemirrorToYXmlFragment(editor.state.doc, frag);
+    prosemirrorToYXmlFragment(withMarks(editor.state.doc), frag);
     ydoc.transact(() => { for (const [id, v] of stateValues()) for (const [k, e] of packed(id, v, false)) side.set(k, e); });
   } else for (const [, v] of stateValues()) codec.pack(v, false);
   const leaf = (name: string) => !!editor.schema.nodes[name]?.isLeaf;
