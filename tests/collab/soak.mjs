@@ -211,8 +211,15 @@ async function calm(cs, ops) {
   if (!one('doc') || !one('state')) {
     const [a, b] = [await docJson(cs[0]), await docJson(cs[states.findIndex((s) => s.doc !== states[0].doc || s.state !== states[0].state)])];
     const diff = await cs[0].page.evaluate(async ([a, b]) => (await import('/tests/normalize.ts')).firstDiff(JSON.parse(a), JSON.parse(b)), [a, b]);
-    await writeFile(join(tmpdir(), `soak-${seed}-${roundNo}-diverged.json`), JSON.stringify({ a: JSON.parse(a), b: JSON.parse(b) }));
-    const why = `${one('body') ? 'same Yjs body' : 'Yjs bodies differ'}${states.some((x) => x.invalid) ? `, invalid content: ${states.map((x) => x.invalid).join('|')}` : ''}`;
+    // State vectors tell an update one client lacks from items only one client wrote.
+    const svs = await Promise.all(cs.map((c) => c.page.evaluate(async () => {
+      const { Y } = await import('/src/lib/editor/undoYjs.ts');
+      const d = window.__collab?.session?.awareness?.doc;
+      return d ? { me: d.clientID, sv: Object.fromEntries(Y.decodeStateVector(Y.encodeStateVector(d))) } : null;
+    }).catch(() => null)));
+    await writeFile(join(tmpdir(), `soak-${seed}-${roundNo}-diverged.json`), JSON.stringify({ a: JSON.parse(a), b: JSON.parse(b), svs }));
+    const svOf = (x) => JSON.stringify(Object.entries(x?.sv ?? {}).sort());
+    const why = `${svs.every((x) => svOf(x) === svOf(svs[0])) ? 'same state vectors' : `state vectors differ: ${cs.map((c, i) => `${c.name} ${svOf(svs[i])}`).join(' ')}`}, ${one('body') ? 'same Yjs body' : 'Yjs bodies differ'}${states.some((x) => x.invalid) ? `, invalid content: ${states.map((x) => x.invalid).join('|')}` : ''}`;
     report('diverged', `${desc} (${why}): ${one('doc') ? 'stores differ' : diff}`, { ops });
     return 'reset';
   }

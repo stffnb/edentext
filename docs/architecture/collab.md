@@ -194,7 +194,7 @@ within a few beats, asks nothing while down, and comes back. `tests/relay.test.t
 scripts run in the three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`; load,
 soak and typing speed: `collab-soak.md`.
 
-Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun: in Firefox a joiner
-not live within 20 s on a just-started dev server. A client holds at most 16 unfinished messages, 256 MiB together: a holder of
+Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun nor in five runs on a
+fresh dev server and dep cache (2026-11-11): in Firefox a joiner not live within 20 s on a just-started dev server. A client holds at most 16 unfinished messages, 256 MiB together: a holder of
 either link can fill that for 60 s. Writers share one signing key, so it tells writers from readers, not writers apart, and a
 write link stays valid for the session. Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.
