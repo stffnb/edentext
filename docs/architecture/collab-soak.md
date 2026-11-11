@@ -42,7 +42,7 @@ counted and printed, not failed.
 By default the run leaves out the deleting ops and the columns flow, so only new findings
 show and `test:collab` stays green on them; block styles, lists, Enter, notes, pictures,
 formulas, text boxes, breaks and table structure are drawn. `SOAK_SKIP=none` draws every op
-and classifies. Further: `SOAK_SEED`, `SOAK_CLIENTS` (4), `SOAK_ROUNDS` (4), `SOAK_OPS` (8 per client and
+and classifies. Further: `SOAK_SEED`, `SOAK_CLIENTS` (4), `SOAK_READERS` (0; by the read link, compared at every calm moment), `SOAK_ROUNDS` (4), `SOAK_OPS` (8 per client and
 round), `SOAK_DOC`, and for the long run `SOAK_RUNS` seeds within `SOAK_MINUTES`. A seed
 fixes every client's ops and the disruptions, not their timing, so a failing seed shows the
 same ops but may not fail again. Diverged documents and the ops of the round go to the OS

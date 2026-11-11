@@ -15,6 +15,8 @@ const SEED = +(process.env.SOAK_SEED ?? 1);
 const CLIENTS = +(process.env.SOAK_CLIENTS ?? 4);
 const ROUNDS = +(process.env.SOAK_ROUNDS ?? 4);
 const OPS = +(process.env.SOAK_OPS ?? 8);
+// Readers by the read link: they only follow, and every calm moment compares them too.
+const READERS = +(process.env.SOAK_READERS ?? 0);
 // The long run: several seeds, each a session of its own, within a time budget.
 const RUNS = +(process.env.SOAK_RUNS ?? 1);
 const MINUTES = +(process.env.SOAK_MINUTES ?? 0);
@@ -115,6 +117,16 @@ async function joinAt(c, link) {
 async function leave(c) {
   await c.page.evaluate(() => window.__collab?.session?.leave()).catch(() => {});
 }
+const readers = [];
+async function joinReaders(starter) {
+  for (const c of readers.splice(0)) { await leave(c); await c.page.context().close(); }
+  const viewLink = await starter.page.evaluate(() => window.__collab.session.viewLink);
+  for (let i = 0; i < READERS; i++) {
+    const c = await client(`Reader${i + 1}`);
+    await joinAt(c, viewLink);
+    readers.push(c);
+  }
+}
 
 // What a calm moment compares, hashed in the page: the doc, the map of stores, the pages.
 const stateOf = (c) => c.page.evaluate((letters) => {
@@ -175,6 +187,7 @@ function report(kind, detail, ctx = {}) {
 // Waits until every client is live, all hold the same doc, stores and pages, and nobody
 // has sent an update for a second. Then the session must stay silent for three seconds.
 async function calm(cs, ops) {
+  cs = [...cs, ...readers];
   lagOn = false;
   // A deaf line is given back only once its client noticed: frames lost on a line that
   // stays up are not something a real connection does.
@@ -302,6 +315,7 @@ async function restart(cs) {
   for (const c of cs) await leave(c);
   for (const c of cs.slice(1)) { await c.page.context().close(); }
   const link = await start(cs[0], null);
+  await joinReaders(cs[0]);
   for (let i = 1; i < cs.length; i++) {
     const fresh = await client(`${LETTERS[i]}${roundNo}`);
     Object.assign(cs[i], { page: fresh.page, errors: fresh.errors, log: [], history: true });
@@ -324,6 +338,7 @@ try {
     cs.forEach((c, i) => { c.index = i; });
     let link = await start(cs[0], doc);
     for (const c of cs.slice(1)) await joinAt(c, link);
+    await joinReaders(cs[0]);
     for (const c of cs) c.base = (await stateOf(c)).letters[c.index];
     const rs = cs.map((_, i) => mulberry32(seed * 1000 + i)), rd = mulberry32(seed * 1000 + 999);
     for (roundNo = 1; roundNo <= ROUNDS && (!MINUTES || Date.now() - t0 < MINUTES * 60_000); roundNo++) {
@@ -379,10 +394,10 @@ try {
       else if (diff) report('undo', `${c.name}'s ${n} redos do not give the document back: ${diff}`, { ops: c.log });
       else console.log(`  ${c.name}: ${n} undos and redos, letters ${before.letters} → ${undone.letters} → ${redone.letters}`);
     }
-    for (const c of cs) await leave(c);
-    for (const c of cs.slice(1)) await c.page.context().close();
+    for (const c of [...cs, ...readers]) await leave(c);
+    for (const c of [...cs.slice(1), ...readers.splice(0)]) await c.page.context().close();
   }
-  check(true, `${rounds} rounds, ${opsDone} ops on ${CLIENTS} clients in ${Math.round((Date.now() - t0) / 1000)} s; ${known.length} known conflicts`);
+  check(true, `${rounds} rounds, ${opsDone} ops on ${CLIENTS} clients${READERS ? ` and ${READERS} readers` : ''} in ${Math.round((Date.now() - t0) / 1000)} s; ${known.length} known conflicts`);
 } catch (err) {
   check(false, `soak run threw (seed ${seed}, round ${roundNo}): ${err.stack ?? err}`);
 } finally {
