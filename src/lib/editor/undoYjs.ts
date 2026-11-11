@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
+import type { ContentMatch, Schema } from '@tiptap/pm/model';
 import { history, isHistoryTransaction } from '@tiptap/pm/history';
 import * as Y from 'yjs';
 import { ySyncPlugin, ySyncPluginKey, yUndoPlugin, yUndoPluginKey, prosemirrorToYXmlFragment } from '@tiptap/y-tiptap';
@@ -26,6 +27,37 @@ function holdsForeign(type: { _start: Y.Item | null }, foreign: (it: Y.Item) => 
     } else if (it.content instanceof Y.ContentString && foreign(it)) return true;
   }
   return false;
+}
+
+// Whether an element's live children, `gone` left out, fit its node's content; unknown
+// elements count as fitting.
+function fits(el: Y.XmlElement, gone: Y.Item | null, schema: Schema): boolean {
+  let m: ContentMatch | null = schema.nodes[el.nodeName]?.contentMatch ?? null;
+  if (!m) return true;
+  for (let it = el._start; it && m; it = it.right) {
+    if (it.deleted || it === gone || !(it.content instanceof Y.ContentType)) continue;
+    const child = it.content.type;
+    if (child instanceof Y.XmlElement) {
+      const type = schema.nodes[child.nodeName];
+      if (!type) return true;
+      m = m.matchType(type);
+    } else if (child instanceof Y.XmlText && child.length) m = m.matchType(schema.nodes.text);
+  }
+  return !!m?.validEnd;
+}
+
+// The parents an undo deletes along with `item`, as each would be left empty where no
+// empty one fits (a list whose other items another client took out); null where a parent
+// would be left holding something that no longer fits, so `item` stays.
+function emptied(item: Y.Item, schema: Schema): Y.Item[] | null {
+  const out: Y.Item[] = [];
+  for (let it = item; ;) {
+    const parent = it.parent;
+    if (!(parent instanceof Y.XmlElement) || !parent._item || fits(parent, it, schema) || !fits(parent, null, schema)) return out;
+    for (let x = parent._start; x; x = x.right) if (!x.deleted && x !== it && x.countable) return null;
+    out.push(parent._item);
+    it = parent._item;
+  }
 }
 
 // Yjs puts what an undo or redo restores back as new items under the undoer's id; their
@@ -202,7 +234,10 @@ export function attachYjsUndo(
         return !authors.foreign(item);
       }
       const type = item.content.type;
-      return !holdsForeign(type, authors.foreign, leaf) && !(type instanceof Y.XmlElement && keepsNote(type, frag, authors.foreign, leaf));
+      if (holdsForeign(type, authors.foreign, leaf) || (type instanceof Y.XmlElement && keepsNote(type, frag, authors.foreign, leaf))) return false;
+      const parents = emptied(item, editor.schema);
+      for (const p of parents ?? []) p.delete(ydoc._transaction!);
+      return !!parents;
     },
   });
 

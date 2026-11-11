@@ -87,6 +87,11 @@ New, beyond the matrix:
   Seed 4's `lost` (2026-11-11) was one too: the words counted were whitespace tokens, which
   the undoer's own text beside a word changed (`nipsmβ<textBox>` → `nipsmβostrud`); every
   stem of the others was still there. Hence the stems.
+- **Editing paused after an undo** (fixed; seed 3, 2026-11-11): `Invalid content for node
+  bulletList: <>` on the undoing client only, as its undos ran in one task and the others
+  got the end state. An undo took the last item of a list it had added to, after another
+  client took the list's other items out; the list stayed, empty. It now goes with its
+  last item (`collab-conflicts.md`, Repairs).
 - **Read-back** (low): the starter's `.odt` twice read back a mark spelled otherwise:
   `Liberation Serif` against `Times New Roman` (the monkey run lists that one as open) and
   `rgb(192, 0, 0)` for `#C00000`, a colour taken from the DOM somewhere in a session.
