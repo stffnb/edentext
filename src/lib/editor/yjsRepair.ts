@@ -75,7 +75,8 @@ export function fillOf(type: NodeType, content: Fragment): Fragment | null {
 export function fillShort(tr: Transform): boolean {
   const at: [number, Fragment][] = [];
   tr.doc.descendants((node, pos) => {
-    if (node.isTextblock) return false;
+    // A textblock is entered only for an inline container in it, such as a text box.
+    if (node.isTextblock) { let deep = false; node.forEach((c) => { deep ||= !c.isLeaf; }); return deep; }
     const fill = node.type.validContent(node.content) ? null : fillOf(node.type, node.content);
     if (fill?.size) at.push([pos + node.nodeSize - 1, fill]);
     return true;
