@@ -11,6 +11,7 @@
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { createServer as tcpServer, connect as tcpConnect } from 'node:net';
 import { MOD, ROOT, checker, collectErrors, devServer, openApp } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
 
@@ -21,7 +22,19 @@ const { check, failures } = checker();
 const seen = [];
 const FRAME = 1 << 20;
 const BEAT = 2000;
-const relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, tap: (d) => seen.push(Buffer.from(d)) });
+const PING = 5000;
+const relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, ping: PING, tap: (d) => seen.push(Buffer.from(d)) });
+// A line to the relay that can go silent without a close, as under a closed laptop lid.
+const STALL_PORT = +(process.env.COLLAB_STALL_PORT ?? RELAY_PORT + 5);
+const stall = { on: false };
+const stallLine = tcpServer((down) => {
+  const up = tcpConnect(RELAY_PORT, '127.0.0.1');
+  for (const [from, to] of [[down, up], [up, down]]) {
+    from.on('data', (d) => { if (!stall.on) to.write(d); });
+    from.on('close', () => { if (!stall.on) to.destroy(); });
+    from.on('error', () => {});
+  }
+}).listen(STALL_PORT, '127.0.0.1');
 const server = await devServer(PORT);
 const { browser, page: a, pageErrors } = await openApp(PORT);
 const URL0 = `http://localhost:${PORT}/`;
@@ -551,40 +564,37 @@ try {
     `the others keep the shared document (${others}) and see the joiner gone (${peersLeft})`);
   await h.context().close();
 
-  // A tab whose line drops without a goodbye frees its zone once the relay sees the line end.
-  // Anna, the repairer, is busy meanwhile: late as she is, she stays present for the others,
-  // her header held and no second client repairing.
+  // A tab whose line goes silent without a close frees its zone once the relay's ping finds
+  // it gone. Anna, the repairer, is busy meanwhile: late as she is, she stays present for the
+  // others, her header held and no second client repairing.
   const repairs = (page) => page.evaluate(() => {
     const aw = window.__collab.session.awareness, me = aw.doc.clientID, mine = aw.getLocalState()?.rank;
     return typeof mine === 'number' && [...aw.getStates()].every(([id, s]) => id === me || typeof s.rank !== 'number' || s.rank > mine || (s.rank === mine && id > me));
   });
   const gus = await client('Gus');
+  await gus.addInitScript((port) => {
+    const Orig = window.WebSocket;
+    window.WebSocket = class extends Orig { constructor(url, p) { super(String(url).includes('/relay') ? `ws://127.0.0.1:${port}/relay` : url, p); } };
+  }, STALL_PORT);
   await joinLink(gus, link);
   await openZone(gus, 'footer');
   await openZone(a, 'header');
   await b.waitForTimeout(600);
   const heldByGus = await heldTag(b);
   const solo = [await repairs(a), await repairs(b), await repairs(c)];
-  await gus.evaluate(() => {
-    const Orig = WebSocket, send = Orig.prototype.send;
-    Orig.prototype.send = function () {
-      Orig.prototype.send = send;
-      window.WebSocket = class extends Orig { constructor() { super('ws://127.0.0.1:4/'); } };
-      this.close();
-    };
-  });
   const busy = a.evaluate(() => { const t = Date.now(); while (Date.now() - t < 5500); });
   await b.waitForTimeout(200);
   const droppedAt = Date.now();
-  await gus.evaluate(() => window.__collab.session.awareness.setLocalStateField('ping', 1));
-  const freedGus = await b.waitForFunction(() => ![...document.querySelectorAll('.hf-held')].some((t) => /Gus/.test(t.textContent)), null, { timeout: 15_000 }).then(() => true, () => false);
-  const gusAfter = (Date.now() - droppedAt) / 1000;
-  await b.waitForTimeout(Math.max(0, 4500 - (Date.now() - droppedAt)));
+  stall.on = true;
+  const release = b.waitForFunction(() => ![...document.querySelectorAll('.hf-held')].some((t) => /Gus/.test(t.textContent)), null, { timeout: 4 * PING })
+    .then(() => (Date.now() - droppedAt) / 1000, () => Infinity);
+  await b.waitForTimeout(4500);
   const lateHeld = await heldTag(b), second = [await repairs(b), await repairs(c)];
+  const gusAfter = await release;
   await busy;
   await a.keyboard.press('Escape');
-  check(heldByGus.includes('Gus is editing') && freedGus && gusAfter < 12, `a tab whose line drops unannounced frees the footer ("${heldByGus}", after ${gusAfter.toFixed(1)} s)`);
-  check(solo.join() === 'true,false,false' && lateHeld === 'Anna is editing' && !second.some(Boolean),
+  check(heldByGus.includes('Gus is editing') && gusAfter < (2 * PING + 1500) / 1000, `a tab whose line stalls unannounced frees the footer within two pings ("${heldByGus}", after ${gusAfter.toFixed(1)} s)`);
+  check(solo.join() === 'true,false,false' && lateHeld.split('|').includes('Anna is editing') && !second.some(Boolean),
     `a busy repairer stays present for the others ("${lateHeld}", repairers before ${solo}, others after 4.5 s ${second})`);
   await gus.close();
 
@@ -785,6 +795,7 @@ try {
 } finally {
   await browser.close();
   await relay.close();
+  stallLine.close();
   if (server) process.kill(-server.pid);
 }
 process.exit(failures.length ? 1 : 0);
