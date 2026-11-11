@@ -98,7 +98,8 @@ plugins only. The document admits note sections anywhere (`extensions.ts`), so t
 notes added at once make two sections Yjs can hold and the projection keeps.
 **Emptied containers** (no `listItem+`/`tableRow+` child left) stay in the projection where the
 schema fills them (`fillOf`); the repair plugin, ordered first, appends the fill (`fillShort`,
-rows as wide as the table, `tableRepair.ts`): never a deletion, so a third client's item stays.
+rows as wide as the table, `tableRepair.ts`; also a text box inside a paragraph): never a
+deletion, so a third client's item stays.
 
 `collab-repair.test.ts` relays three clients' conflicting edits (a column and a row, two
 first footnotes, typing) in random orders: one doc everywhere, the repairs in it once, and
