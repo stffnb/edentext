@@ -43,7 +43,8 @@ the undo stack starts empty from there.
   starts (`stateValues`); a joiner never does, and a zone gets its old value on its first
   write. A change the manager (or another client) makes there returns as a body
   transaction with the `STATE_RESTORED` meta, one `StateStep` per store, assembled from all
-  its entries: fields sorted, styles in their family's order and the rest by name, so every
+  its entries, once the Yjs transaction's observers are done (dispatched before the body's
+  redraw, it made the binding write the old document back over the update): fields sorted, styles in their family's order and the rest by name, so every
   client builds the same value. The existing listeners apply it as an undo (`watch.write`,
   `writeZone`), so a page setup or a header goes back the way it does alone.
 - **Grouping as in the history.** Yjs merges by time alone, so fast edits in different places
