@@ -208,6 +208,8 @@
     background: color-mix(in srgb, var(--w-active) 85%, var(--w-text));
   }
 
+  .rb-caret:disabled { opacity: 0.4; cursor: default; }
+
   .rb-caret {
     display: inline-flex;
     align-items: center;

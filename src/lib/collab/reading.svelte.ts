@@ -3,10 +3,11 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { STATE_RESTORED } from '../editor/undo';
 import { setAiHostOff } from '../storage/ai.svelte';
+import { spellController } from '../spell/controller';
 
-// A tab joined through a read link (`#view=`): the view takes no input, the assistant is
-// off, headers and footers stay shut, and once bound only the shared doc changes the body.
-// Commands run even when not editable, so the filter refuses every other step.
+// A tab joined through a read link (`#view=`) takes no input, greys editing controls
+// (ReadGate), shows no squiggles and keeps the assistant off and the zones shut. Commands
+// run even when not editable, so the filter refuses steps not from the shared doc.
 
 let on = $state(false);
 
@@ -21,6 +22,8 @@ export function setReading(editor: Editor, value: boolean): void {
   on = value;
   setAiHostOff(value);
   editor.setEditable(!value);
+  // The spell check drops or brings back its squiggles.
+  spellController.refresh();
 }
 
 /** Refuses each transaction with steps that did not come from the shared doc. */

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ReadGate from './ReadGate.svelte';
   import { onMount, onDestroy, untrack, flushSync } from 'svelte';
   import { Editor } from '@tiptap/core';
   import { extensions } from '../editor/extensions';
@@ -1955,6 +1956,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
      scroller's own space, and the selection it describes is drawn there. -->
 {#snippet chrome(i: number)}
   {#if i === activePane}
+  <ReadGate>
   {#if tableUi.visible && !tableDialog}
     <TableToolbar
       editor={uiEditor}
@@ -2020,6 +2022,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       tick={uiTick}
     />
   {/if}
+  </ReadGate>
   {#if ctxMenu}
     <ContextMenu
       top={ctxMenu.top}

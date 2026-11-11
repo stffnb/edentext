@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ReadGate from './lib/components/ReadGate.svelte';
   import { onMount, tick as domUpdated, untrack } from 'svelte';
   import { cubicOut } from 'svelte/easing';
   import type { Content, Editor } from '@tiptap/core';
@@ -2399,7 +2400,7 @@
     </div>
     <div class="sb-center">
       <!-- The body editor, not activeEditor: a header/footer zone has no paragraph language. -->
-      <LanguagePicker value={documentLanguage} other={documentLanguageOther} onChange={setDocumentLanguage} {editor} {tick} />
+      <ReadGate><LanguagePicker value={documentLanguage} other={documentLanguageOther} onChange={setDocumentLanguage} {editor} {tick} /></ReadGate>
       <GrammarToggle value={documentLanguage} other={documentLanguageOther} {editor} {tick} />
     </div>
     <div class="sb-right">

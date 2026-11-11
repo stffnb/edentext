@@ -97,6 +97,13 @@ const settle = (page) => page.waitForTimeout(900);
 const body = (page) => page.locator('.tiptap-host .tiptap').first();
 // The caret at the body's start or end, where the keys go next.
 // The click's own selection lands a moment later; the caret is placed after it.
+// Whether each control is disabled (null when absent), and the spell check's squiggles.
+const disabled = (page, sels) => page.evaluate((list) => list.map((q) => document.querySelector(q)?.matches(':disabled') ?? null), sels);
+const EDITS = ['[data-cmd="bold"]', '[data-cmd="paste"]', '[data-cmd="replace"]', '[data-cmd="fontFamily"] input', '[data-cmd="orderedList"]'];
+const squiggles = (page) => page.evaluate(() => {
+  const st = document.querySelector('.tiptap-host .tiptap').editor.state;
+  return st.plugins.find((p) => p.key.startsWith('spellCheck$'))?.getState(st)?.set.find().length ?? -1;
+});
 const caret = async (page, where) => {
   await body(page).click();
   await page.waitForTimeout(150);
@@ -672,6 +679,26 @@ try {
     const after = [await view(a), await view(b), await view(c), await view(r)];
     check(after.every((v) => v.json === before) && !tried.editable && tried.ai && !zone && await signedSent() === 0 && nudged,
       `a reader changes nothing by keys, paste, commands, undo or a header, is told why when typing, has no assistant and signs nothing (${JSON.stringify(tried)}, zone "${zone}", hint ${nudged}, ${after.map(brief).join(' | ')})`);
+    // The reader's controls that edit are greyed; find, statistics and zoom still work,
+    // the context menu offers nothing that edits, and the spell check marks nothing.
+    const homeOff = await disabled(r, [...EDITS, '[data-cmd="find"]']);
+    await r.click('.ribbon-tab[data-tab="review"]');
+    const reviewOff = await disabled(r, ['[data-cmd="newComment"]', '[data-cmd="trackChanges"]', '[data-cmd="wordCount"]']);
+    await r.click('[data-cmd="wordCount"]');
+    const stats = await r.isVisible('.stats-menu');
+    await r.keyboard.press('Escape');
+    const zoom0 = await r.textContent('.zoom-pct');
+    await r.click('.ribbon-tab[data-tab="view"]');
+    await r.click('[data-cmd="zoomIn"]');
+    const zoom1 = await r.textContent('.zoom-pct');
+    await r.click('.ribbon-tab[data-tab="home"]');
+    await r.click('.tiptap-host .tiptap p', { button: 'right' });
+    const menuLive = await r.evaluate(() => [...document.querySelectorAll('.cm-item')].filter((b) => !b.disabled && b.getAttribute('aria-disabled') !== 'true').map((b) => b.textContent.trim()));
+    await r.keyboard.press('Escape');
+    const marksR = await squiggles(r);
+    const marksA = await squiggles(a);
+    check(homeOff.slice(0, -1).every((x) => x === true) && homeOff.at(-1) === false && reviewOff.join() === 'true,true,false' && stats && zoom1 !== zoom0 && !menuLive.length && marksR === 0 && marksA > 0,
+      `a reader's editing controls and menu entries are greyed, find, statistics and zoom work, and no word is marked (${homeOff}; ${reviewOff}; stats ${stats}; ${zoom0} → ${zoom1}; menu ${menuLive}; squiggles ${marksR} vs ${marksA})`);
 
     // Forged frames, sealed with the read key: unsigned, with a random signature, or a real
     // frame altered. Updates add a paragraph or empty the first; the presence holds a zone.
@@ -993,9 +1020,11 @@ try {
   await rhea.waitForFunction(() => !window.__before && document.querySelector('.tiptap-host .tiptap')?.editor, null, { timeout: 30_000 });
   await rhea.waitForTimeout(2500);
   const keptR = await view(rhea);
+  const rheaOff = await disabled(rhea, EDITS);
   await caret(rhea, 'end');
-  await rhea.keyboard.type(' Mine');
+  await rhea.keyboard.type(' Qwzxv Mine');
   await settle(rhea);
+  await rhea.waitForTimeout(1500);
   const mine = await rhea.evaluate(async () => ({
     editable: document.querySelector('.tiptap-host .tiptap').editor.isEditable,
     text: document.querySelector('.tiptap-host .tiptap').editor.state.doc.textContent,
@@ -1004,8 +1033,10 @@ try {
     ai: (await import('/src/lib/storage/ai.svelte.ts')).aiHostOff(),
     bar: !!document.querySelector('.statusbar .collab-btn'),
   }));
-  check(same(srcless(keptR), srcless(shared4)) && mine.editable && mine.text.endsWith('Mine') && !mine.hash && !mine.reading && !mine.ai && !mine.bar,
-    `a reader keeping its copy reloads into an editable document of its own (${brief(keptR)}; ${JSON.stringify({ ...mine, text: mine.text.slice(-12) })})`);
+  mine.controls = rheaOff.every((x) => x === false);
+  mine.squiggles = await squiggles(rhea);
+  check(same(srcless(keptR), srcless(shared4)) && mine.editable && mine.text.endsWith('Mine') && !mine.hash && !mine.reading && !mine.ai && !mine.bar && mine.controls && mine.squiggles > 0,
+    `a reader keeping its copy reloads into an editable document of its own, its controls and squiggles back (${brief(keptR)}; ${JSON.stringify({ ...mine, text: mine.text.slice(-12) })})`);
 
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (err) {

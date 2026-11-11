@@ -156,9 +156,11 @@
     opacity: 0.8;
   }
 
-  .lang-picker:hover, .lang-picker.open {
+  .lang-picker:hover:not(:disabled), .lang-picker.open {
     background: var(--color-btn-hover);
   }
+
+  .lang-picker:disabled { opacity: 0.4; cursor: default; }
 
   .menu-layer { position: fixed; inset: 0; z-index: 300; pointer-events: none; }
   .menu-layer :global(.cm-menu) { pointer-events: auto; }

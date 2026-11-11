@@ -2,6 +2,7 @@
   import type { Editor } from '@tiptap/core';
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
+  import ReadGate from '../../ReadGate.svelte';
   import Icon from '../Icon.svelte';
   import FontFamilyBox from '../controls/FontFamilyBox.svelte';
   import FontSizeBox from '../controls/FontSizeBox.svelte';
@@ -195,8 +196,8 @@
   }
 </script>
 
-<RibbonGroup label={t().ribbon.groups.clipboard}>
-  <div class="rb-menu-wrap" use:clickOutside={'paste'}>
+<RibbonGroup label={t().ribbon.groups.clipboard} reads>
+  <ReadGate><div class="rb-menu-wrap" use:clickOutside={'paste'}>
     <RibbonButton
       variant="big"
       icon="paste"
@@ -220,9 +221,9 @@
         </button>
       </div>
     {/if}
-  </div>
+  </div></ReadGate>
   <div class="rb-col">
-    <RibbonButton variant="small" icon="cut" cmd="cut" label={t().contextMenu.cut} title={`${t().contextMenu.cut} (${withShortcut('Ctrl+X')})`} disabled={!hasSelection} onclick={() => editor && clipboardCommand(editor, 'cut')} />
+    <ReadGate><RibbonButton variant="small" icon="cut" cmd="cut" label={t().contextMenu.cut} title={`${t().contextMenu.cut} (${withShortcut('Ctrl+X')})`} disabled={!hasSelection} onclick={() => editor && clipboardCommand(editor, 'cut')} /></ReadGate>
     <RibbonButton variant="small" icon="copy" cmd="copy" label={t().contextMenu.copy} title={`${t().contextMenu.copy} (${withShortcut('Ctrl+C')})`} disabled={!hasSelection} onclick={() => editor && clipboardCommand(editor, 'copy')} />
   </div>
 </RibbonGroup>
@@ -424,10 +425,10 @@
 
 <div class="ribbon-sep"></div>
 
-<RibbonGroup label={t().ribbon.groups.editing}>
+<RibbonGroup label={t().ribbon.groups.editing} reads>
   <div class="rb-col">
     <RibbonButton variant="small" icon="find" cmd="find" label={t().ribbon.find} title={`${t().ribbon.find} (${shortcutHint('find')})`} onclick={() => onFind?.('find')} />
-    <RibbonButton variant="small" icon="replace" cmd="replace" label={t().ribbon.replace} title={`${t().ribbon.replace} (${shortcutHint('replace')})`} onclick={() => onFind?.('replace')} />
+    <ReadGate><RibbonButton variant="small" icon="replace" cmd="replace" label={t().ribbon.replace} title={`${t().ribbon.replace} (${shortcutHint('replace')})`} onclick={() => onFind?.('replace')} /></ReadGate>
   </div>
 </RibbonGroup>
 
