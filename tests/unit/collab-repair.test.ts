@@ -19,6 +19,7 @@ const START = {
     P('Alpha beta.'), P('Gamma delta.'),
     { type: 'table', content: [{ type: 'tableRow', content: [cell('a1'), cell('b1')] }, { type: 'tableRow', content: [cell('a2'), cell('b2')] }] },
     P('Epsilon.'),
+    { type: 'bulletList', content: [{ type: 'listItem', content: [P('Zeta.')] }] },
   ],
 };
 
@@ -144,6 +145,9 @@ const UNDO_CASES: { name: string; a: ((ed: Editor) => void)[]; b: (ed: Editor) =
     a: [(ed) => { ed.commands.insertContentAt(posOf(ed, 'Gamma'), 'Qq'); },
       (ed) => { ed.commands.setTextSelection(posOf(ed, 'Gamma')); ed.commands.setParagraphStyle('Heading 1'); }],
     b: (ed) => { ed.commands.insertContentAt(posOf(ed, 'Gamma'), 'Zed'); }, gone: 'Qq' },
+  { name: 'and the list item it added, the only one left in the list',
+    a: [(ed) => { ed.commands.setTextSelection(posOf(ed, 'Zeta.', 5)); ed.commands.splitListItem('listItem'); ed.commands.insertContent('Qq'); }],
+    b: (ed) => { ed.commands.insertContentAt(posOf(ed, 'Zeta.'), 'Zed'); ed.commands.liftListItem('listItem'); }, gone: 'Qq' },
 ];
 
 describe('an undo in a shared doc', () => {
@@ -153,6 +157,8 @@ describe('an undo in a shared doc', () => {
       const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
       const cs = clients(2);
       const [a, b] = cs;
+      let paused = 0;
+      for (const x of cs) x.undo.onPause((p) => { if (p) paused++; });
       c.a[0](a.ed);
       await relay(cs, rnd);
       c.b(b.ed);
@@ -174,6 +180,7 @@ describe('an undo in a shared doc', () => {
       }
       const got = shape(a.ed);
       expect(got.notes).toBe(got.refs);
+      expect(paused).toBe(0);
     });
   }
 });
