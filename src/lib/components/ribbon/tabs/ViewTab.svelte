@@ -45,7 +45,7 @@
   }
 </script>
 
-<RibbonGroup label={t().ribbon.groups.show}>
+<RibbonGroup label={t().ribbon.groups.show} reads>
   <RibbonButton variant="big" icon="toc" cmd="navigator" label={t().navigator.title} title={`${t().navigator.title} (${shortcutHint('navigator')})`} active={navigatorOpen} onclick={() => onToggleNavigator?.()} />
   <div class="rb-col">
     <RibbonButton variant="small" icon="ruler" cmd="ruler" label={t().ruler.show} active={showRuler} onclick={() => (showRuler = !showRuler)} />
@@ -78,7 +78,7 @@
 
 <div class="ribbon-sep"></div>
 
-<RibbonGroup label={t().status.zoom}>
+<RibbonGroup label={t().status.zoom} reads>
   <RibbonButton variant="big" icon="zoomOut" cmd="zoomOut" label={t().status.zoomOut} title={`${t().status.zoomOut} (${shortcutHint('zoomOut')})`} disabled={zoom <= MIN_ZOOM} onclick={() => onZoom?.(zoom - 10)} />
   <RibbonButton variant="big" icon="zoomReset" cmd="zoomReset" label={`${zoom}%`} title={`${t().status.resetZoom} (${shortcutHint('zoomReset')})`} onclick={() => onZoom?.(100)} />
   <RibbonButton variant="big" icon="zoomIn" cmd="zoomIn" label={t().status.zoomIn} title={`${t().status.zoomIn} (${shortcutHint('zoomIn')})`} disabled={zoom >= MAX_ZOOM} onclick={() => onZoom?.(zoom + 10)} />
@@ -86,7 +86,7 @@
 
 {#if onDebugDump}
   <div class="ribbon-sep"></div>
-  <RibbonGroup label={t().ribbon.groups.debug}>
+  <RibbonGroup label={t().ribbon.groups.debug} reads>
     <RibbonButton variant="big" icon="export" label={t().ribbon.debugDump} onclick={onDebugDump} />
   </RibbonGroup>
 {/if}

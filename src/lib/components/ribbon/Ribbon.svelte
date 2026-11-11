@@ -4,6 +4,7 @@
   import Icon from './Icon.svelte';
   import RibbonMenu from './RibbonMenu.svelte';
   import HistoryButton from '../HistoryButton.svelte';
+  import ReadGate from '../ReadGate.svelte';
   import RibbonButton from './RibbonButton.svelte';
   import RibbonGroup from './RibbonGroup.svelte';
   import HomeTab from './tabs/HomeTab.svelte';
@@ -306,9 +307,9 @@
             <Icon name="lock" size={16} />{t().password.menu}
             {#if hasPassword}<span class="menu-key">{t().password.menuOn}</span>{/if}
           </button>
-          <button data-cmd="docProperties" onclick={() => run(onDocProperties)}>
+          <ReadGate><button data-cmd="docProperties" onclick={() => run(onDocProperties)}>
             <Icon name="info" size={16} />{t().docProps.title}
-          </button>
+          </button></ReadGate>
           {#if onCollab}
             <button data-cmd="collab" onclick={() => run(onCollab)}>
               <Icon name="people" size={16} />{t().collab.menu}
@@ -324,8 +325,10 @@
     <button class="qa-btn" onclick={onSave} disabled={!editor || pdfBusy} title={`${t().app.save} (${withShortcut('Ctrl+S')})`}>
       <Icon name="save" size={16} />
     </button>
-    <HistoryButton {editor} {tick} direction="undo" />
-    <HistoryButton {editor} {tick} direction="redo" />
+    <ReadGate>
+      <HistoryButton {editor} {tick} direction="undo" />
+      <HistoryButton {editor} {tick} direction="redo" />
+    </ReadGate>
     <span class="qa-sep"></span>
 
     {#each shown as id}

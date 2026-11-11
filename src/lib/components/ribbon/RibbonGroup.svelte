@@ -1,17 +1,20 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { reading } from '../../collab/reading.svelte';
 
   // `onLauncher` renders Word's ↘ corner arrow, which opens the group's dialog.
-  let { label, grow = false, onLauncher, launcherTitle, children }: {
+  // A group edits the document unless it `reads`: a reader's tab greys all of it.
+  let { label, grow = false, reads = false, onLauncher, launcherTitle, children }: {
     label: string;
     grow?: boolean;
+    reads?: boolean;
     onLauncher?: () => void;
     launcherTitle?: string;
     children: Snippet;
   } = $props();
 </script>
 
-<div class="ribbon-group" class:grow>
+<fieldset class="ribbon-group read-gate" class:grow disabled={reading() && !reads}>
   <div class="ribbon-group-items">{@render children()}</div>
   <div class="ribbon-group-foot">
     <span class="ribbon-group-label">{label}</span>
@@ -24,7 +27,7 @@
       </button>
     {/if}
   </div>
-</div>
+</fieldset>
 
 <style>
   .ribbon-group {
@@ -54,7 +57,8 @@
   /* A run of small buttons keeps its centred place: it has no icon row to line up
      with, and pinned to the top it hangs over the gap the group's height leaves. */
   .ribbon-group-items > :global(.rb-small),
-  .ribbon-group-items > :global(:has(> .rb-small)) { align-self: center; }
+  .ribbon-group-items > :global(:has(> .rb-small)),
+  .ribbon-group-items > :global(.read-gate > :has(> .rb-small)) { align-self: center; }
 
   /* Word's labelled group footer; the ↘ launcher sits at its right edge. */
   .ribbon-group-foot {
@@ -91,5 +95,6 @@
     cursor: pointer;
   }
 
-  .ribbon-launcher:hover { background: var(--w-hover); color: var(--w-text); }
+  .ribbon-launcher:hover:not(:disabled) { background: var(--w-hover); color: var(--w-text); }
+  .ribbon-launcher:disabled { opacity: 0.4; cursor: default; }
 </style>

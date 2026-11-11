@@ -12,12 +12,13 @@ import { changesAt } from './extensions/trackChanges';
 import { whenUnlocked } from '../storage/trackChanges.svelte';
 import { aiEnabled, aiHostOff, OPEN_AI_CHAT_EVENT } from '../storage/ai.svelte';
 import { COMMANDS } from '../ai/commands';
+import { reading } from '../collab/reading.svelte';
 
 // The right-click menu's contents, the usual text menu mapped onto this editor. Pure
 // data + closures — ContextMenu.svelte only renders it.
 export type MenuEntry =
   | { kind: 'sep' }
-  | { kind: 'item'; label: string; hint?: string; disabled?: boolean; strong?: boolean; checked?: boolean; run: () => void }
+  | { kind: 'item'; label: string; hint?: string; disabled?: boolean; strong?: boolean; checked?: boolean; reads?: boolean; run: () => void }
   | { kind: 'sub'; label: string; items: MenuEntry[]; disabled?: boolean; title?: string };
 
 export interface SpellSection {
@@ -112,7 +113,7 @@ export function buildContextMenu(editor: Editor, opts: { spell?: SpellSection; g
   const hasSelection = !editor.state.selection.empty;
   entries.push(
     { kind: 'item', label: m.cut, hint: withShortcut('Ctrl+X'), disabled: !hasSelection, run: () => clipboardCommand(editor, 'cut') },
-    { kind: 'item', label: m.copy, hint: withShortcut('Ctrl+C'), disabled: !hasSelection, run: () => clipboardCommand(editor, 'copy') },
+    { kind: 'item', label: m.copy, hint: withShortcut('Ctrl+C'), disabled: !hasSelection, reads: true, run: () => clipboardCommand(editor, 'copy') },
     { kind: 'item', label: m.paste, hint: withShortcut('Ctrl+V'), run: () => void readClipboard(editor, false) },
     { kind: 'item', label: m.pasteWithoutFormatting, hint: withShortcut('Ctrl+Shift+V'), run: () => void readClipboard(editor, true) },
     { kind: 'sep' },
@@ -160,7 +161,7 @@ export function buildContextMenu(editor: Editor, opts: { spell?: SpellSection; g
   });
   if (onLink) {
     const href = editor.getAttributes('link').href as string | undefined;
-    if (href) entries.push({ kind: 'item', label: m.copyLink, run: () => void navigator.clipboard?.writeText(href) });
+    if (href) entries.push({ kind: 'item', label: m.copyLink, reads: true, run: () => void navigator.clipboard?.writeText(href) });
     entries.push({
       kind: 'item',
       label: m.removeLink,
@@ -208,5 +209,11 @@ export function buildContextMenu(editor: Editor, opts: { spell?: SpellSection; g
     },
   );
 
-  return entries;
+  return reading() ? entries.map(readOnly) : entries;
+}
+
+// A reader's tab greys every entry that would edit; only those marked `reads` stay.
+function readOnly(entry: MenuEntry): MenuEntry {
+  if (entry.kind === 'sub') return { ...entry, items: entry.items.map(readOnly) };
+  return entry.kind === 'item' && !entry.reads ? { ...entry, disabled: true } : entry;
 }

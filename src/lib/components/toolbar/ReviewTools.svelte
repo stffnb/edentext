@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ReadGate from '../ReadGate.svelte';
   import type { Editor } from '@tiptap/core';
   import IslandButton from './IslandButton.svelte';
   import IslandMenu from './IslandMenu.svelte';
@@ -88,7 +89,9 @@
 {/snippet}
 
 <div class="toolbar-group">
+  <ReadGate>
   <IslandButton icon="thesaurus" cmd="thesaurus" title={`${t().thesaurus.hint} — ${shortcutHint('thesaurus')}`} onclick={() => window.dispatchEvent(new CustomEvent(OPEN_THESAURUS_EVENT))} />
+  </ReadGate>
   <IslandMenu id="wordCount" icon="wordCount" cmd="wordCount" title={t().status.statistics} minWidth={240}>
     {#if selStats}
       <div class="im-label">{t().status.selection}</div>
@@ -107,7 +110,9 @@
 <div class="toolbar-separator"></div>
 
 <div class="toolbar-group">
+  <ReadGate>
   <IslandButton content={newCommentIcon} cmd="newComment" title={hasSelection ? t().comments.newComment : t().comments.needsSelection} disabled={!editor || !hasSelection} onclick={() => onNewComment?.()} />
+  </ReadGate>
   {@render showKind('commentPlace', t().comments.showPane, showComments(), () => setShowComments(!showComments()), commentPlace(), setCommentPlace, true)}
   <IslandButton icon="chevronLeft" cmd="prevComment" title={`${t().comments.title}: ${t().revisions.prev}`} disabled={!hasComments} onclick={() => go('comment', -1)} />
   <IslandButton icon="chevronRight" cmd="nextComment" title={`${t().comments.title}: ${t().revisions.next}`} disabled={!hasComments} onclick={() => go('comment', 1)} />
@@ -117,8 +122,12 @@
 <div class="toolbar-separator"></div>
 
 <div class="toolbar-group">
+  <ReadGate>
   <IslandButton icon="trackChanges" cmd="trackChanges" title={recordLock() ? t().revisions.recordLocked : `${t().revisions.recordHint} — ${shortcutHint('recordChanges')}`} active={recordChanges()} disabled={!!recordLock()} onclick={toggleRecordChanges} />
+  </ReadGate>
+  <ReadGate>
   <IslandButton icon="lock" cmd="protectChanges" title={recordLock() ? t().revisions.protectOff : t().revisions.protect} active={!!recordLock()} onclick={() => window.dispatchEvent(new Event(OPEN_RECORD_LOCK_EVENT))} />
+  </ReadGate>
   <IslandMenu id="markupDisplay" label={MODE_LABEL[markupMode()]().label} cmd="markupDisplay" title={t().revisions.display}>
     {#each MARKUP_MODES as m}
       <button class:selected={markupMode() === m} onclick={() => { closeMenu(); setMarkupMode(m); }}>
@@ -127,18 +136,26 @@
     {/each}
   </IslandMenu>
   {@render showKind('changePlace', t().revisions.showPane, showChanges(), () => setShowChanges(!showChanges()), changePlace(), setChangePlace, false)}
+  <ReadGate>
   <IslandMenu id="accept" icon="check" cmd="accept" caretCmd="acceptMenu" title={t().revisions.acceptHint} disabled={!anyRevisions} onclick={() => editor && settleHere(editor, true)}>
     <button onclick={() => { closeMenu(); editor && settleHere(editor, true); }}>{t().revisions.accept}</button>
     <button data-cmd="acceptAll" onclick={() => { closeMenu(); editor && settleAll(editor, true); }}>{t().revisions.acceptAll}</button>
   </IslandMenu>
+  </ReadGate>
+  <ReadGate>
   <IslandMenu id="reject" icon="close" cmd="reject" caretCmd="rejectMenu" title={t().revisions.rejectHint} disabled={!anyRevisions} onclick={() => editor && settleHere(editor, false)}>
     <button onclick={() => { closeMenu(); editor && settleHere(editor, false); }}>{t().revisions.reject}</button>
     <button data-cmd="rejectAll" onclick={() => { closeMenu(); editor && settleAll(editor, false); }}>{t().revisions.rejectAll}</button>
   </IslandMenu>
+  </ReadGate>
   <IslandButton icon="chevronLeft" cmd="prevChange" title={`${t().ribbon.groups.revisions}: ${t().revisions.prev}`} disabled={!anyRevisions} onclick={() => go('revision', -1)} />
   <IslandButton icon="chevronRight" cmd="nextChange" title={`${t().ribbon.groups.revisions}: ${t().revisions.next}`} disabled={!anyRevisions} onclick={() => go('revision', 1)} />
+  <ReadGate>
   <IslandButton icon="compare" cmd="compareDocument" title={t().revisions.compareHint} disabled={!editor} onclick={() => window.dispatchEvent(new CustomEvent(OPEN_COMPARE_EVENT, { detail: false }))} />
+  </ReadGate>
+  <ReadGate>
   <IslandButton icon="mergeDocument" cmd="mergeDocument" title={t().revisions.mergeHint} disabled={!editor} onclick={() => window.dispatchEvent(new CustomEvent(OPEN_COMPARE_EVENT, { detail: true }))} />
+  </ReadGate>
   <!-- A checkbox, not a button: it settles what the next printout carries, it does not print. -->
   <label class="check" data-cmd="printMarkup" title={t().revisions.printMarkupHint}>
     <input type="checkbox" checked={printMarkup()} onchange={(e) => setPrintMarkup(e.currentTarget.checked)} />
@@ -149,7 +166,9 @@
 <div class="toolbar-separator"></div>
 
 <div class="toolbar-group">
+  <ReadGate>
   <span class="lang" data-cmd="spellLanguage"><LanguagePicker value={documentLanguage} other={documentLanguageOther} onChange={onLanguage} {editor} {tick} /></span>
+  </ReadGate>
   <GrammarToggle value={documentLanguage} other={documentLanguageOther} {editor} {tick} />
 </div>
 

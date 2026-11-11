@@ -5,6 +5,7 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { changedRanges, type Range } from '../changedRanges';
 import { spellController } from '../../spell/controller';
+import { reading } from '../../collab/reading.svelte';
 import { codeForTag, westLang, type DocumentLanguage } from '../../storage/documentLanguage';
 import { isPaginating } from './pageBreaks';
 import { ASIAN_SCRIPT_RE } from '../../utils/script';
@@ -70,8 +71,9 @@ function wordDecos(node: PmNode, base: number, decos: Decoration[], outerLang?: 
   });
 }
 
+// A reader's tab shows no squiggles: nothing there can be corrected.
 function buildDecorations(doc: PmNode): DecorationSet {
-  if (!spellController.isEnabled()) return DecorationSet.empty;
+  if (!spellController.isEnabled() || reading()) return DecorationSet.empty;
   const decos: Decoration[] = [];
   wordDecos(doc, 0, decos);
   return decos.length ? DecorationSet.create(doc, decos) : DecorationSet.empty;
@@ -81,7 +83,7 @@ function buildDecorations(doc: PmNode): DecorationSet {
 // block, and building the whole set walks every block for every squiggle (seconds on a
 // long document), while add/remove of one block's few walks the blocks once.
 function recheckBlocks(doc: PmNode, set: DecorationSet, dirty: Range[]): DecorationSet {
-  if (!spellController.isEnabled()) return DecorationSet.empty;
+  if (!spellController.isEnabled() || reading()) return DecorationSet.empty;
   const blocks = new Map<number, PmNode>();
   for (const { from, to } of dirty) {
     if (from === to) {
