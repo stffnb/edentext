@@ -154,7 +154,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
 - **Headers and footers** go as whole zones, so one person edits a zone at a time
   (`collab/zones.svelte.ts`, awareness field `zone`): the others see the name at it and
   cannot open it. Opened at once, the higher client id yields and may lose its first keys.
-  A closed tab or a dropped line frees it once the relay sees the line end.
+  A closed tab frees it at once, a silent line (closed lid) when a relay ping fails, in 10 s.
 - **Storage.** The starter's autosave stores everyone's edits; its awareness says `keeps`.
   A joining tab is `volatile` (no copy, slot or prune); a starter's reload does not rejoin.
   Leaving, a joiner is asked (`CollabDialog`'s `asking`) to keep the document: `leave.ts`
@@ -179,7 +179,7 @@ picture from one client; a header's picture goes by its key too; replies go to t
 alone; a fourth joins, types and converges. A joiner whose pulled peer drops its answer and
 line, while a third types, still goes live; a late offer is pulled from and gets what it
 lacks, and the others get what was pulled; one back from offline pauses on no offered deletion; a waiting joiner asks a client coming back, which pushes it no copy. B cannot open a
-header A holds; opened together, the lower id keeps it; a closed tab or dropped line frees it, a busy holder keeps it. Open and New
+header A holds; opened together, the lower id keeps it; a closed tab frees it, a stalled line within two pings, a busy holder keeps it. Open and New
 ask first, then open alone; others keep theirs. The starter leaves unasked, the others are
 told and go on; a reload rejoins. A joiner keeping its copy reloads into it unwarned,
 picture, styles and zones, also on a second reload. The last joiner's tab warns on closing;

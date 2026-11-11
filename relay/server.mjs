@@ -12,9 +12,10 @@ const ID = (v) => Number.isInteger(v) && v > 0 && v < 2 ** 32;
  * Starts a relay on `port` (0 picks a free one). `maxPeers` 0 means no limit per room;
  * `tap` sees every passed frame (tests check it holds no plain text); `lag` (tests only)
  * delays each frame by its ms per receiver, in order per sender, so senders overtake each
- * other. Resolves once listening, with the port and a way to close it.
+ * other. A connection that misses a `ping` round is dropped, so its client is gone within
+ * two rounds. Resolves once listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, path = '/relay', tap, lag } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, ping: every = 5000, path = '/relay', tap, lag } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
   // Per room, the socket each client id last said hello from: a frame's `to` finds it there.
@@ -102,14 +103,15 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
     ws.on('error', () => ws.terminate());
   });
 
-  // A connection that misses a ping round is gone (a laptop lid closed, a dead network).
+  // A connection that misses a ping round is gone (a laptop lid closed, a dead network); a
+  // pong is answered below the page's scripts, so a busy tab still gives one.
   const ping = setInterval(() => {
     for (const ws of wss.clients) {
       if (!ws.alive) { ws.terminate(); continue; }
       ws.alive = false;
       ws.ping();
     }
-  }, 30_000);
+  }, every);
   // A beat to every client in a room, so a client notices a line that died without a close.
   const beats = beat ? setInterval(() => {
     for (const peers of rooms.values()) for (const ws of peers) send(ws, { t: 'beat' });
@@ -138,6 +140,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     maxFrame: env('MAX_FRAME', 16 << 20),
     maxRooms: env('MAX_ROOMS', 10000),
     beat: env('BEAT_MS', 15_000),
+    ping: env('PING_MS', 5000),
   });
   console.log(`relay listening on ${relay.port}`);
   const stop = () => relay.close().then(() => process.exit(0));
