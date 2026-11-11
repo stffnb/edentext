@@ -28,36 +28,36 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../hero-dark.webp">
-  <img src="../hero-light.webp" alt="EdenText en train d’éditer une lettre d’information sur deux colonnes, ses fonctionnalités signalées">
+  <img src="../hero-light.webp" alt="Une lettre d’information sur deux colonnes en cours d’édition dans EdenText, avec ses fonctionnalités annotées">
 </picture>
 
 ---
 
-EdenText est un traitement de texte puissant qui s’utilise dans le navigateur, de la note rapide au livre entier. Ni serveur ni compte : tout est traité en local et vos documents ne quittent jamais votre ordinateur. Il suffit d’ouvrir le lien, ou d’installer EdenText comme application pour l’utiliser hors ligne. Pour la plupart des langues, le premier téléchargement fait environ 2 Mo ; les dictionnaires et les polices sont chargés au besoin[^1]. L’interface est disponible en anglais, allemand, espagnol, français, italien, portugais, grec, russe, ukrainien, japonais et chinois (simplifié et traditionnel).
+EdenText est un traitement de texte puissant qui s’utilise dans le navigateur, pour tout écrire, de la note rapide au livre entier. Ni serveur ni compte : tout est traité en local et vos documents ne quittent jamais votre ordinateur. Il suffit d’ouvrir le lien, ou d’installer EdenText comme application pour l’utiliser hors ligne. Pour la plupart des langues, le premier téléchargement fait environ 2 Mo ; les dictionnaires et les polices sont chargés au besoin[^1]. L’interface est disponible en anglais, allemand, espagnol, français, italien, portugais, grec, russe, ukrainien, japonais et chinois (simplifié et traditionnel).
 
 > [!NOTE]
 > EdenText est encore en **bêta** et en développement actif. Des tests et des
-> vérifications d’aller-retour en vérifient le fonctionnement. Des bugs restent néanmoins
-> possibles à ce stade : gardez des sauvegardes de vos documents importants. Le navigateur
+> contrôles d’aller-retour en vérifient le bon fonctionnement ; des bugs restent néanmoins
+> possibles à ce stade, alors gardez des sauvegardes de vos documents importants. Le navigateur
 > conserve aussi les trois dernières versions du document ouvert, au cas où il ne se
 > chargerait plus.
 >
 > **Un bug, ou un document qui s’affiche mal ?** Merci
-> d’[ouvrir une issue](https://github.com/stffnb/edentext/issues), chaque signalement compte.
+> d’[ouvrir une issue](https://github.com/stffnb/edentext/issues) : chaque signalement compte.
 > Les documents qui s’affichent autrement dans EdenText que dans Word, LibreOffice ou WPS
 > Office nous intéressent particulièrement : joignez le fichier (ou une copie allégée) et
 > il deviendra un cas de test.
 
 <a href="https://edentext.app"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="../showcase/thesis-dark.png">
-  <img src="../showcase/thesis.png" alt="EdenText en train d’éditer une thèse : chapitres numérotés, formules et en-tête">
+  <img src="../showcase/thesis.png" alt="Une thèse en cours d’édition dans EdenText : chapitres numérotés, formules et en-tête de page">
 </picture></a>
 
 ## Fonctionnalités
 
 - **Une vraie mise en page** – pages A4/Letter, marges, en-têtes et pieds de page, notes
   de bas de page, colonnes, numérotation des pages et des lignes, filigranes ; pour les
-  livres, marges en miroir et chapitres qui commencent sur une page de droite
+  livres, marges en vis-à-vis et chapitres qui commencent sur une page de droite
 - **Ouvre et enregistre `.odt` et `.docx`**, exporte en PDF ; modèles (`.ott`/`.dotx`) et
   galerie de lettres (DIN 5008) ; fichiers protégés par mot de passe dans les deux formats
 - **Compatible avec Word, LibreOffice et WPS Office** – les documents gardent leur mise en
@@ -69,32 +69,33 @@ EdenText est un traitement de texte puissant qui s’utilise dans le navigateur,
 - **Tout ce qu’il faut pour un mémoire ou une thèse** – table des matières, légendes,
   renvois, citations et bibliographie, index alphabétique, formules (LaTeX)
 - **Outils de révision** – suivi des modifications et fils de commentaires dans des bulles
-  en marge, comparaison et fusion avec un autre fichier, annotations imprimables, correction orthographique (anglais, allemand,
-  espagnol, français, italien, portugais, grec, russe et ukrainien), synonymes (toutes ces langues
-  sauf le grec), correction grammaticale (anglais)
+  en marge, comparaison et fusion avec un autre fichier, marques de révision imprimables,
+  vérification orthographique (anglais, allemand, espagnol, français, italien, portugais,
+  grec, russe et ukrainien), synonymes (toutes ces langues sauf le grec), vérification
+  grammaticale (anglais)
 - **Assistant IA facultatif** – avec le fournisseur de votre choix ou un modèle local ; il
-  répond aux questions sur le document et le modifie avec suivi des modifications. Il
+  répond aux questions sur le document et le modifie sous forme de modifications suivies. Il
   peut être désactivé ; les requêtes vont directement au fournisseur, sans passer par
   un serveur EdenText
 - **Private by Design** – vos documents ne quittent jamais votre
   ordinateur, tout est traité en local ; fonctionne hors ligne comme application
-  installable. L’éditeur lui-même n’envoie rien, sauf au fournisseur choisi si
-  l’assistant IA est activé. Les documents sont enregistrés automatiquement dans le
+  installable. L’éditeur n’envoie rien, sauf si vous activez l’assistant IA, qui
+  transmet alors au fournisseur que vous avez choisi. Les documents sont enregistrés automatiquement dans le
   navigateur ; dans « Documents récents », on peut choisir de supprimer les documents
   fermés au démarrage suivant ou de ne pas les enregistrer du tout. Une fenêtre de
   navigation privée ne laisse aucune trace une fois fermée
 - **Tous les navigateurs actuels** – dans Chrome et Edge, « Enregistrer » écrit dans le
   fichier ouvert, et Brave aussi une fois `brave://flags/#file-system-access-api` activé ;
-  sinon, chaque enregistrement est un téléchargement. Pour choisir l’emplacement, il
-  suffit d’indiquer dans les paramètres du navigateur qu’il doit demander où enregistrer
-  chaque fichier
+  sinon, chaque enregistrement est un téléchargement : activez alors « Toujours demander
+  où enregistrer les fichiers » dans les paramètres du navigateur pour choisir
+  l’emplacement
 
 Les cas où le navigateur empêche EdenText de reproduire exactement Word ou LibreOffice sont
 décrits dans [Known limitations](../../CHANGELOG.md#known-limitations) (en anglais).
 
 ## Galerie
 
-Les documents de ces images se trouvent dans [`docs/showcase/`](../showcase/) en
+Les documents à l’origine de ces images se trouvent dans [`docs/showcase/`](../showcase/) en
 `.odt` et `.docx`, prêts à être ouverts dans EdenText, LibreOffice ou Word. Ils sont générés
 par `scripts/showcase/run.mjs` ; les photos viennent de la NASA et le livre est de Lewis
 Carroll, tous deux dans le domaine public.
@@ -102,7 +103,7 @@ Carroll, tous deux dans le domaine public.
 <table>
 <tr>
 <td width="50%" valign="top"><a href="../showcase/thesis-review.png"><img src="../showcase/thesis-review.png" alt="Suivi des modifications et commentaires" width="100%"></a><br><b>Révision</b> – suivi des modifications, fils de commentaires en marge, filigrane « brouillon »</td>
-<td width="50%" valign="top"><a href="../showcase/book-spread.png"><img src="../showcase/book-spread.png" alt="Un livre en double page" width="100%"></a><br><b>Livre</b> – A5 avec marges en miroir. Chaque chapitre commence sur une page de droite, l’en-tête affiche le titre du livre sur les pages de gauche et celui du chapitre sur les pages de droite, et la numérotation commence au premier chapitre</td>
+<td width="50%" valign="top"><a href="../showcase/book-spread.png"><img src="../showcase/book-spread.png" alt="Un livre en double page" width="100%"></a><br><b>Livre</b> – A5 avec marges en miroir. Chaque chapitre commence sur une page de droite, l’en-tête affiche le titre du livre sur les pages de gauche et celui du chapitre sur les pages de droite, et la numérotation des pages commence au premier chapitre</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><a href="../showcase/newsletter.png"><img src="../showcase/newsletter.png" alt="Une lettre d’information sur deux colonnes" width="100%"></a><br><b>Lettre d’information</b> – colonnes, images légendées, encadré latéral</td>
@@ -112,7 +113,7 @@ Carroll, tous deux dans le domaine public.
 
 ## Application de bureau
 
-Chaque version est aussi livrée avec des installateurs de bureau non signés, construits avec Electron :
+Chaque version s’accompagne aussi d’installateurs non signés pour ordinateur, créés avec Electron :
 
 - **macOS** – `EdenText-<version>-arm64.dmg` (Apple Silicon) ou `EdenText-<version>.dmg` (Intel).
   Glissez l’application dans Applications. Comme elle n’est pas signée, ouvrez-la la première
@@ -122,9 +123,10 @@ Chaque version est aussi livrée avec des installateurs de bureau non signés, c
 - **Linux** – `EdenText-<version>.AppImage` (`chmod +x`, puis lancez-le) ou le `.deb`
   (`sudo apt install ./edentext_*.deb`).
 
-L’application de bureau ouvre les documents depuis le gestionnaire de fichiers et y
-enregistre directement, écrit les PDF sans passer par la boîte de dialogue d’impression et
-signale au démarrage qu’une version plus récente est disponible.
+L’application de bureau ouvre les documents depuis le gestionnaire de fichiers et
+enregistre les modifications directement dans le même fichier, écrit les PDF sans passer par
+la boîte de dialogue d’impression et signale au démarrage lorsqu’une version plus récente est
+disponible.
 
 ## Développement
 
@@ -136,7 +138,7 @@ npm run build    # build de production → dist/
 cd desktop && npm install && npm start   # application de bureau sur le même build
 ```
 
-Construit avec Svelte 5, TypeScript, Vite et TipTap 3 (ProseMirror).
+Développé avec Svelte 5, TypeScript, Vite et TipTap 3 (ProseMirror).
 
 ## Auto-hébergement
 
@@ -148,8 +150,8 @@ et arm64) :
 docker run -p 8080:80 ghcr.io/stffnb/edentext
 ```
 
-Sinon, chaque version contient le fichier `edentext-<tag>.zip` avec l’application compilée
-; `npm run build` produit les mêmes fichiers dans `dist/`. N’importe quel serveur web peut
+Sinon, chaque version contient le fichier `edentext-<tag>.zip` avec l’application
+compilée ; `npm run build` produit les mêmes fichiers dans `dist/`. N’importe quel serveur web peut
 héberger ce dossier. L’image de conteneur peut aussi être construite localement avec
 `docker build -t edentext .`.
 Pour Kubernetes, un chart Helm maintenu par la communauté se trouve dans [`charts/edentext`](../../charts/edentext).
@@ -157,7 +159,7 @@ Pour Kubernetes, un chart Helm maintenu par la communauté se trouve dans [`char
 Pour une mise à jour, copiez les nouveaux fichiers par-dessus les anciens au lieu de vider
 d’abord le dossier. Les onglets ouverts avant la mise à jour continuent de charger les
 fichiers de leur version jusqu’à ce qu’ils soient rechargés. Le serveur doit répondre aux
-fichiers manquants par une erreur 404 et non par `index.html`, afin que ces onglets
+requêtes de fichiers manquants par une erreur 404 et non par `index.html`, afin que ces onglets
 puissent demander à être rechargés.
 
 Nous recommandons de servir EdenText en HTTPS. En HTTP simple, l’éditeur fonctionne aussi,
@@ -178,7 +180,7 @@ Une autre application web peut afficher EdenText dans un iframe et gérer elle-m
 Avec `?embed=1`, l’éditeur masque sa propre gestion des fichiers. Le module `embed.js`, servi
 par chaque instance, y charge des fichiers et les récupère en ODT, DOCX ou PDF ; voir
 [docs/architecture/embed.md](../../docs/architecture/embed.md).
-L’application hôte peut aussi choisir la langue, le thème et la couleur d’accent, et désactiver l’assistant IA.
+L’application hôte peut aussi choisir la langue, le thème et la couleur d’accentuation, et désactiver l’assistant IA.
 En mode intégré, l’éditeur
 affiche le logo EdenText et la mention « Powered by EdenText », que les conditions de l’AGPL
 obligent à conserver ([NOTICE.md](../../NOTICE.md)) et que seule une compilation en marque
@@ -213,7 +215,7 @@ Les contributions sont les bienvenues – voir [CONTRIBUTING.md](../../CONTRIBUT
 anglais). Pour qu’une pull request soit fusionnée, il faut avoir signé le [CLA](../../CLA.md) ; c’est
 vérifié automatiquement.
 
-### Remerciements
+### Contributeurs
 
 Merci à toutes celles et tous ceux qui ont aidé par leurs idées, leurs signalements de
 bugs, leurs tests et leurs retours. Outre les contributeurs listés sur GitHub, je
@@ -237,7 +239,7 @@ Patrick R., [@Deleh](https://github.com/Deleh), [@lukasmwerner](https://github.c
 
 Copyright © 2026 Steffen Becker · Fabriqué en Allemagne
 
-[AGPL-3.0](../../LICENSE), avec une condition supplémentaire au titre de sa section 7(b) pour le mode intégré ([NOTICE.md](../../NOTICE.md)). Si l’AGPL ne convient pas, une
+[AGPL-3.0](../../LICENSE), avec une condition supplémentaire au titre de son article 7(b) pour le mode intégré ([NOTICE.md](../../NOTICE.md)). Si l’AGPL ne convient pas, une
 [licence commerciale](../../LICENSE.commercial.md) est disponible. Les polices et données linguistiques fournies
 conservent leurs propres licences – voir [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
 
@@ -249,6 +251,6 @@ Foundation. Les formats `.docx` et `.odt` sont pris en charge à des fins d’in
 [^1]: Volume transféré, compressé : ~1,0 Mo de code d’application, le reste étant le
     correcteur orthographique avec le dictionnaire de la langue du navigateur et les
     polices qu’affiche une page ; les dictionnaires grec et ukrainien ajoutent ~2,5 et
-    ~1,5 Mo. Tout le reste est téléchargé à la première utilisation puis conservé pour le
-    hors-ligne ; l’ensemble des polices, dictionnaires et thésaurus pèse ~20 Mo, ou ~28 Mo
-    avec la correction grammaticale anglaise.
+    ~1,5 Mo. Tout le reste est téléchargé à la première utilisation puis conservé pour
+    une utilisation hors ligne ; l’ensemble des polices, dictionnaires et dictionnaires des
+    synonymes pèse ~20 Mo, ou ~28 Mo avec la vérification grammaticale anglaise.
