@@ -1694,7 +1694,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const ed = editor;
     const mounted = extraPanes.filter((i) => hosts[i]);
     if (!ed || !mounted.length) return;
-    const made = mounted.map((i) => {
+    // Untracked: a plugin view may dispatch while it is built, and the editor's
+    // onTransaction reads paneViews, which this effect writes.
+    const made = untrack(() => mounted.map((i) => {
       const view = new EditorView(hosts[i], {
         ...ed.view.props,
         state: ed.state,
@@ -1716,7 +1718,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       (view.dom as HTMLElement & { editor?: Editor }).editor = ed;
       paneViews[i] = view;
       return view;
-    });
+    }));
     return () => {
       clearTimeout(staleTimer);
       staleSince = undefined;
