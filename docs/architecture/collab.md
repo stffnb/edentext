@@ -112,7 +112,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   nonce (`PING`, signed `PONG`), and drops on the relay's `gone`: a replayed state of a
   writer who left holds no zone, also at a newcomer; those that saw it reject it by clock.
   Replayed updates, answers and pictures change nothing.
-- **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`): rooms as sets of sockets in memory,
+- **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`; hosting it: `collab-relay.md`): rooms as sets of sockets in memory,
   frames passed on unchanged, to the one client a clear `to` names where there is one (the
   sync's replies, pictures), nothing stored or logged; `MAX_PEERS` counts connections,
   readers too, as the relay cannot tell them from writers.
