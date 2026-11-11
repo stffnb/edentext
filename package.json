@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "2.4.0",
     "@noble/hashes": "^2.4.0",
     "@tiptap/core": "^3.33.0",
     "@tiptap/extension-bold": "^3.33.0",
