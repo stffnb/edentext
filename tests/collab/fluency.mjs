@@ -227,3 +227,4 @@ try {
   await relay.close();
   if (server) process.kill(-server.pid);
 }
+process.exit(0);
