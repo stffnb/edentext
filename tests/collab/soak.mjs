@@ -201,7 +201,14 @@ async function calm(cs, ops) {
     report('diverged', `${desc} (${why}): ${one('doc') ? 'stores differ' : diff}`, { ops });
     return 'reset';
   }
-  if (!one('pages')) report('pages', desc, { ops });
+  if (!one('pages')) {
+    // Every client's spacers beside the doc and stores, to load into one tab and compare.
+    const spacers = await Promise.all(cs.map((c) => c.page.evaluate(() => [...document.querySelectorAll('.tiptap-host .tiptap [data-page-break-spacer]')]
+      .map((s) => `${Math.round(s.offsetTop)}+${Math.round(s.offsetHeight)}`).join())));
+    const file = join(tmpdir(), `soak-${seed}-${roundNo}-pages.json`);
+    await writeFile(file, JSON.stringify({ doc: JSON.parse(await docJson(cs[0])), storage: await cs[0].page.evaluate(() => ({ ...localStorage })), spacers }));
+    report('pages', `${desc} (${file})`, { ops });
+  }
   const sent = states.map((s) => s.sent);
   await new Promise((r) => setTimeout(r, 3000));
   const after = (await Promise.all(cs.map(stateOf))).map((s) => s.sent);
