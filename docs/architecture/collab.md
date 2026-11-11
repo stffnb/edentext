@@ -111,7 +111,9 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
 - **Replays.** A signed awareness state takes effect only once its `peer` answered a fresh
   nonce (`PING`, signed `PONG`), and drops on the relay's `gone`: a replayed state of a
   writer who left holds no zone, also at a newcomer; those that saw it reject it by clock.
-  Replayed updates, answers and pictures change nothing.
+  Replayed updates, answers and pictures change nothing. A frame that names its sender
+  (`from`, a presence's `peer`) is dropped unless the relay names the same, so one tab
+  cannot pose as many readers or have answers sent to another client.
 - **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`; hosting it: `collab-relay.md`): rooms as sets of sockets in memory,
   frames passed on unchanged, to the one client a clear `to` names where there is one (the
   sync's replies, pictures), nothing stored or logged; `MAX_PEERS` counts connections,
