@@ -720,7 +720,7 @@
    "ms": 600,
    "starts": [
     "Chapter One",
-    "No headings yet — add an H1/H2/H3 to bui",
+    "No headings yet — apply Heading 1, 2 or",
     "Chapter Three"
    ]
   },
@@ -730,7 +730,7 @@
    "ms": 500,
    "starts": [
     "Chapter One",
-    "No headings yet — add an H1/H2/H3 to bui",
+    "No headings yet — apply Heading 1, 2 or",
     "Chapter Three"
    ]
   },
@@ -744,7 +744,7 @@
     "Chapter 28",
     "Chapter 42",
     "Chapter 56",
-    "No headings yet — add an H1/H2/H3 to bui"
+    "No headings yet — apply Heading 1, 2 or"
    ]
   },
   "tests/corpus/20-index-footer.odt": {
@@ -757,7 +757,7 @@
     "Chapter 28",
     "Chapter 42",
     "Chapter 56",
-    "No headings yet — add an H1/H2/H3 to bui"
+    "No headings yet — apply Heading 1, 2 or"
    ]
   },
   "tests/corpus/21-spacing-split.docx": {
