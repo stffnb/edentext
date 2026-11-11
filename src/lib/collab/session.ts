@@ -30,6 +30,9 @@ const PING = 9;     // [to][from][nonce]: answer to show the sender is in the ro
 const PONG = 10;    // [to][from][nonce], a writer's answer
 const ECHO = 11;    // [to][from][nonce], a reader's answer
 const DIRECTED = new Set([OFFER, PULL, ANSWER, PICTURE, WANT, PING, PONG, ECHO]); // the first number is `to`
+// Where a frame names its sender: it must be the one the relay puts in front, so no client
+// speaks for another (a reader for many readers, or asking answers sent to someone else).
+const FROM_AT = new Map([[ASK, 1], [VIEWER, 1], [OFFER, 5], [PULL, 5], [WANT, 5], [PING, 5], [PONG, 5], [ECHO, 5]]);
 const SIGNED = new Set([UPDATE, PRESENCE, OFFER, ANSWER, PICTURE, PONG]);
 const MAX_HELD = 8;      // presence frames held per peer until it answers a ping
 const MAX_KNOWN = 32;     // readers listed, and writers awaiting a ping
@@ -230,9 +233,9 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     pinged.delete(p);
     return true;
   };
-  const presence = (u: Uint8Array) => {
+  const presence = (u: Uint8Array, from: number) => {
     const ps = presencePeers(u);
-    if (ps.includes(null)) return;
+    if (ps.some((p) => p !== from)) return;
     const waiting = (ps as number[]).filter((p) => !live.has(p));
     if (!waiting.length) return applyAwarenessUpdate(awareness, u, REMOTE);
     for (const p of new Set(waiting)) {
@@ -247,7 +250,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     live.add(p);
     const list = held.get(p) ?? [];
     held.delete(p);
-    for (const u of list) presence(u);
+    for (const u of list) presence(u, p);
   };
   const listed = () => {
     if (line === 'open' && status !== 'version') setStatus(settled());
@@ -391,11 +394,13 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   };
 
   let tap: ((plain: Uint8Array) => void) | null = null;
-  const take = (plain: Uint8Array) => {
+  const take = (plain: Uint8Array, from: number) => {
     const kind = plain[0], v = new DataView(plain.buffer, plain.byteOffset, plain.byteLength);
+    const at = FROM_AT.get(kind);
+    if (at !== undefined && v.getUint32(at) !== from) return;
     if (kind === UPDATE) receive(plain.subarray(1));
     else if (pictures.receive(plain)) return;
-    else if (kind === PRESENCE) presence(plain.subarray(1));
+    else if (kind === PRESENCE) presence(plain.subarray(1), from);
     else if (kind === VIEWER) viewer(v.getUint32(1), plain.subarray(5));
     else if (kind === ASK) {
       if (reading) return;
@@ -426,13 +431,13 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
 
   const channel = openChannel({
     url: host.relay, key: keys.read, id: me,
-    onFrame(data) {
+    onFrame(data, from) {
       if (status === 'version' || !data.length) return;
       tap?.(data);
       // Unsigned or badly signed, a frame of a writing kind is dropped, as is one cut short.
       const plain = SIGNED.has(data[0]) ? opened(keys.verify, data) : data;
       if (!plain) return;
-      try { take(plain); } catch { /* malformed */ }
+      try { take(plain, from); } catch { /* malformed */ }
     },
     onPeers(n, gone) {
       // A client whose line the relay saw end is dropped at once: no picture is asked of it, its

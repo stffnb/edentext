@@ -780,6 +780,24 @@ try {
     check(afterPose[0] === 'Ben is editing' && afterPose[1] === 'Ben,Cleo' && afterPose[2] === 'Ben is editing' && !posed.got,
       `a reader dialling in under a writer's id gets none of its frames and neither drops it from the list nor frees its header (${afterPose.join(' / ')}; ${JSON.stringify(posed)})`);
 
+    // Forty readers made up in one tab fill no list: one reading along later is still listed.
+    await r.evaluate(() => {
+      for (let i = 0; i < 40; i++) {
+        const name = new TextEncoder().encode(JSON.stringify({ name: `Ghost ${i}`, color: '#888' }));
+        const out = new Uint8Array(5 + name.length);
+        out[0] = 8;
+        new DataView(out.buffer).setUint32(1, 1000 + i);
+        out.set(name, 5);
+        window.__collab.session.debug.send(out, 0);
+      }
+    });
+    await a.waitForTimeout(800);
+    const vera = await client('Vera');
+    await joinLink(vera, viewUrl);
+    await a.waitForTimeout(1500);
+    const listedNow = await readersOf(a);
+    await vera.context().close();
+    check(listedNow === 'Rita,Vera', `readers made up by another tab fill no list, and a real one is still listed (${listedNow})`);
 
     // A writer holds the footer and lets it go while the reader records; replayed then, and
     // after the writer left to a newcomer that never saw it, the footer stays free.
