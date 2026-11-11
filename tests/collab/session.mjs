@@ -201,6 +201,26 @@ try {
   [va, vb] = [await view(a), await view(b)];
   check(va.json === vb.json && !va.text.startsWith('Beta') && va.text.endsWith(' Alpha'), `the joiner's undo takes back only its own typing (${va.text.slice(0, 12)}…${va.text.slice(-8)})`);
 
+  // Extra panes are views of the same state: they must neither loop nor take the
+  // session's binding with them when they close.
+  await b.click('[data-tab="view"]');
+  await b.click('[data-cmd="splitView"]');
+  await b.waitForTimeout(300);
+  await b.click('[data-cmd="pagesAcross"]');
+  await b.click('.ribbon-menu button >> nth=1');
+  await b.waitForTimeout(600);
+  const panes = await b.evaluate(() => document.querySelectorAll('[data-split-pane] .tiptap').length);
+  await b.click('[data-cmd="pagesAcross"]');
+  await b.click('.ribbon-menu button >> nth=0');
+  await b.click('[data-cmd="zoomReset"]');
+  await caret(a, 'end');
+  await a.keyboard.type(' Gamma');
+  await settle(a);
+  [va, vb] = [await view(a), await view(b)];
+  check(panes > 0 && va.json === vb.json && vb.text.endsWith(' Gamma'), `split, then pages across, then one page keeps the joiner in the session (${panes} panes, ${vb.text.slice(-8)})`);
+  for (let i = 0; i < 6; i++) await a.keyboard.press('Backspace');
+  await settle(a);
+
   await a.click('[data-tab="layout"]');
   await a.click('[data-cmd="orientation"]');
   await a.click('[data-cmd="orientation-landscape"]');

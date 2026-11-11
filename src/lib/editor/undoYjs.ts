@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/core';
-import type { Transaction } from '@tiptap/pm/state';
+import type { Plugin, Transaction } from '@tiptap/pm/state';
 import type { ContentMatch, Schema } from '@tiptap/pm/model';
 import { history, isHistoryTransaction } from '@tiptap/pm/history';
 import * as Y from 'yjs';
@@ -11,6 +11,7 @@ import { attachRepair, bindingOf, repairKey } from './yjsRepair';
 import { attachRescue } from './yjsRescue';
 import { withMarks } from './yjsMarks';
 import './yjsRedo';
+import { isSplitPane } from './extensions/pageBreaks';
 
 // Origin of the side stores' writes into the shared doc (a `StateStep` mirrored).
 const STATE_ORIGIN = Symbol('stateHistory');
@@ -207,6 +208,14 @@ export type YjsUndo = {
 export type StoreCodec = { pack(value: unknown, share: boolean): unknown; unpack(value: unknown): unknown };
 const PLAIN: StoreCodec = { pack: (v) => v, unpack: (v) => v };
 
+// The binding and the undo manager have one view, the editor's: a split or grid pane
+// would take the binding over on mount and destroy both when it closes.
+function editorViewOnly(plugin: Plugin): Plugin {
+  const view = plugin.spec.view;
+  if (view) plugin.spec.view = (v) => (isSplitPane(v) ? {} : view(v));
+  return plugin;
+}
+
 /**
  * The body's undo on Yjs: the text in the fragment `body`, the stores beside it (`StateStep`
  * ids) in the map `state`, both under one manager that only takes back this client's edits.
@@ -351,7 +360,7 @@ export function attachYjsUndo(
     heard(!!e);
   };
   let invalid: (e: Error) => void = paused;
-  const sync = ySyncPlugin(frag, { onInvalidContent: (e) => invalid(e) });
+  const sync = editorViewOnly(ySyncPlugin(frag, { onInvalidContent: (e) => invalid(e) }));
   const binding = bindingOf(sync);
   let dropped: () => void = () => {};
   const repair = attachRepair(editor, ydoc, binding, paused, () => dropped());
@@ -360,7 +369,7 @@ export function attachYjsUndo(
   editor.registerPlugin(repair.plugin, (p, ps) => [p, ...ps]);
   editor.registerPlugin(sync);
   const detachRescue = attachRescue(editor, ydoc, binding, um, authors.foreign);
-  editor.registerPlugin(yUndoPlugin({ undoManager: um }));
+  editor.registerPlugin(editorViewOnly(yUndoPlugin({ undoManager: um })));
   editor.on('beforeTransaction', before);
   editor.on('transaction', mirror);
   editor.on('transaction', track);
