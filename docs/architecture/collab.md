@@ -43,8 +43,7 @@ the undo stack starts empty from there.
   starts (`stateValues`); a joiner never does, and a zone gets its old value on its first
   write. A change the manager (or another client) makes there returns as a body
   transaction with the `STATE_RESTORED` meta, one `StateStep` per store, assembled from all
-  its entries, once the Yjs transaction's observers are done (dispatched before the body's
-  redraw, it made the binding write the old document back over the update): fields sorted, styles in their family's order and the rest by name, so every
+  its entries once the update's observers ran (earlier, the binding wrote the old document back): fields sorted, styles in their family's order, the rest by name, so every
   client builds the same value. The existing listeners apply it as an undo (`watch.write`,
   `writeZone`), so a page setup or a header goes back the way it does alone.
 - **Grouping as in the history.** Yjs merges by time alone, so fast edits in different places
@@ -112,11 +111,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
 - **Replays.** A signed awareness state takes effect only once its `peer` answered a fresh
   nonce (`PING`, signed `PONG`), and drops on the relay's `gone`: a replayed state of a
   writer who left holds no zone, also at a newcomer; those that saw it reject it by clock.
-  Replayed updates, answers and pictures change nothing.
-- **Missed departures.** A `gone` sent while this client's line was down never reaches it.
-  Whenever it knows more peers (writers by `peer`, listed readers) than the relay counts, it
-  pings each afresh and drops those silent after 3 s, so a reconnected tab keeps no departed
-  writer's caret or zone. A busy peer that answers late presents itself again.
+  Replayed updates, answers and pictures change nothing. A `gone` sent while a line was down never arrives: knowing more peers than the relay counts, a client pings each and drops those silent for 3 s.
 - **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`; hosting it: `collab-relay.md`): rooms as sets of sockets in memory,
   frames passed on unchanged, to the one client a clear `to` names where there is one (the
   sync's replies, pictures), nothing stored or logged; `MAX_PEERS` counts connections,
