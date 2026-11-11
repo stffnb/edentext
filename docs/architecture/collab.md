@@ -187,7 +187,9 @@ a cut-short link and an empty room say so. A reader gets document, zones, styles
 and follows typing; keys, paste, commands, undo, a header and the assistant change nothing
 and it signs nothing, but a hint says why; each dialog shows its links. A patched reader's unsigned, falsely signed or altered updates,
 offers, answers, pictures and presences change no document, zone, caret or list; replayed
-presences hold no zone, at a newcomer neither. A picture whose only holder leaves unsent is a
+presences hold no zone, at a newcomer neither. A reader dialling in under a writer's id gets none of its frames
+nor makes it leave or free its header, a picture asked for thirty times in one frame goes once, and
+forty readers made up in one tab are listed nowhere, while a real one still is. A picture whose only holder leaves unsent is a
 grey box with a note within seconds, as the relay says who left, and the line stays `live`. Two writers and four
 readers fill a room of six, so a seventh is refused; with the writers gone the reader is told, a new reader finds it
 empty, and the reader's kept copy is editable. Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
@@ -196,10 +198,11 @@ recorded marks and adds none; the starter's undo takes back each on both sides. 
 dropping every connection after its welcome makes the line `failing` (notice, 4–5
 connections in 12 s) until it holds. A line that hears and sends nothing leaves `live`
 within a few beats, asks nothing while down, and comes back. `tests/relay.test.ts` and
-`tests/collab.test.ts` cover rooms, limits, beats, addressing, sealing, links, signatures, parts and their cap. All
+`tests/collab.test.ts` cover rooms, limits, beats, addressing, sealing, links, signatures, parts and their cap per sender, claimed ids and the protocol version. All
 scripts run in the three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`; load,
 soak and typing speed: `collab-soak.md`.
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun nor in five runs on a
 fresh dev server and dep cache (2026-11-11): in Firefox a joiner not live within 20 s on a just-started dev server. Writers share one signing key, so it tells writers from readers, not writers apart, and a
-write link stays valid for the session. Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.
+write link stays valid for the session. A reader can still cost the others what any participant can: asks
+(`ASK`, `PULL`, `WANT`) in a loop, each answered in full, and connections up to `MAX_PEERS`. Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.
