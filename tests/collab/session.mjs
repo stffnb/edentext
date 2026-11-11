@@ -521,7 +521,15 @@ try {
   await a.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.insertContent([
     { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Iota' }] }] }] }]));
   await joinLink(ida, link);
+  // Jo holds the footer and leaves while Ida is away: back, Ida never hears the relay's
+  // `gone`, yet must not keep Jo's presence or zone.
+  const jo = await client('Jo');
+  await joinLink(jo, link);
+  await openZone(jo, 'footer');
+  await ida.waitForTimeout(800);
+  const heldByJo = await heldTag(ida);
   await ida.evaluate(() => { window.__line.away = true; for (const w of window.__line.sockets) w.close(); });
+  await jo.context().close();
   await ida.waitForTimeout(500);
   await a.evaluate(() => {
     const ed = document.querySelector('.tiptap-host .tiptap').editor;
@@ -532,6 +540,10 @@ try {
   await a.waitForTimeout(1000);
   await ida.evaluate(() => { window.__line.away = false; });
   await live(ida);
+  const backAt = Date.now();
+  const joGone = await ida.waitForFunction(() => !document.querySelector('.hf-held') && !window.__collab.view().peers.some((p) => p.name === 'Jo'), null, { timeout: 8000 })
+    .then(() => (Date.now() - backAt) / 1000, () => Infinity);
+  check(heldByJo === 'Jo is editing' && joGone < 6, `a client back on its line drops a writer who left meanwhile, zone and all ("${heldByJo}", after ${joGone.toFixed(1)} s)`);
   await ida.waitForTimeout(3000);
   const [vaI, viI] = [await view(a), await view(ida)];
   const iota = await ida.evaluate(() => {
