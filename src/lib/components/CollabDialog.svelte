@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type CollabNotice = 'unreachable' | 'failing' | 'unkept' | 'missing' | 'dropped';
+  export type CollabNotice = 'unreachable' | 'failing' | 'unkept' | 'unwritten' | 'missing' | 'dropped';
 </script>
 
 <script lang="ts">
@@ -22,7 +22,7 @@
   } = $props();
 
   let dialogEl = $state<HTMLDialogElement | null>(null);
-  let copied = $state(false);
+  let copied = $state<'edit' | 'view' | null>(null);
   let hadDoc = $state(false);
   let storesNothing = $state(false);
 
@@ -33,7 +33,7 @@
   $effect(() => {
     const el = dialogEl;
     if (!el) return;
-    if (open && !el.open) { copied = false; storesNothing = loadRetention() === 'none'; el.showModal(); }
+    if (open && !el.open) { copied = null; storesNothing = loadRetention() === 'none'; el.showModal(); }
     else if (!open && el.open) el.close();
   });
 
@@ -43,10 +43,14 @@
     else onLeave('discard');
   }
 
-  async function copy() {
-    if (!view) return;
-    try { await navigator.clipboard.writeText(view.link); copied = true; } catch { /* the field stays selectable */ }
+  async function copy(which: 'edit' | 'view', text: string) {
+    try { await navigator.clipboard.writeText(text); copied = which; } catch { /* the field stays selectable */ }
   }
+  // A reader's `link` is the read link, so it is offered only that one.
+  const links = $derived(!view || view.status === 'invalid' ? []
+    : view.reading ? [{ which: 'view' as const, url: view.link }]
+    : [{ which: 'edit' as const, url: view.link }, { which: 'view' as const, url: view.viewLink }]);
+  const unwritten = $derived(!!view?.reading && view.status === 'live' && !view.peers.length);
 </script>
 
 <dialog
@@ -93,23 +97,31 @@
     {:else}
       <p class="status" data-status={view.status}>{t().collab.status[view.status]}</p>
       {#if view.paused}<p class="notice" data-notice="paused">{t().collab.pausedHint}</p>{/if}
-      {#if view.status === 'live' && !view.kept}
-        <p class="notice" data-notice="unkept">{t().collab.unkept}</p>
-      {/if}
+      {#if view.reading}<p class="notice" data-notice="reading">{t().collab.readingHint}</p>{/if}
+      {#if unwritten}<p class="notice" data-notice="unwritten">{t().collab.unwritten}</p>
+      {:else if view.status === 'live' && !view.kept}<p class="notice" data-notice="unkept">{t().collab.unkept}</p>{/if}
       {#if view.missing}<p data-missing>{t().collab.missing(view.missing)}</p>{/if}
-      {#if view.status !== 'invalid'}
-        <label class="row">
-          <span>{t().collab.link}</span>
-          <input readonly value={view.link} onfocus={(e) => e.currentTarget.select()} />
-          <button onclick={copy}>{copied ? t().collab.copied : t().collab.copy}</button>
-        </label>
+      {#if links.length}
+        <div class="links">
+          {#each links as l (l.which)}
+            <label class="row" data-link={l.which}>
+              <span>{l.which === 'edit' ? t().collab.editLink : t().collab.viewLink}</span>
+              <input readonly value={l.url} onfocus={(e) => e.currentTarget.select()} />
+              <button onclick={() => copy(l.which, l.url)}>{copied === l.which ? t().collab.copied : t().collab.copy}</button>
+            </label>
+          {/each}
+        </div>
+        {#if !view.reading}<p class="muted">{t().collab.linksHint}</p>{/if}
       {/if}
       <div class="peers">
         <span class="label">{t().collab.here}</span>
-        {#if view.peers.length}
+        {#if view.peers.length || view.readers.length}
           <ul>
             {#each view.peers as p (p.id)}
               <li><span class="dot" style:background={p.color}></span>{p.name}</li>
+            {/each}
+            {#each view.readers as p (p.id)}
+              <li data-reader><span class="dot ring" style:border-color={p.color}></span>{p.name}<span class="muted">{t().collab.readingAlong}</span></li>
             {/each}
           </ul>
         {:else}
@@ -128,7 +140,7 @@
 
 {#if notice && view && !open}
   <aside class="collab-notice" role="status" data-notice={notice}>
-    <p>{notice === 'unkept' ? t().collab.unkept : notice === 'missing' ? t().collab.missing(view.missing) : notice === 'dropped' ? t().collab.dropped : t().collab.status[notice]}</p>
+    <p>{notice === 'unkept' ? t().collab.unkept : notice === 'unwritten' ? t().collab.unwritten : notice === 'missing' ? t().collab.missing(view.missing) : notice === 'dropped' ? t().collab.dropped : t().collab.status[notice]}</p>
     <div class="actions">
       <button data-cmd="collabDetails" onclick={() => { notice = null; open = true; }}>{t().collab.menu}</button>
       <span class="spacer"></span>
@@ -180,7 +192,9 @@
   }
   .collab-notice .actions { padding-top: 0; }
 
-  .row { display: flex; align-items: center; gap: 8px; }
+  /* One grid, so both links' fields line up whatever their labels' length. */
+  .links { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 8px; align-items: center; }
+  .row { display: contents; }
   .row > span { color: var(--color-text-muted); white-space: nowrap; }
   input {
     flex: 1;
@@ -198,7 +212,9 @@
   .peers .label { color: var(--color-text-muted); }
   ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; }
   li { display: flex; align-items: center; gap: 5px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; box-sizing: border-box; }
+  .dot.ring { border: 2px solid; background: transparent; }
+  li .muted::before { content: '·'; margin: 0 4px; }
 
   .actions { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
   .spacer { flex: 1; }

@@ -7,7 +7,8 @@
 // and a late joiner's copy go in parts; a line that keeps breaking stops showing `live`.
 // When the starter leaves, the others are told; a joiner leaving keeps its copy as a
 // document of this browser or drops it, and a link to an empty room says so. A reader by
-// the read link follows and changes nothing, nor do its forged or replayed frames.
+// the read link follows and changes nothing, nor do its forged or replayed frames; readers
+// count toward the room's limit, alone give a newcomer nothing, and may keep a copy.
 // Any engine (BROWSER).
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -24,7 +25,7 @@ const seen = [];
 const FRAME = 1 << 20;
 const BEAT = 2000;
 const PING = 5000;
-const relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, ping: PING, tap: (d) => seen.push(Buffer.from(d)) });
+let relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, ping: PING, tap: (d) => seen.push(Buffer.from(d)) });
 // A line to the relay that can go silent without a close, as under a closed laptop lid.
 const STALL_PORT = +(process.env.COLLAB_STALL_PORT ?? RELAY_PORT + 5);
 const stall = { on: false };
@@ -630,6 +631,20 @@ try {
     const rv = await r.evaluate(() => ({ reading: window.__collab.view().reading, peers: window.__collab.view().peers.length, local: window.__collab.session.awareness.getLocalState() }));
     check(vr.json === va.json && va.text.endsWith('Lambda') && lists[0] === 'Rita' && lists[1] === 'Ben,Cleo' && rv.reading && rv.peers === 3 && rv.local === null,
       `typing reaches the reader, listed as reading along, not as a writer (${lists}; ${JSON.stringify(rv)})`);
+    // The starter's dialog offers both links, labelled apart; the reader's only the read link.
+    const links = (page) => page.evaluate(() => [...document.querySelectorAll('dialog[open] [data-link]')]
+      .map((l) => ({ which: l.dataset.link, label: l.querySelector('span').textContent, url: l.querySelector('input').value })));
+    await a.click('.statusbar .collab-btn');
+    const aLinks = await links(a);
+    const aReaders = await a.evaluate(() => [...document.querySelectorAll('dialog[open] li[data-reader]')].map((li) => li.textContent).join());
+    await a.click('dialog[open] .primary');
+    await r.click('.statusbar .collab-btn');
+    const rLinks = await links(r);
+    const rPage = await r.evaluate(() => ({ html: document.body.innerHTML, bar: document.querySelector('.statusbar .collab-btn').textContent.trim() }));
+    await r.click('dialog[open] .primary');
+    check(aLinks.map((l) => `${l.which}:${l.url}`).join() === `edit:${link},view:${viewUrl}` && aLinks[0].label !== aLinks[1].label && /Rita.*reading along/.test(aReaders)
+      && rLinks.length === 1 && rLinks[0].which === 'view' && rLinks[0].url === viewUrl && !rPage.html.includes(link.slice(link.indexOf('=') + 1)) && rPage.bar === 'Read only',
+      `the starter's dialog shows a write and a read link and the reader as reading along; the reader's only the read link (${aLinks.map((l) => l.label)}; ${aReaders}; ${rLinks.map((l) => l.which)}; "${rPage.bar}")`);
 
     // Keys, a paste, commands as a menu runs them, undo, a header, the assistant.
     const SIGNED = [1, 2, 3, 5, 6, 10];
@@ -637,6 +652,7 @@ try {
     const before = va.json;
     await caret(r, 'end');
     await r.keyboard.type('Zed');
+    const nudged = await r.isVisible('.collab-hint[data-hint="reading"]');
     await r.keyboard.press('Enter');
     await r.keyboard.press(`${MOD}+b`);
     await r.keyboard.press(`${MOD}+z`);
@@ -654,8 +670,8 @@ try {
     await settle(r);
     await a.waitForTimeout(600);
     const after = [await view(a), await view(b), await view(c), await view(r)];
-    check(after.every((v) => v.json === before) && !tried.editable && tried.ai && !zone && await signedSent() === 0,
-      `a reader changes nothing by keys, paste, commands, undo or a header, has no assistant and signs nothing (${JSON.stringify(tried)}, zone "${zone}", ${after.map(brief).join(' | ')})`);
+    check(after.every((v) => v.json === before) && !tried.editable && tried.ai && !zone && await signedSent() === 0 && nudged,
+      `a reader changes nothing by keys, paste, commands, undo or a header, is told why when typing, has no assistant and signs nothing (${JSON.stringify(tried)}, zone "${zone}", hint ${nudged}, ${after.map(brief).join(' | ')})`);
 
     // Forged frames, sealed with the read key: unsigned, with a random signature, or a real
     // frame altered. Updates add a paragraph or empty the first; the presence holds a zone.
@@ -931,6 +947,65 @@ try {
   const aNew = await a.evaluate(() => ({ text: document.querySelector('.tiptap-host .tiptap').editor.state.doc.textContent, collab: !!window.__collab.view() }));
   check(!aNew.text && !aNew.collab && await status(k) === 'live' && (await view(k)).json === kShared.json && !!kShared.text,
     `the starter choosing New leaves first and starts empty, the joiner keeps the document (${JSON.stringify(aNew)})`);
+
+  // Readers count toward the relay's limit. With only readers left, the one there hears it
+  // and a newcomer finds the room empty; the reader keeps its copy and can edit it.
+  await k.context().close();
+  await relay.close();
+  relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, ping: PING, maxPeers: 6 });
+  await openDoc(a, '16-hf-variants.odt');
+  const link4 = await start(a);
+  const view4 = await a.evaluate(() => window.__collab.session.viewLink);
+  const wes = await client('Wes');
+  await joinLink(wes, link4);
+  const rs = [];
+  for (const name of ['Rhea', 'Rolf', 'Ruth', 'Rudi']) {
+    rs.push(await client(name));
+    await joinLink(rs.at(-1), view4);
+  }
+  const listed = await a.waitForFunction(() => window.__collab.view().readers.length === 4, null, { timeout: 15_000 }).then(() => true, () => false);
+  const sven = await client('Sven');
+  await sven.goto(view4, { waitUntil: 'load' });
+  const full = await sven.waitForSelector('dialog[open] [data-status="full"]', { timeout: 20_000 }).then(() => true, () => false);
+  const counts = await a.evaluate(() => [window.__collab.view().peers.length, window.__collab.view().readers.length]);
+  check(listed && full && counts.join() === '1,4', `two writers and four readers fill the room: a seventh is refused (${full}; ${counts})`);
+  await sven.context().close();
+  for (const p of rs.slice(1)) await p.context().close();
+  const rhea = rs[0];
+  const shared4 = await view(rhea);
+  await wes.click('.statusbar .collab-btn');
+  await wes.click('dialog[open] [data-cmd="collabLeave"]');
+  await wes.click('dialog[open] [data-cmd="collabDiscard"]');
+  await a.click('.statusbar .collab-btn');
+  await a.click('dialog[open] [data-cmd="collabLeave"]');
+  const unwritten = await rhea.waitForSelector('.collab-notice[data-notice="unwritten"]', { timeout: 15_000 }).then(() => true, () => false);
+  const lars = await client('Lars');
+  await lars.goto(view4, { waitUntil: 'load' });
+  const emptyRoom = await lars.waitForSelector('dialog[open] [data-status="empty"]', { timeout: 20_000 }).then(() => true, () => false);
+  const larsText = await lars.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.state.doc.textContent);
+  check(unwritten && emptyRoom && !larsText && await status(rhea) === 'live' && (await view(rhea)).json === shared4.json,
+    `with every writer gone the reader hears so and keeps its state; a reader joining then finds the room empty (${unwritten}, ${emptyRoom}, "${larsText.slice(0, 20)}")`);
+  await lars.context().close();
+  await rhea.evaluate(() => { window.__before = true; });
+  await rhea.click('.collab-notice [data-cmd="collabDetails"]');
+  await rhea.click('dialog[open] [data-cmd="collabLeave"]');
+  await rhea.click('dialog[open] [data-cmd="collabKeep"]');
+  await rhea.waitForFunction(() => !window.__before && document.querySelector('.tiptap-host .tiptap')?.editor, null, { timeout: 30_000 });
+  await rhea.waitForTimeout(2500);
+  const keptR = await view(rhea);
+  await caret(rhea, 'end');
+  await rhea.keyboard.type(' Mine');
+  await settle(rhea);
+  const mine = await rhea.evaluate(async () => ({
+    editable: document.querySelector('.tiptap-host .tiptap').editor.isEditable,
+    text: document.querySelector('.tiptap-host .tiptap').editor.state.doc.textContent,
+    hash: location.hash,
+    reading: (await import('/src/lib/collab/reading.svelte.ts')).reading(),
+    ai: (await import('/src/lib/storage/ai.svelte.ts')).aiHostOff(),
+    bar: !!document.querySelector('.statusbar .collab-btn'),
+  }));
+  check(same(srcless(keptR), srcless(shared4)) && mine.editable && mine.text.endsWith('Mine') && !mine.hash && !mine.reading && !mine.ai && !mine.bar,
+    `a reader keeping its copy reloads into an editable document of its own (${brief(keptR)}; ${JSON.stringify({ ...mine, text: mine.text.slice(-12) })})`);
 
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (err) {

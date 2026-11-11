@@ -107,7 +107,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   waits as in an empty room. A reader's tab (`collab/reading.svelte.ts`) takes no input, has
   no assistant and opens no zone; once bound, a filter refuses every transaction with steps
   not from the shared doc (y-tiptap's sync meta, `STATE_RESTORED`), as commands run when not
-  editable too. What still reaches its Yjs doc is never sent; leaving, it may keep a copy.
+  editable too. What still reaches its Yjs doc is never sent; leaving, it may keep a copy. Its UI: `src/lib/components/CLAUDE.md`.
 - **Replays.** A signed awareness state takes effect only once its `peer` answered a fresh
   nonce (`PING`, signed `PONG`), and drops on the relay's `gone`: a replayed state of a
   writer who left holds no zone, also at a newcomer; those that saw it reject it by clock.
@@ -179,11 +179,12 @@ told and go on; a reload rejoins. A joiner keeping its copy reloads into it unwa
 picture, styles and zones, also on a second reload. The last joiner's tab warns on closing;
 a cut-short link and an empty room say so. A reader gets document, zones, styles and pictures
 and follows typing; keys, paste, commands, undo, a header and the assistant change nothing
-and it signs nothing. A patched reader's unsigned, falsely signed or altered updates,
+and it signs nothing, but a hint says why; each dialog shows its links. A patched reader's unsigned, falsely signed or altered updates,
 offers, answers, pictures and presences change no document, zone, caret or list; replayed
 presences hold no zone, at a newcomer neither. A picture whose only holder leaves unsent is a
-grey box with a note within seconds, as the relay says who left, and the line stays `live`.
-Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
+grey box with a note within seconds, as the relay says who left, and the line stays `live`. Two writers and four
+readers fill a room of six, so a seventh is refused; with the writers gone the reader is told, a new reader finds it
+empty, and the reader's kept copy is editable. Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
 the script (`page.route`): its text and page setup reach the joiner, which keeps its
 recorded marks and adds none; the starter's undo takes back each on both sides. A relay
 dropping every connection after its welcome makes the line `failing` (notice, 4–5
@@ -193,8 +194,7 @@ within a few beats, asks nothing while down, and comes back. `tests/relay.test.t
 scripts run in the three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`; load,
 soak and typing speed: `collab-soak.md`.
 
-Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun: in Firefox a joiner not live
-within 20 s on a just-started dev server. A client holds at most 16 unfinished messages, 256
-MiB together: a holder of either link can fill that for 60 s. Writers share one signing key,
-so it tells writers from readers, not writers apart, and a write link stays valid for the
-session. Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.
+Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun: in Firefox a joiner
+not live within 20 s on a just-started dev server. A client holds at most 16 unfinished messages, 256 MiB together: a holder of
+either link can fill that for 60 s. Writers share one signing key, so it tells writers from readers, not writers apart, and a
+write link stays valid for the session. Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.
