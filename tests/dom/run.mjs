@@ -503,6 +503,33 @@ try {
   check(remoteBefore !== '' && back === remoteBefore,
     `another client's lines move a page break and back (${remoteBefore} → ${moved} → ${back})`);
 
+  // Two layouts that imply each other (here a style lifting the block after a spacer, as a
+  // float's overhang can): which one stands, and the page count, must not depend on which
+  // came first, so a recalc started from either lands the same — the one with more pages.
+  const firstOnPage2 = await page.evaluate(() => {
+    const ps = [...document.querySelectorAll('.tiptap-host .tiptap > p')];
+    const spacer = [...document.querySelectorAll('.tiptap-host .tiptap > [data-page-break-spacer]')].find((s) => s.offsetHeight > 100);
+    return ps.indexOf(spacer?.nextElementSibling);
+  });
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)),
+    { type: 'doc', content: Array.from({ length: firstOnPage2 + 1 }, (_, i) => block(words(`line ${i + 1}`))) });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  await page.addStyleTag({ content: '.paper .tiptap > div[data-page-break-spacer] + p { margin-top: -40px }' });
+  const pingPong = [];
+  for (let i = 0; i < 3; i++) {
+    await page.evaluate(() => {
+      const ed = document.querySelector('.tiptap').editor;
+      ed.view.dispatch(ed.state.tr.setMeta('addToHistory', false).setMeta('forcePageBreakRecalc', true));
+    });
+    await settle(page, true);
+    pingPong.push(`${await spacers() || 'none'} ${await pageCount()}p`);
+  }
+  check(firstOnPage2 > 0 && pingPong.every((l) => l === pingPong[0]) && /\+.* 2p$/.test(pingPong[0]),
+    `a ping-pong of two layouts settles on the same one from either (${pingPong.join(' → ')})`);
+  await page.evaluate(() => document.querySelectorAll('style').forEach((s) => { if (s.textContent.includes('margin-top: -40px')) s.remove(); }));
+
   // A borderless table split inside its cell, its pages centred beside a landscape section
   // — under a footer taller than the bottom margin, under none, and above a footnote: the
   // mask draws no edge lines, its gap stripe sits on the sheets' gap, neither reaches past
