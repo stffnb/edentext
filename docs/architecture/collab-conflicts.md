@@ -94,16 +94,20 @@ went in leaves no extra column. The notes plugin runs its passes to a fixed poin
 appended transaction: ProseMirror hands a plugin's appended transaction to the other
 plugins only. The document admits note sections anywhere (`extensions.ts`), so two first
 notes added at once make two sections Yjs can hold and the projection keeps.
+**Emptied containers** (no `listItem+`/`tableRow+` child left) stay in the projection where the
+schema fills them (`fillOf`); the repair plugin, ordered first, appends the fill (`fillShort`,
+rows as wide as the table, `tableRepair.ts`): never a deletion, so a third client's item stays.
 
 `collab-repair.test.ts` relays three clients' conflicting edits (a column and a row, two
 first footnotes, typing) in random orders: one doc everywhere, the repairs in it once, and
-nothing written by any client but the repairer after its own edits. Typing into a cell
+nothing written by any client but the repairer after its own edits; emptied lists and tables
+(also with a third client adding) end unpaused, equal and complete. Typing into a cell
 only the overlay pads shows at once and arrives once, whether the repairer writes or B
 takes over from one that is gone; B's undo takes back the text and keeps the cell.
 
 ### Binding guard
 
-Shared content that does not fit the schema pauses the binding (y-tiptap's
+Shared content that does not fit the schema, and that no fill repairs, pauses the binding (y-tiptap's
 `onInvalidContent`) instead of y-tiptap deleting it from the shared doc: no edits, no
 writes, `collab: paused`, until an update fits again (`collab: resumed`).
 `YjsUndo.onPause` tells the session, whose `paused` turns the status bar's session button

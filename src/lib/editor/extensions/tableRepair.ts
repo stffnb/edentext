@@ -1,6 +1,7 @@
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { TableMap } from '@tiptap/pm/tables';
+import { Mapping } from '@tiptap/pm/transform';
+import { TableMap, tableNodeTypes } from '@tiptap/pm/tables';
 
 // Rows two clients changed at once can differ in length; fixTables, run after this, only
 // adds cells, so a row longer than most first loses its empty cells past that width (never
@@ -55,8 +56,33 @@ function trimRows(state: EditorState): Transaction | null {
   return tr;
 }
 
+// A row without cells (the one a repair fills an emptied table with) gets the table's width
+// in empty cells; a table no row of which has one takes the width it had before `trs`.
+function fillRows(trs: readonly Transaction[], old: EditorState, state: EditorState): Transaction | null {
+  const adds: [number, number][] = [];
+  state.doc.descendants((node, pos) => {
+    if (node.type.spec.tableRole !== 'table') return !node.isTextblock;
+    let bare = false;
+    node.forEach((row) => { bare ||= !row.childCount; });
+    if (!bare) return true;
+    let width = Math.max(0, ...widths(node));
+    if (!width) {
+      const back = new Mapping();
+      for (const t of trs) back.appendMapping(t.mapping);
+      const was = old.doc.nodeAt(back.invert().map(pos, -1));
+      width = was?.type === node.type ? Math.max(1, ...widths(was)) : 1;
+    }
+    node.forEach((row, off) => { if (!row.childCount) adds.push([pos + 2 + off, width]); });
+    return true;
+  });
+  if (!adds.length) return null;
+  const tr = state.tr, cell = tableNodeTypes(state.schema).cell;
+  for (const [at, n] of adds.reverse()) tr.insert(at, Array.from({ length: n }, () => cell.createAndFill()!));
+  return tr;
+}
+
 /** Runs ahead of prosemirror-tables' fixTables, which then adds what is still missing. */
 export const tableRepair = () => new Plugin({
   key: new PluginKey('tableRepair'),
-  appendTransaction: (trs, _old, state) => (trs.some((t) => t.docChanged) ? trimRows(state) : null),
+  appendTransaction: (trs, old, state) => (trs.some((t) => t.docChanged) ? fillRows(trs, old, state) ?? trimRows(state) : null),
 });

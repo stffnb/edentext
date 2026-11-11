@@ -1,7 +1,7 @@
 import type { Editor } from '@tiptap/core';
-import { Plugin, PluginKey, TextSelection, type Transaction } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { AttrStep, ReplaceStep, Transform, type Step } from '@tiptap/pm/transform';
-import { Fragment, Mark, Slice, type Node as PMNode } from '@tiptap/pm/model';
+import { Fragment, Mark, Slice, type Node as PMNode, type NodeType } from '@tiptap/pm/model';
 import * as Y from 'yjs';
 import { updateYFragment, ySyncPluginKey, type ProsemirrorBinding } from '@tiptap/y-tiptap';
 
@@ -60,6 +60,28 @@ export function diffSteps(a: PMNode, b: PMNode): Step[] {
   };
   walk(a, b, 0);
   return out;
+}
+
+// What a node needs at its end to fit its content rule (an empty list: an empty item), from
+// the schema alone, so every client fills alike; null where no fill makes it fit.
+export function fillOf(type: NodeType, content: Fragment): Fragment | null {
+  const fill = type.contentMatch.matchFragment(content)?.fillBefore(Fragment.empty, true);
+  return fill && type.validContent(content.append(fill)) ? fill : null;
+}
+
+// Fills every node short of its content rule, as concurrent deletions leave a container
+// empty; the container stays, so what a third client adds to it meanwhile does too.
+export function fillShort(tr: Transform): boolean {
+  const at: [number, Fragment][] = [];
+  tr.doc.descendants((node, pos) => {
+    if (node.isTextblock) return false;
+    const fill = node.type.validContent(node.content) ? null : fillOf(node.type, node.content);
+    if (fill?.size) at.push([pos + node.nodeSize - 1, fill]);
+    return true;
+  });
+  // Back to front, an outer node before the ones inside it.
+  for (const [pos, fill] of at.sort((x, y) => y[0] - x[0])) tr.insert(pos, fill);
+  return at.length > 0;
 }
 
 // What changed between two docs, as steps from `before` to `doc`.
@@ -124,6 +146,12 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onPa
 
   const plugin = new Plugin<Overlay>({
     key: repairKey,
+    // Ordered first, so the other plugins' repairs see the fill and the doc before it.
+    appendTransaction(trs, _old, state: EditorState) {
+      if (!trs.some(fromBinding)) return null;
+      const tr = state.tr;
+      return fillShort(tr) ? tr : null;
+    },
     state: {
       init: () => ({ base: null, held: null }),
       apply(tr, value, oldState) {
@@ -151,6 +179,25 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onPa
       },
     },
   });
+
+  // The projection keeps an element short of its content rule where a fill makes it fit,
+  // instead of pausing; the plugin above fills it as a repair.
+  const schema = editor.schema;
+  const node = schema.node;
+  let projecting = false;
+  schema.node = function (this: typeof schema, type, attrs, content, marks) {
+    try { return node.call(this, type, attrs, content, marks); } catch (e) {
+      const t = typeof type === 'string' ? this.nodes[type] : type;
+      if (!projecting || !t || !fillOf(t, Fragment.from(content))) throw e;
+      return t.create(attrs, content, marks);
+    }
+  };
+  const projector = binding as unknown as { createDocumentContent: () => Fragment };
+  const project = projector.createDocumentContent.bind(binding);
+  projector.createDocumentContent = () => {
+    projecting = true;
+    try { return project(); } finally { projecting = false; }
+  };
 
   // y-tiptap writes the whole document after a local transaction; the overlay stays out.
   const write = binding._prosemirrorChanged.bind(binding);
@@ -217,7 +264,7 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onPa
       const base = repairKey.getState(editor.state)?.base ?? editor.state.doc;
       const drawn = binding.type.toArray().map((type) => binding.mapping.get(type));
       let fits = drawn.every((n) => n && !Array.isArray(n)) && base.content.eq(Fragment.from(drawn as PMNode[]));
-      try { base.check(); } catch { fits = false; }
+      try { const t = new Transform(base); fillShort(t); t.doc.check(); } catch { fits = false; }
       if (!fits) {
         const err = new RangeError('the redrawn document is not the shared one');
         (binding as unknown as { _invalidContentError: Error })._invalidContentError = err;
@@ -237,6 +284,8 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onPa
       destroyed = true;
       editor.off('transaction', schedule);
       binding._prosemirrorChanged = write;
+      projector.createDocumentContent = project;
+      schema.node = node;
     },
   };
 }
