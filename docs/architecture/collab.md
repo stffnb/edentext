@@ -111,15 +111,11 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
 - **Replays.** A signed awareness state takes effect only once its `peer` answered a fresh
   nonce (`PING`, signed `PONG`), and drops on the relay's `gone`: a replayed state of a
   writer who left holds no zone, also at a newcomer; those that saw it reject it by clock.
-  Replayed updates, answers and pictures change nothing. A frame that names its sender
-  (`from`, a presence's `peer`) is dropped unless the relay names the same, so one tab
-  cannot pose as many readers or have answers sent to another client.
+  Replayed updates, answers and pictures change nothing. A frame that names its sender (`from`, a presence's `peer`) is dropped unless the relay names the same, so one tab cannot pose as many readers or have answers sent to another client.
 - **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`; hosting it: `collab-relay.md`): rooms as sets of sockets in memory,
   frames passed on unchanged, to the one client a clear `to` names where there is one (the
   sync's replies, pictures), nothing stored or logged; `MAX_PEERS` counts connections,
-  readers too, as the relay cannot tell them from writers. An id stays with the connection
-  whose hello claimed it with a random secret, so no other client takes its frames or its
-  `gone`; an app and a relay of different protocol versions say so (`mismatch`).
+  readers too, as the relay cannot tell them from writers. An id stays with the connection whose hello claimed it with a random secret, so no other client takes its frames or its `gone`; an app and a relay of different protocol versions say so (`mismatch`).
 - **Where the relay is:** `VITE_COLLAB_RELAY` is a `wss://` URL, or `same-origin` for `/relay`
   beside the app (dev proxy, Docker, Helm), where sessions are offered only once
   `relay/health` answers. Embedded, there are none.
@@ -134,9 +130,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   room shrinks or no peer frame comes for 10 s. Edits and carets go in 50 ms batches, each
   as a task of its own.
 - **Parts and failures** (`collab/channel.ts`): a message beyond the welcome's `frame`
-  (at most 1 MiB) goes as sealed numbered parts. A receiver keeps at most four unfinished
-  messages and 256 MiB per sender, which the relay puts in front of every frame, and drops
-  them when the sender goes: a sender can fill only its own room. Retries back off from 0.5 to 30 s; three
+  (at most 1 MiB) goes as sealed numbered parts. A receiver keeps at most four unfinished messages and 256 MiB per sender, which the relay puts in front of every frame, and drops them when the sender goes: a sender can fill only its own room. Retries back off from 0.5 to 30 s; three
   connections lost within 5 s of their welcome show `failing` until one holds for 5 s; a
   line silent for three `beat`s (15 s) is taken as half-open and redialled.
 - **Start and join.** The starter puts its document, exported as `.odt` (`buildBytes`),
@@ -187,9 +181,7 @@ a cut-short link and an empty room say so. A reader gets document, zones, styles
 and follows typing; keys, paste, commands, undo, a header and the assistant change nothing
 and it signs nothing, but a hint says why; each dialog shows its links. A patched reader's unsigned, falsely signed or altered updates,
 offers, answers, pictures and presences change no document, zone, caret or list; replayed
-presences hold no zone, at a newcomer neither. A reader dialling in under a writer's id gets none of its frames
-nor makes it leave or free its header, a picture asked for thirty times in one frame goes once, and
-forty readers made up in one tab are listed nowhere, while a real one still is. A picture whose only holder leaves unsent is a
+presences hold no zone, at a newcomer neither. A reader dialling in under a writer's id gets none of its frames nor makes it leave or free its header, a picture asked for thirty times in one frame goes once, and forty readers made up in one tab are listed nowhere, while a real one still is. A picture whose only holder leaves unsent is a
 grey box with a note within seconds, as the relay says who left, and the line stays `live`. Two writers and four
 readers fill a room of six, so a seventh is refused; with the writers gone the reader is told, a new reader finds it
 empty, and the reader's kept copy is editable. Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
