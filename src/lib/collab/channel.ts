@@ -1,6 +1,10 @@
-import { roomId, seal, unseal } from './key';
+import { newKey, roomId, seal, unseal } from './key';
 
-export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'failing' | 'closed';
+/** `mismatch`: the relay speaks another protocol version than this app. */
+export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'failing' | 'mismatch' | 'closed';
+
+/** The relay protocol (`relay/CLAUDE.md`) this app speaks. */
+export const PROTOCOL = 2;
 
 export type Channel = {
   /** To one client by its id, or with `to` 0 to everyone. */
@@ -13,9 +17,10 @@ export type Channel = {
 type Options = {
   url: string;
   key: Uint8Array;
-  /** This client's id: a relay that knows ids passes a frame only to its receiver. */
-  id?: number;
-  onFrame(plain: Uint8Array): void;
+  /** This client's id, never 0: the relay passes a frame to its receiver alone. */
+  id: number;
+  /** A message and its sender's id, which the relay puts in front of every frame. */
+  onFrame(plain: Uint8Array, from: number): void;
   /** The room's size; `gone` is the id of a client whose line the relay saw end. */
   onPeers(n: number, gone?: number): void;
   onStatus(s: ChannelStatus): void;
@@ -30,13 +35,15 @@ const WHOLE = 0;
 const PART = 1;
 const PART_HEAD = 17;        // envelope, 8-byte id, index, count
 const SEALING = 28;          // nonce and GCM tag
-const TO = 4;                // the receiver in clear in front of a sealed frame, 0 for all
+const TO = 4;                // in clear before a sealed frame: the receiver (0 for all), the sender on arrival
+const OLD_RELAY = 4000;      // a relay before version 2 closes a hello it cannot read so
 const MAX_PART = 1 << 20;
 const MAX_MESSAGE = 256 << 20;
 const PART_TTL = 60_000;
-// Parts carry no proven sender, so the bound is for all unfinished messages together:
-// past it a new message is dropped, and anyone holding the link costs at most this much.
-const MAX_OPEN = 16;
+// Unfinished messages are bounded per sender, as the relay names it: a sender sends one
+// message's parts in a row, so a new one ends its oldest past MAX_OPEN, and nobody fills
+// another's room.
+const MAX_OPEN = 4;
 const MIN_PART = 1024;
 // A connection that breaks within STABLE_MS of its welcome counts as failed; after FAILS in a
 // row the line is `failing` until one holds. Retries back off up to MAX_WAIT.
@@ -73,21 +80,28 @@ function split(plain: Uint8Array, size: number): Uint8Array[] {
 type Pending = { parts: (Uint8Array | undefined)[]; got: number; size: number; at: number };
 const sizeOf = (pending: Map<string, Pending>) => [...pending.values()].reduce((n, p) => n + p.size, 0);
 
-/** Puts parts back together; returns a message once it is whole. */
+/** Puts parts back together per sender; returns a message once it is whole. */
 function joiner() {
-  const pending = new Map<string, Pending>();
-  return (env: Uint8Array): Uint8Array | null => {
+  const senders = new Map<number, Map<string, Pending>>();
+  const take = (env: Uint8Array, from: number): Uint8Array | null => {
     if (env[0] === WHOLE) return env.subarray(1);
     if (env[0] !== PART || env.length < PART_HEAD) return null;
     const now = Date.now();
-    for (const [id, p] of pending) if (now - p.at > PART_TTL) pending.delete(id);
+    for (const [sender, pending] of senders) {
+      for (const [id, p] of pending) if (now - p.at > PART_TTL) pending.delete(id);
+      if (!pending.size) senders.delete(sender);
+    }
     const v = new DataView(env.buffer, env.byteOffset, env.byteLength);
     const id = Array.from(env.subarray(1, 9)).join('.');
     const index = v.getUint32(9), count = v.getUint32(13);
+    const pending = senders.get(from) ?? new Map<string, Pending>();
     let p = pending.get(id);
     if (!p) {
-      if (count < 2 || count > MAX_MESSAGE / MIN_PART + 1 || pending.size >= MAX_OPEN) return null;
+      // Parts come in order: one without its message's first part can never complete.
+      if (index !== 0 || count < 2 || count > MAX_MESSAGE / MIN_PART + 1) return null;
+      for (const old of pending.keys()) if (pending.size >= MAX_OPEN) pending.delete(old);
       pending.set(id, (p = { parts: new Array(count), got: 0, size: 0, at: now }));
+      senders.set(from, pending);
     }
     if (index >= p.parts.length || p.parts[index]) return null;
     if (sizeOf(pending) + env.length - PART_HEAD > MAX_MESSAGE) { pending.delete(id); return null; }
@@ -102,6 +116,9 @@ function joiner() {
     for (const part of p.parts as Uint8Array[]) { out.set(part, at); at += part.length; }
     return out;
   };
+  /** A sender gone: its unfinished messages go too. */
+  const forget = (from: number) => { senders.delete(from); };
+  return { take, forget };
 }
 
 /**
@@ -131,7 +148,7 @@ export async function relayReady(url: string | null): Promise<boolean> {
 /** A sealed, self-reconnecting line to the others in the key's room. */
 export function openChannel(o: Options): Channel {
   const room = roomId(o.key);
-  const take = joiner();
+  const parts = joiner();
   let ws: WebSocket | null = null;
   let ready = false;
   let closed = false;
@@ -142,13 +159,13 @@ export function openChannel(o: Options): Channel {
   let heard = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stable: ReturnType<typeof setTimeout> | undefined;
-  let addressed = false;
+  // The relay gives the id only to a hello with this secret, so no other client can take it.
+  const claim = newKey();
   const queue: [Uint8Array, number][] = [];
 
   const put = (sock: WebSocket, plain: Uint8Array, to: number) => {
     for (const part of split(plain, size)) {
       const sealed = seal(o.key, part);
-      if (!addressed) { sock.send(sealed); continue; }
       const out = new Uint8Array(TO + sealed.length);
       new DataView(out.buffer).setUint32(0, to);
       out.set(sealed, TO);
@@ -177,18 +194,16 @@ export function openChannel(o: Options): Channel {
       timer = setTimeout(connect, wait * (0.8 + Math.random() * 0.4));
       wait = Math.min(wait * 2, MAX_WAIT);
     };
-    sock.onopen = () => sock.send(JSON.stringify({ t: 'hello', v: 1, room, token: null, ...(o.id ? { id: o.id } : {}) }));
+    sock.onopen = () => sock.send(JSON.stringify({ t: 'hello', v: PROTOCOL, room, token: null, id: o.id, claim }));
     sock.onmessage = (ev) => {
       last = Date.now();
       if (typeof ev.data === 'string') {
-        let msg: { t?: string; peers?: number; n?: number; frame?: number; beat?: number; to?: boolean; gone?: number };
+        let msg: { t?: string; peers?: number; n?: number; frame?: number; beat?: number; gone?: number };
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.t === 'welcome') {
           welcomed = ready = true;
           down = false;
-          // A relay without ids passes every frame to all, which drop those not theirs.
-          addressed = msg.to === true && !!o.id;
-          if (msg.frame) size = Math.max(PART_HEAD + MIN_PART, Math.min(MAX_PART, msg.frame - SEALING - (addressed ? TO : 0)));
+          if (msg.frame) size = Math.max(PART_HEAD + MIN_PART, Math.min(MAX_PART, msg.frame - SEALING - TO));
           // A half-open line never closes by itself: it is dropped and dialled again.
           const beat = msg.beat ?? 0;
           if (beat > 0) alive = setInterval(() => {
@@ -206,18 +221,28 @@ export function openChannel(o: Options): Channel {
             wait = 500;
             o.onStatus('open');
           }, STABLE_MS);
-        } else if (msg.t === 'peers') o.onPeers(msg.n ?? 1, msg.gone);
+        } else if (msg.t === 'peers') {
+          if (msg.gone) parts.forget(msg.gone);
+          o.onPeers(msg.n ?? 1, msg.gone);
+        }
         else if (msg.t === 'full') { closed = true; o.onStatus('full'); }
+        else if (msg.t === 'version') { closed = true; o.onStatus('mismatch'); }
         return;
       }
       heard = last;
+      const data = new Uint8Array(ev.data as ArrayBuffer);
+      if (data.length < TO) return;
+      const from = new DataView(data.buffer).getUint32(0);
       let env: Uint8Array;
       // A frame sealed with another key or altered on the way is dropped.
-      try { env = unseal(o.key, new Uint8Array(ev.data as ArrayBuffer)); } catch { return; }
-      const plain = take(env);
-      if (plain) o.onFrame(plain);
+      try { env = unseal(o.key, data.subarray(TO)); } catch { return; }
+      const plain = parts.take(env, from);
+      if (plain) o.onFrame(plain, from);
     };
-    sock.onclose = lost;
+    sock.onclose = (ev) => {
+      if (!welcomed && !closed && ev.code === OLD_RELAY) { closed = true; o.onStatus('mismatch'); }
+      lost();
+    };
   };
   connect();
 

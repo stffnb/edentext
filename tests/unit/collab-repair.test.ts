@@ -8,6 +8,9 @@ import { attachYjsUndo, type YjsUndo } from '../../src/lib/editor/undoYjs';
 // notes out of anchor order), relayed in a random order: every client ends with the same
 // shared doc and document, the repairs in it once, all written by the repairer.
 
+// jsdom has no ResizeObserver; the text box's view only fits its frame with one.
+globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
+
 type Client = { ed: Editor; undo: YjsUndo; ydoc: Y.Doc; out: Uint8Array[] };
 const live: Client[] = [];
 afterEach(() => { for (const c of live.splice(0)) { c.undo.detach(); c.ed.destroy(); } });
@@ -137,6 +140,8 @@ const lastRow = (ed: Editor) => {
   ed.state.doc.descendants((n, p) => { if (n.type.name === 'table') at = p + n.nodeSize - 1 - n.lastChild!.nodeSize + 3; return at < 0; });
   return at;
 };
+const boxed = (ed: Editor) => { ed.commands.insertContentAt(posOf(ed, 'Epsilon.', 8), { type: 'textBox', attrs: { width: 288, height: 96 }, content: [P('Kappa.'), P('Lambda.')] }); };
+const takeBlock = (text: string) => (ed: Editor) => { const $p = ed.state.doc.resolve(posOf(ed, text, 1)); ed.commands.deleteRange({ from: $p.before(), to: $p.after() }); };
 const EMPTIED: { name: string; pre?: (ed: Editor) => void; edits: ((ed: Editor) => void)[]; keep: string[]; lists: number; rows: number }[] = [
   { name: 'a list whose first item one client takes out while another lifts the second',
     pre: twoItems, edits: [takeFirst, liftSecond], keep: ['Eta.'], lists: 1, rows: 2 },
@@ -147,6 +152,8 @@ const EMPTIED: { name: string; pre?: (ed: Editor) => void; edits: ((ed: Editor) 
   { name: 'a table emptied while a third client adds a row',
     edits: [deleteRowAt('a1'), deleteRowAt('a2'), (ed) => { ed.commands.setTextSelection(posOf(ed, 'b2', 1)); ed.commands.addRowAfter(); ed.commands.insertContentAt(lastRow(ed), 'c3'); }],
     keep: ['Epsilon.', 'c3'], lists: 1, rows: 2 },
+  { name: 'a text box in a paragraph whose two paragraphs two clients delete', pre: boxed,
+    edits: [takeBlock('Kappa.'), takeBlock('Lambda.')], keep: ['Epsilon.'], lists: 1, rows: 2 },
 ];
 
 describe('a container concurrent deletions leave empty', () => {

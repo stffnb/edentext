@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url';
 
 const ROOM = /^[A-Za-z0-9_-]{16,64}$/;
 const ID = (v) => Number.isInteger(v) && v > 0 && v < 2 ** 32;
+const CLAIM = /^[A-Za-z0-9_-]{22,64}$/;
+// The protocol this relay speaks; a hello with another `v` gets `version` and close 4002.
+const VERSION = 2;
+// Ids a room remembers, live or gone; past it the oldest gone one is forgotten.
+const MAX_IDS = 256;
 
 /**
  * Starts a relay on `port` (0 picks a free one). `maxPeers` 0 means no limit per room;
@@ -15,11 +20,12 @@ const ID = (v) => Number.isInteger(v) && v > 0 && v < 2 ** 32;
  * other. A connection that misses a `ping` round is dropped, so its client is gone within
  * two rounds. Resolves once listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, ping: every = 5000, path = '/relay', tap, lag } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, ping: every = 5000, helloWait = 5000, path = '/relay', tap, lag } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
-  // Per room, the socket each client id last said hello from: a frame's `to` finds it there.
-  /** @type {Map<string, Map<number, import('ws').WebSocket>>} */
+  // Per room, each client id with the secret its first hello claimed it by, and its socket
+  // while it is there: a frame's `to` finds it, and no other connection can take the id.
+  /** @type {Map<string, Map<number, { claim: string, ws: import('ws').WebSocket | null }>>} */
   const ids = new Map();
   // Behind a proxy that passes `/relay` on unchanged, the app asks `/relay/health`.
   const health = new Set(['/health', `${path}/health`]);
@@ -47,45 +53,48 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
     let room = null;
     ws.alive = true;
     ws.on('pong', () => { ws.alive = true; });
-    // The hello has to come first and within a few seconds.
-    const timer = setTimeout(() => { if (!room) ws.close(4000, 'hello'); }, 5000);
+    // The hello has to come first and within a few seconds; a late one closes with 4005, not
+    // 4000, so a slow line is not taken for a relay that cannot read the hello.
+    const timer = setTimeout(() => { if (!room) ws.close(4005, 'late'); }, helloWait);
 
     ws.on('message', (data, binary) => {
       if (!room) {
         let hello;
         try { hello = binary ? null : JSON.parse(String(data)); } catch { hello = null; }
-        if (hello?.t !== 'hello' || hello.v !== 1 || !ROOM.test(hello.room ?? '') || (hello.id != null && !ID(hello.id))) return ws.close(4000, 'hello');
+        if (hello?.t === 'hello' && hello.v !== VERSION) { send(ws, { t: 'version', v: VERSION }); return ws.close(4002, 'version'); }
+        if (hello?.t !== 'hello' || !ROOM.test(hello.room ?? '') || !ID(hello.id) || !CLAIM.test(hello.claim ?? '')) return ws.close(4000, 'hello');
         let peers = rooms.get(hello.room);
         if (!peers && rooms.size >= maxRooms) return ws.close(4003, 'busy');
+        // An id belongs to the hello that first claimed it; a redial with that claim takes it over.
+        const named = ids.get(hello.room) ?? new Map();
+        const owner = named.get(hello.id);
+        if (owner && owner.claim !== hello.claim) return ws.close(4004, 'id');
         if (peers && maxPeers && peers.size >= maxPeers) { send(ws, { t: 'full' }); return ws.close(4001, 'full'); }
         if (!peers) rooms.set(hello.room, (peers = new Set()));
         clearTimeout(timer);
         room = hello.room;
         peers.add(ws);
-        // A client with an id puts its receiver in front of each frame; a redial takes its id over.
-        if (hello.id) {
-          ws.id = hello.id;
-          if (!ids.has(room)) ids.set(room, new Map());
-          ids.get(room).set(ws.id, ws);
-        }
-        send(ws, { t: 'welcome', peers: peers.size, frame: maxFrame, ...(beat ? { beat } : {}), ...(ws.id ? { to: true } : {}) });
+        ws.id = hello.id;
+        ids.set(room, named);
+        named.delete(ws.id);
+        named.set(ws.id, { claim: hello.claim, ws });
+        if (named.size > MAX_IDS) for (const [id, o] of named) if (!o.ws) { named.delete(id); break; }
+        send(ws, { t: 'welcome', peers: peers.size, frame: maxFrame, ...(beat ? { beat } : {}) });
         announce(peers, ws);
         return;
       }
       if (!binary) return;
       tap?.(data);
-      if (!ws.id) {
-        for (const peer of rooms.get(room) ?? []) if (peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, data);
-        return;
-      }
       if (data.length < 4) return;
-      const to = data.readUInt32BE(0), sealed = data.subarray(4);
+      // The receiver in front makes way for the sender, which no client can forge.
+      const to = data.readUInt32BE(0);
+      data.writeUInt32BE(ws.id, 0);
       if (to) {
-        const peer = ids.get(room)?.get(to);
-        if (peer && peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, sealed);
+        const peer = ids.get(room)?.get(to)?.ws;
+        if (peer && peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, data);
         return;
       }
-      for (const peer of rooms.get(room) ?? []) if (peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, sealed);
+      for (const peer of rooms.get(room) ?? []) if (peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, data);
     });
 
     ws.on('close', () => {
@@ -94,9 +103,10 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
       if (!peers) return;
       peers.delete(ws);
       // Only the id's current socket leaving means its client is gone; a replaced one does not.
-      const named = ids.get(room);
-      const gone = ws.id && named?.get(ws.id) === ws ? ws.id : 0;
-      if (gone) named.delete(gone);
+      // The id stays claimed, so only its client can come back under it.
+      const owner = ids.get(room)?.get(ws.id);
+      const gone = owner?.ws === ws ? ws.id : 0;
+      if (gone) owner.ws = null;
       if (peers.size) announce(peers, null, gone);
       else { rooms.delete(room); ids.delete(room); }
     });

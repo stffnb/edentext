@@ -96,9 +96,9 @@ went in leaves no extra column. The notes plugin runs its passes to a fixed poin
 appended transaction: ProseMirror hands a plugin's appended transaction to the other
 plugins only. The document admits note sections anywhere (`extensions.ts`), so two first
 notes added at once make two sections Yjs can hold and the projection keeps.
-**Emptied containers** (no `listItem+`/`tableRow+` child left) stay in the projection where the
-schema fills them (`fillOf`); the repair plugin, ordered first, appends the fill (`fillShort`,
-rows as wide as the table, `tableRepair.ts`): never a deletion, so a third client's item stays.
+**Emptied containers** (lists, tables, a text box) stay in the projection where the schema fills
+them (`fillOf`); the repair plugin, ordered first, appends the fill (`fillShort`): never a deletion,
+so a third client's item stays, unless all entries were selected and the container went whole.
 
 `collab-repair.test.ts` relays three clients' conflicting edits (a column and a row, two
 first footnotes, typing) in random orders: one doc everywhere, the repairs in it once, and
