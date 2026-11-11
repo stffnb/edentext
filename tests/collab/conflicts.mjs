@@ -34,6 +34,8 @@ const attach = (page, id, state) => page.evaluate(([id, s]) => {
   window.__yjsUndo = attachYjsUndo(ed, ydoc);
   // A writes the repairs, as the client bound first does in a session.
   window.__yjsUndo.setRepairer(() => id === 1);
+  window.__paused = false;
+  window.__yjsUndo.onPause((p) => { window.__paused ||= p; });
   window.__yOut = [];
   ydoc.on('update', (u, origin) => { if (origin !== 'relay') window.__yOut.push([...u]); });
   // What the cases call: positions by text, cells by grid, typing as a transaction.
@@ -61,7 +63,24 @@ const attach = (page, id, state) => page.evaluate(([id, s]) => {
   const block = (i) => { let pos = 0; doc().forEach((_n, p, k) => { if (k === i) pos = p; }); return pos; };
   const type = (pos, text) => { ed.commands.setTextSelection(pos); ed.view.dispatch(ed.state.tr.insertText(text)); };
   const select = (from, to = from) => ed.commands.setTextSelection({ from, to });
-  window.__h = { ed, doc, at, cells, block, type, select };
+  // A container's entries as node ranges: the children of the first (or deepest) node of
+  // that type, or the note anchors; and the first and last text position in an entry.
+  const kids = (name, deepest) => {
+    let box = null;
+    doc().descendants((n, p) => { if (n.type.name === name && (!box || deepest)) box = { n, p }; return true; });
+    const out = [];
+    box.n.forEach((n, off) => out.push({ from: box.p + 1 + off, to: box.p + 1 + off + n.nodeSize, node: n }));
+    return out;
+  };
+  const refs = () => { const out = []; doc().descendants((n, p) => { if (n.type.name === 'noteRef') out.push({ from: p, to: p + 1, node: n }); return true; }); return out; };
+  const ends = (e) => {
+    if (e.node.type.name === 'noteRef') return [e.from, e.to];
+    let first = null, last = null;
+    doc().nodesBetween(e.from, e.to, (n, p) => { if (n.isTextblock && p >= e.from) { first ??= p + 1; last = p + 1 + n.content.size; } return true; });
+    return [first, last];
+  };
+  const key = (k) => ed.commands.keyboardShortcut(k);
+  window.__h = { ed, doc, at, cells, block, type, select, kids, refs, ends, key };
 }, [id, state]);
 await attach(a, 1);
 await attach(b, 2, await a.evaluate(() => [...window.__undoYjs.Y.encodeStateAsUpdate(window.__yjsUndo.ydoc)]));
@@ -217,6 +236,62 @@ const CASES = [
   { name: 'A adds a footnote, B one before it', doc: NOTED, a: 'h.select(h.at("After", 5)); h.ed.commands.insertNote("footnote")', b: 'h.select(h.at("Before", 6)); h.ed.commands.insertNote("footnote")', keep: [], notes: 3, want: ok },
 ];
 
+// Emptying: each container with entries One…Four (a 3 × 3 table: rows or columns); `E` the
+// entries, as page code. A takes the first half, B the rest, or both take all; C adds an
+// entry after the second and types in it.
+const ITEMS = ['One', 'Two', 'Three', 'Four'];
+const LIST = (type, items = ITEMS) => ({ type, content: items.map((t) => LI(t)) });
+const NOTES = (kind) => [
+  { type: 'paragraph', content: ITEMS.flatMap((t, i) => [{ type: 'text', text: ` ${t}` }, { type: 'noteRef', attrs: { id: `n${i + 1}`, kind, text: String(i + 1) } }]) },
+  P('Below.'),
+  { type: 'noteSection', content: ITEMS.map((t, i) => ({ type: 'note', attrs: { id: `n${i + 1}`, kind, text: String(i + 1) }, content: [{ type: 'text', text: `Note ${t}.` }] })) },
+];
+const BOXES = [
+  { name: 'bullet list', doc: [P('Above.'), LIST('bulletList'), P('Below.')], E: 'h.kids("bulletList")', add: 'splitListItem("listItem")', lift: true },
+  { name: 'numbered list', doc: [P('Above.'), LIST('orderedList'), P('Below.')], E: 'h.kids("orderedList")', add: 'splitListItem("listItem")', lift: true },
+  { name: 'nested list', doc: [P('Above.'), UL(LI('Outer', LIST('bulletList')), LI('Tail')), P('Below.')], E: 'h.kids("bulletList", true)', add: 'splitListItem("listItem")', lift: true },
+  { name: 'text box', doc: [{ type: 'paragraph', content: [{ type: 'text', text: 'Box ' }, { type: 'textBox', attrs: { width: 288, height: 96 }, content: ITEMS.map((t) => P(t)) }] }, P('Below.')], E: 'h.kids("textBox")', add: 'splitBlock()' },
+  { name: 'columns', doc: [P('Above.'), { type: 'columns', content: ITEMS.map((t) => P(t)) }, P('Below.')], E: 'h.kids("columns")', add: 'splitBlock()' },
+  { name: 'footnotes', doc: NOTES('footnote'), E: 'h.refs()', note: 'footnote' },
+  { name: 'endnotes', doc: NOTES('endnote'), E: 'h.refs()', note: 'endnote' },
+];
+// Page code taking entries lo…hi-1: as whole nodes in one step, selected and deleted, cut, or
+// with Backspace entry by entry from the last.
+const TAKE = {
+  nodes: (E, lo, hi) => `const e = ${E}; const tr = h.ed.state.tr; for (let i = ${hi} - 1; i >= ${lo}; i--) tr.delete(e[i].from, e[i].to); h.ed.view.dispatch(tr)`,
+  select: (E, lo, hi) => `const e = ${E}; h.select(h.ends(e[${lo}])[0], h.ends(e[${hi} - 1])[1]); h.ed.commands.deleteSelection()`,
+  cut: (E, lo, hi) => `const e = ${E}; h.select(h.ends(e[${lo}])[0], h.ends(e[${hi} - 1])[1]); h.ed.view.dom.dispatchEvent(new ClipboardEvent('cut', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true }))`,
+  backspace: (E, lo, hi) => `for (let i = ${hi} - 1; i >= ${lo}; i--) { const e = ${E}[i]; h.select(h.ends(e)[1]); for (let k = 0; k <= (e.node.type.name === 'noteRef' ? 0 : e.node.textContent.length); k++) h.key('Backspace'); }`,
+};
+const typesIn = (x) => x.note
+  ? `h.select(h.at("Below", 5)); h.ed.commands.insertNote("${x.note}"); h.ed.view.dispatch(h.ed.state.tr.insertText("Cleo"))`
+  : `h.select(h.ends(${x.E}[1])[1]); h.ed.commands.${x.add}; h.ed.view.dispatch(h.ed.state.tr.insertText("Cleo"))`;
+const CASES_EMPTY = [];
+for (const x of BOXES) {
+  for (const how of Object.keys(TAKE)) {
+    CASES_EMPTY.push({ name: `${x.name}: A and B delete half each (${how})`, doc: x.doc, a: TAKE[how](x.E, 0, 2), b: TAKE[how](x.E, 2, 4) });
+    CASES_EMPTY.push({ name: `${x.name}: A and B delete all (${how})`, doc: x.doc, a: TAKE[how](x.E, 0, 4), b: TAKE[how](x.E, 0, 4) });
+  }
+  for (const how of ['nodes', 'select']) CASES_EMPTY.push({ name: `${x.name}: A and B delete half each (${how}), C adds one`, doc: x.doc, a: TAKE[how](x.E, 0, 2), b: TAKE[how](x.E, 2, 4), c: typesIn(x) });
+  // Selecting every entry deletes the container whole, C's entry with it (Accepted: delete vs typing).
+  CASES_EMPTY.push({ name: `${x.name}: A and B delete all (select), C adds one`, doc: x.doc, a: TAKE.select(x.E, 0, 4), b: TAKE.select(x.E, 0, 4), c: typesIn(x), whole: true });
+  if (x.lift) for (const c of [null, typesIn(x)]) {
+    CASES_EMPTY.push({ name: `${x.name}: A deletes all, B makes the last a paragraph${c ? ', C adds one' : ''}`, doc: x.doc, a: TAKE.nodes(x.E, 0, 4), b: `h.select(h.ends(${x.E}[3])[1]); h.ed.commands.liftListItem("listItem")`, c });
+  }
+}
+// Tables: rows or columns as entries, by the table commands.
+const ROWS = (lo, hi) => `const c = h.cells(); h.ed.commands.setCellSelection({ anchorCell: c[${lo}][0], headCell: c[${hi} - 1][2] }); h.ed.commands.deleteRow()`;
+const COLS = (lo, hi) => `const c = h.cells(); h.ed.commands.setCellSelection({ anchorCell: c[0][${lo}], headCell: c[2][${hi} - 1] }); h.ed.commands.deleteColumn()`;
+const CLEAR = 'const c = h.cells(); h.ed.commands.setCellSelection({ anchorCell: c[0][0], headCell: c[2][2] }); h.key("Delete")';
+const ADD_ROW = 'h.select(h.cells()[1][0] + 2); h.ed.commands.addRowAfter(); h.type(h.cells()[2][0] + 2, "Cleo")';
+for (const [what, take] of [['rows', ROWS], ['columns', COLS]]) {
+  CASES_EMPTY.push({ name: `table: A and B delete all ${what} between them`, doc: TABLE, a: take(0, 1), b: take(1, 3) });
+  CASES_EMPTY.push({ name: `table: A and B delete all ${what} between them, C adds a row`, doc: TABLE, a: take(0, 1), b: take(1, 3), c: ADD_ROW });
+}
+CASES_EMPTY.push({ name: 'table: A and B clear every cell', doc: TABLE, a: CLEAR, b: CLEAR });
+// Delete with every cell selected deletes the table, as above.
+CASES_EMPTY.push({ name: 'table: A and B clear every cell, C adds a row', doc: TABLE, a: CLEAR, b: CLEAR, c: ADD_ROW, whole: true });
+
 const diff = (x, y) => { let i = 0; while (i < x.length && x[i] === y[i]) i++; return `…${x.slice(Math.max(0, i - 40), i + 80)}… vs …${y.slice(Math.max(0, i - 40), i + 80)}…`; };
 const thrown = async () => [...await a.evaluate(() => (window.__thrown ?? []).splice(0)), ...await b.evaluate(() => (window.__thrown ?? []).splice(0))];
 try {
@@ -292,6 +367,58 @@ try {
     const match = keys.every((k) => got[k] === c.want[k]);
     const known = keys.filter((k) => !c.want[k]);
     check(match, `${c.name}: ${keys.map((k) => `${k} ${got[k] ? '✓' : '✗'}`).join(' ')}${known.length ? ` (known: ${known.join(', ')})` : ''}${note.length ? ` — ${note.join('; ')}` : ''}`);
+  }
+
+  // Emptying one container at once: A and B each take entries out of the same list, table,
+  // note section, text box or columns, by updates held back from each other; with a third
+  // client adding an entry and typing in it meanwhile. One valid doc everywhere, nobody
+  // paused, the third client's text kept (collab-conflicts.md, Emptied containers).
+  if (!ONLY || CASES_EMPTY.some((c) => ONLY.test(c.name))) {
+    const c = await (await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' })).newPage();
+    collectErrors(c, pageErrors, 'C: ');
+    await open(c, 'Cleo');
+    const all = [a, b, c];
+    const relayAll = async (pages) => {
+      let n = 0;
+      for (const from of pages) {
+        const out = await from.evaluate(() => window.__yOut.splice(0));
+        n += out.length;
+        for (const to of pages) if (to !== from && out.length) await to.evaluate((us) => {
+          for (const u of us) {
+            try { window.__undoYjs.Y.applyUpdate(window.__yjsUndo.ydoc, Uint8Array.from(u), 'relay'); } catch (e) { (window.__thrown ??= []).push(String(e).slice(0, 80)); }
+          }
+        }, out);
+      }
+      await a.waitForTimeout(150);
+      return n;
+    };
+    for (const k of CASES_EMPTY) {
+      if (ONLY && !ONLY.test(k.name)) continue;
+      const pages = k.c ? all : [a, b];
+      for (const p of all) await p.evaluate(() => window.__yjsUndo?.detach());
+      await a.evaluate((d) => window.__h.ed.commands.setContent({ type: 'doc', content: d }), k.doc);
+      await attach(a, 1);
+      const start = await a.evaluate(() => [...window.__undoYjs.Y.encodeStateAsUpdate(window.__yjsUndo.ydoc)]);
+      await attach(b, 2, start);
+      await attach(c, 3, start);
+      for (let i = 0; i < 3; i++) { await a.waitForTimeout(250); await relayAll(pages); }
+      for (const p of all) await p.evaluate(() => { window.__thrown = []; window.__yOut.length = 0; window.__paused = false; });
+      let ran = '';
+      for (const [p, code] of [[a, k.a], [b, k.b], [c, k.c]]) if (code) await run(p, code).catch((e) => { ran += ` ${String(e).slice(0, 60)}`; });
+      let quiet = 0;
+      for (let i = 0; i < 12 && quiet < 3; i++) { await a.waitForTimeout(i ? 200 : 700); quiet = await relayAll(pages) ? 0 : quiet + 1; }
+      const vs = await Promise.all(pages.map(view));
+      const state = await Promise.all(pages.map((p) => p.evaluate(() => [window.__paused, (window.__thrown ?? []).length])));
+      const got = {
+        same: vs.every((v) => v.json === vs[0].json && v.frag === vs[0].frag),
+        valid: vs.every((v) => v.valid && !v.ragged.length),
+        clean: state.every(([, t]) => !t) && !ran,
+        unpaused: state.every(([p]) => !p),
+        kept: !k.c || k.whole || vs.every((v) => v.text.includes('Cleo')),
+      };
+      const bad = Object.keys(got).filter((x) => !got[x]);
+      check(!bad.length, `${k.name}: ${Object.keys(got).map((x) => `${x} ${got[x] ? '✓' : '✗'}`).join(' ')}${ran ? ` — threw:${ran}` : ''}${bad.length ? ` — ${vs.map((v) => v.text.slice(0, 60)).join(' | ')}${got.valid ? '' : ` ${vs.map((v) => v.error).join(' | ')}`}` : ''}`);
+    }
   }
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (e) {

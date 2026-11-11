@@ -754,6 +754,69 @@ try {
     check(fa.every((v) => v.json === before) && !marks[0] && !marks[1] && !/Mallory/.test(marks.join()) && marks[4] === 'Ben,Cleo' && marks[6] === 'Rita',
       `${sentForged} forged frames change no writer's document, zone, caret or list, nor list a reader not there (${marks.join(' / ')}; ${fa.map(brief).join(' | ')})`);
 
+    // The reader dials the relay under Ben's id while Ben holds the header, then hangs up:
+    // Ben stays listed, holds the header and keeps getting what is sent to him.
+    await openZone(b, 'header');
+    await b.waitForTimeout(800);
+    const ids = await r.evaluate(() => Object.fromEntries([...window.__collab.session.awareness.getStates().values()].map((s) => [s.user.name, s.peer])));
+    const posed = await r.evaluate(async (id) => {
+      const { linkKeys, roomId } = await import('/src/lib/collab/key.ts');
+      const { relayUrl, PROTOCOL } = await import('/src/lib/collab/channel.ts');
+      const room = roomId(linkKeys(location.hash.slice(1)).read);
+      const ws = new WebSocket(relayUrl());
+      ws.binaryType = 'arraybuffer';
+      let got = 0, welcomed = false;
+      ws.onmessage = (e) => { if (typeof e.data === 'string') welcomed ||= JSON.parse(e.data).t === 'welcome'; else got++; };
+      await new Promise((ok) => { ws.onopen = ok; });
+      ws.send(JSON.stringify({ t: 'hello', v: PROTOCOL ?? 1, room, token: null, id, claim: 'x'.repeat(22) }));
+      await new Promise((ok) => setTimeout(ok, 1500));
+      ws.close();
+      return { welcomed, got };
+    }, ids.Ben);
+    await a.waitForTimeout(1500);
+    const afterPose = [await heldTag(a), await peersOf(a), await heldTag(c)];
+    await b.keyboard.press('Escape');
+    await b.waitForTimeout(800);
+    check(afterPose[0] === 'Ben is editing' && afterPose[1] === 'Ben,Cleo' && afterPose[2] === 'Ben is editing' && !posed.got,
+      `a reader dialling in under a writer's id gets none of its frames and neither drops it from the list nor frees its header (${afterPose.join(' / ')}; ${JSON.stringify(posed)})`);
+
+    // A picture asked for many times in one frame goes once (the header's: the body has none now).
+    const key = await r.evaluate(() => /idb:([a-z0-9]+)/.exec(JSON.stringify(window.__collab.session.awareness.doc.toJSON()))?.[1]);
+    const ritaId = await a.evaluate(() => window.__collab.view().readers.find((x) => x.name === 'Rita')?.id);
+    const given0 = await sent(a, PICTURE);
+    await r.evaluate(([to, from, key]) => {
+      const keys = new TextEncoder().encode(Array(30).fill(key).join(','));
+      const out = new Uint8Array(9 + keys.length);
+      const v = new DataView(out.buffer);
+      out[0] = 7;
+      v.setUint32(1, to);
+      v.setUint32(5, from);
+      out.set(keys, 9);
+      window.__collab.session.debug.send(out, to);
+    }, [ids.Anna, ritaId, key]);
+    await a.waitForTimeout(1500);
+    const given1 = await sent(a, PICTURE);
+    check(!!key && given1 - given0 === 1, `a picture asked for thirty times in one frame goes once (${key ? given1 - given0 : 'no picture in the doc'})`);
+
+    // Forty readers made up in one tab fill no list: one reading along later is still listed.
+    await r.evaluate(() => {
+      for (let i = 0; i < 40; i++) {
+        const name = new TextEncoder().encode(JSON.stringify({ name: `Ghost ${i}`, color: '#888' }));
+        const out = new Uint8Array(5 + name.length);
+        out[0] = 8;
+        new DataView(out.buffer).setUint32(1, 1000 + i);
+        out.set(name, 5);
+        window.__collab.session.debug.send(out, 0);
+      }
+    });
+    await a.waitForTimeout(800);
+    const vera = await client('Vera');
+    await joinLink(vera, viewUrl);
+    await a.waitForTimeout(1500);
+    const listedNow = await readersOf(a);
+    await vera.context().close();
+    check(listedNow === 'Rita,Vera', `readers made up by another tab fill no list, and a real one is still listed (${listedNow})`);
+
     // A writer holds the footer and lets it go while the reader records; replayed then, and
     // after the writer left to a newcomer that never saw it, the footer stays free.
     const w = await client('Walt');

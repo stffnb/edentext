@@ -228,6 +228,7 @@ const it: Messages = {
       version: 'Gli altri usano un\'altra versione di EdenText. Ricarica tutte le finestre per avere la stessa versione.',
       full: 'Questa sessione è al completo.',
       unreachable: 'Il server di collaborazione non è raggiungibile.',
+      mismatch: 'Questa versione di EdenText non è compatibile con il server di collaborazione. Ricarica la pagina; se non basta, il server va aggiornato.',
       failing: 'La connessione al server di collaborazione continua a interrompersi. Le tue modifiche restano qui e verranno inviate appena torna stabile.',
       invalid: 'Questo link è incompleto. Richiedilo di nuovo.',
       closed: 'Sessione terminata',

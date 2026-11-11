@@ -26,8 +26,8 @@ only the key; the bytes travel once to each client.
   text. One that is not base64, or whose base64 would not encode back the same, goes as
   text with an empty head. Neither: the sender lacks it. The receiver takes a picture
   only under the key its data-URI gives.
-- A new picture goes to everyone (`to` 0); `WANT` and its answer go to one client, and a
-  relay that knows ids passes them to that client alone.
+- A new picture goes to everyone (`to` 0); `WANT` and its answer go to one client, and the
+  relay passes them to that client alone. A `WANT` gets each key it names once.
 - A missing picture is asked of one client at a time, all keys for it in one frame; one
   that does not answer within 10 s of silence is passed over. When everyone has been
   asked, or the relay says nobody else is in the room, it is lost: a grey box and a

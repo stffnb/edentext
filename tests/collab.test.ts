@@ -4,6 +4,7 @@ import * as Y from 'yjs';
 import '../src/lib/editor/yjsRedo';
 import { keyBytes, linkKeys, newKey, opened, roomId, seal, sessionLink, signed, unseal, viewLink, writeKeys } from '../src/lib/collab/key';
 import { openChannel } from '../src/lib/collab/channel';
+import { WebSocketServer } from 'ws';
 // @ts-expect-error plain JavaScript module, shipped as its own container
 import { startRelay } from '../relay/server.mjs';
 
@@ -106,19 +107,38 @@ describe('collaboration key', () => {
     await relay.close();
   });
 
-  it('holds only a bounded number of unfinished messages, whoever sends the parts', async () => {
-    const relay = await startRelay({ port: 0 });
+  it('says so instead of redialling when the relay speaks another protocol version', async () => {
+    // A relay before version 2 closes every hello it cannot read with 4000.
+    const old = new WebSocketServer({ port: 0 });
+    let hellos = 0;
+    old.on('connection', (ws) => ws.on('message', () => { hellos++; ws.close(4000, 'hello'); }));
+    const port = (old.address() as { port: number }).port;
+    const seen: string[] = [];
+    const ch = openChannel({ url: `ws://127.0.0.1:${port}`, key: keyBytes(newKey())!, id: 1, onFrame: () => {}, onPeers: () => {}, onStatus: (s) => seen.push(s), onOpen: () => {} });
+    await new Promise((r) => setTimeout(r, 1500));
+    expect([seen.at(-1), hellos]).toEqual(['mismatch', 1]);
+    ch.close();
+    old.close();
+  });
+
+  it('holds a few unfinished messages per sender, so no sender keeps another\'s from arriving', async () => {
+    const relay = await startRelay({ port: 0, maxFrame: 4096 });
     const key = keyBytes(newKey())!;
     const url = `ws://127.0.0.1:${relay.port}/relay`;
-    let whole = 0;
-    await new Promise<void>((resolve) => openChannel({ url, key, id: 1, onFrame: () => whole++, onPeers: () => {}, onStatus: () => {}, onOpen: () => resolve() }));
+    const whole: [number, number][] = [];
+    const open = (id: number) => new Promise<ReturnType<typeof openChannel>>((resolve) => {
+      const ch = openChannel({ url, key, id, onFrame: (p, from) => whole.push([from, p.length]), onPeers: () => {}, onStatus: () => {}, onOpen: () => resolve(ch) });
+    });
+    await open(1);
+    const writer = await open(2);
     const raw = new WebSocket(url);
     raw.binaryType = 'arraybuffer';
     await new Promise<void>((resolve) => {
-      raw.onopen = () => raw.send(JSON.stringify({ t: 'hello', v: 1, room: roomId(key), token: null }));
+      raw.onopen = () => raw.send(JSON.stringify({ t: 'hello', v: 2, room: roomId(key), token: null, id: 9, claim: newKey() }));
       raw.onmessage = () => resolve();
     });
-    // Forty messages of two parts each: all first parts, then all second ones.
+    // Forty messages of two parts each: all first parts, then all second ones; in between,
+    // another client's message in parts.
     const part = (msg: number, index: number) => {
       const env = new Uint8Array(17 + 2048);
       const v = new DataView(env.buffer);
@@ -126,11 +146,18 @@ describe('collaboration key', () => {
       v.setUint32(5, msg);
       v.setUint32(9, index);
       v.setUint32(13, 2);
-      return seal(key, env);
+      const sealed = seal(key, env), out = new Uint8Array(4 + sealed.length);
+      out.set(sealed, 4);
+      return out;
     };
-    for (const index of [0, 1]) for (let m = 0; m < 40; m++) raw.send(part(m, index));
+    for (let m = 0; m < 40; m++) raw.send(part(m, 0));
+    await new Promise((r) => setTimeout(r, 100));
+    writer.send(Uint8Array.from({ length: 50_000 }, (_, i) => i & 255));
+    for (let m = 0; m < 40; m++) raw.send(part(m, 1));
     await new Promise((r) => setTimeout(r, 300));
-    expect(whole).toBe(16);
+    expect(whole.filter(([from]) => from === 2)).toEqual([[2, 50_000]]);
+    // Each of the two others keeps the sender's last four.
+    expect(whole.filter(([from]) => from === 9)).toEqual(Array(8).fill([9, 4096]));
     raw.close();
     await relay.close();
   });
