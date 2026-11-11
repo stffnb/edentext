@@ -100,6 +100,10 @@ notes added at once make two sections Yjs can hold and the projection keeps.
 schema fills them (`fillOf`); the repair plugin, ordered first, appends the fill (`fillShort`,
 rows as wide as the table, `tableRepair.ts`; also a text box inside a paragraph): never a
 deletion, so a third client's item stays.
+`conflicts.mjs` empties bullet, numbered and nested lists, text boxes, columns, foot- and
+endnote sections and tables directly (halves, all, cut, Backspace, lift, a third client
+adding an entry): one valid doc, nobody paused; selecting every entry deletes the container
+whole, the third client's entry with it (Accepted: delete vs typing).
 
 `collab-repair.test.ts` relays three clients' conflicting edits (a column and a row, two
 first footnotes, typing) in random orders: one doc everywhere, the repairs in it once, and
