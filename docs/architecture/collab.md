@@ -43,7 +43,7 @@ the undo stack starts empty from there.
   starts (`stateValues`); a joiner never does, and a zone gets its old value on its first
   write. A change the manager (or another client) makes there returns as a body
   transaction with the `STATE_RESTORED` meta, one `StateStep` per store, assembled from all
-  its entries: fields sorted, styles in their family's order and the rest by name, so every
+  its entries once the update's observers ran (earlier, the binding wrote the old document back): fields sorted, styles in their family's order, the rest by name, so every
   client builds the same value. The existing listeners apply it as an undo (`watch.write`,
   `writeZone`), so a page setup or a header goes back the way it does alone.
 - **Grouping as in the history.** Yjs merges by time alone, so fast edits in different places
@@ -111,7 +111,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
 - **Replays.** A signed awareness state takes effect only once its `peer` answered a fresh
   nonce (`PING`, signed `PONG`), and drops on the relay's `gone`: a replayed state of a
   writer who left holds no zone, also at a newcomer; those that saw it reject it by clock.
-  Replayed updates, answers and pictures change nothing. A frame that names its sender (`from`, a presence's `peer`) is dropped unless the relay names the same, so one tab cannot pose as many readers or have answers sent to another client.
+  Replayed updates, answers and pictures change nothing. A frame that names its sender (`from`, a presence's `peer`) is dropped unless the relay names the same, so one tab cannot pose as many readers or have answers sent to another client. A `gone` sent while a line was down never arrives: knowing more peers than the relay counts, a client pings each and drops those silent for 3 s.
 - **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`; hosting it: `collab-relay.md`): rooms as sets of sockets in memory,
   frames passed on unchanged, to the one client a clear `to` names where there is one (the
   sync's replies, pictures), nothing stored or logged; `MAX_PEERS` counts connections,
@@ -173,7 +173,7 @@ picture from one client; a header's picture goes by its key too; replies go to t
 alone; a fourth joins, types and converges. A joiner whose pulled peer drops its answer and
 line, while a third types, still goes live; a late offer is pulled from and gets what it
 lacks, and the others get what was pulled; one back from offline pauses on no offered deletion; a waiting joiner asks a client coming back, which pushes it no copy. B cannot open a
-header A holds; opened together, the lower id keeps it; a closed tab frees it, a stalled line within two pings, a busy holder keeps it. Open and New
+header A holds; opened together, the lower id keeps it; a closed tab frees it, a stalled line within two pings, a busy holder keeps it. A client back on its line drops a writer who left meanwhile, zone and all. Open and New
 ask first, then open alone; others keep theirs. The starter leaves unasked, the others are
 told and go on; a reload rejoins. A joiner keeping its copy reloads into it unwarned,
 picture, styles and zones, also on a second reload. The last joiner's tab warns on closing;
