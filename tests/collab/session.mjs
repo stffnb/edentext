@@ -6,7 +6,8 @@
 // lays the pages out differently. The relay passes at most 1 MiB per frame, so a picture
 // and a late joiner's copy go in parts; a line that keeps breaking stops showing `live`.
 // When the starter leaves, the others are told; a joiner leaving keeps its copy as a
-// document of this browser or drops it, and a link to an empty room says so.
+// document of this browser or drops it, and a link to an empty room says so. A reader by
+// the read link follows and changes nothing, nor do its forged or replayed frames.
 // Any engine (BROWSER).
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -597,6 +598,148 @@ try {
   check(solo.join() === 'true,false,false' && lateHeld.split('|').includes('Anna is editing') && !second.some(Boolean),
     `a busy repairer stays present for the others ("${lateHeld}", repairers before ${solo}, others after 4.5 s ${second})`);
   await gus.close();
+
+  // Reading along (`#view=`): the reader gets the document live and changes nothing; the
+  // others list it by name only. Forged or replayed frames from a patched reader change no
+  // writer's document, zones or carets, also at a newcomer that never saw their sender.
+  {
+    const viewUrl = await a.evaluate(() => window.__collab.session.viewLink);
+    check(/#view=[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}$/.test(viewUrl) && !viewUrl.includes(link.slice(link.indexOf('=') + 1)),
+      'the starter has a read link without the write key');
+    const r = await client('Rita');
+    await joinLink(r, viewUrl);
+    // Every frame reaching the reader, kept to replay; on an ask, forged offers go back.
+    await r.evaluate(() => {
+      window.__got = [];
+      window.__collab.session.debug.tap = (d) => {
+        window.__got.push(d.slice());
+        if (d[0] === 0 && window.__onAsk) window.__onAsk(new DataView(d.buffer, d.byteOffset).getUint32(1));
+      };
+    });
+    let vr = await view(r);
+    va = await view(a);
+    check(same(va, vr) && await hfShown(r) === await hfShown(a) && await sheet(r) === await sheet(a),
+      `a reader gets the document, pages, zones, styles and pictures (${brief(vr)})`);
+    await caret(a, 'end');
+    await a.keyboard.type(' Lambda');
+    await settle(a);
+    await r.waitForTimeout(600);
+    vr = await view(r);
+    va = await view(a);
+    const lists = await a.evaluate(() => [window.__collab.view().readers.map((x) => x.name).join(), window.__collab.view().peers.map((x) => x.name).sort().join()]);
+    const rv = await r.evaluate(() => ({ reading: window.__collab.view().reading, peers: window.__collab.view().peers.length, local: window.__collab.session.awareness.getLocalState() }));
+    check(vr.json === va.json && va.text.endsWith('Lambda') && lists[0] === 'Rita' && lists[1] === 'Ben,Cleo' && rv.reading && rv.peers === 3 && rv.local === null,
+      `typing reaches the reader, listed as reading along, not as a writer (${lists}; ${JSON.stringify(rv)})`);
+
+    // Keys, a paste, commands as a menu runs them, undo, a header, the assistant.
+    const SIGNED = [1, 2, 3, 5, 6, 10];
+    const signedSent = () => r.evaluate((k) => k.reduce((n, i) => n + window.__collab.session.stats.sent[i], 0), SIGNED);
+    const before = va.json;
+    await caret(r, 'end');
+    await r.keyboard.type('Zed');
+    await r.keyboard.press('Enter');
+    await r.keyboard.press(`${MOD}+b`);
+    await r.keyboard.press(`${MOD}+z`);
+    const tried = await r.evaluate(async () => {
+      const ed = document.querySelector('.tiptap-host .tiptap').editor;
+      const dt = new DataTransfer();
+      dt.setData('text/plain', 'Pasted');
+      ed.view.dom.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      const ran = [ed.commands.insertContent('Cmd'), ed.chain().selectAll().toggleBold().run(), ed.commands.setTextSelection(1) && ed.commands.deleteSelection()];
+      ed.view.dispatch(ed.state.tr.insertText('Raw', 1));
+      return { editable: ed.isEditable, ai: (await import('/src/lib/storage/ai.svelte.ts')).aiHostOff(), ran: ran.length };
+    });
+    await openZone(r, 'header');
+    const zone = await editing(r);
+    await settle(r);
+    await a.waitForTimeout(600);
+    const after = [await view(a), await view(b), await view(c), await view(r)];
+    check(after.every((v) => v.json === before) && !tried.editable && tried.ai && !zone && await signedSent() === 0,
+      `a reader changes nothing by keys, paste, commands, undo or a header, has no assistant and signs nothing (${JSON.stringify(tried)}, zone "${zone}", ${after.map(brief).join(' | ')})`);
+
+    // Forged frames, sealed with the read key: unsigned, with a random signature, or a real
+    // frame altered. Updates add a paragraph or empty the first; the presence holds a zone.
+    const writers = await r.evaluate(() => [...window.__collab.session.awareness.getStates().values()].map((s) => s.peer));
+    const forge = () => r.evaluate(async (writers) => {
+      const { Y } = await import('/src/lib/editor/undoYjs.ts');
+      const d = window.__collab.session.debug;
+      const u32 = (n) => { const x = new Uint8Array(4); new DataView(x.buffer).setUint32(0, n); return x; };
+      const cat = (...p) => { const o = new Uint8Array(p.reduce((n, x) => n + x.length, 0)); let at = 0; for (const x of p) { o.set(x, at); at += x.length; } return o; };
+      const sig = () => crypto.getRandomValues(new Uint8Array(64));
+      const copy = new Y.Doc();
+      Y.applyUpdate(copy, Y.encodeStateAsUpdate(d.ydoc));
+      const sv0 = Y.encodeStateVector(copy);
+      copy.getXmlFragment('body').delete(0, 1);
+      const del = Y.encodeStateAsUpdate(copy, sv0);
+      const fresh = new Y.Doc();
+      const p = new Y.XmlElement('paragraph');
+      p.insert(0, [new Y.XmlText('EVIL')]);
+      fresh.getXmlFragment('body').insert(0, [p]);
+      const add = Y.encodeStateAsUpdate(fresh);
+      const vu = (n) => { const o = []; while (n > 127) { o.push((n & 127) | 128); n = Math.floor(n / 128); } o.push(n); return o; };
+      const aw = (id, clock, state) => { const j = new TextEncoder().encode(JSON.stringify(state)); return new Uint8Array([...vu(1), ...vu(id), ...vu(clock), ...vu(j.length), ...j]); };
+      const mallory = { peer: writers[0], user: { name: 'Mallory', color: '#ff0000' }, zone: 'hf:0:footer', keeps: true, rank: 0 };
+      const real = window.__got.find((x) => x[0] === 1 && x.length > 80);
+      const bent = real.slice();
+      bent[2] ^= 1;
+      const frames = [
+        cat([1], add), cat([1], del), cat([1], add, sig()), bent,
+        cat([2], aw(4242, 99, mallory)), cat([2], aw(4243, 99, mallory), sig()),
+        cat([6], u32(0), u32(1), new TextEncoder().encode('k'), u32(0), new TextEncoder().encode('data:image/png;base64,AAAA')),
+        cat([8], u32(77), new TextEncoder().encode(JSON.stringify({ name: 'Rita', color: '#00f', zone: 'hf:0:header', peer: writers[0] }))),
+      ];
+      for (const to of writers) {
+        frames.push(cat([5], u32(to), add), cat([5], u32(to), del, sig()), cat([6], u32(to), u32(1), new TextEncoder().encode('k'), u32(0), sig()));
+        frames.push(cat([3], u32(to), u32(77), u32(sv0.length), sv0, del), cat([3], u32(to), u32(77), u32(sv0.length), sv0, del, sig()));
+      }
+      for (const f of frames) d.send(f, 0);
+      // A newcomer's ask gets the same offers, the deleting ones, and every frame replayed.
+      window.__onAsk = (to) => {
+        d.send(cat([3], u32(to), u32(77), u32(sv0.length), sv0, del), to);
+        d.send(cat([3], u32(to), u32(77), u32(sv0.length), sv0, del, sig()), to);
+        for (const f of window.__got) d.send(f, 0);
+      };
+      return frames.length;
+    }, writers);
+    const sentForged = await forge();
+    await a.waitForTimeout(1500);
+    const caretNames = (page) => page.evaluate(() => [...document.querySelectorAll('.ProseMirror-yjs-cursor')].map((x) => x.textContent).join());
+    const fa = [await view(a), await view(b), await view(c)];
+    const peersOf = (page) => page.evaluate(() => window.__collab.view().peers.map((x) => x.name).sort().join());
+    const readersOf = (page) => page.evaluate(() => window.__collab.view().readers.map((x) => x.name).join());
+    const marks = [await heldTag(a), await heldTag(b), await caretNames(a), await caretNames(b), await peersOf(a), await peersOf(b), await readersOf(a)];
+    check(fa.every((v) => v.json === before) && !marks[0] && !marks[1] && !/Mallory/.test(marks.join()) && marks[4] === 'Ben,Cleo' && marks[6] === 'Rita',
+      `${sentForged} forged frames change no writer's document, zone, caret or list, nor list a reader not there (${marks.join(' / ')}; ${fa.map(brief).join(' | ')})`);
+
+    // A writer holds the footer and lets it go while the reader records; replayed then, and
+    // after the writer left to a newcomer that never saw it, the footer stays free.
+    const w = await client('Walt');
+    await joinLink(w, link);
+    await openZone(w, 'footer');
+    await w.waitForTimeout(800);
+    const heldByWalt = await heldTag(a);
+    await w.keyboard.press('Escape');
+    await w.waitForTimeout(800);
+    await r.evaluate(() => { for (const f of window.__got) window.__collab.session.debug.send(f, 0); });
+    await a.waitForTimeout(1200);
+    const freeNow = await heldTag(a);
+    await w.context().close();
+    await a.waitForTimeout(1500);
+    const n = await client('Nora');
+    await joinLink(n, link);
+    await r.evaluate(() => { for (const f of window.__got) window.__collab.session.debug.send(f, 0); });
+    await n.waitForTimeout(2000);
+    const vn = await view(n);
+    va = await view(a);
+    const nMarks = [await heldTag(n), await peersOf(n), await caretNames(n), await heldTag(a)];
+    check(heldByWalt === 'Walt is editing' && !freeNow && vn.json === va.json && !nMarks[0] && !nMarks[3] && !/Walt|Mallory/.test(nMarks.join()),
+      `replayed presence frames hold no zone, at a newcomer neither ("${heldByWalt}"; ${nMarks.join(' / ')}; ${brief(vn)})`);
+    await n.context().close();
+    await r.context().close();
+    await a.waitForTimeout(1000);
+    const left = await a.evaluate(() => window.__collab.view().readers.length);
+    check(left === 0, `a reader that goes leaves the list (${left})`);
+  }
 
   await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');

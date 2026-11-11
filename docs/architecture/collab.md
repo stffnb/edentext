@@ -11,7 +11,7 @@ corpus documents. Both passed every one, so the choice is about cost, not feasib
 - **Why Yjs.** Its relay orders nothing and stores nothing: it passes on encrypted frames.
   `prosemirror-collab` needs one place that fixes the order of steps, so a relay with a
   version counter and a step log, online for every session. Yjs also sends fewer and
-  smaller messages and joins long documents faster (tables below).
+  smaller messages and joins long documents faster (`collab-soak.md`).
 - **What it costs.** Undo is rebuilt (`undoYjs.ts`) on y-tiptap and Yjs internals, pinned
   exactly and updated as one Dependabot group (`collab`). Every store beside the text needs
   its counterpart in the map `state`. Typing at 177 pages costs 7.0 against 4.9 ms per
@@ -21,30 +21,7 @@ corpus documents. Both passed every one, so the choice is about cost, not feasib
   live on without anyone in them, the main reason for Yjs is gone.
 
 What the spike left untested (engines, long documents, IME, image drag, the assistant, four
-clients, line heights) the session checks cover. Spike results (Chromium, dev server, one
-machine; `pm` is `prosemirror-collab`):
-
-| Check | Yjs | pm |
-|---|---|---|
-| Join, idle, 8 rounds of concurrent random edits, pagination, NodeViews, carets, recording | ✓ | ✓ |
-| Overlapping comments, recorded changes by two authors, 3 clients × 10 rounds of structural edits | ✓ | ✓ |
-| 3 clients with 0–250 ms random delay; one offline for 1.5 s: converge | ✓ | ✓ |
-| Messages sent in the latency run (A/B/C) | 21/21/23 | 33/173/128, 277 refused |
-| Bytes per keystroke on the wire | ~53 | ~317 (step JSON) |
-| Applying a remote message while typing, average / max | 0.8 / 1.4 ms | 0.25 / 1.1 ms |
-
-Long documents (`05-breaks` repeated), spike binding without batching:
-
-| | 177 pages | 442 pages |
-|---|---|---|
-| Keystroke alone / Yjs / pm, median | 5.0 / 9.9 / 4.8 ms | 11.7 / 23.6 / 14.5 ms |
-| Remote update applied, Yjs / pm | 8.7 / 2.7 ms | 22 / 6.8 ms |
-| Join, Yjs: time, payload | 0.7 s, 1.2 MB | 1.3 s, 2.9 MB |
-| Join, pm: time, payload | 1.6 s, 2.2 MB | 6.9 s, 5.4 MB |
-
-Under latency `prosemirror-collab` resent every unconfirmed step per transaction, so
-refusals piled up. Neither engine marks a remote transaction for the history, and
-`trackChanges.ts` treats it as a rebuild: recording never marks another client's edits.
+clients, line heights) the session checks cover; its results are in `collab-soak.md`.
 
 ## Undo
 
@@ -114,14 +91,31 @@ has no `?undo=yjs`; cross-client grouping only the two-client test checks.
 browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / picture, in parts)──▶ relay ──▶ browsers
 ```
 
-- **The link is the key.** *Collaborate…* (`CollabDialog.svelte`) makes 32 random bytes
-  and a link `…#collab=<key>` (`collab/key.ts`). Browsers never send the part after `#`,
-  so the relay only learns the room, a truncated SHA-256 of the key. Every frame is sealed
-  with AES-256-GCM and a fresh 12-byte nonce (`@noble/ciphers`, also without
-  `crypto.subtle`). Anyone with the link can read and write, until a new session.
+- **Two links, one secret** (`collab/key.ts`). *Collaborate…* makes 32 random bytes W, the
+  write link `…#collab=<W>`. HKDF-SHA-256 derives from W the read key R and an Ed25519 seed;
+  the read link `…#view=<R>.<public key>` cannot give W back. Browsers never send the part
+  after `#`; the room, the same for both links, is a truncated SHA-256 of R. Every frame is
+  sealed with AES-256-GCM under R and a fresh 12-byte nonce; `@noble/ciphers` and
+  `@noble/curves` work without `crypto.subtle`. A write link writes until a new session.
+- **Signed frames.** What changes a receiver's state (`UPDATE`, `OFFER`, whose delete set
+  applies as an update, `ANSWER`, `PICTURE`, a writer's awareness, `PONG`) carries a
+  signature by the writers' shared key, over the whole message before its parts and checked
+  after they join; everyone drops it unsigned or badly signed. Readers send only `ASK`,
+  `PULL`, `WANT`, `PING`, `ECHO` and `VIEWER` (name and colour, kept apart from the
+  awareness: no caret, no zone, never asked for a picture, listed once its id answers a
+  ping). They neither offer in a sync nor answer a `WANT`; with only readers there, a joiner
+  waits as in an empty room. A reader's tab (`collab/reading.svelte.ts`) takes no input, has
+  no assistant and opens no zone; once bound, a filter refuses every transaction with steps
+  not from the shared doc (y-tiptap's sync meta, `STATE_RESTORED`), as commands run when not
+  editable too. What still reaches its Yjs doc is never sent; leaving, it may keep a copy.
+- **Replays.** A signed awareness state takes effect only once its `peer` answered a fresh
+  nonce (`PING`, signed `PONG`), and drops on the relay's `gone`: a replayed state of a
+  writer who left holds no zone, also at a newcomer; those that saw it reject it by clock.
+  Replayed updates, answers and pictures change nothing.
 - **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`): rooms as sets of sockets in memory,
   frames passed on unchanged, to the one client a clear `to` names where there is one (the
-  sync's replies, pictures), nothing stored or logged; `MAX_PEERS` counts connections.
+  sync's replies, pictures), nothing stored or logged; `MAX_PEERS` counts connections,
+  readers too, as the relay cannot tell them from writers.
 - **Where the relay is:** `VITE_COLLAB_RELAY` is a `wss://` URL, or `same-origin` for `/relay`
   beside the app (dev proxy, Docker, Helm), where sessions are offered only once
   `relay/health` answers. Embedded, there are none.
@@ -183,7 +177,11 @@ header A holds; opened together, the lower id keeps it; a closed tab frees it, a
 ask first, then open alone; others keep theirs. The starter leaves unasked, the others are
 told and go on; a reload rejoins. A joiner keeping its copy reloads into it unwarned,
 picture, styles and zones, also on a second reload. The last joiner's tab warns on closing;
-a cut-short link and an empty room say so. A picture whose only holder leaves unsent is a
+a cut-short link and an empty room say so. A reader gets document, zones, styles and pictures
+and follows typing; keys, paste, commands, undo, a header and the assistant change nothing
+and it signs nothing. A patched reader's unsigned, falsely signed or altered updates,
+offers, answers, pictures and presences change no document, zone, caret or list; replayed
+presences hold no zone, at a newcomer neither. A picture whose only holder leaves unsent is a
 grey box with a note within seconds, as the relay says who left, and the line stays `live`.
 Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
 the script (`page.route`): its text and page setup reach the joiner, which keeps its
@@ -191,10 +189,12 @@ recorded marks and adds none; the starter's undo takes back each on both sides. 
 dropping every connection after its welcome makes the line `failing` (notice, 4–5
 connections in 12 s) until it holds. A line that hears and sends nothing leaves `live`
 within a few beats, asks nothing while down, and comes back. `tests/relay.test.ts` and
-`tests/collab.test.ts` cover rooms, limits, beats, addressing, sealing, parts and their cap. All
+`tests/collab.test.ts` cover rooms, limits, beats, addressing, sealing, links, signatures, parts and their cap. All
 scripts run in the three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`; load,
 soak and typing speed: `collab-soak.md`.
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun: in Firefox a joiner not live
 within 20 s on a just-started dev server. A client holds at most 16 unfinished messages, 256
-MiB together: a link holder can fill that for 60 s. What pictures cost: `collab-pictures.md`.
+MiB together: a holder of either link can fill that for 60 s. Writers share one signing key,
+so it tells writers from readers, not writers apart, and a write link stays valid for the
+session. Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.
