@@ -169,7 +169,7 @@ Another web application can show EdenText in an iframe and keep the document its
 With `?embed=1` the editor leaves out its own file management. The `embed.js` helper,
 served by every instance, loads files into it and gets them back as ODT, DOCX or PDF;
 see [docs/architecture/embed.md](docs/architecture/embed.md).
-The host can also set the language, theme and accent colour, and switch the AI assistant off.
+The host can also set the language, theme and accent color, and switch the AI assistant off.
 In embed mode the editor
 shows the EdenText logo and a “Powered by EdenText” notice, which the AGPL terms require
 to stay ([NOTICE.md](NOTICE.md)) and which only a white-label build under the
