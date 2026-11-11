@@ -23,11 +23,11 @@ const START = {
   ],
 };
 
-function clients(n: number): Client[] {
-  const first = new Editor({ extensions, content: START });
+function clients(n: number, start: object = START, join?: object): Client[] {
+  const first = new Editor({ extensions, content: start });
   const out: Client[] = [];
   for (let i = 0; i < n; i++) {
-    const ed = i ? new Editor({ extensions, content: first.getJSON() }) : first;
+    const ed = i ? new Editor({ extensions, content: join ?? first.getJSON() }) : first;
     const ydoc = new Y.Doc();
     ydoc.clientID = 100 + i;
     if (i) Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(out[0].ydoc), 'relay');
@@ -320,4 +320,66 @@ describe('an edit into a repair not yet shared', () => {
     expect(b.ed.state.doc.textContent).not.toContain('Q');
     expect(told).toBe(1);
   });
+});
+
+// Marks on a node (a formula's or an image's font size) reach every client as text marks
+// do, through an undo or a change both make at once, and from the client that brings the
+// text; the clients end with the same shared doc and document.
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC';
+const ATOMS = ['formula', 'image'];
+const atomDoc = (size?: string) => {
+  const marks = size ? [{ type: 'textStyle', attrs: { fontSize: size } }] : undefined;
+  return { type: 'doc', content: [{ type: 'paragraph', content: [
+    { type: 'text', text: 'Pre ' }, { type: 'formula', attrs: { latex: 'x^{2}' }, marks },
+    { type: 'text', text: ' mid ' }, { type: 'image', attrs: { src: PNG }, marks }, { type: 'text', text: ' post.' },
+  ] }] };
+};
+const sizes = (ed: Editor) => {
+  const out: (string | null)[] = [];
+  ed.state.doc.descendants((n) => { if (ATOMS.includes(n.type.name)) out.push(n.marks.find((m) => m.type.name === 'textStyle')?.attrs.fontSize ?? null); });
+  return out;
+};
+// One transaction over both nodes, so one undo step.
+const size = (ed: Editor, pt: string | null) => {
+  let c = ed.chain();
+  ed.state.doc.descendants((n, p) => {
+    if (!ATOMS.includes(n.type.name)) return;
+    c = c.setTextSelection({ from: p, to: p + 1 });
+    c = pt ? c.setFontSize(pt) : c.unsetFontSize();
+  });
+  c.run();
+};
+type Pair = { a: Client; b: Client; sync: () => Promise<void> };
+const MARK_CASES: { name: string; run: (p: Pair) => void | Promise<void>; want: (string | null)[]; start?: string }[] = [
+  { name: 'set by one client', run: ({ a }) => size(a.ed, '14pt'), want: ['14pt'] },
+  { name: 'removed by the other client', run: async ({ a, b, sync }) => { size(a.ed, '14pt'); await sync(); size(b.ed, null); }, want: [null] },
+  { name: 'taken back by an undo', run: async ({ a, sync }) => { size(a.ed, '14pt'); await sync(); a.undo.undoManager.undo(); }, want: [null] },
+  { name: 'set again by a redo', run: async ({ a, sync }) => { size(a.ed, '14pt'); await sync(); a.undo.undoManager.undo(); await sync(); a.undo.undoManager.redo(); }, want: ['14pt'] },
+  { name: "kept from the other client's later change by an undo",
+    run: async ({ a, b, sync }) => { size(a.ed, '14pt'); await sync(); size(b.ed, '18pt'); await sync(); a.undo.undoManager.undo(); }, want: ['18pt'] },
+  { name: 'set by both at once', run: ({ a, b }) => { size(a.ed, '14pt'); size(b.ed, '18pt'); }, want: ['14pt', '18pt'] },
+  { name: 'brought by the client that starts the session', run: () => {}, want: ['14pt'], start: '14pt' },
+];
+
+describe('marks on a node in a shared doc', () => {
+  for (const c of MARK_CASES) {
+    it(`converge: ${c.name}`, async () => {
+      let s = 11;
+      const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+      const cs = clients(2, atomDoc(c.start), atomDoc());
+      const [a, b] = cs;
+      await c.run({ a, b, sync: () => relay(cs, rnd) });
+      await relay(cs, rnd);
+      const got = sizes(a.ed);
+      expect(got).toHaveLength(2);
+      expect(got[0]).toBe(got[1]);
+      expect(c.want).toContain(got[0]);
+      expect(a.undo.undoManager.undoStack.length + a.undo.undoManager.redoStack.length).toBeLessThan(2);
+      for (const x of cs) {
+        expect(sizes(x.ed)).toEqual(got);
+        expect(x.ydoc.getXmlFragment('body').toString()).toBe(a.ydoc.getXmlFragment('body').toString());
+        expect(JSON.stringify(x.ed.getJSON())).toBe(JSON.stringify(a.ed.getJSON()));
+      }
+    });
+  }
 });
