@@ -124,14 +124,16 @@ const stateOf = (c) => c.page.evaluate((letters) => {
   const json = ed ? JSON.stringify(ed.state.doc.toJSON()) : '';
   const map = y ? JSON.stringify([...y.getMap('state').entries()].sort(([a], [b]) => (a < b ? -1 : 1))) : '';
   const text = (ed?.state.doc.textContent ?? '').toLowerCase();
-  const tokens = [];
-  ed?.state.doc.descendants((n) => { if (n.isTextblock) tokens.push(...n.textContent.toLowerCase().split(/\s+/)); return !n.isTextblock; });
+  // A typed word ends in its client's letter: its stem reaches back to a space or a letter.
+  const blocks = [];
+  ed?.state.doc.descendants((n) => { if (n.isTextblock) blocks.push(n.textBetween(0, n.content.size, '', () => '').toLowerCase()); return !n.isTextblock; });
   return {
     status: window.__collab?.view()?.status ?? 'none', doc: hash(json), state: hash(map),
     body: y ? hash(y.getXmlFragment('body').toString()) : '', invalid: String(ed?.state['y-sync$']?.binding?._invalidContentError ?? ''),
     pages: +(/of (\d+)/.exec(document.querySelector('.statusbar')?.textContent ?? '')?.[1] ?? 0),
     sent: s?.stats.sent[1] ?? 0, letters: [...letters].map((l) => text.split(l).length - 1),
-    words: [...letters].map((l) => [...new Set(tokens.filter((w) => w.includes(l)))]),
+    words: [...letters].map((l) => [...new Set(blocks.flatMap((t) => t.match(new RegExp(`[^\\s${letters}]*${l}`, 'g')) ?? []))]),
+    blocks: blocks.join('\n'),
   };
 }, LETTERS);
 // The schema's check, and every table rectangular (rowspans counted).
@@ -353,8 +355,10 @@ try {
       if (typeof n === 'string') { report('undo', `${c.name}: ${n}`, { ops: c.log }); continue; }
       const undone = await calm(cs, c.log);
       if (undone === 'reset') break;
-      // Lost: fewer of another's letters and a word of its gone; fewer copies of a word are not.
-      const gone = before.words.flatMap((ws, i) => (i === c.index || undone.letters[i] >= before.letters[i] ? [] : ws.filter((w) => !undone.words[i].includes(w))));
+      // Lost: fewer of another's letters and a word's stem nowhere; fewer copies are not,
+      // nor the undoer's text gone beside a word (stems end at the letter, a space or a letter).
+      const gone = before.words.flatMap((ws, i) => (i === c.index || undone.letters[i] >= before.letters[i] ? [] : ws.filter((w) => !undone.blocks.includes(w))));
+      if (gone.length) await writeFile(join(tmpdir(), `soak-${seed}-${roundNo}-lost.json`), JSON.stringify({ name: c.name, gone, before: JSON.parse(d0), undone: JSON.parse(await docJson(cs[0])) }));
       if (gone.length) report('lost', `${c.name}'s ${n} undos took others' text: ${gone.slice(0, 4).join(' ')}, letters ${before.letters} → ${undone.letters}`, { ops: cs.flatMap((x) => x.log) });
       if (c.history && undone.letters[c.index] > c.base) report('undo', `${c.name}'s ${n} undos leave ${undone.letters[c.index] - c.base} of its letters`, { ops: cs.flatMap((x) => x.log) });
       await c.page.evaluate((n) => { const ed = document.querySelector('.tiptap-host .tiptap').editor; for (let i = 0; i < n; i++) ed.commands.redo(); }, n);
