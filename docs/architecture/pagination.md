@@ -26,9 +26,14 @@ instead of stopping at `offsetHeight` — otherwise the paragraph measures as on
 image walks off the page bottom. Text still wraps beside the float; only the push moves as a unit.
 What the model can't see is how far that overhang moves the blocks *below* it: further than the
 spacer it accounts for, so two layouts can each imply the other. `prevPlacementsKey` detects that
-oscillation and keeps the current layout; only an edit, another client's edit in a shared
-session or a forced recalc forgets it (the TOC rewrites its page numbers on every
-`pm-pagecount`, so resetting on any document change would leave nothing to catch).
+oscillation and settles on the layout the document prefers — the larger page count, then the
+larger key — placing the other one first if that is where it stands, so its pass measures into
+the preferred one. Keeping whichever layout came first made the page count depend on history: a
+reloaded client or one a step behind in a shared session showed the other layout, and the count
+of the layout it measured but did not place (one page apart, for good). Only an edit, another
+client's edit in a shared session or a forced recalc forgets the memory (the TOC rewrites its
+page numbers on every `pm-pagecount`, so resetting on any document change would leave nothing
+to catch). The dom run checks a lifted block's ping-pong from both of its layouts.
 
 **Keeping blocks together** (`pageBreak.ts` attrs, both read from the direct property *and* the paragraph style): `keepNext` (`w:keepNext`, `fo:keep-with-next`) moves a block down when the successor's first `MIN_KEPT_LINES` no longer fit below it — one line is not enough, because widow-orphan control would carry the second one over and strand the block anyway (measured on the Math Guide: a heading left alone at the foot of page 8) — headings do that in Word and LibreOffice anyway, so `true` marks the others and `false` a heading whose style the file defines without it (probed: LibreOffice then leaves the heading at the foot of the page). `keepLines` (`w:keepLines`, `fo:keep-together`) makes an otherwise splittable block paginate atomically, unless it is taller than the page slot, where Word splits it too. A table's `keepRows` (ODF `style:may-break-between-rows="false"`, no Word equivalent) is the same rule for a table: pageBreaks emits one atomic leaf for the whole wrapper instead of one per row, so a table with no room left moves whole (probed: LibreOffice leaves four lines of the page empty rather than break it, and splits the identical table when the attribute says `true`). Rows a **cell spans** are grouped the same way (`rowSpanGroups`): the spanning cell is one DOM box, so a break between them stretches it across the gap instead of splitting it — LibreOffice keeps such rows on one page too (probed). A group taller than the page cannot be kept whole and breaks per row as before.
 
