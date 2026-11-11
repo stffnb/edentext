@@ -22,9 +22,12 @@ After each round, once all are live and nobody has sent an update for a second: 
 holds the same document, the same map `state` and the same page count; the session then
 stays silent for 3 s; every document passes `doc.check()` and every table is rectangular;
 no page threw. At the end the starter's `.odt` reads back (the monkey run's comparison), and
-each client in turn undoes all its steps and redoes them: no word of another's letters goes
-(fewer copies of a word are no loss), its own are gone, and redo gives the document back.
-A cycle that leaves more of another's letters is one finding, `copied`, with its document diff.
+each client in turn undoes all its steps and redoes them: no word of another's letters goes,
+its own are gone, and redo gives the document back. A word is its stem: from the letter back
+to a space or any client's letter, as the text after it is someone else's; it is lost where
+it occurs nowhere after the undos (fewer copies are no loss; both documents go to
+`soak-<seed>-<round>-lost.json`). A cycle that leaves more of another's letters is one
+finding, `copied`, with its document diff.
 
 A finding that matches an accepted conflict (`collab-conflicts.md`) is printed as `known` and
 the run goes on; anything else fails it. A finding that leaves the clients apart restarts the
@@ -81,6 +84,14 @@ New, beyond the matrix:
   Seed 3's remaining `lost` was a miscount: an undo took duplicates that an earlier
   client's undo and redo made of a block two clients rebuilt; no word went. That
   duplication now shows as `copied`, known while two rebuilds of one block leave two copies.
+  Seed 4's `lost` (2026-11-11) was one too: the words counted were whitespace tokens, which
+  the undoer's own text beside a word changed (`nipsmβ<textBox>` → `nipsmβostrud`); every
+  stem of the others was still there. Hence the stems.
+- **Editing paused after an undo** (fixed; seed 3, 2026-11-11): `Invalid content for node
+  bulletList: <>` on the undoing client only, as its undos ran in one task and the others
+  got the end state. An undo took the last item of a list it had added to, after another
+  client took the list's other items out; the list stayed, empty. It now goes with its
+  last item (`collab-conflicts.md`, Repairs).
 - **Read-back** (low): the starter's `.odt` twice read back a mark spelled otherwise:
   `Liberation Serif` against `Times New Roman` (the monkey run lists that one as open) and
   `rgb(192, 0, 0)` for `#C00000`, a colour taken from the DOM somewhere in a session.
