@@ -3,12 +3,12 @@ import { embedded } from '../embed/mode';
 import { userName } from '../storage/userName.svelte';
 import { AUTHOR_COLORS, authorColors } from '../editor/authorColors';
 import { relayReady, relayUrl } from './channel';
-import { keyBytes } from './key';
+import { linkKeys } from './key';
 import { keepSessionCopy, putOpening, reloadAlone, takeOpening, type Opening } from './leave';
 import { joinSession, startSession, type Session, type SessionHost, type SessionView } from './session';
 
 // The app's one shared session (docs/architecture/collab.md): the starter's document goes
-// along as the start file; a tab opened from the link (`#collab=`) joins and keeps no copy.
+// along as the start file; a tab opened from a link (`#collab=`, `#view=`) joins and keeps no copy.
 
 /** What the session takes from the open document. */
 export type SessionApp = {
@@ -66,15 +66,16 @@ export async function startCollab(app: SessionApp): Promise<void> {
   expose();
 }
 
-/** Joins the link's session once, as soon as the editor and the relay are there. */
+/** Joins the link's session once (`key` is `collab=…` or `view=…`), as soon as the editor and the relay are there. */
 export function joinCollab(app: SessionApp, key: string): void {
   if (!relay || !app.editor() || joined) return;
   joined = true;
   void app.named().then((named) => {
     const editor = app.editor();
     if (!named || !editor) return;
-    if (!keyBytes(key)) view = { status: 'invalid', peers: [], link: location.href, keeps: false, kept: true, missing: 0, paused: false, dropped: 0 };
-    else session = joinSession(editor, key, host(app));
+    const keys = linkKeys(key);
+    if (!keys) view = { status: 'invalid', peers: [], readers: [], link: location.href, viewLink: '', reading: false, keeps: false, kept: true, missing: 0, paused: false, dropped: 0 };
+    else session = joinSession(editor, keys, host(app));
     expose();
   });
 }
