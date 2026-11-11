@@ -1,7 +1,7 @@
 import { Extension, Node, mergeAttributes } from '@tiptap/core';
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { EditorState, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import type { EditorState, Transaction } from '@tiptap/pm/state';
+import type { Transaction } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { AddMarkStep, AttrStep, RemoveMarkStep, ReplaceAroundStep, ReplaceStep, type Step } from '@tiptap/pm/transform';
 import { DEFAULT_SHORTCUTS } from '../shortcuts';
@@ -387,9 +387,9 @@ export const Notes = Extension.create<NotesOptions>({
           },
         },
 
-        // Two rounds by design: structure first, numbering on the pass after it. Doing
-        // both at once would need positions from a document this transaction is still
-        // rewriting.
+        // Structure first, numbering on the pass after it, each read off the document the
+        // last one left; ProseMirror hands a plugin's own appended transaction to the others
+        // only, so the passes run here until the document holds, all in one transaction.
         appendTransaction(trs, oldState, newState) {
           if (trs.some((tr) => tr.selectionSet)) {
             const clamped = clampToSide(newState);
@@ -401,9 +401,17 @@ export const Notes = Extension.create<NotesOptions>({
             noteless.add(newState.doc);
             return null;
           }
-          const fix = syncStructure(newState) ?? syncNumbers(newState, getSettings()) ?? stripAnchorMarks(newState);
-          if (!fix && !findNoteSection(newState.doc) && !collectNoteRefs(newState.doc).length) noteless.add(newState.doc);
-          return fix;
+          let out: Transaction | null = null;
+          let state = newState;
+          for (let pass = 0; pass < 6; pass++) {
+            const fix = syncStructure(state) ?? syncNumbers(state, getSettings()) ?? stripAnchorMarks(state);
+            if (!fix) break;
+            out ??= newState.tr;
+            for (const step of fix.steps) out.step(step);
+            state = EditorState.create({ schema: newState.schema, doc: out.doc });
+          }
+          if (!out && !findNoteSection(newState.doc) && !collectNoteRefs(newState.doc).length) noteless.add(newState.doc);
+          return out;
         },
       }),
     ];
@@ -460,6 +468,26 @@ function syncStructure(state: EditorState): Transaction | null {
   const sectionType = state.schema.nodes.noteSection;
   if (!noteType || !sectionType) return null;
 
+  // One section, the last block: the fullest of two made at once takes the others' notes,
+  // and blocks written past it move ahead of it. A shared doc rewrites whatever moves, so
+  // as little moves as can.
+  const sections: { node: PMNode; pos: number }[] = [];
+  state.doc.forEach((child, pos) => { if (child.type === sectionType) sections.push({ node: child, pos }); });
+  if (sections.length > 1 || (sections.length === 1 && sections[0].node !== state.doc.lastChild)) {
+    const keep = sections.reduce((a, b) => (b.node.childCount >= a.node.childCount ? b : a));
+    const tr = state.tr;
+    const moved: PMNode[] = [];
+    for (const s of sections) if (s !== keep) s.node.forEach((n) => moved.push(n));
+    const after: PMNode[] = [];
+    state.doc.forEach((child, pos) => { if (pos > keep.pos && child.type !== sectionType) after.push(child); });
+    const end = keep.pos + keep.node.nodeSize;
+    if (end < state.doc.content.size) tr.delete(end, state.doc.content.size);
+    tr.insert(end - 1, moved);
+    for (const s of [...sections].reverse()) if (s !== keep && s.pos < keep.pos) tr.delete(s.pos, s.pos + s.node.nodeSize);
+    tr.insert(tr.mapping.map(keep.pos, -1), after);
+    return tr;
+  }
+
   // Strays first and on their own: they shift every position after them, and the rest
   // of this pass reads positions out of the document it was handed.
   const strays = strayRefs(state.doc);
@@ -503,9 +531,40 @@ function syncStructure(state: EditorState): Transaction | null {
   if (!sameOrder) {
     if (!wanted.length && section) tr.delete(section.pos, section.pos + section.node.nodeSize);
     else if (!section) tr.insert(tr.doc.content.size, sectionType.create(null, wanted));
-    else tr.replaceWith(section.pos + 1, section.pos + section.node.nodeSize - 1, wanted);
+    else placeNotes(tr, section, wanted, existing);
   }
   return tr;
+}
+
+// Puts the section's notes in the wanted order, moving the fewest: the longest run already
+// in order stays, every other note goes and comes back at its place. In a shared doc each
+// note moved is rewritten, and so would be a note typed in at that moment.
+function placeNotes(tr: Transaction, section: { node: PMNode; pos: number }, wanted: PMNode[], existing: Map<string, PMNode>): void {
+  const index = new Map<PMNode, number>();
+  wanted.forEach((n, i) => index.set(n, i));
+  const at: { node: PMNode; pos: number; rank: number }[] = [];
+  section.node.forEach((child, offset) => {
+    const rank = index.get(child);
+    at.push({ node: child, pos: section.pos + 1 + offset, rank: rank === undefined || existing.get(String(child.attrs.id ?? '')) !== child ? -1 : rank });
+  });
+  // Longest increasing run of ranks (patience sorting), the notes that stay.
+  const tails: number[] = [], prev: number[] = at.map(() => -1);
+  at.forEach((a, i) => {
+    if (a.rank < 0) return;
+    let lo = 0, hi = tails.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (at[tails[mid]].rank < a.rank) lo = mid + 1; else hi = mid; }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  });
+  const stays = new Set<PMNode>();
+  for (let i = tails.length ? tails[tails.length - 1] : -1; i >= 0; i = prev[i]) stays.add(at[i].node);
+  const map = tr.mapping.maps.length;
+  for (const a of [...at].reverse()) if (!stays.has(a.node)) tr.delete(a.pos, a.pos + a.node.nodeSize);
+  let pos = tr.mapping.slice(map).map(section.pos + 1);
+  for (const node of wanted) {
+    if (!stays.has(node)) tr.insert(pos, node);
+    pos += node.nodeSize;
+  }
 }
 
 // Write the running label onto every anchor and its note. Cached attrs, so nothing is

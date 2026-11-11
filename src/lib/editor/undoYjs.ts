@@ -1,22 +1,120 @@
 import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
+import type { ContentMatch, Schema } from '@tiptap/pm/model';
 import { history, isHistoryTransaction } from '@tiptap/pm/history';
 import * as Y from 'yjs';
 import { ySyncPlugin, ySyncPluginKey, yUndoPlugin, yUndoPluginKey, prosemirrorToYXmlFragment } from '@tiptap/y-tiptap';
 import { StateStep, commitState, stateValues } from './extensions/stateHistory';
 import { pmUndo, setUndoBackend, STATE_RESTORED, type UndoBackend } from './undo';
 import { describeTransaction, resetHistoryLog, syncHistoryLog } from '../utils/historyLog.svelte';
+import { attachRepair, bindingOf, repairKey } from './yjsRepair';
+import { attachRescue } from './yjsRescue';
+import './yjsRedo';
 
 // Origin of the side stores' writes into the shared doc (a `StateStep` mirrored).
 const STATE_ORIGIN = Symbol('stateHistory');
 
-// Whether a block holds live content of another client. y-tiptap's own filter keeps every
-// paragraph with content, so undoing an Enter left the new paragraph behind.
-function holdsForeign(type: Y.AbstractType<unknown>, me: number): boolean {
+// Whether a block holds another client's live text or inline object. y-tiptap's own filter
+// keeps every paragraph with content, so undoing an Enter left the new paragraph behind.
+// Another client's empty element (a repair's cell padding a row) holds nothing of theirs.
+function holdsForeign(type: { _start: Y.Item | null }, foreign: (it: Y.Item) => boolean, leaf: (name: string) => boolean): boolean {
   for (let it = type._start; it; it = it.right) {
     if (it.deleted) continue;
-    if (it.id.client !== me) return true;
-    if (it.content instanceof Y.ContentType && holdsForeign(it.content.type, me)) return true;
+    if (it.content instanceof Y.ContentType) {
+      const child = it.content.type;
+      if (holdsForeign(child, foreign, leaf)) return true;
+      if (foreign(it) && child instanceof Y.XmlElement && leaf(child.nodeName)) return true;
+    } else if (it.content instanceof Y.ContentString && foreign(it)) return true;
+  }
+  return false;
+}
+
+// Whether an element's live children, `gone` left out, fit its node's content; unknown
+// elements count as fitting.
+function fits(el: Y.XmlElement, gone: Y.Item | null, schema: Schema): boolean {
+  let m: ContentMatch | null = schema.nodes[el.nodeName]?.contentMatch ?? null;
+  if (!m) return true;
+  for (let it = el._start; it && m; it = it.right) {
+    if (it.deleted || it === gone || !(it.content instanceof Y.ContentType)) continue;
+    const child = it.content.type;
+    if (child instanceof Y.XmlElement) {
+      const type = schema.nodes[child.nodeName];
+      if (!type) return true;
+      m = m.matchType(type);
+    } else if (child instanceof Y.XmlText && child.length) m = m.matchType(schema.nodes.text);
+  }
+  return !!m?.validEnd;
+}
+
+// The parents an undo deletes along with `item`, as each would be left empty where no
+// empty one fits (a list whose other items another client took out); null where a parent
+// would be left holding something that no longer fits, so `item` stays.
+function emptied(item: Y.Item, schema: Schema): Y.Item[] | null {
+  const out: Y.Item[] = [];
+  for (let it = item; ;) {
+    const parent = it.parent;
+    if (!(parent instanceof Y.XmlElement) || !parent._item || fits(parent, it, schema) || !fits(parent, null, schema)) return out;
+    for (let x = parent._start; x; x = x.right) if (!x.deleted && x !== it && x.countable) return null;
+    out.push(parent._item);
+    it = parent._item;
+  }
+}
+
+// Yjs puts what an undo or redo restores back as new items under the undoer's id; their
+// ranges here keep the author of the text they restore, so the next undo still counts it
+// as another client's. Per client id and sorted, as copies never overlap.
+class Authors {
+  private ranges = new Map<number, { clock: number; end: number; foreign: boolean }[]>();
+  constructor(private ydoc: Y.Doc) {}
+  // The first range of `client` that ends after `clock`.
+  private from(client: number, clock: number): number {
+    const rs = this.ranges.get(client) ?? [];
+    let lo = 0, hi = rs.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (rs[mid].end <= clock) lo = mid + 1; else hi = mid; }
+    return lo;
+  }
+  foreign = (it: Y.Item): boolean => {
+    if (it.id.client !== this.ydoc.clientID) return true;
+    const rs = this.ranges.get(it.id.client) ?? [];
+    for (let i = this.from(it.id.client, it.id.clock); i < rs.length && rs[i].clock < it.id.clock + it.length; i++) if (rs[i].foreign) return true;
+    return false;
+  };
+  // Yjs merges adjacent copies into one item, and an undo deletes a copy it follows to its
+  // end; split at the end of the copy the item starts in, so only that copy goes.
+  trim(it: Y.Item): void {
+    const r = this.ranges.get(it.id.client)?.[this.from(it.id.client, it.id.clock)];
+    const tr = this.ydoc._transaction;
+    if (r && tr && r.clock <= it.id.clock && it.id.clock + it.length > r.end) Y.getItemCleanStart(tr, Y.createID(it.id.client, r.end));
+  }
+  // After an undo or redo: every item it restored, as its copy's range and whose text it is.
+  restored(deletions: { clients: Map<number, { clock: number; len: number }[]> }): void {
+    deletions.clients.forEach((dels, client) => {
+      const structs = this.ydoc.store.clients.get(client);
+      if (!structs) return;
+      for (const d of dels) {
+        for (let i = Y.findIndexSS(structs, d.clock); i < structs.length && structs[i].id.clock < d.clock + d.len; i++) {
+          const it = structs[i];
+          if (!(it instanceof Y.Item) || !it.redone) continue;
+          const rs = this.ranges.get(it.redone.client) ?? [];
+          const at = rs.findIndex((r) => r.clock > it.redone!.clock);
+          rs.splice(at < 0 ? rs.length : at, 0, { clock: it.redone.clock, end: it.redone.clock + it.length, foreign: this.foreign(it) });
+          this.ranges.set(it.redone.client, rs);
+        }
+      }
+    });
+  }
+}
+
+// A footnote anchor whose note holds another client's text stays with it: the notes repair
+// drops a note without its anchor, and the other's text in it.
+function keepsNote(type: Y.XmlElement, frag: Y.XmlFragment, foreign: (it: Y.Item) => boolean, leaf: (name: string) => boolean): boolean {
+  if (type.nodeName !== 'noteRef') return false;
+  const id = String(type.getAttribute('id') ?? '');
+  for (const section of frag.toArray()) {
+    if (!(section instanceof Y.XmlElement) || section.nodeName !== 'noteSection') continue;
+    for (const note of section.toArray()) {
+      if (note instanceof Y.XmlElement && String(note.getAttribute('id') ?? '') === id && holdsForeign(note, foreign, leaf)) return true;
+    }
   }
   return false;
 }
@@ -89,10 +187,16 @@ export { Y };
 
 export type YjsUndo = {
   ydoc: Y.Doc; undoManager: Y.UndoManager; detach: () => void;
+  /** Who writes the repairs after remote changes (yjsRepair.ts); alone, this client. */
+  setRepairer: (repairs: () => boolean) => void;
   /** Puts every store the map holds into effect: a joiner's, after its start snapshot. */
   applyState: () => void;
   /** Puts into effect again each store whose entries mention `text`, as a picture they name came. */
   refresh: (text: string) => void;
+  /** Hears when the shared doc stops fitting this editor (no edits, no writes) and fits again. */
+  onPause: (fn: (paused: boolean) => void) => void;
+  /** Hears when an edit held inside a repair not yet shared no longer fits and is dropped. */
+  onDrop: (fn: () => void) => void;
 };
 
 /**
@@ -106,7 +210,9 @@ const PLAIN: StoreCodec = { pack: (v) => v, unpack: (v) => v };
  * The body's undo on Yjs: the text in the fragment `body`, the stores beside it (`StateStep`
  * ids) in the map `state`, both under one manager that only takes back this client's edits.
  */
-export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc(), codec = PLAIN): YjsUndo {
+export function attachYjsUndo(
+  editor: Editor, ydoc = new Y.Doc(), codec = PLAIN, repairs: () => boolean = () => true,
+): YjsUndo {
   const frag = ydoc.getXmlFragment('body');
   const side = ydoc.getMap('state');
   const packed = (id: string, value: unknown, share: boolean) => entries(id, codec.pack(value, share));
@@ -117,10 +223,22 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc(), codec = PLAIN)
     prosemirrorToYXmlFragment(editor.state.doc, frag);
     ydoc.transact(() => { for (const [id, v] of stateValues()) for (const [k, e] of packed(id, v, false)) side.set(k, e); });
   } else for (const [, v] of stateValues()) codec.pack(v, false);
+  const leaf = (name: string) => !!editor.schema.nodes[name]?.isLeaf;
+  const authors = new Authors(ydoc);
   const um = new Y.UndoManager([frag, side], {
     trackedOrigins: new Set([ySyncPluginKey, STATE_ORIGIN]),
     captureTransaction: (t) => t.meta.get('addToHistory') !== false,
-    deleteFilter: (item) => !(item.content instanceof Y.ContentType) || !holdsForeign(item.content.type, ydoc.clientID),
+    deleteFilter: (item) => {
+      if (!(item.content instanceof Y.ContentType)) {
+        authors.trim(item);
+        return !authors.foreign(item);
+      }
+      const type = item.content.type;
+      if (holdsForeign(type, authors.foreign, leaf) || (type instanceof Y.XmlElement && keepsNote(type, frag, authors.foreign, leaf))) return false;
+      const parents = emptied(item, editor.schema);
+      for (const p of parents ?? []) p.delete(ydoc._transaction!);
+      return !!parents;
+    },
   });
 
   // y-tiptap's undo plugin destroys the manager whenever the plugin views rebuild, which
@@ -136,6 +254,7 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc(), codec = PLAIN)
     syncHistoryLog();
   });
   um.on('stack-item-popped', ({ stackItem }: { stackItem: Y.UndoManager['undoStack'][number] }) => {
+    authors.restored(stackItem.deletions);
     moving = (stackItem.meta.get('label') as string | undefined) ?? 'Edit';
     syncHistoryLog();
   });
@@ -222,7 +341,24 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc(), codec = PLAIN)
   };
 
   editor.unregisterPlugin('history');
-  editor.registerPlugin(ySyncPlugin(frag));
+  // Shared content that does not fit the schema pauses editing and writing, instead of
+  // y-tiptap deleting it from the shared doc; it resumes with an update that fits.
+  let heard: (paused: boolean) => void = () => {};
+  const paused = (e: Error | null) => {
+    if (e) console.error('collab: paused,', e.message);
+    else console.info('collab: resumed');
+    heard(!!e);
+  };
+  let invalid: (e: Error) => void = paused;
+  const sync = ySyncPlugin(frag, { onInvalidContent: (e) => invalid(e) });
+  const binding = bindingOf(sync);
+  let dropped: () => void = () => {};
+  const repair = attachRepair(editor, ydoc, binding, paused, () => dropped());
+  invalid = repair.pause;
+  repair.setRepairer(repairs);
+  editor.registerPlugin(repair.plugin, (p, ps) => [p, ...ps]);
+  editor.registerPlugin(sync);
+  const detachRescue = attachRescue(editor, ydoc, binding, um, authors.foreign);
   editor.registerPlugin(yUndoPlugin({ undoManager: um }));
   editor.on('beforeTransaction', before);
   editor.on('transaction', mirror);
@@ -233,6 +369,9 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc(), codec = PLAIN)
 
   return {
     ydoc, undoManager: um,
+    setRepairer: repair.setRepairer,
+    onPause: (fn) => { heard = fn; },
+    onDrop: (fn) => { dropped = fn; },
     applyState: () => apply([...side.keys()]),
     refresh(text) {
       const keys = [...side.entries()].filter(([, v]) => JSON.stringify(v).includes(text)).map(([k]) => k);
@@ -241,12 +380,14 @@ export function attachYjsUndo(editor: Editor, ydoc = new Y.Doc(), codec = PLAIN)
       apply(keys);
     },
     detach() {
+      repair.detach();
+      detachRescue();
       side.unobserve(restore);
       editor.off('beforeTransaction', before);
       editor.off('transaction', mirror);
       editor.off('transaction', track);
       // Together: the undo plugin's view needs the sync plugin while the views rebuild.
-      editor.unregisterPlugin([yUndoPluginKey, ySyncPluginKey]);
+      editor.unregisterPlugin([yUndoPluginKey, ySyncPluginKey, repairKey]);
       editor.registerPlugin(history({ depth: 100, newGroupDelay: 500 }));
       setUndoBackend(pmUndo);
       destroy();

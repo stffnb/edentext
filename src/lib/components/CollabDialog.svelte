@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type CollabNotice = 'unreachable' | 'failing' | 'unkept' | 'missing';
+  export type CollabNotice = 'unreachable' | 'failing' | 'unkept' | 'missing' | 'dropped';
 </script>
 
 <script lang="ts">
@@ -92,6 +92,7 @@
       </div>
     {:else}
       <p class="status" data-status={view.status}>{t().collab.status[view.status]}</p>
+      {#if view.paused}<p class="notice" data-notice="paused">{t().collab.pausedHint}</p>{/if}
       {#if view.status === 'live' && !view.kept}
         <p class="notice" data-notice="unkept">{t().collab.unkept}</p>
       {/if}
@@ -127,7 +128,7 @@
 
 {#if notice && view && !open}
   <aside class="collab-notice" role="status" data-notice={notice}>
-    <p>{notice === 'unkept' ? t().collab.unkept : notice === 'missing' ? t().collab.missing(view.missing) : t().collab.status[notice]}</p>
+    <p>{notice === 'unkept' ? t().collab.unkept : notice === 'missing' ? t().collab.missing(view.missing) : notice === 'dropped' ? t().collab.dropped : t().collab.status[notice]}</p>
     <div class="actions">
       <button data-cmd="collabDetails" onclick={() => { notice = null; open = true; }}>{t().collab.menu}</button>
       <span class="spacer"></span>

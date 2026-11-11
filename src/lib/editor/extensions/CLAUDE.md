@@ -3,7 +3,7 @@
 One file per feature (`image.ts`, `indent.ts`, …), never `XyzExtension.ts`. All are assembled in
 `../extensions.ts`, which also lists the TipTap built-ins in use (Bold, Italic, Highlight
 `multicolor`, TextStyle/FontFamily/FontSize, Heading, HardBreak, lists, Table family, History,
-Placeholder, TextAlign). `Document` is widened to `'(block | textBox | columns)+ noteSection?'`.
+Placeholder, TextAlign). `Document` is widened to `'(block | columns | noteSection)+'`: Yjs can merge two note sections, or a block past one, and the notes plugin makes them one section at the end (`docs/architecture/collab-conflicts.md`).
 
 These extensions are documented separately; read the document before changing them:
 
