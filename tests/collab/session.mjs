@@ -780,6 +780,24 @@ try {
     check(afterPose[0] === 'Ben is editing' && afterPose[1] === 'Ben,Cleo' && afterPose[2] === 'Ben is editing' && !posed.got,
       `a reader dialling in under a writer's id gets none of its frames and neither drops it from the list nor frees its header (${afterPose.join(' / ')}; ${JSON.stringify(posed)})`);
 
+    // A picture asked for many times in one frame goes once.
+    const key = /"src":"idb:([^"]+)"/.exec((await view(r)).json)?.[1];
+    const ritaId = await a.evaluate(() => window.__collab.view().readers.find((x) => x.name === 'Rita')?.id);
+    const given0 = await sent(a, PICTURE);
+    await r.evaluate(([to, from, key]) => {
+      const keys = new TextEncoder().encode(Array(30).fill(key).join(','));
+      const out = new Uint8Array(9 + keys.length);
+      const v = new DataView(out.buffer);
+      out[0] = 7;
+      v.setUint32(1, to);
+      v.setUint32(5, from);
+      out.set(keys, 9);
+      window.__collab.session.debug.send(out, to);
+    }, [ids.Anna, ritaId, key]);
+    await a.waitForTimeout(1500);
+    const given1 = await sent(a, PICTURE);
+    check(!!key && given1 - given0 === 1, `a picture asked for thirty times in one frame goes once (${given1 - given0})`);
+
     // Forty readers made up in one tab fill no list: one reading along later is still listed.
     await r.evaluate(() => {
       for (let i = 0; i < 40; i++) {

@@ -202,7 +202,8 @@ export function sessionPictures(w: Wire): Pictures {
         return true;
       }
       if (plain[0] !== WANT) return false;
-      if (v.getUint32(1) === w.me) for (const key of dec.decode(plain.subarray(9)).split(',')) give(v.getUint32(5), key);
+      // Each key once: a frame naming one picture many times would send it as often.
+      if (v.getUint32(1) === w.me) for (const key of new Set(dec.decode(plain.subarray(9)).split(','))) give(v.getUint32(5), key);
       return true;
     },
     recheck,
