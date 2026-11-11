@@ -229,6 +229,7 @@ const en = {
       version: 'The others use a different EdenText version. Reload all windows to get the same version.',
       full: 'This session is full.',
       unreachable: 'The collaboration server cannot be reached.',
+      mismatch: 'This version of EdenText does not match the collaboration server. Reload the page; if that does not help, the server needs an update.',
       failing: 'The connection to the collaboration server keeps breaking off. Your edits stay here and go out as soon as it holds again.',
       invalid: 'This link is incomplete. Ask for it again.',
       closed: 'Session ended',

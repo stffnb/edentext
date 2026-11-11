@@ -42,6 +42,9 @@ are off, as for the rest of the app.
 | `MAX_FRAME` | 16 MiB | bytes per frame; browsers send at most 1 MiB and split longer messages |
 | `BEAT_MS`, `PING_MS` | 15 s, 5 s | keep-alive to the browsers, and the ping that drops a dead line within two rounds |
 
+App and relay speak protocol version 2 (`relay/CLAUDE.md`); against a relay of another version
+the app says it does not match the server, so update both together.
+
 `token`: every hello carries `"token": null`. The relay does not read it yet; it is the place
 where a paid room would lift `MAX_PEERS` later. There are no accounts or passwords.
 
@@ -52,7 +55,7 @@ where a paid room would lift `MAX_PEERS` later. There are no accounts or passwor
   link. Everything is sealed with AES-256-GCM before it leaves the browser.
 - **Does:** IP addresses and times, the room id (a truncated hash of the read key, the same for
   both links, from which no key follows), how many share a room, frame sizes and their timing,
-  and which random session id sends to which. It writes none of this anywhere; a proxy in front
-  of it may log addresses and paths.
+  and which random session id sends to which, with the random secret each client claims its id
+  by. It writes none of this anywhere; a proxy in front of it may log addresses and paths.
 
 Anyone holding a link can join; a write link stays valid until a new session is started.

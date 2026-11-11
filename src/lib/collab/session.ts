@@ -48,6 +48,7 @@ export type SessionStatus =
   | 'full'
   | 'unreachable'
   | 'failing'      // the line keeps breaking off
+  | 'mismatch'     // the relay speaks another protocol version
   | 'invalid'      // the link's key is cut short or mistyped
   | 'closed';
 

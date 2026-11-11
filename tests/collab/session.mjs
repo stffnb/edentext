@@ -754,6 +754,33 @@ try {
     check(fa.every((v) => v.json === before) && !marks[0] && !marks[1] && !/Mallory/.test(marks.join()) && marks[4] === 'Ben,Cleo' && marks[6] === 'Rita',
       `${sentForged} forged frames change no writer's document, zone, caret or list, nor list a reader not there (${marks.join(' / ')}; ${fa.map(brief).join(' | ')})`);
 
+    // The reader dials the relay under Ben's id while Ben holds the header, then hangs up:
+    // Ben stays listed, holds the header and keeps getting what is sent to him.
+    await openZone(b, 'header');
+    await b.waitForTimeout(800);
+    const ids = await r.evaluate(() => Object.fromEntries([...window.__collab.session.awareness.getStates().values()].map((s) => [s.user.name, s.peer])));
+    const posed = await r.evaluate(async (id) => {
+      const { linkKeys, roomId } = await import('/src/lib/collab/key.ts');
+      const { relayUrl, PROTOCOL } = await import('/src/lib/collab/channel.ts');
+      const room = roomId(linkKeys(location.hash.slice(1)).read);
+      const ws = new WebSocket(relayUrl());
+      ws.binaryType = 'arraybuffer';
+      let got = 0, welcomed = false;
+      ws.onmessage = (e) => { if (typeof e.data === 'string') welcomed ||= JSON.parse(e.data).t === 'welcome'; else got++; };
+      await new Promise((ok) => { ws.onopen = ok; });
+      ws.send(JSON.stringify({ t: 'hello', v: PROTOCOL ?? 1, room, token: null, id, claim: 'x'.repeat(22) }));
+      await new Promise((ok) => setTimeout(ok, 1500));
+      ws.close();
+      return { welcomed, got };
+    }, ids.Ben);
+    await a.waitForTimeout(1500);
+    const afterPose = [await heldTag(a), await peersOf(a), await heldTag(c)];
+    await b.keyboard.press('Escape');
+    await b.waitForTimeout(800);
+    check(afterPose[0] === 'Ben is editing' && afterPose[1] === 'Ben,Cleo' && afterPose[2] === 'Ben is editing' && !posed.got,
+      `a reader dialling in under a writer's id gets none of its frames and neither drops it from the list nor frees its header (${afterPose.join(' / ')}; ${JSON.stringify(posed)})`);
+
+
     // A writer holds the footer and lets it go while the reader records; replayed then, and
     // after the writer left to a newcomer that never saw it, the footer stays free.
     const w = await client('Walt');

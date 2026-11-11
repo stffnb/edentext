@@ -4,6 +4,7 @@ import * as Y from 'yjs';
 import '../src/lib/editor/yjsRedo';
 import { keyBytes, linkKeys, newKey, opened, roomId, seal, sessionLink, signed, unseal, viewLink, writeKeys } from '../src/lib/collab/key';
 import { openChannel } from '../src/lib/collab/channel';
+import { WebSocketServer } from 'ws';
 // @ts-expect-error plain JavaScript module, shipped as its own container
 import { startRelay } from '../relay/server.mjs';
 
@@ -106,6 +107,20 @@ describe('collaboration key', () => {
     await relay.close();
   });
 
+  it('says so instead of redialling when the relay speaks another protocol version', async () => {
+    // A relay before version 2 closes every hello it cannot read with 4000.
+    const old = new WebSocketServer({ port: 0 });
+    let hellos = 0;
+    old.on('connection', (ws) => ws.on('message', () => { hellos++; ws.close(4000, 'hello'); }));
+    const port = (old.address() as { port: number }).port;
+    const seen: string[] = [];
+    const ch = openChannel({ url: `ws://127.0.0.1:${port}`, key: keyBytes(newKey())!, id: 1, onFrame: () => {}, onPeers: () => {}, onStatus: (s) => seen.push(s), onOpen: () => {} });
+    await new Promise((r) => setTimeout(r, 1500));
+    expect([seen.at(-1), hellos]).toEqual(['mismatch', 1]);
+    ch.close();
+    old.close();
+  });
+
   it('holds only a bounded number of unfinished messages, whoever sends the parts', async () => {
     const relay = await startRelay({ port: 0 });
     const key = keyBytes(newKey())!;
@@ -115,7 +130,7 @@ describe('collaboration key', () => {
     const raw = new WebSocket(url);
     raw.binaryType = 'arraybuffer';
     await new Promise<void>((resolve) => {
-      raw.onopen = () => raw.send(JSON.stringify({ t: 'hello', v: 1, room: roomId(key), token: null }));
+      raw.onopen = () => raw.send(JSON.stringify({ t: 'hello', v: 2, room: roomId(key), token: null, id: 9, claim: newKey() }));
       raw.onmessage = () => resolve();
     });
     // Forty messages of two parts each: all first parts, then all second ones.
@@ -128,7 +143,8 @@ describe('collaboration key', () => {
       v.setUint32(13, 2);
       return seal(key, env);
     };
-    for (const index of [0, 1]) for (let m = 0; m < 40; m++) raw.send(part(m, index));
+    const to0 = (frame: Uint8Array) => { const out = new Uint8Array(4 + frame.length); out.set(frame, 4); return out; };
+    for (const index of [0, 1]) for (let m = 0; m < 40; m++) raw.send(to0(part(m, index)));
     await new Promise((r) => setTimeout(r, 300));
     expect(whole).toBe(16);
     raw.close();
