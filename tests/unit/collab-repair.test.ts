@@ -3,6 +3,7 @@ import { Editor } from '@tiptap/core';
 import * as Y from 'yjs';
 import { extensions } from '../../src/lib/editor/extensions';
 import { attachYjsUndo, type YjsUndo } from '../../src/lib/editor/undoYjs';
+import { StateStep } from '../../src/lib/editor/extensions/stateHistory';
 
 // Concurrent edits that need the plugins' repairs (a ragged table, two note sections,
 // notes out of anchor order), relayed in a random order: every client ends with the same
@@ -389,4 +390,33 @@ describe('marks on a node in a shared doc', () => {
       }
     });
   }
+});
+
+// A paragraph and a store change in one Yjs transaction (a batch of edits, or the undo of a
+// step holding both): the store's observer runs before the body's, and must not write the
+// document as drawn before the update. Each client ends equal, the paragraph as the edit left it.
+describe('text and a store changed together', () => {
+  const both = (ed: Editor, text: string, n: number) => ed.view.dispatch(ed.state.tr
+    .insert(ed.state.doc.content.size, ed.schema.nodes.paragraph.create(null, ed.schema.text(text)))
+    .step(new StateStep('notes', null, { n })));
+  it('arrive as one update, and the receiver writes nothing', () => {
+    const [a, b] = clients(2);
+    both(a.ed, 'Omega.', 1);
+    Y.applyUpdate(b.ydoc, Y.mergeUpdates(a.out.splice(0)), 'relay');
+    expect(b.out).toHaveLength(0);
+    expect(b.ed.state.doc.textContent).toContain('Omega.');
+    expect(b.ydoc.getXmlFragment('body').toString()).toBe(a.ydoc.getXmlFragment('body').toString());
+  });
+  it('go back in one undo, on both clients', async () => {
+    const cs = clients(2);
+    const [a, b] = cs;
+    both(a.ed, 'Omega.', 1);
+    await relay(cs, () => 0.5);
+    a.undo.undoManager.undo();
+    await relay(cs, () => 0.5);
+    for (const x of cs) {
+      expect(x.ed.state.doc.textContent).not.toContain('Omega.');
+      expect(x.ydoc.getXmlFragment('body').toString()).toBe(a.ydoc.getXmlFragment('body').toString());
+    }
+  });
 });

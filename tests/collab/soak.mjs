@@ -215,11 +215,15 @@ async function calm(cs, ops) {
     const svs = await Promise.all(cs.map((c) => c.page.evaluate(async () => {
       const { Y } = await import('/src/lib/editor/undoYjs.ts');
       const d = window.__collab?.session?.awareness?.doc;
-      return d ? { me: d.clientID, sv: Object.fromEntries(Y.decodeStateVector(Y.encodeStateVector(d))) } : null;
+      if (!d) return null;
+      const del = {};
+      for (const [id, items] of Y.createDeleteSetFromStructStore(d.store).clients) del[id] = items.reduce((n, i) => n + i.len, 0);
+      return { me: d.clientID, sv: Object.fromEntries(Y.decodeStateVector(Y.encodeStateVector(d))), del, pending: !!(d.store.pendingStructs || d.store.pendingDs) };
     }).catch(() => null)));
     await writeFile(join(tmpdir(), `soak-${seed}-${roundNo}-diverged.json`), JSON.stringify({ a: JSON.parse(a), b: JSON.parse(b), svs }));
     const svOf = (x) => JSON.stringify(Object.entries(x?.sv ?? {}).sort());
-    const why = `${svs.every((x) => svOf(x) === svOf(svs[0])) ? 'same state vectors' : `state vectors differ: ${cs.map((c, i) => `${c.name} ${svOf(svs[i])}`).join(' ')}`}, ${one('body') ? 'same Yjs body' : 'Yjs bodies differ'}${states.some((x) => x.invalid) ? `, invalid content: ${states.map((x) => x.invalid).join('|')}` : ''}`;
+    const delOf = (x) => JSON.stringify(Object.entries(x?.del ?? {}).sort());
+    const why = `${svs.every((x) => svOf(x) === svOf(svs[0])) ? 'same state vectors' : `state vectors differ: ${cs.map((c, i) => `${c.name} ${svOf(svs[i])}`).join(' ')}`}, ${svs.every((x) => delOf(x) === delOf(svs[0])) ? 'same deletions' : `deletions differ: ${cs.map((c, i) => `${c.name} ${delOf(svs[i])}`).join(' ')}`}${svs.some((x) => x?.pending) ? `, pending: ${svs.map((x) => x?.pending).join('|')}` : ''}, ${one('body') ? 'same Yjs body' : 'Yjs bodies differ'}${states.some((x) => x.invalid) ? `, invalid content: ${states.map((x) => x.invalid).join('|')}` : ''}`;
     report('diverged', `${desc} (${why}): ${one('doc') ? 'stores differ' : diff}`, { ops });
     return 'reset';
   }
@@ -387,7 +391,7 @@ try {
       // Lost: fewer of another's letters and a word's stem nowhere; fewer copies are not,
       // nor the undoer's text gone beside a word (stems end at the letter, a space or a letter).
       const gone = before.words.flatMap((ws, i) => (i === c.index || undone.letters[i] >= before.letters[i] ? [] : ws.filter((w) => !undone.blocks.includes(w))));
-      if (gone.length) await writeFile(join(tmpdir(), `soak-${seed}-${roundNo}-lost.json`), JSON.stringify({ name: c.name, gone, before: JSON.parse(d0), undone: JSON.parse(await docJson(cs[0])) }));
+      if (gone.length) await writeFile(join(tmpdir(), `soak-${seed}-${roundNo}-lost.json`), JSON.stringify({ name: c.name, gone, before: JSON.parse(d0), undone: JSON.parse(await docJson(cs[0])), ops: cs.map((x) => ({ name: x.name, log: x.log })) }));
       if (gone.length) report('lost', `${c.name}'s ${n} undos took others' text: ${gone.slice(0, 4).join(' ')}, letters ${before.letters} → ${undone.letters}`, { ops: cs.flatMap((x) => x.log) });
       if (c.history && undone.letters[c.index] > c.base) report('undo', `${c.name}'s ${n} undos leave ${undone.letters[c.index] - c.base} of its letters`, { ops: cs.flatMap((x) => x.log) });
       await c.page.evaluate((n) => { const ed = document.querySelector('.tiptap-host .tiptap').editor; for (let i = 0; i < n; i++) ed.commands.redo(); }, n);
