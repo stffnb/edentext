@@ -20,7 +20,7 @@ const MAX_IDS = 256;
  * other. A connection that misses a `ping` round is dropped, so its client is gone within
  * two rounds. Resolves once listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, ping: every = 5000, path = '/relay', tap, lag } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, ping: every = 5000, helloWait = 5000, path = '/relay', tap, lag } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
   // Per room, each client id with the secret its first hello claimed it by, and its socket
@@ -53,8 +53,9 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
     let room = null;
     ws.alive = true;
     ws.on('pong', () => { ws.alive = true; });
-    // The hello has to come first and within a few seconds.
-    const timer = setTimeout(() => { if (!room) ws.close(4000, 'hello'); }, 5000);
+    // The hello has to come first and within a few seconds; a late one closes with 4005, not
+    // 4000, so a slow line is not taken for a relay that cannot read the hello.
+    const timer = setTimeout(() => { if (!room) ws.close(4005, 'late'); }, helloWait);
 
     ws.on('message', (data, binary) => {
       if (!room) {
