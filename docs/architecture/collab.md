@@ -115,7 +115,9 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
 - **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`; hosting it: `collab-relay.md`): rooms as sets of sockets in memory,
   frames passed on unchanged, to the one client a clear `to` names where there is one (the
   sync's replies, pictures), nothing stored or logged; `MAX_PEERS` counts connections,
-  readers too, as the relay cannot tell them from writers.
+  readers too, as the relay cannot tell them from writers. An id stays with the connection
+  whose hello claimed it with a random secret, so no other client takes its frames or its
+  `gone`; an app and a relay of different protocol versions say so (`mismatch`).
 - **Where the relay is:** `VITE_COLLAB_RELAY` is a `wss://` URL, or `same-origin` for `/relay`
   beside the app (dev proxy, Docker, Helm), where sessions are offered only once
   `relay/health` answers. Embedded, there are none.

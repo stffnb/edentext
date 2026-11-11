@@ -1547,7 +1547,7 @@
     const s = sessionView?.status;
     if (s === collabShown) return;
     collabShown = s;
-    if (s === 'invalid' || s === 'full' || s === 'version' || s === 'empty') collabOpen = true;
+    if (s === 'invalid' || s === 'full' || s === 'version' || s === 'mismatch' || s === 'empty') collabOpen = true;
     if (s === 'unreachable' || s === 'failing') collabNotice = s;
     else if (untrack(() => collabNotice === 'unreachable' || collabNotice === 'failing')) collabNotice = null;
   });

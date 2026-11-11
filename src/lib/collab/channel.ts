@@ -1,6 +1,10 @@
-import { roomId, seal, unseal } from './key';
+import { newKey, roomId, seal, unseal } from './key';
 
-export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'failing' | 'closed';
+/** `mismatch`: the relay speaks another protocol version than this app. */
+export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'failing' | 'mismatch' | 'closed';
+
+/** The relay protocol (`relay/CLAUDE.md`) this app speaks. */
+export const PROTOCOL = 2;
 
 export type Channel = {
   /** To one client by its id, or with `to` 0 to everyone. */
@@ -13,8 +17,8 @@ export type Channel = {
 type Options = {
   url: string;
   key: Uint8Array;
-  /** This client's id: a relay that knows ids passes a frame only to its receiver. */
-  id?: number;
+  /** This client's id, never 0: the relay passes a frame to its receiver alone. */
+  id: number;
   onFrame(plain: Uint8Array): void;
   /** The room's size; `gone` is the id of a client whose line the relay saw end. */
   onPeers(n: number, gone?: number): void;
@@ -31,6 +35,7 @@ const PART = 1;
 const PART_HEAD = 17;        // envelope, 8-byte id, index, count
 const SEALING = 28;          // nonce and GCM tag
 const TO = 4;                // the receiver in clear in front of a sealed frame, 0 for all
+const OLD_RELAY = 4000;      // a relay before version 2 closes a hello it cannot read so
 const MAX_PART = 1 << 20;
 const MAX_MESSAGE = 256 << 20;
 const PART_TTL = 60_000;
@@ -142,13 +147,13 @@ export function openChannel(o: Options): Channel {
   let heard = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stable: ReturnType<typeof setTimeout> | undefined;
-  let addressed = false;
+  // The relay gives the id only to a hello with this secret, so no other client can take it.
+  const claim = newKey();
   const queue: [Uint8Array, number][] = [];
 
   const put = (sock: WebSocket, plain: Uint8Array, to: number) => {
     for (const part of split(plain, size)) {
       const sealed = seal(o.key, part);
-      if (!addressed) { sock.send(sealed); continue; }
       const out = new Uint8Array(TO + sealed.length);
       new DataView(out.buffer).setUint32(0, to);
       out.set(sealed, TO);
@@ -177,18 +182,16 @@ export function openChannel(o: Options): Channel {
       timer = setTimeout(connect, wait * (0.8 + Math.random() * 0.4));
       wait = Math.min(wait * 2, MAX_WAIT);
     };
-    sock.onopen = () => sock.send(JSON.stringify({ t: 'hello', v: 1, room, token: null, ...(o.id ? { id: o.id } : {}) }));
+    sock.onopen = () => sock.send(JSON.stringify({ t: 'hello', v: PROTOCOL, room, token: null, id: o.id, claim }));
     sock.onmessage = (ev) => {
       last = Date.now();
       if (typeof ev.data === 'string') {
-        let msg: { t?: string; peers?: number; n?: number; frame?: number; beat?: number; to?: boolean; gone?: number };
+        let msg: { t?: string; peers?: number; n?: number; frame?: number; beat?: number; gone?: number };
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.t === 'welcome') {
           welcomed = ready = true;
           down = false;
-          // A relay without ids passes every frame to all, which drop those not theirs.
-          addressed = msg.to === true && !!o.id;
-          if (msg.frame) size = Math.max(PART_HEAD + MIN_PART, Math.min(MAX_PART, msg.frame - SEALING - (addressed ? TO : 0)));
+          if (msg.frame) size = Math.max(PART_HEAD + MIN_PART, Math.min(MAX_PART, msg.frame - SEALING - TO));
           // A half-open line never closes by itself: it is dropped and dialled again.
           const beat = msg.beat ?? 0;
           if (beat > 0) alive = setInterval(() => {
@@ -208,6 +211,7 @@ export function openChannel(o: Options): Channel {
           }, STABLE_MS);
         } else if (msg.t === 'peers') o.onPeers(msg.n ?? 1, msg.gone);
         else if (msg.t === 'full') { closed = true; o.onStatus('full'); }
+        else if (msg.t === 'version') { closed = true; o.onStatus('mismatch'); }
         return;
       }
       heard = last;
@@ -217,7 +221,10 @@ export function openChannel(o: Options): Channel {
       const plain = take(env);
       if (plain) o.onFrame(plain);
     };
-    sock.onclose = lost;
+    sock.onclose = (ev) => {
+      if (!welcomed && !closed && ev.code === OLD_RELAY) { closed = true; o.onStatus('mismatch'); }
+      lost();
+    };
   };
   connect();
 
