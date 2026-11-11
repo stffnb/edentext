@@ -5,7 +5,7 @@ import WebSocket from 'ws';
 import { startRelay } from '../relay/server.mjs';
 
 type Relay = { port: number; rooms: Map<string, Set<unknown>>; close(): Promise<void> };
-type Client = { ws: WebSocket; text: Record<string, unknown>[]; bin: Buffer[]; closed: Promise<number> };
+type Client = { id: number; ws: WebSocket; text: Record<string, unknown>[]; bin: Buffer[]; closed: Promise<number> };
 
 let relay: Relay | null = null;
 afterEach(async () => { await relay?.close(); relay = null; });
@@ -18,7 +18,7 @@ let next = 100;
 // A client with its id and the secret it claims the id by; `hello` overrides fields.
 async function join(room: string, id = next++, claim = `claim-of-${id}`.padEnd(22, '-'), hello: Record<string, unknown> = {}): Promise<Client> {
   const ws = new WebSocket(`ws://127.0.0.1:${relay!.port}/relay`);
-  const c: Client = { ws, text: [], bin: [], closed: new Promise((r) => ws.on('close', (code) => r(code))) };
+  const c: Client = { id, ws, text: [], bin: [], closed: new Promise((r) => ws.on('close', (code) => r(code))) };
   ws.on('message', (d, binary) => (binary ? c.bin.push(d as Buffer) : c.text.push(JSON.parse(String(d)))));
   await new Promise((r) => ws.on('open', r));
   ws.send(JSON.stringify({ t: 'hello', v: 2, room, token: null, id, claim, ...hello }));
@@ -38,7 +38,8 @@ describe('collaboration relay', () => {
     a.ws.send(to(0, 1, 2, 3));
     a.ws.send('not a frame');
     await tick();
-    expect(b.bin.map((x) => [...x])).toEqual([[1, 2, 3]]);
+    // Each frame arrives with its sender in front.
+    expect(b.bin.map((x) => [...x])).toEqual([[0, 0, 0, a.id, 1, 2, 3]]);
     expect(a.bin.length + c.bin.length).toBe(0);
 
     b.ws.close();
@@ -57,14 +58,14 @@ describe('collaboration relay', () => {
     a.ws.send(to(0, 8));
     a.ws.send(to(9, 9));
     await tick();
-    expect(b.bin.map((x) => [...x])).toEqual([[7], [8]]);
-    expect(c.bin.map((x) => [...x])).toEqual([[8]]);
+    expect(b.bin.map((x) => [...x])).toEqual([[0, 0, 0, 1, 7], [0, 0, 0, 1, 8]]);
+    expect(c.bin.map((x) => [...x])).toEqual([[0, 0, 0, 1, 8]]);
     // A client dialling again takes its id over; its old line closing is no departure.
     const b2 = await join(ROOM_A, 2);
     a.ws.send(to(2, 6));
     b.ws.close();
     await tick();
-    expect(b2.bin.map((x) => [...x])).toEqual([[6]]);
+    expect(b2.bin.map((x) => [...x])).toEqual([[0, 0, 0, 1, 6]]);
     expect(a.text.at(-1)).toEqual({ t: 'peers', n: 3 });
     c.ws.close();
     await tick();
@@ -82,7 +83,7 @@ describe('collaboration relay', () => {
     expect(await posing.closed).toBe(4004);
     a.ws.send(to(2, 7));
     await tick();
-    expect(b.bin.map((x) => [...x])).toEqual([[7]]);
+    expect(b.bin.map((x) => [...x])).toEqual([[0, 0, 0, 1, 7]]);
     expect(a.text.some((m) => m.gone)).toBe(false);
     b.ws.close();
     await tick();
@@ -91,7 +92,7 @@ describe('collaboration relay', () => {
     const back = await join(ROOM_A, 2);
     a.ws.send(to(2, 8));
     await tick();
-    expect(back.bin.map((x) => [...x])).toEqual([[8]]);
+    expect(back.bin.map((x) => [...x])).toEqual([[0, 0, 0, 1, 8]]);
     a.ws.close();
     back.ws.close();
   });
