@@ -191,10 +191,10 @@ recorded marks and adds none; the starter's undo takes back each on both sides. 
 dropping every connection after its welcome makes the line `failing` (notice, 4–5
 connections in 12 s) until it holds. A line that hears and sends nothing leaves `live`
 within a few beats, asks nothing while down, and comes back. `tests/relay.test.ts` and
-`tests/collab.test.ts` cover rooms, limits, beats, addressing, sealing and parts. All
+`tests/collab.test.ts` cover rooms, limits, beats, addressing, sealing, parts and their cap. All
 scripts run in the three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`; load,
 soak and typing speed: `collab-soak.md`.
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun: in Firefox a joiner not live
-within 20 s on a just-started dev server. A link holder can make a client keep many
-half-sent messages of up to 256 MiB each for 60 s. What pictures cost: `collab-pictures.md`.
+within 20 s on a just-started dev server. A client holds at most 16 unfinished messages, 256
+MiB together: a link holder can fill that for 60 s. What pictures cost: `collab-pictures.md`.

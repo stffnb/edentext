@@ -34,6 +34,10 @@ const TO = 4;                // the receiver in clear in front of a sealed frame
 const MAX_PART = 1 << 20;
 const MAX_MESSAGE = 256 << 20;
 const PART_TTL = 60_000;
+// Parts carry no proven sender, so the bound is for all unfinished messages together:
+// past it a new message is dropped, and anyone holding the link costs at most this much.
+const MAX_OPEN = 16;
+const MIN_PART = 1024;
 // A connection that breaks within STABLE_MS of its welcome counts as failed; after FAILS in a
 // row the line is `failing` until one holds. Retries back off up to MAX_WAIT.
 const STABLE_MS = 5000;
@@ -67,6 +71,7 @@ function split(plain: Uint8Array, size: number): Uint8Array[] {
 }
 
 type Pending = { parts: (Uint8Array | undefined)[]; got: number; size: number; at: number };
+const sizeOf = (pending: Map<string, Pending>) => [...pending.values()].reduce((n, p) => n + p.size, 0);
 
 /** Puts parts back together; returns a message once it is whole. */
 function joiner() {
@@ -80,13 +85,16 @@ function joiner() {
     const id = Array.from(env.subarray(1, 9)).join('.');
     const index = v.getUint32(9), count = v.getUint32(13);
     let p = pending.get(id);
-    if (!p) pending.set(id, (p = { parts: new Array(count), got: 0, size: 0, at: now }));
+    if (!p) {
+      if (count < 2 || count > MAX_MESSAGE / MIN_PART + 1 || pending.size >= MAX_OPEN) return null;
+      pending.set(id, (p = { parts: new Array(count), got: 0, size: 0, at: now }));
+    }
     if (index >= p.parts.length || p.parts[index]) return null;
+    if (sizeOf(pending) + env.length - PART_HEAD > MAX_MESSAGE) { pending.delete(id); return null; }
     p.parts[index] = env.subarray(PART_HEAD);
     p.got++;
     p.size += env.length - PART_HEAD;
     p.at = now;
-    if (p.size > MAX_MESSAGE) { pending.delete(id); return null; }
     if (p.got < p.parts.length) return null;
     pending.delete(id);
     const out = new Uint8Array(p.size);
@@ -180,7 +188,7 @@ export function openChannel(o: Options): Channel {
           down = false;
           // A relay without ids passes every frame to all, which drop those not theirs.
           addressed = msg.to === true && !!o.id;
-          if (msg.frame) size = Math.max(PART_HEAD + 1024, Math.min(MAX_PART, msg.frame - SEALING - (addressed ? TO : 0)));
+          if (msg.frame) size = Math.max(PART_HEAD + MIN_PART, Math.min(MAX_PART, msg.frame - SEALING - (addressed ? TO : 0)));
           // A half-open line never closes by itself: it is dropped and dialled again.
           const beat = msg.beat ?? 0;
           if (beat > 0) alive = setInterval(() => {
