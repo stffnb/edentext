@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ReadGate from './lib/components/ReadGate.svelte';
   import { onMount, tick as domUpdated, untrack } from 'svelte';
   import { cubicOut } from 'svelte/easing';
   import type { Content, Editor } from '@tiptap/core';
@@ -1553,7 +1554,38 @@
   // A joiner hears once when nobody in the session stores the document any more; the
   // pause lets the starter's presence arrive after a join or a reconnect.
   let unkeptTold = false;
-  const collabUnkept = $derived.by(() => sessionView?.status === 'live' && !sessionView.kept);
+  // A reader hears instead when nobody who writes is left, as nothing will change then.
+  const collabUnwritten = $derived(!!sessionView?.reading && sessionView.status === 'live' && !sessionView.peers.length);
+  const collabUnkept = $derived.by(() => sessionView?.status === 'live' && !sessionView.kept && !collabUnwritten);
+  let unwrittenTold = false;
+  $effect(() => {
+    if (!collabUnwritten) {
+      unwrittenTold = false;
+      if (untrack(() => collabNotice === 'unwritten')) collabNotice = null;
+      return;
+    }
+    if (unwrittenTold) return;
+    const timer = setTimeout(() => { unwrittenTold = true; collabNotice = 'unwritten'; }, 2000);
+    return () => clearTimeout(timer);
+  });
+  // Keys that would edit, in a tab that only reads along, say briefly why nothing happens.
+  const readingAlong = $derived(!!sessionView?.reading && sessionView.status !== 'closed');
+  let readerNudge = $state(false);
+  $effect(() => {
+    if (!readingAlong) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.closest?.('input, textarea, select, dialog, [contenteditable="true"]')) return;
+      const mod = e.ctrlKey || e.metaKey;
+      const edits = mod ? /^[vxzy]$/i.test(e.key) : !e.altKey && (e.key.length === 1 || e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete');
+      if (!edits) return;
+      readerNudge = true;
+      clearTimeout(timer);
+      timer = setTimeout(() => (readerNudge = false), 3000);
+    };
+    addEventListener('keydown', onKey, true);
+    return () => { removeEventListener('keydown', onKey, true); clearTimeout(timer); readerNudge = false; };
+  });
   $effect(() => {
     if (!collabUnkept) {
       unkeptTold = false;
@@ -2368,18 +2400,22 @@
     </div>
     <div class="sb-center">
       <!-- The body editor, not activeEditor: a header/footer zone has no paragraph language. -->
-      <LanguagePicker value={documentLanguage} other={documentLanguageOther} onChange={setDocumentLanguage} {editor} {tick} />
+      <ReadGate><LanguagePicker value={documentLanguage} other={documentLanguageOther} onChange={setDocumentLanguage} {editor} {tick} /></ReadGate>
       <GrammarToggle value={documentLanguage} other={documentLanguageOther} {editor} {tick} />
     </div>
     <div class="sb-right">
     {#if embedded && attribution}<PoweredBy />{/if}
     {#if sessionView && sessionView.status !== 'closed'}
       <!-- A paused binding takes the button over until an update fits again. -->
-      <button class="collab-btn" class:paused={sessionView.paused} data-status={sessionView.status} aria-live="polite" onclick={() => (collabOpen = true)}
-        title={sessionView.paused ? t().collab.pausedHint : t().collab.status[sessionView.status]}>
+      <!-- A reader's button says so; readers show as rings beside the writers' dots. -->
+      <button class="collab-btn" class:paused={sessionView.paused} class:reading={sessionView.reading} data-status={sessionView.status} aria-live="polite" onclick={() => (collabOpen = true)}
+        title={sessionView.paused ? t().collab.pausedHint : sessionView.reading ? t().collab.readingHint : t().collab.status[sessionView.status]}>
         {#each sessionView.peers as p (p.id)}<span class="collab-dot" style:background={p.color} title={p.name}></span>{/each}
-        {sessionView.paused ? t().collab.paused : sessionView.status === 'live' ? t().collab.peers(sessionView.peers.length) : t().collab.status[sessionView.status]}
+        {#each sessionView.readers as p (p.id)}<span class="collab-dot ring" style:border-color={p.color} title={`${p.name} · ${t().collab.readingAlong}`}></span>{/each}
+        {sessionView.paused ? t().collab.paused : sessionView.reading && sessionView.status === 'live' ? t().collab.readOnly
+          : sessionView.status === 'live' ? t().collab.peers(sessionView.peers.length + sessionView.readers.length) : t().collab.status[sessionView.status]}
       </button>
+      {#if readerNudge}<span class="collab-hint" role="status" data-hint="reading">{t().collab.readingNudge}</span>{/if}
     {/if}
     <BusyIndicator {editor} task={busyTask} progress={busyProgress} />
     <div class="zoom-controls">
@@ -3089,7 +3125,25 @@
   }
   .collab-btn:hover { background: var(--color-btn-hover); }
   .collab-btn.paused { color: var(--color-primary); font-weight: 600; box-shadow: inset 0 0 0 1px var(--color-primary); }
-  .collab-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .collab-btn.reading { box-shadow: inset 0 0 0 1px var(--color-border); }
+  .collab-dot { width: 8px; height: 8px; border-radius: 50%; box-sizing: border-box; }
+  .collab-dot.ring { border: 2px solid; }
+  /* Above the status bar's right end, where the session button is; it takes no focus. */
+  .collab-hint {
+    position: fixed;
+    right: 16px;
+    bottom: 34px;
+    z-index: 50;
+    padding: 5px 10px;
+    border: 1px solid var(--w-border-strong);
+    border-radius: 6px;
+    background: var(--w-surface);
+    color: var(--w-text);
+    box-shadow: var(--w-menu-shadow);
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    pointer-events: none;
+  }
 
   .wordcount-btn {
     border: none;

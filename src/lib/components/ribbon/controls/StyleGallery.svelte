@@ -166,7 +166,8 @@
     overflow: hidden;
   }
 
-  .tile:hover { border-color: var(--w-accent); background: var(--w-hover); }
+  .tile:hover:not(:disabled) { border-color: var(--w-accent); background: var(--w-hover); }
+  .tile:disabled, .gallery-more:disabled { opacity: 0.4; cursor: default; }
   .tile.active { border-color: var(--w-accent); background: var(--w-accent-soft, #e8f1fb); }
 
   /* Takes the height the name leaves over and centres the sample in it, so the
@@ -207,7 +208,7 @@
     cursor: pointer;
   }
 
-  .gallery-more:hover { background: var(--w-hover); }
+  .gallery-more:hover:not(:disabled) { background: var(--w-hover); }
 
   .show-all {
     color: var(--w-text-dim);

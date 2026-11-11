@@ -5,10 +5,10 @@ export const embedded = (() => {
   try { return new URLSearchParams(location.search).has('embed'); } catch { return false; }
 })();
 
-// `#collab=<key>`: this tab joins a shared session (`collab/session.ts`). It keeps no
-// copy of its own, like an embedded editor: the session holds the document.
+// `#collab=<key>` or `#view=<keys>`: this tab joins a shared session (`collab/key.ts`), as
+// `collab=…`/`view=…`. It keeps no copy of its own, like an embedded editor.
 export const collabKey = (() => {
-  try { return /(?:^#|&)collab=([^&]*)/.exec(location.hash)?.[1] ?? null; } catch { return null; }
+  try { return /(?:^#|&)((?:collab|view)=[^&]*)/.exec(location.hash)?.[1] ?? null; } catch { return null; }
 })();
 
 // The "Powered by EdenText" notice embedding must keep (NOTICE.md); only a

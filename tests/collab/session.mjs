@@ -6,7 +6,9 @@
 // lays the pages out differently. The relay passes at most 1 MiB per frame, so a picture
 // and a late joiner's copy go in parts; a line that keeps breaking stops showing `live`.
 // When the starter leaves, the others are told; a joiner leaving keeps its copy as a
-// document of this browser or drops it, and a link to an empty room says so.
+// document of this browser or drops it, and a link to an empty room says so. A reader by
+// the read link follows and changes nothing, nor do its forged or replayed frames; readers
+// count toward the room's limit, alone give a newcomer nothing, and may keep a copy.
 // Any engine (BROWSER).
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -23,7 +25,7 @@ const seen = [];
 const FRAME = 1 << 20;
 const BEAT = 2000;
 const PING = 5000;
-const relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, ping: PING, tap: (d) => seen.push(Buffer.from(d)) });
+let relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, ping: PING, tap: (d) => seen.push(Buffer.from(d)) });
 // A line to the relay that can go silent without a close, as under a closed laptop lid.
 const STALL_PORT = +(process.env.COLLAB_STALL_PORT ?? RELAY_PORT + 5);
 const stall = { on: false };
@@ -95,6 +97,13 @@ const settle = (page) => page.waitForTimeout(900);
 const body = (page) => page.locator('.tiptap-host .tiptap').first();
 // The caret at the body's start or end, where the keys go next.
 // The click's own selection lands a moment later; the caret is placed after it.
+// Whether each control is disabled (null when absent), and the spell check's squiggles.
+const disabled = (page, sels) => page.evaluate((list) => list.map((q) => document.querySelector(q)?.matches(':disabled') ?? null), sels);
+const EDITS = ['[data-cmd="bold"]', '[data-cmd="paste"]', '[data-cmd="replace"]', '[data-cmd="fontFamily"] input', '[data-cmd="orderedList"]'];
+const squiggles = (page) => page.evaluate(() => {
+  const st = document.querySelector('.tiptap-host .tiptap').editor.state;
+  return st.plugins.find((p) => p.key.startsWith('spellCheck$'))?.getState(st)?.set.find().length ?? -1;
+});
 const caret = async (page, where) => {
   await body(page).click();
   await page.waitForTimeout(150);
@@ -598,6 +607,183 @@ try {
     `a busy repairer stays present for the others ("${lateHeld}", repairers before ${solo}, others after 4.5 s ${second})`);
   await gus.close();
 
+  // Reading along (`#view=`): the reader gets the document live and changes nothing; the
+  // others list it by name only. Forged or replayed frames from a patched reader change no
+  // writer's document, zones or carets, also at a newcomer that never saw their sender.
+  {
+    const viewUrl = await a.evaluate(() => window.__collab.session.viewLink);
+    check(/#view=[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}$/.test(viewUrl) && !viewUrl.includes(link.slice(link.indexOf('=') + 1)),
+      'the starter has a read link without the write key');
+    const r = await client('Rita');
+    await joinLink(r, viewUrl);
+    // Every frame reaching the reader, kept to replay; on an ask, forged offers go back.
+    await r.evaluate(() => {
+      window.__got = [];
+      window.__collab.session.debug.tap = (d) => {
+        window.__got.push(d.slice());
+        if (d[0] === 0 && window.__onAsk) window.__onAsk(new DataView(d.buffer, d.byteOffset).getUint32(1));
+      };
+    });
+    let vr = await view(r);
+    va = await view(a);
+    check(same(va, vr) && await hfShown(r) === await hfShown(a) && await sheet(r) === await sheet(a),
+      `a reader gets the document, pages, zones, styles and pictures (${brief(vr)})`);
+    await caret(a, 'end');
+    await a.keyboard.type(' Lambda');
+    await settle(a);
+    await r.waitForTimeout(600);
+    vr = await view(r);
+    va = await view(a);
+    const lists = await a.evaluate(() => [window.__collab.view().readers.map((x) => x.name).join(), window.__collab.view().peers.map((x) => x.name).sort().join()]);
+    const rv = await r.evaluate(() => ({ reading: window.__collab.view().reading, peers: window.__collab.view().peers.length, local: window.__collab.session.awareness.getLocalState() }));
+    check(vr.json === va.json && va.text.endsWith('Lambda') && lists[0] === 'Rita' && lists[1] === 'Ben,Cleo' && rv.reading && rv.peers === 3 && rv.local === null,
+      `typing reaches the reader, listed as reading along, not as a writer (${lists}; ${JSON.stringify(rv)})`);
+    // The starter's dialog offers both links, labelled apart; the reader's only the read link.
+    const links = (page) => page.evaluate(() => [...document.querySelectorAll('dialog[open] [data-link]')]
+      .map((l) => ({ which: l.dataset.link, label: l.querySelector('span').textContent, url: l.querySelector('input').value })));
+    await a.click('.statusbar .collab-btn');
+    const aLinks = await links(a);
+    const aReaders = await a.evaluate(() => [...document.querySelectorAll('dialog[open] li[data-reader]')].map((li) => li.textContent).join());
+    await a.click('dialog[open] .primary');
+    await r.click('.statusbar .collab-btn');
+    const rLinks = await links(r);
+    const rPage = await r.evaluate(() => ({ html: document.body.innerHTML, bar: document.querySelector('.statusbar .collab-btn').textContent.trim() }));
+    await r.click('dialog[open] .primary');
+    check(aLinks.map((l) => `${l.which}:${l.url}`).join() === `edit:${link},view:${viewUrl}` && aLinks[0].label !== aLinks[1].label && /Rita.*reading along/.test(aReaders)
+      && rLinks.length === 1 && rLinks[0].which === 'view' && rLinks[0].url === viewUrl && !rPage.html.includes(link.slice(link.indexOf('=') + 1)) && rPage.bar === 'Read only',
+      `the starter's dialog shows a write and a read link and the reader as reading along; the reader's only the read link (${aLinks.map((l) => l.label)}; ${aReaders}; ${rLinks.map((l) => l.which)}; "${rPage.bar}")`);
+
+    // Keys, a paste, commands as a menu runs them, undo, a header, the assistant.
+    const SIGNED = [1, 2, 3, 5, 6, 10];
+    const signedSent = () => r.evaluate((k) => k.reduce((n, i) => n + window.__collab.session.stats.sent[i], 0), SIGNED);
+    const before = va.json;
+    await caret(r, 'end');
+    await r.keyboard.type('Zed');
+    const nudged = await r.isVisible('.collab-hint[data-hint="reading"]');
+    await r.keyboard.press('Enter');
+    await r.keyboard.press(`${MOD}+b`);
+    await r.keyboard.press(`${MOD}+z`);
+    const tried = await r.evaluate(async () => {
+      const ed = document.querySelector('.tiptap-host .tiptap').editor;
+      const dt = new DataTransfer();
+      dt.setData('text/plain', 'Pasted');
+      ed.view.dom.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      const ran = [ed.commands.insertContent('Cmd'), ed.chain().selectAll().toggleBold().run(), ed.commands.setTextSelection(1) && ed.commands.deleteSelection()];
+      ed.view.dispatch(ed.state.tr.insertText('Raw', 1));
+      return { editable: ed.isEditable, ai: (await import('/src/lib/storage/ai.svelte.ts')).aiHostOff(), ran: ran.length };
+    });
+    await openZone(r, 'header');
+    const zone = await editing(r);
+    await settle(r);
+    await a.waitForTimeout(600);
+    const after = [await view(a), await view(b), await view(c), await view(r)];
+    check(after.every((v) => v.json === before) && !tried.editable && tried.ai && !zone && await signedSent() === 0 && nudged,
+      `a reader changes nothing by keys, paste, commands, undo or a header, is told why when typing, has no assistant and signs nothing (${JSON.stringify(tried)}, zone "${zone}", hint ${nudged}, ${after.map(brief).join(' | ')})`);
+    // The reader's controls that edit are greyed; find, statistics and zoom still work,
+    // the context menu offers nothing that edits, and the spell check marks nothing.
+    const homeOff = await disabled(r, [...EDITS, '[data-cmd="find"]']);
+    await r.click('.ribbon-tab[data-tab="review"]');
+    const reviewOff = await disabled(r, ['[data-cmd="newComment"]', '[data-cmd="trackChanges"]', '[data-cmd="wordCount"]']);
+    await r.click('[data-cmd="wordCount"]');
+    const stats = await r.isVisible('.stats-menu');
+    await r.keyboard.press('Escape');
+    const zoom0 = await r.textContent('.zoom-pct');
+    await r.click('.ribbon-tab[data-tab="view"]');
+    await r.click('[data-cmd="zoomIn"]');
+    const zoom1 = await r.textContent('.zoom-pct');
+    await r.click('.ribbon-tab[data-tab="home"]');
+    await r.click('.tiptap-host .tiptap p', { button: 'right' });
+    const menuLive = await r.evaluate(() => [...document.querySelectorAll('.cm-item')].filter((b) => !b.disabled && b.getAttribute('aria-disabled') !== 'true').map((b) => b.textContent.trim()));
+    await r.keyboard.press('Escape');
+    const marksR = await squiggles(r);
+    const marksA = await squiggles(a);
+    check(homeOff.slice(0, -1).every((x) => x === true) && homeOff.at(-1) === false && reviewOff.join() === 'true,true,false' && stats && zoom1 !== zoom0 && !menuLive.length && marksR === 0 && marksA > 0,
+      `a reader's editing controls and menu entries are greyed, find, statistics and zoom work, and no word is marked (${homeOff}; ${reviewOff}; stats ${stats}; ${zoom0} → ${zoom1}; menu ${menuLive}; squiggles ${marksR} vs ${marksA})`);
+
+    // Forged frames, sealed with the read key: unsigned, with a random signature, or a real
+    // frame altered. Updates add a paragraph or empty the first; the presence holds a zone.
+    const writers = await r.evaluate(() => [...window.__collab.session.awareness.getStates().values()].map((s) => s.peer));
+    const forge = () => r.evaluate(async (writers) => {
+      const { Y } = await import('/src/lib/editor/undoYjs.ts');
+      const d = window.__collab.session.debug;
+      const u32 = (n) => { const x = new Uint8Array(4); new DataView(x.buffer).setUint32(0, n); return x; };
+      const cat = (...p) => { const o = new Uint8Array(p.reduce((n, x) => n + x.length, 0)); let at = 0; for (const x of p) { o.set(x, at); at += x.length; } return o; };
+      const sig = () => crypto.getRandomValues(new Uint8Array(64));
+      const copy = new Y.Doc();
+      Y.applyUpdate(copy, Y.encodeStateAsUpdate(d.ydoc));
+      const sv0 = Y.encodeStateVector(copy);
+      copy.getXmlFragment('body').delete(0, 1);
+      const del = Y.encodeStateAsUpdate(copy, sv0);
+      const fresh = new Y.Doc();
+      const p = new Y.XmlElement('paragraph');
+      p.insert(0, [new Y.XmlText('EVIL')]);
+      fresh.getXmlFragment('body').insert(0, [p]);
+      const add = Y.encodeStateAsUpdate(fresh);
+      const vu = (n) => { const o = []; while (n > 127) { o.push((n & 127) | 128); n = Math.floor(n / 128); } o.push(n); return o; };
+      const aw = (id, clock, state) => { const j = new TextEncoder().encode(JSON.stringify(state)); return new Uint8Array([...vu(1), ...vu(id), ...vu(clock), ...vu(j.length), ...j]); };
+      const mallory = { peer: writers[0], user: { name: 'Mallory', color: '#ff0000' }, zone: 'hf:0:footer', keeps: true, rank: 0 };
+      const real = window.__got.find((x) => x[0] === 1 && x.length > 80);
+      const bent = real.slice();
+      bent[2] ^= 1;
+      const frames = [
+        cat([1], add), cat([1], del), cat([1], add, sig()), bent,
+        cat([2], aw(4242, 99, mallory)), cat([2], aw(4243, 99, mallory), sig()),
+        cat([6], u32(0), u32(1), new TextEncoder().encode('k'), u32(0), new TextEncoder().encode('data:image/png;base64,AAAA')),
+        cat([8], u32(77), new TextEncoder().encode(JSON.stringify({ name: 'Rita', color: '#00f', zone: 'hf:0:header', peer: writers[0] }))),
+      ];
+      for (const to of writers) {
+        frames.push(cat([5], u32(to), add), cat([5], u32(to), del, sig()), cat([6], u32(to), u32(1), new TextEncoder().encode('k'), u32(0), sig()));
+        frames.push(cat([3], u32(to), u32(77), u32(sv0.length), sv0, del), cat([3], u32(to), u32(77), u32(sv0.length), sv0, del, sig()));
+      }
+      for (const f of frames) d.send(f, 0);
+      // A newcomer's ask gets the same offers, the deleting ones, and every frame replayed.
+      window.__onAsk = (to) => {
+        d.send(cat([3], u32(to), u32(77), u32(sv0.length), sv0, del), to);
+        d.send(cat([3], u32(to), u32(77), u32(sv0.length), sv0, del, sig()), to);
+        for (const f of window.__got) d.send(f, 0);
+      };
+      return frames.length;
+    }, writers);
+    const sentForged = await forge();
+    await a.waitForTimeout(1500);
+    const caretNames = (page) => page.evaluate(() => [...document.querySelectorAll('.ProseMirror-yjs-cursor')].map((x) => x.textContent).join());
+    const fa = [await view(a), await view(b), await view(c)];
+    const peersOf = (page) => page.evaluate(() => window.__collab.view().peers.map((x) => x.name).sort().join());
+    const readersOf = (page) => page.evaluate(() => window.__collab.view().readers.map((x) => x.name).join());
+    const marks = [await heldTag(a), await heldTag(b), await caretNames(a), await caretNames(b), await peersOf(a), await peersOf(b), await readersOf(a)];
+    check(fa.every((v) => v.json === before) && !marks[0] && !marks[1] && !/Mallory/.test(marks.join()) && marks[4] === 'Ben,Cleo' && marks[6] === 'Rita',
+      `${sentForged} forged frames change no writer's document, zone, caret or list, nor list a reader not there (${marks.join(' / ')}; ${fa.map(brief).join(' | ')})`);
+
+    // A writer holds the footer and lets it go while the reader records; replayed then, and
+    // after the writer left to a newcomer that never saw it, the footer stays free.
+    const w = await client('Walt');
+    await joinLink(w, link);
+    await openZone(w, 'footer');
+    await w.waitForTimeout(800);
+    const heldByWalt = await heldTag(a);
+    await w.keyboard.press('Escape');
+    await w.waitForTimeout(800);
+    await r.evaluate(() => { for (const f of window.__got) window.__collab.session.debug.send(f, 0); });
+    await a.waitForTimeout(1200);
+    const freeNow = await heldTag(a);
+    await w.context().close();
+    await a.waitForTimeout(1500);
+    const n = await client('Nora');
+    await joinLink(n, link);
+    await r.evaluate(() => { for (const f of window.__got) window.__collab.session.debug.send(f, 0); });
+    await n.waitForTimeout(2000);
+    const vn = await view(n);
+    va = await view(a);
+    const nMarks = [await heldTag(n), await peersOf(n), await caretNames(n), await heldTag(a)];
+    check(heldByWalt === 'Walt is editing' && !freeNow && vn.json === va.json && !nMarks[0] && !nMarks[3] && !/Walt|Mallory/.test(nMarks.join()),
+      `replayed presence frames hold no zone, at a newcomer neither ("${heldByWalt}"; ${nMarks.join(' / ')}; ${brief(vn)})`);
+    await n.context().close();
+    await r.context().close();
+    await a.waitForTimeout(1000);
+    const left = await a.evaluate(() => window.__collab.view().readers.length);
+    check(left === 0, `a reader that goes leaves the list (${left})`);
+  }
+
   await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');
   const unkept = (page) => page.waitForSelector('.collab-notice[data-notice="unkept"]', { timeout: 10_000 }).then(() => true, () => false);
@@ -788,6 +974,69 @@ try {
   const aNew = await a.evaluate(() => ({ text: document.querySelector('.tiptap-host .tiptap').editor.state.doc.textContent, collab: !!window.__collab.view() }));
   check(!aNew.text && !aNew.collab && await status(k) === 'live' && (await view(k)).json === kShared.json && !!kShared.text,
     `the starter choosing New leaves first and starts empty, the joiner keeps the document (${JSON.stringify(aNew)})`);
+
+  // Readers count toward the relay's limit. With only readers left, the one there hears it
+  // and a newcomer finds the room empty; the reader keeps its copy and can edit it.
+  await k.context().close();
+  await relay.close();
+  relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, ping: PING, maxPeers: 6 });
+  await openDoc(a, '16-hf-variants.odt');
+  const link4 = await start(a);
+  const view4 = await a.evaluate(() => window.__collab.session.viewLink);
+  const wes = await client('Wes');
+  await joinLink(wes, link4);
+  const rs = [];
+  for (const name of ['Rhea', 'Rolf', 'Ruth', 'Rudi']) {
+    rs.push(await client(name));
+    await joinLink(rs.at(-1), view4);
+  }
+  const listed = await a.waitForFunction(() => window.__collab.view().readers.length === 4, null, { timeout: 15_000 }).then(() => true, () => false);
+  const sven = await client('Sven');
+  await sven.goto(view4, { waitUntil: 'load' });
+  const full = await sven.waitForSelector('dialog[open] [data-status="full"]', { timeout: 20_000 }).then(() => true, () => false);
+  const counts = await a.evaluate(() => [window.__collab.view().peers.length, window.__collab.view().readers.length]);
+  check(listed && full && counts.join() === '1,4', `two writers and four readers fill the room: a seventh is refused (${full}; ${counts})`);
+  await sven.context().close();
+  for (const p of rs.slice(1)) await p.context().close();
+  const rhea = rs[0];
+  const shared4 = await view(rhea);
+  await wes.click('.statusbar .collab-btn');
+  await wes.click('dialog[open] [data-cmd="collabLeave"]');
+  await wes.click('dialog[open] [data-cmd="collabDiscard"]');
+  await a.click('.statusbar .collab-btn');
+  await a.click('dialog[open] [data-cmd="collabLeave"]');
+  const unwritten = await rhea.waitForSelector('.collab-notice[data-notice="unwritten"]', { timeout: 15_000 }).then(() => true, () => false);
+  const lars = await client('Lars');
+  await lars.goto(view4, { waitUntil: 'load' });
+  const emptyRoom = await lars.waitForSelector('dialog[open] [data-status="empty"]', { timeout: 20_000 }).then(() => true, () => false);
+  const larsText = await lars.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.state.doc.textContent);
+  check(unwritten && emptyRoom && !larsText && await status(rhea) === 'live' && (await view(rhea)).json === shared4.json,
+    `with every writer gone the reader hears so and keeps its state; a reader joining then finds the room empty (${unwritten}, ${emptyRoom}, "${larsText.slice(0, 20)}")`);
+  await lars.context().close();
+  await rhea.evaluate(() => { window.__before = true; });
+  await rhea.click('.collab-notice [data-cmd="collabDetails"]');
+  await rhea.click('dialog[open] [data-cmd="collabLeave"]');
+  await rhea.click('dialog[open] [data-cmd="collabKeep"]');
+  await rhea.waitForFunction(() => !window.__before && document.querySelector('.tiptap-host .tiptap')?.editor, null, { timeout: 30_000 });
+  await rhea.waitForTimeout(2500);
+  const keptR = await view(rhea);
+  const rheaOff = await disabled(rhea, EDITS);
+  await caret(rhea, 'end');
+  await rhea.keyboard.type(' Qwzxv Mine');
+  await settle(rhea);
+  await rhea.waitForTimeout(1500);
+  const mine = await rhea.evaluate(async () => ({
+    editable: document.querySelector('.tiptap-host .tiptap').editor.isEditable,
+    text: document.querySelector('.tiptap-host .tiptap').editor.state.doc.textContent,
+    hash: location.hash,
+    reading: (await import('/src/lib/collab/reading.svelte.ts')).reading(),
+    ai: (await import('/src/lib/storage/ai.svelte.ts')).aiHostOff(),
+    bar: !!document.querySelector('.statusbar .collab-btn'),
+  }));
+  mine.controls = rheaOff.every((x) => x === false);
+  mine.squiggles = await squiggles(rhea);
+  check(same(srcless(keptR), srcless(shared4)) && mine.editable && mine.text.endsWith('Mine') && !mine.hash && !mine.reading && !mine.ai && !mine.bar && mine.controls && mine.squiggles > 0,
+    `a reader keeping its copy reloads into an editable document of its own, its controls and squiggles back (${brief(keptR)}; ${JSON.stringify({ ...mine, text: mine.text.slice(-12) })})`);
 
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (err) {

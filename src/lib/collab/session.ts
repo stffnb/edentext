@@ -4,7 +4,8 @@ import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwareness
 import { yCursorPlugin, yCursorPluginKey } from '@tiptap/y-tiptap';
 import { attachYjsUndo, type StoreCodec, type YjsUndo } from '../editor/undoYjs';
 import { openChannel, type ChannelStatus } from './channel';
-import { keyBytes, newKey, sessionLink } from './key';
+import { newKey, opened, sessionLink, signed, viewLink, writeKeys, type SessionKeys } from './key';
+import { readOnlyFilter, readingKey, setReading } from './reading.svelte';
 import { shareZones } from './zones.svelte';
 import { PICTURE, WANT, keyPictures, picturesKey, sessionPictures, unkeyPictures } from './pictures';
 import { IDB_SRC } from '../storage/imageStore';
@@ -13,7 +14,9 @@ import { IDB_SRC } from '../storage/imageStore';
 // to the others in the room. Frames are one kind byte and its payload; the relay sees none
 // of it. Edits leave and arrive in batches of 50 ms, always as a task of their own.
 // Ids are random per session; frames with a `to` that is not this client are ignored, and
-// a relay that knows ids passes them to that client alone (`channel.ts`).
+// a relay that knows ids passes them to that client alone (`channel.ts`). Every frame that
+// changes a receiver's state is signed with the writers' key; a reader (`#view=`) can only
+// ask, and others take only its name and colour (docs/architecture/collab.md).
 
 const ASK = 0;      // [from]: everyone offers what they have
 const UPDATE = 1;   // a Yjs update for everyone
@@ -22,7 +25,14 @@ const OFFER = 3;    // [to][from][length][state vector][delete set as an update]
 const PULL = 4;     // [to][from][state vector]: the receiver answers with what it lacks
 const ANSWER = 5;   // [to][Yjs update]
 // PICTURE and WANT carry the pictures the doc names by key (`pictures.ts`).
-const DIRECTED = new Set([OFFER, PULL, ANSWER, PICTURE, WANT]); // the first number is `to`
+const VIEWER = 8;   // [from][name and colour as JSON, none on leaving]: a reader's presence
+const PING = 9;     // [to][from][nonce]: answer to show the sender is in the room now
+const PONG = 10;    // [to][from][nonce], a writer's answer
+const ECHO = 11;    // [to][from][nonce], a reader's answer
+const DIRECTED = new Set([OFFER, PULL, ANSWER, PICTURE, WANT, PING, PONG, ECHO]); // the first number is `to`
+const SIGNED = new Set([UPDATE, PRESENCE, OFFER, ANSWER, PICTURE, PONG]);
+const MAX_HELD = 8;      // presence frames held per peer until it answers a ping
+const MAX_KNOWN = 32;     // readers listed, and writers awaiting a ping
 const BATCH_MS = 50;
 const SETTLE_MS = 300;  // how long a sync waits for late offers after the first
 const STALL_MS = 10_000; // a sync that hears nothing this long starts over
@@ -43,13 +53,19 @@ export type SessionStatus =
 
 /** `keeps`: this client stores the document (the starter); a joiner holds it in its tab only. */
 export type Peer = { id: number; name: string; color: string; keeps: boolean };
+/** Someone reading along: listed by name, with no caret and no zone. */
+export type Reader = { id: number; name: string; color: string };
 
 /**
  * `missing`: pictures no one here could send, shown as grey boxes. `paused`: the shared doc
  * does not fit this editor, which neither edits nor writes until an update fits again.
- * `dropped`: held edits that no longer fitted and went, counted for a notice.
+ * `dropped`: held edits that no longer fitted and went, counted for a notice. `reading`: this
+ * tab only reads along; `link` is then the read link too. `peers` are the writers.
  */
-export type SessionView = { status: SessionStatus; peers: Peer[]; link: string; keeps: boolean; kept: boolean; missing: number; paused: boolean; dropped: number };
+export type SessionView = {
+  status: SessionStatus; peers: Peer[]; readers: Reader[]; link: string; viewLink: string; reading: boolean;
+  keeps: boolean; kept: boolean; missing: number; paused: boolean; dropped: number;
+};
 
 /** What the session needs from the app. */
 export type SessionHost = {
@@ -66,10 +82,13 @@ export type SessionHost = {
 
 export type Session = {
   link: string;
+  viewLink: string;
   awareness: Awareness;
   leave(): void;
   /** Frames sent per kind, for the tests' idle check. */
   stats: { sent: number[] };
+  /** Dev builds: sends a frame as is and shows each arriving one, for the forged-frame test. */
+  debug?: { send(plain: Uint8Array, to?: number): void; tap: ((plain: Uint8Array) => void) | null; ydoc: Y.Doc };
 };
 
 type Join = (codec: StoreCodec) => Promise<YjsUndo | 'version' | null>;
@@ -93,6 +112,19 @@ function holds(has: Deletes, all: Deletes): boolean {
   return true;
 }
 
+/** The `peer` of each state an awareness update sets, null where one has none. */
+function presencePeers(u: Uint8Array): (number | null)[] {
+  let at = 0;
+  const uint = () => { let n = 0, m = 1, b; do { b = u[at++]; n += (b & 127) * m; m *= 128; } while (b & 128); return n; };
+  const out: (number | null)[] = [];
+  for (let n = uint(); n > 0; n--) {
+    uint(); uint();
+    const len = uint(), state = JSON.parse(new TextDecoder().decode(u.subarray(at, at += len)));
+    if (state !== null) out.push(typeof state.peer === 'number' ? state.peer : null);
+  }
+  return out;
+}
+
 function frame(kind: number, ...parts: (number | Uint8Array)[]): Uint8Array {
   const out = new Uint8Array(1 + parts.reduce<number>((n, p) => n + (typeof p === 'number' ? 4 : p.length), 0));
   const v = new DataView(out.buffer);
@@ -104,10 +136,14 @@ function frame(kind: number, ...parts: (number | Uint8Array)[]): Uint8Array {
   return out;
 }
 
-function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bound: Bind | null, join: Join | null): Session {
+function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.Doc, bound: Bind | null, join: Join | null): Session {
   const awareness = new Awareness(ydoc);
-  const link = sessionLink(key);
-  const stats = { sent: [0, 0, 0, 0, 0, 0, 0, 0] };
+  const reading = !keys.sign;
+  const view = viewLink(keys);
+  const link = keys.secret ? sessionLink(keys.secret) : view;
+  const stats = { sent: new Array<number>(ECHO + 1).fill(0) };
+  // A reader has no awareness state: no caret, no zone, never asked for a picture.
+  if (reading) { awareness.setLocalState(null); setReading(editor, true); }
   // Never 0, the PICTURE frame's address for everyone.
   const me = crypto.getRandomValues(new Uint32Array(1))[0] || 1;
   let line: ChannelStatus = 'connecting';
@@ -127,20 +163,24 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     const ranks = [...awareness.getStates()].filter(([id]) => id !== ydoc.clientID).map(([, s]) => s.rank).filter((r) => typeof r === 'number');
     const rank = join ? Math.max(0, ...ranks) + 1 : 0;
     awareness.setLocalStateField('rank', rank);
-    repairer = () => [...awareness.getStates()].every(([id, s]) =>
+    repairer = reading ? () => false : () => [...awareness.getStates()].every(([id, s]) =>
       id === ydoc.clientID || typeof s.rank !== 'number' || s.rank > rank || (s.rank === rank && id > ydoc.clientID));
     b.setRepairer(repairer);
     b.onPause((p) => { paused = p; changed(); });
     b.onDrop(() => { dropped++; changed(); });
-    editor.registerPlugin(yCursorPlugin(awareness), (p, plugins) => [...plugins, p, pictures.plugin]);
+    editor.registerPlugin(yCursorPlugin(awareness), (p, plugins) => [...plugins, p, pictures.plugin, ...(reading ? [readOnlyFilter()] : [])]);
   };
 
   const keeps = !join;
   const peers = (): Peer[] => [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.user)
     .map(([id, s]) => ({ id, name: String(s.user.name ?? ''), color: String(s.user.color ?? ''), keeps: s.keeps === true }));
+  const readers = new Map<number, Reader>();
   const changed = () => {
     const all = peers();
-    host.onChange({ status, peers: all, link, keeps, kept: keeps || all.some((p) => p.keeps), missing: pictures.missing(), paused, dropped });
+    host.onChange({
+      status, peers: all, readers: [...readers.values()], link, viewLink: view, reading,
+      keeps, kept: keeps || all.some((p) => p.keeps), missing: pictures.missing(), paused, dropped,
+    });
   };
   // Waiting turns into `empty` after EMPTY_MS and stays so until someone comes.
   let emptyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -151,14 +191,83 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     if (status !== s) { status = s; changed(); }
   };
 
-  const settled = (): SessionStatus => binding ? 'live' : peerCount <= 1 ? 'waiting' : 'connecting';
+  // Nobody but readers here: no one can give the doc, as in an empty room.
+  const settled = (): SessionStatus => binding ? 'live'
+    : peerCount <= 1 || (readers.size >= peerCount - 1 && [...awareness.getStates().keys()].every((id) => id === ydoc.clientID))
+      ? 'waiting' : 'connecting';
 
+  // A reader cannot sign, so what it would sign is never sent.
   const send = (kind: number, ...parts: (number | Uint8Array)[]) => {
+    if (reading && SIGNED.has(kind)) return;
     stats.sent[kind]++;
-    channel.send(frame(kind, ...parts), DIRECTED.has(kind) ? parts[0] as number : 0);
+    const plain = frame(kind, ...parts);
+    channel.send(SIGNED.has(kind) ? signed(keys.sign!, plain) : plain, DIRECTED.has(kind) ? parts[0] as number : 0);
   };
+  const enc = new TextEncoder();
   // A new clock: others that dropped this client when its line broke take it back.
-  const present = () => awareness.setLocalState(awareness.getLocalState());
+  const present = () => reading
+    ? send(VIEWER, me, enc.encode(JSON.stringify(host.user())))
+    : awareness.setLocalState(awareness.getLocalState());
+
+  // A signed presence may be replayed from a writer long gone, so it takes effect only once
+  // its `peer` answered a fresh nonce (PING, signed PONG), until the relay says it is gone.
+  // A reader is listed once its id answered (ECHO), so nobody lists one not in the room.
+  const live = new Set<number>();
+  const held = new Map<number, Uint8Array[]>();
+  const asked = new Map<number, Reader>();
+  const pinged = new Map<number, { nonce: Uint8Array; at: number }>();
+  const ping = (p: number) => {
+    const last = pinged.get(p);
+    if (last && Date.now() - last.at < 5000) return;
+    const nonce = crypto.getRandomValues(new Uint8Array(16));
+    pinged.set(p, { nonce, at: Date.now() });
+    send(PING, p, me, nonce);
+  };
+  const fresh = (p: number, nonce: Uint8Array) => {
+    const want = pinged.get(p)?.nonce;
+    if (!want || want.length !== nonce.length || want.some((b, i) => b !== nonce[i])) return false;
+    pinged.delete(p);
+    return true;
+  };
+  const presence = (u: Uint8Array) => {
+    const ps = presencePeers(u);
+    if (ps.includes(null)) return;
+    const waiting = (ps as number[]).filter((p) => !live.has(p));
+    if (!waiting.length) return applyAwarenessUpdate(awareness, u, REMOTE);
+    for (const p of new Set(waiting)) {
+      if (!held.has(p) && held.size >= MAX_KNOWN) continue;
+      const list = held.get(p) ?? [];
+      held.set(p, [...list, u.slice()].slice(-MAX_HELD));
+      ping(p);
+    }
+  };
+  const answered = (p: number, nonce: Uint8Array) => {
+    if (!fresh(p, nonce)) return;
+    live.add(p);
+    const list = held.get(p) ?? [];
+    held.delete(p);
+    for (const u of list) presence(u);
+  };
+  const listed = () => {
+    if (line === 'open' && status !== 'version') setStatus(settled());
+    changed();
+  };
+  const viewer = (from: number, body: Uint8Array) => {
+    if (!body.length) { asked.delete(from); readers.delete(from); return listed(); }
+    const u = JSON.parse(new TextDecoder().decode(body));
+    const entry = { id: from, name: String(u?.name ?? '').slice(0, 64), color: String(u?.color ?? '').slice(0, 32) };
+    if (readers.has(from)) { readers.set(from, entry); return listed(); }
+    if (!asked.has(from) && asked.size >= MAX_KNOWN) return;
+    asked.set(from, entry);
+    ping(from);
+  };
+  const echoed = (from: number, nonce: Uint8Array) => {
+    const entry = asked.get(from);
+    if (!entry || readers.size >= MAX_KNOWN || !fresh(from, nonce)) return;
+    asked.delete(from);
+    readers.set(from, entry);
+    listed();
+  };
   const pictures = sessionPictures({
     me, send, heard: () => channel.heard(), changed: () => changed(), others: () => peerCount > 1,
     arrived: (k) => binding?.refresh(IDB_SRC + k),
@@ -192,7 +301,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   // the editor once the doc it received carries a start file.
   let inbox: Uint8Array[] = [];
   let inTimer: ReturnType<typeof setTimeout> | undefined;
-  let answered = false;
+  let gotAnswer = false;
   const receive = (u: Uint8Array) => { inbox.push(u.slice()); inTimer ??= setTimeout(flush, BATCH_MS); };
   // Before telling others what this client has, what already arrived goes in.
   const applyInbox = () => {
@@ -204,7 +313,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   const flush = async () => {
     inTimer = undefined;
     applyInbox();
-    if (answered) { answered = false; if (round) { round.target = null; pull(); } }
+    if (gotAnswer) { gotAnswer = false; if (round) { round.target = null; pull(); } }
     if (joining && ydoc.getMap('meta').has('snapshot')) {
       const done = joining;
       joining = null;
@@ -280,39 +389,61 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     send(PULL, best, me, Y.encodeStateVector(ydoc));
   };
 
+  let tap: ((plain: Uint8Array) => void) | null = null;
+  const take = (plain: Uint8Array) => {
+    const kind = plain[0], v = new DataView(plain.buffer, plain.byteOffset, plain.byteLength);
+    if (kind === UPDATE) receive(plain.subarray(1));
+    else if (pictures.receive(plain)) return;
+    else if (kind === PRESENCE) presence(plain.subarray(1));
+    else if (kind === VIEWER) viewer(v.getUint32(1), plain.subarray(5));
+    else if (kind === ASK) {
+      if (reading) return;
+      applyInbox();
+      const sv = Y.encodeStateVector(ydoc);
+      send(OFFER, v.getUint32(1), me, sv.length, sv, Y.encodeStateAsUpdate(ydoc, sv));
+    } else if (v.getUint32(1) !== me) return;
+    else if (kind === PING) send(reading ? ECHO : PONG, v.getUint32(5), me, plain.subarray(9));
+    else if (kind === PONG) answered(v.getUint32(5), plain.subarray(9));
+    else if (kind === ECHO) echoed(v.getUint32(5), plain.subarray(9));
+    else if (kind === OFFER && round) {
+      const from = v.getUint32(5), n = v.getUint32(9);
+      const ds = plain.subarray(13 + n);
+      round.offers.set(from, { sv: Y.decodeStateVector(plain.subarray(13, 13 + n)), ds: Y.decodeUpdate(ds).ds });
+      round.deletes.push(ds.slice());
+      if (round.done) pull();
+      else if (round.offers.size >= peerCount - 1) settle();
+      else round.settle ??= setTimeout(settle, SETTLE_MS);
+    } else if (kind === PULL) {
+      if (reading) return;
+      applyInbox();
+      send(ANSWER, v.getUint32(5), Y.encodeStateAsUpdate(ydoc, plain.subarray(9)));
+    } else if (kind === ANSWER) {
+      gotAnswer = true;
+      receive(plain.subarray(5));
+    }
+  };
+
   const channel = openChannel({
-    url: host.relay, key: keyBytes(key)!, id: me,
-    onFrame(plain) {
-      if (status === 'version') return;
-      const kind = plain[0], v = new DataView(plain.buffer, plain.byteOffset, plain.byteLength);
-      if (kind === UPDATE) receive(plain.subarray(1));
-      else if (pictures.receive(plain)) return;
-      else if (kind === PRESENCE) applyAwarenessUpdate(awareness, plain.subarray(1), REMOTE);
-      else if (kind === ASK) {
-        applyInbox();
-        const sv = Y.encodeStateVector(ydoc);
-        send(OFFER, v.getUint32(1), me, sv.length, sv, Y.encodeStateAsUpdate(ydoc, sv));
-      } else if (v.getUint32(1) !== me) return;
-      else if (kind === OFFER && round) {
-        const from = v.getUint32(5), n = v.getUint32(9);
-        const ds = plain.subarray(13 + n);
-        round.offers.set(from, { sv: Y.decodeStateVector(plain.subarray(13, 13 + n)), ds: Y.decodeUpdate(ds).ds });
-        round.deletes.push(ds.slice());
-        if (round.done) pull();
-        else if (round.offers.size >= peerCount - 1) settle();
-        else round.settle ??= setTimeout(settle, SETTLE_MS);
-      } else if (kind === PULL) {
-        applyInbox();
-        send(ANSWER, v.getUint32(5), Y.encodeStateAsUpdate(ydoc, plain.subarray(9)));
-      } else if (kind === ANSWER) {
-        answered = true;
-        receive(plain.subarray(5));
-      }
+    url: host.relay, key: keys.read, id: me,
+    onFrame(data) {
+      if (status === 'version' || !data.length) return;
+      tap?.(data);
+      // Unsigned or badly signed, a frame of a writing kind is dropped, as is one cut short.
+      const plain = SIGNED.has(data[0]) ? opened(keys.verify, data) : data;
+      if (!plain) return;
+      try { take(plain); } catch { /* malformed */ }
     },
     onPeers(n, gone) {
       // A client whose line the relay saw end is dropped at once: no picture is asked of it, its
       // zone frees, its repairs move on. A presence merely late drops no one (a busy repairer
       // would get a second). Back on a new line, a client presents itself anew.
+      if (gone) {
+        live.delete(gone);
+        held.delete(gone);
+        asked.delete(gone);
+        pinged.delete(gone);
+        readers.delete(gone);
+      }
       if (gone) removeAwarenessStates(awareness, [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.peer === gone).map(([id]) => id), 'gone');
       // Someone came: tell them who we are; their sync sends them what they lack, and a
       // client still without the doc asks them. Someone left: a sync still waiting on
@@ -339,21 +470,24 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     },
   });
 
-  awareness.setLocalStateField('user', host.user());
+  // `peer` first: a presence without one is never taken.
   awareness.setLocalStateField('peer', me);
+  awareness.setLocalStateField('user', host.user());
   const unshareZones = shareZones(awareness);
   if (keeps) awareness.setLocalStateField('keeps', true);
   if (bound) bind(bound(pictures));
 
   // Leaving tells the others at once; a closed tab drops out after awareness's timeout.
   const goodbye = () => {
+    if (reading) return send(VIEWER, me);
     removeAwarenessStates(awareness, [ydoc.clientID], 'leave');
     send(PRESENCE, encodeAwarenessUpdate(awareness, [ydoc.clientID]));
   };
   addEventListener('pagehide', goodbye);
 
   return {
-    link, awareness, stats,
+    link, viewLink: view, awareness, stats,
+    ...(import.meta.env.DEV ? { debug: { send: (p: Uint8Array, to = 0) => channel.send(p, to), get tap() { return tap; }, set tap(f) { tap = f; }, ydoc } } : {}),
     leave() {
       removeEventListener('pagehide', goodbye);
       clearTimeout(outTimer);
@@ -366,7 +500,8 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       unshareZones();
       awareness.destroy();
       ydoc.off('update', onUpdate);
-      if (binding) editor.unregisterPlugin([yCursorPluginKey, picturesKey]);
+      if (binding) editor.unregisterPlugin([yCursorPluginKey, picturesKey, ...(reading ? [readingKey] : [])]);
+      if (reading) setReading(editor, false);
       binding?.detach();
       // Alone again, the document holds its pictures itself.
       const tr = binding && unkeyPictures(editor.state);
@@ -389,16 +524,16 @@ export async function startSession(editor: Editor, host: SessionHost): Promise<S
   // The start file carries the pictures; the shared doc names them by key.
   const keyed = keyPictures(editor.state);
   if (keyed) editor.view.dispatch(keyed);
-  return connect(editor, newKey(), host, ydoc, (codec) => attachYjsUndo(editor, ydoc, codec), null);
+  return connect(editor, writeKeys(newKey())!, host, ydoc, (codec) => attachYjsUndo(editor, ydoc, codec), null);
 }
 
 /**
- * Joins the session of `key`: once someone in the room has sent the doc, its start file
- * is loaded, the body bound to the Yjs doc and every store changed since put into effect.
+ * Joins the session of `keys` (`linkKeys`): once someone in the room has sent the doc, its
+ * start file is loaded, the body bound to the Yjs doc and every store changed since put into effect.
  */
-export function joinSession(editor: Editor, key: string, host: SessionHost): Session {
+export function joinSession(editor: Editor, keys: SessionKeys, host: SessionHost): Session {
   const ydoc = new Y.Doc();
-  return connect(editor, key, host, ydoc, null, async (codec) => {
+  return connect(editor, keys, host, ydoc, null, async (codec) => {
     const meta = ydoc.getMap('meta');
     if (meta.get('version') !== __APP_VERSION__) return 'version';
     if (!(await host.load(meta.get('snapshot') as Uint8Array, String(meta.get('name') ?? '')))) return null;
