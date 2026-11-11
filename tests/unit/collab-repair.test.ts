@@ -122,6 +122,66 @@ describe('repairs after concurrent edits in a shared doc', () => {
   }
 });
 
+// Concurrent deletions that leave a container empty where none fits: the repairer fills it
+// with a minimal child, nobody pauses, and what a third client adds to it meanwhile stays.
+const itemOf = (ed: Editor, text: string) => {
+  const $p = ed.state.doc.resolve(posOf(ed, text, 1));
+  return { from: $p.before($p.depth - 1), to: $p.after($p.depth - 1) };
+};
+const twoItems = (ed: Editor) => { ed.commands.setTextSelection(posOf(ed, 'Zeta.', 5)); ed.commands.splitListItem('listItem'); ed.commands.insertContent('Eta.'); };
+const takeFirst = (ed: Editor) => { ed.commands.deleteRange(itemOf(ed, 'Zeta.')); };
+const liftSecond = (ed: Editor) => { ed.commands.setTextSelection(posOf(ed, 'Eta.', 1)); ed.commands.liftListItem('listItem'); };
+const deleteRowAt = (text: string) => (ed: Editor) => { ed.commands.setTextSelection(posOf(ed, text, 1)); ed.commands.deleteRow(); };
+const lastRow = (ed: Editor) => {
+  let at = -1;
+  ed.state.doc.descendants((n, p) => { if (n.type.name === 'table') at = p + n.nodeSize - 1 - n.lastChild!.nodeSize + 3; return at < 0; });
+  return at;
+};
+const EMPTIED: { name: string; pre?: (ed: Editor) => void; edits: ((ed: Editor) => void)[]; keep: string[]; lists: number; rows: number }[] = [
+  { name: 'a list whose first item one client takes out while another lifts the second',
+    pre: twoItems, edits: [takeFirst, liftSecond], keep: ['Eta.'], lists: 1, rows: 2 },
+  { name: 'a table whose two rows two clients delete', edits: [deleteRowAt('a1'), deleteRowAt('a2')], keep: ['Epsilon.'], lists: 1, rows: 1 },
+  { name: 'a list emptied while a third client adds an item', pre: twoItems,
+    edits: [takeFirst, liftSecond, (ed) => { ed.commands.setTextSelection(posOf(ed, 'Eta.', 4)); ed.commands.splitListItem('listItem'); ed.commands.insertContent('Theta.'); }],
+    keep: ['Eta.', 'Theta.'], lists: 1, rows: 2 },
+  { name: 'a table emptied while a third client adds a row',
+    edits: [deleteRowAt('a1'), deleteRowAt('a2'), (ed) => { ed.commands.setTextSelection(posOf(ed, 'b2', 1)); ed.commands.addRowAfter(); ed.commands.insertContentAt(lastRow(ed), 'c3'); }],
+    keep: ['Epsilon.', 'c3'], lists: 1, rows: 2 },
+];
+
+describe('a container concurrent deletions leave empty', () => {
+  for (const c of EMPTIED) for (let seed = 1; seed <= 3; seed++) {
+    it(`is filled, not paused: ${c.name} (order ${seed})`, async () => {
+      let s = seed * 104729;
+      const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+      const cs = clients(c.edits.length);
+      let paused = 0;
+      for (const x of cs) x.undo.onPause((p) => { if (p) paused++; });
+      if (c.pre) { c.pre(cs[0].ed); await relay(cs, rnd); }
+      c.edits.forEach((edit, i) => edit(cs[i].ed));
+      const before = cs.map((x) => Y.getState(x.ydoc.store, x.ydoc.clientID));
+      await relay(cs, rnd);
+      expect(paused).toBe(0);
+      const a = cs[0];
+      for (const x of cs) {
+        expect(x.ydoc.getXmlFragment('body').toString()).toBe(a.ydoc.getXmlFragment('body').toString());
+        expect(JSON.stringify(x.ed.getJSON())).toBe(JSON.stringify(a.ed.getJSON()));
+        expect(() => x.ed.state.doc.check()).not.toThrow();
+      }
+      for (const t of c.keep) expect(a.ed.state.doc.textContent).toContain(t);
+      let lists = 0;
+      a.ed.state.doc.descendants((n) => { if (n.type.name === 'bulletList') lists++; return true; });
+      expect(lists).toBe(c.lists);
+      // One row more where the fill went in before the third client's row came.
+      const rows = shape(a.ed).rows;
+      expect(new Set(rows)).toEqual(new Set([2]));
+      expect(rows.length).toBeLessThanOrEqual(c.rows);
+      // The fill is the repairer's write alone.
+      cs.slice(1).forEach((x, i) => expect(Y.getState(x.ydoc.store, x.ydoc.clientID)).toBe(before[i + 1]));
+    });
+  }
+});
+
 // One client's steps around another's typing, then that client undoes them all: the other
 // client's text stays on every client, and the documents agree and stay valid.
 const notePos = (ed: Editor) => {

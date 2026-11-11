@@ -356,7 +356,7 @@ export function attachYjsUndo(
   const repair = attachRepair(editor, ydoc, binding, paused, () => dropped());
   invalid = repair.pause;
   repair.setRepairer(repairs);
-  editor.registerPlugin(repair.plugin);
+  editor.registerPlugin(repair.plugin, (p, ps) => [p, ...ps]);
   editor.registerPlugin(sync);
   const detachRescue = attachRescue(editor, ydoc, binding, um, authors.foreign);
   editor.registerPlugin(yUndoPlugin({ undoManager: um }));
