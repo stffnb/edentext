@@ -121,19 +121,24 @@ describe('collaboration key', () => {
     old.close();
   });
 
-  it('holds only a bounded number of unfinished messages, whoever sends the parts', async () => {
-    const relay = await startRelay({ port: 0 });
+  it('holds a few unfinished messages per sender, so no sender keeps another\'s from arriving', async () => {
+    const relay = await startRelay({ port: 0, maxFrame: 4096 });
     const key = keyBytes(newKey())!;
     const url = `ws://127.0.0.1:${relay.port}/relay`;
-    let whole = 0;
-    await new Promise<void>((resolve) => openChannel({ url, key, id: 1, onFrame: () => whole++, onPeers: () => {}, onStatus: () => {}, onOpen: () => resolve() }));
+    const whole: [number, number][] = [];
+    const open = (id: number) => new Promise<ReturnType<typeof openChannel>>((resolve) => {
+      const ch = openChannel({ url, key, id, onFrame: (p, from) => whole.push([from, p.length]), onPeers: () => {}, onStatus: () => {}, onOpen: () => resolve(ch) });
+    });
+    await open(1);
+    const writer = await open(2);
     const raw = new WebSocket(url);
     raw.binaryType = 'arraybuffer';
     await new Promise<void>((resolve) => {
       raw.onopen = () => raw.send(JSON.stringify({ t: 'hello', v: 2, room: roomId(key), token: null, id: 9, claim: newKey() }));
       raw.onmessage = () => resolve();
     });
-    // Forty messages of two parts each: all first parts, then all second ones.
+    // Forty messages of two parts each: all first parts, then all second ones; in between,
+    // another client's message in parts.
     const part = (msg: number, index: number) => {
       const env = new Uint8Array(17 + 2048);
       const v = new DataView(env.buffer);
@@ -141,12 +146,18 @@ describe('collaboration key', () => {
       v.setUint32(5, msg);
       v.setUint32(9, index);
       v.setUint32(13, 2);
-      return seal(key, env);
+      const sealed = seal(key, env), out = new Uint8Array(4 + sealed.length);
+      out.set(sealed, 4);
+      return out;
     };
-    const to0 = (frame: Uint8Array) => { const out = new Uint8Array(4 + frame.length); out.set(frame, 4); return out; };
-    for (const index of [0, 1]) for (let m = 0; m < 40; m++) raw.send(to0(part(m, index)));
+    for (let m = 0; m < 40; m++) raw.send(part(m, 0));
+    await new Promise((r) => setTimeout(r, 100));
+    writer.send(Uint8Array.from({ length: 50_000 }, (_, i) => i & 255));
+    for (let m = 0; m < 40; m++) raw.send(part(m, 1));
     await new Promise((r) => setTimeout(r, 300));
-    expect(whole).toBe(16);
+    expect(whole.filter(([from]) => from === 2)).toEqual([[2, 50_000]]);
+    // Each of the two others keeps the sender's last four.
+    expect(whole.filter(([from]) => from === 9)).toEqual(Array(8).fill([9, 4096]));
     raw.close();
     await relay.close();
   });

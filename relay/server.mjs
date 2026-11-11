@@ -85,13 +85,15 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
       if (!binary) return;
       tap?.(data);
       if (data.length < 4) return;
-      const to = data.readUInt32BE(0), sealed = data.subarray(4);
+      // The receiver in front makes way for the sender, which no client can forge.
+      const to = data.readUInt32BE(0);
+      data.writeUInt32BE(ws.id, 0);
       if (to) {
         const peer = ids.get(room)?.get(to)?.ws;
-        if (peer && peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, sealed);
+        if (peer && peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, data);
         return;
       }
-      for (const peer of rooms.get(room) ?? []) if (peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, sealed);
+      for (const peer of rooms.get(room) ?? []) if (peer !== ws && peer.readyState === peer.OPEN) pass(ws, peer, data);
     });
 
     ws.on('close', () => {
