@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ReadGate from '../ReadGate.svelte';
   import type { Editor } from '@tiptap/core';
   import IslandButton from './IslandButton.svelte';
   import IslandMenu from './IslandMenu.svelte';
@@ -84,16 +85,19 @@
 </script>
 
 <div class="toolbar-group">
+  <ReadGate>
   <IslandMenu id="paste" icon="paste" cmd="paste" title={`${t().contextMenu.paste} (${withShortcut('Ctrl+V')})`} disabled={!editor}>
     <!-- The engine reads the clipboard either as HTML or as text, so there is no third choice. -->
     <button onclick={() => paste(false)}>{t().contextMenu.paste}<span class="menu-key">{withShortcut('Ctrl+V')}</span></button>
     <button data-cmd="pastePlain" onclick={() => paste(true)}>{t().contextMenu.pasteWithoutFormatting}<span class="menu-key">{withShortcut('Ctrl+Shift+V')}</span></button>
   </IslandMenu>
   <IslandButton icon="cut" cmd="cut" title={`${t().contextMenu.cut} (${withShortcut('Ctrl+X')})`} disabled={!hasSelection} onclick={() => editor && clipboardCommand(editor, 'cut')} />
+  </ReadGate>
   <IslandButton icon="copy" cmd="copy" title={`${t().contextMenu.copy} (${withShortcut('Ctrl+C')})`} disabled={!hasSelection} onclick={() => editor && clipboardCommand(editor, 'copy')} />
 </div>
 
 <div class="toolbar-separator"></div>
+<ReadGate>
 
 <div class="toolbar-group">
   <IslandButton content={growIcon} cmd="growFont" title={`${t().toolbarExpanded.growFont} (${shortcutHint('fontGrow')})`} onclick={() => editor && stepFontSize(editor, 1)} />
@@ -167,12 +171,15 @@
   <IslandButton icon="pilcrow" cmd="formattingMarks" title={`${t().toolbarExpanded.formattingMarks} (${shortcutHint('formattingMarks')})`} active={showFormattingMarks} onclick={() => (showFormattingMarks = !showFormattingMarks)} />
   <IslandButton content={launcherIcon} title={t().paragraphDialog.title} disabled={!editor} onclick={() => onParagraphDialog?.()} />
 </div>
+</ReadGate>
 
 <div class="toolbar-separator"></div>
 
 <div class="toolbar-group">
   <IslandButton icon="find" cmd="find" title={`${t().ribbon.find} (${shortcutHint('find')})`} onclick={() => onFind?.('find')} />
+  <ReadGate>
   <IslandButton icon="replace" cmd="replace" title={`${t().ribbon.replace} (${shortcutHint('replace')})`} onclick={() => onFind?.('replace')} />
+  </ReadGate>
 </div>
 
 {#snippet growIcon()}

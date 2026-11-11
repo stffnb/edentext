@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ReadGate from './ReadGate.svelte';
   import type { Editor } from '@tiptap/core';
   import HistoryButton from './HistoryButton.svelte';
   import AlignButton from './AlignButton.svelte';
@@ -207,6 +208,7 @@
 
 <div class="toolbar">
   {#if editor}
+  <ReadGate>
     <div class="toolbar-group">
       <button
         class:active={isBold}
@@ -551,6 +553,7 @@
       <HistoryButton {editor} {tick} direction="undo" />
       <HistoryButton {editor} {tick} direction="redo" />
     </div>
+  </ReadGate>
   {/if}
 </div>
 

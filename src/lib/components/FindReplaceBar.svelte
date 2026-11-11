@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ReadGate from './ReadGate.svelte';
   import type { Editor } from '@tiptap/core';
   import { onMount } from 'svelte';
   import { FORMAT_MARKS, getSearchState, type FormatSpec } from '../editor/extensions/searchReplace';
@@ -127,7 +128,7 @@
     </div>
 
     {#if showReplace}
-      <div class="fb-row">
+      <ReadGate><div class="fb-row">
         <input
           bind:value={replaceText}
           onkeydown={onReplaceKeydown}
@@ -138,7 +139,7 @@
         />
         <button class="fb-text-btn" onclick={replaceOne} disabled={!results.count} title={t().findReplace.replaceCurrent}>{t().findReplace.replace}</button>
         <button class="fb-text-btn" onclick={replaceEvery} disabled={!results.count} title={t().findReplace.replaceAllTitle}>{t().findReplace.all}</button>
-      </div>
+      </div></ReadGate>
     {/if}
 
     <!-- The formatting a match must carry, and the one a replacement applies. With no

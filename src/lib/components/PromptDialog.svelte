@@ -31,9 +31,11 @@
   }
 </script>
 
+<!-- Chromium can deliver a close late, after the next request opened the dialog again;
+     only a close that leaves it shut declines. -->
 <dialog
   bind:this={dialogEl}
-  onclose={() => finish(null)}
+  onclose={() => !dialogEl?.open && finish(null)}
   onclick={(e) => e.target === dialogEl && finish(null)}
   aria-label={request?.label}
 >

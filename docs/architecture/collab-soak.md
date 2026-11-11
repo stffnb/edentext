@@ -157,10 +157,14 @@ What it means, against about 16 ms per key for a visible stutter and 50 ms for s
   document (`encodeStateAsUpdate`) from 18 to 52 kB, about 3 bytes per typed character.
   Nothing there grows out of proportion.
 
-The range-limited plugins from `perf/keystroke-cost` read `changedRanges` (the steps'
-maps), which holds for y-tiptap's single `ReplaceStep` too. That step reaches
-from the first to the last top-level block a batch changed, though, so with typists far
-apart the range covers most of the document between them and the saving shrinks.
+Signed frames (`collab.md`), 2026-11-11, four clients, short / mixed, unsigned → signed, one run
+each: key 0.9 → 1.1 / 1.8 → 2.1 ms, remote 1.1 → 1.0 / 2.6 → 3.1, shown 108 → 121 / 115 → 118 ms,
+gaps unchanged. A key does not sign; its 50 ms batch does (0.4 ms in Node), and each arriving
+frame is checked (1.0 ms). A 1 MiB message takes 29 ms to sign, 15 to check.
+
+The range-limited plugins from `perf/keystroke-cost` read `changedRanges` (the steps' maps), which
+holds for y-tiptap's single `ReplaceStep` too. It reaches from the first to the last top-level block
+a batch changed, so with typists far apart it covers most of the document and the saving shrinks.
 
 Not measured: Firefox and WebKit, IME, a machine per client.
 
@@ -171,3 +175,26 @@ mixed documents six stay fluent, and a limit above four leaves room for a reload
 tab, each a connection of its own until the old one closes. On long documents typing slows
 from the second client on whatever the limit; a smaller limit would not help there, a cheaper
 remote apply and pagination would.
+
+## Engine spike
+
+Behind the choice of Yjs (`collab.md`), 2026-11-08, Chromium, dev server; `pm` is `prosemirror-collab`.
+
+| Check | Yjs | pm |
+|---|---|---|
+| Join, idle, 8 rounds of concurrent random edits, pagination, NodeViews, carets, recording | ✓ | ✓ |
+| Overlapping comments, recorded changes by two authors, 3 clients × 10 rounds of structural edits | ✓ | ✓ |
+| 3 clients with 0–250 ms random delay; one offline for 1.5 s: converge | ✓ | ✓ |
+| Messages sent in the latency run (A/B/C) | 21/21/23 | 33/173/128, 277 refused |
+| Bytes per keystroke on the wire | ~53 | ~317 (step JSON) |
+| Applying a remote message while typing, average / max | 0.8 / 1.4 ms | 0.25 / 1.1 ms |
+
+| `05-breaks` repeated, no batching | 177 pages | 442 pages |
+|---|---|---|
+| Keystroke alone / Yjs / pm, median | 5.0 / 9.9 / 4.8 ms | 11.7 / 23.6 / 14.5 ms |
+| Remote update applied, Yjs / pm | 8.7 / 2.7 ms | 22 / 6.8 ms |
+| Join, Yjs: time, payload | 0.7 s, 1.2 MB | 1.3 s, 2.9 MB |
+| Join, pm: time, payload | 1.6 s, 2.2 MB | 6.9 s, 5.4 MB |
+
+Under latency `pm` resent every unconfirmed step per transaction, so refusals piled up. Neither engine
+marks a remote transaction for the history; `trackChanges.ts` never records another client's edits.

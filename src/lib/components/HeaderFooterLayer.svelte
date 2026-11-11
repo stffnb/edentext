@@ -22,6 +22,7 @@
   import { t } from '../i18n/i18n.svelte';
   import { allPagesDrawn } from './pageWindow.svelte';
   import { claimZone, yieldsZone, zoneHolder } from '../collab/zones.svelte';
+  import { reading } from '../collab/reading.svelte';
 
   let {
     headerDoc = $bindable(),
@@ -518,6 +519,12 @@
     // In a session a zone someone else has open stays shut; its tag says who (below).
     const page = pendingPage ?? currentPage, at = sectionOf(page);
     const target = `hf:${at}:${zoneKey(zone, variantFor(page, at))}`;
+    // Reading along, no zone opens.
+    if (untrack(reading)) {
+      pendingPage = null;
+      hfActive = null;
+      return;
+    }
     if (untrack(() => zoneHolder(target))) {
       pendingPage = null;
       refuse(target);

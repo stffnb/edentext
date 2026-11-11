@@ -3,6 +3,7 @@
   import type { Snippet } from 'svelte';
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
+  import ReadGate from '../../ReadGate.svelte';
   import Icon from '../Icon.svelte';
   import LanguagePicker from '../../LanguagePicker.svelte';
   import GrammarToggle from '../../GrammarToggle.svelte';
@@ -75,7 +76,8 @@
   ];
 </script>
 
-<RibbonGroup label={t().ribbon.groups.proofing}>
+<RibbonGroup label={t().ribbon.groups.proofing} reads>
+  <ReadGate>
   <RibbonButton
     variant="big"
     icon="thesaurus"
@@ -84,6 +86,7 @@
     title={`${t().thesaurus.hint} — ${shortcutHint('thesaurus')}`}
     onclick={() => window.dispatchEvent(new CustomEvent(OPEN_THESAURUS_EVENT))}
   />
+  </ReadGate>
   <div class="rb-menu-wrap" use:clickOutside={'wordCount'}>
     <RibbonButton
       variant="big"
@@ -162,7 +165,8 @@
   </button>
 {/snippet}
 
-<RibbonGroup label={t().comments.title}>
+<RibbonGroup label={t().comments.title} reads>
+  <ReadGate>
   <RibbonButton
     variant="big"
     icon="comment"
@@ -172,6 +176,7 @@
     disabled={!editor || !hasSelection}
     onclick={() => onNewComment?.()}
   />
+  </ReadGate>
   {@render showKind('commentPlace', t().comments.showPane, showComments(),
     () => setShowComments(!showComments()), commentPlace(), setCommentPlace, resolvedItem)}
   <div class="rb-col">
@@ -205,7 +210,8 @@
 
 <div class="ribbon-sep"></div>
 
-<RibbonGroup label={t().ribbon.groups.revisions}>
+<RibbonGroup label={t().ribbon.groups.revisions} reads>
+  <ReadGate>
   <RibbonButton
     variant="big"
     icon="trackChanges"
@@ -216,6 +222,7 @@
     disabled={!!recordLock()}
     onclick={toggleRecordChanges}
   />
+  </ReadGate>
   <div class="rb-menu-wrap" use:clickOutside={'markupDisplay'}>
     <RibbonButton
       variant="big"
@@ -240,6 +247,7 @@
   {@render showKind('changePlace', t().revisions.showPane, showChanges(),
     () => setShowChanges(!showChanges()), changePlace(), setChangePlace)}
   <!-- The one at the cursor over the whole document, so the pair reads as one column. -->
+  <ReadGate>
   <div class="rb-col">
     <RibbonButton
       variant="small"
@@ -259,6 +267,8 @@
       onclick={() => editor && settleAll(editor, true)}
     />
   </div>
+  </ReadGate>
+  <ReadGate>
   <div class="rb-col">
     <RibbonButton
       variant="small"
@@ -278,6 +288,7 @@
       onclick={() => editor && settleAll(editor, false)}
     />
   </div>
+  </ReadGate>
   <div class="rb-col">
     <RibbonButton
       variant="small"
@@ -296,6 +307,7 @@
       onclick={() => go('revision', 1)}
     />
   </div>
+  <ReadGate>
   <div class="rb-col">
     <RibbonButton
       variant="small"
@@ -325,13 +337,14 @@
       onclick={() => window.dispatchEvent(new Event(OPEN_RECORD_LOCK_EVENT))}
     />
   </div>
+  </ReadGate>
 </RibbonGroup>
 
 <div class="ribbon-sep"></div>
 
 <!-- Both act on comments and changes alike, so they sit apart from the groups that
      each hold one of the two. -->
-<RibbonGroup label={t().ribbon.groups.markup}>
+<RibbonGroup label={t().ribbon.groups.markup} reads>
   <!-- A checkbox, not a button: it settles what the next printout carries, it does not
        print. A pressed-looking button read as the command itself. -->
   <label class="rb-check" data-cmd="printMarkup" title={t().revisions.printMarkupHint}>

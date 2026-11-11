@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ReadGate from './ReadGate.svelte';
   import type { Editor } from '@tiptap/core';
   import HomeTools from './toolbar/HomeTools.svelte';
   import InsertTools from './toolbar/InsertTools.svelte';
@@ -120,13 +121,19 @@
     {#if category === 'home'}
       <HomeTools {editor} {tick} {asianDocument} bind:showFormattingMarks {onFind} onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if category === 'insert'}
+      <ReadGate>
       <InsertTools {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} bind:hfDistances bind:differentFirstPage bind:differentOddEven
         {onEditZone} onManageTableStyles={() => onManageTableStyles?.('table')} {onAutoText} onTabsDialog={() => (tabsDialogOpen = true)} />
+      </ReadGate>
     {:else if category === 'layout'}
+      <ReadGate>
       <LayoutTools {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:extraHfSections bind:hyphenate
         bind:pageNumbering bind:pageDecor bind:lineNumbering bind:foldMarks onParagraphDialog={() => (paragraphDialogOpen = true)} />
+      </ReadGate>
     {:else if category === 'references'}
+      <ReadGate>
       <ReferenceTools {editor} {tick} {hfActive} {onNoteOptions} {onHeadingNumbering} />
+      </ReadGate>
     {:else if category === 'review'}
       <ReviewTools {editor} {tick} {documentLanguage} {documentLanguageOther} {onLanguage} {onAutoCorrect} {onNewComment} {onReviewSettings} />
     {:else}
