@@ -13,7 +13,10 @@ sort) is deleted and inserted anew, a copy of the text its author saw. Text the 
 types into the deleted element at that moment stays in it and would be gone. An inline node
 (footnote anchor, picture) or Enter splits the paragraph's `Y.XmlText`; the part after the
 cut is a new one, so text typed there would stay at the cut. Attributes (style, alignment,
-indent, marks) change in place and keep everything. Three mechanisms handle what follows.
+indent, marks) change in place and keep everything; y-tiptap writes no node's marks (a
+formula's font size), so `editor/yjsMarks.ts` writes them as the attribute `_marks`, one JSON
+string on a copy the editor never sees, and the wrapped `schema.node` reads them back: last
+writer wins per node, an undo takes back its own. Three mechanisms handle what follows.
 
 ### Rescue (`editor/yjsRescue.ts`)
 
@@ -80,8 +83,7 @@ page from one's own pagination) stay local instead of answering each other.
   undo (an Enter before a rebuilt block) still leaves the other's text in place.
   An undo that takes the last items of a list, table or note section whose others another
   client took out takes the emptied element along (no empty one fits the schema, and the
-  binding would pause everywhere); one that would leave a parent holding a misfit keeps
-  its item.
+  binding would pause everywhere); one leaving a parent holding a misfit keeps its item.
   Yjs merges adjacent copies into one item and, following a copy, deletes to the item's
   end; the filter first splits at the copy's end, so undoing a tab typed just before the
   other's text, both restored by an undone rebuild, takes the tab alone.
@@ -107,17 +109,15 @@ takes over from one that is gone; B's undo takes back the text and keeps the cel
 
 ### Binding guard
 
-Shared content that does not fit the schema, and that no fill repairs, pauses the binding (y-tiptap's
-`onInvalidContent`) instead of y-tiptap deleting it from the shared doc: no edits, no
-writes, `collab: paused`, until an update fits again (`collab: resumed`).
-`YjsUndo.onPause` tells the session, whose `paused` turns the status bar's session button
-into "Editing paused" and adds a notice to its dialog, both gone on resuming. y-tiptap
-restores the caret by walking the fragment; where a position falls outside, the update
-would be lost to the throw. `attachRepair` wraps the binding's observer: a `RangeError`
-there redraws the document from the fragment (`collab: caret not restorable`), and a
-redraw that is not the fragment's projection, or not valid, pauses the binding the same
-way. The soak run counts redraws and fails on a pause; `session.mjs` puts an unknown
-element into the body and sees both clients' notices come and go.
+Shared content that does not fit the schema, and that no fill repairs, pauses the binding
+(y-tiptap's `onInvalidContent`) instead of y-tiptap deleting it: no edits, no writes,
+`collab: paused`, until an update fits again (`collab: resumed`). `YjsUndo.onPause` tells
+the session: the status bar's session button reads "Editing paused" and its dialog adds a
+notice, both gone on resuming. A caret position y-tiptap cannot restore would lose the
+update to a throw: `attachRepair` wraps the binding's observer, and a `RangeError` there
+redraws from the fragment (`collab: caret not restorable`); a redraw that is not the
+fragment's projection, or not valid, pauses the binding. The soak run counts redraws and
+fails on a pause; `session.mjs` puts an unknown element into the body and sees both notices.
 
 ### Restored items (`editor/yjsRedo.ts`)
 

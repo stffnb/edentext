@@ -4,6 +4,7 @@ import { AttrStep, ReplaceStep, Transform, type Step } from '@tiptap/pm/transfor
 import { Fragment, Mark, Slice, type Node as PMNode, type NodeType } from '@tiptap/pm/model';
 import * as Y from 'yjs';
 import { updateYFragment, ySyncPluginKey, type ProsemirrorBinding } from '@tiptap/y-tiptap';
+import { fromShared, withMarks } from './yjsMarks';
 
 // What the plugins repair after a transaction the binding dispatched (another client's
 // update, an undo) is this client's overlay: drawn, never written, until one client, the
@@ -181,11 +182,13 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onPa
   });
 
   // The projection keeps an element short of its content rule where a fill makes it fit,
-  // instead of pausing; the plugin above fills it as a repair.
+  // instead of pausing; the plugin above fills it as a repair. A node's marks come from
+  // their attribute (`yjsMarks.ts`).
   const schema = editor.schema;
   const node = schema.node;
   let projecting = false;
-  schema.node = function (this: typeof schema, type, attrs, content, marks) {
+  schema.node = function (this: typeof schema, type, given, content, given2) {
+    const { attrs, marks } = fromShared(this, given, given2);
     try { return node.call(this, type, attrs, content, marks); } catch (e) {
       const t = typeof type === 'string' ? this.nodes[type] : type;
       if (!projecting || !t || !fillOf(t, Fragment.from(content))) throw e;
@@ -200,7 +203,8 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onPa
   };
 
   // y-tiptap writes the whole document after a local transaction; the overlay stays out.
-  const write = binding._prosemirrorChanged.bind(binding);
+  const raw = binding._prosemirrorChanged;
+  const write = (doc: PMNode) => raw.call(binding, withMarks(doc));
   binding._prosemirrorChanged = (doc) => write(overlayOf() ?? doc);
 
   let pending = false, replaying = false, destroyed = false, paused = false;
@@ -213,7 +217,7 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onPa
     binding.mux(() => {
       ydoc.transact((t) => {
         t.meta.set('addToHistory', false);
-        updateYFragment(ydoc, binding.type, repaired, binding);
+        updateYFragment(ydoc, binding.type, withMarks(repaired), binding);
       }, REPAIR_ORIGIN);
       // Edits held until now go in as this client's own, undoable.
       if (repaired !== doc) write(doc);
@@ -283,7 +287,7 @@ export function attachRepair(editor: Editor, ydoc: Y.Doc, binding: Binding, onPa
     detach() {
       destroyed = true;
       editor.off('transaction', schedule);
-      binding._prosemirrorChanged = write;
+      binding._prosemirrorChanged = raw;
       projector.createDocumentContent = project;
       schema.node = node;
     },
