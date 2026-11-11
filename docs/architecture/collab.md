@@ -78,7 +78,7 @@ the undo stack starts empty from there.
   otherwise split a typed word. The monkey test counts about as many steps on both (22/12/18, 22/14/19).
 - **Delete filter.** y-tiptap keeps every paragraph with content on undo, so undoing an
   Enter left the new paragraph behind. Ours keeps an element only while it holds another
-  client's live content.
+  client's live text or inline object (`collab-conflicts.md`, which the rescue then moves).
 - **Labels** for the toolbar list ride the stack items (`meta.label`), read by `historyLog`.
   A document opened in a session clears the manager (`reset`) instead of re-creating the
   state, which would rebuild the sync plugin's binding.
@@ -127,12 +127,14 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   `relay/health` answers. Embedded, there are none.
 - **Sync** (`collab/session.ts`) once per welcome: `ASK`; every peer `OFFER`s its state
   vector and delete set. When all have, or 300 ms after the first, the asker `PULL`s an
-  `ANSWER` from the offer ahead most, then from any still ahead, a later offer too. Then it
-  `UPDATE`s all at once what the non-empty offers lack (an empty one is a joiner, which
-  pulls itself), edits pulled from others included, so an edit that reached only some
-  clients reaches all; none lacking an edit or deletion, it sends nothing. A client without the doc asks again when
-  someone comes. A sync ends with the line and restarts when the room shrinks or no peer
-  frame comes for 10 s. Edits and carets go in 50 ms batches, each as a task of its own.
+  `ANSWER` from the offer ahead most, then from any still ahead, a later offer too. Only
+  then do the offered delete sets apply (alone, one may empty what a pulled insert fills).
+  Then it `UPDATE`s all at once what the non-empty offers lack (an empty one is a joiner,
+  which pulls itself), edits pulled from others included, so an edit that reached only some
+  clients reaches all; none lacking an edit or deletion, it sends nothing. A client without
+  the doc asks again when someone comes. A sync ends with the line and restarts when the
+  room shrinks or no peer frame comes for 10 s. Edits and carets go in 50 ms batches, each
+  as a task of its own.
 - **Parts and failures** (`collab/channel.ts`): a message beyond the welcome's `frame`
   (at most 1 MiB) goes as sealed numbered parts. Retries back off from 0.5 to 30 s; three
   connections lost within 5 s of their welcome show `failing` until one holds for 5 s; a
@@ -152,7 +154,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
 - **Headers and footers** go as whole zones, so one person edits a zone at a time
   (`collab/zones.svelte.ts`, awareness field `zone`): the others see the name at it and
   cannot open it. Opened at once, the higher client id yields and may lose its first keys.
-  A closed tab frees it at once; a client gone without `pagehide`, after awareness's 30 s.
+  A closed tab frees it at once, a silent line (closed lid) when a relay ping fails, in 10 s.
 - **Storage.** The starter's autosave stores everyone's edits; its awareness says `keeps`.
   A joining tab is `volatile` (no copy, slot or prune); a starter's reload does not rejoin.
   Leaving, a joiner is asked (`CollabDialog`'s `asking`) to keep the document: `leave.ts`
@@ -176,8 +178,8 @@ Frames carry at most 1 MiB; a late joiner gets everything from one ask and one a
 picture from one client; a header's picture goes by its key too; replies go to their asker
 alone; a fourth joins, types and converges. A joiner whose pulled peer drops its answer and
 line, while a third types, still goes live; a late offer is pulled from and gets what it
-lacks, and the others get what was pulled; a waiting joiner asks a client coming back, which pushes it no copy. B cannot open a
-header A holds; opened together, the lower id keeps it; a closed tab frees it. Open and New
+lacks, and the others get what was pulled; one back from offline pauses on no offered deletion; a waiting joiner asks a client coming back, which pushes it no copy. B cannot open a
+header A holds; opened together, the lower id keeps it; a closed tab frees it, a stalled line within two pings, a busy holder keeps it. Open and New
 ask first, then open alone; others keep theirs. The starter leaves unasked, the others are
 told and go on; a reload rejoins. A joiner keeping its copy reloads into it unwarned,
 picture, styles and zones, also on a second reload. The last joiner's tab warns on closing;

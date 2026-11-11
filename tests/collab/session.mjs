@@ -11,6 +11,7 @@
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { createServer as tcpServer, connect as tcpConnect } from 'node:net';
 import { MOD, ROOT, checker, collectErrors, devServer, openApp } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
 
@@ -21,7 +22,19 @@ const { check, failures } = checker();
 const seen = [];
 const FRAME = 1 << 20;
 const BEAT = 2000;
-const relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, tap: (d) => seen.push(Buffer.from(d)) });
+const PING = 5000;
+const relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, ping: PING, tap: (d) => seen.push(Buffer.from(d)) });
+// A line to the relay that can go silent without a close, as under a closed laptop lid.
+const STALL_PORT = +(process.env.COLLAB_STALL_PORT ?? RELAY_PORT + 5);
+const stall = { on: false };
+const stallLine = tcpServer((down) => {
+  const up = tcpConnect(RELAY_PORT, '127.0.0.1');
+  for (const [from, to] of [[down, up], [up, down]]) {
+    from.on('data', (d) => { if (!stall.on) to.write(d); });
+    from.on('close', () => { if (!stall.on) to.destroy(); });
+    from.on('error', () => {});
+  }
+}).listen(STALL_PORT, '127.0.0.1');
 const server = await devServer(PORT);
 const { browser, page: a, pageErrors } = await openApp(PORT);
 const URL0 = `http://localhost:${PORT}/`;
@@ -377,6 +390,27 @@ try {
   const bar = (await a.textContent('.statusbar .collab-btn'))?.trim();
   check(names === 'Ben,Cleo' && /2/.test(bar ?? ''), `the starter sees who is there (${names}; "${bar}")`);
 
+  // Shared content that does not fit the schema pauses editing: the status bar and the
+  // dialog say so on every client, and both clear once it is gone again.
+  const bogus = (page, put) => page.evaluate(async (put) => {
+    const { Y } = await import('/src/lib/editor/undoYjs.ts');
+    const body = window.__collab.session.awareness.doc.getXmlFragment('body');
+    if (put) body.insert(0, [new Y.XmlElement('noSuchNode')]); else body.delete(0, 1);
+  }, put);
+  const pausedOn = (page) => page.waitForSelector('.statusbar .collab-btn.paused', { timeout: 5000 }).then(() => true, () => false);
+  await bogus(a, true);
+  const pausedBoth = [await pausedOn(a), await pausedOn(b)];
+  await b.click('.statusbar .collab-btn');
+  const hint = await b.isVisible('dialog[open] [data-notice="paused"]');
+  await b.keyboard.press('Escape');
+  await bogus(a, false);
+  const cleared = await b.waitForFunction(() => !document.querySelector('.statusbar .collab-btn.paused'), null, { timeout: 5000 }).then(() => true, () => false);
+  await caret(b, 'end');
+  await b.keyboard.type(' Kappa');
+  await settle(b);
+  check(pausedBoth.every(Boolean) && hint && cleared && (await view(a)).text.endsWith(' Kappa'),
+    `content that does not fit pauses editing with a notice, and editing resumes when it is gone (${pausedBoth}, ${hint}, ${cleared})`);
+
   const d4 = await client('Dan');
   await joinLink(d4, link);
   await caret(d4, 'end');
@@ -458,6 +492,48 @@ try {
   const freed = await b.waitForFunction(() => !document.querySelector('.hf-held'), null, { timeout: 40_000 }).then(() => true, () => false);
   check(heldByFinn === 'Finn is editing' && freed, `a tab closed with the footer open frees it ("${heldByFinn}", after ${((Date.now() - closedAt) / 1000).toFixed(1)} s)`);
 
+  // Ida is offline while Anna turns a list item's only block, a heading, into a paragraph.
+  // Back, Ida must not apply the offers' deletions before the pulled paragraph: the list
+  // item would stand empty and editing pause.
+  const ida = await client('Ida');
+  await ida.addInitScript(() => {
+    const O = window.WebSocket, st = window.__line = { away: false, sockets: [] };
+    window.WebSocket = class extends O {
+      constructor(url, ...x) {
+        const relay = String(url).includes('/relay');
+        super(st.away && relay ? 'ws://127.0.0.1:4/' : url, ...x);
+        if (relay) st.sockets.push(this);
+      }
+    };
+  });
+  const idaLog = [];
+  ida.on('console', (m) => { if (/collab: paused/.test(m.text())) idaLog.push(m.text().slice(0, 120)); });
+  await caret(a, 'end');
+  await a.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.insertContent([
+    { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Iota' }] }] }] }]));
+  await joinLink(ida, link);
+  await ida.evaluate(() => { window.__line.away = true; for (const w of window.__line.sockets) w.close(); });
+  await ida.waitForTimeout(500);
+  await a.evaluate(() => {
+    const ed = document.querySelector('.tiptap-host .tiptap').editor;
+    let at = -1;
+    ed.state.doc.descendants((n, p) => { if (n.type.name === 'heading' && n.textContent === 'Iota') at = p + 1; });
+    ed.chain().setTextSelection(at).setNode('paragraph').run();
+  });
+  await a.waitForTimeout(1000);
+  await ida.evaluate(() => { window.__line.away = false; });
+  await live(ida);
+  await ida.waitForTimeout(3000);
+  const [vaI, viI] = [await view(a), await view(ida)];
+  const iota = await ida.evaluate(() => {
+    let t = '';
+    document.querySelector('.tiptap-host .tiptap').editor.state.doc.descendants((n) => { if (n.isTextblock && n.textContent === 'Iota') t = n.type.name; });
+    return t;
+  });
+  check(!idaLog.length && vaI.json === viI.json && iota === 'paragraph',
+    `a client back from offline applies offered deletions only with the inserts that replaced them (${idaLog[0] ?? 'no pause'}, ${iota})`);
+  await ida.close();
+
   // A joiner opening a file is asked first; cancelled, nothing changes. Keeping its copy, it
   // leaves and the file opens in a new document of its own; the others keep the shared one.
   const h = await client('Hana');
@@ -487,6 +563,40 @@ try {
   check(others.every(Boolean) && !peersLeft.includes('Hana'),
     `the others keep the shared document (${others}) and see the joiner gone (${peersLeft})`);
   await h.context().close();
+
+  // A tab whose line goes silent without a close frees its zone once the relay's ping finds
+  // it gone. Anna, the repairer, is busy meanwhile: late as she is, she stays present for the
+  // others, her header held and no second client repairing.
+  const repairs = (page) => page.evaluate(() => {
+    const aw = window.__collab.session.awareness, me = aw.doc.clientID, mine = aw.getLocalState()?.rank;
+    return typeof mine === 'number' && [...aw.getStates()].every(([id, s]) => id === me || typeof s.rank !== 'number' || s.rank > mine || (s.rank === mine && id > me));
+  });
+  const gus = await client('Gus');
+  await gus.addInitScript((port) => {
+    const Orig = window.WebSocket;
+    window.WebSocket = class extends Orig { constructor(url, p) { super(String(url).includes('/relay') ? `ws://127.0.0.1:${port}/relay` : url, p); } };
+  }, STALL_PORT);
+  await joinLink(gus, link);
+  await openZone(gus, 'footer');
+  await openZone(a, 'header');
+  await b.waitForTimeout(600);
+  const heldByGus = await heldTag(b);
+  const solo = [await repairs(a), await repairs(b), await repairs(c)];
+  const busy = a.evaluate(() => { const t = Date.now(); while (Date.now() - t < 5500); });
+  await b.waitForTimeout(200);
+  const droppedAt = Date.now();
+  stall.on = true;
+  const release = b.waitForFunction(() => ![...document.querySelectorAll('.hf-held')].some((t) => /Gus/.test(t.textContent)), null, { timeout: 4 * PING })
+    .then(() => (Date.now() - droppedAt) / 1000, () => Infinity);
+  await b.waitForTimeout(4500);
+  const lateHeld = await heldTag(b), second = [await repairs(b), await repairs(c)];
+  const gusAfter = await release;
+  await busy;
+  await a.keyboard.press('Escape');
+  check(heldByGus.includes('Gus is editing') && gusAfter < (2 * PING + 1500) / 1000, `a tab whose line stalls unannounced frees the footer within two pings ("${heldByGus}", after ${gusAfter.toFixed(1)} s)`);
+  check(solo.join() === 'true,false,false' && lateHeld.split('|').includes('Anna is editing') && !second.some(Boolean),
+    `a busy repairer stays present for the others ("${lateHeld}", repairers before ${solo}, others after 4.5 s ${second})`);
+  await gus.close();
 
   await a.click('.statusbar .collab-btn');
   await a.click('dialog[open] [data-cmd="collabLeave"]');
@@ -685,6 +795,7 @@ try {
 } finally {
   await browser.close();
   await relay.close();
+  stallLine.close();
   if (server) process.kill(-server.pid);
 }
 process.exit(failures.length ? 1 : 0);

@@ -41,10 +41,11 @@ right by the indent. The hanging pair therefore stays the editor's — see
 paragraph's `w:pStyle` and defines it; only a note naming none falls to the stock
 `FootnoteText`/`EndnoteText`, whose 10pt the importer suppresses again.
 
-**The sync plugin** (`appendTransaction`) keeps one note per anchor, in anchor order, and
-renumbers each class. It runs in two rounds by design — structure first, numbering on the
-pass after — because doing both at once would need positions out of a document the same
-transaction is still rewriting. An anchor pasted twice gets a fresh id and a clone of the
+**The sync plugin** (`appendTransaction`) keeps one note section, last, one note per anchor,
+in anchor order, and renumbers each class. Its passes run one after another — structure
+first, numbering after — each on the document the last one left, until nothing changes, in
+one appended transaction (ProseMirror never hands a plugin its own appended transaction).
+Two sections, or one not last, come from two clients editing at once; the passes move as few notes as they can (`collab-conflicts.md`, Repairs). An anchor pasted twice gets a fresh id and a clone of the
 note it was copied from (its parse rule outranks the superscript mark's `sup`); an anchor that ends up *inside* a note is dropped, and inserting
 one there is refused (LibreOffice and Word refuse it too). A settings change is no
 document change, so the dialog's path carries the `RESYNC_NOTES` meta.

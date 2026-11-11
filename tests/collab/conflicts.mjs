@@ -1,9 +1,7 @@
-// Two clients do one thing each to the same paragraph, table, change or comment before
-// either hears of the other's (relayed by this script, as undo.mjs). Per pair: same doc on
-// both, a valid doc with rectangular tables, nothing typed lost, no repair going back and
-// forth, A's undo taking back A's op alone. Expected values are what the editor does now,
-// known losses included (docs/architecture/collab-conflicts.md). Dev server, any engine.
-import { checker, devServer, openApp } from '../browser.mjs';
+// Two clients each do one thing to the same paragraph, table, change or comment, relayed by
+// this script: one valid doc with rectangular tables, nothing typed lost, only the repairer's
+// update after, A's undo taking back A's op alone; accepted losses as in collab-conflicts.md.
+import { checker, collectErrors, devServer, openApp } from '../browser.mjs';
 
 const PORT = +(process.env.COLLAB_PORT ?? 4394);
 const ROUNDS = +(process.env.ROUNDS ?? 8);
@@ -12,7 +10,8 @@ const { check, failures } = checker();
 const server = await devServer(PORT);
 const { browser, page: a, pageErrors } = await openApp(PORT);
 const b = await (await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' })).newPage();
-b.on('pageerror', (e) => { if (!/ResizeObserver loop/.test(String(e))) pageErrors.push(`B: ${e}`); });
+collectErrors(b, pageErrors, 'B: ');
+if (process.env.VERBOSE) for (const [p, n] of [[a, 'A'], [b, 'B']]) p.on('console', (m) => { if (/collab/.test(m.text())) console.log(n, m.text().slice(0, 200)); });
 b.on('dialog', (d) => d.accept());
 
 const open = async (page, name) => {
@@ -33,6 +32,8 @@ const attach = (page, id, state) => page.evaluate(([id, s]) => {
   if (s) Y.applyUpdate(ydoc, Uint8Array.from(s), 'relay');
   const ed = document.querySelector('.tiptap-host .tiptap').editor;
   window.__yjsUndo = attachYjsUndo(ed, ydoc);
+  // A writes the repairs, as the client bound first does in a session.
+  window.__yjsUndo.setRepairer(() => id === 1);
   window.__yOut = [];
   ydoc.on('update', (u, origin) => { if (origin !== 'relay') window.__yOut.push([...u]); });
   // What the cases call: positions by text, cells by grid, typing as a transaction.
@@ -65,12 +66,14 @@ const attach = (page, id, state) => page.evaluate(([id, s]) => {
 await attach(a, 1);
 await attach(b, 2, await a.evaluate(() => [...window.__undoYjs.Y.encodeStateAsUpdate(window.__yjsUndo.ydoc)]));
 
-// Moves every waiting update across once; returns how many went.
+// Moves every waiting update across once; returns how many went (`sent`: per client).
+const sent = { a: 0, b: 0 };
 const relay = async () => {
   let n = 0;
   for (const [from, to] of [[a, b], [b, a]]) {
     const out = await from.evaluate(() => window.__yOut.splice(0));
     n += out.length;
+    sent[from === a ? 'a' : 'b'] = out.length;
     // The binding can throw while it applies an update; the case notes it and goes on.
     if (out.length) await to.evaluate((us) => {
       for (const u of us) {
@@ -135,53 +138,70 @@ const COMMENT = { type: 'comment', attrs: { id: 'c1', author: 'Carl', text: 'Why
 const COMMENTED = [P('Before.'), { type: 'paragraph', content: [{ type: 'text', text: 'The quick ' }, { type: 'text', text: 'brown', marks: [COMMENT] }, { type: 'text', text: ' fox.' }] }];
 
 // B types "Zed" after "lazy " unless said otherwise. `keep`: the strings that must stay
-// (a side's deliberate deletion excepted). `want`: what the run measures now.
+// (a side's deliberate deletion excepted); `none`: those that must not show up. `want`:
+// what the run measures now.
 const B_TYPES = 'h.type(h.at("lazy ", 5), "Zed")';
 const NOTED = [P('Before.'), { type: 'paragraph', content: [{ type: 'text', text: 'Noted' }, { type: 'noteRef', attrs: { id: 'n1', kind: 'footnote', text: '1' } }, { type: 'text', text: '.' }] }, P('After.'),
-  { type: 'noteSection', content: [{ type: 'note', attrs: { id: 'n1', kind: 'footnote', text: '1' }, content: [P('First note.')] }] }];
+  { type: 'noteSection', content: [{ type: 'note', attrs: { id: 'n1', kind: 'footnote', text: '1' }, content: [{ type: 'text', text: 'First note.' }] }] }];
 const ok = { same: true, valid: true, clean: true, kept: true, quiet: true, undo: true };
 const red = (...keys) => ({ ...ok, ...Object.fromEntries(keys.map((k) => k.endsWith('?') ? [k.slice(0, -1), null] : [k, false])) });
 const CASES = [
   { name: 'A types elsewhere in the paragraph (control)', doc: PARA, a: 'h.type(h.at("The ", 4), "Ann")', b: B_TYPES, keep: ['The Ann', 'lazy Zed'], want: ok },
-  { name: 'A splits the paragraph before B\'s place', doc: PARA, a: 'h.select(h.at("brown ", 6)); h.ed.commands.splitBlock()', b: B_TYPES, keep: ['lazy Zed'], want: red('kept') },
+  { name: 'A splits the paragraph before B\'s place', doc: PARA, a: 'h.select(h.at("brown ", 6)); h.ed.commands.splitBlock()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A splits the paragraph behind B\'s place', doc: PARA, a: 'h.select(h.at("lazy d", 6)); h.ed.commands.splitBlock()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
-  { name: 'A joins it to the paragraph before', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.joinBackward()', b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
-  { name: 'A makes it a heading', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.setParagraphStyle("Heading 1")', b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
-  { name: 'A makes a heading a paragraph again', doc: [P('Before.'), H(FOX), P('After.')], a: 'h.select(h.at("The ")); h.ed.commands.setParagraph()', b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
-  { name: 'A makes it a list item', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.toggleBulletList()', b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
-  { name: 'A indents it in its list', doc: [UL(LI('One'), LI(FOX), LI('Three'))], a: 'h.select(h.at("The ")); h.ed.commands.indentListForward()', b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
-  { name: 'A outdents it in its list', doc: [UL(LI('One', UL(LI(FOX))), LI('Three'))], a: 'h.select(h.at("The ")); h.ed.commands.liftListItem("listItem")', b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
+  { name: 'A joins it to the paragraph before', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.joinBackward()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
+  { name: 'A makes it a heading', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.setParagraphStyle("Heading 1")', b: B_TYPES, keep: ['lazy Zed'], want: ok },
+  // B types twice, two undo steps: its undo takes the second part of the rescued run alone.
+  { name: 'A makes it a heading, B types twice and undoes', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.setParagraphStyle("Heading 1")',
+    b: 'h.type(h.at("lazy ", 5), "Zed"); window.__yjsUndo.undoManager.lastChange = 0; h.type(h.at("lazy Zed", 8), "Yo")',
+    keep: ['lazy ZedYo'], undoB: { has: ['lazy Zeddog'], not: ['Yo'] }, want: ok },
+  { name: 'A splits it before B\'s place, B types twice and undoes', doc: PARA, a: 'h.select(h.at("brown ", 6)); h.ed.commands.splitBlock()',
+    b: 'h.type(h.at("lazy ", 5), "Zed"); window.__yjsUndo.undoManager.lastChange = 0; h.type(h.at("lazy Zed", 8), "Yo")',
+    keep: ['lazy ZedYo'], undoB: { has: ['lazy Zeddog'], not: ['Yo'] }, want: ok },
+  { name: 'A makes a heading a paragraph again', doc: [P('Before.'), H(FOX), P('After.')], a: 'h.select(h.at("The ")); h.ed.commands.setParagraph()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
+  { name: 'A makes it a list item', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.toggleBulletList()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
+  { name: 'A indents it in its list', doc: [UL(LI('One'), LI(FOX), LI('Three'))], a: 'h.select(h.at("The ")); h.ed.commands.indentListForward()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
+  { name: 'A outdents it in its list', doc: [UL(LI('One', UL(LI(FOX))), LI('Three'))], a: 'h.select(h.at("The ")); h.ed.commands.liftListItem("listItem")', b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A gives it another paragraph style', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.setParagraphStyle("Quotations")', b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A centres it', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.setTextAlign("center")', b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A indents it', doc: PARA, a: 'h.select(h.at("The ")); h.ed.commands.indentMore()', b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A drags it below the next one', doc: PARA,
     a: 'const from = h.block(1), node = h.doc().child(1); const tr = h.ed.state.tr.delete(from, from + node.nodeSize); tr.insert(tr.doc.content.size, node); h.ed.view.dispatch(tr)',
-    b: B_TYPES, keep: ['lazy Zed'], want: red('kept', 'undo') },
+    b: B_TYPES, keep: ['lazy Zed'], want: ok },
+  // A types or pastes over the end of "Before." through the end of B's paragraph: the
+  // replacement wins, and no rescue puts B's typing into A's new text. Where the paste
+  // rewrites B's paragraph in place, B's typing stays where Yjs merges it.
+  { name: 'A types over it and the one before', doc: PARA,
+    a: 'h.ed.view.dispatch(h.ed.state.tr.insertText(" It may depend on what they decide.", h.at("Before.", 7), h.block(2) - 1))',
+    b: B_TYPES, keep: [' It may depend on what they decide.After.'], none: ['Zed'], want: red('undo') },
+  { name: 'A pastes over it and the one before', doc: PARA,
+    a: 'h.select(h.at("Before.", 7), h.block(2) - 1); h.ed.view.pasteHTML("<p> One may decide.</p><p>Two lazy days.</p>")',
+    b: B_TYPES, keep: ['One may decide.', 'Zed'], none: ['lazy Zed', 'Zeddays'], want: ok },
   { name: 'A deletes it whole', doc: PARA, a: 'const from = h.block(1); h.ed.view.dispatch(h.ed.state.tr.delete(from, from + h.doc().child(1).nodeSize))', b: B_TYPES, keep: [], want: red('undo') },
-  { name: 'A puts a footnote in it', doc: PARA, a: 'h.select(h.at("quick", 5)); h.ed.commands.insertNote("footnote")', b: B_TYPES, keep: ['lazy Zed'], want: red('kept') },
+  { name: 'A puts a footnote in it', doc: PARA, a: 'h.select(h.at("quick", 5)); h.ed.commands.insertNote("footnote")', b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A comments a word in it', doc: PARA, a: 'h.select(h.at("brown"), h.at("brown", 5)); h.ed.commands.addComment({ author: "Anna", text: "Hm" })', b: B_TYPES, keep: ['lazy Zed'], want: ok },
-  { name: 'A puts a picture in it', doc: PARA, a: `h.select(h.at("fox ", 4)); h.ed.commands.setImage({ src: "${PNG}", width: 20, height: 20 })`, b: B_TYPES, keep: ['lazy Zed'], want: red('kept') },
+  { name: 'A puts a picture in it', doc: PARA, a: `h.select(h.at("fox ", 4)); h.ed.commands.setImage({ src: "${PNG}", width: 20, height: 20 })`, b: B_TYPES, keep: ['lazy Zed'], want: ok },
   { name: 'A replaces a word in it (Replace All)', doc: PARA,
     a: 'h.ed.commands.setSearch({ term: "quick", matchCase: false, wholeWord: false, useRegex: false }); h.ed.commands.replaceAll("slow"); h.ed.commands.clearSearch()',
     b: B_TYPES, keep: ['lazy Zed', 'slow'], want: ok },
 
   // Tables: 3 × 3, cell text "a1".."c3"; h.cells()[row][col] is a cell's position.
-  { name: 'A inserts a column, B a row', doc: TABLE, a: 'h.select(h.cells()[0][0] + 2); h.ed.commands.addColumnAfter()', b: 'h.select(h.cells()[1][1] + 2); h.ed.commands.addRowAfter()', keep: [], want: red('same?', 'quiet', 'undo') },
+  { name: 'A inserts a column, B a row', doc: TABLE, a: 'h.select(h.cells()[0][0] + 2); h.ed.commands.addColumnAfter()', b: 'h.select(h.cells()[1][1] + 2); h.ed.commands.addRowAfter()', keep: [], want: ok },
   { name: 'A deletes a row, B types in it', doc: TABLE, a: 'h.select(h.cells()[1][0] + 2); h.ed.commands.deleteRow()', b: 'h.type(h.at("b2", 2), "Zed")', keep: [], want: red('undo') },
   { name: 'A deletes a column, B types in it', doc: TABLE, a: 'h.select(h.cells()[0][1] + 2); h.ed.commands.deleteColumn()', b: 'h.type(h.at("b2", 2), "Zed")', keep: [], want: red('undo') },
   { name: 'A merges two cells, B types in one', doc: TABLE,
     a: 'const c = h.cells(); h.ed.commands.setCellSelection({ anchorCell: c[0][0], headCell: c[0][1] }); h.ed.commands.mergeCells()',
-    b: 'h.type(h.at("b1", 2), "Zed")', keep: ['b1Zed', 'a1'], want: red('kept', 'undo') },
+    b: 'h.type(h.at("b1", 2), "Zed")', keep: ['b1Zed', 'a1'], want: ok },
   { name: 'A and B merge overlapping cells', doc: TABLE,
     a: 'const c = h.cells(); h.ed.commands.setCellSelection({ anchorCell: c[0][0], headCell: c[0][1] }); h.ed.commands.mergeCells()',
     b: 'const c = h.cells(); h.ed.commands.setCellSelection({ anchorCell: c[0][1], headCell: c[1][1] }); h.ed.commands.mergeCells()',
-    keep: ['a1', 'b1', 'b2'], want: red('same?', 'kept?', 'quiet', 'undo') },
+    keep: ['a1', 'b1', 'b2'], want: red('undo') },
   { name: 'A widens a column, B inserts one', doc: TABLE,
     a: 'const tr = h.ed.state.tr; h.cells().forEach((r, i) => tr.setNodeAttribute(r[0], "colwidth", [300])); h.ed.view.dispatch(tr)',
     b: 'h.select(h.cells()[0][1] + 2); h.ed.commands.addColumnAfter()', keep: [], want: ok },
   { name: 'A sorts the table, B types in a cell', doc: TABLE,
     a: 'h.select(h.cells()[0][0] + 2); h.ed.commands.sortTable({ keys: [{ column: 0, descending: true, type: "text" }], headerRow: false })',
-    b: 'h.type(h.at("b1", 2), "Zed")', keep: ['b1Zed'], want: red('kept') },
+    b: 'h.type(h.at("b1", 2), "Zed")', keep: ['b1Zed'], want: ok },
   { name: 'A deletes the table, B types in a cell', doc: TABLE, a: 'h.select(h.cells()[0][0] + 2); h.ed.commands.deleteTable()', b: 'h.type(h.at("b2", 2), "Zed")', keep: [], want: red('undo') },
 
   // Recorded changes (r1 marks "brown fox ") and comments (c1 on "brown").
@@ -192,9 +212,9 @@ const CASES = [
 
   // Derived content: the TOC's rows, the notes' numbers.
   { name: 'A updates the TOC, B edits a heading', doc: [{ type: 'tableOfContents', attrs: { index: 'toc', entries: [{ text: 'Alpha', level: 1, page: 1 }, { text: 'Old', level: 1, page: 1 }] } }, H('Alpha'), P('Text.'), H('Beta')],
-    a: 'h.ed.commands.updateIndexes()', b: 'h.type(h.at("Alpha", 5), " Zed")', keep: ['Alpha Zed'], want: red('undo') },
-  { name: 'A adds the first footnote, B one before it', doc: PARA, a: 'h.select(h.at("After", 5)); h.ed.commands.insertNote("footnote")', b: 'h.select(h.at("Before", 6)); h.ed.commands.insertNote("footnote")', keep: [], notes: 2, want: red('clean', 'kept', 'quiet') },
-  { name: 'A adds a footnote, B one before it', doc: NOTED, a: 'h.select(h.at("After", 5)); h.ed.commands.insertNote("footnote")', b: 'h.select(h.at("Before", 6)); h.ed.commands.insertNote("footnote")', keep: [], notes: 3, want: red('quiet', 'undo') },
+    a: 'h.ed.commands.updateIndexes()', b: 'h.type(h.at("Alpha", 5), " Zed")', keep: ['Alpha Zed'], want: red('quiet?', 'undo') },
+  { name: 'A adds the first footnote, B one before it', doc: PARA, a: 'h.select(h.at("After", 5)); h.ed.commands.insertNote("footnote")', b: 'h.select(h.at("Before", 6)); h.ed.commands.insertNote("footnote")', keep: [], notes: 2, want: ok },
+  { name: 'A adds a footnote, B one before it', doc: NOTED, a: 'h.select(h.at("After", 5)); h.ed.commands.insertNote("footnote")', b: 'h.select(h.at("Before", 6)); h.ed.commands.insertNote("footnote")', keep: [], notes: 3, want: ok },
 ];
 
 const diff = (x, y) => { let i = 0; while (i < x.length && x[i] === y[i]) i++; return `…${x.slice(Math.max(0, i - 40), i + 80)}… vs …${y.slice(Math.max(0, i - 40), i + 80)}…`; };
@@ -203,7 +223,20 @@ try {
   for (const c of CASES) {
     if (ONLY && !ONLY.test(c.name)) continue;
     await record(b, false);
-    await a.evaluate((d) => window.__h.ed.commands.setContent({ type: 'doc', content: d }), c.doc);
+    // Each pair from fresh Yjs docs, so every row starts from the same state; FRESH=0 keeps
+    // one pair for the whole run, which checks undo over a long history (yjs#823, yjsRedo.ts).
+    if (process.env.FRESH !== '0') {
+      for (const p of [a, b]) await p.evaluate(() => window.__yjsUndo.detach());
+      await a.evaluate((d) => window.__h.ed.commands.setContent({ type: 'doc', content: d }), c.doc);
+      await attach(a, 1);
+      await attach(b, 2, await a.evaluate(() => [...window.__undoYjs.Y.encodeStateAsUpdate(window.__yjsUndo.ydoc)]));
+    } else {
+      // B empties the doc first: A's new rows then rebuild none of B's text, which B would rescue.
+      await b.evaluate(() => window.__h.ed.commands.clearContent());
+      await b.waitForTimeout(250);
+      await relay();
+      await a.evaluate((d) => window.__h.ed.commands.setContent({ type: 'doc', content: d }), c.doc);
+    }
     for (let i = 0; i < 3; i++) { await a.waitForTimeout(250); await relay(); }
     await thrown();
     for (const p of [a, b]) await p.evaluate(() => { window.__yjsUndo.undoManager.clear(); window.__yOut.length = 0; });
@@ -214,17 +247,19 @@ try {
     const onlyB = await view(b);
     // The exchange, then whatever either sends on its own afterwards.
     await relay();
+    // A, the repairer, may write its repair once, right after the exchange.
     let extra = 0, quietRounds = 0;
     for (let i = 0; i < ROUNDS && quietRounds < 3; i++) {
       await a.waitForTimeout(i === 0 ? 700 : 200);
       const n = await relay();
-      extra += n;
+      extra += i === 0 ? sent.b : n;
       if (process.env.VERBOSE && n) console.log(`  round ${i}: ${n} updates`, process.env.DUMP ? (await view(a)).json.replace(/"attrs":\{[^{}]*\}/g, '').replace(/"(revMark|revFormat)":null,?/g, '') : '');
       quietRounds = n ? 0 : quietRounds + 1;
     }
     const [va, vb] = [await view(a), await view(b)];
     const threw = await thrown();
     const lost = c.keep.filter((s) => !va.text.includes(s) && !va.json.includes(s));
+    for (const s of c.none ?? []) if (va.text.includes(s)) lost.push(`"${s}" injected`);
     if (c.notes && va.notes.length !== c.notes) lost.push(`${c.notes - va.notes.length} of ${c.notes} notes`);
     const got = {
       same: va.json === vb.json && va.frag === vb.frag,
@@ -235,17 +270,21 @@ try {
       undo: false,
     };
     await record(b, false);
-    await a.evaluate(() => window.__h.ed.commands.undo());
+    // `undoB`: B undoes its last step instead; the text then holds `has` and none of `not`.
+    await (c.undoB ? b : a).evaluate(() => window.__h.ed.commands.undo());
     for (let i = 0; i < 3; i++) { await a.waitForTimeout(250); await relay(); }
     const [ua, ub] = [await view(a), await view(b)];
-    got.undo = ua.json === ub.json && ua.valid && ub.valid && !ua.ragged.length && ua.json === onlyB.json;
+    got.undo = ua.json === ub.json && ua.valid && ub.valid && !ua.ragged.length && (c.undoB
+      ? c.undoB.has.every((s) => ua.text.includes(s)) && !c.undoB.not.some((s) => ua.text.includes(s))
+      : ua.json === onlyB.json);
     const note = [
       !got.same && `differ: ${diff(va.json, vb.json)}`,
       threw.length && `threw: ${threw[0]}`,
       !got.valid && `invalid: ${va.error || vb.error} ragged ${va.ragged}|${vb.ragged} notes ${va.notes}|${vb.notes}`,
       lost.length && `lost ${lost.join(', ')}`,
       extra && `${extra} updates after the exchange${quietRounds < 3 ? ', still going' : ', then quiet'}`,
-      !got.undo && `undo: ${ua.json === onlyB.json ? '' : diff(ua.json, onlyB.json)}${ua.json === ub.json ? '' : ' (clients differ)'}`,
+      !got.undo && c.undoB && `B's undo: ${ua.text}`,
+      !got.undo && !c.undoB && `undo: ${ua.json === onlyB.json ? '' : diff(ua.json, onlyB.json)}${ua.json === ub.json ? '' : ' (clients differ)'}`,
     ].filter(Boolean);
     if (process.env.VERBOSE) console.log(JSON.stringify({ case: c.name, text: [base.text, va.text, ua.text], sel: vb.sel, toc: va.toc, notes: [va.notes, vb.notes, ua.notes], marks: [va.marks, ua.marks] }));
     // null: not asserted, since it depends on how the repairs race.

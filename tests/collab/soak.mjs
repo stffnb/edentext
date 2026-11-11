@@ -4,7 +4,7 @@
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ROOT, checker, devServer, openApp } from '../browser.mjs';
+import { ROOT, checker, collectErrors, devServer, openApp } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
 import { mulberry32, pick, int, drawOp, monkeyOn } from '../monkey/ops.mjs';
 
@@ -18,12 +18,14 @@ const OPS = +(process.env.SOAK_OPS ?? 8);
 // The long run: several seeds, each a session of its own, within a time budget.
 const RUNS = +(process.env.SOAK_RUNS ?? 1);
 const MINUTES = +(process.env.SOAK_MINUTES ?? 0);
-// By default the ops behind known conflicts are left out, so only new ones show (and the
+// By default the ops behind accepted conflicts are left out, so only new ones show (and the
 // short run in test:collab stays green on them); `SOAK_SKIP=none` draws every op.
 const SKIP = (process.env.SOAK_SKIP ?? 'known') === 'known';
 const DOCS = process.env.SOAK_DOC ? [process.env.SOAK_DOC] : ['02-blocks.odt', '04-table.odt', '08-lists.odt', '12-notes.odt'];
 const { check, failures } = checker();
 const known = [];
+const redrawn = [];
+const refused = []; // held edits that no longer fit
 const BEAT = 2000;
 let lagOn = false;
 const relay = await startRelay({ port: RELAY_PORT, beat: BEAT, lag: () => (lagOn ? Math.floor(Math.random() * 250) : 0) });
@@ -33,16 +35,18 @@ const URL0 = `http://localhost:${PORT}/`;
 // Each client's typing carries its own letter, so whose text is where can be counted.
 const LETTERS = 'αβγδεζηθ';
 
-// Ops whose result in a session is a known conflict (collab-conflicts.md, R3): a block
-// rebuilt, joined or split, a list, a note, a picture or other inline node splitting the
-// text, a table's structure, and typing over a selection that may join blocks.
-const KNOWN_OP = (op) => (op.cmd === 'setParagraphStyle' && op.args[0] !== 'Standard' && op.args[0] !== 'Quotations')
-  || /^(toggleBulletList|toggleOrderedList|sinkListItem|liftListItem|indentMore|indentLess|insertNote|setImage|insertFormula|insertTextBox|setHardBreak|insertPageBreak|setTextSelection|mergeCells|splitCell|addRowAfter|addColumnAfter|deleteRow|deleteColumn|deleteTable|insertTable)$/.test(op.cmd ?? '')
-  || /^(Backspace|Delete|Tab|Shift\+Tab|Enter|Shift\+Arrow\w+)$/.test(op.key ?? '') || /\+(Shift\+[78]|Enter)$/.test(op.key ?? '');
+// Ops behind a conflict the matrix accepts (collab-conflicts.md): deleting what another
+// types in (a selection typed over, Backspace and Delete, a row, column or table).
+const DELETE_OP = (op) => /^(setTextSelection|deleteRow|deleteColumn|deleteTable)$/.test(op.cmd ?? '')
+  || /^(Backspace|Delete|Shift\+Arrow\w+)$/.test(op.key ?? '');
+// Ops that rebuild a block as a copy: the copy is its maker's, so the typist's undo no
+// longer reaches what it holds (and overlapping merges undo apart), as the matrix says.
+const REBUILD_OP = (op) => (op.cmd === 'setParagraphStyle' && op.args[0] !== 'Standard' && op.args[0] !== 'Quotations')
+  || /^(toggleBulletList|toggleOrderedList|sinkListItem|liftListItem|indentMore|indentLess|insertNote|setImage|insertFormula|insertTextBox|setHardBreak|insertPageBreak|mergeCells|splitCell|addRowAfter|addColumnAfter|insertTable)$/.test(op.cmd ?? '')
+  || /^(Tab|Shift\+Tab|Enter)$/.test(op.key ?? '') || /\+(Shift\+[78]|Enter)$/.test(op.key ?? '');
 // The columns flow rewrites a section's text outside the history, alone too (the monkey
 // run leaves the history unchecked after it), so undo cannot take that text back.
 const FLOW_OP = (op) => (op.cmd === 'setColumns' && op.args[0] > 1) || op.cmd === 'setColumnGap';
-const TABLE_OP = (op) => /^(addRowAfter|addColumnAfter|deleteRow|deleteColumn|mergeCells|splitCell|insertTable|deleteTable)$/.test(op.cmd ?? '');
 
 async function client(name, page) {
   if (!page) {
@@ -69,9 +73,16 @@ async function client(name, page) {
       send(d) { if (!(st.deaf && this.relay)) super.send(d); }
     };
   }, name);
-  page.on('pageerror', (e) => { if (!/ResizeObserver loop/.test(String(e))) c.errors.push(String(e.stack ?? e).split('\n').slice(0, 5).join(' / ').slice(0, 600)); });
+  collectErrors(page, c.errors);
   // What the dev server's client said last: a reload it orders is no finding of the app's.
-  page.on('console', (m) => { if (/\[vite\]/.test(m.text())) c.vite = m.text().slice(0, 120); });
+  page.on('console', (m) => {
+    if (/\[vite\]/.test(m.text())) c.vite = m.text().slice(0, 120);
+    // The binding's fallback when it cannot restore the caret (yjsRepair.ts): counted, not
+    // failed; a redraw that is not the shared doc, or content that does not fit, pauses it.
+    if (/caret not restorable/.test(m.text())) redrawn.push(`${name}: ${m.text().slice(0, 160)}`);
+    if (/collab: paused/.test(m.text())) check(false, `${name}: ${m.text().slice(0, 200)}`);
+    if (/inside a repair not yet shared/.test(m.text())) refused.push(name);
+  });
   page.on('crash', () => { c.vite = 'renderer crashed'; });
   return c;
 }
@@ -113,11 +124,16 @@ const stateOf = (c) => c.page.evaluate((letters) => {
   const json = ed ? JSON.stringify(ed.state.doc.toJSON()) : '';
   const map = y ? JSON.stringify([...y.getMap('state').entries()].sort(([a], [b]) => (a < b ? -1 : 1))) : '';
   const text = (ed?.state.doc.textContent ?? '').toLowerCase();
+  // A typed word ends in its client's letter: its stem reaches back to a space or a letter.
+  const blocks = [];
+  ed?.state.doc.descendants((n) => { if (n.isTextblock) blocks.push(n.textBetween(0, n.content.size, '', () => '').toLowerCase()); return !n.isTextblock; });
   return {
     status: window.__collab?.view()?.status ?? 'none', doc: hash(json), state: hash(map),
     body: y ? hash(y.getXmlFragment('body').toString()) : '', invalid: String(ed?.state['y-sync$']?.binding?._invalidContentError ?? ''),
     pages: +(/of (\d+)/.exec(document.querySelector('.statusbar')?.textContent ?? '')?.[1] ?? 0),
     sent: s?.stats.sent[1] ?? 0, letters: [...letters].map((l) => text.split(l).length - 1),
+    words: [...letters].map((l) => [...new Set(blocks.flatMap((t) => t.match(new RegExp(`[^\\s${letters}]*${l}`, 'g')) ?? []))]),
+    blocks: blocks.join('\n'),
   };
 }, LETTERS);
 // The schema's check, and every table rectangular (rowspans counted).
@@ -145,12 +161,11 @@ const docJson = (c) => c.page.evaluate(() => JSON.stringify(document.querySelect
 // A finding, classified: a known conflict is logged and the run goes on, a new one fails it.
 function report(kind, detail, ctx = {}) {
   const ops = ctx.ops ?? [];
-  const why = /restoreRelativeSelection/.test(detail) ? 'RangeError in y-tiptap restoreRelativeSelection (R3: first footnote on both sides)'
-    : /threw/.test(detail) ? null
-    : (kind === 'loud' || (kind === 'diverged' && /same Yjs body/.test(detail))) && ops.some(TABLE_OP) ? 'table repaired on two sides'
+  const why = /threw/.test(detail) ? null
     : kind === 'undo' && ops.some(FLOW_OP) ? 'undo after the columns flow rewrote text'
-    : kind === 'undo' && ops.some(KNOWN_OP) ? 'undo after a block rebuilt, split, joined or deleted'
-    : kind === 'lost' && ops.some(KNOWN_OP) ? 'text typed into a block another rebuilt, split, joined or deleted'
+    : kind === 'undo' && ops.some((op) => REBUILD_OP(op) || DELETE_OP(op)) ? 'undo after a block copied by another client or deleted'
+    : kind === 'lost' && ops.some(DELETE_OP) ? 'text typed into what another deleted'
+    : kind === 'copied' && ops.some((op) => REBUILD_OP(op) || DELETE_OP(op)) ? 'undo and redo after two rebuilds of one block'
     : null;
   if (why) { known.push(`${kind}: ${why}`); console.log(`  known (${why}): ${kind} — ${detail.slice(0, 200)}`); }
   else check(false, `seed ${seed}, round ${roundNo}: ${kind} — ${detail}`);
@@ -188,7 +203,14 @@ async function calm(cs, ops) {
     report('diverged', `${desc} (${why}): ${one('doc') ? 'stores differ' : diff}`, { ops });
     return 'reset';
   }
-  if (!one('pages')) report('pages', desc, { ops });
+  if (!one('pages')) {
+    // Every client's spacers beside the doc and stores, to load into one tab and compare.
+    const spacers = await Promise.all(cs.map((c) => c.page.evaluate(() => [...document.querySelectorAll('.tiptap-host .tiptap [data-page-break-spacer]')]
+      .map((s) => `${Math.round(s.offsetTop)}+${Math.round(s.offsetHeight)}`).join())));
+    const file = join(tmpdir(), `soak-${seed}-${roundNo}-pages.json`);
+    await writeFile(file, JSON.stringify({ doc: JSON.parse(await docJson(cs[0])), storage: await cs[0].page.evaluate(() => ({ ...localStorage })), spacers }));
+    report('pages', `${desc} (${file})`, { ops });
+  }
   const sent = states.map((s) => s.sent);
   await new Promise((r) => setTimeout(r, 3000));
   const after = (await Promise.all(cs.map(stateOf))).map((s) => s.sent);
@@ -208,7 +230,7 @@ async function play(c, r, n, ops) {
   for (let i = 0; i < n; i++) {
     const size = await c.page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.state.doc.content.size).catch(() => 0);
     let op = drawOp(r, size);
-    while (SKIP && (KNOWN_OP(op) || FLOW_OP(op))) op = drawOp(r, size);
+    while (SKIP && (DELETE_OP(op) || FLOW_OP(op))) op = drawOp(r, size);
     if (op.type) op = { type: op.type + letter };
     c.log.push(op);
     ops.push(op);
@@ -340,17 +362,21 @@ try {
       if (typeof n === 'string') { report('undo', `${c.name}: ${n}`, { ops: c.log }); continue; }
       const undone = await calm(cs, c.log);
       if (undone === 'reset') break;
-      const others = before.letters.map((k, i) => (i === c.index ? 0 : k)), now = undone.letters.map((k, i) => (i === c.index ? 0 : k));
-      if (now.some((k, i) => k < others[i])) report('lost', `${c.name}'s ${n} undos took others' text: letters ${before.letters} → ${undone.letters}`, { ops: cs.flatMap((x) => x.log) });
+      // Lost: fewer of another's letters and a word's stem nowhere; fewer copies are not,
+      // nor the undoer's text gone beside a word (stems end at the letter, a space or a letter).
+      const gone = before.words.flatMap((ws, i) => (i === c.index || undone.letters[i] >= before.letters[i] ? [] : ws.filter((w) => !undone.blocks.includes(w))));
+      if (gone.length) await writeFile(join(tmpdir(), `soak-${seed}-${roundNo}-lost.json`), JSON.stringify({ name: c.name, gone, before: JSON.parse(d0), undone: JSON.parse(await docJson(cs[0])) }));
+      if (gone.length) report('lost', `${c.name}'s ${n} undos took others' text: ${gone.slice(0, 4).join(' ')}, letters ${before.letters} → ${undone.letters}`, { ops: cs.flatMap((x) => x.log) });
       if (c.history && undone.letters[c.index] > c.base) report('undo', `${c.name}'s ${n} undos leave ${undone.letters[c.index] - c.base} of its letters`, { ops: cs.flatMap((x) => x.log) });
       await c.page.evaluate((n) => { const ed = document.querySelector('.tiptap-host .tiptap').editor; for (let i = 0; i < n; i++) ed.commands.redo(); }, n);
       const redone = await calm(cs, c.log);
       if (redone === 'reset') break;
+      // Copies of others' text change the document too: one finding, `copied`, with the diff.
+      const copied = before.letters.some((k, i) => i !== c.index && redone.letters[i] > k);
       const d1 = await docJson(cs[0]);
-      if (d1 !== d0) {
-        const diff = await cs[0].page.evaluate(async ([a, b]) => (await import('/tests/normalize.ts')).firstDiff(JSON.parse(a), JSON.parse(b)), [d0, d1]);
-        report('undo', `${c.name}'s ${n} redos do not give the document back: ${diff}`, { ops: c.log });
-      }
+      const diff = d1 === d0 ? '' : await cs[0].page.evaluate(async ([a, b]) => (await import('/tests/normalize.ts')).firstDiff(JSON.parse(a), JSON.parse(b)), [d0, d1]);
+      if (copied) report('copied', `${c.name}'s undos and redos copied others' text: letters ${before.letters} → ${undone.letters} → ${redone.letters}; ${diff}`, { ops: cs.flatMap((x) => x.log) });
+      else if (diff) report('undo', `${c.name}'s ${n} redos do not give the document back: ${diff}`, { ops: c.log });
       else console.log(`  ${c.name}: ${n} undos and redos, letters ${before.letters} → ${undone.letters} → ${redone.letters}`);
     }
     for (const c of cs) await leave(c);
@@ -360,6 +386,8 @@ try {
 } catch (err) {
   check(false, `soak run threw (seed ${seed}, round ${roundNo}): ${err.stack ?? err}`);
 } finally {
+  if (redrawn.length) console.log(`redrawn after a caret not restorable: ${redrawn.length} (${redrawn[0]})`);
+  if (refused.length) console.log(`held edits lost inside a repair not yet shared: ${refused.length}`);
   if (known.length) console.log(`known: ${[...new Set(known)].map((k) => `${k} ×${known.filter((x) => x === k).length}`).join('; ')}`);
   await browser.close();
   await relay.close();

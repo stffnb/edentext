@@ -779,6 +779,8 @@ export const PageBreaks = Extension.create({
     // below a float's overhang moves further than the model's spacer), so seeing the older
     // key return means a ping-pong. null, not '' — that is a spacer-free layout's own key.
     let prevPlacementsKey: string | null = null;
+    // The page count the pass that found the current layout counted for it.
+    let lastPages = 0;
     let lastAnnounced = '';
     // Each pass measures against the spacers left by the previous pass, so a changed
     // result needs one more pass to re-measure and settle (see calculate). Bounded so
@@ -2309,11 +2311,18 @@ export const PageBreaks = Extension.create({
             // The notes ride the same guard: a frozen layout would leave every footnote
             // at the position, and on the page, it used to belong to.
             notePlacements.map((n) => `|n${n.from}:${Math.round(n.top)}`).join('');
-          const placementsChanged =
-            placementsKey !== lastPlacementsKey && placementsKey !== prevPlacementsKey;
+          // Two layouts that imply each other are both placed in turn until the one the
+          // document prefers stands — the larger page count, then the larger key — so the
+          // pages never depend on which of them came first (a reload, another client).
+          const pagesFound = Math.max(1, placed.grid.pageAt(maxEffectiveBottom));
+          const pingPong = placementsKey === prevPlacementsKey && placementsKey !== lastPlacementsKey;
+          const preferred = !pingPong || pagesFound > lastPages
+            || (pagesFound === lastPages && placementsKey > lastPlacementsKey);
+          const placementsChanged = placementsKey !== lastPlacementsKey;
           if (placementsChanged) {
             prevPlacementsKey = lastPlacementsKey;
             lastPlacementsKey = placementsKey;
+            lastPages = pagesFound;
             const doc = editorView.state.doc;
             // Every spacer is built per view: a split pane renders the same decorations,
             // and one DOM node cannot sit in two documents at once — each would keep
@@ -2407,7 +2416,7 @@ export const PageBreaks = Extension.create({
           // maxEffectiveBottom is the lowest rendered content across all leaves,
           // including parallel cells of a too-tall row (a single last-leaf reading
           // would miss a taller sibling column).
-          const numPages = Math.max(1, placed.grid.pageAt(maxEffectiveBottom));
+          const numPages = pagesFound;
           const targetHeight = placed.grid.bottomOf(numPages);
           dom.style.minHeight = `${targetHeight}px`;
 
@@ -2485,10 +2494,13 @@ export const PageBreaks = Extension.create({
             editorView.dispatch(editorView.state.tr.setMeta(RESYNC_NOTES, true).setMeta('addToHistory', false));
           }
 
-          // Each pass measures against the spacers present at its start, so a changed
-          // result needs another pass to re-measure and settle (e.g. after an orientation
-          // switch). Bounded by MAX_CONVERGE_PASSES against a two-layout ping-pong.
-          if ((placementsChanged || notePagesMoved) && convergePasses < MAX_CONVERGE_PASSES) {
+          // A changed result needs another pass to re-measure and settle (an orientation
+          // switch), on a budget. A ping-pong's other layout, just placed, measures into the
+          // preferred one once more, past the budget; nothing measures on from that one.
+          if (pingPong && !preferred && convergePasses < MAX_CONVERGE_PASSES + 2) {
+            convergePasses++;
+            schedule();
+          } else if (!pingPong && (placementsChanged || notePagesMoved) && convergePasses < MAX_CONVERGE_PASSES) {
             convergePasses++;
             schedule();
           }

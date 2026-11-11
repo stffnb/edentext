@@ -44,8 +44,12 @@ export type SessionStatus =
 /** `keeps`: this client stores the document (the starter); a joiner holds it in its tab only. */
 export type Peer = { id: number; name: string; color: string; keeps: boolean };
 
-/** `missing`: pictures no one here could send, shown as grey boxes. */
-export type SessionView = { status: SessionStatus; peers: Peer[]; link: string; keeps: boolean; kept: boolean; missing: number };
+/**
+ * `missing`: pictures no one here could send, shown as grey boxes. `paused`: the shared doc
+ * does not fit this editor, which neither edits nor writes until an update fits again.
+ * `dropped`: held edits that no longer fitted and went, counted for a notice.
+ */
+export type SessionView = { status: SessionStatus; peers: Peer[]; link: string; keeps: boolean; kept: boolean; missing: number; paused: boolean; dropped: number };
 
 /** What the session needs from the app. */
 export type SessionHost = {
@@ -110,11 +114,24 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   let status: SessionStatus = 'connecting';
   let peerCount = 1;
   let binding: YjsUndo | null = null;
+  let repairer: (() => boolean) | null = null;
+  let paused = false;
+  let dropped = 0;
   let joining = join;
   // The others' carets and selections, drawn as decorations in their colours, and the
   // pictures put in from now on; one registration, as each rebuilds every plugin view.
   const bind = (b: YjsUndo) => {
     binding = b;
+    // The repairer is the client bound longest (lowest `rank`, then id): one joining later
+    // ranks after everyone it sees, so the role moves only when its holder leaves.
+    const ranks = [...awareness.getStates()].filter(([id]) => id !== ydoc.clientID).map(([, s]) => s.rank).filter((r) => typeof r === 'number');
+    const rank = join ? Math.max(0, ...ranks) + 1 : 0;
+    awareness.setLocalStateField('rank', rank);
+    repairer = () => [...awareness.getStates()].every(([id, s]) =>
+      id === ydoc.clientID || typeof s.rank !== 'number' || s.rank > rank || (s.rank === rank && id > ydoc.clientID));
+    b.setRepairer(repairer);
+    b.onPause((p) => { paused = p; changed(); });
+    b.onDrop(() => { dropped++; changed(); });
     editor.registerPlugin(yCursorPlugin(awareness), (p, plugins) => [...plugins, p, pictures.plugin]);
   };
 
@@ -123,7 +140,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
     .map(([id, s]) => ({ id, name: String(s.user.name ?? ''), color: String(s.user.color ?? ''), keeps: s.keeps === true }));
   const changed = () => {
     const all = peers();
-    host.onChange({ status, peers: all, link, keeps, kept: keeps || all.some((p) => p.keeps), missing: pictures.missing() });
+    host.onChange({ status, peers: all, link, keeps, kept: keeps || all.some((p) => p.keeps), missing: pictures.missing(), paused, dropped });
   };
   // Waiting turns into `empty` after EMPTY_MS and stays so until someone comes.
   let emptyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -166,6 +183,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   const onPresence = ({ added, updated, removed }: Change, origin: unknown) => {
     if (origin === 'local') send(PRESENCE, encodeAwarenessUpdate(awareness, [...added, ...updated, ...removed]));
     if (added.length || removed.length) pictures.recheck();
+    if (binding && repairer && removed.length) binding.setRepairer(repairer);
     changed();
   };
   awareness.on('update', onPresence);
@@ -199,11 +217,11 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   };
 
   // A sync, once per welcome: this client asks, everyone offers its state vector and delete
-  // set, it pulls what it lacks from the offer that has the most, then from any that still
-  // has more, a late offer too, and then sends all in one update what any offer lacks.
+  // set, it pulls from the offer with the most, then any with more (a late one too), then
+  // applies the offered deletions, which may need a pulled insert, and gives what offers lack.
   type Known = { sv: Map<number, number>; ds: Deletes };
   type Round = {
-    offers: Map<number, Known>; pulled: Set<number>; target: number | null;
+    offers: Map<number, Known>; pulled: Set<number>; target: number | null; deletes: Uint8Array[];
     done: boolean; over: boolean; at: number; settle?: ReturnType<typeof setTimeout>; watch?: ReturnType<typeof setInterval>;
   };
   let round: Round | null = null;
@@ -215,7 +233,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
   const startRound = () => {
     endRound();
     if (peerCount <= 1) return;
-    const r: Round = round = { offers: new Map(), pulled: new Set(), target: null, done: false, over: false, at: Date.now() };
+    const r: Round = round = { offers: new Map(), pulled: new Set(), target: null, deletes: [], done: false, over: false, at: Date.now() };
     r.watch = setInterval(() => { if (!r.over && Date.now() - Math.max(r.at, channel.heard()) > STALL_MS) startRound(); }, 1000);
     send(ASK, me);
   };
@@ -250,6 +268,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       if (more > most) { most = more; best = from; }
     }
     if (best === null) {
+      if (round.deletes.length) { inbox.push(...round.deletes.splice(0)); applyInbox(); }
       round.over = true;
       give(round);
       return;
@@ -278,7 +297,7 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
         const from = v.getUint32(5), n = v.getUint32(9);
         const ds = plain.subarray(13 + n);
         round.offers.set(from, { sv: Y.decodeStateVector(plain.subarray(13, 13 + n)), ds: Y.decodeUpdate(ds).ds });
-        receive(ds);
+        round.deletes.push(ds.slice());
         if (round.done) pull();
         else if (round.offers.size >= peerCount - 1) settle();
         else round.settle ??= setTimeout(settle, SETTLE_MS);
@@ -291,8 +310,9 @@ function connect(editor: Editor, key: string, host: SessionHost, ydoc: Y.Doc, bo
       }
     },
     onPeers(n, gone) {
-      // A client whose line ended is dropped at once, not after awareness's 30 s: no picture
-      // is asked of it and its zone frees. Back on a new line, it presents itself anew.
+      // A client whose line the relay saw end is dropped at once: no picture is asked of it, its
+      // zone frees, its repairs move on. A presence merely late drops no one (a busy repairer
+      // would get a second). Back on a new line, a client presents itself anew.
       if (gone) removeAwarenessStates(awareness, [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.peer === gone).map(([id]) => id), 'gone');
       // Someone came: tell them who we are; their sync sends them what they lack, and a
       // client still without the doc asks them. Someone left: a sync still waiting on
@@ -384,7 +404,8 @@ export function joinSession(editor: Editor, key: string, host: SessionHost): Ses
     if (!(await host.load(meta.get('snapshot') as Uint8Array, String(meta.get('name') ?? '')))) return null;
     // The start file's pictures are held, under the keys the shared doc names them by.
     keyPictures(editor.state);
-    const binding = attachYjsUndo(editor, ydoc, codec);
+    // Repairs wait for the rank the session gives it on binding.
+    const binding = attachYjsUndo(editor, ydoc, codec, () => false);
     binding.applyState();
     return binding;
   });
