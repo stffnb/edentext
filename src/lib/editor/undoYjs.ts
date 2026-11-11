@@ -317,7 +317,15 @@ export function attachYjsUndo(
     // One's own change still gathering goes into the map first, so both authors' entries
     // stay; its write is a transaction of its own, which Yjs runs after this observer.
     if (!t.local) for (const id of new Set([...ev.keysChanged].map(storeOf))) commitState(id);
-    apply(ev.keysChanged);
+    // The body's observer redraws the document after this one; dispatching earlier would make
+    // the binding write the document as drawn before the update back over it.
+    const keys = [...ev.keysChanged];
+    const after = (done: Y.Transaction) => {
+      if (done !== t) return;
+      ydoc.off('afterTransaction', after);
+      apply(keys);
+    };
+    ydoc.on('afterTransaction', after);
   };
 
   const backend: UndoBackend = {
