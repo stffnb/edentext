@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import '../src/lib/editor/yjsRedo';
 import { keyBytes, linkKeys, newKey, opened, roomId, seal, sessionLink, signed, unseal, viewLink, writeKeys } from '../src/lib/collab/key';
@@ -160,6 +160,32 @@ describe('collaboration key', () => {
     expect(whole.filter(([from]) => from === 9)).toEqual(Array(8).fill([9, 4096]));
     raw.close();
     await relay.close();
+  });
+
+  it('keeps a line whose messages wait behind a late beat tick, and drops a silent one', () => {
+    vi.useFakeTimers();
+    type Sock = { onopen?: () => void; onmessage?: ((ev: { data: unknown }) => void) | null; closed?: boolean };
+    const socks: Sock[] = [];
+    vi.stubGlobal('WebSocket', class { constructor() { socks.push(this as Sock); } send() {} close() { (this as Sock).closed = true; } });
+    try {
+      const ch = openChannel({ url: 'ws://relay', key: keyBytes(newKey())!, id: 1, onFrame: () => {}, onPeers: () => {}, onStatus: () => {}, onOpen: () => {} });
+      const say = (m: object) => socks[0].onmessage!({ data: JSON.stringify(m) });
+      socks[0].onopen!();
+      say({ t: 'welcome', peers: 2, beat: 1000 });
+      vi.advanceTimersByTime(1000);
+      // The tab froze for ten seconds; its tick runs before the beats that came meanwhile.
+      vi.setSystemTime(Date.now() + 10_000);
+      vi.advanceTimersByTime(1000);
+      say({ t: 'peers', n: 2 });
+      vi.advanceTimersByTime(1000);
+      expect(socks.map((s) => !!s.closed)).toEqual([false]);
+      vi.advanceTimersByTime(4000);
+      expect(socks[0].closed).toBe(true);
+      ch.close();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
   });
 });
 

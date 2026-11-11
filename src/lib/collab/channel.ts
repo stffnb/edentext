@@ -205,9 +205,13 @@ export function openChannel(o: Options): Channel {
           down = false;
           if (msg.frame) size = Math.max(PART_HEAD + MIN_PART, Math.min(MAX_PART, msg.frame - SEALING - TO));
           // A half-open line never closes by itself: it is dropped and dialled again.
+          // A tick that comes late (a frozen tab) waits one beat for the messages queued behind it.
           const beat = msg.beat ?? 0;
+          let tick = Date.now();
           if (beat > 0) alive = setInterval(() => {
-            if (Date.now() - last <= BEATS * beat) return;
+            const now = Date.now(), late = now - tick > 2 * beat;
+            tick = now;
+            if (late || now - last <= BEATS * beat) return;
             sock.onmessage = sock.onclose = null;
             sock.close();
             lost();
