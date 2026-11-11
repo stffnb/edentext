@@ -156,9 +156,11 @@ export function monkeyOn(page) {
         if (nested && n.type === 'paragraph' && n.attrs?.styleName) nameless.add(plainText(n));
       }
       if (header && n.type === 'text' && n.marks) n.marks = n.marks.filter((m) => m.type !== 'bold');
-      // A formula alone in its block is a display formula to both files — a note holds its
-      // inline content without a paragraph, so it is a block here too.
-      if ((n.type === 'paragraph' || n.type === 'note') && n.content?.length === 1 && n.content[0].type === 'formula') n.content[0].attrs = { ...n.content[0].attrs, display: true };
+      // A formula alone in its block (beside no text, only breaks or white space) is a display
+      // formula to both files; a note holds its inline content without a paragraph.
+      const kids = ['paragraph', 'heading', 'note'].includes(n.type) ? n.content ?? [] : [];
+      const lone = kids.filter((c) => c.type === 'formula');
+      if (lone.length === 1 && kids.every((c) => c.type === 'formula' || c.type === 'hardBreak' || (c.type === 'text' && !c.text.trim()))) lone[0].attrs = { ...lone[0].attrs, display: true };
       // A box with no size of its own is saved at the size the exporter falls back to, and
       // Word's table grid always carries widths, so a merged cell reads back with them.
       if (n.type === 'textBox') n.attrs = { ...n.attrs, width: n.attrs?.width ?? 280, height: n.attrs?.height ?? 96 };
