@@ -37,6 +37,7 @@ const BATCH_MS = 50;
 const SETTLE_MS = 300;  // how long a sync waits for late offers after the first
 const STALL_MS = 10_000; // a sync that hears nothing this long starts over
 const EMPTY_MS = 5000;   // a joiner alone this long is told the room is empty
+const DOUBT_MS = 3000;   // how long a peer has to answer once the relay counts fewer than are known
 const REMOTE = Symbol('remote');
 
 export type SessionStatus =
@@ -243,6 +244,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   };
   const answered = (p: number, nonce: Uint8Array) => {
     if (!fresh(p, nonce)) return;
+    doubted.delete(p);
     live.add(p);
     const list = held.get(p) ?? [];
     held.delete(p);
@@ -262,11 +264,36 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     ping(from);
   };
   const echoed = (from: number, nonce: Uint8Array) => {
+    if (readers.has(from) && doubted.has(from)) { if (fresh(from, nonce)) doubted.delete(from); return; }
     const entry = asked.get(from);
     if (!entry || readers.size >= MAX_KNOWN || !fresh(from, nonce)) return;
     asked.delete(from);
     readers.set(from, entry);
     listed();
+  };
+  // The relay's `gone` drops a client at once; one that went while this line was down is
+  // never announced. Knowing more clients than the relay counts, each is pinged afresh and
+  // those not answering go, so a reconnected tab keeps no departed peer's caret or zone.
+  const drop = (p: number) => {
+    live.delete(p);
+    held.delete(p);
+    asked.delete(p);
+    pinged.delete(p);
+    readers.delete(p);
+    removeAwarenessStates(awareness, [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.peer === p).map(([id]) => id), 'gone');
+  };
+  const known = () => new Set([...[...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && typeof s.peer === 'number').map(([, s]) => s.peer as number), ...readers.keys()]);
+  const doubted = new Set<number>();
+  let doubtTimer: ReturnType<typeof setTimeout> | undefined;
+  const recount = () => {
+    if (doubtTimer || known().size < peerCount) return;
+    for (const p of known()) { doubted.add(p); pinged.delete(p); ping(p); }
+    doubtTimer = setTimeout(() => {
+      doubtTimer = undefined;
+      if (line === 'open' && known().size >= peerCount) for (const p of doubted) drop(p);
+      doubted.clear();
+      listed();
+    }, DOUBT_MS);
   };
   const pictures = sessionPictures({
     me, send, heard: () => channel.heard(), changed: () => changed(), others: () => peerCount > 1,
@@ -437,14 +464,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       // A client whose line the relay saw end is dropped at once: no picture is asked of it, its
       // zone frees, its repairs move on. A presence merely late drops no one (a busy repairer
       // would get a second). Back on a new line, a client presents itself anew.
-      if (gone) {
-        live.delete(gone);
-        held.delete(gone);
-        asked.delete(gone);
-        pinged.delete(gone);
-        readers.delete(gone);
-      }
-      if (gone) removeAwarenessStates(awareness, [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.peer === gone).map(([id]) => id), 'gone');
+      if (gone) drop(gone);
       // Someone came: tell them who we are; their sync sends them what they lack, and a
       // client still without the doc asks them. Someone left: a sync still waiting on
       // offers or an answer starts over with the rest, as others' traffic hides the stall.
@@ -455,6 +475,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       if (left ? round && !round.over : came && joining && (!round || round.over)) startRound();
       if (line === 'open' && status !== 'version') setStatus(settled());
       changed();
+      recount();
     },
     onStatus(s: ChannelStatus) {
       line = s;
@@ -467,6 +488,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       peerCount = n;
       present();
       startRound();
+      recount();
     },
   });
 
@@ -493,6 +515,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       clearTimeout(outTimer);
       clearTimeout(inTimer);
       clearTimeout(emptyTimer);
+      clearTimeout(doubtTimer);
       endRound();
       goodbye();
       channel.close();

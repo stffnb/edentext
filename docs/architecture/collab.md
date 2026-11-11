@@ -112,6 +112,10 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   nonce (`PING`, signed `PONG`), and drops on the relay's `gone`: a replayed state of a
   writer who left holds no zone, also at a newcomer; those that saw it reject it by clock.
   Replayed updates, answers and pictures change nothing.
+- **Missed departures.** A `gone` sent while this client's line was down never reaches it.
+  Whenever it knows more peers (writers by `peer`, listed readers) than the relay counts, it
+  pings each afresh and drops those silent after 3 s, so a reconnected tab keeps no departed
+  writer's caret or zone. A busy peer that answers late presents itself again.
 - **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`; hosting it: `collab-relay.md`): rooms as sets of sockets in memory,
   frames passed on unchanged, to the one client a clear `to` names where there is one (the
   sync's replies, pictures), nothing stored or logged; `MAX_PEERS` counts connections,
@@ -173,7 +177,7 @@ picture from one client; a header's picture goes by its key too; replies go to t
 alone; a fourth joins, types and converges. A joiner whose pulled peer drops its answer and
 line, while a third types, still goes live; a late offer is pulled from and gets what it
 lacks, and the others get what was pulled; one back from offline pauses on no offered deletion; a waiting joiner asks a client coming back, which pushes it no copy. B cannot open a
-header A holds; opened together, the lower id keeps it; a closed tab frees it, a stalled line within two pings, a busy holder keeps it. Open and New
+header A holds; opened together, the lower id keeps it; a closed tab frees it, a stalled line within two pings, a busy holder keeps it. A client back on its line drops a writer who left meanwhile, zone and all. Open and New
 ask first, then open alone; others keep theirs. The starter leaves unasked, the others are
 told and go on; a reload rejoins. A joiner keeping its copy reloads into it unwarned,
 picture, styles and zones, also on a second reload. The last joiner's tab warns on closing;
