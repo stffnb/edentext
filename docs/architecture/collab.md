@@ -141,8 +141,8 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   the map `state` (`applyState`); later store changes travel through that map.
 - **Pictures** (`collab/pictures.ts`, `collab-pictures.md`) over 4 kB lie in the shared doc
   and its stores (headers, footers) as their key, `idb:<key>` as in autosave, the bytes in
-  memory (`imageStore.ts`): from the start file, or sent to all as bytes (`PICTURE`) by
-  whoever puts one in. One missing is asked of each other client in turn (`WANT`, awareness
+  memory (`imageStore.ts`): the start file carries none, a new one goes to all as bytes
+  (`PICTURE`) from whoever puts it in. One missing is asked of each other client in turn (`WANT`, awareness
   `peer`); a lack means not yet, so a newly confirmed client or one that got it since (`HAS`) is asked again; while nobody in the room has it: a grey box and a note. Files, autosave, clipboard and vector PDF get
   pictures; a save with one still on its way fails. Leaving puts them back in.
 - **Headers and footers** go as whole zones, so one person edits a zone at a time

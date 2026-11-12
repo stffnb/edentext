@@ -86,7 +86,7 @@ export type SessionView = {
 /** What the session needs from the app. */
 export type SessionHost = {
   relay: string;
-  /** The open document as a file: the start every joiner loads. */
+  /** The open document as a file without its large pictures: the start every joiner loads. */
   snapshot(): Promise<Uint8Array>;
   /** Loads a start file as the open document, unasked, under the starter's name for it. */
   load(bytes: Uint8Array, name: string): Promise<boolean>;
@@ -109,6 +109,8 @@ export type Session = {
   leave(): void;
   /** Sends a chat message to everyone here; false when the line is not live. */
   chat(text: string): boolean;
+  /** Pictures others are still loading from this client. */
+  serving(): number;
   /** Frames sent per kind, for the tests' idle check. */
   stats: { sent: number[] };
   /** Dev builds: sends a frame as is and shows each arriving one, for the forged-frame test. */
@@ -559,6 +561,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
 
   return {
     me, link, viewLink: view, awareness, stats,
+    serving: () => pictures.serving(),
     setUser(user) {
       if (reading) send(VIEWER, me, enc.encode(JSON.stringify(user)));
       else awareness.setLocalStateField('user', user);
@@ -603,7 +606,7 @@ export async function startSession(editor: Editor, host: SessionHost): Promise<S
   meta.set('snapshot', await host.snapshot());
   meta.set('version', __APP_VERSION__);
   meta.set('name', host.name());
-  // The start file carries the pictures; the shared doc names them by key.
+  // The shared doc names the pictures by key; joiners ask for them as for any other.
   const keyed = keyPictures(editor.state);
   if (keyed) editor.view.dispatch(keyed);
   return connect(editor, writeKeys(newKey())!, host, ydoc, (codec) => attachYjsUndo(editor, ydoc, codec), null);
@@ -619,8 +622,6 @@ export function joinSession(editor: Editor, keys: SessionKeys, host: SessionHost
     const meta = ydoc.getMap('meta');
     if (meta.get('version') !== __APP_VERSION__) return 'version';
     if (!(await host.load(meta.get('snapshot') as Uint8Array, String(meta.get('name') ?? '')))) return null;
-    // The start file's pictures are held, under the keys the shared doc names them by.
-    keyPictures(editor.state);
     // Repairs wait for the rank the session gives it on binding.
     const binding = attachYjsUndo(editor, ydoc, codec, () => false);
     binding.applyState();

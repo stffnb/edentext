@@ -45,6 +45,9 @@ export function collabView(): SessionView | null {
 }
 
 /** Asks the relay once whether it is there. */
+/** Pictures others in the session are still loading from this tab. */
+export const collabServing = (): number => session?.serving() ?? 0;
+
 export function probeRelay(): void {
   if (embedded) return;
   const url = relayUrl();

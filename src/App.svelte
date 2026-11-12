@@ -21,7 +21,7 @@
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
   import { supportsFsAccess, saveDocument, openOdt, allowWrite, protect, mimeOf } from './lib/export/saveFile';
   import { takeOpenedFile } from './lib/storage/desktopFiles';
-  import { withHeldImages } from './lib/storage/imageStore';
+  import { IDB_SRC, imageKey, mapSrcs, withHeldImages } from './lib/storage/imageStore';
   import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFile, forgetRecentFiles, pruneRecentFiles, getHandle, type RecentFile } from './lib/storage/recentFiles';
   import { isProtected, decryptPackage, WRONG_PASSWORD } from './lib/crypto/protect';
   import { convertUnsupportedImages } from './lib/import/imageFormats';
@@ -63,7 +63,7 @@
   import { zoneHolder } from './lib/collab/zones.svelte';
   import { takeOpening, unload, type Opening } from './lib/collab/leave';
   import { SHELVED, TEMPLATES } from './lib/templates/registry';
-  import { collabRelay, collabView, joinCollab, leaveCollab, probeRelay, startCollab, type SessionApp } from './lib/collab/appSession.svelte';
+  import { collabRelay, collabServing, collabView, joinCollab, leaveCollab, probeRelay, startCollab, type SessionApp } from './lib/collab/appSession.svelte';
   import { startBridge, notify, type EmbedSettings, type ExportFormat } from './lib/embed/bridge';
   import { printMarkup } from './lib/storage/printMarkup.svelte';
   import { commentsInPane, changesInPane, markupAttrs, markupView, setShowChanges, setShowComments, showComments } from './lib/storage/markup.svelte';
@@ -263,6 +263,12 @@
     // A joined session's copy is in this tab alone, whatever file it came as.
     if (embedded || (documentHasFile && !collabKey ? !dirty : tick < 0 || !isDocNonEmpty())) return;
     const warn = (e: BeforeUnloadEvent) => { if (!unload.quiet) e.preventDefault(); };
+    addEventListener('beforeunload', warn);
+    return () => removeEventListener('beforeunload', warn);
+  });
+  $effect(() => {
+    if (!sessionView || sessionView.status === 'closed') return;
+    const warn = (e: BeforeUnloadEvent) => { if (!unload.quiet && collabServing()) e.preventDefault(); };
     addEventListener('beforeunload', warn);
     return () => removeEventListener('beforeunload', warn);
   });
@@ -1317,6 +1323,13 @@
     if (missing) throw new Error(t().collab.picturesPending);
     return full;
   }
+  // A session's start file leaves its large pictures out: the shared doc and stores name them
+  // by key and size, and each joiner asks for them, so its text shows before they come.
+  async function startFile(): Promise<Uint8Array> {
+    const { buildOdt } = await import('./lib/export/odt');
+    const keyed = <T,>(v: T) => mapSrcs(v, (src) => { const key = imageKey(src); return key ? IDB_SRC + key : src; }) as T;
+    return buildOdt(keyed(editor!.getJSON() as TiptapNode), ...keyed(exportArgs()));
+  }
   async function buildBytes(kind: DocumentFormat, json: TiptapNode): Promise<Uint8Array> {
     if (kind === 'docx') {
       const { buildDocx } = await import('./lib/export/docx');
@@ -1619,7 +1632,7 @@
   });
   const sessionApp: SessionApp = {
     editor: () => editor,
-    snapshot: () => buildBytes('odt', editor!.getJSON() as TiptapNode),
+    snapshot: () => startFile(),
     load: (bytes, name) => applyImport(bytes, null, `${name || 'document'}.odt`, { warn: () => {} }),
     name: () => documentName,
     askName: () => new Promise((resolve) => { collabNamed = resolve; collabNaming = true; collabOpen = true; }),
@@ -1655,6 +1668,10 @@
   });
   // `choice` is a joiner's: keep its copy as a new document or drop it, then reload alone.
   async function leaveSession(choice: 'keep' | 'discard' | null) {
+    // Others may still load pictures only this tab holds, and a kept copy lacks those not come.
+    const serving = collabServing(), lacking = choice === 'keep' && editor ? withHeldImages(editor.getJSON()).missing : 0;
+    if (serving && !confirm(t().collab.stillServing(serving))) return;
+    if (lacking && !confirm(t().collab.keepLacking(lacking))) return;
     const opening = collabOpening ? pendingOpening : null;
     pendingOpening = null;
     let left: boolean;

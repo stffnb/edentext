@@ -1,7 +1,7 @@
 import type { Fragment, Slice } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { AttrStep, type Step } from '@tiptap/pm/transform';
-import { IDB_SRC, fetchImagesWith, heldImage, holdImage, imageKey } from '../storage/imageStore';
+import { IDB_SRC, fetchImagesWith, heldImage, holdImage, imageKey, mapSrcs } from '../storage/imageStore';
 import { bytesToBase64 } from '../import/imageFormats';
 
 // Pictures in a session: the shared doc names each large one by its content key, `idb:<key>`
@@ -97,9 +97,11 @@ export type Pictures = {
   receive(plain: Uint8Array, from: number): boolean;
   /** The others changed: an ask to a client gone goes elsewhere, and one newly known is asked. */
   recheck(): void;
+  /** Pictures this client is still sending to someone who asked. */
+  serving(): number;
   /** Pictures no one here could send, while everyone in the room is known. */
   missing(): number;
-  /** A store's value with its large pictures named by key and held; `share` sends new ones to all. */
+  /** A store's value (a header, a page decoration) with its large pictures named by key and held; `share` sends new ones to all. */
   pack(value: unknown, share: boolean): unknown;
   /** A store's value with the held pictures back in place of their keys; missing ones are asked for. */
   unpack(value: unknown): unknown;
@@ -115,6 +117,8 @@ export function sessionPictures(w: Wire): Pictures {
   // Pictures on their way to everyone, with the clients there then: their edit may arrive
   // first, and an ask of theirs meanwhile would send the picture twice.
   const sharing = new Map<string, Set<number>>();
+  // Answers to asks still on their way out: someone loads them from this client.
+  let serving = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let watch: ReturnType<typeof setInterval> | undefined;
   const shortOf = () => { let n = 0; for (const x of wants.values()) if (x.short) n++; return n; };
@@ -125,7 +129,8 @@ export function sessionPictures(w: Wire): Pictures {
     if (to && sharing.get(key)?.has(to)) return;
     const [head, body] = src ? picturePayload(src, enc) : [new Uint8Array(), new Uint8Array()];
     if (!src && to && (owed.has(key) || owed.size < MAX_OWED)) owed.set(key, (owed.get(key) ?? new Set()).add(to));
-    if (to) return w.send(PICTURE, to, k.length, k, head.length, head, body);
+    if (to && !src) return w.send(PICTURE, to, k.length, k, head.length, head, body);
+    if (to) { serving++; return w.post(() => serving--, PICTURE, to, k.length, k, head.length, head, body); }
     sharing.set(key, new Set(w.peers()));
     w.post(() => sharing.delete(key), PICTURE, to, k.length, k, head.length, head, body);
   };
@@ -164,22 +169,6 @@ export function sessionPictures(w: Wire): Pictures {
     soon();
   };
   fetchImagesWith(want);
-
-  // A store value (a header, a page decoration) names its pictures by key as the doc does;
-  // each `src` in it is swapped, the rest copied only where something changed.
-  const swap = (value: unknown, fn: (src: string) => string): unknown => {
-    if (Array.isArray(value)) {
-      const out = value.map((v) => swap(v, fn));
-      return out.some((v, i) => v !== value[i]) ? out : value;
-    }
-    if (!value || typeof value !== 'object') return value;
-    let out: Record<string, unknown> | null = null;
-    for (const [k, v] of Object.entries(value)) {
-      const next = k === 'src' && typeof v === 'string' ? fn(v) : swap(v, fn);
-      if (next !== v) (out ??= { ...value as Record<string, unknown> })[k] = next;
-    }
-    return out ?? value;
-  };
 
   // A picture put in during the session (inserted, pasted, a document opened) is named by its
   // key in the same dispatch, before the sync plugin writes the doc; a new one goes to all.
@@ -232,14 +221,15 @@ export function sessionPictures(w: Wire): Pictures {
       return true;
     },
     recheck,
+    serving: () => serving,
     missing,
-    pack: (value, share) => swap(value, (src) => {
+    pack: (value, share) => mapSrcs(value, (src) => {
       const key = imageKey(src);
       if (!key) return src;
       if (holdImage(key, src) && share) setTimeout(() => give(0, key));
       return IDB_SRC + key;
     }),
-    unpack: (value) => swap(value, (src) => {
+    unpack: (value) => mapSrcs(value, (src) => {
       if (!src.startsWith(IDB_SRC)) return src;
       const key = src.slice(IDB_SRC.length), data = heldImage(key);
       if (!data) want(key);
