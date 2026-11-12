@@ -9,6 +9,7 @@ import { readOnlyFilter, readingKey, setReading } from './reading.svelte';
 import { shareZones } from './zones.svelte';
 import { PICTURE, WANT, keyPictures, picturesKey, sessionPictures, unkeyPictures } from './pictures';
 import { IDB_SRC } from '../storage/imageStore';
+import { cleanColor, shownName } from './names';
 
 // A shared session: the Yjs doc behind the body (`undoYjs.ts`) goes over a sealed channel
 // to the others in the room. Frames are one kind byte and its payload; the relay sees none
@@ -58,10 +59,16 @@ export type SessionStatus =
   | 'invalid'      // the link's key is cut short or mistyped
   | 'closed';
 
-/** `keeps`: this client stores the document (the starter); a joiner holds it in its tab only. */
-export type Peer = { id: number; name: string; color: string; keeps: boolean };
-/** Someone reading along: listed by name, with no caret and no zone. */
-export type Reader = { id: number; name: string; color: string };
+/**
+ * `keeps`: this client stores the document (the starter); a joiner holds it in its tab only.
+ * `id` is the awareness client, `peer` the relay's id; `since` when they joined, by their clock.
+ */
+export type Peer = { id: number; peer: number; name: string; color: string; since: number; keeps: boolean };
+/** Someone reading along: listed by name, with no caret and no zone; `id` is the relay's. */
+export type Reader = { id: number; name: string; color: string; since: number };
+/** What this client tells the others about itself. */
+export type SessionUser = { name: string; color: string; since: number };
+const GREY = '#808080';
 /** A chat message as it arrived: `from` is the relay's id of its sender, named from the lists. */
 export type ChatIn = { from: number; name: string; color: string; reading: boolean; text: string };
 
@@ -85,13 +92,17 @@ export type SessionHost = {
   load(bytes: Uint8Array, name: string): Promise<boolean>;
   /** The open document's name, which a joiner's copy takes. */
   name(): string;
-  user(): { name: string; color: string };
+  user(): SessionUser;
   onChange(view: SessionView): void;
   /** A chat message from someone listed; never stored, nor part of the doc. */
   onChat(message: ChatIn): void;
 };
 
 export type Session = {
+  /** This client's relay id, which names a guest. */
+  me: number;
+  /** Tells the others this client's new name or colour. */
+  setUser(user: SessionUser): void;
   link: string;
   viewLink: string;
   awareness: Awareness;
@@ -169,6 +180,21 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   let joining = join;
   // The others' carets and selections, drawn as decorations in their colours, and the
   // pictures put in from now on; one registration, as each rebuilds every plugin view.
+  // Each caret carries the name the lists show and its client, which a jump looks for.
+  const caret = (user: { name?: unknown; color?: unknown }, id: number) => {
+    const s = awareness.getStates().get(id);
+    const color = cleanColor(user.color) ?? GREY;
+    const el = document.createElement('span');
+    el.className = 'ProseMirror-yjs-cursor';
+    el.dataset.client = String(id);
+    el.style.borderColor = color;
+    const label = document.createElement('div');
+    label.style.backgroundColor = color;
+    label.textContent = shownName(user.name, typeof s?.peer === 'number' ? s.peer : id);
+    el.append('\u2060', label, '\u2060');
+    return el;
+  };
+  const selection = (user: { color?: unknown }) => ({ style: `background-color: ${cleanColor(user.color) ?? GREY}70`, class: 'ProseMirror-yjs-selection' });
   const bind = (b: YjsUndo) => {
     binding = b;
     // The repairer is the client bound longest (lowest `rank`, then id): one joining later
@@ -181,12 +207,12 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     b.setRepairer(repairer);
     b.onPause((p) => { paused = p; changed(); });
     b.onDrop(() => { dropped++; changed(); });
-    editor.registerPlugin(yCursorPlugin(awareness), (p, plugins) => [...plugins, p, pictures.plugin, ...(reading ? [readOnlyFilter()] : [])]);
+    editor.registerPlugin(yCursorPlugin(awareness, { cursorBuilder: caret, selectionBuilder: selection }), (p, plugins) => [...plugins, p, pictures.plugin, ...(reading ? [readOnlyFilter()] : [])]);
   };
 
   const keeps = !join;
-  const peers = (): Peer[] => [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.user)
-    .map(([id, s]) => ({ id, name: String(s.user.name ?? ''), color: String(s.user.color ?? ''), keeps: s.keeps === true }));
+  const peers = (): Peer[] => [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.user && typeof s.peer === 'number')
+    .map(([id, s]) => ({ id, peer: s.peer, name: shownName(s.user.name, s.peer), color: cleanColor(s.user.color) ?? GREY, since: Number(s.user.since) || 0, keeps: s.keeps === true }));
   const readers = new Map<number, Reader>();
   const changed = () => {
     const all = peers();
@@ -269,7 +295,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   const viewer = (from: number, body: Uint8Array) => {
     if (!body.length) { asked.delete(from); readers.delete(from); return listed(); }
     const u = JSON.parse(new TextDecoder().decode(body));
-    const entry = { id: from, name: String(u?.name ?? '').slice(0, 64), color: String(u?.color ?? '').slice(0, 32) };
+    const entry = { id: from, name: shownName(u?.name, from), color: cleanColor(u?.color) ?? GREY, since: Number(u?.since) || 0 };
     if (readers.has(from)) { readers.set(from, entry); return listed(); }
     if (!asked.has(from) && asked.size >= MAX_KNOWN) return;
     asked.set(from, entry);
@@ -286,9 +312,8 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   // A chat message counts from a writer listed under that relay id, signed, or a reader listed.
   const dec = new TextDecoder();
   const chat = (kind: number, from: number, body: Uint8Array) => {
-    const who = kind === SAY ? readers.get(from)
-      : [...awareness.getStates()].find(([id, s]) => id !== ydoc.clientID && s.peer === from && s.user)?.[1].user;
-    if (who) host.onChat({ from, name: String(who.name ?? ''), color: String(who.color ?? ''), reading: kind === SAY, text: dec.decode(body) });
+    const who = kind === SAY ? readers.get(from) : peers().find((p) => p.peer === from);
+    if (who) host.onChat({ from, name: who.name, color: who.color, reading: kind === SAY, text: dec.decode(body) });
   };
   // The relay's `gone` drops a client at once; one that went while this line was down is
   // never announced. Knowing more clients than the relay counts, each is pinged afresh and
@@ -532,7 +557,11 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   addEventListener('pagehide', goodbye);
 
   return {
-    link, viewLink: view, awareness, stats,
+    me, link, viewLink: view, awareness, stats,
+    setUser(user) {
+      if (reading) send(VIEWER, me, enc.encode(JSON.stringify(user)));
+      else awareness.setLocalStateField('user', user);
+    },
     chat(text) {
       if (line !== 'open' || status !== 'live') return false;
       send(reading ? SAY : CHAT, enc.encode(text));
