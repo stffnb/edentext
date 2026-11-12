@@ -1,5 +1,5 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { CELL_PAD_VARS, parseCellPadding } from './tableCellPadding';
+import { CELL_PAD_VARS, DEFAULT_CELL_PADDING, parseCellPadding } from './tableCellPadding';
 import type { ViewMutationRecord } from '@tiptap/pm/view';
 
 // Custom table node view: <colgroup> uses percentage widths and the table stays at
@@ -85,6 +85,15 @@ function applyCellPadding(node: PMNode, table: HTMLElement): void {
   });
 }
 
+// Fixed layout gives a table no min-content: without a floor, a float leaving no room
+// squeezes the wrapper to zero width, a letter per line, instead of it starting below.
+// Each column keeps its padding and an em of text; editor.css caps it at the column.
+function applyFloor(node: PMNode, wrapper: HTMLElement): void {
+  const p = parseCellPadding(node.attrs.cellPadding) ?? DEFAULT_CELL_PADDING;
+  const cols = columnWeightsFromRow(node.firstChild).length || 1;
+  wrapper.style.setProperty('--table-floor', `calc(${(cols * (p[1] + p[3])).toFixed(3)}cm + ${cols}em)`);
+}
+
 function buildColgroup(node: PMNode, colgroup: HTMLElement): void {
   while (colgroup.firstChild) colgroup.removeChild(colgroup.firstChild);
   const percents = columnPercents(columnWeightsFromRow(node.firstChild));
@@ -109,6 +118,7 @@ export class TableView {
     this.dom = document.createElement('div');
     this.dom.className = 'tableWrapper';
     applyMargins(node, this.dom);
+    applyFloor(node, this.dom);
     this.table = this.dom.appendChild(document.createElement('table'));
     // Percentage columns are authoritative only under fixed layout; the actual
     // table-layout/border-collapse come from editor.css. width:100% keeps the
@@ -125,6 +135,7 @@ export class TableView {
     if (node.type !== this.node.type) return false;
     this.node = node;
     applyMargins(node, this.dom);
+    applyFloor(node, this.dom);
     applyTableStyleAttr(node, this.table);
     applyCellPadding(node, this.table);
     buildColgroup(node, this.colgroup);
