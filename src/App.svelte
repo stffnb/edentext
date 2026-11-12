@@ -2420,7 +2420,7 @@
       <!-- A paused binding takes the button over until an update fits again. -->
       <!-- A reader's button says so; the others show as circles before it. -->
       <CollabPeople view={sessionView} onAll={() => (collabOpen = true)} />
-      <button class="collab-btn" class:paused={sessionView.paused} class:reading={sessionView.reading} data-status={sessionView.status} aria-live="polite" onclick={() => (collabOpen = true)}
+      <button class="collab-btn" class:paused={sessionView.paused} class:reading={sessionView.reading} class:count={!sessionView.paused && !sessionView.reading && sessionView.status === 'live'} data-status={sessionView.status} aria-live="polite" onclick={() => (collabOpen = true)}
         title={sessionView.paused ? t().collab.pausedHint : sessionView.reading ? t().collab.readingHint : t().collab.status[sessionView.status]}>
         {sessionView.paused ? t().collab.paused : sessionView.reading && sessionView.status === 'live' ? t().collab.readOnly
           : sessionView.status === 'live' ? t().collab.peers(sessionView.peers.length + sessionView.readers.length) : t().collab.status[sessionView.status]}
@@ -3378,6 +3378,11 @@
 
   @media (max-width: 600px) {
     .zoom-btn {
+      display: none;
+    }
+    /* In a session the circles stand for the head count and take the language's place. */
+    :global(.collab-people) + .collab-btn.count,
+    .statusbar:has(:global(.collab-people)) .sb-center {
       display: none;
     }
   }
