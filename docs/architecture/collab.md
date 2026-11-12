@@ -114,7 +114,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   Replayed updates, answers and pictures change nothing. A frame that names its sender (`from`, a presence's `peer`) is dropped unless the relay names the same, so one tab cannot pose as many readers or have answers sent to another client. A `gone` sent while a line was down never arrives: knowing more peers than the relay counts, a client pings each and drops those silent for 3 s.
 - **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`; hosting it: `collab-relay.md`): rooms as sets of sockets in memory,
   frames passed on unchanged, to the one client a clear `to` names where there is one (the
-  sync's replies, pictures), nothing stored or logged, a sender paused while a receiver is 16 MiB behind; `MAX_PEERS` counts connections,
+  sync's replies, pictures), nothing stored or logged, a receiver 2 MiB behind announced `slow` so the others hold its pictures back; `MAX_PEERS` counts connections,
   readers too, as the relay cannot tell them from writers. An id stays with the connection whose hello claimed it with a random secret, so no other client takes its frames or its `gone`; an app and a relay of different protocol versions say so (`mismatch`).
 - **Where the relay is:** `VITE_COLLAB_RELAY` is a `wss://` URL, or `same-origin` for `/relay`
   beside the app (dev proxy, Docker, Helm), where sessions are offered only once
