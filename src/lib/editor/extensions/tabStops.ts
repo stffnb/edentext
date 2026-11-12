@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { EditorState } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { FORCE_PAGE_RECALC, isSplitPane, pageBreakKey } from './pageBreaks';
+import { FORCE_PAGE_RECALC, LAYOUT_ANSWER, isSplitPane, pageBreakKey } from './pageBreaks';
 import { PX_PER_CM } from '../../storage/pageMargins';
 import { blockFontSize } from '../../utils/fontSize';
 import { firstLineCm, leftCm, rightCm } from './indent';
@@ -565,6 +565,7 @@ export const TabStops = Extension.create({
             view.dispatch(view.state.tr
               .setMeta(tabStopsKey, DecorationSet.create(view.state.doc, decos))
               .setMeta(FORCE_PAGE_RECALC, true)
+              .setMeta(LAYOUT_ANSWER, true)
               .setMeta('addToHistory', false));
             if (passes < MAX_PASSES) { passes++; schedule(); }
           };

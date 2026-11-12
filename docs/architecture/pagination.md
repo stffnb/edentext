@@ -25,10 +25,9 @@ A float hangs out of its paragraph's box, so the leaf's height reaches down to t
 instead of stopping at `offsetHeight` — otherwise the paragraph measures as one text line and the
 image walks off the page bottom. Text still wraps beside the float; only the push moves as a unit.
 What the model can't see is how far that overhang moves the blocks *below* it: further than the
-spacer it accounts for, so two layouts can each imply the other. `prevPlacementsKey` detects that
-oscillation and keeps the current layout; only an edit or a forced recalc forgets it (the TOC
+spacer it accounts for, so two layouts — or more, in a cycle — can each imply the next. `seenLayouts` remembers every layout placed since the last outside change, and a pass measuring one of them again keeps the current layout and its page count; only an edit or a forced recalc forgets them (the TOC
 rewrites its page numbers on every `pm-pagecount`, so resetting on any document change would
-leave nothing to catch).
+leave nothing to catch). A recalc that *answers* a pass carries `LAYOUT_ANSWER` and keeps them too: the field round (an index re-breaking its columns at its new top) and the tab stops. Counted as forced, an alphabetical index at the end of a 155-page manual erased the memory after every pass, and a three-layout cycle of single-row warning tables near a page end paginated forever.
 
 **Keeping blocks together** (`pageBreak.ts` attrs, both read from the direct property *and* the paragraph style): `keepNext` (`w:keepNext`, `fo:keep-with-next`) moves a block down when the successor's first `MIN_KEPT_LINES` no longer fit below it — one line is not enough, because widow-orphan control would carry the second one over and strand the block anyway (measured on the Math Guide: a heading left alone at the foot of page 8) — headings do that in Word and LibreOffice anyway, so `true` marks the others and `false` a heading whose style the file defines without it (probed: LibreOffice then leaves the heading at the foot of the page). `keepLines` (`w:keepLines`, `fo:keep-together`) makes an otherwise splittable block paginate atomically, unless it is taller than the page slot, where Word splits it too. A table's `keepRows` (ODF `style:may-break-between-rows="false"`, no Word equivalent) is the same rule for a table: pageBreaks emits one atomic leaf for the whole wrapper instead of one per row, so a table with no room left moves whole (probed: LibreOffice leaves four lines of the page empty rather than break it, and splits the identical table when the attribute says `true`). Rows a **cell spans** are grouped the same way (`rowSpanGroups`): the spanning cell is one DOM box, so a break between them stretches it across the gap instead of splitting it — LibreOffice keeps such rows on one page too (probed). A group taller than the page cannot be kept whole and breaks per row as before.
 
@@ -52,7 +51,7 @@ leaf box, so the push tests subtract it (`kept`). Which breaks keep it is decide
 
 **A pass must not read its own last answer.** Dropping that space shortens the block, which moves
 everything below it, which changes what sits at the *next* page top — so measuring the decorated
-DOM made the two layouts imply each other, and `prevPlacementsKey` froze whichever came first: the
+DOM made the two layouts imply each other, and the cycle guard froze whichever came first: the
 same document opened at 59 or 65 pages from one load to the next. `collectLeaves` adds the dropped
 space back (`spaceAbove`, and a running `cumulativeDropped` for the leaves below), so what it
 measures is the document; the placement loop then takes the drop off `cumulativeShift` itself. The

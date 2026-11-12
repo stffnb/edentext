@@ -538,7 +538,7 @@ function pageContentStart(page: number, marginTop: number, grid: PageGrid): numb
 // (addToHistory:false) bump neither, so the convergence brake in `update` can tell an
 // answer to the last pass from a fresh change.
 // textBlock: the textblock a text-only transaction stayed inside (its position), else null.
-type PageBreakState = { recalc: number; edit: number; textBlock: number | null };
+type PageBreakState = { recalc: number; answer: number; edit: number; textBlock: number | null };
 
 // Ancestors a leaf may have without the pass seeing more than the leaf: the walk
 // descends these (CONTAINER_TAGS), and their height is the sum of their blocks'.
@@ -576,6 +576,9 @@ export const pageBreakKey = new PluginKey<PageBreakState>('pageBreaks');
 // Transaction meta flag: set it (e.g. when page margins change) to force a
 // pagination recompute even though the document content is unchanged.
 export const FORCE_PAGE_RECALC = 'forcePageBreakRecalc';
+// Marks a recalc that answers a pass (a field round, the tab stops): it re-measures, but
+// keeps the layouts the passes since the last outside change have placed (seenLayouts).
+export const LAYOUT_ANSWER = 'pageLayoutAnswer';
 
 // A field that reads the settled layout — an index's page numbers, a cross-reference's.
 // It measures, and what it returns writes: its own DOM, and its cached result on the
@@ -605,7 +608,7 @@ function runFieldRound(view: EditorView): void {
   const vm = readVerticalMargins(view.dom as HTMLElement);
   let phase = Array.from(round.jobs.values(), (read) => read(vm));
   round.jobs.clear();
-  const tr = view.state.tr.setMeta('addToHistory', false);
+  const tr = view.state.tr.setMeta('addToHistory', false).setMeta(LAYOUT_ANSWER, true);
   // Bounded: measure, write, and the one read-back a write can ask for.
   for (let i = 0; i < 2 && phase.some(Boolean); i++) {
     phase = phase.map((write) => (write ? write(tr) : undefined));
@@ -769,14 +772,14 @@ export const PageBreaks = Extension.create({
     // The textblock every edit since the last pass stayed inside; false once one didn't.
     let editBlock: number | null | false = null;
     let lastPlacementsKey = '';
-    // The layout before the current one: two layouts can each imply the other (a block
-    // below a float's overhang moves further than the model's spacer), so seeing the older
-    // key return means a ping-pong. null, not '' — that is a spacer-free layout's own key.
-    let prevPlacementsKey: string | null = null;
+    // Each layout placed since the last outside change. Layouts can imply each other in a
+    // cycle (a float's overhang, an index breaking itself across pages), so one measured
+    // again is not placed: the current layout stands.
+    let seenLayouts = new Set<string>();
     let lastAnnounced = '';
     // Each pass measures against the spacers left by the previous pass, so a changed
     // result needs one more pass to re-measure and settle (see calculate). Bounded so
-    // a hypothetical two-layout ping-pong can't loop forever; reset per external change.
+    // a layout cycle can't loop forever; reset per external change.
     let convergePasses = 0;
     const MAX_CONVERGE_PASSES = 4;
 
@@ -785,7 +788,7 @@ export const PageBreaks = Extension.create({
       // Counters `update` watches. The plugin's own decoration dispatches carry neither
       // FORCE_PAGE_RECALC nor a doc change, so this never self-triggers.
       state: {
-        init: () => ({ recalc: 0, edit: 0, textBlock: null }),
+        init: () => ({ recalc: 0, answer: 0, edit: 0, textBlock: null }),
         apply(tr, value) {
           // The spacers follow the text until the next pass: left unmapped, an edit above
           // them puts every widget one position off and the view tears them all down.
@@ -795,14 +798,17 @@ export const PageBreaks = Extension.create({
               { onRemove: (spec) => { dropped ||= isRepairable(spec); } });
             decorations = dropped ? repairDecos(decorations, mapped, tr) : mapped;
           }
-          const recalc = value.recalc + (tr.getMeta(FORCE_PAGE_RECALC) ? 1 : 0);
+          const force = !!tr.getMeta(FORCE_PAGE_RECALC);
+          const answered = force && !!tr.getMeta(LAYOUT_ANSWER);
+          const recalc = value.recalc + (force && !answered ? 1 : 0);
+          const answer = value.answer + (answered ? 1 : 0);
           const edit = value.edit
             + (tr.docChanged && tr.getMeta('addToHistory') !== false ? 1 : 0);
-          if (recalc === value.recalc && edit === value.edit) return value;
+          if (recalc === value.recalc && answer === value.answer && edit === value.edit) return value;
           const own = tr.docChanged ? textOnlyBlock(tr) : null;
           // An appended transaction rides its root's dispatch: both must name the block.
           const appended = tr.getMeta('appendedTransaction') !== undefined;
-          return { recalc, edit, textBlock: appended && value.textBlock !== own ? null : own };
+          return { recalc, answer, edit, textBlock: appended && value.textBlock !== own ? null : own };
         },
       },
       props: {
@@ -2301,10 +2307,11 @@ export const PageBreaks = Extension.create({
             // The notes ride the same guard: a frozen layout would leave every footnote
             // at the position, and on the page, it used to belong to.
             notePlacements.map((n) => `|n${n.from}:${Math.round(n.top)}`).join('');
-          const placementsChanged =
-            placementsKey !== lastPlacementsKey && placementsKey !== prevPlacementsKey;
+          const placementsChanged = placementsKey !== lastPlacementsKey;
+          // A layout of the cycle measured again: the placed one stands, and so does its count.
+          if (placementsChanged && seenLayouts.has(placementsKey)) { isUpdating = false; return; }
           if (placementsChanged) {
-            prevPlacementsKey = lastPlacementsKey;
+            seenLayouts.add(placementsKey);
             lastPlacementsKey = placementsKey;
             const doc = editorView.state.doc;
             // Every spacer is built per view: a split pane renders the same decorations,
@@ -2479,7 +2486,7 @@ export const PageBreaks = Extension.create({
 
           // Each pass measures against the spacers present at its start, so a changed
           // result needs another pass to re-measure and settle (e.g. after an orientation
-          // switch). Bounded by MAX_CONVERGE_PASSES against a two-layout ping-pong.
+          // switch). Bounded by MAX_CONVERGE_PASSES against a layout cycle.
           if ((placementsChanged || notePagesMoved) && convergePasses < MAX_CONVERGE_PASSES) {
             convergePasses++;
             schedule();
@@ -2541,12 +2548,13 @@ export const PageBreaks = Extension.create({
             const after = pageBreakKey.getState(editorView.state);
             const forced = before?.recalc !== after?.recalc;
             const isEditTr = before?.edit !== after?.edit;
-            if (!isUpdating && (prevState.doc !== editorView.state.doc || forced)) {
+            const answered = before?.answer !== after?.answer;
+            if (!isUpdating && (prevState.doc !== editorView.state.doc || forced || answered)) {
               convergePasses = 0; // fresh convergence budget per external change
-              // Layout-only writes — the TOC rewriting its page numbers on every
-              // pm-pagecount — answer the last pass, so forgetting the ping-pong
-              // memory on them would leave the guard with nothing to catch.
-              if (forced || isEditTr) prevPlacementsKey = null;
+              // Layout-only writes and answers — the TOC's page numbers, its breaks — answer
+              // the last pass, so forgetting the layouts seen on them would leave the guard
+              // with nothing to catch.
+              if (forced || isEditTr) seenLayouts = new Set([lastPlacementsKey]);
               if (isEditTr && !forced) {
                 const b = after?.textBlock ?? null;
                 editBlock = b === null || (editBlock !== null && editBlock !== b) ? false : b;
