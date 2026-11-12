@@ -1271,6 +1271,7 @@ try {
     await h.waitForTimeout(500);
     const alone = relayed() - r0 + await ysize(h);
     stall.rate = 2e6;
+    await h.evaluate(() => { window.__served = 0; setInterval(() => { window.__served = Math.max(window.__served, window.__collab.session?.serving() ?? 0); }, 20); });
     const [iv, jo] = [await client('Ivo'), await client('Jon')];
     await joinLink(iv, link5);
     const joined = joinLink(jo, link5);
@@ -1280,7 +1281,7 @@ try {
     const quick = await iv.waitForFunction(() => document.querySelector('.tiptap-host .tiptap').editor.state.doc.textContent.endsWith(' Swift'), null, { timeout: 15_000 })
       .then(() => Date.now() - t0, () => Infinity);
     const loading = await shown(iv);
-    const serving = await h.evaluate(() => window.__collab.session.serving());
+    const serving = await h.evaluate(() => window.__served);
     await joined;
     const all = (p) => p.waitForFunction(() => [...document.querySelectorAll('.tiptap-host .tiptap img')].filter((i) => i.src.startsWith('data:') && i.src.length > 1e6).length === 4, null, { timeout: 60_000 }).then(() => true, () => false);
     const got = [await all(iv), await all(jo)];

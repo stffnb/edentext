@@ -38,7 +38,8 @@ only the key; the bytes travel once to each client.
   asks for it. `WANT` and its answer go to one client, and the relay passes them to that
   client alone. A `WANT` gets each key it names once, one picture per task; one from a
   client that was there when the picture went to everyone waits for that, which its edit
-  overtakes, instead of sending the picture twice.
+  overtakes, instead of sending the picture twice; nor does a client ask one whose message in
+  parts is still coming in to it, which may be that picture.
 - Pictures travel in the channel's bulk lane (`channel.ts`): 256 kB parts, sealed one at a
   time (WebCrypto off the page's thread where it exists) and sent only while the socket holds less than 128 kB (4 MiB in a hidden tab, whose
   timers wake once a second). Edits, carets, pings and the sync go first, so typing never

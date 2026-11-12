@@ -13,6 +13,8 @@ export type Channel = {
   close(): void;
   /** When the last peer frame (or part of one) came in that `onFrame` did not call chatter, for a session waiting on an answer. */
   heard(): number;
+  /** Whether a message in parts from the client `from` is on its way in. */
+  incoming(from: number): boolean;
 };
 
 type Options = {
@@ -126,7 +128,11 @@ function joiner() {
   };
   /** A sender gone: its unfinished messages go too. */
   const forget = (from: number) => { senders.delete(from); };
-  return { take, forget };
+  const open = (from: number) => {
+    const now = Date.now();
+    return [...senders.get(from)?.values() ?? []].some((p) => now - p.at <= PART_TTL);
+  };
+  return { take, forget, open };
 }
 
 /**
@@ -372,5 +378,6 @@ export function openChannel(o: Options): Channel {
       o.onStatus('closed');
     },
     heard: () => heard,
+    incoming: (from) => parts.open(from),
   };
 }
