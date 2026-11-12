@@ -1206,6 +1206,68 @@ try {
   check(/Deutsch/.test(detectedLabel ?? '') && JSON.stringify(appliedLangs) === '[null,"de-DE"]',
     `the status bar names the detected language and the menu applies it (${detectedLabel?.trim()}, ${JSON.stringify(appliedLangs)})`);
 
+  const priorDoc = await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.getJSON());
+  // Pagination settles on any document: each layout-dependent feature (an index's and a
+  // reference's page numbers, notes, frames beside a table, kept and cantSplit blocks,
+  // page breaks) pushed through every stretch of a page by filler lines, the spinner clears
+  // and the passes announce a handful of layouts, not a cycle running into the hard bound.
+  await page.evaluate(() => {
+    window.__layouts = 0;
+    document.addEventListener('pm-pagecount', () => { window.__layouts++; }, true);
+  });
+  const edgeDoc = (fill) => page.evaluate((fill) => {
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const lorem = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore. ';
+    const t = (text, marks) => ({ type: 'text', text, ...(marks ? { marks } : {}) });
+    const p = (content, attrs) => ({ type: 'paragraph', ...(attrs ? { attrs } : {}), content });
+    const img = (width, height, wrap) => ({ type: 'image', attrs: { src: png, width, height, wrap } });
+    const cell = (content, w) => ({ type: 'tableCell', attrs: { colwidth: [w] }, content });
+    const warn = (i) => ({ type: 'table', content: [{ type: 'tableRow', attrs: { cantSplit: true }, content: [
+      cell([p([img(50, 44, 'inline')]), p([t('WARNING!')])], 160),
+      cell([p([t(`Maintenance step ${i}: ${lorem.repeat(2)}`)]),
+        { type: 'bulletList', content: [{ type: 'listItem', content: [p([t(lorem)])] }] }], 560),
+    ] }] });
+    // A side frame as wide as the column, which leaves a table beside it no room.
+    const root = document.querySelector('.tiptap-host .tiptap'), cs = getComputedStyle(root);
+    const col = Math.floor(root.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+    const content = [{ type: 'tableOfContents', attrs: { index: 'toc' } }];
+    for (let k = 0; k < fill; k++) content.push(p([t(`filler ${k}`)]));
+    const notes = [];
+    for (let i = 0; i < 4; i++) {
+      notes.push({ type: 'note', attrs: { id: `n${i}`, kind: 'footnote', text: '' }, content: [t(`Note ${i} ${lorem}`)] });
+      content.push({ type: 'heading', attrs: { level: 1 }, content: [t(`Chapter ${i}`, [{ type: 'bookmark', attrs: { name: `c${i}` } }])] },
+        p([t('See page '), { type: 'crossRef', attrs: { name: `c${(i + 1) % 4}`, kind: 'bookmark', format: 'page' } },
+          t(` ${lorem}`), { type: 'noteRef', attrs: { id: `n${i}`, kind: 'footnote', text: '' } }, t(lorem)]),
+        p([{ type: 'textBox', attrs: { width: col - 1, height: 60 + 10 * i, wrap: 'right', wrapDist: 0 }, content: [p([t('box')])] }]), warn(i), p([]), warn(i + 10),
+        p([t(`kept ${lorem}`)], { keepNext: true }), p([img(200, 150, i % 2 ? 'left' : 'right'), t(lorem.repeat(3))]),
+        { type: 'heading', attrs: { level: 2, breakBefore: i % 2 ? 'page' : null }, content: [t(`Section ${i}`)] },
+        p([t(lorem.repeat(4))]));
+    }
+    content.push({ type: 'noteSection', content: notes });
+    window.__layouts = 0;
+    document.querySelector('.tiptap-host .tiptap').editor.commands.setContent({ type: 'doc', content });
+  }, fill);
+  const edgeSettles = () => page.evaluate(async () => {
+    const t0 = performance.now();
+    let last = -1, quietSince = performance.now();
+    while (performance.now() - t0 < 30_000) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (window.__layouts !== last || document.querySelector('.busy .spinner')) { last = window.__layouts; quietSince = performance.now(); }
+      else if (performance.now() - quietSince > 1500) return { layouts: last, ms: Math.round(quietSince - t0) };
+    }
+    return { layouts: window.__layouts, ms: -1 };
+  });
+  const unsettled = [];
+  for (let fill = 0; fill < 44; fill += 4) {
+    await edgeDoc(fill);
+    const r = await edgeSettles();
+    if (r.ms < 0 || r.layouts > 12) unsettled.push(`${fill} filler lines: ${r.layouts} layouts${r.ms < 0 ? ', still running' : ''}`);
+  }
+  check(unsettled.length === 0, `pagination settles and the spinner clears on every on-the-edge document${unsettled.length ? ` (${unsettled.join('; ')})` : ''}`);
+  // The document from before, saved, so the reload below opens it and not an edge case.
+  await page.evaluate((doc) => document.querySelector('.tiptap-host .tiptap').editor.commands.setContent(doc), priorDoc);
+  await page.waitForTimeout(1500);
+
   // The page grid: every cell is a fixed window of exactly its own page, and the caret —
   // drawn only by the focused view, clipped to its cell — follows whatever moves it.
   // Last, since it replaces the document and the zoom with its own.
