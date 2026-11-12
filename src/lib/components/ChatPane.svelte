@@ -116,7 +116,7 @@
         <div class="message" class:own={line.own} class:follows={follows(i)} data-who={line.own ? 'me' : line.who}>
           {#if !follows(i)}
             <div class="meta">
-              <span class="name" style:color={line.color}>{line.name || '?'}</span>
+              <span class="name" style:--who={line.color || null}>{line.name || '?'}</span>
               {#if line.own}<span class="tag">({t().collab.you})</span>{/if}
               {#if line.reading}<span class="tag">· {t().collab.readingAlong}</span>{/if}
               <time datetime={new Date(line.at).toISOString()}>{time.format(line.at)}</time>
@@ -191,7 +191,8 @@
   .message.follows { margin-top: 2px; }
   .message.own { background: var(--color-btn-hover); margin-inline-start: 16px; }
   .meta { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
-  .name { font-weight: 600; }
+  /* A participant's colour, pulled toward the text colour so it stays legible in every theme. */
+  .name { font-weight: 600; color: color-mix(in srgb, var(--who, var(--color-text)) 65%, var(--color-text)); }
   .tag { color: var(--color-text-muted); }
   time { margin-inline-start: auto; color: var(--color-text-muted); font-size: 0.85em; }
   .text { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
