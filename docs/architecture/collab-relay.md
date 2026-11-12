@@ -42,9 +42,12 @@ are off, as for the rest of the app.
 | `MAX_FRAME` | 16 MiB | bytes per frame; browsers send at most 256 kB and split longer messages |
 | `BEAT_MS`, `PING_MS` | 15 s, 5 s | keep-alive to the browsers, and the ping that drops a dead line within two rounds |
 
-A receiver on a slow line holds at most about 16 MiB at the relay: beyond that the relay stops
-reading from the sender that filled it until the receiver is down to half, so the sender waits
-instead of the relay buffering a whole picture set per room (`relay/CLAUDE.md`).
+A receiver on a slow line holds about 2 MiB at the relay: beyond that the relay tells the
+others it is `slow`, and they hold back the pictures for it until it is `drained`, while their
+typing still goes through. The relay itself stays blind (it keeps reading every sender and
+cannot tell a picture from a keystroke); for a client that ignores the message it stops reading
+that sender once a receiver holds 16 MiB, so memory stays bounded per room (`relay/CLAUDE.md`).
+Both messages are optional, so they need no new protocol version.
 
 App and relay speak protocol version 2 (`relay/CLAUDE.md`); against a relay of another version
 the app says it does not match the server, so update both together.

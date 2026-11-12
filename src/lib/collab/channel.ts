@@ -172,6 +172,8 @@ export function openChannel(o: Options): Channel {
   // The room's size by the relay, 0 before a welcome; alone, nothing goes to everyone, as
   // whoever comes syncs and asks for pictures anyway.
   let peers = 0;
+  // Receivers the relay holds much for: pictures to them wait until it says `drained`.
+  const slow = new Set<number>();
 
   // Two lanes, each in order. The fast one (edits, carets, the sync's small frames, chat)
   // goes at once; the bulk one (pictures, any message in parts) one part per task and only
@@ -211,16 +213,31 @@ export function openChannel(o: Options): Channel {
       tick.port2.postMessage(0);
     }
   };
+  // The first message no receiver the relay calls slow waits for, nor an earlier message to
+  // the same receiver (one to everyone waits for all); -1 when each waits.
+  const pick = () => {
+    const before = new Set<number>();
+    for (let i = 0; i < bulk.length; i++) {
+      const to = bulk[i].to;
+      if (to === 0) return before.size || slow.size ? -1 : i;
+      if (!before.has(to) && !slow.has(to)) return i;
+      before.add(to);
+    }
+    return -1;
+  };
   const step = () => {
     queued = false;
-    const sock = line(), m = bulk[0];
-    if (!sock || !m) return;
-    if (skip(m)) { bulk.shift(); m.done?.(); return later(); }
+    const sock = line();
+    if (!sock || !bulk.length) return;
     const hidden = typeof document !== 'undefined' && document.hidden;
     if (sock.bufferedAmount > (hidden ? HIDDEN_LOW : LOW)) return later(POLL);
+    const i = pick(), m = bulk[i];
+    // A `drained` from the relay or a receiver gone wakes the lane again.
+    if (!m) return;
+    if (skip(m)) { bulk.splice(i, 1); m.done?.(); return later(); }
     m.parts ??= cut(m.plain, size);
     sock.send(sealed(m.parts.at(m.next++), m.to));
-    if (m.next >= m.parts.count) { bulk.shift(); m.done?.(); }
+    if (m.next >= m.parts.count) { bulk.splice(i, 1); m.done?.(); }
     later();
   };
 
@@ -249,7 +266,7 @@ export function openChannel(o: Options): Channel {
     sock.onmessage = (ev) => {
       last = Date.now();
       if (typeof ev.data === 'string') {
-        let msg: { t?: string; peers?: number; n?: number; frame?: number; beat?: number; gone?: number };
+        let msg: { t?: string; peers?: number; n?: number; frame?: number; beat?: number; gone?: number; id?: number };
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.t === 'welcome') {
           welcomed = ready = true;
@@ -269,7 +286,8 @@ export function openChannel(o: Options): Channel {
           }, beat);
           peers = msg.peers ?? 1;
           // A message cut short with the last line goes again from its start, under a new id.
-          if (bulk[0]) { bulk[0].next = 0; bulk[0].parts = undefined; }
+          for (const m of bulk) if (m.next) { m.next = 0; m.parts = undefined; }
+          slow.clear();
           // The welcome's own frames (presence, the sync's ask) go before what waited.
           const waited = fast.splice(0);
           o.onOpen(peers);
@@ -286,10 +304,13 @@ export function openChannel(o: Options): Channel {
           peers = msg.n ?? 1;
           if (msg.gone) {
             parts.forget(msg.gone);
+            if (slow.delete(msg.gone)) later();
             for (let i = bulk.length - 1; i >= 0; i--) if (bulk[i].to === msg.gone) bulk.splice(i, 1)[0].done?.();
           }
           o.onPeers(peers, msg.gone);
         }
+        else if (msg.t === 'slow' && msg.id) slow.add(msg.id);
+        else if (msg.t === 'drained' && msg.id) { slow.delete(msg.id); later(); }
         else if (msg.t === 'full') { closed = true; o.onStatus('full'); }
         else if (msg.t === 'version') { closed = true; o.onStatus('mismatch'); }
         return;

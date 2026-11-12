@@ -12,8 +12,9 @@ const CLAIM = /^[A-Za-z0-9_-]{22,64}$/;
 const VERSION = 2;
 // Ids a room remembers, live or gone; past it the oldest gone one is forgotten.
 const MAX_IDS = 256;
-// A receiver holding more than `backlog` bytes not yet sent pauses its senders' reading until
-// it is down to half, so a slow line costs the relay little memory and the sender waits.
+// A receiver holding more than `hold` bytes not yet sent is announced `slow` to the others, whose
+// pictures wait until it is `drained` (half of it); past `backlog` the relay stops reading the
+// sender that filled it, a cap for a client that ignores the announcement.
 const DRAIN_MS = 50;
 
 /**
@@ -23,7 +24,7 @@ const DRAIN_MS = 50;
  * other. A connection that misses a `ping` round is dropped, so its client is gone within
  * two rounds. Resolves once listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, tap, lag } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, hold = 2 << 20, tap, lag } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
   // Per room, each client id with the secret its first hello claimed it by, and its socket
@@ -44,8 +45,20 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
     for (const ws of peers) if (ws !== except) send(ws, { t: 'peers', n: peers.size, ...(gone ? { gone } : {}) });
   };
   const full = (ws, limit) => ws.readyState === ws.OPEN && ws.bufferedAmount > limit;
+  const others = (ws, msg) => { for (const p of rooms.get(ws.room) ?? []) if (p !== ws) send(p, msg); };
+  const slow = (to) => {
+    to.slow = true;
+    others(to, { t: 'slow', id: to.id });
+    const wait = setInterval(() => {
+      if (full(to, hold / 2)) return;
+      clearInterval(wait);
+      to.slow = false;
+      if (to.readyState === to.OPEN) others(to, { t: 'drained', id: to.id });
+    }, DRAIN_MS);
+  };
   const deliver = (from, to, data) => {
     to.send(data, { binary: true });
+    if (!to.slow && full(to, hold)) slow(to);
     if (!full(to, backlog) || from.isPaused || from.readyState !== from.OPEN) return;
     from.pause();
     const wait = setInterval(() => {
@@ -97,6 +110,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
         named.set(ws.id, { claim: hello.claim, ws });
         if (named.size > MAX_IDS) for (const [id, o] of named) if (!o.ws) { named.delete(id); break; }
         send(ws, { t: 'welcome', peers: peers.size, frame: maxFrame, ...(beat ? { beat } : {}) });
+        for (const p of peers) if (p.slow && p !== ws) send(ws, { t: 'slow', id: p.id });
         announce(peers, ws);
         return;
       }
