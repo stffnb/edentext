@@ -7,8 +7,9 @@ export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'fa
 export const PROTOCOL = 2;
 
 export type Channel = {
-  /** To one client by its id, or with `to` 0 to everyone. */
-  send(plain: Uint8Array, to?: number): void;
+  /** To one client by its id, or with `to` 0 to everyone; `bulk` (a picture) waits behind the
+   *  rest, and `done` runs once its last part went to the socket or it was dropped. */
+  send(plain: Uint8Array, to?: number, bulk?: boolean, done?: () => void): void;
   close(): void;
   /** When the last peer frame (or part of one) came in that `onFrame` did not call chatter, for a session waiting on an answer. */
   heard(): number;
@@ -38,7 +39,7 @@ const PART_HEAD = 17;        // envelope, 8-byte id, index, count
 const SEALING = 28;          // nonce and GCM tag
 const TO = 4;                // in clear before a sealed frame: the receiver (0 for all), the sender on arrival
 const OLD_RELAY = 4000;      // a relay before version 2 closes a hello it cannot read so
-const MAX_PART = 1 << 20;
+const MAX_PART = 256 << 10;
 const MAX_MESSAGE = 256 << 20;
 const PART_TTL = 60_000;
 // Unfinished messages are bounded per sender, as the relay names it: a sender sends one
@@ -53,29 +54,35 @@ const FAILS = 3;
 const MAX_WAIT = 30_000;
 // A relay that announces a beat sends one that often; a line silent for BEATS of them is dead.
 const BEATS = 3;
+// The bulk lane sends while the socket holds less than LOW (a hidden tab's timers wake once a
+// second, so it fills more); otherwise it looks again after POLL ms.
+const LOW = 128 << 10;
+const HIDDEN_LOW = 4 << 20;
+const POLL = 10;
+const MAX_QUEUE = 256;
 
-function split(plain: Uint8Array, size: number): Uint8Array[] {
+/** A message as envelopes of at most `size` bytes: whole, or numbered parts under a random id, each made when asked for. */
+function cut(plain: Uint8Array, size: number): { count: number; at(i: number): Uint8Array } {
   if (plain.length + 1 <= size) {
-    const out = new Uint8Array(plain.length + 1);
-    out.set(plain, 1);
-    return [out];
+    return { count: 1, at: () => { const out = new Uint8Array(plain.length + 1); out.set(plain, 1); return out; } };
   }
   const room = size - PART_HEAD;
   const count = Math.ceil(plain.length / room);
   const id = crypto.getRandomValues(new Uint8Array(8));
-  const parts: Uint8Array[] = [];
-  for (let i = 0; i < count; i++) {
-    const data = plain.subarray(i * room, (i + 1) * room);
-    const out = new Uint8Array(PART_HEAD + data.length);
-    const v = new DataView(out.buffer);
-    out[0] = PART;
-    out.set(id, 1);
-    v.setUint32(9, i);
-    v.setUint32(13, count);
-    out.set(data, PART_HEAD);
-    parts.push(out);
-  }
-  return parts;
+  return {
+    count,
+    at(i) {
+      const data = plain.subarray(i * room, (i + 1) * room);
+      const out = new Uint8Array(PART_HEAD + data.length);
+      const v = new DataView(out.buffer);
+      out[0] = PART;
+      out.set(id, 1);
+      v.setUint32(9, i);
+      v.setUint32(13, count);
+      out.set(data, PART_HEAD);
+      return out;
+    },
+  };
 }
 
 type Pending = { parts: (Uint8Array | undefined)[]; got: number; size: number; at: number };
@@ -162,16 +169,59 @@ export function openChannel(o: Options): Channel {
   let stable: ReturnType<typeof setTimeout> | undefined;
   // The relay gives the id only to a hello with this secret, so no other client can take it.
   const claim = newKey();
-  const queue: [Uint8Array, number][] = [];
+  // The room's size by the relay, 0 before a welcome; alone, nothing goes to everyone, as
+  // whoever comes syncs and asks for pictures anyway.
+  let peers = 0;
 
-  const put = (sock: WebSocket, plain: Uint8Array, to: number) => {
-    for (const part of split(plain, size)) {
-      const sealed = seal(o.key, part);
-      const out = new Uint8Array(TO + sealed.length);
-      new DataView(out.buffer).setUint32(0, to);
-      out.set(sealed, TO);
-      sock.send(out);
+  // Two lanes, each in order. The fast one (edits, carets, the sync's small frames, chat)
+  // goes at once; the bulk one (pictures, any message in parts) one part per task and only
+  // while the socket holds little, so typing never waits behind it. All sealing is here, in order.
+  type Out = { plain: Uint8Array; to: number; parts?: ReturnType<typeof cut>; next: number; done?: () => void };
+  const fast: Out[] = [], bulk: Out[] = [];
+  let queued = false;
+  let wake: ReturnType<typeof setTimeout> | undefined;
+  let tick: MessageChannel | null = null;
+  const line = () => (ws && ready && ws.readyState === WebSocket.OPEN ? ws : null);
+  const skip = (m: Out) => m.to === 0 && peers === 1;
+  const sealed = (env: Uint8Array, to: number) => {
+    const body = seal(o.key, env);
+    const out = new Uint8Array(TO + body.length);
+    new DataView(out.buffer).setUint32(0, to);
+    out.set(body, TO);
+    return out;
+  };
+  const flush = () => {
+    const sock = line();
+    if (!sock) return;
+    for (let m = fast.shift(); m; m = fast.shift()) {
+      if (m.plain.length + 1 > size) { bulk.push(m); continue; }
+      if (!skip(m)) sock.send(sealed(cut(m.plain, size).at(0), m.to));
+      m.done?.();
     }
+    later();
+  };
+  // The next bulk part runs as a task of its own; a message channel, unlike a timer, is not
+  // slowed in a hidden tab.
+  const later = (ms = 0) => {
+    if (!bulk.length || queued) return;
+    queued = true;
+    if (ms) wake = setTimeout(step, ms);
+    else {
+      if (!tick) { tick = new MessageChannel(); tick.port1.onmessage = step; }
+      tick.port2.postMessage(0);
+    }
+  };
+  const step = () => {
+    queued = false;
+    const sock = line(), m = bulk[0];
+    if (!sock || !m) return;
+    if (skip(m)) { bulk.shift(); m.done?.(); return later(); }
+    const hidden = typeof document !== 'undefined' && document.hidden;
+    if (sock.bufferedAmount > (hidden ? HIDDEN_LOW : LOW)) return later(POLL);
+    m.parts ??= cut(m.plain, size);
+    sock.send(sealed(m.parts.at(m.next++), m.to));
+    if (m.next >= m.parts.count) { bulk.shift(); m.done?.(); }
+    later();
   };
 
   const connect = () => {
@@ -217,8 +267,14 @@ export function openChannel(o: Options): Channel {
             sock.close();
             lost();
           }, beat);
-          o.onOpen(msg.peers ?? 1);
-          for (const [m, to] of queue.splice(0)) put(sock, m, to);
+          peers = msg.peers ?? 1;
+          // A message cut short with the last line goes again from its start, under a new id.
+          if (bulk[0]) { bulk[0].next = 0; bulk[0].parts = undefined; }
+          // The welcome's own frames (presence, the sync's ask) go before what waited.
+          const waited = fast.splice(0);
+          o.onOpen(peers);
+          fast.push(...waited);
+          flush();
           if (fails < FAILS) o.onStatus('open');
           stable = setTimeout(() => {
             held = true;
@@ -227,8 +283,12 @@ export function openChannel(o: Options): Channel {
             o.onStatus('open');
           }, STABLE_MS);
         } else if (msg.t === 'peers') {
-          if (msg.gone) parts.forget(msg.gone);
-          o.onPeers(msg.n ?? 1, msg.gone);
+          peers = msg.n ?? 1;
+          if (msg.gone) {
+            parts.forget(msg.gone);
+            for (let i = bulk.length - 1; i >= 0; i--) if (bulk[i].to === msg.gone) bulk.splice(i, 1)[0].done?.();
+          }
+          o.onPeers(peers, msg.gone);
         }
         else if (msg.t === 'full') { closed = true; o.onStatus('full'); }
         else if (msg.t === 'version') { closed = true; o.onStatus('mismatch'); }
@@ -253,16 +313,21 @@ export function openChannel(o: Options): Channel {
   connect();
 
   return {
-    send(plain, to = 0) {
-      if (ws && ready && ws.readyState === WebSocket.OPEN) put(ws, plain, to);
+    send(plain, to = 0, slow = false, done) {
       // What was typed while the line was down goes out on the next welcome; the sync
       // that follows it would carry it too, so the queue only saves a round trip.
-      else if (queue.length < 256) queue.push([plain, to]);
+      const lane = slow || plain.length + 1 > size ? bulk : fast;
+      if (!line() && lane.length >= MAX_QUEUE) return done?.();
+      lane.push({ plain, to, next: 0, done });
+      if (lane === fast) flush(); else later();
     },
     close() {
       closed = true;
       clearTimeout(timer);
       clearTimeout(stable);
+      clearTimeout(wake);
+      tick?.port1.close();
+      for (const m of [...fast.splice(0), ...bulk.splice(0)]) m.done?.();
       ws?.close();
       o.onStatus('closed');
     },

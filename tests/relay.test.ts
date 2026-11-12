@@ -75,6 +75,23 @@ describe('collaboration relay', () => {
     expect(await (await join(ROOM_B, 5, 'short')).closed).toBe(4000);
   });
 
+  it('holds back a sender while a receiver is behind, instead of buffering for it', async () => {
+    relay = await startRelay({ port: 0, backlog: 256 << 10 });
+    const a = await join(ROOM_A), b = await join(ROOM_A);
+    b.ws.pause();
+    const frame = Buffer.alloc(64 << 10);
+    for (let i = 0; i < 400; i++) a.ws.send(frame);
+    let most = 0;
+    for (let i = 0; i < 20; i++) {
+      await tick();
+      for (const w of relay.rooms.get(ROOM_A) as Set<WebSocket>) most = Math.max(most, w.bufferedAmount);
+    }
+    expect(most).toBeLessThan(2 * (256 << 10));
+    b.ws.resume();
+    for (let i = 0; i < 100 && b.bin.length < 400; i++) await tick();
+    expect(b.bin.length).toBe(400);
+  });
+
   it('keeps an id for the hello that claimed it first, also after its client left', async () => {
     relay = await startRelay({ port: 0 });
     const a = await join(ROOM_A, 1), b = await join(ROOM_A, 2);
