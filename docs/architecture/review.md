@@ -116,3 +116,5 @@ Regrouping what is there passes unrecorded (`REBUILDING`, and any transaction ou
 - **Column in DOCX:** LibreOffice drops `w:cellIns`/`w:cellDel`.
 
 The UNO API removes rows and columns unrecorded; a probe needs the dispatcher. pyuno does not run on macOS here, so the leg and the probes are Basic macros in a fresh profile's `Standard` library.
+
+In a shared session `@` in a comment, reply or chat box offers the people present (`MentionSuggest.svelte`), and the assistant where it is on, so it is never pushed aside; the comment keeps only the text `@Name`, so ODT and DOCX see a typed comment. The one named finds it on their own side (`collab/mentions.svelte.ts`): a comment or reply arriving during the session that names their user name after an `@` (`mentions` in `ai/tools.ts`, the pattern `mentionsAi` uses, any case, whole word) brings a notice leading to it, a marked card until the caret or a click reaches it, and a count in the status bar while the comments pane is shut; a chat message is marked and counted apart. Without accounts nobody absent is told.
