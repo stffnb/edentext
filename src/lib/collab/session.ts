@@ -29,11 +29,13 @@ const VIEWER = 8;   // [from][name and colour as JSON, none on leaving]: a reade
 const PING = 9;     // [to][from][nonce]: answer to show the sender is in the room now
 const PONG = 10;    // [to][from][nonce], a writer's answer
 const ECHO = 11;    // [to][from][nonce], a reader's answer
+const CHAT = 12;    // [text as UTF-8]: a writer's chat message, to all; the relay's id says whose
+const SAY = 13;     // [text as UTF-8]: a reader's, unsigned, counted only from a listed reader
 const DIRECTED = new Set([OFFER, PULL, ANSWER, PICTURE, WANT, PING, PONG, ECHO]); // the first number is `to`
 // Where a frame names its sender: it must be the one the relay puts in front, so no client
 // speaks for another (a reader for many readers, or asking answers sent to someone else).
 const FROM_AT = new Map([[ASK, 1], [VIEWER, 1], [OFFER, 5], [PULL, 5], [WANT, 5], [PING, 5], [PONG, 5], [ECHO, 5]]);
-const SIGNED = new Set([UPDATE, PRESENCE, OFFER, ANSWER, PICTURE, PONG]);
+const SIGNED = new Set([UPDATE, PRESENCE, OFFER, ANSWER, PICTURE, PONG, CHAT]);
 const MAX_HELD = 8;      // presence frames held per peer until it answers a ping
 const MAX_KNOWN = 32;     // readers listed, and writers awaiting a ping
 const BATCH_MS = 50;
@@ -60,6 +62,8 @@ export type SessionStatus =
 export type Peer = { id: number; name: string; color: string; keeps: boolean };
 /** Someone reading along: listed by name, with no caret and no zone. */
 export type Reader = { id: number; name: string; color: string };
+/** A chat message as it arrived: `from` is the relay's id of its sender, named from the lists. */
+export type ChatIn = { from: number; name: string; color: string; reading: boolean; text: string };
 
 /**
  * `missing`: pictures no one here could send, shown as grey boxes. `paused`: the shared doc
@@ -83,6 +87,8 @@ export type SessionHost = {
   name(): string;
   user(): { name: string; color: string };
   onChange(view: SessionView): void;
+  /** A chat message from someone listed; never stored, nor part of the doc. */
+  onChat(message: ChatIn): void;
 };
 
 export type Session = {
@@ -90,6 +96,8 @@ export type Session = {
   viewLink: string;
   awareness: Awareness;
   leave(): void;
+  /** Sends a chat message to everyone here; false when the line is not live. */
+  chat(text: string): boolean;
   /** Frames sent per kind, for the tests' idle check. */
   stats: { sent: number[] };
   /** Dev builds: sends a frame as is and shows each arriving one, for the forged-frame test. */
@@ -146,7 +154,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   const reading = !keys.sign;
   const view = viewLink(keys);
   const link = keys.secret ? sessionLink(keys.secret) : view;
-  const stats = { sent: new Array<number>(ECHO + 1).fill(0) };
+  const stats = { sent: new Array<number>(SAY + 1).fill(0) };
   // A reader has no awareness state: no caret, no zone, never asked for a picture.
   if (reading) { awareness.setLocalState(null); setReading(editor, true); }
   // Never 0, the PICTURE frame's address for everyone.
@@ -274,6 +282,13 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     asked.delete(from);
     readers.set(from, entry);
     listed();
+  };
+  // A chat message counts from a writer listed under that relay id, signed, or a reader listed.
+  const dec = new TextDecoder();
+  const chat = (kind: number, from: number, body: Uint8Array) => {
+    const who = kind === SAY ? readers.get(from)
+      : [...awareness.getStates()].find(([id, s]) => id !== ydoc.clientID && s.peer === from && s.user)?.[1].user;
+    if (who) host.onChat({ from, name: String(who.name ?? ''), color: String(who.color ?? ''), reading: kind === SAY, text: dec.decode(body) });
   };
   // The relay's `gone` drops a client at once; one that went while this line was down is
   // never announced. Knowing more clients than the relay counts, each is pinged afresh and
@@ -426,6 +441,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     const at = FROM_AT.get(kind);
     if (at !== undefined && v.getUint32(at) !== from) return;
     if (kind === UPDATE) receive(plain.subarray(1));
+    else if (kind === CHAT || kind === SAY) chat(kind, from, plain.subarray(1));
     else if (pictures.receive(plain)) return;
     else if (kind === PRESENCE) presence(plain.subarray(1), from);
     else if (kind === VIEWER) viewer(v.getUint32(1), plain.subarray(5));
@@ -515,6 +531,11 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
 
   return {
     link, viewLink: view, awareness, stats,
+    chat(text) {
+      if (line !== 'open' || status !== 'live') return false;
+      send(reading ? SAY : CHAT, enc.encode(text));
+      return true;
+    },
     ...(import.meta.env.DEV ? { debug: { send: (p: Uint8Array, to = 0) => channel.send(p, to), get tap() { return tap; }, set tap(f) { tap = f; }, ydoc } } : {}),
     leave() {
       removeEventListener('pagehide', goodbye);

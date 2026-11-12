@@ -51,7 +51,7 @@ where a paid room would lift `MAX_PEERS` later. There are no accounts or passwor
 ## What the relay sees
 
 - **Never:** the keys (the part of the link after `#` stays in the browser), document text,
-  styles, pictures, names, carets, comments, or whether a client holds the write or the read
+  styles, pictures, names, carets, comments, chat messages, or whether a client holds the write or the read
   link. Everything is sealed with AES-256-GCM before it leaves the browser.
 - **Does:** IP addresses and times, the room id (a truncated hash of the read key, the same for
   both links, from which no key follows), how many share a room, frame sizes and their timing,

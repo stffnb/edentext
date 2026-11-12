@@ -1,10 +1,12 @@
 // The docked panes' layout, per browser: the side each docks on, its width and text
-// size. The reviewing panes keep theirs here; the navigator keeps it with its own settings.
+// size. The reviewing panes and the session chat keep theirs here; the navigator keeps it
+// with its own settings.
 
 export type PaneSide = 'left' | 'right';
 export type PaneSize = 'small' | 'medium' | 'large';
 export type PaneLayout = { side: PaneSide; size: PaneSize; width: number };
 export type ReviewPane = 'comments' | 'revisions';
+export type DockedPane = ReviewPane | 'chat';
 
 export const PANE_SIZES: PaneSize[] = ['small', 'medium', 'large'];
 export const REVIEW_PANE_WIDTH = 260;
@@ -21,20 +23,21 @@ export function validLayout(raw: unknown, width: number): PaneLayout {
   };
 }
 
-function load(): Record<ReviewPane, PaneLayout> {
+function load(): Record<DockedPane, PaneLayout> {
   let raw: Record<string, unknown> = {};
   try { raw = JSON.parse(localStorage.getItem(KEY) ?? '{}') ?? {}; } catch { /* defaults */ }
   return {
     comments: validLayout(raw.comments, REVIEW_PANE_WIDTH),
     revisions: validLayout(raw.revisions, REVIEW_PANE_WIDTH),
+    chat: validLayout(raw.chat, REVIEW_PANE_WIDTH),
   };
 }
 
 let current = $state(load());
 
-export function paneLayout(pane: ReviewPane): PaneLayout { return current[pane]; }
+export function paneLayout(pane: DockedPane): PaneLayout { return current[pane]; }
 
-export function setPaneLayout(pane: ReviewPane, patch: Partial<PaneLayout>): void {
+export function setPaneLayout(pane: DockedPane, patch: Partial<PaneLayout>): void {
   current = { ...current, [pane]: { ...current[pane], ...patch } };
   try { localStorage.setItem(KEY, JSON.stringify(current)); } catch { /* not kept */ }
 }

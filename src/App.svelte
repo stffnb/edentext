@@ -85,6 +85,8 @@
   import PromptDialog from './lib/components/PromptDialog.svelte';
   import { askComposer } from './lib/components/CommentComposer.svelte';
   import CommentsPane from './lib/components/CommentsPane.svelte';
+  import ChatPane from './lib/components/ChatPane.svelte';
+  import { chatOpen, chatUnread, setChatOpen } from './lib/collab/chat.svelte';
   import RevisionsPane from './lib/components/RevisionsPane.svelte';
   import ConnectorLayer from './lib/components/ConnectorLayer.svelte';
   import NavigatorPane from './lib/components/NavigatorPane.svelte';
@@ -1539,6 +1541,7 @@
   let collabOpening = $state(false);
   let collabNotice = $state<CollabNotice | null>(null);
   const sessionView = $derived(collabView());
+  const inSession = $derived(!!sessionView && sessionView.status !== 'closed');
   // A session that cannot go on (a bad link, a full room, another version, nobody there)
   // opens the dialog; a line out of reach or breaking, while editing goes on, is a notice.
   // Once per change, not per update.
@@ -2346,6 +2349,9 @@
   {#if aiEnabled() && aiOpen}
     <AiPane {editor} host={aiHost} onClose={() => (aiOpen = false)} onSettings={() => { settingsSection = 'ai'; settingsOpen = true; }} />
   {/if}
+  {#if inSession && chatOpen()}
+    <ChatPane {editor} onClose={() => setChatOpen(false)} />
+  {/if}
   {#if commentsInPane() || draftInPane}
     <CommentsPane {editor} {tick} author={userName()} onClose={() => setShowComments(false)} />
   {/if}
@@ -2414,6 +2420,11 @@
         {#each sessionView.readers as p (p.id)}<span class="collab-dot ring" style:border-color={p.color} title={`${p.name} · ${t().collab.readingAlong}`}></span>{/each}
         {sessionView.paused ? t().collab.paused : sessionView.reading && sessionView.status === 'live' ? t().collab.readOnly
           : sessionView.status === 'live' ? t().collab.peers(sessionView.peers.length + sessionView.readers.length) : t().collab.status[sessionView.status]}
+      </button>
+      <button class="chat-btn" class:active={chatOpen()} data-cmd="chatToggle" aria-pressed={chatOpen()} onclick={() => setChatOpen(!chatOpen())}
+        title={chatUnread() ? `${t().collab.chat.title} · ${t().collab.chat.unread(chatUnread())}` : t().collab.chat.title} aria-label={chatUnread() ? `${t().collab.chat.title} · ${t().collab.chat.unread(chatUnread())}` : t().collab.chat.title}>
+        <Icon name="chat" size={14} />
+        {#if chatUnread() && !chatOpen()}<span class="chat-unread">{chatUnread() > 99 ? '99+' : chatUnread()}</span>{/if}
       </button>
       {#if readerNudge}<span class="collab-hint" role="status" data-hint="reading">{t().collab.readingNudge}</span>{/if}
     {/if}
@@ -3126,6 +3137,31 @@
   .collab-btn:hover { background: var(--color-btn-hover); }
   .collab-btn.paused { color: var(--color-primary); font-weight: 600; box-shadow: inset 0 0 0 1px var(--color-primary); }
   .collab-btn.reading { box-shadow: inset 0 0 0 1px var(--color-border); }
+  .chat-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    padding: 0 4px;
+    height: 18px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .chat-btn:hover, .chat-btn.active { background: var(--color-btn-hover); }
+  .chat-unread {
+    min-width: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: var(--color-primary);
+    color: #fff;
+    font-family: var(--font-sans);
+    font-size: 0.65rem;
+    line-height: 14px;
+    text-align: center;
+  }
   .collab-dot { width: 8px; height: 8px; border-radius: 50%; box-sizing: border-box; }
   .collab-dot.ring { border: 2px solid; }
   /* Above the status bar's right end, where the session button is; it takes no focus. */

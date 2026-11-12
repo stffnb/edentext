@@ -156,6 +156,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   without the link; discarding reloads into the tab's own or an empty slot. Open, New or a
   template asks to leave first (`opening`), then opens alone (a joiner's in a new slot).
   Nobody `keeps` for 2 s: joiners get a notice, their tab warns on closing. Alone 5 s: `empty`.
+- **Chat** (`collab/chat.svelte.ts`, `ChatPane.svelte`): short messages to everyone here, `CHAT` from writers (signed) and `SAY` from readers (unsigned, taken only from a listed reader), the text as UTF-8 and nothing else; who sent it is the relay's id, named from the lists, so a reader never shows under a writer's name. Only the tabs present hold them, in memory: not in the doc, a file, autosave or a later joiner's tab. A receiver drops texts over 2000 characters, more than five per sender in 10 s, and keeps the last 200; the sender keeps to both. Comings and goings are lines drawn from the lists, not sent. The field is shut while the line is not `live`; nothing waits to be sent.
 - **Carets** come from y-tiptap's cursor plugin over the awareness: zero-width decorations
   in the person's (or recorded-change) colour, hidden in print. y-tiptap's undo plugin
   destroys its manager on any `registerPlugin`, so `undoYjs.ts` keeps it until `detach`.
@@ -184,7 +185,7 @@ offers, answers, pictures and presences change no document, zone, caret or list;
 presences hold no zone, at a newcomer neither. A reader dialling in under a writer's id gets none of its frames nor makes it leave or free its header, a picture asked for thirty times in one frame goes once, and forty readers made up in one tab are listed nowhere, while a real one still is. A picture whose only holder leaves unsent is a
 grey box with a note within seconds, as the relay says who left, and the line stays `live`. Two writers and four
 readers fill a room of six, so a seventh is refused; with the writers gone the reader is told, a new reader finds it
-empty, and the reader's kept copy is editable. Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
+empty, and the reader's kept copy is editable. Chat: a writer's, a joiner's and a reader's messages reach the other two by name, the reader's marked, in one order; the relay sees no text or name, A's `.odt`, `.docx`, autosave and shared doc none either. The pane drags and keys wider, docks left beside the page and keeps both after a reload, apart from the comments pane's; a reload or a late joiner starts empty. A closed pane counts new messages without taking the typist's focus. A patched reader's unsigned or falsely signed `CHAT`, a `SAY` from an unlisted id and a 1 MB text show nowhere, 50 in a second at most five, markup as text, only `http(s)` addresses as links. Idle with the pane open, nothing is sent; a line down shuts the field and its return opens it. Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
 the script (`page.route`): its text and page setup reach the joiner, which keeps its
 recorded marks and adds none; the starter's undo takes back each on both sides. A relay
 dropping every connection after its welcome makes the line `failing` (notice, 4–5
@@ -194,7 +195,6 @@ within a few beats, asks nothing while down, and comes back. `tests/relay.test.t
 scripts run in the three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`; load,
 soak and typing speed: `collab-soak.md`.
 
-Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun nor in five runs on a
-fresh dev server and dep cache (2026-11-11): in Firefox a joiner not live within 20 s on a just-started dev server. Writers share one signing key, so it tells writers from readers, not writers apart, and a
+Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun nor in five runs on a fresh dev server and dep cache (2026-11-11): in Firefox a joiner not live within 20 s on a just-started dev server. Writers share one signing key, so it tells writers from readers, not writers apart, and a
 write link stays valid for the session. A reader can still cost the others what any participant can: asks
 (`ASK`, `PULL`, `WANT`) in a loop, each answered in full, and connections up to `MAX_PEERS`. Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.

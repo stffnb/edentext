@@ -5,6 +5,7 @@ import { AUTHOR_COLORS, authorColors } from '../editor/authorColors';
 import { relayReady, relayUrl } from './channel';
 import { linkKeys } from './key';
 import { keepSessionCopy, putOpening, reloadAlone, takeOpening, type Opening } from './leave';
+import { bindChat, chatPresence, receiveChat } from './chat.svelte';
 import { joinSession, startSession, type Session, type SessionHost, type SessionView } from './session';
 
 // The app's one shared session (docs/architecture/collab.md): the starter's document goes
@@ -44,18 +45,21 @@ export function probeRelay(): void {
 }
 
 function host(app: SessionApp): SessionHost {
+  const user = () => {
+    const name = userName();
+    let h = 0;
+    for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return { name, color: authorColors(app.editor()!.state.doc).get(name) ?? AUTHOR_COLORS[h % AUTHOR_COLORS.length] };
+  };
+  bindChat({ send: (text) => session?.chat(text) ?? false, user, reading: () => !!view?.reading });
   return {
     relay: relay!,
     snapshot: app.snapshot,
     load: app.load,
     name: app.name,
-    user: () => {
-      const name = userName();
-      let h = 0;
-      for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-      return { name, color: authorColors(app.editor()!.state.doc).get(name) ?? AUTHOR_COLORS[h % AUTHOR_COLORS.length] };
-    },
-    onChange: (next) => { view = next; },
+    user,
+    onChange: (next) => { view = next; chatPresence(next); },
+    onChat: receiveChat,
   };
 }
 
@@ -95,6 +99,7 @@ export async function leaveCollab(app: SessionApp, choice: 'keep' | 'discard' | 
   session?.leave();
   session = null;
   view = null;
+  bindChat(null);
   if (choice) reloadAlone(!!opening);
   else if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   return true;

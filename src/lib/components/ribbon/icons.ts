@@ -128,6 +128,8 @@ export const STROKED = {
   thesaurus: ['M8 4.5C6.5 3.4 4.4 3.1 2.2 3.3v9c2.2-.2 4.3.1 5.8 1.2 1.5-1.1 3.6-1.4 5.8-1.2v-9c-2.2-.2-4.3.1-5.8 1.2z', 'M8 4.5v9'],
   // A speech bubble with its tail, the shape both word processors use for a comment.
   comment: ['M2 3.25h12v7.5H7.5L4.5 13.5v-2.75H2z', 'M4.75 6h6.5M4.75 8.25h4'],
+  // Two speech bubbles, one behind the other: a conversation, not a note on the text.
+  chat: ['M1.75 2.25h8.5v5.5H5.5L3.25 9.75v-2H1.75z', 'M12.25 5.75h2v5.5h-1.5v2l-2.25-2H7v-1.5'],
   // A word broken at a hyphen: two stubs with the dash between them.
   hyphenation: ['M2 8h3M11 8h3', 'M6.5 8h3', 'M2 4.5h12M2 11.5h6'],
   // An A with a tick beside it: the letter AutoCorrect fixes, corrected.
