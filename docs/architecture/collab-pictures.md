@@ -59,21 +59,24 @@ only the key; the bytes travel once to each client.
 ## Measured
 
 Big documents, 2026-11-12, Chromium: 140–150 pages with 25 pictures (49 MB), the starter's
-uplink through a 10 Mbit/s proxy, a third client 5 s after the second; before the lanes and
-the asks that wait, then after:
+uplink through a 10 Mbit/s proxy, a third client 5 s after the second; first on the plain
+line, then with the lanes and asks that wait, then with `slow`, the start file without
+pictures and WebCrypto:
 
-| | before | after |
-|---|---|---|
-| pictures put in alone, sent to the relay | 49.9 MB | 0 |
-| third joiner, pictures put in during the session | 3 of 25, never more | 25 of 25 in 71 s |
-| starter's keystroke to relay while sending, p50 / p95 | 0.04 / 28.3 s | 0.6 / 1.0 s |
-| same while answering a start file with pictures | 19.3 / 39.3 s | 0.4 / 1.3 s |
-| starter's longest task while sending | 2.9 s | 0.5 s |
-| relay's buffer, unthrottled | 47 MB | 16 MB |
+| | before | lanes | now |
+|---|---|---|---|
+| joiner sees text, pictures in the start file | 47.9 s | 48.7 s | 1.7 s (pictures 45 s) |
+| third joiner, pictures put in during the session | 3 of 25 | 25 in 71 s | 25 in 76 s |
+| starter's keystroke to relay while sending, p50 / p95 | 0.04 / 28.3 s | 0.6 / 1.0 s | 0.5 / 0.9 s |
+| same while answering a start file | 19.3 / 39.3 s | 0.4 / 1.3 s | 0.3 / 0.8 s |
+| same, unthrottled, p95 | 0.3 s | 3.5 s | 0.1 s |
+| starter's longest task, start file / sending | 2.4 / 2.9 s | 1.7 / 0.5 s | 0.2 / 0.3 s |
+| relay's buffer, unthrottled | 47 MB | 16 MB | 2.5 MB |
 
-What remains of the keystroke's wait lies below the page (the socket and the proxy's 256 kB).
-Unthrottled, the relay now holds the starter back while a receiver is 16 MiB behind, so a
-keystroke there waits up to 3.5 s (0.3 s before), the price of a bounded relay.
+The last column leaves out keystrokes typed while the starter was alone, which wait for a
+joiner as nothing goes to an empty room; the 3.5 s mostly counted those. At
+10 Mbit/s what remains of a keystroke's wait lies below the page (socket buffers and the
+proxy's 256 kB); pacing the pictures by measured rate would be the next step.
 
 Chromium, 2026-11-10, 1.73 MB JPEG in `13-images`, bytes per client, before keys in
 brackets: insert 1.73 MB (same); five moves 2 kB (1.73 MB each); the mover's doc after
