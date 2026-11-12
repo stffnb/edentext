@@ -234,7 +234,7 @@ const fr: Messages = {
     follow: 'Suivre',
     stopFollow: 'Ne plus suivre',
     following: (name: string) => `Vous suivez ${name} : cliquez pour arrêter`,
-    readsAlong: (names: string[]) => `${new Intl.ListFormat('fr', { type: 'conjunction' }).format(names)} ${names.length === 1 ? 'suit' : 'suivent'} en lecture seule`,
+    readsAlong: (names: string[]) => `${new Intl.ListFormat('fr', { type: 'conjunction' }).format(names)} ${names.length === 1 ? 'a rejoint' : 'ont rejoint'} la session en lecture seule`,
     mentioned: (name: string) => `${name} vous mentionne dans un commentaire`,
     mentions: (n: number) => n === 1 ? 'Un commentaire vous mentionne' : `${n} commentaires vous mentionnent`,
     mentionList: 'Personnes à mentionner',

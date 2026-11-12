@@ -234,7 +234,7 @@ const ru: Messages = {
     follow: 'Следить',
     stopFollow: 'Перестать следить',
     following: (name: string) => `Слежение за курсором: ${name}. Нажмите, чтобы прекратить`,
-    readsAlong: (names: string[]) => `${new Intl.ListFormat('ru', { type: 'conjunction' }).format(names)} ${names.length === 1 ? 'смотрит' : 'смотрят'} документ без права правки`,
+    readsAlong: (names: string[]) => `${new Intl.ListFormat('ru', { type: 'conjunction' }).format(names)} ${names.length === 1 ? 'просматривает' : 'просматривают'} документ без права редактирования`,
     mentioned: (name: string) => `${name} упоминает вас в примечании`,
     mentions: (n: number) => `${n} ${plural(n, 'примечание упоминает', 'примечания упоминают', 'примечаний упоминают')} вас`,
     mentionList: 'Кого упомянуть',

@@ -232,7 +232,7 @@ const el: Messages = {
     follow: 'Παρακολούθηση',
     stopFollow: 'Διακοπή παρακολούθησης',
     following: (name: string) => `Παρακολουθείτε: ${name}. Κάντε κλικ για διακοπή`,
-    readsAlong: (names: string[]) => `${new Intl.ListFormat('el', { type: 'conjunction' }).format(names)} ${names.length === 1 ? 'παρακολουθεί' : 'παρακολουθούν'} μόνο για ανάγνωση`,
+    readsAlong: (names: string[]) => `${new Intl.ListFormat('el', { type: 'conjunction' }).format(names)} ${names.length === 1 ? 'μπήκε' : 'μπήκαν'} στη συνεδρία μόνο για ανάγνωση`,
     mentioned: (name: string) => `${name} σας ανέφερε σε ένα σχόλιο`,
     mentions: (n: number) => n === 1 ? 'Ένα σχόλιο σας αναφέρει' : `${n} σχόλια σας αναφέρουν`,
     mentionList: 'Άτομα για αναφορά',
