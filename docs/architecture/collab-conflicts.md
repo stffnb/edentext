@@ -1,9 +1,8 @@
 # Concurrent edits
 
-What two clients end with when each does one thing to the same paragraph, table, recorded
-change or comment before hearing of the other's. `node tests/collab/conflicts.mjs` (in
-`test:collab`) runs every pair below; its expected values are today's behaviour, so a
-change to any of them fails the run.
+What two clients end with when each does one thing to the same paragraph, table, recorded change
+or comment before hearing of the other's. `node tests/collab/conflicts.mjs` (in `test:collab`) runs
+every pair below; its expected values are today's behaviour, so a change to any of them fails the run.
 
 ## Why it happens
 
@@ -80,7 +79,10 @@ page from one's own pagination) stay local instead of answering each other.
   objects, not its empty elements, so a padding cell keeps no row of an undone insert.
   Yjs puts what an undo or redo restores back under the undoer's id; `Authors` follows
   each restored item's `redone` copy and keeps the copy's range as its author's, so a later
-  undo (an Enter before a rebuilt block) still leaves the other's text in place.
+  undo (an Enter before a rebuilt block) still leaves the other's text in place. Yjs restores
+  an item only into its parent or the parent's `redone` copy, which only the client that made
+  it knows; where an undo cannot put back another's text its step copied (the part after an
+  inline node or Enter), it keeps the copy as the other's (the other undid and redid typing).
   An undo that takes the last items of a list, table or note section whose others another
   client took out takes the emptied element along (no empty one fits the schema, and the
   binding would pause everywhere); one leaving a parent holding a misfit keeps its item.
@@ -169,12 +171,10 @@ leaves both at B's doc alone (in the B's undo rows, B's undo takes its last step
 
 ## Accepted
 
-- **Delete vs typing** (paragraph, row, column, table, typing over a selection that ends in
-  it): the deletion was meant; B's caret lands in the next block, which shows it. A's undo restores the old content without B's
-  typing.
-- **Comment deleted vs answered:** the comment comes back with the answer (no text lost; A's
-  deletion is undone). A's undo then adds the comment a second time over it; deleting
-  again works.
+- **Delete vs typing** (paragraph, row, column, table, typing over a selection that ends in it): the
+  deletion was meant; B's caret lands in the next block, which shows it. A's undo restores the old content without B's typing.
+- **Comment deleted vs answered:** the comment comes back with the answer (no text lost; A's deletion
+  is undone). A's undo then adds the comment a second time over it; deleting again works.
 - **TOC:** the index shows the heading as it was when A updated, as it would alone; an
   update still running when B's edit arrives takes it in (one more update, so quiet varies).
   An index update is off the undo stack alone too.

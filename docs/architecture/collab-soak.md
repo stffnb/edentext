@@ -50,13 +50,11 @@ temp dir (`soak-<seed>-<round>-*.json`).
 
 ### Findings (2026-11-10, Chromium)
 
-About 140 rounds with four clients: two 13-minute runs (seeds 11–17 with every op, 21–28
-without the known ones), a 10-minute one (31–36, the harness fixed below) and short ones.
-New, beyond the matrix:
+About 140 rounds with four clients: two 13-minute runs (seeds 11–17 with every op, 21–28 without
+the known ones), a 10-minute one (31–36, the harness fixed below) and short ones. New, beyond the matrix:
 
-- **Pagination after others' edits (fixed).** Every arriving batch ran a full pagination
-  pass at once; see the numbers below. Now it waits like a typed edit, at most 1 s
-  (`pagination.md`).
+- **Pagination after others' edits (fixed).** Every arriving batch ran a full pagination pass
+  at once; see the numbers below. Now it waits like a typed edit, at most 1 s (`pagination.md`).
 - **RangeError in `restoreRelativeSelection` without a footnote** (fixed): six undos threw
   `Position N out of range` from y-tiptap's `restoreRelativeSelection`, and three rounds
   raised it uncaught. The binding computes the restored caret against the Yjs fragment, so a
@@ -86,7 +84,10 @@ New, beyond the matrix:
   duplication now shows as `copied`, known while two rebuilds of one block leave two copies.
   Seed 4's `lost` (2026-11-11) was one too: the words counted were whitespace tokens, which
   the undoer's own text beside a word changed (`nipsmβ<textBox>` → `nipsmβostrud`); every
-  stem of the others was still there. Hence the stems.
+  stem of the others was still there. Hence the stems. Seed 1's `ipsumaα` (2026-11-12, with a
+  reader, twice, then not in 10 runs) was real: Dan put a footnote into Anna's cell text,
+  Anna's undo and redo made that text a new element, and Dan's undo deleted its copy of the
+  part after the anchor without the original coming back; fixed (`collab-conflicts.md`, Repairs).
 - **Editing paused after an undo** (fixed; seed 3, 2026-11-11): `Invalid content for node
   bulletList: <>` on the undoing client only, as its undos ran in one task and the others
   got the end state. An undo took the last item of a list it had added to, after another
@@ -149,9 +150,8 @@ What it means, against about 16 ms per key for a visible stutter and 50 ms for s
 - The rows for four and six on 177 pages include the other tabs' pagination on the same
   processor; per person on their own machine the cost is nearer the two-client row plus the
   extra arriving batches.
-- B's caret never moved to other text. Text written above it on the same page moved it down
-  one line (26 px) on screen; the view does not hold B's line in place, and it never
-  scrolled.
+- B's caret never moved to other text. Text written above it on the same page moved it down one
+  line (26 px) on screen; the view does not hold B's line in place, and it never scrolled.
 - Memory, four clients typing for ten minutes on the short document (11,000 characters,
   4 pages): each tab's heap after a collection went from 39–40 to 44–50 MB, the Yjs
   document (`encodeStateAsUpdate`) from 18 to 52 kB, about 3 bytes per typed character.

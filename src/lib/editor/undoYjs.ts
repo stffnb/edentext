@@ -97,14 +97,49 @@ class Authors {
         for (let i = Y.findIndexSS(structs, d.clock); i < structs.length && structs[i].id.clock < d.clock + d.len; i++) {
           const it = structs[i];
           if (!(it instanceof Y.Item) || !it.redone) continue;
-          const rs = this.ranges.get(it.redone.client) ?? [];
-          const at = rs.findIndex((r) => r.clock > it.redone!.clock);
-          rs.splice(at < 0 ? rs.length : at, 0, { clock: it.redone.clock, end: it.redone.clock + it.length, foreign: this.foreign(it) });
-          this.ranges.set(it.redone.client, rs);
+          this.add(it.redone, it.length, this.foreign(it));
         }
       }
     });
   }
+  // Counts an own item as another client's text from now on.
+  adopt(it: Y.Item): void { this.add(it.id, it.length, true); }
+  private add(id: Y.ID, length: number, foreign: boolean): void {
+    const rs = this.ranges.get(id.client) ?? [];
+    const end = id.clock + length;
+    const over = rs.filter((r) => r.clock < end && r.end > id.clock);
+    if (over.length) { if (foreign) for (const r of over) r.foreign = true; return; }
+    const at = rs.findIndex((r) => r.clock > id.clock);
+    rs.splice(at < 0 ? rs.length : at, 0, { clock: id.clock, end, foreign });
+    this.ranges.set(id.client, rs);
+  }
+}
+
+type StackItem = Y.UndoManager['undoStack'][number];
+
+// Another client's text an undo or redo deleted but could not put back: Yjs restores an item
+// only into its parent or the parent's restored copy, and which copy another client's undo
+// made is known to that client alone. Runs of it in document order.
+function unrestored(ydoc: Y.Doc, step: StackItem, foreign: (it: Y.Item) => boolean): string[] {
+  const lost = new Set<Y.Item>();
+  step.deletions.clients.forEach((dels, client) => {
+    const structs = ydoc.store.clients.get(client);
+    if (!structs) return;
+    for (const d of dels) {
+      for (let i = Y.findIndexSS(structs, d.clock); i < structs.length && structs[i].id.clock < d.clock + d.len; i++) {
+        const it = structs[i];
+        if (it instanceof Y.Item && it.deleted && !it.redone && it.content instanceof Y.ContentString && foreign(it)) lost.add(it);
+      }
+    }
+  });
+  const runs: string[] = [];
+  for (const it of lost) {
+    if (it.left && lost.has(it.left)) continue;
+    let s = '';
+    for (let x: Y.Item | null = it; x && (lost.has(x) || x.deleted); x = x.right) if (lost.has(x)) s += (x.content as Y.ContentString).str;
+    runs.push(s);
+  }
+  return runs;
 }
 
 // A footnote anchor whose note holds another client's text stays with it: the notes repair
@@ -235,13 +270,24 @@ export function attachYjsUndo(
   } else for (const [, v] of stateValues()) codec.pack(v, false);
   const leaf = (name: string) => !!editor.schema.nodes[name]?.isLeaf;
   const authors = new Authors(ydoc);
+  // The step being undone or redone, and the other's text it could not put back.
+  let popping: StackItem | null = null;
+  let lost: string[] | null = null;
   const um = new Y.UndoManager([frag, side], {
     trackedOrigins: new Set([ySyncPluginKey, STATE_ORIGIN]),
     captureTransaction: (t) => t.meta.get('addToHistory') !== false,
     deleteFilter: (item) => {
       if (!(item.content instanceof Y.ContentType)) {
         authors.trim(item);
-        return !authors.foreign(item);
+        if (authors.foreign(item)) return false;
+        if (!(item.content instanceof Y.ContentString)) return true;
+        // The step's copy of another's text it could not put back (the part after an inline
+        // node or Enter it put in) stays, as the other's from now on.
+        const str = item.content.str;
+        lost ??= popping ? unrestored(ydoc, popping, authors.foreign) : [];
+        if (!lost.some((run) => run.includes(str))) return true;
+        authors.adopt(item);
+        return false;
       }
       const type = item.content.type;
       if (holdsForeign(type, authors.foreign, leaf) || (type instanceof Y.XmlElement && keepsNote(type, frag, authors.foreign, leaf))) return false;
@@ -255,6 +301,15 @@ export function attachYjsUndo(
   // any later `registerPlugin` does (the session's cursors); it lives until `detach`.
   const destroy = um.destroy.bind(um);
   um.destroy = () => {};
+  // The delete filter learns which step is popped (Yjs names it only after the deletions).
+  for (const run of ['undo', 'redo'] as const) {
+    const f = um[run].bind(um);
+    um[run] = () => {
+      popping = (run === 'undo' ? um.undoStack : um.redoStack).at(-1) ?? null;
+      lost = null;
+      try { return f(); } finally { popping = null; lost = null; }
+    };
+  }
 
   // Labels ride the stack items; one moved to the other stack keeps its own.
   let label = 'Edit';

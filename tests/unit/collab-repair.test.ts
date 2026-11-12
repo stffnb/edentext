@@ -197,7 +197,12 @@ const notePos = (ed: Editor) => {
   ed.state.doc.descendants((n, p) => { if (pos < 0 && n.type.name === 'note') pos = p + 1; return pos < 0; });
   return pos;
 };
-const UNDO_CASES: { name: string; a: ((ed: Editor) => void)[]; b: (ed: Editor) => void; gone?: string }[] = [
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC';
+// B types a paragraph, A cuts B's text (the part after the cut is A's copy), B undoes and
+// redoes its typing, which makes the text it keeps a new element that only B can trace.
+const typed = (ed: Editor) => { ed.commands.setTextSelection(posOf(ed, 'Epsilon.', 8)); ed.commands.splitBlock(); ed.commands.insertContent('Zed and more'); };
+const cut = (f: (ed: Editor) => void) => (ed: Editor) => { ed.commands.setTextSelection(posOf(ed, 'Zed and more', 5)); f(ed); };
+const UNDO_CASES: { name: string; a: ((ed: Editor) => void)[]; b: (ed: Editor) => void; gone?: string; first?: boolean; kept?: string }[] = [
   { name: 'a footnote another client wrote into',
     a: [(ed) => { ed.commands.setTextSelection(posOf(ed, 'Gamma delta.', 12)); ed.commands.insertNote('footnote'); }],
     b: (ed) => { ed.commands.insertContentAt(notePos(ed), 'Zed'); } },
@@ -216,6 +221,9 @@ const UNDO_CASES: { name: string; a: ((ed: Editor) => void)[]; b: (ed: Editor) =
   { name: 'and the list item it added, the only one left in the list',
     a: [(ed) => { ed.commands.setTextSelection(posOf(ed, 'Zeta.', 5)); ed.commands.splitListItem('listItem'); ed.commands.insertContent('Qq'); }],
     b: (ed) => { ed.commands.insertContentAt(posOf(ed, 'Zeta.'), 'Zed'); ed.commands.liftListItem('listItem'); }, gone: 'Qq' },
+  ...([['a picture', (ed) => ed.commands.setImage({ src: PNG, width: 8, height: 6 } as never)], ['a footnote', (ed) => ed.commands.insertNote('footnote')],
+    ['Enter', (ed) => ed.commands.splitBlock()]] as [string, (ed: Editor) => void][]).map(([what, f]) => (
+    { name: `${what} cutting its text, which it undid and redid since`, first: true, kept: 'Zed and more', b: typed, a: [cut(f)] })),
 ];
 
 describe('an undo in a shared doc', () => {
@@ -227,9 +235,14 @@ describe('an undo in a shared doc', () => {
       const [a, b] = cs;
       let paused = 0;
       for (const x of cs) x.undo.onPause((p) => { if (p) paused++; });
+      if (c.first) { c.b(b.ed); await relay(cs, rnd); }
       c.a[0](a.ed);
       await relay(cs, rnd);
-      c.b(b.ed);
+      if (c.first) {
+        const n = b.undo.undoManager.undoStack.length;
+        for (let i = 0; i < n; i++) { b.undo.undoManager.undo(); await relay(cs, rnd); }
+        for (let i = 0; i < n; i++) { b.undo.undoManager.redo(); await relay(cs, rnd); }
+      } else c.b(b.ed);
       await relay(cs, rnd);
       for (const step of c.a.slice(1)) {
         a.undo.undoManager.lastChange = 0;
@@ -241,7 +254,7 @@ describe('an undo in a shared doc', () => {
         await relay(cs, rnd);
       }
       for (const x of cs) {
-        expect(x.ed.state.doc.textContent).toContain('Zed');
+        expect(x.ed.state.doc.textContent).toContain(c.kept ?? 'Zed');
         if (c.gone) expect(x.ed.state.doc.textContent).not.toContain(c.gone);
         expect(JSON.stringify(x.ed.getJSON())).toBe(JSON.stringify(a.ed.getJSON()));
         expect(() => x.ed.state.doc.check()).not.toThrow();
@@ -333,7 +346,6 @@ describe('an edit into a repair not yet shared', () => {
 // Marks on a node (a formula's or an image's font size) reach every client as text marks
 // do, through an undo or a change both make at once, and from the client that brings the
 // text; the clients end with the same shared doc and document.
-const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC';
 const ATOMS = ['formula', 'image'];
 const atomDoc = (size?: string) => {
   const marks = size ? [{ type: 'textStyle', attrs: { fontSize: size } }] : undefined;
