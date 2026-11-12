@@ -21,7 +21,7 @@
   import { chapterOn, type ChapterStart } from '../utils/chapterField';
   import { t } from '../i18n/i18n.svelte';
   import { allPagesDrawn } from './pageWindow.svelte';
-  import { claimZone, yieldsZone, zoneHolder } from '../collab/zones.svelte';
+  import { claimZone, heldZones, yieldsZone, zoneHolder } from '../collab/zones.svelte';
   import { reading } from '../collab/reading.svelte';
 
   let {
@@ -578,7 +578,7 @@
   // Claimed while open, also when a session starts under it. Two who opened it at once
   // before either heard of the other: the higher client id gives way, its typing may go.
   $effect(() => {
-    if (interactive) claimZone(hfEditor ? liveId : null);
+    if (interactive) claimZone(hfEditor ? liveId : null, editingPage);
   });
   $effect(() => {
     if (interactive && hfEditor && yieldsZone(liveId)) hfActive = null;
@@ -753,6 +753,12 @@
         {/if}
       {/if}
     {/each}
+  {/each}
+
+  <!-- Where each zone another person holds is open, on their page, for a jump to it. -->
+  {#each heldZones() as [zid, holder] (zid)}
+    {@const kind = /:header/.test(zid) ? 'header' : 'footer'}
+    <div class="hf-peer-mark" data-zone-peer={holder.id} style={boxStyle(zoneBox(kind, Math.min(holder.page, Math.max(1, numPages)))) + `--hf-held: ${holder.color || 'var(--color-primary)'};`}></div>
   {/each}
 
   {#if interactive && hfActive}
@@ -959,8 +965,11 @@
     50% { transform: translateY(calc(-100% - 2px)) scale(1.15); }
   }
 
+  .hf-peer-mark { position: absolute; pointer-events: none; border-radius: 2px; }
+  :global(.hf-peer-mark.collab-flash) { animation: collab-flash 1.6s ease-out; }
+
   @media print {
-    .hf-held { display: none; }
+    .hf-held, .hf-peer-mark { display: none; }
   }
 
   /* A zone's editor (live, source or clone) is a `.tiptap`, so it takes the body's block
