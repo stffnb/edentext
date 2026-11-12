@@ -9,6 +9,7 @@
   import { ensureUserName } from './reviewItems';
   import { authorColor } from '../editor/authorColors';
   import { autosize, isSubmitKey } from '../utils/autosize';
+  import MentionSuggest from './MentionSuggest.svelte';
 
   // One comment thread as both reviewing views show it: its quote, text, answers and a reply
   // box, with resolve, edit and remove in the head. Shared by the pane and the balloon; its
@@ -28,6 +29,7 @@
   let draft = $state('');
   let replying = $state(false);
   let reply = $state('');
+  let replyBox = $state<HTMLTextAreaElement | null>(null);
   // Anything being done in the card shows all of it; a resolved one not in use only its
   // head and first line, as both word processors fold a handled comment.
   let full = $derived(!compact || editing || replying);
@@ -138,10 +140,12 @@
     rows="1"
     use:focus
     use:autosize={reply}
+    bind:this={replyBox}
     bind:value={reply}
     placeholder={t().comments.reply}
     onkeydown={(e) => { if (e.key === 'Escape') replying = false; else if (isSubmitKey(e)) sendReply(); }}
   ></textarea>
+  <MentionSuggest box={replyBox} />
   <div class="actions">
     <button onclick={() => { replying = false; reply = ''; }}>{t().common.cancel}</button>
     <button class="primary" onclick={sendReply}>{t().comments.reply}</button>

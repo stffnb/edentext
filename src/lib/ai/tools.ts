@@ -1230,10 +1230,15 @@ export async function runTurn(opts: {
   return answer;
 }
 
+/** Whether `text` names one of `names` after an `@`, as a whole word and in any case. */
+export function mentions(text: string, names: string[]): boolean {
+  const quoted = names.filter(Boolean).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return !!quoted.length && new RegExp(`(^|\\s)@(${quoted.join('|')})(?![\\p{L}\\p{N}])`, 'iu').test(text);
+}
+
 /** "@KI" (the assistant's localized name) or "@AI" in a comment asks the assistant. */
 export function mentionsAi(text: string): boolean {
-  const names = [...new Set([t().ai.author, 'AI'])].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  return new RegExp(`(^|\\s)@(${names.join('|')})(?![\\p{L}\\p{N}])`, 'iu').test(text);
+  return mentions(text, [...new Set([t().ai.author, 'AI'])]);
 }
 
 /**

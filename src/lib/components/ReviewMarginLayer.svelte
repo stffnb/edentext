@@ -9,6 +9,7 @@
 </script>
 
 <script lang="ts">
+  import { unseenMentions } from '../collab/mentions.svelte';
   import type { Editor } from '@tiptap/core';
   import type { EditorView } from '@tiptap/pm/view';
   import { untrack } from 'svelte';
@@ -353,6 +354,7 @@
       class:active={b.active}
       class:lifted={hovered === b.key && !b.active}
       class:resolved={!!b.comment?.resolved}
+      class:mentioned={!!b.comment && unseenMentions().includes(b.comment.id)}
       class:on-deck={i > 0 && stack.reach[i - 1] < (heights[i - 1] ?? 0) && balloons[i - 1]?.page === b.page}
       style="top: {shown[i] ?? b.want}px; left: {b.left}px; width: {cmToPx(BALLOON_W_CM)}px; border-color: {b.color};"
     >
@@ -368,6 +370,7 @@
 </div>
 
 <style>
+  .balloon.mentioned { outline: 2px solid var(--color-primary); }
   /* A sibling of .paper inside .paper-scaler, sharing its scale and its origin — the
      page boxes are measured in the same unscaled document px. */
   .review-margin-layer {
