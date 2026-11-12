@@ -1,8 +1,9 @@
 // How typing feels in a shared session (Chromium): A's keystroke, others' batches, the time
 // to B's screen, pagination and frame gaps while the others type; FLUENCY_MINUTES measures
-// memory instead. Method and numbers: docs/architecture/collab-soak.md.
+// memory instead. Method and numbers: docs/architecture/collab-soak.md. With two clients it
+// checks that a reader watching A type sees no page break or page count jump and come back.
 import { join } from 'node:path';
-import { ROOT, devServer, openApp, settle } from '../browser.mjs';
+import { ROOT, checker, devServer, openApp, settle } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
 
 const PORT = +(process.env.FLUENCY_PORT ?? 4396);
@@ -12,6 +13,7 @@ const COUNTS = (process.env.FLUENCY_CLIENTS ?? '1,2,4,6').split(',').map(Number)
 const DOCS = (process.env.FLUENCY_DOCS ?? 'short,mixed,long').split(',');
 const MINUTES = +(process.env.FLUENCY_MINUTES ?? 0);
 const FILES = { short: 'tests/corpus/02-blocks.odt', mixed: 'docs/showcase/newsletter.odt', long: 'tests/corpus/05-breaks.odt' };
+const { check, failures } = checker();
 const relay = await startRelay({ port: RELAY_PORT, beat: 0 });
 const server = await devServer(PORT);
 const { browser, page: first } = await openApp(PORT);
@@ -179,9 +181,57 @@ async function measure(doc, n) {
     const after = await look();
     res.caret = { kept: before.around === after.around, shift: after.y - before.y, scrolled: after.scroll - before.scroll };
   }
+  if (n === 2) await churn(a, others[0], doc);
   console.log(JSON.stringify(res));
   for (const p of [a, ...others]) await p.context().close();
   return res;
+}
+
+// B only reads while A types mid-document, Enter included: sampled right before each paint,
+// the blocks after A's must never move and return within a second, nor the page count.
+async function churn(a, b, doc) {
+  await caretAt(a, 0.5);
+  const at = await a.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.state.selection.head);
+  await b.waitForTimeout(1500);
+  await b.evaluate((at) => {
+    const view = document.querySelector('.tiptap-host .tiptap').editor.view, host = view.dom;
+    const blocks = [...host.children].filter((e) => !e.dataset.pageBreakSpacer);
+    const i = blocks.findIndex((e) => e.contains(view.domAtPos(at).node));
+    blocks[i]?.scrollIntoView({ block: 'center' });
+    const watch = [1, 2, 3, 5, 8, 13, 21, 40].map((k) => blocks[i + k]).filter(Boolean);
+    const C = window.__churn = { on: true, rows: [] };
+    // A ResizeObserver runs after the frame's callbacks and layout, just before its paint.
+    const probe = document.body.appendChild(document.createElement('div'));
+    probe.style.cssText = 'position:fixed;left:0;top:0;height:1px;width:1px;pointer-events:none';
+    new ResizeObserver(() => {
+      if (!C.on) return;
+      const pages = +(/of (\d+)/.exec(document.querySelector('.statusbar')?.textContent ?? '')?.[1] ?? 0);
+      const top = host.getBoundingClientRect().top;
+      C.rows.push([performance.now(), pages, ...watch.map((e) => Math.round(e.getBoundingClientRect().top - top))]);
+    }).observe(probe);
+    const flip = () => { if (C.on) { probe.style.width = probe.style.width === '1px' ? '2px' : '1px'; requestAnimationFrame(flip); } };
+    requestAnimationFrame(flip);
+  }, at);
+  const line = 'the quick brown fox jumps over the lazy dog ';
+  for (let i = 0; i < 120; i++) {
+    if (i % 50 === 49) await a.keyboard.press('Enter');
+    else await a.keyboard.type(line[i % line.length]);
+    await a.waitForTimeout(120);
+  }
+  await b.waitForTimeout(2000);
+  const rows = await b.evaluate(() => { window.__churn.on = false; return window.__churn.rows; });
+  // A value that leaves and comes back within a second was shown wrongly in between.
+  const back = [];
+  for (let c = 1; c < (rows[0]?.length ?? 0); c++) {
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][c] === rows[i - 1][c]) continue;
+      const j = rows.findIndex((r, k) => k > i && r[0] - rows[i][0] < 1000 && r[c] === rows[i - 1][c]);
+      if (j < 0) continue;
+      back.push(`${c === 1 ? 'pages' : `block ${c - 1}`} ${rows[i - 1][c]}→${rows[i][c]} for ${Math.round(rows[j][0] - rows[i][0])} ms`);
+      i = j;
+    }
+  }
+  check(rows.length > 100 && !back.length, `${doc}: a reader sees nothing jump and return while the other types (${rows.length} frames${back.length ? `; ${back.slice(0, 4).join(', ')}` : ''})`);
 }
 
 // Four clients type for MINUTES; the tabs' heap after a collection and the doc's size.
@@ -227,4 +277,4 @@ try {
   await relay.close();
   if (server) process.kill(-server.pid);
 }
-process.exit(0);
+process.exit(failures.length ? 1 : 0);
