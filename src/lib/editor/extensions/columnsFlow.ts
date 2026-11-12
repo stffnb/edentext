@@ -6,7 +6,7 @@ import { DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { TableMap } from '@tiptap/pm/tables';
 import {
-  readVerticalMargins, bandAt, FORCE_PAGE_RECALC, isSplitPane, blockDeco, isBlockDeco, repairDecos,
+  readVerticalMargins, bandAt, FORCE_PAGE_RECALC, LAYOUT_ANSWER, isSplitPane, blockDeco, isBlockDeco, repairDecos,
 } from './pageBreaks';
 import {
   sameColumnsAttrs, columnsChain, COLUMNS_FIT_MARGIN_PX, MIN_TAIL_LINES, DEFAULT_LINE_PX, headFitPx, lineRects, lineAdvance,
@@ -571,9 +571,10 @@ export const ColumnsFlow = Extension.create({
           decorations = items.length
             ? DecorationSet.create(editorView.state.doc, items.map((d) => blockDeco(d.from, d.to, { style: style(d.height) })))
             : DecorationSet.empty;
-          // Re-render + let pageBreaks re-measure the new box heights.
+          // Re-render + let pageBreaks re-measure the new box heights: an answer to its pass,
+          // so its cycle memory stands.
           editorView.dispatch(
-            editorView.state.tr.setMeta(FLOW_TX, true).setMeta(FORCE_PAGE_RECALC, true),
+            editorView.state.tr.setMeta(FLOW_TX, true).setMeta(FORCE_PAGE_RECALC, true).setMeta(LAYOUT_ANSWER, true),
           );
         }
 

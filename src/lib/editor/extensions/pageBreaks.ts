@@ -791,6 +791,11 @@ export const PageBreaks = Extension.create({
     // a layout cycle can't loop forever; reset per external change.
     let convergePasses = 0;
     const MAX_CONVERGE_PASSES = 4;
+    // Hard bound on the passes since the reader last did something (a key, a click, a drop)
+    // or the document was edited: no recalc can lift it, so a feedback loop no guard knows
+    // stops, the layout it reached stands and the busy state clears.
+    let passesSinceInput = 0;
+    const MAX_PASSES_PER_INPUT = 64;
 
     const plugin = new Plugin<PageBreakState>({
       key: pageBreakKey,
@@ -811,8 +816,10 @@ export const PageBreaks = Extension.create({
           const answered = force && !!tr.getMeta(LAYOUT_ANSWER);
           const recalc = value.recalc + (force && !answered ? 1 : 0);
           const answer = value.answer + (answered ? 1 : 0);
-          const edit = value.edit
-            + (tr.docChanged && tr.getMeta('addToHistory') !== false ? 1 : 0);
+          // A transaction appended to a layout-only write is layout too, as the history sees it.
+          const root: Transaction = tr.getMeta('appendedTransaction') ?? tr;
+          const recorded = tr.getMeta('addToHistory') !== false && root.getMeta('addToHistory') !== false;
+          const edit = value.edit + (tr.docChanged && recorded ? 1 : 0);
           const remote = value.remote + (tr.docChanged && tr.getMeta(ySyncPluginKey)?.isChangeOrigin ? 1 : 0);
           if (recalc === value.recalc && answer === value.answer && edit === value.edit && remote === value.remote) return value;
           const own = tr.docChanged ? textOnlyBlock(tr) : null;
@@ -1628,6 +1635,8 @@ export const PageBreaks = Extension.create({
         function layoutPass() {
           rafId = null;
           if (isUpdating || !editorView.dom.isConnected) return;
+          if (passesSinceInput >= MAX_PASSES_PER_INPUT) return;
+          passesSinceInput++;
           isUpdating = true;
           editBlock = null;
           remoteSince = null;
@@ -2570,6 +2579,12 @@ export const PageBreaks = Extension.create({
           }, EDIT_IDLE_MS);
         }
 
+        // A reader's action renews the pass bound, as an edit does; no recalc ever does.
+        const renew = () => { passesSinceInput = 0; };
+        const win = editorView.dom.ownerDocument.defaultView;
+        const INPUTS = ['keydown', 'pointerdown', 'drop', 'paste'] as const;
+        for (const type of INPUTS) win?.addEventListener(type, renew, true);
+
         // Initial calculation
         schedule();
 
@@ -2581,6 +2596,7 @@ export const PageBreaks = Extension.create({
             const isEditTr = before?.edit !== after?.edit;
             const isRemote = before?.remote !== after?.remote;
             const answered = before?.answer !== after?.answer;
+            if (isEditTr || isRemote) passesSinceInput = 0;
             if (!isUpdating && (prevState.doc !== editorView.state.doc || forced || answered)) {
               convergePasses = 0; // fresh convergence budget per external change
               // Layout-only writes and answers (the TOC's page numbers, its breaks) answer the last
@@ -2608,6 +2624,7 @@ export const PageBreaks = Extension.create({
           // The plugin's state outlives this view: a frame left marked pending would keep
           // a view built later (plugin re-registered) from ever scheduling a pass.
           destroy() {
+            for (const type of INPUTS) win?.removeEventListener(type, renew, true);
             if (idleTimer !== null) clearTimeout(idleTimer);
             if (rafId !== null) cancelAnimationFrame(rafId);
             idleTimer = null;
