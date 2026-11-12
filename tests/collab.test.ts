@@ -73,7 +73,7 @@ describe('collaboration key', () => {
     const open = (name: string, id?: number) => new Promise<ReturnType<typeof openChannel>>((resolve) => {
       const ch = openChannel({
         url: `ws://127.0.0.1:${relay.port}/relay`, key, id,
-        onFrame: (p) => (p.length > 1000 ? big.push(p) : got.push(`${name}:${new TextDecoder().decode(p)}`)),
+        onFrame: (p) => { if (p.length > 1000) big.push(p); else got.push(`${name}:${new TextDecoder().decode(p)}`); return p[0] !== 33; },
         onPeers: (n) => peers.push(n),
         onStatus: () => {},
         onOpen: () => resolve(ch),
@@ -101,6 +101,16 @@ describe('collaboration key', () => {
     expect(plain.every((m) => m[2] === ((2 * m[1]) & 255))).toBe(true);
     expect(Math.max(...frames)).toBeLessThanOrEqual(4096);
     expect(peers).toContain(3);
+    // A frame the receiver calls chatter ('!') leaves the time it last heard the room unchanged.
+    const before = c.heard();
+    await new Promise((r) => setTimeout(r, 20));
+    a.send(text('!chat'));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(got).toContain('c:!chat');
+    expect(c.heard()).toBe(before);
+    a.send(text('sync'));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(c.heard()).toBeGreaterThan(before);
     a.close();
     b.close();
     c.close();

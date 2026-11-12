@@ -10,7 +10,7 @@ export type Channel = {
   /** To one client by its id, or with `to` 0 to everyone. */
   send(plain: Uint8Array, to?: number): void;
   close(): void;
-  /** When the last peer frame (or part of one) came in, for a session waiting on an answer. */
+  /** When the last peer frame (or part of one) came in that `onFrame` did not call chatter, for a session waiting on an answer. */
   heard(): number;
 };
 
@@ -19,8 +19,9 @@ type Options = {
   key: Uint8Array;
   /** This client's id, never 0: the relay passes a frame to its receiver alone. */
   id: number;
-  /** A message and its sender's id, which the relay puts in front of every frame. */
-  onFrame(plain: Uint8Array, from: number): void;
+  /** A message and its sender's id, which the relay puts in front of every frame. `false`
+   *  marks chatter that says nothing about a sync, so it leaves `heard` as it was. */
+  onFrame(plain: Uint8Array, from: number): boolean | void;
   /** The room's size; `gone` is the id of a client whose line the relay saw end. */
   onPeers(n: number, gone?: number): void;
   onStatus(s: ChannelStatus): void;
@@ -233,15 +234,16 @@ export function openChannel(o: Options): Channel {
         else if (msg.t === 'version') { closed = true; o.onStatus('mismatch'); }
         return;
       }
-      heard = last;
       const data = new Uint8Array(ev.data as ArrayBuffer);
       if (data.length < TO) return;
       const from = new DataView(data.buffer).getUint32(0);
       let env: Uint8Array;
       // A frame sealed with another key or altered on the way is dropped.
       try { env = unseal(o.key, data.subarray(TO)); } catch { return; }
+      // Each part of a long message counts, so one still on its way is no stall.
+      if (env[0] !== WHOLE) heard = last;
       const plain = parts.take(env, from);
-      if (plain) o.onFrame(plain, from);
+      if (plain && o.onFrame(plain, from) !== false) heard = last;
     };
     sock.onclose = (ev) => {
       if (!welcomed && !closed && ev.code === OLD_RELAY) { closed = true; o.onStatus('mismatch'); }

@@ -475,12 +475,14 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   const channel = openChannel({
     url: host.relay, key: keys.read, id: me,
     onFrame(data, from) {
-      if (status === 'version' || !data.length) return;
+      if (status === 'version' || !data.length) return false;
       tap?.(data);
       // Unsigned or badly signed, a frame of a writing kind is dropped, as is one cut short.
       const plain = SIGNED.has(data[0]) ? opened(keys.verify, data) : data;
-      if (!plain) return;
+      if (!plain) return false;
       try { take(plain, from); } catch { /* malformed */ }
+      // Chat goes on while a sync stalls; it must not look like the answer the sync awaits.
+      return plain[0] !== CHAT && plain[0] !== SAY;
     },
     onPeers(n, gone) {
       // A client whose line the relay saw end is dropped at once: no picture is asked of it, its
