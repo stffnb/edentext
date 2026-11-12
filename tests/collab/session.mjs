@@ -28,14 +28,34 @@ const FRAME = 1 << 20;
 const BEAT = 2000;
 const PING = 5000;
 let relay = await startRelay({ port: RELAY_PORT, maxFrame: FRAME, beat: BEAT, ping: PING, tap: (d) => seen.push(Buffer.from(d)) });
-// A line to the relay that can go silent without a close, as under a closed laptop lid.
+// A line to the relay that can go silent without a close, as under a closed laptop lid, or
+// pass the client's bytes at `rate` per second, holding back no more than a slow uplink would.
 const STALL_PORT = +(process.env.COLLAB_STALL_PORT ?? RELAY_PORT + 5);
-const stall = { on: false };
+const stall = { on: false, rate: 0 };
 const stallLine = tcpServer((down) => {
   const up = tcpConnect(RELAY_PORT, '127.0.0.1');
+  const slow = [];
+  let pump;
+  const drain = () => {
+    let budget = Math.ceil(stall.rate / 50) || Infinity;
+    while (slow.length && budget > 0) {
+      const d = slow.shift(), n = Math.min(d.length, budget);
+      if (n < d.length) slow.unshift(d.subarray(n));
+      budget -= n;
+      up.write(d.subarray(0, n));
+    }
+    if (slow.reduce((n, d) => n + d.length, 0) < 64 << 10) down.resume();
+    if (!slow.length) { clearInterval(pump); pump = undefined; }
+  };
   for (const [from, to] of [[down, up], [up, down]]) {
-    from.on('data', (d) => { if (!stall.on) to.write(d); });
-    from.on('close', () => { if (!stall.on) to.destroy(); });
+    from.on('data', (d) => {
+      if (stall.on) return;
+      if (from === up || (!stall.rate && !slow.length)) return to.write(d);
+      slow.push(d);
+      if (slow.reduce((n, x) => n + x.length, 0) > 64 << 10) down.pause();
+      pump ??= setInterval(drain, 20);
+    });
+    from.on('close', () => { if (!stall.on) to.destroy(); clearInterval(pump); });
     from.on('error', () => {});
   }
 }).listen(STALL_PORT, '127.0.0.1');
@@ -1233,6 +1253,40 @@ try {
   const boxes = await g.locator('.tiptap-host .tiptap .image-waiting').count();
   check(told2 && await status(g) === 'live' && boxes === 1 && own,
     `a picture whose only holder left shows as a grey box (${boxes}) with a note, the session stays live (${told2}, ${await status(g)}, ${gView}), and the holder keeps it (${own}, ${aMissing} missing there)`);
+
+  // Pictures put in alone go nowhere. On a slow uplink, a joiner asking for them still gets
+  // the starter's typing at once, and a third joining while the second loads gets them all.
+  {
+    const h = await client('Hana');
+    await h.addInitScript((port) => {
+      const Orig = window.WebSocket;
+      window.WebSocket = class extends Orig { constructor(url, p) { super(String(url).includes('/relay') ? `ws://127.0.0.1:${port}/relay` : url, p); } };
+    }, STALL_PORT);
+    await openDoc(h, '16-hf-variants.odt');
+    const link5 = await start(h);
+    const r0 = relayed();
+    for (let n = 0; n < 4; n++) await photo(h);
+    await h.waitForTimeout(500);
+    const alone = relayed() - r0;
+    stall.rate = 2e6;
+    const [iv, jo] = [await client('Ivo'), await client('Jon')];
+    await joinLink(iv, link5);
+    const joined = joinLink(jo, link5);
+    await caret(h, 'end');
+    const t0 = Date.now();
+    await h.keyboard.type(' Swift');
+    const quick = await iv.waitForFunction(() => document.querySelector('.tiptap-host .tiptap').editor.state.doc.textContent.endsWith(' Swift'), null, { timeout: 15_000 })
+      .then(() => Date.now() - t0, () => Infinity);
+    const loading = await shown(iv);
+    await joined;
+    const all = (p) => p.waitForFunction(() => [...document.querySelectorAll('.tiptap-host .tiptap img')].filter((i) => i.src.startsWith('data:') && i.src.length > 1e6).length === 4, null, { timeout: 60_000 }).then(() => true, () => false);
+    const got = [await all(iv), await all(jo)];
+    const gaps = [await iv.evaluate(() => window.__collab.view().missing), await jo.evaluate(() => window.__collab.view().missing)];
+    stall.rate = 0;
+    check(alone < 20_000 && quick < 1500 && loading < 4 && got.every(Boolean) && gaps.join() === '0,0',
+      `pictures put in alone send ${alone} bytes; on a slow line typing arrives in ${quick} ms while the joiner shows ${loading} of 4, and a third joining meanwhile gets all (${got}, missing ${gaps})`);
+    for (const p of [h, iv, jo]) await p.context().close();
+  }
 
   // The starter choosing New in a session is asked, leaves, and starts empty; the joiner keeps the document.
   await openDoc(a, '16-hf-variants.odt');

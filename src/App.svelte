@@ -1607,6 +1607,7 @@
   $effect(() => {
     const n = sessionView?.missing ?? 0;
     if (n > collabMissing) collabNotice = 'missing';
+    else if (!n && untrack(() => collabNotice === 'missing')) collabNotice = null;
     collabMissing = n;
   });
   // And an edit of this tab's that a change around it left no place for.
