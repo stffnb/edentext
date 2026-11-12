@@ -95,8 +95,8 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   write link `…#collab=<W>`. HKDF-SHA-256 derives from W the read key R and an Ed25519 seed;
   the read link `…#view=<R>.<public key>` cannot give W back. Browsers never send the part
   after `#`; the room, the same for both links, is a truncated SHA-256 of R. Every frame is
-  sealed with AES-256-GCM under R and a fresh 12-byte nonce; `@noble/ciphers` and
-  `@noble/curves` work without `crypto.subtle`. A write link writes until a new session.
+  sealed with AES-256-GCM under R and a fresh 12-byte nonce, in line order: WebCrypto in a secure
+  context, else `@noble/ciphers` (same frames, so both mix). A write link writes until a new session.
 - **Signed frames.** What changes a receiver's state (`UPDATE`, `OFFER`, whose delete set
   applies as an update, `ANSWER`, `PICTURE`, a writer's awareness, `PONG`) carries a
   signature by the writers' shared key, over the whole message before its parts and checked

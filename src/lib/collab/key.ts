@@ -6,7 +6,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 // A session is one random secret W, carried by the write link after `#`, which no browser
 // sends to a server. From W come the read key R (AES-256-GCM for every frame; the room is
 // a hash of it) and an Ed25519 pair that writers sign with; the read link carries R and
-// the public key only. AES and Ed25519 go through noble, so they work without `crypto.subtle`.
+// the public key only. Ed25519 goes through noble, AES too where `crypto.subtle` is missing.
 
 const NONCE = 12;
 export const SIGNATURE = 64;
@@ -70,6 +70,33 @@ export function seal(key: Uint8Array, plain: Uint8Array): Uint8Array<ArrayBuffer
 /** Throws when the frame was not sealed with this key or was altered. */
 export function unseal(key: Uint8Array, frame: Uint8Array): Uint8Array {
   return gcm(key, frame.subarray(0, NONCE)).decrypt(frame.subarray(NONCE));
+}
+
+/** AES-GCM under one key, as `seal` and `unseal` frame it, but off the page's thread. */
+export type Cipher = { seal(plain: Uint8Array): Promise<Uint8Array>; open(frame: Uint8Array): Promise<Uint8Array> };
+
+/**
+ * WebCrypto where the page has it (a secure context), noble otherwise, as on a self-hosted
+ * `http://`: the frames are the same, so clients of either kind read each other.
+ */
+export function cipher(key: Uint8Array, subtle: SubtleCrypto | undefined = globalThis.crypto?.subtle): Cipher {
+  if (!subtle) return { seal: async (plain) => seal(key, plain), open: async (frame) => unseal(key, frame) };
+  const k = subtle.importKey('raw', key as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  k.catch(() => {});
+  return {
+    async seal(plain) {
+      const nonce = crypto.getRandomValues(new Uint8Array(NONCE));
+      const body = await subtle.encrypt({ name: 'AES-GCM', iv: nonce }, await k, plain as BufferSource);
+      const out = new Uint8Array(NONCE + body.byteLength);
+      out.set(nonce);
+      out.set(new Uint8Array(body), NONCE);
+      return out;
+    },
+    async open(frame) {
+      const iv = frame.slice(0, NONCE);
+      return new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv }, await k, frame.subarray(NONCE) as BufferSource));
+    },
+  };
 }
 
 /** The message with its Ed25519 signature behind it. */
