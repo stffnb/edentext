@@ -343,7 +343,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     }, DOUBT_MS);
   };
   const pictures = sessionPictures({
-    me, send, post, heard: () => channel.heard(), changed: () => changed(), unknown: () => peerCount - 1 > known().size,
+    me, send, post, heard: () => channel.heard(), incoming: (id) => channel.incoming(id), changed: () => changed(), unknown: () => peerCount - 1 > known().size,
     arrived: (k) => binding?.refresh(IDB_SRC + k),
     peers: () => [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && typeof s.peer === 'number').map(([, s]) => s.peer as number),
   });

@@ -86,6 +86,8 @@ type Wire = {
   /** Whether the relay counts clients in the room that are not known yet. */
   unknown(): boolean;
   heard(): number;
+  /** Whether a message in parts from that client is on its way in, which may be the picture. */
+  incoming(id: number): boolean;
   changed(): void;
   /** A picture came that this client lacked. */
   arrived(key: string): void;
@@ -138,6 +140,7 @@ export function sessionPictures(w: Wire): Pictures {
   const ask = () => {
     timer = undefined;
     const peers = w.peers(), to = new Map<number, string[]>();
+    let later = false;
     const before = missing();
     for (const [key, x] of wants) {
       if (heldImage(key)) { wants.delete(key); continue; }
@@ -145,12 +148,15 @@ export function sessionPictures(w: Wire): Pictures {
       const next = peers.find((p) => !x.tried.has(p));
       x.short = next === undefined;
       if (x.short) continue;
+      // A picture sent to all overtaken by its edit is still coming in; asking would get it twice.
+      if (w.incoming(next!)) { later = true; continue; }
       x.tried.add(next!);
       x.to = next!;
       x.at = Date.now();
       to.set(next!, [...(to.get(next!) ?? []), key]);
     }
     for (const [id, keys] of to) w.send(WANT, id, w.me, enc.encode(keys.join(',')));
+    if (later) soon();
     if (missing() !== before) w.changed();
     if ([...wants.values()].some((x) => x.to !== null)) watch ??= setInterval(recheck, 1000);
     else { clearInterval(watch); watch = undefined; }
