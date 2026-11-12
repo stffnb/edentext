@@ -46,3 +46,4 @@ formulas, or notes before changing those areas.
 - `HeaderFooterLayer.svelte` opens one zone editor at a time; in a shared session a zone someone else has open stays shut and carries their name (`collab/zones.svelte.ts`, `docs/architecture/collab.md`).
 - `PageLabelLayer.svelte` puts the sheet number beside each page's bottom right corner, in `.paper-scaler` (`.paper` clips) at an unscaled size, ending where the scroller does so it adds no scrollbar; not in the page grid.
 - `PoweredBy.svelte` is the embed mode's status-bar attribution (`docs/architecture/embed.md`); its fixed English wording is a licence notice, not catalog text.
+- `CollabPeople.svelte` shows the others in a session as circles before the session button (go to, follow; `docs/architecture/collab.md`), `CollabNews.svelte` who came or went and who named you, `MentionSuggest.svelte` offers them after `@` in a comment, reply or chat box.
