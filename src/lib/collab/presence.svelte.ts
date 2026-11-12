@@ -30,12 +30,13 @@ function reveal(el: HTMLElement, gently: boolean): void {
   const inY = at.top >= box.top + 40 && at.bottom <= box.bottom - 40;
   const inX = at.left >= box.left + 20 && at.right <= box.right - 20;
   if (gently && inY && inX) return;
-  // Glides over a short way; a long one jumps, so the view never trails the caret.
+  // Glides over a short way; a long one jumps, so the view never trails the caret. The
+  // goal is absolute: Firefox adds a scrollBy to the end of a glide still under way.
   const top = inY && gently ? 0 : at.top - (box.top + box.height / 3);
   const smooth = Math.abs(top) < 2 * box.height && !matchMedia('(prefers-reduced-motion: reduce)').matches;
-  scroller.scrollBy({
-    top,
-    left: inX ? 0 : at.left - (box.left + box.width / 3),
+  scroller.scrollTo({
+    top: scroller.scrollTop + top,
+    left: scroller.scrollLeft + (inX ? 0 : at.left - (box.left + box.width / 3)),
     behavior: smooth ? 'smooth' : 'auto',
   });
 }
