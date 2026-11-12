@@ -1254,8 +1254,9 @@ try {
   check(told2 && await status(g) === 'live' && boxes === 1 && own,
     `a picture whose only holder left shows as a grey box (${boxes}) with a note, the session stays live (${told2}, ${await status(g)}, ${gView}), and the holder keeps it (${own}, ${aMissing} missing there)`);
 
-  // Pictures put in alone go nowhere. On a slow uplink, a joiner asking for them still gets
-  // the starter's typing at once, and a third joining while the second loads gets them all.
+  // The start file and pictures put in alone carry no picture to the relay. On a slow uplink,
+  // a joiner asking for them still gets the starter's typing at once, the starter knows it is
+  // still serving them, and a third joining while the second loads gets them all.
   {
     const h = await client('Hana');
     await h.addInitScript((port) => {
@@ -1263,11 +1264,12 @@ try {
       window.WebSocket = class extends Orig { constructor(url, p) { super(String(url).includes('/relay') ? `ws://127.0.0.1:${port}/relay` : url, p); } };
     }, STALL_PORT);
     await openDoc(h, '16-hf-variants.odt');
+    for (let n = 0; n < 2; n++) await photo(h);
     const link5 = await start(h);
     const r0 = relayed();
-    for (let n = 0; n < 4; n++) await photo(h);
+    for (let n = 0; n < 2; n++) await photo(h);
     await h.waitForTimeout(500);
-    const alone = relayed() - r0;
+    const alone = relayed() - r0 + await ysize(h);
     stall.rate = 2e6;
     const [iv, jo] = [await client('Ivo'), await client('Jon')];
     await joinLink(iv, link5);
@@ -1278,13 +1280,14 @@ try {
     const quick = await iv.waitForFunction(() => document.querySelector('.tiptap-host .tiptap').editor.state.doc.textContent.endsWith(' Swift'), null, { timeout: 15_000 })
       .then(() => Date.now() - t0, () => Infinity);
     const loading = await shown(iv);
+    const serving = await h.evaluate(() => window.__collab.session.serving());
     await joined;
     const all = (p) => p.waitForFunction(() => [...document.querySelectorAll('.tiptap-host .tiptap img')].filter((i) => i.src.startsWith('data:') && i.src.length > 1e6).length === 4, null, { timeout: 60_000 }).then(() => true, () => false);
     const got = [await all(iv), await all(jo)];
     const gaps = [await iv.evaluate(() => window.__collab.view().missing), await jo.evaluate(() => window.__collab.view().missing)];
     stall.rate = 0;
-    check(alone < 20_000 && quick < 1500 && loading < 4 && got.every(Boolean) && gaps.join() === '0,0',
-      `pictures put in alone send ${alone} bytes; on a slow line typing arrives in ${quick} ms while the joiner shows ${loading} of 4, and a third joining meanwhile gets all (${got}, missing ${gaps})`);
+    check(alone < 200_000 && quick < 1500 && loading < 4 && serving > 0 && got.every(Boolean) && gaps.join() === '0,0',
+      `start file and pictures put in alone take ${alone} bytes; on a slow line typing arrives in ${quick} ms while the joiner shows ${loading} of 4 and the starter serves ${serving}, and a third joining meanwhile gets all (${got}, missing ${gaps})`);
     for (const p of [h, iv, jo]) await p.context().close();
   }
 

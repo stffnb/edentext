@@ -16,8 +16,16 @@ only the key; the bytes travel once to each client.
   that packs every `src` written into the map `state` and unpacks what comes out. The
   app's stores keep the pictures themselves, so export, autosave and print read them
   as outside a session. A store's picture new here goes to all like the body's; the
-  start file's are held at binding and sent to nobody. A key not held yet is asked for; when it comes, every store naming it is put into effect again
+  starter's are held at binding and sent to nobody. A key not held yet is asked for; when it comes, every store naming it is put into effect again
   (`refresh`), after an open zone's own edits went into the map.
+
+- **Start file.** `startSession`'s file (`meta.snapshot`) leaves every picture over 4 kB
+  out, in body and stores alike (`mapSrcs` keys them, the exporter drops a keyed picture):
+  the joiner's body and stores come from the shared doc, which names each by key with its
+  size, so text shows at once and the pictures are asked for like any other.
+- **Leaving.** Others still loading pictures from this tab (`serving`, its answers not yet
+  sent) make leaving and closing the tab ask first; a kept copy that lacks pictures says how
+  many and is kept only when confirmed, with grey boxes in their place.
 
 ## Wire
 
@@ -34,7 +42,8 @@ only the key; the bytes travel once to each client.
 - Pictures travel in the channel's bulk lane (`channel.ts`): 256 kB parts, sealed one per
   task and sent only while the socket holds less than 128 kB (4 MiB in a hidden tab, whose
   timers wake once a second). Edits, carets, pings and the sync go first, so typing never
-  waits behind a picture.
+  waits behind a picture. A receiver the relay calls `slow` gets no part until it is
+  `drained`; messages to others go on meanwhile, each receiver's in order.
 - A missing picture is asked of one client at a time, all keys for it in one frame; one
   that does not answer within 10 s of silence is passed over. A lack means "not yet": the
   key stays wanted, and is asked again of a client newly confirmed (its awareness answered

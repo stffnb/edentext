@@ -130,6 +130,26 @@ let wanted: ((key: string) => void) | null = null;
 export const imageKey = (src: unknown): string | null =>
   typeof src === 'string' && src.startsWith('data:') && src.length >= MIN_STASH_CHARS ? keyOf(src) : null;
 
+/**
+ * `value` with each `src` swapped by `fn`, copied only along what changed. Walks arrays and
+ * plain objects (a store's value, a document's JSON), never bytes or class instances.
+ */
+export function mapSrcs(value: unknown, fn: (src: string) => string): unknown {
+  if (Array.isArray(value)) {
+    const out = value.map((v) => mapSrcs(v, fn));
+    return out.some((v, i) => v !== value[i]) ? out : value;
+  }
+  // Node attributes have no prototype at all.
+  const proto = value && typeof value === 'object' ? Object.getPrototypeOf(value) : undefined;
+  if (proto !== Object.prototype && proto !== null) return value;
+  let out: Record<string, unknown> | null = null;
+  for (const [k, v] of Object.entries(value as object)) {
+    const next = k === 'src' && typeof v === 'string' ? fn(v) : mapSrcs(v, fn);
+    if (next !== v) (out ??= { ...value as Record<string, unknown> })[k] = next;
+  }
+  return out ?? value;
+}
+
 /** Holds a picture; true when it is new here. Whoever waits for it is told. */
 export function holdImage(key: string, src: string): boolean {
   if (held.has(key)) return false;

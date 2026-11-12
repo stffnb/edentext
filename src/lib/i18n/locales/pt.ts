@@ -254,6 +254,8 @@ const pt: Messages = {
     peers: (n: number) => `Mais ${n} pessoa${n === 1 ? '' : 's'}`,
     missing: (n: number) => n === 1 ? 'Não foi possível obter uma imagem: quem a tinha saiu. Fica um retângulo cinzento até entrar alguém que a tenha.' : `Não foi possível obter ${n} imagens: quem as tinha saiu. Ficam retângulos cinzentos até entrar alguém que as tenha.`,
     picturesPending: 'Algumas imagens ainda não lhe chegaram e faltariam no ficheiro. Tente novamente quando aparecerem.',
+    stillServing: (n: number) => n === 1 ? 'Alguém ainda está a carregar uma imagem sua. Se sair agora, pode não a receber. Sair mesmo assim?' : `Outros ainda estão a carregar ${n} imagens suas. Se sair agora, podem não as receber. Sair mesmo assim?`,
+    keepLacking: (n: number) => n === 1 ? 'Uma imagem ainda não lhe chegou, por isso a sua cópia mostrará uma caixa cinzenta no seu lugar. Manter mesmo assim?' : `${n} imagens ainda não lhe chegaram, por isso a sua cópia mostrará caixas cinzentas no seu lugar. Manter mesmo assim?`,
     paused: 'Edição em pausa',
     pausedHint: 'Uma alteração vinda da sessão não pode ser mostrada aqui e, se continuar a escrever, poderia substituí-la, por isso a edição está em pausa. Retoma sozinha assim que o documento puder voltar a ser mostrado.',
     dropped: 'Não foi possível manter parte do que acabou de escrever: outra pessoa alterou esse mesmo sítio ao mesmo tempo.',
