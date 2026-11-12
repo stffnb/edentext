@@ -1,4 +1,5 @@
 <script lang="ts">
+  import MentionSuggest from './MentionSuggest.svelte';
   import { onMount, tick as settled } from 'svelte';
   import type { Editor } from '@tiptap/core';
   import PaneResize from './PaneResize.svelte';
@@ -111,9 +112,9 @@
     <p class="intro">{t().collab.chat.intro}</p>
     {#each lines as line, i (line.key)}
       {#if line.kind === 'presence'}
-        <p class="presence">{line.came ? t().collab.chat.came(line.name) : t().collab.chat.went(line.name)}{line.reading ? ` · ${t().collab.readingAlong}` : ''}</p>
+        <p class="presence">{line.came ? t().collab.chat.came(line.names) : t().collab.chat.went(line.names)}{line.reading ? ` · ${t().collab.readingAlong}` : ''}</p>
       {:else}
-        <div class="message" class:own={line.own} class:follows={follows(i)} data-who={line.own ? 'me' : line.who}>
+        <div class="message" class:own={line.own} class:mention={line.mention} class:follows={follows(i)} data-who={line.own ? 'me' : line.who} title={line.mention ? t().collab.chat.mentionsYou : undefined}>
           {#if !follows(i)}
             <div class="meta">
               <span class="name" style:--who={line.color || null}>{line.name || '?'}</span>
@@ -139,6 +140,7 @@
     {:else if draft.length > MAX_CHAT}
       <p class="why" data-chat-note="long">{t().collab.chat.tooLong(MAX_CHAT)}</p>
     {/if}
+    <MentionSuggest box={field} ai={false} />
     <textarea bind:this={field} bind:value={draft} rows="2" dir="auto" disabled={!live} onkeydown={onKey} oninput={() => { if (note === 'busy') note = null; }}
       placeholder={t().collab.chat.placeholder} aria-label={t().collab.chat.placeholder} title={t().collab.chat.hint}></textarea>
     {#if near && draft.length <= MAX_CHAT}<span class="count">{t().collab.chat.left(MAX_CHAT - draft.length)}</span>{/if}
@@ -185,6 +187,7 @@
   .log { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 10px; font-size: var(--pane-text); }
   .log:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
   .intro { margin: 0 0 10px; color: var(--color-text-muted); }
+  .message.mention { border-left: 3px solid var(--color-primary); padding-left: 6px; }
   .presence { margin: 6px 0; color: var(--color-text-muted); font-style: italic; text-align: center; }
 
   .message { margin-top: 8px; padding: 4px 8px; border-radius: 6px; }
