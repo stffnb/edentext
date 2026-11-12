@@ -157,7 +157,7 @@ of quiet, so while the typing goes on only the keystroke itself costs; a forced 
 write and an edit leaving the caret's block past its page's text area (`caretOverflows`, or a held Enter
 keeps the caret off the page) never wait. Another client's edit in a session waits too, but at most
 `REMOTE_MAX_MS` (1 s) after the first: a pass per arriving batch took the whole main thread on long
-documents (`collab-soak.md`). Once quiet, the pass is skipped if every edit since the last one only put
+documents (`collab-soak.md`). One that moved what follows it (the content's bottom differs from the last pass's) is placed at once, in the frame that shows it: the reader is not typing, and waiting showed every page below jumping a line and back (up to 1.1 s at 142 pages). y-tiptap applies a batch as one step over every top-level block it touched, a whole table for a letter in a cell, so the decorations and the text-only test follow the changed ranges instead (`changedRanges`, `decoMapping`, also in `columnsFlow.ts` and `tabStops.ts`). Once quiet, the pass is skipped if every edit since the last one only put
 text into or took text out of one textblock (`textOnlyBlock`: a paragraph or heading, inside lists at
 most; a cell, note or frame reaches further) and the content's bottom is where the last pass left it. A
 break inside it still forces the pass. The dom run checks the keystroke budget and a letter taken back.

@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { EditorState } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { FORCE_PAGE_RECALC, LAYOUT_ANSWER, isSplitPane, pageBreakKey } from './pageBreaks';
+import { FORCE_PAGE_RECALC, LAYOUT_ANSWER, decoMapping, isSplitPane, pageBreakKey } from './pageBreaks';
 import { PX_PER_CM } from '../../storage/pageMargins';
 import { blockFontSize } from '../../utils/fontSize';
 import { firstLineCm, leftCm, rightCm } from './indent';
@@ -519,7 +519,7 @@ export const TabStops = Extension.create({
             // it are stale — and pagination settles over many frames on a long document,
             // long after two passes of ours have agreed on the layout of the moment.
             if (tr.getMeta(FORCE_PAGE_RECALC) || tr.getMeta(pageBreakKey)) forced++;
-            return old.map(tr.mapping, tr.doc);
+            return old.map(decoMapping(tr), tr.doc);
           },
         },
         props: {
