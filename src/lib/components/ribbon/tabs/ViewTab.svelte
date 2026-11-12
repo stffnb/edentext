@@ -6,6 +6,8 @@
   import { MAX_PAGE_COLUMNS } from '../../../storage/theme';
   import { t } from '../../../i18n/i18n.svelte';
   import { shortcutHint } from '../../../editor/shortcuts';
+  import { collabView } from '../../../collab/appSession.svelte';
+  import { chatOpen, chatUnread, setChatOpen } from '../../../collab/chat.svelte';
 
   let {
     showRuler = $bindable(true),
@@ -47,6 +49,9 @@
 
 <RibbonGroup label={t().ribbon.groups.show} reads>
   <RibbonButton variant="big" icon="toc" cmd="navigator" label={t().navigator.title} title={`${t().navigator.title} (${shortcutHint('navigator')})`} active={navigatorOpen} onclick={() => onToggleNavigator?.()} />
+  {#if collabView() && collabView()!.status !== 'closed'}
+    <RibbonButton variant="big" icon="chat" cmd="chat" label={t().collab.chat.title} title={chatUnread() ? `${t().collab.chat.title} · ${t().collab.chat.unread(chatUnread())}` : t().collab.chat.title} active={chatOpen()} onclick={() => setChatOpen(!chatOpen())} />
+  {/if}
   <div class="rb-col">
     <RibbonButton variant="small" icon="ruler" cmd="ruler" label={t().ruler.show} active={showRuler} onclick={() => (showRuler = !showRuler)} />
     <RibbonButton variant="small" icon="pilcrow" label={t().toolbarExpanded.formattingMarks} title={`${t().toolbarExpanded.formattingMarks} (${shortcutHint('formattingMarks')})`} active={showFormattingMarks} onclick={() => (showFormattingMarks = !showFormattingMarks)} />

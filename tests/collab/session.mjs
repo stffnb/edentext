@@ -8,7 +8,8 @@
 // When the starter leaves, the others are told; a joiner leaving keeps its copy as a
 // document of this browser or drops it, and a link to an empty room says so. A reader by
 // the read link follows and changes nothing, nor do its forged or replayed frames; readers
-// count toward the room's limit, alone give a newcomer nothing, and may keep a copy.
+// count toward the room's limit, alone give a newcomer nothing, and may keep a copy. The
+// session chat reaches everyone here and nothing else, nor can a patched reader abuse it.
 // Any engine (BROWSER).
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -16,6 +17,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer as tcpServer, connect as tcpConnect } from 'node:net';
 import { MOD, ROOT, checker, collectErrors, devServer, openApp } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
+import { strFromU8, unzipSync } from 'fflate';
 
 const PORT = +(process.env.COLLAB_PORT ?? 4392);
 const RELAY_PORT = +(process.env.COLLAB_RELAY_PORT ?? 4393);
@@ -877,6 +879,182 @@ try {
     await a.waitForTimeout(1000);
     const left = await a.evaluate(() => window.__collab.view().readers.length);
     check(left === 0, `a reader that goes leaves the list (${left})`);
+  }
+
+  // The session chat: a writer, a joiner and a reader write to each other. None of it reaches
+  // the relay in plain text, the doc, a file or autosave; a patched reader cannot pose, flood
+  // or inject; the pane keeps its own width and side; a line that is down shuts the field.
+  {
+    stall.on = false;
+    const CHAT = '/src/lib/collab/chat.svelte.ts';
+    const said = (page) => page.evaluate(async (url) => (await import(url)).chatLines().filter((l) => l.kind === 'message')
+      .map((l) => `${l.own ? 'me' : l.name}${l.reading ? '*' : ''}:${l.text}`), CHAT);
+    const toggle = (page) => page.click('.statusbar [data-cmd="chatToggle"]');
+    const say = async (page, text) => { await page.fill('.chat-pane textarea', text); await page.press('.chat-pane textarea', 'Enter'); };
+    const unread = (page) => page.evaluate(() => document.querySelector('.statusbar .chat-unread')?.textContent ?? '');
+    const from = seen.length;
+    const viewUrl = await a.evaluate(() => window.__collab.session.viewLink);
+    const r = await client('Rosa');
+    await r.addInitScript((port) => {
+      const Orig = window.WebSocket;
+      window.WebSocket = class extends Orig { constructor(url, p) { super(String(url).includes('/relay') ? `ws://127.0.0.1:${port}/relay` : url, p); } };
+    }, STALL_PORT);
+    await joinLink(r, viewUrl);
+    await a.waitForFunction(() => window.__collab.view().readers.some((x) => x.name === 'Rosa'), null, { timeout: 10_000 }).catch(() => {});
+    const noButton = await r.$('.statusbar [data-cmd="chatToggle"]:disabled');
+    for (const p of [a, b, r]) await toggle(p);
+    await say(a, 'Hi from Anna');
+    await a.waitForTimeout(400);
+    await say(b, 'Ben here');
+    await a.waitForTimeout(400);
+    await say(r, 'Rosa reads');
+    await a.waitForTimeout(1000);
+    const heard = [await said(a), await said(b), await said(r)];
+    const texts = heard.map((h) => h.map((x) => x.slice(x.indexOf(':') + 1)).join('|'));
+    const tagged = await a.evaluate(() => [...document.querySelectorAll('.chat-pane .message')].find((m) => m.textContent.includes('Rosa reads'))?.querySelector('.meta')?.textContent ?? '');
+    check(!noButton && heard[0].join() === 'me:Hi from Anna,Ben:Ben here,Rosa*:Rosa reads' && heard[1].join() === 'Anna:Hi from Anna,me:Ben here,Rosa*:Rosa reads'
+      && heard[2].join() === 'Anna:Hi from Anna,Ben:Ben here,me*:Rosa reads' && new Set(texts).size === 1 && tagged.includes('reading along'),
+      `chat messages reach the others under the right name, a reader's marked, in one order (${heard.map((h) => h.join()).join(' / ')}; "${tagged}")`);
+    const relayed = Buffer.concat(seen.slice(from));
+    check(!['Hi from Anna', 'Ben here', 'Rosa reads', 'Rosa', 'Anna'].some((w) => relayed.includes(Buffer.from(w))), `the relay's ${seen.length - from} chat-time frames hold no text and no name`);
+
+    // Width and side: B drags the edge wider, shrinks it by a key, docks it left and reloads.
+    const panes = (page) => page.evaluate(() => {
+      const box = (q) => { const r = document.querySelector(q)?.getBoundingClientRect(); return r ? [Math.round(r.left), Math.round(r.right)] : null; };
+      const kept = JSON.parse(localStorage.getItem('edentext-panes') ?? '{}');
+      return { pane: box('.chat-pane'), page: box('.editor-panes'), chat: kept.chat, comments: JSON.stringify(kept.comments ?? null) };
+    });
+    const p0 = await panes(b);
+    const grip = await b.locator('.chat-pane .pane-resize').boundingBox();
+    await b.mouse.move(grip.x + grip.width / 2, grip.y + 200);
+    await b.mouse.down();
+    await b.mouse.move(grip.x + grip.width / 2 - 40, grip.y + 200, { steps: 4 });
+    await b.mouse.move(grip.x + grip.width / 2 - 80, grip.y + 200, { steps: 4 });
+    await b.mouse.up();
+    await b.focus('.chat-pane .pane-resize');
+    await b.keyboard.press('ArrowRight');
+    await b.click('.chat-pane .pane-options');
+    await b.click('.cm-menu .cm-item:has-text("Dock")');
+    await b.click('.cm-sub button:has-text("Left")');
+    await b.waitForTimeout(300);
+    const p1 = await panes(b);
+    await b.reload({ waitUntil: 'load' });
+    await ready(b);
+    await live(b);
+    await b.waitForTimeout(1500);
+    const afterReload = await said(b);
+    await toggle(b);
+    const p2 = await panes(b);
+    const w = (p) => p.pane[1] - p.pane[0];
+    check(w(p1) === w(p0) + 64 && p1.chat?.side === 'left' && p1.pane[1] <= p1.page[0] + 1 && w(p2) === w(p1) && p2.pane[1] <= p2.page[0] + 1
+      && p0.comments === p2.comments && !afterReload.length,
+      `the chat pane drags and keys wider, docks left beside the page, keeps both after a reload, apart from the comments pane; the reload empties the chat (${w(p0)} → ${w(p1)} → ${w(p2)}, ${JSON.stringify(p2.chat)}, page ${p2.page}, ${afterReload.length} lines)`);
+    await toggle(b);
+
+    // B types in the document, its pane closed, while A writes: the count climbs, the focus stays.
+    await caret(b, 'end');
+    const typing = b.keyboard.type(' Kappa', { delay: 120 });
+    await say(a, 'one');
+    await say(a, 'two');
+    await typing;
+    await b.waitForTimeout(800);
+    const focused = await b.evaluate(() => !!document.activeElement?.closest('.tiptap-host .tiptap'));
+    const count = await unread(b);
+    const typed = (await view(b)).text.endsWith(' Kappa');
+    await toggle(b);
+    const reset = await unread(b);
+    check(count === '2' && focused && typed && reset === '', `a closed pane counts new messages (${count}) without taking the typist's focus (${focused}, typed ${typed}); opening resets it ("${reset}")`);
+    for (let i = 0; i < 6; i++) await b.keyboard.press('Backspace');
+    await toggle(b);
+
+    // A late joiner sees nothing from before, and the note that only those here see it.
+    const d = await client('Dora');
+    await joinLink(d, link);
+    await toggle(d);
+    const late = [await said(d), await d.locator('.chat-pane .intro').isVisible()];
+    check(!late[0].length && late[1], `a late joiner sees no earlier message, only the note (${late[0].length}, ${late[1]})`);
+    await d.context().close();
+
+    // Nothing of the chat in A's files, autosave or shared doc (body, `state`, `meta`).
+    const saveAs = async (ext) => {
+      await a.evaluate(() => { window.showSaveFilePicker = undefined; });
+      await a.click('.ribbon-tab-file');
+      const [file] = await Promise.all([
+        a.waitForEvent('download', { timeout: 30_000 }),
+        a.locator('.ribbon-menu button', { hasText: `(.${ext})` }).first().click()
+          .then(() => a.locator('dialog[open] button.primary').click({ timeout: 2_000 }).catch(() => {})),
+      ]);
+      const zip = unzipSync(new Uint8Array(await readFile(await file.path())));
+      return Object.values(zip).map((x) => strFromU8(x)).join('\n');
+    };
+    const files = [await saveAs('odt'), await saveAs('docx')];
+    await a.keyboard.press('Escape');
+    const stored = await a.evaluate(async () => {
+      const { Y } = await import('/src/lib/editor/undoYjs.ts');
+      const doc = window.__collab.session.debug.ydoc;
+      return [Object.values(localStorage).join('\n'), new TextDecoder().decode(Y.encodeStateAsUpdate(doc)), JSON.stringify(doc.getMap('state').toJSON())];
+    });
+    const leaks = [...files, ...stored].map((x) => ['Hi from Anna', 'Ben here', 'Rosa reads'].some((w) => x.includes(w)));
+    check(files.every((f) => f.length > 1000) && !leaks.some(Boolean), `no chat text in A's .odt, .docx, autosave or shared doc (${leaks})`);
+
+    // The patched reader: unsigned and falsely signed CHATs, a SAY from an id nobody lists,
+    // a text with markup and a javascript: address, a 1 MB text, and 50 messages in a second.
+    await say(r, '<img src=x onerror="window.__pwned=1"> javascript:alert(1) https://example.com/a).');
+    await a.waitForTimeout(600);
+    await r.evaluate(async () => {
+      const d = window.__collab.session.debug;
+      const enc = (s) => new TextEncoder().encode(s);
+      const cat = (...p) => { const o = new Uint8Array(p.reduce((n, x) => n + x.length, 0)); let at = 0; for (const x of p) { o.set(x, at); at += x.length; } return o; };
+      d.send(cat([12], enc('EVIL unsigned')));
+      d.send(cat([12], enc('EVIL signed'), crypto.getRandomValues(new Uint8Array(64))));
+      d.send(cat([13], enc('x'.repeat(1 << 20))));
+      const { linkKeys } = await import('/src/lib/collab/key.ts');
+      const { openChannel, relayUrl } = await import('/src/lib/collab/channel.ts');
+      const keys = linkKeys(location.hash.slice(1));
+      await new Promise((ok) => {
+        const ch = openChannel({ url: relayUrl(), key: keys.read, id: 4711, onFrame() {}, onPeers() {}, onStatus() {}, onOpen() {
+          ch.send(cat([8], new Uint8Array([0, 0, 18, 103]), enc(JSON.stringify({ name: 'Anna', color: '#f00' }))));
+          ch.send(cat([13], enc('EVIL stranger')));
+          setTimeout(() => { ch.close(); ok(); }, 800);
+        } });
+      });
+      for (let i = 0; i < 50; i++) d.send(cat([13], enc(`flood ${i}`)));
+    });
+    await a.waitForTimeout(1500);
+    const evil = await a.evaluate(() => {
+      const log = document.querySelector('.chat-pane .log');
+      const links = [...log.querySelectorAll('a')].map((x) => `${x.getAttribute('href')}|${x.target}|${x.rel}`);
+      return { imgs: log.querySelectorAll('img').length, links, pwned: !!window.__pwned, text: log.textContent.includes('<img src=x onerror=') };
+    });
+    const got = await said(a);
+    const floods = got.filter((x) => x.includes('flood')).length;
+    check(!got.some((x) => /EVIL|xxxxxxxx/.test(x)) && floods <= 5 && floods > 0 && !evil.imgs && !evil.pwned && evil.text
+      && evil.links.join() === 'https://example.com/a|_blank|noopener noreferrer',
+      `a patched reader poses as nobody, floods ${floods} messages through, and its markup stays text, only the https address a link (${JSON.stringify(evil)})`);
+
+    // Idle with the pane open: no edits, asks or chat frames go out.
+    const kinds = (page) => page.evaluate(() => [0, 1, 12, 13].map((k) => window.__collab.session.stats.sent[k]).join());
+    const quiet0 = [await kinds(a), await kinds(b)];
+    await a.waitForTimeout(5000);
+    const quiet1 = [await kinds(a), await kinds(b)];
+    check(quiet0.join() === quiet1.join(), `an idle session with the chat open stays quiet (${quiet0.join(' / ')} → ${quiet1.join(' / ')})`);
+
+    // The reader's line goes silent: the field shuts with a reason, and opens once it is back.
+    stall.on = true;
+    const shut = await r.waitForSelector('.chat-pane textarea:disabled', { timeout: 6 * BEAT }).then(() => true, () => false);
+    const why = await r.$('.chat-pane [data-chat-note="offline"]');
+    stall.on = false;
+    const back = await r.waitForSelector('.chat-pane textarea:not(:disabled)', { timeout: 45_000 }).then(() => true, () => false);
+    await caret(a, 'end');
+    await a.keyboard.type(' Mu');
+    await settle(a);
+    await r.waitForTimeout(800);
+    const synced = (await view(r)).json === (await view(a)).json && (await view(r)).text.endsWith(' Mu');
+    check(shut && !!why && back && synced, `a line that is down shuts the reader's field with a reason, and its return opens it, the document in sync (${shut}, ${!!why}, ${back}, ${synced})`);
+    for (let i = 0; i < 3; i++) await a.keyboard.press('Backspace');
+    await settle(a);
+    await r.context().close();
+    for (const p of [a, b]) await toggle(p);
   }
 
   await a.click('.statusbar .collab-btn');

@@ -6,6 +6,8 @@
   import { MAX_PAGE_COLUMNS } from '../../storage/theme';
   import { t } from '../../i18n/i18n.svelte';
   import { shortcutHint } from '../../editor/shortcuts';
+  import { collabView } from '../../collab/appSession.svelte';
+  import { chatOpen, chatUnread, setChatOpen } from '../../collab/chat.svelte';
 
   // The View category, as the ribbon's View tab.
   let {
@@ -48,6 +50,9 @@
 
 <div class="toolbar-group">
   <IslandButton icon="toc" cmd="navigator" title={`${t().navigator.title} (${shortcutHint('navigator')})`} active={navigatorOpen} onclick={() => onToggleNavigator?.()} />
+  {#if collabView() && collabView()!.status !== 'closed'}
+    <IslandButton icon="chat" cmd="chat" title={chatUnread() ? `${t().collab.chat.title} · ${t().collab.chat.unread(chatUnread())}` : t().collab.chat.title} active={chatOpen()} onclick={() => setChatOpen(!chatOpen())} />
+  {/if}
   <IslandButton icon="ruler" cmd="ruler" title={t().ruler.show} active={showRuler} onclick={() => (showRuler = !showRuler)} />
   <IslandButton icon="pilcrow" title={`${t().toolbarExpanded.formattingMarks} (${shortcutHint('formattingMarks')})`} active={showFormattingMarks} onclick={() => (showFormattingMarks = !showFormattingMarks)} />
   <IslandButton icon="shading" cmd="fieldShadings" title={t().view.fieldShadingsTitle} active={showFieldShading} onclick={() => (showFieldShading = !showFieldShading)} />
