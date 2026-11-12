@@ -12,6 +12,9 @@ const CLAIM = /^[A-Za-z0-9_-]{22,64}$/;
 const VERSION = 2;
 // Ids a room remembers, live or gone; past it the oldest gone one is forgotten.
 const MAX_IDS = 256;
+// A receiver holding more than `backlog` bytes not yet sent pauses its senders' reading until
+// it is down to half, so a slow line costs the relay little memory and the sender waits.
+const DRAIN_MS = 50;
 
 /**
  * Starts a relay on `port` (0 picks a free one). `maxPeers` 0 means no limit per room;
@@ -20,7 +23,7 @@ const MAX_IDS = 256;
  * other. A connection that misses a `ping` round is dropped, so its client is gone within
  * two rounds. Resolves once listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, ping: every = 5000, helloWait = 5000, path = '/relay', tap, lag } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, tap, lag } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
   // Per room, each client id with the secret its first hello claimed it by, and its socket
@@ -40,13 +43,26 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
   const announce = (peers, except, gone) => {
     for (const ws of peers) if (ws !== except) send(ws, { t: 'peers', n: peers.size, ...(gone ? { gone } : {}) });
   };
+  const full = (ws, limit) => ws.readyState === ws.OPEN && ws.bufferedAmount > limit;
+  const deliver = (from, to, data) => {
+    to.send(data, { binary: true });
+    if (!full(to, backlog) || from.isPaused || from.readyState !== from.OPEN) return;
+    from.pause();
+    const wait = setInterval(() => {
+      if (from.readyState === from.OPEN && [...(rooms.get(from.room) ?? [])].some((p) => p !== from && full(p, backlog / 2))) return;
+      clearInterval(wait);
+      if (from.readyState !== from.OPEN) return;
+      from.alive = true;
+      from.resume();
+    }, DRAIN_MS);
+  };
   const pass = (from, to, data) => {
     const ms = lag?.() ?? 0;
-    if (!ms && !from.due?.get(to)) return to.send(data, { binary: true });
+    if (!ms && !from.due?.get(to)) return deliver(from, to, data);
     // Never before an earlier frame of the same sender: one connection keeps its order.
     const at = Math.max(Date.now() + ms, (from.due ??= new Map()).get(to) ?? 0);
     from.due.set(to, at);
-    setTimeout(() => { if (from.due.get(to) === at) from.due.delete(to); if (to.readyState === to.OPEN) to.send(data, { binary: true }); }, at - Date.now());
+    setTimeout(() => { if (from.due.get(to) === at) from.due.delete(to); if (to.readyState === to.OPEN) deliver(from, to, data); }, at - Date.now());
   };
 
   wss.on('connection', (ws) => {
@@ -73,7 +89,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
         if (peers && maxPeers && peers.size >= maxPeers) { send(ws, { t: 'full' }); return ws.close(4001, 'full'); }
         if (!peers) rooms.set(hello.room, (peers = new Set()));
         clearTimeout(timer);
-        room = hello.room;
+        room = ws.room = hello.room;
         peers.add(ws);
         ws.id = hello.id;
         ids.set(room, named);
@@ -118,6 +134,8 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
   // pong is answered below the page's scripts, so a busy tab still gives one.
   const ping = setInterval(() => {
     for (const ws of wss.clients) {
+      // A paused sender cannot answer; it is dropped only once it reads again.
+      if (ws.isPaused) continue;
       if (!ws.alive) { ws.terminate(); continue; }
       ws.alive = false;
       ws.ping();

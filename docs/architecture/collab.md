@@ -114,7 +114,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   Replayed updates, answers and pictures change nothing. A frame that names its sender (`from`, a presence's `peer`) is dropped unless the relay names the same, so one tab cannot pose as many readers or have answers sent to another client. A `gone` sent while a line was down never arrives: knowing more peers than the relay counts, a client pings each and drops those silent for 3 s.
 - **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`; hosting it: `collab-relay.md`): rooms as sets of sockets in memory,
   frames passed on unchanged, to the one client a clear `to` names where there is one (the
-  sync's replies, pictures), nothing stored or logged; `MAX_PEERS` counts connections,
+  sync's replies, pictures), nothing stored or logged, a sender paused while a receiver is 16 MiB behind; `MAX_PEERS` counts connections,
   readers too, as the relay cannot tell them from writers. An id stays with the connection whose hello claimed it with a random secret, so no other client takes its frames or its `gone`; an app and a relay of different protocol versions say so (`mismatch`).
 - **Where the relay is:** `VITE_COLLAB_RELAY` is a `wss://` URL, or `same-origin` for `/relay`
   beside the app (dev proxy, Docker, Helm), where sessions are offered only once
@@ -130,7 +130,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   room shrinks or no peer frame comes for 10 s. Edits and carets go in 50 ms batches, each
   as a task of its own.
 - **Parts and failures** (`collab/channel.ts`): a message beyond the welcome's `frame`
-  (at most 1 MiB) goes as sealed numbered parts. A receiver keeps at most four unfinished messages and 256 MiB per sender, which the relay puts in front of every frame, and drops them when the sender goes: a sender can fill only its own room. Retries back off from 0.5 to 30 s; three
+  (at most 256 kB) goes as sealed numbered parts. Such messages and pictures wait in a bulk lane, sent part by part while the socket holds little, behind edits, carets, pings and the sync (`collab-pictures.md`); nothing goes to everyone while the relay counts nobody else. A receiver keeps at most four unfinished messages and 256 MiB per sender, which the relay puts in front of every frame, and drops them when the sender goes: a sender can fill only its own room. Retries back off from 0.5 to 30 s; three
   connections lost within 5 s of their welcome show `failing` until one holds for 5 s; a
   line silent for three `beat`s (15 s) is taken as half-open and redialled.
 - **Start and join.** The starter puts its document, exported as `.odt` (`buildBytes`),
@@ -169,7 +169,7 @@ undo takes back only its own typing. A page setup and a style change arrive, the
 shows with its name, the relay's frames hold no typed text and no name, and an idle session
 sends no updates. A 2.9 MB picture goes to the relay once, as bytes, and adds 0.5 kB to the
 doc; B's copy, saved `.odt` and A's autosave hold it; five moves and a delete send 5 kB.
-Frames carry at most 1 MiB; a late joiner gets everything from one ask and one answer, the
+Frames carry at most 256 kB; a late joiner gets everything from one ask and one answer, the
 picture from one client; a header's picture goes by its key too; replies go to their asker
 alone; a fourth joins, types and converges. A joiner whose pulled peer drops its answer and
 line, while a third types, still goes live; a late offer is pulled from and gets what it

@@ -70,16 +70,21 @@ describe('collaboration key', () => {
     const got: string[] = [];
     const big: Uint8Array[] = [];
     const peers: number[] = [];
+    const order: string[] = [];
     const open = (name: string, id?: number) => new Promise<ReturnType<typeof openChannel>>((resolve) => {
       const ch = openChannel({
         url: `ws://127.0.0.1:${relay.port}/relay`, key, id,
-        onFrame: (p) => { if (p.length > 1000) big.push(p); else got.push(`${name}:${new TextDecoder().decode(p)}`); return p[0] !== 33; },
+        onFrame: (p) => { if (p.length > 1000) big.push(p); else got.push(`${name}:${new TextDecoder().decode(p)}`); order.push(`${name}:${p.length}`); return p[0] !== 33; },
         onPeers: (n) => peers.push(n),
         onStatus: () => {},
         onOpen: () => resolve(ch),
       });
     });
     const a = await open('a', 1);
+    // Alone in the room, nothing goes to everyone.
+    a.send(text('alone'));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(frames.length).toBe(0);
     const b = await open('b', 2);
     const c = await open('c', 3);
     const long = (seed: number) => Uint8Array.from({ length: 50_000 }, (_, i) => (i * seed) & 255);
@@ -100,6 +105,8 @@ describe('collaboration key', () => {
     expect(plain.map((m) => m[1]).sort((x, y) => x - y)).toEqual([7, 7, 9, 13, 13]);
     expect(plain.every((m) => m[2] === ((2 * m[1]) & 255))).toBe(true);
     expect(Math.max(...frames)).toBeLessThanOrEqual(4096);
+    // A short message overtakes a long one sent before it.
+    expect(order.indexOf('b:2')).toBeLessThan(order.indexOf('b:50000'));
     expect(peers).toContain(3);
     // A frame the receiver calls chatter ('!') leaves the time it last heard the room unchanged.
     const before = c.heard();

@@ -240,7 +240,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     if (reading && SIGNED.has(kind)) return;
     stats.sent[kind]++;
     const plain = frame(kind, ...parts);
-    channel.send(SIGNED.has(kind) ? signed(keys.sign!, plain) : plain, DIRECTED.has(kind) ? parts[0] as number : 0);
+    channel.send(SIGNED.has(kind) ? signed(keys.sign!, plain) : plain, DIRECTED.has(kind) ? parts[0] as number : 0, kind === PICTURE);
   };
   const enc = new TextEncoder();
   // A new clock: others that dropped this client when its line broke take it back.

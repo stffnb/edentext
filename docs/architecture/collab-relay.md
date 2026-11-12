@@ -39,8 +39,12 @@ are off, as for the rest of the app.
 | `PORT`, `HOST` | 4390, all | where it listens |
 | `MAX_PEERS` | 6 | connections per room; the next gets `full`. Readers count, and so does a reload's second connection while the old one closes. 0 = no limit |
 | `MAX_ROOMS` | 10000 | rooms at once; a hello beyond closes with 4003 |
-| `MAX_FRAME` | 16 MiB | bytes per frame; browsers send at most 1 MiB and split longer messages |
+| `MAX_FRAME` | 16 MiB | bytes per frame; browsers send at most 256 kB and split longer messages |
 | `BEAT_MS`, `PING_MS` | 15 s, 5 s | keep-alive to the browsers, and the ping that drops a dead line within two rounds |
+
+A receiver on a slow line holds at most about 16 MiB at the relay: beyond that the relay stops
+reading from the sender that filled it until the receiver is down to half, so the sender waits
+instead of the relay buffering a whole picture set per room (`relay/CLAUDE.md`).
 
 App and relay speak protocol version 2 (`relay/CLAUDE.md`); against a relay of another version
 the app says it does not match the server, so update both together.
