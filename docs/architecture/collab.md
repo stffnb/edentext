@@ -21,7 +21,7 @@ corpus documents. Both passed every one, so the choice is about cost, not feasib
   live on without anyone in them, the main reason for Yjs is gone.
 
 What the spike left untested (engines, long documents, IME, image drag, the assistant, four
-clients, line heights) the session checks cover; its results are in `collab-soak.md`.
+clients, line heights) the session checks cover; its results are in `collab-soak.md`, big-document timings in `collab-perf.md`.
 
 ## Undo
 
