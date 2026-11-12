@@ -1080,9 +1080,9 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   margin: 0;
   overflow-x: auto;
   /* Beside a float the wrapper (a scroll container, so it avoids floats) narrows to the
-     space left, as LibreOffice lays out an ODT table; where its words don't fit it starts
-     below the frame instead of squeezing to nothing. */
-  min-width: min-content;
+     space left, as LibreOffice lays out an ODT table; below its floor (tableView.ts) it
+     starts below the frame instead of squeezing to nothing. */
+  min-width: min(100%, var(--table-floor, 0px));
   /* The table's space above adds to the block above it, as a paragraph's does. */
   padding-top: var(--space-before);
 }
