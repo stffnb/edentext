@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
-import { ReplaceStep } from '@tiptap/pm/transform';
+import { Mapping, ReplaceStep, StepMap } from '@tiptap/pm/transform';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
@@ -552,14 +552,18 @@ const CARET_FLOW = new Set([...FLOW_CONTAINERS, 'table', 'tableRow', 'tableCell'
 // whose height an edit like that can change. Null for anything else: a node, a split, a
 // join, an edit in a cell, a note or a frame, whose height reaches further than itself.
 function textOnlyBlock(tr: Transaction): number | null {
+  const steps = tr.getMeta(ySyncPluginKey)?.isChangeOrigin
+    ? changedRanges(tr).map((r) => new ReplaceStep(r.fromA, r.toA, tr.doc.slice(r.fromB, r.toB)))
+    : tr.steps;
+  const docs = steps === tr.steps ? tr.docs : steps.map(() => tr.before);
   let block: number | null = null;
-  for (let i = 0; i < tr.steps.length; i++) {
-    const step = tr.steps[i];
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
     if (!(step instanceof ReplaceStep) || step.slice.openStart || step.slice.openEnd) return null;
     let textOnly = true;
     step.slice.content.forEach((n) => { if (!n.isText) textOnly = false; });
     if (!textOnly) return null;
-    const $from = tr.docs[i].resolve(step.from);
+    const $from = docs[i].resolve(step.from);
     if (!$from.parent.isTextblock || step.to > $from.end()) return null;
     for (let d = 1; d < $from.depth; d++) {
       if (!FLOW_CONTAINERS.has($from.node(d).type.name)) return null;
@@ -569,6 +573,47 @@ function textOnlyBlock(tr: Transaction): number | null {
     block = b;
   }
   return block;
+}
+
+// y-tiptap applies another client's update as one step replacing every top-level block
+// from the first it touched to the last, a whole table for a letter in a cell. The
+// changed ranges instead, each narrowed to where the two documents differ.
+type SyncRange = { fromA: number; toA: number; fromB: number; toB: number };
+const syncRanges = new WeakMap<Transaction, SyncRange[]>();
+function changedRanges(tr: Transaction): SyncRange[] {
+  let ranges = syncRanges.get(tr);
+  if (ranges) return ranges;
+  ranges = [];
+  const a = tr.before, b = tr.doc;
+  // Unchanged blocks are the same node objects on both sides.
+  const index = new Map<PMNode, number>();
+  b.forEach((n, _, i) => index.set(n, i));
+  let i = 0, j = 0, pa = 0, pb = 0;
+  while (i < a.childCount || j < b.childCount) {
+    if (i < a.childCount && j < b.childCount && a.child(i) === b.child(j)) {
+      pa += a.child(i).nodeSize; pb += b.child(j).nodeSize; i++; j++;
+      continue;
+    }
+    const sa = pa, sb = pb;
+    while (i < a.childCount && !((index.get(a.child(i)) ?? -1) >= j)) pa += a.child(i++).nodeSize;
+    const stop = i < a.childCount ? index.get(a.child(i))! : b.childCount;
+    while (j < stop) pb += b.child(j++).nodeSize;
+    const x = a.content.cut(sa, pa), y = b.content.cut(sb, pb);
+    const start = x.findDiffStart(y);
+    if (start === null) continue;
+    let { a: endA, b: endB } = x.findDiffEnd(y)!;
+    const overlap = start - Math.min(endA, endB);
+    if (overlap > 0) { endA += overlap; endB += overlap; }
+    ranges.push({ fromA: sa + start, toA: sa + endA, fromB: sb + start, toB: sb + endB });
+  }
+  syncRanges.set(tr, ranges);
+  return ranges;
+}
+
+// The mapping decorations follow: another client's edit through its changed ranges.
+export function decoMapping(tr: Transaction): Mapping {
+  if (!tr.docChanged || !tr.getMeta(ySyncPluginKey)?.isChangeOrigin) return tr.mapping;
+  return new Mapping([new StepMap(changedRanges(tr).flatMap((r) => [r.fromA, r.toA - r.fromA, r.toB - r.fromB]))]);
 }
 
 // Exported for tabStops.ts: a placement change moves lines, so the tab advances
@@ -722,19 +767,19 @@ export const isRepairable = (spec: { block?: unknown; spacer?: unknown }): boole
 // The mapping drops a node decoration whose node a step replaced, and changing a block's
 // type or attrs is exactly that step; a spacer between two blocks goes with either. Re-cut
 // the node spans over the blocks the range now holds, and re-seat a spacer still before one.
-export function repairDecos(before: DecorationSet, mapped: DecorationSet, tr: Transaction): DecorationSet {
+export function repairDecos(before: DecorationSet, mapped: DecorationSet, tr: Transaction, mapping = decoMapping(tr)): DecorationSet {
   const decos = mapped.find(undefined, undefined, (spec) => !isBlockDeco(spec));
   for (const d of before.find(undefined, undefined, isBlockDeco)) {
     // A bound inside a deleted range means the block was replaced (an open), not restyled:
     // re-cut, its height would land on whatever blocks now fill the range.
     // Neighbours restyled in the same transaction delete both sides of every bound, so a
     // block whose content survived at its mapped place was restyled all the same.
-    const inside = (p: number) => tr.mapping.mapResult(p, -1).deleted && tr.mapping.mapResult(p, 1).deleted;
+    const inside = (p: number) => mapping.mapResult(p, -1).deleted && mapping.mapResult(p, 1).deleted;
     const old = tr.before.nodeAt(d.from);
-    const kept = !!old && !!tr.doc.nodeAt(tr.mapping.map(d.from, -1))?.content.eq(old.content);
+    const kept = !!old && !!tr.doc.nodeAt(mapping.map(d.from, -1))?.content.eq(old.content);
     if (!kept && (inside(d.from) || inside(d.to))) continue;
-    const to = tr.mapping.map(d.to, 1);
-    for (let pos = tr.mapping.map(d.from, -1); pos < to;) {
+    const to = mapping.map(d.to, 1);
+    for (let pos = mapping.map(d.from, -1); pos < to;) {
       const node = tr.doc.nodeAt(pos);
       if (!node?.isBlock) break;
       decos.push(blockDeco(pos, pos + node.nodeSize, d.spec.block));
@@ -742,8 +787,8 @@ export function repairDecos(before: DecorationSet, mapped: DecorationSet, tr: Tr
     }
   }
   for (const d of before.find(undefined, undefined, (spec) => spec.spacer !== undefined)) {
-    if (!tr.mapping.mapResult(d.from, -1).deleted) continue;
-    const pos = tr.mapping.map(d.from, 1);
+    if (!mapping.mapResult(d.from, -1).deleted) continue;
+    const pos = mapping.map(d.from, 1);
     if (tr.doc.resolve(pos).nodeAfter?.isBlock) decos.push(spacerDeco(pos, d.spec.spacer, d.spec.key));
   }
   return DecorationSet.create(tr.doc, decos);
@@ -808,9 +853,10 @@ export const PageBreaks = Extension.create({
           // them puts every widget one position off and the view tears them all down.
           if (tr.docChanged) {
             let dropped = false;
-            const mapped = decorations.map(tr.mapping, tr.doc,
+            const mapping = decoMapping(tr);
+            const mapped = decorations.map(mapping, tr.doc,
               { onRemove: (spec) => { dropped ||= isRepairable(spec); } });
-            decorations = dropped ? repairDecos(decorations, mapped, tr) : mapped;
+            decorations = dropped ? repairDecos(decorations, mapped, tr, mapping) : mapped;
           }
           const force = !!tr.getMeta(FORCE_PAGE_RECALC);
           const answered = force && !!tr.getMeta(LAYOUT_ANSWER);
@@ -2560,23 +2606,26 @@ export const PageBreaks = Extension.create({
           const page = grid.pageAt(bottom);
           return bottom > grid.contentBottomOf(page) + 1 || bottom < grid.contentTopOf(page);
         }
+        // Runs the pass the edits since the last one call for: none if they only put text
+        // into one block that is as tall as before and holds no break.
+        function settleEdit() {
+          const b = editBlock;
+          editBlock = null;
+          if (b === null) return; // a pass has run since the edit and measured it
+          if (b !== false && contentBottom() === lastBottom) {
+            const node = editorView.state.doc.nodeAt(b);
+            // Widgets only: a node decoration on the block is the page-top rule, not a break.
+            const inside = (spec: { key?: string }) => spec.key !== undefined;
+            if (node && !decorations.find(b + 1, b + node.nodeSize - 1, inside).length) {
+              remoteSince = null;
+              return;
+            }
+          }
+          schedule();
+        }
         function scheduleEdit() {
           if (idleTimer !== null) clearTimeout(idleTimer);
-          idleTimer = setTimeout(() => {
-            idleTimer = null;
-            const b = editBlock;
-            editBlock = null;
-            if (b === null) return; // a pass has run since the edit and measured it
-            // Text typed into one block that is as tall as before moved nothing below it —
-            // unless a page break falls inside the block, on a line the text has rewrapped.
-            if (b !== false && contentBottom() === lastBottom) {
-              const node = editorView.state.doc.nodeAt(b);
-              // Widgets only: a node decoration on the block is the page-top rule, not a break.
-              const inside = (spec: { key?: string }) => spec.key !== undefined;
-              if (node && !decorations.find(b + 1, b + node.nodeSize - 1, inside).length) return;
-            }
-            schedule();
-          }, EDIT_IDLE_MS);
+          idleTimer = setTimeout(() => { idleTimer = null; settleEdit(); }, EDIT_IDLE_MS);
         }
 
         // A reader's action renews the pass bound, as an edit does; no recalc ever does.
@@ -2606,16 +2655,20 @@ export const PageBreaks = Extension.create({
                 seenLayouts = new Map([[lastPlacementsKey, lastPages]]);
                 cycleKept = null;
               }
-              if (isEditTr && !forced) {
+              if ((isEditTr || isRemote) && !forced) {
                 const b = after?.textBlock ?? null;
                 editBlock = b === null || (editBlock !== null && editBlock !== b) ? false : b;
-                if (caretOverflows()) schedule();
-                else scheduleEdit();
-              } else if (isRemote && !forced) {
-                editBlock = false;
-                remoteSince ??= performance.now();
-                if (performance.now() - remoteSince > REMOTE_MAX_MS) schedule();
-                else scheduleEdit();
+                if (isEditTr) {
+                  if (caretOverflows()) schedule();
+                  else scheduleEdit();
+                // Another client's edit that moved what follows is placed before the frame shows
+                // it: its reader is not typing, and would see every page below jump and return.
+                } else if (contentBottom() !== lastBottom) schedule();
+                else if (performance.now() - (remoteSince ??= performance.now()) > REMOTE_MAX_MS) {
+                  if (idleTimer !== null) clearTimeout(idleTimer);
+                  idleTimer = null;
+                  settleEdit();
+                } else scheduleEdit();
               } else {
                 schedule();
               }

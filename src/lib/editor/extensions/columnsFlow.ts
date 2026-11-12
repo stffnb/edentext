@@ -6,7 +6,7 @@ import { DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { TableMap } from '@tiptap/pm/tables';
 import {
-  readVerticalMargins, bandAt, FORCE_PAGE_RECALC, LAYOUT_ANSWER, isSplitPane, blockDeco, isBlockDeco, repairDecos,
+  readVerticalMargins, bandAt, FORCE_PAGE_RECALC, LAYOUT_ANSWER, isSplitPane, blockDeco, isBlockDeco, repairDecos, decoMapping,
 } from './pageBreaks';
 import {
   sameColumnsAttrs, columnsChain, COLUMNS_FIT_MARGIN_PX, MIN_TAIL_LINES, DEFAULT_LINE_PX, headFitPx, lineRects, lineAdvance,
@@ -196,9 +196,10 @@ export const ColumnsFlow = Extension.create({
             // A fragment whose attrs change loses its height decoration to the mapping,
             // and its content pours into the next column until the next pass.
             let dropped = false;
-            const mapped = decorations.map(tr.mapping, tr.doc,
+            const mapping = decoMapping(tr);
+            const mapped = decorations.map(mapping, tr.doc,
               { onRemove: (spec) => { dropped ||= isBlockDeco(spec); } });
-            decorations = dropped ? repairDecos(decorations, mapped, tr) : mapped;
+            decorations = dropped ? repairDecos(decorations, mapped, tr, mapping) : mapped;
           }
           // A pass of its own never refreshes the budget — not even the recalc the
           // decoration update asks for, or reflow and decorations pump each other forever.
