@@ -1589,3 +1589,8 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   .ProseMirror-yjs-cursor { display: none; }
   .ProseMirror-yjs-selection { background: none !important; }
 }
+
+/* A jump to someone's caret or held zone marks it a moment in their colour (collab/presence.svelte.ts). */
+.ProseMirror-yjs-cursor.collab-flash > div { animation: collab-flash-label 1.6s ease-out; }
+@keyframes collab-flash-label { 0%, 60% { transform: scale(1.25); transform-origin: left bottom; } }
+@keyframes collab-flash { 0%, 50% { box-shadow: 0 0 0 3px var(--hf-held); } 100% { box-shadow: 0 0 0 3px transparent; } }
