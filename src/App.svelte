@@ -57,13 +57,16 @@
   import { userName, setUserName } from './lib/storage/userName.svelte';
   import { embedded, attribution, whiteLabel, collabKey } from './lib/embed/mode';
   import CollabDialog, { type CollabNotice } from './lib/components/CollabDialog.svelte';
+  import CollabPeople from './lib/components/CollabPeople.svelte';
+  import CollabNews from './lib/components/CollabNews.svelte';
+  import { goToMention, unseenMentions } from './lib/collab/mentions.svelte';
   import { zoneHolder } from './lib/collab/zones.svelte';
   import { takeOpening, unload, type Opening } from './lib/collab/leave';
   import { SHELVED, TEMPLATES } from './lib/templates/registry';
   import { collabRelay, collabView, joinCollab, leaveCollab, probeRelay, startCollab, type SessionApp } from './lib/collab/appSession.svelte';
   import { startBridge, notify, type EmbedSettings, type ExportFormat } from './lib/embed/bridge';
   import { printMarkup } from './lib/storage/printMarkup.svelte';
-  import { commentsInPane, changesInPane, markupAttrs, markupView, setShowChanges, setShowComments } from './lib/storage/markup.svelte';
+  import { commentsInPane, changesInPane, markupAttrs, markupView, setShowChanges, setShowComments, showComments } from './lib/storage/markup.svelte';
   import { defaultDocumentLanguage, isAsianTag, loadDocumentLanguage, numberingScripts, loadDocumentLanguageOther, pickDocumentLanguage, saveDocumentLanguage, saveDocumentLanguageOther, odfFromLanguage, tagForLanguage, westernCode, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { setTableLanguage } from './lib/storage/tableOptions.svelte';
   import { spellController } from './lib/spell/controller';
@@ -86,7 +89,7 @@
   import { askComposer } from './lib/components/CommentComposer.svelte';
   import CommentsPane from './lib/components/CommentsPane.svelte';
   import ChatPane from './lib/components/ChatPane.svelte';
-  import { chatOpen, chatUnread, setChatOpen } from './lib/collab/chat.svelte';
+  import { chatMentions, chatOpen, chatUnread, setChatOpen } from './lib/collab/chat.svelte';
   import RevisionsPane from './lib/components/RevisionsPane.svelte';
   import ConnectorLayer from './lib/components/ConnectorLayer.svelte';
   import NavigatorPane from './lib/components/NavigatorPane.svelte';
@@ -1618,8 +1621,10 @@
     snapshot: () => buildBytes('odt', editor!.getJSON() as TiptapNode),
     load: (bytes, name) => applyImport(bytes, null, `${name || 'document'}.odt`, { warn: () => {} }),
     name: () => documentName,
-    named: ensureUserName,
+    askName: () => new Promise((resolve) => { collabNamed = resolve; collabNaming = true; collabOpen = true; }),
   };
+  let collabNaming = $state(false);
+  let collabNamed: ((name: string) => void) | null = null;
   // Another document opened in a session opens in this tab alone, after asking: it never
   // replaces the shared one. True = the dialog asks, and the caller stops here.
   let pendingOpening: Opening | null = null;
@@ -2413,19 +2418,24 @@
     {#if embedded && attribution}<PoweredBy />{/if}
     {#if sessionView && sessionView.status !== 'closed'}
       <!-- A paused binding takes the button over until an update fits again. -->
-      <!-- A reader's button says so; readers show as rings beside the writers' dots. -->
+      <!-- A reader's button says so; the others show as circles before it. -->
+      <CollabPeople view={sessionView} onAll={() => (collabOpen = true)} />
       <button class="collab-btn" class:paused={sessionView.paused} class:reading={sessionView.reading} data-status={sessionView.status} aria-live="polite" onclick={() => (collabOpen = true)}
         title={sessionView.paused ? t().collab.pausedHint : sessionView.reading ? t().collab.readingHint : t().collab.status[sessionView.status]}>
-        {#each sessionView.peers as p (p.id)}<span class="collab-dot" style:background={p.color} title={p.name}></span>{/each}
-        {#each sessionView.readers as p (p.id)}<span class="collab-dot ring" style:border-color={p.color} title={`${p.name} · ${t().collab.readingAlong}`}></span>{/each}
         {sessionView.paused ? t().collab.paused : sessionView.reading && sessionView.status === 'live' ? t().collab.readOnly
           : sessionView.status === 'live' ? t().collab.peers(sessionView.peers.length + sessionView.readers.length) : t().collab.status[sessionView.status]}
       </button>
       <button class="chat-btn" class:active={chatOpen()} data-cmd="chatToggle" aria-pressed={chatOpen()} onclick={() => setChatOpen(!chatOpen())}
         title={chatUnread() ? `${t().collab.chat.title} · ${t().collab.chat.unread(chatUnread())}` : t().collab.chat.title} aria-label={chatUnread() ? `${t().collab.chat.title} · ${t().collab.chat.unread(chatUnread())}` : t().collab.chat.title}>
         <Icon name="chat" size={14} />
-        {#if chatUnread() && !chatOpen()}<span class="chat-unread">{chatUnread() > 99 ? '99+' : chatUnread()}</span>{/if}
+        {#if chatUnread() && !chatOpen()}<span class="chat-unread" class:mention={chatMentions() > 0}>{chatMentions() ? '@' : ''}{chatUnread() > 99 ? '99+' : chatUnread()}</span>{/if}
       </button>
+      {#if unseenMentions().length && !showComments()}
+        <button class="chat-btn" data-cmd="mentions" onclick={() => goToMention(unseenMentions()[0])} title={t().collab.mentions(unseenMentions().length)} aria-label={t().collab.mentions(unseenMentions().length)}>
+          <Icon name="comment" size={14} /><span class="chat-unread">{unseenMentions().length}</span>
+        </button>
+      {/if}
+      <CollabNews covered={!!collabNotice} />
       {#if readerNudge}<span class="collab-hint" role="status" data-hint="reading">{t().collab.readingNudge}</span>{/if}
     {/if}
     <BusyIndicator {editor} task={busyTask} progress={busyProgress} />
@@ -2472,7 +2482,8 @@
   <ResumeCard show={!volatile && tick >= 0 && !!editor && !isDocNonEmpty()} onShowAll={() => (browserDocsOpen = true)} />
   <PromptDialog />
   <DocPropertiesDialog bind:open={docPropsOpen} props={docProps} onApply={(p) => { docProps = p; saveDocProperties(p); }} />
-  <CollabDialog bind:open={collabOpen} bind:asking={collabAsking} bind:opening={collabOpening} bind:notice={collabNotice} view={sessionView} onStart={() => void startCollab(sessionApp)} onLeave={(c) => void leaveSession(c)} />
+  <CollabDialog bind:open={collabOpen} bind:asking={collabAsking} bind:opening={collabOpening} bind:notice={collabNotice} bind:naming={collabNaming} view={sessionView}
+    onStart={(name) => void startCollab(sessionApp, name)} onNamed={(name) => { collabNamed?.(name); collabNamed = null; }} onLeave={(c) => void leaveSession(c)} />
   <PasswordDialog
     bind:open={passwordSetOpen}
     mode="set"
@@ -3162,9 +3173,8 @@
     line-height: 14px;
     text-align: center;
   }
-  .collab-dot { width: 8px; height: 8px; border-radius: 50%; box-sizing: border-box; }
-  .collab-dot.ring { border: 2px solid; }
   /* Above the status bar's right end, where the session button is; it takes no focus. */
+  .chat-unread.mention { background: var(--color-text); color: var(--color-bg, #fff); }
   .collab-hint {
     position: fixed;
     right: 16px;
