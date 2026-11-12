@@ -425,6 +425,6 @@ try {
   check(false, `conflict run threw: ${e?.stack ?? e}`);
 } finally {
   await browser.close();
-  server?.kill?.();
+  if (server) process.kill(-server.pid);
 }
 process.exit(failures.length ? 1 : 0);
