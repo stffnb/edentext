@@ -1,4 +1,6 @@
 import type { ChatIn, SessionView } from './session';
+import { mentions } from '../ai/tools';
+import { userName } from '../storage/userName.svelte';
 
 // The session's chat (docs/architecture/collab.md): messages live only in this tab's memory
 // while it is in the session, never in the doc, a file or autosave. The receiver drops a
@@ -10,31 +12,47 @@ const RATE_MS = 10_000;
 const KEPT = 200;
 // Who is listed in the first moments after going live was already there, not arriving.
 const SETTLE_MS = 3000;
+// Arrivals without a pause of GROUP_MS make one line; a departure waits GRACE_MS for the
+// same name to come back, so a reload or a short break of someone's line says nothing.
+const GROUP_MS = 2500;
+const GRACE_MS = 8000;
+const NEWS_MS = 6000;
 
 /** `who` groups a run of messages by one person: `me`, or the sender's relay id. */
 export type ChatLine =
-  | { kind: 'message'; key: number; who: string; name: string; color: string; reading: boolean; own: boolean; at: number; text: string }
-  | { kind: 'presence'; key: number; name: string; reading: boolean; came: boolean; at: number };
+  | { kind: 'message'; key: number; who: string; name: string; color: string; reading: boolean; own: boolean; at: number; text: string; mention?: boolean }
+  | { kind: 'presence'; key: number; names: string[]; reading: boolean; came: boolean; at: number };
+type Comer = { name: string; reading: boolean; at: number };
 
 /** What the chat needs from the session: sending, and this tab's own name and colour. */
 export type ChatLink = { send(text: string): boolean; user(): { name: string; color: string }; reading(): boolean };
 
 let lines = $state<ChatLine[]>([]);
 let unread = $state(0);
+let mentioned = $state(0);
 let open = $state(false);
 let link: ChatLink | null = null;
 let next = 0;
 const recent = new Map<string, number[]>();
 let present: Map<string, { name: string; reading: boolean }> | null = null;
 let liveAt = 0;
+let arriving: Comer[] = [];
+let leaving: Comer[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | undefined;
+let news = $state<Extract<ChatLine, { kind: 'presence' }>[]>([]);
+
+/** The latest lines saying who came or went, for the status bar while the chat is shut. */
+export function presenceNews(): Extract<ChatLine, { kind: 'presence' }>[] { return news; }
 
 export function chatLines(): ChatLine[] { return lines; }
 export function chatUnread(): number { return unread; }
+/** How many of the unread messages name this user after an `@`. */
+export function chatMentions(): number { return mentioned; }
 export function chatOpen(): boolean { return open; }
 
 export function setChatOpen(value: boolean): void {
   open = value;
-  if (value) unread = 0;
+  if (value) unread = mentioned = 0;
 }
 
 /** Whether `who` may send another message now, noting it if so. */
@@ -53,11 +71,41 @@ function add(line: ChatLine): void {
 export function bindChat(to: ChatLink | null): void {
   link = to;
   lines = [];
-  unread = 0;
+  unread = mentioned = 0;
   open = false;
   recent.clear();
   present = null;
   liveAt = 0;
+  arriving = [];
+  leaving = [];
+  news = [];
+  clearTimeout(flushTimer);
+  flushTimer = undefined;
+}
+
+// Groups what is due by kind into one line each, and keeps the rest for later.
+function flush(): void {
+  flushTimer = undefined;
+  const now = Date.now();
+  // Arrivals wait until none came for GROUP_MS, so a group arriving together is one line.
+  const settled = arriving.length && now - Math.max(...arriving.map((c) => c.at)) >= GROUP_MS;
+  const due = [...(settled ? arriving : []).map((c) => ({ ...c, came: true })),
+    ...leaving.filter((c) => now - c.at >= GRACE_MS).map((c) => ({ ...c, came: false }))];
+  if (settled) arriving = [];
+  leaving = leaving.filter((c) => now - c.at < GRACE_MS);
+  const made: Extract<ChatLine, { kind: 'presence' }>[] = [];
+  for (const came of [true, false]) for (const reading of [false, true]) {
+    const names = due.filter((c) => c.came === came && c.reading === reading).map((c) => c.name);
+    if (names.length) made.push({ kind: 'presence', key: next++, names, reading, came, at: now });
+  }
+  for (const line of made) add(line);
+  if (made.length) {
+    news = [...news, ...made].slice(-3);
+    const keys = new Set(made.map((n) => n.key));
+    setTimeout(() => { news = news.filter((n) => !keys.has(n.key)); }, NEWS_MS);
+  }
+  const waits = [...(arriving.length ? [Math.max(...arriving.map((c) => c.at)) + GROUP_MS] : []), ...leaving.map((c) => c.at + GRACE_MS)];
+  if (waits.length) flushTimer = setTimeout(flush, Math.max(0, Math.min(...waits) - now));
 }
 
 export type SendResult = 'sent' | 'offline' | 'busy' | 'empty';
@@ -81,8 +129,9 @@ export function sendChat(text: string): SendResult {
 export function receiveChat(m: ChatIn): void {
   const who = String(m.from);
   if (!link || m.text.length > MAX_CHAT || !m.text.trim() || !admit(who, Date.now())) return;
-  add({ kind: 'message', key: next++, who, name: m.name, color: m.color, reading: m.reading, own: false, at: Date.now(), text: m.text });
-  if (!open) unread++;
+  const mention = mentions(m.text, [userName()]);
+  add({ kind: 'message', key: next++, who, name: m.name, color: m.color, reading: m.reading, own: false, at: Date.now(), text: m.text, mention });
+  if (!open) { unread++; if (mention) mentioned++; }
 }
 
 /** Turns changes in the lists of writers and readers into lines saying who came or left. */
@@ -98,7 +147,14 @@ export function chatPresence(view: SessionView): void {
     present = listed;
     return;
   }
-  for (const [id, p] of listed) if (!present.has(id)) add({ kind: 'presence', key: next++, name: p.name, reading: p.reading, came: true, at: now });
-  for (const [id, p] of present) if (!listed.has(id)) add({ kind: 'presence', key: next++, name: p.name, reading: p.reading, came: false, at: now });
+  for (const [id, p] of present) if (!listed.has(id)) leaving.push({ ...p, at: now });
+  for (const [id, p] of listed) {
+    if (present.has(id)) continue;
+    const back = leaving.findIndex((c) => c.name === p.name && c.reading === p.reading);
+    if (back >= 0) leaving.splice(back, 1);
+    else arriving.push({ ...p, at: now });
+  }
   present = listed;
+  clearTimeout(flushTimer);
+  flush();
 }
