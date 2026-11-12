@@ -228,7 +228,7 @@ const zhHant: Messages = {
     inHeader: '在頁首中',
     inFooter: '在頁尾中',
     noCaret: '沒有可跳至的游標',
-    goTo: '跳至其游標',
+    goTo: '跳至對方的游標',
     follow: '跟隨',
     stopFollow: '停止跟隨',
     following: (name: string) => `正在跟隨 ${name}：按一下即可停止`,

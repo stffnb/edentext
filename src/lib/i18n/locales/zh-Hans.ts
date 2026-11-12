@@ -227,7 +227,7 @@ const zhHans: Messages = {
     inHeader: '在页眉中',
     inFooter: '在页脚中',
     noCaret: '没有可跳转的光标',
-    goTo: '跳转到其光标',
+    goTo: '跳转到对方的光标',
     follow: '跟随',
     stopFollow: '停止跟随',
     following: (name: string) => `正在跟随 ${name}：点击停止`,

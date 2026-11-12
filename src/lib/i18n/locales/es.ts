@@ -230,7 +230,7 @@ const es: Messages = {
     follow: 'Seguir',
     stopFollow: 'Dejar de seguir',
     following: (name: string) => `Siguiendo a ${name}: haga clic para dejar de seguir`,
-    readsAlong: (names: string[]) => `${new Intl.ListFormat('es', { type: 'conjunction' }).format(names)} ${names.length === 1 ? 'sigue' : 'siguen'} el documento en solo lectura`,
+    readsAlong: (names: string[]) => `${new Intl.ListFormat('es', { type: 'conjunction' }).format(names)} ${names.length === 1 ? 'se ha unido' : 'se han unido'} en modo de solo lectura`,
     mentioned: (name: string) => `${name} le ha mencionado en un comentario`,
     mentions: (n: number) => n === 1 ? 'Un comentario le menciona' : `${n} comentarios le mencionan`,
     mentionList: 'Personas que mencionar',
