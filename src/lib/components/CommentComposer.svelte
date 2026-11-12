@@ -20,6 +20,7 @@
   import { aiEnabled, AI_COMMENT_EVENT } from '../storage/ai.svelte';
   import { mentionsAi } from '../ai/tools';
   import { autosize, isSubmitKey } from '../utils/autosize';
+  import MentionSuggest from './MentionSuggest.svelte';
 
   // A comment being written: the head and quote of the card it becomes, over a box that
   // grows with the text. Used by the balloons and the pane alike.
@@ -63,6 +64,7 @@
   aria-label={t().comments.prompt}
   onkeydown={(e) => { if (e.key === 'Escape') cancel(); else if (isSubmitKey(e)) add(); }}
 ></textarea>
+<MentionSuggest {box} />
 <div class="actions">
   <button onclick={cancel}>{t().common.cancel}</button>
   <button class="primary" disabled={!text.trim()} onclick={add}>{t().common.add}</button>

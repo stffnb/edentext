@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { unseenMentions } from '../collab/mentions.svelte';
   import type { Editor } from '@tiptap/core';
   import { commentDraft, commentIdAt, type CommentRange } from '../editor/extensions/comment';
   import { selectRange, visibleComments } from './reviewItems';
@@ -75,7 +76,7 @@
       <li><CommentComposer {editor} {draft} {author} /></li>
     {/if}
     {#each list as c (c.id)}
-      <li bind:this={cards[c.id]} class:resolved={c.resolved} class:active={c.id === activeId}
+      <li bind:this={cards[c.id]} class:resolved={c.resolved} class:active={c.id === activeId} class:mentioned={unseenMentions().includes(c.id)}
         style:box-shadow={c.id === activeId ? `inset 3px 0 0 ${authorColor(colors, c.author)}` : null}>
         <CommentCard {editor} {c} {author} {colors} onSelect={() => jumpTo(c)} />
       </li>
@@ -85,6 +86,8 @@
 </aside>
 
 <style>
+  /* Names this user and was not looked at yet (collab/mentions.svelte.ts). */
+  li.mentioned { outline: 2px solid var(--color-primary); outline-offset: -2px; }
   .comments-pane {
     display: flex;
     flex-direction: column;
