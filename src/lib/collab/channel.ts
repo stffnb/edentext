@@ -1,4 +1,4 @@
-import { newKey, roomId, seal, unseal } from './key';
+import { cipher, newKey, roomId } from './key';
 
 /** `mismatch`: the relay speaks another protocol version than this app. */
 export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'failing' | 'mismatch' | 'closed';
@@ -156,6 +156,7 @@ export async function relayReady(url: string | null): Promise<boolean> {
 /** A sealed, self-reconnecting line to the others in the key's room. */
 export function openChannel(o: Options): Channel {
   const room = roomId(o.key);
+  const box = cipher(o.key);
   const parts = joiner();
   let ws: WebSocket | null = null;
   let ready = false;
@@ -176,8 +177,8 @@ export function openChannel(o: Options): Channel {
   const slow = new Set<number>();
 
   // Two lanes, each in order. The fast one (edits, carets, the sync's small frames, chat)
-  // goes at once; the bulk one (pictures, any message in parts) one part per task and only
-  // while the socket holds little, so typing never waits behind it. All sealing is here, in order.
+  // goes at once; the bulk one (pictures, any message in parts) one part at a time and only
+  // while the socket holds little, so typing never waits behind it. Frames leave in the order sealed.
   type Out = { plain: Uint8Array; to: number; parts?: ReturnType<typeof cut>; next: number; done?: () => void };
   const fast: Out[] = [], bulk: Out[] = [];
   let queued = false;
@@ -185,20 +186,25 @@ export function openChannel(o: Options): Channel {
   let tick: MessageChannel | null = null;
   const line = () => (ws && ready && ws.readyState === WebSocket.OPEN ? ws : null);
   const skip = (m: Out) => m.to === 0 && peers === 1;
-  const sealed = (env: Uint8Array, to: number) => {
-    const body = seal(o.key, env);
-    const out = new Uint8Array(TO + body.length);
-    new DataView(out.buffer).setUint32(0, to);
-    out.set(body, TO);
-    return out;
+  let out: Promise<unknown> = Promise.resolve(), inbound: Promise<unknown> = Promise.resolve();
+  let busy = false;
+  // Sealing starts at once; the socket gets each frame after those sealed before it.
+  const put = (sock: WebSocket, env: Uint8Array, to: number) => {
+    const body = box.seal(env);
+    return (out = out.then(() => body).then((b) => {
+      const frame = new Uint8Array(TO + b.length);
+      new DataView(frame.buffer).setUint32(0, to);
+      frame.set(b, TO);
+      if (sock.readyState === WebSocket.OPEN) sock.send(frame);
+    }).catch(() => {}));
   };
   const flush = () => {
     const sock = line();
     if (!sock) return;
     for (let m = fast.shift(); m; m = fast.shift()) {
       if (m.plain.length + 1 > size) { bulk.push(m); continue; }
-      if (!skip(m)) sock.send(sealed(cut(m.plain, size).at(0), m.to));
-      m.done?.();
+      if (skip(m)) m.done?.();
+      else put(sock, cut(m.plain, size).at(0), m.to).then(m.done);
     }
     later();
   };
@@ -228,7 +234,7 @@ export function openChannel(o: Options): Channel {
   const step = () => {
     queued = false;
     const sock = line();
-    if (!sock || !bulk.length) return;
+    if (!sock || !bulk.length || busy) return;
     const hidden = typeof document !== 'undefined' && document.hidden;
     if (sock.bufferedAmount > (hidden ? HIDDEN_LOW : LOW)) return later(POLL);
     const i = pick(), m = bulk[i];
@@ -236,9 +242,15 @@ export function openChannel(o: Options): Channel {
     if (!m) return;
     if (skip(m)) { bulk.splice(i, 1); m.done?.(); return later(); }
     m.parts ??= cut(m.plain, size);
-    sock.send(sealed(m.parts.at(m.next++), m.to));
-    if (m.next >= m.parts.count) { bulk.splice(i, 1); m.done?.(); }
-    later();
+    const last = m.next + 1 >= m.parts.count;
+    if (last) bulk.splice(i, 1);
+    // The next part waits for this one in the socket, so `bufferedAmount` counts it.
+    busy = true;
+    put(sock, m.parts.at(m.next++), m.to).then(() => {
+      busy = false;
+      if (last) m.done?.();
+      later();
+    });
   };
 
   const connect = () => {
@@ -263,8 +275,7 @@ export function openChannel(o: Options): Channel {
       wait = Math.min(wait * 2, MAX_WAIT);
     };
     sock.onopen = () => sock.send(JSON.stringify({ t: 'hello', v: PROTOCOL, room, token: null, id: o.id, claim }));
-    sock.onmessage = (ev) => {
-      last = Date.now();
+    const hear = async (ev: MessageEvent, at: number) => {
       if (typeof ev.data === 'string') {
         let msg: { t?: string; peers?: number; n?: number; frame?: number; beat?: number; gone?: number; id?: number };
         try { msg = JSON.parse(ev.data); } catch { return; }
@@ -318,18 +329,24 @@ export function openChannel(o: Options): Channel {
       const data = new Uint8Array(ev.data as ArrayBuffer);
       if (data.length < TO) return;
       const from = new DataView(data.buffer).getUint32(0);
-      let env: Uint8Array;
       // A frame sealed with another key or altered on the way is dropped.
-      try { env = unseal(o.key, data.subarray(TO)); } catch { return; }
+      const env = await box.open(data.subarray(TO)).catch(() => null);
+      if (!env) return;
       // Each part of a long message counts, so one still on its way is no stall.
-      if (env[0] !== WHOLE) heard = last;
+      if (env[0] !== WHOLE) heard = at;
       const plain = parts.take(env, from);
-      if (plain && o.onFrame(plain, from) !== false) heard = last;
+      if (plain && o.onFrame(plain, from) !== false) heard = at;
     };
-    sock.onclose = (ev) => {
+    // What a socket hears is handled in arrival order, also while a frame is being opened.
+    const inOrder = (fn: () => unknown) => { inbound = inbound.then(fn).catch((e) => queueMicrotask(() => { throw e; })); };
+    sock.onmessage = (ev) => {
+      const at = last = Date.now();
+      inOrder(() => hear(ev, at));
+    };
+    sock.onclose = (ev) => inOrder(() => {
       if (!welcomed && !closed && ev.code === OLD_RELAY) { closed = true; o.onStatus('mismatch'); }
       lost();
-    };
+    });
   };
   connect();
 
@@ -349,7 +366,9 @@ export function openChannel(o: Options): Channel {
       clearTimeout(wake);
       tick?.port1.close();
       for (const m of [...fast.splice(0), ...bulk.splice(0)]) m.done?.();
-      ws?.close();
+      // What was sealed before, a goodbye too, still goes.
+      const sock = ws;
+      void out.then(() => sock?.close());
       o.onStatus('closed');
     },
     heard: () => heard,
