@@ -54,8 +54,12 @@ const MIN_PART = 1024;
 const STABLE_MS = 5000;
 const FAILS = 3;
 const MAX_WAIT = 30_000;
-// A relay that announces a beat sends one that often; a line silent for BEATS of them is dead.
+// A relay that announces a beat sends one that often; a line silent for BEATS of them is dead,
+// checked every TICK ms. Back online or in view, one silent for a beat is dead once GRACE
+// passes without a message, so a tab waking from a freeze first hears what waited for it.
 const BEATS = 3;
+const TICK = 1000;
+const GRACE = 1000;
 // The bulk lane sends while the socket holds less than LOW (a hidden tab's timers wake once a
 // second, so it fills more); otherwise it looks again after POLL ms.
 const LOW = 128 << 10;
@@ -182,6 +186,9 @@ export function openChannel(o: Options): Channel {
   let heard = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stable: ReturnType<typeof setTimeout> | undefined;
+  // The open line's check after a wake-up, and the way to drop it as dead.
+  let doubt: (() => void) | null = null;
+  let dead: (() => void) | null = null;
   // The relay gives the id only to a hello with this secret, so no other client can take it.
   const claim = newKey();
   // The room's size by the relay, 0 before a welcome; alone, nothing goes to everyone, as
@@ -312,7 +319,7 @@ export function openChannel(o: Options): Channel {
       gone = true;
       clearTimeout(stable);
       clearInterval(alive);
-      if (ws === sock) { ws = null; ready = false; }
+      if (ws === sock) { ws = null; ready = false; doubt = dead = null; }
       if (closed) return;
       if (welcomed && !held) fails++;
       down = !welcomed;
@@ -331,17 +338,25 @@ export function openChannel(o: Options): Channel {
           down = false;
           if (msg.frame) size = Math.max(PART_HEAD + MIN_PART, Math.min(MAX_PART, msg.frame - SEALING - TO));
           // A half-open line never closes by itself: it is dropped and dialled again.
-          // A tick that comes late (a frozen tab) waits one beat for the messages queued behind it.
+          // A tick that comes late (a frozen tab) waits a tick for the messages queued behind it.
           const beat = msg.beat ?? 0;
           let tick = Date.now();
-          if (beat > 0) alive = setInterval(() => {
-            const now = Date.now(), late = now - tick > 2 * beat;
-            tick = now;
-            if (late || now - last <= BEATS * beat) return;
+          dead = () => {
             sock.onmessage = sock.onclose = null;
             sock.close();
             lost();
-          }, beat);
+          };
+          if (beat > 0) alive = setInterval(() => {
+            const now = Date.now(), late = now - tick > 2 * TICK;
+            tick = now;
+            if (late || now - last <= BEATS * beat) return;
+            dead?.();
+          }, TICK);
+          doubt = beat > 0 ? () => {
+            if (Date.now() - last <= beat) return;
+            const woke = Date.now();
+            setTimeout(() => { if (ws === sock && last < woke) dead?.(); }, GRACE);
+          } : null;
           peers = msg.peers ?? 1;
           // A message cut short with the last line goes again from its start, under a new id.
           for (const m of bulk) if (m.next) { m.next = 0; m.parts = undefined; }
@@ -402,6 +417,25 @@ export function openChannel(o: Options): Channel {
   };
   connect();
 
+  // Back online, shown again or restored from the cache: a redial waiting goes now, from the
+  // shortest pause, and an open line long silent is checked. Offline, the line is dropped at once.
+  const rouse = () => {
+    if (closed) return;
+    if (ws) return doubt?.();
+    clearTimeout(timer);
+    wait = 500;
+    connect();
+  };
+  const shown = () => { if (document.visibilityState === 'visible') rouse(); };
+  const offline = () => { if (!closed) dead?.(); };
+  const events = typeof addEventListener === 'function' && typeof document !== 'undefined';
+  if (events) {
+    addEventListener('online', rouse);
+    addEventListener('pageshow', rouse);
+    addEventListener('offline', offline);
+    document.addEventListener('visibilitychange', shown);
+  }
+
   return {
     send(plain, to = 0, slow = false, done) {
       // What was typed while the line was down goes out on the next welcome; the sync
@@ -413,6 +447,12 @@ export function openChannel(o: Options): Channel {
     },
     close() {
       closed = true;
+      if (events) {
+        removeEventListener('online', rouse);
+        removeEventListener('pageshow', rouse);
+        removeEventListener('offline', offline);
+        document.removeEventListener('visibilitychange', shown);
+      }
       clearTimeout(timer);
       clearTimeout(stable);
       clearTimeout(wake);

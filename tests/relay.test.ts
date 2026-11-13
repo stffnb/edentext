@@ -37,8 +37,8 @@ describe('collaboration relay', () => {
   it('passes frames within a room only, announces peers and forgets an empty room', async () => {
     relay = await startRelay({ port: 0 });
     const a = await join(ROOM_A), b = await join(ROOM_A), c = await join(ROOM_B);
-    expect(a.text).toContainEqual({ t: 'welcome', peers: 1, frame: 16 << 20, beat: 15_000 });
-    expect(b.text).toContainEqual({ t: 'welcome', peers: 2, frame: 16 << 20, beat: 15_000 });
+    expect(a.text).toContainEqual({ t: 'welcome', peers: 1, frame: 16 << 20, beat: 5000 });
+    expect(b.text).toContainEqual({ t: 'welcome', peers: 2, frame: 16 << 20, beat: 5000 });
     expect(a.text).toContainEqual({ t: 'peers', n: 2 });
 
     a.ws.send(to(0, 1, 2, 3));

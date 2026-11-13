@@ -1239,6 +1239,23 @@ try {
     `a line that dies without a close is not live (${deafAs}), and live again once it works`);
   check(stacked === 0, `a sync open when the line died asks nothing while it is down (${stacked} asks)`);
 
+  // Offline drops the line at once; back online, a line that is down dials at once rather
+  // than after the pause its failed tries grew to.
+  const eId = await e.evaluate(() => window.__collab.session.me);
+  await e.evaluate(() => { dispatchEvent(new Event('offline')); });
+  const offAt = await e.evaluate(() => window.__collab.view().status);
+  await e.evaluate(() => { window.__WS ??= WebSocket; window.WebSocket = class extends window.__WS { constructor() { super('ws://127.0.0.1:4/'); } }; });
+  for (const room of relay.rooms.values()) for (const w of room) if (w.id === eId) w.close();
+  await e.waitForTimeout(8000);
+  const backMs = await e.evaluate(async () => {
+    window.WebSocket = window.__WS;
+    const t0 = performance.now();
+    dispatchEvent(new Event('online'));
+    while (window.__collab.view().status !== 'live' && performance.now() - t0 < 10_000) await new Promise((r) => setTimeout(r, 50));
+    return Math.round(performance.now() - t0);
+  });
+  check(offAt !== 'live' && backMs < 2000, `offline leaves live at once (${offAt}), and back online the line is live in ${backMs} ms`);
+
   // A joiner alone in the room waits; when a client with the doc comes back, the joiner
   // asks it, and that client's own sync sends no copy to the joiner's empty offer.
   const away = (page) => page.evaluate(() => {

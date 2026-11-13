@@ -40,7 +40,7 @@ are off, as for the rest of the app.
 | `MAX_PEERS` | 6 | connections per room; the next gets `full`. Readers count, and so does a reload's second connection while the old one closes. 0 = no limit |
 | `MAX_ROOMS` | 10000 | rooms at once; a hello beyond closes with 4003 |
 | `MAX_FRAME` | 16 MiB | bytes per frame; browsers send at most 256 kB and split longer messages |
-| `BEAT_MS`, `PING_MS` | 15 s, 5 s | keep-alive to the browsers, and the ping that drops a dead line within two rounds |
+| `BEAT_MS`, `PING_MS` | 5 s, 5 s | keep-alive to the browsers, which take a line silent for three beats as dead, and the ping that drops a dead line within two rounds |
 
 A receiver on a slow line holds about 2 MiB at the relay: beyond that the relay tells the
 others it is `slow`, and they hold back the pictures for it until it is `drained`, while their

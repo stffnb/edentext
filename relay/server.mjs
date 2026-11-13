@@ -28,7 +28,7 @@ const ACK_MS = 20;
  * other. A connection that misses a `ping` round is dropped, so its client is gone within
  * two rounds. Resolves once listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 15_000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, hold = 2 << 20, tap, lag } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 5000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, hold = 2 << 20, tap, lag } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
   // Per room, each client id with the secret its first hello claimed it by, and its socket
@@ -194,7 +194,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     maxPeers: env('MAX_PEERS', 6),
     maxFrame: env('MAX_FRAME', 16 << 20),
     maxRooms: env('MAX_ROOMS', 10000),
-    beat: env('BEAT_MS', 15_000),
+    beat: env('BEAT_MS', 5000),
     ping: env('PING_MS', 5000),
   });
   console.log(`relay listening on ${relay.port}`);
