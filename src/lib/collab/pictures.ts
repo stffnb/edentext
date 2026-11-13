@@ -112,6 +112,8 @@ export type Pictures = {
   again(): void;
   /** Pictures this client is still sending to someone who asked. */
   serving(): number;
+  /** Whether a picture is asked of the client `id` now, so a long message may come from it. */
+  asking(id: number): boolean;
   /** Pictures no one here could send, while everyone in the room is known. */
   missing(): number;
   /** A store's value (a header, a page decoration) with its large pictures named by key and held; `share` sends new ones to all. */
@@ -310,6 +312,7 @@ export function sessionPictures(w: Wire): Pictures {
       if (wants.size) soon();
     },
     serving: () => serving,
+    asking: (id) => [...wants.values()].some((x) => x.to === id),
     missing,
     pack: (value, share) => mapSrcs(value, (src) => {
       const key = imageKey(src);

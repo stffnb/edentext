@@ -54,6 +54,9 @@ const BATCH_MS = 50;
 const CHEAP_MS = 8;
 const MAX_BATCH_MS = 100;
 const MAX_LATER = 64;     // carets held until the edits before them apply
+// A message from a client this one expects nothing long from (not a confirmed writer, the sync's
+// pulled peer or one asked for a picture) may hold this much: its kinds are short.
+const SHORT_MESSAGE = 8 << 20;
 const SETTLE_MS = 300;  // how long a sync waits for late offers after the first
 const STALL_MS = 10_000; // a sync that hears nothing this long starts over
 const EMPTY_MS = 5000;   // a joiner alone this long is told the room is empty
@@ -603,6 +606,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
 
   const channel = openChannel({
     url: host.relay, key: keys.read, id: me,
+    limit: (from) => (live.has(from) || round?.target === from || pictures.asking(from) ? Infinity : SHORT_MESSAGE),
     onFrame(data, from) {
       if (status === 'version' || !data.length) return false;
       tap?.(data);
