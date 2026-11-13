@@ -297,7 +297,9 @@ export function openChannel(o: Options): Channel {
     });
   };
 
+  // `collab:*` performance marks let the join bench split a join into its steps.
   const connect = () => {
+    performance.mark('collab:dial');
     if (fails < FAILS && !down) o.onStatus('connecting');
     const sock = new WebSocket(o.url);
     sock.binaryType = 'arraybuffer';
@@ -318,12 +320,13 @@ export function openChannel(o: Options): Channel {
       timer = setTimeout(connect, wait * (0.8 + Math.random() * 0.4));
       wait = Math.min(wait * 2, MAX_WAIT);
     };
-    sock.onopen = () => sock.send(JSON.stringify({ t: 'hello', v: PROTOCOL, room, token: null, id: o.id, claim }));
+    sock.onopen = () => { performance.mark('collab:socket'); sock.send(JSON.stringify({ t: 'hello', v: PROTOCOL, room, token: null, id: o.id, claim })); };
     const hear = async (ev: MessageEvent, at: number) => {
       if (typeof ev.data === 'string') {
         let msg: { t?: string; peers?: number; n?: number; frame?: number; beat?: number; gone?: number; id?: number };
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.t === 'welcome') {
+          performance.mark('collab:welcome');
           welcomed = ready = true;
           down = false;
           if (msg.frame) size = Math.max(PART_HEAD + MIN_PART, Math.min(MAX_PART, msg.frame - SEALING - TO));

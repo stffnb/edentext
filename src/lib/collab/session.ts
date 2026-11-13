@@ -395,6 +395,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       if (got === 'version') return setStatus('version');
       if (!got) return setStatus('closed');
       bind(got);
+      performance.mark('collab:bound');
     }
     if (binding && line === 'open') setStatus('live');
   };
@@ -483,6 +484,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     else if (kind === PONG) answered(v.getUint32(5), plain.subarray(9));
     else if (kind === ECHO) echoed(v.getUint32(5), plain.subarray(9));
     else if (kind === OFFER && round) {
+      performance.mark('collab:offer');
       const from = v.getUint32(5), n = v.getUint32(9);
       const ds = plain.subarray(13 + n);
       round.offers.set(from, { sv: Y.decodeStateVector(plain.subarray(13, 13 + n)), ds: Y.decodeUpdate(ds).ds });
@@ -495,6 +497,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       applyInbox();
       send(ANSWER, v.getUint32(5), Y.encodeStateAsUpdate(ydoc, plain.subarray(9)));
     } else if (kind === ANSWER) {
+      performance.mark('collab:answer');
       gotAnswer = true;
       receive(plain.subarray(5));
     }
