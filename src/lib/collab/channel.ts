@@ -1,15 +1,17 @@
+import { Inflate } from 'fflate';
 import { cipher, newKey, roomId } from './key';
 
 /** `mismatch`: the relay speaks another protocol version than this app. */
 export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'failing' | 'mismatch' | 'closed';
 
-/** The relay protocol (`relay/CLAUDE.md`) this app speaks. */
-export const PROTOCOL = 2;
+/** The relay protocol (`relay/CLAUDE.md`) this app speaks; 3 adds deflated messages. */
+export const PROTOCOL = 3;
 
 export type Channel = {
   /** To one client by its id, or with `to` 0 to everyone; `bulk` (a picture) waits behind the
-   *  rest, and `done` runs once its last part went to the socket or it was dropped. */
-  send(plain: Uint8Array, to?: number, bulk?: boolean, done?: () => void): void;
+   *  rest, and `done` runs once its last part went to the socket or it was dropped. `squeeze`
+   *  deflates a long message first, where the browser can. */
+  send(plain: Uint8Array, to?: number, bulk?: boolean, done?: () => void, squeeze?: boolean): void;
   close(): void;
   /** When the last peer frame (or part of one) came in that `onFrame` did not call chatter, for a session waiting on an answer;
    *  with `from`, when the last part of a message from that client came. */
@@ -31,13 +33,19 @@ type Options = {
   onStatus(s: ChannelStatus): void;
   /** Each time the relay welcomes the socket, with the room's size, so the session can sync. */
   onOpen(peers: number): void;
+  /** The longest message taken, in parts or inflated; MAX_MESSAGE unless a test sets less. */
+  limit?: number;
 };
 
 // Each sealed frame carries one envelope byte. A message longer than the relay's frame limit
 // (its welcome says it) goes as numbered parts under a random id, sealed one by one, and is
-// put together on arrival; frames of different senders may interleave.
+// put together on arrival; frames of different senders may interleave. DEFLATED in the byte
+// marks a message deflated whole before it was cut, which the receiver inflates once joined.
 const WHOLE = 0;
 const PART = 1;
+const DEFLATED = 2;
+const SQUEEZE = 1024;        // shorter messages go as they are
+const SLICE = 8 << 10;       // inflated a slice at a time, so a bomb stops near the limit
 const PART_HEAD = 17;        // envelope, 8-byte id, index, count
 const SEALING = 28;          // nonce and GCM tag
 const TO = 4;                // in clear before a sealed frame: the receiver (0 for all), the sender on arrival
@@ -76,9 +84,9 @@ const RATE_MS = 50;
 const MAX_MARKS = 1024;
 
 /** A message as envelopes of at most `size` bytes: whole, or numbered parts under a random id, each made when asked for. */
-function cut(plain: Uint8Array, size: number): { count: number; size: number; at(i: number): Uint8Array } {
+function cut(plain: Uint8Array, size: number, flag = 0): { count: number; size: number; at(i: number): Uint8Array } {
   if (plain.length + 1 <= size) {
-    return { count: 1, size, at: () => { const out = new Uint8Array(plain.length + 1); out.set(plain, 1); return out; } };
+    return { count: 1, size, at: () => { const out = new Uint8Array(plain.length + 1); out[0] = WHOLE | flag; out.set(plain, 1); return out; } };
   }
   const room = size - PART_HEAD;
   const count = Math.ceil(plain.length / room);
@@ -90,7 +98,7 @@ function cut(plain: Uint8Array, size: number): { count: number; size: number; at
       const data = plain.subarray(i * room, (i + 1) * room);
       const out = new Uint8Array(PART_HEAD + data.length);
       const v = new DataView(out.buffer);
-      out[0] = PART;
+      out[0] = PART | flag;
       out.set(id, 1);
       v.setUint32(9, i);
       v.setUint32(13, count);
@@ -100,15 +108,39 @@ function cut(plain: Uint8Array, size: number): { count: number; size: number; at
   };
 }
 
-type Pending = { parts: (Uint8Array | undefined)[]; got: number; size: number; at: number };
+async function deflate(plain: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([plain as BlobPart]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/** A deflated message, or null when it is broken or would inflate past `max` bytes. */
+function inflate(data: Uint8Array, max: number): Uint8Array | null {
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  const over = new Error('over');
+  const inf = new Inflate((chunk) => {
+    if ((length += chunk.length) > max) throw over;
+    chunks.push(chunk);
+  });
+  try {
+    for (let at = 0; at < data.length; at += SLICE) inf.push(data.subarray(at, at + SLICE), at + SLICE >= data.length);
+  } catch { return null; }
+  const out = new Uint8Array(length);
+  let at = 0;
+  for (const chunk of chunks) { out.set(chunk, at); at += chunk.length; }
+  return out;
+}
+
+type Pending = { parts: (Uint8Array | undefined)[]; got: number; size: number; at: number; flag: number };
 const sizeOf = (pending: Map<string, Pending>) => [...pending.values()].reduce((n, p) => n + p.size, 0);
 
-/** Puts parts back together per sender; returns a message once it is whole. */
-function joiner() {
+/** Puts parts back together per sender; returns a message and its flag once it is whole. */
+function joiner(max: number) {
   const senders = new Map<number, Map<string, Pending>>();
-  const take = (env: Uint8Array, from: number): Uint8Array | null => {
-    if (env[0] === WHOLE) return env.subarray(1);
-    if (env[0] !== PART || env.length < PART_HEAD) return null;
+  const take = (env: Uint8Array, from: number): { body: Uint8Array; flag: number } | null => {
+    const flag = env[0] & DEFLATED, kind = env[0] & ~DEFLATED;
+    if (kind === WHOLE) return { body: env.subarray(1), flag };
+    if (kind !== PART || env.length < PART_HEAD) return null;
     const now = Date.now();
     for (const [sender, pending] of senders) {
       for (const [id, p] of pending) if (now - p.at > PART_TTL) pending.delete(id);
@@ -121,13 +153,13 @@ function joiner() {
     let p = pending.get(id);
     if (!p) {
       // Parts come in order: one without its message's first part can never complete.
-      if (index !== 0 || count < 2 || count > MAX_MESSAGE / MIN_PART + 1) return null;
+      if (index !== 0 || count < 2 || count > max / MIN_PART + 1) return null;
       for (const old of pending.keys()) if (pending.size >= MAX_OPEN) pending.delete(old);
-      pending.set(id, (p = { parts: new Array(count), got: 0, size: 0, at: now }));
+      pending.set(id, (p = { parts: new Array(count), got: 0, size: 0, at: now, flag }));
       senders.set(from, pending);
     }
     if (index >= p.parts.length || p.parts[index]) return null;
-    if (sizeOf(pending) + env.length - PART_HEAD > MAX_MESSAGE) { pending.delete(id); return null; }
+    if (sizeOf(pending) + env.length - PART_HEAD > max) { pending.delete(id); return null; }
     p.parts[index] = env.subarray(PART_HEAD);
     p.got++;
     p.size += env.length - PART_HEAD;
@@ -137,7 +169,7 @@ function joiner() {
     const out = new Uint8Array(p.size);
     let at = 0;
     for (const part of p.parts as Uint8Array[]) { out.set(part, at); at += part.length; }
-    return out;
+    return { body: out, flag: p.flag };
   };
   /** A sender gone: its unfinished messages go too; with none, every sender's. */
   const forget = (from?: number) => { if (from === undefined) senders.clear(); else senders.delete(from); };
@@ -176,7 +208,8 @@ export async function relayReady(url: string | null): Promise<boolean> {
 export function openChannel(o: Options): Channel {
   const room = roomId(o.key);
   const box = cipher(o.key);
-  const parts = joiner();
+  const limit = o.limit ?? MAX_MESSAGE;
+  const parts = joiner(limit);
   let ws: WebSocket | null = null;
   let ready = false;
   let closed = false;
@@ -202,7 +235,7 @@ export function openChannel(o: Options): Channel {
   // Two lanes, each in order. The fast one (edits, carets, the sync's small frames, chat)
   // goes at once; the bulk one (pictures, any message in parts) one part at a time and only
   // while the socket holds little, so typing never waits behind it. Frames leave in the order sealed.
-  type Out = { plain: Uint8Array; to: number; parts?: ReturnType<typeof cut>; next: number; done?: () => void };
+  type Out = { plain: Uint8Array; to: number; flag: number; parts?: ReturnType<typeof cut>; next: number; done?: () => void };
   const fast: Out[] = [], bulk: Out[] = [];
   let queued = false;
   let wake: ReturnType<typeof setTimeout> | undefined;
@@ -254,7 +287,7 @@ export function openChannel(o: Options): Channel {
     for (let m = fast.shift(); m; m = fast.shift()) {
       if (m.plain.length + 1 > size) { bulk.push(m); continue; }
       if (skip(m)) m.done?.();
-      else put(sock, cut(m.plain, size).at(0), m.to).then(m.done);
+      else put(sock, cut(m.plain, size, m.flag).at(0), m.to).then(m.done);
     }
     later();
   };
@@ -294,7 +327,7 @@ export function openChannel(o: Options): Channel {
     // A hidden tab sends no keystrokes, so it fills the line; a receipt wakes the lane.
     const ahead = sent - acked, next = Math.min(m.plain.length + PART_HEAD, m.parts?.size ?? chunk());
     if (acking && !hidden && ahead && ahead + next > flight()) return later(POLL * 5);
-    m.parts ??= cut(m.plain, hidden ? size : chunk());
+    m.parts ??= cut(m.plain, hidden ? size : chunk(), m.flag);
     const last = m.next + 1 >= m.parts.count;
     if (last) bulk.splice(i, 1);
     // The next part waits for this one in the socket, so `bufferedAmount` counts it.
@@ -406,7 +439,8 @@ export function openChannel(o: Options): Channel {
       if (!env) return;
       // Each part of a long message counts, so one still on its way is no stall.
       if (env[0] !== WHOLE) { heard = at; partAt.set(from, at); }
-      const plain = parts.take(env, from);
+      const got = parts.take(env, from);
+      const plain = got && (got.flag ? inflate(got.body, limit) : got.body);
       if (plain && o.onFrame(plain, from) !== false) heard = at;
     };
     // What a socket hears is handled in arrival order, also while a frame is being opened.
@@ -441,14 +475,29 @@ export function openChannel(o: Options): Channel {
     document.addEventListener('visibilitychange', shown);
   }
 
+  // What is sent after a message being deflated waits for it, so messages keep their order.
+  let packing = 0;
+  let packed: Promise<unknown> = Promise.resolve();
+  const queue = (plain: Uint8Array, to: number, slow: boolean, flag: number, done?: () => void) => {
+    // What was typed while the line was down goes out on the next welcome; the sync
+    // that follows it would carry it too, so the queue only saves a round trip.
+    const lane = slow || plain.length + 1 > size ? bulk : fast;
+    if (closed || (!line() && lane.length >= MAX_QUEUE)) return done?.();
+    lane.push({ plain, to, flag, next: 0, done });
+    if (lane === fast) flush(); else later();
+  };
+
   return {
-    send(plain, to = 0, slow = false, done) {
-      // What was typed while the line was down goes out on the next welcome; the sync
-      // that follows it would carry it too, so the queue only saves a round trip.
-      const lane = slow || plain.length + 1 > size ? bulk : fast;
-      if (!line() && lane.length >= MAX_QUEUE) return done?.();
-      lane.push({ plain, to, next: 0, done });
-      if (lane === fast) flush(); else later();
+    send(plain, to = 0, slow = false, done, squeeze = false) {
+      // Where the browser cannot deflate, the message goes as it is; every client inflates.
+      squeeze &&= typeof CompressionStream === 'function' && plain.length >= SQUEEZE;
+      if (!squeeze && !packing) return queue(plain, to, slow, 0, done);
+      packing++;
+      const body = squeeze ? deflate(plain).then((z) => (z.length < plain.length ? z : null), () => null) : null;
+      packed = packed.then(() => body).then((z) => {
+        packing--;
+        queue(z ?? plain, to, slow, z ? DEFLATED : 0, done);
+      });
     },
     close() {
       closed = true;

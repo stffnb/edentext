@@ -51,8 +51,9 @@ Each sender also hears how many of its bytes arrived (`got`, at once per 32 kB, 
 20 ms), so it can pace its pictures by its own uplink. All three messages are optional, so
 they need no new protocol version.
 
-App and relay speak protocol version 2 (`relay/CLAUDE.md`); against a relay of another version
-the app says it does not match the server, so update both together.
+App and relay speak protocol version 3 (`relay/CLAUDE.md`; since 3 the browsers may deflate
+long messages, which an app of version 2 cannot read); against a relay of another version the
+app says it does not match the server, so update both together.
 
 `token`: every hello carries `"token": null`. It is reserved; the relay does not read it.
 There are no accounts or passwords.

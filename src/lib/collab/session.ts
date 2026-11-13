@@ -40,6 +40,7 @@ const DIRECTED = new Set([OFFER, PULL, ANSWER, PICTURE, WANT, HAS, PING, PONG, E
 // speaks for another (a reader for many readers, or asking answers sent to someone else).
 const FROM_AT = new Map([[ASK, 1], [VIEWER, 1], [OFFER, 5], [PULL, 5], [WANT, 5], [HAS, 5], [PING, 5], [PONG, 5], [ECHO, 5], [NOTHING, 5]]);
 const SIGNED = new Set([UPDATE, PRESENCE, OFFER, ANSWER, PICTURE, HAS, PONG, CHAT]);
+const SQUEEZED = new Set([UPDATE, OFFER, ANSWER]); // deflated when long (`channel.ts`); pictures are packed already
 const MAX_HELD = 8;      // presence frames held per peer until it answers a ping
 const MAX_KNOWN = 32;     // readers listed, and writers awaiting a ping
 const BATCH_MS = 50;
@@ -240,7 +241,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     if (reading && SIGNED.has(kind)) return done?.();
     stats.sent[kind]++;
     const plain = frame(kind, ...parts);
-    channel.send(SIGNED.has(kind) ? signed(keys.sign!, plain) : plain, DIRECTED.has(kind) ? parts[0] as number : 0, kind === PICTURE, done);
+    channel.send(SIGNED.has(kind) ? signed(keys.sign!, plain) : plain, DIRECTED.has(kind) ? parts[0] as number : 0, kind === PICTURE, done, SQUEEZED.has(kind));
   };
   const send = (kind: number, ...parts: (number | Uint8Array)[]) => post(undefined, kind, ...parts);
   const enc = new TextEncoder();

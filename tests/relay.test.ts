@@ -27,7 +27,7 @@ async function join(room: string, id = next++, claim = `claim-of-${id}`.padEnd(2
     else c.text.push(msg);
   });
   await new Promise((r) => ws.on('open', r));
-  ws.send(JSON.stringify({ t: 'hello', v: 2, room, token: null, id, claim, ...hello }));
+  ws.send(JSON.stringify({ t: 'hello', v: 3, room, token: null, id, claim, ...hello }));
   await tick();
   return c;
 }
@@ -142,7 +142,7 @@ describe('collaboration relay', () => {
   it('tells a client speaking another protocol version so, and a late hello from that apart', async () => {
     relay = await startRelay({ port: 0, helloWait: 100 });
     const old = await join(ROOM_A, 1, undefined, { v: 1 });
-    expect(old.text).toEqual([{ t: 'version', v: 2 }]);
+    expect(old.text).toEqual([{ t: 'version', v: 3 }]);
     expect(await old.closed).toBe(4002);
     // The app takes 4000 before its welcome for a relay of version 1; a slow line is not that.
     const mute = new WebSocket(`ws://127.0.0.1:${relay!.port}/relay`);

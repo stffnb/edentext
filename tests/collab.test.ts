@@ -5,6 +5,7 @@ import '../src/lib/editor/yjsRedo';
 import { cipher, keyBytes, linkKeys, newKey, opened, roomId, seal, sessionLink, signed, unseal, viewLink, writeKeys } from '../src/lib/collab/key';
 import { openChannel } from '../src/lib/collab/channel';
 import { WebSocketServer } from 'ws';
+import { deflateRawSync } from 'node:zlib';
 // @ts-expect-error plain JavaScript module, shipped as its own container
 import { startRelay } from '../relay/server.mjs';
 
@@ -126,16 +127,39 @@ describe('collaboration key', () => {
     // A short message overtakes a long one sent before it.
     expect(order.indexOf('b:2')).toBeLessThan(order.indexOf('b:50000'));
     expect(peers).toContain(3);
+
+    // A long message asked to shrink goes deflated, in parts if still long, and arrives as
+    // sent, in order before what follows; one sent without `CompressionStream` goes as it is.
+    const loose = (n: number) => Uint8Array.from({ length: n }, () => 97 + Math.floor(Math.random() * 4));
+    const small = loose(30_000), large = loose(200_000);
+    const sent = frames.length;
+    a.send(small, 0, false, undefined, true);
+    a.send(signed(writer.sign!, large), 2, false, undefined, true);
+    a.send(text('after'));
+    await new Promise((r) => setTimeout(r, 300));
+    const squeezed = frames.slice(sent);
+    expect(squeezed.reduce((n, f) => n + f, 0)).toBeLessThan((30_000 + 200_000) / 2);
+    expect(big.filter((m) => m.length === 30_000).map((m) => m.every((x, i) => x === small[i]))).toEqual([true, true]);
+    expect(opened(writer.verify, big.find((m) => m.length > 200_000)!)).toEqual(large);
+    expect(order.indexOf('b:30000')).toBeLessThan(order.indexOf('b:5'));
+    const stream = globalThis.CompressionStream;
+    delete (globalThis as { CompressionStream?: unknown }).CompressionStream;
+    const before = frames.length;
+    b.send(small, 0, false, undefined, true);
+    globalThis.CompressionStream = stream;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(frames.slice(before).reduce((n, f) => n + f, 0)).toBeGreaterThan(30_000);
+    expect(big.filter((m) => m.length === 30_000).length).toBe(4);
     // A frame the receiver calls chatter ('!') leaves the time it last heard the room unchanged.
-    const before = c.heard();
+    const heard = c.heard();
     await new Promise((r) => setTimeout(r, 20));
     a.send(text('!chat'));
     await new Promise((r) => setTimeout(r, 100));
     expect(got).toContain('c:!chat');
-    expect(c.heard()).toBe(before);
+    expect(c.heard()).toBe(heard);
     a.send(text('sync'));
     await new Promise((r) => setTimeout(r, 100));
-    expect(c.heard()).toBeGreaterThan(before);
+    expect(c.heard()).toBeGreaterThan(heard);
     a.close();
     b.close();
     c.close();
@@ -156,20 +180,20 @@ describe('collaboration key', () => {
     old.close();
   });
 
-  it('holds a few unfinished messages per sender, so no sender keeps another\'s from arriving', async () => {
+  it('holds a few unfinished messages per sender, so no sender keeps another\'s from arriving, and inflates none past its limit', async () => {
     const relay = await startRelay({ port: 0, maxFrame: 4096 });
     const key = keyBytes(newKey())!;
     const url = `ws://127.0.0.1:${relay.port}/relay`;
     const whole: [number, number][] = [];
     const open = (id: number) => new Promise<ReturnType<typeof openChannel>>((resolve) => {
-      const ch = openChannel({ url, key, id, onFrame: (p, from) => whole.push([from, p.length]), onPeers: () => {}, onStatus: () => {}, onOpen: () => resolve(ch) });
+      const ch = openChannel({ url, key, id, limit: 1 << 20, onFrame: (p, from) => whole.push([from, p.length]), onPeers: () => {}, onStatus: () => {}, onOpen: () => resolve(ch) });
     });
     await open(1);
     const writer = await open(2);
     const raw = new WebSocket(url);
     raw.binaryType = 'arraybuffer';
     await new Promise<void>((resolve) => {
-      raw.onopen = () => raw.send(JSON.stringify({ t: 'hello', v: 2, room: roomId(key), token: null, id: 9, claim: newKey() }));
+      raw.onopen = () => raw.send(JSON.stringify({ t: 'hello', v: 3, room: roomId(key), token: null, id: 9, claim: newKey() }));
       raw.onmessage = () => resolve();
     });
     // Forty messages of two parts each: all first parts, then all second ones; in between,
@@ -193,6 +217,18 @@ describe('collaboration key', () => {
     expect(whole.filter(([from]) => from === 2)).toEqual([[2, 50_000]]);
     // Each of the two others keeps the sender's last four.
     expect(whole.filter(([from]) => from === 9)).toEqual(Array(8).fill([9, 4096]));
+    // A deflated message that would grow past the limit, or is broken, is dropped.
+    whole.length = 0;
+    for (const body of [deflateRawSync(Buffer.alloc(2 << 20)), Uint8Array.of(7, 0, 0), deflateRawSync(Buffer.alloc(512 << 10, 7))]) {
+      const env = new Uint8Array(1 + body.length);
+      env[0] = 2;
+      env.set(body, 1);
+      const sealed = seal(key, env), out = new Uint8Array(4 + sealed.length);
+      out.set(sealed, 4);
+      raw.send(out);
+    }
+    await new Promise((r) => setTimeout(r, 300));
+    expect(whole).toEqual([[9, 512 << 10], [9, 512 << 10]]);
     raw.close();
     await relay.close();
   });
