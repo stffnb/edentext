@@ -4,7 +4,8 @@ import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwareness
 import { yCursorPlugin, yCursorPluginKey } from '@tiptap/y-tiptap';
 import { attachYjsUndo, type StoreCodec, type YjsUndo } from '../editor/undoYjs';
 import { openChannel, type ChannelStatus } from './channel';
-import { newKey, opened, sessionLink, signed, viewLink, writeKeys, type SessionKeys } from './key';
+import { newKey, opened, roomId, sessionLink, signed, viewLink, writeKeys, type SessionKeys } from './key';
+import { pictureStore } from './pictureStore';
 import { readOnlyFilter, readingKey, setReading } from './reading.svelte';
 import { shareZones } from './zones.svelte';
 import { HAS, PICTURE, WANT, keyPictures, picturesKey, sessionPictures, unkeyPictures } from './pictures';
@@ -115,7 +116,8 @@ export type Session = {
   link: string;
   viewLink: string;
   awareness: Awareness;
-  leave(): void;
+  /** Resolves once this client's stored session pictures are gone too. */
+  leave(): Promise<void>;
   /** Sends a chat message to everyone here; false when the line is not live. */
   chat(text: string): boolean;
   /** Pictures others are still loading from this client. */
@@ -344,8 +346,10 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       listed();
     }, DOUBT_MS);
   };
+  // A joiner's pictures outlast a reload in its store; the starter's are in its document.
+  const store = join ? pictureStore(roomId(keys.read)) : null;
   const pictures = sessionPictures({
-    me, send, post, heard: (id) => channel.heard(id), incoming: (id) => channel.incoming(id), changed: () => changed(), unknown: () => peerCount - 1 > known().size,
+    me, send, store, post, heard: (id) => channel.heard(id), incoming: (id) => channel.incoming(id), changed: () => changed(), unknown: () => peerCount - 1 > known().size,
     arrived: (k) => binding?.refresh(IDB_SRC + k),
     peers: () => [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && typeof s.peer === 'number').map(([, s]) => s.peer as number),
   });
@@ -655,6 +659,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       binding = null;
       status = 'closed';
       changed();
+      return store?.clear() ?? Promise.resolve();
     },
   };
 }
