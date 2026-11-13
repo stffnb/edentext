@@ -8,7 +8,7 @@
 // showing `live`. When the starter leaves, the others are told; a joiner leaving keeps its
 // copy as a document of this browser or drops it, either way dropping the pictures it kept for
 // a reload, and a link to an empty room says so. A reader by the read link follows and changes
-// nothing, nor do its forged or replayed frames; readers count toward the room's limit, alone
+// nothing, nor do its forged or replayed frames, nor its floods past each writer's limits; readers count toward the room's limit, alone
 // give a newcomer nothing, and may keep a copy. The session chat reaches everyone here and
 // nothing else, nor can a patched reader abuse it.
 // Any engine (BROWSER).
@@ -905,6 +905,58 @@ try {
     const listedNow = await readersOf(a);
     await vera.context().close();
     check(listedNow === 'Rita,Vera', `readers made up by another tab fill no list, and a real one is still listed (${listedNow})`);
+
+    // The reader asks without end: each writer answers only as often as its limits per sender
+    // allow (collab.md, Limits), a ping with a long nonce not at all, and typing still arrives.
+    const KIND = { OFFER: 3, ANSWER: 5, PICTURE: 6, PONG: 10 };
+    const counts = () => Promise.all([a, b].map((p) => p.evaluate(() => [...window.__collab.session.stats.sent])));
+    const flood = (kinds) => r.evaluate(async ([kinds, writers, me]) => {
+      const { Y } = await import('/src/lib/editor/undoYjs.ts');
+      const d = window.__collab.session.debug;
+      const u32 = (n) => { const x = new Uint8Array(4); new DataView(x.buffer).setUint32(0, n); return x; };
+      const cat = (...p) => { const o = new Uint8Array(p.reduce((n, x) => n + x.length, 0)); let at = 0; for (const x of p) { o.set(x, at); at += x.length; } return o; };
+      const sv = Y.encodeStateVector(new Y.Doc());
+      const keys = new TextEncoder().encode(Array.from({ length: 200 }, (_, i) => `nokey${i}`).join(','));
+      for (const to of writers) {
+        for (let i = 0; i < 100; i++) {
+          if (kinds.includes('long') && i < 3) d.send(cat([9], u32(to), u32(me), crypto.getRandomValues(new Uint8Array(64))), to);
+          if (kinds.includes('ask') && to === writers[0]) d.send(cat([0], u32(me)), 0);
+          if (kinds.includes('pull')) d.send(cat([4], u32(to), u32(me), sv), to);
+          if (kinds.includes('ping')) d.send(cat([9], u32(to), u32(me), crypto.getRandomValues(new Uint8Array(16))), to);
+          if (kinds.includes('want')) d.send(cat([7], u32(to), u32(me), keys), to);
+        }
+      }
+    }, [kinds, [ids.Anna, ids.Ben], ritaId]);
+    const c0 = await counts();
+    await flood(['long']);
+    await a.waitForTimeout(1500);
+    const c1 = await counts();
+    const t0 = Date.now();
+    await flood(['ask', 'pull', 'ping', 'want']);
+    await caret(a, 'end');
+    await a.keyboard.type(' Mu');
+    await a.waitForTimeout(3000);
+    const secs = (Date.now() - t0) / 1000;
+    const c2 = await counts();
+    const vMu = [await view(b), await view(r)];
+    const answers = [0, 1].map((w) => Object.fromEntries(Object.entries(KIND).map(([k, i]) => [k, c2[w][i] - c1[w][i]])));
+    check(c1.every((x, w) => x[KIND.PONG] === c0[w][KIND.PONG]), `a ping with a long nonce gets no answer (${c1.map((x, w) => x[KIND.PONG] - c0[w][KIND.PONG])})`);
+    check(answers.every((x) => x.OFFER >= 1 && x.OFFER <= 5 + secs * 0.1 + 1 && x.ANSWER >= 1 && x.ANSWER <= 5 + secs * 0.1 + 1 && x.PONG >= 1 && x.PONG <= 6 + secs * 0.2 + 1 && x.PICTURE >= 1 && x.PICTURE <= 50 + secs * 10 + 1)
+      && vMu.every((v) => v.text.endsWith('Mu')),
+      `a reader's hundred asks, pulls and pings and 20,000 picture keys get each writer's answers only up to its limits, and typing still arrives (${JSON.stringify(answers)} in ${secs.toFixed(1)} s)`);
+
+    // A message in parts is long only from whom a client expects one: the reader's 9 MiB is
+    // dropped at the writer, its 4 MiB and a writer's 9 MiB arrive.
+    await a.evaluate(() => { window.__long = []; window.__collab.session.debug.tap = (d) => { if (d.length > 1 << 20) window.__long.push(d.length); }; });
+    const long = (page, n, to) => page.evaluate(([n, to]) => { const m = new Uint8Array(n); m[0] = 200; crypto.getRandomValues(m.subarray(1, 65537)); window.__collab.session.debug.send(m, to); }, [n, to]);
+    await long(r, 9 << 20, ids.Anna);
+    await long(r, 4 << 20, ids.Anna);
+    await long(b, 9 << 20, ids.Anna);
+    let longs = [];
+    for (let i = 0; i < 40 && longs.length < 2; i++) { await a.waitForTimeout(500); longs = await a.evaluate(() => window.__long); }
+    await a.waitForTimeout(1000);
+    longs = await a.evaluate(() => { window.__collab.session.debug.tap = null; return window.__long; });
+    check(longs.join() === `${4 << 20},${9 << 20}`, `a reader's long message in parts stops at the small limit, a short one and a writer's long one arrive (${longs})`);
 
     // A writer holds the footer and lets it go while the reader records; replayed then, and
     // after the writer left to a newcomer that never saw it, the footer stays free.
