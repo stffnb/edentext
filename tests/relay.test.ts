@@ -32,6 +32,15 @@ async function join(room: string, id = next++, claim = `claim-of-${id}`.padEnd(2
   return c;
 }
 const to = (id: number, ...bytes: number[]) => Buffer.from([0, 0, 0, id, ...bytes]);
+// An upgrade with these headers: the open socket (101), or the HTTP status that refused it.
+function dial(headers: Record<string, string> = {}): Promise<{ status: number; ws: WebSocket }> {
+  const ws = new WebSocket(`ws://127.0.0.1:${relay!.port}/relay`, { headers });
+  return new Promise((r) => {
+    ws.on('open', () => r({ status: 101, ws }));
+    ws.on('unexpected-response', (_req, res) => { r({ status: res.statusCode ?? 0, ws }); ws.terminate(); });
+    ws.on('error', () => {});
+  });
+}
 
 describe('collaboration relay', () => {
   it('passes frames within a room only, announces peers and forgets an empty room', async () => {
@@ -163,6 +172,32 @@ describe('collaboration relay', () => {
     await tick();
     expect(b.text).toEqual([{ t: 'welcome', peers: 1, frame: 16 << 20 }]);
     b.ws.close();
+  });
+
+  it('refuses connections past the limit per address and in all, an address from a proxy only when trusted', async () => {
+    // [relay options, X-Real-IP of each upgrade, the statuses expected]
+    const cases: [Record<string, unknown>, string[], number[]][] = [
+      [{}, ['a', 'a', 'a', 'a'], [101, 101, 101, 101]],
+      [{ maxConnsPerIp: 2 }, ['a', 'b', 'c'], [101, 101, 429]],
+      [{ maxConnsPerIp: 2, trustProxy: true }, ['a', 'a', 'a', 'b', 'b'], [101, 101, 429, 101, 101]],
+      [{ maxConnsPerIp: 2, maxConns: 3, trustProxy: true }, ['a', 'b', 'c', 'd'], [101, 101, 101, 429]],
+      [{ maxConnsPerIp: 1, trustProxy: true }, ['2001:db8::1', '2001:db8:0:0:ffff::2', '2001:db8:0:1::1'], [101, 429, 101]],
+    ];
+    for (const [options, ips, want] of cases) {
+      relay = await startRelay({ port: 0, ...options });
+      const got = [];
+      for (const ip of ips) got.push(await dial({ 'X-Real-IP': ip }));
+      expect(got.map((g) => g.status), JSON.stringify(options)).toEqual(want);
+      // A connection that ends frees its place, also one that never said hello.
+      const refused = want.lastIndexOf(429);
+      if (refused >= 0) {
+        got[refused - 1].ws.close();
+        await tick();
+        expect((await dial({ 'X-Real-IP': ips[refused] })).status, JSON.stringify(options)).toBe(101);
+      }
+      await relay!.close();
+      relay = null;
+    }
   });
 
   it('refuses a full room, an oversized frame and a missing hello', async () => {

@@ -21,6 +21,19 @@ const DRAIN_MS = 50;
 const ACK_BYTES = 32 << 10;
 const ACK_MS = 20;
 
+// Where a connection comes from, for the limit per address: the socket's, or behind a trusted
+// proxy the `X-Real-IP` it sets. An IPv6 address counts by its /64, which one host holds whole.
+function address(req, trustProxy) {
+  const header = trustProxy ? req.headers['x-real-ip'] : undefined;
+  let ip = String((typeof header === 'string' && header.trim()) || req.socket.remoteAddress || '');
+  if (ip.startsWith('::ffff:') && ip.includes('.')) ip = ip.slice(7);
+  if (!ip.includes(':')) return ip;
+  const [head, tail = ''] = ip.split('%')[0].toLowerCase().split('::');
+  const a = head ? head.split(':') : [], b = ip.includes('::') && tail ? tail.split(':') : [];
+  const groups = [...a, ...Array(Math.max(0, 8 - a.length - b.length)).fill('0'), ...b];
+  return groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':') + '::/64';
+}
+
 /**
  * Starts a relay on `port` (0 picks a free one). `maxPeers` 0 means no limit per room;
  * `tap` sees every passed frame (tests check it holds no plain text); `lag` (tests only)
@@ -28,7 +41,7 @@ const ACK_MS = 20;
  * other. A connection that misses a `ping` round is dropped, so its client is gone within
  * two rounds. Resolves once listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, beat = 5000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, hold = 2 << 20, tap, lag } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, maxConns = 0, maxConnsPerIp = 0, trustProxy = false, beat = 5000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, hold = 2 << 20, tap, lag } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
   // Per room, each client id with the secret its first hello claimed it by, and its socket
@@ -42,7 +55,23 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
     res.writeHead(ok ? 200 : 404, { 'content-type': 'text/plain', 'access-control-allow-origin': '*' });
     res.end(ok ? 'ok' : '');
   });
-  const wss = new WebSocketServer({ server: http, path, maxPayload: maxFrame });
+  // Connections open, in all and per address, counted from the upgrade to the socket's end
+  // (before its hello too); past either limit an upgrade gets 429 and no WebSocket.
+  let open = 0;
+  const perAddress = new Map();
+  const admit = ({ req }, done) => {
+    const ip = address(req, trustProxy);
+    if ((maxConns && open >= maxConns) || (maxConnsPerIp && (perAddress.get(ip) ?? 0) >= maxConnsPerIp)) return done(false, 429);
+    open++;
+    perAddress.set(ip, (perAddress.get(ip) ?? 0) + 1);
+    req.socket.once('close', () => {
+      open--;
+      const n = perAddress.get(ip) - 1;
+      if (n) perAddress.set(ip, n); else perAddress.delete(ip);
+    });
+    done(true);
+  };
+  const wss = new WebSocketServer({ server: http, path, maxPayload: maxFrame, verifyClient: admit });
 
   const send = (ws, msg) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
   const announce = (peers, except, gone) => {
@@ -196,6 +225,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     maxPeers: env('MAX_PEERS', 6),
     maxFrame: env('MAX_FRAME', 16 << 20),
     maxRooms: env('MAX_ROOMS', 10000),
+    maxConns: env('MAX_CONNS', 2000),
+    maxConnsPerIp: env('MAX_CONNS_PER_IP', 20),
+    trustProxy: process.env.TRUST_PROXY === '1',
     beat: env('BEAT_MS', 5000),
     ping: env('PING_MS', 5000),
   });

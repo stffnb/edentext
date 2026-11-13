@@ -39,6 +39,8 @@ are off, as for the rest of the app.
 | `PORT`, `HOST` | 4390, all | where it listens |
 | `MAX_PEERS` | 6 | connections per room; the next gets `full`. Readers count, and so does a reload's second connection while the old one closes. 0 = no limit |
 | `MAX_ROOMS` | 10000 | rooms at once; a hello beyond closes with 4003 |
+| `MAX_CONNS`, `MAX_CONNS_PER_IP` | 2000, 20 | connections in all and per address (an IPv6 one by its /64), before their hello too; past either an upgrade gets HTTP 429. 0 = no limit |
+| `TRUST_PROXY` | off | `1`: the address is the `X-Real-IP` header from the proxy in front (`proxy_set_header X-Real-IP $remote_addr;`), else every connection would count as the proxy's. Set it only behind such a proxy, as anyone can send the header |
 | `MAX_FRAME` | 16 MiB | bytes per frame; browsers send at most 256 kB and split longer messages |
 | `BEAT_MS`, `PING_MS` | 5 s, 5 s | keep-alive to the browsers, which take a line silent for three beats as dead, and the ping that drops a dead line within two rounds |
 
