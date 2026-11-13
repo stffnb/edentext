@@ -84,6 +84,7 @@ retaining its readable tag.
 | `relay.image.digest` | Optional immutable `sha256:` manifest digest | `""` |
 | `relay.maxPeers` | Clients per session; `0` sets no limit | `6` |
 | `relay.maxConns`, `relay.maxConnsPerIp` | Open connections in all and per client address; `0` sets no limit | `2000`, `20` |
+| `relay.dialsPerMin` | Upgrades per client address and minute; `0` sets no limit | `60` |
 | `relay.trustedProxies` | Networks (CIDRs) of an ingress controller or load balancer in front, whose `X-Forwarded-For` nginx trusts for the client address | `[]` |
 | `relay.maxBuffered` | Bytes all receivers may hold at the relay; keep the memory limit above it | `268435456` (256 MiB) |
 | `relay.stuckMs` | A receiver holding 16 MiB this long is dropped and reconnects; `0` never | `30000` |

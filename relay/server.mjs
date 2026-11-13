@@ -45,7 +45,7 @@ function address(req, trustProxy) {
  * other. A connection that misses a `ping` round is dropped, so its client is gone within
  * two rounds. Resolves once listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, maxConns = 0, maxConnsPerIp = 0, trustProxy = false, origins = [], stuckMs = 0, maxBuffered = 0, beat = 5000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, hold = 2 << 20, tap, lag } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, maxConns = 0, maxConnsPerIp = 0, dialsPerMin = 0, trustProxy = false, origins = [], stuckMs = 0, maxBuffered = 0, beat = 5000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, hold = 2 << 20, tap, lag } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
   // Per room, each client id with the secret its first hello claimed it by, and its socket
@@ -63,13 +63,25 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
   // (before its hello too); past either limit an upgrade gets 429 and no WebSocket.
   // With `origins` given, only pages from there may connect (403 else): it keeps other web
   // pages' scripts out, not a client outside a browser, which sends what it likes.
+  // Upgrades per address are also limited per minute (a bucket of `dialsPerMin`), so a client
+  // cannot come back under ever new ids faster than the session's limits per sender allow.
   let open = 0;
   const perAddress = new Map();
+  const dials = new Map();
+  const dialled = (ip, now) => {
+    const d = dials.get(ip) ?? { n: dialsPerMin, at: now };
+    d.n = Math.min(dialsPerMin, d.n + ((now - d.at) * dialsPerMin) / 60_000);
+    d.at = now;
+    dials.set(ip, d);
+    return d;
+  };
   const allowed = new Set(origins.map((o) => o.replace(/\/+$/, '')));
   const admit = ({ req, origin }, done) => {
     if (allowed.size && !allowed.has(origin)) return done(false, 403);
     const ip = address(req, trustProxy);
     if ((maxConns && open >= maxConns) || (maxConnsPerIp && (perAddress.get(ip) ?? 0) >= maxConnsPerIp)) return done(false, 429);
+    if (dialsPerMin && dialled(ip, Date.now()).n < 1) return done(false, 429);
+    if (dialsPerMin) dials.get(ip).n--;
     open++;
     perAddress.set(ip, (perAddress.get(ip) ?? 0) + 1);
     req.socket.once('close', () => {
@@ -218,6 +230,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
   // A connection that misses a ping round is gone (a laptop lid closed, a dead network); a
   // pong is answered below the page's scripts, so a busy tab still gives one.
   const ping = setInterval(() => {
+    for (const ip of dials.keys()) if (dialled(ip, Date.now()).n >= dialsPerMin) dials.delete(ip);
     for (const ws of wss.clients) {
       // A paused sender cannot answer; it is dropped only once it reads again.
       if (ws.isPaused) continue;
@@ -257,6 +270,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     maxRooms: env('MAX_ROOMS', 10000),
     maxConns: env('MAX_CONNS', 2000),
     maxConnsPerIp: env('MAX_CONNS_PER_IP', 20),
+    dialsPerMin: env('DIALS_PER_MIN', 60),
     trustProxy: process.env.TRUST_PROXY === '1',
     origins: (process.env.ALLOWED_ORIGINS ?? '').split(/[\s,]+/).filter(Boolean),
     stuckMs: env('STUCK_MS', 30_000),

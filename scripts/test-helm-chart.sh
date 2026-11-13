@@ -82,6 +82,7 @@ assert_contains "$workdir/default.yaml" 'location /relay' 'nginx does not pass /
 assert_contains "$workdir/default.yaml" 'app.kubernetes.io/name: "edentext-relay"' 'relay pods share the web server selector'
 assert_contains "$workdir/default.yaml" 'proxy_set_header X-Real-IP \$remote_addr;' 'nginx does not tell the relay the client address'
 assert_contains "$workdir/default.yaml" 'name: TRUST_PROXY' 'the relay does not trust the address nginx passes'
+assert_contains "$workdir/default.yaml" 'name: DIALS_PER_MIN' 'the relay has no dial rate per address'
 assert_contains "$workdir/default.yaml" 'value: "268435456"' 'the relay has no buffer budget'
 assert_not_contains "$workdir/default.yaml" 'set_real_ip_from' 'nginx trusts a forwarded address by default'
 assert_not_contains "$workdir/default.yaml" 'ALLOWED_ORIGINS' 'the relay limits origins by default'
