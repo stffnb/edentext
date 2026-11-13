@@ -106,7 +106,7 @@ relay:
   # address: list its networks (CIDRs) so nginx takes the client's from X-Forwarded-For.
   trustedProxies: []
   # Bytes all receivers may hold at the relay together; keep resources.limits.memory above
-  # it plus the process itself. A receiver holding 16 MiB for stuckMs is dropped.
+  # it plus the process itself. A receiver holding 8 MiB for stuckMs is dropped.
   maxBuffered: 268435456
   stuckMs: 30000
   # Origins whose pages may connect, e.g. https://docs.example.org or app://edentext (the
