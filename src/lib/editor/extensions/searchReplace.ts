@@ -6,9 +6,12 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { Node as PmNode, Schema } from '@tiptap/pm/model';
 import { blockStyleName } from './paragraphStyle';
 import { markupView } from '../../storage/markup.svelte';
+import { highlightPlugin } from './highlights';
+import { scrollPosIntoView } from './overlay';
 import type { StyleSheet } from '../../styles/styleSheet';
 
-// Find & Replace: highlights all matches via decorations, navigates/replaces via commands.
+// Find & Replace: highlights all matches (CSS highlights, highlights.ts), navigates and
+// replaces via commands.
 // Pure editor feature — never touches the document model beyond the actual replacements.
 
 // What a search asks of a match beyond its text, and what a replacement applies to it —
@@ -80,6 +83,7 @@ interface SearchState extends SearchOptions {
   matches: Match[];
   current: number; // index into matches, or -1
   deco: DecorationSet;
+  currentDeco: DecorationSet;
 }
 
 export const searchKey = new PluginKey<SearchState>('searchReplace');
@@ -212,11 +216,14 @@ export function applyFormat(tr: Transaction, schema: Schema, from: number, to: n
   }
 }
 
-function buildDeco(doc: PmNode, matches: Match[], current: number): DecorationSet {
+function buildDeco(doc: PmNode, matches: Match[]): DecorationSet {
   if (!matches.length) return DecorationSet.empty;
-  return DecorationSet.create(doc, matches.map((m, i) =>
-    Decoration.inline(m.from, m.to, { class: i === current ? 'search-match search-match-current' : 'search-match' }),
-  ));
+  return DecorationSet.create(doc, matches.map((m) => Decoration.inline(m.from, m.to, { class: 'search-match' })));
+}
+
+function currentDeco(doc: PmNode, matches: Match[], current: number): DecorationSet {
+  const m = matches[current];
+  return m ? DecorationSet.create(doc, [Decoration.inline(m.from, m.to, { class: 'search-match-current' })]) : DecorationSet.empty;
 }
 
 // First match at/after the cursor (wraps to the first match), or -1 when none.
@@ -226,7 +233,7 @@ function pickCurrent(matches: Match[], selFrom: number): number {
   return i === -1 ? 0 : i;
 }
 
-const EMPTY: SearchState = { term: '', matchCase: false, wholeWord: false, useRegex: false, format: {}, matches: [], current: -1, deco: DecorationSet.empty };
+const EMPTY: SearchState = { term: '', matchCase: false, wholeWord: false, useRegex: false, format: {}, matches: [], current: -1, deco: DecorationSet.empty, currentDeco: DecorationSet.empty };
 
 // Match count + current index for the toolbar UI (FindReplaceBar.svelte).
 export function getSearchState(state: EditorState): { count: number; current: number; term: string } {
@@ -241,18 +248,9 @@ export function searchMatches(state: EditorState): { matches: readonly { from: n
 }
 
 // ProseMirror scrolls a selection into view only while the editor owns the DOM selection,
-// and the find bar keeps the focus in its input — so the match's own element is scrolled
-// here, and only when it isn't comfortably inside its scroller, as both dialogs do.
+// and the find bar keeps the focus in its input — so the match is scrolled here.
 function scrollTo(view: EditorView, pos: number): void {
-  const { node } = view.domAtPos(Math.min(pos, view.state.doc.content.size));
-  const el = (node.nodeType === 1 ? node : node.parentElement) as HTMLElement | null;
-  if (!el) return;
-  let port = el.parentElement;
-  while (port && port.scrollHeight <= port.clientHeight) port = port.parentElement;
-  const box = el.getBoundingClientRect();
-  const within = port ? port.getBoundingClientRect() : new DOMRect(0, 0, innerWidth, innerHeight);
-  const pad = Math.min(80, within.height / 4);
-  if (box.top < within.top + pad || box.bottom > within.bottom - pad) el.scrollIntoView({ block: 'center' });
+  scrollPosIntoView(view, Math.min(pos, view.state.doc.content.size));
 }
 
 function moveCurrent(state: EditorState, dispatch: ((tr: Transaction) => void) | undefined, view: EditorView, dir: 1 | -1): boolean {
@@ -334,22 +332,21 @@ export const SearchReplace = Extension.create<{ sheet: () => StyleSheet }>({
             if (set) {
               const matches = findMatches(newState.doc, buildSearchRegex(set.term, set.matchCase, set.wholeWord, set.useRegex), set.format);
               const current = pickCurrent(matches, newState.selection.from);
-              return { ...set, matches, current, deco: buildDeco(newState.doc, matches, current) };
+              return { ...set, matches, current, deco: buildDeco(newState.doc, matches), currentDeco: currentDeco(newState.doc, matches, current) };
             }
             const cur = tr.getMeta(SET_CURRENT) as number | undefined;
-            if (cur !== undefined) return { ...old, current: cur, deco: buildDeco(newState.doc, old.matches, cur) };
+            if (cur !== undefined) return { ...old, current: cur, currentDeco: currentDeco(newState.doc, old.matches, cur) };
             if (tr.docChanged && (old.term || hasFormat(old.format))) {
               const matches = findMatches(newState.doc, buildSearchRegex(old.term, old.matchCase, old.wholeWord, old.useRegex), old.format);
               const current = pickCurrent(matches, newState.selection.from);
-              return { ...old, matches, current, deco: buildDeco(newState.doc, matches, current) };
+              return { ...old, matches, current, deco: buildDeco(newState.doc, matches), currentDeco: currentDeco(newState.doc, matches, current) };
             }
             return old;
           },
         },
-        props: {
-          decorations(state) { return searchKey.getState(state)?.deco; },
-        },
       }),
+      highlightPlugin('search-match', (state) => searchKey.getState(state)?.deco),
+      highlightPlugin('search-match-current', (state) => searchKey.getState(state)?.currentDeco, 1),
     ];
   },
 

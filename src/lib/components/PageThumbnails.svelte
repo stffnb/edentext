@@ -6,6 +6,7 @@
   import { styleSheet } from '../styles/sheet.svelte';
   import { alignStrip, flowRange, stripOf, type PageBox } from '../utils/pageStrip';
   import { t } from '../i18n/i18n.svelte';
+  import { HIGHLIGHTS } from '../editor/extensions/highlights';
 
   // The navigator's pages: each sheet as a small live copy of the page, a click shows it.
   // Only the tiles in view exist, and each copies only its own page's blocks, so a tile
@@ -85,7 +86,8 @@
   // `version` counts settled layouts; a copy of an older one still shows until its tile
   // is redone, so an edit never blanks the list.
   let version = 0;
-  const cache = new Map<number, { version: number; el: HTMLElement }>();
+  type Copy = { version: number; el: HTMLElement; marks: StaticRange[] };
+  const cache = new Map<number, Copy>();
   const hosts = new Map<number, HTMLElement>();
   let pump = 0;
 
@@ -105,7 +107,47 @@
     return numbered.labels;
   }
 
-  function copyPage(page: number): HTMLElement | null {
+  // The live page paints its search matches as CSS highlights, which a copy of its DOM
+  // does not carry: each copy gets its own ranges over the copied text.
+  const marked = HIGHLIGHTS ? CSS.highlights.get('search-match-thumb') ?? new Highlight() : null;
+  if (marked) CSS.highlights.set('search-match-thumb', marked);
+  const unmark = (entry: Copy | undefined) => { for (const r of entry?.marks ?? []) marked?.delete(r); };
+
+  function markHits(blocks: HTMLElement[], copy: HTMLElement): StaticRange[] {
+    if (!marked || !editor || !hits.length || !blocks.length) return [];
+    const view = editor.view;
+    const copies = [...copy.querySelector('.tiptap')!.children].filter((el) => !el.hasAttribute('data-strip-top'));
+    if (copies.length !== blocks.length) return [];
+    const index = new Map<Node, number>(blocks.map((b, i) => [b, i]));
+    const inCopy = (node: Node, offset: number) => {
+      const path: number[] = [];
+      for (; !index.has(node); node = node.parentNode!) {
+        if (!node.parentNode) return null;
+        path.push(Array.prototype.indexOf.call(node.parentNode.childNodes, node));
+      }
+      let at: Node | undefined = copies[index.get(node)!];
+      for (let k = path.length - 1; k >= 0 && at; k--) at = at.childNodes[path[k]];
+      return at ? { node: at, offset } : null;
+    };
+    const copyAt = (pos: number) => { const { node, offset } = view.domAtPos(pos); return inCopy(node, offset); };
+    let from: number, to: number;
+    try {
+      from = view.posAtDOM(blocks[0], 0) - 1;
+      to = view.posAtDOM(blocks[blocks.length - 1], blocks[blocks.length - 1].childNodes.length) + 1;
+    } catch { return []; }
+    const out: StaticRange[] = [];
+    for (const m of hits) {
+      if (m.to < from || m.from > to) continue;
+      const a = copyAt(m.from), b = a && copyAt(m.to);
+      if (!a || !b) continue;
+      const r = new StaticRange({ startContainer: a.node, startOffset: a.offset, endContainer: b.node, endOffset: b.offset });
+      marked.add(r);
+      out.push(r);
+    }
+    return out;
+  }
+
+  function copyPage(page: number): Copy | null {
     const paper = editor?.view.dom.closest<HTMLElement>('.paper');
     const box = pages[page - 1];
     if (!paper || !box) return null;
@@ -136,7 +178,7 @@
     copy.style.transform = `translate(${-box.left}px, ${-top}px)`;
     copy.querySelectorAll('[contenteditable]').forEach((el) => el.setAttribute('contenteditable', 'false'));
     copy.querySelectorAll('[id]').forEach((el) => el.removeAttribute('id'));
-    return copy;
+    return { version, el: copy, marks: markHits(blocks, copy) };
   }
 
   function place(page: number, el: HTMLElement) {
@@ -146,12 +188,13 @@
     alignStrip(el);
   }
 
-  function remember(page: number, entry: { version: number; el: HTMLElement }) {
+  function remember(page: number, entry: Copy) {
+    unmark(cache.get(page));
     cache.delete(page);
     cache.set(page, entry);
     for (const key of cache.keys()) {
       if (cache.size <= CACHE) break;
-      if (!hosts.has(key)) cache.delete(key);
+      if (!hosts.has(key)) { unmark(cache.get(key)); cache.delete(key); }
     }
   }
 
@@ -175,10 +218,10 @@
       const until = performance.now() + PER_FRAME_MS;
       for (const page of stale) {
         if (performance.now() > until) break;
-        const el = copyPage(page);
-        if (!el) continue;
-        remember(page, { version, el });
-        place(page, el);
+        const entry = copyPage(page);
+        if (!entry) continue;
+        remember(page, entry);
+        place(page, entry.el);
       }
       if (stale.some((p) => cache.get(p)?.version !== version)) schedule();
     });
@@ -273,6 +316,7 @@
     clearTimeout(idle);
     cancelAnimationFrame(pump);
     cancelAnimationFrame(frame);
+    for (const entry of cache.values()) unmark(entry);
     cache.clear();
   });
 

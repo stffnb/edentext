@@ -19,7 +19,7 @@ import { deriveFilename } from '../storage/documentName';
 import { desktopPrintToPdf } from '../storage/desktopFiles';
 import { saveDocument } from './saveFile';
 import { alignStrip, stripOf } from '../utils/pageStrip';
-import { BAR_STRIP_CM, commentListHtml, markReviewBlocks, printedComments, reviewPrintCss, type CommentLabels, type PrintedComment } from './reviewPrint';
+import { BAR_STRIP_CM, commentListHtml, esc, markReviewBlocks, printedComments, reviewPrintCss, type CommentLabels, type PrintedComment } from './reviewPrint';
 
 const DEFAULT_COMMENT_LABELS: CommentLabels = { heading: 'Comments', onPage: (n) => `Page ${n}` };
 import globalCss from '../../styles/global.css?inline';
@@ -578,7 +578,7 @@ img.pg:last-child { break-after: auto; page-break-after: auto; }
   const idoc = iframe.contentDocument!;
   idoc.open();
   idoc.write(
-    `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>` +
+    `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>` +
     `<style>${css}</style></head><body>${body}</body></html>`,
   );
   idoc.close();
@@ -817,7 +817,7 @@ function printHtml(opts: PrintPdfOptions): { html: string; title: string } {
   const list = comments.length ? commentListHtml(comments, o.commentLabels ?? DEFAULT_COMMENT_LABELS) : '';
 
   const html =
-    `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${title}</title>` +
+    `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>${esc(title)}</title>` +
     `<style>${globalCss}\n${editorCss}\n${printCss(o, review)}</style></head>` +
     `<body><div class="paper"${o.markupAttrs ?? ''}><div class="tiptap">${host.innerHTML}</div>${list}</div></body></html>`;
   return { html, title };

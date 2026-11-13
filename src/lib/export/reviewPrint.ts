@@ -103,7 +103,7 @@ export function markReviewBlocks(root: HTMLElement): boolean {
   return marked;
 }
 
-const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] ?? c));
+export const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] ?? c));
 
 
 /** The comment bodies, after the document: what the margin bar cannot carry. */
