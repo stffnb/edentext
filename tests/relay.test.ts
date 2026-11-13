@@ -126,6 +126,47 @@ describe('collaboration relay', () => {
     c.ws.close();
   });
 
+  it('drops a receiver that reads nothing for too long, and the one furthest behind past the budget', async () => {
+    const frame = Buffer.alloc(64 << 10);
+    relay = await startRelay({ port: 0, backlog: 256 << 10, hold: 64 << 10, stuckMs: 300 });
+    const a = await join(ROOM_A, 1), b = await join(ROOM_A, 2), c = await join(ROOM_A, 3);
+    b.ws.pause();
+    for (let i = 0; i < 400; i++) a.ws.send(frame);
+    const gone = () => a.text.some((m) => m.gone === 2);
+    for (let i = 0; i < 40 && !gone(); i++) await tick();
+    expect(gone()).toBe(true);
+    // The sender held back for it reads again, and the others get everything.
+    for (let i = 0; i < 100 && c.bin.length < 400; i++) await tick();
+    expect(c.bin.length).toBe(400);
+    expect(a.text).toContainEqual({ t: 'drained', id: 2 });
+    for (const x of [a, c]) x.ws.close();
+    b.ws.terminate();
+    await relay!.close();
+
+    // Three rooms whose receivers read nothing, each sender flooding: together they stay near the budget.
+    const budget = 600 << 10;
+    relay = await startRelay({ port: 0, backlog: 256 << 10, hold: 64 << 10, maxBuffered: budget });
+    const pairs = [];
+    for (const room of [ROOM_A, ROOM_B, 'cccccccccccccccccccccc']) {
+      const s = await join(room, 1), r = await join(room, 2);
+      r.ws.pause();
+      pairs.push([s, r]);
+    }
+    for (let i = 0; i < 100; i++) for (const [s] of pairs) s.ws.send(frame);
+    let most = 0, dropped = 0;
+    for (let i = 0; i < 50; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+      let sum = 0;
+      for (const room of relay!.rooms.values()) for (const w of room as Set<WebSocket>) sum += w.bufferedAmount;
+      most = Math.max(most, sum);
+    }
+    for (const room of relay!.rooms.values()) dropped += 2 - room.size;
+    expect(most).toBeLessThan(budget + (256 << 10));
+    expect(dropped).toBeGreaterThanOrEqual(1);
+    expect(pairs.every(([s]) => s.ws.readyState === WebSocket.OPEN)).toBe(true);
+    for (const [s, r] of pairs) { s.ws.close(); r.ws.terminate(); }
+  });
+
   it('keeps an id for the hello that claimed it first, also after its client left', async () => {
     relay = await startRelay({ port: 0 });
     const a = await join(ROOM_A, 1), b = await join(ROOM_A, 2);

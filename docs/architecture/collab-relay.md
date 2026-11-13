@@ -41,14 +41,16 @@ are off, as for the rest of the app.
 | `MAX_ROOMS` | 10000 | rooms at once; a hello beyond closes with 4003 |
 | `MAX_CONNS`, `MAX_CONNS_PER_IP` | 2000, 20 | connections in all and per address (an IPv6 one by its /64), before their hello too; past either an upgrade gets HTTP 429. 0 = no limit |
 | `TRUST_PROXY` | off | `1`: the address is the `X-Real-IP` header from the proxy in front (`proxy_set_header X-Real-IP $remote_addr;`), else every connection would count as the proxy's. Set it only behind such a proxy, as anyone can send the header |
-| `MAX_FRAME` | 16 MiB | bytes per frame; browsers send at most 256 kB and split longer messages |
+| `MAX_FRAME` | 1 MiB | bytes per frame; browsers send at most 256 kB and split longer messages |
+| `STUCK_MS` | 30 s | a receiver that holds more than 16 MiB this long reads nothing and is dropped; its browser dials again. 0 = never |
+| `MAX_BUFFERED` | 256 MiB | what all receivers hold together; past it the one furthest behind is dropped until the rest fit. The memory limit of the relay's host or pod must lie above this plus about `MAX_CONNS` × `MAX_FRAME` and the process itself. 0 = no limit |
 | `BEAT_MS`, `PING_MS` | 5 s, 5 s | keep-alive to the browsers, which take a line silent for three beats as dead, and the ping that drops a dead line within two rounds |
 
 A receiver on a slow line holds about 2 MiB at the relay: beyond that the relay tells the
 others it is `slow`, and they hold back the pictures for it until it is `drained`, while their
 typing still goes through. The relay itself stays blind (it keeps reading every sender and
 cannot tell a picture from a keystroke); for a client that ignores the message it stops reading
-that sender once a receiver holds 16 MiB, so memory stays bounded per room (`relay/CLAUDE.md`).
+that sender once a receiver holds 16 MiB, so memory stays bounded per room, and it drops a receiver stuck there (`STUCK_MS`) or the one furthest behind once all hold `MAX_BUFFERED` (`relay/CLAUDE.md`).
 Each sender also hears how many of its bytes arrived (`got`, at once per 32 kB, else after
 20 ms), so it can pace its pictures by its own uplink. All three messages are optional, so
 they need no new protocol version.
