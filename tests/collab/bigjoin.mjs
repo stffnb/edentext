@@ -1,6 +1,6 @@
 // Big-document join bench, not part of test:collab: A builds ~150 generated pages with 25 noise
 // pictures (49 MB), B (and C) join; prints one JSON line of timings. Rows and method:
-// docs/architecture/collab-perf.md. Env: SCEN, NET, THROTTLE, THIRD, TYPING, LIMIT, BIGJOIN_PORT/_OUT.
+// docs/architecture/collab-perf.md. Env: SCEN, NET, THROTTLE, THIRD, VIEW, TYPING, LIMIT, BIGJOIN_PORT/_OUT.
 import net from 'node:net';
 import { appendFileSync } from 'node:fs';
 import { devServer, openApp, settle } from '../browser.mjs';
@@ -12,6 +12,8 @@ const SCEN = process.env.SCEN ?? 'S1';
 const NET = process.env.NET ?? 'none';
 const THROTTLE = process.env.THROTTLE ?? 'proxy';
 const THIRD = +(process.env.THIRD ?? 0);
+// VIEW=0.5: as soon as its text shows, the joiner looks at the picture that far down the list.
+const VIEW = +(process.env.VIEW ?? 0);
 const TYPING = process.env.TYPING === '1';
 const GEN = process.env.GEN === '1';
 const CHAPTERS = +(process.env.CHAPTERS ?? 84);
@@ -106,6 +108,11 @@ const milestones = (target) => {
       mark('editor');
       const d = ed.state.doc;
       if (d.childCount > 20) mark('firstText');
+      if (target.view && P.t.allText && !P.viewed) {
+        P.viewed = Date.now();
+        const pics = document.querySelectorAll('.tiptap-host .tiptap img');
+        pics[Math.floor(target.view * pics.length)]?.scrollIntoView({ block: 'center' });
+      }
       if (d.lastChild?.textContent.includes('END-OF-DOCUMENT') || d.textBetween(Math.max(0, d.content.size - 400), d.content.size).includes('END-OF-DOCUMENT')) mark('allText');
     }
     if (window.__collab?.view()?.status === 'live') mark('live');
@@ -115,7 +122,9 @@ const milestones = (target) => {
     if (target.pics && imgs >= target.pics) mark('allPics');
     // The screen is complete once text shows and no picture in view still waits.
     const inView = (el) => { const r = el.getBoundingClientRect(); return r.width && r.bottom > 0 && r.top < innerHeight; };
-    if (P.t.firstText && ![...document.querySelectorAll('.tiptap-host .image-waiting')].some(inView)) mark('screen');
+    const waitingInView = [...document.querySelectorAll('.tiptap-host .image-waiting')].some(inView);
+    if (waitingInView) mark('waitSeen');
+    if (P.t.firstText && (!target.view || Date.now() - P.viewed > 300) && !waitingInView) mark('screen');
     const pages = +(/of (\d+)/.exec(document.querySelector('.statusbar')?.textContent ?? '')?.[1] ?? 0);
     if (target.pages && pages >= target.pages) mark('pages');
   }, 100);
@@ -329,7 +338,7 @@ const heap = async (page) => {
   return Math.round(metrics.find((m) => m.name === 'JSHeapUsedSize').value / 1048576);
 };
 
-const res = { tag: process.env.TAG, scen: SCEN, net: NET, throttle: THROTTLE, third: THIRD };
+const res = { tag: process.env.TAG, scen: SCEN, net: NET, throttle: THROTTLE, third: THIRD, view: VIEW };
 try {
   const { a, info, pages } = await startA();
   Object.assign(res, { pages, pics: info.pics, picMB: +(info.picBytes / 1048576).toFixed(1), picSizesKB: info.sizes });
@@ -350,7 +359,7 @@ try {
   log(`session live after ${sh.startMs} ms; snapshot ${res.snapshotMB} MB`);
   await a.waitForTimeout(1500);
   const aId = await a.evaluate(() => window.__collab.session.me);
-  const target = { pics: NPICS, pages: await pagesOf(a) };
+  const target = { pics: NPICS, pages: await pagesOf(a), view: VIEW };
 
   // A types a '#' every 700 ms while the others join: when does each reach the relay?
   phase = 'join';

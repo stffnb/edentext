@@ -27,28 +27,35 @@ appends it to a file).
 - The starter types `#` every 700 ms throughout. `aKeyLive` is the time from its keydown to
   its next small frame at the relay, leaving out keys typed while it was alone (nothing goes
   to an empty room, so those wait for a joiner); `aKeySlow` lists keys over 500 ms.
-- `B`/`C`: seconds from opening the link to `firstText` (over 20 blocks shown), `allPics`,
-  `live`, plus long tasks; `aLong` is the starter's; `relay.maxBufferedMB` the relay's
-  buffered bytes over all sockets, sampled every 100 ms.
+- `VIEW=0.5`: once the text is in, the joiner scrolls to the picture that far down the list,
+  as a reader opening the link and jumping into the middle would.
+- `B`/`C`: seconds from opening the link to `firstText` (over 20 blocks shown), `screen` (text
+  shown and no grey box in view), `allPics`, `live`, plus long tasks; `aLong` is the
+  starter's; `relay.maxBufferedMB` the relay's buffered bytes over all sockets, sampled every
+  100 ms.
 
-Rows below: `SCEN=S1 NET=10`, `SCEN=S2 NET=10 THIRD=5000 LIMIT=200000` and
-`SCEN=S2 NET=none THIRD=5000`, each run once with `npm run bench:bigjoin` and the variables in
-front. Machine: Apple M1, 8 GB, macOS 15.7, Node 26, Chromium 156 (Playwright), 2026-11-12,
-nothing else running in a browser. Runs vary by about ±0.3 s in the keystroke times.
+Each row is one run of `npm run bench:bigjoin` with the variables named in it (`S2 10 +C` is
+`SCEN=S2 NET=10 THIRD=5000 LIMIT=200000`). Machine: Apple M1, 8 GB, macOS 15.7, Node 26,
+Chromium 156 (Playwright), nothing else running in a browser; "now" measured 2026-11-13.
+Runs vary by about ±0.3 s in the keystroke times and by several seconds in a third joiner's.
 
-| | before | lanes | now |
+| | before | parts 1–4 | now |
 |---|---|---|---|
-| joiner sees text, pictures in the start file (S1 10) | 47.9 s | 48.7 s | 1.9 s (pictures 45 s) |
-| start file in the shared doc (S1) | 49 MB | 49 MB | 0.02 MB |
-| third joiner gets all pictures (S2 10) | 3 of 25 | 25 in 71 s | 25 in 74 s |
-| starter's keystroke to relay while sending, p50 / p95 (S2 10) | 0.04 / 28.3 s | 0.6 / 1.0 s | 0.4 / 0.8 s |
-| same while answering a start file (S1 10) | 19.3 / 39.3 s | 0.4 / 1.3 s | 0.4 / 0.9 s |
-| same, unthrottled, p95 (S2 none) | 0.3 s | 3.5 s | 0.1 s |
-| starter's longest task, start file / sending | 2.4 / 2.9 s | 1.7 / 0.5 s | 0.3 / 0.3 s |
-| relay's buffer, unthrottled (S2 none) | 47 MB | 16 MB | 2.5 MB |
+| joiner sees text (S1 10) | 47.9 s | 1.9 s | 1.8 s |
+| joiner looking at the middle sees its screen complete (S1 10, `VIEW=0.5`) | 47.9 s | 25.2 s | 3.9 s |
+| joiner has all pictures (S1 10 / S1 40 / S1 none) | 47.9 s | 45 s | 45.0 / 12.7 / 7.2 s |
+| start file in the shared doc (S1) | 49 MB | 0.02 MB | 0.02 MB |
+| second / third joiner has all pictures (S2 10 +C) | – / 3 of 25 | 45 / 74 s | 80 / 76 s |
+| same, unthrottled (S2 none +C) | – | 7.9 / 14.2 s | 7.5 / 8.1 s |
+| starter's keystroke to relay while sending, p50 / p95 (S2 10 +C) | 0.04 / 28.3 s | 0.42 / 0.83 s | 0.07 / 0.15 s |
+| same while answering joiners' asks (S1 10) | 19.3 / 39.3 s | 0.41 / 0.86 s | 0.05 / 0.14 s |
+| same, p95, at 40 Mbit/s / unthrottled (S1 40 / S2 none +C) | – / 0.3 s | – / 0.06 s | 0.15 / 0.05 s |
+| starter's longest task, start file / sending | 2.4 / 2.9 s | 0.3 / 0.3 s | 0.3 / 0.3 s |
+| relay's buffer, unthrottled (S2 none +C) | 47 MB | 2.5 MB | 2.9 MB |
 
-"before" is `integrate/collab` at `ba11ca24`; "lanes" adds the two-lane channel and the asks
-that wait; "now" adds `slow`/`drained`, the start file without pictures and WebCrypto. The
-"lanes" 3.5 s mostly counted keys typed while alone. At 10 Mbit/s what remains of a
-keystroke's wait lies below the page (socket buffers and the proxy's queue); pacing pictures
-by measured rate would be the next step.
+"before" is `integrate/collab` at `ba11ca24`; "parts 1–4" adds the two-lane channel, asks that
+wait, `slow`/`drained`, the start file without pictures and WebCrypto (`e43ce407`); "now" adds
+pacing by the relay's receipts (`got`) and asks nearest the view first. The 25.2 s is "now"
+with the old asks (all at once, in document order). At 10 Mbit/s the second and third joiner
+share the starter's uplink, so the second now finishes with the third instead of first; both
+need twice 49 MB through 1.25 MB/s.
