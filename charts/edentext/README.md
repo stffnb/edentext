@@ -87,7 +87,7 @@ retaining its readable tag.
 | `relay.dialsPerMin` | Upgrades per client address and minute; `0` sets no limit | `60` |
 | `relay.trustedProxies` | Networks (CIDRs) of an ingress controller or load balancer in front, whose `X-Forwarded-For` nginx trusts for the client address | `[]` |
 | `relay.maxBuffered` | Bytes all receivers may hold at the relay; keep the memory limit above it | `268435456` (256 MiB) |
-| `relay.stuckMs` | A receiver holding 16 MiB this long is dropped and reconnects; `0` never | `30000` |
+| `relay.stuckMs` | A receiver holding 8 MiB this long is dropped and reconnects; `0` never | `30000` |
 | `relay.allowedOrigins` | Origins whose pages may connect, e.g. `https://docs.example.org`, `app://edentext` for the desktop app; empty allows all | `[]` |
 | `relay.resources` | Relay requests and limits | See `values.yaml` |
 | `nodeSelector` | Pod node selector | `{}` |
