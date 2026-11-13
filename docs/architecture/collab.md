@@ -213,6 +213,16 @@ bench (`collab-perf.md`, 25 pictures of 2 MB). Most seen from one sender:
 Every message longer than 200 kB came from a writer that had answered a ping, or from the
 sync's pulled peer; the relay held at most 2.5 MiB for a receiver (join bench).
 
+Each client therefore takes these kinds from one sender (the relay's id, readers and writers
+alike) only from a bucket per kind (`RATES` in `session.ts`): `ASK`, `PULL` and `NOTHING` 5 at
+once and one more every 10 s, `PING`, `ECHO` and `VIEWER` 6 and one per 10 s, `WANT` 50 keys
+and 10 a second; that is three to six times the most measured. A frame past it is dropped
+unanswered, as are a `WANT`'s keys past it. A dropped ask leaves its sync without offers, so
+one nobody answered starts over after 10 s although others' frames keep the line busy; a
+dropped `WANT` key goes to the next client once that one sends nothing for 10 s. The buckets
+outlive a client's going, so dialling again does not refill them; 32 senders are kept, the
+oldest forgotten. Ever new ids would refill them, which the relay's `DIALS_PER_MIN` bounds.
+
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun nor in five runs on a fresh dev server and dep cache (2026-11-11): in Firefox a joiner not live within 20 s on a just-started dev server. Writers share one signing key, so it tells writers from readers, not writers apart, and a
 write link stays valid for the session. A reader can still cost the others what any participant can: asks
 (`ASK`, `PULL`, `WANT`) in a loop, each answered in full, and connections up to `MAX_PEERS`. Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.

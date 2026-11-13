@@ -44,6 +44,10 @@ const SIGNED = new Set([UPDATE, PRESENCE, OFFER, ANSWER, PICTURE, HAS, PONG, CHA
 const SQUEEZED = new Set([UPDATE, OFFER, ANSWER]); // deflated when long (`channel.ts`); pictures are packed already
 const MAX_HELD = 8;      // presence frames held per peer until it answers a ping
 const MAX_KNOWN = 32;     // readers listed, and writers awaiting a ping
+// What anyone in the room may ask of this client, per sender and kind: so many at once and so
+// many more per second (WANT counts its keys), a few times what an honest client sends
+// (`collab.md`, Limits). Past that a frame is dropped; its sender's stall logic asks again.
+const RATES = new Map([[ASK, [5, 0.1]], [PULL, [5, 0.1]], [NOTHING, [5, 0.1]], [PING, [6, 0.1]], [ECHO, [6, 0.1]], [VIEWER, [6, 0.1]], [WANT, [50, 10]]]);
 const BATCH_MS = 50;
 // Arriving edits apply at once while the last batch, with the page layout it set off, took
 // under CHEAP_MS; dearer ones gather for twice their cost, BATCH_MS to MAX_BATCH_MS.
@@ -324,6 +328,23 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   // The relay's `gone` drops a client at once; one that went while this line was down is
   // never announced. Knowing more clients than the relay counts, each is pinged afresh and
   // those not answering go, so a reconnected tab keeps no departed peer's caret or zone.
+  // Kept past a client's going (it may dial again at once); the oldest goes past MAX_KNOWN.
+  const spent = new Map<number, Map<number, { n: number; at: number }>>();
+  const spend = (from: number, kind: number, want: number) => {
+    const [most, rate] = RATES.get(kind)!;
+    let mine = spent.get(from);
+    if (!mine) {
+      if (spent.size >= MAX_KNOWN) spent.delete(spent.keys().next().value!);
+      spent.set(from, (mine = new Map()));
+    }
+    const now = Date.now(), b = mine.get(kind) ?? { n: most, at: now };
+    b.n = Math.min(most, b.n + ((now - b.at) * rate) / 1000);
+    b.at = now;
+    mine.set(kind, b);
+    const n = Math.min(want, Math.floor(b.n));
+    b.n -= n;
+    return n;
+  };
   const drop = (p: number) => {
     pictures.forget(p);
     live.delete(p);
@@ -468,7 +489,10 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     endRound();
     if (peerCount <= 1) return;
     const r: Round = round = { offers: new Map(), idle: new Set(), pulled: new Set(), target: null, deletes: [], done: false, over: false, at: Date.now() };
-    r.watch = setInterval(() => { if (!r.over && Date.now() - Math.max(r.at, channel.heard()) > STALL_MS) startRound(); }, 1000);
+    // Others' traffic keeps `heard` fresh, so an ask nobody answered (dropped by their limits)
+    // also starts over after STALL_MS.
+    const unheard = () => !r.offers.size && !r.idle.size && Date.now() - r.at > STALL_MS;
+    r.watch = setInterval(() => { if (!r.over && (Date.now() - Math.max(r.at, channel.heard()) > STALL_MS || unheard())) startRound(); }, 1000);
     send(ASK, me);
   };
   // One update to all with what the offers lack, edits pulled from others included, so a
@@ -521,6 +545,12 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     const kind = plain[0], v = new DataView(plain.buffer, plain.byteOffset, plain.byteLength);
     const at = FROM_AT.get(kind);
     if (at !== undefined && v.getUint32(at) !== from) return;
+    if (RATES.has(kind)) {
+      const keys = kind === WANT ? [...new Set(dec.decode(plain.subarray(9)).split(','))] : null;
+      const n = spend(from, kind, keys?.length ?? 1);
+      if (!n) return;
+      if (keys && n < keys.length) plain = frame(WANT, v.getUint32(1), from, enc.encode(keys.slice(0, n).join(',')));
+    }
     if (kind === UPDATE) receive(plain.subarray(1));
     else if (kind === CHAT || kind === SAY) chat(kind, from, plain.subarray(1));
     else if (pictures.receive(plain, from)) return;
