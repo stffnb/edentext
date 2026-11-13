@@ -1239,7 +1239,7 @@ try {
   // box and says so, and stays live. The one who left has the picture in its own copy.
   await a.evaluate(() => {
     const send = WebSocket.prototype.send;
-    WebSocket.prototype.send = function (d) { if ((d.byteLength ?? d.length) < 200_000) return send.call(this, d); };
+    WebSocket.prototype.send = function (d) { if ((d.byteLength ?? d.length) < 30_000) return send.call(this, d); };
   });
   await photo(a);
   await g.waitForSelector('.tiptap-host .tiptap .image-waiting', { timeout: 10_000 }).catch(() => {});
@@ -1287,7 +1287,7 @@ try {
     const got = [await all(iv), await all(jo)];
     const gaps = [await iv.evaluate(() => window.__collab.view().missing), await jo.evaluate(() => window.__collab.view().missing)];
     stall.rate = 0;
-    check(alone < 200_000 && quick < 1500 && loading < 4 && serving > 0 && got.every(Boolean) && gaps.join() === '0,0',
+    check(alone < 200_000 && quick < 1000 && loading < 4 && serving > 0 && got.every(Boolean) && gaps.join() === '0,0',
       `start file and pictures put in alone take ${alone} bytes; on a slow line typing arrives in ${quick} ms while the joiner shows ${loading} of 4 and the starter serves ${serving}, and a third joining meanwhile gets all (${got}, missing ${gaps})`);
     for (const p of [h, iv, jo]) await p.context().close();
   }

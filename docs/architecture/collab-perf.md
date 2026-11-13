@@ -7,7 +7,7 @@ change can be compared with them. Design: `collab.md`, `collab-pictures.md`, `co
 |---|---|---|
 | Joining a big document, typing while pictures go out | `npm run bench:bigjoin` | below |
 | How typing feels with several writers, viewer page breaks | `node tests/collab/fluency.mjs` | `collab-soak.md`, "How typing feels" |
-| Typing on a slow line while a joiner loads (pass/fail, < 1.5 s) | `tests/collab/session.mjs` | its check output |
+| Typing on a slow line while a joiner loads (pass/fail, < 1 s) | `tests/collab/session.mjs` | its check output |
 
 ## Big-document join
 
