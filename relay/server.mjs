@@ -16,6 +16,10 @@ const MAX_IDS = 256;
 // pictures wait until it is `drained` (half of it); past `backlog` the relay stops reading the
 // sender that filled it, a cap for a client that ignores the announcement.
 const DRAIN_MS = 50;
+// Each sender hears how many of its binary bytes arrived (`got`), at once past ACK_BYTES, else
+// after ACK_MS, so it can keep little in flight on a slow uplink (`channel.ts`).
+const ACK_BYTES = 32 << 10;
+const ACK_MS = 20;
 
 /**
  * Starts a relay on `port` (0 picks a free one). `maxPeers` 0 means no limit per room;
@@ -69,6 +73,13 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
       from.resume();
     }, DRAIN_MS);
   };
+  const receipt = (ws) => { ws.ackTimer = undefined; if (ws.got !== ws.acked) send(ws, { t: 'got', n: (ws.acked = ws.got) }); };
+  const counted = (ws, n) => {
+    ws.got = (ws.got ?? 0) + n;
+    if (ws.got - (ws.acked ?? 0) < ACK_BYTES) { ws.ackTimer ??= setTimeout(receipt, ACK_MS, ws); return; }
+    clearTimeout(ws.ackTimer);
+    receipt(ws);
+  };
   const pass = (from, to, data) => {
     const ms = lag?.() ?? 0;
     if (!ms && !from.due?.get(to)) return deliver(from, to, data);
@@ -114,6 +125,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
         return;
       }
       if (!binary) return;
+      counted(ws, data.length);
       tap?.(data);
       if (data.length < 4) return;
       // The receiver in front makes way for the sender, which no client can forge.
@@ -129,6 +141,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
 
     ws.on('close', () => {
       clearTimeout(timer);
+      clearTimeout(ws.ackTimer);
       const peers = room && rooms.get(room);
       if (!peers) return;
       peers.delete(ws);

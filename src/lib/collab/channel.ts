@@ -62,17 +62,25 @@ const LOW = 128 << 10;
 const HIDDEN_LOW = 4 << 20;
 const POLL = 10;
 const MAX_QUEUE = 256;
+// A relay that says what arrived (`got`) paces pictures by the measured uplink rate: no more
+// than AHEAD ms of them beyond the round trip are in flight, so a keystroke waits at most that.
+const AHEAD = 150;
+const MIN_FLIGHT = 64 << 10;
+const MIN_CHUNK = 32 << 10;
+const RATE_MS = 50;
+const MAX_MARKS = 1024;
 
 /** A message as envelopes of at most `size` bytes: whole, or numbered parts under a random id, each made when asked for. */
-function cut(plain: Uint8Array, size: number): { count: number; at(i: number): Uint8Array } {
+function cut(plain: Uint8Array, size: number): { count: number; size: number; at(i: number): Uint8Array } {
   if (plain.length + 1 <= size) {
-    return { count: 1, at: () => { const out = new Uint8Array(plain.length + 1); out.set(plain, 1); return out; } };
+    return { count: 1, size, at: () => { const out = new Uint8Array(plain.length + 1); out.set(plain, 1); return out; } };
   }
   const room = size - PART_HEAD;
   const count = Math.ceil(plain.length / room);
   const id = crypto.getRandomValues(new Uint8Array(8));
   return {
     count,
+    size,
     at(i) {
       const data = plain.subarray(i * room, (i + 1) * room);
       const out = new Uint8Array(PART_HEAD + data.length);
@@ -194,6 +202,28 @@ export function openChannel(o: Options): Channel {
   const skip = (m: Out) => m.to === 0 && peers === 1;
   let out: Promise<unknown> = Promise.resolve(), inbound: Promise<unknown> = Promise.resolve();
   let busy = false;
+  // Bytes this socket sent and the relay confirmed, the uplink rate in bytes/ms while the bulk
+  // lane kept it busy, and the shortest round trip seen.
+  let sent = 0, acked = 0, acking = false, rate = 0, base = Infinity, since = 0, sinceAt = 0;
+  const marks: [number, number][] = [];
+  const flight = () => Math.max(MIN_FLIGHT, rate * (AHEAD + (base === Infinity ? 0 : base)));
+  const chunk = () => (acking ? Math.min(size, Math.max(MIN_CHUNK, flight() / 2)) : size);
+  const receipt = (n: number) => {
+    const now = Date.now();
+    let at = 0;
+    while (marks.length && marks[0][0] <= n) at = marks.shift()![1];
+    if (at) base = Math.min(base, now - at);
+    if (!acking || !bulk.length) [since, sinceAt] = [n, now];
+    else if (now - sinceAt >= RATE_MS) {
+      const r = (n - since) / (now - sinceAt);
+      rate = rate ? (rate + r) / 2 : r;
+      [since, sinceAt] = [n, now];
+    }
+    acking = true;
+    acked = n;
+    if (wake) { clearTimeout(wake); wake = undefined; queued = false; }
+    later();
+  };
   // Sealing starts at once; the socket gets each frame after those sealed before it.
   const put = (sock: WebSocket, env: Uint8Array, to: number) => {
     const body = box.seal(env);
@@ -201,7 +231,12 @@ export function openChannel(o: Options): Channel {
       const frame = new Uint8Array(TO + b.length);
       new DataView(frame.buffer).setUint32(0, to);
       frame.set(b, TO);
-      if (sock.readyState === WebSocket.OPEN) sock.send(frame);
+      if (sock.readyState !== WebSocket.OPEN) return;
+      sock.send(frame);
+      if (sock !== ws) return;
+      sent += frame.length;
+      marks.push([sent, Date.now()]);
+      if (marks.length > MAX_MARKS) marks.shift();
     }).catch(() => {}));
   };
   const flush = () => {
@@ -219,7 +254,7 @@ export function openChannel(o: Options): Channel {
   const later = (ms = 0) => {
     if (!bulk.length || queued) return;
     queued = true;
-    if (ms) wake = setTimeout(step, ms);
+    if (ms) wake = setTimeout(() => { wake = undefined; step(); }, ms);
     else {
       if (!tick) { tick = new MessageChannel(); tick.port1.onmessage = step; }
       tick.port2.postMessage(0);
@@ -247,7 +282,10 @@ export function openChannel(o: Options): Channel {
     // A `drained` from the relay or a receiver gone wakes the lane again.
     if (!m) return;
     if (skip(m)) { bulk.splice(i, 1); m.done?.(); return later(); }
-    m.parts ??= cut(m.plain, size);
+    // A hidden tab sends no keystrokes, so it fills the line; a receipt wakes the lane.
+    const ahead = sent - acked, next = Math.min(m.plain.length + PART_HEAD, m.parts?.size ?? chunk());
+    if (acking && !hidden && ahead && ahead + next > flight()) return later(POLL * 5);
+    m.parts ??= cut(m.plain, hidden ? size : chunk());
     const last = m.next + 1 >= m.parts.count;
     if (last) bulk.splice(i, 1);
     // The next part waits for this one in the socket, so `bufferedAmount` counts it.
@@ -305,6 +343,10 @@ export function openChannel(o: Options): Channel {
           // A message cut short with the last line goes again from its start, under a new id.
           for (const m of bulk) if (m.next) { m.next = 0; m.parts = undefined; }
           slow.clear();
+          sent = acked = 0;
+          acking = false;
+          base = Infinity;
+          marks.length = 0;
           // The welcome's own frames (presence, the sync's ask) go before what waited.
           const waited = fast.splice(0);
           o.onOpen(peers);
@@ -326,6 +368,7 @@ export function openChannel(o: Options): Channel {
           }
           o.onPeers(peers, msg.gone);
         }
+        else if (msg.t === 'got' && typeof msg.n === 'number' && sock === ws) receipt(msg.n);
         else if (msg.t === 'slow' && msg.id) slow.add(msg.id);
         else if (msg.t === 'drained' && msg.id) { slow.delete(msg.id); later(); }
         else if (msg.t === 'full') { closed = true; o.onStatus('full'); }

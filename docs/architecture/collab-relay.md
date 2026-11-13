@@ -47,7 +47,9 @@ others it is `slow`, and they hold back the pictures for it until it is `drained
 typing still goes through. The relay itself stays blind (it keeps reading every sender and
 cannot tell a picture from a keystroke); for a client that ignores the message it stops reading
 that sender once a receiver holds 16 MiB, so memory stays bounded per room (`relay/CLAUDE.md`).
-Both messages are optional, so they need no new protocol version.
+Each sender also hears how many of its bytes arrived (`got`, at once per 32 kB, else after
+20 ms), so it can pace its pictures by its own uplink. All three messages are optional, so
+they need no new protocol version.
 
 App and relay speak protocol version 2 (`relay/CLAUDE.md`); against a relay of another version
 the app says it does not match the server, so update both together.

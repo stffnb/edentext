@@ -40,10 +40,14 @@ only the key; the bytes travel once to each client.
   client that was there when the picture went to everyone waits for that, which its edit
   overtakes, instead of sending the picture twice; nor does a client ask one whose message in
   parts is still coming in to it, which may be that picture.
-- Pictures travel in the channel's bulk lane (`channel.ts`): 256 kB parts, sealed one at a
-  time (WebCrypto off the page's thread where it exists) and sent only while the socket holds less than 128 kB (4 MiB in a hidden tab, whose
-  timers wake once a second). Edits, carets, pings and the sync go first, so typing never
-  waits behind a picture. A receiver the relay calls `slow` gets no part until it is
+- Pictures travel in the channel's bulk lane (`channel.ts`): parts sealed one at a time
+  (WebCrypto off the page's thread where it exists) and sent only while the socket holds less
+  than 128 kB (4 MiB in a hidden tab, whose timers wake once a second). The relay says how
+  many bytes of each sender arrived (`got`); from that the lane measures the uplink's rate and
+  shortest round trip and keeps no more than 150 ms of pictures beyond the round trip in
+  flight, in parts of half that (32–256 kB), since browser and system buffers below the page
+  would otherwise hold seconds of them. Edits, carets, pings and the sync go first, so a
+  keystroke waits behind at most that. A receiver the relay calls `slow` gets no part until it is
   `drained`; messages to others go on meanwhile, each receiver's in order.
 - A missing picture is asked of one client at a time, all keys for it in one frame; one
   that does not answer within 10 s of silence is passed over. A lack means "not yet": the
