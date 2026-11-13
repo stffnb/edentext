@@ -30,7 +30,7 @@ const PULL = 4;     // [to][from][state vector]: the receiver answers with what 
 const ANSWER = 5;   // [to][Yjs update]
 // PICTURE, WANT and HAS carry the pictures the doc names by key (`pictures.ts`).
 const VIEWER = 8;   // [from][name and colour as JSON, none on leaving]: a reader's presence
-const PING = 9;     // [to][from][nonce]: answer to show the sender is in the room now
+const PING = 9;     // [to][from][16-byte nonce]: answer to show the sender is in the room now
 const PONG = 10;    // [to][from][nonce], a writer's answer
 const ECHO = 11;    // [to][from][nonce], a reader's answer
 const CHAT = 12;    // [text as UTF-8]: a writer's chat message, to all; the relay's id says whose
@@ -58,6 +58,7 @@ const SETTLE_MS = 300;  // how long a sync waits for late offers after the first
 const STALL_MS = 10_000; // a sync that hears nothing this long starts over
 const EMPTY_MS = 5000;   // a joiner alone this long is told the room is empty
 const DOUBT_MS = 3000;   // how long a peer has to answer once the relay counts fewer than are known
+const NONCE = 16;
 const REMOTE = Symbol('remote');
 
 export type SessionStatus =
@@ -268,7 +269,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   const ping = (p: number) => {
     const last = pinged.get(p);
     if (last && Date.now() - last.at < 5000) return;
-    const nonce = crypto.getRandomValues(new Uint8Array(16));
+    const nonce = crypto.getRandomValues(new Uint8Array(NONCE));
     pinged.set(p, { nonce, at: Date.now() });
     send(PING, p, me, nonce);
   };
@@ -566,7 +567,8 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       const sv = Y.encodeStateVector(ydoc);
       send(OFFER, v.getUint32(1), me, sv.length, sv, Y.encodeStateAsUpdate(ydoc, sv));
     } else if (v.getUint32(1) !== me) return;
-    else if (kind === PING) send(reading ? ECHO : PONG, v.getUint32(5), me, plain.subarray(9));
+    // Only a nonce of its own length is signed back, never whatever else a sender puts there.
+    else if (kind === PING) { if (plain.length === 9 + NONCE) send(reading ? ECHO : PONG, v.getUint32(5), me, plain.subarray(9)); }
     else if (kind === PONG) answered(v.getUint32(5), plain.subarray(9));
     else if (kind === ECHO) echoed(v.getUint32(5), plain.subarray(9));
     else if (kind === OFFER && round) {

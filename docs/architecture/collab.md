@@ -222,6 +222,8 @@ one nobody answered starts over after 10 s although others' frames keep the line
 dropped `WANT` key goes to the next client once that one sends nothing for 10 s. The buckets
 outlive a client's going, so dialling again does not refill them; 32 senders are kept, the
 oldest forgotten. Ever new ids would refill them, which the relay's `DIALS_PER_MIN` bounds.
+A `PING` is answered only with a nonce of 16 bytes, so nobody gets a writer to sign
+something longer of its choosing; the bucket bounds how many it signs.
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun nor in five runs on a fresh dev server and dep cache (2026-11-11): in Firefox a joiner not live within 20 s on a just-started dev server. Writers share one signing key, so it tells writers from readers, not writers apart, and a
 write link stays valid for the session. A reader can still cost the others what any participant can: asks
