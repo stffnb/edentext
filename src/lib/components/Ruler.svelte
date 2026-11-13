@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
-  import { activeTabStops, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
+  import { activeTabStops, OPEN_TABS_DIALOG_EVENT, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
   import { t } from '../i18n/i18n.svelte';
 
   // Horizontal ruler: the tab stops and indents of the block the cursor is in.
@@ -58,18 +58,29 @@
     | { kind: 'indent' }
     | { kind: 'indentRight' }
     | { kind: 'first' };
-  let drag = $state<{ target: Drag; cm: number; off: boolean } | null>(null);
+  let drag = $state<{ target: Drag; cm: number; from: number; off: boolean } | null>(null);
 
   function apply(stops: TabStop[]) {
     editor?.chain().focus().setTabStops(stops).run();
   }
 
+  // A second press on the same unmoved stop within this time is a double-click, opening the
+  // Tabs dialog. Counted here: the pointer capture sends the clicks to the strip, not the stop.
+  const DOUBLE_CLICK_MS = 500;
+  let lastPress = { index: -1, at: 0 };
+
   function start(event: PointerEvent, target: Drag) {
     if (!editor || !info || event.button !== 0) return;
     event.preventDefault(); // keep the caret (and thus the target block) where it is
     event.stopPropagation();
+    if (target.kind === 'stop') {
+      const again = lastPress.index === target.index && event.timeStamp - lastPress.at < DOUBLE_CLICK_MS;
+      lastPress = again ? { index: -1, at: 0 } : { index: target.index, at: event.timeStamp };
+      if (again) { window.dispatchEvent(new CustomEvent(OPEN_TABS_DIALOG_EVENT)); return; }
+    }
     strip.setPointerCapture(event.pointerId);
-    drag = { target, cm: cmAt(event.clientX), off: false };
+    const cm = cmAt(event.clientX);
+    drag = { target, cm, from: cm, off: false };
   }
 
   function move(event: PointerEvent) {
@@ -81,9 +92,13 @@
 
   function end(event: PointerEvent) {
     if (!drag || !info) return;
-    const { target, cm, off } = drag;
+    const { target, cm, from, off } = drag;
     drag = null;
     strip.releasePointerCapture(event.pointerId);
+    // A click that never moved writes nothing, or it would snap the marker to the pointer
+    // (a double-click opening the Tabs dialog nudged its stop).
+    if (!off && cm === from) return;
+    lastPress = { index: -1, at: 0 }; // a press that moved its stop starts no double-click
     if (target.kind === 'stop') {
       const rest = info.stops.filter((_, i) => i !== target.index);
       // Dragging moves the stop, so it keeps its alignment and its leader; it stays in the
