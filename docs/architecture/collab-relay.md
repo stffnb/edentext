@@ -25,7 +25,8 @@ restart ends no document: the browsers dial again and sync among themselves.
 - `same-origin` (the published app image, the dev server): the app uses `/relay` on its own
   host and offers sessions only once `relay/health` answers there. A reverse proxy must pass
   `/relay` to the relay with the WebSocket upgrade and a long read timeout, as the chart's nginx does
-  (`location /relay { proxy_pass http://relay:4390; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_read_timeout 1h; }`).
+  (`location /relay { proxy_pass http://relay:4390; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header X-Real-IP $remote_addr; proxy_read_timeout 1h; }`),
+  and then run the relay with `TRUST_PROXY=1`, so its limit per address counts the clients, not the proxy.
   The app image alone has no such proxy, so it shows no *Collaborate…* entry.
 - unset: no sessions (a plain `npm run build`); embedded, there are none either.
 
