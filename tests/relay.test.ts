@@ -241,6 +241,26 @@ describe('collaboration relay', () => {
     }
   });
 
+  it('takes upgrades from any page without a list of origins, and only from those listed with one', async () => {
+    // [origins listed, the page's Origin, the status expected]
+    const cases: [string[], string | undefined, number][] = [
+      [[], 'https://elsewhere.example', 101],
+      [[], undefined, 101],
+      [['https://docs.example/', 'app://edentext'], 'https://docs.example', 101],
+      [['https://docs.example/', 'app://edentext'], 'app://edentext', 101],
+      [['https://docs.example/', 'app://edentext'], 'https://elsewhere.example', 403],
+      [['https://docs.example/', 'app://edentext'], undefined, 403],
+    ];
+    for (const [origins, origin, want] of cases) {
+      relay = await startRelay({ port: 0, origins });
+      const got = await dial(origin ? { Origin: origin } : {});
+      expect(got.status, `${origins} ← ${origin}`).toBe(want);
+      got.ws.terminate();
+      await relay!.close();
+      relay = null;
+    }
+  });
+
   it('refuses a full room, an oversized frame and a missing hello', async () => {
     relay = await startRelay({ port: 0, maxPeers: 1, maxFrame: 256 });
     const a = await join(ROOM_A);
