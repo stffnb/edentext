@@ -1,7 +1,7 @@
 // Big-document join bench, not part of test:collab: A builds ~150 generated pages with 25 noise
 // pictures (49 MB), B (and C) join; prints one JSON line of timings. Rows and method:
 // docs/architecture/collab-perf.md. Env: SCEN, NET, THROTTLE, THIRD, VIEW, TYPING, LIMIT, BIGJOIN_PORT/_OUT,
-// MODE (join, cold, hidden, rejoin, drop) with GUEST_NET, WARM and INTENSIVE.
+// MODE (join, cold, hidden, rejoin, drop) with GUEST_NET, GUEST_RTT (ms, cold), WARM and INTENSIVE.
 import net from 'node:net';
 import { appendFileSync } from 'node:fs';
 import { devServer, openApp, previewServer, settle } from '../browser.mjs';
@@ -15,6 +15,7 @@ const PORT = +(process.env.BIGJOIN_PORT ?? 4401), RELAY_PORT = PORT + 1, PROXY_P
 // reloads once it has everything; drop: B's line goes deaf, then offline, and comes back.
 const MODE = process.env.MODE ?? 'join';
 const GUEST_NET = +(process.env.GUEST_NET ?? 0);
+const GUEST_RTT = +(process.env.GUEST_RTT ?? 0);
 const WARM = process.env.WARM === '1';
 const INTENSIVE = process.env.INTENSIVE === '1';
 const SCEN = process.env.SCEN ?? 'S1';
@@ -164,7 +165,7 @@ async function tab(name, { viaProxy = false, cdpRate = 0, down = 0, ctx = null }
   if (cdpRate || down) {
     const s = await ctx.newCDPSession(page);
     await s.send('Network.enable');
-    await s.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: down || -1, uploadThroughput: cdpRate || -1 });
+    await s.send('Network.emulateNetworkConditions', { offline: false, latency: down ? GUEST_RTT : 0, downloadThroughput: down || -1, uploadThroughput: cdpRate || -1 });
   }
   return page;
 }
