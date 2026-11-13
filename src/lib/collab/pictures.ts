@@ -4,6 +4,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { AttrStep, type Step } from '@tiptap/pm/transform';
 import { IDB_SRC, distanceOf, fetchImagesWith, heldImage, holdImage, imageKey, lackedKeys, mapSrcs, untilHeld } from '../storage/imageStore';
 import { bytesToBase64 } from '../import/imageFormats';
+import { task } from '../utils/task';
 
 // Pictures in a session: the shared doc names each large one by its content key, `idb:<key>`
 // as autosave does, and the bytes go beside it in frames of their own, once to each client.
@@ -126,8 +127,8 @@ export function sessionPictures(w: Wire): Pictures {
   const owed = new Map<string, Set<number>>();
   // Pictures on their way to everyone, with the clients there then: their edit may arrive
   // first, and an ask of theirs meanwhile would send the picture twice. Kept STALL_MS after the
-  // last part left, as the parts may still be on their way and the ask sent before them.
-  const sharing = new Map<string, Set<number>>();
+  // last part left (`until`), as the parts may still be on their way and the ask sent before them.
+  const sharing = new Map<string, { those: Set<number>; until: number }>();
   // Answers to asks still on their way out: someone loads them from this client. An ask
   // repeated meanwhile, as one gets after hearing nothing, is not answered twice.
   let serving = 0;
@@ -139,7 +140,9 @@ export function sessionPictures(w: Wire): Pictures {
 
   const give = (to: number, key: string) => {
     const k = enc.encode(key), src = heldImage(key);
-    if (to && sharing.get(key)?.has(to)) return;
+    const shared = sharing.get(key);
+    if (shared && shared.until < Date.now()) sharing.delete(key);
+    else if (to && shared?.those.has(to)) return;
     const [head, body] = src ? picturePayload(src, enc) : [new Uint8Array(), new Uint8Array()];
     if (!src && to && (owed.has(key) || owed.size < MAX_OWED)) owed.set(key, (owed.get(key) ?? new Set()).add(to));
     if (to && !src) return w.send(PICTURE, to, k.length, k, head.length, head, body);
@@ -150,9 +153,9 @@ export function sessionPictures(w: Wire): Pictures {
       serving++;
       return w.post(() => { serving--; giving.delete(id); }, PICTURE, to, k.length, k, head.length, head, body);
     }
-    const those = new Set(w.peers());
-    sharing.set(key, those);
-    w.post(() => setTimeout(() => { if (sharing.get(key) === those) sharing.delete(key); }, STALL_MS), PICTURE, to, k.length, k, head.length, head, body);
+    const entry = { those: new Set(w.peers()), until: Infinity };
+    sharing.set(key, entry);
+    w.post(() => { entry.until = Date.now() + STALL_MS; }, PICTURE, to, k.length, k, head.length, head, body);
   };
   // Each missing picture is asked of one client at a time, a few per client and those nearest
   // the viewport first; one that arrives makes room for the next.
@@ -232,7 +235,7 @@ export function sessionPictures(w: Wire): Pictures {
     props: { handleDOMEvents: { copy: (view, e) => clip(view, e, false), cut: (view, e) => clip(view, e, true) } },
     appendTransaction: (trs, _old, state) => {
       if (!trs.some((t) => t.steps.some(stepBrings))) return null;
-      return keyed(state, (key) => setTimeout(() => give(0, key)));
+      return keyed(state, (key) => task(() => give(0, key)));
     },
   });
 
@@ -275,13 +278,13 @@ export function sessionPictures(w: Wire): Pictures {
       }
       if (plain[0] !== WANT) return false;
       // Each key once: a frame naming one picture many times would send it as often. One
-      // picture per task, so answering many keeps the page responsive.
+      // picture per task, so answering many keeps the page responsive, also in a hidden tab.
       const asker = v.getUint32(5);
-      if (v.getUint32(1) === w.me) for (const key of new Set(dec.decode(plain.subarray(9)).split(','))) setTimeout(() => give(asker, key));
+      if (v.getUint32(1) === w.me) for (const key of new Set(dec.decode(plain.subarray(9)).split(','))) task(() => give(asker, key));
       return true;
     },
     recheck,
-    forget: (id) => { for (const those of sharing.values()) those.delete(id); came.delete(id); },
+    forget: (id) => { for (const x of sharing.values()) x.those.delete(id); came.delete(id); },
     again: () => {
       for (const x of wants.values()) x.to = null;
       if (wants.size) soon();
@@ -291,7 +294,7 @@ export function sessionPictures(w: Wire): Pictures {
     pack: (value, share) => mapSrcs(value, (src) => {
       const key = imageKey(src);
       if (!key) return src;
-      if (holdImage(key, src) && share) setTimeout(() => give(0, key));
+      if (holdImage(key, src) && share) task(() => give(0, key));
       return IDB_SRC + key;
     }),
     unpack: (value) => mapSrcs(value, (src) => {

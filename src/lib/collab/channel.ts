@@ -1,5 +1,6 @@
 import { Inflate } from 'fflate';
 import { cipher, newKey, roomId } from './key';
+import { task } from '../utils/task';
 
 /** `mismatch`: the relay speaks another protocol version than this app. */
 export type ChannelStatus = 'connecting' | 'open' | 'full' | 'unreachable' | 'failing' | 'mismatch' | 'closed';
@@ -239,7 +240,6 @@ export function openChannel(o: Options): Channel {
   const fast: Out[] = [], bulk: Out[] = [];
   let queued = false;
   let wake: ReturnType<typeof setTimeout> | undefined;
-  let tick: MessageChannel | null = null;
   const line = () => (ws && ready && ws.readyState === WebSocket.OPEN ? ws : null);
   const skip = (m: Out) => m.to === 0 && peers === 1;
   let out: Promise<unknown> = Promise.resolve(), inbound: Promise<unknown> = Promise.resolve();
@@ -291,16 +291,12 @@ export function openChannel(o: Options): Channel {
     }
     later();
   };
-  // The next bulk part runs as a task of its own; a message channel, unlike a timer, is not
-  // slowed in a hidden tab.
+  // The next bulk part runs as a task of its own (`task`), not slowed in a hidden tab.
   const later = (ms = 0) => {
     if (!bulk.length || queued) return;
     queued = true;
     if (ms) wake = setTimeout(() => { wake = undefined; step(); }, ms);
-    else {
-      if (!tick) { tick = new MessageChannel(); tick.port1.onmessage = step; }
-      tick.port2.postMessage(0);
-    }
+    else task(step);
   };
   // The first message no receiver the relay calls slow waits for, nor an earlier message to
   // the same receiver (one to everyone waits for all); -1 when each waits.
@@ -510,7 +506,6 @@ export function openChannel(o: Options): Channel {
       clearTimeout(timer);
       clearTimeout(stable);
       clearTimeout(wake);
-      tick?.port1.close();
       for (const m of [...fast.splice(0), ...bulk.splice(0)]) m.done?.();
       // What was sealed before, a goodbye too, still goes.
       const sock = ws;
