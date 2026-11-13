@@ -180,13 +180,14 @@ describe('collaboration key', () => {
     old.close();
   });
 
-  it('holds a few unfinished messages per sender, so no sender keeps another\'s from arriving, and inflates none past its limit', async () => {
+  it('holds a few unfinished messages per sender, so no sender keeps another\'s from arriving, and inflates none past its sender\'s limit', async () => {
     const relay = await startRelay({ port: 0, maxFrame: 4096 });
     const key = keyBytes(newKey())!;
     const url = `ws://127.0.0.1:${relay.port}/relay`;
     const whole: [number, number][] = [];
     const open = (id: number) => new Promise<ReturnType<typeof openChannel>>((resolve) => {
-      const ch = openChannel({ url, key, id, limit: 1 << 20, onFrame: (p, from) => whole.push([from, p.length]), onPeers: () => {}, onStatus: () => {}, onOpen: () => resolve(ch) });
+      // The client 7 is one this receiver expects nothing long from.
+      const ch = openChannel({ url, key, id, limit: (from) => (from === 7 ? 16 << 10 : 1 << 20), onFrame: (p, from) => whole.push([from, p.length]), onPeers: () => {}, onStatus: () => {}, onOpen: () => resolve(ch) });
     });
     await open(1);
     const writer = await open(2);
@@ -229,6 +230,35 @@ describe('collaboration key', () => {
     }
     await new Promise((r) => setTimeout(r, 300));
     expect(whole).toEqual([[9, 512 << 10], [9, 512 << 10]]);
+    // From the client 7, a message in parts or inflated past its smaller limit is dropped, a short one taken.
+    whole.length = 0;
+    const other = new WebSocket(url);
+    other.binaryType = 'arraybuffer';
+    await new Promise<void>((resolve) => {
+      other.onopen = () => other.send(JSON.stringify({ t: 'hello', v: 3, room: roomId(key), token: null, id: 7, claim: newKey() }));
+      other.onmessage = () => resolve();
+    });
+    const sealed = (env: Uint8Array) => { const s = seal(key, env), out = new Uint8Array(4 + s.length); out.set(s, 4); return out; };
+    for (const [msg, count] of [[1, 10], [2, 6]]) {
+      for (let i = 0; i < count; i++) {
+        const env = new Uint8Array(17 + 2048), v = new DataView(env.buffer);
+        env[0] = 1;
+        v.setUint32(5, msg);
+        v.setUint32(9, i);
+        v.setUint32(13, count);
+        other.send(sealed(env));
+      }
+    }
+    for (const body of [deflateRawSync(Buffer.alloc(64 << 10)), deflateRawSync(Buffer.alloc(8 << 10))]) {
+      const env = new Uint8Array(1 + body.length);
+      env[0] = 2;
+      env.set(body, 1);
+      other.send(sealed(env));
+    }
+    await new Promise((r) => setTimeout(r, 300));
+    // Each of the two others takes them.
+    expect(whole.map(([, n]) => n).sort((x, y) => x - y)).toEqual([8 << 10, 8 << 10, 6 * 2048, 6 * 2048]);
+    other.close();
     raw.close();
     await relay.close();
   });

@@ -34,8 +34,9 @@ type Options = {
   onStatus(s: ChannelStatus): void;
   /** Each time the relay welcomes the socket, with the room's size, so the session can sync. */
   onOpen(peers: number): void;
-  /** The longest message taken, in parts or inflated; MAX_MESSAGE unless a test sets less. */
-  limit?: number;
+  /** The longest message taken from the client `from`, in parts or inflated, at most MAX_MESSAGE;
+   *  asked when its first part comes. */
+  limit?: (from: number) => number;
 };
 
 // Each sealed frame carries one envelope byte. A message longer than the relay's frame limit
@@ -53,6 +54,8 @@ const TO = 4;                // in clear before a sealed frame: the receiver (0 
 const OLD_RELAY = 4000;      // a relay before version 2 closes a hello it cannot read so
 const MAX_PART = 256 << 10;
 const MAX_MESSAGE = 256 << 20;
+// What unfinished messages of all senders together may hold.
+const MAX_PENDING = MAX_MESSAGE + (64 << 20);
 const PART_TTL = 60_000;
 // Unfinished messages are bounded per sender, as the relay names it: a sender sends one
 // message's parts in a row, so a new one ends its oldest past MAX_OPEN, and nobody fills
@@ -132,15 +135,15 @@ function inflate(data: Uint8Array, max: number): Uint8Array | null {
   return out;
 }
 
-type Pending = { parts: (Uint8Array | undefined)[]; got: number; size: number; at: number; flag: number };
+type Pending = { parts: (Uint8Array | undefined)[]; got: number; size: number; at: number; flag: number; max: number };
 const sizeOf = (pending: Map<string, Pending>) => [...pending.values()].reduce((n, p) => n + p.size, 0);
 
-/** Puts parts back together per sender; returns a message and its flag once it is whole. */
-function joiner(max: number) {
+/** Puts parts back together per sender; returns a message, its flag and its sender's limit once it is whole. */
+function joiner(limit: (from: number) => number) {
   const senders = new Map<number, Map<string, Pending>>();
-  const take = (env: Uint8Array, from: number): { body: Uint8Array; flag: number } | null => {
+  const take = (env: Uint8Array, from: number): { body: Uint8Array; flag: number; max: number } | null => {
     const flag = env[0] & DEFLATED, kind = env[0] & ~DEFLATED;
-    if (kind === WHOLE) return { body: env.subarray(1), flag };
+    if (kind === WHOLE) return { body: env.subarray(1), flag, max: flag ? limit(from) : 0 };
     if (kind !== PART || env.length < PART_HEAD) return null;
     const now = Date.now();
     for (const [sender, pending] of senders) {
@@ -154,13 +157,15 @@ function joiner(max: number) {
     let p = pending.get(id);
     if (!p) {
       // Parts come in order: one without its message's first part can never complete.
+      const max = limit(from);
       if (index !== 0 || count < 2 || count > max / MIN_PART + 1) return null;
       for (const old of pending.keys()) if (pending.size >= MAX_OPEN) pending.delete(old);
-      pending.set(id, (p = { parts: new Array(count), got: 0, size: 0, at: now, flag }));
+      pending.set(id, (p = { parts: new Array(count), got: 0, size: 0, at: now, flag, max }));
       senders.set(from, pending);
     }
     if (index >= p.parts.length || p.parts[index]) return null;
-    if (sizeOf(pending) + env.length - PART_HEAD > max) { pending.delete(id); return null; }
+    const all = [...senders.values()].reduce((n, x) => n + sizeOf(x), 0), more = env.length - PART_HEAD;
+    if (sizeOf(pending) + more > p.max || all + more > MAX_PENDING) { pending.delete(id); return null; }
     p.parts[index] = env.subarray(PART_HEAD);
     p.got++;
     p.size += env.length - PART_HEAD;
@@ -170,7 +175,7 @@ function joiner(max: number) {
     const out = new Uint8Array(p.size);
     let at = 0;
     for (const part of p.parts as Uint8Array[]) { out.set(part, at); at += part.length; }
-    return { body: out, flag: p.flag };
+    return { body: out, flag: p.flag, max: p.max };
   };
   /** A sender gone: its unfinished messages go too; with none, every sender's. */
   const forget = (from?: number) => { if (from === undefined) senders.clear(); else senders.delete(from); };
@@ -209,8 +214,7 @@ export async function relayReady(url: string | null): Promise<boolean> {
 export function openChannel(o: Options): Channel {
   const room = roomId(o.key);
   const box = cipher(o.key);
-  const limit = o.limit ?? MAX_MESSAGE;
-  const parts = joiner(limit);
+  const parts = joiner((from) => Math.min(MAX_MESSAGE, o.limit?.(from) ?? MAX_MESSAGE));
   let ws: WebSocket | null = null;
   let ready = false;
   let closed = false;
@@ -438,7 +442,7 @@ export function openChannel(o: Options): Channel {
       // Each part of a long message counts, so one still on its way is no stall.
       if (env[0] !== WHOLE) { heard = at; partAt.set(from, at); }
       const got = parts.take(env, from);
-      const plain = got && (got.flag ? inflate(got.body, limit) : got.body);
+      const plain = got && (got.flag ? inflate(got.body, got.max) : got.body);
       if (plain && o.onFrame(plain, from) !== false) heard = at;
     };
     // What a socket hears is handled in arrival order, also while a frame is being opened.
