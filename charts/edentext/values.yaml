@@ -97,7 +97,8 @@ relay:
     digest: ""
   # Clients per room, a reload's second connection included; 0 sets no limit.
   maxPeers: 6
-  # Open connections in all and per client address; 0 sets no limit.
+  # Open connections in all and per client address; 0 sets no limit. With the ingress
+  # enabled and no trustedProxies the limit per address is off, as all share one address.
   maxConns: 2000
   maxConnsPerIp: 20
   # Upgrades per client address and minute; 0 sets no limit.

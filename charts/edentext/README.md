@@ -83,7 +83,7 @@ retaining its readable tag.
 | `relay.image.tag` | Relay tag; chart `appVersion` when empty | `""` |
 | `relay.image.digest` | Optional immutable `sha256:` manifest digest | `""` |
 | `relay.maxPeers` | Clients per session; `0` sets no limit | `6` |
-| `relay.maxConns`, `relay.maxConnsPerIp` | Open connections in all and per client address; `0` sets no limit | `2000`, `20` |
+| `relay.maxConns`, `relay.maxConnsPerIp` | Open connections in all and per client address; `0` sets no limit; the limit per address is off with the ingress enabled and no `relay.trustedProxies` | `2000`, `20` |
 | `relay.dialsPerMin` | Upgrades per client address and minute; `0` sets no limit | `60` |
 | `relay.trustedProxies` | Networks (CIDRs) of an ingress controller or load balancer in front, whose `X-Forwarded-For` nginx trusts for the client address | `[]` |
 | `relay.maxBuffered` | Bytes all receivers may hold at the relay; keep the memory limit above it | `268435456` (256 MiB) |
@@ -109,8 +109,9 @@ Collaborate command.
 nginx tells the relay each client's address (`X-Real-IP`) for `relay.maxConnsPerIp`.
 Behind an ingress controller or load balancer that address is the controller's for
 everyone, so list its networks in `relay.trustedProxies` (for example the pod CIDR);
-nginx then takes the client's from `X-Forwarded-For`. Without that, set
-`relay.maxConnsPerIp: 0`, or all users together get 20 connections.
+nginx then takes the client's from `X-Forwarded-For`. With the chart's ingress enabled
+and no trusted proxies, the limit per address is off; behind another load balancer, set
+`relay.maxConnsPerIp: 0` yourself, or all users together get 20 connections.
 `relay.allowedOrigins` keeps other web pages from using the relay through their
 visitors' browsers; it does not stop a program outside a browser. The relay's memory
 limit must lie above `relay.maxBuffered` plus the process itself (about 64 MiB).
