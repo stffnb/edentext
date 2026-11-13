@@ -1,5 +1,5 @@
 import { NO_LANGUAGE, hasDictionary, type DocumentLanguage } from '../storage/documentLanguage';
-import { reportLoadFailure } from '../utils/loadFailure';
+import { reportLoadFailure, fetchAsset, NotServed } from '../utils/loadFailure';
 import { t } from '../i18n/i18n.svelte';
 
 // Vendored assets: public/thesaurus/<code>/<code>.txt, one synonym group per
@@ -16,9 +16,10 @@ function fetchThesaurus(code: string): Promise<string | null> {
   // en-GB shares the US thesaurus: the senses are the same, only the spelling differs.
   const file = code === 'en-GB' ? 'en' : code;
   const url = `${import.meta.env.BASE_URL}thesaurus/${file}/${file}.txt`;
-  return fetch(url)
-    .then((res) => (res.ok ? res.text() : Promise.reject(new Error(`${res.status} for ${url}`))))
+  return fetchAsset(url)
+    .then((res) => res.text())
     .catch((err) => {
+      if (err instanceof NotServed) return null;
       cache.delete(code); // allow a retry after a transient failure
       console.error(`[thesaurus] failed to load "${code}":`, err);
       // The dialog would otherwise answer a lookup with "no synonyms found".

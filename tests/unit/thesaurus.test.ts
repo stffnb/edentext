@@ -49,6 +49,17 @@ describe('synonyms', () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
   });
 
+  it('has nothing, quietly, for a language the instance does not serve', async () => {
+    const alert = vi.fn();
+    vi.stubGlobal('alert', alert);
+    // A 404, or a server that answers every unknown path with its HTML page.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
+    expect(await synonyms('it', 'casa')).toEqual([]);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<!doctype html>', { status: 200, headers: { 'content-type': 'text/html' } })));
+    expect(await synonyms('es', 'casa')).toEqual([]);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
   it('loads French data and preserves accented synonyms', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(readFileSync('public/thesaurus/fr/fr.txt'), { status: 200 })));
 
