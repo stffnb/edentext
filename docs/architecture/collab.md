@@ -230,7 +230,9 @@ picture still being sent to its asker is not answered twice, key by key (`pictur
 Unfinished messages and inflating are bounded per sender (`channel.ts`'s `limit`): 256 MiB
 from a writer that answered a ping, the sync's pulled peer (whose first `ANSWER` comes before
 its ping is answered) and a client asked for a picture; 8 MiB from anyone else, as the kinds a
-reader sends are short. All senders together hold at most 320 MiB.
+reader sends are short. All senders together hold at most 320 MiB. A sender one of whose
+signed frames failed its check gets none checked again (32 such senders kept): no writer's
+frame ever fails, and checking a long one costs milliseconds.
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun nor in five runs on a fresh dev server and dep cache (2026-11-11): in Firefox a joiner not live within 20 s on a just-started dev server. Writers share one signing key, so it tells writers from readers, not writers apart, and a
 write link stays valid for the session. A reader can still cost the others what any participant can: asks

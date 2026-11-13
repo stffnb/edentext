@@ -604,6 +604,9 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     }
   };
 
+  // A sender with one bad signature gets no more checked: no writer's ever fails, and each check
+  // of a long frame costs this tab milliseconds.
+  const forged = new Set<number>();
   const channel = openChannel({
     url: host.relay, key: keys.read, id: me,
     limit: (from) => (live.has(from) || round?.target === from || pictures.asking(from) ? Infinity : SHORT_MESSAGE),
@@ -611,8 +614,9 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       if (status === 'version' || !data.length) return false;
       tap?.(data);
       // Unsigned or badly signed, a frame of a writing kind is dropped, as is one cut short.
+      if (SIGNED.has(data[0]) && forged.has(from)) return false;
       const plain = SIGNED.has(data[0]) ? opened(keys.verify, data) : data;
-      if (!plain) return false;
+      if (!plain) { if (forged.size < MAX_KNOWN) forged.add(from); return false; }
       try { take(plain, from); } catch { /* malformed */ }
       // Chat goes on while a sync stalls; it must not look like the answer the sync awaits.
       return plain[0] !== CHAT && plain[0] !== SAY;
