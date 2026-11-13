@@ -1564,20 +1564,26 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   color: var(--color-page-text) !important;
 }
 
-/* The others' carets in a shared session (collab/session.ts, y-tiptap's cursor plugin):
-   a zero-width bar with the name above it, so a line breaks as it would without it. */
-.ProseMirror-yjs-cursor {
-  position: relative;
-  margin: 0 -1px;
-  border-left: 1px solid;
-  border-right: 1px solid;
-  word-break: normal;
+/* The others' carets in a shared session (collab/carets.ts): a bar with the name above it,
+   in a layer beside the text, so no caret splits a word and changes how a line breaks. */
+.collab-carets {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
   pointer-events: none;
+}
+.ProseMirror-yjs-cursor {
+  position: absolute;
+  width: 0;
+  margin-left: -1px;
+  border-left: 2px solid;
 }
 .ProseMirror-yjs-cursor > div {
   position: absolute;
   top: -1.15em;
-  left: -1px;
+  left: -2px;
   padding: 0 3px;
   border-radius: 3px 3px 3px 0;
   color: #fff;
@@ -1586,8 +1592,7 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   user-select: none;
 }
 @media print {
-  .ProseMirror-yjs-cursor { display: none; }
-  .ProseMirror-yjs-selection { background: none !important; }
+  .collab-carets { display: none; }
 }
 
 /* A jump to someone's caret or held zone marks it a moment in their colour (collab/presence.svelte.ts). */
