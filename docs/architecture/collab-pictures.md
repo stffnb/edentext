@@ -74,6 +74,21 @@ only the key; the bytes travel once to each client.
   line sends its awareness with a new clock, which the others take back, drops the messages
   half come on the old one and asks for every picture it still lacks again.
 
+## Kept over a reload
+
+A joiner or reader keeps every picture it holds in IndexedDB (`collab/pictureStore.ts`,
+database `edentext-session-pictures`), under the room id the relay knows and the content
+key, as the data-URI; the starter's are in its document. Before asking for a picture it
+looks there, and takes what it finds only under the key its data-URI gives, as from the
+wire; after a reload the pictures it had come from there and nothing is sent again.
+
+- **Deleted** when this client leaves (both choices of the dialog, before the tab reloads),
+  on app start for any entry stored over three days ago (a tab closed without leaving), and
+  oldest first once all pass 300 MiB of data-URI text. Each entry's id carries its room,
+  key, time and size, so the sweeps read the ids only.
+- Without IndexedDB (a private window, storage blocked) every call fails quietly and the
+  pictures come over the line as before.
+
 ## Measured
 
 Big documents (joining, typing while pictures go out, the relay's buffer): `collab-perf.md`.

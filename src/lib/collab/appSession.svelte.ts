@@ -7,6 +7,7 @@ import { relayReady, relayUrl } from './channel';
 import { linkKeys } from './key';
 import { keepSessionCopy, putOpening, reloadAlone, takeOpening, type Opening } from './leave';
 import { bindChat, chatPresence, receiveChat } from './chat.svelte';
+import { sweepSessionPictures } from './pictureStore';
 import { joinSession, startSession, type Session, type SessionHost, type SessionUser, type SessionView } from './session';
 import { cleanName, pickColor, shownName } from './names';
 import { bindPresence } from './presence.svelte';
@@ -44,12 +45,13 @@ export function collabView(): SessionView | null {
   return view;
 }
 
-/** Asks the relay once whether it is there. */
 /** Pictures others in the session are still loading from this tab. */
 export const collabServing = (): number => session?.serving() ?? 0;
 
+/** Asks the relay once whether it is there; stored pictures of sessions long gone go. */
 export function probeRelay(): void {
   if (embedded) return;
+  void sweepSessionPictures();
   const url = relayUrl();
   void relayReady(url).then((ok) => { if (ok) relay = url; });
 }
@@ -144,13 +146,14 @@ export async function leaveCollab(app: SessionApp, choice: 'keep' | 'discard' | 
     if (opening) await takeOpening().catch(() => null);
     return false;
   }
-  session?.leave();
+  const left = session?.leave();
   session = null;
   view = null;
   bindChat(null);
   bindPresence(null);
   bindMentions(null);
   watching = false;
+  await left;
   if (choice) reloadAlone(!!opening);
   else if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   return true;

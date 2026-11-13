@@ -1,15 +1,16 @@
-// A shared session end to end: the real relay (relay/server.mjs), the dev server, and
-// clients joining through the link. Checks that a joiner gets the starter's document with
-// its layout and zones, that edits and undo work both ways, that the relay sees no plain
-// text, that clients come, go and reload (four at once), that the assistant's edits travel
-// and undo like typed ones, and that an idle session stays quiet, also when one client
-// lays the pages out differently. The relay passes at most 1 MiB per frame, so a picture
-// and a late joiner's copy go in parts; a line that keeps breaking stops showing `live`.
-// When the starter leaves, the others are told; a joiner leaving keeps its copy as a
-// document of this browser or drops it, and a link to an empty room says so. A reader by
-// the read link follows and changes nothing, nor do its forged or replayed frames; readers
-// count toward the room's limit, alone give a newcomer nothing, and may keep a copy. The
-// session chat reaches everyone here and nothing else, nor can a patched reader abuse it.
+// A shared session end to end: the real relay (relay/server.mjs), the dev server, and clients
+// joining through the link. Checks that a joiner gets the starter's document with its layout
+// and zones, that edits and undo work both ways, that the relay sees no plain text, that
+// clients come, go and reload (four at once, the pictures from their store), that the
+// assistant's edits travel and undo like typed ones, and that an idle session stays quiet,
+// also when one client lays the pages out differently. The relay passes at most 1 MiB per
+// frame, so a picture and a late joiner's copy go in parts; a line that keeps breaking stops
+// showing `live`. When the starter leaves, the others are told; a joiner leaving keeps its
+// copy as a document of this browser or drops it, either way dropping the pictures it kept for
+// a reload, and a link to an empty room says so. A reader by the read link follows and changes
+// nothing, nor do its forged or replayed frames; readers count toward the room's limit, alone
+// give a newcomer nothing, and may keep a copy. The session chat reaches everyone here and
+// nothing else, nor can a patched reader abuse it.
 // Any engine (BROWSER).
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -184,6 +185,15 @@ const hold = (page, on) => page.evaluate((h) => {
 const shown = (page) => page.evaluate(() => [...document.querySelectorAll('.tiptap-host .tiptap img')].filter((i) => i.src.startsWith('data:') && i.src.length > 1e6).length);
 const ysize = (page) => page.evaluate(async () => (await import('/src/lib/editor/undoYjs.ts')).Y.encodeStateAsUpdate(window.__collab.session.awareness.doc).length);
 const relayed = () => seen.reduce((n, f) => n + f.length, 0);
+// Session pictures a joiner keeps over a reload (`pictureStore.ts`), never creating the database.
+const keptPictures = (page) => page.evaluate(async () => {
+  if (!(await indexedDB.databases()).some((d) => d.name === 'edentext-session-pictures')) return 0;
+  return new Promise((r) => {
+    const q = indexedDB.open('edentext-session-pictures');
+    q.onsuccess = () => { const g = q.result.transaction('pictures').objectStore('pictures').count(); g.onsuccess = () => { q.result.close(); r(g.result); }; };
+    q.onerror = () => r(-1);
+  });
+});
 const inline = (json) => /"src":"data:[^"]{5000}/.test(json);
 const clientId = (page) => page.evaluate(() => window.__collab.session.awareness.clientID);
 const RECORD = '/src/lib/storage/trackChanges.svelte.ts';
@@ -1113,11 +1123,17 @@ try {
   const [vb2, vc2, va2] = [await view(b), await view(c), await view(a)];
   check(vb2.json === vc2.json && vc2.text.endsWith('Gamma') && !va2.text.endsWith('Gamma'), 'after the starter left, the others go on without it');
 
+  // Its pictures come from its store, not again over the line.
+  const held = (page) => page.evaluate(() => [...document.querySelectorAll('.tiptap-host img, .hf-layer img')].filter((i) => i.src.startsWith('data:') && i.src.length > 1e5).length);
+  const [heldB, keptB, r6] = [await held(b), await keptPictures(b), relayed()];
   await b.reload({ waitUntil: 'load' });
   await ready(b);
   await live(b);
   await b.waitForTimeout(1500);
   check(same(await view(b), await view(c)), 'a reloaded joiner is back in the session');
+  const [heldB2, r7] = [await held(b), relayed()];
+  check(heldB > 0 && keptB > 0 && heldB2 === heldB && r7 - r6 < hbytes / 2,
+    `a reloaded joiner takes its pictures from its store (${heldB2}/${heldB} shown, ${keptB} stored, ${r7 - r6} bytes relayed)`);
 
   // B leaves and keeps its copy: the tab reloads into a document of its own, which a
   // further reload still opens, with the picture, the styles and the zones.
@@ -1138,7 +1154,7 @@ try {
   // In the session a picture is named by its key; the kept copy holds the picture itself.
   const srcless = (v) => ({ ...v, json: v.json.replace(/"src":"[^"]*"/g, '"src":""') });
   const keptOk = (k) => same(srcless(k.v), srcless(vKept)) && k.sheet === sheetKept && !k.hash && k.v.json.includes('data:image/png') && !k.v.json.includes('idb:');
-  check(keptOk(copy) && !b.dialogs.includes('beforeunload'), `a joiner that keeps its copy reloads into it, unwarned (${brief(copy.v)} | ${brief(vKept)}; ${b.dialogs})`);
+  check(keptOk(copy) && !b.dialogs.includes('beforeunload') && await keptPictures(b) === 0, `a joiner that keeps its copy reloads into it, unwarned, its session pictures dropped (${brief(copy.v)} | ${brief(vKept)}; ${b.dialogs})`);
   await b.reload({ waitUntil: 'load' });
   await ready(b);
   await b.waitForTimeout(2500);

@@ -5,6 +5,7 @@ import { AttrStep, type Step } from '@tiptap/pm/transform';
 import { IDB_SRC, distanceOf, fetchImagesWith, heldImage, holdImage, imageKey, lackedKeys, mapSrcs, untilHeld } from '../storage/imageStore';
 import { bytesToBase64 } from '../import/imageFormats';
 import { task } from '../utils/task';
+import type { PictureStore } from './pictureStore';
 
 // Pictures in a session: the shared doc names each large one by its content key, `idb:<key>`
 // as autosave does, and the bytes go beside it in frames of their own, once to each client.
@@ -95,6 +96,8 @@ type Wire = {
   changed(): void;
   /** A picture came that this client lacked. */
   arrived(key: string): void;
+  /** Where a joiner keeps its pictures over a reload, looked in before asking; null for the starter. */
+  store: PictureStore | null;
 };
 
 export type Pictures = {
@@ -123,7 +126,8 @@ export function sessionPictures(w: Wire): Pictures {
   // A lack means "not yet": a picture every known client lacks stays wanted (`short`) and is
   // asked again of a client newly known, or of one that says it holds it now (`HAS`). Asks go
   // round the clients; one whose answer was lost is asked again once the round is through.
-  const wants = new Map<string, { tried: Set<number>; lacks: Set<number>; to: number | null; at: number; short: boolean }>();
+  // A joiner first looks in its store (`looking`), which holds what it had before a reload.
+  const wants = new Map<string, { tried: Set<number>; lacks: Set<number>; to: number | null; at: number; short: boolean; looking: boolean }>();
   const owed = new Map<string, Set<number>>();
   // Pictures on their way to everyone, with the clients there then: their edit may arrive
   // first, and an ask of theirs, to this client or any that got it already, would send the
@@ -168,7 +172,7 @@ export function sessionPictures(w: Wire): Pictures {
       if (heldImage(key)) wants.delete(key);
       else if (x.to !== null) load.set(x.to, (load.get(x.to) ?? 0) + 1);
     }
-    const open = [...wants].filter(([, x]) => x.to === null).map(([key, x]) => ({ key, x, far: distanceOf(key) }));
+    const open = [...wants].filter(([, x]) => x.to === null && !x.looking).map(([key, x]) => ({ key, x, far: distanceOf(key) }));
     for (const { key, x } of open.sort((a, b) => a.far - b.far)) {
       let untried = peers.filter((p) => !x.tried.has(p));
       if (!untried.length) {
@@ -204,8 +208,27 @@ export function sessionPictures(w: Wire): Pictures {
   };
   const want = (key: string) => {
     if (heldImage(key) || wants.has(key)) return;
-    wants.set(key, { tried: new Set(), lacks: new Set(), to: null, at: 0, short: false });
-    soon();
+    const x = { tried: new Set<number>(), lacks: new Set<number>(), to: null, at: 0, short: false, looking: !!w.store };
+    wants.set(key, x);
+    if (!w.store) return soon();
+    // Taken only under its own key, as from the wire.
+    void w.store.get(key).then((src) => {
+      x.looking = false;
+      if (wants.get(key) !== x) return;
+      if (src && imageKey(src) === key && holdImage(key, src)) got(key);
+      else soon();
+    });
+  };
+  // What this client holds new goes into its store, for a reload.
+  const kept = (key: string) => { const src = heldImage(key); if (src) w.store?.put(key, src); };
+  // A picture now held that was wanted: the next is asked, and those that asked this client hear.
+  const got = (key: string) => {
+    const before = missing();
+    if (wants.delete(key)) soon();
+    if (missing() !== before) w.changed();
+    w.arrived(key);
+    for (const p of owed.get(key) ?? []) w.send(HAS, p, w.me, enc.encode(key));
+    owed.delete(key);
   };
   fetchImagesWith(want);
   // Scrolling elsewhere changes which pictures come next.
@@ -235,7 +258,7 @@ export function sessionPictures(w: Wire): Pictures {
     props: { handleDOMEvents: { copy: (view, e) => clip(view, e, false), cut: (view, e) => clip(view, e, true) } },
     appendTransaction: (trs, _old, state) => {
       if (!trs.some((t) => t.steps.some(stepBrings))) return null;
-      return keyed(state, (key) => task(() => give(0, key)));
+      return keyed(state, (key) => { kept(key); task(() => give(0, key)); });
     },
   });
 
@@ -253,13 +276,8 @@ export function sessionPictures(w: Wire): Pictures {
           if (imageKey(src) === key && holdImage(key, src)) {
             // One sent to all reaches the others here too: an ask of theirs is not answered.
             if (!v.getUint32(1)) sharing.set(key, { those: new Set(w.peers().filter((p) => p !== from)), until: Date.now() + STALL_MS });
-            const before = missing();
-            if (wants.delete(key)) soon();
-            if (missing() !== before) w.changed();
-            w.arrived(key);
-            // Those that asked while this client lacked it hear it holds it now.
-            for (const p of owed.get(key) ?? []) w.send(HAS, p, w.me, enc.encode(key));
-            owed.delete(key);
+            kept(key);
+            got(key);
           }
         } else if (v.getUint32(1) === w.me && wants.get(key)?.to === from) {
           const x = wants.get(key)!;
@@ -296,7 +314,9 @@ export function sessionPictures(w: Wire): Pictures {
     pack: (value, share) => mapSrcs(value, (src) => {
       const key = imageKey(src);
       if (!key) return src;
-      if (holdImage(key, src) && share) task(() => give(0, key));
+      if (!holdImage(key, src)) return IDB_SRC + key;
+      kept(key);
+      if (share) task(() => give(0, key));
       return IDB_SRC + key;
     }),
     unpack: (value) => mapSrcs(value, (src) => {
