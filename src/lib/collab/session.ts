@@ -10,6 +10,7 @@ import { shareZones } from './zones.svelte';
 import { HAS, PICTURE, WANT, keyPictures, picturesKey, sessionPictures, unkeyPictures } from './pictures';
 import { IDB_SRC } from '../storage/imageStore';
 import { cleanColor, shownName } from './names';
+import { caretsKey, caretsPlugin } from './carets';
 
 // A shared session: the Yjs doc behind the body (`undoYjs.ts`) goes over a sealed channel
 // to the others in the room. Frames are one kind byte and its payload; the relay sees none
@@ -187,23 +188,13 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   let paused = false;
   let dropped = 0;
   let joining = join;
-  // The others' carets and selections, drawn as decorations in their colours, and the
-  // pictures put in from now on; one registration, as each rebuilds every plugin view.
-  // Each caret carries the name the lists show and its client, which a jump looks for.
-  const caret = (user: { name?: unknown; color?: unknown }, id: number) => {
+  // The others' carets and selections (`carets.ts`) and the pictures put in from now on;
+  // one registration, as each rebuilds every plugin view. The cursor plugin only publishes
+  // this client's selection. Each caret carries the name the lists show and its client.
+  const look = (id: number) => {
     const s = awareness.getStates().get(id);
-    const color = cleanColor(user.color) ?? GREY;
-    const el = document.createElement('span');
-    el.className = 'ProseMirror-yjs-cursor';
-    el.dataset.client = String(id);
-    el.style.borderColor = color;
-    const label = document.createElement('div');
-    label.style.backgroundColor = color;
-    label.textContent = shownName(user.name, typeof s?.peer === 'number' ? s.peer : id);
-    el.append('\u2060', label, '\u2060');
-    return el;
+    return { name: shownName(s?.user?.name, typeof s?.peer === 'number' ? s.peer : id), color: cleanColor(s?.user?.color) ?? GREY };
   };
-  const selection = (user: { color?: unknown }) => ({ style: `background-color: ${cleanColor(user.color) ?? GREY}70`, class: 'ProseMirror-yjs-selection' });
   const bind = (b: YjsUndo) => {
     binding = b;
     // The repairer is the client bound longest (lowest `rank`, then id): one joining later
@@ -216,7 +207,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     b.setRepairer(repairer);
     b.onPause((p) => { paused = p; changed(); });
     b.onDrop(() => { dropped++; changed(); });
-    editor.registerPlugin(yCursorPlugin(awareness, { cursorBuilder: caret, selectionBuilder: selection }), (p, plugins) => [...plugins, p, pictures.plugin, ...(reading ? [readOnlyFilter()] : [])]);
+    editor.registerPlugin(yCursorPlugin(awareness, { awarenessStateFilter: () => false }), (p, plugins) => [...plugins, p, caretsPlugin(awareness, look), pictures.plugin, ...(reading ? [readOnlyFilter()] : [])]);
   };
 
   const keeps = !join;
@@ -651,7 +642,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       unshareZones();
       awareness.destroy();
       ydoc.off('update', onUpdate);
-      if (binding) editor.unregisterPlugin([yCursorPluginKey, picturesKey, ...(reading ? [readingKey] : [])]);
+      if (binding) editor.unregisterPlugin([yCursorPluginKey, caretsKey, picturesKey, ...(reading ? [readingKey] : [])]);
       if (reading) setReading(editor, false);
       binding?.detach();
       // Alone again, the document holds its pictures itself.
