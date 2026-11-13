@@ -46,7 +46,8 @@ const tap = (data) => {
     else T.big ??= [], T.big.push({ t, from, to, size });
   });
 };
-const relay = await startRelay({ port: RELAY_PORT, beat: MODE === 'drop' ? 15_000 : 0, tap });
+// drop keeps the relay's own beat; the other modes need none.
+const relay = await startRelay({ port: RELAY_PORT, ...(MODE === 'drop' ? {} : { beat: 0 }), tap });
 let maxBuffered = 0, lagMax = 0;
 let lastTick = Date.now();
 const sampler = setInterval(() => {
