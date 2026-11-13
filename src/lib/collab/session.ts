@@ -353,6 +353,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     asked.delete(p);
     pinged.delete(p);
     readers.delete(p);
+    answering.delete(p);
     removeAwarenessStates(awareness, [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && s.peer === p).map(([id]) => id), 'gone');
   };
   const known = () => new Set([...[...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && typeof s.peer === 'number').map(([, s]) => s.peer as number), ...readers.keys()]);
@@ -541,6 +542,9 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     send(PULL, best, me, Y.encodeStateVector(ydoc));
   };
 
+  // The state vector of the ANSWER still on its way to each asker: the same PULL meanwhile is
+  // not answered again. A new ASK (a new sync, maybe on a new line) clears it.
+  const answering = new Map<number, string>();
   let tap: ((plain: Uint8Array) => void) | null = null;
   const take = (plain: Uint8Array, from: number) => {
     const kind = plain[0], v = new DataView(plain.buffer, plain.byteOffset, plain.byteLength);
@@ -562,6 +566,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     }
     else if (kind === VIEWER) viewer(v.getUint32(1), plain.subarray(5));
     else if (kind === ASK) {
+      answering.delete(from);
       if (reading) return send(NOTHING, v.getUint32(1), me);
       applyInbox();
       const sv = Y.encodeStateVector(ydoc);
@@ -584,9 +589,11 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       round.idle.add(v.getUint32(5));
       if (!round.done && heardAll(round)) settle();
     } else if (kind === PULL) {
-      if (reading) return;
+      const sv = plain.subarray(9), seen = sv.join();
+      if (reading || answering.get(from) === seen) return;
       applyInbox();
-      send(ANSWER, v.getUint32(5), Y.encodeStateAsUpdate(ydoc, plain.subarray(9)));
+      answering.set(from, seen);
+      post(() => { if (answering.get(from) === seen) answering.delete(from); }, ANSWER, from, Y.encodeStateAsUpdate(ydoc, sv));
     } else if (kind === ANSWER) {
       performance.mark('collab:answer');
       gotAnswer = true;

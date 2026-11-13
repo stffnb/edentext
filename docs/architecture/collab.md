@@ -224,6 +224,9 @@ outlive a client's going, so dialling again does not refill them; 32 senders are
 oldest forgotten. Ever new ids would refill them, which the relay's `DIALS_PER_MIN` bounds.
 A `PING` is answered only with a nonce of 16 bytes, so nobody gets a writer to sign
 something longer of its choosing; the bucket bounds how many it signs.
+A `PULL` naming the same state vector as the `ANSWER` still on its way to that sender is not
+answered again; its next `ASK`, a new sync maybe on a new line, clears that. A `WANT` for a
+picture still being sent to its asker is not answered twice, key by key (`pictures.ts`).
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun nor in five runs on a fresh dev server and dep cache (2026-11-11): in Firefox a joiner not live within 20 s on a just-started dev server. Writers share one signing key, so it tells writers from readers, not writers apart, and a
 write link stays valid for the session. A reader can still cost the others what any participant can: asks
