@@ -255,19 +255,30 @@ try {
   const cursor = await b.evaluate(() => document.querySelector('.ProseMirror-yjs-cursor')?.textContent ?? '');
   check(cursor.includes('Anna'), `the joiner sees the starter's caret with the name (${JSON.stringify(cursor)})`);
 
-  // Typed keys reach the joiner as the edit, then the caret in it, at most these two frames a key.
-  await b.evaluate(() => {
-    const st = window.__order = { kinds: '' };
-    window.__collab.session.debug.tap = (d) => { if (d[0] === 1 || d[0] === 2) st.kinds += d[0]; };
+  // Typed keys reach the other as the edit, then the caret in it, at most these two frames a
+  // key; and an edit reaching a tab whose last batch was cheap applies as it arrives.
+  await caret(b, 'end');
+  await a.waitForTimeout(400);
+  await a.evaluate(() => {
+    const s = window.__collab.session, st = window.__order = { kinds: '', arrived: [], applied: [], on: true };
+    s.debug.tap = (d) => { if (d[0] === 1 || d[0] === 2) st.kinds += d[0]; if (d[0] === 1) st.arrived.push(performance.now()); };
+    s.debug.ydoc.on('update', (_u, origin) => { if (st.on && typeof origin === 'symbol') st.applied.push(performance.now()); });
   });
-  const keys0 = [await sent(a, 1), await sent(a, 2)];
-  for (const ch of 'Xyzzy.') { await a.keyboard.type(ch); await a.waitForTimeout(150); }
-  await b.waitForTimeout(400);
-  const keys1 = [await sent(a, 1), await sent(a, 2)];
-  const order = await b.evaluate(() => { window.__collab.session.debug.tap = null; return window.__order; });
-  for (let i = 0; i < 6; i++) await a.keyboard.press('Backspace');
+  const keys0 = [await sent(b, 1), await sent(b, 2)];
+  for (const ch of 'Xyzzy.') { await b.keyboard.type(ch); await b.waitForTimeout(150); }
+  await a.waitForTimeout(400);
+  const keys1 = [await sent(b, 1), await sent(b, 2)];
+  const order = await a.evaluate(() => {
+    const st = window.__order;
+    st.on = false;
+    window.__collab.session.debug.tap = null;
+    const lag = st.arrived.map((t, i) => (st.applied[i] ?? Infinity) - t).sort((x, y) => x - y);
+    return { kinds: st.kinds, lag: Math.round(lag[Math.floor(lag.length / 2)] ?? -1) };
+  });
+  for (let i = 0; i < 6; i++) await b.keyboard.press('Backspace');
   const perKey = (keys1[0] + keys1[1] - keys0[0] - keys0[1]) / 6;
   check(/^(12)+$/.test(order.kinds) && perKey <= 2, `each key goes as its edit, then the caret, ${perKey} frames a key (${order.kinds})`);
+  check(order.lag >= 0 && order.lag < 25, `a cheap edit applies as it arrives (median ${order.lag} ms after its frame)`);
 
   const all = Buffer.concat(seen);
   check(seen.length > 0 && !['Alpha', 'Beta', 'Ben', 'Anna'].some((w) => all.includes(Buffer.from(w))),

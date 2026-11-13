@@ -128,7 +128,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   clients reaches all; none lacking an edit or deletion, it sends nothing. A client without
   the doc asks again when someone comes. A sync ends with the line and restarts when the
   room shrinks or no peer frame comes for 10 s. Edits leave right after the change when
-  none left in the last 50 ms, else in that batch, the caret right after them; the rest of a presence (zone, name) goes at once, after the edits before it.
+  none left in the last 50 ms, else in that batch, the caret right after them; the rest of a presence (zone, name) goes at once, after the edits before it. Arriving edits apply at once while the last batch, with the page layout it set off, cost this tab under 8 ms, else gather for twice that cost (50–100 ms); a caret waits for the edits that came before it.
 - **Parts and failures** (`collab/channel.ts`): a message beyond the welcome's `frame`
   (at most 256 kB) goes as sealed numbered parts. Such messages and pictures wait in a bulk lane, sent part by part while the socket holds little, behind edits, carets, pings and the sync (`collab-pictures.md`); nothing goes to everyone while the relay counts nobody else. A receiver keeps at most four unfinished messages and 256 MiB per sender, which the relay puts in front of every frame, and drops them when the sender goes: a sender can fill only its own room. Retries back off from 0.5 to 30 s; three
   connections lost within 5 s of their welcome show `failing` until one holds for 5 s; a
@@ -166,7 +166,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
 `node tests/collab/session.mjs` starts a relay and the dev server and goes through the File
 menu. B joins by the link and gets A's document: JSON, pages and zones. Both type, and each
 undo takes back only its own typing. A page setup and a style change arrive, the caret
-shows with its name, each key goes as its edit and then its caret, the relay's frames hold no typed text and no name, and an idle session
+shows with its name, each key goes as its edit and then its caret and applies on arrival, the relay's frames hold no typed text and no name, and an idle session
 sends no updates. A 2.9 MB picture goes to the relay once, as bytes, and adds 0.5 kB to the
 doc; B's copy, saved `.odt` and A's autosave hold it; five moves and a delete send 5 kB.
 Frames carry at most 256 kB; a late joiner gets everything from one ask and one answer, the
