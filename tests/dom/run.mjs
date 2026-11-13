@@ -713,10 +713,15 @@ try {
   const hitCount = await page.locator('.navigator-pane .hit').count();
   await page.locator('.navigator-pane .hit').last().click();
   const hit = await page.waitForFunction(() => {
-    const sel = getSelection()?.toString() || document.querySelector('.search-match-current')?.textContent;
-    const r = document.querySelector('.search-match-current')?.getBoundingClientRect();
+    const at = [...(CSS.highlights.get('search-match-current') ?? [])][0];
+    if (!at) return false;
+    const range = document.createRange();
+    range.setStart(at.startContainer, at.startOffset);
+    range.setEnd(at.endContainer, at.endOffset);
+    const r = range.getBoundingClientRect();
     const box = document.querySelector('.editor').getBoundingClientRect();
-    return r && r.top >= box.top && r.bottom <= box.bottom && document.querySelector('.search-match-current').closest('h1')?.textContent;
+    const el = at.startContainer.nodeType === 1 ? at.startContainer : at.startContainer.parentElement;
+    return r.top >= box.top && r.bottom <= box.bottom && el.closest('h1')?.textContent;
   }, null, { timeout: 5_000 }).then((h) => h.jsonValue(), () => null);
   check(hitCount === 11 && hit === 'Chapter 39', `the navigator's search lists the matches and shows a clicked one (${hitCount}, ${hit})`);
   // The other tabs show where the matches are: the chapters holding one, the pages only they are on.
@@ -728,7 +733,8 @@ try {
     const tiles = [...document.querySelectorAll('.thumbs .tile')];
     const total = +(/of (\d+)/.exec(document.querySelector('.statusbar').textContent)?.[1] ?? 0);
     const filled = tiles.filter((t) => t.querySelector('.zoom .tiptap'));
-    return tiles.length && tiles.length < total && filled.length === tiles.length && filled.every((t) => t.querySelector('.search-match'))
+    const marks = [...(CSS.highlights.get('search-match-thumb') ?? [])];
+    return tiles.length && tiles.length < total && filled.length === tiles.length && filled.every((t) => marks.some((r) => t.contains(r.startContainer)))
       && `${tiles.length} of ${total}`;
   }, null, { timeout: 5_000 }).then((h) => h.jsonValue(), () => null);
   check(!!onPages, `the pages tab lists only the pages with a match (${onPages})`);
@@ -750,9 +756,48 @@ try {
   // The edit's autosave lands now, not at the next reload over the document set below.
   await page.waitForTimeout(1500);
   await page.press('.nav-search input[type="search"]', 'Escape');
-  check(!(await page.locator('.search-match').count()), 'clearing the navigator\'s search drops its highlights');
+  check(!(await page.evaluate(() => CSS.highlights.get('search-match')?.size)), 'clearing the navigator\'s search drops its highlights');
   await page.click('.navigator-pane [role="tab"]#nav-tab-headings');
   await page.keyboard.press('F5');
+
+  // A find highlights without moving a line: under hyphenation an element boundary inside
+  // a word changes how Chromium and WebKit break its line, and pagination measures only on
+  // edits, so a match drawn as an element left the page break stale. Keys restored after.
+  const SENT = ['Internationalization considerations notwithstanding, the implementation of comprehensive documentation requires extraordinary organizational responsibility.',
+    'Characteristically, administrators underestimate the incomprehensibility of telecommunications infrastructure, whereas representatives of manufacturing establishments overemphasize interchangeability.',
+    'Notwithstanding these misunderstandings, the experimentation demonstrated unquestionable improvements in reproducibility, accountability and recommendations concerning environmental sustainability.'];
+  const hyKeys = await page.evaluate((d) => {
+    const old = Object.fromEntries(['edentext-hyphenation', 'edentext-doc-language'].map((k) => [k, localStorage.getItem(k)]));
+    localStorage.setItem('edentext-doc', JSON.stringify(d));
+    localStorage.setItem('edentext-hyphenation', 'true');
+    localStorage.setItem('edentext-doc-language', 'en-US');
+    return old;
+  }, { type: 'doc', content: Array.from({ length: 12 }, (_, i) => block(words([0, 1, 2].map((k) => SENT[(i + k) % 3]).join(' ')))) });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap p', { timeout: 15_000 });
+  await settle(page, true);
+  const layoutSig = () => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => {
+    const dom = document.querySelector('.tiptap-host .tiptap'), top = dom.getBoundingClientRect().top;
+    const heights = [...dom.querySelectorAll(':scope > p')].map((p) => p.getBoundingClientRect().height.toFixed(1));
+    const breaks = [...dom.querySelectorAll('[data-page-break-spacer]')].map((sp) => Math.round(sp.getBoundingClientRect().top - top));
+    done(`${heights.join()} | ${breaks.join()}`);
+  }))));
+  const hyBase = await layoutSig();
+  const terms = [...new Set(SENT.join(' ').match(/[A-Za-z]{8,}/g).map((w) => w.slice(2, 6)))];
+  const moved = [];
+  for (const term of terms) {
+    await page.evaluate((t) => document.querySelector('.tiptap').editor.commands.setSearch({ term: t, matchCase: true, wholeWord: false, useRegex: false }), term);
+    const shown = await layoutSig();
+    await page.evaluate(() => document.querySelector('.tiptap').editor.commands.clearSearch());
+    const cleared = await layoutSig();
+    if (shown !== hyBase || cleared !== hyBase) moved.push(term);
+  }
+  const hyphens = await page.evaluate(() => getComputedStyle(document.querySelector('.tiptap p')).hyphens);
+  check(hyphens === 'auto' && /\| \d/.test(hyBase) && !moved.length,
+    `showing and clearing a find moves no line or page break under hyphenation (${terms.length} terms, ${hyphens}; moved by ${moved.join(', ') || 'none'})`);
+  await page.evaluate((old) => {
+    for (const [k, v] of Object.entries(old)) if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v);
+  }, hyKeys);
 
   // Mirrored margins: every part of a block stands at its own page's sides, as in both word
   // processors — a paragraph's lines past a page break, a list's items, a table's rows.
@@ -1077,7 +1122,10 @@ try {
   await page.waitForTimeout(600);
   const found = await page.evaluate(() => {
     const port = document.querySelector('.editor').getBoundingClientRect();
-    const box = document.querySelector('.search-match-current')?.getBoundingClientRect();
+    const at = [...(CSS.highlights.get('search-match-current') ?? [])][0];
+    const range = document.createRange();
+    if (at) { range.setStart(at.startContainer, at.startOffset); range.setEnd(at.endContainer, at.endOffset); }
+    const box = at && range.getBoundingClientRect();
     return { top: Math.round(document.querySelector('.editor').scrollTop), active: document.activeElement?.tagName,
       inView: !!box && box.top >= port.top && box.bottom <= port.bottom };
   });

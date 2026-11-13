@@ -3,6 +3,7 @@ import type { Node as PMNode, Mark as PMMark } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState, type SelectionBookmark, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { authorColor, authorColors } from '../authorColors';
+import { highlightPlugin } from './highlights';
 
 // A comment: an annotation on a range of text. A mark, like `bookmark` — both formats
 // store a range (ODF office:annotation + office:annotation-end, DOCX
@@ -287,14 +288,12 @@ export const Comment = Mark.create({
             return next.resolve(tr.doc).empty ? null : next;
           },
         },
-        props: {
-          // Tinted while the caret is away in the box the comment is written in.
-          decorations(state) {
-            const sel = draftKey.getState(state)?.resolve(state.doc);
-            return sel ? DecorationSet.create(state.doc, sel.ranges.map((r) =>
-              Decoration.inline(r.$from.pos, r.$to.pos, { class: 'pm-comment-tint pm-comment-active' }))) : null;
-          },
-        },
+      }),
+      // Tinted while the caret is away in the box the comment is written in.
+      highlightPlugin('comment-draft', (state) => {
+        const sel = draftKey.getState(state)?.resolve(state.doc);
+        return sel ? DecorationSet.create(state.doc, sel.ranges.map((r) =>
+          Decoration.inline(r.$from.pos, r.$to.pos, { class: 'pm-comment-tint pm-comment-active' }))) : null;
       }),
       new Plugin<string | null>({
         key: pickedKey,

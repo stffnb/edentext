@@ -4,7 +4,8 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { changedRanges, checkLangOf, langOf, HIGHLIGHTS, paintHighlight, type Range } from './spellCheck';
+import { changedRanges, checkLangOf, langOf, type Range } from './spellCheck';
+import { highlightPlugin } from './highlights';
 import { hasGrammar, NO_LANGUAGE } from '../../storage/documentLanguage';
 import { grammarLanguage, grammarReady, lintText, subscribeGrammar, type GrammarFix, type GrammarLint } from '../../spell/grammar.svelte';
 import { isPaginating } from './pageBreaks';
@@ -149,11 +150,6 @@ export const GrammarCheck = Extension.create({
             return set === old.set && dirty === old.dirty ? old : { set, dirty };
           },
         },
-        props: {
-          decorations(state) {
-            return HIGHLIGHTS ? null : grammarKey.getState(state)?.set;
-          },
-        },
         view(view: EditorView) {
           const whenIdle = typeof requestIdleCallback === 'function'
             ? (cb: () => void) => requestIdleCallback(cb, { timeout: 2000 })
@@ -238,7 +234,6 @@ export const GrammarCheck = Extension.create({
           const unsubscribe = subscribeGrammar(relint);
           const unsubscribeDetection = subscribeDetection(relint);
           schedule();
-          const painter = paintHighlight(view, 'grammar-error', (s) => grammarKey.getState(s)?.set);
 
           return {
             update(v, prevState) {
@@ -246,16 +241,15 @@ export const GrammarCheck = Extension.create({
                 lastEdit = Date.now();
                 schedule();
               }
-              painter.update();
             },
             destroy() {
-              painter.destroy();
               unsubscribe();
               unsubscribeDetection();
             },
           };
         },
       }),
+      highlightPlugin('grammar-error', (s) => grammarKey.getState(s)?.set),
     ];
   },
 });

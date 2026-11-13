@@ -244,13 +244,17 @@
   text-decoration: underline;
 }
 
-/* Find & Replace match highlights (searchReplace.ts); current match is stronger. */
-.paper .tiptap .search-match {
-  background: rgba(255, 213, 0, 0.45);
-  border-radius: 2px;
+/* Find & Replace match highlights (searchReplace.ts); current match is stronger; the
+   navigator's page copies paint their own (PageThumbnails.svelte). The classes serve
+   only a browser without CSS highlights (highlights.ts). */
+.paper .tiptap .search-match,
+::highlight(search-match),
+::highlight(search-match-thumb) {
+  background-color: rgba(255, 213, 0, 0.45);
 }
-.paper .tiptap .search-match-current {
-  background: rgba(255, 145, 0, 0.8);
+.paper .tiptap .search-match-current,
+::highlight(search-match-current) {
+  background-color: rgba(255, 145, 0, 0.8);
 }
 
 /* A ruby annotation (ruby.ts). The reading sits above its base at half its size,
@@ -263,13 +267,15 @@
   line-height: 1;
 }
 
-/* The word being offered (wordCompletion.ts): after the caret, in the text's own
-   font, greyed — it is not in the document until Enter takes it. */
-.paper .tiptap .word-completion::after {
-  content: attr(data-completion);
-  /* Inline: Chromium leaves an inline-block out of a `pb-shift` line's offset. */
+/* The word being offered (wordCompletion.ts): after the caret, in the text's own font
+   (set inline), greyed — it is not in the document until Enter takes it. Drawn over
+   the text, so it covers what follows the caret on the page's own ground. */
+.paper .word-completion {
   white-space: pre;
-  opacity: 0.45;
+  margin-left: 1px;
+  color: color-mix(in srgb, var(--offer-color, currentColor) 45%, transparent);
+  background: var(--color-page-bg);
+  pointer-events: none;
   user-select: none;
 }
 
@@ -1384,6 +1390,12 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
 
 .tiptap .pm-comment-active {
   background: color-mix(in srgb, var(--comment-author, #c69200) 42%, transparent);
+}
+
+/* The range a comment is being written for (comment.ts), as an active comment's tint. */
+::highlight(comment-draft) {
+  background-color: color-mix(in srgb, #c69200 42%, transparent);
+  text-decoration: underline 1px color-mix(in srgb, #c69200 75%, transparent);
 }
 
 .tiptap .pm-comment[data-comment-resolved='true'] {
