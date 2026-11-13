@@ -1372,11 +1372,39 @@ try {
   const view4 = await a.evaluate(() => window.__collab.session.viewLink);
   const wes = await client('Wes');
   await joinLink(wes, link4);
-  const rs = [];
+  // A reader answers an ask with nothing to offer, so one in the room holds up no sync; a
+  // patched one, answering many times and under the starter's id while the starter's offer is
+  // late, ends nobody's sync early. Each shows as the time from the first offer to the answer.
+  const syncMs = (page) => page.evaluate(() => Math.round(performance.getEntriesByName('collab:answer')[0]?.startTime - performance.getEntriesByName('collab:offer')[0]?.startTime));
+  const rs = [], waits = [];
   for (const name of ['Rhea', 'Rolf', 'Ruth', 'Rudi']) {
+    if (name === 'Ruth') {
+      const aId = await a.evaluate(() => window.__collab.session.me);
+      await rs[0].evaluate((aId) => {
+        const d = window.__collab.session.debug, me = window.__collab.session.me;
+        const nothing = (to, from) => { const f = new Uint8Array(9); f[0] = 15; new DataView(f.buffer).setUint32(1, to); new DataView(f.buffer).setUint32(5, from); return f; };
+        d.tap = (f) => { if (f[0] === 0) { const to = new DataView(f.buffer, f.byteOffset).getUint32(1); for (const from of [me, me, me, aId]) d.send(nothing(to, from), to); } };
+      }, aId);
+      await a.evaluate(() => {
+        const send = WebSocket.prototype.send, sent = window.__collab.session.stats.sent;
+        let offers = sent[3];
+        window.__lateOffers = true;
+        WebSocket.prototype.send = function (d) {
+          if (sent[3] !== offers) { offers = sent[3]; if (window.__lateOffers) { setTimeout(() => send.call(this, d), 1000); return; } }
+          return send.call(this, d);
+        };
+      });
+    }
     rs.push(await client(name));
     await joinLink(rs.at(-1), view4);
+    waits.push(await syncMs(rs.at(-1)));
+    if (name === 'Ruth') {
+      await a.evaluate(() => { window.__lateOffers = false; });
+      await rs[0].evaluate(() => { window.__collab.session.debug.tap = null; });
+    }
   }
+  check(waits[1] < 250, `a reader in the room holds up no join (${waits[1]} ms from the first offer to the answer)`);
+  check(waits[2] >= 280, `a patched reader cannot end a sync before a writer answered (${waits[2]} ms)`);
   const listed = await a.waitForFunction(() => window.__collab.view().readers.length === 4, null, { timeout: 15_000 }).then(() => true, () => false);
   const sven = await client('Sven');
   await sven.goto(view4, { waitUntil: 'load' });

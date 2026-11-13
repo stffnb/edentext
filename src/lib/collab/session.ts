@@ -33,10 +33,11 @@ const PONG = 10;    // [to][from][nonce], a writer's answer
 const ECHO = 11;    // [to][from][nonce], a reader's answer
 const CHAT = 12;    // [text as UTF-8]: a writer's chat message, to all; the relay's id says whose
 const SAY = 13;     // [text as UTF-8]: a reader's, unsigned, counted only from a listed reader
-const DIRECTED = new Set([OFFER, PULL, ANSWER, PICTURE, WANT, HAS, PING, PONG, ECHO]); // the first number is `to`
+const NOTHING = 15; // [to][from]: a reader's answer to ASK, which has nothing to offer
+const DIRECTED = new Set([OFFER, PULL, ANSWER, PICTURE, WANT, HAS, PING, PONG, ECHO, NOTHING]); // the first number is `to`
 // Where a frame names its sender: it must be the one the relay puts in front, so no client
 // speaks for another (a reader for many readers, or asking answers sent to someone else).
-const FROM_AT = new Map([[ASK, 1], [VIEWER, 1], [OFFER, 5], [PULL, 5], [WANT, 5], [HAS, 5], [PING, 5], [PONG, 5], [ECHO, 5]]);
+const FROM_AT = new Map([[ASK, 1], [VIEWER, 1], [OFFER, 5], [PULL, 5], [WANT, 5], [HAS, 5], [PING, 5], [PONG, 5], [ECHO, 5], [NOTHING, 5]]);
 const SIGNED = new Set([UPDATE, PRESENCE, OFFER, ANSWER, PICTURE, HAS, PONG, CHAT]);
 const MAX_HELD = 8;      // presence frames held per peer until it answers a ping
 const MAX_KNOWN = 32;     // readers listed, and writers awaiting a ping
@@ -173,7 +174,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   const reading = !keys.sign;
   const view = viewLink(keys);
   const link = keys.secret ? sessionLink(keys.secret) : view;
-  const stats = { sent: new Array<number>(HAS + 1).fill(0) };
+  const stats = { sent: new Array<number>(NOTHING + 1).fill(0) };
   // A reader has no awareness state: no caret, no zone, never asked for a picture.
   if (reading) { awareness.setLocalState(null); setReading(editor, true); }
   // Never 0, the PICTURE frame's address for everyone.
@@ -456,7 +457,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   // applies the offered deletions, which may need a pulled insert, and gives what offers lack.
   type Known = { sv: Map<number, number>; ds: Deletes };
   type Round = {
-    offers: Map<number, Known>; pulled: Set<number>; target: number | null; deletes: Uint8Array[];
+    offers: Map<number, Known>; idle: Set<number>; pulled: Set<number>; target: number | null; deletes: Uint8Array[];
     done: boolean; over: boolean; at: number; settle?: ReturnType<typeof setTimeout>; watch?: ReturnType<typeof setInterval>;
   };
   let round: Round | null = null;
@@ -468,7 +469,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   const startRound = () => {
     endRound();
     if (peerCount <= 1) return;
-    const r: Round = round = { offers: new Map(), pulled: new Set(), target: null, deletes: [], done: false, over: false, at: Date.now() };
+    const r: Round = round = { offers: new Map(), idle: new Set(), pulled: new Set(), target: null, deletes: [], done: false, over: false, at: Date.now() };
     r.watch = setInterval(() => { if (!r.over && Date.now() - Math.max(r.at, channel.heard()) > STALL_MS) startRound(); }, 1000);
     send(ASK, me);
   };
@@ -485,6 +486,8 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     send(UPDATE, Y.encodeStateAsUpdate(ydoc, Y.encodeStateVector(least)));
     for (const o of r.offers.values()) if (o.sv.size) { o.sv = sv; o.ds = ds; }
   };
+  // Every other client answered: an offer, or a reader's NOTHING, each counted once by the relay's id.
+  const heardAll = (r: Round) => new Set([...r.offers.keys(), ...r.idle]).size >= peerCount - 1;
   const settle = () => {
     if (!round || round.done) return;
     round.done = true;
@@ -530,7 +533,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     }
     else if (kind === VIEWER) viewer(v.getUint32(1), plain.subarray(5));
     else if (kind === ASK) {
-      if (reading) return;
+      if (reading) return send(NOTHING, v.getUint32(1), me);
       applyInbox();
       const sv = Y.encodeStateVector(ydoc);
       send(OFFER, v.getUint32(1), me, sv.length, sv, Y.encodeStateAsUpdate(ydoc, sv));
@@ -545,8 +548,11 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       round.offers.set(from, { sv: Y.decodeStateVector(plain.subarray(13, 13 + n)), ds: Y.decodeUpdate(ds).ds });
       round.deletes.push(ds.slice());
       if (round.done) pull();
-      else if (round.offers.size >= peerCount - 1) settle();
+      else if (heardAll(round)) settle();
       else round.settle ??= setTimeout(settle, SETTLE_MS);
+    } else if (kind === NOTHING && round) {
+      round.idle.add(v.getUint32(5));
+      if (!round.done && heardAll(round)) settle();
     } else if (kind === PULL) {
       if (reading) return;
       applyInbox();
