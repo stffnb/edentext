@@ -21,7 +21,7 @@ corpus documents. Both passed every one, so the choice is about cost, not feasib
   live on without anyone in them, the main reason for Yjs is gone.
 
 What the spike left untested (engines, long documents, IME, image drag, the assistant, four
-clients, line heights) the session checks cover; its results are in `collab-soak.md`.
+clients, line heights) the session checks cover; its results are in `collab-soak.md`, big-document timings in `collab-perf.md`.
 
 ## Undo
 
@@ -95,8 +95,8 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   write link `…#collab=<W>`. HKDF-SHA-256 derives from W the read key R and an Ed25519 seed;
   the read link `…#view=<R>.<public key>` cannot give W back. Browsers never send the part
   after `#`; the room, the same for both links, is a truncated SHA-256 of R. Every frame is
-  sealed with AES-256-GCM under R and a fresh 12-byte nonce; `@noble/ciphers` and
-  `@noble/curves` work without `crypto.subtle`. A write link writes until a new session.
+  sealed with AES-256-GCM under R and a fresh 12-byte nonce, in line order: WebCrypto in a secure
+  context, else `@noble/ciphers` (same frames, so both mix). A write link writes until a new session.
 - **Signed frames.** What changes a receiver's state (`UPDATE`, `OFFER`, whose delete set
   applies as an update, `ANSWER`, `PICTURE`, a writer's awareness, `PONG`) carries a
   signature by the writers' shared key, over the whole message before its parts and checked
@@ -114,7 +114,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   Replayed updates, answers and pictures change nothing. A frame that names its sender (`from`, a presence's `peer`) is dropped unless the relay names the same, so one tab cannot pose as many readers or have answers sent to another client. A `gone` sent while a line was down never arrives: knowing more peers than the relay counts, a client pings each and drops those silent for 3 s.
 - **Relay** (`relay/server.mjs`, `relay/CLAUDE.md`; hosting it: `collab-relay.md`): rooms as sets of sockets in memory,
   frames passed on unchanged, to the one client a clear `to` names where there is one (the
-  sync's replies, pictures), nothing stored or logged; `MAX_PEERS` counts connections,
+  sync's replies, pictures), nothing stored or logged, a receiver 2 MiB behind announced `slow` so the others hold its pictures back; `MAX_PEERS` counts connections,
   readers too, as the relay cannot tell them from writers. An id stays with the connection whose hello claimed it with a random secret, so no other client takes its frames or its `gone`; an app and a relay of different protocol versions say so (`mismatch`).
 - **Where the relay is:** `VITE_COLLAB_RELAY` is a `wss://` URL, or `same-origin` for `/relay`
   beside the app (dev proxy, Docker, Helm), where sessions are offered only once
@@ -130,7 +130,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   room shrinks or no peer frame comes for 10 s. Edits and carets go in 50 ms batches, each
   as a task of its own.
 - **Parts and failures** (`collab/channel.ts`): a message beyond the welcome's `frame`
-  (at most 1 MiB) goes as sealed numbered parts. A receiver keeps at most four unfinished messages and 256 MiB per sender, which the relay puts in front of every frame, and drops them when the sender goes: a sender can fill only its own room. Retries back off from 0.5 to 30 s; three
+  (at most 256 kB) goes as sealed numbered parts. Such messages and pictures wait in a bulk lane, sent part by part while the socket holds little, behind edits, carets, pings and the sync (`collab-pictures.md`); nothing goes to everyone while the relay counts nobody else. A receiver keeps at most four unfinished messages and 256 MiB per sender, which the relay puts in front of every frame, and drops them when the sender goes: a sender can fill only its own room. Retries back off from 0.5 to 30 s; three
   connections lost within 5 s of their welcome show `failing` until one holds for 5 s; a
   line silent for three `beat`s (15 s) is taken as half-open and redialled.
 - **Start and join.** The starter puts its document, exported as `.odt` (`buildBytes`),
@@ -141,10 +141,10 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   the map `state` (`applyState`); later store changes travel through that map.
 - **Pictures** (`collab/pictures.ts`, `collab-pictures.md`) over 4 kB lie in the shared doc
   and its stores (headers, footers) as their key, `idb:<key>` as in autosave, the bytes in
-  memory (`imageStore.ts`): from the start file, or sent to all as bytes (`PICTURE`) by
-  whoever puts one in. One missing is asked of each other client in turn (`WANT`, awareness
-  `peer`); none has it: a grey box and a note. Files, autosave, clipboard and vector PDF get
-  pictures; a save with one still on its way fails. Leaving puts them back in.
+  memory (`imageStore.ts`): the start file carries none, a new one goes to all as bytes
+  (`PICTURE`) from whoever puts it in. One missing is asked of each other client in turn (`WANT`, awareness
+  `peer`); a lack means not yet, so a newly confirmed client or one that got it since (`HAS`) is asked again; while nobody in the room has it: a grey box and a note. Files, autosave, clipboard and vector PDF get
+  pictures; saving, printing, PDF and copying wait for one still on its way under a notice, and fail only when nobody here has it. Leaving puts them back in.
 - **Headers and footers** go as whole zones, so one person edits a zone at a time
   (`collab/zones.svelte.ts`, awareness field `zone`): the others see the name at it and
   cannot open it. Opened at once, the higher client id yields and may lose its first keys.
@@ -169,7 +169,7 @@ undo takes back only its own typing. A page setup and a style change arrive, the
 shows with its name, the relay's frames hold no typed text and no name, and an idle session
 sends no updates. A 2.9 MB picture goes to the relay once, as bytes, and adds 0.5 kB to the
 doc; B's copy, saved `.odt` and A's autosave hold it; five moves and a delete send 5 kB.
-Frames carry at most 1 MiB; a late joiner gets everything from one ask and one answer, the
+Frames carry at most 256 kB; a late joiner gets everything from one ask and one answer, the
 picture from one client; a header's picture goes by its key too; replies go to their asker
 alone; a fourth joins, types and converges. A joiner whose pulled peer drops its answer and
 line, while a third types, still goes live; a late offer is pulled from and gets what it
@@ -183,7 +183,7 @@ and follows typing; keys, paste, commands, undo, a header and the assistant chan
 and it signs nothing, but a hint says why; each dialog shows its links. A patched reader's unsigned, falsely signed or altered updates,
 offers, answers, pictures and presences change no document, zone, caret or list; replayed
 presences hold no zone, at a newcomer neither. A reader dialling in under a writer's id gets none of its frames nor makes it leave or free its header, a picture asked for thirty times in one frame goes once, and forty readers made up in one tab are listed nowhere, while a real one still is. A picture whose only holder leaves unsent is a
-grey box with a note within seconds, as the relay says who left, and the line stays `live`. Two writers and four
+grey box with a note within seconds, as the relay says who left, and the line stays `live`. Pictures put in alone go nowhere; on a 2 MB/s uplink the starter's typing reaches a joiner within 1 s while its pictures still load, a save started then waits for them under a notice and holds them all, and a third joining meanwhile gets them all. Two writers and four
 readers fill a room of six, so a seventh is refused; with the writers gone the reader is told, a new reader finds it
 empty, and the reader's kept copy is editable. Chat: a writer's, a joiner's and a reader's messages reach the other two by name, the reader's marked, in one order; the relay sees no text or name, A's `.odt`, `.docx`, autosave and shared doc none either. The pane drags and keys wider, docks left beside the page and keeps both after a reload, apart from the comments pane's; a reload or a late joiner starts empty. A closed pane counts new messages without taking the typist's focus. A patched reader's unsigned or falsely signed `CHAT`, a `SAY` from an unlisted id and a 1 MB text show nowhere, 50 in a second at most five, markup as text, only `http(s)` addresses as links. Idle with the pane open, nothing is sent; a line down shuts the field and its return opens it. Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
 the script (`page.route`): its text and page setup reach the joiner, which keeps its

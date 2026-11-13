@@ -5,7 +5,7 @@ import WebSocket from 'ws';
 import { startRelay } from '../relay/server.mjs';
 
 type Relay = { port: number; rooms: Map<string, Set<unknown>>; close(): Promise<void> };
-type Client = { id: number; ws: WebSocket; text: Record<string, unknown>[]; bin: Buffer[]; closed: Promise<number> };
+type Client = { id: number; ws: WebSocket; text: Record<string, unknown>[]; bin: Buffer[]; got: number; closed: Promise<number> };
 
 let relay: Relay | null = null;
 afterEach(async () => { await relay?.close(); relay = null; });
@@ -18,8 +18,14 @@ let next = 100;
 // A client with its id and the secret it claims the id by; `hello` overrides fields.
 async function join(room: string, id = next++, claim = `claim-of-${id}`.padEnd(22, '-'), hello: Record<string, unknown> = {}): Promise<Client> {
   const ws = new WebSocket(`ws://127.0.0.1:${relay!.port}/relay`);
-  const c: Client = { id, ws, text: [], bin: [], closed: new Promise((r) => ws.on('close', (code) => r(code))) };
-  ws.on('message', (d, binary) => (binary ? c.bin.push(d as Buffer) : c.text.push(JSON.parse(String(d)))));
+  const c: Client = { id, ws, text: [], bin: [], got: 0, closed: new Promise((r) => ws.on('close', (code) => r(code))) };
+  // Receipts of the bytes sent are kept apart from the other messages.
+  ws.on('message', (d, binary) => {
+    const msg = binary ? null : JSON.parse(String(d));
+    if (binary) c.bin.push(d as Buffer);
+    else if (msg.t === 'got') c.got = msg.n;
+    else c.text.push(msg);
+  });
   await new Promise((r) => ws.on('open', r));
   ws.send(JSON.stringify({ t: 'hello', v: 2, room, token: null, id, claim, ...hello }));
   await tick();
@@ -41,6 +47,8 @@ describe('collaboration relay', () => {
     // Each frame arrives with its sender in front.
     expect(b.bin.map((x) => [...x])).toEqual([[0, 0, 0, a.id, 1, 2, 3]]);
     expect(a.bin.length + c.bin.length).toBe(0);
+    // The sender hears how many of its binary bytes arrived.
+    expect([a.got, b.got]).toEqual([7, 0]);
 
     b.ws.close();
     await tick();
@@ -73,6 +81,30 @@ describe('collaboration relay', () => {
     for (const x of [a, b2]) x.ws.close();
     expect(await (await join(ROOM_B, 2 ** 32)).closed).toBe(4000);
     expect(await (await join(ROOM_B, 5, 'short')).closed).toBe(4000);
+  });
+
+  it('tells the others a receiver is behind, and holds back a sender that ignores it', async () => {
+    relay = await startRelay({ port: 0, backlog: 256 << 10, hold: 64 << 10 });
+    const a = await join(ROOM_A, 1), b = await join(ROOM_A, 2);
+    b.ws.pause();
+    const frame = Buffer.alloc(64 << 10);
+    for (let i = 0; i < 400; i++) a.ws.send(frame);
+    let most = 0;
+    for (let i = 0; i < 20; i++) {
+      await tick();
+      for (const w of relay.rooms.get(ROOM_A) as Set<WebSocket>) most = Math.max(most, w.bufferedAmount);
+    }
+    expect(most).toBeLessThan(2 * (256 << 10));
+    expect(a.text).toContainEqual({ t: 'slow', id: 2 });
+    // A client coming meanwhile hears who is behind.
+    const c = await join(ROOM_A, 3);
+    expect(c.text).toContainEqual({ t: 'slow', id: 2 });
+    b.ws.resume();
+    for (let i = 0; i < 100 && b.bin.length < 400; i++) await tick();
+    expect(b.bin.length).toBe(400);
+    for (let i = 0; i < 20 && !a.text.some((m) => m.t === 'drained'); i++) await tick();
+    expect(a.text).toContainEqual({ t: 'drained', id: 2 });
+    c.ws.close();
   });
 
   it('keeps an id for the hello that claimed it first, also after its client left', async () => {

@@ -7,7 +7,7 @@ import { openChannel, type ChannelStatus } from './channel';
 import { newKey, opened, sessionLink, signed, viewLink, writeKeys, type SessionKeys } from './key';
 import { readOnlyFilter, readingKey, setReading } from './reading.svelte';
 import { shareZones } from './zones.svelte';
-import { PICTURE, WANT, keyPictures, picturesKey, sessionPictures, unkeyPictures } from './pictures';
+import { HAS, PICTURE, WANT, keyPictures, picturesKey, sessionPictures, unkeyPictures } from './pictures';
 import { IDB_SRC } from '../storage/imageStore';
 import { cleanColor, shownName } from './names';
 
@@ -25,18 +25,18 @@ const PRESENCE = 2; // an awareness update (name, colour, cursor)
 const OFFER = 3;    // [to][from][length][state vector][delete set as an update]
 const PULL = 4;     // [to][from][state vector]: the receiver answers with what it lacks
 const ANSWER = 5;   // [to][Yjs update]
-// PICTURE and WANT carry the pictures the doc names by key (`pictures.ts`).
+// PICTURE, WANT and HAS carry the pictures the doc names by key (`pictures.ts`).
 const VIEWER = 8;   // [from][name and colour as JSON, none on leaving]: a reader's presence
 const PING = 9;     // [to][from][nonce]: answer to show the sender is in the room now
 const PONG = 10;    // [to][from][nonce], a writer's answer
 const ECHO = 11;    // [to][from][nonce], a reader's answer
 const CHAT = 12;    // [text as UTF-8]: a writer's chat message, to all; the relay's id says whose
 const SAY = 13;     // [text as UTF-8]: a reader's, unsigned, counted only from a listed reader
-const DIRECTED = new Set([OFFER, PULL, ANSWER, PICTURE, WANT, PING, PONG, ECHO]); // the first number is `to`
+const DIRECTED = new Set([OFFER, PULL, ANSWER, PICTURE, WANT, HAS, PING, PONG, ECHO]); // the first number is `to`
 // Where a frame names its sender: it must be the one the relay puts in front, so no client
 // speaks for another (a reader for many readers, or asking answers sent to someone else).
-const FROM_AT = new Map([[ASK, 1], [VIEWER, 1], [OFFER, 5], [PULL, 5], [WANT, 5], [PING, 5], [PONG, 5], [ECHO, 5]]);
-const SIGNED = new Set([UPDATE, PRESENCE, OFFER, ANSWER, PICTURE, PONG, CHAT]);
+const FROM_AT = new Map([[ASK, 1], [VIEWER, 1], [OFFER, 5], [PULL, 5], [WANT, 5], [HAS, 5], [PING, 5], [PONG, 5], [ECHO, 5]]);
+const SIGNED = new Set([UPDATE, PRESENCE, OFFER, ANSWER, PICTURE, HAS, PONG, CHAT]);
 const MAX_HELD = 8;      // presence frames held per peer until it answers a ping
 const MAX_KNOWN = 32;     // readers listed, and writers awaiting a ping
 const BATCH_MS = 50;
@@ -86,7 +86,7 @@ export type SessionView = {
 /** What the session needs from the app. */
 export type SessionHost = {
   relay: string;
-  /** The open document as a file: the start every joiner loads. */
+  /** The open document as a file without its large pictures: the start every joiner loads. */
   snapshot(): Promise<Uint8Array>;
   /** Loads a start file as the open document, unasked, under the starter's name for it. */
   load(bytes: Uint8Array, name: string): Promise<boolean>;
@@ -109,6 +109,8 @@ export type Session = {
   leave(): void;
   /** Sends a chat message to everyone here; false when the line is not live. */
   chat(text: string): boolean;
+  /** Pictures others are still loading from this client. */
+  serving(): number;
   /** Frames sent per kind, for the tests' idle check. */
   stats: { sent: number[] };
   /** Dev builds: sends a frame as is and shows each arriving one, for the forged-frame test. */
@@ -165,7 +167,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   const reading = !keys.sign;
   const view = viewLink(keys);
   const link = keys.secret ? sessionLink(keys.secret) : view;
-  const stats = { sent: new Array<number>(SAY + 1).fill(0) };
+  const stats = { sent: new Array<number>(HAS + 1).fill(0) };
   // A reader has no awareness state: no caret, no zone, never asked for a picture.
   if (reading) { awareness.setLocalState(null); setReading(editor, true); }
   // Never 0, the PICTURE frame's address for everyone.
@@ -236,12 +238,13 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       ? 'waiting' : 'connecting';
 
   // A reader cannot sign, so what it would sign is never sent.
-  const send = (kind: number, ...parts: (number | Uint8Array)[]) => {
-    if (reading && SIGNED.has(kind)) return;
+  const post = (done: (() => void) | undefined, kind: number, ...parts: (number | Uint8Array)[]) => {
+    if (reading && SIGNED.has(kind)) return done?.();
     stats.sent[kind]++;
     const plain = frame(kind, ...parts);
-    channel.send(SIGNED.has(kind) ? signed(keys.sign!, plain) : plain, DIRECTED.has(kind) ? parts[0] as number : 0);
+    channel.send(SIGNED.has(kind) ? signed(keys.sign!, plain) : plain, DIRECTED.has(kind) ? parts[0] as number : 0, kind === PICTURE, done);
   };
+  const send = (kind: number, ...parts: (number | Uint8Array)[]) => post(undefined, kind, ...parts);
   const enc = new TextEncoder();
   // A new clock: others that dropped this client when its line broke take it back.
   const present = () => reading
@@ -340,7 +343,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     }, DOUBT_MS);
   };
   const pictures = sessionPictures({
-    me, send, heard: () => channel.heard(), changed: () => changed(), others: () => peerCount > 1,
+    me, send, post, heard: () => channel.heard(), incoming: (id) => channel.incoming(id), changed: () => changed(), unknown: () => peerCount - 1 > known().size,
     arrived: (k) => binding?.refresh(IDB_SRC + k),
     peers: () => [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && typeof s.peer === 'number').map(([, s]) => s.peer as number),
   });
@@ -467,7 +470,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     if (at !== undefined && v.getUint32(at) !== from) return;
     if (kind === UPDATE) receive(plain.subarray(1));
     else if (kind === CHAT || kind === SAY) chat(kind, from, plain.subarray(1));
-    else if (pictures.receive(plain)) return;
+    else if (pictures.receive(plain, from)) return;
     else if (kind === PRESENCE) presence(plain.subarray(1), from);
     else if (kind === VIEWER) viewer(v.getUint32(1), plain.subarray(5));
     else if (kind === ASK) {
@@ -518,7 +521,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       // client still without the doc asks them. Someone left: a sync still waiting on
       // offers or an answer starts over with the rest, as others' traffic hides the stall.
       const came = n > peerCount, left = n < peerCount;
-      if (came) { present(); pictures.retry(); }
+      if (came) present();
       peerCount = n;
       if (left) pictures.recheck();
       if (left ? round && !round.over : came && joining && (!round || round.over)) startRound();
@@ -558,6 +561,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
 
   return {
     me, link, viewLink: view, awareness, stats,
+    serving: () => pictures.serving(),
     setUser(user) {
       if (reading) send(VIEWER, me, enc.encode(JSON.stringify(user)));
       else awareness.setLocalStateField('user', user);
@@ -602,7 +606,7 @@ export async function startSession(editor: Editor, host: SessionHost): Promise<S
   meta.set('snapshot', await host.snapshot());
   meta.set('version', __APP_VERSION__);
   meta.set('name', host.name());
-  // The start file carries the pictures; the shared doc names them by key.
+  // The shared doc names the pictures by key; joiners ask for them as for any other.
   const keyed = keyPictures(editor.state);
   if (keyed) editor.view.dispatch(keyed);
   return connect(editor, writeKeys(newKey())!, host, ydoc, (codec) => attachYjsUndo(editor, ydoc, codec), null);
@@ -618,8 +622,6 @@ export function joinSession(editor: Editor, keys: SessionKeys, host: SessionHost
     const meta = ydoc.getMap('meta');
     if (meta.get('version') !== __APP_VERSION__) return 'version';
     if (!(await host.load(meta.get('snapshot') as Uint8Array, String(meta.get('name') ?? '')))) return null;
-    // The start file's pictures are held, under the keys the shared doc names them by.
-    keyPictures(editor.state);
     // Repairs wait for the rank the session gives it on binding.
     const binding = attachYjsUndo(editor, ydoc, codec, () => false);
     binding.applyState();
