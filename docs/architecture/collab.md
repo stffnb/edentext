@@ -101,9 +101,9 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   applies as an update, `ANSWER`, `PICTURE`, a writer's awareness, `PONG`) carries a
   signature by the writers' shared key, over the whole message before its parts and checked
   after they join; everyone drops it unsigned or badly signed. Readers send only `ASK`,
-  `PULL`, `WANT`, `PING`, `ECHO` and `VIEWER` (name and colour, kept apart from the
+  `PULL`, `WANT`, `PING`, `ECHO`, `NOTHING` and `VIEWER` (name and colour, kept apart from the
   awareness: no caret, no zone, never asked for a picture, listed once its id answers a
-  ping). They neither offer in a sync nor answer a `WANT`; with only readers there, a joiner
+  ping). They neither offer in a sync (they answer an `ASK` with `NOTHING`, unsigned, which counts as that one relay id's answer and changes nothing else) nor answer a `WANT`; with only readers there, a joiner
   waits as in an empty room. A reader's tab (`collab/reading.svelte.ts`) takes no input, has
   no assistant and opens no zone; once bound, a filter refuses every transaction with steps
   not from the shared doc (y-tiptap's sync meta, `STATE_RESTORED`), as commands run when not
@@ -120,7 +120,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   beside the app (dev proxy, Docker, Helm), where sessions are offered only once
   `relay/health` answers. Embedded, there are none.
 - **Sync** (`collab/session.ts`) once per welcome: `ASK`; every peer `OFFER`s its state
-  vector and delete set. When all have, or 300 ms after the first, the asker `PULL`s an
+  vector and delete set. When all have (a reader with `NOTHING`), or 300 ms after the first offer, the asker `PULL`s an
   `ANSWER` from the offer ahead most, then from any still ahead, a later offer too. Only
   then do the offered delete sets apply (alone, one may empty what a pulled insert fills).
   Then it `UPDATE`s all at once what the non-empty offers lack (an empty one is a joiner,
@@ -182,7 +182,7 @@ a cut-short link and an empty room say so. A reader gets document, zones, styles
 and follows typing; keys, paste, commands, undo, a header and the assistant change nothing
 and it signs nothing, but a hint says why; each dialog shows its links. A patched reader's unsigned, falsely signed or altered updates,
 offers, answers, pictures and presences change no document, zone, caret or list; replayed
-presences hold no zone, at a newcomer neither. A reader dialling in under a writer's id gets none of its frames nor makes it leave or free its header, a picture asked for thirty times in one frame goes once, and forty readers made up in one tab are listed nowhere, while a real one still is. A picture whose only holder leaves unsent is a
+presences hold no zone, at a newcomer neither. A reader dialling in under a writer's id gets none of its frames nor makes it leave or free its header, a picture asked for thirty times in one frame goes once, and forty readers made up in one tab are listed nowhere, while a real one still is. A reader in the room holds up no join, and a patched one answering an ask many times and under the starter's id, while the starter's offer is late, ends no sync early. A picture whose only holder leaves unsent is a
 grey box with a note within seconds, as the relay says who left, and the line stays `live`. Pictures put in alone go nowhere; on a 2 MB/s uplink the starter's typing reaches a joiner within 1 s while its pictures still load, a save started then waits for them under a notice and holds them all, and a third joining meanwhile gets them all. Two writers and four
 readers fill a room of six, so a seventh is refused; with the writers gone the reader is told, a new reader finds it
 empty, and the reader's kept copy is editable. Chat: a writer's, a joiner's and a reader's messages reach the other two by name, the reader's marked, in one order; the relay sees no text or name, A's `.odt`, `.docx`, autosave and shared doc none either. The pane drags and keys wider, docks left beside the page and keeps both after a reload, apart from the comments pane's; a reload or a late joiner starts empty. A closed pane counts new messages without taking the typist's focus. A patched reader's unsigned or falsely signed `CHAT`, a `SAY` from an unlisted id and a 1 MB text show nowhere, 50 in a second at most five, markup as text, only `http(s)` addresses as links. Idle with the pane open, nothing is sent; a line down shuts the field and its return opens it. Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
