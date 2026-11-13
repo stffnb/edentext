@@ -256,6 +256,7 @@ const zhHant: Messages = {
     peers: (n: number) => `另有 ${n} 人在線`,
     missing: (n: number) => `有 ${n} 張圖片無法取得：擁有它們的人已經離開。在擁有這些圖片的人加入之前，它們會顯示為灰色方框。`,
     picturesPending: '部分圖片尚未傳到您這裡，檔案中會缺少它們。請等圖片顯示後再試一次。',
+    picturesLoading: '圖片仍在載入…',
     stillServing: (n: number) => `其他人仍在從您這裡載入 ${n} 張圖片。現在離開，他們可能收不到。仍要離開嗎？`,
     keepLacking: (n: number) => `還有 ${n} 張圖片尚未傳到您這裡，副本中會以灰色方框代替。仍要保留嗎？`,
     paused: '編輯已暫停',

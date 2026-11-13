@@ -254,6 +254,7 @@ const es: Messages = {
     peers: (n: number) => `${n} persona${n === 1 ? '' : 's'} más`,
     missing: (n: number) => n === 1 ? 'No se ha podido obtener una imagen: quien la tenía se ha ido. Se verá como un recuadro gris hasta que se una alguien que la tenga.' : `No se han podido obtener ${n} imágenes: quien las tenía se ha ido. Se verán como recuadros grises hasta que se una alguien que las tenga.`,
     picturesPending: 'Algunas imágenes aún no le han llegado y faltarían en el archivo. Vuelva a intentarlo cuando aparezcan.',
+    picturesLoading: 'Las imágenes aún se están cargando…',
     stillServing: (n: number) => n === 1 ? 'Alguien aún está cargando una imagen suya. Si se va ahora, puede que no le llegue. ¿Salir de todos modos?' : `Otros aún están cargando ${n} imágenes suyas. Si se va ahora, puede que no les lleguen. ¿Salir de todos modos?`,
     keepLacking: (n: number) => n === 1 ? 'Una imagen aún no le ha llegado, así que su copia mostrará un recuadro gris en su lugar. ¿Conservarla de todos modos?' : `${n} imágenes aún no le han llegado, así que su copia mostrará recuadros grises en su lugar. ¿Conservarla de todos modos?`,
     paused: 'Edición en pausa',

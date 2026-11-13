@@ -26,6 +26,9 @@ only the key; the bytes travel once to each client.
 - **Leaving.** Others still loading pictures from this tab (`serving`, its answers not yet
   sent) make leaving and closing the tab ask first; a kept copy that lacks pictures says how
   many and is kept only when confirmed, with grey boxes in their place.
+- **Saving, printing, PDF, copying** with pictures still on their way wait for them
+  (`untilHeld`) under the notice "Pictures are still loading…"; only one nobody here has
+  stops them (`picturesPending`). A copy or cut goes to the clipboard once they came.
 
 ## Wire
 
@@ -49,8 +52,10 @@ only the key; the bytes travel once to each client.
   would otherwise hold seconds of them. Edits, carets, pings and the sync go first, so a
   keystroke waits behind at most that. A receiver the relay calls `slow` gets no part until it is
   `drained`; messages to others go on meanwhile, each receiver's in order.
-- A missing picture is asked of one client at a time, all keys for it in one frame; one
-  that does not answer within 10 s of silence is passed over. A lack means "not yet": the
+- A missing picture is asked of one client at a time, at most three per client and those
+  nearest the viewport first (`distanceOf`, where its grey box shows), all keys for it in one
+  frame; each that arrives, and each scroll, asks for the next nearest. One that does not
+  answer within 10 s of silence is passed over. A lack means "not yet": the
   key stays wanted, and is asked again of a client newly confirmed (its awareness answered
   a ping) and of one that lacked it and since got it. That client remembers who asked
   (256 keys) and tells them so (`HAS` `[to][from][keys]`, signed); it does not send it unasked,

@@ -1086,7 +1086,7 @@ class ImageView {
     this.dom.classList.toggle('image-waiting', waiting);
     const url = waiting ? WAITING_SRC : shown;
     if (this.img.getAttribute('src') !== url) this.img.src = url;
-    if (waiting) this.unwait = awaitImage(shown.slice(IDB_SRC.length), () => { this.unwait = null; this.showSrc(); });
+    if (waiting) this.unwait = awaitImage(shown.slice(IDB_SRC.length), () => { this.unwait = null; this.showSrc(); }, this.dom);
   }
 
   destroy(): void {
