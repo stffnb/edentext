@@ -46,7 +46,7 @@ const MAX_HELD = 8;      // presence frames held per peer until it answers a pin
 const MAX_KNOWN = 32;     // readers listed, and writers awaiting a ping
 // What anyone in the room may ask of this client, per sender and kind: so many at once and so
 // many more per second (WANT counts its keys), a few times what an honest client sends
-// (`collab.md`, Limits). Past that a frame is dropped; its sender's stall logic asks again.
+// (`collab-limits.md`). Past that a frame is dropped; its sender's stall logic asks again.
 const RATES = new Map([[ASK, [5, 0.1]], [PULL, [5, 0.1]], [NOTHING, [5, 0.1]], [PING, [6, 0.1]], [ECHO, [6, 0.1]], [VIEWER, [6, 0.1]], [WANT, [50, 10]]]);
 const BATCH_MS = 50;
 // Arriving edits apply at once while the last batch, with the page layout it set off, took
