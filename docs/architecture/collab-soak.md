@@ -139,7 +139,7 @@ a frame in A's tab, ms.
 What it means, against about 16 ms per key for a visible stutter and 50 ms for sluggish:
 
 - Short and mixed documents stay far below both with six clients. Others' text shows after
-  about 110 ms: two 50 ms batches (sender and receiver) and the relay. The first frame gap
+  about 110 ms: two 50 ms batches (sender and receiver) and the relay; now both go at once while cheap (`collab-perf.md`, Latency). The first frame gap
   of 2.7 s with one client on the mixed document is its pictures decoding after the load.
 - On 177 pages a key alone costs 4.4 ms; with one other typist 9 ms, with three 22 ms
   (stutters), with five 62 ms. Pagination was the largest part: before the fix every batch
