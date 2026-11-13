@@ -45,7 +45,7 @@ function address(req, trustProxy) {
  * other. A connection that misses a `ping` round is dropped, so its client is gone within
  * two rounds. Resolves once listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, maxConns = 0, maxConnsPerIp = 0, trustProxy = false, stuckMs = 0, maxBuffered = 0, beat = 5000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, hold = 2 << 20, tap, lag } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, maxConns = 0, maxConnsPerIp = 0, trustProxy = false, origins = [], stuckMs = 0, maxBuffered = 0, beat = 5000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, hold = 2 << 20, tap, lag } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
   // Per room, each client id with the secret its first hello claimed it by, and its socket
@@ -61,9 +61,13 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
   });
   // Connections open, in all and per address, counted from the upgrade to the socket's end
   // (before its hello too); past either limit an upgrade gets 429 and no WebSocket.
+  // With `origins` given, only pages from there may connect (403 else): it keeps other web
+  // pages' scripts out, not a client outside a browser, which sends what it likes.
   let open = 0;
   const perAddress = new Map();
-  const admit = ({ req }, done) => {
+  const allowed = new Set(origins.map((o) => o.replace(/\/+$/, '')));
+  const admit = ({ req, origin }, done) => {
+    if (allowed.size && !allowed.has(origin)) return done(false, 403);
     const ip = address(req, trustProxy);
     if ((maxConns && open >= maxConns) || (maxConnsPerIp && (perAddress.get(ip) ?? 0) >= maxConnsPerIp)) return done(false, 429);
     open++;
@@ -254,6 +258,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     maxConns: env('MAX_CONNS', 2000),
     maxConnsPerIp: env('MAX_CONNS_PER_IP', 20),
     trustProxy: process.env.TRUST_PROXY === '1',
+    origins: (process.env.ALLOWED_ORIGINS ?? '').split(/[\s,]+/).filter(Boolean),
     stuckMs: env('STUCK_MS', 30_000),
     maxBuffered: env('MAX_BUFFERED', 256 << 20),
     beat: env('BEAT_MS', 5000),

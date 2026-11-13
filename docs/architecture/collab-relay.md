@@ -40,6 +40,7 @@ are off, as for the rest of the app.
 | `MAX_PEERS` | 6 | connections per room; the next gets `full`. Readers count, and so does a reload's second connection while the old one closes. 0 = no limit |
 | `MAX_ROOMS` | 10000 | rooms at once; a hello beyond closes with 4003 |
 | `MAX_CONNS`, `MAX_CONNS_PER_IP` | 2000, 20 | connections in all and per address (an IPv6 one by its /64), before their hello too; past either an upgrade gets HTTP 429. 0 = no limit |
+| `ALLOWED_ORIGINS` | empty | the origins whose pages may connect, separated by commas or blanks, e.g. `https://docs.example.org app://edentext` (`app://edentext` is the desktop app); any other gets HTTP 403. Empty allows every origin. This keeps other web pages from using the relay through their visitors' browsers; a program outside a browser can send any origin |
 | `TRUST_PROXY` | off | `1`: the address is the `X-Real-IP` header from the proxy in front (`proxy_set_header X-Real-IP $remote_addr;`), else every connection would count as the proxy's. Set it only behind such a proxy, as anyone can send the header |
 | `MAX_FRAME` | 1 MiB | bytes per frame; browsers send at most 256 kB and split longer messages |
 | `STUCK_MS` | 30 s | a receiver that holds more than 16 MiB this long reads nothing and is dropped; its browser dials again. 0 = never |
