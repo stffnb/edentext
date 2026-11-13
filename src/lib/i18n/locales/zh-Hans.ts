@@ -965,6 +965,7 @@ const zhHans: Messages = {
     tabsButton: '制表位…',
   },
   tabsDialog: {
+    clearAll: '全部清除',
     title: '制表位',
     none: '此段落没有制表位',
     position: '位置',

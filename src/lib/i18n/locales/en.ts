@@ -980,6 +980,7 @@ const en = {
     tabsButton: 'Tabs…',
   },
   tabsDialog: {
+    clearAll: 'Clear All',
     title: 'Tabs',
     none: 'No tab stops on this paragraph',
     position: 'Position',

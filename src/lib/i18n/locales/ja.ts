@@ -967,6 +967,7 @@ const ja: Messages = {
     tabsButton: 'タブ…',
   },
   tabsDialog: {
+    clearAll: 'すべてクリア',
     title: 'タブ',
     none: 'この段落にはタブ位置がありません',
     position: '位置',

@@ -981,6 +981,7 @@ const el: Messages = {
     tabsButton: "Στηλοθέτες…",
   },
   tabsDialog: {
+    clearAll: "Διαγραφή όλων",
     title: "Στηλοθέτες",
     none: "Δεν υπάρχουν στηλοθέτες σε αυτή την παράγραφο",
     position: "Θέση",

@@ -118,6 +118,62 @@ try {
   const full = await rulerClear(100);
   check(full.count >= 3 * 15, `the ruler shows quarter-cm marks at 100% (${full.count})`);
 
+  // A stop dragged past the text edge stays on it, on top of the right indent's handle,
+  // and is still the marker a grab there takes off; a double-click opens the Tabs dialog
+  // without moving its stop, and Clear All empties the paragraph.
+  {
+    const stopsAt = () => page.evaluate(() => document.querySelector('.tiptap').editor.state.selection.$from.parent.attrs.tabStops);
+    const own = await page.evaluate(() => {
+      const ed = document.querySelector('.tiptap').editor;
+      ed.commands.setTextSelection(1);
+      return ed.state.selection.$from.parent.attrs.tabStops;
+    });
+    const strip = await page.locator('.ruler .strip').boundingBox();
+    const y = strip.y + strip.height - 4;
+    const edge = await page.locator('.ruler .strip [title="Right indent"]').boundingBox();
+    const edgeX = edge.x + edge.width / 2;
+    const drag = async (from, x, dy = 0) => {
+      await page.mouse.move(from.x, from.y); await page.mouse.down();
+      await page.mouse.move(x, from.y + dy, { steps: 6 }); await page.mouse.up();
+      await page.waitForTimeout(300);
+    };
+    await page.mouse.click(edgeX - 60, y);
+    await page.waitForTimeout(300);
+    const added = await stopsAt();
+    const marker = await page.locator('.ruler .stop').last().boundingBox();
+    await drag({ x: marker.x + marker.width / 2, y }, edgeX + 40);
+    const atEdge = await stopsAt();
+    const textCm = await page.evaluate(() => {
+      const tip = document.querySelector('.tiptap');
+      const cs = getComputedStyle(tip);
+      return (tip.offsetWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) / (96 / 2.54);
+    });
+    const edgeCm = Math.max(...(atEdge ?? '').split(';').map((s) => parseFloat(s)));
+    check(added && Math.abs(edgeCm - textCm) < 0.1, `a stop dragged past the text edge stays on it (${atEdge}, column ${textCm.toFixed(2)} cm)`);
+    await drag({ x: edgeX, y }, edgeX, 80);
+    check((await stopsAt()) === own, `a stop on the right indent's handle pulls off the ruler (${await stopsAt()})`);
+
+    await page.mouse.click(edgeX - 60, y);
+    await page.waitForTimeout(300);
+    const placed = await stopsAt();
+    const m2 = await page.locator('.ruler .stop').last().boundingBox();
+    await page.mouse.dblclick(m2.x + m2.width / 2 + 2, m2.y + m2.height / 2);
+    const dialog = page.locator('dialog[open]', { hasText: 'Clear All' });
+    const opened = await dialog.waitFor({ timeout: 3000 }).then(() => true).catch(() => false);
+    check(opened && (await stopsAt()) === placed, `a double-click on a stop opens the Tabs dialog and leaves the stop (${placed} → ${await stopsAt()})`);
+    if (opened) {
+      await dialog.getByRole('button', { name: 'Clear All' }).click();
+      await page.waitForTimeout(200);
+      check(!(await stopsAt()) && await dialog.locator('.list .stop').count() === 0, 'Clear All removes every stop of the paragraph');
+      await dialog.getByRole('button', { name: 'Close' }).click();
+    }
+    await page.evaluate((s) => {
+      const ed = document.querySelector('.tiptap').editor;
+      ed.chain().setTextSelection(1).setTabStops([]).run();
+      if (s) ed.chain().updateAttributes('paragraph', { tabStops: s }).run();
+    }, own);
+  }
+
   // A language for all text rewrites every block's attrs, the blocks on both sides of each
   // page break included; the breaks have to stay where they were, and through the undo.
   // Kept-together paragraphs break between blocks, and a language of their own first

@@ -966,6 +966,7 @@ const zhHant: Messages = {
     tabsButton: '定位點…',
   },
   tabsDialog: {
+    clearAll: '全部清除',
     title: '定位點',
     none: '此段落沒有定位點',
     position: '位置',

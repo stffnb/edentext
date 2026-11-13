@@ -980,6 +980,7 @@ const uk: Messages = {
     tabsButton: 'Табуляція…',
   },
   tabsDialog: {
+    clearAll: 'Видалити всі',
     title: 'Табуляція',
     none: 'У цього абзацу немає позицій табуляції',
     position: 'Позиція',

@@ -974,6 +974,7 @@ const fr: Messages = {
     tabsButton: 'Tabulations…',
   },
   tabsDialog: {
+    clearAll: 'Tout supprimer',
     title: 'Tabulations',
     none: 'Aucun taquet de tabulation dans ce paragraphe',
     position: 'Position',

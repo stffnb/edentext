@@ -94,6 +94,7 @@
     </label>
 
     <div class="actions">
+      <button class="secondary" disabled={stops.length === 0} onclick={() => write([])}>{t().tabsDialog.clearAll}</button>
       <span class="spacer"></span>
       <button class="primary" onclick={() => (open = false)}>{t().common.close}</button>
     </div>
@@ -153,4 +154,12 @@
     font: inherit;
     cursor: pointer;
   }
+
+  .actions .secondary {
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  .actions .secondary:disabled { opacity: 0.5; cursor: default; }
 </style>

@@ -980,6 +980,7 @@ const ru: Messages = {
     tabsButton: 'Табуляция…',
   },
   tabsDialog: {
+    clearAll: 'Удалить все',
     title: 'Табуляция',
     none: 'У этого абзаца нет позиций табуляции',
     position: 'Позиция',

@@ -971,6 +971,7 @@ const de: Messages = {
     tabsButton: 'Tabstopps…',
   },
   tabsDialog: {
+    clearAll: 'Alle löschen',
     title: 'Tabstopps',
     none: 'Dieser Absatz hat keine Tabstopps',
     position: 'Position',

@@ -963,6 +963,7 @@ const it: Messages = {
     tabsButton: 'Tabulazioni…',
   },
   tabsDialog: {
+    clearAll: 'Elimina tutte',
     title: 'Tabulazioni',
     none: 'Nessuna tabulazione in questo paragrafo',
     position: 'Posizione',

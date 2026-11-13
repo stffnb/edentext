@@ -964,6 +964,7 @@ const pt: Messages = {
     tabsButton: 'Tabulações…',
   },
   tabsDialog: {
+    clearAll: 'Limpar tudo',
     title: 'Tabulações',
     none: 'Não há tabulações neste parágrafo',
     position: 'Posição',
