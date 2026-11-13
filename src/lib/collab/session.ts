@@ -368,11 +368,12 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     }
     if (caretDue) { caretDue = false; send(PRESENCE, encodeAwarenessUpdate(awareness, [ydoc.clientID])); }
   };
+  // A hidden tab's timers wait up to a second, so there the edits leave at once.
   let due = false;
   const batch = () => {
     if (outTimer !== undefined || due) return;
     const wait = shipped + BATCH_MS - performance.now();
-    if (wait > 0) outTimer = setTimeout(ship, wait);
+    if (wait > 0 && !document.hidden) outTimer = setTimeout(ship, wait);
     else { due = true; queueMicrotask(() => { due = false; ship(); }); }
   };
   const onUpdate = (u: Uint8Array, origin: unknown) => {

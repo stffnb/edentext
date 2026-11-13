@@ -39,7 +39,9 @@ only the key; the bytes travel once to each client.
   only under the key its data-URI gives.
 - A new picture goes to everyone (`to` 0), unless nobody else is in the room: whoever comes
   asks for it. `WANT` and its answer go to one client, and the relay passes them to that
-  client alone. A `WANT` gets each key it names once, one picture per task; one from a
+  client alone. A `WANT` gets each key it names once, one picture per task, queued through a
+  message channel (`utils/task.ts`) as the bulk lane is, since a hidden tab holds timers back
+  up to a second per ask (all 25 pictures came 5 s later from a hidden host); one from a
   client that was there when the picture went to everyone waits for that, which its edit
   overtakes, instead of sending the picture twice, up to 10 s after its last part left (the
   parts may still be on their way) unless the relay says that client left; nor does a client ask one whose message in
